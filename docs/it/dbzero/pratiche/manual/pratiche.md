@@ -1,108 +1,128 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.pratiche`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
-> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> [pratiche.giornale](/dbzero/pratiche/tabelle/giornale)
-> [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
-> [config.priorita_pratiche](/dbzero/config/tabelle/priorita_pratiche)
-> [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche)
+> * [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione) — il tipo della pratica
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — l'edizione di workflow che la pratica tiene per sempre
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — gli step istanziati della pratica
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — la storia della pratica
+> * [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche) · [config.priorita_pratiche](/dbzero/config/tabelle/priorita_pratiche) · [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche) — stato, priorità e canale d'origine
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il cliente a grana fine
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_lista_pratiche_per_contesto](/dbzero/pratiche/funzioni/fn_lista_pratiche_per_contesto) — la lettura per contesto anagrafico
+> * [pratiche.fn_genera_pratica_da_flusso](/dbzero/pratiche/funzioni/fn_genera_pratica_da_flusso) — genera una pratica figlia da un flusso
+> * [pratiche.trgfn_pratiche_default_definizione](/dbzero/pratiche/funzioni/trgfn_pratiche_default_definizione) · [pratiche.trgfn_pratiche_guard_pin_immutabile](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_pin_immutabile) — il pin dell'edizione
+> * [pratiche.trgfn_pratiche_guard_contesto](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_contesto) — la coerenza del contesto anagrafico
+> * [pratiche.trgfn_pratiche_guard_chiusura_flussi](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_chiusura_flussi) — quando una pratica si può chiudere
+>
+> Guide:
+>
+> * [Gestione pratiche](/guide/gestione-pratiche) — il modulo, dal punto di vista di chi lo usa
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione pratiche. Rappresenta una pratica operativa con il suo ciclo di vita completo: tipo, stato, priorita', assegnazione, tracciabilita' e gerarchia.
+
+La tabella `pratiche.pratiche` è l'entità principale del modulo pratiche: una pratica operativa col suo
+ciclo di vita, il tipo, lo stato, la priorità, l'assegnazione, il contesto anagrafico e la genealogia.
 
 ---
 
-### Ruolo nel processo
+### Il tipo e l'edizione di workflow
 
-* Ogni pratica ha un **tipo_prestazione** che ne determina i template flussi disponibili.
-* La pratica **pinna l'edizione di workflow** alla creazione (`definizione_id` →
-  [workflow_definizioni](workflow_definizioni.md), auto-pin
-  [trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md): edizione
-  PUBBLICATA dell'emittente > preset) e la tiene per sempre — le modifiche future alle
-  definizioni non cambiano la roadmap delle pratiche in volo.
-* Lo **stato** governa le transizioni del ciclo di vita (BOZZA → APERTA → CHIUSA). La transizione a **CHIUSA** e' inoltre vincolata ai flussi obbligatori percorribili non completati (guard `trg_pratiche_a10_guard_chiusura_flussi_upd`, D4 — il ramo morto di un bivio non blocca).
-* Il **contesto anagrafico** a due rami (`soggetto_id` → `soggetto_ruolo_id` **oppure** `soggetto_id` → `istanza_utility_id`) classifica la pratica nelle lenti canoniche D1: RUOLO / ISTANZA / SOGGETTO / INTERNA (tutti NULL). Lettura canonica: [fn_lista_pratiche_per_contesto](/dbzero/pratiche/funzioni/fn_lista_pratiche_per_contesto); coerenza garantita da `trgfn_pratiche_guard_contesto`.
-* L'**assegnazione** (risorsa umana / unita' organizzativa) definisce chi lavora la pratica — ortogonale al contesto cliente (le pratiche interne sono "contesto vuoto + assegnazione", D2).
-* La **genealogia cross-pratica** (`pratica_padre_id` + `flusso_origine_id`) collega la pratica generata alla pratica e al flusso che l'hanno generata — entrambe valorizzate da `fn_genera_pratica_da_flusso`.
-* Ogni evento significativo viene registrato nel **giornale**.
+* Il **tipo di prestazione** determina gli step di template disponibili.
+* ⭐ **La pratica pinna l'edizione di workflow alla nascita** (`definizione_id`) e la tiene per sempre:
+  `pratiche.trgfn_pratiche_default_definizione` la risolve all'inserimento (l'edizione pubblicata
+  dell'emittente, altrimenti il preset), `pratiche.trgfn_pratiche_guard_pin_immutabile` ne impedisce
+  la modifica. Le modifiche successive alle definizioni non cambiano il percorso delle pratiche in
+  volo.
+* La FK verso l'edizione è composita con il tipo di prestazione: un'edizione di un altro tipo non si
+  può nemmeno scrivere.
 
 ---
 
-### Colonne specifiche
+### Lo stato
 
-| Colonna | Note |
-|---------|------|
-| `emittente_fiscale_id` | BIGINT NOT NULL. FK a `anagrafiche.emittenti_fiscali` — identita' fiscale che gestisce la pratica. |
-| `definizione_id` | INTEGER NOT NULL. **Pin** dell'edizione di workflow ([workflow_definizioni](workflow_definizioni.md)), risolto alla creazione dall'auto-pin e mai aggiornato (immutabilita' enforce-ata dal guard di Fase 1). FK **composita** con `tipo_prestazione_id` → coerenza tipo per costruzione. |
-| `soggetto_id` | UUID nullable. FK a `anagrafiche.soggetti` — il soggetto interessato dalla pratica. NULL = pratica interna. |
-| `soggetto_ruolo_id` | BIGINT nullable. FK a `anagrafiche.soggetti_ruoli` — contesto ruolo (ramo 1). Richiede `soggetto_id` coerente (guard contesto). |
-| `istanza_utility_id` | BIGINT nullable. FK a `anagrafiche.istanze_utilities` — contesto istanza/utility (ramo 2, indipendente dal ruolo: prospect puro ammesso). Richiede `soggetto_id` coerente. |
-| `pratica_padre_id` | BIGINT nullable. Self-reference per gerarchia/genealogia. Valorizzata da `fn_genera_pratica_da_flusso` per le pratiche generate (rev 2026-06-11). ON DELETE SET NULL. |
-| `flusso_origine_id` | BIGINT nullable. FK a `pratiche.flussi` — il flusso che ha generato la pratica. Impostato da `fn_genera_pratica_da_flusso`. ON DELETE SET NULL. |
-| `canale_origine_id` | INTEGER nullable. FK a `config.canali_pratiche` — da quale sorgente esterna e' arrivata la richiesta. NULL = creata internamente. |
-| `codice` | TEXT nullable. Codice pratica generato da trigger. |
-| `data_scadenza` | DATE nullable. Scadenza prevista per la pratica. |
+Gli stati sono `BOZZA`, `APERTA`, `SOSPESA`, `CHIUSA` e `ANNULLATA`, e le transizioni ammesse le
+governa il catalogo delle transizioni. La chiusura è inoltre vincolata al lavoro rimasto: una pratica
+non si chiude finché ha step obbligatori ancora percorribili e non completati, o flussi avviati e non
+terminati; il ramo morto di un bivio non blocca. `data_apertura` si valorizza quando la pratica entra
+in `APERTA`. La sospensione dell'intera pratica passa da `pratiche.sospensioni`.
 
 ---
 
-### Indici notevoli
+### Il contesto anagrafico: di chi parla la pratica
 
-| Indice | Note |
-|--------|------|
-| `uq_pratiche_flusso_origine_tipo` | UNIQUE parziale su `(flusso_origine_id, tipo_prestazione_id)` WHERE `flusso_origine_id IS NOT NULL` — anti doppio-figlio della generazione cross-pratica. |
-| `ix_pratiche_soggetto_ruolo_id`, `ix_pratiche_istanza_utility_id` | Parziali (NOT NULL), via `dbops.fk_index_policy` — supporto alle lenti per contesto. |
+Il contesto ha due rami, entrambi appesi al soggetto (`soggetto_id`):
 
----
+* **il ruolo** (`soggetto_ruolo_id`): la pratica parla di un soggetto in un suo ruolo;
+* **l'istanza** (`istanza_utility_id`): la pratica parla di una fornitura, indipendentemente dal ruolo
+  (un prospect senza ruolo cliente è ammesso).
 
-### FK principali
+Con il soggetto vuoto la pratica è interna. Le combinazioni danno le lenti canoniche (ruolo, istanza,
+soggetto, interna), che `pratiche.fn_lista_pratiche_per_contesto` legge; la coerenza fra soggetto,
+ruolo, istanza e billing account la garantisce `pratiche.trgfn_pratiche_guard_contesto`.
 
-| FK | Target | onDelete |
-|----|--------|----------|
-| `fk_pratiche_emittente_fiscale` | `anagrafiche.emittenti_fiscali(id)` | NO ACTION |
-| `fk_pratiche_tipo_prestazione` | `pratiche.tipi_prestazione(id)` | NO ACTION |
-| `fk_pratiche_soggetto` | `anagrafiche.soggetti(id)` | NO ACTION |
-| `fk_pratiche_stato` | `config.stati_pratiche(id)` | NO ACTION |
-| `fk_pratiche_priorita` | `config.priorita_pratiche(id)` | NO ACTION |
-| `fk_pratiche_risorsa_umana` | `anagrafiche.risorse_umane(id)` | NO ACTION |
-| `fk_pratiche_unita_organizzativa` | `config.unita_organizzative(id)` | NO ACTION |
-| `fk_pratiche_pratica_padre` | `pratiche.pratiche(id)` | SET NULL |
-| `fk_pratiche_flusso_origine` | `pratiche.flussi(id)` | SET NULL |
-| `fk_pratiche_canale_origine` | `config.canali_pratiche(id)` | NO ACTION |
-| `fk_pratiche_definizione` (composita: `definizione_id, tipo_prestazione_id`) | `pratiche.workflow_definizioni(id, tipo_prestazione_id)` | NO ACTION |
+**Il cliente a grana fine** è `billing_account_id`: un ruolo cliente ha un billing account per ogni
+coppia istanza/utility, e il solo ruolo non dice di quale fornitura parla la pratica. Per gli altri
+ruoli (fornitori, vettori…) il ruolo basta.
+
+* Il billing account resta vuoto per le pratiche di fornitori e altri ruoli, per le pratiche interne e
+  per quelle nate prima dell'istanza (l'allaccio che nasce da una pratica).
+* Con un billing account serve l'istanza (`chk_pratiche_ba_con_istanza`), e il billing account deve
+  essere di quell'istanza (FK composita) e del ruolo della pratica (guard del contesto).
+* La pratica nata da un preventivo prende il billing account del preventivo; quella generata da un
+  flusso lo copia dalla madre.
 
 ---
 
-### Convenzioni
+### L'assegnazione
 
-* PK BIGINT IDENTITY (tabella operativa ad alto volume).
-* `storicizza = true` per tracciamento modifiche.
-* Trigger standard (audit, tx_id, storico) applicati automaticamente da `dbops.fn_run_automations()`.
-* Trigger business-specific (giornale, generazione codice) in DB-5.
+La risorsa umana e l'unità organizzativa dicono chi lavora la pratica. Sono ortogonali al contesto: una
+pratica interna è un contesto vuoto con un'assegnazione. Ogni cambio di assegnazione lascia la sua
+riga nel giornale.
+
+---
+
+### La genealogia fra pratiche
+
+`pratica_padre_id` e `flusso_origine_id` collegano una pratica generata alla pratica e al flusso che
+l'hanno generata; li valorizza `pratiche.fn_genera_pratica_da_flusso`. Se la madre o il flusso
+d'origine spariscono, il collegamento si svuota e la figlia resta.
+
+⛔ **Un flusso non genera due figlie dello stesso tipo.** Un indice unico parziale su (flusso d'origine,
+tipo di prestazione) impedisce il doppio figlio della generazione.
+
+---
+
+### Le altre colonne
+
+* `emittente_fiscale_id` — l'identità fiscale che gestisce la pratica: è il perimetro di visibilità
+  della riga (RLS per emittente).
+* `canale_origine_id` — il canale esterno da cui è arrivata la richiesta; vuoto per una pratica creata
+  internamente.
+* `codice` — generato all'inserimento quando chi crea la pratica non lo fornisce.
+* `data_scadenza` — la scadenza prevista.
+
+Le colonne standard di audit, transazione e storico le arma il framework delle automazioni; la
+tabella è storicizzata.
+
+---
+
+### Note di migrazione
+
+* 2026-06-11 — `pratica_padre_id` e `flusso_origine_id` si valorizzano per le pratiche generate da un
+  flusso.
+* 2026-07-02 — arriva il pin dell'edizione di workflow, obbligatorio
+  (brief-db-step-dominio-e-definizioni-versionate).
+* 2026-10-08 — arriva `billing_account_id`, il cliente a grana fine (brief-db-istanza-nasce-col-ba).
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----
-
-### Il cliente di cui parla la pratica (dal 2026-10-08)
-
-`billing_account_id` (nullable) e' l'aggancio a **grana fine** del cliente: un ruolo CLIENTE ha un
-billing account per ogni coppia istanza/utility, quindi il solo `soggetto_ruolo_id` non basta a
-dire di quale fornitura parla la pratica. Per gli altri ruoli (fornitori, vettori, …) basta il
-ruolo: le loro specializzazioni sono una per ruolo.
-
-* NULL per pratiche di fornitori e altri ruoli, pratiche interne, pratiche nate prima
-  dell'istanza (allaccio da pratica);
-* con un BA serve l'istanza (`chk_pratiche_ba_con_istanza`), e il BA e' quello dell'istanza
-  (`fk_pratiche_billing_account_istanza`) e del ruolo della pratica (regola 5 di
-  [`trgfn_pratiche_guard_contesto`](/dbzero/pratiche/manual/trgfn_pratiche_guard_contesto));
-* la pratica nata da un preventivo prende il BA del preventivo (la sorgente); quella generata da
-  un flusso lo copia dalla madre.
-
-Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).

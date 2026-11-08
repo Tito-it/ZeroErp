@@ -45,7 +45,7 @@ class LookupAzioniRigaApiTests(JwtMockedApiTest):
     # 2. La forma: `{"results": [...]}`, non la lista nuda. (Superuser: il
     #    permesso salta la catena e non parla col DB — qui si prova la forma.)
     @patch(_AUTH, return_value=(Mock(id=42, is_superuser=True, is_authenticated=True), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_il_lookup_torna_l_envelope_results(self, repo_cls, _auth) -> None:
         repo_cls.return_value.list_azioni_riga.return_value = [
             {

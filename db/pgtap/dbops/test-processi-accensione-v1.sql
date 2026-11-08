@@ -24,7 +24,8 @@
 --
 -- Elenco test (plan 47):
 --   forma
---    1) la regola e' IMMUTABLE, LANGUAGE sql, senza STRICT (i NULL sono casi normali)
+--    1) la regola e' STABLE, LANGUAGE sql, senza STRICT (i NULL sono casi normali;
+--       STABLE dal giro 9 di brief-db-revisione-dbops: il ritiro si legge con script.fn_e_obsoleto)
 --    2) la sveglia e' SECURITY DEFINER con search_path pinnato
 --    3) zeroerp_job puo' chiedere alla sveglia (il passo pgAgent gira come lui)
 --    4) il verbo e' INVOKER: il permesso e' del backend
@@ -116,8 +117,8 @@ SELECT is(
        FROM pg_proc p
        JOIN pg_language l ON l.oid = p.prolang
       WHERE p.oid = 'dbops.fn_processo_acceso_su_valori(text, date, boolean, boolean, boolean, boolean, text, boolean)'::regprocedure),
-    'i|sql|f',
-    '1. la regola e'' IMMUTABLE, LANGUAGE sql, senza STRICT');
+    's|sql|f',
+    '1. la regola e'' STABLE (il ritiro dipende dalla data di oggi), LANGUAGE sql, senza STRICT');
 
 SELECT is(
     (SELECT format('%s|%s', p.prosecdef, array_to_string(p.proconfig, ';'))
@@ -147,7 +148,7 @@ SELECT is(dbops.fn_processo_acceso_su_valori('CODA', NULL, NULL, NULL, NULL, NUL
           NULL::boolean, '5. CODA: senza sveglia, NULL');
 
 SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', DATE '2026-01-01', NULL, NULL, NULL, NULL, 'SVILUPPO', NULL),
-          NULL::boolean, '6. ritirato: senza sveglia, NULL');
+          NULL::boolean, '6. ritiro raggiunto: senza sveglia, NULL');
 
 SELECT is(dbops.fn_processo_acceso_su_valori('PGAGENT', NULL, false, true, true, false, 'PRODUZIONE', true),
           true, '7. non spegnibile, spento a mano, PRODUZIONE: acceso comunque');

@@ -30,6 +30,11 @@ La funzione **`script.fn_get_stradario(p_comune_id integer DEFAULT NULL, p_indir
 
 ---
 
+⭐ Con il comune restituisce solo le vie **vive**: una via soppressa (`obsoleto_dal` valorizzata,
+fusa in un'altra) non si propone più. Il ramo senza comune legge solo le vie generali.
+
+---
+
 ### Parametri di Input
 
 

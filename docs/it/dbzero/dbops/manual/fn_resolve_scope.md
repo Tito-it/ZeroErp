@@ -1,86 +1,86 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_resolve_scope`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimeto tabelle:
+> Approfondimento tabelle:
 >
-[dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — l'elenco degli schemi che la funzione legge
 >
-Approfondimento funzioni :
+> Approfondimento funzioni:
 >
-[dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)
-> [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)
+> * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — il secondo livello, il filtro per tabella dentro gli schemi restituiti qui
+> * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match) — il confronto fra il bersaglio di una regola e uno schema
 >
-Guide:
+> Guide:
 >
-[Automatione DB](/guide/automazione-db)
+> * [Automazione DB](/guide/automazione-db) — il framework che usa questo ambito
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *ambito* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dell’ambito operativo, evitando duplicazioni e incoerenze.
+
+Restituisce l'elenco degli schemi su cui una corsa di automazione deve lavorare: l'elenco
+passato dal chiamante, se ce n'è uno valido, altrimenti gli schemi di
+`dbops.automation_scope`, altrimenti tutti gli schemi utente tranne `storico`. La risposta è
+senza doppi e senza spazi attorno ai nomi.
+
+È il primo passo di quasi tutti i runner `fn_run_automations_*`, della pulizia e dei seed
+delle automazioni: chi la chiama con un ambito vuoto chiede «l'ambito di default».
 
 ---
 
-### Parametri di input
+### I tre gradini
 
-| Parametro   | Tipo    | Obbligatorio | Descrizione                                                                                               |
-| ----------- | ------- | :----------: | --------------------------------------------------------------------------------------------------------- |
-| `p_schemas` | text\[] |      ❌       | Lista opzionale di schemi. Se assente o vuota, la funzione ricorre a fonti alternative di configurazione. |
-
----
-
-### Valore di ritorno
-
-`text[]` – Array di schemi effettivamente nell'ambito, già puliti e normalizzati.
+1. **L'elenco del chiamante.** Si tolgono gli spazi attorno ai nomi, i valori vuoti e la
+   parola `*all`, e si eliminano i doppioni. Se resta almeno uno schema, è la risposta.
+2. **La tabella dell'ambito.** Se `dbops.automation_scope` esiste ed è popolata, la risposta
+   sono i suoi schemi, ognuno una volta sola anche se ha più righe (più filtri di tabella), e
+   senza spazi attorno.
+3. **Il fallback.** Tutti gli schemi che non sono di sistema (`pg_*`, `information_schema`) e
+   non sono `storico`.
 
 ---
 
-### Flusso logico
+### ⚠️ `*all` vuol dire «usa il default», non «tutti gli schemi»
 
-1. **Input esplicito**: se `p_schemas` è valorizzato, la funzione rimuove spazi, valori nulli o vuoti, ed esclude la keyword `*all`. Se rimane una lista valida, la ritorna direttamente.
-2. **Configurazione persistente**: se non c’è input valido, prova a leggere dalla tabella `dbops.automation_scope` (se presente).
-3. **Fallback automatico**: se la tabella è vuota o non esiste, ritorna tutti gli schemi “utente” (escludendo `pg_%`, `information_schema`, `storico`).
-
----
-
-### Casi d’uso tipici
-
-* **Automazioni batch**: risolvere quali schemi analizzare in base a input espliciti o configurazioni centrali.
-* **Test/Dev vs Prod**: gestire ambiti diversi (es. su ambienti di test si può limitare l'ambito a schemi specifici).
-* **Fallback universale**: garantire che in assenza di configurazioni esplicite, venga comunque restituito un insieme sensato di schemi.
+Passare `*all` non allarga l'ambito: lo scarta e fa scendere al gradino 2, cioè all'elenco
+della tabella. Chi vuole davvero tutti gli schemi deve elencarli. È l'opposto del
+significato di `*all` nel bersaglio di una regola, dove vuol dire «qualunque schema»
+(`fn_schema_match`).
 
 ---
 
-### Permessi e sicurezza
+### ⚠️ Che cosa la risposta non garantisce
 
-* Necessita di accesso in lettura ai cataloghi di sistema (`pg_namespace`) e, se presente, alla tabella `dbops.automation_scope`.
-* È **read-only**: non modifica né metadati né dati applicativi.
-
----
-
-### Esempi di utilizzo
-
-* Chiamata diretta con parametro: `fn_resolve_scope(ARRAY['anagrafiche','config'])` → restituisce solo i due schemi indicati.
-* Chiamata senza parametro: `fn_resolve_scope(NULL)` → legge da `automation_scope` oppure restituisce tutti gli schemi utente.
-* Automazione generica: uno script che deve analizzare FK o naming policy invoca questa funzione per sapere quali schemi considerare.
+* **Il confronto non abbassa le maiuscole**: lo spazio attorno si toglie, ma un nome scritto
+  con una maiuscola diversa non coincide con lo schema reale, e la corsa lo ignora in silenzio.
+* **Non dice che lo schema esista**: un nome elencato e non presente nel database non dà
+  errore, semplicemente non porta tabelle.
+* Il gradino 2 contiene `storico` (è nel seed): sono i runner della storicizzazione a
+  escluderlo.
 
 ---
 
-### Considerazioni
+### Test
 
-* L’uso della keyword `*all` come placeholder viene filtrato: chiama esplicitamente la logica di fallback.
-* La funzione garantisce un comportamento consistente anche se `automation_scope` non è popolata o non esiste.
-* È pensata come funzione “foundation” richiamata da altre utilità (`fn_schema_in_scope`, `fn_run_automations`).
-
----
-
-### Benefici
-
-* **Centralizzazione**: logica di determinazione ambito in un solo punto.
-* **Robustezza**: fallback garantiti in assenza di configurazioni.
-* **Flessibilità**: supporta input espliciti, configurazioni persistenti e fallback automatici.
+* `db/pgtap/maintenance/test-cleanup-job-ambito-registro-v1.sql` — il giro di pulizia passa
+  l'ambito vuoto, e ogni regola di pulizia attiva punta a uno schema che l'ambito risolto
+  comprende.
+* `db/pgtap/script/test-trgfn-guard-date-validita-v1.sql` — prende l'ambito risolto (con il
+  filtro per tabella) come perimetro: ogni tabella che vi sta e ha la coppia di date porta il
+  guard della regola del periodo.
+* `db/pgtap/dbops/test-registro-regole-vincoli-v1.sql` — l'ambito risolto non ha doppi né spazi.
 
 ---
 
-> **In sintesi**: `fn_resolve_scope` è la funzione che permette a tutte le automazioni di capire **quali schemi considerare**, adattandosi in modo dinamico al contesto e riducendo rischi di configurazioni incoerenti.
+### Note di migrazione
+
+* 2026-11-08 — la risposta è senza doppi e senza spazi: prima `dbops`, che ha sette righe in
+  `automation_scope`, compariva sette volte, e un nome con spazi attorno passava così com'era
+  (`20261109-67`, brief-db-revisione-dbops D13).
+
+---
+
+{% include-markdown "signature-core.md" %}

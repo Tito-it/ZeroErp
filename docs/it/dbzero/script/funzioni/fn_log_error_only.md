@@ -16,19 +16,22 @@ CREATE OR REPLACE FUNCTION script.fn_log_error_only(p_area text, p_function_name
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
-  v_id bigint;
-  v_msg text;
-  v_detail text;
-  v_hint text;
-  v_lang text := coalesce(current_setting('myapp.user_language', true), 'it');
-  v_ctx jsonb := coalesce(p_context, '{}'::jsonb);
+  v_id     dbops.error_log.messaggio_errore_id%TYPE;
+  v_msg    config.messaggi_errore.messaggio%TYPE;
+  v_detail config.messaggi_errore.causa%TYPE;
+  v_hint   config.messaggi_errore.soluzione%TYPE;
+  v_lang   config.messaggi_errore.lingua%TYPE := coalesce(current_setting('myapp.user_language', true), 'it');
+  v_ctx    dbops.error_log.context%TYPE := coalesce(p_context, '{}'::jsonb);
+  -- text: SQL dinamico
   v_sql text;
+  -- text: il tipo di current_setting, nessuna colonna lo porta
   v_dsn text;
   v_has_dblink boolean := false;
   v_has_logconn boolean := false;
+  -- text[]: %TYPE non fa array
   v_vals text[] := coalesce(p_valori, ARRAY[]::text[]);
 BEGIN
   -- =========================================================
@@ -38,6 +41,9 @@ BEGIN
   --
   -- Regole:
   --   - usa solo connessione separata via dblink (out-of-tx)
+  --   - se il canale e' acceso, e con quale stringa, lo dice
+  --     script.fn_canale_log_stringa: spento o non configurato
+  --     = WARNING e nessuna scrittura
   --   - non solleva eccezioni verso il chiamante
   --   - in caso di failure del canale di log emette WARNING
   --   - cascata lingua: preferisce v_lang, ripiega su 'it'
@@ -122,20 +128,23 @@ BEGIN
     RETURN;
   END IF;
 
-  v_dsn := coalesce(
-    nullif(coalesce(current_setting('myapp.logconn', true), ''), ''),
-    nullif(coalesce(current_setting('myapp.dblink_log_connection', true), ''), '')
-  );
+  -- Il canale: acceso, e con quale stringa, lo dice il building
+  -- block (interruttore e precedenza fra le due GUC stanno li').
+  v_dsn := script.fn_canale_log_stringa();
 
-  IF v_dsn IS NOT NULL AND v_dsn <> '' THEN
-    BEGIN
-      PERFORM dblink_exec(v_dsn, v_sql, true);
-      RETURN;
-    EXCEPTION WHEN OTHERS THEN
-      RAISE WARNING 'script.fn_log_error_only: dblink_exec DSN fallita (code=%): %',
-        p_error_code, SQLERRM;
-    END;
+  IF v_dsn IS NULL THEN
+    RAISE WARNING 'script.fn_log_error_only: canale di log spento (myapp.log_with_dblink = off) o non configurato, log non persistito (code=%).',
+      p_error_code;
+    RETURN;
   END IF;
+
+  BEGIN
+    PERFORM dblink_exec(v_dsn, v_sql, true);
+    RETURN;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'script.fn_log_error_only: dblink_exec DSN fallita (code=%): %',
+      p_error_code, SQLERRM;
+  END;
 
   BEGIN
     PERFORM script.fn_ensure_logconn();
@@ -169,7 +178,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_log_error_only(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
-IS 'Logga su dbops.error_log via connessione dblink separata (out-of-transaction), senza sollevare eccezioni. Post 2026-08-03: cascata lingua con ripiego su ''it'' (come fn_get_messaggio e fn_log_and_raise_error) e, se il codice non e'' a catalogo, conservazione del codice originale in context->>''codice_errore_originale''.';
+IS 'Registra un errore in dbops.error_log su una connessione dblink separata (fuori transazione), cosi'' che sopravviva al rollback del chiamante; non solleva mai. Se il canale di log e'' acceso, e con quale stringa, lo dice script.fn_canale_log_stringa: spento o non configurato, un WARNING e nessuna scrittura. Cascata lingua con ripiego su ''it'' (come fn_get_messaggio e fn_log_and_raise_error); se il codice non e'' a catalogo, il codice originale resta in context->>''codice_errore_originale''. SECURITY DEFINER di postgres, perche'' dblink rifiuta a un non-superuser una connessione senza password.';
 ```
 
 </div>

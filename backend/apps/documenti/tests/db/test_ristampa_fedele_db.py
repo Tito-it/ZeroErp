@@ -49,13 +49,13 @@ class RistampaFedeleDbTests(unittest.TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT p.preventivo_id, p.preventivo_uid::text, p.emittente_fiscale_id,
+                    SELECT p.preventivo_id, p.emittente_fiscale_id,
                            p.auth_user_id,
                            (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO')
                       FROM dbops.fn_pgtap_crea_preventivo_con_righe('ristampa fedele be') p
                     """
                 )
-                preventivo_id, preventivo_uid, emittente, uid, sorgente = cur.fetchone()
+                preventivo_id, emittente, uid, sorgente = cur.fetchone()
                 user = get_user_model().objects.get(pk=uid)
 
                 generato = svc.genera_documento(
@@ -63,8 +63,7 @@ class RistampaFedeleDbTests(unittest.TestCase):
                     emittente_fiscale_id=emittente,
                     sorgente_tipo_id=sorgente,
                     sorgente_id=preventivo_id,
-                    sorgente_uid=preventivo_uid,
-                )
+                                    )
 
                 # La giuntura: il contesto congelato e' un dizionario.
                 snapshot = DocumentiRepository().get_documento_generato_snapshot(

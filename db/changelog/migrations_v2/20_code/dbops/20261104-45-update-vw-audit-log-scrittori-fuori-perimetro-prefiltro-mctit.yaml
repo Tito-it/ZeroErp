@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_audit_log_scrittori_fuori_perimetro: un prefiltro prima del building block.
+#   Brief: brief-db-revisione-dbops, §12.7 (giro 1).
+#
+# Base: 20_code/dbops/20261104-21. Cambia una riga in `sorgenti`: il corpo senza
+# commenti si chiede a dbops.fn_corpo_funzione solo per le funzioni il cui testo
+# GREZZO nomina audit_log, piu' tutte le SQL BEGIN ATOMIC (prosrc vuoto: il loro
+# testo grezzo non dice niente).
+#   ⭐ E' un sovrainsieme esatto, non un'approssimazione: togliere i commenti
+#   puo' solo levare testo, e tutte e due le regex della vista contengono
+#   «audit_log» (dbops\.audit_log, fn_audit_log_once). ILIKE copre la regex ~*.
+#   Prima il building block girava su ogni funzione del database a ogni lettura.
+#   Il COMMENT della vista resta: e' ancora vero.
+#   ⛔ security_invoker si ripete: un CREATE OR REPLACE che non lo dice lo azzera.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-45-update-vw-audit-log-scrittori-fuori-perimetro-prefiltro-mctit.yaml
+
+  - changeSet:
+      id: 20261104-45-update-vw-audit-log-scrittori-fuori-perimetro-prefiltro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_audit_log_scrittori_fuori_perimetro: il building block del corpo gira solo
+        sulle funzioni che nominano audit_log nel testo grezzo, piu' le BEGIN ATOMIC.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_funzione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_audit_log_scrittori_fuori_perimetro
+              WITH (security_invoker = true) AS
+              WITH perimetro AS (
+                  -- ⭐ Il CONTRATTO: chi può scrivere nel registro tecnico.
+                  SELECT unnest(ARRAY['dbops', 'maintenance']::name[]) AS nspname
+              ),
+              sorgenti AS (
+                  SELECT p.oid, n.nspname, p.proname,
+                         -- il corpo senza commenti, anche di una BEGIN ATOMIC
+                         (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS corpo
+                    FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prokind IN ('f', 'p')
+                     -- prefiltro: sovrainsieme di entrambe le regex qui sotto
+                     AND (p.prosqlbody IS NOT NULL OR p.prosrc ILIKE '%audit\_log%')
+              )
+              SELECT s.nspname::text || '.' || s.proname::text AS funzione,
+                     s.nspname::text                            AS schema_funzione,
+                     CASE
+                         WHEN s.corpo ~* '(insert\s+into|update|delete\s+from)\s+dbops\.audit_log\M' THEN 'DML_DIRETTO'
+                         ELSE 'VIA_FN_AUDIT'
+                     END AS come_scrive
+                FROM sorgenti s
+               WHERE (   s.corpo ~* '(insert\s+into|update|delete\s+from)\s+dbops\.audit_log\M'
+                      OR s.corpo ~  '\mfn_audit_log_once\s*\(')
+                 AND NOT EXISTS (SELECT 1 FROM perimetro pe WHERE pe.nspname = s.nspname)
+                 AND NOT (s.nspname = 'dbops' AND s.proname = 'fn_audit_log_once')
+               ORDER BY 1;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20261104-21.
+              SELECT 1;

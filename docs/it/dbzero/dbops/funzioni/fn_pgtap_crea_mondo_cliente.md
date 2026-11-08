@@ -43,7 +43,6 @@ DECLARE
     v_cli_sr_id anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
     v_cli_sog   anagrafiche.soggetti.id%TYPE;
     v_utility   anagrafiche.billing_account.utility_id%TYPE;
-    v_link_sr   anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
 BEGIN
     -- La domanda e' «c'e' un contesto?», e si fa alla GUC che le
     -- policy leggono davvero: non a script.fn_pgtap_emittente_operatore(),
@@ -98,19 +97,12 @@ BEGIN
     --   legato il BA a un'altra azienda — succede quando il
     --   contesto e' aperto su un operatore di un altro emittente —
     --   il mondo che si sta tornando non e' coerente, e il file
-    --   morirebbe venti righe piu' in la' su una policy.
-    --   La tabella del legame non e' in RLS: la lettura vale anche
-    --   come zeroerp_app.
-    SELECT efba.emittente_soggetto_ruolo_id
-      INTO v_link_sr
-      FROM anagrafiche.emittenti_fiscali_billing_account efba
-     WHERE efba.billing_account_id = v_ba_id;
-
-    IF v_link_sr IS DISTINCT FROM v_ef_sr_id THEN
-        RAISE EXCEPTION
-            'fn_pgtap_crea_mondo_cliente: il billing account % risulta legato all''emittente sr = % invece che a % (l''azienda di chi agisce): il mondo non e'' coerente',
-            v_ba_id, v_link_sr, v_ef_sr_id;
-    END IF;
+    --   morirebbe venti righe piu' in la' su una policy. La verifica
+    --   e' quella dei builder di documento, in un posto solo: il
+    --   building block solleva nominando questa fixture.
+    PERFORM 1
+      FROM dbops.fn_pgtap_cliente_ba_del_mondo(
+               v_ba_id, v_ef_sr_id, 'fn_pgtap_crea_mondo_cliente');
 
     -- Contratto dichiarato, non fiducia nel chiamato: si esce con
     -- i vincoli IMMEDIATE come ogni helper. Oggi e' un no-op —
@@ -125,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_mondo_cliente(p_etichetta text, p_sigla character varying)
-IS 'Fixture pgTAP: il MONDO MINIMO di un test di dominio in una chiamata — azienda + operatore + contesto aperto + cliente fatturabile legato a quella azienda — e ritorna tutte le chiavi. ⭐ Esiste per la REGOLA D''ORDINE, non per fare l''elenco della spesa: prima il mondo, poi il contesto, e il legame BA -> emittente lo scrive il trigger z90 verso chi agisce (chiederlo anche col terzo parametro di fn_pgtap_crea_cliente_ba li fa sbattere su uq_emittenti_fiscali_ba). ⚠️ Con un contesto gia'' aperto RIUSA l''azienda di chi agisce e rifiuta p_sigla: una seconda azienda si costruisce coi builder atomici, prima del contesto. ⛔ NON comprende registro (script.fn_pgtap_registro_fattura si semina dal contesto), articolo (i flag sono il caso del test) ne'' i cataloghi di 80_data, che da zero ci sono e vanno scelti con un ORDER BY stabile. ⚠️ Esce con i vincoli IMMEDIATE: chi li vuole differiti riapre con SET CONSTRAINTS ALL DEFERRED e lo dichiara in testa al file (rev 20260921-18). Brief: brief-db-fixture-che-costruiscono-giro-2.md Rev 2026-10-21 (20261021-68, richiesta BE R-2): con un contesto gia'' aperto l''azienda di chi agisce la dice script.fn_resolve_emittente_for_user (l''emittente scelto in alto, app.current_emittente_id, se l''utente lo puo'' usare; altrimenti la riga in config.user_emittenti_fiscali), la stessa regola del trigger che lega il BA: il super admin che ha scelto l''emittente (dev.smoke negli smoke Python) ha un mondo, quello senza scelta e l''operatore senza riga sollevano come prima. Rev 2026-10-24 (20261024-39, brief-modello-documento-vendita §4-octies): quell''azienda viene dal building block dbops.fn_pgtap_azienda_di_chi_agisce, estratto da qui.';
+IS 'Fixture pgTAP: il mondo minimo di un test di dominio in una chiamata — azienda, operatore, contesto aperto su di lui e cliente fatturabile legato a quella azienda — e ne ritorna tutte le chiavi. Esiste per la regola d''ordine: prima il mondo, poi il contesto, e il legame del billing account all''azienda lo scrive il trigger z90 verso chi agisce, senza il terzo parametro di dbops.fn_pgtap_crea_cliente_ba. Il legame si verifica con dbops.fn_pgtap_cliente_ba_del_mondo, come nei builder di documento. Con un contesto gia'' aperto riusa l''azienda di chi agisce (dbops.fn_pgtap_azienda_di_chi_agisce) e rifiuta p_sigla: una seconda azienda si costruisce coi builder atomici, prima del contesto. Non comprende registro, articolo ne'' i cataloghi di 80_data. Esce con i vincoli IMMEDIATE: chi li vuole differiti li riapre e lo dichiara in testa al file.';
 ```
 
 </div>

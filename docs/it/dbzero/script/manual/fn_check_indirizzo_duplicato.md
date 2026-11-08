@@ -77,7 +77,8 @@ script.fn_check_indirizzo_duplicato(
 
 1. **Risoluzione stradario_id**:
    - Flusso A: `p_stradario_id` fornito → usa direttamente
-   - Flusso B: cerca in `config.stradario` con `(stradario_generale_id, comune_id, codice_postale_id)`
+   - Flusso B: cerca in `config.stradario` con `(stradario_generale_id, comune_id, codice_postale_id)`,
+     fra le vie **vive**: una via soppressa ha la stessa terna della via viva che ne ha preso il posto
    - Se non trovato nel flusso B → ritorna vuoto (la via non esiste come stradario locale)
    - Se nessun criterio sufficiente → errore `E_ADMIN_VALIDAZIONE`
 2. Chiama `fn_build_indirizzo_normalizzato` per costruire `v_via_norm` e `v_norm`

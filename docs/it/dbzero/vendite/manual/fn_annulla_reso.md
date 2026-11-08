@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_annulla_reso`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso) (simmetrica) ·
@@ -63,3 +65,17 @@ cambiano insieme.
 `E_ACCREDITO_NON_IN_CODA`.
 
 Verifica: `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql` (8 asserzioni).
+
+---
+
+### Il ri-flip conta solo la merce
+
+(rev 3-11-2026, `20261103-32`, brief `brief-db-addebito-trasporto-ordine` §8.1)
+
+Il ri-flip `RESO → CONSEGNATO` usa lo stesso predicato del flip di
+[`fn_conferma_reso`](fn_conferma_reso.md), e come lui conta solo le righe di
+**merce** della bolla
+([`script.fn_natura_e_merce`](/dbzero/script/funzioni/fn_natura_e_merce)): un
+onere non si rende e non pesa sul «reso totale». Le due madri cambiano insieme.
+
+Verifica: `db/pgtap/vendite/test-bolla-onere-partita-reso-v1.sql`.

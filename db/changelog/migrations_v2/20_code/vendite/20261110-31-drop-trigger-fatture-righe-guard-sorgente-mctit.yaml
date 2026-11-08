@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI FATTURA PERDE IL GUARD UNICO DELLA PROVENIENZA: vendite.fatture_righe
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-4.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La riga di fattura non ha una provenienza propria: aggrega n attivita'
+#   fatturabili, ognuna con la sua riga di commessa, e una provenienza sola non
+#   esiste per costruzione. L'origine si legge dalla catena riga di fattura ->
+#   attivita_fatturabili.fattura_riga_id -> riga di commessa (la legge
+#   vendite.fn_fattura_origini). Le colonne sorgente_* della riga si ritirano nel
+#   changeSet successivo; il guard unico le porta nell'UPDATE OF e ne bloccherebbe
+#   il DROP COLUMN: si toglie prima, qui.
+#
+# ── ⚠️ CHE COSA RESTA ───────────────────────────────────────────────
+#   Il lato «in uscita» (trg_vendite_fatture_righe_a10_sorgente_in_uscita_dlt):
+#   la riga di fattura resta la riga del tipo FATTURA in config.sorgenti, e un
+#   altro documento puo' ancora nascere da lei. Lo monta la convergenza di 90_end
+#   sul catalogo, non questo changeSet.
+#   Il trigger e' scritto a mano (20261107-48), non generato da ci_apply: c'e' su
+#   ogni database a questo punto del migrate, anche da zero (linee-guida-sql §11.5
+#   non si applica). Rollback: il trigger com'era.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261110-31-drop-trigger-fatture-righe-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261110-31-drop-trigger-fatture-righe-guard-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_righe: via il guard unico della provenienza
+        (trg_fatture_righe_a10_guard_sorgente_ins_upd), prima del ritiro delle colonne
+        sorgente_*. brief-db-sorgente-documento-e-riga §7.3, giro finale bis (G-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_trigger
+               WHERE tgrelid = 'vendite.fatture_righe'::regclass
+                 AND tgname = 'trg_fatture_righe_a10_guard_sorgente_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_fatture_righe_a10_guard_sorgente_ins_upd ON vendite.fatture_righe;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE TRIGGER trg_fatture_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON vendite.fatture_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');

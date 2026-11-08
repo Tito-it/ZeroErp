@@ -26,7 +26,7 @@
 --     costruisce dbops.fn_pgtap_crea_preventivo_con_righe;
 --   - una seconda chiamata riusa l'azienda di chi agisce, con un cliente nuovo.
 --
--- Elenco test (plan 9):
+-- Elenco test (plan 10):
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste, col billing account e l'istanza tornati
 --   3) l'emittente e' quello del billing account (il guard emittente/BA)
@@ -37,6 +37,7 @@
 --   6) seconda chiamata: stessa azienda, cliente nuovo
 --   6b) senza righe EMESSO non si raggiunge: si ferma sull'emissione
 --   7) guard: uno stato che non esiste parla invece di scrivere NULL
+--  10) guard: uno stato SPENTO parla prima di costruire (lo stato da script.fn_doc_stato_id, D73)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -49,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   viene chiamata come la chiamera' un file su un database ricostruito: senza
 --   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
 
-SELECT plan(9);
+SELECT plan(10);
 
 -- 1) La firma
 SELECT has_function(
@@ -144,6 +145,21 @@ SELECT throws_like($$
 $$,
     '%nessuno stato documento preventivo%',
     'guard: uno stato inesistente parla, invece di scrivere un NULL nella testata'
+);
+
+-- 10) Uno stato spento: il builder lo rifiuta prima di costruire.
+-- Lo stato SPENTO si costruisce: una copia dello stato iniziale, disattivata e
+--   non iniziale, con un codice suo (brief-db-revisione-dbops D73).
+INSERT INTO config.stati_doc_preventivi (codice_interno, codice, descrizione, attivo, is_abortito, fase, esito, terminale, pdf_mode, pdf_allow_allegati, iniziale, emissione, accettazione, scadenza)
+SELECT 'PGTAP_SPENTO', 'PGTAP_SPENTO', 'Fixture pgTAP: stato spento', false, s.is_abortito, s.fase, s.esito, s.terminale, s.pdf_mode, s.pdf_allow_allegati, false, s.emissione, s.accettazione, s.scadenza
+  FROM config.stati_doc_preventivi s
+ WHERE s.id = script.fn_doc_stato_iniziale_id('vendite.preventivi'::regclass);
+
+SELECT throws_like($$
+    SELECT dbops.fn_pgtap_crea_preventivo('presidio stato spento', 'PGTAP_SPENTO')
+$$,
+    '%nessuno stato documento preventivo attivo%',
+    '10) guard: uno stato spento parla prima di costruire, nominando il builder'
 );
 
 SELECT * FROM finish();

@@ -84,8 +84,9 @@ SELECT lives_ok(
       PERFORM dbops.fn_pgtap_crea_commessa_attivita(
           p_commessa_id      => (SELECT id FROM tmp_commessa_srcuid),
           p_sorgente_codice  => 'PREVENTIVO',
-          p_sorgente_uid     => (SELECT preventivo_uid::text FROM tmp_prev_srcuid),
-          p_sorgente_riga_id => v.riga,
+          p_sorgente_chiave  => (SELECT preventivo_uid::text FROM tmp_prev_srcuid),
+          -- due righe dello stesso preventivo, distinte dall'etichetta della chiave
+          p_chiave_etichetta => v.riga::text,
           p_stato_approvazione => 'BOZZA')
         FROM (VALUES (1), (2)) AS v(riga);
     END $righe$;
@@ -97,7 +98,7 @@ DO $conta$
 BEGIN
   IF (SELECT count(DISTINCT ca.segment_key) FROM vendite.commesse_attivita ca
        WHERE ca.commessa_id = (SELECT id FROM tmp_commessa_srcuid)
-         AND ca.sorgente_uid = (SELECT preventivo_uid::text FROM tmp_prev_srcuid)) <> 2 THEN
+         AND vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = (SELECT preventivo_uid::text FROM tmp_prev_srcuid)) <> 2 THEN
     RAISE EXCEPTION 'fixture: attese 2 righe con la stessa sorgente e due chiavi diverse';
   END IF;
 END $conta$;
@@ -108,18 +109,18 @@ END $conta$;
 -- ============================================================
 -- NOTA 2026-07-18 (brief-db-guard-sorgente-polimorfa): il guard sorgente
 -- valida esistenza e formato della chiave, quindi la sorgente del test e' la
--- commessa REALE del fixture (tipo COMMESSA, chiave canonica id::text) — non
+-- commessa REALE del fixture (tipo COMMESSA, l'id in sorgente_id) — non
 -- piu' l'uuid sintetico, che il guard respingerebbe (E_SORG_NOT_FOUND).
 SELECT throws_ok(
   $$
     WITH ids AS (SELECT id FROM tmp_commessa_srcuid),
          refs AS (SELECT s.id AS sorgente_tipo_id FROM config.sorgenti s
                    WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE LIMIT 1)
-    INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-    SELECT ids.id, refs.sorgente_tipo_id, ids.id::text, 'ROOT'
+    INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
+    SELECT ids.id, refs.sorgente_tipo_id, ids.id, 'ROOT'
     FROM ids, refs
     UNION ALL
-    SELECT ids.id, refs.sorgente_tipo_id, ids.id::text, 'ROOT'
+    SELECT ids.id, refs.sorgente_tipo_id, ids.id, 'ROOT'
     FROM ids, refs;
   $$,
   '23505',

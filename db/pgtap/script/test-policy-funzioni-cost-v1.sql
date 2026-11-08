@@ -113,7 +113,10 @@ INSERT INTO _economiche VALUES
   ('script', 'fn_scope_sr_perimetro',           'incorporata: 20.000 righe in 1,9 ms come un filtro vuoto, scratch come owner, 2026-10-21 (non legge tabelle)'),
   -- ⭐ Pura: la regola dell'ambito delle email, con chi guarda gia' calcolato
   --   dalla policy (20261021-41). Non legge tabelle.
-  ('script', 'fn_scope_email_ambito_perimetro', '~0,0044 ms/chiamata, 20.000 righe in 92 ms (filtro vuoto 3 ms), scratch come owner, 2026-10-21 (non legge tabelle)');
+  ('script', 'fn_scope_email_ambito_perimetro', '~0,0044 ms/chiamata, 20.000 righe in 92 ms (filtro vuoto 3 ms), scratch come owner, 2026-10-21 (non legge tabelle)'),
+  -- ⭐ Pura e INCORPORATA: la regola della coda lavori, con chi guarda gia'
+  --   calcolato dalla policy (20261107-52, giro 5 di brief-db-revisione-dbops).
+  ('script', 'fn_scope_coda_lavori_perimetro',  'incorporata: 20.000 righe in 4,8-5,1 ms (filtro vuoto 3 ms), scratch come owner, 2026-11-07 (non legge tabelle)');
 
 SELECT is(
   (SELECT coalesce(string_agg(funzione || ' = ' || procost, ', ' ORDER BY funzione), '')

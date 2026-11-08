@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.4): la bolla si cancella solo da bozza VUOTA
+--   (nessuna riga attiva, 20261106-88). La riga del secondo DDT in bozza (test 4) nasce disattivata dopo il
+--   builder: la cascata dalla testata porta solo righe disattivate. Attesa invariata.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i DDT in bozza da dbops.fn_pgtap_crea_ddt_senza_ordine (DRAFT), gli ordini in bozza e confermato da dbops.fn_pgtap_crea_ordine_con_righe; restano a mano i sei DELETE (sono il caso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (test 5 e 6); restano scritti a mano i DDT in bozza senza ordine e gli ordini in bozza/confermato (sono il caso: righe che si tolgono o no), e i DELETE.
 -- pgTAP test per Zero ERP
@@ -63,7 +66,7 @@
 --   1) Le quattro funzioni (coppia di guard, BB delle righe, lettore) esistono
 --   2) I quattro codici sono a catalogo con la loro classe (E_RIGA_DOC_NON_BOZZA dal 22-09)
 --   3) 🔴 DDT in bozza: la riga SI TOGLIE            <-- il ramo che mancava
---   4) 🔴 DDT in bozza: la testata si elimina (cascade sulle righe)
+--   4) 🔴 DDT in bozza vuota (riga disattivata): la testata si elimina (cascade sulle righe)
 --   5) DDT fuori bozza: la riga NON si toglie, e il motivo lo dice (E_RIGA_DOC_NON_BOZZA, dal BB)
 --   6) DDT fuori bozza: la testata NON si elimina
 --   7) 🔴 Ordine in bozza: la riga SI TOGLIE
@@ -154,6 +157,9 @@ BEGIN
     FROM dbops.fn_pgtap_crea_ddt_senza_ordine('pgtap_delete_righe_bozza', 'DRAFT', r.billing_account_id,
            p_quantita => 1, p_articolo_id => r.articolo_id) b;
   INSERT INTO tmp_fix VALUES ('ddt_bozza2', v_id);
+  -- rev 2026-11-07 (giro T.4): la testata si cancella solo da bozza vuota; la
+  -- riga si disattiva, e la cascata la porta con se'.
+  UPDATE vendite.ddt_righe SET attivo = false WHERE ddt_id = v_id AND attivo;
 
   -- ── DDT EMESSO nel verso vero (test 5 e 6): dal builder, ordine del
   --    cliente del file con una riga di 2 a 10, bolla emessa per la matrice ─
@@ -232,7 +238,7 @@ SELECT CASE
     (SELECT COALESCE(righe, -1) || COALESCE(' / ' || sqlstate || ' ' || messaggio, '')
        FROM tmp_esito WHERE caso='4_ddt_bozza_testata'),
     '1',
-    '4) DDT in bozza: la testata si elimina, e le righe la seguono per cascade')
+    '4) DDT in bozza vuota: la testata si elimina, e la riga disattivata la segue per cascade')
 END;
 
 -- ============================================================

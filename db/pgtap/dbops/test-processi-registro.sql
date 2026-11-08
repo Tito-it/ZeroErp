@@ -18,14 +18,17 @@
 --  3) chk_processi_canale respinge un canale fuori catalogo
 --  4) uq_processi_codice respinge un codice doppio
 --  5) la FK bersagli -> processi respinge un processo inesistente
---  6) chk_processi_bersagli_via respinge un percorso fuori vocabolario
+--  6) fk_processi_bersagli_emittente_via respinge un percorso che non e' un modo del registro
+--     (era il CHECK chk_processi_bersagli_via, ritirato: brief-db-revisione-dbops D21)
 --  7) chk_processi_bersagli_via_colonna respinge un percorso senza colonna
 --  8) ogni canale DICHIARATO dal CHECK e' usato da almeno un processo
 --  9) ogni bersaglio seedato punta a un processo DOMINIO
 -- 10) vw_processi_dominio_senza_emittente non ha righe NON_DICHIARATO
 -- 11) un DOMINIO senza bersagli finisce nella vista (caso COSTRUITO)
 -- 12) un percorso su colonna inesistente finisce nella vista (caso COSTRUITO)
--- 13) vw_processi_che_bypassano non ha righe NON_DICHIARATO
+-- 13) vw_processi_che_bypassano e' vuota (nessun ruolo applicativo con BYPASSRLS)
+-- 13-bis) ⛔ vw_processi_che_bypassano non fa eccezioni per NOME, e il presidio ne
+--     conta tutte le righe (20261104-53, brief-db-revisione-dbops D43)
 -- 14) ⭐ un bersaglio col percorso ma SENZA difesa finisce nel livello 2 (COSTRUITO,
 --     non appoggiato a un debito reale: quello prima o poi si paga)
 -- 15) ⛔ due righe di catalogo per lo STESSO lavoro: solo una puo' essere viva
@@ -46,7 +49,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(15);
+SELECT plan(16);
 
 -- ============================================================
 -- 1. La tabella c'e'
@@ -99,10 +102,10 @@ SELECT throws_ok(
 SELECT throws_ok(
     $$INSERT INTO dbops.processi_bersagli
           (id, processo_id, schema_tabella, nome_tabella, emittente_via, emittente_colonna)
-      VALUES (9005, 20, 'vendite', 'fatture', 'telepatia', 'emittente_fiscale_id')$$,
-    '23514',
+      VALUES (9005, 20, 'vendite', 'pgtap_non_bersaglio', 'telepatia', 'emittente_fiscale_id')$$,
+    '23503',
     NULL,
-    'chk_processi_bersagli_via respinge un percorso fuori vocabolario'
+    'fk_processi_bersagli_emittente_via respinge un percorso che non e'' un modo di dbops.emittente_modi'
 );
 
 -- Un percorso senza colonna non sarebbe verificabile dalla vista: passerebbe a
@@ -136,8 +139,8 @@ SELECT is_empty(
                                            '''([A-Z_]+)''::text', 'g')) AS canale
                 FROM pg_constraint WHERE conname = 'chk_processi_canale') c
        WHERE NOT EXISTS (SELECT 1 FROM dbops.processi p
-                          WHERE p.attivo AND p.canale = c.canale)$$,
-    '8. ogni canale dichiarato dal CHECK e'' usato da almeno un processo attivo'
+                          WHERE NOT script.fn_e_obsoleto(p.obsoleto_dal) AND p.canale = c.canale)$$,
+    '8. ogni canale dichiarato dal CHECK e'' usato da almeno un processo vivo'
 );
 
 -- I bersagli si dichiarano per la sola classe DOMINIO: e' quella su cui il
@@ -248,14 +251,28 @@ SELECT is(
 -- ============================================================
 -- 13. Nessun bypass non dichiarato
 -- ============================================================
--- ⚠️ La regola presidiata non e' «la vista e' vuota»: un bypass puo' essere un
---   debito registrato, con la fase in cui si chiude (lo e' stato
---   zeroerp_batch_fatturazione, ritirato il 2026-10-15). La regola e' che non ne
---   compaia uno NUOVO.
+-- ⭐ rev 20261104-53 (brief-db-revisione-dbops D43): la vista deve restare
+--   VUOTA. Fino a quel giorno ammetteva un debito dichiarato per nome
+--   (zeroerp_batch_fatturazione, ritirato il 2026-10-15) e questo test guardava
+--   solo le righe NON_DICHIARATO: un ruolo tornato con quel nome sarebbe passato.
+--   Senza debito non c'e' piu' niente da escludere.
 SELECT is_empty(
-    $$SELECT ruolo FROM dbops.vw_processi_che_bypassano
-       WHERE stato = 'NON_DICHIARATO'$$,
-    'nessun ruolo applicativo bypassa la RLS fuori dall''elenco dichiarato'
+    $$SELECT ruolo FROM dbops.vw_processi_che_bypassano$$,
+    'nessun ruolo applicativo bypassa la RLS'
+);
+
+-- 13-bis. La 13 non basta: su una macchina senza ruoli con BYPASSRLS e' verde anche
+--   con la vista di prima. Il difetto era la FORMA, e qui si guarda la forma:
+--   nessun letterale nella definizione (un nome di ruolo scritto li' diventa
+--   un'eccezione che sopravvive al ruolo), e nessun filtro di stato nel
+--   presidio (contava solo le righe non dichiarate).
+--   ⚠️ Presidio sul testo, dichiarato tale: un ruolo con BYPASSRLS non si crea
+--   in un test, ci vuole un superuser.
+SELECT ok(
+    pg_get_viewdef('dbops.vw_processi_che_bypassano'::regclass) !~ ''''
+    AND (SELECT p.colonna_stato IS NULL AND p.stato_atteso IS NULL
+           FROM dbops.presidi p WHERE p.vista = 'dbops.vw_processi_che_bypassano'),
+    'vw_processi_che_bypassano non nomina ruoli e il presidio ne conta tutte le righe'
 );
 
 -- ============================================================
@@ -325,9 +342,9 @@ SELECT isnt_empty(
 --   nuova si aggiunge quando la si scopre, e sparisce quando una delle due
 --   righe viene ritirata. Se resta vuoto un giorno, si cancella il test.
 --
--- ⚠️ «Viva» qui significa cio' che significa per il panorama — `attivo` E
---   `obsoleto_dal IS NULL` — e non il solo `attivo`: si ritira con
---   `obsoleto_dal`, che non sveglia nessun guard di disattivazione con figlie.
+-- ⚠️ «Viva» qui significa cio' che significa per il panorama: il ritiro non
+--   raggiunto (script.fn_e_obsoleto). La data e' l'unica sede del ritiro;
+--   `attivo` non si legge.
 SELECT is_empty(
     $$WITH gemelli (uno, altro, lavoro) AS (
           VALUES ('sync_auth_user_expired_daily', 'sync_auth_user_active',
@@ -338,8 +355,7 @@ SELECT is_empty(
        WHERE (SELECT count(*)
                 FROM dbops.processi p
                WHERE p.codice IN (g.uno, g.altro)
-                 AND p.attivo
-                 AND p.obsoleto_dal IS NULL) > 1$$,
+                 AND NOT script.fn_e_obsoleto(p.obsoleto_dal)) > 1$$,
     '15. di due righe di catalogo per lo stesso lavoro ne vive al massimo una'
 );
 

@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI FATTURA NELLA GRAMMATICA DEL MODELLO: vendite.fatture_righe
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1 (S-7, S-5).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Le righe di fattura nate da una riga di commessa dicevano COMMESSA, la riga
+#   di commessa in sorgente_riga e un'impronta in sorgente_uid. Nel modello il
+#   tipo e la riga restano (S-7), la chiave e' quella della commessa
+#   (key_selector 'id': sorgente_id) e l'impronta se ne va. Nessun verbo DB
+#   scrive oggi la provenienza delle righe di fattura (il backend le scrive
+#   NULL): le righe che la portano si convertono qui, nel changeSet della forma,
+#   coi trigger spenti e riaccesi com'erano. Da zero la tabella e' vuota.
+#   Poi il CHECK di forma e i COMMENT delle quattro colonne, al presente.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261107-46-alter-fatture-righe-sorgente-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261107-46-alter-fatture-righe-sorgente-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_righe: le righe da commessa passano a sorgente_id, CHECK di forma, COMMENT
+        delle colonne. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Le righe di fattura nate da una riga di commessa portano la provenienza del
+              --    modello: il tipo COMMESSA, la commessa in sorgente_id (key_selector 'id'),
+              --    la riga di commessa in sorgente_riga. In sorgente_uid c'era un'impronta,
+              --    non la chiave del documento: se ne va. Coi trigger della tabella spenti e
+              --    riaccesi com'erano: la riga di una fattura emessa e' bloccata, e questa e'
+              --    la migrazione del modello, non una modifica del documento.
+              DO $do$
+              DECLARE
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                  -- resta spento, uno ALWAYS torna ALWAYS.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'vendite.fatture_righe'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.fatture_righe DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  -- ⚠️ Solo dove la riga di commessa c'e': una riga che cita una riga di
+                  --    commessa che non esiste resta com'e', e il CHECK sotto ferma il migrate
+                  --    (un orfano si corregge a mano, prima).
+                  UPDATE vendite.fatture_righe fr
+                     SET sorgente_id  = CASE WHEN s.key_selector = 'id'  THEN ca.commessa_id END,
+                         sorgente_uid = NULL
+                    FROM config.sorgenti s, vendite.commesse_attivita ca
+                   WHERE s.id = fr.sorgente_tipo_id
+                     AND s.codice_interno = 'COMMESSA'
+                     AND ca.id = fr.sorgente_riga;
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.fatture_righe ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END;
+              $do$;
+
+              -- 2. La forma della provenienza.
+              ALTER TABLE vendite.fatture_righe
+                ADD CONSTRAINT chk_fatture_righe_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_fatture_righe_sorgente_forma ON vendite.fatture_righe IS
+                'La forma della provenienza: o nessuna colonna sorgente_* valorizzata, o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              -- 3. I COMMENT delle colonne, al presente.
+              COMMENT ON COLUMN vendite.fatture_righe.sorgente_tipo_id IS
+                'Il tipo del documento da cui la riga di fattura deriva (config.sorgenti). NULL di norma: la riga aggrega attivita'' fatturabili, e il legame con loro sta in vendite.attivita_fatturabili.fattura_riga_id. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga: una riga nata da una riga di commessa dichiara COMMESSA, la commessa in sorgente_id e la riga di commessa in sorgente_riga. La forma la tiene chk_fatture_righe_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' la riga la cita.';
+              COMMENT ON COLUMN vendite.fatture_righe.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento (per COMMESSA, la commessa). In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN vendite.fatture_righe.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN vendite.fatture_righe.sorgente_riga IS
+                'La riga del documento d''origine da cui la riga di fattura deriva: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo (per COMMESSA, vendite.commesse_attivita). NULL quando la provenienza e'' il documento intero.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: l'impronta non si ricostruisce, e nessuno la legge.
+              SELECT 1;

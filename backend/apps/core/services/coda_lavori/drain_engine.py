@@ -47,6 +47,15 @@ _BACKOFF_CAP_SECONDI = 3600
 # (chi la scrive e chi la legge) e un refuso la renderebbe muta, non rotta.
 CONTEXT_KEY_TERMINALE = "terminale"
 
+# I CONTATORI dell'esito di un drenaggio (`QueueDrainEngine.drain`, e il
+# drenatore della stampa che ne ricalca la forma): sono le chiavi che il giro
+# per azienda somma (`EsitoGiroPerAzienda.totali`). Sede unica — erano due
+# tuple identiche, una per drenatore, e aggiungere un contatore in una sola
+# l'avrebbe tolto in silenzio dal totale dell'altra.
+CHIAVI_ESITO_DRENAGGIO: tuple[str, ...] = (
+    "recuperate", "claimate", "fatto", "errore", "riprovabili",
+)
+
 
 # Scopo: Costruisce il `context` di un ServiceError terminale, con eventuali
 #        campi diagnostici del chiamante. Zucchero, ma evita che la chiave si

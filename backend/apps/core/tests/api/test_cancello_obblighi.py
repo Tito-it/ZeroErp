@@ -93,7 +93,7 @@ class CancelloObblighiBearerTests(JwtMockedApiTest):
         gucs = patch(_SET_GUCS, return_value=True)
         gucs.start()
         self.addCleanup(gucs.stop)
-        repo = patch(_REPO_QUALUNQUE)
+        repo = patch(_REPO_QUALUNQUE, autospec=True)
         repo.start().return_value.list_utilities_per_ruolo.return_value = []
         self.addCleanup(repo.stop)
         permesso = patch(_PERMISSION, return_value=True)
@@ -101,13 +101,18 @@ class CancelloObblighiBearerTests(JwtMockedApiTest):
         self.addCleanup(permesso.stop)
 
     # Scopo: Una GET col Bearer sulla view qualunque, con i fatti dati.
+    # ⭐ I fatti si danno CONFIGURANDO il mock della base
+    #    (`JwtMockedApiTest.mock_fatti_obblighi`), non con una seconda patch.
+    def _dai_fatti(self, fatti_o_errore) -> None:
+        if isinstance(fatti_o_errore, Exception):
+            self.mock_fatti_obblighi.side_effect = fatti_o_errore
+        else:
+            self.mock_fatti_obblighi.side_effect = None
+            self.mock_fatti_obblighi.return_value = fatti_o_errore
+
     def _get(self, fatti_o_errore, *, superuser: bool = False):
-        mock_fatti = (
-            patch(_FATTI, side_effect=fatti_o_errore)
-            if isinstance(fatti_o_errore, Exception)
-            else patch(_FATTI, return_value=fatti_o_errore)
-        )
-        with mock_fatti, patch(_PARENT_AUTH, return_value=_utente_e_token(superuser=superuser)):
+        self._dai_fatti(fatti_o_errore)
+        with patch(_PARENT_AUTH, return_value=_utente_e_token(superuser=superuser)):
             return self.client.get(_URL_QUALUNQUE, HTTP_AUTHORIZATION="Bearer finto")
 
     # Scopo: A-8. Una credenziale che deve cambiare la password, con un
@@ -152,10 +157,10 @@ class CancelloObblighiBearerTests(JwtMockedApiTest):
     def test_obblighi_in_vigore_per_il_profilo(self):
         from apps.core.api.cancello_obblighi import obblighi_in_vigore
 
-        with patch(_FATTI, return_value=_fatti(password=True, totp=True)):
-            self.assertEqual(obblighi_in_vigore(42), (OBBLIGO_CAMBIO_PASSWORD, OBBLIGO_SECONDO_FATTORE))
-        with patch(_FATTI, return_value=_fatti(totp=True, stato="ATTIVO")):
-            self.assertEqual(obblighi_in_vigore(42), ())
+        self._dai_fatti(_fatti(password=True, totp=True))
+        self.assertEqual(obblighi_in_vigore(42), (OBBLIGO_CAMBIO_PASSWORD, OBBLIGO_SECONDO_FATTORE))
+        self._dai_fatti(_fatti(totp=True, stato="ATTIVO"))
+        self.assertEqual(obblighi_in_vigore(42), ())
 
 
 class _View:
@@ -187,21 +192,21 @@ class RegolaObblighiTests(SimpleTestCase):
         self.assertEqual(obblighi_pendenti(_fatti(totp=True, stato="ATTIVO")), ())
 
     @_TUTTI_IN_VIGORE
-    @patch(_FATTI, return_value=_fatti(totp=True))
+    @patch(_FATTI, return_value=_fatti(totp=True), autospec=True)
     def test_view_che_ammette_l_obbligo_passa(self, _f):
         verifica_obblighi(_View(frozenset({OBBLIGO_SECONDO_FATTORE})), 42)
 
     # Scopo: Con la password da cambiare, la pagina del secondo fattore
     #        resta chiusa: si risponde col PRIMO obbligo pendente.
     @_TUTTI_IN_VIGORE
-    @patch(_FATTI, return_value=_fatti(password=True, totp=True))
+    @patch(_FATTI, return_value=_fatti(password=True, totp=True), autospec=True)
     def test_si_ferma_al_primo_pendente(self, _f):
         with self.assertRaises(CambioPasswordRichiestoError):
             verifica_obblighi(_View(frozenset({OBBLIGO_SECONDO_FATTORE})), 42)
         verifica_obblighi(_View(frozenset({OBBLIGO_CAMBIO_PASSWORD})), 42)
 
     @_TUTTI_IN_VIGORE
-    @patch(_FATTI, return_value=_fatti(totp=True))
+    @patch(_FATTI, return_value=_fatti(totp=True), autospec=True)
     def test_view_senza_dichiarazione_non_ammette_niente(self, _f):
         with self.assertRaises(SecondoFattoreDaConfigurareError):
             verifica_obblighi(_View(), 42)

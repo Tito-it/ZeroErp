@@ -1,6 +1,6 @@
 # Guida — Processi pgAgent funzionali
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > Destinatari: sviluppatori database, backend, analisti funzionali
 >
@@ -42,7 +42,7 @@ corretta.
 | Job | Schedule | Scopo | Dominio | Migration |
 |---|---|---|---|---|
 | `sync_auth_user_expired_daily` | daily 06:00 | Disattiva `auth_user` per risorse umane con finestra temporale scaduta | anagrafiche | `85_pgagent/20260302-04-...` |
-| `chiusura_scadenze_daily` | daily 00:05 | 🔴 **Non chiude più niente da sé: ACCODA.** Mette in coda un lavoro per ogni azienda, che poi viene eseguito con l'identità di quell'azienda. Vedi [fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze) | vendite (per azienda) | `85_pgagent/20260905-25-...` |
+| `chiusura_scadenze_daily` | ogni ora, al minuto 5 | 🔴 **Non chiude niente da sé: ACCODA.** Mette in coda un lavoro per ogni azienda, una volta per giorno aziendale, che poi viene eseguito con l'identità di quell'azienda. Vedi [fn_accoda_chiusura_scadenze](/dbzero/dbops/funzioni/fn_accoda_chiusura_scadenze) | vendite (per azienda) | `85_pgagent/20260905-25-...` |
 
 ---
 
@@ -60,21 +60,21 @@ corretta.
 
 ### `chiusura_scadenze_daily` (framework parametrico)
 
-* **Scopo**: motore unico per la chiusura automatica dello stato gestionale su tabelle con pattern "ciclo stato + finestra di validita'" (vedi [linee-guida-sql §7c](/linee-guida-sql)). Itera sulle righe `attivo=true` di `dbops.automazione_chiusura_scadenze` e applica UPDATE dinamici.
-* **Che cosa esegue**: lo step chiama la procedura `maintenance.proc_accoda_chiusura_scadenze_job()`, che mette in coda un lavoro per ogni azienda ([fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze)). Il lavoro vero lo fa poi la coda, con l'identità di quell'azienda, applicando `dbops.fn_apply_chiusura_scadenze()`, che ritorna JSONB con conteggio righe chiuse per tabella + meta-info esecuzione (`{"vendite.listini_versioni": 3, "vendite.contratti": 12, "_total": 15, "_executed_at": "..."}`).
-* **Schedule**: tutti i giorni alle `00:05` (subito dopo il cambio data; semantica `valido_al` = ultimo giorno **incluso**, quindi 00:05 del giorno successivo e' il primo momento utile per chiudere).
-* **Classe job**: `Routine Maintenance`.
+* **Scopo**: motore unico per la chiusura automatica dello stato gestionale su tabelle con pattern "ciclo stato + finestra di validita'" (vedi [linee-guida-sql §7c](/linee-guida-sql)). Itera sulle righe `attivo=true` di `dbops.automazione_chiusura_scadenze`: un bersaglio con un verbo dichiarato in `verbo_chiusura` si chiude sempre chiamando quel verbo (è la strada di tutti i bersagli di oggi, testate sotto la porta del modello del documento); una testata sotto la porta senza verbo è una configurazione non valida; ogni altra tabella si chiude con un `UPDATE` dinamico dello stato. Vale con `tipo_stato` `VARCHAR` e `FK`.
+* **Che cosa esegue**: lo step chiama la procedura `maintenance.proc_accoda_chiusura_scadenze_job()`, che passa dal giornale dei job e mette in coda un lavoro `CHIUSURA_SCADENZE` per ogni azienda ([fn_accoda_chiusura_scadenze](/dbzero/dbops/funzioni/fn_accoda_chiusura_scadenze)). Il lavoro vero lo fa poi la coda, con l'identità di quell'azienda, applicando `dbops.fn_apply_chiusura_scadenze()`, che ritorna JSONB con conteggio righe chiuse per tabella + meta-info esecuzione (`{"vendite.listini_versioni": 3, "vendite.contratti": 12, "_total": 15, "_executed_at": "..."}`).
+* **Schedule**: **ogni ora, al minuto 5**, anche se il nome dice «daily». Il giorno di una scadenza è quello dell'azienda (`script.fn_data_operativa()`, nel suo fuso), non l'orologio del server: la prima sveglia dopo la mezzanotte dell'azienda accoda il lavoro, le altre del giorno lo trovano già accodato o fatto e non accodano niente. Semantica `valido_al` = ultimo giorno **incluso**. Lo step parte solo se `maintenance.fn_sveglia_accesa('chiusura_scadenze_daily')` è vero.
+* **Classe**: il processo `chiusura_scadenze_daily` del catalogo `dbops.processi` è di classe `DOMINIO`, sul canale `CODA_AUTOMATICA`: tocca i dati delle aziende, e gira con l'identità tecnica di ciascuna dentro la RLS. Per lo stesso motivo il registro dei bersagli ammette solo bersagli `DOMINIO`.
 * **Tabelle attualmente configurate**:
   * `vendite.listini_versioni` (`tipo_stato=FK`, lookup `config.stati_doc_listino_versioni.codice_interno`, ciclo `BOZZA -> ATTIVA -> CHIUSA`; sotto la porta del modello: chiude il verbo `vendite.fn_chiudi_versioni_listino_scadute`)
   * `vendite.contratti` (`tipo_stato=FK`, lookup `config.stati_doc_contratti.codice_interno`, ciclo `DRAFT -> ATTIVO -> CESSATO`; `SOSPESO` fuori scope operativo; sotto la porta: chiude il verbo `vendite.fn_cessa_contratti_scaduti`)
   * `vendite.preventivi` (`tipo_stato=FK`, lookup `config.stati_doc_preventivi.codice_interno`, `EMESSO -> SCADUTO` sulla colonna `validita_al`; sotto la porta: chiude il verbo `vendite.fn_chiudi_preventivi_scaduti`; dal 31-10-2026, brief-db-scadenza-preventivi)
-* **Pre-check**: prima di ogni UPDATE la fn verifica esistenza schema/tabella/colonne (e per FK anche tabella di lookup + codici). Errore tipato `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` in caso di config invalida (no exec parziale).
+* **Pre-check**: prima di chiudere la fn verifica la classe del bersaglio, l'esistenza di schema/tabella/colonne, il verbo dichiarato (o la sua assenza sotto la porta) e, per FK, la tabella di lookup e i codici. Errore tipato `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` in caso di config invalida (no exec parziale).
 * **Idempotenza**: la query seleziona solo righe ancora attive con `valido_al` scaduto; esecuzioni ripetute nella stessa giornata sono no-op.
-* **Interazione con guard tabella-specifici**: l'UPDATE attraversa i trigger `trg_<tabella>_a10_guard_transizione_stato_upd` e li soddisfa per costruzione (precondizione `valido_al < CURRENT_DATE` identica al WHERE). Nessun bypass, nessun GUC, nessun privilegio elevato.
-* **Effetto sulla UX**: fra `PATCH valido_al = oggi` e le 00:05 del giorno successivo lo stato resta `ATTIVA`/`ATTIVO`. L'**applicabilita' operativa** (resolver prezzi, lookup contratti operativi) e' gia' scaduta perche' basata su `validita @> data`, non sullo stato.
+* **Interazione con guard tabella-specifici**: i tre bersagli di oggi si chiudono col loro verbo, che passa dalla porta del modello; il ramo `UPDATE` diretto attraversa i guard di transizione della tabella. La scadenza si confronta con `script.fn_data_operativa()`, non con `CURRENT_DATE`. Nessun bypass, nessun GUC, nessun privilegio elevato: la funzione è `SECURITY INVOKER` e chiude solo ciò che vede l'identità dell'azienda.
+* **Effetto sulla UX**: fra `PATCH valido_al = oggi` e la prima sveglia dopo la mezzanotte dell'azienda (più il tempo del drenatore della coda) lo stato resta `ATTIVA`/`ATTIVO`. L'**applicabilita' operativa** (resolver prezzi, lookup contratti operativi) e' gia' scaduta perche' basata su `validita @> data`, non sullo stato.
 * **SQL dinamico sicuro**: `format(%I)` per identificatori, `format(%L)` per valori. I codici nella config sono comunque amministrativamente controllati (Liquibase seed).
-* **Audit**: insert in `dbops.audit_log` con `area='database'`, `function_name='fn_apply_chiusura_scadenze'`, `context=<JSONB risultato>`.
-* **Migration job**: [85_pgagent/20260426-06-replace-pgagent-job-chiusura-scadenze-daily-mctit.yaml](/migrations_v2/85_pgagent/20260426-06-replace-pgagent-job-chiusura-scadenze-daily-mctit.yaml).
+* **Audit**: a giro finito `fn_apply_chiusura_scadenze` scrive una riga in `dbops.audit_log` con `dbops.fn_audit_log_once`, status `OK`, con il riepilogo nei `params`. La scrittura è best-effort: se fallisce l'errore si inghiotte, e il riepilogo arriva comunque all'handler, che lo scrive nel risultato del lavoro di coda.
+* **Migration job**: [85_pgagent/20260905-25-replace-pgagent-job-chiusura-scadenze-accoda-mctit.yaml](/migrations_v2/85_pgagent/20260905-25-replace-pgagent-job-chiusura-scadenze-accoda-mctit.yaml).
 * **Migration funzione**: [20_code/dbops/20260426-02-create-fn-apply-chiusura-scadenze-mctit.yaml](/migrations_v2/20_code/dbops/20260426-02-create-fn-apply-chiusura-scadenze-mctit.yaml).
 * **Migration tabella config**: [00_schema/dbops/20260426-01-create-automazione-chiusura-scadenze-mctit.yaml](/migrations_v2/00_schema/dbops/20260426-01-create-automazione-chiusura-scadenze-mctit.yaml).
 * **Tabella config**: [dbops.automazione_chiusura_scadenze](/dbzero/dbops/tabelle/automazione_chiusura_scadenze).
@@ -83,8 +83,8 @@ corretta.
 
 1. Verificare che la tabella abbia il pattern `<col_stato> + <col_valido_al>` ([linee-guida-sql §7c](/linee-guida-sql)).
 2. Creare un trigger guard transizione tabella-specifico (`trgfn_<tabella>_guard_transizione_stato`) con la matrice transizioni del workflow + precondizione temporale per la transizione terminale.
-3. Aggiungere una riga in `dbops.automazione_chiusura_scadenze` (via INSERT seed in `80_data/sql/dbops/automazione_chiusura_scadenze.csv`) con `tipo_stato='VARCHAR'` o `tipo_stato='FK'` e i codici stato attivo/chiuso.
-4. Nessun nuovo codice DB: il job notturno la prende in carico al successivo run.
+3. Aggiungere una riga in `dbops.automazione_chiusura_scadenze` (via INSERT seed in `80_data/sql/dbops/automazione_chiusura_scadenze.csv`) con `tipo_stato='VARCHAR'` o `tipo_stato='FK'`, i codici stato attivo/chiuso, la `classe` e, per una testata sotto la porta del modello, il verbo in `verbo_chiusura` (una funzione viva senza argomenti). ⛔ La classe può essere solo `DOMINIO`: la tabella deve avere un padrone, perché il giro la lavora con l'identità di ciascuna azienda. Una tabella di `MANUTENZIONE` o `AMMINISTRAZIONE` chiede un esecutore da sviluppare, che lavori una volta sola con un'identità tecnica: oggi il registro non la ammette e il motore la rifiuterebbe.
+4. Nessun nuovo codice DB oltre al verbo, se serve: il lavoro di coda la prende in carico alla prima sveglia del giorno aziendale successivo.
 
 ---
 
@@ -165,8 +165,8 @@ e [Estensione pgAgent](/postgresql/pgAgent). I ruoli del database e le loro rego
 
 * **pgAgent interno**: `pgagent.pga_joblog` (esito esecuzione job) e `pgagent.pga_jobsteplog` (esito singolo step).
 * **Log applicativo**: se la funzione chiamata esegue `script.fn_log_and_raise_error` o `script.fn_log_error_only` in caso di problemi, il log finisce in `dbops.error_log` via dblink.
-* **Giornale delle esecuzioni**: [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) — è il tracciamento che conta. Ogni corsa lascia una riga con **chi era** (quale lavoro, per conto di chi, con quale utente si è collegato), non solo com'è andata:
-  * una corsa che non dice per conto di chi gira finisce in [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore);
+* **Giornale delle esecuzioni**: [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — è il tracciamento che conta. Ogni corsa lascia una riga con **chi era** (quale lavoro, per conto di chi, con quale utente si è collegato), non solo com'è andata:
+  * una corsa che non dice di quale processo è non si scrive: il giornale la rifiuta (`chk_job_run_log_processo_dichiarato`), e il lavoro non gira;
   * una corsa **fallita** resta nel giornale: il verbale viaggia su una connessione separata e non viene annullato insieme all'errore. Senza, un lavoro rotto potrebbe restarlo per mesi senza che nessuno lo sappia.
 
   Il racconto per esteso: [I lavori automatici — capitolo 6](/guide/processi-automatici-classe-e-identita).

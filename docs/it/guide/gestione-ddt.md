@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -18,12 +18,12 @@
 > * [vendite.trgfn_ddt_guard_transizione](/dbzero/vendite/funzioni/trgfn_ddt_guard_transizione) — enforcement del grafo stati
 > * [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) — evasione delle righe ordine in un DDT
 > * [vendite.fn_ddt_riga_correggi_qta_evasa](/dbzero/vendite/funzioni/fn_ddt_riga_correggi_qta_evasa) / [vendite.trgfn_ddt_righe_guard_riga_evasa](/dbzero/vendite/funzioni/trgfn_ddt_righe_guard_riga_evasa) — la riga evasa: ferma, corretta solo dal verbo
-> * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) / [vendite.fn_ddt_legami](/dbzero/vendite/funzioni/fn_ddt_legami) — l'annullo di una bolla con righe legate a ordini o resi
+> * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) / [vendite.fn_documento_legami](/dbzero/vendite/funzioni/fn_documento_legami) — l'annullo di una bolla con righe legate a ordini o resi
 > * [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare) — righe eleggibili al push a commessa
 > * [vendite.trgfn_ddt_gen_numero_emesso](/dbzero/vendite/funzioni/trgfn_ddt_gen_numero_emesso) / [vendite.trgfn_v_ddt_protect_num](/dbzero/vendite/funzioni/trgfn_v_ddt_protect_num) — numero assegnato a EMESSO e poi immutabile
 > * [vendite.trgfn_ddt_guard_indirizzi_obbligatori](/dbzero/vendite/funzioni/trgfn_ddt_guard_indirizzi_obbligatori) — indirizzo di consegna obbligatorio all'emissione
 > * [vendite.trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize) — eredità dal contesto (BA/utility/valuta/emittente)
-> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
 > * [vendite.fn_ddt_riga_componenti_init](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_init) / [vendite.fn_ddt_riga_componenti_preview](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_preview) — componenti BoM
 >
 > **Vedi anche** — API e service backend:
@@ -130,7 +130,7 @@ completamente evaso, la sua proiezione di stato lo riflette
 
 È possibile creare un DDT **da zero**, scegliendo il cliente (billing account) e
 le righe a mano. In questo caso il DDT nasce senza riferimento a un ordine di
-origine (`sorgente_tipo_id`/`sorgente_uid` NULL). Il cliente è **obbligatorio**
+origine (la provenienza `sorgente_*` è vuota). Il cliente è **obbligatorio**
 alla creazione: da lì il sistema deriva destinatario ed emittente.
 
 ---
@@ -150,8 +150,10 @@ Contiene il contesto del documento e del trasporto:
   `modalita_addebito_trasporto_id`, `mittente_soggetto_ruolo_id`,
   `vettore_soggetto_ruolo_id`, `num_colli`, `peso_lordo`, `peso_netto`, `volume`,
   `targa`, `autista`, `tracking_code`.
-* **da dove arriva** (`sorgente_tipo_id` + `sorgente_uid`) — valorizzata
-  dall'evasione (sorgente `ORDINE_VENDITA`); NULL se il DDT è standalone.
+* **da dove arriva** — la provenienza del modello comune
+  ([sorgente polimorfa](/guide/sorgente-polimorfa)): il tipo (`sorgente_tipo_id`) e la chiave del
+  documento (`sorgente_id`). È l'ordine (`ORDINE_VENDITA`) per la bolla d'evasione, il reso
+  (`RESO_VENDITA`) per la bolla di riconsegna; vuota se il DDT è standalone.
 * **identità e stato** (`numero`/`anno` — assegnati a EMESSO —, `uid`,
   `stato_doc_ddt_id`).
 
@@ -165,12 +167,13 @@ Ogni riga è una voce di merce consegnata:
 * **prezzo** (`prezzo_unitario`) e **IVA** (`iva_id`) — **opzionali**: un DDT può
   essere di **solo trasporto** (righe senza prezzo).
 
-**Quali articoli ammette** (dal 2026-10-13): solo **merce**, e mai un articolo **«solo
-componente»**, che si vende soltanto dentro il kit che lo contiene. Un servizio una tantum va
-in commessa, un servizio ricorrente in contratto (tramite un'offerta). La merce è giudicata
+**Quali articoli ammette**: la **merce** e gli **articoli-onere** (trasporto, urgenza, spese…,
+§3.6), mai un articolo **«solo componente»**, che si vende soltanto dentro il kit che lo contiene.
+Un altro servizio non entra: uno una tantum va in commessa, uno ricorrente in contratto (tramite
+un'offerta). La merce è giudicata
 dalla **natura con cui la riga è stata venduta**: una riga nata da un ordine porta la natura di lì, anche
 se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
-documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
+documenti ([`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga)), e
 il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti** (dal 2026-10-14) non si mette in nessuna riga: va prima completata la sua distinta.
 
 **Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
@@ -208,6 +211,32 @@ modificata. Vedi §10.
 
 Il DDT supporta le **note partizionate** (di testata o di riga), con lo stesso
 comportamento di preventivi, ordini, offerte e contratti.
+
+### 3.6 Gli oneri sulla bolla
+
+Un **onere** (trasporto, urgenza, spese) è un addebito che accompagna la merce: un articolo con una
+**causale onere**. Sulla bolla arriva in due modi: **copiato dall'ordine** (passa intero nella prima
+bolla, anche se non lo si sceglie, e non si ripete nelle successive) o **scritto a mano**. Ha prezzo e
+IVA, entra nei totali e nella stampa, dove compare **dopo** gli articoli. Ma non è merce:
+
+* **non muove il magazzino** (un articolo-onere non può essere gestito a magazzino, né essere un kit,
+  né avere lotti o matricole);
+* **non si rende**: un reso sulla riga di un onere è rifiutato, e la bolla va a «reso» quando è resa
+  tutta la **merce**;
+* la quantità di un onere copiato **non si corregge** dalla bolla: si corregge sull'ordine;
+* una bolla fatta **solo** di oneri **non si emette**: un addebito senza merce si fa in commessa.
+
+**Un onere che non verrebbe mai fatturato ferma l'emissione** (in bozza il pulsante «Emetti» è spento
+e dice il motivo):
+
+| Caso | Perché | Cosa fare |
+| --- | --- | --- |
+| onere, anche copiato, su una bolla con causale **che non vende** (conto visione, campionatura…) | la bolla non va in commessa | togliere l'onere e addebitarlo in commessa |
+| onere **scritto a mano** su una bolla di un ordine che fattura **alla conferma** | a fatturare è l'ordine, e la bolla non porta in commessa le sue righe | metterlo sull'ordine |
+| onere di **trasporto**, scritto o copiato, su una bolla in porto **assegnato** o con addebito **a terzi** | il trasporto lo paga il destinatario al vettore, o un terzo: il cliente non ce lo deve | togliere la riga del trasporto, o correggere la modalità di addebito (porto franco) se il trasporto lo paghiamo noi |
+
+Un onere copiato da un ordine che fattura alla conferma invece è lecito: lo fattura l'ordine. Un onere
+a mano su una bolla senza ordine, o di un ordine che fattura alla consegna, va in commessa con la bolla.
 
 ---
 
@@ -350,7 +379,8 @@ Se non resta residuo, l'evasione segnala che non c'è nulla da consegnare.
 > **Bozza "usa e getta".** La creazione salva subito una bozza (auto-save al
 > primo cliente o destinatario) per poter aggiungere righe e indirizzi. Se l'operatore esce
 > senza inserire nulla, la bozza vuota può essere eliminata. Un DDT **emesso**
-> non si cancella: si **annulla**.
+> non si cancella: si **annulla**. Una bozza con righe attive non si cancella nemmeno: si tolgono
+> prima le righe. La regola la fa valere il database, per ogni strada che cancella.
 
 ### 6.3 Le righe di un DDT da ordine
 
@@ -514,7 +544,8 @@ il billing account: regge anche i DDT verso terzi e i casi con prospect senza BA
 Quando il DDT è emesso e ha righe eleggibili, l'azione **push a commessa** invia
 le righe alle **attività fatturabili** su una commessa (sorgente `DDT_VENDITA`),
 che a sua volta alimenta la pipeline di fatturazione. Le righe eleggibili sono
-quelle attive, con quantità positiva, non ancora inviate a una commessa. Chi lo
+quelle attive, con quantità positiva, non ancora inviate a una commessa. Gli **oneri** della bolla
+(§3.6) ci vanno come oneri, con la loro causale e col riferimento alla bolla. Chi lo
 decide è **una** funzione, [`fn_ddt_push_diagnosi`](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi):
 per ogni riga dice il motivo per cui *non* è inviabile (nessun motivo =
 eleggibile). Il lister del push (`fn_list_ddt_da_pushare`) ne deriva, e il
@@ -541,6 +572,9 @@ Come funziona, dal punto di vista del DDT:
 
 * dal drawer del DDT consegnato, il pannello **"Crea reso"** apre un reso legato
   a quel DDT (righe con quantità ≤ consegnato, guard DB);
+* il reso nasce **solo** da una bolla di vendita: la sua provenienza è sempre il
+  DDT da cui torna la merce, e un reso che dichiarasse un altro documento d'origine
+  è rifiutato dal database (`E_RESO_SORGENTE_NON_DDT`);
 * ogni riga di reso ha un **tipo** (`config.tipi_reso`): **a credito**
   (`RESO_A_CREDITO`) o **per ri-consegna** (`RESO_PER_RICONSEGNA`, flag
   `riapre_residuo`);
@@ -610,8 +644,9 @@ dettaglio, l'export (CSV/XLSX) e i documenti generati.
 
 ### 13.4 Bozza creata per errore
 
-1. DDT ancora in `DRAFT` **senza righe/indirizzi** → eliminabile.
-2. DDT **emesso** → non si elimina: usa "Annulla" (→ `ANNULLATO`).
+1. DDT ancora in `DRAFT` **senza righe attive** → eliminabile (gli indirizzi se ne vanno con lui).
+2. DDT in `DRAFT` **con righe** → non si elimina (`E_DELETE_DOC_CON_RIGHE`): togli le righe, o annulla.
+3. DDT **emesso** → non si elimina (`E_DELETE_DOC_NON_BOZZA`): usa "Annulla" (→ `ANNULLATO`).
 
 ---
 
@@ -627,7 +662,9 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | `E_DDT_CLIENTE_OBBLIGATORIO`         | Emissione senza cliente con una causale che manda merce a un cliente (guard DB)                              |
 | `E_DOC_CLIENTE_DIVERSO_DA_BA`        | Destinatario o utility diversi da quelli del cliente scelto (guard DB)                                       |
 | `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE`  | Cliente diverso da quello dell'ordine o del reso di origine (guard DB)                                       |
-| `E_DDT_STATO_TRANSIZIONE`            | Operazione non ammessa nello stato (modifica fuori da `DRAFT`, delete di una bozza con righe → va annullata) |
+| `E_RESO_SORGENTE_NON_DDT`            | Un reso che dichiara come origine un documento diverso dalla bolla di vendita (guard DB)                     |
+| `E_DELETE_DOC_NON_BOZZA`             | Eliminazione di un DDT uscito dalla bozza: si annulla (guard DB) |
+| `E_DELETE_DOC_CON_RIGHE`             | Eliminazione di una bozza con righe attive: si tolgono le righe o si annulla (guard DB) |
 | `E_DDT_NESSUNA_RIGA`                 | Push senza righe eleggibili                                                                                  |
 | `E_DOC_EMITTENTE_BA_INCOERENTE`      | L'azienda che emette non è quella del cliente (stesso codice per i sei documenti di vendita)                 |
 | `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` | Cambio di stato non previsto/attivo nella matrice (guard DB)                                                 |
@@ -636,6 +673,11 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | `E_QTA_SUPERA_RESIDUO`               | La quantità evasa corretta supera il residuo dell'ordine                                                      |
 | `E_DOC_ANNULLO_CON_LEGAMI`           | Annullo di una bolla con legami (ordini, resi, righe di commessa): apre la finestra di conferma (§4.3)        |
 | `E_INDIRIZZO_DOC_OBBLIGATORIO`       | Emissione senza l'indirizzo di consegna obbligatorio (guard DB)                                              |
+| `E_DDT_EMISSIONE_SOLO_ONERI`         | Emissione di una bolla che ha solo oneri e nessuna merce (§3.6)                                              |
+| `E_DDT_ONERE_NON_FATTURABILE`        | Emissione con un onere che non verrebbe mai fatturato (§3.6)                                                 |
+| `E_DDT_RIGA_ONERE_NON_CORREGGIBILE`  | «Correggi quantità evasa» sulla riga di un onere (§3.6)                                                      |
+| `E_RESO_RIGA_ONERE`                  | Reso sulla riga di un onere (§3.6)                                                                           |
+| `E_DDT_TRASPORTO_NON_DOVUTO`         | Emissione con un onere di trasporto su una bolla in porto assegnato o con addebito a terzi (§3.6)            |
 | `E_DOCUMENTI_*`                      | Stampa: template/versione non risolti, input invalido o render fallito                                       |
 
 ---

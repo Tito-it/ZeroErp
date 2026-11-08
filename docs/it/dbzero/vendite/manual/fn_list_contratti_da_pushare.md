@@ -1,16 +1,22 @@
-## Documentazione Concettuale – Funzione `vendite.fn_list_contratti_da_pushare(...)`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_contratti_da_pushare`
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
-
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-[vendite.fn_contratti_addebiti_maturati](/dbzero/vendite/manual/fn_contratti_addebiti_maturati) — la regola: che cosa il contratto addebita a ogni giro
-> [vendite.fn_canone_periodi](/dbzero/vendite/funzioni/fn_canone_periodi) — i periodi del canone
-> [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
-> [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
-> [Guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni) — come il contratto si addebita, per chi non sviluppa
+> 👀 **Vedi anche**
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_contratti_addebiti_maturati](/dbzero/vendite/funzioni/fn_contratti_addebiti_maturati) — la regola: che cosa il contratto addebita a ogni giro
+> * [vendite.fn_canone_periodi](/dbzero/vendite/funzioni/fn_canone_periodi) — i periodi del canone
+> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
+> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+>
+> Guide:
+>
+> * [Guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni) — come il contratto si addebita, per chi non sviluppa
 
 ---
+
 ### 🎯 Scopo Principale
 
 `vendite.fn_list_contratti_da_pushare(...)` è il **lister del push dei contratti**: le righe che
@@ -18,7 +24,7 @@ i contratti devono mandare in commessa a questo giro, con il payload completo pe
 (una riga per riga di commessa da scrivere con `fn_upsert_commessa_attivita`).
 
 Dal 2026-10-31 (`20261031-03`) la regola non sta qui: la funzione legge
-[`vendite.fn_contratti_addebiti_maturati`](/dbzero/vendite/manual/fn_contratti_addebiti_maturati),
+[`vendite.fn_contratti_addebiti_maturati`](/dbzero/vendite/funzioni/fn_contratti_addebiti_maturati),
 che la condivide con la dashboard dei contratti, e ne tiene le righe **senza scarto**. Qui
 restano:
 
@@ -42,10 +48,17 @@ Il controllo di `p_contratto_id` (`E_PUSH_SORGENTE_ID_INVALIDO`) e gli stati ATT
 | storno | la parte non goduta di un periodo addebitato oltre la fine del contratto, come differenza dal già stornato | `<base del pezzo>#STO`, poi `#STO:2`, `#STO:3` … |
 
 Le regole complete (quali righe, periodi, quantità, prezzo, storni, scarti) sono nella pagina di
-[`fn_contratti_addebiti_maturati`](/dbzero/vendite/manual/fn_contratti_addebiti_maturati).
+[`fn_contratti_addebiti_maturati`](/dbzero/vendite/funzioni/fn_contratti_addebiti_maturati).
 
 `riga_id` è NULL sulle quote fisse del listino e sugli storni: l'handler non espande i componenti
 di un kit su quelle righe.
+
+**La provenienza delle righe.** Ogni riga porta il tipo `CONTRATTO` (`sorgente_tipo_id`) e la
+chiave del contratto in `sorgente_chiave`, l'uid in testo: la madre
+`fn_upsert_commessa_attivita` la traduce con `script.fn_sorgente_chiave` nella colonna del
+`key_selector` del tipo (`sorgente_id`, perché il contratto si riconosce dall'id). `riga_id`
+diventa la riga della provenienza (`sorgente_riga`): vuota sulle quote fisse e sugli storni, che
+non corrispondono a una riga del contratto.
 
 ---
 
@@ -63,29 +76,7 @@ Estensione coordinata con le altre `fn_list_*_da_pushare`: la firma è quella de
 
 ---
 
-### Esempi d'uso
-
-**Giro di un mese (orchestratore):**
-
-```sql
-SELECT *
-FROM vendite.fn_list_contratti_da_pushare(
-  p_competenza_mese => DATE '2026-11-01',
-  p_billing_account_id => NULL,
-  p_limit => 500
-);
-```
-
-**Un contratto solo:**
-
-```sql
-SELECT *
-FROM vendite.fn_list_contratti_da_pushare(p_contratto_id => 12345);
-```
-
----
-
-### `fatturazione_immediata` e `prezzo_bloccato` (rev 2026-07-27)
+### `fatturazione_immediata` e `prezzo_bloccato`
 
 Dal changeset `20260727-05` `fatturazione_immediata` è il valore della **colonna reale**
 `vendite.contratti.fatturazione_immediata`, non più una costante `FALSE`. Viaggia fino a
@@ -114,6 +105,9 @@ Presidio a valle: dopo il push il flag non è più modificabile sul documento
 * **2026-10-31** (`20261031-01`): lo storno è la differenza dal già stornato, quindi segue la fine
   del contratto anche quando si sposta dopo il primo storno.
 * **2026-10-31** (`20261031-03`): il corpo passa a `fn_contratti_addebiti_maturati`; qui il filtro.
+* **2026-11-07**: `riga_id` arriva in commessa come `sorgente_riga` (brief-db-sorgente-documento-e-riga).
+* **2026-11-08**: la colonna d'uscita `sorgente_uid` diventa `sorgente_chiave`, la chiave del
+  documento in testo che la madre traduce (brief-db-sorgente-documento-e-riga).
 
 Brief: `brief-db-contratto-righe-periodiche-in-commessa` (§6.12, §6.13).
 

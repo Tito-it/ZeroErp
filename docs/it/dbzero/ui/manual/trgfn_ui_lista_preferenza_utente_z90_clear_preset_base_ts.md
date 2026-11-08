@@ -2,7 +2,7 @@
 
 ### 🎯 Scopo Principale
 
-Mantiene la coerenza tra `preset_base_id` e `preset_base_data_update` nella tabella `ui.lista_preferenza_utente`. Quando `preset_base_id` diventa NULL (per `ON DELETE SET NULL` dalla FK o per UPDATE diretto), azzera automaticamente anche `preset_base_data_update`.
+Mantiene la coerenza tra `preset_base_id` e `preset_base_contenuto_aggiornato_il` nella tabella `ui.lista_preferenza_utente`. Quando `preset_base_id` diventa NULL (per `ON DELETE SET NULL` dalla FK o per UPDATE diretto), azzera automaticamente anche `preset_base_contenuto_aggiornato_il`.
 
 ## Schema
 
@@ -27,14 +27,14 @@ TRIGGER trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
 
 | Condizione | Azione |
 |------------|--------|
-| `NEW.preset_base_id IS NULL AND OLD.preset_base_id IS NOT NULL` | `NEW.preset_base_data_update := NULL` |
+| `NEW.preset_base_id IS NULL AND OLD.preset_base_id IS NOT NULL` | `NEW.preset_base_contenuto_aggiornato_il := NULL` |
 | Qualsiasi altra condizione | `RETURN NEW` senza modifiche |
 
 ## Perché è necessario
 
-`preset_base_data_update` è uno snapshot di `lista_preset.data_update` al momento del salvataggio della preferenza. Il frontend confronta questo valore con `lista_preset.data_update` corrente per mostrare il badge "preset aggiornato — vuoi vedere le novità?".
+`preset_base_contenuto_aggiornato_il` è uno snapshot di `lista_preset.contenuto_aggiornato_il` al momento del salvataggio della preferenza. Il frontend confronta questo valore con `lista_preset.contenuto_aggiornato_il` corrente per mostrare il badge "preset aggiornato — vuoi vedere le novità?".
 
-Se il preset viene eliminato, la FK `ON DELETE SET NULL` azzera `preset_base_id` ma lascerebbe `preset_base_data_update` con un timestamp relativo a un preset inesistente. Il trigger garantisce che il frontend non mostri mai il badge "preset aggiornato" per un preset eliminato: con `preset_base_id IS NULL`, il confronto non avviene.
+Se il preset viene eliminato, la FK `ON DELETE SET NULL` azzera `preset_base_id` ma lascerebbe `preset_base_contenuto_aggiornato_il` con un timestamp relativo a un preset inesistente. Il trigger garantisce che il frontend non mostri mai il badge "preset aggiornato" per un preset eliminato: con `preset_base_id IS NULL`, il confronto non avviene.
 
 ## Note
 

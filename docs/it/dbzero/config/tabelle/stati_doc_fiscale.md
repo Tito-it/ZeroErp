@@ -56,9 +56,11 @@
 | trg_stati_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_fiscale_a10_stati_doc_fiscale_transizioni__88be0f | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'stato_to_id', 'id', 'attivo')` |
 | trg_stati_doc_fiscale_a10_stati_doc_fiscale_transizioni__94ae32 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'stato_from_id', 'id', 'attivo')` |
-| trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
+| trg_stati_doc_fiscale_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_stati_doc_fiscale_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | DELETE | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
 | trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
+| trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
 
 ---
 {% include-markdown "signature-core.md" %}

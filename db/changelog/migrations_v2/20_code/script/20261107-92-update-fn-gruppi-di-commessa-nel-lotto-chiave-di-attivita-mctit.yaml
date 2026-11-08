@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE DEL GRUPPO DALLA RIGA DI COMMESSA: script.fn_gruppi_di_commessa_nel_lotto
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3 (D-6 precisata da Tid il
+#   2026-11-07).
+#
+#   La chiave del gruppo fatturabile di una riga di commessa si costruiva da
+#   ca.sorgente_uid, che dal 20261107-70 non porta piu' l'uid per i tipi a chiave id: la
+#   costruisce vendite.fn_gruppo_fatturabile_key_di_attivita (20261107-74), con l'uid dalla
+#   segment_key. La chiave e' la stessa di prima, per ogni riga.
+#   Corpo dal vivo (dbdev, 2026-11-07), firma dal 20260908-18, SECURITY INVOKER esplicito.
+#   COMMENT invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261107-92-update-fn-gruppi-di-commessa-nel-lotto-chiave-di-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20261107-92-update-fn-gruppi-di-commessa-nel-lotto-chiave-di-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_gruppi_di_commessa_nel_lotto: la chiave del gruppo fatturabile da
+        vendite.fn_gruppo_fatturabile_key_di_attivita. brief-db-sorgente-documento-e-riga §7.2 lotto
+        C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_gruppi_di_commessa_nel_lotto(
+                  -- ⭐ Ancorati: dicono DA DOVE viene il valore. Il chiamante ha
+                  --    in mano un lotto e una commessa, non due bigint.
+                  p_lotto_id    vendite.fatturazione_lotti.id%TYPE,
+                  p_commessa_id vendite.commesse.id%TYPE)
+              -- ⚠️ `jsonb` esplicito e non ancorato: dietro non c'e' nessuna
+              --    colonna. E' un array COMPOSTO qui, come per la gemella
+              --    script.fn_gruppi_trascinati_da_uscita.
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: quali DOCUMENTI (gruppi fatturabili) di un lotto sono
+              --        alimentati da una commessa. E' la conversione che serve
+              --        a chi fallisce avendo in mano la commessa e non il
+              --        documento, e che finora viveva solo dentro
+              --        vendite.fn_segna_esito_gruppo_lotto.
+              -- Ritorna: array ORDINATO di gruppo_key, [] se nessuno.
+              -- ⚠️ Funzione PURA: nessuna scrittura. Solleva solo sui parametri.
+              DECLARE
+                  -- ⚠️ Nessuno dei due riflette una colonna, quindi tipo
+                  --    esplicito: il primo e' la RISPOSTA a una domanda, il
+                  --    secondo l'array composto.
+                  v_ha_perimetro boolean;
+                  v_out          jsonb;
+              BEGIN
+                  -- Guard parametri: un id assente o <= 0 e' un chiamante rotto,
+                  -- non una condizione di dominio. ⛔ Mai un [] silenzioso: si
+                  -- confonderebbe con «nessun documento», che ha una conseguenza
+                  -- opposta (vedi testata).
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_gruppi_di_commessa_nel_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio (> 0)');
+                  END IF;
+              
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_gruppi_di_commessa_nel_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id),
+                          NULL::uuid, 'p_commessa_id obbligatorio (> 0)');
+                  END IF;
+              
+                  -- Il lotto dichiara un perimetro? La domanda si fa UNA volta:
+                  -- serve a restringere, non a decidere se rispondere.
+                  v_ha_perimetro := EXISTS (
+                      SELECT 1 FROM vendite.fatturazione_lotti_gruppi g
+                       WHERE g.lotto_id = p_lotto_id);
+              
+                  SELECT COALESCE(jsonb_agg(k.gruppo_key ORDER BY k.gruppo_key),
+                                  '[]'::jsonb)
+                    INTO v_out
+                    FROM (
+                          -- ⛔ LA CATENA E' QUESTA, e non va spostata: la chiave si
+                          --   calcola su commesse_attivita, che porta la sorgente
+                          --   del DOCUMENTO. Su attivita_fatturabili darebbe
+                          --   COMMESSA:<hash>, che non aggancia niente e non
+                          --   fallisce. ⭐ La costruisce la funzione che la
+                          --   costruisce gia' per la dashboard: una sola sede.
+                          SELECT DISTINCT vendite.fn_gruppo_fatturabile_key_di_attivita(
+                                     ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id
+                                 ) AS gruppo_key
+                            FROM vendite.commesse_attivita ca
+                           WHERE ca.commessa_id = p_commessa_id
+                         ) k
+                   WHERE k.gruppo_key IS NOT NULL
+                     -- Se il lotto dichiara un perimetro, fuori da quello non
+                     -- stava lavorando quel documento. Se non lo dichiara, li
+                     -- stava lavorando tutti.
+                     AND (NOT v_ha_perimetro
+                          OR EXISTS (SELECT 1
+                                       FROM vendite.fatturazione_lotti_gruppi g
+                                      WHERE g.lotto_id   = p_lotto_id
+                                        AND g.gruppo_key = k.gruppo_key));
+              
+                  RETURN COALESCE(v_out, '[]'::jsonb);
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only, come 20261107-70.
+              SELECT 1;

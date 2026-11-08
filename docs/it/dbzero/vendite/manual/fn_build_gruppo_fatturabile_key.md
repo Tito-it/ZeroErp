@@ -1,17 +1,31 @@
-## Documentazione Concettuale – Funzione `vendite.fn_build_gruppo_fatturabile_key(...)`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_build_gruppo_fatturabile_key`
 
-> **Versione**: 2026-07-27 (brief-db-emissione-fattura-per-documento-sorgente
-> PARTE A step A1, decisioni D-1 e D-9 · migration `20260727-10`)
-
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-[vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
-> [vendite.fatturazione_lotti_gruppi](/dbzero/vendite/tabelle/fatturazione_lotti_gruppi)
-> [vendite.vw_dash_competenza_gruppi](/dbzero/vendite/views/vw_dash_competenza_gruppi)
-> [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)
-> [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)
+> 👀 **Vedi anche**
 >
-**Guide**: [sorgente polimorfa](/guide/sorgente-polimorfa) · [fatturazione](/guide/fatturazione)
+> Approfondimento tabelle:
+>
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — le righe che si raggruppano
+> * [vendite.fatturazione_lotti_gruppi](/dbzero/vendite/tabelle/fatturazione_lotti_gruppi) — dove la chiave resta salvata
+>
+> Approfondimento viste:
+>
+> * [vendite.vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) — la chiave riga per riga
+> * [vendite.vw_dash_competenza_gruppi](/dbzero/vendite/views/vw_dash_competenza_gruppi) — l'elenco dei gruppi che l'operatore legge
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_gruppo_fatturabile_key_di_attivita](/dbzero/vendite/funzioni/fn_gruppo_fatturabile_key_di_attivita) — la chiave di una riga di commessa, che chiama questa funzione
+> * [vendite.fn_documento_uid_di_attivita](/dbzero/vendite/funzioni/fn_documento_uid_di_attivita) — l'uid del documento, dalla chiave del push
+> * [vendite.fn_split_gruppo_fatturabile_key](/dbzero/vendite/funzioni/fn_split_gruppo_fatturabile_key) — il verso inverso
+> * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa) — l'emissione mirata per gruppo
+> * [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili) — la selezione delle attività per gruppo
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza e le chiavi in testo
+> * [Fatturazione](/guide/fatturazione) — il giro di fatturazione
 
 ---
 
@@ -52,32 +66,21 @@ unico contenitore naturale è la commessa.
 
 ---
 
-### ⚠️ L'identificativo è l'`uid`, non l'`id` — e non va «corretto»
+### ⚠️ L'identificativo è l'`uid`, anche per i tipi a chiave `id`
 
-La funzione legge quello che sta in `vendite.commesse_attivita.sorgente_uid`,
-che contiene **`<tabella>.uid::text` per tutte le sorgenti** — anche quelle con
-`config.sorgenti.key_selector = 'id'`.
+La chiave nomina il documento con il suo **uid**, per ogni tipo: anche per ordine, contratto e
+DDT, che la provenienza del modello riconosce dall'`id`. Non segue il `key_selector`, e non va
+«allineata»: la chiave è **salvata** nei lotti (`fatturazione_lotti_gruppi`, gli esiti, il log),
+e cambiarne la forma vorrebbe dire riscrivere i lotti già passati. È una delle chiavi che sono
+testo per costruzione: chi la deve risolvere usa `script.fn_sorgente_documento_da_chiave`
+([guida sorgente polimorfa §5](/guide/sorgente-polimorfa)).
 
-**Non allinearla a `commesse_sorgenti`**, che per lo stesso documento contiene
-un valore **diverso** (`id::text` per ordini, contratti, DDT) perché
-`fn_link_commessa_sorgente` normalizza in scrittura. Le due tabelle sono
-popolate dallo stesso push e hanno colonne omonime: è precisamente la
-somiglianza che induce l'errore.
-
-Le tre ragioni della scelta (decisione **D-9**):
-
-1. **la chiave non esce mai dal perimetro di `commesse_attivita`** — la produce
-   `vw_dash_competenza_gruppi` e la consumano i filtri `p_gruppi`, che leggono
-   tutti quella tabella: non deve combaciare con `commesse_sorgenti`, non si
-   incontrano mai;
-2. **normalizzare romperebbe le dashboard**: `vw_dash_fatturazione_contratti` fa
-   già `ca.sorgente_uid = c.uid::text`;
-3. **il riferimento leggibile si aggancia direttamente all'uid**:
-   `vw_dash_fatturazione_documenti.documento_uid` è l'uid, quindi il join è
-   un'uguaglianza diretta.
-
-Dettaglio del meccanismo e delle tabelle che stanno **fuori** da esso:
-[guida sorgente polimorfa §4a](/guide/sorgente-polimorfa).
+**Da dove viene l'uid.** Per una riga di commessa la provenienza tiene l'`id` dei tipi a chiave
+`id`, quindi l'uid non si legge dalle colonne della provenienza: lo porta la chiave del push,
+`segment_key` (`<CODICE>:<uid>…`). Lo estrae `vendite.fn_documento_uid_di_attivita`, e la chiave
+di una riga la costruisce `vendite.fn_gruppo_fatturabile_key_di_attivita`, che chiama questa
+funzione. Che la `segment_key` nomini proprio il documento della provenienza lo verifica, alla
+scrittura della riga, `vendite.trgfn_commesse_attivita_guard_sorgente_segment`.
 
 ---
 
@@ -96,38 +99,53 @@ Dettaglio del meccanismo e delle tabelle che stanno **fuori** da esso:
 |---|---|
 | `p_sorgente_tipo_id <= 0` o `p_commessa_id <= 0` | `E_PARAMETRO_INVALIDO` |
 | riga sourceless senza commessa | `E_PARAMETRO_INVALIDO` (la commessa è il suo unico contenitore) |
-| coppia sorgente incoerente (uno solo dei due valorizzato) | `E_PARAMETRO_INVALIDO` |
+| tipo senza uid, o uid senza tipo | `E_PARAMETRO_INVALIDO` |
 | `sorgente_tipo_id` inesistente in `config.sorgenti` | `E_CODICE` |
 
-La coppia incoerente non dovrebbe verificarsi — lo impedisce
-`chk_commesse_attivita_sorgente_pair` — ma la funzione è chiamabile con valori
-arbitrari: meglio rumore che una chiave che poi non risolve in silenzio.
+La coppia incoerente non accade per una riga di commessa — la forma la tiene
+`chk_commesse_attivita_sorgente_forma`, e il guard della `segment_key` verifica che la chiave porti
+l'uid del documento — ma la funzione è chiamabile con valori arbitrari: meglio rumore che una
+chiave che poi non risolve in silenzio.
 
 ---
 
-### ⚠️ Non derivare la chiave da `segment_key`
+### ⚠️ Dalla `segment_key` si legge solo l'uid
 
-`segment_key` è `ORD:<uid>:R:<n>`, `MAN:<commessa>:<n>`,
-`CONTR:<uid>:R:<n>:M:<YYYY-MM>`… I prefissi lì sono una convenzione di
-**leggibilità per-sorgente**, non un contratto: ricavarne il gruppo con
-`split_part` creerebbe un accoppiamento a una regola di formattazione che
-nessuno si è impegnato a mantenere.
+`segment_key` è `ORDINE_VENDITA:<uid>:R:<n>`, `CONTRATTO:<uid>:R:<n>:M:…`, `MAN:<commessa>:<n>`…
+Il prefisso è il codice del tipo, e il guard della `segment_key` lo verifica, ma il prefisso della
+chiave del gruppo viene sempre da `config.sorgenti.codice_interno` del tipo della riga, letto dal
+catalogo. Della `segment_key` si usa solo l'uid del documento, con il BB che lo estrae.
 
 ---
 
 ### Chi la usa
 
+Per una riga di commessa la chiamano tutti attraverso `vendite.fn_gruppo_fatturabile_key_di_attivita`:
+
 | Consumatore | A cosa serve |
 |---|---|
 | `vw_dash_competenza_attivita` (colonna `gruppo_key`) | espone la chiave riga per riga |
 | `vw_dash_competenza_gruppi` | aggrega su di essa: è l'elenco che l'operatore legge |
-| `fn_emit_attivita_fatturabili_da_commessa` | filtra le righe da emettere |
+| `vw_commesse_attivita_emittibilita` e `fn_emit_attivita_fatturabili_da_commessa` | filtrano le righe da emettere |
 | `fn_select_attivita_fatturabili` | filtra le attività fatturabili già esistenti |
 | `fn_list_emittibili_lane` · `fn_list_commesse_emittibili` | restringono la discovery |
+| `vw_lotti_gruppi_serviti`, `vw_lotto_documento_righe`, `fn_esito_gruppi_giro` | leggono i gruppi di un lotto |
 
 Poiché elenco e filtri chiamano **la stessa funzione**, ciò che l'operatore vede
 è esattamente ciò che l'emissione accetta: il frontend passa la stringa che
 legge, senza mappature.
+
+---
+
+### Note di migrazione
+
+* 2026-07-27 — nasce la funzione, con la chiave sull'uid del documento
+  (brief-db-emissione-fattura-per-documento-sorgente, parte A, D-1 e D-9).
+* 2026-11-07 — la riga di commessa passa alla provenienza del modello, e la chiave testuale
+  `sorgente_uid`, che portava l'uid per ogni tipo, non c'è più: l'uid lo legge dalla
+  `segment_key` `vendite.fn_documento_uid_di_attivita`, e la chiave di una riga la costruisce
+  `vendite.fn_gruppo_fatturabile_key_di_attivita`. La forma della chiave non cambia
+  (brief-db-sorgente-documento-e-riga).
 
 ---
 

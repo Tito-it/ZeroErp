@@ -1,19 +1,45 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_emit_attivita_fatturabili_da_commessa`
+
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — le righe da emettere
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — le attività fatturabili prodotte
+> * [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti) — la sorgente ROOT, obbligatoria
+>
+> Approfondimento viste:
+>
+> * [vendite.vw_commesse_attivita_emittibilita](/dbzero/vendite/views/vw_commesse_attivita_emittibilita) — la classe d'emittibilità di ogni riga
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_build_gruppo_fatturabile_key](/dbzero/vendite/funzioni/fn_build_gruppo_fatturabile_key) — la chiave dei gruppi di `p_gruppi`
+> * [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili) — il filtro sulle attività già esistenti
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 16-06-2026)
-Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
+
+Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 della pipeline delle
+attività fatturabili), e restituisce i contatori delle righe candidate, inserite, aggiornate e
+saltate.
 
 ---
 
 ### Regole applicate
 
-* La ROOT source della commessa e` obbligatoria (`commesse_sorgenti`).
-* La sorgente delle righe AF e` sempre `COMMESSA`.
-* `segment_key` viene mappata deterministicamente in UUID per `attivita_fatturabili.sorgente_uid`.
-* `attivita_fatturabili.sorgente_riga` viene valorizzato con `commesse_attivita.id`
-  (coerenza con trigger polimorfo `key_selector='id'`).
-* Idempotenza gestita tramite chiave sorgente (`COMMESSA + segment_key-hash`).
-* Se trova una riga AF gia` fatturata, blocca l'aggiornamento con errore.
+* La ROOT source della commessa è obbligatoria (`commesse_sorgenti`): senza,
+  `E_VALORE_MANCANTE`.
+* **Una attività fatturabile per riga di commessa**: l'attività punta la riga con la FK
+  `commessa_attivita_id` (NOT NULL e unica), e la sua provenienza è quella della riga di
+  commessa. L'attività non ha colonne `sorgente_*` proprie.
+* **Idempotenza sulla FK**: la riga già emessa si ritrova per `commessa_attivita_id`, non per la
+  `segment_key` (che può cambiare forma sotto una riga già emessa); un secondo giro aggiorna
+  l'attività invece di crearne un'altra.
+* Se trova un'attività già fatturata, blocca l'aggiornamento con `E_RIGA_GIA_FATTURATA`.
 * Propaga `commessa_id`, `commessa_attivita_id` e `prezzo_bloccato`.
 * Propaga lo **snapshot audit pricing v5** (8 colonne) 1:1 da `commesse_attivita`:
   `prezzo_base_snapshot`, `origine_prezzo`, `tipo_variazione_applicata`,
@@ -27,37 +53,22 @@ Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipel
   vengono **rinfrescate** dalla riga commessa, coerentemente con `prezzo_unitario`/
   `prezzo_snapshot` (lo snapshot di emissione resta allineato finché non è fatturato).
 * Aggiorna `commesse_attivita.stato_emissione = 'EMESSA'` per le righe emesse.
-* **Quali righe** (rev 2026-09-09/12): si legge la **classe** da
-  [vw_commesse_attivita_emittibilita](/dbzero/vendite/manual/vw_commesse_attivita_emittibilita),
-  **vista dal giro** con [fn_classe_emittibilita_per_giro](/dbzero/vendite/manual/fn_classe_emittibilita_per_giro):
+* **Quali righe**: si legge la **classe** da
+  [vw_commesse_attivita_emittibilita](/dbzero/vendite/views/vw_commesse_attivita_emittibilita),
+  **vista dal giro** con [fn_classe_emittibilita_per_giro](/dbzero/vendite/funzioni/fn_classe_emittibilita_per_giro):
   `PRONTA` entra; `TRATTENUTA` soltanto dal lotto corrente
-  ([fn_lotto_da_emit_batch](/dbzero/vendite/manual/fn_lotto_da_emit_batch)`(p_emit_batch_id)`)
+  ([fn_lotto_da_emit_batch](/dbzero/vendite/funzioni/fn_lotto_da_emit_batch)`(p_emit_batch_id)`)
   è `PRONTA` e entra — è il proprio documento di un tentativo fallito, da
   riprendere al rilancio; trattenuta da un **altro** lotto in gioco resta fuori;
   `NON_APPROVATA`/`RIFIUTATA` solo con `p_only_approved = false`.
-  ⭐ Dal 12-09-2026 l'auto-esclusione del proprio lotto **non è più scritta qui**:
-  vive nell'helper, la stessa riga che legge la discovery
-  ([fn_list_commesse_emittibili](/dbzero/vendite/manual/fn_list_commesse_emittibili)).
-  Due copie si erano già sfilate una volta — la discovery non l'aveva, e questa
-  funzione, che avrebbe ripreso i documenti, non veniva mai raggiunta.
+  ⭐ L'auto-esclusione del proprio lotto **non è scritta qui**: vive nell'helper, la stessa
+  riga che legge la discovery
+  ([fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)).
   Presidio: `test-pull-non-prende-trattenuti-v1.sql` (P-5, P-5-bis, P-5-ter).
 
 ---
 
-### Output
-
-Ritorna contatori:
-
-* `total_candidate`
-* `inserted_rows`
-* `updated_rows`
-* `skipped_rows`
-
----
-
----
-
-### Emissione mirata: `p_gruppi` (rev 2026-07-27)
+### Emissione mirata: `p_gruppi`
 
 Parametro `text[]`, default `NULL`. Restringe l'emissione ai soli **gruppi
 fatturabili** richiesti — la chiave arriva da
@@ -66,7 +77,7 @@ mai ricostruita a mano.
 
 | Valore | Comportamento |
 |---|---|
-| `NULL` *(default)* | nessuna restrizione: **identico** al comportamento storico |
+| `NULL` *(default)* | nessuna restrizione |
 | `'{}'` | richiesta vuota → zero righe |
 | `{...}` | solo le righe di quei gruppi; chiave inesistente → zero righe, **nessun errore** |
 
@@ -81,19 +92,11 @@ di un giro interrotto, di un reset a bozza o del giro schedulato — le filtra
 [`fn_select_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili).
 I due filtri lavorano su assi diversi e servono entrambi.
 
-> **Firma cambiata**: la versione a 3 argomenti è stata droppata nello stesso
-> changeSet. Un parametro con default su `RETURNS TABLE` crea un overload
-> ambiguo, e ogni chiamata che omette `p_gruppi` fallirebbe con *function is not
-> unique*.
-
-
 ---
 
-### 🔄 rev 2026-08-18 — propaga anche natura e riga rettificata
+### Propaga anche natura e riga rettificata
 
-Brief: `brief-design-note-credito-resi` (slice **N1b** e **N5**).
-
-Due colonne in più nella propagazione 1:1 da `commesse_attivita` ad
+Due colonne della propagazione 1:1 da `commesse_attivita` ad
 `attivita_fatturabili`, sullo stesso modello di `tipo_movimento`:
 
 * `natura_doc_id`
@@ -102,9 +105,24 @@ Due colonne in più nella propagazione 1:1 da `commesse_attivita` ad
 ⭐ **La natura deve arrivare fino alla TESTATA** — è lì che il builder XML della
 FatturaPA chiederà se sta trasmettendo un TD01 o un TD04. Fermarla qui avrebbe
 lasciato la chiave documento senza nulla da separare, e **fatture e note di
-credito sarebbero finite sulla stessa testata**.
+credito finirebbero sulla stessa testata**.
 
-Firma e `RETURNS TABLE` invariati: `CREATE OR REPLACE` è bastato.
+---
+
+### Note di migrazione
+
+* 2026-07-27 — arriva `p_gruppi`; la versione a 3 argomenti si ritira nello stesso changeSet, perché
+  un parametro con default su `RETURNS TABLE` avrebbe creato un overload ambiguo
+  (brief-db-emissione-fattura-per-documento-sorgente).
+* 2026-08-18 — propaga `natura_doc_id` e `fattura_riga_rettificata_id`
+  (brief-design-note-credito-resi, N1b e N5).
+* 2026-09-12 — l'auto-esclusione del proprio lotto passa all'helper condiviso con la discovery:
+  le due copie si erano sfilate, e al rilancio di un pull fallito la discovery scartava i propri
+  documenti (brief-db-rilancio-step-non-rivede-le-proprie-commesse).
+* 2026-11-07 — l'attività fatturabile non ha più una provenienza propria: prima la funzione
+  scriveva `sorgente_tipo_id = COMMESSA`, un uuid ricavato dalla `segment_key` in `sorgente_uid` e
+  l'id della riga in `sorgente_riga`, e ritrovava la riga emessa da quella chiave. Ora la ritrova
+  per `commessa_attivita_id` (brief-db-sorgente-documento-e-riga).
 
 ---
 

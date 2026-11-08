@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ATTIVITA' FATTURABILE PERDE LE COLONNE DELLA PROVENIENZA: vendite.attivita_fatturabili
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1 (D-1, D-3, S-7).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La provenienza dell'attivita' fatturabile e' la riga di commessa, con due FK
+#   NOT NULL (commessa_id, commessa_attivita_id). Le colonne sorgente_* erano una
+#   copia (tipo COMMESSA, riga di commessa), sorgente_uid un'impronta
+#   d'idempotenza che nessuno legge piu' (D-1), sorgente_origine_tipo_id il tipo
+#   del documento senza la sua chiave, che si legge dalla riga di commessa (D-3).
+#   I loro lettori sono gia' passati alla riga di commessa nei changeSet
+#   precedenti del giro (il pull, il normalize, la catena dei termini, la vista
+#   dello smistamento).
+#
+# ── ⚠️ CHE COSA SE NE VA ────────────────────────────────────────────
+#   * le quattro colonne, col DEFAULT 0 di sorgente_riga;
+#   * fk_attivita_fatturabili_sorgente_tipo e _sorgente_origine_tipo (le loro
+#     righe del registro degli indici FK escono in un changeSet di 80_data);
+#   * il trigger ATTIVO generato sulla FK verso config.sorgenti, che blocca il
+#     DROP (IF EXISTS, §11.5); il trigger gemello su config.sorgenti per questa
+#     figlia lo ritira il generatore (dbops.fn_ritira_attivo_orfani) a ci_apply.
+#   Nessuna tabella di storico ha le colonne (lo storico e' uno snapshot jsonb).
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261107-45-alter-attivita-fatturabili-drop-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261107-45-alter-attivita-fatturabili-drop-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.attivita_fatturabili: via sorgente_tipo_id, sorgente_uid, sorgente_riga,
+        sorgente_origine_tipo_id e le loro FK. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro
+        C.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il trigger ATTIVO generato porta sorgente_origine_tipo_id in UPDATE OF e
+              -- blocca il DROP COLUMN. IF EXISTS: su un database da zero, alla prima passata,
+              -- non c'e' ancora (lo genera ci_apply, e senza la FK non lo genera piu').
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd
+                  ON vendite.attivita_fatturabili;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT fk_attivita_fatturabili_sorgente_tipo,
+                  DROP CONSTRAINT fk_attivita_fatturabili_sorgente_origine_tipo,
+                  DROP COLUMN sorgente_tipo_id,
+                  DROP COLUMN sorgente_uid,
+                  DROP COLUMN sorgente_riga,
+                  DROP COLUMN sorgente_origine_tipo_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la provenienza dell'attivita' e' la riga di commessa (FK).
+              SELECT 1;

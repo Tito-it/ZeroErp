@@ -17,6 +17,8 @@
 --  9) tx_id esplicito: il valore fornito e' conservato tale e quale
 -- 10) tx_id esplicito + GUC avvelenata: il valore fornito non viene contaminato
 -- 11) [strutturale] l'uscita anticipata precede la lettura di config.parameters
+-- 12) GUC forzata a un id NON registrato: il tx_id scritto e' la sentinella uuid_nil
+--     (D12-bis, brief-db-revisione-dbops giro 10a: prima vinceva l'id della GUC)
 -- ------------------------------------------------------------
 -- COSA PRESIDIA QUESTO FILE
 -- Il difetto originale: fn_get_or_create_session_tx_id, senza canale dblink,
@@ -46,22 +48,25 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(12);
 
--- ⚠️ 2026-09-04: `dbops.coda_lavori_tipi.processo_codice` e' NOT NULL — ogni
---   tipo di coda dichiara di quale PROCESSO e', e da li' il guard di classe in
---   dbops.fn_accoda_lavoro legge se il lavoro e' di dominio. Un tipo senza
---   processo non avrebbe una classe, quindi niente da controllare.
---   ⇒ La fixture si fabbrica il proprio processo invece di appoggiarsi a uno
---     del catalogo: MANUTENZIONE, cosi' il guard di classe non entra in gioco e
---     questo file continua a collaudare cio' che collaudava.
-INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, causa_fallimento)
-VALUES (9703, 'PGTAP_PROC_TXID', 'processo di prova per test-tx-id-coerenza', 'MANUTENZIONE', 'CODA', 'PROGRAMMA');
+-- ⭐ IL VEICOLO: una tabella temporanea col trigger montato (rev 2026-11-08).
+--   Fino al giro 7-bis di brief-db-revisione-dbops (§23) il veicolo era
+--   dbops.coda_lavori_tipi, che portava tx_id e il trigger a mano. Il catalogo
+--   dei tipi lo scrive solo il migratore, e 20261108-90 gli ha tolto colonna e
+--   trigger. Questo file collauda il TRIGGER, non una tabella: il soggetto se lo
+--   fabbrica, con la sola colonna che il trigger legge e scrive. Montato come lo
+--   monta il framework (BEFORE INSERT OR UPDATE, FOR EACH ROW). Nessun INSERT
+--   passa dal trigger prima dello scenario A: l'asserzione 2 resta pulita.
+CREATE TEMP TABLE tmp_veicolo_txid (
+  codice text PRIMARY KEY,
+  tx_id  uuid NULL
+);
+CREATE TRIGGER trg_tmp_veicolo_txid_gen_tx_id_ins_upd
+  BEFORE INSERT OR UPDATE ON pg_temp.tmp_veicolo_txid
+  FOR EACH ROW EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
 
--- ⚠️ Creato QUI, prima che il test azzeri `dbops.tx_id`: questo INSERT passa
---   dal trigger tx_id, e farlo piu' sotto falserebbe l'asserzione 2.
-
--- Scope univoco: la tabella ha UNIQUE su codice.
+-- Scope univoco: il veicolo ha la chiave su codice.
 CREATE TEMP TABLE tmp_costanti_txid AS
 SELECT ('PGTAP_TXID_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'))::text AS scope;
 
@@ -89,17 +94,14 @@ SELECT is(
 
 SELECT lives_ok(
   format(
-    $q$ INSERT INTO dbops.coda_lavori_tipi
-          (codice, handler_code, descrizione, run_as_default, max_tentativi_default, attivo, processo_codice)
-        VALUES (%L, %L, 'pgTAP coerenza tx_id', 'OPERATORE', 3, TRUE, 'PGTAP_PROC_TXID') $q$,
-    (SELECT scope || '_A' FROM tmp_costanti_txid),
-    'pgtap_handler_txid'
+    $q$ INSERT INTO pg_temp.tmp_veicolo_txid (codice) VALUES (%L) $q$,
+    (SELECT scope || '_A' FROM tmp_costanti_txid)
   ),
   '3) Senza canale: INSERT su tabella tracciata riesce (riproduce il caso CI)'
 );
 
 SELECT is(
-  (SELECT t.tx_id FROM dbops.coda_lavori_tipi t
+  (SELECT t.tx_id FROM pg_temp.tmp_veicolo_txid t
     WHERE t.codice = (SELECT scope || '_A' FROM tmp_costanti_txid)),
   script.uuid_nil(),
   '4) Senza canale: il tx_id scritto e'' uuid_nil'
@@ -111,22 +113,24 @@ SELECT is(
 -- correzione questo INSERT sollevava W_TXID_NOT_REGISTERED e da li' in poi
 -- falliva tutto; ora deve solo avvertire e proseguire.
 --
--- NB: il tx_id scritto sara' l'id della GUC, non uuid_nil: la COALESCE finale
--- del trigger preferisce current_setting('dbops.tx_id') a v_new_tx_id. E' una
--- residua discrepanza con la guida ("assegna nil"), innocua dopo lo step 1
--- perche' la GUC puo' contenere solo id registrati. Vedi §4.2 del brief.
+-- Il tx_id scritto e' la sentinella uuid_nil, come promettono W_TXID_NOT_REGISTERED
+-- e la guida ("assegna nil"): lo prova il test 12, subito sotto.
 -- ------------------------------------------------------------
 SET LOCAL dbops.tx_id = '11111111-1111-4111-8111-111111111111';
 
 SELECT lives_ok(
   format(
-    $q$ INSERT INTO dbops.coda_lavori_tipi
-          (codice, handler_code, descrizione, run_as_default, max_tentativi_default, attivo, processo_codice)
-        VALUES (%L, %L, 'pgTAP coerenza tx_id', 'OPERATORE', 3, TRUE, 'PGTAP_PROC_TXID') $q$,
-    (SELECT scope || '_B' FROM tmp_costanti_txid),
-    'pgtap_handler_txid'
+    $q$ INSERT INTO pg_temp.tmp_veicolo_txid (codice) VALUES (%L) $q$,
+    (SELECT scope || '_B' FROM tmp_costanti_txid)
   ),
   '5) GUC con id NON registrato: l''INSERT non solleva (prima era il blocco)'
+);
+
+SELECT is(
+  (SELECT t.tx_id FROM pg_temp.tmp_veicolo_txid t
+    WHERE t.codice = (SELECT scope || '_B' FROM tmp_costanti_txid)),
+  script.uuid_nil(),
+  '12) GUC con id NON registrato: il tx_id scritto e'' la sentinella uuid_nil, non l''id della GUC'
 );
 
 -- ------------------------------------------------------------
@@ -137,11 +141,8 @@ SET LOCAL myapp.bypass_tx_id_check = 'true';
 
 SELECT lives_ok(
   format(
-    $q$ INSERT INTO dbops.coda_lavori_tipi
-          (codice, handler_code, descrizione, run_as_default, max_tentativi_default, attivo, processo_codice)
-        VALUES (%L, %L, 'pgTAP coerenza tx_id', 'OPERATORE', 3, TRUE, 'PGTAP_PROC_TXID') $q$,
-    (SELECT scope || '_C' FROM tmp_costanti_txid),
-    'pgtap_handler_txid'
+    $q$ INSERT INTO pg_temp.tmp_veicolo_txid (codice) VALUES (%L) $q$,
+    (SELECT scope || '_C' FROM tmp_costanti_txid)
   ),
   '6) Non-regressione: con bypass attivo l''INSERT riesce'
 );
@@ -204,18 +205,15 @@ SELECT '00000000-0000-4000-8000-0000000000e1'::uuid AS tx_id;
 
 SELECT lives_ok(
   format(
-    $q$ INSERT INTO dbops.coda_lavori_tipi
-          (codice, handler_code, descrizione, run_as_default, max_tentativi_default, attivo, tx_id, processo_codice)
-        VALUES (%L, %L, 'pgTAP uscita anticipata', 'OPERATORE', 3, TRUE, %L::uuid, 'PGTAP_PROC_TXID') $q$,
+    $q$ INSERT INTO pg_temp.tmp_veicolo_txid (codice, tx_id) VALUES (%L, %L::uuid) $q$,
     (SELECT scope || '_E' FROM tmp_costanti_txid),
-    'pgtap_handler_txid',
     (SELECT tx_id FROM tmp_txid_esplicito)
   ),
   '8) tx_id esplicito: INSERT riesce (uscita anticipata, nessun giro lungo)'
 );
 
 SELECT is(
-  (SELECT t.tx_id FROM dbops.coda_lavori_tipi t
+  (SELECT t.tx_id FROM pg_temp.tmp_veicolo_txid t
     WHERE t.codice = (SELECT scope || '_E' FROM tmp_costanti_txid)),
   (SELECT tx_id FROM tmp_txid_esplicito),
   '9) tx_id esplicito: il valore fornito e'' conservato tale e quale'
@@ -226,16 +224,13 @@ SELECT is(
 -- consulta la GUC e il registro -- viene davvero saltato.
 SET LOCAL dbops.tx_id = '00000000-0000-4000-8000-00000000dead';
 
-INSERT INTO dbops.coda_lavori_tipi
-  (codice, handler_code, descrizione, run_as_default, max_tentativi_default, attivo, tx_id,
-   processo_codice)
-SELECT c.scope || '_F', 'pgtap_handler_txid', 'pgTAP uscita anticipata (GUC avvelenata)',
-       'OPERATORE', 3, TRUE, e.tx_id, 'PGTAP_PROC_TXID'
+INSERT INTO pg_temp.tmp_veicolo_txid (codice, tx_id)
+SELECT c.scope || '_F', e.tx_id
   FROM tmp_costanti_txid c, tmp_txid_esplicito e;
 
 SELECT is(
   (SELECT t.tx_id
-     FROM dbops.coda_lavori_tipi t
+     FROM pg_temp.tmp_veicolo_txid t
     WHERE t.codice = (SELECT scope || '_F' FROM tmp_costanti_txid)),
   (SELECT tx_id FROM tmp_txid_esplicito),
   '10) tx_id esplicito + GUC avvelenata: il valore fornito non viene contaminato'

@@ -12,7 +12,7 @@
 -- Test: script.fn_crea_utente_tecnico
 -- Brief: brief-db-processi-automatici-identita-e-perimetro §4 (fase 3b)
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 13):
 --  1) la funzione esiste
 --  2) ⛔ PUBLIC non ha EXECUTE sulla fabbrica
 --  3) su un processo eleggibile crea l'utente e ritorna l'auth_user_id
@@ -25,6 +25,9 @@
 --  9) ⛔ un processo di CODA viene rifiutato
 -- 10) ⛔ un secondo utente su stesso processo E emittente viene rifiutato
 -- 11) ⭐ i due mondi restano disgiunti: togliere il flag tecnica viene rifiutato
+-- 13) ⭐ l'emittente passato in MINUSCOLO si trova, e lo username porta il
+--     codice SALVATO (20261104-36): il 3) crea con la sigla in minuscolo, il
+--     10) rifiuta il doppione scritto in maiuscolo
 --
 -- Scopo:
 --  - provare che i CINQUE inserimenti coordinati riescono davvero: e' il test
@@ -56,7 +59,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   scratch ricostruito da zero.
 SET CONSTRAINTS ALL DEFERRED;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- 1..2. Esistenza e postura dei privilegi
@@ -123,8 +126,10 @@ DECLARE
 BEGIN
     -- ⭐ Nessun profilo: e' il caso NORMALE. Un processo headless non passa da
     --   percorsi capability-gated, quindi zero capability e' minimo privilegio.
+    -- ⭐ La sigla in MINUSCOLO (rev 2026-11-04, 20261104-36): l'emittente si
+    --   cerca col codice normalizzato. Il 10) la riscrive in maiuscolo.
     v_auth_user_id := script.fn_crea_utente_tecnico(
-        'PGTAP-FABBRICA-OK', current_setting('pgtap.emittente'));
+        'PGTAP-FABBRICA-OK', lower(current_setting('pgtap.emittente')));
     PERFORM set_config('pgtap.auth_user_id', v_auth_user_id::text, true);
 END
 $crea$;
@@ -259,6 +264,16 @@ SELECT throws_ok(
     'P0001',
     NULL,
     'togliere il flag tecnica a un''identita'' su soggetto di processo viene rifiutato'
+);
+
+-- ============================================================
+-- 13. ⭐ Lo username col codice SALVATO dell'emittente
+-- ============================================================
+SELECT is(
+    (SELECT au.username::text FROM django.auth_user au
+      WHERE au.id = current_setting('pgtap.auth_user_id')::integer),
+    'PGTAP-FABBRICA-OK@' || current_setting('pgtap.emittente'),
+    'lo username porta il codice salvato dell''emittente, non quello passato in minuscolo'
 );
 
 SELECT * FROM finish();

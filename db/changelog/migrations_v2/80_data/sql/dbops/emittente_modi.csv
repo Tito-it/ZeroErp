@@ -1,0 +1,36 @@
+modo,schema_tabella,nome_tabella,colonna_chiave,forma,colonna,modo_padre,note
+fiscale,anagrafiche,emittenti_fiscali,id,PK,id,NULL,Il valore e' gia' l'id dell'emittente fiscale: si verifica che esista.
+soggetto_ruolo,anagrafiche,emittenti_fiscali,soggetto_ruolo_id,PK,id,NULL,L'emittente fiscale del soggetto-ruolo dato.
+fattura,vendite,fatture,id,SR,emittente_soggetto_ruolo_id,NULL,NULL
+fattura_sdi,vendite,fatture_sdi,id,SALTO,fattura_id,fattura,NULL
+conto_bancario,anagrafiche,soggetti_ruoli_conti_bancari,id,SR,soggetto_ruolo_id,NULL,Il conto bancario di un soggetto-ruolo: il passo intermedio di ente_incasso.
+ente_incasso,pagamenti,enti_incasso,id,SALTO,soggetto_ruolo_conto_bancario_id,conto_bancario,Dal conto su cui atterra il denaro.
+contabile,pagamenti,vendite_contabili,id,SR,emittente_soggetto_ruolo_id,NULL,La distinta sa di chi e'.
+listino,vendite,listini,id,SR,emittente_soggetto_ruolo_id,NULL,NULL
+listino_versione,vendite,listini_versioni,id,SALTO,listino_id,listino,La versione non porta l'emittente: lo porta il listino.
+magazzino,magazzino,magazzini,id,PK,emittente_fiscale_id,NULL,NULL
+inventario,magazzino,inventari,id,SALTO,magazzino_id,magazzino,NULL
+movimento,magazzino,movimenti,id,SALTO,magazzino_id,magazzino,Dal magazzino: non dalla sorgente del movimento.
+rettifica,magazzino,rettifiche,id,SALTO,magazzino_id,magazzino,NULL
+trasferimento,magazzino,trasferimenti,id,SALTO,magazzino_id_from,magazzino,Dal magazzino di partenza.
+asset,magazzino,assets,id,PK,emittente_fiscale_id,NULL,NULL
+evento_asset,magazzino,eventi_assets,id,SALTO,asset_id,asset,Dall'asset: non dalla sorgente dell'evento.
+ddt,vendite,ddt,id,PK,emittente_fiscale_id,NULL,NULL
+ddt_riga,vendite,ddt_righe,id,SALTO,ddt_id,ddt,NULL
+ordine,vendite,ordini,id,PK,emittente_fiscale_id,NULL,NULL
+ordine_riga,vendite,ordini_righe,id,SALTO,ordine_id,ordine,NULL
+preventivo,vendite,preventivi,id,PK,emittente_fiscale_id,NULL,NULL
+preventivo_riga,vendite,preventivi_righe,id,SALTO,preventivo_id,preventivo,NULL
+offerta,vendite,offerte_commerciali,id,PK,emittente_fiscale_id,NULL,NULL
+offerta_eccezione,vendite,offerte_commerciali_eccezioni,id,SALTO,offerta_id,offerta,NULL
+contratto,vendite,contratti,id,PK,emittente_fiscale_id,NULL,NULL
+contratto_riga,vendite,contratti_righe,id,SALTO,contratto_id,contratto,NULL
+reso,vendite,resi,id,PK,emittente_fiscale_id,NULL,NULL
+reso_riga,vendite,resi_righe,id,SALTO,reso_id,reso,NULL
+commessa,vendite,commesse,id,SR,emittente_soggetto_ruolo_id,NULL,NULL
+commessa_attivita,vendite,commesse_attivita,id,SALTO,commessa_id,commessa,NULL
+attivita_fatturabile,vendite,attivita_fatturabili,id,SALTO,commessa_id,commessa,NULL
+lotto,vendite,fatturazione_lotti,id,SR,emittente_soggetto_ruolo_id,NULL,NULL
+pratica,pratiche,pratiche,id,PK,emittente_fiscale_id,NULL,NULL
+flusso,pratiche,flussi,id,SALTO,pratica_id,pratica,NULL
+documento_generato,documenti,documenti_generati,id,PK,emittente_fiscale_id,NULL,NULL

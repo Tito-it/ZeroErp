@@ -1,44 +1,66 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_tfap_guard_compatibilita`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_tfap_guard_compatibilita`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.template_flussi_avanzamento_proiezione](/dbzero/pratiche/tabelle/template_flussi_avanzamento_proiezione)
-> [pratiche.template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi)
-> [pratiche.trgfn_tfhe_guard_no_proiezione](/dbzero/pratiche/funzioni/trgfn_tfhe_guard_no_proiezione)
-> [pratiche.trgfn_flussi_guard_esito_classe](/dbzero/pratiche/funzioni/trgfn_flussi_guard_esito_classe)
+> * [pratiche.template_flussi_avanzamento_proiezione](/dbzero/pratiche/tabelle/template_flussi_avanzamento_proiezione) — il binding che il guard protegge
+> * [pratiche.template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi) — gli handler con cui il binding non coesiste
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — la modalità di esito dello step
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_tfhe_guard_no_proiezione](/dbzero/pratiche/funzioni/trgfn_tfhe_guard_no_proiezione) — il guard speculare, dal lato degli handler
+> * [pratiche.trgfn_flussi_guard_esito_classe](/dbzero/pratiche/funzioni/trgfn_flussi_guard_esito_classe) — il controllo a runtime che uno step `DOMINIO` farebbe scattare
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva gli errori
 
 ---
+
 ### 🎯 Scopo Principale
-(review 06-07-2026 — GUIDA D4, brief-db-guida-avanza-esito-proiettato)
 
-Guard **config-time** (`BEFORE INSERT OR UPDATE` su
-`pratiche.template_flussi_avanzamento_proiezione`) che protegge la coerenza del binding di
-avanzamento su proiezione. Due invarianti:
+`pratiche.trgfn_tfap_guard_compatibilita` è il guard di configurazione del binding di avanzamento su
+proiezione: lo ammette solo su uno step che accetta verdetti, e non lo lascia coesistere con un handler
+che completa lo stesso step.
 
-1. **Solo step non-DOMINIO** (D-B3, codice `TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO`, 517):
-   la proiezione produce **verdetti** (`is_verdetto=true`); uno step `modalita_esito='DOMINIO'`
-   vuole esiti di **ramo**, e li rifiuterebbe a runtime via
-   `pratiche.trgfn_flussi_guard_esito_classe` (504) **dentro il best-effort** → il milestone non
-   avanzerebbe **mai**, in silenzio. Meglio bloccarlo alla configurazione.
-2. **Mutua esclusione** con `template_flussi_handler_eventi` `COMPLETATO` **attivo** (D-B10,
-   codice `TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER`, 518): uno step o è **projection-driven**
-   o è **handler-driven** sul COMPLETATO, **mai entrambi**. Altrimenti l'avanzamento standalone
-   (DB) completerebbe il flusso **saltando** l'handler Python → azione di dominio persa in
-   silenzio (la divergenza che GUIDA elimina).
+È montata `BEFORE INSERT OR UPDATE`, riga per riga, su `pratiche.template_flussi_avanzamento_proiezione`.
 
 ---
 
-### Note operative
+### ⛔ Solo su uno step non `DOMINIO`
 
-* Il conflitto (2) si valuta fra binding **entrambi attivi**: un handler `attivo=false` non
-  dispatcha, quindi il **cutover** dell'inversione può **disattivarlo** senza `DELETE`, e poi
-  inserire il binding G2 (l'ordine atomico è: disattiva handler → inserisci binding).
-* Guard **speculare**: `pratiche.trgfn_tfhe_guard_no_proiezione` presidia il lato opposto
-  (aggiunta di un handler `COMPLETATO` a uno step che ha già un binding di avanzamento).
-* Errori sollevati via `script.fn_log_and_raise_error` (codici 517/518 in
-  `config.messaggi_errore`).
+La proiezione produce **verdetti**. Uno step con `modalita_esito = 'DOMINIO'` vuole esiti di ramo, e li
+rifiuterebbe a runtime con `pratiche.trgfn_flussi_guard_esito_classe`: ma l'avanzamento su proiezione
+è best-effort, e il rifiuto resterebbe silenzioso. Il milestone non avanzerebbe mai, senza che nessuno
+lo sappia. Per questo il guard lo blocca alla configurazione.
+
+---
+
+### ⛔ O proiezione o handler, mai entrambi
+
+Uno step avanza o per proiezione o per l'handler sull'evento `COMPLETATO`, mai per entrambi: altrimenti
+l'avanzamento dal database completerebbe il flusso saltando l'handler del backend, e l'azione di
+dominio andrebbe persa in silenzio.
+
+Il conflitto si valuta fra binding entrambi attivi. Un handler disattivato non fa niente, quindi il
+passaggio da handler a proiezione si fa senza cancellare: si disattiva l'handler, poi si inserisce il
+binding. Il lato opposto (un handler aggiunto a uno step che ha già il binding) lo presidia
+`pratiche.trgfn_tfhe_guard_no_proiezione`.
+
+---
+
+### Codici errore
+
+* `E_TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO` — il binding punta a uno step `DOMINIO`.
+* `E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER` — sullo stesso step c'è già un handler attivo
+  sull'evento `COMPLETATO`.
+
+---
+
+### Note di migrazione
+
+* 2026-07-06 — nasce con il binding di avanzamento su proiezione (brief-db-guida-avanza-esito-proiettato).
 
 ---
 

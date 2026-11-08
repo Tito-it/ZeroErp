@@ -77,7 +77,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
     @_AUTH
     @patch("apps.vendite.services.vendite_service.richiedi_codice_a_vocabolario",
            side_effect=lambda tabella, colonna, valore, **_k: valore)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filtri_normalizzati(self, repo_cls, vocab, _auth) -> None:
         repo_cls.return_value.list_giornale_trasversale.return_value = ([], 0, 0, 0)
         repo_cls.return_value.registri_giornale_ammessi.return_value = _REGISTRI
@@ -100,7 +100,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
         self.assertEqual(vocab.call_args.args, ("config.tipi_entita", "codice", "LOTTO"))
 
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_default_gravita_error_e_ordine_quando(self, repo_cls, _auth) -> None:
         repo_cls.return_value.list_giornale_trasversale.return_value = ([], 0, 0, 0)
         self.assertEqual(self.client.get(_URL).status_code, 200)
@@ -115,7 +115,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
 
     # 4-5. Vocabolari: un valore ignoto e' un 400, mai «zero righe».
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_gravita_fuori_vocabolario_400(self, repo_cls, _auth) -> None:
         resp = self.client.get(_URL, {"gravita": "GRAVE"})
         self.assertEqual(resp.status_code, 400, resp.content)
@@ -124,7 +124,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
         repo_cls.return_value.list_giornale_trasversale.assert_not_called()
 
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_registro_fuori_vocabolario_400(self, repo_cls, _auth) -> None:
         # ⭐ Il vocabolario e' quello che il CATALOGO risponde, non una costante:
         #    un registro che il catalogo non conosce e' un 400, e uno che conosce
@@ -141,7 +141,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
 
     # 6.
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filo_non_uuid_e_data_malformata_400(self, repo_cls, _auth) -> None:
         self.assertEqual(self.client.get(_URL, {"filo": "x"}).status_code, 400)
         self.assertEqual(self.client.get(_URL, {"data_a": "19/09/2026"}).status_code, 400)
@@ -149,7 +149,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
 
     # 7.
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_envelope_e_ritirate_count(self, repo_cls, _auth) -> None:
         repo_cls.return_value.list_giornale_trasversale.return_value = ([_riga()], 5, 2, 0)
         data = self.client.get(_URL).json()["data"]

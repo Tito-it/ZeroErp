@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | codice_interno | character varying(50) | NO |  |
 | codice | character varying(50) | NO |  |
-| categoria | character varying(24) | YES |  |
+| categoria | character varying(24) | NO |  |
 | descrizione | character varying(160) | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -27,14 +27,25 @@
 | etichetta | character varying(60) | NO |  |
 | apribile | boolean | NO |  |
 | citato_in_fattura | boolean | NO | false |
+| righe_table | regclass | YES |  |
+| righe_fk_column | character varying(63) | YES |  |
+| dettaglio_table | regclass | YES |  |
+| dettaglio_fk_column | character varying(63) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_sorgenti_categoria |  |
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
+| CHECK | chk_sorgenti_dettaglio_coppia |  |
+| CHECK | chk_sorgenti_dettaglio_fk_column_identificatore |  |
+| CHECK | chk_sorgenti_dettaglio_sotto_righe |  |
 | CHECK | chk_sorgenti_etichetta_non_vuota |  |
 | CHECK | chk_sorgenti_key_selector_values |  |
 | CHECK | chk_sorgenti_label_selector_identificatore |  |
+| CHECK | chk_sorgenti_righe_coppia |  |
+| CHECK | chk_sorgenti_righe_fk_column_identificatore |  |
+| CHECK | chk_sorgenti_righe_sotto_documento |  |
 | CHECK | chk_sorgenti_scope |  |
 | FOREIGN KEY | fk_sorgenti_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | PRIMARY KEY | sorgenti_pkey | id |
@@ -51,23 +62,27 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_sorgenti_a10_attivita_fatturabili_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili', 'sorgente_origine_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_commesse_attivita_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_attivita', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_commesse_sorgenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_sorgenti', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_contratti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti', 'sorgente_tipo_id', 'id', 'attivo')` |
-| trg_sorgenti_a10_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt', 'sorgente_tipo_id', 'id', 'attivo')` |
-| trg_sorgenti_a10_documenti_fatturazione_canali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'documenti_fatturazione_canali', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_contratti_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_ddt_block_deact_upd_296186 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_ddt_block_deact_upd_fcb9b2 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_ddt_righe_block_deact_upd_5972b2 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_ddt_righe_block_deact_upd_5f0c30 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_documenti_generati_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'documenti_generati', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_eventi_assets_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'eventi_assets', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'sorgente_tipo_id', 'id', 'attivo')` |
-| trg_sorgenti_a10_fatture_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_inventari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'inventari', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE', 'categoria', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_sorgenti_a10_movimenti_attesi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'movimenti_attesi', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_movimenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'movimenti', 'sorgente_tipo_id', 'id', 'attivo')` |
-| trg_sorgenti_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini', 'sorgente_tipo_id', 'id', 'attivo')` |
-| trg_sorgenti_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_ordini_block_deact_upd_1a6490 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_ordini_block_deact_upd_1ace41 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_ordini_righe_block_deact_upd_884d9f | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_ordini_righe_block_deact_upd_be6723 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_pratiche_sorgenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'pratiche_sorgenti', 'sorgente_tipo_id', 'id', 'attivo')` |
+| trg_sorgenti_a10_preventivi_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_resi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'resi', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_rettifiche_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'rettifiche', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_template_documenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'template_documenti', 'sorgente_tipo_id', 'id', 'attivo')` |
@@ -75,8 +90,10 @@
 | trg_sorgenti_a10_tipi_doc_fiscale_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_sorgenti_a10_tipi_doc_fiscale_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_sorgenti_a10_trasferimenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'trasferimenti', 'sorgente_tipo_id', 'id', 'attivo')` |
-| trg_sorgenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_sorgenti_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_sorgenti_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_sorgenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_sorgenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_sorgenti_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_sorgenti_normalize()` |
 | trg_sorgenti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_sorgenti_normalize()` |
 

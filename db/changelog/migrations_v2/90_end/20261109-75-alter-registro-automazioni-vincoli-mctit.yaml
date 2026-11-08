@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automation_rules_tbl e dbops.automation_overrides_cols: i vocabolari chiusi e
+#   la forma della regola (D17-bis, D2 con N4, D20 con N6, N3, D27 con N5).
+#   Brief: brief-db-revisione-dbops, giro 10b (§26).
+#
+#   In 90_end perche' i CHECK guardano righe del seed, che 80_data carica dopo
+#   00_schema e 20_code. Il vocabolario di col_role non ha piu' AUDIT_TS/AUDIT_USER:
+#   le colonne di audit hanno nome fisso. I runner continuano a confrontare con
+#   upper(btrim(...)): con la forma canonica e' innocuo, e si toglie quando ognuno
+#   si riapre.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261109-75-alter-registro-automazioni-vincoli-mctit.yaml
+
+  - changeSet:
+      id: 20261109-75-alter-registro-automazioni-vincoli
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        registro delle automazioni: CHECK sui vocabolari e sulla forma della regola. Brief: brief-db-revisione-dbops, giro 10b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conname IN ('chk_automation_rules_tbl_rule_type', 'chk_automation_rules_tbl_exec_mode',
+                                 'chk_automation_rules_tbl_regola_valida', 'chk_automation_overrides_cols_col_role')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_regola_automazione_valida(text,text,text,jsonb)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automation_rules_tbl
+                  ADD CONSTRAINT chk_automation_rules_tbl_rule_type
+                      CHECK (rule_type IN ('TX_ID', 'AUDIT_UPDATE', 'ATTIVO', 'STORICO_PROVISION', 'STORICO',
+                                           'LOCK_COLUMNS', 'CLEANUP_AT', 'CLEANUP_PURGE', 'DATE_VALIDITA',
+                                           'CODICE_MAIUSCOLO')),
+                  ADD CONSTRAINT chk_automation_rules_tbl_exec_mode
+                      CHECK (exec_mode IN ('AUTO', 'CI', 'SCHEDULED')),
+                  ADD CONSTRAINT chk_automation_rules_tbl_regola_valida
+                      CHECK (dbops.fn_regola_automazione_valida(rule_type, exec_mode, name_template, params));
+
+              ALTER TABLE dbops.automation_overrides_cols
+                  ADD CONSTRAINT chk_automation_overrides_cols_col_role
+                      CHECK (col_role IN ('ATTIVO_COL', 'STORICIZZA_COL', 'STORICO_FK', 'CODICE_COL',
+                                          'CODICE_INTERNO_COL'));
+
+              COMMENT ON CONSTRAINT chk_automation_rules_tbl_rule_type ON dbops.automation_rules_tbl IS
+                  'I tipi di regola che un runner sa eseguire, nella forma canonica (maiuscolo, senza spazi): un tipo sconosciuto non lo eseguirebbe nessuno, in silenzio.';
+              COMMENT ON CONSTRAINT chk_automation_rules_tbl_exec_mode ON dbops.automation_rules_tbl IS
+                  'Il giro in cui la regola vale: AUTO (ogni giro), CI o SCHEDULED, nella forma canonica.';
+              COMMENT ON CONSTRAINT chk_automation_rules_tbl_regola_valida ON dbops.automation_rules_tbl IS
+                  'La regola e'' ben formata secondo dbops.fn_regola_automazione_valida: nome del trigger dichiarato, parametri del cleanup del tipo giusto, scadenza in AUTO.';
+              COMMENT ON CONSTRAINT chk_automation_overrides_cols_col_role ON dbops.automation_overrides_cols IS
+                  'I ruoli di colonna che il framework legge: ATTIVO_COL, STORICIZZA_COL, STORICO_FK, CODICE_COL, CODICE_INTERNO_COL. Le colonne di audit hanno nome fisso e non si sostituiscono.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automation_overrides_cols
+                  DROP CONSTRAINT IF EXISTS chk_automation_overrides_cols_col_role;
+              ALTER TABLE dbops.automation_rules_tbl
+                  DROP CONSTRAINT IF EXISTS chk_automation_rules_tbl_regola_valida,
+                  DROP CONSTRAINT IF EXISTS chk_automation_rules_tbl_exec_mode,
+                  DROP CONSTRAINT IF EXISTS chk_automation_rules_tbl_rule_type;

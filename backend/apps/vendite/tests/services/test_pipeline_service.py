@@ -24,7 +24,7 @@ from apps.core.services.service_errors import ServiceError
 class PipelineServiceTests(SimpleTestCase):
 
     # Scopo: tipo_doc_fiscale_id inesistente solleva E_PIPELINE_VALIDATION.
-    @patch("apps.vendite.services.pipeline_service.DbopsRepository")
+    @patch("apps.vendite.services.pipeline_service.DbopsRepository", autospec=True)
     def test_run_invalid_tipo_doc_fiscale_id(self, mock_dbops_cls):
         from apps.vendite.services.pipeline_service import run_lotto_pipeline
 
@@ -36,7 +36,7 @@ class PipelineServiceTests(SimpleTestCase):
         self.assertIn("tipo_doc_fiscale_id=999", ctx.exception.detail)
 
     # Scopo: utility_id inesistente solleva E_PIPELINE_VALIDATION.
-    @patch("apps.vendite.services.pipeline_service.DbopsRepository")
+    @patch("apps.vendite.services.pipeline_service.DbopsRepository", autospec=True)
     def test_run_invalid_utility_id(self, mock_dbops_cls):
         from apps.vendite.services.pipeline_service import run_lotto_pipeline
 
@@ -51,7 +51,7 @@ class PipelineServiceTests(SimpleTestCase):
 
     # Scopo: ID validi non sollevano errore e il runner viene invocato.
     @patch("apps.vendite.services.pipeline_service.LottoPipelineRunner")
-    @patch("apps.vendite.services.pipeline_service.DbopsRepository")
+    @patch("apps.vendite.services.pipeline_service.DbopsRepository", autospec=True)
     def test_run_valid_ids_pass_through(self, mock_dbops_cls, mock_runner_cls):
         from apps.vendite.services.pipeline_service import run_lotto_pipeline
 
@@ -65,7 +65,7 @@ class PipelineServiceTests(SimpleTestCase):
 
     # Scopo: ID None non attivano la validazione lookup e il runner viene invocato.
     @patch("apps.vendite.services.pipeline_service.LottoPipelineRunner")
-    @patch("apps.vendite.services.pipeline_service.DbopsRepository")
+    @patch("apps.vendite.services.pipeline_service.DbopsRepository", autospec=True)
     def test_run_none_ids_skip_validation(self, mock_dbops_cls, mock_runner_cls):
         from apps.vendite.services.pipeline_service import run_lotto_pipeline
 
@@ -102,8 +102,7 @@ class PipelineServiceTests(SimpleTestCase):
             "fermo": True,
         }
         with patch(
-            "apps.vendite.services.lotto_segnalazioni_service.VenditePipelineRepository"
-        ) as repo_cls:
+            "apps.vendite.services.lotto_segnalazioni_service.VenditePipelineRepository", autospec=True) as repo_cls:
             repo_cls.return_value.get_lotto_segnalazioni_summary.return_value = riepilogo
             with patch("apps.vendite.services.pipeline_service.lotto_visibile"):
                 data = fn_get_lotto_segnalazioni_summary(lotto_id=80, auth_user_id=1)

@@ -8,7 +8,8 @@
 --
 -- Indice test (1..57):
 --   A) Struttura coda_lavori_tipi ......... 1..9
---      1 has_table; 2-5 colonne; 6 PK; 7 unique codice; 8-9 trigger audit/tx_id
+--      1 has_table; 2-5 colonne; 6 PK; 7 unique codice; 8-9 SENZA marcatori
+--      (tx_id, data_update, user_update e i due trigger: solo seed, §23)
 --   B) Struttura coda_lavori .............. 10..39
 --      10 has_table; 11-26 colonne; 27 PK; 28-31 indici (uid, claim, vivo, stato);
 --      32 FK; 33 col_is_fk job_type; 34 has_check; 35-37 CHECK stato/run_as/origine;
@@ -43,7 +44,37 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ Rev 2026-11-07 (blocco 5b di brief-db-revisione-dbops, RLS accesa): un
+--   lavoro SISTEMA lo vedono e lo scrivono solo il super admin e l'utente
+--   tecnico del drenatore (policy rls_coda_lavori_ef_perimetro). I test 54 e 56
+--   girano con quella veste, il resto da operatore.
+-- ⛔ L'ORDINE CONTA. Prima si sceglie l'operatore, poi si costruisce il
+--   drenatore SENZA contesto (come fa test-rls-email-ambito-reparto-operatore),
+--   poi si rientra nell'operatore PER ID. Al contrario, su un database senza
+--   operatori (CI) fn_pgtap_set_contesto_operatore() senza argomento potrebbe
+--   scegliere proprio l'utente tecnico appena nato: un utente con un'azienda,
+--   che per lei e' un operatore, e che vede i lavori SISTEMA.
+CREATE TEMP TABLE tmp_veste AS
+SELECT script.fn_pgtap_set_contesto_operatore() AS operatore_id;
+SELECT set_config('app.current_user_id', '', false),
+       set_config('app.ruolo_applicativo', '', false);
+ALTER TABLE tmp_veste ADD COLUMN drenatore_id integer;
+UPDATE tmp_veste
+   SET drenatore_id = (SELECT r.auth_user_id
+                         FROM dbops.fn_pgtap_crea_roster_processo('draina_coda_lavori') r);
+DO $ctx$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT operatore_id FROM tmp_veste));
+END $ctx$;
+
+-- Cambia veste per il resto della transazione: 'OPERATORE' o 'DRENATORE'.
+CREATE FUNCTION pg_temp.veste(p_veste text) RETURNS void
+LANGUAGE sql AS $$
+    SELECT set_config('app.current_user_id',
+                      (SELECT CASE p_veste WHEN 'DRENATORE' THEN v.drenatore_id
+                                           ELSE v.operatore_id END::text
+                         FROM tmp_veste v),
+                      true);
+$$;
 
 SELECT plan(57);
 
@@ -61,10 +92,23 @@ SELECT ok(
              WHERE schemaname = 'dbops' AND tablename = 'coda_lavori_tipi'
                AND indexname = 'uq_coda_lavori_tipi_codice'),
     '7) unique uq_coda_lavori_tipi_codice esiste');
-SELECT has_trigger('dbops', 'coda_lavori_tipi',
-    'trg_coda_lavori_tipi_audit_data_user_ins_upd', '8) trigger audit registrato');
-SELECT has_trigger('dbops', 'coda_lavori_tipi',
-    'trg_coda_lavori_tipi_gen_tx_id_ins_upd', '9) trigger tx_id registrato');
+-- ⭐ 8-9: il catalogo dei tipi lo scrive solo il migratore, dal CSV di 80_data:
+--   niente tx_id, data_update, user_update, e niente i due trigger che li
+--   scrivevano (criterio dello scrittore, brief-db-revisione-dbops §23,
+--   20261108-90). La coda li tiene (38-39): la scrive il dominio.
+SELECT hasnt_column('dbops', 'coda_lavori_tipi', 'tx_id',
+    '8) catalogo scritto dal solo seed: niente tx_id (e niente il suo trigger)');
+SELECT ok(
+    NOT EXISTS (SELECT 1 FROM pg_trigger tg
+                 WHERE tg.tgrelid = 'dbops.coda_lavori_tipi'::regclass
+                   AND NOT tg.tgisinternal
+                   AND tg.tgname IN ('trg_coda_lavori_tipi_audit_data_user_ins_upd',
+                                     'trg_coda_lavori_tipi_gen_tx_id_ins_upd'))
+    AND NOT EXISTS (SELECT 1 FROM pg_attribute a
+                     WHERE a.attrelid = 'dbops.coda_lavori_tipi'::regclass
+                       AND a.attname IN ('data_update', 'user_update')
+                       AND NOT a.attisdropped),
+    '9) catalogo scritto dal solo seed: niente data_update/user_update né i due trigger');
 
 -- ============================================================
 -- B) Struttura dbops.coda_lavori
@@ -155,16 +199,21 @@ VALUES ('PGTAP_CL_SISTEMA',  'pgtap_noop', 'SISTEMA',   TRUE,  'PGTAP_PROC_CODA_
 
 -- Side-effect: enqueue base (OPERATORE, scope obbligatorio) + 2a chiamata
 -- idempotente stessa chiave + enqueue SISTEMA. Id catturati in tmp_enq.
+-- ⭐ Rev 2026-11-07 (giro 5 di brief-db-revisione-dbops): lo scope e' quello di
+--   chi e' in sessione, con un'azienda del suo perimetro
+--   (dbops.fn_pgtap_scope_operatore). Uno scope di fantasia ({"auth_user_id":1})
+--   la porta lo respinge da una sessione dell'applicazione, e un lavoro
+--   OPERATORE senza azienda non nasce piu'.
 CREATE TEMP TABLE tmp_enq AS
 SELECT dbops.fn_accoda_lavoro(
            'FATTURAZIONE_GIRO', '{}'::jsonb, NULL,
-           '{"emittente_ids":[1],"auth_user_id":1}'::jsonb, 'pgtap-key-1'
+           dbops.fn_pgtap_scope_operatore(), 'pgtap-key-1'
        ) AS id1;
 ALTER TABLE tmp_enq ADD COLUMN id2 bigint;
 ALTER TABLE tmp_enq ADD COLUMN id3 bigint;
 UPDATE tmp_enq SET id2 = dbops.fn_accoda_lavoro(
            'FATTURAZIONE_GIRO', '{}'::jsonb, NULL,
-           '{"emittente_ids":[1],"auth_user_id":1}'::jsonb, 'pgtap-key-1');
+           dbops.fn_pgtap_scope_operatore(), 'pgtap-key-1');
 UPDATE tmp_enq SET id3 = dbops.fn_accoda_lavoro('PGTAP_CL_SISTEMA');
 
 -- ============================================================
@@ -215,28 +264,43 @@ SELECT throws_ok(
 -- H) Enqueue SISTEMA — scope NULL ammesso
 -- ============================================================
 SELECT isnt((SELECT id3 FROM tmp_enq), NULL::bigint, '53) enqueue SISTEMA ritorna un id');
+-- ⚠️ Un lavoro SISTEMA l'operatore non lo vede (RLS): lo si legge da drenatore.
+SELECT pg_temp.veste('DRENATORE');
 SELECT is(
-    (SELECT run_as FROM dbops.coda_lavori WHERE id = (SELECT id3 FROM tmp_enq)),
-    'SISTEMA', '54) run_as SISTEMA con scope NULL');
+    (SELECT run_as || '/' || coalesce(scope::text, 'NULL')
+       FROM dbops.coda_lavori WHERE id = (SELECT id3 FROM tmp_enq)),
+    'SISTEMA/NULL', '54) run_as SISTEMA con scope NULL (letto dal drenatore: l''operatore non lo vede)');
+SELECT pg_temp.veste('OPERATORE');
 
 -- ============================================================
 -- I) CHECK di coerenza run_as<->scope (raw INSERT -> 23514)
 -- ============================================================
+-- ⚠️ Con la RLS accesa la WITH CHECK della policy parla PRIMA dei CHECK: una
+--   riga che la policy respinge da' 42501 e il CHECK non si vede. Le due righe
+--   sono quindi ammesse dalla policy per chi le scrive, e sbagliate solo nel
+--   vincolo: l'OPERATORE nella propria azienda, il SISTEMA dal drenatore.
 SELECT throws_ok(
-    $$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope)
-       VALUES ('FATTURAZIONE_GIRO', 'OPERATORE', NULL) $$,
+    format($$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope, emittente_fiscale_id)
+       VALUES ('FATTURAZIONE_GIRO', 'OPERATORE', NULL, %s) $$,
+       dbops.fn_pgtap_scope_operatore() ->> 'emittente_attivo_id'),
     '23514', NULL, '55) OPERATORE con scope NULL viola chk_coda_lavori_run_as_scope');
+SELECT pg_temp.veste('DRENATORE');
 SELECT throws_ok(
     $$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope)
        VALUES ('FATTURAZIONE_GIRO', 'SISTEMA', '{"x":1}'::jsonb) $$,
     '23514', NULL, '56) SISTEMA con scope NOT NULL viola chk_coda_lavori_run_as_scope');
+SELECT pg_temp.veste('OPERATORE');
 
 -- ============================================================
 -- J) Unique parziale vivo (raw INSERT doppione vivo -> 23505)
 -- ============================================================
+-- ⚠️ La riga e' valida in tutto il resto (scope e azienda coerenti): il CHECK
+--   si valuta prima dell'indice unico, e una riga senza azienda darebbe 23514.
 SELECT throws_ok(
-    $$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope, idempotency_key)
-       VALUES ('FATTURAZIONE_GIRO', 'OPERATORE', '{"emittente_ids":[1]}'::jsonb, 'pgtap-key-1') $$,
+    format($$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope, emittente_fiscale_id, idempotency_key)
+       VALUES ('FATTURAZIONE_GIRO', 'OPERATORE', %L::jsonb, %s, 'pgtap-key-1') $$,
+       dbops.fn_pgtap_scope_operatore()::text,
+       dbops.fn_pgtap_scope_operatore() ->> 'emittente_attivo_id'),
     '23505', NULL, '57) doppione vivo (job_type, idempotency_key) viola uq_coda_lavori_vivo_idem');
 
 SELECT * FROM finish();

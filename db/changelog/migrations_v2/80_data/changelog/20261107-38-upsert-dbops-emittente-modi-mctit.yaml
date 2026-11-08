@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed di dbops.emittente_modi: i modi con cui una riga raggiunge il suo
+#   emittente. Mirror del CSV, chiave modo.
+#   Brief: brief-db-revisione-dbops, D21 (blocco 4b).
+#
+# ⭐ E' la sede dei modi: un modo nuovo e' una riga qui. Dopo il seed, il
+#   changeSet di convergenza di 90_end (20261107-39) riscrive i due risolutori
+#   dell'emittente dal registro.
+#
+# I modi sono quelli dei rami scritti a mano fino al 2026-11-07, piu'
+#   conto_bancario: il passo intermedio di ente_incasso (dall'ente al conto, dal
+#   conto al soggetto-ruolo), che prima era un JOIN in piu' nello stesso ramo.
+#
+# ⚠️ Un modo tolto dal CSV non sparisce dalla tabella (loadUpdateData aggiunge e
+#   aggiorna, non cancella): il ritiro di un modo e' un changeSet suo, dopo aver
+#   censito i guard e le dichiarazioni che lo nominano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261107-38-upsert-dbops-emittente-modi-mctit.yaml
+
+  - changeSet:
+      id: 20261107-38-upsert-dbops-emittente-modi
+      author: mctit
+      runOnChange: true
+      failOnError: true
+      comment: >
+        Seed di catalogo di dbops.emittente_modi dal CSV (mirror loadUpdateData sul modo): i modi
+        di risoluzione dell'emittente, da cui si generano i due risolutori.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: emittente_modi
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/emittente_modi.csv
+            tableName: emittente_modi
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "modo"
+            columns:
+              - column: { name: modo, type: STRING }
+              - column: { name: schema_tabella, type: STRING }
+              - column: { name: nome_tabella, type: STRING }
+              - column: { name: colonna_chiave, type: STRING }
+              - column: { name: forma, type: STRING }
+              - column: { name: colonna, type: STRING }
+              - column: { name: modo_padre, type: STRING }
+              - column: { name: note, type: STRING }
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.emittente_modi;

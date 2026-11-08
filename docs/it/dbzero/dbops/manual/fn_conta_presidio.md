@@ -1,124 +1,110 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_conta_presidio`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [dbops.presidi](/dbzero/dbops/manual/presidi) — *il catalogo da cui questa funzione legge tutto*
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo da cui il conteggio legge tutto
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [dbops.fn_conta_presidio_per_variante](/dbzero/dbops/manual/fn_conta_presidio_per_variante) — *il conteggio per causa, di cui questo è la somma*
+> * [dbops.fn_conta_presidio_per_variante](/dbzero/dbops/funzioni/fn_conta_presidio_per_variante) — il conteggio per causa, di cui questa è la somma, e la sede della regola
 >
-**Approfondimento guide:**
+> Guide:
 >
-• [Presidi e registri del debito](/guide/presidi-e-registri-del-debito)
-> • [Row Level Security](/postgresql/row-level-security)
->
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — il meccanismo dei presidi
+
+---
 
 ### 🎯 Scopo Principale
-(latest review 10-10-2026)
 
-Dice **quante righe di una vista di controllo chiedono un intervento**.
-
-> ⭐ **Dal 2026-10-10 è la somma del conteggio per causa.** Il lavoro — leggere
-> il catalogo, rifiutare una vista sconosciuta, applicare lo stato atteso,
-> attraversare i filtri per riga — lo fa
-> [`dbops.fn_conta_presidio_per_variante`](/dbzero/dbops/manual/fn_conta_presidio_per_variante),
-> e questa funzione somma i suoi gruppi. Così le due risposte non possono
-> divergere. Il resto di questa pagina descrive quel lavoro, ed è ancora vero:
-> è solo scritto in un posto solo. Per lo stesso motivo questa funzione non gira
-> più con i permessi del proprietario: non legge niente da sé.
-
-Una riga sola, in apparenza. Esiste per un difetto che non si vede guardando il
-codice, e che avrebbe reso bugiardo tutto il resto.
+Dice quante righe di una vista di presidio dichiarata in `dbops.presidi` chiedono un intervento:
+è la somma dei gruppi di
+[dbops.fn_conta_presidio_per_variante](/dbzero/dbops/funzioni/fn_conta_presidio_per_variante).
+Torna un numero, mai le righe.
 
 ---
 
-### 🔴 Il difetto: uno zero può essere una cecità, non un dato
+### ⭐ Una somma, non una seconda copia
 
-Il database filtra le righe che un utente può vedere in base a **chi è**. Tre
-delle viste di controllo attraversano tabelle protette così, e sono scritte per
-rispettare quel filtro — è giusto che lo facciano.
+Il lavoro vero — leggere il catalogo, rifiutare una vista sconosciuta, applicare lo stato atteso,
+attraversare la row level security — sta nella funzione per causa, e solo lì. Questa somma i suoi
+gruppi: così il conteggio intero e quello per causa non possono divergere, non perché qualcuno si
+ricordi di tenerli allineati, ma perché la regola è scritta una volta sola.
 
-Ma il programma che manda l'avviso è un **comando lanciato da un timer**: non ha
-un utente, non ha una veste. Per quelle tre viste il filtro non trova nessuno a
-cui dare il permesso, e restituisce **zero righe**.
+Per lo stesso motivo questa funzione è `SECURITY INVOKER`: non legge niente da sé. Il permesso di
+contare oltre la row level security lo porta la sede, che gira come il proprietario.
 
-⛔ E su una vista che *deve restare vuota*, «zero righe» e «non ho potuto vedere»
-**si scrivono nello stesso modo**.
-
-> Il programma che sorveglia i controlli riferirebbe *«tutto a posto»* **proprio
-> perché è cieco.**
-
-È il difetto peggiore della famiglia: non fa rumore, e dà la sensazione della
-copertura senza averla.
+Un presidio con la colonna della causa e nessuna riga da guardare non ha gruppi: la somma di
+niente vale zero, non vuoto.
 
 ---
 
-### ⭐ Come lo risolve, e perché è accettabile
+### 🔴 Perché il conteggio passa da qui: uno zero può essere una cecità
 
-La funzione appartiene al **proprietario** delle tabelle, e in questo database il
-proprietario legge fuori dal filtro per righe. Quindi conta quello che c'è
-davvero.
+Alcune viste di presidio attraversano tabelle in row level security, o funzioni che vedono solo
+ciò che possiede chi le chiama. Lette da un comando lanciato da un timer, senza un utente in
+sessione, tornerebbero **zero righe** — e su una vista che deve restare vuota «zero righe» e «non
+ho potuto vedere» si scrivono nello stesso modo. Il digest riferirebbe «tutto a posto» proprio
+perché è cieco.
 
-È lo stesso identico meccanismo, con la stessa identica motivazione, di
-`config.fn_accoda_email_sistema`, che esiste perché il reset della password deve
-poter scrivere anche senza un utente in sessione.
+Il conteggio passa da qui per **tutte** le viste del catalogo, non solo per quelle protette: così
+l'allarme è onesto ovunque, e chi chiama non deve scegliere.
 
-Due limiti la rendono sicura, e sono la sostanza:
+Le due regole che lo rendono sicuro le applica la sede:
 
-**1. Torna un numero, mai le righe.** Attraversa i perimetri per dire *quanti*,
-non *quali*. Il dettaglio lo va a guardare una persona con il suo perimetro, e in
-un messaggio di posta non finisce nessun dato fuori scope.
+* **torna un numero, mai le righe**: attraversa i perimetri per dire *quanti*, non *quali*. Il
+  dettaglio lo guarda una persona con il suo perimetro;
+* **conta solo ciò che è a catalogo**, attivo e non ritirato, e il resto lo **rifiuta**: senza
+  questo limite sarebbe una porta per contare qualunque relazione del database aggirando la row
+  level security. E rifiuta, non torna zero: uno zero sarebbe indistinguibile da una vista sana.
 
-**2. Conta solo ciò che è a catalogo.** Il nome della vista lo risolve dentro
-[`dbops.presidi`](/dbzero/dbops/manual/presidi), e se non lo trova **rifiuta**.
-Non è prudenza: è ciò che le impedisce di diventare una porta per leggere il
-conteggio di qualunque tabella del database aggirando i filtri.
-
-⚠️ **E rifiuta, non torna zero.** Uno zero sarebbe indistinguibile da una vista
-sana: è la stessa forma del difetto che la funzione è nata per chiudere.
-
-⭐ L'alternativa era un ruolo tecnico che scavalca i filtri. Sarebbe stata più
-larga — avrebbe letto tutto, righe comprese — e sarebbe comparsa come riga in
-`dbops.vw_processi_che_bypassano`: un debito nuovo su uno dei controlli che
-questo lavoro sta censendo.
+L'alternativa era un ruolo tecnico che scavalca i filtri: avrebbe letto tutto, righe comprese, e
+sarebbe stato un debito nuovo fra i processi che aggirano la row level security.
 
 ---
 
 ### Che cosa conta, esattamente
 
-Dipende da cosa dice il catalogo per quella vista:
+* **senza colonna di stato** nel catalogo → la vista intera: ogni riga è un allarme;
+* **con una colonna di stato** → le righe con uno stato **diverso** da quello atteso. Si conta
+  «diverso dall'atteso» e non «uguale a uno degli allarmi», così uno stato nuovo cade
+  nell'allarme e non nel silenzio; e un valore assente conta come «non atteso», non esce dal
+  conteggio.
 
-* **senza colonna di stato** → conta la vista **intera**. È il caso normale: una
-  vista che deve restare vuota, e ogni riga è un allarme;
-* **con una colonna di stato** → conta le righe **diverse dallo stato atteso**.
-
-Il secondo caso serve alle viste dove una riga può essere lì **di proposito**,
-perché qualcuno ha dichiarato quel debito. Contarle tutte suonerebbe su una cosa
-già decisa.
-
-⛔ **Si conta «diverso dall'atteso» e non «uguale a uno degli allarmi»**, ed è la
-scelta portante: uno stato **nuovo**, aggiunto domani alla vista, con la seconda
-forma non sarebbe nell'elenco e cadrebbe nel silenzio. Con questa cade
-nell'allarme, e chi lo aggiunge deve venire a decidere.
-
-⚠️ Il confronto è *è distinto da* e non *è diverso da*: un valore assente non è
-«atteso», e con il confronto secco quella riga uscirebbe dal conteggio **in
-silenzio**.
+⚠️ La colonna `perimetro` del catalogo dice un'**altra** cosa: se chi legge può anche *elencare*
+le righe, oltre a contarle.
 
 ---
 
-### ⚠️ Una cosa da non confondere
+### Codici errore
 
-Il conteggio passa da questa funzione per **tutte** le viste, non solo per le
-tre. Così l'allarme è onesto ovunque e chi chiama non deve scegliere.
-
-La colonna `perimetro` del catalogo dice **un'altra cosa**: se chi legge può
-anche **elencare** le righe, oltre a contarle. Per le tre viste protette la
-risposta è no.
+* `E_PRESIDIO_NON_A_CATALOGO` — la vista chiesta non è in `dbops.presidi`, o è spenta o ritirata,
+  o il nome è vuoto. Lo solleva la sede e passa di qui.
 
 ---
 
-*Brief: `docs/it/dev/work-done/brief-db-un-destinatario-per-i-presidi.md`.*
+### Test
+
+* `db/pgtap/dbops/test-catalogo-presidi-v1.sql` — rifiuto di una vista non a catalogo, vista
+  intera senza colonna di stato, «diverso dall'atteso» con la colonna.
+* `db/pgtap/dbops/test-conta-presidio-per-variante-v1.sql` — la somma è quella dei gruppi, a zero e
+  non vuota quando non ci sono gruppi; questa funzione non contiene più il filtro e non è
+  `SECURITY DEFINER`; `search_path` pinnato.
+* `db/pgtap/dbops/test-riferimenti-morti-v1.sql` — il conteggio della lista di lavoro dei
+  riferimenti morti fatto da qui concorda con la misura diretta.
+
+---
+
+### Note di migrazione
+
+* 2026-09-10 — nasce `SECURITY DEFINER` con `brief-db-un-destinatario-per-i-presidi` §4.1, con
+  dentro il perimetro e il filtro.
+* 2026-10-10 — diventa la somma di `fn_conta_presidio_per_variante` e passa a `SECURITY INVOKER`
+  (`brief-db-presidio-processi-testo-per-causa` §6.2).
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -36,7 +36,7 @@ from apps.core.services.avvio_manuale import (
 )
 from apps.core.services.coda_lavori.repository import (
     ORIGINE_API,
-    RUN_AS_OPERATORE,
+    RUN_AS_SISTEMA,
     CodaLavoriRepository,
 )
 from apps.core.services.error_manager import ErrorManager
@@ -252,16 +252,21 @@ class ProcessiService:
     #          3. il predicato: primo motivo come rifiuto (422/501/409 dalla
     #             classe a catalogo), con «gia' in coda» letto dal repository;
     #          4. l'accodamento, con la chiave di business per unit.
-    #        ⚠️ La TERNA dello scope la rifiuta chi la cattura
-    #        (`scope_operatore_da_request`, nella view) con
-    #        `E_CODA_SCOPE_OPERATORE_INVALIDO` — lo stesso codice che il
-    #        drenatore solleverebbe un minuto dopo, detto a chi puo' fare
-    #        qualcosa. Qui lo scope arriva gia' completo.
+    #        ⭐ Un lavoro SISTEMA, dal 2026-11-07 (BE10, decisione di Tid,
+    #        brief-db-revisione-dbops §5). Il processo che lancia
+    #        (`avvio_manuale`) e' di MANUTENZIONE, e il comando lavora da se'
+    #        sulle aziende del suo roster: un lavoro intestato a un'azienda
+    #        sarebbe stato falso, e in modalita' globale la porta lo rifiuta
+    #        (`E_CODA_LAVORO_SENZA_EMITTENTE`). Con la chiave `esegui:<unit>`,
+    #        che l'azienda non la contiene, un lavoro per azienda avrebbe
+    #        anche risposto `E_CODA_CHIAVE_ALTRUI` a chi preme dopo un altro.
+    #        `richiesto_da` (l'`auth_user.id` di chi preme) viaggia nel
+    #        payload: e' l'ATTORE del giornale del comando, non un'identita'.
     #        ⚠️ A tipo `attivo = false` il passo 4 risponde
     #        `E_JOB_TYPE_NON_ATTIVO` (501): e' il cancello voluto finche'
     #        l'handler non e' in servizio, e non si maschera.
     def esegui_ora(
-        self, codice: str, *, unit: Any, scope: dict[str, Any],
+        self, codice: str, *, unit: Any, richiesto_da: int,
     ) -> dict[str, Any]:
         fn = f"{_FN}.esegui_ora"
         ErrorManager.require(
@@ -302,15 +307,24 @@ class ProcessiService:
 
         job_id = self._coda.accoda(
             job_type=JOB_TYPE_ESEGUI_PROCESSO,
-            payload={"processo_codice": codice, "unit": unit},
-            run_as=RUN_AS_OPERATORE,
-            scope=scope,
+            payload={
+                "processo_codice": codice, "unit": unit,
+                "richiesto_da": int(richiesto_da),
+            },
+            run_as=RUN_AS_SISTEMA,
+            scope=None,
             # Chiave di BUSINESS (una per unit, sui lavori vivi): la rete sotto
             # il 409 qui sopra, per la corsa fra due click contemporanei.
             idempotency_key=chiave,
             origine=ORIGINE_API,
         )
-        return {"job_id": job_id, "stato": "PENDING", "unit": unit}
+        # ⭐ Lo stato VERO (`stati_dopo_accodamento`): la corsa fra due click
+        #    finisce sulla dedup della porta, che restituisce il lavoro già
+        #    vivo — può essere IN_CORSO. Chi preme è super admin
+        #    (`AdminAPIView`), e un lavoro SISTEMA sotto la RLS della coda lo
+        #    vede.
+        stato = self._coda.stati_dopo_accodamento([job_id])[job_id]
+        return {"job_id": job_id, "stato": stato, "unit": unit}
 
     # Scopo: La SCELTA A MANO sull'accensione di un processo, su questa
     #        installazione (brief-db-processi-accensione-per-ambiente §6.0

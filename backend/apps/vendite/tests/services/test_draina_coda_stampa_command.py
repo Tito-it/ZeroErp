@@ -18,6 +18,8 @@
 #   2) registers_run_with_meta — registered_job attore/job_id/lock + set_meta
 #   3) passa_parametri_al_core — --limit/--soglia/--stale inoltrati
 #   4) skip_when_lock_busy — acquired=False → core NON eseguito
+#   5) ⛔ un emittente fallito chiude la corsa ROSSA (D9), meta già scritto;
+#      senza falliti chiude verde
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -122,3 +124,30 @@ class DrainaCodaStampaCommandTests(TestCase):
 
         mock_core.assert_not_called()
         self.assertIn("skip", out.getvalue())
+
+    # 5. ⛔ D9: un emittente il cui giro non è partito lascia le sue stampe in
+    #    coda senza che nessuno le abbia guardate. La corsa chiude rossa DOPO
+    #    aver scritto il meta, e nomina l'emittente.
+    def test_emittente_fallito_chiude_rossa(self):
+        from apps.core.services.job_run import E_JOB_ELEMENTI_NON_COMPLETATI
+        from apps.core.services.service_errors import ServiceError
+
+        cm, handle, _catturato = fake_registered_job()
+        summary = {**_SUMMARY, "emittenti_falliti": [
+            {"emittente_codice": "ACME", "errore": "identità spenta"},
+        ]}
+        with patch(_SVC_FN, return_value=summary), \
+             patch(f"{_CMD}.registered_job", cm), \
+             self.assertRaises(ServiceError) as ctx:
+            call_command("draina_coda_stampa", stdout=StringIO(), stderr=StringIO())
+
+        self.assertEqual(ctx.exception.code, E_JOB_ELEMENTI_NON_COMPLETATI)
+        self.assertIn("ACME", str(ctx.exception.detail))
+        handle.set_meta.assert_called_once_with(summary)
+
+    # 5-bis. Senza emittenti falliti la corsa chiude verde.
+    def test_senza_falliti_chiude_verde(self):
+        cm, _h, _catturato = fake_registered_job()
+        with patch(_SVC_FN, return_value=_SUMMARY), \
+             patch(f"{_CMD}.registered_job", cm):
+            call_command("draina_coda_stampa", stdout=StringIO())

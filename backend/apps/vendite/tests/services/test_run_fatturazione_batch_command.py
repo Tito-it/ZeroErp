@@ -23,10 +23,12 @@
 #   6) skip anti-overlap: lock occupato → non si accoda niente
 #   7) un accodamento fallito non ferma gli altri, e la corsa chiude rossa
 #      con E_JOB_ELEMENTI_NON_COMPLETATI (D9) dopo aver scritto il meta
+#   8) ⛔ ogni lavoro si accoda DENTRO l'identita' del suo badge (BE10 c)
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from io import StringIO
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -39,6 +41,7 @@ from apps.core.tests.job_run_fakes import fake_registered_job
 
 _CMD = "apps.vendite.management.commands.run_fatturazione_batch"
 _PROD = "apps.vendite.services.fatturazione_produttore_service"
+_BB = "apps.core.services.giro_per_azienda"
 
 
 # Scopo: un badge del roster, nella forma che `ProcessiRepository` consegna.
@@ -53,18 +56,44 @@ def _badge(codice: str, *, auth_user_id: int, emittente_id: int) -> dict:
     }
 
 
-# Scopo: monta i due repository del produttore con un roster dato.
+# Scopo: monta i due repository del produttore con un roster dato, e
+#        l'identita' del badge che il giro apre (BB `giro_per_azienda`).
+#        `coda.identita_in_accoda` registra, per ogni accodamento, lo username
+#        dell'identita' aperta in quel momento (None = fuori da ogni identita').
 def _patch_produttore(roster, *, non_serviti=(), accoda=None):
     processi = MagicMock()
     processi.roster_processo.return_value = list(roster)
     processi.emittenti_non_serviti.return_value = [
         {"emittente_fiscale_id": 99, "emittente_codice": c} for c in non_serviti
     ]
+    corrente: list[str | None] = [None]
     coda = MagicMock()
-    coda.accoda.side_effect = accoda or (lambda **_kw: 4242)
+    coda.identita_in_accoda = []
+    _lavoro = accoda or (lambda **_kw: 4242)
+
+    def _accoda(**kwargs):
+        coda.identita_in_accoda.append(corrente[0])
+        return _lavoro(**kwargs)
+
+    coda.accoda.side_effect = _accoda
+
+    @contextmanager
+    def _identita(_auth_user_id, *, username, **_kw):
+        corrente[0] = username
+        try:
+            yield
+        finally:
+            corrente[0] = None
+
+    @contextmanager
+    def _p_proc():
+        with patch(f"{_BB}.ProcessiRepository", autospec=True, return_value=processi), \
+                patch(f"{_BB}.operator_identity_context", _identita):
+            yield
+
     return (
-        patch(f"{_PROD}.ProcessiRepository", return_value=processi),
-        patch(f"{_PROD}.CodaLavoriRepository", return_value=coda),
+        _p_proc(),
+        patch(f"{_PROD}.CodaLavoriRepository", autospec=True, return_value=coda),
         processi,
         coda,
     )
@@ -223,3 +252,28 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
         # Il meta col dettaglio e' scritto PRIMA del rosso: arriva al giornale.
         meta = handle.set_meta.call_args.args[0]
         self.assertEqual([f["emittente_codice"] for f in meta["falliti"]], ["ACME"])
+
+    # 8. ⛔ BE10 (c), brief-db-revisione-dbops §5. Dal giro 5a la porta della
+    #    coda, da una sessione dell'applicazione, accoda un lavoro OPERATORE
+    #    solo a nome di chi e' in sessione (`E_CODA_SCOPE_ALTRUI`). Il
+    #    produttore accodava fuori da ogni identita': ogni azienda rifiutata, e
+    #    il giro notturno vuoto. Ogni accodamento deve avvenire con l'identita'
+    #    del badge che lo scope nomina.
+    def test_ogni_lavoro_si_accoda_con_l_identita_del_suo_badge(self):
+        cm, _h, _catturato = fake_registered_job()
+        p_proc, p_coda, _proc, coda = _patch_produttore([
+            _badge("ACME", auth_user_id=7, emittente_id=3),
+            _badge("BETA", auth_user_id=8, emittente_id=4),
+        ])
+        with p_proc, p_coda, patch(f"{_CMD}.registered_job", cm):
+            call_command(
+                "run_fatturazione_batch", "--modalita", "differita",
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(
+            coda.identita_in_accoda,
+            ["run_fatturazione_batch@ACME", "run_fatturazione_batch@BETA"],
+        )
+        nominati = [c.kwargs["scope"]["username"] for c in coda.accoda.call_args_list]
+        self.assertEqual(nominati, coda.identita_in_accoda)

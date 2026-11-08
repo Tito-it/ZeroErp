@@ -1,81 +1,89 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_flussi_guard_esito_classe`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_guard_esito_classe`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.trgfn_template_flussi_guard_modalita_esito](trgfn_template_flussi_guard_modalita_esito.md)
-> [pratiche.trgfn_flussi_guard_transizione](trgfn_flussi_guard_transizione.md)
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — il flusso che si completa
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — la `modalita_esito` del passo
+> * [config.esiti_flussi_pratiche](/dbzero/config/tabelle/esiti_flussi_pratiche) — la classe di ogni esito (`is_verdetto`)
 >
-Tabelle:
+> Approfondimento funzioni:
 >
-[pratiche.flussi](flussi.md)
-> [pratiche.template_flussi](template_flussi.md)
-> [config.esiti_flussi_pratiche](../../config/manual/esiti_flussi_pratiche.md)
+> * [pratiche.trgfn_template_flussi_guard_modalita_esito](/dbzero/pratiche/funzioni/trgfn_template_flussi_guard_modalita_esito) — la coerenza della modalità sul passo
+> * [pratiche.trgfn_flussi_guard_esito_completato](/dbzero/pratiche/funzioni/trgfn_flussi_guard_esito_completato) — l'esito obbligatorio al completamento
+> * [pratiche.trgfn_flussi_guard_transizione](/dbzero/pratiche/funzioni/trgfn_flussi_guard_transizione) — la matrice delle transizioni
 
 ---
+
 ### 🎯 Scopo Principale
 
-Guard **runtime di classe esito** al completamento del flusso: alla transizione verso
-COMPLETATO la classe dell'esito deve corrispondere alla `modalita_esito` del template.
-È la **difesa in profondità autoritativa** dell'invariante degli step a esito di
-dominio — vale per qualunque percorso di scrittura (BB di dominio, percorso generico,
-UPDATE SQL diretto).
+La trigger function `pratiche.trgfn_flussi_guard_esito_classe` controlla, quando un flusso si
+completa, che la classe dell'esito corrisponda alla `modalita_esito` del suo passo.
 
-| Classe step | Esito ammesso al completamento |
-|---|---|
-| `modalita_esito = DOMINIO` | solo esiti di **ramo** (`is_verdetto = false`, es. MERCE_PRESENTE/SOLO_SERVIZI) |
-| `modalita_esito` ≠ DOMINIO (MANUALE/AUTOMATICO/CONTESTUALE) | solo **verdetti** (`is_verdetto = true`, es. POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE) |
-
-**Origine**: incidente `PRA-0000243` — lo step SMISTAMENTO (bivio, esito calcolato da
-`vendite.completa_smistamento`) fu chiuso con `POSITIVO` via percorso generico: il ramo
-merce non si attivò, la pratica si auto-chiuse e ordine→commessa furono completati a
-mano fuori pratica. La direzione simmetrica (esito di ramo su step normale) prima era
-fermata solo dal guard BE lato operatore.
+È la difesa autoritativa dei passi a esito di dominio: vale per qualunque strada di scrittura, il
+building block di dominio, il percorso generico o una modifica diretta.
 
 ---
 
-### Trigger associato
+### La regola
 
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_flussi_a10_guard_esito_classe_ins_upd` | BEFORE | INSERT, UPDATE OF `stato_id` | `pratiche.flussi` |
+| Modalità del passo | Esito ammesso al completamento |
+| --- | --- |
+| `DOMINIO` | solo un esito di **ramo** (`is_verdetto` falso, per esempio `MERCE_PRESENTE`, `SOLO_SERVIZI`) |
+| ogni altra (`MANUALE`, `AUTOMATICO`, `CONTESTUALE`) | solo un **verdetto** (`is_verdetto` vero, per esempio `POSITIVO`, `NEGATIVO`) |
 
-Fase `_a10_` (guard/block). Ordine lessicografico: `..._guard_esito_classe_...` scatta
-**prima** di `..._guard_esito_completato_...` — con esito NULL questo guard esce subito
-e il 477 solleva il suo errore.
-
----
-
-### Regole
-
-* Scatta **solo alla transizione verso COMPLETATO**: INSERT già COMPLETATO, oppure
-  UPDATE con `stato_id` realmente cambiato. Le righe **già completate restano
-  toccabili** sulle altre colonne: il flusso 543 di `PRA-0000243` porta storicamente un
-  verdetto su uno step ora DOMINIO e non deve diventare un sasso intoccabile (nessuna
-  migrazione dati).
-* `esito NULL` a COMPLETATO → fuori scope, competenza del guard
-  `FLUSSI_ESITO_OBBLIGATORIO` (477).
-* Flusso **senza template** (`template_flusso_id NULL`) → classe verdetto (trattato come
-  MANUALE, coerente col backend).
-* Nessuna logica di idempotenza/re-fire: il no-op sugli stati terminali è garantito a
-  monte (BE `completa_step_pratica`) e dalla matrice transizioni (nessuna uscita da
-  COMPLETATO).
+Le due direzioni hanno lo stesso peso. Un verdetto generico su un passo che fa da bivio lascia il ramo
+mai attivato, in silenzio: la pratica si chiude come se il lavoro a valle non servisse. Un esito di
+ramo su un passo normale è un valore che quel passo non sa leggere.
 
 ---
 
-### Note operative
+### Quando scatta
 
-* Errore sollevato: `FLUSSI_ESITO_NON_AMMESSO` (504), con l'esito, il codice dello step
-  e la classe attesa. Il messaggio contiene la sottostringa stabile **"non ammesso per
-  lo step"** — è il marker per `_KNOWN_DB_ERROR_MARKERS` lato BE: non riformularlo senza
+* Solo alla transizione verso `COMPLETATO`: un inserimento già completato, o una modifica che cambia
+  davvero lo stato. Le righe già completate restano modificabili sulle altre colonne: una riga storica
+  che porta un verdetto su un passo diventato `DOMINIO` non diventa intoccabile.
+* Un completamento senza esito non lo riguarda: lo ferma
+  `pratiche.trgfn_flussi_guard_esito_completato`, che scatta dopo questo nella fase dei guard e solleva
+  il suo errore.
+* Un flusso senza passo di riferimento vale come `MANUALE`, come nel backend: ammette solo verdetti.
+
+---
+
+### ⭐ Valore nel database, autorizzazione nel backend
+
+Il guard difende l'invariante di **valore**: la classe giusta per il passo. Il backend difende quella
+di **autorizzazione**: a mano l'operatore invia solo verdetti. Il database non distingue chi scrive.
+Insieme, un bivio `DOMINIO` si completa solo attraverso il building block del suo dominio.
+
+---
+
+### Codici errore
+
+* `E_FLUSSI_ESITO_NON_AMMESSO` — l'esito non è della classe che il passo ammette. Il contesto porta
+  l'esito, il codice del passo e la modalità. ⚠️ Il messaggio contiene la frase stabile «non ammesso per
+  lo step», che il backend riconosce fra gli errori noti del database: non si riformula senza
   coordinarsi.
-* **Complementarità col BE (non ridondanza)**: questo guard enforce l'invariante di
-  **valore** (classe esito giusta per lo step); `require_esito_selezionabile_operatore`
-  (BE) enforce quella di **autorizzazione** (l'operatore invia a mano solo verdetti) —
-  il DB non distingue chi scrive. Insieme: un bivio DOMINIO si completa solo via
-  building block di dominio.
-* Introdotta con `20260702-17` (brief-db-step-dominio-e-definizioni-versionate, Parte 1).
-* Test: `db/pgtap/pratiche/test-guard-esito-classe.sql` (entrambe le direzioni, riga
-  legacy, INSERT diretto); fixture adeguata in
-  `db/pgtap/pratiche/test-chiusura-nessun-lavoro-pendente.sql` (NP_SMIST → DOMINIO).
+
+---
+
+### Test
+
+* `pratiche/test-guard-esito-classe` — le due direzioni, la riga storica già completata e
+  l'inserimento diretto.
+
+---
+
+### Note di migrazione
+
+* 2026-07-02 — nasce dopo una pratica in cui il passo di smistamento, un bivio a esito calcolato dal
+  dominio, fu chiuso con `POSITIVO` dal percorso generico: il ramo merce non si attivò, la pratica si
+  chiuse da sola e il seguito fu completato a mano fuori pratica. La direzione opposta era fermata solo
+  dal backend (brief-db-step-dominio-e-definizioni-versionate).
+
+---
+
+{% include-markdown "signature-core.md" %}

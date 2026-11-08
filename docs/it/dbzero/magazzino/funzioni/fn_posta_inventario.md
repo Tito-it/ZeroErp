@@ -41,6 +41,8 @@ DECLARE
     v_data         magazzino.inventari.data%TYPE;
     v_stato        magazzino.inventari.stato_mag_inventario%TYPE;
     v_sorgente_id  config.sorgenti.id%TYPE;
+    v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+    v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
     v_costo        magazzino.inventari_righe.costo_unitario%TYPE;
     v_motivi       jsonb;
     v_piano        record;
@@ -82,13 +84,12 @@ BEGIN
         'magazzino', 'magazzino.fn_posta_inventario', v_motivi, NULL, NULL::uuid,
         jsonb_build_object('inventario_id', p_inventario_id));
 
-    SELECT s.id INTO v_sorgente_id FROM config.sorgenti s WHERE s.codice_interno = 'INVENTARIO_RIGA' AND s.attivo;
-    IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('config', 'config.sorgenti.INVENTARIO_RIGA'),
-            NULL::uuid, VARIADIC ARRAY['sorgente INVENTARIO_RIGA (config.sorgenti, attiva)']);
-    END IF;
+    -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+    -- INVENTARIO e la chiave secondo il suo key_selector. Un tipo assente o
+    -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_sorgente_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('INVENTARIO', p_inventario_id::text) p;
 
     -- 4. La GUC transazionale: apre la porta POSTED e le righe in CONFIRM.
     PERFORM set_config('zeroerp.magazzino_posting_inventario', p_inventario_id::text, true);
@@ -128,6 +129,8 @@ BEGIN
             p_causale          => v_piano.causale_codice_interno,
             p_qta              => v_piano.delta,
             p_sorgente_tipo_id => v_sorgente_id,
+            p_sorgente_id      => v_prov_id,
+            p_sorgente_uid     => v_prov_uid,
             p_sorgente_riga    => v_piano.riga_id,
             p_costo_unitario   => v_costo,
             p_lotto_id         => v_piano.lotto_id,
@@ -151,7 +154,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.fn_posta_inventario(p_inventario_id bigint)
-IS 'VERBO (rev 2026-09-24, brief-db-magazzino-verbi-con-permesso): registra un inventario CONFIRM (D-L2-f, D-L2-n). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''), lo stesso permesso dell''endpoint (E_PERMESSO_NEGATO, anche senza utente). SECURITY DEFINER del proprietario con search_path bloccato: e'' la sola strada verso la primitiva. La RLS qui non vale: la testata si prende FOR UPDATE con il predicato della policy (script.fn_scope_ef_whitelist_via_magazzino) nella WHERE — fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak) e nessun lock. Poi come prima: legge il piano (fn_inventario_piano), scrive qta_sistema su ogni riga, posta le righe con delta <> 0 attraverso la primitiva (causale del piano; sorgente INVENTARIO_RIGA; costo della riga solo su un''entrata; data_mov = data dell''inventario), porta la testata a POSTED con la GUC transazionale zeroerp.magazzino_posting_inventario. Non CONFIRM: E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA; senza righe: E_MAG_DOCUMENTO_SENZA_RIGHE; una NON_POSTABILE rifiuta tutto. UNA transazione: se una riga fallisce non resta niente. Ritorna (movimento_id, riga_id, qta) per riga postata.';
+IS 'VERBO (rev 2026-09-24, brief-db-magazzino-verbi-con-permesso): registra un inventario CONFIRM (D-L2-f, D-L2-n). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''), lo stesso permesso dell''endpoint (E_PERMESSO_NEGATO, anche senza utente). SECURITY DEFINER del proprietario con search_path bloccato: e'' la sola strada verso la primitiva. La RLS qui non vale: la testata si prende FOR UPDATE con il predicato della policy (script.fn_scope_ef_whitelist_via_magazzino) nella WHERE — fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak) e nessun lock. Poi come prima: legge il piano (fn_inventario_piano), scrive qta_sistema su ogni riga, posta le righe con delta <> 0 attraverso la primitiva (causale del piano; sorgente INVENTARIO + la riga; costo della riga solo su un''entrata; data_mov = data dell''inventario), porta la testata a POSTED con la GUC transazionale zeroerp.magazzino_posting_inventario. Non CONFIRM: E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA; senza righe: E_MAG_DOCUMENTO_SENZA_RIGHE; una NON_POSTABILE rifiuta tutto. UNA transazione: se una riga fallisce non resta niente. Ritorna (movimento_id, riga_id, qta) per riga postata. La provenienza del movimento e'' il documento (INVENTARIO, la chiave della testata) con la riga, dal BB script.fn_sorgente_provenienza (brief-db-sorgente-documento-e-riga lotto M).';
 ```
 
 </div>

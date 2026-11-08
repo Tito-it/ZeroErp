@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO COL NOME VECCHIO ESCE DAL CATALOGO
+#   dbops.vw_lotti_chiusi_con_errori_da_guardare -> vw_lotti_congelati_con_errori_da_guardare
+#   Brief: brief-db-revisione-dbops, giro 6 (Q14 ⑦).
+#
+# La vista col nome vecchio non c'e' piu' (20261108-10); la riga col nome nuovo
+# la scrivono i CSV `80_data/sql/dbops/presidi.csv` e `presidi_testi.csv` coi
+# loro mirror. ⛔ `loadUpdateData` aggiorna e inserisce, non cancella (come il
+# 20260910-30): senza questa DELETE il catalogo terrebbe una riga verso una
+# vista che non esiste, e test-catalogo-presidi-v1 sarebbe rosso.
+#
+# ⚠️ Prima i testi, poi il presidio: fk_presidi_testi_presidi. presidi_cause
+#   non ha righe di questo presidio (verificato su dbdev, 2026-11-07); la DELETE
+#   e' scritta lo stesso, perche' la FK c'e' e il catalogo lo ammette.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261108-13-delete-presidio-lotti-chiusi-mctit.yaml
+
+  - changeSet:
+      id: 20261108-13-delete-presidio-lotti-chiusi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal catalogo dei presidi (presidi_cause, presidi_testi, presidi) la riga di
+        dbops.vw_lotti_chiusi_con_errori_da_guardare, rinominata in
+        vw_lotti_congelati_con_errori_da_guardare (20261108-10, -11). loadUpdateData non
+        cancella. Giro 6 di brief-db-revisione-dbops (Q14 ⑦).
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.presidi_cause
+               WHERE vista = 'dbops.vw_lotti_chiusi_con_errori_da_guardare';
+              DELETE FROM dbops.presidi_testi
+               WHERE vista = 'dbops.vw_lotti_chiusi_con_errori_da_guardare';
+              DELETE FROM dbops.presidi
+               WHERE vista = 'dbops.vw_lotti_chiusi_con_errori_da_guardare';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La riga torna dal CSV solo se la si rimette li', insieme alla vista.
+              SELECT 1;

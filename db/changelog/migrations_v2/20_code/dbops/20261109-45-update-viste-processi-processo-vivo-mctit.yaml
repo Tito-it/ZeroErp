@@ -1,0 +1,485 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Sei viste dei processi leggono il processo vivo da script.fn_e_obsoleto al posto di
+#   attivo AND obsoleto_dal IS NULL (D11, Q2, N2; chiude anche Q14 ⑥): un ritiro
+#   programmato resta nei presidi, nel roster e nel panorama fino al suo giorno.
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9a (§24).
+#
+#   CREATE OR REPLACE VIEW: colonne invariate, nessuna vista con security_invoker
+#   (reloptions vuote, lette dal catalogo). COMMENT riscritti al presente (Q13).
+#   La settima, vw_processi_dominio_senza_difesa, e' nel 20261109-46.
+#   Corpi presi dal catalogo dello scratch (2026-11-08); rollback = corpi e COMMENT di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-45-update-viste-processi-processo-vivo-mctit.yaml
+
+  - changeSet:
+      id: 20261109-45-update-viste-processi-processo-vivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Sei viste dei processi leggono il processo vivo da script.fn_e_obsoleto. Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'dbops.processi'::regclass
+                 AND conname = 'chk_processi_ritiro_con_data'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_emittenti_non_serviti AS
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_codice
+                 FROM dbops.processi p
+                   CROSS JOIN anagrafiche.emittenti_fiscali ef
+                WHERE p.classe = 'DOMINIO'::text AND NOT script.fn_e_obsoleto(p.obsoleto_dal) AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND ef.attivo AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                           JOIN config.user_emittenti_fiscali uef ON uef.auth_user_id = pi.auth_user_id
+                        WHERE pi.processo_id = p.id AND pi.attivo AND uef.emittente_fiscale_id = ef.id));
+
+              COMMENT ON VIEW dbops.vw_emittenti_non_serviti IS
+                  'Coppie (processo DOMINIO vivo senza operatore che lo lanci, emittente fiscale attivo) per cui NON esiste un utente tecnico. DEVE restare VUOTA. Copre un guasto che non assomiglia a un errore: senza l''utente il lavoro parte, la RLS mostra zero righe e il run chiude con «FATTO, 0 elaborate», e quell''emittente non viene mai lavorato. Non concede niente: il perimetro lo decide una persona creando l''utente. Canali: PGAGENT, COMMAND e CODA_AUTOMATICA (i lavori di coda che nessuna persona accoda); i processi CODA girano con l''identita'' dell''operatore che li accoda. Processo vivo = ritiro non raggiunto (script.fn_e_obsoleto).';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_emittente AS
+               WITH dominio AS (
+                       SELECT p.id,
+                          p.codice,
+                          p.canale
+                         FROM dbops.processi p
+                        WHERE p.classe = 'DOMINIO'::text AND NOT script.fn_e_obsoleto(p.obsoleto_dal)
+                      )
+               SELECT d.codice AS processo_codice,
+                  d.canale,
+                  NULL::text AS schema_tabella,
+                  NULL::text AS nome_tabella,
+                  NULL::text AS emittente_via,
+                  NULL::text AS emittente_colonna,
+                  'nessun bersaglio dichiarato'::text AS motivo,
+                  'NON_DICHIARATO'::text AS stato,
+                  NULL::text AS nota
+                 FROM dominio d
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_bersagli b
+                        WHERE b.processo_id = d.id))
+              UNION ALL
+               SELECT d.codice AS processo_codice,
+                  d.canale,
+                  b.schema_tabella,
+                  b.nome_tabella,
+                  b.emittente_via,
+                  b.emittente_colonna,
+                      CASE
+                          WHEN NOT (EXISTS ( SELECT 1
+                             FROM pg_class c
+                               JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])))) THEN 'tabella inesistente'::text
+                          WHEN b.emittente_via IS NULL THEN 'percorso verso l''emittente non dichiarato'::text
+                          ELSE 'colonna del percorso inesistente'::text
+                      END AS motivo,
+                      CASE
+                          WHEN b.debito_dichiarato THEN 'DEBITO_DICHIARATO'::text
+                          ELSE 'NON_DICHIARATO'::text
+                      END AS stato,
+                  b.note AS nota
+                 FROM dominio d
+                   JOIN dbops.processi_bersagli b ON b.processo_id = d.id
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM pg_class c
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])))) OR b.emittente_via IS NULL OR NOT (EXISTS ( SELECT 1
+                         FROM pg_attribute a
+                           JOIN pg_class c ON c.oid = a.attrelid
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND a.attname = b.emittente_colonna AND a.attnum > 0 AND NOT a.attisdropped));
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_emittente IS
+                  'LIVELLO 1 del presidio sui processi: processi DOMINIO vivi (ritiro non raggiunto, script.fn_e_obsoleto) che non possono rispettare un perimetro emittente: nessun bersaglio dichiarato, bersaglio senza percorso, o percorso su tabella o colonna inesistente. DEVE restare VUOTA. Prende l''omissione di progetto prima che il processo giri: la RLS non puo'' filtrare su una colonna che non esiste. `stato` (DEBITO_DICHIARATO / NON_DICHIARATO, da dbops.processi_bersagli.debito_dichiarato) e `nota` come la sorella di livello 2, dbops.vw_processi_dominio_senza_difesa. Dichiarare un debito non lo assolve: l''invariante verificabile e'' «nessuna riga NON_DICHIARATO». Prova che la struttura c''e'', non che il codice la usi bene, e non prende il verso opposto (un processo che dovrebbe essere DOMINIO e'' dichiarato di manutenzione).';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_identita AS
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  NULL::integer AS auth_user_id,
+                  'processo DOMINIO headless senza utente tecnico'::text AS motivo
+                 FROM dbops.processi p
+                WHERE p.classe = 'DOMINIO'::text AND NOT script.fn_e_obsoleto(p.obsoleto_dal) AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                        WHERE pi.processo_id = p.id AND pi.attivo))
+              UNION ALL
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  pi.auth_user_id,
+                  'utente tecnico senza identita'' OPERATORE con flag tecnica'::text AS motivo
+                 FROM dbops.processi p
+                   JOIN dbops.processi_identita pi ON pi.processo_id = p.id AND pi.attivo
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM anagrafiche.identita_digitali idg
+                        WHERE idg.auth_user_id = pi.auth_user_id AND idg.attivo AND idg.tecnica AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo))
+              UNION ALL
+               SELECT NULL::text AS processo_codice,
+                  NULL::text AS canale,
+                  idg.auth_user_id,
+                  'identita'' con flag tecnica non rivendicata da nessun processo'::text AS motivo
+                 FROM anagrafiche.identita_digitali idg
+                WHERE idg.tecnica AND idg.attivo AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                        WHERE pi.auth_user_id = idg.auth_user_id AND pi.attivo));
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_identita IS
+                  'Processi DOMINIO che non possono dire CHI agisce, guardati in tre versi: processo vivo (ritiro non raggiunto, script.fn_e_obsoleto) senza utente tecnico, utente tecnico senza identita'' OPERATORE col flag tecnica, identita'' col flag che nessun processo rivendica. DEVE restare VUOTA. Canali: PGAGENT, COMMAND e CODA_AUTOMATICA: un lavoro accodato da una macchina non ha un''identita'' prestata da nessuno. I processi CODA restano esclusi: l''identita'' la porta l''operatore che accoda, e dargliene una tecnica cancellerebbe il suo nome.';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_su_pgagent AS
+               SELECT codice AS processo_codice,
+                  descrizione,
+                  canale,
+                  'esegue dentro pgAgent: senza identita'', e un fallimento non arriva a nessuno. Va spostato su CODA_AUTOMATICA, con il job pgAgent che lo ACCODA invece di eseguirlo'::text AS motivo
+                 FROM dbops.processi p
+                WHERE classe = 'DOMINIO'::text AND NOT script.fn_e_obsoleto(obsoleto_dal) AND canale = 'PGAGENT'::text;
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_su_pgagent IS
+                  'Processi DOMINIO vivi (ritiro non raggiunto, script.fn_e_obsoleto) che ESEGUONO dentro pgAgent. DEVE restare VUOTA. Li'' un processo non ha identita'', quindi nessun perimetro emittente, e un fallimento non arriva a nessuno: la traccia sta in pgagent.pga_joblog, che l''applicazione non vede. Che un job pgAgent SVEGLI un processo di dominio resta lecito: un job che chiama dbops.fn_accoda_lavoro non tocca nessun documento, e il lavoro vero resta tracciato nella coda; il canale di quel processo e'' CODA_AUTOMATICA. Non e'' un CHECK su dbops.processi: il registro e'' catalogo, e un CHECK trasformerebbe un errore di configurazione di una riga in un migrate rotto.';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_roster AS
+               SELECT p.codice AS processo_codice,
+                  p.classe,
+                  p.canale,
+                  idg.auth_user_id,
+                  au.username,
+                  idg.id AS identita_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_codice,
+                  ef.soggetto_ruolo_id AS emittente_soggetto_ruolo_id
+                 FROM dbops.processi p
+                   JOIN dbops.processi_identita pi ON pi.processo_id = p.id AND pi.attivo
+                   JOIN anagrafiche.identita_digitali idg ON idg.auth_user_id = pi.auth_user_id AND idg.attivo AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   JOIN LATERAL script.fn_get_auth_user_stato(pi.auth_user_id) au(username, is_active) ON au.is_active
+                   JOIN config.user_emittenti_fiscali uef ON uef.auth_user_id = pi.auth_user_id
+                   JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id AND ef.attivo
+                WHERE NOT script.fn_e_obsoleto(p.obsoleto_dal)
+                ORDER BY p.codice, ef.codice, idg.auth_user_id;
+
+              COMMENT ON VIEW dbops.vw_processi_roster IS
+                  'Per ogni processo automatico vivo (ritiro non raggiunto, script.fn_e_obsoleto), con quale IDENTITA'' lavora ciascuna azienda: la terna (auth_user_id, username, identita_id) piu'' l''emittente. Le cinque condizioni sono tutte necessarie (legame attivo, identita'' attiva, ruolo OPERATORE, utente Django attivo, emittente attivo): spegnerne una basta a fermare il processo, ed e'' la stessa terna che script.fn_riattiva_utente_tecnico riaccende tutta insieme. L''utente Django si legge da script.fn_get_auth_user_stato e non da un JOIN diretto: una vista si risolve alla CREATE, e le tabelle di django le crea manage.py migrate, non Liquibase. La leggono l''accodamento della chiusura per scadenza e il backend.';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_programmazione AS
+               WITH panorama AS (
+                       SELECT p.codice AS processo_codice,
+                          p.classe,
+                          p.canale,
+                          p.jobname_pgagent,
+                          p.tolleranza_minuti,
+                          p.segno_di_vita,
+                          g.abilitato AS job_abilitato,
+                          g.prossima_esecuzione AS prossima_corsa,
+                          g.ultima_esecuzione AS pgagent_ultima_corsa,
+                          l.ultima_corsa AS giornale_ultima_corsa,
+                          l.ultima_corsa_pgagent,
+                          l.ultimo_esito,
+                          s.viva_dal AS sessione_viva_dal,
+                          acc.acceso,
+                              CASE
+                                  WHEN p.canale = 'CODA'::text THEN ARRAY['SU_RICHIESTA'::text, NULL::text]
+                                  WHEN acc.acceso IS FALSE THEN ARRAY['SPENTO'::text, NULL::text]
+                                  WHEN p.canale = 'COMMAND'::text AND p.segno_di_vita = 'SESSIONE'::text THEN
+                                  CASE
+                                      WHEN s.viva THEN ARRAY['OK'::text, NULL::text]
+                                      ELSE ARRAY['MUTO'::text, 'SERVIZIO_GIU'::text]
+                                  END
+                                  WHEN p.canale = 'COMMAND'::text AND p.tolleranza_minuti IS NOT NULL THEN
+                                  CASE
+                                      WHEN l.ultima_corsa IS NULL THEN ARRAY['MAI_PARTITO'::text, 'TIMER_NON_INSTALLATO'::text]
+                                      WHEN l.ultima_corsa < (now() - make_interval(mins => p.tolleranza_minuti)) THEN ARRAY['MUTO'::text, 'TIMER_FERMO'::text]
+                                      ELSE ARRAY['OK'::text, NULL::text]
+                                  END
+                                  WHEN p.canale = 'COMMAND'::text THEN ARRAY['FUORI_PORTATA'::text, NULL::text]
+                                  WHEN p.jobname_pgagent IS NULL THEN ARRAY['NON_PROGRAMMATO'::text, 'NON_PROGRAMMATO'::text]
+                                  WHEN g.abilitato IS NULL THEN ARRAY['JOB_ASSENTE'::text, 'JOB_ASSENTE'::text]
+                                  WHEN g.abilitato IS FALSE THEN ARRAY['JOB_SPENTO'::text, 'JOB_SPENTO'::text]
+                                  WHEN g.ultima_esecuzione IS NOT NULL AND COALESCE(l.ultima_corsa_pgagent, '-infinity'::timestamp with time zone) < (g.ultima_esecuzione - '01:00:00'::interval) THEN ARRAY['GIRA_E_NON_REGISTRA'::text, 'GIRA_E_NON_REGISTRA'::text]
+                                  WHEN g.ultima_esecuzione IS NULL AND (g.prossima_esecuzione IS NULL OR g.prossima_esecuzione < (now() - '01:00:00'::interval)) THEN ARRAY['MAI_PARTITO'::text, 'JOB_MAI_PARTITO'::text]
+                                  WHEN g.ultima_esecuzione IS NULL THEN ARRAY['IN_ATTESA'::text, NULL::text]
+                                  WHEN g.prossima_esecuzione < (now() - '01:00:00'::interval) THEN ARRAY['IN_RITARDO'::text, 'JOB_IN_RITARDO'::text]
+                                  ELSE ARRAY['OK'::text, NULL::text]
+                              END AS verdetto
+                         FROM dbops.processi p
+                           LEFT JOIN LATERAL dbops.fn_get_pgagent_job_stato(p.jobname_pgagent) g(abilitato, ultima_esecuzione, prossima_esecuzione) ON true
+                           LEFT JOIN LATERAL ( SELECT max(r.started_at) AS ultima_corsa,
+                                  max(r.started_at) FILTER (WHERE r.origine::text = 'PGAGENT'::text) AS ultima_corsa_pgagent,
+                                  ( SELECT r2.ok
+                                         FROM maintenance.job_run_log r2
+                                        WHERE (r2.processo_codice = p.codice OR r2.jobname = p.codice) AND NOT r2.saltata
+                                        ORDER BY r2.started_at DESC, r2.id DESC
+                                       LIMIT 1) AS ultimo_esito
+                                 FROM maintenance.job_run_log r
+                                WHERE r.processo_codice = p.codice OR r.jobname = p.codice) l ON true
+                           LEFT JOIN LATERAL ( SELECT count(*) > 0 AS viva,
+                                  min(a.backend_start) AS viva_dal
+                                 FROM pg_stat_activity a
+                                WHERE p.segno_di_vita = 'SESSIONE'::text AND a.datname = current_database() AND a.application_name = p.codice) s ON true
+                           LEFT JOIN LATERAL ( SELECT dbops.fn_processo_acceso_dichiarato(p.codice) AS acceso) acc ON true
+                        WHERE NOT script.fn_e_obsoleto(p.obsoleto_dal)
+                      )
+               SELECT processo_codice,
+                  classe,
+                  canale,
+                  jobname_pgagent,
+                  job_abilitato,
+                  prossima_corsa,
+                  pgagent_ultima_corsa,
+                  giornale_ultima_corsa,
+                  ultimo_esito,
+                  verdetto[1] AS stato,
+                  verdetto[2] IS NOT NULL AS da_guardare,
+                  ultima_corsa_pgagent AS giornale_ultima_corsa_pgagent,
+                  tolleranza_minuti,
+                  segno_di_vita,
+                      CASE
+                          WHEN segno_di_vita = 'SESSIONE'::text THEN sessione_viva_dal
+                          ELSE giornale_ultima_corsa
+                      END AS ultimo_segno_di_vita,
+                  verdetto[2] AS causa,
+                  acceso
+                 FROM panorama
+                ORDER BY canale, processo_codice;
+
+              COMMENT ON VIEW dbops.vw_processi_programmazione IS
+                  'PANORAMA: per ogni processo automatico vivo (ritiro non raggiunto, script.fn_e_obsoleto: un ritiro programmato compare fino al suo giorno), quale job pgAgent lo sveglia, quando girera'', quando ha girato secondo pgAgent e secondo il giornale, e il verdetto. E'' un panorama, non un presidio: elenca anche i sani; il presidio e'' la colonna `da_guardare` (causa IS NOT NULL), proiettata da dbops.vw_processi_programmazione_da_guardare. Il legame col job si legge da dbops.processi.jobname_pgagent, non dal nome; il giornale per processo_codice o per jobname (le corse storiche hanno la prima colonna vuota). `stato` e `causa` escono in coppia da un solo CASE, nell''ordine: CODA -> SU_RICHIESTA; sveglia spenta su questa installazione (colonna `acceso`, da dbops.fn_processo_acceso_dichiarato) -> SPENTO, senza causa; COMMAND con segno di vita SESSIONE -> OK se in pg_stat_activity c''e'' una connessione viva con application_name = codice, altrimenti MUTO/SERVIZIO_GIU (conta l''esistenza della sessione, non backend_start, che pg_stat_activity maschera a chi non e'' lo stesso utente); COMMAND con tolleranza -> MAI_PARTITO/TIMER_NON_INSTALLATO, MUTO/TIMER_FERMO oltre la tolleranza, OK; COMMAND senza contratto -> FUORI_PORTATA; PGAGENT -> NON_PROGRAMMATO, JOB_ASSENTE, JOB_SPENTO (il job disabilitato dentro pgAgent), GIRA_E_NON_REGISTRA (pgAgent dice che e'' girato e il giornale non ha la corsa di pgAgent: un lavoro che muore prima di raccontarlo), MAI_PARTITO/JOB_MAI_PARTITO (mai girato e la prossima esecuzione passata da piu'' di un''ora), IN_ATTESA (mai girato, prima corsa futura), IN_RITARDO/JOB_IN_RITARDO (corsa dovuta passata da piu'' di un''ora: col demone fermo pgAgent non aggiorna la prossima esecuzione), OK. La causa sceglie il testo per chi agisce (dbops.presidi.colonna_variante = ''causa'').';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_emittenti_non_serviti AS
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_codice
+                 FROM dbops.processi p
+                   CROSS JOIN anagrafiche.emittenti_fiscali ef
+                WHERE p.classe = 'DOMINIO'::text AND p.attivo AND p.obsoleto_dal IS NULL AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND ef.attivo AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                           JOIN config.user_emittenti_fiscali uef ON uef.auth_user_id = pi.auth_user_id
+                        WHERE pi.processo_id = p.id AND pi.attivo AND uef.emittente_fiscale_id = ef.id));
+
+              COMMENT ON VIEW dbops.vw_emittenti_non_serviti IS
+                  'Coppie (processo DOMINIO senza operatore che lo lanci, emittente fiscale attivo) per cui NON esiste un utente tecnico. DEVE restare VUOTA. ⛔ Copre un guasto che non assomiglia a un errore: senza l''utente il lavoro parte, la RLS mostra zero righe e il run chiude con «FATTO, 0 elaborate» — e quell''emittente non viene mai fatturato. ⚠️ Non concede niente: il perimetro lo decide una persona creando l''utente (D-9). ⭐ Rev 2026-09-05 (R-E, strada B): include CODA_AUTOMATICA, cioe'' i lavori di coda che nessuna persona accoda. I processi CODA «umani» restano esclusi: girano con l''identita'' dell''operatore che li accoda. Brief: brief-db-processi-automatici-residui-be, sezione 1-quater.';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_emittente AS
+               WITH dominio AS (
+                       SELECT p.id,
+                          p.codice,
+                          p.canale
+                         FROM dbops.processi p
+                        WHERE p.classe = 'DOMINIO'::text AND p.attivo AND p.obsoleto_dal IS NULL
+                      )
+               SELECT d.codice AS processo_codice,
+                  d.canale,
+                  NULL::text AS schema_tabella,
+                  NULL::text AS nome_tabella,
+                  NULL::text AS emittente_via,
+                  NULL::text AS emittente_colonna,
+                  'nessun bersaglio dichiarato'::text AS motivo,
+                  'NON_DICHIARATO'::text AS stato,
+                  NULL::text AS nota
+                 FROM dominio d
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_bersagli b
+                        WHERE b.processo_id = d.id))
+              UNION ALL
+               SELECT d.codice AS processo_codice,
+                  d.canale,
+                  b.schema_tabella,
+                  b.nome_tabella,
+                  b.emittente_via,
+                  b.emittente_colonna,
+                      CASE
+                          WHEN NOT (EXISTS ( SELECT 1
+                             FROM pg_class c
+                               JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])))) THEN 'tabella inesistente'::text
+                          WHEN b.emittente_via IS NULL THEN 'percorso verso l''emittente non dichiarato'::text
+                          ELSE 'colonna del percorso inesistente'::text
+                      END AS motivo,
+                      CASE
+                          WHEN b.debito_dichiarato THEN 'DEBITO_DICHIARATO'::text
+                          ELSE 'NON_DICHIARATO'::text
+                      END AS stato,
+                  b.note AS nota
+                 FROM dominio d
+                   JOIN dbops.processi_bersagli b ON b.processo_id = d.id
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM pg_class c
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])))) OR b.emittente_via IS NULL OR NOT (EXISTS ( SELECT 1
+                         FROM pg_attribute a
+                           JOIN pg_class c ON c.oid = a.attrelid
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND a.attname = b.emittente_colonna AND a.attnum > 0 AND NOT a.attisdropped));
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_emittente IS
+                  'LIVELLO 1 del presidio sui processi: processi dichiarati DOMINIO che non possono rispettare un perimetro emittente — nessun bersaglio dichiarato, bersaglio senza percorso, o percorso dichiarato su tabella/colonna inesistente. DEVE restare VUOTA. ⭐ Prende l''omissione di progetto PRIMA che il processo giri: a runtime non e'' recuperabile, perche'' la RLS non puo'' filtrare su una colonna che non esiste. ⚠️ Dal 2026-09-05 porta `stato` (DEBITO_DICHIARATO / NON_DICHIARATO, da dbops.processi_bersagli.debito_dichiarato) e `nota`, come la sorella di livello 2: il frontend le mostra in un pannello solo e deve poter leggere dal DATO se una riga era attesa, invece che da una tabella di eccezioni scritta a mano nel codice. ⛔ Dichiarare un debito non lo assolve: una riga DEBITO_DICHIARATO e'' un lavoro con un nome, una NON_DICHIARATO e'' un allarme — l''invariante verificabile e'' «nessuna riga NON_DICHIARATO». ⚠️ Come dbops.vw_liste_multi_emittente_non_certificate, prova che la struttura c''e'', non che il codice la usi bene; e non prende il verso opposto (dovrebbe essere DOMINIO ma e'' dichiarato manutenzione), che resta un errore umano. Brief: brief-db-processi-automatici-identita-e-perimetro §8.';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_identita AS
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  NULL::integer AS auth_user_id,
+                  'processo DOMINIO headless senza utente tecnico'::text AS motivo
+                 FROM dbops.processi p
+                WHERE p.classe = 'DOMINIO'::text AND p.attivo AND p.obsoleto_dal IS NULL AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                        WHERE pi.processo_id = p.id AND pi.attivo))
+              UNION ALL
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  pi.auth_user_id,
+                  'utente tecnico senza identita'' OPERATORE con flag tecnica'::text AS motivo
+                 FROM dbops.processi p
+                   JOIN dbops.processi_identita pi ON pi.processo_id = p.id AND pi.attivo
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM anagrafiche.identita_digitali idg
+                        WHERE idg.auth_user_id = pi.auth_user_id AND idg.attivo AND idg.tecnica AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo))
+              UNION ALL
+               SELECT NULL::text AS processo_codice,
+                  NULL::text AS canale,
+                  idg.auth_user_id,
+                  'identita'' con flag tecnica non rivendicata da nessun processo'::text AS motivo
+                 FROM anagrafiche.identita_digitali idg
+                WHERE idg.tecnica AND idg.attivo AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                        WHERE pi.auth_user_id = idg.auth_user_id AND pi.attivo));
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_identita IS
+                  'Processi DOMINIO che non possono dire CHI agisce, guardato nei TRE versi: processo senza utente tecnico, utente tecnico senza identita'' OPERATORE col flag, identita'' col flag che nessun processo rivendica. DEVE restare VUOTA. ⭐ Rev 2026-09-05 (R-E, strada B): il filtro sul canale include CODA_AUTOMATICA — un lavoro di coda messo in coda da una MACCHINA non ha un''identita'' prestata da nessuno, quindi ne vuole una propria. ⚠️ I processi CODA «umani» restano esclusi, ed e'' voluto: li'' l''identita'' la porta l''operatore che accoda, e dargliene una tecnica cancellerebbe il suo nome. Brief: brief-db-processi-automatici-residui-be, sezione 1-quater.';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_su_pgagent AS
+               SELECT codice AS processo_codice,
+                  descrizione,
+                  canale,
+                  'esegue dentro pgAgent: senza identita'', e un fallimento non arriva a nessuno. Va spostato su CODA_AUTOMATICA, con il job pgAgent che lo ACCODA invece di eseguirlo'::text AS motivo
+                 FROM dbops.processi p
+                WHERE classe = 'DOMINIO'::text AND attivo AND obsoleto_dal IS NULL AND canale = 'PGAGENT'::text;
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_su_pgagent IS
+                  'Processi di classe DOMINIO che ESEGUONO dentro pgAgent. DEVE arrivare a VUOTA. ⛔ Li'' un processo non ha identita'' — quindi nessun perimetro emittente — e un fallimento non arriva a nessuno: la traccia sta in pgagent.pga_joblog, che nessuno guarda e che l''applicazione non vede. ⭐ L''argomento e'' sperimentale: apply_storicizza_weekly e'' morto ogni settimana per SEI MESI e lo si e'' scoperto per caso (R-12). ⚠️ Che un job pgAgent SVEGLI un processo di dominio resta lecito e non e'' una scappatoia: un job che chiama dbops.fn_accoda_lavoro non tocca nessun documento — se muore non ha fatto danni, e il lavoro vero resta tracciato nella coda. Il registro descrive il PROCESSO, non chi suona la sveglia: percio'' il canale diventa CODA_AUTOMATICA. ⛔ Non e'' un CHECK su dbops.processi, e per due ragioni: oggi fallirebbe il migrate (la riga c''e'' ancora), e il registro e'' catalogo — un CHECK trasformerebbe un errore di configurazione in un migrate rotto, cioe'' in un problema di tutti invece che di quella riga. Decisione: brief-db-processi-automatici-identita-e-perimetro, sezione 12.12.';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_roster AS
+               SELECT p.codice AS processo_codice,
+                  p.classe,
+                  p.canale,
+                  idg.auth_user_id,
+                  au.username,
+                  idg.id AS identita_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_codice,
+                  ef.soggetto_ruolo_id AS emittente_soggetto_ruolo_id
+                 FROM dbops.processi p
+                   JOIN dbops.processi_identita pi ON pi.processo_id = p.id AND pi.attivo
+                   JOIN anagrafiche.identita_digitali idg ON idg.auth_user_id = pi.auth_user_id AND idg.attivo AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   JOIN LATERAL script.fn_get_auth_user_stato(pi.auth_user_id) au(username, is_active) ON au.is_active
+                   JOIN config.user_emittenti_fiscali uef ON uef.auth_user_id = pi.auth_user_id
+                   JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id AND ef.attivo
+                WHERE p.attivo AND p.obsoleto_dal IS NULL
+                ORDER BY p.codice, ef.codice, idg.auth_user_id;
+
+              COMMENT ON VIEW dbops.vw_processi_roster IS
+                  'Per ogni processo automatico, con quale IDENTITA'' lavora ciascuna azienda: la terna (auth_user_id, username, identita_id) piu'' l''emittente. ⭐ Il fatto esisteva gia'' ma viveva in una stringa SQL dentro Python (processi_repository.roster_processo): serviva solo al produttore della fatturazione. Da quando anche il DB deve accodare — il job pgAgent della chiusura scadenze — riscriverlo sarebbe stata una SECONDA scrittura dello stesso fatto. ⚠️ Le cinque condizioni sono tutte necessarie (legame attivo, identita'' attiva, ruolo OPERATORE, utente Django attivo, emittente attivo): spegnerne uno basta a fermare il processo, quindi guardarne uno solo basta a sbagliare — e'' la stessa terna che script.fn_riattiva_utente_tecnico riaccende tutta insieme. ⚠️ La condizione sull''utente Django passa da script.fn_get_auth_user_stato e non da un JOIN diretto: una vista si risolve alla CREATE e le tabelle di django le crea manage.py migrate, non Liquibase. ⚠️ Al backend: roster_processo puo'' diventare un SELECT su questa vista. Finche'' restano due copie, sono due copie.';
+
+              CREATE OR REPLACE VIEW dbops.vw_processi_programmazione AS
+               WITH panorama AS (
+                       SELECT p.codice AS processo_codice,
+                          p.classe,
+                          p.canale,
+                          p.jobname_pgagent,
+                          p.tolleranza_minuti,
+                          p.segno_di_vita,
+                          g.abilitato AS job_abilitato,
+                          g.prossima_esecuzione AS prossima_corsa,
+                          g.ultima_esecuzione AS pgagent_ultima_corsa,
+                          l.ultima_corsa AS giornale_ultima_corsa,
+                          l.ultima_corsa_pgagent,
+                          l.ultimo_esito,
+                          s.viva_dal AS sessione_viva_dal,
+                          acc.acceso,
+                              CASE
+                                  WHEN p.canale = 'CODA'::text THEN ARRAY['SU_RICHIESTA'::text, NULL::text]
+                                  WHEN acc.acceso IS FALSE THEN ARRAY['SPENTO'::text, NULL::text]
+                                  WHEN p.canale = 'COMMAND'::text AND p.segno_di_vita = 'SESSIONE'::text THEN
+                                  CASE
+                                      WHEN s.viva THEN ARRAY['OK'::text, NULL::text]
+                                      ELSE ARRAY['MUTO'::text, 'SERVIZIO_GIU'::text]
+                                  END
+                                  WHEN p.canale = 'COMMAND'::text AND p.tolleranza_minuti IS NOT NULL THEN
+                                  CASE
+                                      WHEN l.ultima_corsa IS NULL THEN ARRAY['MAI_PARTITO'::text, 'TIMER_NON_INSTALLATO'::text]
+                                      WHEN l.ultima_corsa < (now() - make_interval(mins => p.tolleranza_minuti)) THEN ARRAY['MUTO'::text, 'TIMER_FERMO'::text]
+                                      ELSE ARRAY['OK'::text, NULL::text]
+                                  END
+                                  WHEN p.canale = 'COMMAND'::text THEN ARRAY['FUORI_PORTATA'::text, NULL::text]
+                                  WHEN p.jobname_pgagent IS NULL THEN ARRAY['NON_PROGRAMMATO'::text, 'NON_PROGRAMMATO'::text]
+                                  WHEN g.abilitato IS NULL THEN ARRAY['JOB_ASSENTE'::text, 'JOB_ASSENTE'::text]
+                                  WHEN g.abilitato IS FALSE THEN ARRAY['JOB_SPENTO'::text, 'JOB_SPENTO'::text]
+                                  WHEN g.ultima_esecuzione IS NOT NULL AND COALESCE(l.ultima_corsa_pgagent, '-infinity'::timestamp with time zone) < (g.ultima_esecuzione - '01:00:00'::interval) THEN ARRAY['GIRA_E_NON_REGISTRA'::text, 'GIRA_E_NON_REGISTRA'::text]
+                                  WHEN g.ultima_esecuzione IS NULL AND (g.prossima_esecuzione IS NULL OR g.prossima_esecuzione < (now() - '01:00:00'::interval)) THEN ARRAY['MAI_PARTITO'::text, 'JOB_MAI_PARTITO'::text]
+                                  WHEN g.ultima_esecuzione IS NULL THEN ARRAY['IN_ATTESA'::text, NULL::text]
+                                  WHEN g.prossima_esecuzione < (now() - '01:00:00'::interval) THEN ARRAY['IN_RITARDO'::text, 'JOB_IN_RITARDO'::text]
+                                  ELSE ARRAY['OK'::text, NULL::text]
+                              END AS verdetto
+                         FROM dbops.processi p
+                           LEFT JOIN LATERAL dbops.fn_get_pgagent_job_stato(p.jobname_pgagent) g(abilitato, ultima_esecuzione, prossima_esecuzione) ON true
+                           LEFT JOIN LATERAL ( SELECT max(r.started_at) AS ultima_corsa,
+                                  max(r.started_at) FILTER (WHERE r.origine::text = 'PGAGENT'::text) AS ultima_corsa_pgagent,
+                                  ( SELECT r2.ok
+                                         FROM maintenance.job_run_log r2
+                                        WHERE (r2.processo_codice = p.codice OR r2.jobname = p.codice) AND NOT r2.saltata
+                                        ORDER BY r2.started_at DESC, r2.id DESC
+                                       LIMIT 1) AS ultimo_esito
+                                 FROM maintenance.job_run_log r
+                                WHERE r.processo_codice = p.codice OR r.jobname = p.codice) l ON true
+                           LEFT JOIN LATERAL ( SELECT count(*) > 0 AS viva,
+                                  min(a.backend_start) AS viva_dal
+                                 FROM pg_stat_activity a
+                                WHERE p.segno_di_vita = 'SESSIONE'::text AND a.datname = current_database() AND a.application_name = p.codice) s ON true
+                           LEFT JOIN LATERAL ( SELECT dbops.fn_processo_acceso_dichiarato(p.codice) AS acceso) acc ON true
+                        WHERE p.attivo AND p.obsoleto_dal IS NULL
+                      )
+               SELECT processo_codice,
+                  classe,
+                  canale,
+                  jobname_pgagent,
+                  job_abilitato,
+                  prossima_corsa,
+                  pgagent_ultima_corsa,
+                  giornale_ultima_corsa,
+                  ultimo_esito,
+                  verdetto[1] AS stato,
+                  verdetto[2] IS NOT NULL AS da_guardare,
+                  ultima_corsa_pgagent AS giornale_ultima_corsa_pgagent,
+                  tolleranza_minuti,
+                  segno_di_vita,
+                      CASE
+                          WHEN segno_di_vita = 'SESSIONE'::text THEN sessione_viva_dal
+                          ELSE giornale_ultima_corsa
+                      END AS ultimo_segno_di_vita,
+                  verdetto[2] AS causa,
+                  acceso
+                 FROM panorama
+                ORDER BY canale, processo_codice;
+
+              COMMENT ON VIEW dbops.vw_processi_programmazione IS
+                  'PANORAMA: per ogni processo automatico attivo — quale job pgAgent lo sveglia, quando girera'', quando ha girato secondo pgAgent e secondo il nostro giornale. ⭐ La colonna che vale piu'' di tutte e'' `stato`, e il valore che conta e'' GIRA_E_NON_REGISTRA: pgAgent dice che il job e'' girato, il giornale non lo sa — e'' la firma esatta di un lavoro che muore prima di riuscire a raccontarlo, cioe'' di R-12, il job morto per sei mesi con l''ultimo verdetto a «done». Questo confronto lo avrebbe trovato in un giorno. ⚠️ Il legame col job NON e'' il nome: si legge da dbops.processi.jobname_pgagent, perche'' due job su quattordici si chiamano diversamente dal processo che registrano. ⚠️ Il giornale si legge per processo_codice OPPURE per jobname: le corse storiche hanno la prima colonna vuota, e senza il ripiego ogni processo sembrerebbe non aver mai girato prima di settembre 2026. ⛔ IL CONFRONTO GUARDA CHI HA SCRITTO LA RISPOSTA, rev 2026-09-07 (brief-db-sveglia-dei-processi §9.5-bis, segnalato dal backend): il ramo GIRA_E_NON_REGISTRA legge `giornale_ultima_corsa_pgagent`, non `giornale_ultima_corsa`. ⭐ I COMMAND CON UN CONTRATTO NON SONO PIU'' FUORI_PORTATA, rev 2026-09-11 (brief-db-quattro-processi-senza-presidio §10.2, decisione di Tid): dal 20260911-13 il catalogo dichiara tolleranza_minuti e segno_di_vita, quindi il database SA che cosa aspettarsi. GIORNALE + tolleranza: OK se l''ultima corsa e'' entro la tolleranza, MUTO se e'' piu'' vecchia, MAI_PARTITO se non c''e'' — e MAI_PARTITO su un COMMAND e'' il timer dichiarato e mai installato, cioe'' il §11.5 dei presidi visto dal database. SESSIONE: OK se in pg_stat_activity c''e'' una connessione viva con application_name = codice sul database corrente, altrimenti MUTO — e'' la forma dei servizi sempre accesi (listen_cambio_reparto), il segno di vita e'' un FATTO e non una dichiarazione. MUTO e'' l''unico stato nuovo: «era vivo ed e'' taciuto». FUORI_PORTATA resta per i COMMAND SENZA contratto: un limite di vista, non un guasto. SU_RICHIESTA resta per i CODA: una cadenza non esiste. ⭐ E'' un panorama, non un presidio: elenca anche i sani. ⛔ Il presidio NON si scrive come un NOT IN a mano: e'' la colonna `da_guardare`, calcolata qui accanto al CASE, e dbops.vw_processi_programmazione_da_guardare la proietta — MUTO e MAI_PARTITO ci entrano da soli, senza toccare quella riga. Tre colonne in coda dal 2026-09-11: tolleranza_minuti, segno_di_vita, ultimo_segno_di_vita (la corsa per GIORNALE, l''avvio della sessione per SESSIONE). ⛔ IL VERDETTO SESSIONE POGGIA SULL''ESISTENZA DELLA SESSIONE, rev 2026-09-14: pg_stat_activity mostra a tutti la riga (pid, usename, application_name) ma maschera backend_start e il resto a chi non e'' lo stesso utente della sessione ne'' pg_read_all_stats — e una vista non cambia l''utente che pg_stat_get_activity() guarda. Fino a quel giorno il ramo leggeva `viva_dal IS NOT NULL`: OK per zeroerp_app (la sessione del listener e'' sua) e MUTO per chiunque altro, titodb compreso — cioe'' per fn_conta_presidio, che e'' SECURITY DEFINER. Il primo digest della giornaliera (14-09 07:00) ha contato 1 su un listener vivo da 31 ore e il perimetro LIBERO del presidio ha protestato: il conteggio diceva 1 e l''elenco letto come app era vuoto. Il pgTAP non lo vedeva perche'' la sessione del test e'' del suo stesso utente. ultimo_segno_di_vita per SESSIONE resta informazione (NULL a chi non puo'' leggerlo), non verdetto. ⭐ LA CAUSA, rev 2026-10-09 (brief-db-presidio-processi-testo-per-causa §3 B.1, forma B di Tid): colonna `causa` in coda. Due stati hanno due cause con due rimedi — MUTO e'' TIMER_FERMO su un COMMAND col giornale e SERVIZIO_GIU su un COMMAND con la sessione; MAI_PARTITO e'' TIMER_NON_INSTALLATO su un COMMAND e JOB_MAI_PARTITO su un PGAGENT — e un testo unico dava il rimedio sbagliato (il 2026-10-09 diceva «Esegui ora» a un servizio sempre acceso). Ogni ramo del CASE consegna la coppia [stato, causa]: un secondo CASE farebbe due elenchi degli stessi casi. E `da_guardare` e'' ora `causa IS NOT NULL`: i rami sani non hanno causa, i guasti ce l''hanno per costruzione, e il NOT IN sugli stati sani — un secondo elenco — non c''e'' piu''. La causa sceglie il testo per chi agisce: dbops.presidi.colonna_variante = ''causa'', dbops.presidi_testi.variante. ⭐ PGAGENT: IL SEGNALE E'' LA CORSA DOVUTA, rev 2026-10-14 (brief-db-statistiche-tabelle-job-notturno §8): MAI_PARTITO/JOB_MAI_PARTITO solo se il job non ha mai girato E la prossima esecuzione e'' passata da piu'' di un''ora (o non ce n''e'' una); mai girato con la prima corsa ancora futura e'' IN_ATTESA, senza causa; ha girato ma la corsa dovuta e'' passata da piu'' di un''ora e'' IN_RITARDO/JOB_IN_RITARDO. Col demone fermo pgAgent non aggiorna jobnextrun, che resta nel passato: e'' il fatto che dice «il programmatore non gira». Prima si leggeva «non ha mai girato»: falso allarme su ogni job nuovo fino alla prima corsa (analyze_statistiche, 14-10) e silenzio sul demone fermo per ogni job che aveva gia'' girato. ⭐ SPENTO NON E'' MORTO, rev 2026-10-16 (brief-db-processi-accensione-per-ambiente §5.3): stato SPENTO, senza causa e quindi non da guardare, quando la sveglia del processo e'' spenta su questa installazione — per il default del suo ambiente (dbops.processi.acceso_in_sviluppo/acceso_in_produzione) o per la scelta a mano (dbops.processi_accensione). Viene prima di ogni verdetto di liveness. Colonna `acceso` in coda, letta da dbops.fn_processo_acceso_dichiarato: NULL per i CODA e con l''ambiente non dichiarato (che dice il suo presidio, dbops.vw_ambiente_non_dichiarato). JOB_SPENTO resta un''altra cosa: il job disabilitato dentro pgAgent, fuori dal catalogo, e si guarda.';

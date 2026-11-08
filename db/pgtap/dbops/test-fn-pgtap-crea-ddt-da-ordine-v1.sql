@@ -19,7 +19,7 @@
 --   - trigger di fatturazione, data, cliente del test e causale si scelgono;
 --   - un errore del chiamante parla, e prima di costruire.
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 17):
 --   1) la funzione esiste con la firma dichiarata
 --   2) default: CONSEGNATO, sorgente ORDINE_VENDITA, numero assegnato
 --   3) default: la riga tornata e' legata alla riga d'ordine tornata, quantita' 10
@@ -38,6 +38,8 @@
 --  14) p_data_ordine: l'ordine nasce alla data chiesta, la bolla alla sua (D-1)
 --  15) guard: con p_ordine_id la data dell'ordine non si sceglie (D-1)
 --  16) p_righe_ordine: l'ordine nasce con le righe chieste (sconto) e la bolla le evade
+--  17) ordine con una merce e un onere: p_qta_da_evadere vale per la merce, e la riga
+--      tornata e' la merce (gli oneri non contano: brief-db-revisione-dbops D71)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -50,7 +52,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   esaminato, chiamato come lo chiamera' un file su un database ricostruito:
 --   senza nessuna veste in sessione.
 
-SELECT plan(16);
+SELECT plan(17);
 
 -- 1) La firma
 SELECT has_function(
@@ -67,7 +69,7 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('presidio bolla');
 -- 2) Stato, sorgente, numero
 SELECT is(
     (SELECT s.codice_interno::text || ' ' || so.codice_interno::text
-         || ' ' || (d.sorgente_uid = b.ordine_uid)::text || ' ' || (d.numero IS NOT NULL)::text
+         || ' ' || (d.sorgente_id = b.ordine_id AND d.sorgente_uid IS NULL)::text || ' ' || (d.numero IS NOT NULL)::text
        FROM t_b b
        JOIN vendite.ddt d ON d.id = b.ddt_id
        JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
@@ -240,6 +242,47 @@ SELECT is(
        FROM t_righe t JOIN vendite.ordini_righe orr ON orr.id = t.ordine_riga_id),
     '2 5.00',
     'p_righe_ordine: l''ordine nasce con le due righe (la prima scontata) e la bolla le evade'
+);
+
+-- 17) Merce e onere nello stesso ordine. L'onere si costruisce come nei test
+--   dell'onere in bolla: una causale e un articolo di natura non merce.
+CREATE TEMP TABLE t_onere_art AS
+WITH caus AS (
+    INSERT INTO config.causali_onere (codice_interno, codice, descrizione)
+    VALUES ('PGT_DDO_ONERE', 'PGT_DDO_ONERE', 'Fixture pgTAP: onere della bolla da ordine')
+    RETURNING id)
+SELECT dbops.fn_pgtap_crea_articolo('PGT-DDO-ONERE', false,
+         p_natura_vendita_id => (SELECT nv.id FROM config.nature_vendita nv
+                                  WHERE nv.codice_interno = 'SERVIZIO_UNA_TANTUM'),
+         p_causale_onere_id  => (SELECT id FROM caus)) AS onere,
+       dbops.fn_pgtap_crea_articolo('PGT-DDO-MERCE', false) AS merce;
+
+-- Il builder dentro una funzione: prima della correzione solleva, e il test
+--   legge la frase invece di fermare il file.
+CREATE OR REPLACE FUNCTION pg_temp.bolla_merce_e_onere() RETURNS text
+LANGUAGE plpgsql AS $fx$
+DECLARE
+    v_esito text;
+BEGIN
+    SELECT CASE WHEN b.articolo_id = a.merce THEN 'merce' ELSE 'altro' END
+           || ' ' || b.quantita::text
+      INTO v_esito
+      FROM t_onere_art a
+     CROSS JOIN LATERAL dbops.fn_pgtap_crea_ddt_da_ordine('presidio onere',
+                  p_righe_ordine => jsonb_build_array(
+                      jsonb_build_object('articolo_id', a.merce, 'quantita', 10, 'prezzo', 5),
+                      jsonb_build_object('articolo_id', a.onere, 'quantita', 1, 'prezzo', 15)),
+                  p_qta_da_evadere => 4) b;
+    RETURN v_esito;
+EXCEPTION WHEN others THEN
+    RETURN SQLERRM;
+END;
+$fx$;
+
+SELECT is(
+    pg_temp.bolla_merce_e_onere(),
+    'merce 4.000000',
+    'merce e onere: p_qta_da_evadere vale per l''unica merce, e la riga tornata e'' la merce'
 );
 
 SELECT * FROM finish();

@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «IN CHE STATO E' QUESTA DISTINTA, E DA DOVE VIENE?» — building block
+#   script.fn_get_contabile_stato_origine(p_contabile_id)
+#
+# ── IL DIFETTO ─────────────────────────────────────────────────────
+#   Una riga contabile si vede per DUE strade (policy
+#   rls_vendite_contabili_righe_perimetro_incasso): l'emittente della
+#   distinta, oppure l'emittente della fattura. La seconda esiste apposta
+#   per la riga «mista» — denaro sulla distinta di B abbinato alla fattura
+#   di A — che il modello ammette: chi ha in perimetro tutti e due la
+#   scrive, e A deve poterla vedere per capire dove e' finito il suo
+#   incasso.
+#
+#   Un operatore di A, allora, VEDE e SCRIVE quella riga senza vedere la
+#   sua distinta. E due guard delle righe, SECURITY INVOKER, leggono la
+#   distinta sotto la row security:
+#     - trgfn_vendite_contabili_righe_guard_distinta_finale (le cinque mosse:
+#       sotto una CHIUSA o un'ANNULLATA),
+#     - trgfn_vendite_contabili_righe_guard_contenuto, porta 2 (i fatti
+#       congelati sotto una MANUALE validata).
+#   Non trovano la testata e TACCIONO: la riga si porta a pronta sotto una
+#   distinta chiusa, si ritocca sotto un'annullata, cambia importo sotto una
+#   validata. Non e' «non vedo, quindi rifiuto»: e' «non vedo, quindi passo».
+#
+# ── LA FORMA ───────────────────────────────────────────────────────
+#   Stessa forma di script.fn_get_sistemazione_di_contabile: la lettura
+#   passa fuori dalla row security, e risponde il MINIMO che serve ai
+#   guard — lo stato e l'origine. ⚠️ Non il codice: quello resta letto
+#   sotto la RLS, e nel messaggio un operatore che non vede la distinta
+#   legge il suo id, non il suo numero.
+#
+#   ⚠️ Non allarga niente: il chiamante nomina una distinta (la testata di
+#   una riga che sta scrivendo) e scopre se le sue righe si lavorano. Che
+#   possa toccarla lo decidono le policy e i guard di perimetro.
+#
+#   ⚠️ Dipende dalla RLS abilitata e NON forzata, come le sorelle
+#   (fn_resolve_emittente_fiscale_id, fn_get_sistemazione_di_contabile).
+#
+# Verifica: db/pgtap/pagamenti/test-righe-guard-distinta-vista-dalla-fattura-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261103-06-create-fn-get-contabile-stato-origine-mctit.yaml
+
+  - changeSet:
+      id: 20261103-06-create-fn-get-contabile-stato-origine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_contabile_stato_origine(p_contabile_id): stato e origine di una
+        distinta contabile, letti FUORI dalla row security. Serve ai guard delle righe
+        (guard_distinta_finale, guard_contenuto porta 2), che girano SECURITY INVOKER: chi
+        vede una riga dalla fattura non vede la sua distinta, e un guard che la legge sotto
+        RLS non la trova e lascia passare.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: origine
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: stato_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_contabile_stato_origine(
+                  p_contabile_id pagamenti.vendite_contabili.id%TYPE
+              )
+              RETURNS TABLE (
+                  stato_id pagamenti.vendite_contabili.stato_id%TYPE,
+                  origine  pagamenti.vendite_contabili.origine%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Lo stato e l'origine di una distinta contabile, e
+                  --   nient'altro, letti fuori dalla row security.
+                  --
+                  -- 🔴 Perche' SECURITY DEFINER: una riga contabile si vede
+                  --   anche dalla FATTURA (seconda strada della policy). Chi
+                  --   la vede cosi' non vede la sua distinta, e un guard
+                  --   SECURITY INVOKER che la legge sotto RLS non la trova e
+                  --   lascia passare.
+                  --
+                  -- ⚠️ Il CODICE non si risponde: chi non vede la distinta
+                  --   non ne legge il numero. Il chiamante lo legge sotto la
+                  --   RLS e, se manca, ripiega sull'id.
+                  --
+                  -- ⚠️ Dipende dalla RLS abilitata e NON forzata.
+                  --
+                  -- Zero righe: distinta inesistente (o id NULL). La FK della
+                  -- riga la rende un caso di chiamata, non di perimetro.
+                  -- =========================================================
+
+                  RETURN QUERY
+                  SELECT c.stato_id, c.origine
+                    FROM pagamenti.vendite_contabili c
+                   WHERE c.id = p_contabile_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_contabile_stato_origine(bigint) IS
+                'Stato e origine di una distinta contabile, letti fuori dalla row security: un building block per i guard delle righe (pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale e la porta 2 di pagamenti.trgfn_vendite_contabili_righe_guard_contenuto). 🔴 Esiste perche'' una riga contabile si vede anche dalla FATTURA: chi la vede cosi'' non vede la sua distinta, e un guard SECURITY INVOKER che la leggesse sotto RLS non la troverebbe e lascerebbe passare. ⚠️ Non risponde il codice: chi non vede la distinta non ne legge il numero. ⚠️ Non allarga niente: dice solo se le righe di quella distinta si lavorano. ⚠️ Dipende dalla RLS abilitata e NON forzata, come script.fn_get_sistemazione_di_contabile.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_contabile_stato_origine(bigint) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_contabile_stato_origine(bigint);

@@ -1,21 +1,26 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_commessa_viva_di_sorgente`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento funzioni:**
+> Approfondimento tabelle:
 >
-• [vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) — la porta che scrive il link e rifiuta la seconda commessa aperta  
-> • [vendite.trgfn_guard_fatturazione_immediata_immutabile](/dbzero/vendite/funzioni/trgfn_guard_fatturazione_immediata_immutabile) — il flag di corsia, bloccato solo con una commessa aperta  
-> • [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa) — lo stesso predicato decide se una commessa si riusa  
+> * [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti) — i link documento → commessa
 >
-**Approfondimento tabelle:**
+> Approfondimento funzioni:
 >
-• [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)  
+> * [vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) — la porta che scrive il link e rifiuta la seconda commessa aperta
+> * [vendite.trgfn_guard_fatturazione_immediata_immutabile](/dbzero/vendite/funzioni/trgfn_guard_fatturazione_immediata_immutabile) — il flag di corsia, bloccato solo con una commessa aperta
+> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa) — lo stesso predicato decide se una commessa si riusa
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 
 ### 🎯 Scopo Principale
-(2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-12 e D-14)
 
 Risponde a una domanda sola: **in quale commessa aperta sta questo documento?**
 Restituisce l'id della commessa, o `NULL`.
@@ -29,27 +34,25 @@ trattiene il documento.
 
 ### Perché esiste
 
-Fino al 2026-10-12 un documento stava in una commessa **per sempre**: un solo link,
-qualunque fosse lo stato della commessa. Annullata la commessa, il documento
-tornava «da mandare», ma il secondo invio veniva rifiutato.
-
-Da quel giorno il link verso una commessa chiusa o annullata **resta come storia**,
-e un documento può averne più d'uno. Questa funzione dice **quale conta**.
+Il link verso una commessa chiusa o annullata **resta come storia**, e un documento può
+averne più d'uno: annullata la commessa, il documento torna «da mandare» e il secondo invio
+crea un link nuovo. Questa funzione dice **quale conta**.
 
 | Chi la legge | Per decidere |
 | --- | --- |
 | `vendite.fn_link_commessa_sorgente` | se un nuovo invio va rifiutato: solo se il documento sta in un'**altra** commessa aperta |
 | `vendite.trgfn_guard_fatturazione_immediata_immutabile` | se il flag di corsia è ancora modificabile: no, finché c'è una commessa aperta |
-| il backend | quale commessa agganciare alla pratica dopo l'invio (richiesta nel brief) |
+| il backend | quale commessa agganciare alla pratica dopo l'invio |
 
 ---
 
 ### Note operative
 
-* **La chiave è quella canonica** di `commesse_sorgenti`, secondo
-  `config.sorgenti.key_selector`: `id::text` per ordini, contratti, bolle e
-  consumi; l'uuid per preventivi e offerte. Chi ha l'uid di un documento a chiave
-  `id` lo traduce prima, come fanno la porta e il guard.
+* **Il documento si passa con le colonne del modello**: il tipo, `sorgente_id` e
+  `sorgente_uid`. La ricerca segue la regola d'incontro: il link si trova se combacia una
+  delle due chiavi. Chi ha il documento passa il suo id **e** il suo uid, senza leggere il
+  `key_selector` (nel link la colonna che il tipo non usa è vuota); chi ha la chiave del
+  modello passa quella e lascia vuota l'altra.
 * **Sotto RLS non perde niente.** Le policy di `commesse` e `commesse_sorgenti`
   filtrano per emittente, e una commessa ha sempre l'emittente del documento
   (`vendite.trgfn_commesse_sorgenti_guard_emittente`): chi vede il documento vede
@@ -60,6 +63,16 @@ e un documento può averne più d'uno. Questa funzione dice **quale conta**.
   chiusa non torna aperta, quindi un link di storia non diventa mai un secondo
   link aperto. Se un giorno la matrice ammettesse di uscire da uno stato che
   chiude, la riapertura andrebbe controllata.
+
+---
+
+### Note di migrazione
+
+* 2026-10-12 — nasce la funzione: fino ad allora un documento stava in una commessa per sempre,
+  e dopo l'annullo della commessa il secondo invio veniva rifiutato
+  (brief-db-annullo-a-valle-riapre-a-monte, D-12 e D-14).
+* 2026-11-07 — il documento si passa con le colonne tipizzate del modello (tipo, `sorgente_id`,
+  `sorgente_uid` uuid) al posto della chiave testuale canonica (brief-db-sorgente-documento-e-riga).
 
 ---
 

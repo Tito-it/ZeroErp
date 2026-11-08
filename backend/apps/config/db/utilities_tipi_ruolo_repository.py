@@ -93,7 +93,7 @@ _USAGE_FROM_WHERE = """
     JOIN anagrafiche.soggetti s_ef
       ON s_ef.id = sr_ef.soggetto_id
    WHERE utr.id = %s
-     AND COALESCE(tr.codice_interno, tr.codice) = %s
+     AND tr.codice_interno = %s
 """
 
 

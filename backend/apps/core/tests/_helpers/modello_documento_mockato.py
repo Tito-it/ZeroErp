@@ -23,7 +23,6 @@
 #       vendita §17.6): `CESSAZIONI_DI_PROVA`, `ACCETTAZIONI_DI_PROVA`. Lo stato
 #       che l'accettazione scrive ha il default dell'emissione (None): il test
 #       lo dichiara con `self.accettazione_del_documento("ACCETTATA")`.
-#       ⭐ E per lo stato iniziale (la bozza): `INIZIALI_DI_PROVA`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -36,14 +35,13 @@ from apps.core.db.documento_modello_repository import StatoDocumento
 ANNULLI_DI_PROVA: frozenset[str] = frozenset({"ANNULLATO", "ANNULLATA"})
 CESSAZIONI_DI_PROVA: frozenset[str] = frozenset({"CESSATO"})
 ACCETTAZIONI_DI_PROVA: frozenset[str] = frozenset({"ACCETTATO", "ACCETTATA"})
-INIZIALI_DI_PROVA: frozenset[str] = frozenset({"DRAFT", "BOZZA"})
 
 
 class ModelloDocumentoMockatoMixin:
     # Scopo: per la durata del test il BB legge un repository finto.
     def setUp(self) -> None:
         super().setUp()  # type: ignore[misc]
-        patcher = patch("apps.core.services.documento_modello.DocumentoModelloRepository")
+        patcher = patch("apps.core.services.documento_modello.DocumentoModelloRepository", autospec=True)
         self.modello_documento = patcher.start().return_value
         self.addCleanup(patcher.stop)  # type: ignore[attr-defined]
         self.modello_documento.e_stato_di_emissione.return_value = False
@@ -58,9 +56,6 @@ class ModelloDocumentoMockatoMixin:
             lambda _testata, codice: codice in ACCETTAZIONI_DI_PROVA
         )
         self.modello_documento.stato_di_accettazione.return_value = None
-        self.modello_documento.e_stato_iniziale.side_effect = (
-            lambda _testata, codice: codice in INIZIALI_DI_PROVA
-        )
 
     # Scopo: lo stato chiesto e' lo stato di emissione del documento.
     def stato_chiesto_di_emissione(self) -> None:

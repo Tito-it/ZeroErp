@@ -35,10 +35,12 @@ DECLARE
     v_ddt        vendite.ddt.id%TYPE;
 BEGIN
     -- 0. I parametri si giudicano PRIMA di costruire.
-    SELECT s.id, s.is_abortito INTO v_stato_id, v_abortito
+    -- Lo stato dalla sede della traduzione codice -> id
+    -- (script.fn_doc_stato_id: solo uno stato attivo).
+    v_stato_id := script.fn_doc_stato_id('vendite.ddt'::regclass, p_stato_codice_interno);
+    SELECT s.is_abortito INTO v_abortito
       FROM config.stati_doc_ddt s
-     WHERE s.codice_interno = p_stato_codice_interno
-       AND s.attivo IS TRUE;
+     WHERE s.id = v_stato_id;
     IF v_stato_id IS NULL THEN
         RAISE EXCEPTION
             'fn_pgtap_crea_ddt_riconsegna: nessuno stato attivo della bolla con codice_interno = %',
@@ -52,7 +54,7 @@ BEGIN
 
     SELECT c.id INTO v_causale_id
       FROM config.causali_trasporto c
-     WHERE c.codice = p_causale_codice
+     WHERE c.codice = script.fn_codice_normalizzato(p_causale_codice)
        AND c.attivo IS TRUE;
     IF v_causale_id IS NULL THEN
         RAISE EXCEPTION
@@ -111,7 +113,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt_riconsegna(p_reso_id bigint, p_stato_codice_interno character varying, p_resi_riga_id bigint, p_quantita numeric, p_data date, p_causale_codice character varying)
-IS 'Fixture pgTAP: la BOLLA DI RI-CONSEGNA di un reso per ri-consegna confermato, nello stato chiesto (secondo parametro, default CONSEGNATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che i file ricopiavano dopo vendite.fn_genera_ddt_riconsegna: indirizzo e causale riscritti a mano, passaggi fino a consegnata. La bolla la fa la madre: tutto cio'' che il reso lascia da ri-consegnare, oppure p_quantita della riga p_resi_riga_id (i due insieme, o nessuno), alla data p_data (NULL = data operativa); la madre copia causale e indirizzi dalla bolla d''origine. Cio'' che l''emissione pretende e la madre non ha portato lo completa: la causale p_causale_codice (default VENDITA) solo se manca, gli indirizzi obbligatori dell''ambito DDT_VENDITA mancanti (come dbops.fn_pgtap_crea_ddt_da_ordine). Lo stato si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; uno stato abortito si rifiuta prima di costruire (l''annullo di una bolla con legami e'' del verbo vendite.fn_annulla_ddt). Il reso lo costruisce dbops.fn_pgtap_crea_reso; le regole (reso confermato, tipo per ri-consegna, residuo) le giudica la madre. Restituisce la bolla, la PRIMA riga con la sua quantita'' base e lo stato. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-pgtap-reso-costruito (D-3), 2026-10-25. Rev 2026-10-27 (20261027-36, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.ddt) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
+IS 'Fixture pgTAP: la BOLLA DI RI-CONSEGNA di un reso per ri-consegna confermato, nello stato chiesto (secondo parametro, default CONSEGNATO), per la strada vera del dominio. Esiste per la trappola d''ordine che i file ricopiavano dopo vendite.fn_genera_ddt_riconsegna: indirizzo e causale riscritti a mano, passaggi fino a consegnata. La bolla la fa la madre: tutto cio'' che il reso lascia da ri-consegnare, oppure p_quantita della riga p_resi_riga_id (i due insieme, o nessuno), alla data p_data (NULL = data operativa); la madre copia causale e indirizzi dalla bolla d''origine. Cio'' che l''emissione pretende e la madre non ha portato lo completa: la causale p_causale_codice (default VENDITA, normalizzata con script.fn_codice_normalizzato) solo se manca, gli indirizzi obbligatori dell''ambito DDT_VENDITA mancanti. Lo stato chiesto lo traduce script.fn_doc_stato_id (solo uno stato attivo): uno stato spento o inesistente, e uno stato abortito, si rifiutano prima di costruire (l''annullo di una bolla con legami e'' del verbo vendite.fn_annulla_ddt). Lo stato iniziale e'' quello della testata (script.fn_doc_stato_iniziale_id); gli altri si raggiungono con dbops.fn_pgtap_porta_a_stato, sotto i guard veri. Il reso lo costruisce dbops.fn_pgtap_crea_reso; le regole (reso confermato, tipo per ri-consegna, residuo) le giudica la madre. Restituisce la bolla, la prima riga con la sua quantita'' base e lo stato. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
 ```
 
 </div>

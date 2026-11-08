@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_processi_accensione_guard.md" %}
 # ⚙️ Funzione `trgfn_processi_accensione_guard`
 
 ```sql
@@ -53,8 +54,10 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- 1. Senza sveglia: CODA (li avvia una persona) o ritirato.
-    IF v_canale = 'CODA' OR v_obsoleto_dal IS NOT NULL THEN
+    -- 1. Senza sveglia: CODA (li avvia una persona) o ritirato
+    --    (data del ritiro raggiunta: un ritiro programmato ha
+    --    ancora la sua sveglia fino a quel giorno).
+    IF v_canale = 'CODA' OR script.fn_e_obsoleto(v_obsoleto_dal) THEN
         PERFORM script.fn_log_and_raise_error(
             'dbops', 'trgfn_processi_accensione_guard', 'E_PROCESSO_SENZA_SVEGLIA',
             jsonb_build_object('processo_codice', v_codice,
@@ -114,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_processi_accensione_guard()
-IS 'Guard BEFORE INSERT OR UPDATE su dbops.processi_accensione. In ordine: un processo senza sveglia (canale CODA o ritirato) non ha scelta a mano (E_PROCESSO_SENZA_SVEGLIA); un processo non spegnibile non si spegne (E_PROCESSO_NON_SPEGNIBILE, A-5); in un''installazione PRODUZIONE un processo non accendibile (dbops.processi.accendibile_in_produzione = false) non si accende a mano (E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE, R-BE-5; predicato dbops.fn_accensione_a_mano_ammessa_su_valori, ambiente non dichiarato -> E_CONFIG_MANCANTE); il motivo e'' obbligatorio (E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO). La regola e'' del dato: il verbo dbops.fn_imposta_accensione_processo non la ripete. Se il catalogo cambia dopo che una riga e'' stata scritta (un non spegnibile spento, un non accendibile acceso), lo stato effettivo (dbops.fn_processo_acceso_su_valori) ignora la riga. Brief: brief-db-processi-accensione-per-ambiente.';
+IS 'Guard BEFORE INSERT OR UPDATE su dbops.processi_accensione. In ordine: un processo senza sveglia (canale CODA, o ritiro raggiunto secondo script.fn_e_obsoleto) non ha scelta a mano (E_PROCESSO_SENZA_SVEGLIA): un ritiro programmato la ammette fino al suo giorno; un processo non spegnibile non si spegne (E_PROCESSO_NON_SPEGNIBILE); in un''installazione PRODUZIONE un processo non accendibile (dbops.processi.accendibile_in_produzione = false) non si accende a mano (E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE; predicato dbops.fn_accensione_a_mano_ammessa_su_valori, ambiente non dichiarato -> E_CONFIG_MANCANTE); il motivo e'' obbligatorio (E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO). La regola e'' del dato: il verbo dbops.fn_imposta_accensione_processo non la ripete. Se il catalogo cambia dopo che una riga e'' stata scritta, lo stato effettivo (dbops.fn_processo_acceso_su_valori) ignora la riga.';
 ```
 
 </div>

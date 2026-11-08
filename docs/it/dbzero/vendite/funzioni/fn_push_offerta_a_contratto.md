@@ -16,6 +16,11 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigi
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
+--   la provenienza con la chiave del key_selector (sorgente_id/sorgente_uid),
+--   letta una volta per testata e righe (offerta_id ritirata nel giro T.5, il
+--   2026-11-07). L'aggancio alla pratica scrive l'id del contratto, non il suo uid
+--   (il tipo CONTRATTO ha chiave id: l'uid lo rifiutava il guard testuale).
 -- rev 2026-10-24 (20261024-13, brief-modello-documento-vendita N-1/P-2):
 --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
 --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
@@ -30,12 +35,12 @@ DECLARE
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
     v_accettazione          config.stati_doc_offerte.accettazione%TYPE;
-    v_sorgente_ofc_id       config.sorgenti.id%TYPE;
-    v_sorgente_contratto_id config.sorgenti.id%TYPE;
     v_contratto_id          vendite.contratti.id%TYPE;
-    v_contratto_uid         vendite.contratti.uid%TYPE;
     v_eccezione             vendite.offerte_commerciali_eccezioni%ROWTYPE;
     v_riga_id               vendite.contratti_righe.id%TYPE;
+    v_prov_tipo_id          vendite.contratti_righe.sorgente_tipo_id%TYPE;
+    v_prov_id               vendite.contratti_righe.sorgente_id%TYPE;
+    v_prov_uid              vendite.contratti_righe.sorgente_uid%TYPE;
     v_overlap_id            vendite.contratti.id%TYPE;
     v_overlap_numero        vendite.contratti.numero%TYPE;
     c_ambito        CONSTANT vendite.contratti.ambito%TYPE := 'COMMODITY';
@@ -147,20 +152,12 @@ BEGIN
         );
     END IF;
 
-    -- Config: sorgente OFFERTA_COMMERCIALE.
-    SELECT id INTO v_sorgente_ofc_id
-      FROM config.sorgenti
-     WHERE codice_interno = 'OFFERTA_COMMERCIALE';
-
-    IF v_sorgente_ofc_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_push_offerta_a_contratto',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('tabella', 'config.sorgenti', 'codice', 'OFFERTA_COMMERCIALE'),
-            NULL::uuid,
-            'sorgente OFFERTA_COMMERCIALE non trovata in config.sorgenti'
-        );
-    END IF;
+    -- La provenienza: il tipo e la chiave dell'offerta, per il key_selector del
+    -- tipo (script.fn_sorgente_provenienza, che solleva E_SORG_CONF se il tipo
+    -- non e' a catalogo). Una volta sola, per la testata e per le righe.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('OFFERTA_COMMERCIALE', p_offerta_id::text) p;
 
     -- =====================================================
     -- Successione su overlap (meccanismo generico, brief §3.4)
@@ -220,8 +217,8 @@ BEGIN
             valido_dal,
             valido_al,
             sorgente_tipo_id,
+            sorgente_id,
             sorgente_uid,
-            offerta_id,
             emittente_fiscale_id,
             generazione_canone,
             mese_partenza_canone,
@@ -237,15 +234,15 @@ BEGIN
             v_offerta.tipo_variazione_globale,
             v_offerta.validita_dal,
             v_offerta.validita_al,
-            v_sorgente_ofc_id,
-            v_offerta.uid,
-            p_offerta_id,
+            v_prov_tipo_id,
+            v_prov_id,
+            v_prov_uid,
             v_offerta.emittente_fiscale_id,
             v_offerta.generazione_canone,
             v_offerta.mese_partenza_canone,
             COALESCE(v_offerta.meta, '{}'::jsonb)
         )
-        RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
+        RETURNING id INTO v_contratto_id;
     EXCEPTION
         WHEN exclusion_violation THEN
             v_overlap_id := vendite.fn_contratto_sovrapposto(
@@ -313,7 +310,11 @@ BEGIN
             attivo,
             meta,
             stato_approvazione_prezzo,
-            pratica_approvazione_prezzo_id
+            pratica_approvazione_prezzo_id,
+            sorgente_tipo_id,
+            sorgente_id,
+            sorgente_uid,
+            sorgente_riga
         )
         VALUES (
             v_contratto_id,
@@ -332,7 +333,12 @@ BEGIN
             v_eccezione.attivo,
             v_eccezione.meta,
             v_eccezione.stato_approvazione_prezzo,
-            v_eccezione.pratica_approvazione_prezzo_id
+            v_eccezione.pratica_approvazione_prezzo_id,
+            -- La provenienza: l'offerta e l'eccezione copiata.
+            v_prov_tipo_id,
+            v_prov_id,
+            v_prov_uid,
+            v_eccezione.id
         )
         RETURNING id INTO v_riga_id;
 
@@ -415,33 +421,22 @@ BEGIN
 
     -- Collegamento pratica (facoltativo).
     IF p_pratica_id IS NOT NULL THEN
-        SELECT id INTO v_sorgente_contratto_id
-          FROM config.sorgenti
-         WHERE codice_interno = 'CONTRATTO';
-
-        IF v_sorgente_contratto_id IS NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'vendite', 'fn_push_offerta_a_contratto',
-                'E_CONFIG_MANCANTE',
-                jsonb_build_object('tabella', 'config.sorgenti', 'codice', 'CONTRATTO'),
-                NULL::uuid,
-                'sorgente CONTRATTO non trovata in config.sorgenti'
-            );
-        END IF;
-
+        -- Il contratto appena nato, dal BB che scrive: tipo e chiave del
+        -- key_selector (E_SORG_CONF se il tipo manca o e' spento).
         INSERT INTO pratiche.pratiche_sorgenti (
             pratica_id,
             sorgente_tipo_id,
+            sorgente_id,
             sorgente_uid,
             ruolo_link
         )
-        VALUES (
-            p_pratica_id,
-            v_sorgente_contratto_id,
-            v_contratto_uid::text,
-            'COLLEGATO'
-        )
-        ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
+        SELECT p_pratica_id,
+               c.sorgente_tipo_id,
+               c.sorgente_id,
+               c.sorgente_uid,
+               'COLLEGATO'
+          FROM script.fn_sorgente_provenienza('CONTRATTO', v_contratto_id::text) c
+        ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
         DO NOTHING;
     END IF;
 
@@ -450,7 +445,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev6 (2026-06-08): guard di mutua esclusivita'' offerta->contratto/ordine (E_OFFERTA_ORDINE_GIA_GENERATO) — un''offerta genera al massimo uno tra contratto e ordine. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti). Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO). ⭐ rev 2026-08-24: i due guard di idempotenza portano il BERSAGLIO, e il bersaglio NON e'' l''offerta — e'' il documento GIA'' GENERATO (il contratto, oppure l''ordine). La frase nomina l''offerta perche'' e'' il soggetto del discorso, ma l''operatore l''offerta ce l''ha gia'' davanti: cio'' che non riesce a raggiungere e'' il documento che gli blocca la strada. E'' un array perche'' se i documenti fossero piu'' d''uno — l''anomalia che il guard esiste per fermare — deve poterli vedere tutti. Da qui il canale DATATYPE dell''eccezione, e il frontend ci disegna «vai al contratto». ⚠️ L''EXISTS e'' diventato una raccolta: stessa scansione, in piu'' gli id. Brief: brief-db-bersaglio-errore.md §6 L6. rev 2026-10-11 (20261011-74, brief-db-annullo-documento-con-legami D-3/D-6): i due guard (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO) guardano i soli documenti VIVI, letti da vendite.fn_offerta_documenti_vivi (sede unica, con la capability dell''offerta): un contratto o un ordine annullato conserva la provenienza ma non consuma piu'' l''offerta. Gli indici unici uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta valgono sui soli vivi (20261011-68, -70). Rev 2026-10-20 (20261020-57, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi CONTRATTI diventa CONTRATTO, il codice della sorgente.';
+IS 'Genera un contratto DRAFT da un''offerta commerciale in uno stato di accettazione. Un''offerta genera al piu'' un documento vivo fra contratto e ordine, letti da vendite.fn_offerta_documenti_vivi (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO), col bersaglio sul documento gia'' generato, in un array; un documento annullato conserva la provenienza ma non consuma l''offerta. Applica la successione dei contratti (advisory lock, sovrapposizione, instradamento; p_chiudi_contratto_esistente). La testata porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe). Copia gli indirizzi ammessi per CONTRATTO, le utility, e le eccezioni dell''offerta come righe del contratto, una per eccezione nell''ordine dell''id, coi loro componenti e con le marche di approvazione prezzo 1:1. Ogni riga porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione copiata. L''aggancio facoltativo alla pratica (p_pratica_id) scrive il contratto come COLLEGATO in pratiche.pratiche_sorgenti, con la sua chiave testuale: l''id, perche'' il tipo CONTRATTO ha chiave id. Gli indici unici uq_contratti_sorgente_offerta e uq_ordini_v_sorgente_offerta valgono sui soli documenti vivi. SECURITY INVOKER.';
 ```
 
 </div>

@@ -33,6 +33,7 @@ import { STATO_SECONDO_FATTORE as STATO } from '../constants'
 import Button from 'primevue/button'
 import Password from 'primevue/password'
 import CodiceSecondoFattoreInput from '../components/CodiceSecondoFattoreInput.vue'
+import LinkInformazioni from '../components/LinkInformazioni.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -283,6 +284,7 @@ function tornaAllApplicazione() {
         </a>
       </div>
     </div>
+    <LinkInformazioni />
   </div>
 </template>
 

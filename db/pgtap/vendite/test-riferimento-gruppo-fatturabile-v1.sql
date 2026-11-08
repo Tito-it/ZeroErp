@@ -5,9 +5,10 @@
 -- Test: la scheda Critiche smette di far leggere un uuid, e il banner smette
 --       di contare allarmi per contare GESTI.
 -- ChangeSet: 20260908-31 (split + riferimento), -32 (la lista lo espone e lo
---            ordina), -33 (i tre conteggi del banner)
+--            ordina), -33 (i tre conteggi del banner); 20261109-80 … -83 (la
+--            commessa della segnalazione, giro Z.5)
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 23):
 --   1) ⭐ ANDATA E RITORNO sulla forma documento: split(build(x)) = x
 --   2) ⭐ ANDATA E RITORNO sulla forma sourceless: 'MAN:<commessa>'
 --   3) una chiave irriconoscibile da' tre NULL e NON solleva
@@ -23,7 +24,22 @@
 --  13) ⭐ il banner conta DOCUMENTI, non segnalazioni
 --  14) ...e conta a parte le critiche del GIRO, che documenti non sono
 --  15) il denominatore viene dagli ESITI, non dal perimetro
---  16) ⚠️ il riferimento coincide con quello della dashboard Competenza
+--  16) ⚠️ il riferimento coincide con quello della dashboard Competenza, per un
+--      documento con numero e per uno senza
+--  17) ⭐ il riferimento di un documento SENZA numero (un consumo) e' il codice
+--      della commessa, non la chiave grezza
+--  IL GIRO Z.5 (V-7-bis): la commessa DI QUEL LOTTO, anche a commessa chiusa
+--  18) annullata la commessa, senza commessa del contesto torna la chiave
+--      grezza: e' il limite che il giro chiude, e la premessa dei due seguenti
+--  19) ⭐ con la commessa del contesto il riferimento e' il suo codice, anche
+--      a commessa annullata
+--  20) la commessa del contesto non scavalca il numero di un documento
+--  21) il verbo delle segnalazioni scrive la commessa; un id <= 0 diventa NULL
+--      senza sollevare (un log non fallisce)
+--  22) ⭐ la scheda Critiche nomina il consumo col codice della commessa
+--      dichiarata dalla riga, a commessa annullata
+--  23) ...e anche la riga dello stesso documento che la commessa non la dice
+--      (l'uscita dal giro), dalla riga sorella dello stesso lotto
 --
 -- Scopo:
 --   Sulla scheda Critiche il documento di una segnalazione si leggeva come
@@ -39,6 +55,13 @@
 --   compone la chiave con fn_build_gruppo_fatturabile_key, il 16 costruisce
 --   una commessa con un'attivita' (dbops.fn_pgtap_crea_commessa) e legge la
 --   SUA riga di dashboard. Gli skip restano come rete, ma da zero non scattano.
+-- rev 2026-11-08 (brief-db-sorgente-documento-e-riga giro Z.5, V-7-bis): 18-23. La
+--   commessa del consumo si ANNULLA (dbops.fn_pgtap_porta_a_stato), cosi' non e' piu'
+--   aperta: e' il caso che il modello ammette e che prima dava la chiave grezza.
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga §3.6, V-7, 20261108-07): il
+--   16 costruisce anche un gruppo di consumi, un documento senza numero, e il 17
+--   chiede il codice della commessa: prima la funzione ripiegava sulla chiave
+--   grezza e la dashboard sul codice della commessa.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -49,7 +72,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(23);
 
 -- ============================================================
 -- 1..2 — ⭐ ANDATA E RITORNO, che e' il presidio delle due gemelle
@@ -275,11 +298,27 @@ SELECT is(
 --   commessa con un'attivita', dbops.fn_pgtap_crea_commessa) e si legge
 --   SOLO quella; prima si pescavano le prime cinque righe visibili, e da zero
 --   non ce n'era nessuna (skip).
+-- Due gruppi: un ordine (un documento con un numero) e un consumo (un documento
+--   SENZA numero, label_selector NULL), su cui le due scritture ripiegano tutte e
+--   due sul codice della commessa.
 CREATE TEMP TABLE tmp_commessa_dash AS
-SELECT * FROM dbops.fn_pgtap_crea_commessa('riferimento dashboard', NULL, NULL, true);
+SELECT * FROM dbops.fn_pgtap_crea_commessa('riferimento dashboard', NULL, NULL, false);
+
+CREATE TEMP TABLE tmp_ordine_dash AS
+SELECT o.* FROM dbops.fn_pgtap_crea_ordine('riferimento dashboard', 'DRAFT',
+                                           (SELECT billing_account_id FROM tmp_commessa_dash)) o;
+
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id     => (SELECT commessa_id FROM tmp_commessa_dash),
+    p_sorgente_codice => 'ORDINE_VENDITA',
+    p_sorgente_chiave => (SELECT ordine_uid::text FROM tmp_ordine_dash));
+
+-- Senza sorgente il builder costruisce un consumo vero e lo lega alla commessa.
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id => (SELECT commessa_id FROM tmp_commessa_dash));
 
 CREATE TEMP TABLE tmp_dash AS
-SELECT g.gruppo_key, g.riferimento
+SELECT g.gruppo_key, g.riferimento, g.tipo_gruppo
   FROM vendite.vw_dash_competenza_gruppi g
  WHERE g.gruppo_key IS NOT NULL
    AND g.commessa_id = (SELECT commessa_id FROM tmp_commessa_dash);
@@ -288,12 +327,99 @@ SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_dash)
     THEN skip('la dashboard Competenza non ha righe visibili all''operatore su questo database', 1)
   ELSE is(
-    (SELECT count(*) FROM tmp_dash d
-      WHERE vendite.fn_riferimento_gruppo_fatturabile(d.gruppo_key)
-            IS DISTINCT FROM d.riferimento),
-    0::bigint,
-    '16) il riferimento coincide con quello della dashboard Competenza')
+    (SELECT string_agg(d.tipo_gruppo || ':'
+                       || (vendite.fn_riferimento_gruppo_fatturabile(d.gruppo_key)
+                           IS NOT DISTINCT FROM d.riferimento)::text,
+                       ',' ORDER BY d.tipo_gruppo)
+       FROM tmp_dash d),
+    'ATTIVITA_CONSUMI:true,ORDINE_VENDITA:true',
+    '16) il riferimento coincide con quello della dashboard Competenza: ordine e consumo')
 END;
+
+-- ============================================================
+-- 17 — ⭐ un documento senza numero si nomina con la sua commessa
+-- ============================================================
+-- Il consumo non ha un numero: il riferimento e' il codice della commessa
+-- aperta in cui sta (vendite.fn_commessa_viva_di_sorgente), non la chiave.
+SELECT is(
+    (SELECT vendite.fn_riferimento_gruppo_fatturabile(d.gruppo_key)
+       FROM tmp_dash d WHERE d.tipo_gruppo = 'ATTIVITA_CONSUMI'),
+    (SELECT commessa_codice::text FROM tmp_commessa_dash),
+    '17) il riferimento di un consumo e'' il codice della sua commessa, non la chiave grezza');
+
+-- ============================================================
+-- 18..23 — IL GIRO Z.5: la commessa di quel lotto
+-- ============================================================
+CREATE TEMP TABLE tmp_consumo AS
+SELECT d.gruppo_key FROM tmp_dash d WHERE d.tipo_gruppo = 'ATTIVITA_CONSUMI';
+CREATE TEMP TABLE tmp_ordine_key AS
+SELECT d.gruppo_key FROM tmp_dash d WHERE d.tipo_gruppo = 'ORDINE_VENDITA';
+
+-- La commessa del consumo esce dalle commesse aperte: annullata col suo verbo,
+-- confermando i legami che il lettore dei legami conta (le due righe di
+-- commessa tornano da mandare in commessa).
+SELECT vendite.fn_annulla_commessa(
+    (SELECT commessa_id FROM tmp_commessa_dash),
+    (SELECT count(*)::int FROM vendite.fn_documento_legami('COMMESSA', (SELECT commessa_id FROM tmp_commessa_dash)))) AS legami;
+
+SELECT is(
+    vendite.fn_riferimento_gruppo_fatturabile((SELECT gruppo_key FROM tmp_consumo)),
+    (SELECT gruppo_key FROM tmp_consumo),
+    '18) annullata la commessa, senza commessa del contesto torna la chiave grezza (il limite del giro C.4)');
+
+SELECT is(
+    vendite.fn_riferimento_gruppo_fatturabile((SELECT gruppo_key FROM tmp_consumo),
+                                              (SELECT commessa_id FROM tmp_commessa_dash)),
+    (SELECT commessa_codice::text FROM tmp_commessa_dash),
+    '19) con la commessa del contesto il riferimento e'' il suo codice, anche a commessa annullata');
+
+SELECT is(
+    vendite.fn_riferimento_gruppo_fatturabile((SELECT gruppo_key FROM tmp_ordine_key),
+                                              (SELECT commessa_id FROM tmp_commessa_dash)),
+    (SELECT o.numero::text FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM tmp_ordine_dash)),
+    '20) la commessa del contesto non scavalca il numero del documento');
+
+-- Due righe dello stesso consumo nello stesso lotto: la critica del pull, che
+-- dichiara la commessa, e una riga che non la dice (come l'uscita dal giro).
+-- Una terza con un id storto: il log la scrive, la commessa diventa NULL.
+DO $z5$
+DECLARE
+    v_lotto vendite.fatturazione_lotti.id%TYPE := (SELECT id FROM tmp_lotto);
+BEGIN
+    PERFORM vendite.fn_log_pipeline_fase(
+        v_lotto, NULL, 'PGTAP-Z5-1', 'C', 'pull del consumo fallito', '{}'::jsonb,
+        'E_PULL_COMMESSA', (SELECT gruppo_key FROM tmp_consumo),
+        (SELECT commessa_id FROM tmp_commessa_dash));
+    PERFORM vendite.fn_log_pipeline_fase(
+        v_lotto, NULL, 'PGTAP-Z5-2', 'I', 'riga dello stesso documento senza commessa', '{}'::jsonb,
+        NULL, (SELECT gruppo_key FROM tmp_consumo));
+    PERFORM vendite.fn_log_pipeline_fase(
+        v_lotto, NULL, 'PGTAP-Z5-3', 'I', 'id di commessa storto', '{}'::jsonb,
+        NULL, NULL, -7);
+END;
+$z5$;
+
+SELECT is(
+    (SELECT string_agg(ll.fase || ':' || COALESCE((ll.commessa_id = (SELECT commessa_id FROM tmp_commessa_dash))::text, 'NULL'),
+                       ',' ORDER BY ll.fase)
+       FROM vendite.fatturazione_lotti_log ll
+      WHERE ll.lotto_id = (SELECT id FROM tmp_lotto) AND ll.fase LIKE 'PGTAP-Z5-%'),
+    'PGTAP-Z5-1:true,PGTAP-Z5-2:NULL,PGTAP-Z5-3:NULL',
+    '21) il verbo scrive la commessa dichiarata; un id <= 0 diventa NULL senza sollevare');
+
+SELECT is(
+    (SELECT s.riferimento
+       FROM vendite.fn_list_lotto_segnalazioni((SELECT id FROM tmp_lotto)) s
+      WHERE s.fase = 'PGTAP-Z5-1'),
+    (SELECT commessa_codice::text FROM tmp_commessa_dash),
+    '22) la scheda Critiche nomina il consumo col codice della commessa del lotto, a commessa annullata');
+
+SELECT is(
+    (SELECT s.riferimento
+       FROM vendite.fn_list_lotto_segnalazioni((SELECT id FROM tmp_lotto)) s
+      WHERE s.fase = 'PGTAP-Z5-2'),
+    (SELECT commessa_codice::text FROM tmp_commessa_dash),
+    '23) anche la riga che la commessa non la dice, dalla riga sorella dello stesso documento nello stesso lotto');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -79,9 +79,13 @@ oneri di una commessa. Un solo verbo, due perimetri: il processo è identico
 ### 2. Polling stato job (C-3)
 
 - `GET /api/v1/vendite/fatturazione/run/<job_id>/`
-- Ownership **scope-based**: l'operatore vede i job della propria `scope_key`
-  (whitelist emittenti) — due operatori con la stessa whitelist condividono il
-  giro deduplicato; un job di altro scope → **404** (indistinguibile da inesistente).
+- Ownership **per azienda** (dal 2026-11-07): l'operatore vede i job delle
+  aziende del suo perimetro (`emittente_fiscale_id` del lavoro), la regola della
+  policy della coda — chi accoda dalla modalità «Tutti gli emittenti» segue i
+  lavori di ciascuna azienda, e due operatori della stessa azienda condividono il
+  giro deduplicato; un job di un'altra azienda → **404** (indistinguibile da
+  inesistente). Admin globale: nessun filtro. ⚠️ Fino a quel giorno era la
+  `scope_key` esatta (whitelist identica).
 
 ### 3. «Rendi definitive competenza» (C-4 perimetro, non bloccante)
 
@@ -274,10 +278,31 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
 
 ## Output
 
-- Accodamento (run / numera perimetro):
+- Accodamento (run / numera perimetro): **un lavoro per azienda** (dal
+  2026-11-07, BE10 a di brief-db-revisione-dbops). Con un'azienda scelta nella
+  combo di topbar la lista ha un elemento; dalla modalità «Tutti gli emittenti»
+  uno per ciascuna azienda selezionabile. Un lavoro operatore nasce dentro
+  un'azienda: la porta della coda rifiuta un lavoro senza azienda, e un lavoro
+  che copre più aziende non esiste.
 ```json
-{ "data": { "job_id": 555, "stato": "PENDING" }, "meta": { "request_id": "..." } }
+{ "data": { "lavori": [
+    { "job_id": 555, "stato": "PENDING", "emittente_fiscale_id": 3, "emittente_codice": "ACME" },
+    { "job_id": 556, "stato": "PENDING", "emittente_fiscale_id": 4, "emittente_codice": "BETA",
+      "gruppi": ["CONTRATTO:…"] }
+] }, "meta": { "request_id": "..." } }
 ```
+  `stato` è lo stato **vero** del lavoro, letto dopo l'accodamento: `PENDING`
+  per uno nuovo, ma la dedup della chiave di business restituisce un lavoro
+  già vivo, che può essere `IN_CORSO` (dal 2026-11-07; prima era `PENDING` per
+  costruzione).
+  Con una selezione (`gruppi` del giro, `lotti` della numerazione) il backend la
+  **divide per azienda** (i gruppi dalla vista dei gruppi fatturabili della
+  competenza, i lotti dalla loro azienda): ogni lavoro porta le sue righe, ed è
+  su quelle che il client marca «in corso»; un'azienda senza righe non riceve un
+  lavoro. ⛔ Una riga di cui non si trova l'azienda (inesistente, fuori
+  perimetro o fuori competenza) → `400 E_VALIDATION_INPUT` con le righe nel
+  `detail`, e **nessun** lavoro accodato: il gesto è uno, tutto o niente.
+  Nessuna azienda nel perimetro → `403 E_PERMISSION_DENIED`.
 - Polling (`run/<job_id>/`):
 ```json
 { "data": {
@@ -317,19 +342,22 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
   che hanno trovato la corsia occupata, e non entrano in `total_runs` né in
   `ultima_conclusa` — una corsa saltata non ha fatto il lavoro. La coda lavori
   non ha corse saltate. `mio_count` / `altri_count` ci sono sulle sole righe
-  `app`: quanti job sono stati accodati dallo **scope dell'operatore** che legge
-  e quanti da altri (`altri_count = total_runs - mio_count`).
+  `app`: quanti job sono delle **aziende del perimetro** dell'operatore che legge
+  e quanti di altre (`altri_count = total_runs - mio_count`; dal 2026-11-07, prima
+  «stessa `scope_key`»).
 
 ## Regole
 
 - **Idempotenza a due layer**: header HTTP `Idempotency-Key`
   (`dbops.idempotency_keys`, replay della risposta) ≠ **chiave di business** della
   coda `{job_type}[:{corsia}]:{competenza}:{scope_key}[:{digest}]` (dedup dei
-  job VIVI: due click sullo stesso mese/scope → stesso job). La `corsia` c'è sul
+  job VIVI: due click sullo stesso mese e sulla stessa azienda → stesso job, da
+  qualunque modalità della combo arrivino). La `corsia` c'è sul
   solo giro `FATTURAZIONE_GIRO` (`mirata` con `gruppi`, altrimenti quella
   on-demand); il `digest` (sha256 troncato a 12) dell'insieme di `gruppi` o
-  `lotti` c'è solo se l'insieme è valorizzato. La `scope_key` = «ALL» (admin) o gli emittenti
-  autorizzati ordinati.
+  `lotti` (la parte di quell'azienda) c'è solo se l'insieme è valorizzato. La
+  `scope_key` è quella dell'azienda del lavoro (il suo id): la stessa del giro
+  notturno.
 - **Identità operatore catturata** all'accodamento (`auth_user_id`, `username`,
   `identita_id`, `emittente_ids`, `scope_key`): il worker la ripropone per intero
   (6 GUC via `set_jwt_gucs`) così la RLS risolve **come nel web**. Un job

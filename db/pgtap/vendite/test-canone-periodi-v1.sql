@@ -33,13 +33,15 @@
 --   14) fine prima dell'inizio: E_PARAMETRO_INVALIDO
 --   La forma
 --   15) STABLE e SECURITY INVOKER
+--   Il codice in minuscolo (20261104-39)
+--   16) 'bimestrale' da' gli stessi pezzi di 'BIMESTRALE'
 -- ------------------------------------------------------------
 
 BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(15);
+SELECT plan(16);
 
 -- Scopo: i pezzi come testo ordinato, «dal..al=frazione».
 CREATE OR REPLACE FUNCTION pg_temp.pezzi(p_dal date, p_al date, p_per text, p_mese int,
@@ -150,6 +152,14 @@ SELECT is(
       WHERE p.oid = 'vendite.fn_canone_periodi(date, date, character varying, smallint, character varying, date, date)'::regprocedure),
     's/false',
     '15) STABLE e SECURITY INVOKER');
+
+-- ============================================================
+-- 16) Il codice della periodicita' in minuscolo (20261104-39)
+-- ============================================================
+SELECT is(
+    pg_temp.pezzi('2026-01-15', NULL, 'bimestrale', 1, 'FINE_PERIODO', '2026-03-10'),
+    pg_temp.pezzi('2026-01-15', NULL, 'BIMESTRALE', 1, 'FINE_PERIODO', '2026-03-10'),
+    '16) la periodicita'' in minuscolo da'' gli stessi pezzi: il codice si cerca normalizzato');
 
 SELECT * FROM finish();
 ROLLBACK;

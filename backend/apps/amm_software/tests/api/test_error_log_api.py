@@ -78,7 +78,7 @@ class ErrorLogApiTests(JwtMockedApiTest):
 
     # 3. I filtri arrivano al repository normalizzati, e `order_dir` grezzo.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filtri_normalizzati(self, repo_cls, _auth) -> None:
         repo_cls.return_value.list_error_logs.return_value = ([], 0)
         resp = self.client.get(_URL, {
@@ -99,7 +99,7 @@ class ErrorLogApiTests(JwtMockedApiTest):
 
     # 4. `tx_id` che non e' un uuid -> 400, non un 500 dal cast SQL.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_tx_id_non_uuid_400(self, repo_cls, _auth) -> None:
         resp = self.client.get(_URL, {"tx_id": "non-un-uuid"})
         self.assertEqual(resp.status_code, 400, resp.content)
@@ -107,7 +107,7 @@ class ErrorLogApiTests(JwtMockedApiTest):
 
     # 5. Data malformata -> 400.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_data_malformata_400(self, repo_cls, _auth) -> None:
         resp = self.client.get(_URL, {"data_da": "19/09/2026"})
         self.assertEqual(resp.status_code, 400, resp.content)
@@ -115,7 +115,7 @@ class ErrorLogApiTests(JwtMockedApiTest):
 
     # 6. Envelope paginato standard; il `context` passa com'e'.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_envelope_e_context_intero(self, repo_cls, _auth) -> None:
         repo_cls.return_value.list_error_logs.return_value = ([_riga()], 1)
         resp = self.client.get(_URL)

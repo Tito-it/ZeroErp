@@ -162,24 +162,30 @@ SELECT cl.lato, c.id AS commessa_id, cl.billing_account_id,
   FROM c JOIN _clienti cl ON cl.billing_account_id = c.billing_account_id;
 
 -- La riga di commessa: e' la madre del diario, ed e' gia' protetta per conto suo.
--- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+-- La riga NORMALE ha la sua sorgente (vincolo 20261012-27): un consumo vero della
+-- sua commessa, con la sua chiave del push e il suffisso del test.
+CREATE TEMP TABLE _src AS
+SELECT cm.commessa_id, x.*
+  FROM _commesse cm, LATERAL dbops.fn_pgtap_consumo_della_commessa(cm.commessa_id) x;
+
 CREATE TEMP TABLE _attivita AS
 WITH a AS (
     INSERT INTO vendite.commesse_attivita
         (commessa_id, segment_key, articolo_id, istanza_utility_id,
          data_attivita, uom_id, quantita,
          competenza_mese, competenza_dal, competenza_al, prezzo_snapshot,
-         sorgente_tipo_id, sorgente_uid)
+         sorgente_tipo_id, sorgente_id)
     SELECT cm.commessa_id,
-           ('SEG-RLSCM-' || cm.lato || '-' || cm.commessa_id)::varchar,
+           (src.segment_key || ':SEG-RLSCM-' || cm.lato || '-' || cm.commessa_id)::varchar,
            ar.articolo_id, cm.istanza_utility_id,
            script.fn_data_operativa(), ar.uom_id, 1.000000,
            date_trunc('month', script.fn_data_operativa())::date,
            date_trunc('month', script.fn_data_operativa())::date,
            (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
            50.0000000000,
-           (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), cm.commessa_id::text
+           src.sorgente_tipo_id, src.consumo_id
       FROM _commesse cm CROSS JOIN _articolo ar
+      JOIN _src src ON src.commessa_id = cm.commessa_id
     RETURNING id, commessa_id
 )
 SELECT cm.lato, a.id AS commessa_attivita_id, a.commessa_id
@@ -195,14 +201,14 @@ SELECT a.commessa_attivita_id, 'PGTAP_RLS_COMMESSE',
 
 -- 2. la sorgente della commessa: la commessa e' la ROOT di se stessa, che e'
 --    la forma che `fn_link_commessa_sorgente` scrive.
---    ⚠️ `sorgente_uid` e' `id::text` perche' config.sorgenti.key_selector di
---    COMMESSA e' `id`: il guard polimorfo valida FORMATO ed esistenza.
+--    ⚠️ La chiave va in `sorgente_id` perche' config.sorgenti.key_selector di
+--    COMMESSA e' `id`: il guard unico valida chiave ed esistenza (giro C.2).
 INSERT INTO vendite.commesse_sorgenti
-    (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+    (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
 SELECT cm.commessa_id,
        (SELECT s.id FROM config.sorgenti s
          WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
-       cm.commessa_id::text, 'ROOT'
+       cm.commessa_id, 'ROOT'
   FROM _commesse cm;
 
 -- 3. il lavoro fatturabile

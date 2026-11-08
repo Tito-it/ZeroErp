@@ -122,6 +122,14 @@ CREATE UNIQUE INDEX uq_promo_import_origine
 
 ### 2.3 Opzione B polimorfica — Tabella ponte unica cross-entita' **[raccomandata]**
 
+> ⚠️ **Da riscrivere sul modello della provenienza (2026-11-08)** quando l'opzione si riprende. Il progetto ha
+> ora una grammatica sola per «una riga che punta a un'entità di tipo variabile» (`brief-db-sorgente-documento-e-riga`,
+> guida [Sorgente polimorfa](../../guide/sorgente-polimorfa.md)): il tipo da un catalogo con FK (non
+> `entita_schema`/`entita_tabella` in testo), **una** fra le due chiavi tipizzate secondo il `key_selector` del tipo
+> (qui `entita_id_bigint` / `entita_id_uuid`), un `CHECK` di forma col nome della tabella, il BB che scrive la coppia e
+> il guard unico. Il «polimorfismo soft» qui sotto è la stessa idea: va scritto con quei pezzi, non con colonne sue.
+> Il richiamo a `commesse_attivita.sorgente_uid` è superato (la riga di commessa ha la chiave tipizzata).
+
 ```sql
 CREATE TABLE import.flussi (
     id              bigserial PRIMARY KEY,

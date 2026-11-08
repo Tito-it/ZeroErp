@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_ensure_logconn: il canale dal building block, e nessun errore di
+# connessione risale al chiamante.
+#   Brief: brief-db-revisione-dbops, D1 + D26 (giro 1, blocco 1b).
+#
+# Base: il corpo vivo (l'ultima revisione e' dell'albero migrations/ del 2025,
+# 20250813-11), verificato uguale.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────────
+#   1. D26: se il canale e' acceso, e con quale stringa, lo dice
+#      script.fn_canale_log_stringa (20261104-46). Prima leggeva da se'
+#      l'interruttore e la sola myapp.dblink_log_connection.
+#   2. ⛔ D1: assorbiva solo duplicate_object e too_many_connections. Un
+#      errore di connessione (classe 08: canale giu', rete, credenziali)
+#      risaliva a fn_get_or_create_session_tx_id e da li' a
+#      trgfn_tx_id_managed, che lo trasforma in E_TXID_GENERATION: con la
+#      stringa impostata e il canale giu' falliva ogni scrittura tracciata, e
+#      fn_log_error_only smetteva di registrare per cominciare a sollevare.
+#      Ora ogni errore diventa un WARNING: il canale di log e' un servizio,
+#      non una precondizione della scrittura. Chi ha bisogno di sapere se la
+#      connessione c'e' guarda dblink_get_connections(), come gia' fanno
+#      tutti e tre i chiamanti.
+#   3. COMMENT riscritto: nominava una GUC che non esiste
+#      (dblink.log_connection).
+#   4. search_path nella forma di casa (pg_catalog, public, pg_temp): era
+#      public, pg_temp, e pg_catalog non elencato si cerca comunque per primo.
+#      Stessa semantica; public resta per dblink.
+#
+# ⚠️ LA FORMA. La funzione e' di postgres (voce in dbops.sec_functions_owner):
+#   la proprieta' si prende in prestito via dbops.fn_sync_functions_owner, si
+#   verifica, si fa la modifica e la si restituisce (forma di 20261103-05).
+#   Resta SECURITY INVOKER, com'era.
+#   v_conn text: e' il tipo di current_setting, nessuna colonna lo porta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261104-47-update-fn-ensure-logconn-canale-e-errori-mctit.yaml
+
+  - changeSet:
+      id: 20261104-47-update-fn-ensure-logconn-canale-e-errori
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_ensure_logconn legge il canale da script.fn_canale_log_stringa (D26) e
+        trasforma ogni errore di connessione in un WARNING (D1). Funzione di postgres:
+        proprieta' in prestito via dbops.fn_sync_functions_owner.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_canale_log_stringa';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_ensure_logconn';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- 1) Presa in prestito della proprieta' (forma di 20261103-05).
+              -- ==========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name   = 'script'
+                 AND function_name = 'fn_ensure_logconn';
+
+              SELECT dbops.fn_sync_functions_owner();
+
+              DO $guard$
+              DECLARE
+                v_owner text;
+              BEGIN
+                -- fn_sync_functions_owner non solleva mai: degrada a WARNING.
+                SELECT pg_get_userbyid(p.proowner)
+                  INTO v_owner
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_ensure_logconn';
+
+                IF v_owner IS DISTINCT FROM current_user THEN
+                  RAISE EXCEPTION
+                    'fn_ensure_logconn e'' di %, non di % : il prestito della proprieta'' via dbops.fn_sync_functions_owner() non e'' riuscito. Verificare che dbops.fn_sync_functions_owner sia SECURITY DEFINER e posseduta da postgres, e che esista la voce in dbops.sec_functions_owner.',
+                    coalesce(v_owner, '(funzione assente)'), current_user;
+                END IF;
+              END
+              $guard$;
+
+              -- ==========================================================
+              -- 2) La funzione.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION script.fn_ensure_logconn()
+               RETURNS void
+               LANGUAGE plpgsql
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                -- text: il tipo di current_setting, nessuna colonna lo porta
+                v_conn text := script.fn_canale_log_stringa();
+              BEGIN
+                -- canale spento o non configurato: niente da aprire
+                IF v_conn IS NULL THEN
+                  RETURN;
+                END IF;
+
+                -- ⛔ Nessun errore risale al chiamante: il canale di log e' un
+                --   servizio, non una precondizione della scrittura. Chi deve
+                --   sapere se la connessione c'e' guarda dblink_get_connections().
+                BEGIN
+                  -- gia' aperta: non si riconnette
+                  IF 'logconn' = ANY (coalesce(public.dblink_get_connections(), ARRAY[]::text[])) THEN
+                    RETURN;
+                  END IF;
+
+                  PERFORM public.dblink_connect('logconn'::text, v_conn);
+                EXCEPTION
+                  WHEN duplicate_object THEN
+                    NULL;             -- gia' aperta (corsa)
+                  WHEN OTHERS THEN
+                    RAISE WARNING
+                      'script.fn_ensure_logconn: canale di log non raggiungibile (SQLSTATE %): %; si prosegue senza.',
+                      SQLSTATE, SQLERRM;
+                END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_ensure_logconn() IS
+                  'Apre la connessione dblink nominata logconn verso il canale di log, se il canale e'' acceso e la connessione non e'' gia'' aperta. Se il canale e'' acceso e con quale stringa lo dice script.fn_canale_log_stringa. Non solleva mai: un canale irraggiungibile (rete, credenziali, troppe connessioni) diventa un WARNING, perche'' il canale di log e'' un servizio e non una precondizione delle scritture. Chi deve sapere se la connessione c''e'' guarda dblink_get_connections(). SECURITY INVOKER, di postgres.';
+
+              -- ==========================================================
+              -- 3) Restituzione della proprieta' a postgres.
+              -- ==========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name   = 'script'
+                 AND function_name = 'fn_ensure_logconn';
+
+              SELECT dbops.fn_sync_functions_owner();
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di
+              -- migrations/10_script/20250813-11.
+              SELECT 1;

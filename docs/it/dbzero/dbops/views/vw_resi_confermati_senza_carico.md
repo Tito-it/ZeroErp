@@ -1,8 +1,9 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_resi_confermati_senza_carico.md" %}
 # 🔍 View `vw_resi_confermati_senza_carico`
 
 > 📝 **Descrizione**
 >
-> Presidio, DEVE restare vuota. Una riga e' un reso CONFERMATO, con un magazzino, che fa rientrare merce (vendite.fn_reso_muove_merce), senza nessun carico a registro da uno dei suoi rientri (sorgente RESO_VENDITA_RIENTRO, quantita' positiva, non uno storno). E' la porta del registro del reso che non ha tenuto: merce tornata dal cliente che la giacenza non vede. Il rimedio non e' scrivere il movimento a mano: e' capire da dove e' passata la conferma. I resi confermati prima del Lotto 3-bis non hanno magazzino e non sono questo difetto. Gemella di dbops.vw_ddt_emessi_senza_scarico (stessa domanda sul verso opposto: un documento ha passato lo stato che muove merce, e le sue sorgenti non hanno il movimento). security_invoker; il digest conta da proprietario (fn_conta_presidio, perimetro DEFINER). Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-13).
+> Presidio, DEVE restare vuota. Una riga e' un reso in uno stato in cui la merce e' rientrata (il BB script.vw_stati_doc_reso_merce_rientrata: oltre la bozza, non abortito), con un magazzino, che fa rientrare merce (vendite.fn_reso_muove_merce), con almeno un rientro di una riga attiva senza il suo carico a registro: un movimento di magazzino.movimenti con provenienza RESO_VENDITA (il reso, la riga, il rientro come dettaglio), quantita' positiva, che non sia uno storno. La domanda e' RIENTRO PER RIENTRO, come il contratto del posting (vendite.fn_posta_reso: un carico per rientro delle righe attive): anche un carico parziale si vede, e rientri_senza_carico dice quanti rientri mancano. Una riga e' la porta del registro del reso che non ha tenuto (lo stato cambia solo dai verbi del reso, attraverso script.trgfn_doc_stato_solo_dal_verbo; la conferma e' vendite.fn_conferma_reso): merce tornata dal cliente che la giacenza non vede. Il rimedio non e' scrivere il movimento a mano: e' capire da dove e' passata la conferma. Un reso senza magazzino resta fuori: non e' questo difetto. Gemella di dbops.vw_ddt_emessi_senza_scarico, la stessa domanda sul verso opposto. security_invoker; il digest conta da proprietario (dbops.fn_conta_presidio, perimetro DEFINER).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -18,15 +19,18 @@ SELECT r.id AS reso_id,
     r.data,
     r.emittente_fiscale_id,
     r.magazzino_id,
-    s.codice_interno AS stato_codice_interno
-   FROM (vendite.resi r
-     JOIN config.stati_doc_reso s ON ((s.id = r.stato_doc_reso_id)))
-  WHERE (((s.codice_interno)::text = 'CONFERMATO'::text) AND (r.magazzino_id IS NOT NULL) AND vendite.fn_reso_muove_merce(r.*) AND (NOT (EXISTS ( SELECT 1
-           FROM (((vendite.resi_righe rr
+    s.codice_interno AS stato_codice_interno,
+    n.rientri_senza_carico
+   FROM ((vendite.resi r
+     JOIN script.vw_stati_doc_reso_merce_rientrata s ON ((s.id = r.stato_doc_reso_id)))
+     CROSS JOIN LATERAL ( SELECT count(*) AS rientri_senza_carico
+           FROM (vendite.resi_righe rr
              JOIN vendite.resi_righe_rientri x ON ((x.resi_riga_id = rr.id)))
-             JOIN magazzino.movimenti m ON ((m.sorgente_riga = x.id)))
-             JOIN config.sorgenti so ON (((so.id = m.sorgente_tipo_id) AND ((so.codice_interno)::text = 'RESO_VENDITA_RIENTRO'::text))))
-          WHERE ((rr.reso_id = r.id) AND (m.qta > (0)::numeric) AND (m.storno_di_movimento_id IS NULL))))));
+          WHERE ((rr.reso_id = r.id) AND rr.attivo AND (NOT (EXISTS ( SELECT 1
+                   FROM (magazzino.movimenti m
+                     JOIN config.sorgenti so ON (((so.id = m.sorgente_tipo_id) AND ((so.codice_interno)::text = 'RESO_VENDITA'::text))))
+                  WHERE ((m.sorgente_id = r.id) AND (m.sorgente_riga = rr.id) AND (m.sorgente_dettaglio = x.id) AND (m.qta > (0)::numeric) AND (m.storno_di_movimento_id IS NULL))))))) n)
+  WHERE (s.merce_rientrata AND (r.magazzino_id IS NOT NULL) AND (n.rientri_senza_carico > 0) AND vendite.fn_reso_muove_merce(r.*));
 ```
 
 </div>

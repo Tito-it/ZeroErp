@@ -1,88 +1,60 @@
-## 📘 Documentazione Funzione – `pratiche.fn_check_prerequisiti_flusso`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_check_prerequisiti_flusso`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
-> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
+> * [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti) — i prerequisiti di un template, con l'esito richiesto
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — il codice e la descrizione del prerequisito
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — i passi della pratica che lo soddisfano
+> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche) — lo stato `COMPLETATO`
 >
-Funzioni collegate:
+> Approfondimento funzioni:
 >
-[pratiche.fn_guard_prerequisiti_flusso](fn_guard_prerequisiti_flusso.md)
+> * [pratiche.fn_guard_prerequisiti_flusso](/dbzero/pratiche/funzioni/fn_guard_prerequisiti_flusso) — la versione bloccante
 
 ---
+
 ### 🎯 Scopo Principale
-La funzione **`pratiche.fn_check_prerequisiti_flusso`** e' una **pure check** (`fn_check_*`): verifica se tutti i prerequisiti di un template flusso sono soddisfatti per una data pratica.
 
-Ritorna una **riga per ogni prerequisito** con un flag `soddisfatto` (boolean). Non solleva eccezioni — il chiamante decide come gestire i prerequisiti mancanti.
+La funzione `pratiche.fn_check_prerequisiti_flusso` dice, per una pratica e un template di flusso, se
+ciascun prerequisito del template è soddisfatto: una riga per prerequisito, con il flag `soddisfatto`.
 
----
-
-### Firma della funzione
-
-```sql
-CREATE OR REPLACE FUNCTION pratiche.fn_check_prerequisiti_flusso(
-  p_pratica_id         pratiche.pratiche.id%TYPE,
-  p_template_flusso_id pratiche.template_flussi.id%TYPE
-)
-RETURNS TABLE(
-  prerequisito_id  pratiche.template_flussi.id%TYPE,
-  codice           pratiche.template_flussi.codice%TYPE,
-  descrizione      pratiche.template_flussi.descrizione%TYPE,
-  soddisfatto      boolean
-)
-LANGUAGE plpgsql
-STABLE
-```
+Non solleva errori: è il chiamante a decidere che cosa fare dei prerequisiti mancanti.
 
 ---
 
-### Descrizione parametri
+### Quando un prerequisito è soddisfatto
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:---:|-------------|
-| `p_pratica_id` | bigint | SI | ID della pratica per cui verificare i prerequisiti |
-| `p_template_flusso_id` | integer | SI | ID del template flusso di cui controllare i prerequisiti configurati |
+Un prerequisito è un altro template di flusso. È soddisfatto quando nella stessa pratica esiste
+almeno un flusso di quel template in stato `COMPLETATO` **con l'esito giusto**:
 
----
+* se il prerequisito dichiara un `esito_richiesto`, l'esito del flusso deve coincidere;
+* se non lo dichiara, vale qualunque esito.
 
-### Colonne ritornate
+Un template senza prerequisiti non restituisce nessuna riga: nessun prerequisito vuol dire tutti
+soddisfatti.
 
-| Colonna | Tipo | Descrizione |
-|---------|------|-------------|
-| `prerequisito_id` | integer | ID del template flusso prerequisito |
-| `codice` | varchar(50) | Codice del template flusso prerequisito |
-| `descrizione` | text | Descrizione del template flusso prerequisito |
-| `soddisfatto` | boolean | `true` se esiste almeno un flusso COMPLETATO per la pratica con quel template |
+La funzione è `STABLE`, sola lettura; la usa `pratiche.fn_guard_prerequisiti_flusso` per il controllo
+bloccante.
 
 ---
 
-### Logica di funzionamento
+### Test
 
-1. Legge i prerequisiti configurati in `pratiche.template_flussi_prerequisiti` per il template indicato.
-2. Per ciascuno, verifica se nella pratica esiste un flusso con quel `template_flusso_id` in stato **COMPLETATO** (tramite `config.stati_flussi_pratiche.codice_interno`).
-3. Restituisce tutte le righe con il flag calcolato — non filtra ne' solleva errori.
-
----
-
-### Esempi di utilizzo
-
-```sql
--- Verifica prerequisiti per pratica 100, template flusso 5
-SELECT * FROM pratiche.fn_check_prerequisiti_flusso(100, 5);
-
--- Solo prerequisiti non soddisfatti
-SELECT * FROM pratiche.fn_check_prerequisiti_flusso(100, 5)
-WHERE NOT soddisfatto;
-```
+* `pratiche/test-fn-check-prerequisiti-flusso` — i prerequisiti soddisfatti e mancanti.
+* `pratiche/test-prerequisiti-esito-aware` — un prerequisito completato con l'esito sbagliato non
+  soddisfa; senza esito richiesto vale qualunque esito.
 
 ---
 
-### Note operative
+### Note di migrazione
 
-* Funzione `STABLE`: non modifica dati, sicura per uso ripetuto nella stessa transazione.
-* Usata internamente da `fn_guard_prerequisiti_flusso` per la validazione fail-fast.
-* Se il template non ha prerequisiti configurati, ritorna zero righe (nessun prerequisito = tutti soddisfatti).
+* 2026-06-08 — il controllo tiene conto dell'esito del flusso prerequisito (`esito_richiesto`); prima
+  bastava che fosse completato.
+
+---
+
+{% include-markdown "signature-core.md" %}

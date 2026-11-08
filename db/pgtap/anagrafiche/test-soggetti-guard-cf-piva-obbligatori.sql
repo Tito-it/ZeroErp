@@ -60,7 +60,8 @@ CREATE TEMP TABLE tmp_run_sfx AS
 -- ⚠️ Anche il codice fiscale si prende libero: quello che il file aveva
 --   inchiodato (TSTNMA80A01H501N) e' bruciato da un soggetto residuo, e
 --   uq_soggetto_idstato_id_fiscale_univoco non perdona.
-SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
+-- rev 2026-11-04: upper() sul suffisso: il codice si salva in maiuscolo (automazione CODICE_MAIUSCOLO), e la ricerca per valore deve ricomporlo uguale.
+SELECT upper(substr(md5(clock_timestamp()::text), 1, 8)) AS sfx,
        dbops.fn_pgtap_piva_libera() AS piva_libera,
        dbops.fn_pgtap_cf_libero()   AS cf_libero;
 

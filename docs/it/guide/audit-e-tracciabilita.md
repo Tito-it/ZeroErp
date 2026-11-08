@@ -1,6 +1,6 @@
 # Guida — Audit e Tracciabilità
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, analisti funzionali
 >
@@ -17,7 +17,8 @@
 > * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — i campi `user_insert`/`user_update`
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il `tx_id` su ogni scrittura
 > * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — lo snapshot storico
-> * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) / [dbops.fn_cleanup_at_params](/dbzero/dbops/funzioni/fn_cleanup_at_params) — la scadenza scritta all'INSERT
+> * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) — la scadenza scritta all'INSERT
+> * [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola) — la regola di scadenza di una tabella, la stessa per l'INSERT e per il job
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) / [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup) — il cleanup in batch
 > * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — l'esito delle automazioni
 >
@@ -115,6 +116,14 @@ Questo permette di raggruppare tutte le scritture avvenute in un'unica operazion
 atomica — ad esempio, la creazione di una pratica che genera contestualmente
 il primo flusso e la prima voce di giornale.
 
+⚠️ **Le tabelle che scrive solo la migrazione non hanno `tx_id`.** Nello schema `dbops` i
+cataloghi seminati dai CSV (processi, presidi, tipi di lavoro, i registri del debito) non portano
+né `tx_id` né `data_update`/`user_update`: legherebbero la riga alla sola migrazione, e direbbero
+«il migratore» a chi cerca chi l'ha cambiata. Lo dicono già lo storico delle migrazioni e git.
+Le tabelle di `dbops` che si scrivono a runtime (la coda lavori, le identità tecniche, i registri)
+tengono il `tx_id` col trigger, montato a mano o dal framework: la regola sta in
+[automazione-db.md](automazione-db.md) §1.1.
+
 ### 2.4 Storicizzazione
 
 Le tabelle operative con `storicizza = true` vengono fotografate dal trigger
@@ -156,8 +165,10 @@ del ciclo di vita JWT:
 | `LOGIN`    | Emissione token al login (`/api/token/`)                   |
 | `REFRESH`  | Rinnovo token (`/api/token/refresh/`)                      |
 | `LOGOUT`   | Revoca esplicita da parte dell'utente                      |
-| `SCADENZA` | Token scaduto naturalmente                                 |
 | `REVOCA`   | Token invalidato forzatamente (es. disabilitazione utente) |
+
+La scadenza naturale di un token non è un evento: non la compie nessuno, e le
+sessioni scadute si leggono dalla scadenza del token.
 
 Per ogni evento vengono registrati: l'utente (`auth_user_id`), il JWT ID
 univoco del token (`jti`), l'indirizzo IP, lo user agent del client e
@@ -330,7 +341,8 @@ Entrambe le tabelle di audit condividono il campo `cleanup_at TIMESTAMPTZ`
 che indica quando il record può essere rimosso. Il valore non viene
 impostato all'inserimento ma calcolato in batch dal framework di
 automazione [`fn_apply_cleanup_at()`](/dbzero/dbops/funzioni/fn_apply_cleanup_at), che applica un TTL configurato
-in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a partire dalla colonna `data_insert`.
+in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a partire dalla colonna base della regola
+(la tabella sotto la indica per ogni registro).
 
 | Tabella                  | Retention  | Regola override     | Note                                       |
 | ------------------------ | ---------- | ------------------- | ------------------------------------------ |
@@ -339,16 +351,21 @@ in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a 
 | `dbops.idempotency_keys` | 1 giorno   | id=24, priorità 190 | Base `data_insert`; scadenza scritta alla nascita |
 | `dbops.error_log`        | 90 giorni  | id=25, priorità 190 | Base `occurred_at`; scadenza calcolata dal job |
 | `dbops.audit_log`        | 90 giorni  | id=26, priorità 190 | Base `executed_at`; scadenza calcolata dal job |
+| `dbops.ai_query_log`     | 90 giorni  | id=28, priorità 190 | Testo scritto all'assistente; base `data_insert`; scadenza scritta alla nascita |
 
 ⛔ **Una tabella con `cleanup_at` si pulisce solo se sta in
 [`dbops.automation_scope`](/dbzero/dbops/tabelle/automation_scope)**: l'orchestratore scorre
 le tabelle dello scope, non tutte quelle che hanno la colonna. Per lo schema `dbops` lo
 scope elenca `sessioni_utente`, `processi_accensione`, `idempotency_keys`, `request_log`,
-`error_log` e `audit_log`.
+`error_log`, `audit_log` e `ai_query_log`. Una tabella con `cleanup_at` fuori dallo scope la
+segnala il presidio
+[`dbops.vw_marcatori_automazione_senza_esecutore`](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore).
 
 Errori e chiamate restano **90 giorni** insieme: chi indaga su una richiesta guarda la
 chiamata (`request_log`) e l'errore che ne è uscito (`error_log`), e i due registri devono
-scadere insieme. `audit_log`, il registro dei giri delle automazioni, segue la stessa regola.
+scadere insieme. `audit_log`, il registro dei giri delle automazioni, segue la stessa regola, e
+così `ai_query_log`, le domande all'assistente con le risposte: testo degli utenti che non si
+tiene oltre.
 
 ⚠️ `error_log` e `audit_log` **non** hanno il trigger alla nascita: li scrivono anche
 sessioni dblink, con un ruolo che non legge le regole di scadenza, e il trigger farebbe
@@ -365,8 +382,8 @@ I **registri** di vendite non aspettano il batch:
 `cleanup_at` lo scrive **all'`INSERT`** il trigger generico
 [`dbops.trgfn_cleanup_at_alla_nascita`](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita)
 (`trg_<tabella>_m50_cleanup_at_ins`), leggendo termine **e colonna base** dalla stessa
-regola che userebbe il job, via
-[`dbops.fn_cleanup_at_params`](/dbzero/dbops/funzioni/fn_cleanup_at_params).
+regola che usa il job, via
+[`dbops.fn_cleanup_at_regola`](/dbzero/dbops/funzioni/fn_cleanup_at_regola).
 Su un registro l'UPDATE notturno riscriverebbe `data_update`/`user_update` di ogni riga
 fresca e passerebbe dai trigger di `UPDATE`; alla nascita la riga sa già quando scade. Il
 batch resta per il **pregresso** (righe a `NULL`), una volta.
@@ -379,8 +396,8 @@ batch resta per il **pregresso** (righe a `NULL`), una volta.
 | `vendite.fatturazione_lotti_task_runs` | 750 giorni | `started_at` | id=18  |
 | `vendite.commesse_push_log`            | 750 giorni | `run_at`     | id=19  |
 
-Lo stesso trigger è montato anche su due registri di `dbops`, `request_log` (90 giorni) e
-`idempotency_keys` (un giorno), con le regole della tabella sopra.
+Lo stesso trigger è montato anche su tre registri di `dbops`, `request_log` e `ai_query_log`
+(90 giorni) e `idempotency_keys` (un giorno), con le regole della tabella sopra.
 
 750 e non 30: sono i quattro registri che `script.vw_giornale_entita` legge insieme (più
 il registro di giro del push, a cui punta il `correlation_id` di `event_log`) e la storia
@@ -395,9 +412,10 @@ ne eredita la scadenza.
 La manutenzione è gestita dal framework generico di automazione tramite
 due regole in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl):
 
-1. **`CLEANUP_AT`** (id=11, default 30gg; override id=13/14 per le tabelle
-   audit): calcola `cleanup_at = data_insert + TTL` per ogni riga con
-   `cleanup_at IS NULL`
+1. **`CLEANUP_AT`** (id=11, default 30gg; le regole delle tabelle sopra la
+   sostituiscono sulla loro tabella): calcola `cleanup_at` come colonna base più
+   TTL per ogni riga che non ha ancora una scadenza e ha la colonna base
+   valorizzata
 2. **`CLEANUP_PURGE`** (id=12): elimina in batch (5000 righe) i record
    con `cleanup_at <= now()`
 

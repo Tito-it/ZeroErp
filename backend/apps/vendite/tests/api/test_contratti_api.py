@@ -137,8 +137,8 @@ class TestDetailGet(_BaseApiTest):
 class TestDocumentiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     def test_post_documento_anteprima_ok(self, repo_cls, sorgenti_repo_cls, svc_cls, _auth):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
@@ -171,8 +171,8 @@ class TestDocumentiContratto(_BaseApiTest):
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     def test_get_documenti_list_ok(self, repo_cls, sorgenti_repo_cls, svc_cls, _auth):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
@@ -202,7 +202,9 @@ class TestDocumentiContratto(_BaseApiTest):
         self.assertEqual(body["count"], 1)
         kwargs = svc_cls.return_value.list_documenti_per_sorgente.call_args.kwargs
         self.assertEqual(kwargs["sorgente_tipo_id"], 4)
-        self.assertEqual(kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007")
+        # Giro D.1: la lista cerca per id dell'entità, come scrive la stampa.
+        self.assertEqual(kwargs["sorgente_id"], 7)
+        self.assertNotIn("sorgente_uid", kwargs)
         self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 10))
         self.assertEqual((kwargs["order_by"], kwargs["order_dir"]), ("titolo", "asc"))
         self.assertEqual(kwargs["search"], "contr")
@@ -414,8 +416,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     @patch(_SVC_VIEW_DOC)
     def test_emetti_integration_atomic_state_genera_allegati(
         self, svc_cls, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
@@ -452,7 +454,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 4)
         self.assertEqual(kwargs["sorgente_id"], 7)
-        self.assertEqual(kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007")
+        # Giro D.1: la view passa l'id, la chiave della stampa la sceglie il DB.
+        self.assertNotIn("sorgente_uid", kwargs)
         self.assertEqual(len(kwargs["allegati"]), 1)
         self.assertEqual(kwargs["allegati"][0]["mime_type"], "application/pdf")
         self.assertEqual(kwargs["allegati"][0]["file_name"], "allegato.pdf")
@@ -461,8 +464,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     # esistente. Verifica route e delega a list_documento_files.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     def test_get_documento_allegati_list_ok(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
@@ -494,8 +497,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     # aggiungi_allegati.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     def test_post_documento_allegati_upload_ok(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):

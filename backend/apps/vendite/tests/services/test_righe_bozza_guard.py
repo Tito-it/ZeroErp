@@ -316,16 +316,12 @@ class RigheBozzaGuardEtichettaE2ETests(TestCase):
         with connection.cursor() as cur:
             ddt = crea_ddt_consegnato(cur, etichetta="etichetta guard righe reso")
         self.assertEqual(ddt["stato"], "CONSEGNATO")
-        return int(self._scalare(
-            """
-            INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid)
-            SELECT s.id, so.id, %s::uuid
-              FROM config.stati_doc_reso s, config.sorgenti so
-             WHERE s.codice_interno = 'DRAFT' AND so.codice_interno = %s
-            RETURNING id
-            """,
-            [ddt["uid"], SORGENTE_DDT_VENDITA],
-        ))
+        # Dal percorso di produzione: la provenienza la sceglie il BB del DB
+        # (`script.fn_sorgente_provenienza`), non un INSERT a mano con l'uid
+        # della bolla, che il guard unico rifiuta dal giro T.2.
+        from apps.vendite.db.resi_repository import ResiRepository
+
+        return int(ResiRepository().create_reso(ddt_id=int(ddt["id"]))["id"])
 
     # Per documento: come nasce la testata, e la tabella da cui il lettore del
     # backend prende `numero` (e `rev`, che c'e' solo sul preventivo).

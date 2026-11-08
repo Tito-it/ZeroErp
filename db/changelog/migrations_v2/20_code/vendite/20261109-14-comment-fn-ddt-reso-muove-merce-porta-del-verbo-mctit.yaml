@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA NOMINATA GIUSTA: COMMENT di vendite.fn_ddt_muove_merce, vendite.fn_reso_muove_merce
+#   Brief: brief-db-revisione-dbops M22, confluito nel lotto M di brief-db-sorgente-documento-e-riga.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   I due COMMENT dicevano che la condizione decide la porta del registro «nel
+#   guard di transizione» (Regola 3 di trgfn_ddt_guard_transizione, Regola 2 di
+#   trgfn_resi_guard_transizione), regole ritirate il 2026-10-25: lo stato lo
+#   scrive solo il verbo, attraverso script.trgfn_doc_stato_solo_dal_verbo.
+#   Solo i COMMENT: corpi invariati.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261109-14-comment-fn-ddt-reso-muove-merce-porta-del-verbo-mctit.yaml
+
+  - changeSet:
+      id: 20261109-14-comment-fn-ddt-reso-muove-merce-porta-del-verbo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di vendite.fn_ddt_muove_merce e fn_reso_muove_merce: la porta del registro e' il verbo,
+        attraverso script.trgfn_doc_stato_solo_dal_verbo (M22). brief-db-sorgente-documento-e-riga §7.2
+        lotto M, giro M.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_ddt_muove_merce(vendite.ddt) IS
+                  'La bolla muove merce: la sua causale di trasporto e'' mappata su una causale di magazzino (fn_ddt_causale_magazzino) e almeno una voce e'' gestita (fn_ddt_merce_da_movimentare). Condizione della porta del registro: il verbo vendite.fn_cambia_stato_ddt, la sola strada dello stato (script.trgfn_doc_stato_solo_dal_verbo), scarica all''emissione e scrive gli arrivi alla consegna solo per una bolla che muove merce. La leggono anche la check della merce e i presidi dbops.vw_ddt_emessi_senza_scarico e dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo (D-L3-e). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt; rev 2026-11-09 la porta nominata (M22 di brief-db-revisione-dbops).';
+
+              COMMENT ON FUNCTION vendite.fn_reso_muove_merce(vendite.resi) IS
+                  'True se il reso fa rientrare merce: ha almeno una voce in vendite.fn_reso_merce_da_rientrare (una riga attiva la cui riga di bolla d''origine ha prelievi). Condizione della porta del registro del reso: il verbo vendite.fn_conferma_reso, la sola strada dello stato (script.trgfn_doc_stato_solo_dal_verbo), scrive i carichi solo per un reso che muove merce. La leggono anche la check della merce e il presidio dbops.vw_resi_confermati_senza_carico. Prende la RIGA del reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso; rev 2026-11-09 la porta nominata (M22 di brief-db-revisione-dbops).';

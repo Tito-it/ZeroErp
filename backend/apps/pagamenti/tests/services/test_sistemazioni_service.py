@@ -37,10 +37,11 @@ Indice test eseguiti:
 import inspect
 from decimal import Decimal
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from apps.core.services.error_manager import ServiceError
 from apps.pagamenti.services import sistemazioni_service
+from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
 
 _ATTO = {
     "id": 3,
@@ -53,7 +54,7 @@ _ATTO = {
 
 
 def _repo() -> MagicMock:
-    repo = MagicMock()
+    repo = create_autospec(PagamentiRepository, instance=True)
     repo.get_riferimenti_fattura.return_value = {
         "fattura_id": 2263,
         "emittente_soggetto_ruolo_id": 72,
@@ -78,7 +79,7 @@ class _Base(TestCase):
     def setUp(self) -> None:
         self.repo = _repo()
         patcher = patch.object(
-            sistemazioni_service, "PagamentiRepository", return_value=self.repo
+            sistemazioni_service, "PagamentiRepository", autospec=True, return_value=self.repo
         )
         patcher.start()
         self.addCleanup(patcher.stop)

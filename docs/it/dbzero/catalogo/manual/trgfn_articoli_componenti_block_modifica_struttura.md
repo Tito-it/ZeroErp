@@ -1,178 +1,95 @@
-## 📘 Documentazione Concettuale – Funzione `catalogo.trgfn_articoli_componenti_block_modifica_struttura`
+## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_articoli_componenti_block_modifica_struttura`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-> • [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)  
-> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)  
+> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — la distinta che protegge
 >
-> **Approfondimento funzioni:**
+> Approfondimento viste:
 >
-> • [script.fn_log_and_raise_error](/dbzero/script/manual/fn_log_and_raise_error)  
+> * [catalogo.vw_articoli_componenti_dettaglio](/dbzero/catalogo/views/vw_articoli_componenti_dettaglio) — le capability di chiusura offerte al frontend
 >
+> Approfondimento funzioni:
+>
+> * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — giudica l'ordine delle date, che qui non si guarda
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
+>
+> Guide:
+>
+> * [Gestione listini](/guide/gestione-listini#53-immutabilita-della-bom-pattern-chiudi-nuova-versione) — chiudi e nuova versione
+
 ---
 
 ### 🎯 Scopo Principale
 
-(latest review 22-04-2026)
-La funzione **`catalogo.trgfn_articoli_componenti_block_modifica_struttura()`**
-protegge l'immutabilita' strutturale della distinta base
-(`catalogo.articoli_componenti`) dopo l'inserimento della riga.
+Rende immutabile la struttura di un legame della distinta base: rifiuta ogni DELETE e ogni UPDATE che cambia un
+campo di struttura. Un legame non si corregge: si chiude con `valido_al` e se ne inserisce uno nuovo.
 
-La regola operativa e': una riga di BoM non si corregge modificandone la
-struttura o cancellandola, ma chiudendo la validita' della riga corrente
-(`valido_al`) e inserendo una nuova riga con la struttura aggiornata.
+Così le commesse e le fatture che hanno già usato una versione della distinta restano ancorate alla struttura di
+allora.
 
 ---
 
-### Contesto
+### Che cosa blocca e che cosa lascia passare
 
-`catalogo.articoli_componenti` rappresenta la BoM lato vendita con
-versionamento temporale. Per mantenere una cronologia leggibile e impedire
-modifiche retroattive della struttura, il trigger applica il pattern
-**chiudi + inserisci**:
+* **Il DELETE** è sempre rifiutato: un legame non si elimina, si chiude.
+* **Un UPDATE** è rifiutato se cambia `coeff_qta`, `componente_id`, `obbligatorio`, `esposizione_in_fattura` o
+  `valido_dal`.
+* **Passano** la chiusura con `valido_al`, e le modifiche a `attivo`, alle note, a `meta` e ai campi di audit.
 
-* la riga storica resta disponibile per il periodo in cui era valida;
-* la nuova configurazione viene inserita come nuova riga;
-* il vincolo `ex_articoli_componenti_no_overlap` impedisce sovrapposizioni di
-  validita' per la stessa coppia prodotto/componente.
+`validita` non è nell'elenco perché è una colonna generata: PostgreSQL ne rifiuta la scrittura prima che il
+trigger giri.
 
----
-
-### Evento trigger
-
-La funzione e' pensata per il trigger:
-
-```sql
-trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
-```
-
-su `catalogo.articoli_componenti`, in fase `BEFORE UPDATE OR DELETE`.
+`valido_al` è fra le colonne che fanno scattare il trigger, ma il corpo non lo confronta: il trigger scatta e lascia
+passare.
 
 ---
 
-### Regole
+### ⭐ L'ordine delle date ha un'altra sede
 
-La funzione applica quattro regole principali:
-
-* `DELETE` sempre bloccato: una riga BoM non deve essere eliminata.
-* `UPDATE` dei campi di struttura bloccato.
-* `UPDATE` di `valido_al` ammesso: è la chiusura della riga. Che non preceda
-  `valido_dal` lo verifica il guard comune delle date (sotto), non questa funzione.
-* `UPDATE` di campi non strutturali ammesso, inclusi `attivo`, `note`, `meta` e
-  campi di audit.
+Che `valido_al` non preceda `valido_dal` lo giudica il guard comune delle date, montato su ogni tabella con la
+coppia di date (`E_DATA_AL_MINORE_DAL`). `valido_al` uguale a `valido_dal` è un legame di un giorno, ed è ammesso.
+Che due versioni della stessa coppia non si sovrappongano lo garantisce il vincolo
+`uq_articoli_componenti_no_overlap` della tabella.
 
 ---
 
-### Campi strutturali bloccati
+### ⚠️ Che cosa oggi non copre
 
-Sono considerati parte della struttura della BoM e quindi non modificabili:
-
-| Campo | Motivo |
-|-------|--------|
-| `coeff_qta` | Cambia il coefficiente quantitativo del componente. |
-| `componente_id` | Cambia il componente collegato al prodotto. |
-| `obbligatorio` | Cambia la presenza obbligatoria del componente. |
-| `esposizione_in_fattura` | Cambia come il componente si vede in fattura (`NASCOSTO` \| `DESCRITTIVO` \| `VALORIZZATO`) e, per il `VALORIZZATO`, quanto vale la riga del kit. Fino al 2026-10-01 era il booleano `esposto_in_fattura` (rev `20261001-43`). |
-| `valido_dal` | Cambia l'inizio della validita' storica. |
-| `validita` | Cambia il range derivato della validita'. |
-
-`validita` e' una colonna generata da `valido_dal` e `valido_al`: PostgreSQL ne
-rifiuta la scrittura diretta prima che il trigger giri.
-
-Fino al 2026-10-02 la lista comprendeva anche `partecipa_qta` e
-`determina_qta_padre`: ritirate dalla tabella (`20261002-60`, corpo `20261002-61`)
-perche' nessuna logica le leggeva. Il trigger e' stato ricreato con la lista
-`UPDATE OF` senza le due colonne: si verifica su `pg_trigger.tgattr`, non sulla
-doc auto-generata, che stampa l'evento senza colonne.
+* **`prodotto_id` è libero.** Il trigger non lo guarda: un legame può passare sotto un altro kit, e le righe
+  componente dei documenti che lo citano restano legate a un kit diverso da quello per cui erano nate.
+* **`valido_al` si sposta in ogni direzione.** Il trigger ammette qualunque data di fine che non preceda l'inizio:
+  la chiusura nel passato di un legame già usato e la riapertura con `valido_al` vuoto passano. La struttura è
+  protetta, la storia delle date no.
 
 ---
 
-### Operazioni consentite
+### Codici errore
 
-| Operazione | Esito |
-|------------|-------|
-| Inserimento nuova riga BoM | Non gestito da questa funzione; resta consentito se passa gli altri vincoli. |
-| Chiusura riga con `UPDATE valido_al = ...` | Consentita da questa funzione; l'ordine delle date lo giudica il guard comune. |
-| Aggiornamento di `attivo`, `note`, `meta` | Consentito. |
-| Aggiornamento campi audit (`user_update`, `data_update`, `tx_id`) | Consentito. |
+* `E_BOM_MODIFICA_VIETATA` — un DELETE, o un UPDATE che cambia un campo di struttura. Il dettaglio dice quale
+  delle due operazioni, e il suggerimento è di chiudere la riga e inserirne una nuova.
 
 ---
 
-### Operazioni bloccate
+### Test
 
-| Operazione | Errore |
-|------------|--------|
-| `DELETE` della riga | `E_BOM_MODIFICA_VIETATA` |
-| Modifica di un campo strutturale | `E_BOM_MODIFICA_VIETATA` |
-
-L'ordine delle date (`valido_al` non precede `valido_dal`) **non** lo giudica
-questo trigger: ha una sede sola, il guard comune `script.trgfn_guard_date_validita`,
-montato dall'automazione `DATE_VALIDITA` su ogni tabella con la coppia di date
-(errore `E_DATA_AL_MINORE_DAL`, campo `valido_al`). Il caso `valido_al = valido_dal`
-è un periodo di un giorno, ed è ammesso.
+* `db/pgtap/catalogo/test-articoli-componenti-immutabilita.sql` — il DELETE e la modifica di ogni campo di
+  struttura sono rifiutati; la chiusura, anche nello stesso giorno dell'inizio, e le modifiche a note, `meta` e
+  `attivo` passano; una data di fine prima dell'inizio la ferma il guard comune; una nuova versione dal giorno
+  dopo la chiusura si inserisce.
 
 ---
 
-### Errori applicativi
+### Note di migrazione
 
-| Codice | Quando viene sollevato | Hint operativo |
-|--------|------------------------|----------------|
-| `E_BOM_MODIFICA_VIETATA` | `DELETE` o modifica di campi strutturali. | Chiudere la riga impostando `valido_al` e inserire una nuova riga. |
-
----
-
-### Esempi d'uso operativo
-
-Chiusura corretta di una riga BoM:
-
-```sql
-UPDATE catalogo.articoli_componenti
-SET valido_al = DATE '2026-04-30'
-WHERE id = :articolo_componente_id;
-```
-
-Inserimento della nuova versione:
-
-```sql
-INSERT INTO catalogo.articoli_componenti (
-    prodotto_id,
-    componente_id,
-    coeff_qta,
-    valido_dal,
-    obbligatorio
-)
-VALUES (
-    :prodotto_id,
-    :componente_id,
-    :nuovo_coeff_qta,
-    DATE '2026-05-01',
-    true
-);
-```
-
----
-
-### Dipendenze DB
-
-| Oggetto | Ruolo |
-|---------|-------|
-| `catalogo.articoli_componenti` | Tabella protetta dalla trigger function. |
-| `script.fn_log_and_raise_error` | Gestione standard degli errori applicativi. |
-| `ex_articoli_componenti_no_overlap` | Vincolo anti-overlap sulla validita' della BoM. |
-| `chk_articoli_componenti_valid_dates` | Check tecnico sulla coerenza delle date. |
-
----
-
-### Note operative
-
-* La funzione protegge la storia della BoM da correzioni retroattive.
-* La modifica di struttura deve sempre produrre una nuova riga, non un update
-  della riga esistente.
-* Il campo `valido_al` e' il meccanismo previsto per chiudere una versione.
-* Le modifiche descrittive o amministrative (`note`, `meta`, `attivo`, audit)
-  restano consentite.
+* 2026-04-22 — nasce: la distinta diventa immutabile sui campi di struttura.
+* 2026-09-24 — l'ordine delle date esce dal trigger e passa al guard comune; il codice suo che lo giudicava è
+  ritirato.
+* 2026-10-01 — il booleano `esposto_in_fattura` diventa `esposizione_in_fattura`, sempre fra i campi bloccati.
+* 2026-10-02 — escono dall'elenco `partecipa_qta` e `determina_qta_padre`, ritirate dalla tabella.
 
 ---
 

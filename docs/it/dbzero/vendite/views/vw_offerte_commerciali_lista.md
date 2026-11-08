@@ -77,7 +77,7 @@ SELECT o.id,
      LEFT JOIN config.valute v_val ON ((v_val.id = o.valuta_id)))
      LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
            FROM config.sorgenti so_pr
-          WHERE (((so_pr.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (so_pr.attivo IS TRUE))), (o.uid)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true));
+          WHERE (((so_pr.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (so_pr.attivo IS TRUE))), o.id, o.uid) pr(n_pratiche, pratica_id, pratica_numero) ON (true));
 ```
 
 </div>

@@ -72,7 +72,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_non_editable_fields(p_schema text, p_table text, p_record_id text)
-IS 'Ritorna i campi non editabili per (schema, tabella, id_riga). Unisce: lock statici (vw_non_editable_fields) + lock condizionali (lock_columns_conditional) valutati su p_record_id via EXECUTE USING. VOLATILE (legge stato corrente DB). SECURITY INVOKER (rispetta RLS). p_record_id = id come text; condition_expr casta $1 al tipo target. rev 2026-05-22.';
+IS 'I campi non modificabili di una riga, per il form: array ordinato e senza doppi delle colonne di (p_schema, p_table) bloccate da un trigger di lock vivo (dbops.vw_non_editable_fields, codice_interno compreso) piu'' quelle delle regole condizionali attive di dbops.lock_columns_conditional che valgono per la riga p_record_id. Ogni condition_expr si valuta con EXECUTE ... USING p_record_id (il $1 dell''espressione e'' un parametro; il cast al tipo della chiave lo scrive l''espressione, per esempio $1::uuid). Una regola condizionale chiama lo stesso predicato del guard che rifiuterebbe la modifica. VOLATILE, SECURITY INVOKER: legge lo stato di oggi con i privilegi di chi chiama.';
 ```
 
 </div>

@@ -1,115 +1,153 @@
-## 📘 Documentazione Concettuale – Funzione `maintenance.fn_job_run_log_failure()`
+## 📘 Documentazione Concettuale – Funzione `maintenance.fn_job_run_log_failure`
 
-> **Collegamenti utili**
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
-Approfondimenti tabelle:
+> 👀 **Vedi anche**
 >
-[`maintenance.job_run_log`](/dbzero/maintenance/manual/job_run_log)
+> Approfondimento tabelle:
 >
-Approfondimenti funzioni:
+> * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — il giornale su cui scrive
+> * [dbops.sec_functions_owner](/dbzero/dbops/tabelle/sec_functions_owner) — il registro che le assegna il proprietario
 >
-[`maintenance.fn_run_and_log`](/dbzero/maintenance/manual/fn_run_and_log) ·
-[`script.fn_log_error_only`](/dbzero/script/manual/fn_log_error_only)
+> Approfondimento viste:
 >
-Presidio:
-> [`maintenance.vw_job_run_da_guardare`](/dbzero/maintenance/manual/vw_job_run_da_guardare)
+> * [maintenance.vw_job_run_da_guardare](/dbzero/maintenance/views/vw_job_run_da_guardare) — dove il verbale diventa visibile
+>
+> Approfondimento funzioni:
+>
+> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — chi la chiama, prima di rilanciare l'errore
+> * [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) — il canale fuori transazione che riusa
+> * [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa) — la regola unica: se il canale è acceso, e con quale stringa
+> * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn) — la connessione nominata del canale
+> * [dbops.fn_sync_functions_owner](/dbzero/dbops/funzioni/fn_sync_functions_owner) — l'allineamento del proprietario
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 05-09-2026)
 
-Scrive il verbale di un lavoro **fallito** in un posto dove l'annullamento non
-arriva: una **connessione separata**.
-
----
-
-### ⛔ Il problema che risolve, ed è più grave di come sembra
-
-Quando un lavoro notturno va male, `maintenance.fn_run_and_log` fa la cosa
-giusta: cattura l'errore e scrive nel giornale *«fallito, ecco il motivo»*.
-
-Poi rilancia l'errore verso l'alto — e rilanciare un errore **annulla tutto
-quello che è stato fatto**, compresa la riga appena scritta.
-
-> ⭐ È un usciere che scrive *«il visitatore è caduto dalle scale»* e poi, vedendo
-> la caduta, **strappa la pagina** — la sua nota compresa.
-
-⇒ Non è che le corse fallite mancassero: **non potevano esistere**. Misurato il
-2026-09-05, in tutta la storia del giornale: **zero** fallimenti dei job pgAgent,
-contro 31 dei comandi (che passano da un'altra strada, dove è il codice
-applicativo a governare l'annullamento).
-
-⛔ Ed è così che un lavoro settimanale è morto ogni settimana **per sei mesi** con
-l'ultimo verdetto agli atti a *«fatto»*.
+Scrive nel giornale dei job il verbale di una corsa **fallita** su una connessione
+separata, così che sopravviva all'annullamento della transazione in cui il lavoro è morto.
 
 ---
 
-### ⭐ La soluzione era già in casa
+### ⛔ Il problema che risolve: un verbale scritto e strappato nello stesso istante
 
-`script.fn_log_error_only` scrive gli errori su una connessione separata **dal
-febbraio 2026**. Le sue 143.000 righe — fra cui 262 di un controllo che esiste
-*solo* per rifiutare — sono la prova che quel canale sopravvive
-all'annullamento.
+Quando un lavoro va male, `maintenance.fn_run_and_log` cattura l'errore, aggiorna la riga
+della corsa a «fallita» e poi rilancia. Rilanciare annulla tutto quello che la transazione ha
+fatto, **compresa quella riga**.
 
-⇒ Qui si riusa lo stesso canale. Non se ne inventa un altro.
+> ⭐ È un usciere che scrive *«il visitatore è caduto dalle scale»* e poi, vedendo la caduta,
+> strappa la pagina — la sua nota compresa.
+
+Senza un'altra strada, una corsa fallita di un job del database non potrebbe esistere nel
+giornale: l'ultimo verdetto agli atti resterebbe quello dell'ultima corsa riuscita, e un
+lavoro morto ogni settimana sembrerebbe sano.
+
+---
+
+### ⭐ Riusa un canale che c'è già
+
+`script.fn_log_error_only` scrive gli errori su una connessione `dblink` separata, e quel
+canale sopravvive agli annullamenti. Questa funzione usa lo stesso: prima la connessione
+nominata `logconn` (aperta da `script.fn_ensure_logconn`), poi, se non c'è, l'indirizzo
+diretto delle impostazioni del canale. Non se ne inventa un altro.
+
+Se il canale è acceso, e con quale indirizzo, lo dice
+[script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa), **prima** di
+aprire qualunque connessione: con l'interruttore `myapp.log_with_dblink` a `off` (come nelle
+migrazioni e in CI) il verbale non si scrive, anche se l'indirizzo è impostato.
+
+La riga scritta porta lo stesso `run_uuid`, la stessa partenza, la stessa origine, lo stesso
+processo e lo stesso utente tecnico della corsa annullata, con `ok` falso, messaggio, codice,
+dettaglio e SQLSTATE dell'errore. Il `meta` dice di lei che è stata **scritta fuori
+transazione**, e perché: senza, sembrerebbe una riga normale di un giro che invece è stato
+annullato.
+
+⚠️ `ruolo_sessione` e `agent_host` si leggono **qui**, nella sessione del job, e si passano alla
+scrittura: dentro la connessione separata il ruolo collegato e l'indirizzo del client sarebbero
+quelli del canale di log, non quelli della corsa. Così `agent_host` dice da dove è partita la
+corsa, come per le righe che nascono col valore di default della colonna.
 
 ---
 
 ### ⛔ Non è un «esegui quello che vuoi fuori transazione»
 
-Una funzione generica che eseguisse istruzioni arbitrarie con privilegi elevati
-sarebbe la cosa più pericolosa da lasciare in giro.
-
-⇒ Questa prende **valori tipizzati** e costruisce da sola la propria scrittura.
-Non esiste un parametro che permetta di farle scrivere altro.
+Una funzione che eseguisse istruzioni arbitrarie con i privilegi di un superuser sarebbe la
+cosa più pericolosa da lasciare in giro. Questa prende **valori tipizzati** e costruisce da sola
+la propria scrittura, con ogni valore quotato: non esiste un parametro che le faccia scrivere
+altro, né altrove.
 
 ---
 
 ### ⚠️ Non rompe mai chi la chiama, e questo ha un rovescio
 
-La chiama un gestore d'errore: qualcuno che sta **già** andando male. Ogni via
-d'uscita è un avviso nel registro del server, mai un'eccezione — non si fa
-fallire due volte un lavoro già fallito.
+La chiama un gestore d'errore: qualcuno che sta **già** andando male. Ogni via d'uscita è un
+avviso nel log del server, mai un'eccezione — non si fa fallire due volte un lavoro già fallito.
+Con il canale spento o non configurato lo dice con un avviso, e il fallimento resta senza riga.
 
-> ⛔ **Il rovescio**: quando il canale non funziona, **tace**. Un controllo che
-> guardasse solo *«la chiamata non è esplosa»* sarebbe verde anche mentre non
-> scrive niente.
->
-> ⇒ **È successo due volte** il giorno in cui è nata: prima perché la funzione
-> apparteneva a un utente senza i privilegi per aprire la connessione, poi
-> perché l'utente del canale non poteva entrare nello schema.
+> ⛔ **Il rovescio**: quando il canale non funziona, **tace**. Un controllo che guardasse solo
+> «la chiamata non è esplosa» sarebbe verde anche mentre non scrive niente.
 
-⭐ La regola che ne resta: **un canale che tace quando non funziona non si
-collauda guardando chi lo chiama, si collauda guardando dove dovrebbe arrivare.**
+⭐ La regola che ne resta: **un canale che tace quando non funziona non si collauda guardando
+chi lo chiama, si collauda guardando dove dovrebbe arrivare.**
+
+Anche il giornale ha le sue regole, e il verbale non le aggira: una corsa senza processo
+dichiarato è respinta dal CHECK `chk_job_run_log_processo_dichiarato` anche qui, e finisce in
+un avviso.
 
 ---
 
 ### Che cosa serve perché funzioni
 
-* la funzione deve appartenere a un utente con privilegi amministrativi —
-  l'allineamento è automatico (`dbops.sec_functions_owner`);
-* l'utente del canale deve poter **entrare** nello schema e **scrivere** il
-  giornale. ⚠️ Non leggerlo: chi redige un verbale non ha bisogno di rileggerlo.
+* **Un proprietario superuser.** `dblink` rifiuta a chi non è superuser una connessione senza
+  password, quindi la funzione è `SECURITY DEFINER` di `postgres`. Il changeSet non mette il
+  proprietario: lo allinea `dbops.fn_sync_functions_owner` dalla riga di
+  `dbops.sec_functions_owner`, a ogni migrate, e la riga porta la firma in vigore.
+* **Un utente del canale che possa entrare e scrivere.** `zeroerp_log` ha l'accesso allo schema
+  e il solo `INSERT` sul giornale. ⚠️ Non lo legge: chi redige un verbale non ha bisogno di
+  rileggerlo.
 
 ---
 
-### Verifica
+### Test
 
-`db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql` — controlla i
-**presupposti**, non la scrittura: una riga scritta fuori transazione
-sopravvivrebbe alla pulizia del test, e sporcherebbe il giornale a ogni giro.
-⇒ La prova completa si fa a mano, una volta: far fallire un lavoro e guardare il
-presidio.
+`db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql` — controlla i **presupposti**,
+non la scrittura: la funzione è `SECURITY DEFINER` di un superuser, l'utente del canale entra
+nello schema e scrive il giornale senza poterlo leggere, e `fn_run_and_log` la chiama e continua
+a rilanciare; il corpo scrive in `agent_host` l'indirizzo del client e non il nome del
+cluster (presidio sul testo). La scrittura non si prova qui perché una riga fuori transazione sopravvive al
+ROLLBACK del test e sporcherebbe il giornale a ogni giro: la prova completa si fa a mano, dopo
+ogni cambio del canale, facendo fallire un lavoro e guardando
+`maintenance.vw_job_run_da_guardare`.
+
+`db/pgtap/maintenance/test-job-run-sqlstate-e-codice-v1.sql` — una sola firma, con lo SQLSTATE
+in coda, e la scrittura della colonna (presidio sul testo).
+
+`db/pgtap/script/test-canale-log-v1.sql` — test 12: con un canale irraggiungibile la funzione non
+solleva. Test 15: con `myapp.log_with_dblink = off` e un canale che funziona non scrive nel
+giornale (si salta dove il canale non c'è). Test 16: non legge da sé i parametri del canale
+(presidio sul testo).
 
 ---
 
-### ⭐ Rev 2026-10-16 — `p_sqlstate`
+### Note di migrazione
 
-Parametro nuovo **in coda**, con default `NULL`: lo SQLSTATE dell'errore, scritto in
-`job_run_log.sqlstate`. `p_error_code` resta «il codice più preciso che si ha». La firma
-è cambiata con `DROP` + `CREATE` nel provision-post (la funzione è di un superuser), e
-la riga del registro `dbops.sec_functions_owner` porta la firma nuova.
-*Brief: `brief-db-presidio-job-run-a-chi-tocca.md`.*
+* 2026-09-05 — nasce. Fino a quel giorno nessuna corsa fallita di un job pgAgent compariva nel
+  giornale, e `apply_storicizza_weekly` risultava `done` mentre falliva ogni settimana. Lo
+  stesso giorno il canale è rimasto muto due volte, e solo l'avviso lo diceva: prima la
+  funzione era di un utente senza i privilegi per aprire la connessione, poi l'utente del canale
+  non poteva entrare nello schema.
+* 2026-10-15 — scrive anche `ruolo_sessione` (`brief-db-ruoli-di-sistema`).
+* 2026-10-16 — parametro `p_sqlstate` in coda, con default vuoto; `p_error_code` resta «il
+  codice più preciso che si ha». La firma è cambiata con `DROP` e `CREATE` nel provision-post,
+  perché la funzione è di un superuser (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-03 — `agent_host` scrive l'indirizzo del client della sessione del job invece del nome del
+  cluster: la colonna ha un solo significato anche sulle righe dei fallimenti; le righe già
+  scritte restano (`brief-db-revisione-maintenance` M17).
+* 2026-11-04 — il canale lo dice `script.fn_canale_log_stringa` (D26 di `brief-db-revisione-dbops`):
+  prima la funzione ignorava l'interruttore `myapp.log_with_dblink`, e con `off` il ripiego
+  sull'indirizzo diretto scriveva lo stesso. La firma prende i tipi dalle colonne del giornale
+  (`%TYPE`); la firma risolta non cambia.
 
 ---
 

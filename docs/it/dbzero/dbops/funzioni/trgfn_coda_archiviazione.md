@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_coda_archiviazione.md" %}
 # ⚙️ Funzione `trgfn_coda_archiviazione`
 
 ```sql

@@ -302,6 +302,14 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     #    dell'emittente, ed e' immutabile dopo la create — sbagliarla in
     #    silenzio significa codici commessa illeggibili per sempre.
     "E_EMITTENTE_CODICE_FORMA_NON_VALIDA": "highlight_form_fields",  # classe DATO_ERRATO
+    # ⭐ Il codice che in maiuscolo non ci sta piu' nella colonna (automazione
+    #    CODICE_MAIUSCOLO: `ß` -> `SS` allunga il testo). Stessa ragione della
+    #    voce sopra: il campo esiste, e' il `codice` che l'operatore ha appena
+    #    scritto, e `script.trgfn_codice_maiuscolo` lo NOMINA nel contesto
+    #    (`'campo' -> 'codice'`, letto dalla funzione il 2026-11-04). Vale per
+    #    tutte le tabelle del perimetro: ogni drawer che scrive un codice
+    #    lo chiama `codice` (guard `frontend/scripts/check-campo-codice.mjs`).
+    "E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO": "highlight_form_fields",  # classe DATO_ERRATO
     # -- Vendite: la data documento e la sequenza del registro ----------
     # ⭐ `DATO_ERRATO` ha come default il banner, e qui e' il caso opposto: il
     #    dato sbagliato E' un campo che l'operatore ha davanti, nel dialog

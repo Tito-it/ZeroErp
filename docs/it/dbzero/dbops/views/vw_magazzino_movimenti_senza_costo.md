@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le ENTRATE (qta &gt; 0) scritte SENZA costo unitario: il primo carico senza valore (inventario iniziale senza costo_unitario sulla riga e nessuna media), una rettifica positiva senza media. Un'entrata senza costo non e' un errore: e' un fatto dichiarato (D-L2-c) — il movimento nasce con costo NULL, il valore resta com'e' e la media si diluisce. Le uscite a NULL sono la CONSEGUENZA (nessuna media), non la causa, e non entrano. Natura LAVORAZIONE (una tendenza da guardare, non un guasto): compare nel digest invece di sparire nella media. security_invoker, perimetro DEFINER, cadenza SETTIMANALE. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.4.
+> Le ENTRATE (qta &gt; 0) scritte SENZA costo unitario, esclusi gli storni. Chi le scrive, tutti attraverso la primitiva magazzino.fn_scrivi_movimento: il primo carico senza valore (magazzino.fn_posta_inventario, riga senza costo_unitario e nessuna media), una rettifica positiva senza media (magazzino.fn_posta_rettifica), il carico da reso di una merce uscita senza costo e senza media al rientro (vendite.fn_posta_reso), l'entrata gemella di un trasferimento la cui uscita era senza costo (magazzino.fn_posta_trasferimento, vendite.fn_posta_ddt all'arrivo). Un'entrata senza costo non e' un errore: e' un fatto dichiarato (D-L2-c) — il movimento nasce con costo NULL, il valore resta com'e' e la media si diluisce. Le uscite a NULL sono la CONSEGUENZA (nessuna media), non la causa, e non entrano. Gli STORNI non entrano (magazzino.fn_storna_movimenti_sorgente): lo storno di un'uscita senza costo e' un'entrata senza costo che rende allo stesso magazzino la quantita' uscita a valore zero, e la media torna com'era; la causa e' gia' qui (Q14 ⑧). L'entrata gemella di un trasferimento invece resta: diluisce la media del magazzino d'arrivo. Natura LAVORAZIONE (una tendenza da guardare, non un guasto): compare nel digest invece di sparire nella media. security_invoker, perimetro DEFINER, cadenza SETTIMANALE. Brief: brief-db-magazzino-lotto-2-motore 4.4; rev 2026-11-09 (brief-db-sorgente-documento-e-riga lotto M; Q14 ⑧ e M23 di brief-db-revisione-dbops).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -25,9 +25,11 @@ SELECT id,
     sorgente_uid,
     lotto_id,
     asset_id,
-    ubicazione_id
+    ubicazione_id,
+    sorgente_id,
+    sorgente_dettaglio
    FROM magazzino.movimenti m
-  WHERE ((qta > (0)::numeric) AND (costo_unitario IS NULL));
+  WHERE ((qta > (0)::numeric) AND (costo_unitario IS NULL) AND (storno_di_movimento_id IS NULL));
 ```
 
 </div>

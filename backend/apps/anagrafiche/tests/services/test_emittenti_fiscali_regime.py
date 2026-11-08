@@ -38,7 +38,7 @@ SVC_MOD = "apps.anagrafiche.services.emittenti_fiscali_service"
 _SOGGETTO = "00000000-0000-0000-0000-000000000001"
 
 
-@patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
+@patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
 class UpdateRegimeTests(SimpleTestCase):
 
     def _svc(self, mock_repo_cls):
@@ -83,7 +83,7 @@ class UpdateRegimeTests(SimpleTestCase):
             svc.update_emittente(1, {"regime_fiscale_rf": "RF01", "valuta_id": 999})
 
 
-@patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
+@patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
 class CreaRegimeTests(SimpleTestCase):
 
     def _svc(self, mock_repo_cls):

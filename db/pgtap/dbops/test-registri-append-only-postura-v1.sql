@@ -12,9 +12,10 @@
 --
 -- ⭐ UN REGISTRO DI AUDIT MODIFICABILE DA CHI E' AUDITATO NON E' UN REGISTRO.
 --   L'applicazione legge e aggiunge (SELECT, INSERT); non riscrive, non
---   cancella, non svuota. La modalità sessione dell'audit (fn_audit_begin →
---   fn_audit_end) è un UPDATE del registro ed è riservata a chi possiede la
---   tabella: l'app scrive con la sola fn_audit_log_once.
+--   cancella, non svuota. L'app scrive con la sola fn_audit_log_once. La
+--   modalità sessione dell'audit (fn_audit_begin → fn_audit_end), che era un
+--   UPDATE del registro riservato a chi possiede la tabella, è ritirata
+--   (90_end/20261104-18): i test 14-15 provano che non torni.
 --
 -- ⚠️ PERCHÉ GIRA COME L'APPLICAZIONE (runner di default). Il SOGGETTO è proprio
 --   `zeroerp_app`: i privilegi che ha e ciò che riesce a fare. Le asserzioni di
@@ -31,7 +32,7 @@
 --   riaprirebbe in silenzio. Questo file è il rosso che lo dice — e l'ha
 --   detto il giorno stesso in cui è nato, sul provisioning.
 --
--- Elenco test (plan 24):
+-- Elenco test (plan 22):
 --   POSTURA — tabelle (has_table_privilege)
 --    1-2 : audit_log — SELECT, INSERT concessi
 --    3-5 : audit_log — UPDATE, DELETE, TRUNCATE negati
@@ -41,14 +42,13 @@
 --   11-12: USAGE su audit_log_id_seq e error_log_id_seq
 --   POSTURA — funzioni (has_function_privilege: comprende PUBLIC)
 --   13   : fn_audit_log_once — EXECUTE concesso (la porta dell'app)
---   14-15: fn_audit_begin, fn_audit_end — EXECUTE negato (porta riservata)
+--   14-15: fn_audit_begin, fn_audit_end — non esistono (modalità sessione ritirata)
 --   COMPORTAMENTO — quello che l'app riesce a fare davvero
 --   16-17: UPDATE / DELETE su audit_log → 42501, anche a zero righe
 --   18-19: UPDATE / DELETE su error_log → 42501, anche a zero righe
 --   20   : fn_audit_log_once scrive (id > 0) — l'INSERT non è stato toccato
 --   21   : gemello «esiste»: la riga scritta al 20 è nel registro, in locale
---   22-23: fn_audit_begin / fn_audit_end → 42501 (permesso negato per funzione)
---   24   : la riga del 20 è FIRMATA dal ruolo che l'ha scritta (executed_by =
+--   22   : la riga del 20 è FIRMATA dal ruolo che l'ha scritta (executed_by =
 --          current_user) — pinna 00_schema/20260911-20: il default era la
 --          STRINGA 'CURRENT_USER', e il registro non diceva chi eseguiva
 --
@@ -65,7 +65,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(24);
+SELECT plan(22);
 
 -- ============================================================
 -- Fixture
@@ -116,17 +116,17 @@ SELECT is(has_sequence_privilege('zeroerp_app', 'dbops.error_log_id_seq', 'USAGE
 --        DROP+CREATE, che riporta i default.
 -- ============================================================
 SELECT is(has_function_privilege('zeroerp_app',
-            'dbops.fn_audit_log_once(text,text,jsonb,text,text,text[],text,boolean,text,text,integer,jsonb,text,text)',
+            -- firma con p_duration_ms in coda (20_code/dbops/20261107-01)
+            'dbops.fn_audit_log_once(text,text,jsonb,text,text,text[],text,boolean,text,text,integer,jsonb,text,text,integer)',
             'EXECUTE'), true,
           '13. fn_audit_log_once: EXECUTE concesso — è la porta di scrittura dell''app');
-SELECT is(has_function_privilege('zeroerp_app',
-            'dbops.fn_audit_begin(text,jsonb,text,text[],text,boolean,text,text)',
-            'EXECUTE'), false,
-          '14. fn_audit_begin: EXECUTE negato — chi non può chiudere una sessione non la apre');
-SELECT is(has_function_privilege('zeroerp_app',
-            'dbops.fn_audit_end(bigint,text,text,text,text,integer,jsonb)',
-            'EXECUTE'), false,
-          '15. fn_audit_end: EXECUTE negato — la chiusura è un UPDATE del registro');
+-- ⭐ 14-15: la modalità sessione è ritirata (90_end/20261104-18). Un ritorno
+--   delle due funzioni riaprirebbe una porta di UPDATE sul registro: il rosso
+--   deve dirlo qui, prima che qualcuno ne riscriva i grant.
+SELECT hasnt_function('dbops', 'fn_audit_begin',
+          '14. fn_audit_begin non esiste: la modalità sessione dell''audit è ritirata');
+SELECT hasnt_function('dbops', 'fn_audit_end',
+          '15. fn_audit_end non esiste: la chiusura era un UPDATE del registro');
 
 -- ============================================================
 -- 16-19. Comportamento: il permesso si controlla all'avvio dell'esecuzione,
@@ -173,20 +173,7 @@ SELECT is((SELECT count(*) FROM dbops.audit_log a
           '21. gemello «esiste»: la riga è nel registro, scritta in locale (canale dblink spento)');
 
 -- ============================================================
--- 22-23. La porta riservata è chiusa per davvero, non solo a catalogo.
---        Argomenti a caso: il rifiuto arriva PRIMA di leggere qualunque riga.
--- ============================================================
-SELECT throws_ok(
-    $$ SELECT dbops.fn_audit_begin('pgtap.test-registri-append-only-postura') $$,
-    '42501', NULL,
-    '22. fn_audit_begin come app → permesso negato per la funzione (42501)');
-SELECT throws_ok(
-    $$ SELECT dbops.fn_audit_end((SELECT id FROM _audit_prova), 'OK') $$,
-    '42501', NULL,
-    '23. fn_audit_end come app → permesso negato per la funzione (42501)');
-
--- ============================================================
--- 24. Chi è l'auditato: la riga porta il RUOLO che l'ha scritta.
+-- 22. Chi è l'auditato: la riga porta il RUOLO che l'ha scritta.
 --     ⛔ Fino al 2026-09-11 il default di executed_by era la STRINGA
 --     'CURRENT_USER' — tremila righe con la parola al posto del ruolo — e un
 --     registro che non sa dire chi esegue non è un registro più di uno che si
@@ -196,7 +183,7 @@ SELECT throws_ok(
 SELECT is((SELECT a.executed_by FROM dbops.audit_log a
             WHERE a.id = (SELECT id FROM _audit_prova)),
           current_user::text,
-          '24. executed_by = current_user: la riga è firmata dal ruolo, non dalla parola CURRENT_USER');
+          '22. executed_by = current_user: la riga è firmata dal ruolo, non dalla parola CURRENT_USER');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -194,7 +194,7 @@ Convenzione (in `pratiche_sorgenti.meta`, niente nuove colonne):
 Regole:
 
 * il **kind** non si ripete in `meta`: lo dà già `sorgente_tipo_id` (PREVENTIVO/…);
-* `sorgente_uid` resta l'uid dell'**entry-point** (la versione al momento dell'aggancio) → tracciabilità;
+* la chiave del documento (per il preventivo `sorgente_uid`, il suo uid) resta quella dell'**entry-point**, la versione al momento dell'aggancio → tracciabilità;
 * **chi risolve la versione viva è il dominio proprietario** (es. `vendite` via
   `vw_preventivi.is_attiva`), a **read-time**: il link resta fermo (nessun UPDATE/trigger).
   All'annullamento di una revisione la versione attiva torna da sola al predecessore.

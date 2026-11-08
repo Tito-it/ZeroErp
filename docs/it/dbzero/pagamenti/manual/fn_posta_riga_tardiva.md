@@ -1,135 +1,142 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.fn_posta_riga_tardiva`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> **La madre gemella:** [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — il posting di una distinta intera
+> Approfondimento tabelle:
 >
-> **I guard che attraversa:**
+> * [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe) — la riga sospesa che registra
+> * [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti) — dove nasce il movimento
+> * [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili) — la distinta già registrata, che resta com'è
 >
-> • [trgfn_vendite_contabili_righe_guard_distinta_finale](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale) — la quarta mossa, e la sua **porta**
-> • [trgfn_vendite_contabili_righe_guard_rata](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_rata) — coerenza e capienza, col doppio tempo
-> • [trgfn_vendite_contabili_righe_guard_stato_dati](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_stato_dati) · [trgfn_vendite_contabili_righe_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_transizione)
-> • [trgfn_vendite_movimenti_sync_contabile_from_riga](/dbzero/pagamenti/funzioni/trgfn_vendite_movimenti_sync_contabile_from_riga) — il mirror che deriva i riferimenti del movimento dalla riga
+> Approfondimento funzioni:
 >
-> **Approfondimento tabelle:** [vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe) · [vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)
->
-> **Piano:** [brief-db-validata-e-registrazione-tardiva](/dev/work-done/brief-db-validata-e-registrazione-tardiva) §2.2 (D20-b), §4 P-5, §4.1
+> * [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — la gemella, che registra una distinta intera
+> * [pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale) — la quarta mossa, e la sua porta
+> * [pagamenti.trgfn_vendite_contabili_righe_guard_rata](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_rata) — coerenza e capienza della rata, col doppio tempo
+> * [pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_stato_dati) — i dati che l'abbinamento pretende
+> * [pagamenti.trgfn_vendite_contabili_righe_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_transizione) — la matrice degli stati della riga
+> * [pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga](/dbzero/pagamenti/funzioni/trgfn_vendite_movimenti_sync_contabile_from_riga) — il mirror che deriva i riferimenti del movimento dalla riga
 
 ---
 
 ### 🎯 Scopo Principale
-(scritta il 18-09-2026)
 
-Registra **in ritardo** una riga contabile rimasta **`SOSPESA`** sotto una distinta
-**già registrata**: la abbina — fattura, cliente, rata facoltativa, forzatura a
-due tempi — e la registra **nello stesso gesto**. Movimento scritto, riga a
-`POSTATA`, distinta che **resta `CHIUSA`** e non tocca `data_conferma` /
-`user_conferma`.
+Registra in ritardo una riga contabile rimasta `SOSPESA` sotto una distinta già
+registrata: la abbina — fattura, cliente, rata facoltativa, forzatura a due tempi — e la
+registra nello stesso gesto. Movimento scritto, riga a `POSTATA`, distinta che **resta
+`CHIUSA`** senza toccare la sua conferma.
 
-È la strada del «resto» di D3-a (*«registra il pronto, lascia lì il resto»*).
-Dalla chiusura automatica in poi il resto **non ne aveva**: sotto una `CHIUSA`
-la quarta mossa rifiuta a qualunque riga di diventare pronta, la correzione
-salta le non postate, nessun verbo la sposta altrove — una sospesa poteva solo
-restare, o oscillare con `SCARTATA`. *Il buco è la somma di tre decisioni giuste
-prese in momenti diversi* (brief §1).
+È la strada del «resto» (*«registra il pronto, lascia lì il resto»*). Senza di lei il resto
+non ne avrebbe: sotto una `CHIUSA` la quarta mossa rifiuta a qualunque riga di diventare
+pronta, la correzione salta le righe non registrate, nessun verbo la sposta altrove, e una
+sospesa potrebbe solo restare, o oscillare con `SCARTATA`. *Il buco è la somma di tre
+decisioni giuste prese in momenti diversi.*
 
 ---
 
-### Chi chiama, e che cosa passa
+### ⛔ È una decisione di una persona, mai un job
 
-```sql
-SELECT * FROM pagamenti.fn_posta_riga_tardiva(
-    p_riga_id            => 4711,
-    p_fattura_id         => 820,
-    p_billing_account_id => 31,
-    p_scadenza_id        => 1290,          -- facoltativa
-    p_forzata            => false,         -- il primo tempo
-    p_motivo_forzatura   => NULL);
-```
-
-Risponde **una riga**: `movimento_id, riga_id, importo, esito` (`'POSTATA'`).
-
-Chi la chiama è **solo** il verbo BE `POST /pagamenti/righe/{id}/registra/`
-(BE-3) — dalla coda «Sospese» quando la distinta è registrata («Abbina e
-registra») e dal drawer di una distinta chiusa — con lo **stesso cancello della
-registrazione** (`registra_distinta`): rovescia denaro. ⛔ **Mai un job**: la
-tardiva è una **decisione** di chi ha identificato il denaro.
+La chiama solo il verbo del backend che registra una riga — dalla coda «Sospese» quando la
+distinta è registrata («Abbina e registra») e dal drawer di una distinta chiusa — con
+lo **stesso permesso della registrazione** (`registra_distinta`): muove denaro. La tardiva è
+una **decisione** di chi ha identificato quel denaro, e nessun processo automatico la prende al
+suo posto.
 
 ---
 
 ### ⭐ Passa da `ABBINATA`, e alla quarta mossa si presenta
 
-La madre non porta la riga da `SOSPESA` a `POSTATA` in un colpo. La porta prima
-ad **`ABBINATA`** con la destinazione, così girano **tutti** i guard
-dell'abbinamento normale: la transizione (`SOSPESA → ABBINATA` è in matrice), i
-dati (fattura e cliente), la **rata** — coerenza rifiutata, capienza col doppio
-tempo: primo tentativo senza forzatura → `E_RIGA_CONTABILE_CAPIENZA_SUPERATA`
-(`confirm_and_retry`), secondo con `forzata = true` — e lo scope.
+La funzione non porta la riga da `SOSPESA` a `POSTATA` in un colpo. La porta prima
+ad **`ABBINATA`** con la destinazione, così girano **tutti** i guard dell'abbinamento normale:
+la transizione (`SOSPESA → ABBINATA` è in matrice), i dati (fattura e cliente), la **rata** —
+coerenza, e capienza col doppio tempo: il primo tentativo senza forzatura riceve
+`E_RIGA_CONTABILE_CAPIENZA_SUPERATA` con la richiesta di conferma, il secondo passa con la
+forzatura — e lo scope.
 
-Alla **quarta mossa** del guard sulla distinta finale — che rifiuterebbe l'ingresso
-in uno stato pronto sotto una `CHIUSA` — si **presenta** con la GUC transazionale
-`app.registrazione_tardiva_riga_id = <id>` (`set_config(…, true)`): il guard apre
-**solo** per quella riga, **solo** in quella transazione, **solo** nel ramo del
-cambio di stato. Precedente in casa: `app.cessazione_automatica`. ⚠️ La porta si
-**richiude in coda alla madre**, non al `COMMIT`: dopo il ritorno nessun'altra
-scrittura la trova aperta.
+Alla **quarta mossa** del guard sulla distinta finale, che rifiuterebbe l'ingresso in uno
+stato pronto sotto una `CHIUSA`, si **presenta** con un'impostazione valida per la sola
+transazione, `app.registrazione_tardiva_riga_id`, che porta l'id della riga: il guard
+apre **solo** per quella riga, **solo** in quella transazione, **solo** nel ramo del cambio di
+stato. Il precedente in casa è `app.cessazione_automatica`. ⚠️ La porta si **richiude in coda
+alla funzione**, non al commit: dopo il ritorno nessun'altra scrittura la trova aperta.
 
-Poi il **movimento**, poi **`POSTATA`**: tre statement separati con `WHERE id =
-<id>` — con la RLS attiva padre e figlio nella stessa snapshot non si vedono, la
-stessa ragione dei due statement della madre del posting.
+Poi il **movimento**, poi **`POSTATA`**: istruzioni separate sulla stessa riga, perché con la
+RLS attiva padre e figlio nella stessa istantanea non si vedono — la stessa ragione delle due
+istruzioni della registrazione della distinta.
 
-**Perché così e non altrimenti** (brief §2.2):
+---
+
+### Perché così e non altrimenti
 
 | Alternativa | Perché no |
 | --- | --- |
 | ricreare la riga in una distinta «di recupero» | raddoppia l'euro: una scartata il giorno 1, una nuova il giorno 30, più un legame per non contarla due volte |
-| allentare la quarta mossa (`ABBINATA` ammessa sotto `CHIUSA`, poi «Registra riga») | riapre esattamente il caso che la mossa chiude — una riga «in lavorazione» nei saldi che aspetta qualcuno |
+| allentare la quarta mossa (`ABBINATA` ammessa sotto `CHIUSA`, poi «Registra riga») | riapre esattamente il caso che la mossa chiude: una riga «in lavorazione» nei saldi che aspetta qualcuno |
 | `SOSPESA → POSTATA` diretta in matrice | salta il guard della capienza, che gira solo entrando in uno stato pronto |
 
 ---
 
-### Le date del movimento, e l'audit
+### Il movimento è di oggi, la distinta resta quella di ieri
 
-`data_effettiva = COALESCE(data_pagamento della riga, data_contabile della
-testata)`; `data_contabile` della testata; **`data_registrazione` e
-`data_contabilizzazione = oggi`** — è registrata **oggi**: la testata porta la data
-della *prima* registrazione, il movimento la sua. `meta.origine =
-'POSTING_TARDIVO'`: nel giornale si distingue dal `POSTING` della madre.
-Fattura, cliente, distinta e rata **non si passano**: li deriva dalla riga il
-mirror, che a quel punto li ha.
+La data effettiva del movimento è la data di pagamento della riga, o, se manca, la data
+contabile della distinta; la data contabile è quella della distinta; **data di registrazione
+e data di contabilizzazione sono il giorno operativo**: la distinta porta la data della
+*prima* registrazione, il movimento la sua. Il `meta` porta l'origine `POSTING_TARDIVO`, che
+nel giornale lo distingue dal `POSTING` della distinta. Fattura, cliente, distinta e rata non
+si scrivono sul movimento: li deriva dalla riga il mirror, che a quel punto li ha.
 
-La distinta **non cambia**: stato, `data_conferma`, `user_conferma` restano quelli
-della prima registrazione. La **quadratura del giorno regge**: la riga era già
-contata (D12-e conta tutte le righe attive, sospese comprese). Chi ha registrato
-tardi sta sull'audit del movimento.
+La distinta **non cambia**: stato, `data_conferma` e `user_conferma` restano quelli della
+prima registrazione. La **quadratura del giorno regge**: la riga era già contata, perché la
+quadratura conta tutte le righe attive, sospese comprese. Chi ha registrato tardi sta
+sull'audit del movimento.
 
 ---
 
-### ⛔ Nessun `NULLA_DA_POSTARE`
+### ⛔ Nessun «niente da registrare»
 
-A differenza della madre del posting, una tardiva su una riga che non si può
-registrare è un **rifiuto**, non un esito: chi preme ha identificato quel denaro,
-e *«non ho fatto niente»* detto con un 200 sarebbe una bugia.
+A differenza della registrazione della distinta, una tardiva su una riga che non si può
+registrare è un **rifiuto**, non un esito: chi preme ha identificato quel denaro, e *«non ho
+fatto niente»* detto con una risposta positiva sarebbe una bugia.
 
-### ⚠️ Error handling
+La forzatura senza motivo è **ammessa**, come sull'abbinamento normale.
 
-| Codice | Classe | Quando |
-| --- | --- | --- |
-| `E_PAGAMENTI_CHIAMATA_NON_VALIDA` | TECNICO | riga o fattura nulle o `<= 0`, cliente o rata `<= 0`: un chiamante rotto (il backend valida il form prima). Il cliente a `NULL` **non** è un guard di qui: risponde il guard sui dati entrando in `ABBINATA`, col campo |
-| `E_RIGA_CONTABILE_NON_TROVATA` | NON_TROVATO | la riga non si legge — inesistente o di un altro, no-leak |
-| `E_RIGA_CONTABILE_TARDIVA_STATO` | CONFLITTO_STATO | la riga non è attiva o non è `SOSPESA`: da `SCARTATA` si passa prima da «Riprendi»; da `POSTATA` il movimento c'è già |
-| `E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA` | CONFLITTO_STATO | la distinta non è registrata (finale **e** con `data_conferma`): annullata, chiusa senza registrazione, o ancora aperta — *«usa il giro normale»* |
-| `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` · `E_RIGA_CONTABILE_RATA_INCOERENTE` · `E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO` | — | dai guard dell'abbinamento, com'è sul giro normale |
-| `E_CONTABILE_STATO_NON_CONFIGURATO` | TECNICO | manca a catalogo `ABBINATA` o `POSTATA` |
+---
 
-Forzatura senza motivo **ammessa** (Q-8), come sull'abbinamento normale.
+### Codici errore
 
-### Presidio
+* `E_PAGAMENTI_CHIAMATA_NON_VALIDA` — riga o fattura nulle o non positive, cliente o rata non
+  positivi: un chiamante rotto, perché il backend valida il form prima (tecnico). Il cliente
+  mancante **non** è un rifiuto di qui: risponde il guard sui dati entrando in `ABBINATA`,
+  col campo da accendere.
+* `E_RIGA_CONTABILE_NON_TROVATA` — la riga non si legge: inesistente o di un altro, senza
+  dire quale dei due.
+* `E_RIGA_CONTABILE_TARDIVA_STATO` — la riga non è attiva o non è `SOSPESA`: da `SCARTATA`
+  si passa prima da «Riprendi»; da `POSTATA` il movimento c'è già.
+* `E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA` — la distinta non è registrata (finale
+  **e** con la conferma scritta): annullata, chiusa senza registrazione, o ancora aperta. Per
+  quella c'è il giro normale.
+* `E_RIGA_CONTABILE_CAPIENZA_SUPERATA`, `E_RIGA_CONTABILE_RATA_INCOERENTE`,
+  `E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO` — dai guard dell'abbinamento, come sul giro
+  normale.
+* `E_CONTABILE_STATO_NON_CONFIGURATO` — manca a catalogo `ABBINATA` o `POSTATA` (tecnico).
 
-`db/pgtap/pagamenti/test-posta-riga-tardiva-v1.sql` — 20 asserzioni: il caso
-buono con i suoi cinque invarianti (movimento, riga, testata invariata, somma
-invariata, saldo della rata), il doppio tempo della capienza, i quattro rifiuti,
-e la **porta** (un `UPDATE` a mano resta rifiutato; la GUC su un altro id non
-apre; dopo la madre è vuota).
+---
+
+### Test
+
+`db/pgtap/pagamenti/test-posta-riga-tardiva-v1.sql` — il caso buono con i suoi invarianti
+(movimento, riga, distinta invariata, somma invariata, saldo della rata), il doppio tempo
+della capienza, i rifiuti, e la **porta**: un aggiornamento a mano resta rifiutato,
+l'impostazione con un altro id non apre, dopo la funzione è vuota.
+
+---
+
+### Note di migrazione
+
+* 2026-09-18 — nasce, insieme alla porta della quarta mossa.
+
+---
 
 {% include-markdown "signature-core.md" %}

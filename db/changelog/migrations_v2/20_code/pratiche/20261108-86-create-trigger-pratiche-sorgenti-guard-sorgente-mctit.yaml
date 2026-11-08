@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO SUL LINK DOCUMENTO -> PRATICA: script.trgfn_guard_sorgente su pratiche.pratiche_sorgenti
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4, S-6, S-9).
+#
+#   Al posto del guard testuale (tolto da 20261108-64), con lo STESSO nome:
+#   l'ordine alfabetico dei BEFORE ROW resta quello di prima
+#   (..._a10_guard_coerenza_flusso_ins_upd, poi ..._a10_guard_sorgente_ins_upd).
+#   Livello minimo DOCUMENTO: il link e' al documento intero, e una riga, se
+#   c'e', si verifica (prima sorgente_riga non la guardava nessuno). Azione
+#   BLOCCA, come su vendite.commesse_sorgenti: un documento collegato a una
+#   pratica non si cancella, il link resta come storia. Prima la regola stava
+#   nel backend, e solo per il preventivo; il lato in uscita sulle tabelle dei
+#   documenti lo monta la convergenza a ci_apply (dbops.fn_sorgente_converge_uscita).
+#   Rollback: DROP TRIGGER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20261108-86-create-trigger-pratiche-sorgenti-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261108-86-create-trigger-pratiche-sorgenti-guard-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.pratiche_sorgenti: montato script.trgfn_guard_sorgente(DOCUMENTO, BLOCCA) al posto
+        del guard testuale. brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON pratiche.pratiche_sorgenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd ON pratiche.pratiche_sorgenti IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector del tipo, il documento esiste, la riga se c''e'' appartiene al documento. BLOCCA: un documento collegato a una pratica non si cancella finche'' il link lo cita.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd ON pratiche.pratiche_sorgenti;

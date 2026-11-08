@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_commesse_attivita_emittibilita SULLA RIGA DI COMMESSA DEL MODELLO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Ricreata dopo il 20261107-70: la chiave del gruppo fatturabile, nella colonna e nel confronto coi trattenimenti, la da'
+#   vendite.fn_gruppo_fatturabile_key_di_attivita (20261107-74). Il resto identico al vivo.
+#   security_invoker, GRANT e COMMENT ripetuti dal catalogo (dbdev, 2026-11-07); il COMMENT di vista e'
+#   quello vivo, con i suoi marcatori di storia: non e' un oggetto riscritto dal giro (lotto DOC).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-93-create-vw-commesse-attivita-emittibilita-chiave-di-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20261107-93-create-vw-commesse-attivita-emittibilita-chiave-di-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_commesse_attivita_emittibilita ricreata sulla riga di commessa del modello
+        (chiave del gruppo dalla funzione della riga). brief-db-sorgente-documento-e-riga §7.2 lotto
+        C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si azzera a ogni CREATE VIEW: si ripete dal catalogo.
+              CREATE VIEW vendite.vw_commesse_attivita_emittibilita WITH (security_invoker=on) AS
+               SELECT ca.id AS commessa_attivita_id,
+                  co.id AS commessa_id,
+                  co.codice AS commessa_codice,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  sc.emittibile AS commessa_emittibile,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
+                  ca.competenza_mese,
+                  ca.tipo_doc_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  co.utility_id,
+                  co.billing_account_id,
+                  co.fatturazione_immediata,
+                  ca.stato_emissione,
+                  ca.stato_approvazione,
+                      CASE
+                          WHEN ca.stato_emissione::text = 'EMESSA'::text THEN 'EMESSA'::text
+                          WHEN ca.stato_emissione::text = 'ANNULLATA'::text THEN 'ANNULLATA'::text
+                          WHEN ca.stato_approvazione::text = 'RIFIUTATA'::text THEN 'RIFIUTATA'::text
+                          WHEN ca.stato_approvazione::text <> 'APPROVATA'::text THEN 'NON_APPROVATA'::text
+                          WHEN trat.lotti IS NOT NULL THEN 'TRATTENUTA'::text
+                          ELSE 'PRONTA'::text
+                      END::character varying AS classe_emittibilita,
+                  trat.lotti AS trattenuta_da_lotti
+                 FROM vendite.commesse_attivita ca
+                   JOIN vendite.commesse co ON co.id = ca.commessa_id
+                   JOIN vendite.stati_commessa sc ON sc.id = co.stato_commessa_id
+                   LEFT JOIN LATERAL ( SELECT array_agg(t.lotto_id ORDER BY t.lotto_id) AS lotti
+                         FROM vendite.vw_documenti_trattenuti_da_lotto t
+                        WHERE t.gruppo_key = vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AND t.lotto_competenza_mese >= ca.competenza_mese) trat ON true;
+              
+              COMMENT ON VIEW vendite.vw_commesse_attivita_emittibilita IS
+                'SEDE UNICA del criterio «questa riga di commessa puo'' entrare in un giro di fatturazione, e se no perche''». Una riga per riga di commessa. Consumatori: vendite.fn_list_emittibili_lane (filtra classe = PRONTA), vendite.fn_list_commesse_emittibili (quali commesse visitare), vendite.fn_emit_attivita_fatturabili_da_commessa (quali righe emettere) e vendite.fn_diagnostica_gruppi_fatturabili (conta per classe).
+              ⭐ NASCE PERCHE'' IL CRITERIO ERA SCRITTO DUE VOLTE: la lane lo FILTRA, la diagnostica lo CONTA, ed e'' dichiarata «lo specchio della lane». Il 2026-09-09 lo specchio si e'' rotto in silenzio — un criterio aggiunto alla lane e non alla diagnostica, che rispondeva «era pronto» su un documento che la lane non aveva offerto. Ora il criterio non e'' scritto in nessuna delle due.
+              ⭐ I DUE FATTORI SONO ORTOGONALI: `classe_emittibilita` descrive la RIGA, `commessa_emittibile` la TESTATA, e chi decide dichiara quali dei due usa. ⛔ Fonderli toglierebbe alla diagnostica la sola cosa che sa dire meglio della lane («le righe sarebbero pronte, e'' la commessa a essere in BOZZA»).
+              ⭐ VOCABOLARIO CHIUSO di sei valori: EMESSA · ANNULLATA · RIFIUTATA · NON_APPROVATA · TRATTENUTA · PRONTA.
+              ⛔ NON contiene il PERIMETRO DELLA DOMANDA — tetto di competenza, billing account, utility, emittente, corsia, p_gruppi, e l''auto-esclusione del proprio lotto nel pull: quelli dipendono da chi chiede. E'' anche il motivo per cui «fuori competenza» non e'' una classe: quella riga e'' PRONTA, solo non per quel mese.
+              ⭐ MA IL LEGAME DI COMPETENZA DEL TRATTENUTO SI'': qui la competenza della riga c''e''. E'' `lotto_competenza_mese >= ca.competenza_mese`, perche'' la selezione e'' CUMULATIVA. ⛔ Non e'' un''uguaglianza: il LATERAL dell''esito su vw_dash_competenza_gruppi lega =, e copiarlo darebbe un blocco piu'' stretto della regola.
+              ⚠️ `tipo_doc_fiscale_id IS NOT NULL` non e'' fra i criteri: e'' un ramo irraggiungibile da quando chk_commesse_attivita_tipo_doc_emittibile e'' VALIDATO, e i presidi sono i test 9 e 10 di test-diagnostica-gruppi-fatturabili-v1.sql.
+              ⚠️ `trattenuta_da_lotti` e'' NULL quando la riga non e'' trattenuta (mai un array vuoto) ed e'' ORDINATO per lotto_id: chi ne vuole uno prende il primo e non scommette.
+              Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3).';
+              
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_commesse_attivita_emittibilita TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW vendite.vw_commesse_attivita_emittibilita;

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_fattura_righe_lista`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > • [vendite.vw_fattura_righe_esposte](/dbzero/vendite/views/vw_fattura_righe_esposte) — la rappresentazione del documento, che questa vista legge e non ricalcola
@@ -73,3 +75,17 @@ importo possono separarsi (per numero di riga restano vicine).
 ---
 
 {% include-markdown "signature-core.md" %}
+
+### Oneri e sezione del documento (rev 2026-11-03)
+
+Dal `20261103-50`, in coda:
+
+| Colonna | Che cosa |
+| --- | --- |
+| `tipo_movimento` | quello delle attività fatturabili della riga (`NORMALE`, `RETTIFICA`, `ONERE`); NULL sul padre di un kit |
+| `e_onere`, `causale_onere_id` | l'articolo della riga è un articolo-onere (trasporto, urgenza…), arrivato da un documento o dalla porta oneri; vale anche per la rettifica di un onere |
+| `sezione_documento` | 1 articoli, 2 oneri |
+
+L'**ordine del documento** è `sezione_documento, ordinamento, riga_nr, riga_key`: gli oneri in fondo,
+a video e in stampa, con la stessa regola di ordine e bolla (`vw_ordini_righe_dettaglio`,
+`vw_ddt_righe_dettaglio`).

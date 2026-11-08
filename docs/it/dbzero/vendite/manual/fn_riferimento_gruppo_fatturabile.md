@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_riferimento_gruppo_fatturabile`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento funzioni:**
@@ -49,7 +51,12 @@ in riga per il pulsante, e a video compare il riferimento.
    [`fn_get_sorgente_documento_ref`](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref)
    leggendo il `label_selector` che la sorgente dichiara a catalogo;
 2. il **codice della commessa** — serve alla forma sourceless (`MAN:<id>`), dove
-   un documento non c'è **per progetto**: lì il contenitore *è* la commessa;
+   un documento non c'è **per progetto**: lì il contenitore *è* la commessa; e a
+   un documento **senza numero** (un consumo). Per quello vale la commessa che il
+   chiamante dichiara per il suo contesto (`p_commessa_id`: la scheda Critiche
+   passa la commessa del documento **in quel lotto**); senza, la commessa
+   **aperta** in cui il documento sta oggi
+   ([`fn_commessa_viva_di_sorgente`](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente));
 3. la **chiave grezza**.
 
 ⭐ Il terzo livello è esattamente ciò che l'operatore vedeva **prima** di questa
@@ -92,6 +99,17 @@ dichiarato, non un pareggio.
 
 ---
 
+### ⭐ La commessa del contesto vince su quella aperta (2026-11-08)
+
+«In quale commessa aperta sta il documento» e «di quale commessa era il
+documento in quel lotto» sono due domande diverse. La prima risponde dove il
+documento si riusa **oggi**: a commessa chiusa non risponde, e se il documento è
+rientrato in un'altra commessa dà quella nuova. La scheda Critiche fa la seconda,
+e la risposta la conosce chi ha scritto la segnalazione
+(`fatturazione_lotti_log.commessa_id`): per questo il chiamante la passa, e vince.
+
+---
+
 ### Regole
 
 * funzione **pura**: non scrive niente. `STABLE`, `SECURITY INVOKER`;
@@ -116,9 +134,14 @@ SELECT vendite.fn_riferimento_gruppo_fatturabile('MAN:42');
 
 SELECT vendite.fn_riferimento_gruppo_fatturabile(NULL);
 -- NULL: la segnalazione e' del GIRO
+
+SELECT vendite.fn_riferimento_gruppo_fatturabile(
+    'ATTIVITA_CONSUMI:7c1e…', p_commessa_id => 42);
+-- il codice della commessa 42, anche se oggi e' chiusa
 ```
 
-> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md` §6.2.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md` §6.2;
+> la commessa del contesto: `brief-db-sorgente-documento-e-riga` §8.22 (V-7-bis, 2026-11-08).
 
 ---
 

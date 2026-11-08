@@ -1382,8 +1382,8 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Vendite — Ciclo attivo**: [api_offerte.md](/backend/vendite/manual/api_offerte) | [api_ordini.md](/backend/vendite/manual/api_ordini) | [api_ddt.md](/backend/vendite/manual/api_ddt) | [api_resi.md](/backend/vendite/manual/api_resi)
 * **Vendite — Fatture, lotti e pipeline**: [api_fatture_list.md](/backend/vendite/manual/api_fatture_list) | [api_lotti_list.md](/backend/vendite/manual/api_lotti_list) | [api_run_lotto_pipeline.md](/backend/vendite/manual/api_run_lotto_pipeline)
 * **Vendite — Lotto: i documenti PRESI IN CARICO**: [api_lotto_gruppi_list.md](/backend/vendite/manual/api_lotto_gruppi_list) — `GET /vendite/lotti/<id>/gruppi/` (+ `/export/`): che cosa il lotto ha preso in carico e com'è andato ciascun documento, **compresi quelli che una fattura non sono mai diventati**. ⛔ Non è un doppione di `/fatture/`, ed è la ragione per cui esiste: quella lista si aggancia a `fattura_id`, quindi un documento caduto PRIMA che una fattura esista non ha niente a cui appendersi — sul lotto LTF-0009578 se ne vedevano due su tre, e il terzo era nominato solo da una segnalazione, con l'identificativo della COMMESSA. ⚠️ Le due liste non sono in corrispondenza 1:1 nemmeno a giro riuscito (`fn_build_fattura_key` può raccogliere più gruppi nello stesso documento): sono due domande diverse. ⭐ La risposta porta **`perimetro_dichiarato`**, e senza quel flag «non ha lavorato niente» e «non dichiara un perimetro» si leggono uguali — un giro DI MASSA non scrive nessun gruppo, perché l'assenza di righe È il criterio (garanzia G1). 🔒 Il cancello di scope è la TESTATA, e il JOIN vale anche per il conteggio (dal 2026-09-10 anche `fatturazione_lotti_gruppi` porta il perimetro: §Enforcement RLS). ⚠️ L'ordine di default non è alfabetico ma «i falliti in cima»: `ERRORE` ordinato per stringa verrebbe dopo `COMPLETED`, cioè il caso che interessa finirebbe in fondo
-* **Vendite — Cockpit fatturazione (Fase C)**: [api_fatturazione.md](/backend/vendite/manual/api_fatturazione) — endpoint di comando del cockpit: giro «Fattura competenza» (`POST fatturazione/run/`, non bloccante via coda lavori `dbops.coda_lavori`) + polling `run/<job_id>/`, «Rendi definitive» perimetro (`POST fatturazione/numera/`) e singolo lotto (`lotti/<id>/numera/`), ristampa massiva (`lotti/<id>/ristampa/`), esiti giri + stato coda stampa (`fatturazione/esiti/`). Dal 2026-07-27 `fatturazione/run/` accetta `gruppi[]` = **emissione mirata** (stesso verbo, perimetro ristretto ai gruppi fatturabili scelti; assente = giro di massa invariato). Idempotenza 2-layer, identità operatore catturata (RLS come nel web), gate fiscale I-7
-* **Vendite — Commesse (governo operativo)**: [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato) — dal 2026-09-14 il dettaglio porta anche la **testata leggibile** (`descrizione`, `data_apertura`, responsabile — Blocco C di `brief-db-modifiche-certe-ciclo-vendita-e-articolo`) e `PATCH /commesse/<id>/` la scrive (parziale; `data_apertura` in sola lettura; il responsabile deve essere una risorsa umana **attiva**, 400 col campo prima del require DB che risponderebbe `E_ATTIVO_REQUIRE`, TECNICO). Il picker è `GET /anagrafiche/risorse-umane/lookup/`. ⭐ Dal 2026-10-12 l'**annullo** della commessa passa dal verbo `vendite.fn_annulla_commessa` con la conferma dei legami (`GET /commesse/<id>/legami/` + `legami_confermati`, la stessa forma di bolla, ordine, preventivo e contratto): annullare riapre a monte ciò che l'ha riempita (brief-db-annullo-a-valle-riapre-a-monte) | [api_commessa_attivita.md](/backend/vendite/manual/api_commessa_attivita) — lista righe + azioni APPROVA (riga/mese) e, dal 2026-07-28, **ANNULLA riga manuale** (`POST /commesse/<id>/attivita/<att_id>/annulla/`): non cancella, porta `stato_emissione` ad `ANNULLATA` (valore già filtrato da tutte le porte verso fattura e cockpit) con motivo obbligatorio tracciato; gate `carica_voce_manuale`, perimetro = righe sourceless non emesse su commessa modificabile | [api_commesse_pricing.md](/backend/vendite/manual/api_commesse_pricing) — azioni prezzo N5/N7/sblocco, dal 2026-07-23 gated su azione di processo **`prezzo_override_manuale`** (stesso codename dei gate prezzo di preventivi/contratti/DDT) | [api_commessa_oneri.md](/backend/vendite/manual/api_commessa_oneri) — **porta oneri**: `POST /commesse/<id>/oneri/` crea la riga di puro valore (qta=1, `tipo_movimento=ONERE`, già APPROVATA, sourceless), causale/UoM/IVA derivate dall'articolo-onere dalla madre DB; gate `carica_voce_manuale`, presidio all'ingresso senza approvazione a due passi
+* **Vendite — Cockpit fatturazione (Fase C)**: [api_fatturazione.md](/backend/vendite/manual/api_fatturazione) — endpoint di comando del cockpit: giro «Fattura competenza» (`POST fatturazione/run/`, non bloccante via coda lavori `dbops.coda_lavori`) + polling `run/<job_id>/`, «Rendi definitive» perimetro (`POST fatturazione/numera/`) e singolo lotto (`lotti/<id>/numera/`), ristampa massiva (`lotti/<id>/ristampa/`), esiti giri + stato coda stampa (`fatturazione/esiti/`). Dal 2026-07-27 `fatturazione/run/` accetta `gruppi[]` = **emissione mirata** (stesso verbo, perimetro ristretto ai gruppi fatturabili scelti; assente = giro di massa invariato). Dal 2026-11-07 run e numera accodano **un lavoro per azienda** (risposta `{lavori: [...]}`, selezione divisa per azienda) e il polling è per azienda (BE10 a). Idempotenza 2-layer, identità operatore catturata (RLS come nel web), gate fiscale I-7
+* **Vendite — Commesse (governo operativo)**: [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato) — dal 2026-09-14 il dettaglio porta anche la **testata leggibile** (`descrizione`, `data_apertura`, responsabile — Blocco C di `brief-db-modifiche-certe-ciclo-vendita-e-articolo`) e `PATCH /commesse/<id>/` la scrive (parziale; `data_apertura` in sola lettura; il responsabile deve essere una risorsa umana **attiva**: lo dice il require DB, 409 `E_ATTIVO_PADRE_NON_ATTIVO` col campo, dal 2026-11-07). Il picker è `GET /anagrafiche/risorse-umane/lookup/`. ⭐ Dal 2026-10-12 l'**annullo** della commessa passa dal verbo `vendite.fn_annulla_commessa` con la conferma dei legami (`GET /commesse/<id>/legami/` + `legami_confermati`, la stessa forma di bolla, ordine, preventivo e contratto): annullare riapre a monte ciò che l'ha riempita (brief-db-annullo-a-valle-riapre-a-monte) | [api_commessa_attivita.md](/backend/vendite/manual/api_commessa_attivita) — lista righe + azioni APPROVA (riga/mese) e, dal 2026-07-28, **ANNULLA riga manuale** (`POST /commesse/<id>/attivita/<att_id>/annulla/`): non cancella, porta `stato_emissione` ad `ANNULLATA` (valore già filtrato da tutte le porte verso fattura e cockpit) con motivo obbligatorio tracciato; gate `carica_voce_manuale`, perimetro = righe sourceless non emesse su commessa modificabile | [api_commesse_pricing.md](/backend/vendite/manual/api_commesse_pricing) — azioni prezzo N5/N7/sblocco, dal 2026-07-23 gated su azione di processo **`prezzo_override_manuale`** (stesso codename dei gate prezzo di preventivi/contratti/DDT) | [api_commessa_oneri.md](/backend/vendite/manual/api_commessa_oneri) — **porta oneri**: `POST /commesse/<id>/oneri/` crea la riga di puro valore (qta=1, `tipo_movimento=ONERE`, già APPROVATA, sourceless), causale/UoM/IVA derivate dall'articolo-onere dalla madre DB; gate `carica_voce_manuale`, presidio all'ingresso senza approvazione a due passi
 * **Vendite — registro delle righe di commessa**: `GET /vendite/commesse/<id>/registro/` (opz. `commessa_attivita_id` per una riga sola, `limit`/`offset`) espone gli eventi che il database scrive su `vendite.commesse_attivita_log` — oneri aggiunti, righe annullate a mano, **ritirate alla chiusura del documento di origine**, riportate «da emettere», accrediti. Risponde a «perché questa riga è così»: chi, quando, con quale **motivo**. ⛔ **Lo scope sta sulla riga di commessa, non sul log**: il `JOIN` è il cancello e vale anche per il **conteggio** (un totale senza cancello direbbe «12 eventi» mostrandone 3). Dal 2026-09-10 anche `commesse_attivita_log` porta il perimetro (§Enforcement RLS): l'ordine resta, il fail-open no. È la stessa lezione di `attivita_fatturabili`. ⚠️ Il vocabolario degli eventi è del DB ed è **aperto**: la query non ne nomina nessuno e non filtra, così un evento nuovo compare da sé; il frontend lo risolve con ripiego sul codice grezzo. 🔴 Nasce il 2026-08-28 perché quella tabella **si scriveva e non si leggeva**: sei tipi di evento irraggiungibili da qualunque schermata, e una guida che prometteva il contrario.
 * **Vendite — «Riporta da emettere» (recupero delle attività residue)**: [api_riporta_da_emettere.md](/backend/vendite/manual/api_riporta_da_emettere) — `POST /vendite/attivita-fatturabili/riporta-da-emettere/` (permesso dedicato `riporta_da_emettere`, `Idempotency-Key` obbligatoria) rimette in coda di fatturazione un elenco di attività **residue** e riporta a `NON_EMESSA` le righe di commessa passate a `EMESSA` per causa loro. ⛔ Non ricrea lotti né fatture: il lavoro ricompare in «Da emettere» e segue il giro normale. ⭐ **Sincrono** — due scritture e una transazione, nessun job: accodarlo per simmetria con «Rendi definitive» importerebbe la dedup, che qui non esiste. Il compagno `riportabili/` restituisce i **motivi ostativi** senza tentare nulla (è un POST pur essendo una lettura: una selezione di 200 righe non sta in una query string) e porta lo **stesso permesso del verbo** — dichiarato a mano, perché senza `post_permission` un POST cadrebbe su `add` d'area, che è il gate sbagliato nei due versi. Serve a **spiegare invece di far fallire** — incontrare `E_ATTIVITA_GIA_DA_EMETTERE` significa che l'elenco a schermo era invecchiato — e il frontend lo chiama **prima** di ogni riporto: la mutazione è atomica, quindi senza quel passo il rifiuto arriverebbe come *un* errore per l'intero elenco e chi guarda non saprebbe quale riga lo ha fermato. 🔴 Lo **scope sta sulla commessa**, non sull'attività: la riga di commessa è il cancello, e il danno di sbagliarlo sarebbe lo **stato spezzato** (attività liberata, riga di commessa no). Dal 2026-09-10 anche `attivita_fatturabili` porta il perimetro (§Enforcement RLS). ⚠️ Il perimetro **non usa `fatturato`**, che dal `20260826-33` è una colonna generata: un verbo fondato lì smetterebbe di funzionare in silenzio.
 * **Vendite — Fattura (consultazione)**: [api_fattura_dettaglio.md](/backend/vendite/manual/api_fattura_dettaglio) — `GET /vendite/fatture/<id>/` restituisce il **documento completo** (testata decodificata + righe da `vw_fattura_righe_esposte` con kit risolti + riepilogo IVA + piano rate) in un round-trip, per il drawer di consultazione. Orchestra gli **stessi** lettori che alimentano il contesto del PDF → video e stampa raccontano lo stesso documento per costruzione (regola R17). Sola lettura: oltre EMESSA le righe sono congelate a DB. ⚠️ **Ordine di lettura vincolante**: prima la testata — fuori scope è un 404, non un documento vuoto (righe e riepiloghi portano il perimetro dal `20260729-05`: la frase «no» era stantia da luglio — §Enforcement RLS). Include le note fattura (`<id>/note/`, sesto dominio del BB partizionato) e i `contatori` dei badge (oggi `note`) — dict e non scalare per reggere i prossimi senza cambiare shape; il conteggio sta **dopo** il cancello di testata, così un documento fuori scope non conta niente (dal 2026-09-09 anche `note_fatture` porta il perimetro)
@@ -1566,6 +1566,29 @@ cross-request sulle connessioni persistenti (`CONN_MAX_AGE > 0` / pooling),
 critico ora che la RLS filtra in base ai GUC. Vedi
 `docs/it/dev/work-done/analisi-attivazione-rls-operatori-be-fe.md` §1.
 
+**L'audit lo scrive il DB, non il repository.** Sulle tabelle che montano
+`script.trgfn_audit_data_user_generic` (lo dice la scheda auto-generata
+della tabella, sezione trigger) il trigger scrive, dal GUC `app.jwt_user`,
+`user_insert` sull'INSERT e `data_update`/`user_update` a ogni INSERT e
+UPDATE, e **sovrascrive** quello che passa il BE.
+
+* ⛔ Un INSERT non nomina `user_insert`; un UPDATE (o il ramo `DO UPDATE`
+  di un upsert) non nomina `data_update` né `user_update` — nemmeno come
+  `extra_set` di `execute_dynamic_update`, né come `user_update =
+  CURRENT_USER`. Riscriverli è la stessa regola su due livelli: oggi
+  innocua perché il trigger vince, domani falsa per chi la legge.
+* Le colonne dell'audit **si leggono** (SELECT, tipi, liste), non si
+  scrivono.
+* ⚠️ La regola vale **solo** dove il trigger c'è. Le preferenze utente
+  (`ui.lista_preferenza_utente`, `ui.dashboard_preferenza_utente`) hanno
+  `data_update` senza `user_update` e senza trigger: lì il repository la
+  scrive, ed è giusto.
+* ⚠️ Una data con un **significato di dominio** non è l'audit e ha una
+  colonna sua (per esempio `contenuto_aggiornato_il` dei preset, scritta
+  dai trigger a mano del DB): non si ricava da `data_update`.
+
+Censimento e ritiro: BE11 di `brief-db-revisione-dbops` (2026-11-08).
+
 ### Scope emittente
 
 Due pattern disponibili in base al dominio:
@@ -1645,11 +1668,16 @@ pre-check di ordini/DDT/preventivi/contratti/resi (BB `richiedi_righe_in_bozza`,
 frase a catalogo composta coi tre valori). Prima erano **cinque** codici
 (`E_DDT_STATO_TRANSIZIONE`, `E_ORD_STATO_TRANSIZIONE`,
 `E_PREV_STATO_NON_MODIFICABILE`, `E_CONTRATTO_NON_MODIFICABILE`,
-`E_RESO_STATO_TRANSIZIONE` — che restano alla **testata**; `E_CONTRATTO_NON_MODIFICABILE`
-è ritirato dal 2026-10-11: la regola la dice il lock dei satelliti, `E_DOC_DATI_COLLEGATI_NON_BOZZA`), cioè lo stesso
+`E_RESO_STATO_TRANSIZIONE`), cioè lo stesso
 rifiuto con due nomi a seconda di chi lo diceva. Il pre-check è lecito — un 409 prima di
 scrivere, e l'unico cancello dove il DB non arriva ancora — ma la regola è **una**
 e ha un nome a catalogo: chiunque la sollevi la chiama così.
+Dei cinque, alla **testata** resta solo `E_ORD_STATO_TRANSIZIONE`. Gli altri sono ritirati,
+perché la regola la dice il DB: `E_CONTRATTO_NON_MODIFICABILE` dal 2026-10-11 (il lock dei
+satelliti, `E_DOC_DATI_COLLEGATI_NON_BOZZA`); `E_DDT_STATO_TRANSIZIONE`,
+`E_RESO_STATO_TRANSIZIONE` ed `E_PREV_STATO_NON_MODIFICABILE` dal 2026-11-08, coi
+pre-check di cancellazione e di modifica della testata (`E_DELETE_DOC_NON_BOZZA`,
+`E_DELETE_DOC_CON_RIGHE`, i lock fuori bozza: brief-db-sorgente-documento-e-riga §8.24).
 
 ⛔ **Il doppio filtro Python su OGNI endpoint non è la regola** — è esattamente
 il pattern che l'analisi RLS (§2.3) ha dichiarato fragile: la RLS è il
@@ -2510,6 +2538,21 @@ una regressione arriva nel digest delle 7, non blocca un merge.
   nel corpo del login ma nel cookie `zeroerp_refresh`: lo si legge dal
   `Set-Cookie` (`smoke_login -D`) e ripresenta con `curl_refresh`. Presidio:
   `test_https_header` 13, 15–18.
+* ⛔ **Ogni patch di un repository ha `autospec=True`**: la classe
+  (`patch("…XRepository", autospec=True)`, `patch.object(modulo, "XRepository",
+  autospec=True)`) e il metodo (`patch.object(XRepository, "metodo", autospec=True)`,
+  `patch("…XRepository.metodo", autospec=True)`).
+  Un mock libero accetta metodi e parametri che il repository non ha: il test resta
+  verde dopo una rinomina, e `assert_not_called()` su un nome sparito passa a vuoto.
+  Col mock `autospec` il nome sbagliato è `AttributeError`, il parametro sbagliato
+  `TypeError`. Due conseguenze: il mock di un **metodo** registra anche `self`, quindi
+  negli `assert_called_*` il primo argomento è `mock.ANY`; un repository finto passato
+  come `return_value=` nasce da `create_autospec(XRepository, instance=True)`, non da
+  `MagicMock()`. Un metodo che una classe base di test patcha già (per esempio
+  `AuthRepository.get_fatti_obblighi` in `JwtMockedApiTest`) si **configura** dal mock
+  che la base espone, non si ripatcha: una seconda patch `autospec` è `InvalidSpecError`.
+  Esenti le patch che passano già l'oggetto sostitutivo (`new`). Presidio, con la
+  storia del giro che l'ha introdotta: `apps/core/tests/test_presidio_autospec_repository.py`.
 * Esecuzione: `./manage-test.sh apps.core.tests.api -v 2`. Smoke di docs/schema:
   `apps/core/tests/api/test_diagnostics_api.py`.
 

@@ -145,8 +145,8 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
   -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
   -- sorgente polimorfa. rev 2026-07-27 (bonifica).
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa)::text,
-  p_sorgente_riga => 1,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa)::text,
+  p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
 
@@ -158,15 +158,16 @@ SELECT ok(
 -- ============================================================
 -- 6) NORMALIZE: default sorgente valorizzato -> risolto su param NULL
 -- ============================================================
+-- La sorgente delle righe del test e' il consumo della commessa (la sua provenienza).
 UPDATE config.sorgenti
    SET tipo_doc_fiscale_id = (SELECT tipo_doc_fiscale_id FROM tmp_refs)
- WHERE codice_interno = 'COMMESSA';
+ WHERE codice_interno = 'ATTIVITA_CONSUMI';
 
 CREATE TEMP TABLE tmp_ca1 AS
 SELECT r.attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa),
-  p_segment_key => (SELECT seg1 FROM tmp_seg),
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x) || ':' || (SELECT seg1 FROM tmp_seg))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs),
   p_data_attivita => DATE '2026-07-15',
@@ -197,8 +198,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_refs),
-  p_sorgente_uid => ('EXT-TDF1-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'NORMALIZE')
 ) r;
@@ -216,13 +217,13 @@ SELECT is(
 -- ============================================================
 UPDATE config.sorgenti
    SET tipo_doc_fiscale_id = NULL
- WHERE codice_interno = 'COMMESSA';
+ WHERE codice_interno = 'ATTIVITA_CONSUMI';
 
 -- Re-push dello stesso segment con param NULL e sorgente senza default:
 -- il COALESCE su ON CONFLICT deve conservare il valore gia' risolto.
 SELECT 1 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa),
-  p_segment_key => (SELECT seg1 FROM tmp_seg),
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x) || ':' || (SELECT seg1 FROM tmp_seg))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs),
   p_data_attivita => DATE '2026-07-15',
@@ -253,8 +254,8 @@ SELECT 1 FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_refs),
-  p_sorgente_uid => ('EXT-TDF1-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'NO_REGRESSIONE')
 );
@@ -274,7 +275,7 @@ CREATE TEMP TABLE tmp_ca2 AS
 SELECT r.attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa),
-  p_segment_key => (SELECT seg2 FROM tmp_seg),
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x) || ':' || (SELECT seg2 FROM tmp_seg))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs),
   p_data_attivita => DATE '2026-07-16',
@@ -305,8 +306,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_refs),
-  p_sorgente_uid => ('EXT-TDF2-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'BOZZA_NULL')
 ) r;

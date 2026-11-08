@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CODA DI STAMPA PERDE IL DOPPIONE: via vendite.fatture_stampa_coda.sorgente_uid
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1 (D-3).
+#
+#   sorgente_uid ripeteva in testo l'id che sorgente_id tiene gia', ed e' una FK
+#   vera verso vendite.fatture (fk_fatture_stampa_coda_fattura, CASCADE). Il
+#   vincolo di esclusione, la RLS e il guard dell'emittente leggono sorgente_id.
+#   1. Si toglie la vista che proietta la colonna: dbops.vw_fatture_stampa_coda_
+#      da_guardare (la ricrea 20261108-20, senza). DROP senza CASCADE e senza IF
+#      EXISTS: un dipendente non censito ferma il migrate.
+#   2. DROP COLUMN. L'unico scrittore, vendite.fn_accoda_stampe_lotto, smette di
+#      scriverla in 20261108-19.
+#   ⚠️ CHE COSA CAMBIA: il BE che la legge (pipeline_repository, il drenatore che
+#   la passa a genera_documento) da' errore fino alla sua voce del §8.
+#   Rollback: forward-only (la colonna era la copia testuale di sorgente_id).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261108-18-alter-fatture-stampa-coda-drop-sorgente-uid-mctit.yaml
+
+  - changeSet:
+      id: 20261108-18-alter-fatture-stampa-coda-drop-sorgente-uid
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_stampa_coda: via sorgente_uid, doppione testuale di sorgente_id (FK vera).
+        Tolta qui la vista del presidio che la proietta. brief-db-sorgente-documento-e-riga §7.2
+        lotto D, giro D.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW dbops.vw_fatture_stampa_coda_da_guardare;
+
+              ALTER TABLE vendite.fatture_stampa_coda DROP COLUMN sorgente_uid;
+
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.sorgente_id IS
+                'La fattura da stampare: vendite.fatture.id, con una FK vera (fk_fatture_stampa_coda_fattura, ON DELETE CASCADE: la fattura cancellata si porta via la sua coda). E'' la sola chiave della provenienza: il tipo FATTURA ha key_selector ''id''. Chiave di delega della RLS via la fattura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la colonna era la copia testuale di sorgente_id.
+              SELECT 1;

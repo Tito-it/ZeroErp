@@ -159,14 +159,19 @@ _FIXTURE: tuple[str, ...] = (
     SELECT vendite.fn_link_commessa_sorgente(
         p_commessa_id      => (SELECT commessa_id FROM _comm),
         p_sorgente_tipo_id => (SELECT src_preventivo_id FROM _refs),
-        p_sorgente_uid     => (SELECT uid::text FROM _prev),
+        p_sorgente_chiave  => (SELECT uid::text FROM _prev),
         p_meta             => '{"test_scope": "be_ricerca_liste_vendite"}'::jsonb
     )
     """,
     """
     SELECT * FROM vendite.fn_upsert_commessa_attivita(
         p_commessa_id                   => (SELECT commessa_id FROM _comm),
-        p_segment_key                   => 'SEG-RICVEN-1'::varchar,
+        -- ⛔ La chiave nomina il documento della provenienza (giro C.3 di
+        --    brief-db-sorgente-documento-e-riga): la compone il dominio, e
+        --    l'etichetta del test ne e' il suffisso.
+        p_segment_key                   => (script.fn_segment_key(
+                                               'PREVENTIVO', (SELECT uid::text FROM _prev))
+                                            || ':SEG-RICVEN-1')::varchar,
         p_articolo_id                   => (SELECT articolo_id FROM _art),
         p_istanza_utility_id            => (SELECT istanza_utility_id FROM _mondo),
         p_data_attivita                 => DATE '2083-02-15',
@@ -190,7 +195,7 @@ _FIXTURE: tuple[str, ...] = (
         p_stato_approvazione            => 'APPROVATA',
         p_stato_emissione               => 'NON_EMESSA',
         p_sorgente_tipo_id              => (SELECT src_preventivo_id FROM _refs),
-        p_sorgente_uid                  => (SELECT uid::text FROM _prev),
+        p_sorgente_chiave               => (SELECT uid::text FROM _prev),
         p_tipo_movimento                => 'NORMALE',
         p_meta                          => '{"test_scope": "be_ricerca_liste_vendite"}'::jsonb
     )

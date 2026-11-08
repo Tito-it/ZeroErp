@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_ddt_righe_dettaglio`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > • [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe) — la sorgente
@@ -39,6 +41,24 @@ per tutti i documenti.
 
 ---
 
+### ⭐ La riga-onere
+
+(rev 3-11-2026, `20261103-34`, brief `brief-db-addebito-trasporto-ordine` §7.3)
+
+Dal 2026-11-03 la bolla puo' portare **oneri** (trasporto, spese) come righe.
+Due colonne in coda:
+
+- `e_onere` — la riga e' un onere: `NOT` [script.fn_natura_e_merce](/dbzero/script/funzioni/fn_natura_e_merce)
+  sulla natura **congelata** della riga. La stampa mette gli oneri dopo gli
+  articoli con questo dato (lo fa il backend), senza ricostruire la regola.
+- `causale_onere_id` — la causale dell'onere, dall'articolo; vuota sulla merce.
+
+`evasa` non cambia: un onere copiato dall'ordine porta il legame ed e' fermo
+come ogni riga evasa; la correzione della quantita' evasa si spegne col motivo
+`RIGA_ONERE` (`correggi_qta_evasa_blocco`).
+
+---
+
 ### Regole
 
 - **Tutte le righe**, anche le non attive: il filtro lo mette chi legge.
@@ -49,3 +69,9 @@ per tutti i documenti.
 ---
 
 {% include-markdown "signature-core.md" %}
+
+### Sezione del documento (rev 2026-11-03)
+
+Dal `20261103-52`, in coda `sezione_documento` (1 articoli, 2 oneri, da `e_onere`). L'ordine del
+documento è `sezione_documento, riga_nr`: gli oneri dopo gli articoli, a video e in stampa, come
+sulla fattura (`vw_fattura_righe_lista`).

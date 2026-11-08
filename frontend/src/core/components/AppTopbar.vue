@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: topbar principale — emittente, area title, context chip, badge
 // utente, data, ricerca, AI assistant, kebab preferenze utente (preferiti +
-// lingua + dark mode), logout. Su mobile mostra hamburger per aprire il
+// lingua + dark mode + informazioni), logout. Su mobile mostra hamburger per aprire il
 // drawer sidebar; ricerca+AI inline scompaiono e si promuovono come prime
 // voci nello stesso kebab utente — un solo kebab per tutto.
 import { computed, onMounted, ref, watch } from 'vue'
@@ -20,6 +20,7 @@ import { MANAGE_ICONS, PROCESSI_TABS, READONLY_DOMAINS, STATUS_ICONS } from '../
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
+import InformazioniDialog from './InformazioniDialog.vue'
 import EmittenteAttivoSelect from './EmittenteAttivoSelect.vue'
 import SchedaUtentePopover from './SchedaUtentePopover.vue'
 import { menuItemClass } from '../utils/rowActions'
@@ -40,6 +41,7 @@ const ui = useUiStore()
 //    veste che non e' l'operatore, per cui il guard non le carica. Dopo la
 //    prima apertura resta montata (la chiusura anima e lo stato si conserva).
 const ricercaMontata = ref(false)
+const informazioniVisibile = ref(false)
 watch(() => ui.searchDrawerVisible, (aperta) => { if (aperta) ricercaMontata.value = true }, { immediate: true })
 const context = useContextStore()
 // La scheda dell'utente (badge): `toggle(event)`.
@@ -250,6 +252,15 @@ const userKebabItems = computed(() => {
     class: TOPBAR_MENU_CLASS,
     command: () => ui.toggleDarkMode(),
   })
+  // Licenza e codice sorgente (AGPL §13): dentro l'app, dal dialog
+  // «Informazioni». Fuori dall'app lo apre `LinkInformazioni` sulle pagine di
+  // accesso.
+  items.push({
+    label: t('informazioni.titolo'),
+    icon: MANAGE_ICONS.INFORMAZIONI,
+    class: TOPBAR_MENU_CLASS,
+    command: () => { informazioniVisibile.value = true },
+  })
   return items
 })
 
@@ -424,7 +435,7 @@ onMounted(async () => {
         <i :class="MANAGE_ICONS.MENU"></i>
       </button>
 
-      <!-- Kebab utente: preferiti (submenu) + lingua + dark/light.
+      <!-- Kebab utente: preferiti (submenu) + lingua + dark/light + informazioni.
            Standard di kebab (stessa palette `app-menu-item-action`).
            Sempre visibile, subito prima del logout. -->
       <button
@@ -456,6 +467,7 @@ onMounted(async () => {
   <SearchDrawer v-if="ricercaMontata" v-model:visible="ui.searchDrawerVisible" />
   <AiAssistantDrawer v-model:visible="ui.aiDrawerVisible" />
   <CodeLavoroDrawer v-model:visible="ui.codeDrawerVisible" />
+  <InformazioniDialog v-model:visible="informazioniVisibile" />
 </template>
 
 <style scoped>

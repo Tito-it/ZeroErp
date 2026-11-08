@@ -84,13 +84,13 @@ SELECT * FROM dbops.fn_pgtap_crea_reso('presidio reso bolla', (SELECT ddt_id FRO
 
 -- 4) La testata dal dominio
 SELECT is(
-    (SELECT (r.sorgente_uid = b.ddt_uid)::text || ' '
+    (SELECT (r.sorgente_id = b.ddt_id AND r.sorgente_uid IS NULL)::text || ' '
          || (r.destinatario_soggetto_ruolo_id = b.cliente_soggetto_ruolo_id)::text || ' '
          || (r.numero IS NOT NULL)::text
        FROM t_r x
        JOIN vendite.resi r ON r.id = x.reso_id, t_b b),
     'true true true',
-    'bolla del test: il reso ne porta l''uid, il cliente e il numero li mettono i trigger'
+    'bolla del test: il reso ne porta l''id (key_selector di DDT_VENDITA), il cliente e il numero li mettono i trigger'
 );
 
 -- 5) La bozza

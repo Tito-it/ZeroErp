@@ -419,6 +419,7 @@ const titolo = computed(() => {
         <label>{{ t('vendite.registri_numerazione.col_codice') }} *</label>
         <InputText
           v-model="form.codice"
+          class="app-codice-input"
           :maxlength="FIELD_LENGTH.REGISTRO_CODICE_MAX"
           :disabled="isReadonly"
           :invalid="campiErrati.includes('codice')"

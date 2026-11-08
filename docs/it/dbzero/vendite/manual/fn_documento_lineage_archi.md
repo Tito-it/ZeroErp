@@ -1,29 +1,39 @@
-## 📘 Documentazione Concettuale – Funzione `vendite.fn_documento_lineage_archi(p_tipo_ids, p_uids)`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_documento_lineage_archi`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi) — la stessa cosa per tutto il grafo, con i nodi decorati
-> [vendite.fn_documento_lineage_nodi](/dbzero/vendite/funzioni/fn_documento_lineage_nodi) — i nodi, con lo stesso seme
-> [vendite.fn_documento_lineage](/dbzero/vendite/funzioni/fn_documento_lineage) — il pannello «Passaggi»
-> Brief: `docs/it/dev/work-done/brief-db-lineage-seminata-per-chiave.md` §8.2-§8.3
+> Approfondimento viste:
+>
+> * [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi) — la stessa cosa per tutto il grafo, con i nodi decorati
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_documento_lineage_nodi](/dbzero/vendite/funzioni/fn_documento_lineage_nodi) — i nodi, con lo stesso seme
+> * [vendite.fn_documento_lineage](/dbzero/vendite/funzioni/fn_documento_lineage) — il pannello «Passaggi»
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa#grafi-tra-documenti) — l'identità di un nodo: tipo + chiave del documento
 
 ---
+
 ### 🎯 Scopo Principale
-(rev 2026-10-11)
 
 I **passaggi** fra documenti — preventivo → ordine → DDT → commessa → fattura,
 offerta → contratto, resi, note di credito: i 14 tipi di arco — **per i soli
 documenti che si chiedono**, non per tutti.
 
-**La revisione dell'offerta** (arco `V`, dal 31-10-2026) va dalla revisione madre alla figlia. Non è
+**La revisione dell'offerta** (arco `V`) va dalla revisione madre alla figlia. Non è
 un passaggio di un documento a un altro: la mostra il pannello «Passaggi» (e da lì la finestra
 dell'annullo di una revisione prende il nome di quella che torna emessa), ma non ha rango e la
-scartano la [sintesi](fn_documento_lineage_sintesi.md) e le [origini della fattura](fn_fattura_origini.md).
+scartano la [sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) e le [origini della fattura](/dbzero/vendite/funzioni/fn_fattura_origini).
 
-La vista [`vw_documento_lineage_archi`](vw_documento_lineage_archi.md) costruisce
-il grafo **intero**: chi voleva i passaggi di un documento pagava quelli di tutti
+La vista [`vw_documento_lineage_archi`](/dbzero/vendite/views/vw_documento_lineage_archi) costruisce
+il grafo **intero**: chi vuole i passaggi di un documento pagherebbe quelli di tutti
 i documenti del sistema, e quel costo cresce con la storia dell'azienda. Da qui
-la funzione, di cui la vista è diventata la proiezione «senza seme».
+la funzione, di cui la vista è la proiezione «senza seme».
 
 ---
 
@@ -48,8 +58,8 @@ insieme di documenti di tipi diversi (la «frontiera» di una catena).
 
 Ogni ramo legge per prima una tabella **limitata dalle chiavi del seme sul suo
 indice** (`= ANY(…)`): così parte sempre dal documento chiesto, qualunque ordine
-di lettura scelga il database. La prima versione passava il seme come JOIN: sotto
-le policy di sicurezza il database partiva dal lato sbagliato e leggeva l'altro
+di lettura scelga il database. Passato come JOIN, sotto
+le policy di sicurezza il database partirebbe dal lato sbagliato e leggerebbe l'altro
 capo per intero. Le chiavi derivate (per esempio l'`id` di un preventivo dal suo
 `uid`) si leggono con la visibilità di chi chiama: un documento che non vede non
 semina niente, come nella vista.
@@ -62,24 +72,51 @@ semina niente, come nella vista.
   è la proiezione e lo eredita. Il presidio
   `db/pgtap/vendite/test-documento-lineage-seminata-v1.sql` confronta i due modi.
 * **Porta `SET jit = off` e `SET plan_cache_mode = force_generic_plan`**
-  (changeSet `20261011-67`, anche su `fn_documento_lineage_nodi`). Il corpo
+  (anche su `fn_documento_lineage_nodi`). Il corpo
   contiene i due modi: quando il seme non è una costante il piano li tiene
-  entrambi, e il JIT ne compilava le espressioni a ogni chiamata (secondi, anche
-  a database vuoto). Con le due clausole la funzione non si incorpora più, si
+  entrambi, e il JIT ne compilerebbe le espressioni a ogni chiamata (secondi, anche
+  a database vuoto). Con le due clausole la funzione non si incorpora, si
   pianifica una volta per sessione e chi la chiama non deve dichiarare niente.
   ⚠️ Un `CREATE OR REPLACE` che non le ripete le perde: presidio
   `db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql`.
 * `is_ramo_inverso` e `rango_origine` dipendono solo dalla lettera dell'arco e
   stanno qui, una volta sola.
 
-### 🔄 rev 2026-10-11 — i passaggi verso la commessa si cercano per indice
+---
 
-Changeset `20261011-92`. Nei rami preventivo/ordine/contratto/DDT → commessa la
-chiave del documento è scritta come testo nelle sorgenti della commessa. Il
-confronto passava da una conversione di tipo, e sotto le policy di sicurezza una
-conversione non può usare l'indice: per ogni sorgente il database leggeva l'intera
-tabella dell'altro capo. Ora le sorgenti delle commesse del seme si leggono una
-volta con la chiave già convertita, e il confronto è fra colonne dello stesso tipo
-(una commessa con 32 preventivi: ~270 → ~30 ms).
+### Gli archi leggono la provenienza del modello
+
+* **Gli archi fra testate** — A (preventivo → ordine), C (offerta → contratto), D (offerta →
+  ordine), H (ordine → bolla) — leggono la provenienza di testata del documento a valle con la
+  regola d'incontro del modello: il documento a monte combacia per `id` con `sorgente_id` o per
+  `uid` con `sorgente_uid`, in tutti e due i modi, sugli indici della provenienza
+  (`ix_ordini_v_sorgente_uid` / `_id`, `ix_contratti_sorgente_uid` / `_id`, `ix_ddt_v_sorgente` /
+  `_id`).
+* **L'arco R** (bolla → reso) legge la provenienza del reso per `sorgente_id`, in tutti e due i
+  modi, sull'indice `ix_resi_sorgente_id`: un reso nasce solo da una bolla, e la bolla ha chiave
+  `id`.
+* **Gli archi verso la commessa** — B, E, F, U, dalle sorgenti della commessa — trovano la chiave
+  del link nella colonna del suo tipo (`commesse_sorgenti.sorgente_uid` per il preventivo,
+  `sorgente_id` per ordine, contratto e DDT): il join verso il documento confronta colonne dello
+  stesso tipo, senza conversioni, e sotto le policy di sicurezza usa l'indice.
+
+---
+
+### Note di migrazione
+
+* 2026-10-11 — nasce la funzione, con il seme (brief-db-lineage-seminata-per-chiave §8.2-§8.3);
+  la vista ne diventa la proiezione «senza seme». Lo stesso giorno: le clausole `jit` e
+  `plan_cache_mode`, e i rami verso la commessa leggono le sorgenti del seme una volta con la
+  chiave già convertita (una commessa con 32 preventivi: ~270 → ~30 ms).
+* 2026-10-31 — arriva l'arco `V`, la revisione dell'offerta.
+* 2026-11-06 / 2026-11-07 — gli archi fra testate leggono la provenienza tipizzata del documento a
+  valle, al posto delle colonne parallele `documento_origine_*` e `offerta_id` e della chiave
+  testuale `sorgente_uid`; i rami verso la commessa leggono le colonne tipizzate di
+  `commesse_sorgenti`, senza conversioni (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — l'arco R cerca la bolla per `sorgente_id` soltanto: la provenienza del reso è solo
+  la bolla, e l'indice `ix_resi_sorgente` (su `sorgente_uid`) si ritira
+  (brief-db-sorgente-documento-e-riga, G-3).
+
+---
 
 {% include-markdown "signature-core.md" %}

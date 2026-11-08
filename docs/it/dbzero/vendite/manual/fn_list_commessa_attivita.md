@@ -1,20 +1,30 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_commessa_attivita`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
-> • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
-> • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
+> * [vendite.commesse](/dbzero/vendite/tabelle/commesse) — la commessa
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — le righe elencate
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il tipo del documento d'origine
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
-> • [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)  
+> * [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato) — i contatori di testata
+> * [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili) — le commesse pronte all'emissione
+> * [script.fn_sorgente_documento](/dbzero/script/funzioni/fn_sorgente_documento) — il BB che risolve il documento d'origine
+> * [vendite.fn_gruppo_fatturabile_key_di_attivita](/dbzero/vendite/funzioni/fn_gruppo_fatturabile_key_di_attivita) — il gruppo fatturabile di ogni riga
 >
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 26-02-2026)  
+
 Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri opzionali e paginazione, per uso backend in consultazione e pre-validazione dei flussi di emissione.
 
 ---
@@ -118,12 +128,14 @@ Elenco righe `commesse_attivita` della commessa con i principali campi operativi
 * stati (`stato_approvazione`, `stato_emissione`)
 * classificazione sorgente (`sorgente_tipo_id`, `sorgente_codice_interno`,
   `sorgente_uid`, `sorgente_apribile`, `sorgente_etichetta`) — vedi sotto
-  «Il tipo dell'origine»
+  «Il tipo dell'origine». ⚠️ `sorgente_uid` qui è l'**uid del documento d'origine per ogni
+  tipo**, in testo, risolto dal BB: non la colonna omonima della riga, che porta la chiave solo
+  per i tipi a chiave `uid`
 * legame con la fattura (`fatturata`, `fatturata_il`, `fattura_id`,
   `fattura_numero`, `fattura_stato`) — dal 16-08-2026
 * `meta` e `data_update`
 
-#### Il tipo dell'origine (dal 21-10-2026)
+#### Il tipo dell'origine
 
 Tre colonne dicono **di che tipo è il documento d'origine** e come trattarlo,
 e ognuna risponde a una domanda sola:
@@ -145,7 +157,7 @@ e ognuna risponde a una domanda sola:
 > ℹ️ `sorgente_etichetta` è **l'ultima** colonna della `RETURNS TABLE`: è
 > arrivata dopo, ed è stata messa in coda per non spostare le altre.
 
-#### La provenienza della riga (dal 20-08-2026)
+#### La provenienza della riga
 
 Cinque colonne che rispondono a **da dove viene questa riga**, ed è la domanda
 con cui nasce la fattura: il documento si separa per **gruppo fatturabile**, una
@@ -156,14 +168,12 @@ fattura per documento sorgente.
 | `tipo_movimento` | `NORMALE` / `RETTIFICA` / `ONERE`. Prima una rettifica si distingueva **solo** perché la quantità è negativa |
 | `articolo_codice`, `articolo_descrizione` | di cosa parla la riga: prima usciva il solo `articolo_id` uuid |
 | `sorgente_documento_numero` | il numero che l'operatore legge (`DDT0010839`), accanto all'id nudo |
-| `gruppo_key` | l'unità con cui nasce la fattura, da `vendite.fn_build_gruppo_fatturabile_key` |
+| `gruppo_key` | l'unità con cui nasce la fattura, da `vendite.fn_gruppo_fatturabile_key_di_attivita` (che compone `vendite.fn_build_gruppo_fatturabile_key`) |
 
-> 🔴 **Perché sono cinque e non quattro.** Le righe `RETTIFICA` e `ONERE` sono
-> **senza documento sorgente per progetto** — `fn_accredita_riga_reso` le scrive
-> con la sorgente a `NULL`, e il `CHECK` sulla tabella impone la coppia
-> tutta-vuota o tutta-piena. Misurato il 20-08-2026: **9 righe su 98**, cioè il
-> **100%** delle righe di nota di credito. Su quelle, `sorgente_documento_numero`
-> è vuoto — proprio dove la colonna serviva.
+> 🔴 **Perché sono cinque e non quattro.** Le righe `RETTIFICA` e `ONERE` manuale sono
+> **senza documento sorgente per progetto** — `fn_accredita_riga_reso` e la porta oneri le
+> scrivono con la provenienza tutta vuota (`chk_commesse_attivita_sorgente_forma`). Su quelle,
+> che sono tutte le righe di nota di credito, `sorgente_documento_numero` è vuoto.
 >
 > `gruppo_key` risponde comunque, e risponde la cosa giusta: su una riga senza
 > sorgente vale `MAN:<commessa_id>`, cioè **il gruppo «oneri di commessa»**, che
@@ -176,38 +186,32 @@ fattura per documento sorgente.
 > **natura**, quindi una rettifica non finisce nella fattura ordinaria in nessun
 > caso. Il gruppo è l'unità dell'**emissione mirata**, non del documento.
 
-> ℹ️ `sorgente_documento_id` e `sorgente_documento_numero` arrivano da **una
-> sola** chiamata a [`vendite.fn_get_sorgente_documento_ref`](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref),
-> che dal 20-08-2026 sostituisce `fn_get_sorgente_documento_id`: due funzioni
-> gemelle avrebbero voluto due letture per riga e due copie della stessa regola
-> di risoluzione polimorfa.
+> ℹ️ `sorgente_documento_id`, `sorgente_documento_numero` e `sorgente_uid` arrivano da **una
+> sola** chiamata al BB che risolve,
+> [`script.fn_sorgente_documento`](/dbzero/script/funzioni/fn_sorgente_documento), sulle colonne
+> tipizzate della provenienza della riga: due funzioni gemelle vorrebbero due letture per riga e
+> due copie della stessa regola.
 >
 > ⚠️ Entrambe sono `NULL` anche quando il documento **esiste ma non è visibile**
 > a chi chiede (RLS): l'azione «apri» va nascosta, e il numero non si mostra.
 
 ---
 
-### Esempio d'uso
+### Note di migrazione
 
-```sql
--- Con ordinamento esplicito (la lista attività della commessa apre così:
--- `data_attivita desc`, come dichiara il preset di `ui.lista_preset`).
-SELECT *
-FROM vendite.fn_list_commessa_attivita(
-  p_commessa_id => 12345,
-  p_stato_emissione => 'NON_EMESSA',
-  p_stato_approvazione => NULL,
-  p_competenza_mese => DATE '2026-02-01',
-  p_limit => 200,
-  p_offset => 0,
-  p_order_by => 'data_attivita',
-  p_order_dir => 'desc'
-);
-
--- Senza i due parametri il comportamento è quello storico (`ORDER BY ca.id`):
--- i chiamanti che non ordinano non sono stati toccati dalla revisione 08-2026.
-SELECT * FROM vendite.fn_list_commessa_attivita(p_commessa_id => 12345);
-```
+* 2026-08-02 — arriva l'ordinamento con whitelist; esteso il 16 e il 20-08-2026, con
+  `NULLS LAST` esplicito dal 16-08-2026.
+* 2026-08-16 — arriva il legame con la fattura.
+* 2026-08-20 — arrivano la provenienza della riga (tipo movimento, articolo, numero del documento,
+  gruppo fatturabile) e il filtro `p_tipo_movimento`, nono argomento in coda per non rompere le
+  chiamate posizionali (`DROP + CREATE`).
+* 2026-10-21 — `sorgente_codice` (il nome modificabile) diventa `sorgente_codice_interno`, e
+  arriva `sorgente_etichetta`.
+* 2026-11-07 — il documento d'origine si risolve col BB che risolve sulle colonne tipizzate della
+  riga, al posto di `vendite.fn_get_sorgente_documento_ref` sulla chiave testuale `sorgente_uid`;
+  la colonna d'uscita `sorgente_uid` resta, ed è l'uid del documento risolto. Il gruppo
+  fatturabile viene da `vendite.fn_gruppo_fatturabile_key_di_attivita`
+  (brief-db-sorgente-documento-e-riga).
 
 ---
 

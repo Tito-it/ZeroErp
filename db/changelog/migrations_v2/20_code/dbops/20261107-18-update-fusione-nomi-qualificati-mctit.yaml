@@ -1,0 +1,396 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I building block della fusione scrivono e usano i nomi delle tabelle con lo
+# schema, qualunque sia il search_path di chi li chiama.
+#   Brief: brief-db-revisione-dbops, giro 2 (§14.8).
+#
+# Base: 20_code/dbops/20261107-02, -03, -04, verificati uguali al vivo (md5 del
+#   corpo) il 2026-11-07.
+#
+# ⚠️ IL DIFETTO (visto da Tid dopo l'apply, pgTAP come app: test 6 e 10).
+#   regclass::text scrive il nome SENZA schema quando lo schema e' nel
+#   search_path di chi chiama, e quello dell'applicazione contiene anagrafiche.
+#   Quindi, a seconda di chi lanciava la fusione:
+#   - le chiavi del riepilogo { "schema.tabella": n } e i messaggi cambiavano
+#     («indirizzi_dettaglio» invece di «anagrafiche.indirizzi_dettaglio»);
+#   - nel SQL dinamico la tabella si risolveva col search_path di chi chiama:
+#     una tabella temporanea con lo stesso nome (pg_temp viene prima) avrebbe
+#     preso il posto di quella vera.
+#   La mia prova era da owner, col search_path di default: non poteva vederlo.
+#
+# ⭐ LA CORREZIONE. Un building block, dbops.fn_nome_qualificato(regclass): il
+#   nome sempre con lo schema, dal catalogo. Lo usano le tre funzioni dove il
+#   nome si scrive o si rimette in un SQL (regola del 2: tre lettori). Dove il
+#   nome serviva solo a ordinare, lo stesso building block rende l'ordine
+#   indipendente da chi chiama. In fn_fusione_righe_doppie le colonne regclass
+#   del risultato passano per oid, non per testo. Firme invariate: CREATE OR
+#   REPLACE; i COMMENT restano quelli del -02, -03, -04.
+#
+# ⚠️ DUE CHANGE. Il building block e' BEGIN ATOMIC: sta da solo nel suo primo
+#   «- sql:». Con splitStatements: false pgjdbc spezza il testo sui «;» ma dopo
+#   l'END di un BEGIN ATOMIC non riprende, e il COMMENT che segue finirebbe
+#   nella stessa istruzione preparata («comandi multipli»): l'apply si era
+#   fermato proprio qui. COMMENT e le tre riscritture vanno nel secondo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-18-update-fusione-nomi-qualificati-mctit.yaml
+
+  - changeSet:
+      id: 20261107-18-update-fusione-nomi-qualificati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo dbops.fn_nome_qualificato; i tre building block della fusione (fn_fusione_figlie,
+        fn_fusione_righe_doppie, fn_fusione_ripunta_figlie) scrivono e usano i nomi delle tabelle
+        con lo schema, indipendenti dal search_path di chi chiama.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_nome_qualificato';
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops'
+                 AND p.proname IN ('fn_fusione_figlie', 'fn_fusione_righe_doppie', 'fn_fusione_ripunta_figlie');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_nome_qualificato(p_relazione regclass)
+              RETURNS text
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              BEGIN ATOMIC
+                  SELECT format('%I.%I', n.nspname, c.relname)
+                    FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE c.oid = p_relazione;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_nome_qualificato(regclass) IS
+                  'Il nome di una tabella (o di un indice, di una vista) con il suo schema, sempre: «schema.nome», con le virgolette dove servono. A differenza di regclass::text non dipende dal search_path di chi chiama, che toglie lo schema quando e'' nel percorso. Serve dove il nome si scrive (una chiave di un riepilogo, un messaggio) o si rimette in un SQL dinamico, che altrimenti si risolverebbe col search_path di chi chiama: una tabella temporanea con lo stesso nome prenderebbe il posto di quella vera. NULL per un oid che non e'' una relazione.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_fusione_figlie(
+                  p_padre regclass,
+                  p_porta dbops.error_log.function_name%TYPE DEFAULT NULL -- nome della fusione che chiama, per i messaggi
+              )
+              RETURNS TABLE(
+                  figlia       regclass,
+                  vincolo      pg_catalog.pg_constraint.conname%TYPE,
+                  -- name[]: l'array di pg_attribute.attname (un %TYPE[] qui non e' sintassi valida)
+                  colonne_fk   name[],
+                  colonne_rif  name[],
+                  chiave_padre pg_catalog.pg_attribute.attname%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_chi    dbops.error_log.function_name%TYPE := COALESCE(p_porta, 'dbops.fn_fusione_figlie');
+                  v_chiave pg_catalog.pg_attribute.attname%TYPE;
+                  v_rls    regclass;
+              BEGIN
+                  IF p_padre IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_padre'),
+                          NULL::uuid,
+                          v_chi, 'manca la tabella da fondere');
+                  END IF;
+
+                  -- La chiave con cui si indicano origine e destinazione.
+                  SELECT a.attname
+                    INTO v_chiave
+                    FROM pg_catalog.pg_constraint c
+                    JOIN pg_catalog.pg_attribute a
+                      ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+                   WHERE c.conrelid = p_padre
+                     AND c.contype = 'p'
+                     AND array_length(c.conkey, 1) = 1;
+                  IF v_chiave IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_padre', 'padre', dbops.fn_nome_qualificato(p_padre)),
+                          NULL::uuid,
+                          v_chi, format('%s non ha una chiave primaria di una colonna', dbops.fn_nome_qualificato(p_padre)));
+                  END IF;
+
+                  -- Una figlia che chi lancia vede solo in parte: ci si ferma prima.
+                  SELECT c.conrelid::regclass
+                    INTO v_rls
+                    FROM pg_catalog.pg_constraint c
+                   WHERE c.contype = 'f'
+                     AND c.confrelid = p_padre
+                     AND c.conparentid = 0
+                     AND row_security_active(c.conrelid)
+                   ORDER BY dbops.fn_nome_qualificato(c.conrelid::regclass)
+                   LIMIT 1;
+                  IF v_rls IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_MERGE_FIGLIA_SOTTO_RLS',
+                          jsonb_build_object('padre', dbops.fn_nome_qualificato(p_padre), 'figlia', dbops.fn_nome_qualificato(v_rls)),
+                          NULL::uuid,
+                          dbops.fn_nome_qualificato(v_rls));
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT c.conrelid::regclass,
+                         c.conname,
+                         array_agg(af.attname ORDER BY k.ord),
+                         array_agg(ar.attname ORDER BY k.ord),
+                         v_chiave
+                    FROM pg_catalog.pg_constraint c
+                   CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(col, colrif, ord)
+                    JOIN pg_catalog.pg_attribute af
+                      ON af.attrelid = c.conrelid AND af.attnum = k.col
+                    JOIN pg_catalog.pg_attribute ar
+                      ON ar.attrelid = c.confrelid AND ar.attnum = k.colrif
+                   WHERE c.contype = 'f'
+                     AND c.confrelid = p_padre
+                     AND c.conparentid = 0
+                   GROUP BY c.conrelid, c.conname
+                   ORDER BY dbops.fn_nome_qualificato(c.conrelid::regclass), c.conname;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION dbops.fn_fusione_righe_doppie(
+                  p_padre     regclass,
+                  p_id_orig   bigint,             -- generica su ogni padre: la chiave si confronta con =
+                  p_id_target bigint,
+                  p_porta     dbops.error_log.function_name%TYPE DEFAULT NULL -- nome della fusione che chiama, per i messaggi
+              )
+              RETURNS TABLE(
+                  tabella           regclass,
+                  indice            regclass,
+                  riga_origine      jsonb,
+                  riga_destinazione jsonb
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_chi     dbops.error_log.function_name%TYPE := COALESCE(p_porta, 'dbops.fn_fusione_righe_doppie');
+                  r_fk      record;
+                  r_ix      record;
+                  v_nuova   text;   -- la riga dell'origine con la FK gia' sulla destinazione
+                  v_fk      text;   -- le colonne della FK nella figlia
+                  v_rif     text;   -- le colonne riferite nel padre
+                  v_riga_c  text;   -- come si nomina una riga, alias c
+                  v_riga_r  text;   -- come si nomina una riga, alias r0
+                  v_on      text;
+              BEGIN
+                  IF p_id_orig IS NULL OR p_id_target IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', CASE WHEN p_id_orig IS NULL THEN 'p_id_orig' ELSE 'p_id_target' END),
+                          NULL::uuid,
+                          v_chi, 'origine e destinazione sono obbligatorie');
+                  END IF;
+
+                  FOR r_fk IN
+                      SELECT f.figlia, f.colonne_fk, f.colonne_rif, f.chiave_padre
+                        FROM dbops.fn_fusione_figlie(p_padre, v_chi) f
+                  LOOP
+                      SELECT string_agg(format('c.%I', x.c), ', ' ORDER BY x.o),
+                             string_agg(format('p.%I', x.r), ', ' ORDER BY x.o)
+                        INTO v_fk, v_rif
+                        FROM unnest(r_fk.colonne_fk, r_fk.colonne_rif) WITH ORDINALITY AS x(c, r, o);
+
+                      -- La riga com'e' dopo la fusione: ogni colonna della FK dalla
+                      -- destinazione, le altre uguali.
+                      SELECT string_agg(
+                                 CASE WHEN x.r IS NOT NULL
+                                      THEN format('(SELECT p.%I FROM %s p WHERE p.%I = $2) AS %I',
+                                                  x.r, dbops.fn_nome_qualificato(p_padre), r_fk.chiave_padre, a.attname)
+                                      ELSE format('c.%I', a.attname)
+                                 END, ', ' ORDER BY a.attnum)
+                        INTO v_nuova
+                        FROM pg_catalog.pg_attribute a
+                        LEFT JOIN unnest(r_fk.colonne_fk, r_fk.colonne_rif) AS x(c, r)
+                          ON x.c = a.attname
+                       WHERE a.attrelid = r_fk.figlia
+                         AND a.attnum > 0
+                         AND NOT a.attisdropped;
+
+                      -- Il nome di una riga: la chiave primaria, o il ctid.
+                      SELECT COALESCE(
+                                 'jsonb_build_object(' || string_agg(format('%L, %%1$s.%I', a.attname, a.attname), ', '
+                                                                     ORDER BY k.o) || ')',
+                                 'jsonb_build_object(''ctid'', %1$s.ctid::text)')
+                        INTO v_riga_c
+                        FROM pg_catalog.pg_constraint pk
+                       CROSS JOIN LATERAL unnest(pk.conkey) WITH ORDINALITY AS k(col, o)
+                        JOIN pg_catalog.pg_attribute a
+                          ON a.attrelid = pk.conrelid AND a.attnum = k.col
+                       WHERE pk.conrelid = r_fk.figlia
+                         AND pk.contype = 'p';
+                      v_riga_r := format(v_riga_c, 'r0');
+                      v_riga_c := format(v_riga_c, 'c');
+
+                      FOR r_ix IN
+                          SELECT i.indexrelid::regclass AS indice,
+                                 i.indnullsnotdistinct,
+                                 COALESCE(pg_get_expr(i.indpred, i.indrelid), 'true') AS predicato,
+                                 array_agg(a.attname ORDER BY k.o) AS chiave
+                            FROM pg_catalog.pg_index i
+                           CROSS JOIN LATERAL unnest((i.indkey::int2[])[0:i.indnkeyatts - 1]) WITH ORDINALITY AS k(col, o)
+                            JOIN pg_catalog.pg_attribute a
+                              ON a.attrelid = i.indrelid AND a.attnum = k.col
+                           WHERE i.indrelid = r_fk.figlia
+                             AND i.indisunique
+                             AND i.indexprs IS NULL
+                           GROUP BY i.indexrelid, i.indnullsnotdistinct, i.indpred, i.indrelid
+                          HAVING array_agg(a.attname) && r_fk.colonne_fk
+                           ORDER BY dbops.fn_nome_qualificato(i.indexrelid::regclass)
+                      LOOP
+                          SELECT string_agg(format('n.%1$I %2$s r.%1$I', x.c,
+                                                   CASE WHEN r_ix.indnullsnotdistinct
+                                                        THEN 'IS NOT DISTINCT FROM' ELSE '=' END),
+                                            ' AND ')
+                            INTO v_on
+                            FROM unnest(r_ix.chiave) AS x(c);
+
+                          RETURN QUERY EXECUTE format(
+                              $q$
+                              SELECT %1$s::oid::regclass, %2$s::oid::regclass, n.__riga, r.__riga
+                                FROM (SELECT *
+                                        FROM (SELECT %3$s, %4$s AS __riga
+                                                FROM %5$s c
+                                               WHERE (%6$s) = (SELECT %7$s FROM %8$s p WHERE p.%9$I = $1)) n0
+                                       WHERE %10$s) n
+                                JOIN (SELECT r0.*, %11$s AS __riga
+                                        FROM %5$s r0
+                                       WHERE %10$s) r
+                                  ON %12$s
+                              $q$,
+                              r_fk.figlia::oid, r_ix.indice::oid, v_nuova, v_riga_c, dbops.fn_nome_qualificato(r_fk.figlia),
+                              v_fk, v_rif, dbops.fn_nome_qualificato(p_padre), r_fk.chiave_padre, r_ix.predicato,
+                              v_riga_r, v_on)
+                          USING p_id_orig, p_id_target;
+                      END LOOP;
+                  END LOOP;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION dbops.fn_fusione_ripunta_figlie(
+                  p_padre     regclass,
+                  p_id_orig   bigint,             -- generica su ogni padre: la chiave si confronta con =
+                  p_id_target bigint,
+                  p_porta     dbops.error_log.function_name%TYPE DEFAULT NULL -- nome della fusione che chiama, per i messaggi
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_chi       dbops.error_log.function_name%TYPE := COALESCE(p_porta, 'dbops.fn_fusione_ripunta_figlie');
+                  v_n_doppi   bigint;
+                  v_doppi     jsonb;
+                  v_tabelle   text;
+                  r_fk        record;
+                  v_set       text;
+                  v_rif       text;
+                  v_n         bigint;
+                  v_esito     jsonb := '{}'::jsonb;
+                  v_vincolo   pg_catalog.pg_constraint.conname%TYPE;
+                  v_dettaglio text;
+              BEGIN
+                  -- 1. I doppi, prima di scrivere.
+                  WITH d AS (
+                      SELECT d.tabella, d.indice, d.riga_origine, d.riga_destinazione
+                        FROM dbops.fn_fusione_righe_doppie(p_padre, p_id_orig, p_id_target, v_chi) d
+                  )
+                  SELECT (SELECT count(*) FROM d),
+                         (SELECT jsonb_agg(jsonb_build_object(
+                                     'tabella', dbops.fn_nome_qualificato(e.tabella),
+                                     'indice', dbops.fn_nome_qualificato(e.indice),
+                                     'riga_origine', e.riga_origine,
+                                     'riga_destinazione', e.riga_destinazione))
+                            FROM (SELECT * FROM d
+                                   ORDER BY dbops.fn_nome_qualificato(d.tabella), dbops.fn_nome_qualificato(d.indice), d.riga_origine::text
+                                   LIMIT 100) e),
+                         (SELECT string_agg(DISTINCT dbops.fn_nome_qualificato(d.tabella), ', ') FROM d)
+                    INTO v_n_doppi, v_doppi, v_tabelle;
+
+                  IF v_n_doppi > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_MERGE_RIGHE_DOPPIE',
+                          jsonb_build_object('padre', dbops.fn_nome_qualificato(p_padre),
+                                             'id_origine', p_id_orig,
+                                             'id_destinazione', p_id_target,
+                                             'n_doppi', v_n_doppi,
+                                             'doppi', v_doppi),
+                          NULL::uuid,
+                          p_id_orig::text, p_id_target::text, v_tabelle);
+                  END IF;
+
+                  -- 2. Una UPDATE per figlia.
+                  FOR r_fk IN
+                      SELECT f.figlia, f.colonne_fk, f.colonne_rif, f.chiave_padre
+                        FROM dbops.fn_fusione_figlie(p_padre, v_chi) f
+                  LOOP
+                      SELECT string_agg(format('%I', x.c), ', ' ORDER BY x.o),
+                             string_agg(format('p.%I', x.r), ', ' ORDER BY x.o)
+                        INTO v_set, v_rif
+                        FROM unnest(r_fk.colonne_fk, r_fk.colonne_rif) WITH ORDINALITY AS x(c, r, o);
+
+                      BEGIN
+                          EXECUTE format(
+                              'UPDATE %1$s c SET (%2$s) = (SELECT %3$s FROM %4$s p WHERE p.%5$I = $2)
+                                WHERE (%6$s) = (SELECT %3$s FROM %4$s p WHERE p.%5$I = $1)',
+                              dbops.fn_nome_qualificato(r_fk.figlia), v_set, v_rif, dbops.fn_nome_qualificato(p_padre), r_fk.chiave_padre,
+                              (SELECT string_agg(format('c.%I', x.c), ', ' ORDER BY x.o)
+                                 FROM unnest(r_fk.colonne_fk) WITH ORDINALITY AS x(c, o)))
+                          USING p_id_orig, p_id_target;
+                          GET DIAGNOSTICS v_n = ROW_COUNT;
+                      EXCEPTION WHEN unique_violation OR exclusion_violation THEN
+                          GET STACKED DIAGNOSTICS v_vincolo   = CONSTRAINT_NAME,
+                                                  v_dettaglio = PG_EXCEPTION_DETAIL;
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', v_chi, 'E_MERGE_RIGHE_DOPPIE',
+                              jsonb_build_object('padre', dbops.fn_nome_qualificato(p_padre),
+                                                 'id_origine', p_id_orig,
+                                                 'id_destinazione', p_id_target,
+                                                 'tabella', dbops.fn_nome_qualificato(r_fk.figlia),
+                                                 'vincolo', v_vincolo,
+                                                 'dettaglio', v_dettaglio),
+                              NULL::uuid,
+                              p_id_orig::text, p_id_target::text, dbops.fn_nome_qualificato(r_fk.figlia));
+                      END;
+
+                      v_esito := v_esito || jsonb_build_object(dbops.fn_nome_qualificato(r_fk.figlia), v_n);
+                  END LOOP;
+
+                  RETURN v_esito;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dai corpi di 20261107-02, -03, -04.
+              SELECT 1;

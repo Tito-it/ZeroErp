@@ -19,8 +19,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_ordine_proietta_stato_evasione(p_ordine_id
 AS $function$
 -- =========================================================
 -- Scopo: portare l'ordine nello stato che la sua evasione dice.
---   1. nessun fulfillment su nessuna riga -> CONFERMATO;
---   2. residuo su almeno una riga (fn_ordine_ha_residuo_evasione,
+--   1. nessun fulfillment su nessuna riga MERCE -> CONFERMATO;
+--   2. residuo su almeno una riga merce (fn_ordine_ha_residuo_evasione,
 --      reso-aware)                       -> PARZIALMENTE_EVASO;
 --   3. altrimenti                         -> EVASO.
 --   La transizione passa dalla matrice (trgfn_ordini_guard_transizione):
@@ -35,6 +35,10 @@ AS $function$
 --   verbo comune, attraverso la porta. DEFINER, perche' la porta
 --   vuole il proprietario; lo stato e' la proiezione
 --   dell'evasione, non una scelta di chi chiama.
+-- rev 2026-11-03 (20261103-23, brief-db-addebito-trasporto-ordine
+--   §8.1): l'onere non decide lo stato. Il ramo 1 conta solo i
+--   legami verso righe merce (script.fn_natura_e_merce); i rami
+--   2 e 3 lo seguono dal residuo (20261103-22).
 -- =========================================================
 DECLARE
     v_stato_target    config.stati_doc_ordini.codice_interno%TYPE;
@@ -53,11 +57,15 @@ BEGIN
     -- ⭐ Il discrimine del CONFERMATO e' l'esistenza di un legame, non
     --    il residuo pieno: un ordine evaso e poi reso per intero e'
     --    stato evaso, e resta PARZIALMENTE_EVASO.
+    -- ⭐ rev 2026-11-03: un legame verso una riga MERCE. Il legame
+    --    dell'onere copiato in bolla (fn_genera_ddt_da_ordine) non
+    --    dice che la merce e' partita.
     IF NOT EXISTS (
         SELECT 1
           FROM vendite.ordini_righe_fulfillment f
           JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
          WHERE orr.ordine_id = p_ordine_id
+           AND script.fn_natura_e_merce(orr.natura_vendita_id)
     ) THEN
         v_stato_target := 'CONFERMATO';
     ELSIF vendite.fn_ordine_ha_residuo_evasione(p_ordine_id) THEN
@@ -94,7 +102,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ordine_proietta_stato_evasione(p_ordine_id bigint)
-IS 'Building block (2026-10-11, brief-db-ddt-righe-evase-dall-ordine §5.2): porta l''ordine nello stato che la sua evasione dice. Nessun fulfillment su nessuna riga -> CONFERMATO; residuo su almeno una riga (vendite.fn_ordine_ha_residuo_evasione, reso-aware) -> PARZIALMENTE_EVASO; altrimenti EVASO. Il discrimine del CONFERMATO e'' l''ESISTENZA di un legame, non il residuo pieno: un ordine evaso e poi reso per intero resta PARZIALMENTE_EVASO. La transizione passa dalla matrice (vendite.trgfn_ordini_guard_transizione), che rifiuta uno stato di partenza che non ammette il passaggio; Scrive solo se lo stato cambia, con la sola seconda meta'' del verbo comune (script.fn_doc_scrivi_stato) attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo): e'' il verbo dei passaggi di PROCESSO dell''ordine (manuale = false nella matrice). SECURITY DEFINER con search_path bloccato (rev 2026-10-25, 20261025-79, brief-modello-documento-vendita §9; era INVOKER): la porta vuole il proprietario, e la proiezione vale per ogni ordine, perche'' lo stato e'' la proiezione dell''evasione e non una scelta di chi chiama; il perimetro di chi agisce lo controllano i consumatori. Destinazione da script.fn_doc_stato_id; assente dal catalogo: E_CONFIG_MANCANTE. Estratta dalle sei madri che la scrivevano a mano (fn_genera_ddt_da_ordine, fn_conferma_reso, fn_annulla_reso, fn_chiudi_riconsegna_reso, fn_riapri_riconsegna_reso, fn_genera_ddt_riconsegna), ritirate lo stesso giorno (20261011-06 … -11); consumatori nuovi: vendite.fn_ddt_riga_correggi_qta_evasa e il ritiro del legame in vendite.trgfn_dlt_block_ordrig_ddtrig. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).';
+IS 'Building block (2026-10-11, brief-db-ddt-righe-evase-dall-ordine §5.2): porta l''ordine nello stato che la sua evasione dice. Nessun fulfillment su nessuna riga MERCE -> CONFERMATO; residuo su almeno una riga merce (vendite.fn_ordine_ha_residuo_evasione, reso-aware) -> PARZIALMENTE_EVASO; altrimenti EVASO. Il discrimine del CONFERMATO e'' l''ESISTENZA di un legame, non il residuo pieno: un ordine evaso e poi reso per intero resta PARZIALMENTE_EVASO. ⭐ rev 2026-11-03 (20261103-23, brief-db-addebito-trasporto-ordine §8.1): l''onere non decide lo stato — il ramo 1 conta solo i legami verso righe merce (script.fn_natura_e_merce sulla natura congelata), perche'' la copia ordine -> bolla scrive anche il legame dell''onere, che non dice che la merce e'' partita; i rami 2 e 3 lo seguono dal residuo (20261103-22). La transizione passa dalla matrice (vendite.trgfn_ordini_guard_transizione), che rifiuta uno stato di partenza che non ammette il passaggio; Scrive solo se lo stato cambia, con la sola seconda meta'' del verbo comune (script.fn_doc_scrivi_stato) attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo): e'' il verbo dei passaggi di PROCESSO dell''ordine (manuale = false nella matrice). SECURITY DEFINER con search_path bloccato (rev 2026-10-25, 20261025-79, brief-modello-documento-vendita §9; era INVOKER): la porta vuole il proprietario, e la proiezione vale per ogni ordine, perche'' lo stato e'' la proiezione dell''evasione e non una scelta di chi chiama; il perimetro di chi agisce lo controllano i consumatori. Destinazione da script.fn_doc_stato_id; assente dal catalogo: E_CONFIG_MANCANTE. Estratta dalle sei madri che la scrivevano a mano (fn_genera_ddt_da_ordine, fn_conferma_reso, fn_annulla_reso, fn_chiudi_riconsegna_reso, fn_riapri_riconsegna_reso, fn_genera_ddt_riconsegna), ritirate lo stesso giorno (20261011-06 … -11); consumatori nuovi: vendite.fn_ddt_riga_correggi_qta_evasa e il ritiro del legame in vendite.trgfn_dlt_block_ordrig_ddtrig. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).';
 ```
 
 </div>

@@ -197,7 +197,12 @@ def richiedi_ruolo_soggetto_a_rls(tabella: str) -> None:
 #    senza operatori e' una condizione d'AMBIENTE, non un difetto del codice
 #    sotto test. Il guard sulla transazione invece FALLISCE: quello e' un errore
 #    di chi scrive il test, e uno skip lo nasconderebbe.
-def apri_contesto_operatore(cur) -> int:
+# ⭐ `super_admin=True` (2026-11-07, BE9 di brief-db-revisione-dbops): l'utente
+#    e' un SUPER_ADMIN per il DB (`script.fn_is_super_admin`), non solo un
+#    superuser Django — e' l'identita' a cui la policy della coda lavori mostra
+#    i lavori SISTEMA («Esegui ora» passa da `AdminAPIView`, cioe' da li').
+#    Un superuser Django senza il binding, per la policy, non lo e'.
+def apri_contesto_operatore(cur, *, super_admin: bool = False) -> int:
     from django.db import connection
 
     if not connection.in_atomic_block:
@@ -208,10 +213,19 @@ def apri_contesto_operatore(cur) -> int:
             "Avvolgi la chiamata in `with transaction.atomic():`."
         )
     cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-    cur.execute("SELECT id FROM auth_user WHERE is_superuser ORDER BY id LIMIT 1")
+    if super_admin:
+        cur.execute(
+            "SELECT u.id FROM auth_user u"
+            " WHERE u.is_active AND script.fn_is_super_admin(u.id) ORDER BY u.id LIMIT 1"
+        )
+    else:
+        cur.execute("SELECT id FROM auth_user WHERE is_superuser ORDER BY id LIMIT 1")
     riga = cur.fetchone()
     if riga is None:
-        raise unittest.SkipTest("nessun utente su cui aprire il contesto operatore")
+        raise unittest.SkipTest(
+            "nessun utente su cui aprire il contesto "
+            + ("super admin" if super_admin else "operatore")
+        )
     cur.execute("SET LOCAL app.current_user_id = %s", [str(riga[0])])
     return int(riga[0])
 

@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BOLLE E RESI: LA PROVENIENZA DI TESTATA NELLA GRAMMATICA DEL MODELLO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2 (S-5, D-4).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La bolla e il reso scrivevano la provenienza di testata con l'uid del
+#   documento (ordine, reso, bolla), contro il key_selector del tipo, che per
+#   tutti e tre e' id. Il modello vuole una sola chiave, quella del catalogo.
+#   I lettori la sanno gia' leggere nelle due grammatiche (lotto 0, giro 0.3).
+#
+# ── ⚠️ CHE COSA CAMBIA, nell'ordine ──────────────────────────────────
+#   1. la bolla di riconsegna dichiara il reso (D-4), non l'ordine: dove le
+#      righe della bolla sono riconsegne di un reso solo (resi_righe_riconsegne);
+#   2. su bolle e resi, ogni chiave scritta come uid per un tipo a chiave id
+#      passa in sorgente_id, risolta dal ponte del BB che risolve
+#      (script.fn_sorgente_documento_da_chiave): vale per ogni tipo del
+#      catalogo, non solo per quelli di oggi;
+#   3. il reso perde il NOT NULL su sorgente_uid: le due chiavi sono
+#      alternative. Che il reso abbia sempre una sorgente lo dice il CHECK;
+#   4. i CHECK di forma: la bolla ha nessuna sorgente o il tipo con una chiave
+#      sola; il reso ha sempre il tipo con una chiave sola. Se il punto 2
+#      lasciasse una chiave non risolta (un orfano), il CHECK fallisce qui e il
+#      migrate si ferma: e' voluto (S-6, gli orfani si puliscono a mano prima);
+#   5. i COMMENT delle colonne, al presente (prima dicevano «import»).
+#   Il punto 3 va per primo: la conversione mette a NULL l'uid del reso.
+#   La conversione gira coi trigger della tabella spenti e riaccesi come erano
+#   (il lock fuori bozza fermerebbe la bolla emessa): e' la migrazione del
+#   modello, non una modifica del documento. Da zero le tabelle sono vuote.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-68-alter-ddt-resi-sorgente-conversione-e-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261106-68-alter-ddt-resi-sorgente-conversione-e-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Bolle e resi: la provenienza di testata passa a sorgente_id per i tipi a
+        chiave id, la riconsegna dichiara il reso (D-4), il reso perde il NOT NULL
+        su sorgente_uid, CHECK di forma su entrambe, COMMENT di colonna al presente.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 3. Le due chiavi del reso sono alternative. PRIMA della conversione, che
+              --    mette sorgente_uid a NULL dove la chiave passa in sorgente_id.
+              ALTER TABLE vendite.resi ALTER COLUMN sorgente_uid DROP NOT NULL;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1-2. La conversione, sulle due tabelle, coi loro trigger spenti.
+              DO $do$
+              DECLARE
+                  v_tab  regclass;
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  FOREACH v_tab IN ARRAY ARRAY['vendite.ddt'::regclass, 'vendite.resi'::regclass] LOOP
+                      -- L'elenco si legge UNA volta, prima di spegnere: uno spento di
+                      -- proposito resta spento, uno ALWAYS torna ALWAYS.
+                      SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                             array_agg(t.tgenabled    ORDER BY t.tgname)
+                        INTO v_nomi, v_modi
+                        FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = v_tab
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D';
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_tab, v_nomi[i]);
+                      END LOOP;
+
+                      IF v_tab = 'vendite.ddt'::regclass THEN
+                          -- 1. La bolla di riconsegna viene dal reso (D-4): le sue righe sono
+                          --    riconsegne di righe di un reso solo. L'ordine resta nel fulfillment.
+                          UPDATE vendite.ddt d
+                             SET sorgente_tipo_id = s.id,
+                                 sorgente_id      = CASE WHEN s.key_selector = 'id'  THEN re.id  END,
+                                 sorgente_uid     = CASE WHEN s.key_selector = 'uid' THEN re.uid END
+                            FROM (SELECT dr.ddt_id, min(rr.reso_id) AS reso_id
+                                    FROM vendite.ddt_righe dr
+                                    JOIN vendite.resi_righe_riconsegne x ON x.ddt_riga_id = dr.id
+                                    JOIN vendite.resi_righe rr           ON rr.id = x.resi_riga_id
+                                   GROUP BY dr.ddt_id
+                                  HAVING count(DISTINCT rr.reso_id) = 1) y
+                            JOIN vendite.resi re   ON re.id = y.reso_id
+                            JOIN config.sorgenti s ON s.codice_interno = 'RESO_VENDITA'
+                           WHERE d.id = y.ddt_id
+                             AND (d.sorgente_tipo_id IS DISTINCT FROM s.id
+                                  OR d.sorgente_id IS DISTINCT FROM re.id);
+
+                          -- 2. L'uid di un tipo a chiave id diventa l'id, dal ponte.
+                          UPDATE vendite.ddt d
+                             SET sorgente_id  = (SELECT k.documento_id
+                                                   FROM script.fn_sorgente_documento_da_chiave(
+                                                            d.sorgente_tipo_id, d.sorgente_uid::text) k),
+                                 sorgente_uid = NULL
+                            FROM config.sorgenti s
+                           WHERE s.id = d.sorgente_tipo_id
+                             AND s.key_selector = 'id'
+                             AND d.sorgente_uid IS NOT NULL;
+                      ELSE
+                          UPDATE vendite.resi r
+                             SET sorgente_id  = (SELECT k.documento_id
+                                                   FROM script.fn_sorgente_documento_da_chiave(
+                                                            r.sorgente_tipo_id, r.sorgente_uid::text) k),
+                                 sorgente_uid = NULL
+                            FROM config.sorgenti s
+                           WHERE s.id = r.sorgente_tipo_id
+                             AND s.key_selector = 'id'
+                             AND r.sorgente_uid IS NOT NULL;
+                      END IF;
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s ENABLE %s TRIGGER %I', v_tab,
+                                         CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                        WHEN 'R' THEN 'REPLICA'
+                                                        ELSE '' END,
+                                         v_nomi[i]);
+                      END LOOP;
+                  END LOOP;
+              END;
+              $do$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 4. La forma.
+              ALTER TABLE vendite.ddt
+                ADD CONSTRAINT chk_ddt_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_ddt_sorgente_forma ON vendite.ddt IS
+                'La forma della provenienza della bolla: o nessuna colonna sorgente_* valorizzata (la bolla nasce da sola), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento esista, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE vendite.resi
+                ADD CONSTRAINT chk_resi_sorgente_forma CHECK (
+                  sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1);
+              COMMENT ON CONSTRAINT chk_resi_sorgente_forma ON vendite.resi IS
+                'Il reso ha sempre una provenienza: il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento esista, lo verifica script.trgfn_guard_sorgente.';
+
+              -- 5. Il significato delle colonne.
+              COMMENT ON COLUMN vendite.ddt.sorgente_tipo_id IS
+                'Il tipo del documento da cui la bolla nasce (config.sorgenti): l''ordine (ORDINE_VENDITA) o, per la bolla di riconsegna, il reso (RESO_VENDITA). NULL per la bolla nata da sola.';
+              COMMENT ON COLUMN vendite.ddt.sorgente_id IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave id (key_selector di config.sorgenti). Una sola fra sorgente_id e sorgente_uid (chk_ddt_sorgente_forma).';
+              COMMENT ON COLUMN vendite.ddt.sorgente_uid IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave uid (key_selector di config.sorgenti). Una sola fra sorgente_id e sorgente_uid (chk_ddt_sorgente_forma).';
+              COMMENT ON COLUMN vendite.resi.sorgente_tipo_id IS
+                'Il tipo del documento da cui il reso nasce (config.sorgenti): la bolla (DDT_VENDITA). Sempre valorizzato.';
+              COMMENT ON COLUMN vendite.resi.sorgente_id IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave id (key_selector di config.sorgenti). Una sola fra sorgente_id e sorgente_uid (chk_resi_sorgente_forma).';
+              COMMENT ON COLUMN vendite.resi.sorgente_uid IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave uid (key_selector di config.sorgenti). Una sola fra sorgente_id e sorgente_uid (chk_resi_sorgente_forma).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La conversione non si disfa: l'uid si rileggerebbe dall'id, ma la scelta
+              -- reso/ordine della riconsegna (D-4) no. Si toglie la forma.
+              ALTER TABLE vendite.ddt  DROP CONSTRAINT IF EXISTS chk_ddt_sorgente_forma;
+              ALTER TABLE vendite.resi DROP CONSTRAINT IF EXISTS chk_resi_sorgente_forma;

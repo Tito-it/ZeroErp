@@ -17,8 +17,8 @@
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying(80) | NO |  |
-| data_update | timestamp with time zone | YES |  |
-| user_update | character varying(80) | YES |  |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying(80) | NO | CURRENT_USER |
 | multi_emittente | boolean | NO | false |
 | perimetro_emittente | boolean | NO | true |
 | ricerca_min_caratteri | smallint | NO | 3 |
@@ -40,6 +40,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_lista_definizione_a10_lista_colonna_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('ui', 'lista_colonna', 'lista_id', 'id', 'attivo')` |
+| trg_lista_definizione_a10_lista_preset_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('ui', 'lista_preset', 'lista_id', 'id', 'attivo')` |
+| trg_lista_definizione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_lista_definizione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_lista_definizione_guard_multi_emittente()` |
 | trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_lista_definizione_guard_multi_emittente()` |
 | trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()` |

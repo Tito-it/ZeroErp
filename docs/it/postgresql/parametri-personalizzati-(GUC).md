@@ -1,6 +1,6 @@
 # Parametri personalizzati (GUC) in PostgreSQL
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: chi scrive funzioni, trigger o verbi del database, e chi configura un'installazione
 >
@@ -48,6 +48,11 @@ in [Elenco dei GUC](#elenco-dei-guc)). I più importanti:
 la lingua dei messaggi (`myapp.user_language`), la connessione del canale dei registri via dblink
 (`myapp.dblink_log_connection`, impostata da `scripts/sql/provision_dblink_log_channel.sql`),
 l'ambiente della passata di Liquibase (`myapp.env = 'ci'`, nelle opzioni della connessione di CI).
+
+Il canale dei registri è acceso quando c'è una stringa di connessione (`myapp.logconn`, se
+valorizzato, altrimenti `myapp.dblink_log_connection`) e l'interruttore `myapp.log_with_dblink` non
+vale `off`. La regola è una sola, per tutti i registri fuori transazione: è descritta in
+[script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa).
 
 ⚠️ Il canale dei registri si legge dalla **sessione**: sotto pgAgent la sessione è `zeroerp_job`, e il
 parametro va impostato anche per lui (o per tutto il database), altrimenti il verbale di un
@@ -130,9 +135,9 @@ tecnica, in coda.
 | GUC                           | Valori                    | Dove si imposta                                                | Chi lo legge                                                        |
 | ----------------------------- | ------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `myapp.user_language`         | codice lingua (`it`)      | `ALTER ROLE … IN DATABASE … SET`                               | i messaggi d'errore (`script.fn_get_messaggio`, `fn_log_and_raise_error`) |
-| `myapp.dblink_log_connection` | stringa di connessione    | `scripts/sql/provision_dblink_log_channel.sql`, per ruolo      | il canale dei registri fuori transazione (`script.fn_log_error_only`, `maintenance.fn_job_run_log_failure`, `script.fn_ensure_logconn`) |
+| `myapp.dblink_log_connection` | stringa di connessione    | `scripts/sql/provision_dblink_log_channel.sql`, per ruolo      | il canale dei registri fuori transazione, attraverso `script.fn_canale_log_stringa` (lo usano `script.fn_ensure_logconn`, `script.fn_log_error_only`, `dbops.fn_get_or_create_session_tx_id`, `maintenance.fn_job_run_log_failure`) |
 | `myapp.logconn`               | stringa di connessione    | facoltativo, nella sessione                                    | gli stessi lettori: se c'è, **vince** su `myapp.dblink_log_connection` |
-| `myapp.log_with_dblink`       | `on` / `off`              | opzioni della connessione (`off` nelle migrazioni)             | l'audit delle automazioni (`dbops.fn_audit_begin`, `fn_audit_end`, `fn_audit_log_once`) |
+| `myapp.log_with_dblink`       | `on` / `off`              | opzioni della connessione (`off` nelle migrazioni)             | l'interruttore del canale, per gli stessi lettori: solo `off` spegne, assente vale acceso. L'audit delle automazioni (`dbops.fn_audit_log_once`) non lo legge: scrive sempre nella transazione |
 | `myapp.bypass_tx_id_check`    | `on` / `off`              | per ruolo o sessione                                           | il trigger del `tx_id` (`dbops.trgfn_tx_id_managed`), secondo livello del bypass |
 | `myapp.env`                   | `ci`                      | opzioni della connessione della passata `ci_apply` in CI        | la `preCondition` del changeSet `90_end/ci_apply/20250627-31`       |
 
@@ -158,8 +163,9 @@ successiva. Significato, provenienza e regole in [Contratto GUC `app.*`](/guide/
 | `app.registrazione_tardiva_riga_id`  | `pagamenti.fn_posta_riga_tardiva`             | quella sola riga, sul guard della distinta finale                           |
 
 ⚠️ **Residuo**: `app.session_key` lo legge `script.fn_get_parameter_di_sessione` (livello «sessione»
-degli override dei parametri), ma l'unica funzione che lo scriveva, `dbops.fn_set_gucs_conn`, insieme
-ad `app.user_id` e `app.group_ids`, non ha più chiamanti. Oggi quel livello resta sempre saltato.
+degli override dei parametri), ma nessuna funzione lo scrive più: l'unica che lo faceva, insieme ad
+`app.user_id` e `app.group_ids`, è stata ritirata il 4 novembre 2026 perché non aveva chiamanti. Oggi
+quel livello resta sempre saltato.
 
 ### `zeroerp.*` — porte, override, manutenzione, provisioning
 

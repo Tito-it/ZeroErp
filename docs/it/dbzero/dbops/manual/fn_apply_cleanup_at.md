@@ -1,47 +1,96 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_cleanup_at`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole `CLEANUP_AT` da cui arrivano termine e colonna base
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup) — il runner che la chiama, tabella per tabella
+> * [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola) — la regola da cui il runner prende termine, colonna base e ricalcolo
+> * [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired) — il passo dopo: cancella le righe scadute
+> * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) — l'altra via: la scadenza scritta all'INSERT
+>
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db) — il framework delle automazioni e le regole di cleanup
+> * [Audit e tracciabilità](/guide/audit-e-tracciabilita) — §7, manutenzione e retention
+
 ---
 
-### 👀 Vedi anche
-
-**Guide**
-
-* [Automazione DB](/guide/automazione-db)
-
-**Approfondimento funzioni**
-
-* [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
-* [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired)
-
----
 ### 🎯 Scopo Principale
-(latest review 07-02-26)
-La funzione **`dbops.fn_apply_cleanup_at`** calcola il valore di **`cleanup_at`** per una tabella target, applicando un **TTL fisso** a partire da una colonna timestamp di base (es. `data_insert`, `executed_at`, `occurred_at`).
+
+Scrive la scadenza (`cleanup_at`) delle righe di una tabella: colonna di base più un termine
+fisso in giorni. È il passo `CLEANUP_AT` del framework di cleanup, e restituisce quante righe
+ha aggiornato, o quante ne aggiornerebbe in simulazione.
 
 ---
 
-### Parametri
+### Riempie i vuoti, o ricalcola tutto
 
-| Parametro           | Tipo      | Descrizione |
-| ------------------- | --------- | ----------- |
-| `p_schema`          | `text`    | Schema della tabella target. |
-| `p_table`           | `text`    | Tabella target. |
-| `p_cleanup_column`  | `text`    | Colonna cleanup (default `cleanup_at`). |
-| `p_base_ts_column`  | `text`    | Colonna timestamp base per il calcolo. |
-| `p_ttl_days`        | `integer` | Giorni di retention (TTL). |
-| `p_apply_on_update` | `boolean` | Se `true`, ricalcola anche su righe già valorizzate. |
-| `p_dry_run`         | `boolean` | Se `true`, non aggiorna e ritorna il numero righe potenziali. |
+Il comportamento lo decide `p_apply_on_update`:
 
----
+* **falso** (il default, e il caso di tutte le regole del seed): tocca solo le righe che non
+  hanno ancora una scadenza e che hanno la colonna di base valorizzata. Una scadenza già
+  scritta — dal trigger alla nascita, o da un giro precedente — non si cambia;
+* **vero**: ricalcola ogni riga con la colonna di base valorizzata la cui scadenza è vuota o
+  diversa da quella che il termine darebbe oggi. Serve quando il termine cambia e deve valere
+  anche per il pregresso.
 
-### Regole Principali
+Una riga con la colonna di base vuota non riceve mai una scadenza, quindi non scade.
 
-* `p_ttl_days` deve essere **>= 0**.
-* Se la colonna `cleanup_at` o la colonna base non esistono, la funzione **non agisce**.
-* In **dry‑run**, ritorna il conteggio delle righe che verrebbero aggiornate.
+⚠️ È un `UPDATE`: passa dai trigger di `UPDATE` della tabella e riscrive le colonne di
+aggiornamento. Su un registro che non deve cambiare dopo la nascita la scadenza si scrive
+all'`INSERT` con [trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita),
+e questa funzione resta per le righe nate prima del trigger.
 
 ---
 
-### Output
+### Le colonne
 
-Ritorna il **numero di righe aggiornate** (o potenziali in dry‑run).
+* **La colonna base è obbligatoria.** La sceglie chi chiama: il runner la prende da
+  [fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola), la dichiarata o la prima
+  della catena. La funzione non la indovina.
+* **La colonna della scadenza è sempre `cleanup_at`**, nome fisso del framework. Il parametro
+  `p_cleanup_column` resta nella firma ma può solo confermarlo: vuoto o `cleanup_at`; un altro nome
+  è un errore.
+* Se la tabella non ha `cleanup_at` o non ha la colonna base, la funzione non fa niente e
+  restituisce zero.
+* In simulazione (`p_dry_run`) conta le righe che aggiornerebbe, senza scrivere.
+
+⚠️ La funzione non legge le esclusioni del cleanup: chi la chiama a mano su una tabella esclusa
+la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
+
+---
+
+### Codici errore
+
+* `E_GENERICO` — schema o tabella mancanti, oppure termine mancante o negativo.
+* `E_PARAMETRO_INVALIDO` — colonna base mancante, oppure una colonna di scadenza diversa da
+  `cleanup_at`.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-cleanup-framework.sql` — la simulazione conta le righe senza scadenza,
+  l'esecuzione le valorizza tutte (test 5-7), e il runner la usa sulle tabelle in ambito.
+* `db/pgtap/dbops/test-cleanup-at-regola-unica-v1.sql` — la scadenza che il runner scrive con lei
+  è quella che il trigger alla nascita aveva scritto; una riga con la base vuota non si tocca.
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — la colonna base è obbligatoria e la colonna della scadenza è sempre `cleanup_at`
+  (`20261109-88`, brief-db-revisione-dbops, giro 10b). Prima la base, se mancava, era
+  `data_insert` — una terza regola accanto a quelle del trigger e del runner — e la colonna della
+  scadenza si poteva cambiare col parametro.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stradario`
 
+> **Ultimo aggiornamento**: 7 novembre 2026
+
 >  👀 **Vedi anche** 
 >
 Approfondimento Tabelle:  
@@ -25,6 +27,37 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 * **Storicizzazione**
   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
   
+---
+
+### ⭐ La chiave delle vie vive
+
+In un comune la stessa via generale con lo stesso codice postale c'è **una volta sola fra le vie
+vive**: l'indice unico `uq_stradario_comune_stradario_gen_cp` vale solo per le righe senza
+`obsoleto_dal`. Una via soppressa ne è fuori, e non collide con la via viva che ne ha preso il
+posto. Chi cerca una via da quella terna (comune, via generale, CAP) la cerca fra le vie vive.
+
+La chiave esterna `comune_id` ha il suo indice, `ix_config_stradario_comune_id`: quello unico,
+parziale, non copre le vie soppresse.
+
+---
+
+### ⭐ La via soppressa
+
+Quando due vie si fondono (`dbops.fn_admin_merge_stradario`), la via d'origine **resta**, con
+`obsoleto_dal` valorizzata al giorno della fusione. Resta perché è la radice della catena delle
+trasformazioni (`storico.stradario_trasformazioni`) e lo storico degli indirizzi la nomina ancora.
+Ma da quel giorno:
+
+* le ricerche delle vie (`script.fn_search_stradario`, `script.fn_get_stradario`) non la propongono;
+* un indirizzo non vi nasce né vi si sposta: lo rifiuta il guard del ritiro su
+  `anagrafiche.indirizzi_dettaglio` (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`);
+* non si fonde più (`E_STRADARIO_SOPPRESSO`);
+* se si fondono due comuni, si sposta con le altre vie senza collidere.
+
+La data la scrive solo la fusione, e non è mai oltre la data operativa: una soppressione è un fatto
+avvenuto, non un ritiro programmato. Per lo stradario, quindi, «soppressa» vuol dire «data
+valorizzata».
+
 ---
 
 ### Collegamenti con Altre Tabelle
@@ -91,6 +124,7 @@ erDiagram
         datetime  data_update
         varchar   user_update
         int       codice_postale_id FK
+        date      obsoleto_dal
         bool      storicizza
         uuid      tx_id
     }

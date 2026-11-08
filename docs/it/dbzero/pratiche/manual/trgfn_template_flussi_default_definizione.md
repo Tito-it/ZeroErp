@@ -1,56 +1,66 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_template_flussi_default_definizione`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_template_flussi_default_definizione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.fn_risolvi_definizione](fn_risolvi_definizione.md)
-> [pratiche.trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — lo step di template che riceve l'edizione
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — le edizioni di una definizione
 >
-Tabelle:
+> Approfondimento funzioni:
 >
-[pratiche.workflow_definizioni](workflow_definizioni.md)
-> [pratiche.template_flussi](template_flussi.md)
+> * [pratiche.fn_risolvi_definizione](/dbzero/pratiche/funzioni/fn_risolvi_definizione) — l'unico punto di risoluzione dell'edizione
+> * [pratiche.trgfn_pratiche_default_definizione](/dbzero/pratiche/funzioni/trgfn_pratiche_default_definizione) — la stessa regola sulle pratiche
+> * [pratiche.trgfn_template_flussi_guard_immutabile](/dbzero/pratiche/funzioni/trgfn_template_flussi_guard_immutabile) — il guard che protegge un'edizione pubblicata
 
 ---
+
 ### 🎯 Scopo Principale
 
-**Auto-default del re-parent**: un template inserito **senza** `definizione_id`
-appartiene al **preset** del suo tipo (`fn_risolvi_definizione(tipo, NULL)`). È la
-fotografia della realtà pre-fork: chi lavora su un'edizione specifica (fork/BOZZA,
-Fase 2) passa `definizione_id` **esplicito**.
+La trigger function `pratiche.trgfn_template_flussi_default_definizione` assegna un'edizione a uno step
+di template inserito senza: lo step appartiene al preset pubblicato del suo tipo di prestazione.
 
-Mantiene invariati **seed CSV e fixture pgTAP** (INSERT senza la colonna) anche dopo il
-`SET NOT NULL` di Fase 0.
+Chi lavora su un'edizione specifica, per esempio la bozza di un fork, passa l'edizione esplicita.
 
 ---
 
-### Trigger associato
+### Le regole
 
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_template_flussi_a10_default_definizione_ins` | BEFORE | INSERT | `pratiche.template_flussi` |
+* Interviene solo all'inserimento, e solo quando l'edizione manca: un valore esplicito passa intatto,
+  e la FK composita (edizione, tipo di prestazione) ne garantisce già la coerenza col tipo.
+* L'edizione si risolve con `pratiche.fn_risolvi_definizione` senza emittente: il preset `PUBBLICATA`
+  del tipo.
+* Se il tipo non ha un preset pubblicato, la risoluzione fallisce con un errore parlante.
+* ⭐ Gira nella fase dei guard ma prima di loro (il nome del trigger, `default`, precede in ordine i
+  `guard`): il guard di immutabilità vede già l'edizione risolta, e un passo aggiunto a un'edizione
+  pubblicata, anche per default, si ferma lì. Chi configura passa dalle bozze.
 
-Fase `_a10_` con descrizione `default` — in ordine lessicografico gira **prima** dei
-guard della tabella (`..._a10_default_...` < `..._a10_guard_...`).
-
----
-
-### Regole
-
-* Interviene **solo** quando `NEW.definizione_id IS NULL`; un valore esplicito passa
-  intatto (la FK composita `(definizione_id, tipo_prestazione_id)` garantisce già la
-  coerenza col tipo).
-* Se il tipo non ha un preset PUBBLICATA (caso anomalo: bootstrap+backfill lo
-  impediscono), la risoluzione fallisce **parlante** con `DEFINIZIONE_NON_TROVATA` (507).
-* Prospettiva Fase 1: il guard di immutabilità della PUBBLICATA intercetterà comunque i
-  tentativi di aggiungere step a un'edizione pubblicata, default incluso → il flusso di
-  configurazione passerà dalle BOZZE.
+L'inserimento senza edizione resta la forma dei seed e delle fixture, anche se la colonna è
+obbligatoria.
 
 ---
 
-### Note operative
+### Codici errore
 
-* Introdotta con `20260702-23` (brief-db-step-dominio-e-definizioni-versionate,
-  Parte 2 / Fase 0, raffinamento §2.1).
-* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase0.sql` (casi 2, 5, 7, 8).
+* `E_DEFINIZIONE_NON_TROVATA` — il tipo di prestazione non ha un preset pubblicato (sollevato da
+  `pratiche.fn_risolvi_definizione`).
+
+---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase0` — l'inserimento senza edizione prende il preset, quello
+  con l'edizione esplicita la conserva.
+
+---
+
+### Note di migrazione
+
+* 2026-07-02 — nasce con le definizioni versionate, quando l'edizione dello step diventa obbligatoria
+  (brief-db-step-dominio-e-definizioni-versionate).
+
+---
+
+{% include-markdown "signature-core.md" %}

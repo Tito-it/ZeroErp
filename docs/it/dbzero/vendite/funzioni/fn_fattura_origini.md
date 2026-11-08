@@ -20,9 +20,8 @@ AS $function$
 DECLARE
     v_tipo_fattura config.sorgenti.id%TYPE;   -- per chiamare il lineage dalla fattura
     v_doc     record;     -- un documento di livello 1
-    v_tab     record;     -- la sua tabella (config.fn_sorgente_tabella)
     -- Tipi nudi solo dove %TYPE non si puo' usare: la chiave di nodo
-    -- e' CALCOLATA (id o uid a seconda di key_selector, sempre testo,
+    -- e' la chiave del modello resa a testo (id o uid secondo il key_selector,
     -- come vendite.fn_documento_lineage.from_uid); gli array non
     -- accettano %TYPE[] (sintassi non valida), la colonna e' accanto.
     v_chiave  text;       -- la sua chiave di nodo (key_selector)
@@ -53,41 +52,24 @@ BEGIN
     END IF;
 
     -- (1a) Livello 1 dall'arco G: i documenti delle righe FATTURATE
-    -- qui. La riga di commessa porta il suo, con la chiave
-    -- <testata>.uid::text.
+    -- qui. La riga di commessa porta il suo con la chiave del modello
+    -- (sorgente_id o sorgente_uid, secondo il key_selector), che e'
+    -- anche la chiave del nodo della lineage.
     FOR v_doc IN
-        SELECT DISTINCT ca.sorgente_tipo_id AS t, ca.sorgente_uid AS u,
-                        s.codice_interno, s.key_selector
+        SELECT DISTINCT ca.sorgente_tipo_id AS t, ca.sorgente_id AS sid, ca.sorgente_uid AS suid
           FROM vendite.fatture_righe fr
           JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
           JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
-          JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
          WHERE fr.fattura_id = p_fattura_id
-           AND ca.sorgente_uid IS NOT NULL
+           AND ca.sorgente_tipo_id IS NOT NULL
     LOOP
-        -- La chiave del nodo, dal registro: join alla tabella del
-        -- documento sulla sua uid. Senza colonna uid la chiave della
-        -- riga e' gia' quella del nodo.
-        SELECT ft.schema_tabella, ft.nome_tabella, ft.relid
-          INTO v_tab
-          FROM config.fn_sorgente_tabella(v_doc.codice_interno) ft;
-        IF v_tab.relid IS NULL THEN
-            CONTINUE;
-        END IF;
+        -- Un documento che chi legge non vede (RLS) non torna: lo dice il
+        -- BB che risolve, che legge la tabella del documento.
+        SELECT CASE WHEN d.documento_id IS NOT NULL
+                    THEN COALESCE(v_doc.sid::text, v_doc.suid::text) END
+          INTO v_chiave
+          FROM script.fn_sorgente_documento(v_doc.t, v_doc.sid, v_doc.suid) d;
 
-        IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
-                    WHERE a.attrelid = v_tab.relid AND a.attname = 'uid'
-                      AND NOT a.attisdropped) THEN
-            v_chiave := NULL;
-            EXECUTE format('SELECT (x.%I)::text FROM %I.%I x WHERE x.uid::text = $1',
-                           v_doc.key_selector, v_tab.schema_tabella, v_tab.nome_tabella)
-               INTO v_chiave
-              USING v_doc.u;
-        ELSE
-            v_chiave := v_doc.u;
-        END IF;
-
-        -- Un documento che chi legge non vede (RLS) non torna.
         CONTINUE WHEN v_chiave IS NULL;
 
         v_semi_t := v_semi_t || v_doc.t;
@@ -172,7 +154,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_fattura_origini(p_fattura_id bigint)
-IS '⭐ rev 2026-10-31 (20261031-26, brief-modello-documento-vendita §17.7): la risalita non passa dall''arco V (la revisione dell''offerta), come non passa da G. Le ORIGINI di una fattura (D-G1 = c, Q-F6 = b, Q-F7): i documenti a monte che la fattura cita, di qualunque tipo — DDT, ordine, contratto, offerta, preventivo; per la nota di credito la fattura rettificata e il reso —, non la commessa, che per il cliente e'' un contenitore interno. Livello 1 = i genitori diretti della fattura nel lineage; l''arco G (commessa -> fattura), a grana di commessa, e'' sostituito dai documenti delle righe FATTURATE (la riga di commessa di ogni attivita'' fatturabile porta il suo documento, chiave <testata>.uid tradotta nella chiave del nodo con config.sorgenti.key_selector e un join alla tabella del documento). Poi la risalita del lineage all''indietro (vendite.fn_documento_lineage) da ogni documento di livello 1, solo per legami vivi e mai attraverso G: dalla fattura rettificata si tornerebbe alla commessa intera, e una fattura citata porta gia'' i suoi riferimenti. Tiene i soli tipi con config.sorgenti.citato_in_fattura: quali tipi si citano e'' un dato del registro. Ogni documento una volta, col livello piu'' vicino (P-3, l''unione); fuori gli annullati (stato abortito) e i documenti che chi legge non vede (INVOKER, come il lineage). Ordine: livello, tipo, codice. Una fattura senza documenti a monte risponde zero righe. La leggono la stampa e il dettaglio della fattura. Brief: brief-modello-documento-vendita §15.10, §15.11 (Tid 2026-10-27).';
+IS 'Le ORIGINI di una fattura: i documenti a monte che la fattura cita, di qualunque tipo (DDT, ordine, contratto, offerta, preventivo; per la nota di credito la fattura rettificata e il reso), non la commessa, che per il cliente e'' un contenitore interno. Livello 1 = i genitori diretti della fattura nella lineage, con un''eccezione: l''arco G (commessa -> fattura), a grana di commessa, e'' sostituito dai documenti delle righe FATTURATE. La riga di commessa di ogni attivita'' fatturabile porta il suo documento con la chiave del modello (sorgente_id o sorgente_uid, secondo il key_selector), che e'' gia'' la chiave del nodo della lineage; il BB script.fn_sorgente_documento dice se il documento c''e'' e se chi legge lo vede. Poi, da ogni documento di livello 1, la risalita all''indietro della lineage (vendite.fn_documento_lineage), solo per legami vivi (is_legame_ritirato non vero) e mai attraverso G ne'' V: dalla fattura rettificata si tornerebbe alla commessa intera, una fattura citata porta gia'' i suoi riferimenti, e la revisione superata dell''offerta non si cita. Livello = 1 + la distanza. Tiene i soli tipi con config.sorgenti.citato_in_fattura: quali tipi si citano e'' un dato del registro. Ogni documento una volta, col livello piu'' vicino; fuori gli annullati (is_abortito, da vendite.fn_documento_lineage_nodi) e i documenti che chi legge non vede. Ordine: livello, tipo, codice. Una fattura senza documenti a monte risponde zero righe. p_fattura_id mancante o non positivo: E_VENDITE_CHIAMATA_NON_VALIDA. STABLE, SECURITY INVOKER, come la lineage. La leggono la stampa e il dettaglio della fattura.';
 ```
 
 </div>

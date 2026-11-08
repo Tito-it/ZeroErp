@@ -37,12 +37,16 @@ DECLARE
     v_mese      vendite.fatturazione_lotti.competenza_mese%TYPE;
     v_lotto     vendite.fatturazione_lotti.id%TYPE;
     v_esito     vendite.fatturazione_lotti_esiti.id%TYPE;
+    v_marcati   integer;    -- gruppi marcati dalla porta: un conteggio
 BEGIN
     -- 0. Lo stato si giudica PRIMA di costruire.
+    --    Lo stato dalla sede della traduzione codice -> id
+    --    (script.fn_doc_stato_id: solo uno stato attivo), e che valga per
+    --    un lotto.
     IF NOT EXISTS (SELECT 1 FROM config.stati_doc_fiscale s
-                    WHERE s.codice_interno = p_stato_codice_interno
-                      AND s.applica_lotto IS TRUE
-                      AND s.attivo IS TRUE) THEN
+                    WHERE s.id = script.fn_doc_stato_id('vendite.fatturazione_lotti'::regclass,
+                                                        p_stato_codice_interno)
+                      AND s.applica_lotto IS TRUE) THEN
         RAISE EXCEPTION
             'fn_pgtap_crea_lotto: nessuno stato fiscale attivo applicabile a un lotto con codice_interno = %',
             coalesce(p_stato_codice_interno::text, 'NULL');
@@ -92,13 +96,28 @@ BEGIN
                                              v_lotto, p_stato_codice_interno);
     END IF;
 
-    -- 5. L'esito che trattiene un gruppo, la forma dei pgTAP del pull.
+    -- 5. L'esito che trattiene un gruppo, la forma dei pgTAP del pull,
+    --    dalla porta del dominio: scrive anche errore_quando, come la
+    --    pipeline. La porta non solleva mai (la chiama un gestore
+    --    d'eccezione): un gruppo non marcato e' un errore del chiamante,
+    --    e lo dice la fixture.
     IF p_gruppo_key_trattenuto IS NOT NULL THEN
-        INSERT INTO vendite.fatturazione_lotti_esiti
-            (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
-        VALUES (v_lotto, p_gruppo_key_trattenuto, 'ERRORE', 'E_PULL_COMMESSA',
-                'pgTAP: gruppo trattenuto dal lotto ' || p_etichetta)
-        RETURNING id INTO v_esito;
+        SELECT s.marcati INTO v_marcati
+          FROM vendite.fn_segna_esito_gruppo_lotto(
+                   p_lotto_id         => v_lotto,
+                   p_stato            => 'ERRORE',
+                   p_gruppo_key       => p_gruppo_key_trattenuto,
+                   p_errore_codice    => 'E_PULL_COMMESSA',
+                   p_errore_messaggio => 'pgTAP: gruppo trattenuto dal lotto ' || p_etichetta) s;
+        IF v_marcati IS DISTINCT FROM 1 THEN
+            RAISE EXCEPTION
+                'fn_pgtap_crea_lotto: la porta vendite.fn_segna_esito_gruppo_lotto ha marcato % gruppi invece di 1 per %',
+                coalesce(v_marcati::text, 'NULL'), p_gruppo_key_trattenuto;
+        END IF;
+        SELECT e.id INTO v_esito
+          FROM vendite.fatturazione_lotti_esiti e
+         WHERE e.lotto_id = v_lotto
+           AND e.gruppo_key = p_gruppo_key_trattenuto;
     END IF;
 
     -- Contratto dichiarato, non fiducia nel chiamato.
@@ -114,7 +133,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_lotto(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_tipo_doc_fiscale_id bigint, p_competenza_mese date, p_gruppo_key_trattenuto text, p_del_cliente boolean)
-IS 'Fixture pgTAP: un LOTTO di fatturazione dell''azienda di chi agisce in una chiamata. ⭐ Nasce dalla MADRE vendite.fn_create_fatturazione_lotto (codice, lock_batch_id, stato DRAFT), con emittente e utility del cliente: quello del terzo parametro (verificato da dbops.fn_pgtap_cliente_ba_del_mondo) o uno nuovo del mondo. Il lotto e'' dell''azienda (billing_account_id NULL); p_del_cliente => true lo lega al cliente. Secondo parametro: lo stato, raggiunto per la matrice con dbops.fn_pgtap_porta_a_stato sul lotto ancora vuoto. Tipo documento: quello chiesto o il primo attivo con un registro (vendite.tipi_doc_fiscale_registri). Competenza: quella chiesta o il mese della data operativa. p_gruppo_key_trattenuto: scrive l''esito ERRORE (E_PULL_COMMESSA) che trattiene quel gruppo nel lotto. ⛔ NON scrive fatture ne'' ponte: sono il caso del test, e un lotto con fatture si muove col verbo vendite.fn_sync_lotto_fatture_stato. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-modello-documento-vendita (R-4), 2026-10-24. Rev 2026-10-24 (20261024-40, §4-octies): col billing account del test non costruisce piu'' un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder).';
+IS 'Fixture pgTAP: un LOTTO di fatturazione dell''azienda di chi agisce in una chiamata. Nasce dalla madre vendite.fn_create_fatturazione_lotto (codice, lock_batch_id, stato DRAFT), con emittente e utility del cliente: quello del terzo parametro (preso con dbops.fn_pgtap_cliente_del_builder, senza costruire un cliente in piu'') o uno nuovo del mondo. Il lotto e'' dell''azienda (billing_account_id NULL); p_del_cliente => true lo lega al cliente. Secondo parametro: lo stato, tradotto da script.fn_doc_stato_id (uno stato spento, inesistente o che non vale per un lotto solleva prima di costruire) e raggiunto per la matrice con dbops.fn_pgtap_porta_a_stato sul lotto ancora vuoto. Tipo documento: quello chiesto o il primo attivo con un registro (vendite.tipi_doc_fiscale_registri). Competenza: quella chiesta o il mese della data operativa. p_gruppo_key_trattenuto: l''esito ERRORE (E_PULL_COMMESSA) che trattiene quel gruppo nel lotto, scritto dalla porta vendite.fn_segna_esito_gruppo_lotto come lo scrive la pipeline (con errore_quando); se la porta non marca il gruppo solleva. Restituisce il lotto e l''id dell''esito. ⛔ NON scrive fatture ne'' ponte: sono il caso del test, e un lotto con fatture si muove col verbo vendite.fn_sync_lotto_fatture_stato. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
 ```
 
 </div>

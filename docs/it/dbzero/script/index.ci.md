@@ -18,13 +18,14 @@ search:
 - [fn_available_actions_documento_interno](manual/fn_available_actions_documento_interno.md) — (scritta il 22-09-2026)
 - [fn_available_actions_inventario](manual/fn_available_actions_inventario.md) — (scritta il 22-09-2026)
 - [fn_available_actions_lotto](manual/fn_available_actions_lotto.md) — (latest review 04-08-2026) Espone le **capability del lotto di fatturazione** per il detail API: quali azioni di governo sono disponibili sul lotto, quali sono **abilitate** e — quando non lo sono — **perché**. Ottava della famiglia `fn_available_actions_*` (ordine, DDT, reso, offerta, preventivo, contratto, commessa): stesso contratto, stessi consumatori frontend.
-- [fn_available_actions_offerta](manual/fn_available_actions_offerta.md)
+- [fn_available_actions_offerta](manual/fn_available_actions_offerta.md) — Le capability di un'offerta commerciale, in un unico oggetto: le azioni disponibili nello stato di oggi, con il motivo di quelle spente, che cosa si può ancora modificare, se si può generare un contratto o un ordine, la modalità del PDF e la nota di stato. Il dettaglio dell'offerta la trasporta così com'è, e l'interfaccia non ricalcola nessuna regola di stato. Un'offerta che non esiste dà un risultato vuoto, che il backend traduce in «non trovata».
 - [fn_available_actions_ordine](manual/fn_available_actions_ordine.md)
 - [fn_available_actions_preventivo](manual/fn_available_actions_preventivo.md)
 - [fn_available_actions_reso](manual/fn_available_actions_reso.md) — (rev 2026-07-13)
 - [fn_available_actions_rettifica](manual/fn_available_actions_rettifica.md) — (scritta il 22-09-2026)
 - [fn_azzera_tentativi_credenziale](manual/fn_azzera_tentativi_credenziale.md) — (scritta il 25-09-2026)
 - [fn_blocca_credenziale](manual/fn_blocca_credenziale.md) — (scritta il 25-09-2026)
+- [fn_canale_log_stringa](manual/fn_canale_log_stringa.md) — Dice se il **canale di log fuori transazione** (la connessione `dblink` dei registri) è acceso, e con quale stringa di connessione: restituisce la stringa se il canale è acceso, `NULL` se è spento o non configurato. È la regola unica per chi deve scrivere sul canale.
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
 - [fn_categoria_accesso](manual/fn_categoria_accesso.md)
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
@@ -61,12 +62,12 @@ search:
 - [fn_check_lotto_fatture_pre_fiscali](manual/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 04-08-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
 - [fn_check_lotto_riportabile_a_draft](manual/fn_check_lotto_riportabile_a_draft.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono il ritorno in bozza** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando il ritorno è lecito.
 - [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
-- [fn_check_ordine_annullabile](manual/fn_check_ordine_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-15)
-- [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_check_ordine_annullabile](manual/fn_check_ordine_annullabile.md) — Elenca i motivi che impediscono di **annullare** un ordine: merce già uscita con una bolla figlia viva, oppure righe di commessa già `EMESSA`. Un elenco vuoto vuol dire che l'annullamento è lecito.
+- [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-11-03 — il motivo dei soli oneri · funzione nata il 2026-08-29)
 - [fn_check_ordine_data_consegna_confermata](manual/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_preventivo_accettabile](manual/fn_check_preventivo_accettabile.md)
-- [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
+- [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — Elenca i motivi che impediscono di **annullare** un preventivo: un ordine vivo già nato da esso, oppure righe già **emesse** in commessa. È la sede unica della regola: la leggono il guard dell'annullo, la porta dei passaggi di stato e la capability del preventivo.
 - [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-10-31 — MOTIVO 4, la validità già finita; rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
 - [fn_check_prezzi_autorizzati](manual/fn_check_prezzi_autorizzati.md) — (nata il 2026-09-24 — `20260924-20`)
 - [fn_check_prezzi_in_attesa](manual/fn_check_prezzi_in_attesa.md) — (nata il 2026-09-24 — `20260924-33`)
@@ -76,7 +77,7 @@ search:
 - [fn_check_riga_magazzino](manual/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_rinuncia_reversibile](manual/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_scadenza_di_fattura](manual/fn_check_scadenza_di_fattura.md) — (rev 2026-08-22)
-- [fn_check_sorgente_chiudibile](manual/fn_check_sorgente_chiudibile.md) — (latest review 26-08-2026)
+- [fn_check_sorgente_chiudibile](manual/fn_check_sorgente_chiudibile.md) — Elenca i **motivi che impediscono di chiudere** (annullare) un documento che ha spinto righe in commessa. Funzione **pura**: non scrive e non solleva errori di dominio; ritorna un elenco vuoto quando il documento si può chiudere.
 - [fn_check_totp_recovery_hash](manual/fn_check_totp_recovery_hash.md) — (scritta il 29-09-2026)
 - [fn_check_ultimo_super_admin_attivo](manual/fn_check_ultimo_super_admin_attivo.md)
 - [fn_check_user_can_create_ba](manual/fn_check_user_can_create_ba.md)
@@ -88,6 +89,7 @@ search:
 - [fn_check_versione_listino_eliminabile](manual/fn_check_versione_listino_eliminabile.md)
 - [fn_cliente_dal_billing_account](manual/fn_cliente_dal_billing_account.md) — **Il cliente e la utility di un documento sono quelli del suo billing account.**
 - [fn_clone_catasto_from_parent_by_istanza](manual/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
+- [fn_codice_normalizzato](manual/fn_codice_normalizzato.md) — È la **forma di un codice dell'operatore**, scritta in un posto solo: senza spazi ai bordi e in maiuscolo. La usano:
 - [fn_crea_utente_tecnico](manual/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
 - [fn_credenziale_ha_vesti](manual/fn_credenziale_ha_vesti.md) — (scritta il 06-10-2026)
 - [fn_credenziali](manual/fn_credenziali.md)
@@ -111,7 +113,7 @@ search:
 - [fn_doc_stato_modello](manual/fn_doc_stato_modello.md)
 - [fn_doc_testata_in_stato](manual/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](manual/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
-- [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
+- [fn_ensure_logconn](manual/fn_ensure_logconn.md) — Apre la connessione `dblink` persistente di nome **`logconn`** verso il canale di log, se il canale è acceso e la connessione non è già aperta. Su quella connessione i registri fuori transazione scrivono righe che sopravvivono all'annullamento della transazione di chi le scrive.
 - [fn_esigibilita_iva](manual/fn_esigibilita_iva.md)
 - [fn_esigibilita_iva_documento](manual/fn_esigibilita_iva_documento.md)
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
@@ -122,6 +124,7 @@ search:
 - [fn_get_ba_emittente_sr_id_installazione](manual/fn_get_ba_emittente_sr_id_installazione.md) — (latest review 10-10-26)
 - [fn_get_ba_id_da_coppia](manual/fn_get_ba_id_da_coppia.md) — (nata il 2026-10-21, `20261021-24`)
 - [fn_get_catasto_source_by_istanza](manual/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
+- [fn_get_contabile_stato_origine](manual/fn_get_contabile_stato_origine.md) — Risponde lo **stato** e l'**origine** di una distinta contabile, letti fuori dalla row security. È il building block dei guard delle righe contabili, che devono giudicare la distinta anche quando chi scrive la riga non la vede.
 - [fn_get_contatti](manual/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 - [fn_get_contatto_default](manual/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](manual/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
@@ -153,7 +156,7 @@ search:
 - [fn_get_sistemazione_di_contabile](manual/fn_get_sistemazione_di_contabile.md) — (rev 2026-08-22)
 - [fn_get_snapshot_as_of](manual/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
 - [fn_get_soggetto_dati_by_ruolo](manual/fn_get_soggetto_dati_by_ruolo.md) — * **Aggregazione trasversale**: combina in un unico record le informazioni che altrimenti richiederebbero join multipli su 8 tabelle (soggetti_ruoli, soggetti, tipi_ruoli, tipi_soggetto_dettaglio, tipi_soggetto, titoli_cortesia, dati_societari, forme_giuridiche, province).
-- [fn_get_sorgente_emittente_sr_id](manual/fn_get_sorgente_emittente_sr_id.md) — (latest review 26-08-26)
+- [fn_get_sorgente_emittente_sr_id](manual/fn_get_sorgente_emittente_sr_id.md) — Dato un documento indicato con le colonne della provenienza (il tipo e la chiave del documento, `sorgente_id` oppure `sorgente_uid`), risponde alla domanda **«chi lo emette?»**, nella convenzione del soggetto-ruolo dell'emittente.
 - [fn_get_stato_push_segment](manual/fn_get_stato_push_segment.md) — (creata 2026-07-19 — brief-db-push-commessa-gia-inviato §4b, rilievo ORD0000227)
 - [fn_get_stato_testata_documento](manual/fn_get_stato_testata_documento.md) — **Rispondere a una domanda sola: la testata di questo documento esiste ancora, e in che stato è?**
 - [fn_get_stradario](manual/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
@@ -199,7 +202,8 @@ search:
 - [fn_norm_testo](manual/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](manual/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_notify_permessi_catalogo](manual/fn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
-- [fn_pgtap_emittente_operatore](manual/fn_pgtap_emittente_operatore.md) — (rev 2026-08-21)
+- [fn_parameter_fk_surrogate_regola](manual/fn_parameter_fk_surrogate_regola.md) — Dice quale regola di `config.parameter_fk_surrogate` governa un codice di parametro, e ne restituisce l'id: al massimo una. Vuoto (`NULL`) vuol dire che nessuna regola lo governa, e il parametro non è soggetto alla verifica.
+- [fn_pgtap_emittente_operatore](manual/fn_pgtap_emittente_operatore.md) — Restituisce l'**emittente fiscale su cui l'operatore del contesto può scrivere**.
 - [fn_pgtap_emittente_sr_operatore](manual/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_set_contesto_operatore](manual/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
 - [fn_predicato_soggetto_ruolo_visibile](manual/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)
@@ -208,14 +212,16 @@ search:
 - [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
 - [fn_resolve_codice_postale](manual/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_controparte_sr_id](manual/fn_resolve_controparte_sr_id.md) — (nata il 2026-10-21, `20261021-30`)
-- [fn_resolve_emittente_fiscale_id](manual/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
+- [fn_resolve_emittente_fiscale_id](manual/fn_resolve_emittente_fiscale_id.md) — Risponde a **una** domanda di fatto, *«di chi è questa riga?»*, **fuori dalla row security**: dato un modo e un valore, restituisce l'id dell'emittente fiscale, oppure `NULL` se il riferimento non porta a nessun emittente.
 - [fn_resolve_emittente_for_user](manual/fn_resolve_emittente_for_user.md)
+- [fn_resolve_emittente_sr_id](manual/fn_resolve_emittente_sr_id.md) — La stessa domanda del gemello fiscale, *«di chi è questa riga?»*, **fuori dalla row security**, con la risposta nell'altra convenzione: il **soggetto-ruolo** dell'emittente, oppure `NULL` se il riferimento non porta a nessun emittente. Il doppio binario fra id dell'emittente fiscale e soggetto-ruolo è una scelta dichiarata del progetto.
 - [fn_resolve_indirizzo_documento](manual/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](manual/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](manual/fn_resolve_livello_oggetto.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_ricalcola_prezzo_padre_da_componenti](manual/fn_ricalcola_prezzo_padre_da_componenti.md)
 - [fn_sblocca_credenziale](manual/fn_sblocca_credenziale.md) — (scritta il 25-09-2026)
 - [fn_scope_ba_ownership](manual/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
+- [fn_scope_coda_lavori_perimetro](manual/fn_scope_coda_lavori_perimetro.md) — **Chi guarda può vedere questo lavoro della coda?** È la regola della policy `rls_coda_lavori_ef_perimetro` su `dbops.coda_lavori`, e ne è la sede unica:
 - [fn_scope_ef_perimetro](manual/fn_scope_ef_perimetro.md) — (nata il 2026-10-18; firma attuale da `20261018-24`)
 - [fn_scope_ef_whitelist](manual/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
 - [fn_scope_ef_whitelist_via_asset](manual/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
@@ -241,8 +247,8 @@ search:
 - [fn_search_stradario_generale](manual/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
 - [fn_snapshot_indirizzo](manual/fn_snapshot_indirizzo.md)
 - [fn_snapshot_indirizzo_soggetto](manual/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
-- [fn_sorgente_chiave_id](manual/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
-- [fn_sorgente_chiave_uuid](manual/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
+- [fn_sorgente_chiave_id](manual/fn_sorgente_chiave_id.md) — Il lettore della **forma canonica** di una chiave di documento scritta come testo, per i tipi riconosciuti dall'**id**: riporta il testo al suo tipo intero, se è scritto esattamente come lo scrive il database, e altrimenti risponde vuoto.
+- [fn_sorgente_chiave_uuid](manual/fn_sorgente_chiave_uuid.md) — Il lettore della **forma canonica** di una chiave di documento scritta come testo, per i tipi riconosciuti dall'**uid**: riporta il testo al suo tipo uuid, se è scritto esattamente come lo scrive il database, e altrimenti risponde vuoto.
 - [fn_sqlstate_di_ambiente](manual/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
 - [fn_stato_abortito_id](manual/fn_stato_abortito_id.md)
 - [fn_stato_accettazione_id](manual/fn_stato_accettazione_id.md)
@@ -272,16 +278,17 @@ search:
 - [log](manual/log.md) — (rev 2026-08-21)
 - [trgfn_audit_data_user_generic](manual/trgfn_audit_data_user_generic.md) — * **Audit automatico su INSERT e UPDATE**   Assicura che ogni inserimento e modifica sia registrato con timestamp (`data_update`) e utente reale (`user_update` / `user_insert`). * **Centralizzare la logica di audit**   Un'unica trigger function per tutte le tabelle, evitando duplicazione di logica. * **Tracciare l'utente reale (JWT)**   Utilizza la GUC `app.jwt_user` impostata dal middleware Django per registrare   l'utente che ha effettuato la chiamata API, non il ruolo DB della connessione.
 - [trgfn_canale_origine_immutable](manual/trgfn_canale_origine_immutable.md) — (latest review 20-04-2026)
+- [trgfn_codice_maiuscolo](manual/trgfn_codice_maiuscolo.md) — Salva il codice di una riga nella forma di [script.fn_codice_normalizzato](/dbzero/script/manual/fn_codice_normalizzato): **in maiuscolo e senza spazi ai bordi**. Un codice che l'operatore digita è un identificativo e non distingue le maiuscole: `VITE-M8` e `vite-m8` sono lo stesso articolo, e `straße` si salva `STRASSE`. Con il valore normalizzato, l'indice `UNIQUE` che la colonna ha già diventa un'unicità senza distinzione di maiuscole, e nessuna ricerca deve ripetere la formula.
 - [trgfn_componenti_calcola_quantita](manual/trgfn_componenti_calcola_quantita.md) — - **Correttezza automatica**: il BE non deve calcolare `quantita` prima dell'INSERT — la invia come placeholder (o come valore calcolato) e il trigger la sovrascrive con il valore corretto. - **Defense-in-depth**: se il BE invia una quantita inconsistente (bug, refactoring, race condition), il trigger la corregge prima che la riga venga persistita. - **Complemento a `propaga_qta`**: `calcola_quantita` gestisce il caso INSERT/UPDATE diretto; `propaga_qta` gestisce il caso aggiornamento della quantita padre su figli già esistenti.
 - [trgfn_componenti_check_prezzo_obbligatorio](manual/trgfn_componenti_check_prezzo_obbligatorio.md)
-- [trgfn_componenti_guard_coerenza_bom](manual/trgfn_componenti_guard_coerenza_bom.md) — Garantisce l'integrità del modello BoM unificato a livello di trigger DB, indipendentemente dal layer BE che chiama l'INSERT. I 4 check bloccano stati inconsistenti che potrebbero nascere da refactoring BE, chiamate API dirette o seed dati. Il guard su `esposto_in_fattura` (guard 4 originale) è stato rimosso con il modello unificato: tutti i componenti attivi generano righe, indipendentemente dal flag di presentazione fattura.
+- [trgfn_componenti_guard_coerenza_bom](manual/trgfn_componenti_guard_coerenza_bom.md) — La trigger function `script.trgfn_componenti_guard_coerenza_bom` garantisce che ogni riga componente di un documento di vendita corrisponda a una voce legittima e valida della distinta base (BoM) dell'articolo della riga padre.
 - [trgfn_componenti_guard_obbligatorio](manual/trgfn_componenti_guard_obbligatorio.md)
 - [trgfn_componenti_guard_pending](manual/trgfn_componenti_guard_pending.md) — Quando un componente ha `stato_approvazione_prezzo = 'PENDING'` (richiesta L3 in attesa di esito), è necessario garantire che i dati su cui si basa la richiesta di approvazione non vengano modificati fino alla risoluzione.
 - [trgfn_componenti_propaga_qta](manual/trgfn_componenti_propaga_qta.md) — Mantiene la quantita dei componenti allineata alla quantita della riga padre in tempo reale. La quantita di un componente non è un valore libero — è sempre derivata dalla quantita padre moltiplicata per il coefficiente di BoM.
 - [trgfn_componenti_ricalcola_padre](manual/trgfn_componenti_ricalcola_padre.md) — Mantiene il prezzo della riga padre composita CASO A sempre coerente con i prezzi dei suoi componenti. Il prezzo padre è **derivato, non inserito direttamente**: qualsiasi modifica (INSERT, UPDATE, DELETE) a un componente propaga automaticamente il ricalcolo.
 - [trgfn_config_sistema_codici_sync_gen_codice](manual/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_default_emittente_fiscale](manual/trgfn_default_emittente_fiscale.md) — > Brief: `brief-db-emittente-di-default-un-bb-solo` (decisione di Tid, 2026-09-15). > ChangeSet `20260915-36` (la funzione), `-37 … -40` (le quattro copie di vendite > ritirate), `-42 … -46` (i sette montaggi nuovi).
-- [trgfn_delete_block_by_guc](manual/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
+- [trgfn_delete_block_by_guc](manual/trgfn_delete_block_by_guc.md) — La funzione trigger **generica** del blocco delle cancellazioni: rifiuta il `DELETE` di una riga, salvo che la sessione abbia acceso un interruttore di manutenzione (una **GUC**). Il framework la monta sulle tabelle di `dbops.automation_delete_block`, con un trigger `BEFORE DELETE` per riga.
 - [trgfn_doc_guard_emittente_ba](manual/trgfn_doc_guard_emittente_ba.md) — **Un documento di vendita è emesso dall'azienda del suo cliente.**
 - [trgfn_doc_guard_listino_con_righe](manual/trgfn_doc_guard_listino_con_righe.md) — (nato il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4)
 - [trgfn_doc_righe_guard_data_consegna](manual/trgfn_doc_righe_guard_data_consegna.md) — (nato il 2026-10-13, dal collaudo)
@@ -289,12 +296,10 @@ search:
 - [trgfn_doc_stato_solo_dal_verbo](manual/trgfn_doc_stato_solo_dal_verbo.md)
 - [trgfn_doc_testata_guard_data_consegna_righe](manual/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_emittente_scope](manual/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
-- [trgfn_guard_sorgente_polimorfa_testuale](manual/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
-- [trgfn_guard_sorgente_polimorfa_tipizzata](manual/trgfn_guard_sorgente_polimorfa_tipizzata.md) — Valida la **coerenza dei riferimenti di sorgente** per le tabelle che adottano il **modello A — colonne tipizzate alternative**:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](manual/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.
 - [trgfn_listini_righe_comp_guard_coerenza_bom](manual/trgfn_listini_righe_comp_guard_coerenza_bom.md)
 - [trgfn_lock_columns](manual/trgfn_lock_columns.md) — -  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
-- [trgfn_note_validate_generic](manual/trgfn_note_validate_generic.md) — La trigger function `script.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
+- [trgfn_note_validate_generic](manual/trgfn_note_validate_generic.md) — La trigger function `script.trgfn_note_validate_generic` valida le note ancorate a una riga di documento (`anchor_tipo = 'RIGA'`): la riga indicata da `target_riga_id` deve appartenere davvero alla testata indicata da `target_id`.
 - [trgfn_notify_permessi_catalogo](manual/trgfn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
 - [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](manual/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
@@ -312,13 +317,13 @@ search:
 
 ## 🔍 Views (manuale)
 - [vw_audit_sources](manual/vw_audit_sources.md)
-- [vw_giornale_entita](manual/vw_giornale_entita.md)
+- [vw_giornale_entita](manual/vw_giornale_entita.md) — La vista `script.vw_giornale_entita` risponde a una domanda sola: «che cosa è successo a questa entità?», mettendo in fila cronologica, con le stesse colonne, le righe di quattro registri che ne raccontano un pezzo ciascuno.
 - [vw_indirizzo_completo](manual/vw_indirizzo_completo.md) — * **Denormalizzazione per letture rapide**: aggregare in un’unica view i dati di stradario, comune, provincia, codice postale e via, semplificando le query di selezione degli indirizzi. * **Pulizia e consistenza**: fornire campi già formattati e pronti per essere utilizzati nelle normalizzazioni e nelle funzionalità GIS. * **Riutilizzabilità**: rendere disponibile un’unica sorgente per join di indirizzi completi, evitando duplicazione di codice SQL.
 - [vw_ita_province_regioni](manual/vw_ita_province_regioni.md) — La vista `script.vw_ita_province_regioni` fornisce una **mappatura completa** tra province italiane, eventuali province accisa associate, regioni e stato di appartenenza, includendo i codici ISTAT e altre informazioni estratte dal campo JSON `extra_country`.
 - [vw_lotto_documento_righe](manual/vw_lotto_documento_righe.md) — (latest review 2026-09-08)
 - [vw_override_operatore_area](manual/vw_override_operatore_area.md) — (scritta il 06-10-2026)
-- [vw_pratica_doc_sorgente](manual/vw_pratica_doc_sorgente.md) — (latest review 2026-09-07) `script.vw_pratica_doc_sorgente` risolve, **per ogni pratica**, *quale documento* rappresenta lo stato vivo della pratica, e ne proietta il descrittore normalizzato (brief-db-proiezione-stato-dominio roll-out, deliverable D3b). Restituisce **una riga per `pratica_id`**: il documento **più vivo** tra tutti i link della pratica (ROOT + COLLEGATO) in `pratiche.pratiche_sorgenti`, con il descrittore letto da `script.vw_stato_sorgente`.
+- [vw_pratica_doc_sorgente](manual/vw_pratica_doc_sorgente.md) — Per ogni pratica, il documento che ne rappresenta lo stato vivo, con il suo descrittore normalizzato: una riga per pratica, il documento **più vivo** fra tutti i suoi collegamenti (`ROOT` e `COLLEGATO`) in `pratiche.pratiche_sorgenti`, con fase, esito e flag terminale letti da `script.vw_stato_sorgente`.
 - [vw_stati_doc_ddt_merce_partita](manual/vw_stati_doc_ddt_merce_partita.md) — (latest review 2026-10-12)
 - [vw_stati_estesi](manual/vw_stati_estesi.md) — La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
-- [vw_stato_sorgente](manual/vw_stato_sorgente.md) — (latest review 01-07-2026) `script.vw_stato_sorgente` è la **union dei resolver di dominio** della proiezione stato (brief-db-proiezione-stato-dominio, deliverable D3): è l'**unica superficie di dispatch** — niente `resolver_key`, niente CASE statico. Un tipo sorgente senza ramo semplicemente **non ha righe** = non risolto: il wrapper `pratiche.fn_stato_sorgente` degrada a `UNKNOWN` e il milestone resta manuale come oggi.
+- [vw_stato_sorgente](manual/vw_stato_sorgente.md) — Lo stato di un documento nel vocabolario comune: la union dei resolver di dominio, una riga per documento con fase, esito e flag terminale. È l'**unica superficie** da cui il motore delle pratiche legge lo stato di un documento: nessun selettore di resolver, nessun ramo scritto nel motore.
 - [vw_stradario_esteso](manual/vw_stradario_esteso.md) — * **Aggregazione logica**: unire in un’unica sorgente i dati di via, toponomastica e stato, evitando join ripetuti nei client e nelle applicazioni. * **Pulizia dati**: fornire alias chiari (`id_via`, `id_toponomastica`, `tipo_toponimo`, `sigla_stato`, `nome_strada`) per facilitare l’interpretazione dei risultati. * **Performance**: ridurre il carico di join runtime raggruppando più tabelle in un’unica view materializzata (se necessario).

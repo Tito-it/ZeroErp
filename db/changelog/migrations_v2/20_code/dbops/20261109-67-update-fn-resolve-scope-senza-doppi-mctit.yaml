@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_resolve_scope: gli schemi senza doppi e senza spazi (D13).
+#   Brief: brief-db-revisione-dbops, giro 10b (§26).
+#
+#   array_agg(schema_name) sul registro dell'ambito restituiva uno schema per ogni
+#   sua riga (dbops sette volte), e la lista del chiamante si filtrava con btrim ma
+#   tornava non pulita. Corpo di partenza dal catalogo dello scratch (2026-11-08);
+#   rollback = corpo e COMMENT di prima (COMMENT assente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-67-update-fn-resolve-scope-senza-doppi-mctit.yaml
+
+  - changeSet:
+      id: 20261109-67-update-fn-resolve-scope-senza-doppi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_resolve_scope: gli schemi senza doppi e senza spazi. Brief: brief-db-revisione-dbops, giro 10b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_resolve_scope(text[])')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_resolve_scope(p_schemas text[])
+               RETURNS text[]
+               LANGUAGE plpgsql
+              AS $function$
+                 DECLARE
+                   v_schemas text[];
+                 BEGIN
+                   -- 1) Se è stato passato p_schemas, pulisci:
+                   IF p_schemas IS NOT NULL THEN
+                     SELECT array_agg(DISTINCT btrim(s))
+                       INTO v_schemas
+                     FROM unnest(p_schemas) AS t(s)
+                     WHERE nullif(btrim(s),'') IS NOT NULL       -- elimina ''/spazi
+                       AND lower(btrim(s)) <> '*all';            -- '*all' = chiedi fallback
+
+                     IF v_schemas IS NOT NULL AND array_length(v_schemas,1) > 0 THEN
+                       RETURN v_schemas;  -- lista esplicita pulita
+                     END IF;
+                     -- altrimenti prosegui a leggere scope/fallback
+                   END IF;
+
+                   -- 2) Prova da automation_scope (se esiste)
+                   IF EXISTS (
+                     SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                     WHERE n.nspname='dbops' AND c.relname='automation_scope' AND c.relkind='r'
+                   ) THEN
+                     SELECT array_agg(DISTINCT btrim(schema_name))
+                       INTO v_schemas
+                     FROM dbops.automation_scope;
+                   END IF;
+
+                   -- 3) Fallback se assente o vuoto: tutti gli schemi “user” (tranne storico)
+                   IF v_schemas IS NULL OR array_length(v_schemas,1) IS NULL THEN
+                     SELECT array_agg(nspname) INTO v_schemas
+                     FROM pg_namespace
+                     WHERE nspname NOT LIKE 'pg_%'
+                       AND nspname <> 'information_schema'
+                       AND nspname <> 'storico';
+                   END IF;
+
+                   RETURN v_schemas;
+                 END; $function$;
+
+              COMMENT ON FUNCTION dbops.fn_resolve_scope(text[]) IS
+                  'Gli schemi su cui gira una corsa delle automazioni, senza doppi e senza spazi. Con p_schemas la lista del chiamante pulita (voci vuote e *all escluse); se resta vuota, o p_schemas e'' NULL, gli schemi di dbops.automation_scope (uno schema con piu'' righe compare una volta); se il registro e'' vuoto, tutti gli schemi utente tranne storico. Il filtro per tabella dentro uno schema e'' dbops.fn_table_in_scope. Sede unica dell''ambito per i runner: nessuno legge automation_scope da se''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_resolve_scope(p_schemas text[])
+               RETURNS text[]
+               LANGUAGE plpgsql
+              AS $function$
+                 DECLARE
+                   v_schemas text[];
+                 BEGIN
+                   -- 1) Se è stato passato p_schemas, pulisci:
+                   IF p_schemas IS NOT NULL THEN
+                     SELECT array_agg(DISTINCT s)
+                       INTO v_schemas
+                     FROM unnest(p_schemas) AS t(s)
+                     WHERE nullif(btrim(s),'') IS NOT NULL       -- elimina ''/spazi
+                       AND lower(btrim(s)) <> '*all';            -- '*all' = chiedi fallback
+
+                     IF v_schemas IS NOT NULL AND array_length(v_schemas,1) > 0 THEN
+                       RETURN v_schemas;  -- lista esplicita pulita
+                     END IF;
+                     -- altrimenti prosegui a leggere scope/fallback
+                   END IF;
+
+                   -- 2) Prova da automation_scope (se esiste)
+                   IF EXISTS (
+                     SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                     WHERE n.nspname='dbops' AND c.relname='automation_scope' AND c.relkind='r'
+                   ) THEN
+                     SELECT array_agg(schema_name)
+                       INTO v_schemas
+                     FROM dbops.automation_scope;
+                   END IF;
+
+                   -- 3) Fallback se assente o vuoto: tutti gli schemi “user” (tranne storico)
+                   IF v_schemas IS NULL OR array_length(v_schemas,1) IS NULL THEN
+                     SELECT array_agg(nspname) INTO v_schemas
+                     FROM pg_namespace
+                     WHERE nspname NOT LIKE 'pg_%'
+                       AND nspname <> 'information_schema'
+                       AND nspname <> 'storico';
+                   END IF;
+
+                   RETURN v_schemas;
+                 END; $function$;
+
+              COMMENT ON FUNCTION dbops.fn_resolve_scope(text[]) IS NULL;

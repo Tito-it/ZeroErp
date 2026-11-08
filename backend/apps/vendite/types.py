@@ -908,15 +908,6 @@ class PreventivoSmistamentoRow(TypedDict):
     righe_residue: int
 
 
-class PreventivoPraticaRow(TypedDict):
-    pratica_id: int
-    pratica_codice: str | None
-    pratica_descrizione: str | None
-    stato_codice: str
-    stato_descrizione: str
-    ruolo_link: str
-
-
 # ── Offerte commerciali ──
 # Specchio strutturale di Contratto/ContrattoRiga/ContrattoUtility (decisioni
 # §5 analisi-offerta-commerciale + brief DB 2026-05-24 step 1-4 atterrati).

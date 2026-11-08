@@ -41,8 +41,8 @@ class NumeraLottoTests(SimpleTestCase):
 
     # 0. Lotto EMESSA in scope → esegue lo step fino a DEFINITIVA.
     def test_numera_lotto_ok_esegue_step_definitiva(self) -> None:
-        with patch(_VEN_REPO) as VenRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo, \
+        with patch(_VEN_REPO, autospec=True) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             VenRepo.return_value.get_lotto.return_value = {
                 "id": 5, "stato_doc_fiscale_id": 2,
@@ -64,8 +64,8 @@ class NumeraLottoTests(SimpleTestCase):
 
     # 1. Lotto fuori scope o inesistente (get_lotto None) → 404 unificato.
     def test_numera_lotto_fuori_scope_o_inesistente_404(self) -> None:
-        with patch(_VEN_REPO) as VenRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository"), \
+        with patch(_VEN_REPO, autospec=True) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True), \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             VenRepo.return_value.get_lotto.return_value = None
             with self.assertRaises(ServiceError) as ctx:
@@ -76,8 +76,8 @@ class NumeraLottoTests(SimpleTestCase):
 
     # 2. Lotto non in EMESSA (es. DRAFT) → gate fiscale: non numerabile.
     def test_numera_lotto_non_emessa_raises(self) -> None:
-        with patch(_VEN_REPO) as VenRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo, \
+        with patch(_VEN_REPO, autospec=True) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             VenRepo.return_value.get_lotto.return_value = {
                 "id": 5, "stato_doc_fiscale_id": 1,  # DRAFT
@@ -94,8 +94,8 @@ class RistampaLottoTests(SimpleTestCase):
 
     # 3. Lotto DEFINITIVA in scope → accoda le stampe e ritorna il conteggio.
     def test_ristampa_lotto_ok_accoda(self) -> None:
-        with patch(_VEN_REPO) as VenRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+        with patch(_VEN_REPO, autospec=True) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo:
             VenRepo.return_value.get_lotto.return_value = {
                 "id": 5, "stato_doc_fiscale_id": 8,  # DEFINITIVA
             }
@@ -112,8 +112,8 @@ class RistampaLottoTests(SimpleTestCase):
 
     # 4. Lotto fuori scope o inesistente (get_lotto None) → 404, niente accoda.
     def test_ristampa_lotto_fuori_scope_o_inesistente_404(self) -> None:
-        with patch(_VEN_REPO) as VenRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+        with patch(_VEN_REPO, autospec=True) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo:
             VenRepo.return_value.get_lotto.return_value = None
             with self.assertRaises(ServiceError) as ctx:
                 ristampa_lotto(lotto_id=999, auth_user_id=9)
@@ -124,8 +124,8 @@ class RistampaLottoTests(SimpleTestCase):
     # 5. Lotto non DEFINITIVA (es. EMESSA) → gate I-7: niente ristampa (che
     #    numererebbe via backstop), niente accoda.
     def test_ristampa_lotto_non_definitiva_raises(self) -> None:
-        with patch(_VEN_REPO) as VenRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+        with patch(_VEN_REPO, autospec=True) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo:
             VenRepo.return_value.get_lotto.return_value = {
                 "id": 5, "stato_doc_fiscale_id": 2,  # EMESSA
             }
@@ -166,12 +166,10 @@ class EsitiFatturazioneTests(SimpleTestCase):
             },
         ]
         with patch(
-            "apps.core.db.maintenance_repository.MaintenanceRepository"
-        ) as MaintRepo, \
+            "apps.core.db.maintenance_repository.MaintenanceRepository", autospec=True) as MaintRepo, \
              patch(
-                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository"
-             ) as CodaRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository", autospec=True) as CodaRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo:
             CodaRepo.return_value.summary_per_job_type.return_value = []
             MaintRepo.return_value.list_job_summary.return_value = (summary, 2)
             PipeRepo.return_value.count_coda_stampa_per_stato.return_value = {
@@ -227,17 +225,15 @@ class EsitiFatturazioneTests(SimpleTestCase):
     #    mentre si fatturava ogni giorno dall'app).
     def test_esiti_unisce_giri_app_e_batch_marcandone_origine(self) -> None:
         with patch(
-            "apps.core.db.maintenance_repository.MaintenanceRepository"
-        ) as MaintRepo, \
+            "apps.core.db.maintenance_repository.MaintenanceRepository", autospec=True) as MaintRepo, \
              patch(
-                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository"
-             ) as CodaRepo, \
+                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository", autospec=True) as CodaRepo, \
              patch(
                  "apps.core.services.coda_lavori.gestione_service"
-                 ".scope_key_operatore",
-                 return_value="scope-1",
+                 ".operatore_coda",
+                 return_value=9,
              ) as mock_scope, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo:
             CodaRepo.return_value.summary_per_job_type.return_value = [
                 {
                     "jobname": "FATTURAZIONE_GIRO", "total_runs": 13,
@@ -283,11 +279,12 @@ class EsitiFatturazioneTests(SimpleTestCase):
         # (offset completato a ±HH:MM per Safari).
         self.assertEqual(per_origine["app"]["last_run_at"], "2026-07-23T00:43:24+00:00")
         self.assertEqual(per_origine["batch"]["last_run_at"], "2026-06-20T00:31:09+00:00")
-        # I giri dell'app: filtro per competenza DICHIARATA; la scope key del
-        # chiamante serve allo SPLIT, non a filtrare (conteggi complessivi).
+        # I giri dell'app: filtro per competenza DICHIARATA; il chiamante (chi
+        # ha accodato, BE9) serve allo SPLIT, non a filtrare (conteggi
+        # complessivi: quelli che la RLS mostra).
         kwargs = CodaRepo.return_value.summary_per_job_type.call_args.kwargs
         self.assertEqual(kwargs["competenza_mese"], date(2026, 6, 1))
-        self.assertEqual(kwargs["caller_scope_key"], "scope-1")
+        self.assertEqual(kwargs["chiamante"], 9)
         self.assertEqual(
             kwargs["job_types"], ["FATTURAZIONE_GIRO", "FATTURAZIONE_NUMERA"],
         )
@@ -298,12 +295,10 @@ class EsitiFatturazioneTests(SimpleTestCase):
     #    deve produrre zero risultati per un mese che invece ha girato).
     def test_esiti_filtra_per_competenza_normalizzando_al_primo_del_mese(self) -> None:
         with patch(
-            "apps.core.db.maintenance_repository.MaintenanceRepository"
-        ) as MaintRepo, \
+            "apps.core.db.maintenance_repository.MaintenanceRepository", autospec=True) as MaintRepo, \
              patch(
-                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository"
-             ) as CodaRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository", autospec=True) as CodaRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo:
             CodaRepo.return_value.summary_per_job_type.return_value = []
             MaintRepo.return_value.list_job_summary.return_value = ([], 0)
             PipeRepo.return_value.count_coda_stampa_per_stato.return_value = {}
@@ -324,12 +319,10 @@ class EsitiFatturazioneTests(SimpleTestCase):
     #    (giri del mese X + coda di sempre).
     def test_esiti_coda_stampa_filtrata_per_competenza(self) -> None:
         with patch(
-            "apps.core.db.maintenance_repository.MaintenanceRepository"
-        ) as MaintRepo, \
+            "apps.core.db.maintenance_repository.MaintenanceRepository", autospec=True) as MaintRepo, \
              patch(
-                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository"
-             ) as CodaRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository", autospec=True) as CodaRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo:
             CodaRepo.return_value.summary_per_job_type.return_value = []
             MaintRepo.return_value.list_job_summary.return_value = ([], 0)
             PipeRepo.return_value.count_coda_stampa_per_stato.return_value = {
@@ -349,12 +342,10 @@ class EsitiFatturazioneTests(SimpleTestCase):
     #    è il caso "filtro svuotato" per le consultazioni storiche.
     def test_esiti_senza_competenza_coda_non_filtrata(self) -> None:
         with patch(
-            "apps.core.db.maintenance_repository.MaintenanceRepository"
-        ) as MaintRepo, \
+            "apps.core.db.maintenance_repository.MaintenanceRepository", autospec=True) as MaintRepo, \
              patch(
-                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository"
-             ) as CodaRepo, \
-             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+                 "apps.core.services.coda_lavori.repository.CodaLavoriRepository", autospec=True) as CodaRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository", autospec=True) as PipeRepo:
             CodaRepo.return_value.summary_per_job_type.return_value = []
             MaintRepo.return_value.list_job_summary.return_value = ([], 0)
             PipeRepo.return_value.count_coda_stampa_per_stato.return_value = {}

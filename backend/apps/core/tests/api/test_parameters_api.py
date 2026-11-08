@@ -229,7 +229,7 @@ class ParameterSettingsViewTests(TestCase):
     # Scopo: Verifica derivazione automatica `categoria_cliente_id` da BA via
     #        BillingAccountRepository.get_categoria_cliente_id quando il query
     #        param esplicito non e' valorizzato.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(SVC_PATH)
     def test_list_settings_deriva_categoria_da_ba(self, mock_svc_cls, mock_ba_repo_cls):
         from apps.core.api.views_parameters import ParameterSettingsView
@@ -259,7 +259,7 @@ class ParameterSettingsViewTests(TestCase):
     # Scopo: F-6 — BA che non risulta (inesistente, o fuori scope: la RLS di
     #        anagrafiche.billing_account non lo restituisce) → 404
     #        E_ANAG_NOT_FOUND. Prima la categoria restava NULL in silenzio.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(SVC_PATH)
     def test_list_settings_ba_non_risulta_404(self, mock_svc_cls, mock_ba_repo_cls):
         from apps.core.api.views_parameters import ParameterSettingsView
@@ -278,7 +278,7 @@ class ParameterSettingsViewTests(TestCase):
 
     # Scopo: billing_account_id <= 0 → ValueError (400 E_VALIDATION_INPUT),
     #        senza interrogare il BA.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(SVC_PATH)
     def test_list_settings_ba_zero_400(self, mock_svc_cls, mock_ba_repo_cls):
         from apps.core.api.views_parameters import ParameterSettingsView
@@ -312,7 +312,7 @@ class ParameterSettingsViewTests(TestCase):
         mock_svc.list_parameters_for_user.assert_not_called()
 
     # Scopo: Priorita' esplicito > derivato quando entrambi presenti.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(SVC_PATH)
     def test_list_settings_categoria_esplicito_batte_ba(
         self, mock_svc_cls, mock_ba_repo_cls,

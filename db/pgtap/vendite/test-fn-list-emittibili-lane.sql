@@ -98,9 +98,9 @@ CREATE FUNCTION pg_temp.mk_att(
   FROM vendite.fn_upsert_commessa_attivita(
     p_commessa_id                   => p_commessa,
     -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-    p_sorgente_uid => (p_commessa)::text,
-    p_segment_key                   => ('SEG-LANE-' || p_tag || '-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+    p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa) x),
+    p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa) x),
+    p_segment_key                   => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa) x) || ':' || ('SEG-LANE-' || p_tag || '-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar)::varchar,
     p_articolo_id                   => (SELECT articolo_id FROM tmp_refs),
     p_istanza_utility_id            => (SELECT istanza_utility_id FROM tmp_refs),
     p_data_attivita                 => p_comp,
@@ -134,9 +134,9 @@ CREATE FUNCTION pg_temp.mk_att2(
   FROM vendite.fn_upsert_commessa_attivita(
     p_commessa_id                   => p_commessa,
     -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-    p_sorgente_uid => (p_commessa)::text,
-    p_segment_key                   => ('SEG-LANE-' || p_tag || '-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+    p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa) x),
+    p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa) x),
+    p_segment_key                   => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa) x) || ':' || ('SEG-LANE-' || p_tag || '-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar)::varchar,
     p_articolo_id                   => (SELECT articolo_id FROM tmp_refs),
     p_istanza_utility_id            => (SELECT istanza_utility_id FROM tmp_refs2),
     p_data_attivita                 => p_comp,
@@ -377,8 +377,7 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_gruppi AS
 SELECT DISTINCT
-       vendite.fn_build_gruppo_fatturabile_key(
-           ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS k,
+       vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS k,
        ca.commessa_id
   FROM vendite.commesse_attivita ca
  WHERE ca.commessa_id IN ((SELECT commessa_id FROM tmp_a),

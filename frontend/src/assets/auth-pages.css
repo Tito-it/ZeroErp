@@ -78,6 +78,42 @@
   padding-top: 138px;
 }
 
+/* ── Il cerchio si riduce con la finestra (Tid, 2026-11-02) ─────────────────
+   Lo sfondo (`.login-bg`, `object-fit: contain`) segue la finestra, il
+   cerchio era fisso a 390/430px: su un portatile o un telefono restava
+   grande sopra uno sfondo rimpicciolito, e sotto i 390px di larghezza usciva
+   dai bordi. Si riduce a scalini con `zoom`, che rimpicciolisce TUTTO il
+   cerchio insieme — logo, campi, pulsante, link, l'esito sopra i campi.
+   ⛔ Non `width`/`height` in vmin: il padding-top in px che porta i campi al
+   centro del raggio, e i font in rem, resterebbero quelli, e il contenuto
+   uscirebbe dal cerchio. ⛔ Non `transform: scale`: lascia il posto
+   occupato a piena misura, e il cerchio non resta centrato nella pagina.
+   Le soglie di ALTEZZA sono libere (`check-media-soglie` conta le
+   larghezze); quella di larghezza e' `BREAKPOINTS.MOBILE`.
+   ⚠️ Non il rettangolo di «Sicurezza» (`login-card--pagina`): ha altezza
+   libera e la pagina scorre, lo spazio non gli manca. */
+.login-card:not(.login-card--pagina) {
+  zoom: var(--login-card-scala, 1);
+}
+
+@media (max-height: 760px) {
+  .login-page { --login-card-scala: 0.9; }
+}
+
+/* 0.8: il cerchio grande (430px, cambio password) entra in un telefono da
+   360px con un margine (344px). */
+@media (max-width: 767.98px) {
+  .login-page { --login-card-scala: 0.8; }
+}
+
+@media (max-height: 640px) {
+  .login-page { --login-card-scala: 0.8; }
+}
+
+@media (max-height: 500px) {
+  .login-page { --login-card-scala: 0.7; }
+}
+
 .login-logo {
   display: flex;
   justify-content: center;
@@ -304,7 +340,8 @@
 }
 
 .back-link,
-.forgot-link {
+.forgot-link,
+.login-informazioni {
   text-align: center;
   color: #fff;
   font-size: var(--app-font-size-sm);
@@ -320,7 +357,8 @@
 }
 
 .back-link:hover,
-.forgot-link:hover {
+.forgot-link:hover,
+.login-informazioni:hover {
   color: #fff;
   /* Glow effect bianco (stesso colore del testo) al passaggio del mouse.
      Doppio alone a distanze diverse per un bagliore morbido. L'ombra
@@ -328,6 +366,29 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85),
                0 0 10px rgba(255, 255, 255, 0.7),
                0 0 20px rgba(255, 255, 255, 0.45);
+}
+
+/* Il link «Informazioni» (`LinkInformazioni`, AGPL §13): in fondo alla
+   pagina, fuori dal cerchio, sopra lo sfondo; apre il dialog con licenza e
+   sorgente. Colore e ombre sono quelli dei link della card, qui sopra. E' un
+   <button> (apre un dialog, non naviga): fondo, bordo e font del pulsante si
+   azzerano. Nella pagina che scorre (`login-page--scorre`) sta nel padding in
+   basso, cioe' sotto la card e non sopra il contenuto. */
+.login-informazioni {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
+  position: absolute;
+  bottom: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
 }
 
 /* ── Pagina auth LUNGA (SicurezzaView): rettangolo ad altezza libera ────────

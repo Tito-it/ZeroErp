@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Automazione CODICE_MAIUSCOLO — script.trgfn_codice_maiuscolo: il codice di una
+#   riga si salva in upper(btrim(codice)).
+#
+# ── ⭐ PERCHE' (Tid, 2026-11-04) ──────────────────────────────────────
+#   Un codice che l'operatore digita e' un identificativo e non distingue le
+#   maiuscole. Normalizzando il valore salvato, l'indice UNIQUE che c'e' gia'
+#   sulla colonna diventa un'unicita' senza distinzione di maiuscole, e nessun
+#   lettore deve ripetere un upper(): linee-guida-sql §8.5 (colonne
+#   normalizzate, non indici su upper()/lower()).
+#
+# ── ⚠️ TRE SCELTE, e il perche' ──────────────────────────────────────
+#   1. BEFORE INSERT OR UPDATE, SENZA `OF codice` (linee-guida-trigger,
+#      «UPDATE o UPDATE OF»): il codice lo scrivono anche altri trigger BEFORE
+#      — i generatori `a10_gen_codice` lo valorizzano quando arriva vuoto — e
+#      un `OF codice` non scatterebbe sulle loro scritture.
+#   2. Un UPDATE che non CAMBIA il codice non lo tocca. Un salvataggio che
+#      riscrive tutta la riga su un codice gia' salvato non deve diventare una
+#      modifica del codice: sulle tabelle col lucchetto di colonna
+#      (`trgfn_lock_columns`) sarebbe un E_CODICE_NON_MODIFICABILE senza che
+#      l'operatore abbia cambiato niente.
+#   3. Fase a15 (linee-guida-trigger: «derivazioni e normalizzazioni che
+#      vengono dopo i guard»): dopo i generatori a10, cosi' anche un codice
+#      generato si salva normalizzato; prima dell'indice UNIQUE, che giudica
+#      dopo tutti i BEFORE. Il guard a05 di forma di
+#      anagrafiche.emittenti_fiscali normalizza da se' prima di validare, e
+#      resta: parla prima di questo trigger.
+#
+# Non si monta a mano: lo monta dbops.fn_run_automations_codice_maiuscolo
+# (20261104-04) su ogni tabella dell'ambito con la colonna, tranne le eccezioni
+# (dbops.automazione_codice_eccezioni).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261104-02-create-trgfn-codice-maiuscolo-mctit.yaml
+
+  - changeSet:
+      id: 20261104-02-create-trgfn-codice-maiuscolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_codice_maiuscolo(): BEFORE INSERT OR UPDATE, salva NEW.codice in
+        upper(btrim(NEW.codice)); un UPDATE che non cambia il codice non lo tocca. Montato
+        dall'automazione CODICE_MAIUSCOLO (decisione Tid 2026-11-04).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_codice_maiuscolo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il codice di una riga si salva in upper(btrim(codice)):
+                  --   un codice dell'operatore non distingue le maiuscole, e
+                  --   l'indice UNIQUE della colonna lo rende vero.
+                  --   BEFORE INSERT OR UPDATE (senza OF: anche i generatori
+                  --   a10 scrivono il codice). Un UPDATE che non cambia il
+                  --   codice non lo tocca: riscrivere la riga non e' cambiare
+                  --   il codice, e il lucchetto di colonna non deve scattare.
+                  --   Montato dall'automazione CODICE_MAIUSCOLO, fase a15.
+                  -- =========================================================
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.codice IS NOT DISTINCT FROM OLD.codice THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.codice IS NOT NULL THEN
+                      NEW.codice := upper(btrim(NEW.codice));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_codice_maiuscolo() IS
+                  'Trigger function dell''automazione CODICE_MAIUSCOLO (decisione Tid 2026-11-04): salva NEW.codice in upper(btrim(NEW.codice)). Un codice dell''operatore e'' un identificativo e non distingue le maiuscole: col valore normalizzato, l''indice UNIQUE della colonna e'' un''unicita'' senza distinzione di maiuscole e nessun lettore ripete un upper() (linee-guida-sql §8.5). BEFORE INSERT OR UPDATE senza OF, perche'' anche i generatori a10_gen_codice scrivono il codice; fase a15, dopo di loro: anche un codice generato si salva normalizzato. Un UPDATE che non cambia il codice non lo tocca: riscrivere la riga non e'' cambiare il codice, e il lucchetto di colonna (script.trgfn_lock_columns) non deve scattare. NULL resta NULL. Non si monta a mano: lo monta dbops.fn_run_automations_codice_maiuscolo su ogni tabella dell''ambito con la colonna codice, tranne le eccezioni di dbops.automazione_codice_eccezioni.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_codice_maiuscolo();

@@ -89,7 +89,7 @@ class SendEmailTests(TestCase):
 
     # Scopo: Verifica invio email in console mode (DEBUG + smtp_host vuoto).
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_send_email_console_mode(self, MockRepo, mock_settings):
         mock_settings.DEBUG = True
         repo = MockRepo.return_value
@@ -130,7 +130,7 @@ class SendEmailTests(TestCase):
 
     # Scopo: Verifica che template non trovato lanci ServiceError.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_send_email_template_not_found_raises(self, MockRepo, mock_settings):
         mock_settings.DEBUG = True
         repo = MockRepo.return_value
@@ -150,7 +150,7 @@ class SendEmailTests(TestCase):
 
     # Scopo: Verifica che account non trovato lanci ServiceError.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_send_email_account_not_found_raises(self, MockRepo, mock_settings):
         mock_settings.DEBUG = True
         repo = MockRepo.return_value
@@ -175,7 +175,7 @@ class SendEmailTests(TestCase):
 
     # Scopo: Verifica che destinatari_cc venga propagato al log.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_send_email_with_cc(self, MockRepo, mock_settings):
         mock_settings.DEBUG = True
         repo = MockRepo.return_value
@@ -209,7 +209,7 @@ class TestConnectionTests(TestCase):
 
     # Scopo: Verifica che test connessione in console mode ritorni successo.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_console_mode_returns_success(self, MockRepo, mock_settings):
         mock_settings.DEBUG = True
         repo = MockRepo.return_value
@@ -226,7 +226,7 @@ class TestConnectionTests(TestCase):
 
     # Scopo: Account inesistente → 404 col codice dell'account, non il 400
     #        generico `E_EMAIL`: l'id lo sceglie l'amministratore.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_account_inesistente_e_404(self, MockRepo):
         MockRepo.return_value.get_account_with_password.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -237,7 +237,7 @@ class TestConnectionTests(TestCase):
 class ResolveTests(TestCase):
 
     # Scopo: Verifica che resolve_account venga chiamato con il reparto.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_account_fallback(self, MockRepo):
         repo = MockRepo.return_value
         repo.resolve_account.return_value = {"id": 1, "codice": "SISTEMA"}
@@ -247,7 +247,7 @@ class ResolveTests(TestCase):
         repo.resolve_account.assert_called_with(42)
 
     # Scopo: Verifica che resolve_template venga chiamato con tutti i parametri.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_template_fallback(self, MockRepo):
         repo = MockRepo.return_value
         repo.resolve_template.return_value = {"id": 1, "codice": "TEST"}
@@ -305,7 +305,7 @@ class SmtpNonConfiguratoTests(TestCase):
 
     # 13. ⛔ IL CUORE: lo stato scritto e' `FAILED`, non `SENT`, e porta il motivo.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_una_mail_non_spedita_si_registra_FAILED_col_motivo(self, MockRepo, mock_settings):
         mock_settings.DEBUG = False
         repo = MockRepo.return_value
@@ -335,7 +335,7 @@ class SmtpNonConfiguratoTests(TestCase):
     # 14. E non finisce nemmeno nel journal: stamparla direbbe «inviata» a chi
     #     legge i log del servizio.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_la_mail_non_spedita_non_viene_nemmeno_stampata(self, MockRepo, mock_settings):
         mock_settings.DEBUG = False
         repo = MockRepo.return_value
@@ -358,7 +358,7 @@ class SmtpNonConfiguratoTests(TestCase):
     # 15. ⛔ Il verde che ha ingannato una persona: «test connessione OK» su un
     #     account che non poteva spedire niente.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_il_test_connessione_non_risponde_OK_a_chi_non_puo_spedire(self, MockRepo, mock_settings):
         mock_settings.DEBUG = False
         MockRepo.return_value.get_account_with_password.return_value = _account(
@@ -374,7 +374,7 @@ class SmtpNonConfiguratoTests(TestCase):
 
     # 16. Ritentare contro un host che non esiste non e' un tentativo.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_il_rilancio_non_ritenta_contro_un_account_non_configurato(self, MockRepo, mock_settings):
         mock_settings.DEBUG = False
         repo = MockRepo.return_value
@@ -421,7 +421,7 @@ class AutoreEAllegatiTests(TestCase):
     #     `chk_email_log_operatore_creatore`). Fino al 2026-09-25 non arrivava
     #     nessuna delle due.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_send_raw_scrive_autore_ed_emittente_sul_log(self, MockRepo, mock_settings):
         mock_settings.DEBUG = True
         repo = MockRepo.return_value
@@ -436,7 +436,7 @@ class AutoreEAllegatiTests(TestCase):
         self.assertEqual(kwargs["creato_da_user_id"], 42)
 
     # 19. ⛔ Fino al 2026-09-25 la mail partiva SENZA gli allegati salvati.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_la_mail_parte_con_gli_allegati(self, MockRepo):
         import tempfile
         from pathlib import Path
@@ -454,7 +454,7 @@ class AutoreEAllegatiTests(TestCase):
         self.assertIn("application/pdf", messaggio)
 
     # 20. Un allegato che non si legge: la mail NON parte senza, e il log lo dice.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_un_allegato_che_non_si_legge_ferma_l_invio(self, MockRepo):
         import tempfile
 
@@ -471,7 +471,7 @@ class AutoreEAllegatiTests(TestCase):
     # 21. Il rilancio di una mail fallita: gli allegati sono gia' agganciati al
     #     LOG, e da li' si rileggono.
     @patch(_SETTINGS)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_il_rilancio_rilegge_gli_allegati_dal_log(self, MockRepo, mock_settings):
         mock_settings.DEBUG = False
         repo = MockRepo.return_value

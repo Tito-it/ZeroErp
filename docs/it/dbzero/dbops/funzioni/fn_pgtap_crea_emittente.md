@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_crea_emittente.md" %}
 # ⚙️ Funzione `fn_pgtap_crea_emittente`
 
 ```sql
@@ -76,14 +77,14 @@ BEGIN
       FROM anagrafiche.fn_crea_emittente_fiscale(
                v_soggetto_id, v_codice,
                jsonb_build_object('valuta_id',
-                   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1))) AS e;
+                   dbops.fn_pgtap_valuta())) AS e;
 
     RETURN QUERY SELECT v_ef_id, v_codice, v_sr_id, v_soggetto_id;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_emittente(p_sigla character varying)
-IS 'Helper di fixture pgTAP: crea un emittente fiscale nuovo — soggetto persona giuridica, ruolo EF, riga in anagrafiche.emittenti_fiscali con una sigla PGTRnnnn libera e la VALUTA valorizzata. ⚠️ La valuta non e'' un di piu'': vendite.fn_get_valuta_id risolve «BA -> emittente -> gestore», e su un database ricostruito dai changelog nessuno dei tre e'' valorizzato — il primo documento morirebbe su E_CONFIG_MANCANTE. Da sola NON basta a far vedere l''emittente a un test: per quello serve dbops.fn_pgtap_crea_emittente_operatore. Rev 20260909-32. Rev 2026-10-17: la riga di emittenti_fiscali la scrive il verbo anagrafiche.fn_crea_emittente_fiscale (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1); firma e ritorno invariati.';
+IS 'Helper di fixture pgTAP: crea un emittente fiscale nuovo — soggetto persona giuridica, ruolo EF, riga in anagrafiche.emittenti_fiscali con una sigla PGTRnnnn libera e la VALUTA valorizzata. ⚠️ La valuta non e'' un di piu'': vendite.fn_get_valuta_id risolve «BA -> emittente -> gestore», e su un database ricostruito dai changelog nessuno dei tre e'' valorizzato — il primo documento morirebbe su E_CONFIG_MANCANTE. Da sola NON basta a far vedere l''emittente a un test: per quello serve dbops.fn_pgtap_crea_emittente_operatore. La riga di emittenti_fiscali la scrive il verbo anagrafiche.fn_crea_emittente_fiscale; la valuta e'' quella di dbops.fn_pgtap_valuta.';
 ```
 
 </div>

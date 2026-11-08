@@ -19,6 +19,7 @@ import { useI18n } from 'vue-i18n'
 import { usePasswordValidation } from '../composables/usePasswordValidation'
 import { extractApiError } from '../utils/apiError'
 import { validaTokenAttivazione, confermaAttivazione } from '../api/attivazioneVeste'
+import LinkInformazioni from './LinkInformazioni.vue'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 
@@ -193,6 +194,7 @@ async function handleActivation() {
         />
       </form>
     </div>
+    <LinkInformazioni />
   </div>
 </template>
 

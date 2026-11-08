@@ -1,6 +1,6 @@
 # Linee guida Trigger (PostgreSQL + Liquibase)
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: chi scrive o modifica un trigger o una funzione trigger
 >
@@ -18,7 +18,7 @@ chiamano, in che ordine scattano, su quali eventi, e i casi in cui un trigger sc
 carta lascia passare quello che doveva fermare.
 
 Prima di scrivere un trigger, una domanda: **lo genera già il framework?** Audit, `tx_id`, storico,
-ATTIVO, lucchetti di colonna, regola del periodo li monta il giro delle automazioni, dalla
+ATTIVO, lucchetti di colonna, regola del periodo, codice in maiuscolo li monta il giro delle automazioni, dalla
 struttura della tabella. Quelli non si scrivono a mano (vedi [I trigger generati](#i-trigger-generati)).
 
 ---
@@ -87,7 +87,10 @@ Riceve le differenze per tabella come **argomenti del trigger** (`TG_ARGV`).
 
 ⚠️ Chi legge quegli argomenti da fuori (una capability, un presidio che interpreta `pg_trigger.tgargs`)
 non ricopia la loro grammatica: la estrae in una funzione condivisa che usano sia il trigger sia il
-lettore. `TG_ARGV` parte da 0, `dbops.fn_trigger_argomenti` da 1.
+lettore (per la famiglia ATTIVO, `dbops.fn_trigger_attivo_argomenti`). `TG_ARGV` parte da 0,
+`dbops.fn_trigger_argomenti` da 1: la funzione condivisa rinumera, e nessun chiamante conta
+posizioni. Gli argomenti si leggono per nome e senza valori di riserva: un ripiego che indovina
+una colonna dà una colonna sbagliata che non si vede.
 
 Check e guard — che cosa restituisce una `fn_check_*` e che cosa solleva una `fn_guard_*` — e come si
 solleva un errore sono in [Linee guida SQL, §5](linee-guida-sql.md).
@@ -162,6 +165,16 @@ una colonna la deriva il database e da fuori non si scrive, servono due trigger:
   asseriva il vincolo diventa rosso. È un miglioramento — il guard dice i valori ammessi, il CHECK no
   — ma va dichiarato, e il CHECK **resta**, con un'asserzione sua sulla sua esistenza: presidia le
   strade che il trigger non percorre.
+* ⛔ **Un guard che decide su una riga correlata non la legge sotto la row level security di chi
+  scrive.** Una funzione trigger gira con l'identità di chi scrive: il padre, il figlio, il
+  documento collegato fuori dal suo perimetro risultano assenti, e il guard decide su un'assenza
+  che non c'è — rifiuta per la ragione sbagliata, o lascia passare. In un trigger differito conta
+  per di più il contesto di chi chiude la transazione. La lettura va in una funzione
+  `SECURITY DEFINER` del proprietario, con `search_path` fissato, che risponde il minimo che
+  serve. ⛔ Se la funzione esegue SQL dinamico **non riceve nomi di tabelle o colonne**: riceve il
+  trigger (tabella e nome) e legge gli argomenti dal montaggio, e risponde solo per tabelle del
+  proprietario — altrimenti chiunque la chiami legge qualunque colonna. Esempio:
+  `dbops.fn_trigger_padre_stato` e `dbops.fn_trigger_figlie_presenti`, le letture dei guard ATTIVO.
 * ⛔ **Un trigger che scrive una colonna lucchettata non la «difende».** Riassegnare
   `NEW.colonna := OLD.colonna` «per sicurezza» annulla anche le scritture che passano dalla porta del
   lucchetto (`zeroerp.allow_lock_columns_override`), e lo fa senza errore. A parità di condizione
@@ -192,7 +205,8 @@ building block» dopo le sue scritture; il trigger va bene sui **cambi** (`AFTER
 
 ## I trigger generati
 
-I trigger di audit, `tx_id`, storico, ATTIVO, lucchetti di colonna e regola del periodo li monta il
+I trigger di audit, `tx_id`, storico, ATTIVO, lucchetti di colonna, regola del periodo e codice in
+maiuscolo li monta il
 [framework di automazione](/guide/automazione-db), leggendo la struttura delle tabelle. I loro nomi
 seguono i template del framework, non la regola delle fasi qui sopra
 (`trg_<tabella>_audit_data_user_upd`, `trg_<tabella>_gen_tx_id_ins_upd`,
@@ -200,6 +214,9 @@ seguono i template del framework, non la regola delle fasi qui sopra
 
 * ⛔ **Non si scrivono a mano**, nemmeno con la stessa funzione e lo stesso stile di nome: un trigger
   che sembra generato e non è registrato non lo ricrea nessuno, se sparisce.
+  L'unica eccezione è il lucchetto di colonna su una tabella fuori dall'ambito delle automazioni,
+  dove il runner non arriva: lì lo monta una migrazione e il registro lo dichiara comunque (vedi
+  [Automazione DB §4.1](/guide/automazione-db)).
 * ⛔ **Un changeSet non fa DDL né `preCondition` su di loro**: su un database ricostruito da zero
   nascono dopo, nella passata `ci_apply`. Regola e presidio in
   [linee-guida-sql §11.5](linee-guida-sql.md).
@@ -222,7 +239,7 @@ seguono i template del framework, non la regola delle fasi qui sopra
 
 ## Checklist rapida (da usare nei PR)
 
-* [ ] Il framework non lo genera già (audit, `tx_id`, storico, ATTIVO, lucchetti, periodo).
+* [ ] Il framework non lo genera già (audit, `tx_id`, storico, ATTIVO, lucchetti, periodo, codice in maiuscolo).
 * [ ] Nome `trg_<schema_opzionale>_<tabella>_<fase>_<descrizione>_<eventi>`, sotto i 63 caratteri; la funzione `trgfn_…` senza fase né eventi.
 * [ ] Fase scelta per zona: `a05` immutabilità, `a10` guard, `a20` derivazioni, `z…` effetti finali. Fra due rifiuti possibili, parla prima l'immutabilità.
 * [ ] `UPDATE OF colonna` solo se nessun altro trigger `BEFORE` scrive quella colonna; per reagire a un cambio di valore, `WHEN (OLD.x IS DISTINCT FROM NEW.x)`.

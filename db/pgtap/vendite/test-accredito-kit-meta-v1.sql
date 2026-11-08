@@ -106,7 +106,7 @@ BEGIN
     p_commessa_id                   => (SELECT commessa_id FROM tmp_com_kit),
     -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'DDT_VENDITA'),
-    p_sorgente_uid => p_ddt_uid::text,
+    p_sorgente_chiave => p_ddt_uid::text,
     p_segment_key                   => p_segment,
     p_articolo_id                   => p_articolo,
     p_istanza_utility_id            => r.istanza_utility_id,

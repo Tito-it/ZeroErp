@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PROVENIENZA CHE UNA CHIAVE DEL PUSH NOMINA: dbops.fn_pgtap_provenienza_da_chiave
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3 (le fixture, Tid 2026-11-07).
+#
+#   Una decina di pgTAP scrivevano righe di commessa con la chiave di una bolla o di un ordine
+#   (per i lettori della merce, che leggono il documento dalla chiave) e la COMMESSA come
+#   provenienza: due documenti diversi nella stessa riga, che il guard della chiave del push
+#   (20261108-03) rifiuta. La provenienza giusta e' quella che la chiave nomina, come nel push.
+#   La lettura si scrive una volta (regola del 2), con i lettori della famiglia della chiave.
+#   BEGIN ATOMIC da solo nel suo sql: (pgjdbc); COMMENT e GRANT nel secondo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-05-create-fn-pgtap-provenienza-da-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261108-05-create-fn-pgtap-provenienza-da-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_provenienza_da_chiave: tipo, chiave e riga del documento che una chiave del
+        push nomina, per le fixture. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_pgtap_provenienza_da_chiave(
+                  p_segment_key vendite.commesse_attivita.segment_key%TYPE)
+               RETURNS TABLE(sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                             -- la chiave del documento in testo, come la riceve la madre (p_sorgente_uid)
+                             sorgente_chiave  text,
+                             sorgente_riga    vendite.commesse_attivita.sorgente_riga%TYPE)
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  -- La provenienza che una chiave del push nomina: il tipo dal codice, il
+                  -- documento dal suo uid, la riga da :R:. E' il verso inverso del push, che
+                  -- compone la chiave dalla provenienza (script.fn_segment_key).
+                  SELECT s.id,
+                         script.fn_segment_key_uid(p_segment_key),
+                         script.fn_segment_key_riga(p_segment_key)
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = script.fn_segment_key_sorgente(p_segment_key);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_pgtap_provenienza_da_chiave(vendite.commesse_attivita.segment_key%TYPE) IS
+                'Fixture pgTAP: la provenienza che una chiave del push nomina, per scrivere una riga di commessa con la madre: il tipo (config.sorgenti dal codice, script.fn_segment_key_sorgente), la chiave del documento in testo come la riceve vendite.fn_upsert_commessa_attivita (l''uid, script.fn_segment_key_uid) e la riga (script.fn_segment_key_riga, NULL senza :R:). E'' il verso inverso del push. Serve ai test che scrivono righe di commessa con la chiave di un documento vero (una bolla, un ordine) per i lettori che lo leggono dalla chiave: la provenienza della riga deve nominare lo stesso documento (trg_commesse_attivita_a10_guard_sorgente_segment_ins_upd). Nessuna riga per una chiave senza documento (MAN:...). Il documento e la riga li verifica il guard unico.';
+              
+              GRANT EXECUTE ON FUNCTION dbops.fn_pgtap_provenienza_da_chiave(vendite.commesse_attivita.segment_key%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION dbops.fn_pgtap_provenienza_da_chiave(vendite.commesse_attivita.segment_key%TYPE);

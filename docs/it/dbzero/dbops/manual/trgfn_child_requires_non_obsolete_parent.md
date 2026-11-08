@@ -1,112 +1,116 @@
-## 📘 Documentazione Concettuale – Funzione `dbops.trgfn_child_requires_non_obsolete_parent`
+## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_child_requires_non_obsolete_parent`
 
----
-
+> **Ultimo aggiornamento**: 7 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento funzioni:
+> Approfondimento tabelle:
 >
-[`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
-> [`dbops.fn_get_lookup_codici`](/dbzero/dbops/funzioni/fn_get_lookup_codici)
-> [`dbops.trgfn_prevent_deactivate_if_children`](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — figlia cablata, verso `pratiche.tipi_prestazione`
+> * [vendite.listini_kit](/dbzero/vendite/tabelle/listini_kit) — figlia cablata, verso `catalogo.articoli`
+>
+> Approfondimento funzioni:
+>
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — la gemella sull'asse `attivo`
+> * [dbops.fn_trigger_attivo_argomenti](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti) — la grammatica degli argomenti
+> * [dbops.fn_trigger_padre_stato](/dbzero/dbops/funzioni/fn_trigger_padre_stato) — legge il catalogo, fuori dalla row level security
+> * [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto) — il predicato «ritirato alla data operativa»
+> * [dbops.fn_get_lookup_codici](/dbzero/dbops/funzioni/fn_get_lookup_codici) — la selezione che nasconde le voci obsolete
+>
+> Guide:
+>
+> * [Uso di obsoleto](/guide/uso-di-obsoleto) — l'asse `obsoleto_dal`, separato da `attivo`
 
 ---
 
 ### 🎯 Scopo Principale
-*(rev 2026-06-30 — brief-db-obsoleto-dal-filtro-lookup-e-guard, Obiettivo 2)*
 
-La funzione **`dbops.trgfn_child_requires_non_obsolete_parent`** è una **trigger function**
-che impedisce di **creare nuove istanze** (o di **ri-collegarle**) verso una voce di catalogo
-**obsoleta**, cioè con `obsoleto_dal <= CURRENT_DATE`.
+Impedisce di **creare** un'istanza, o di **ricollegarla**, verso una voce di catalogo **obsoleta**,
+cioè con `obsoleto_dal` raggiunto alla data operativa (`script.fn_e_obsoleto`). Le istanze che
+puntano già a quella voce restano, e i loro avanzamenti di stato non si bloccano.
 
-È la **gemella di `trgfn_child_requires_active_parent`** ma opera su un **asse diverso**:
-non `attivo` (*"riferimento valido"*) bensì `obsoleto_dal` (*"selezionabile per il nuovo"*).
-Serve proprio perché, per design, **una voce obsoleta resta `attivo = true`**: il guard
-REQUIRE-ATTIVO non la intercetta, quindi senza questa funzione si potrebbe forzare via API la
-creazione di una nuova istanza su un catalogo ormai ritirato.
-
-È la **difesa in profondità** del pattern *"la UI nasconde, il DB rifiuta"*: la selezione la
-nasconde (`fn_get_lookup_codici` con `p_includi_obsoleti = false`), questo guard la vieta.
+È la difesa in profondità di «la selezione nasconde, il database rifiuta»: la selezione nasconde
+le voci obsolete (`dbops.fn_get_lookup_codici` senza obsoleti), questo trigger vieta di usarle
+comunque.
 
 ---
 
-### Dettagli
+### ⭐ Un asse diverso da `attivo`
 
-* **Firma**
+Una voce obsoleta resta `attivo = true`: è ancora un riferimento valido per le istanze che la
+usano, ma non si sceglie più per il nuovo. Il require della regola ATTIVO non la ferma, ed è per
+questo che serve un trigger suo.
 
-  ```sql
-  CREATE OR REPLACE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent()
-  RETURNS trigger
-  LANGUAGE plpgsql
-  ```
-
-* **Parametri (TG_ARGV)**
-
-  1. `parent_schema` – schema della tabella catalogo (padre)
-  2. `parent_table` – tabella catalogo (padre)
-  3. `parent_obsoleto_col` – nome colonna `obsoleto_dal` del padre
-  4. `fk_col` – colonna FK del figlio verso il padre
-  5. *(opzionale)* `parent_ref_col` – colonna del padre referenziata dalla FK (default `id`;
-     può essere una `UNIQUE` diversa dalla PK)
-
-* **Logica interna**
-
-  * Valida per `INSERT` e `UPDATE`.
-  * Legge il valore della FK da `NEW` via `to_jsonb` (nessun `EXECUTE` per riga).
-  * Se la FK è `NULL` → controllo **bypassato** (FK opzionale).
-  * Su `UPDATE`, se la FK **non cambia** (`NEW` = `OLD`) → controllo **bypassato**: gli
-    avanzamenti di lifecycle delle istanze storiche (cambio stato, ecc.) non ri-puntano il
-    catalogo e **non vengono mai bloccati**.
-  * Legge `obsoleto_dal` del padre (cast del parametro al tipo della colonna referenziata).
-  * Blocca se `obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE`.
-  * `obsoleto_dal NULL` o `> CURRENT_DATE` (ritiro programmato) → **consentito**.
-
-* **Ritorno**: `trigger` → `NEW` (se i controlli sono superati).
-
-* **Errore**: `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` (id 500), template a un solo `%s`.
+| | Asse `attivo` | Asse `obsoleto_dal` |
+| --- | --- | --- |
+| Domanda | il riferimento è valido? | si può scegliere per il nuovo? |
+| Padre che blocca | spento | `obsoleto_dal` raggiunto |
+| Montaggio | generato dal framework | cablato a mano, una relazione alla volta |
+| Su un aggiornamento | dipende dalla colonna attivo del figlio | solo se la FK cambia |
 
 ---
 
-### Utilizzo tipico
+### Quando il controllo si fa e quando no
 
-Cablaggio **a mano** con un `CREATE TRIGGER` per relazione (Tier 2: cervello unico, fili
-sottili). Timing **AFTER** in parallelo ai gemelli `*_require_attivo_*`, con `UPDATE OF <fk>`
-per non scattare sugli update che non toccano la FK del catalogo:
-
-```sql
-CREATE TRIGGER trg_pratiche_a10_tipi_prestazione_require_non_obsoleto_ins_upd
-AFTER INSERT OR UPDATE OF tipo_prestazione_id
-ON pratiche.pratiche
-FOR EACH ROW
-EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
-  'pratiche', 'tipi_prestazione', 'obsoleto_dal', 'tipo_prestazione_id', 'id'
-);
-```
-
-**Relazioni cablate** (al 2026-06-30):
-
-| Figlio (istanza) | FK | Padre (catalogo) |
-|---|---|---|
-| `pratiche.pratiche` | `tipo_prestazione_id` | `pratiche.tipi_prestazione` |
-| `pratiche.flussi` | `template_flusso_id` | `pratiche.template_flussi` |
-
-Aggiungere un nuovo catalogo (es. `config.iva`) = **un altro `CREATE TRIGGER`**, zero logica
-nuova. La generalizzazione in un framework config-driven (stile regola ATTIVO) è rinviata
-finché i punti-guardia non diventano molti.
+* Una FK vuota passa: è facoltativa.
+* Su un aggiornamento, se la FK non cambia il controllo non si fa: un cambio di stato di
+  un'istanza storica non ripunta il catalogo e non si blocca mai.
+* Una riga **derivata** da un altro documento passa all'inserimento, se il montaggio nomina la
+  colonna di esenzione e la riga la valorizza (per esempio `sorgente_tipo_id`). Sull'aggiornamento
+  l'esenzione non vale: cambiare la FK è sempre una scelta nuova.
+* Una voce con `obsoleto_dal` vuoto, o con una data futura (ritiro programmato), si può usare.
+* Il catalogo si legge con `dbops.fn_trigger_padre_stato`, fuori dalla row level security, come
+  la gemella: una voce è obsoleta o no per tutti.
 
 ---
 
-### Differenze rispetto a `trgfn_child_requires_active_parent`
+### Il cablaggio
 
-| | `..._active_parent` (ATTIVO) | `..._non_obsolete_parent` (OBSOLETO) |
-|---|---|---|
-| Asse | `attivo` (riferimento valido) | `obsoleto_dal` (selezionabile per il nuovo) |
-| Padre bloccante | `attivo = false` | `obsoleto_dal <= CURRENT_DATE` |
-| Generazione | automatica (`fn_run_automations_attivo`) | **cablaggio manuale** per relazione |
-| Skip su UPDATE | (controllo legato a `attivo` del figlio) | se la **FK non cambia** |
+Un trigger per relazione, con gli argomenti nella grammatica di `dbops.fn_trigger_attivo_argomenti`:
+schema e tabella del catalogo, nome della colonna `obsoleto_dal`, colonna FK del figlio, colonna
+referenziata — tutti obbligatori — e, facoltativa, la colonna di esenzione del figlio. Cablaggi di
+esempio: `pratiche.pratiche` verso `pratiche.tipi_prestazione`, `pratiche.flussi` verso
+`pratiche.template_flussi`, `vendite.listini_kit` verso `catalogo.articoli`,
+`vendite.commesse_attivita` verso `catalogo.articoli` (con l'esenzione della riga derivata),
+`anagrafiche.indirizzi_dettaglio` verso `config.stradario` (la via soppressa). Un catalogo nuovo è
+un altro trigger, nessuna logica nuova.
 
 ---
 
-> **In sintesi**: `trgfn_child_requires_non_obsolete_parent` garantisce che **nuove** istanze
-> non possano nascere (o essere ri-collegate) su un catalogo **ritirato**, lasciando intatte le
-> istanze esistenti e i loro avanzamenti di stato.
+### Codici errore
+
+* `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` (conflitto di stato, colonna FK nel campo) — la voce di
+  catalogo è obsoleta: il caso per cui il codice esiste.
+* `E_PADRE_INESISTENTE` (dato errato) — nessuna voce del catalogo ha quella chiave; succede dove il
+  collegamento non è una FK.
+* `E_TRIGGER_ARGOMENTI_INVALIDI` — il trigger è montato fuori grammatica, o nomina una colonna FK o
+  di esenzione che la figlia non ha, o una tabella o una colonna del catalogo che non esiste.
+
+---
+
+### Test
+
+* `db/pgtap/pratiche/test-guard-non-obsolete-parent-v1.sql` — su pratiche e flussi: voce
+  selezionabile o con ritiro programmato passa, voce obsoleta si rifiuta; un aggiornamento che non
+  tocca la FK passa anche quando la voce è diventata obsoleta; il ricollegamento a una voce
+  obsoleta si rifiuta; la voce obsoleta resta attiva.
+* `db/pgtap/dbops/test-guard-attivo-grammatica-e-codici-v1.sql` — su tabelle temporanee: il
+  catalogo assente, l'esenzione della riga derivata, i montaggi sbagliati col loro codice.
+* `db/pgtap/vendite/test-articolo-ritirato-v1.sql` — il kit e l'onere su un articolo ritirato.
+
+---
+
+### Note di migrazione
+
+* 2026-06-30 — nasce con il cablaggio su pratiche e flussi
+  (`brief-db-obsoleto-dal-filtro-lookup-e-guard`).
+* 2026-10-09 — «oggi» diventa la data operativa, nel fuso aziendale; prima era la data del server.
+* 2026-11-05 — la colonna di esenzione della riga derivata, e il predicato in `script.fn_e_obsoleto`.
+* 2026-11-07 — i montaggi sbagliati escono con `E_TRIGGER_ARGOMENTI_INVALIDI` (prima con il codice
+  dell'obsoleto, un 409 che chiedeva all'operatore di scegliere un'altra voce); il catalogo assente
+  si riconosce (prima passava); la colonna referenziata è obbligatoria; il catalogo si legge fuori
+  dalla row level security.
+
+---
+
+{% include-markdown "signature-core.md" %}

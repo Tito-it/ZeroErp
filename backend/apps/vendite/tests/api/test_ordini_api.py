@@ -198,8 +198,8 @@ class TestOrdineEmissione(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_ORD_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_ORD_REPO, autospec=True)
     @patch(_DOC_VIEW_SVC)
     def test_emetti_route_ok(
         self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
@@ -226,8 +226,8 @@ class TestOrdineEmissione(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_ORD_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_ORD_REPO, autospec=True)
     @patch(_DOC_VIEW_SVC)
     def test_emetti_integration_atomic_conferma_genera_allegati(
         self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
@@ -266,9 +266,8 @@ class TestOrdineEmissione(JwtMockedApiTest):
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 4)
         self.assertEqual(kwargs["sorgente_id"], 7)
-        self.assertEqual(
-            kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007",
-        )
+        # Giro D.1: la view passa l'id, la chiave della stampa la sceglie il DB.
+        self.assertNotIn("sorgente_uid", kwargs)
         self.assertEqual(len(kwargs["allegati"]), 1)
         self.assertEqual(kwargs["allegati"][0]["mime_type"], "application/pdf")
         self.assertEqual(kwargs["allegati"][0]["file_name"], "allegato.pdf")

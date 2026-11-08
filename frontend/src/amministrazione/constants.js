@@ -6,10 +6,8 @@
 export { LIVELLO_ACCESSO } from '../core/constants'
 import { LIVELLO_ACCESSO } from '../core/constants'
 
-// --- Tipo ruolo per SoggettoResolver ---
-export const TIPO_RUOLO_CODICE = {
-  RIS_UMANA: 'RIS_UMANA'
-}
+// ⛔ Il tipo ruolo per il SoggettoResolver non sta qui: e' `TIPO_RUOLO` di
+//    `core/constants` (fino al 2026-11-04 c'era una copia, `TIPO_RUOLO_CODICE`).
 
 // Scopo: Opzioni filtro SUPER_ADMIN per toolbar lista operatori.
 // Valori tri-state: null = tutti, true = solo SUPER_ADMIN, false = escludi.

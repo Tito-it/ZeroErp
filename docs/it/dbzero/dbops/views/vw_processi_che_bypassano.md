@@ -3,20 +3,18 @@
 
 > 📝 **Descrizione**
 >
-> Ruoli APPLICATIVI (login, non superuser) con BYPASSRLS. ⚠️ NON dice «nessuno bypassa la RLS»: pgAgent bypassa per superuser e il proprietario delle tabelle per proprieta', e devono, perche' fanno DDL. Regola presidiata: ZERO righe con stato = NON_DICHIARATO. Le righe DEBITO_DICHIARATO sono la porta registrata come porta, con la fase in cui si chiude (6-bis): a regime la vista deve restare del tutto vuota. Brief: brief-db-processi-automatici-identita-e-perimetro §8.
+> PRESIDIO — deve restare VUOTA. I ruoli APPLICATIVI (con login, non superuser) che hanno BYPASSRLS: un ruolo cosi' scavalca la separazione dei dati fra aziende emittenti. ⚠️ Non dice «nessuno bypassa la RLS»: pgAgent bypassa perche' e' superuser e il proprietario delle tabelle per proprieta', e devono, perche' fanno DDL. Fino al 2026-11-04 la vista ammetteva un debito dichiarato per nome (zeroerp_batch_fatturazione, ritirato il 2026-10-15) e il presidio contava solo le righe non dichiarate: un ruolo tornato con quel nome sarebbe passato muto. Un debito nuovo si dichiara con un changeSet sulla vista e sul presidio, non con una lista di nomi. A catalogo in dbops.presidi, soglia ZERO; lo prova db/pgtap/dbops/test-processi-registro.sql. security_invoker: legge solo pg_roles.
 
-> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+> 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
+> 🔓 **Sicurezza**: `security_invoker` — le tabelle sotto si leggono con i privilegi e la RLS di chi interroga; owner `zeroerp_owner`.
 
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE VIEW dbops.vw_processi_che_bypassano AS
-SELECT rolname AS ruolo,
-        CASE
-            WHEN (rolname = ANY (ARRAY['zeroerp_batch_fatturazione'::text])) THEN 'DEBITO_DICHIARATO'::text
-            ELSE 'NON_DICHIARATO'::text
-        END AS stato,
-    'Ritiro previsto alla fase 6-bis del brief processi automatici'::text AS nota
+CREATE OR REPLACE VIEW dbops.vw_processi_che_bypassano
+WITH (security_invoker=true) AS
+SELECT rolname AS ruolo
    FROM pg_roles r
   WHERE (rolbypassrls AND rolcanlogin AND (NOT rolsuper));
 ```

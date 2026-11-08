@@ -86,6 +86,20 @@ _PRESET_LIST_EXTRA_SELECT = """
 class UiAdminRepository:
     """Accesso DB per CRUD admin tabelle `ui.*` (Blocco F Fase 1)."""
 
+    # ⭐ L'audit lo scrive il DB, non questo repository. Su
+    #    `lista_definizione`, `lista_colonna`, `lista_preset` e
+    #    `lista_colonna_permesso` monta `script.trgfn_audit_data_user_generic`
+    #    (BEFORE INSERT/UPDATE): scrive `user_insert` sull'INSERT,
+    #    `data_update` e `user_update` sempre, con l'utente da `app.jwt_user`.
+    #    Per questo nessun INSERT nomina `user_insert`, nessun UPDATE nomina
+    #    `user_update` o `data_update`, e le whitelist non li contengono.
+    #    ⛔ Riscriverli qui sarebbe la stessa regola su due livelli (il
+    #    trigger li sovrascrive comunque); sui preset, l'`extra_set` di prima
+    #    spostava anche la data del contenuto quando l'admin cambiava solo
+    #    `attivo`. La data del contenuto e' `contenuto_aggiornato_il`, scritta
+    #    dai trigger a mano del DB. (BE11 di brief-db-revisione-dbops,
+    #    blocco 7-bis-c, 2026-11-08.)
+
     # =================================================================
     # ui.lista_definizione - CRUD (Fase 2 DEF-5b)
     # =================================================================
@@ -197,7 +211,6 @@ class UiAdminRepository:
     def create_definizione(
         self,
         data: dict[str, Any],
-        user_insert: str,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -208,10 +221,9 @@ class UiAdminRepository:
                     schema_dati,
                     vista_sql,
                     note,
-                    attivo,
-                    user_insert
+                    attivo
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 [
@@ -221,7 +233,6 @@ class UiAdminRepository:
                     data.get("vista_sql"),
                     data.get("note"),
                     data.get("attivo", True),
-                    user_insert,
                 ],
             )
             row = cursor.fetchone()
@@ -229,32 +240,27 @@ class UiAdminRepository:
             return int(row[0])
 
     # Colonne scrivibili da `update_definizione` (whitelist del BB
-    # `execute_dynamic_update`) + `user_update`, l'audit che il repository
-    # aggiunge lui stesso. 🚫 `multi_emittente` resta fuori: vedi il
+    # `execute_dynamic_update`), audit escluso (testata della classe).
+    # 🚫 `multi_emittente` resta fuori: vedi il
     # commento su `create_definizione`.
     _DEFINIZIONE_UPDATE_COLS: frozenset[str] = frozenset({
         "codice", "descrizione", "schema_dati", "vista_sql", "note", "attivo",
-        "user_update",
     })
 
     # Scopo: UPDATE lista_definizione sui soli campi presenti in `data`.
     #        Il trigger guard verifica vista_sql come per l'INSERT.
-    #        SET dinamico via BB `execute_dynamic_update`; `user_update`
-    #        viaggia fra i valori (parametro), `data_update = now()` come
-    #        `extra_set`. Payload vuoto -> False senza query.
+    #        SET dinamico via BB `execute_dynamic_update`, audit dal
+    #        trigger. Payload vuoto -> False senza query.
     def update_definizione(
         self,
         lista_id: int,
         data: dict[str, Any],
-        user_update: str,
     ) -> bool:
         if not data:
             return False
         return execute_dynamic_update(
-            "ui.lista_definizione", lista_id,
-            {**data, "user_update": user_update},
+            "ui.lista_definizione", lista_id, data,
             allowed=self._DEFINIZIONE_UPDATE_COLS,
-            extra_set="data_update = now()",
         )
 
     # Scopo: DELETE lista_definizione. Le FK su lista_colonna,
@@ -397,7 +403,6 @@ class UiAdminRepository:
     def create_colonna(
         self,
         data: dict[str, Any],
-        user_insert: str,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -422,8 +427,7 @@ class UiAdminRepository:
                     esportabile,
                     ricercabile_full,
                     sensibile,
-                    attivo,
-                    user_insert
+                    attivo
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s,
@@ -432,8 +436,7 @@ class UiAdminRepository:
                     %s, %s, %s,
                     %s::ui.allineamento_colonna,
                     %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s
+                    %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
                 """,
@@ -458,7 +461,6 @@ class UiAdminRepository:
                     data.get("ricercabile_full", False),
                     data.get("sensibile", False),
                     data.get("attivo", True),
-                    user_insert,
                 ],
             )
             row = cursor.fetchone()
@@ -466,14 +468,14 @@ class UiAdminRepository:
             return int(row[0])
 
     # Colonne scrivibili da `update_colonna` (whitelist RIGIDA del BB
-    # `execute_dynamic_update`) + `user_update`, l'audit che il repository
-    # aggiunge lui stesso. `lista_id` resta fuori: e' immutabile.
+    # `execute_dynamic_update`), audit escluso (testata della classe).
+    # `lista_id` resta fuori: e' immutabile.
     _COLONNA_UPDATE_COLS: frozenset[str] = frozenset({
         "codice", "etichetta", "etichetta_estesa", "etichetta_i18n_key",
         "campo_sorgente", "tipo_colonna", "tipo_dato", "formato",
         "larghezza_default", "ordine_default", "allineamento", "gruppo",
         "gruppo_ordine", "filtrabile", "ordinabile", "esportabile",
-        "ricercabile_full", "sensibile", "attivo", "user_update",
+        "ricercabile_full", "sensibile", "attivo",
     })
     # I tre enum della tabella: il valore arriva come testo e va castato.
     _COLONNA_CASTS: dict[str, str] = {
@@ -488,23 +490,19 @@ class UiAdminRepository:
     #        immutabile), per spostare una colonna serve cancellarla e
     #        ricrearla. SET dinamico via BB `execute_dynamic_update` (con
     #        `casts` per gli enum, 2026-09-26: prima era un SET scritto a mano
-    #        che scartava in silenzio le chiavi fuori elenco); `user_update`
-    #        fra i valori, `data_update = now()` come `extra_set`.
-    #        Payload vuoto -> False senza query.
+    #        che scartava in silenzio le chiavi fuori elenco); audit dal
+    #        trigger. Payload vuoto -> False senza query.
     def update_colonna(
         self,
         colonna_id: int,
         data: dict[str, Any],
-        user_update: str,
     ) -> bool:
         if not data:
             return False
         return execute_dynamic_update(
-            "ui.lista_colonna", colonna_id,
-            {**data, "user_update": user_update},
+            "ui.lista_colonna", colonna_id, data,
             allowed=self._COLONNA_UPDATE_COLS,
             casts=self._COLONNA_CASTS,
-            extra_set="data_update = now()",
         )
 
     # Scopo: DELETE lista_colonna. Le FK su lista_preset_colonna e
@@ -603,11 +601,10 @@ class UiAdminRepository:
     # Scopo: Crea preset (testata). I campi `lista_id`/`ambito`/refs sono
     #        obbligatori e validati dal service; FK + CHECK ambito_refs
     #        sono enforced lato DB (IntegrityError -> mapping service).
-    #        `user_insert` derivato dall'utente autenticato.
+    #        `user_insert` lo scrive il trigger di audit.
     def create_preset(
         self,
         data: dict[str, Any],
-        user_insert: str,
     ) -> int:
         ordinamento_default = data.get("ordinamento_default")
         filtri_default = data.get("filtri_default")
@@ -625,15 +622,14 @@ class UiAdminRepository:
                     pagina_dimensione,
                     ordinamento_default,
                     filtri_default,
-                    attivo,
-                    user_insert
+                    attivo
                 )
                 VALUES (
                     %s, %s, %s, %s::ui.ambito_preset,
                     %s, %s,
                     %s, %s,
                     %s::jsonb, %s::jsonb,
-                    %s, %s
+                    %s
                 )
                 RETURNING id
                 """,
@@ -649,19 +645,18 @@ class UiAdminRepository:
                     json.dumps(ordinamento_default) if ordinamento_default is not None else None,
                     json.dumps(filtri_default) if filtri_default is not None else None,
                     data.get("attivo", True),
-                    user_insert,
                 ],
             )
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
 
-    # Colonne scrivibili da `update_preset` (whitelist del BB) +
-    # `user_update` aggiunto dal repository. Gli immutabili (lista_id/
+    # Colonne scrivibili da `update_preset` (whitelist del BB), audit
+    # escluso (testata della classe). Gli immutabili (lista_id/
     # ambito/profilo/emittente) restano fuori anche qui.
     _PRESET_UPDATE_COLS: frozenset[str] = frozenset({
         "codice", "descrizione", "is_default", "pagina_dimensione",
-        "ordinamento_default", "filtri_default", "attivo", "user_update",
+        "ordinamento_default", "filtri_default", "attivo",
     })
 
     # Scopo: Aggiorna preset sui soli campi presenti in `data`. SET
@@ -674,15 +669,12 @@ class UiAdminRepository:
         self,
         preset_id: int,
         data: dict[str, Any],
-        user_update: str,
     ) -> bool:
         if not data:
             return False
         return execute_dynamic_update(
-            "ui.lista_preset", preset_id,
-            {**data, "user_update": user_update},
+            "ui.lista_preset", preset_id, data,
             allowed=self._PRESET_UPDATE_COLS,
-            extra_set="data_update = now()",
         )
 
     # Scopo: Cancella preset per id. Le FK su lista_preferenza_utente
@@ -829,13 +821,13 @@ class UiAdminRepository:
 
     # Scopo: UPSERT permesso colonna su (colonna_id, profilo_accesso_id).
     #        Vincolo UNIQUE garantisce 1 sola riga per coppia. Ritorna
-    #        l'id (nuovo o aggiornato).
+    #        l'id (nuovo o aggiornato). L'audit dei due rami (INSERT e
+    #        DO UPDATE) lo scrive il trigger.
     def upsert_permesso(
         self,
         colonna_id: int,
         profilo_accesso_id: int,
         livello_accesso: str,
-        user_insert: str,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -843,22 +835,18 @@ class UiAdminRepository:
                 INSERT INTO ui.lista_colonna_permesso (
                     colonna_id,
                     profilo_accesso_id,
-                    livello_accesso,
-                    user_insert
+                    livello_accesso
                 )
-                VALUES (%s, %s, %s::config.livello_accesso, %s)
+                VALUES (%s, %s, %s::config.livello_accesso)
                 ON CONFLICT ON CONSTRAINT uq_ui_lista_colonna_permesso_col_profilo
                 DO UPDATE
-                   SET livello_accesso = EXCLUDED.livello_accesso,
-                       data_update     = now(),
-                       user_update     = EXCLUDED.user_insert
+                   SET livello_accesso = EXCLUDED.livello_accesso
                 RETURNING id
                 """,
                 [
                     colonna_id,
                     profilo_accesso_id,
                     livello_accesso,
-                    user_insert,
                 ],
             )
             row = cursor.fetchone()

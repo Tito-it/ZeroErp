@@ -47,10 +47,6 @@ SELECT plan(11);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE TEMP TABLE tmp_cost_rit AS
-SELECT (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA') AS sorgente_tipo_id,
-       gen_random_uuid()::text                                                        AS sorgente_uid,
-       script.fn_pgtap_emittente_sr_operatore()                                       AS emittente_sr_id;
 
 -- rev 2026-10-27 (lotto 4 di D7): la commessa si COSTRUISCE
 --   (dbops.fn_pgtap_crea_commessa: cliente, BA dell'azienda di chi agisce e
@@ -78,6 +74,18 @@ SELECT (SELECT billing_account_id FROM tmp_cmm_rit) AS billing_account_id,
 CREATE TEMP TABLE tmp_commessa_rit AS
 SELECT commessa_id AS id FROM tmp_cmm_rit;
 
+-- Il documento di origine: un ordine VERO sul billing account della commessa (la
+-- provenienza di una riga di commessa deve esistere). La chiave e' quella del
+-- modello: l'ordine e' a chiave id, quindi sorgente_id, e sorgente_uid NULL.
+CREATE TEMP TABLE tmp_cost_rit AS
+SELECT (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA') AS sorgente_tipo_id,
+       o.ordine_id                                                                    AS sorgente_id,
+       NULL::uuid                                                                     AS sorgente_uid,
+       o.ordine_uid,
+       script.fn_pgtap_emittente_sr_operatore()                                       AS emittente_sr_id
+  FROM dbops.fn_pgtap_crea_ordine('ritiro commessa attivita da sorgente', 'DRAFT',
+                                  (SELECT billing_account_id FROM tmp_cmm_rit)) o;
+
 CREATE TEMP TABLE tmp_ca_rit (slot text PRIMARY KEY, attivita_id bigint);
 
 DO $fx$
@@ -89,9 +97,11 @@ BEGIN
         commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
         uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
         tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id, sorgente_uid)
       SELECT (SELECT id FROM tmp_commessa_rit),
-             'ORDINE_VENDITA:PGTAP-RIT:' || s || ':' || substr(md5(clock_timestamp()::text), 1, 10),
+             -- la chiave del push nomina l'ordine; l'etichetta del test dopo ':'
+             script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_cost_rit)::text)
+               || ':PGTAP-RIT:' || s || ':' || substr(md5(clock_timestamp()::text), 1, 10),
              r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
              date_trunc('month', script.fn_data_operativa())::date,
              date_trunc('month', script.fn_data_operativa())::date,
@@ -99,7 +109,7 @@ BEGIN
              r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
              'BOZZA', s,
              (SELECT sorgente_tipo_id FROM tmp_cost_rit),
-             (SELECT sorgente_uid     FROM tmp_cost_rit)
+             (SELECT sorgente_id FROM tmp_cost_rit), (SELECT sorgente_uid FROM tmp_cost_rit)
         FROM tmp_refs_rit r
       RETURNING id)
     INSERT INTO tmp_ca_rit(slot, attivita_id) SELECT s, ins.id FROM ins;
@@ -120,7 +130,7 @@ SELECT ok(
 SELECT is(
   script.fn_check_sorgente_chiudibile(
     (SELECT sorgente_tipo_id FROM tmp_cost_rit),
-    (SELECT sorgente_uid     FROM tmp_cost_rit)) -> 0 ->> 'codice',
+    (SELECT sorgente_id FROM tmp_cost_rit), (SELECT sorgente_uid FROM tmp_cost_rit)) -> 0 ->> 'codice',
   'E_SORGENTE_CON_RIGHE_EMESSE',
   '2) il freno vede la riga EMESSA e nomina il suo codice'
 );
@@ -150,7 +160,7 @@ SELECT matches(
   (WITH v AS (
      SELECT script.fn_check_sorgente_chiudibile(
               (SELECT sorgente_tipo_id FROM tmp_cost_rit),
-              (SELECT sorgente_uid     FROM tmp_cost_rit)) -> 0 AS motivo)
+              (SELECT sorgente_id FROM tmp_cost_rit), (SELECT sorgente_uid FROM tmp_cost_rit)) -> 0 AS motivo)
    SELECT CASE
             -- ⚠️ `coalesce`, e non un `<>` nudo: con la chiave assente
             --   jsonb_typeof() torna NULL, `NULL <> 'array'` vale NULL — cioe'
@@ -180,7 +190,7 @@ SELECT matches(
 CREATE TEMP TABLE tmp_esito_rit AS
 SELECT vendite.fn_ritira_commessa_attivita_da_sorgente(
          (SELECT sorgente_tipo_id FROM tmp_cost_rit),
-         (SELECT sorgente_uid     FROM tmp_cost_rit),
+         (SELECT sorgente_id FROM tmp_cost_rit), (SELECT sorgente_uid FROM tmp_cost_rit),
          'PGTAP: chiusura del documento di origine') AS ritirate;
 
 SELECT is(
@@ -212,7 +222,7 @@ SELECT ok(
        AND l.evento = 'RIGA_RITIRATA_DA_SORGENTE'
        AND l.dettaglio ->> 'motivo'           = 'PGTAP: chiusura del documento di origine'
        AND l.dettaglio ->> 'stato_precedente' = 'NON_EMESSA'
-       AND l.dettaglio ->> 'sorgente_uid'     = (SELECT sorgente_uid FROM tmp_cost_rit)),
+       AND l.dettaglio ->> 'sorgente_id'      = (SELECT sorgente_id FROM tmp_cost_rit)::text),
   '6) la traccia e scritta, col motivo e lo stato precedente'
 );
 
@@ -221,12 +231,12 @@ SELECT ok(
 -- ============================================================
 -- ⛔ E' il modo silenzioso in cui questo verbo puo' fallire, ed e' il motivo
 --   per cui restituisce un conteggio invece di void: chi lo chiama DEVE
---   guardarlo. `commesse_sorgenti` usa una chiave diversa per sorgente, e
---   confonderle non da' nessun errore.
+--   guardarlo. L'uid dell'ordine non e' la sua chiave (l'ordine e' a chiave
+--   id): passarlo da solo non da' nessun errore, e ritira zero.
 SELECT is(
   vendite.fn_ritira_commessa_attivita_da_sorgente(
     (SELECT sorgente_tipo_id FROM tmp_cost_rit),
-    gen_random_uuid()::text,
+    NULL, (SELECT ordine_uid FROM tmp_cost_rit),
     'PGTAP: chiave che non corrisponde a niente'),
   0,
   '7) con la chiave sbagliata il ritiro ritira ZERO, e non solleva'
@@ -242,7 +252,7 @@ UPDATE vendite.commesse_attivita
 SELECT is(
   script.fn_check_sorgente_chiudibile(
     (SELECT sorgente_tipo_id FROM tmp_cost_rit),
-    (SELECT sorgente_uid     FROM tmp_cost_rit)),
+    (SELECT sorgente_id FROM tmp_cost_rit), (SELECT sorgente_uid FROM tmp_cost_rit)),
   '[]'::jsonb,
   '8) senza righe emesse il freno tace: il documento si puo chiudere'
 );
@@ -250,11 +260,11 @@ SELECT is(
 -- ============================================================
 -- 9-10) I guard di parametro
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.rit_codice(p_tipo bigint, p_uid text, p_motivo text)
+CREATE OR REPLACE FUNCTION pg_temp.rit_codice(p_tipo bigint, p_id bigint, p_motivo text)
 RETURNS text AS $$
 DECLARE v_cod text;
 BEGIN
-  PERFORM vendite.fn_ritira_commessa_attivita_da_sorgente(p_tipo, p_uid, p_motivo);
+  PERFORM vendite.fn_ritira_commessa_attivita_da_sorgente(p_tipo, p_id, NULL, p_motivo);
   RETURN 'NESSUN ERRORE';
 EXCEPTION WHEN OTHERS THEN
   GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME;
@@ -266,7 +276,7 @@ END $$ LANGUAGE plpgsql;
 --   commessa, quindi il ritiro e per lui un effetto a distanza.
 SELECT is(
   pg_temp.rit_codice((SELECT sorgente_tipo_id FROM tmp_cost_rit),
-                     (SELECT sorgente_uid FROM tmp_cost_rit), '   '),
+                     (SELECT sorgente_id FROM tmp_cost_rit), '   '),
   'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
   '9) senza motivo il ritiro e rifiutato: ANNULLATA e irreversibile'
 );

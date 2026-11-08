@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro della modalita' sessione dell'audit: dbops.fn_audit_begin e
+# dbops.fn_audit_end.
+#   Brief: brief-db-revisione-dbops, D61 (classe C). Decisione di Tid, 2026-11-04.
+#
+# Nessuno le chiama (censimento 2026-11-04: corpi di tutte le funzioni, viste,
+# step pgAgent, backend, frontend, scripts, pgTAP fuori dai test di postura).
+# L'audit l'applicazione lo scrive con dbops.fn_audit_log_once, che resta; e il
+# loro ramo fuori transazione (dblink) non poteva scrivere comunque (D60).
+#
+# ── ⚠️ Perche' in 90_end e non in 20_code ─────────────────────────────────
+#   90_end/20260911-09 (REVOKE EXECUTE a PUBLIC e all'app) ha una preCondition
+#   HALT che le pretende per nome, e una DDL che le nomina per firma. Su un
+#   database ricostruito da zero 90_end gira DOPO 20_code: un DROP in 20_code
+#   farebbe morire quel changeSet. Qui, con un nome che in includeAll viene
+#   dopo, il -09 trova le funzioni e il ritiro arriva dopo di lui.
+#
+# ── Chi le nomina ancora, e perche' regge l'assenza ───────────────────────
+#   - 90_end/ci_apply/20260205-41 (grant runtime, runOnChange): le elenca fra
+#     le porte riservate, ma il loop scorre solo le funzioni che esistono in
+#     pg_proc: un nome assente non fa niente. Lasciato com'e'.
+#   - dbops.vw_audit_log_scrittori_fuori_perimetro: i due nomi sono fra le
+#     porte del registro che il cancello riconosce nel testo dei corpi; un
+#     nome senza funzione non trova nessun corpo. Lasciato com'e'.
+#   - scripts/sql/provision_zeroerp.sql: un filtro per nome nel blocco delle
+#     revoche; su zero righe non fa niente.
+#   - db/pgtap/dbops/test-registri-append-only-postura-v1.sql (test 14, 15,
+#     22, 23): riallineato nello stesso giro, ora prova che le due porte non
+#     esistono piu'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261104-18-drop-fn-audit-begin-end-mctit.yaml
+
+  - changeSet:
+      id: 20261104-18-drop-fn-audit-begin-end
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di dbops.fn_audit_begin e dbops.fn_audit_end (modalita' sessione dell'audit,
+        senza chiamanti). Resta dbops.fn_audit_log_once. In 90_end perche' il REVOKE di
+        20260911-09 le pretende.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_audit_begin(text, jsonb, text, text[], text, boolean, text, text);
+              DROP FUNCTION IF EXISTS dbops.fn_audit_end(bigint, text, text, text, text, integer, jsonb);
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo che le ricrea dal corpo di prima.
+              SELECT 1;

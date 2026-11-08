@@ -148,15 +148,6 @@ class StatoOfferta:
     RIFIUTATA = "RIFIUTATA"
 
 
-# Gli stati da cui si ELIMINA l'offerta (hard delete). ⚠️ Resta, dichiarato
-# (brief-modello-documento-vendita §13.6 punto 4): non ripete la matrice, che
-# l'eliminazione non la attraversa, e la tabella non ha un guard sul DELETE.
-# ⛔ Non governa piu' testata, utility ne' eccezioni: quali colonne e quali righe
-# si cambiano in quale stato lo dicono i lock del DB
-# (`trgfn_doc_testata_lock_fuori_bozza`, `trgfn_doc_righe_lock_fuori_bozza`).
-_STATI_EDITABILI: frozenset[str] = frozenset({StatoOfferta.BOZZA})
-
-
 # Gli esiti che la rotta dell'esito accetta in ingresso: e' la validazione del
 # campo `esito` (un 400 col campo), non lo stato di partenza. Da quale stato si
 # registra un esito lo dice la matrice, al verbo. ⛔ Fino al 2026-10-26 si
@@ -794,9 +785,12 @@ class OfferteService:
     # Scopo: Elimina un'offerta in stato BOZZA (hard delete). L'annullamento
     #        "di processo" passa invece da `annulla` (BOZZA -> ANNULLATA).
     #        Il `delete` qui resta come pulizia tecnica di bozze "vuote".
+    #        ⛔ «Si cancella solo la bozza vuota» la giudica solo il guard DB
+    #        `vendite.trgfn_doc_guard_delete_solo_bozza` (brief-db-sorgente-
+    #        documento-e-riga §8.21 BE-Z.2-a); qui resta il 404 del DELETE che non
+    #        tocca niente (id inesistente o fuori perimetro RLS).
     def elimina_offerta(self, offerta_id: int) -> None:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         with self._db_errors({"offerta_id": offerta_id}):
             with transaction.atomic():
                 deleted = self._repo.delete_offerta(offerta_id)
@@ -914,8 +908,10 @@ class OfferteService:
 
     # Scopo: Push offerta ACCETTATA → contratto DRAFT (Step 8 brief DB,
     #        atterrato 2026-05-25). Pattern A idempotenza: la fn DB
-    #        `fn_push_offerta_a_contratto` ha guard UNIQUE su
-    #        `contratti.offerta_id` — doppia invocazione fallisce con
+    #        `fn_push_offerta_a_contratto` ha il guard dei documenti vivi
+    #        (`fn_offerta_documenti_vivi`, indice `uq_contratti_sorgente_offerta`;
+    #        `contratti.offerta_id` non c'e' piu' dal giro T.5) — doppia
+    #        invocazione fallisce con
     #        `E_OFFERTA_CONTRATTO_GIA_GENERATO`. Pratica opzionale.
     #
     #        Ritorna `OffertaPushResult` con id+numero del nuovo contratto
@@ -1666,29 +1662,6 @@ class OfferteService:
         if "meta" not in payload:
             return payload
         return {**payload, "meta": self._v.optional_meta(payload)}
-
-    # Scopo: Verifica che l'offerta esista e sia in uno degli stati attesi.
-    #        Solleva 404 se offerta inesistente, 400 se stato fuori scope.
-    #        ⚠️ Solo per l'eliminazione (`_STATI_EDITABILI`): i passaggi di
-    #        stato li giudica il DB, e non si torna a ripeterli qui.
-    def _assert_stato_corrente(
-        self, offerta_id: int, *, expected: set[str] | frozenset[str]
-    ) -> str:
-        stato = self._get_offerta_or_raise(offerta_id, op="_assert_stato_corrente", getter=self._repo.get_stato_codice)
-        ErrorManager.require(
-            stato in expected,
-            code=E_VENDITE_VALIDATION,
-            message=(
-                "Operazione non consentita: stato corrente "
-                f"'{stato}', atteso uno tra {sorted(expected)}."
-            ),
-            context={
-                "offerta_id": offerta_id,
-                "stato_corrente": stato,
-                "stati_attesi": sorted(expected),
-            },
-        )
-        return stato
 
     # Scopo: La motivazione dal corpo della richiesta: una stringa o niente
     #        (assente, null o vuota = None). Solo la FORMA: un non-stringa e' un

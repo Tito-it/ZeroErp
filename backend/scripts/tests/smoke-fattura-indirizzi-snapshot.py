@@ -43,6 +43,7 @@ from apps.vendite.services.fatture_righe_service import FattureRigheService
 from scripts.tests._smoke_indirizzo import crea_indirizzo_libero_ruolo
 from scripts.tests._smoke_contesto import apri_contesto_smoke
 from scripts.tests._smoke_fatturazione import (
+    chiave_di_commessa,
     costruisci_base_fatturazione,
     crea_attivita_di_commessa,
     crea_lotto_di_prova,
@@ -85,8 +86,10 @@ with transaction.atomic():
         lock_batch_id = str(uuid.uuid4())
         lotto_id = crea_lotto_di_prova(cur, t, codice=f"SMOKE-{marker}", lock_batch_id=lock_batch_id)
 
-        for seg, qta, prezzo in [(f"SMOKE:{marker}:A1", Decimal("1"), Decimal("10.00")),
-                                 (f"SMOKE:{marker}:A2", Decimal("2"), Decimal("20.00"))]:
+        for etichetta, qta, prezzo in [(f"SMOKE:{marker}:A1", Decimal("1"), Decimal("10.00")),
+                                       (f"SMOKE:{marker}:A2", Decimal("2"), Decimal("20.00"))]:
+            # La chiave nomina il documento (la commessa): giro C.3.
+            seg = chiave_di_commessa(cur, t, t["commessa_id"], etichetta)
             crea_attivita_di_commessa(
                 cur, t, segment_key=seg, lock_batch_id=lock_batch_id,
                 prezzo=prezzo, quantita=qta,

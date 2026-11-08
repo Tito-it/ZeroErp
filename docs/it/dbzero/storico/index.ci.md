@@ -28,7 +28,6 @@ search:
 - [dati_societari](manual/dati_societari.md) — * **Versionamento completo**   Acquisire snapshot di ogni record di `anagrafiche.dati_societari` per garantire la tracciabilità delle evoluzioni nel tempo. * **Audit e compliance**   Conservare informazioni su chi (`user_insert`) e quando (`data_insert`) è stata eseguita l’operazione, nonché su quale transazione di business (`tx_id`). * **Intervalli di validità**   Definire periodi di efficacia di ciascuno snapshot con `valid_from` (inclusivo) e `valid_to` (esclusivo), facilitando interrogazioni temporali.
 - [ddt](manual/ddt.md)
 - [ddt_righe](manual/ddt_righe.md)
-- [documenti_fatturazione_canali](manual/documenti_fatturazione_canali.md)
 - [emittenti_fiscali](manual/emittenti_fiscali.md)
 - [eventi_assets](manual/eventi_assets.md)
 - [fatturazione_lotti](manual/fatturazione_lotti.md)

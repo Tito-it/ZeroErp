@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due COMMENT del giornale dei job dicevano una cosa falsa.
+#   Brief: brief-db-revisione-maintenance §3 (M8, M9).
+#
+# ── processo_codice ─────────────────────────────────────────────────
+#   Diceva «NULL solo durante la transizione: diventera' NOT NULL». La regola
+#   d'oggi e' un'altra: chk_job_run_log_processo_dichiarato, un CHECK NOT VALID
+#   (90_end/20260905-16), che respinge una corsa nuova senza attore e lascia
+#   la storia dov'e'. Un NOT NULL non arrivera': le righe di prima della
+#   colonna l'attore non l'hanno e non l'avranno mai.
+#
+# ── origine ─────────────────────────────────────────────────────────
+#   Diceva «PGAGENT = job DB pgAgent». PGAGENT e' il default della colonna, e
+#   maintenance.fn_run_and_log non scrive l'origine: la prende ogni corsa che
+#   passa di li', anche quella della convergenza in CI e quella lanciata a
+#   mano. La colonna non distingue le due strade; il COMMENT ora lo dice.
+#
+# Solo COMMENT: nessun cambio di comportamento. Si riscrivono interi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/maintenance/20261103-62-comment-job-run-log-processo-origine-mctit.yaml
+
+  - changeSet:
+      id: 20261103-62-comment-job-run-log-processo-origine
+      author: mctit
+
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di maintenance.job_run_log.processo_codice (la regola e' il CHECK
+        NOT VALID chk_job_run_log_processo_dichiarato, non un NOT NULL futuro) e
+        di origine (PGAGENT e' il default di ogni corsa di fn_run_and_log, anche
+        dalla convergenza CI o a mano).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_attribute a
+              WHERE a.attrelid = to_regclass('maintenance.job_run_log')
+                AND a.attname = 'processo_codice'
+                AND NOT a.attisdropped
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_attribute a
+              WHERE a.attrelid = to_regclass('maintenance.job_run_log')
+                AND a.attname = 'origine'
+                AND NOT a.attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN maintenance.job_run_log.processo_codice IS
+                  'L''attore della corsa: il codice del processo in dbops.processi (FK fk_job_run_log_processi). Vale per ogni classe di processo, manutenzione compresa. Una corsa nuova deve dichiararlo: chk_job_run_log_processo_dichiarato (CHECK processo_codice IS NOT NULL, NOT VALID) respinge l''INSERT con 23514, e il job si ferma. NOT VALID perche'' le righe scritte prima che la colonna esistesse restano senza attore e non lo avranno mai: il vincolo vale sulle righe nuove, la storia non si riscrive. maintenance.fn_run_and_log lo deriva dal jobname, script.fn_job_run_start lo riceve dal chiamante; nessuno dei due inventa un attore. Le corse senza attore le elenca dbops.vw_run_senza_attore.';
+
+              COMMENT ON COLUMN maintenance.job_run_log.origine IS
+                  'Come e'' stato lanciato il lavoro, vincolato da chk_job_run_log_origine: PGAGENT (il default), CRON (comando del backend lanciato da una sveglia di sistema), COMMAND (comando del backend lanciato a mano). PGAGENT e'' un default, non una prova: maintenance.fn_run_and_log non scrive l''origine, quindi PGAGENT e'' su ogni sua corsa, anche quando a chiamare la procedura del job e'' la convergenza del rilascio in CI o una persona. La colonna non distingue pgAgent dagli altri chiamanti di un job del database; chi si e'' collegato lo dice ruolo_sessione. Le righe scritte prima che la colonna esistesse sono PGAGENT per backfill.';
+      rollback:
+        # Solo COMMENT: il rollback non rimette i testi falsi di prima.
+        - sql:
+            sql: SELECT 1;

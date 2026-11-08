@@ -18,7 +18,7 @@
 --  3) genera DDT: ritorna ddt_id non-null
 --  4) DDT creato in stato DRAFT
 --  5) DDT sorgente = ORDINE_VENDITA (C1, non DDT_VENDITA)
---  6) DDT sorgente_uid = ordini.uid
+--  6) DDT sorgente_id = ordini.id (key_selector id), sorgente_uid NULL
 --  7) billing_account ereditato dall'ordine (trgfn_ddt_normalize)
 --  8) numero NULL in DRAFT (C6)
 --  9) ddt_righe: 1 riga, prezzo_unitario copiato (A-2)
@@ -149,11 +149,12 @@ SELECT is(
     WHERE d.id = (SELECT ddt_id FROM tmp_ddt_a)),
   'ORDINE_VENDITA', '5) DDT sorgente = ORDINE_VENDITA (C1)');
 
--- 6) sorgente_uid = ordine uid
+-- 6) la chiave dell'ordine per il key_selector del tipo (id): sorgente_id, senza uid
 SELECT is(
-  (SELECT d.sorgente_uid FROM vendite.ddt d WHERE d.id = (SELECT ddt_id FROM tmp_ddt_a)),
-  (SELECT uid FROM tmp_ord_a),
-  '6) DDT sorgente_uid = ordini.uid');
+  (SELECT format('%s|%s', d.sorgente_id = o.id, d.sorgente_uid IS NULL)
+     FROM vendite.ddt d, tmp_ord_a o WHERE d.id = (SELECT ddt_id FROM tmp_ddt_a)),
+  't|t',
+  '6) DDT sorgente_id = ordini.id (key_selector id), sorgente_uid NULL');
 
 -- 7) billing ereditato (normalize)
 SELECT is(

@@ -118,7 +118,14 @@ SELECT a.ordine_id AS ord_a, a.ordine_uid AS uid_a, a.ordine_riga_id AS riga_a,
        b.ordine_id AS ord_b, b.ordine_uid AS uid_b, b.ordine_riga_id AS riga_b
   FROM tmp_gi_ord_a a, tmp_gi_ord_b b;
 
--- Helper: inserisce un'attivita' in commessa con segment_key arbitraria.
+-- La base delle chiavi sintetiche del classificatore: la chiave del push di un
+-- consumo vero della commessa (la provenienza di quelle righe).
+CREATE TEMP TABLE tmp_gi_base AS
+SELECT x.segment_key::text AS base
+  FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_gi_commessa)) x;
+
+-- Helper: inserisce un'attivita' in commessa con la segment_key data; la
+-- provenienza e' il documento che la chiave nomina (a livello di documento).
 CREATE OR REPLACE FUNCTION pg_temp.mk_attivita(p_segment text, p_stato_emissione text)
 RETURNS bigint AS $$
 DECLARE r RECORD; v_id bigint;
@@ -128,7 +135,7 @@ BEGIN
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
-    sorgente_tipo_id, sorgente_uid
+    sorgente_tipo_id, sorgente_id, sorgente_uid
   )
   VALUES (
     (SELECT id FROM tmp_gi_commessa), p_segment, r.articolo_id, r.istanza_utility_id,
@@ -136,7 +143,11 @@ BEGIN
     DATE '2026-07-01', DATE '2026-07-01', DATE '2026-07-31',
     r.tipo_doc_fiscale_id, r.valuta_id, 25.00,
     'FIXED', 'BOZZA', p_stato_emissione,
-    r.src_ordine_id, p_segment
+    (SELECT k.sorgente_tipo_id FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k),
+    (SELECT c.sorgente_id FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k,
+            script.fn_sorgente_chiave(k.sorgente_tipo_id, k.sorgente_chiave) c),
+    (SELECT c.sorgente_uid FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k,
+            script.fn_sorgente_chiave(k.sorgente_tipo_id, k.sorgente_chiave) c)
   )
   RETURNING id INTO v_id;
   RETURN v_id;
@@ -146,7 +157,7 @@ END $$ LANGUAGE plpgsql;
 -- 2..5) unita' del classificatore (segment key sintetiche dedicate)
 -- ============================================================
 SELECT is(
-  script.fn_get_stato_push_segment('PGTAPCLS:mai-esistita:R:1'),
+  script.fn_get_stato_push_segment(((SELECT base FROM tmp_gi_base) || ':mai-esistita:R:1')),
   'LIBERA',
   '2) segment mai instradato -> LIBERA'
 );
@@ -157,25 +168,25 @@ SELECT is(
 -- le righe appena inserite (visibilita' per command id).
 DO $$
 BEGIN
-  PERFORM pg_temp.mk_attivita('PGTAPCLS:doc1:R:241#CMP:comp-a', 'NON_EMESSA');
-  PERFORM pg_temp.mk_attivita('PGTAPCLS:doc1:R:241#CMP:comp-b', 'NON_EMESSA');
-  PERFORM pg_temp.mk_attivita('PGTAPCLS:doc2:R:7#CMP:comp-a', 'EMESSA');
+  PERFORM pg_temp.mk_attivita(((SELECT base FROM tmp_gi_base) || ':doc1:R:241#CMP:comp-a'), 'NON_EMESSA');
+  PERFORM pg_temp.mk_attivita(((SELECT base FROM tmp_gi_base) || ':doc1:R:241#CMP:comp-b'), 'NON_EMESSA');
+  PERFORM pg_temp.mk_attivita(((SELECT base FROM tmp_gi_base) || ':doc2:R:7#CMP:comp-a'), 'EMESSA');
 END $$;
 
 SELECT is(
-  script.fn_get_stato_push_segment('PGTAPCLS:doc1:R:241'),
+  script.fn_get_stato_push_segment(((SELECT base FROM tmp_gi_base) || ':doc1:R:241')),
   'ALLOCATA',
   '3) solo componenti #CMP NON_EMESSA -> ALLOCATA (il vecchio predicato non li vedeva)'
 );
 
 SELECT is(
-  script.fn_get_stato_push_segment('PGTAPCLS:doc2:R:7'),
+  script.fn_get_stato_push_segment(((SELECT base FROM tmp_gi_base) || ':doc2:R:7')),
   'EMESSA',
   '4) tutte le attivita EMESSE -> EMESSA'
 );
 
 SELECT is(
-  script.fn_get_stato_push_segment('PGTAPCLS:doc1:R:24'),
+  script.fn_get_stato_push_segment(((SELECT base FROM tmp_gi_base) || ':doc1:R:24')),
   'LIBERA',
   '5) R:24 non matcha R:241#CMP (nessuna collisione di prefisso riga)'
 );

@@ -1,6 +1,6 @@
 # Guida — Storicizzazione delle Tabelle
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -8,8 +8,8 @@
 >
 > * `storico.<nome_tabella>` — una tabella di storico per ogni tabella operativa storicizzata
 > * [config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza) — il registro delle tabelle con storicizzazione permanente
-> * [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy) — la mappa da cui si ricava l'emittente di una versione
-> * [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/manual/vw_storico_scope_da_dichiarare) — il debito della mappa: deve restare vuota
+> * [dbops.storico_scope_policy](/dbzero/dbops/tabelle/storico_scope_policy) — la mappa da cui si ricava l'emittente di una versione
+> * [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/views/vw_storico_scope_da_dichiarare) — il debito della mappa: deve restare vuota
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
@@ -17,9 +17,9 @@
 > * [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) — lo snapshot JSONB a una data
 > * [script.fn_get_record_id_as_of](/dbzero/script/funzioni/fn_get_record_id_as_of) — l'ID del record storico a una data
 > * [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table) — il provisioning idempotente di una tabella
-> * [dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope) / [dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope) — arma lo scope e converte il pregresso
+> * [dbops.fn_storico_arma_scope](/dbzero/dbops/funzioni/fn_storico_arma_scope) / [dbops.fn_storico_backfill_scope](/dbzero/dbops/funzioni/fn_storico_backfill_scope) — arma lo scope e converte il pregresso
 > * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) / [dbops.fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) — creazione dei trigger e delle tabelle
-> * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza) / [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults) — sincronizzazione del catalogo e applicazione dei default
+> * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza) / [maintenance.fn_apply_storicizza_defaults](/dbzero/maintenance/funzioni/fn_apply_storicizza_defaults) — sincronizzazione del catalogo e applicazione dei default
 >
 > **Vedi anche** — guide correlate:
 >
@@ -131,10 +131,11 @@ Il disegno, in breve:
   tabella madre, e `acquisti.ddt` e `vendite.ddt` scrivono nella stessa `storico.ddt` —
   senza lo schema le due storie si mescolano;
 * **da dove** si prende l'emittente lo dice una mappa, non il codice:
-  [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy) — una
-  riga per tabella storicizzata, con cinque modi (colonna in riga, soggetto-ruolo,
-  risalita al padre, billing account, nessuno). La legge
-  [dbops.fn_storico_risolvi_scope](/dbzero/dbops/manual/fn_storico_risolvi_scope);
+  [dbops.storico_scope_policy](/dbzero/dbops/tabelle/storico_scope_policy) — una
+  riga per tabella storicizzata, con sei modi (colonna in riga, soggetto-ruolo,
+  billing account, coppia istanza-utility di un billing account, risalita al padre,
+  nessuno). La legge
+  [dbops.fn_storico_risolvi_scope](/dbzero/dbops/funzioni/fn_storico_risolvi_scope);
 * una sola regola di lettura, per l'operatore, sulla colonna congelata;
 * se il padre di un satellite **non è più vivo** — succede in ogni `DELETE` a
   cascata, dove il padre sparisce prima che il figlio scriva la sua versione
@@ -142,9 +143,9 @@ Il disegno, in breve:
   leggere l'archivio del padre è leggere il passato, non il presente.
 
 Le tabelle nuove nascono **già armate** dal generatore: lo scope si dichiara nella mappa
-([dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope)) e il
+([dbops.fn_storico_arma_scope](/dbzero/dbops/funzioni/fn_storico_arma_scope)) e il
 provisioning fa il resto. Il pregresso si converte con il backfill
-([dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope)), e
+([dbops.fn_storico_backfill_scope](/dbzero/dbops/funzioni/fn_storico_backfill_scope)), e
 l'applicazione non cancella mai una versione: è un privilegio, non una convenzione.
 
 **Le tabelle di storico sono del proprietario.** I lavori notturni girano come il
@@ -163,9 +164,9 @@ operatore, privilegi, proprietario delle shadow).
 * **La shadow è di chi possiede la madre.** Il generatore, creata e armata una
   tabella di storico, la **cede al proprietario della madre**: chiunque l'abbia
   creata, resta del proprietario, e le migrazioni non la saltano. Dettagli in
-  [dbops.fn_ensure_storico_table](/dbzero/dbops/manual/fn_ensure_storico_table).
+  [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table).
 * **Il debito della mappa si vede anche fuori dalla CI.**
-  [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/manual/vw_storico_scope_da_dichiarare)
+  [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/views/vw_storico_scope_da_dichiarare)
   porta nel digest settimanale i tre motivi che il controllo asserisce in CI: una
   madre col trigger senza riga di mappa, una madre in RLS dichiarata `NESSUNO`, una
   riga di mappa senza più madre. Deve restare vuota.
@@ -229,7 +230,7 @@ Da un punto di vista tecnico:
 
 | Colonna          | Tipo        | Nullable | Default        | Descrizione                                                       |
 | ---------------- | ----------- | :------: | -------------- | ----------------------------------------------------------------- |
-| `table_name`     | TEXT, PK    |    no    | —              | Nome della tabella operativa (senza schema)                       |
+| `table_name`     | TEXT, PK    |    no    | —              | Nome della tabella operativa, qualificato con lo schema           |
 | `insert_manuale` | BOOLEAN     |    no    | true           | `true` = inserita manualmente, `false` = rilevata automaticamente |
 | `data_insert`    | TIMESTAMPTZ |    no    | `now()`        | Timestamp inserimento                                             |
 | `user_insert`    | TEXT        |    no    | `CURRENT_USER` | Utente inserimento                                                |
@@ -368,11 +369,11 @@ Questa funzione scorre tutte le tabelle nell'ambito che hanno una colonna `stori
 
 Da un punto di vista tecnico:
 
-| Parametro     | Tipo    | Descrizione                            |
-| ------------- | ------- | -------------------------------------- |
-| `p_exec_mode` | TEXT    | Modalita: `AUTO`, `SCHEDULED`, `FORCE` |
-| `p_schemas`   | TEXT[]  | Schemi da processare (NULL = tutti)    |
-| `p_dry_run`   | BOOLEAN | Simulazione senza DDL                  |
+| Parametro     | Tipo    | Descrizione |
+| ------------- | ------- | ----------- |
+| `p_exec_mode` | TEXT    | Il giro della corsa: i chiamanti passano `CI` (convergenza del rilascio) o `SCHEDULED` (job pgAgent). Valgono le regole con `exec_mode` = `AUTO` o uguale a questo valore |
+| `p_schemas`   | TEXT[]  | Schemi da processare (NULL = tutti) |
+| `p_dry_run`   | BOOLEAN | Simulazione senza DDL |
 
 **Flusso:**
 
@@ -409,20 +410,20 @@ Funzione idempotente che crea la tabella di storico con la struttura standard se
 
 Crea il trigger `BEFORE UPDATE OR DELETE` su tutte le tabelle operative che hanno una corrispondente tabella in `storico`.
 
-| Parametro     | Tipo    | Descrizione                            |
-| ------------- | ------- | -------------------------------------- |
-| `p_exec_mode` | TEXT    | Modalita: `AUTO`, `SCHEDULED`, `FORCE` |
-| `p_schemas`   | TEXT[]  | Schemi da processare (NULL = tutti)    |
-| `p_dry_run`   | BOOLEAN | Simulazione senza DDL                  |
+| Parametro     | Tipo    | Descrizione |
+| ------------- | ------- | ----------- |
+| `p_exec_mode` | TEXT    | Il giro della corsa: i chiamanti passano `CI` (convergenza del rilascio) o `SCHEDULED` (job pgAgent). Valgono le regole con `exec_mode` = `AUTO` o uguale a questo valore |
+| `p_schemas`   | TEXT[]  | Schemi da processare (NULL = tutti) |
+| `p_dry_run`   | BOOLEAN | Simulazione senza DDL |
 
 **Flusso:**
 
 1. Risolve l'ambito (esclude `storico`)
 2. Per ogni tabella: verifica che `storico.<tabella>` esista
 3. Risolve la colonna FK (default `<tabella>_id`, override via `STORICO_FK`)
-4. Genera il nome trigger dal template (default: `trg_{table}_z90_storico_upd_dlt`)
-5. Verifica esistenza per strategia (`BY_NAME`, `BY_FUNCTION`, `BOTH`)
-6. Se non esiste: crea il trigger
+4. Genera il nome trigger dal template della regola, obbligatorio (nel seed: `trg_{table}_z90_storico_upd_dlt`)
+5. Verifica se sulla tabella c'è già un trigger su `script.trgfn_storico_generic`, con qualunque nome: il trigger si riconosce dalla funzione
+6. Se non esiste: crea il trigger col nome del passo 4
 ⛔ **Il motore non rimuove i trigger legacy.** Quel ramo esisteva e non ha mai
 funzionato: puntava a `trg_{table}_upd_storico` / `trg_{table}_dlt_storico`, mentre i
 trigger legacy davvero creati si chiamavano `trg_<tab>_upd_dlt_storico_<tab>` (e quelli
@@ -458,20 +459,19 @@ Scansiona il catalogo PostgreSQL per rilevare automaticamente tutte le tabelle c
 
 **Job wrapper:** `proc_sync_storico_set_storicizza_job` — esecuzione schedulata con advisory lock e logging via `fn_run_and_log`.
 
-### Applicazione default: `proc_apply_storicizza_defaults`
+### Applicazione default: `fn_apply_storicizza_defaults`
 
-Itera tutte le tabelle registrate in `config.storico_set_storicizza` e applica `ALTER TABLE ... ALTER COLUMN storicizza SET DEFAULT true`.
+Itera tutte le tabelle registrate in `config.storico_set_storicizza`, rimette il default `true` sulla colonna `storicizza` di ciascuna e restituisce il riepilogo del giro: quante applicate, saltate, fallite. Dal job, una tabella fallita rende la corsa rossa nel giornale delle esecuzioni, senza annullare le tabelle applicate.
 
 > ⭐ **Una riga guasta non ferma le altre.** Una sola riga che punta a una tabella
 > inesistente non deve interrompere il giro per tutte le altre.
 >
 > ⚠️ E non è una conseguenza della potatura qui sopra: chi produce l'elenco e chi lo
-> consuma sono **due lavori distinti, su due orari diversi**. Se l'applicazione gira
-> prima della sincronizzazione — e prima o poi capita — la riga vecchia c'è ancora.
-> Chi consuma un elenco costruito da altri non può morire perché una riga non è
-> ancora stata ripulita.
+> consuma sono **due lavori distinti**. Se la sincronizzazione fallisce o è spenta, o una
+> tabella viene ritirata fra le due corse, la riga vecchia c'è ancora. Chi consuma un
+> elenco costruito da altri non può morire perché una riga non è ancora stata ripulita.
 
-**Scheduling:** ogni sabato alle 07:00 UTC tramite pgAgent job `apply_storicizza_weekly`.
+**Scheduling:** ogni sabato alle 07:05 (ora del server del database) tramite pgAgent job `apply_storicizza_weekly`, cinque minuti dopo la sincronizzazione (`sync_storico_set_storicizza`, alle 07:00): lo stesso ordine della convergenza in CI.
 
 **Job wrapper:** `proc_apply_storicizza_defaults_job` — esecuzione schedulata con advisory lock e logging.
 
@@ -537,7 +537,7 @@ flowchart TD
 * **Valutare l'indice GIN** per tabelle con molti record storici e necessita di query su campi specifici dello snapshot (`snapshot->>'campo'`)
 * **Eseguire `proc_sync_storico_set_storicizza` dopo il deploy** per aggiornare il registro di configurazione
 * **Non creare FK tra storico e tabella operativa** — la scelta e deliberata e non deve essere aggirata
-* **Verificare con dry-run** prima di applicare il provisioning in produzione: `SELECT dbops.fn_run_automations_storico_provision('AUTO', NULL, true);`
+* **Verificare con dry-run** prima di applicare il provisioning in produzione: `SELECT dbops.fn_run_automations_storico_provision('CI', NULL, true);`
 
 ---
 
@@ -586,7 +586,6 @@ erDiagram
         text target_schema
         text target_table
         text name_template
-        text existence_strategy
         jsonb params
     }
 

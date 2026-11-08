@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_log_pipeline_fase`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -61,6 +63,16 @@ riga con `gruppo_key` a `NULL`: il fallimento c'è stato, e va registrato.
 proprio il dato che manca nel fallimento più tipico. Una derivazione che smette
 di funzionare esattamente nel caso per cui serve non è una derivazione: è una
 trappola. **Lo dichiara chi scrive.**
+
+### La commessa della segnalazione — `p_commessa_id` (2026-11-08)
+
+Il nono parametro, in coda, finisce nella colonna `commessa_id`: **di quale
+commessa** parla la segnalazione, accanto a **di quale documento**
+(`gruppo_key`). Lo dichiara chi scrive, con lo stesso principio: il pull per
+commessa ha la commessa in mano, perché è da lì che ricava i documenti. Serve al
+riferimento della scheda Critiche: un documento senza numero (un consumo) si
+nomina col codice della commessa **di quel lotto**, anche quando quella
+commessa è poi chiusa. Un id assente o `<= 0` diventa `NULL`, senza sollevare.
 
 #### Una stringa vuota è assenza, ma qui costa
 
@@ -124,7 +136,8 @@ SELECT vendite.fn_log_pipeline_fase(
   p_messaggio  => 'Errore emissione commessa 34137',
   p_meta       => '{}'::jsonb,
   p_error_code => 'E_PULL_COMMESSA',
-  p_gruppo_key => 'ORDINE_VENDITA:01a06ce4-35a6-721a-9cd8-9da48bf77626'
+  p_gruppo_key => 'ORDINE_VENDITA:01a06ce4-35a6-721a-9cd8-9da48bf77626',
+  p_commessa_id => 34137
 );
 ```
 

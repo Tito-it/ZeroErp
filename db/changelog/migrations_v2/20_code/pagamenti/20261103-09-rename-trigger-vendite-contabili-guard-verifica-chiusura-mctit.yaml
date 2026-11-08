@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA MATRICE PARLA PRIMA DELLA CHIUSURA
+#   trigger trg_vendite_contabili_a10_guard_chiusura_upd
+#        → trg_vendite_contabili_a10_guard_verifica_chiusura_upd
+#
+# ── IL DIFETTO ─────────────────────────────────────────────────────
+#   I BEFORE ROW di una tabella scattano in ordine ALFABETICO di nome. Su
+#   pagamenti.vendite_contabili il guard della chiusura («non si chiude con
+#   righe pronte da registrare») si chiamava `…_a10_guard_chiusura_upd` e
+#   stava davanti alla matrice dei passaggi (`…_a10_guard_transizione_upd`):
+#   c < t.
+#
+#   Un passaggio NON AMMESSO verso CHIUSA, su una distinta con righe pronte,
+#   riceveva quindi «ci sono righe pronte» invece di «questo passaggio non e'
+#   ammesso». Il dato restava protetto, ma il motivo era quello sbagliato:
+#   chi lo legge registra le righe e poi sbatte contro la matrice. Il
+#   changeSet 20260821-33 lo aveva gia' scritto come residuo.
+#
+# ── LA CORREZIONE ──────────────────────────────────────────────────
+#   Si rinomina il TRIGGER, non la funzione. Il nome nuovo segue la matrice
+#   (v > t) e anche il guard di validazione (ve > va), con cui non si
+#   sovrappone: uno giudica l'ingresso in VALIDATA, l'altro in CHIUSA.
+#   La matrice resta `a10_guard_transizione`, come sulle altre tabelle.
+#   Ordine risultante dei guard di stato: transizione, validazione,
+#   verifica_chiusura.
+#
+#   ⚠️ Non e' un CONSTRAINT TRIGGER: ALTER TRIGGER … RENAME basta, e la
+#   definizione (BEFORE UPDATE OF stato_id, FOR EACH ROW) non cambia.
+#
+# Verifica: db/pgtap/pagamenti/test-contabile-guard-chiusura-v1.sql
+#   (il passaggio non ammesso verso CHIUSA con righe pronte riceve il codice
+#   della matrice)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20261103-09-rename-trigger-vendite-contabili-guard-verifica-chiusura-mctit.yaml
+
+  - changeSet:
+      id: 20261103-09-rename-trigger-vendite-contabili-guard-verifica-chiusura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rinomina il trigger del guard di chiusura su pagamenti.vendite_contabili in
+        trg_vendite_contabili_a10_guard_verifica_chiusura_upd, perche' scatti dopo la
+        matrice dei passaggi (ordine alfabetico dei BEFORE ROW): un passaggio non ammesso
+        verso CHIUSA deve ricevere il rifiuto della matrice, non quello delle righe pronte.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_trigger t
+              WHERE t.tgrelid = 'pagamenti.vendite_contabili'::regclass
+                AND t.tgname = 'trg_vendite_contabili_a10_guard_chiusura_upd'
+                AND NOT t.tgisinternal
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TRIGGER trg_vendite_contabili_a10_guard_chiusura_upd
+                  ON pagamenti.vendite_contabili
+                  RENAME TO trg_vendite_contabili_a10_guard_verifica_chiusura_upd;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TRIGGER trg_vendite_contabili_a10_guard_verifica_chiusura_upd
+                  ON pagamenti.vendite_contabili
+                  RENAME TO trg_vendite_contabili_a10_guard_chiusura_upd;

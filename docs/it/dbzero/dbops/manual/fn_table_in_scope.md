@@ -1,93 +1,70 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_table_in_scope`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
+> Approfondimento tabelle:
 >
-[Automazioni – Overview del Modulo](/guide/automazione-db)
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — i filtri di tabella che la funzione legge
 >
-Approfondimento tabelle:
+> Approfondimento funzioni:
 >
-[dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — il primo livello, gli schemi; questa funzione lavora dentro quelli
+> * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match) — il confronto del bersaglio di una regola, che si applica dopo
 >
-Approfondimento funzioni:
+> Guide:
 >
-[dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
-> [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)   
-> [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)   
+> * [Automazione DB](/guide/automazione-db) — il framework che usa questo filtro
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene all'ambito di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
+
+Dice se una tabella di uno schema rientra nell'ambito delle automazioni secondo i filtri di
+tabella di `dbops.automation_scope`. È il secondo livello dell'ambito: gli schemi li decide
+`fn_resolve_scope`, questa funzione decide quali tabelle di uno schema entrano.
+
+La chiamano, in ogni giro, i runner `fn_run_automations_*` (storico, provisioning dello
+storico, `tx_id`, audit, attivo, regola del periodo, blocco del `DELETE`, pulizia), i seed
+delle automazioni e il censimento delle divergenze dei lock.
 
 ---
 
-### Parametri di input
+### Le regole, in ordine
 
-| Parametro  | Tipo | Obbligatorio | Descrizione                                    |
-| ---------- | ---- | :----------: | ---------------------------------------------- |
-| `p_schema` | text |      ✔️       | Nome dello schema della tabella da verificare. |
-| `p_table`  | text |      ✔️       | Nome della tabella da verificare.              |
+1. **Nessuna tabella dell'ambito, o tabella vuota** → sì: senza elenco non c'è filtro.
+2. **Nessuna riga per questo schema** → sì: per uno schema non elencato la decisione è del
+   livello schema, non di questo.
+3. **Una riga `*all` per lo schema** → sì, tutto lo schema.
+4. **Altrimenti** → sì solo se il nome della tabella soddisfa il pattern `LIKE` di almeno una
+   riga dello schema.
 
----
-
-## Valore di ritorno
-
-`boolean` – `true` se la tabella rientra nell'ambito secondo le regole in `automation_scope`, `false` altrimenti.
-
----
-
-### Flusso logico
-
-1. **Assenza tabella `automation_scope`** → ritorna `true` (nessun filtro attivo).
-2. **Tabella `automation_scope` vuota** → ritorna `true` (nessun filtro attivo).
-3. **Righe per schema specifico**:
-
-   * Se **nessuna riga per lo schema** → tutte le tabelle dello schema rientrano nell'ambito.
-   * Se presente almeno una riga con `table_like='*all'` → tutte le tabelle dello schema rientrano nell'ambito.
-   * Altrimenti → valuta se `p_table` corrisponde a `table_like` usando `LIKE`.
-4. Ritorna `true` solo se esiste almeno un match.
+Il nome dello schema si confronta senza distinguere maiuscole e minuscole; il pattern di
+tabella si applica così com'è, maiuscole comprese.
 
 ---
 
-## Casi d’uso tipici
+### ⚠️ Da sola non delimita niente
 
-* **Filtrare automazioni**: applicare trigger e policy solo su tabelle ammesse.
-* **Gestione granularità**: permettere di definire ambiti per schema intero (`*all`) o singole tabelle/pattern.
-* **Test selettivi**: limitare le automazioni a un sottoinsieme di tabelle in ambiente di sviluppo.
-
----
-
-###🛡️ Permessi e sicurezza
-
-* Richiede accesso in lettura alla tabella `dbops.automation_scope`.
-* È una funzione **STABLE**, senza effetti collaterali sui dati.
+La regola 2 risponde «sì» per qualsiasi schema che non compare nell'ambito. Il filtro ha senso
+solo **dentro** l'elenco degli schemi di `fn_resolve_scope`: è così che lo usano i runner, che
+scorrono le tabelle degli schemi risolti e applicano questo filtro a ciascuna. Chiamata fuori
+da quel giro, la funzione dice «in ambito» anche a una tabella di uno schema escluso.
 
 ---
 
-### Esempi di utilizzo
+### Test
 
-* `SELECT dbops.fn_table_in_scope('anagrafiche','clienti');` → `true` se la regola lo consente.
-* `SELECT dbops.fn_table_in_scope('config','valute');` → `true/false` secondo le regole impostate.
-* `SELECT dbops.fn_table_in_scope('vendite','*');` → utile con `table_like='*all'`.
-
----
-
-### Considerazioni
-
-* La funzione centralizza la logica di inclusione/esclusione a livello tabellare.
-* L’uso di `LIKE` permette di definire pattern (`pref%`, `%log`).
-* Garantisce che le automazioni rispettino sempre i confini definiti in `automation_scope`.
+* `db/pgtap/dbops/test-cleanup-framework.sql` — un ambito di `dbops` ristretto a tre tabelle
+  di prova: la pulizia vede solo quelle.
+* `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql` e
+  `db/pgtap/dbops/test-idempotency-prenota-v1.sql` — i registri di `dbops` con una scadenza
+  (`idempotency_keys`, `request_log`, `error_log`, `audit_log`) sono in ambito, quindi la
+  pulizia li vede.
+* `db/pgtap/script/test-trgfn-guard-date-validita-v1.sql` — il filtro fa parte del perimetro
+  su cui si verifica il guard della regola del periodo.
 
 ---
 
-### Benefici
-
-* **Controllo granulare**: consente regole precise fino al livello di singola tabella.
-* **Coerenza**: unica fonte autorevole per la logica di inclusione.
-* **Flessibilità**: supporto wildcard e fallback sensati.
-
----
-
-> **In sintesi**: `fn_table_in_scope` è l’helper che assicura che ogni automazione venga applicata **solo alle tabelle autorizzate**, rispettando le regole di `automation_scope` e permettendo configurazioni granulari o globali.
+{% include-markdown "signature-core.md" %}

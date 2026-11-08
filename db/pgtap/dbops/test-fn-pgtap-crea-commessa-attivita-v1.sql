@@ -59,8 +59,8 @@ SELECT plan(14);
 -- 1) La firma
 SELECT has_function(
     'dbops', 'fn_pgtap_crea_commessa_attivita',
-    ARRAY['bigint', 'numeric', 'uuid', 'bigint', 'bigint', 'character varying', 'text', 'bigint', 'numeric', 'character varying', 'character varying', 'date', 'date'],
-    'dbops.fn_pgtap_crea_commessa_attivita(... tredici argomenti) esiste con la firma dichiarata'
+    ARRAY['bigint', 'numeric', 'uuid', 'bigint', 'bigint', 'character varying', 'text', 'bigint', 'numeric', 'character varying', 'character varying', 'date', 'date', 'text'],
+    'dbops.fn_pgtap_crea_commessa_attivita(... quattordici argomenti, l''etichetta della chiave in coda) esiste con la firma dichiarata'
 );
 
 -- Fixture: una commessa e due attivita' (prezzo di default e prezzo scelto)
@@ -107,7 +107,7 @@ SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id      => (SELECT commessa_id FROM t_c),
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
-    p_sorgente_uid     => (SELECT commessa_id FROM t_c)::text);
+    p_sorgente_chiave  => (SELECT commessa_id FROM t_c)::text);
 
 -- Lo stato si cambia dal verbo (la porta, giro 10): la fixture cammina la
 -- matrice e concede da se' l'azione cambia_stato_commessa.
@@ -240,17 +240,21 @@ SELECT throws_like(
 );
 
 -- 12-14) La sorgente, gli stati, la quantita' e il periodo (rev 2026-10-24)
--- Un preventivo vero: la tabella verifica che la chiave della sorgente esista.
+-- Un preventivo vero, con una riga: il guard unico verifica che il documento esista
+-- e che la riga sia sua.
 CREATE TEMP TABLE t_prev_sorg AS
 SELECT * FROM dbops.fn_pgtap_crea_preventivo('presidio attivita sorgente');
+CREATE TEMP TABLE t_prev_riga AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe(
+    'presidio attivita sorgente', p_preventivo_id => (SELECT preventivo_id FROM t_prev_sorg));
 
 CREATE TEMP TABLE t_a_sorg AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
     p_commessa_id        => (SELECT commessa_id FROM t_c),
     p_prezzo_snapshot    => 30,
     p_sorgente_codice    => 'PREVENTIVO',
-    p_sorgente_uid       => (SELECT preventivo_uid::text FROM t_prev_sorg),
-    p_sorgente_riga_id   => 4242,
+    p_sorgente_chiave    => (SELECT preventivo_uid::text FROM t_prev_sorg),
+    p_sorgente_riga_id   => (SELECT preventivo_riga_id FROM t_prev_riga),
     p_quantita           => 3,
     p_stato_approvazione => 'BOZZA',
     p_stato_emissione    => 'EMESSA',
@@ -258,13 +262,15 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
     p_competenza_al      => DATE '2080-12-31');
 
 SELECT is(
-    (SELECT (ca.segment_key = script.fn_segment_key('PREVENTIVO', (SELECT preventivo_uid::text FROM t_prev_sorg), 4242))::text
+    (SELECT (ca.segment_key = script.fn_segment_key('PREVENTIVO', (SELECT preventivo_uid::text FROM t_prev_sorg),
+                                                    (SELECT preventivo_riga_id FROM t_prev_riga)))::text
             || ' ' || s.codice_interno::text
-            || ' ' || (ca.sorgente_uid = (SELECT preventivo_uid::text FROM t_prev_sorg))::text
+            || ' ' || (ca.sorgente_uid = (SELECT preventivo_uid FROM t_prev_sorg))::text
+            || ' ' || (ca.sorgente_riga = (SELECT preventivo_riga_id FROM t_prev_riga))::text
        FROM t_a_sorg a JOIN vendite.commesse_attivita ca ON ca.id = a.attivita_id
        JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id),
-    'true PREVENTIVO true',
-    '12) sorgente PREVENTIVO: la chiave la compone script.fn_segment_key, sorgente e uid sono quelli del documento'
+    'true PREVENTIVO true true',
+    '12) sorgente PREVENTIVO: la chiave la compone script.fn_segment_key, sorgente, uid e riga sono quelli del documento'
 );
 
 SELECT is(

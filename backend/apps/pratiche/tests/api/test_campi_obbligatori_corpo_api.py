@@ -35,7 +35,7 @@ class CampiObbligatoriCorpoApiTests(JwtMockedApiTest):
         self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_campo_assente_e_400_col_codice_documentato(self, MockRepo, _auth) -> None:
         MockRepo.return_value.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
         casi = (

@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_stiva_movimenti_guard_annullo()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'anagrafiche', 'config', 'script'
+ SET search_path TO 'pg_catalog', 'anagrafiche', 'config', 'script', 'pg_temp'
 AS $function$
 -- Scopo: presidiare le righe che ANNULLANO un movimento del
 --   registro plafond IVA, in due famiglie di controlli.

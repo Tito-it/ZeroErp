@@ -1,101 +1,116 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_duplicate_indexes`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_duplicate_indexes`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento funzioni:  
+> Approfondimento tabelle:
 >
-[dbops.vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso)  
-> [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)  
-> [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy)  
-
-La view **`dbops.vw_duplicate_indexes`** identifica gli **indici duplicati esatti** all'interno dello stesso schema e tabella: quelli che, a parità di tutto ciò che conta, sono **intercambiabili**. È **limitata agli schemi presenti in `dbops.automation_scope`**.
-
-Per ciascun gruppo restituisce i nomi degli indici coinvolti, quale tenere e quali eliminare.
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — gli schemi in cui la vista cerca
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — da guardare prima di togliere un indice governato dall'automazione
+>
+> Approfondimento viste:
+>
+> * [dbops.vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso) — la sorella: la ridondanza per prefisso, che qui non si vede
+> * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy) — gli indici dedicati alle chiavi esterne ancora senza policy
+>
+> Guide:
+>
+> * [Linee guida SQL — indici ridondanti](/linee-guida-sql#86-gestione-indici-ridondanti) — le due forme di ridondanza e come si rimuovono
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 27-07-26)
 
-* **Individuare indici realmente ridondanti**
-  Scoprire indici intercambiabili, di cui tutti tranne uno possono essere rimossi.
-* **Ottimizzazione dello storage e delle performance**
-  Ridurre overhead di manutenzione e migliorare le prestazioni di scrittura: ogni indice in più costa una scrittura a ogni `INSERT`, `UPDATE` e `DELETE`.
-* **Governance della struttura**
-  Supportare analisi periodiche per mantenere lo schema pulito e coerente.
+Gli **indici duplicati esatti** degli schemi di `dbops.automation_scope`: gruppi di indici sulla
+stessa tabella che, a parità di tutto ciò che conta, sono intercambiabili. Per ogni gruppo dice
+quale tenere (`indice_da_tenere`) e quali togliere (`indici_da_droppare`).
 
----
-
-### 🔑 La firma normalizzata
-
-Il raggruppamento avviene per **firma**: la definizione dell'indice (`pg_get_indexdef`) privata di
-
-* il **nome**,
-* la clausola `WITH (...)` dei parametri di storage,
-* la clausola `TABLESPACE`.
-
-Resta tutto ciò che determina **quali query l'indice sa servire**: metodo di accesso, colonne ed espressioni, classe di operatori, collation, `ASC`/`DESC`, `NULLS FIRST`/`LAST`, `NULLS NOT DISTINCT`, `INCLUDE`, predicato. Due indici con la stessa firma sono equivalenti per definizione.
-
-#### Il flag UNIQUE è fuori dalla chiave di raggruppamento
-
-Deliberatamente. Un btree non-unique identico a un `UNIQUE` ha una firma che differisce solo per quel flag, ma è ridondante al 100%: la UNIQUE serve le stesse query **e in più** impone un vincolo. Metterlo nella chiave lo avrebbe reso invisibile.
-
-Il flag è usato invece per **ordinare** il gruppo, così `indice_da_tenere` è sempre la UNIQUE quando c'è.
+Un indice di troppo costa una scrittura in più a ogni inserimento, modifica e cancellazione sulla
+tabella, e lavoro di manutenzione che non ripaga mai.
 
 ---
 
-### ⚠️ Cosa NON è un duplicato
+### 🔑 Duplicato vuol dire «stessa definizione, nome a parte»
 
-Fino al 27-07-2026 la view raggruppava per il solo array di colonne, e segnalava **19 gruppi di cui 16 falsi positivi**. Ecco i tre modi in cui sbagliava, oggi tutti risolti:
+Il raggruppamento avviene per **firma**: la definizione dell'indice privata del nome, dei parametri
+di storage e del tablespace. Resta tutto ciò che decide quali query l'indice sa servire: metodo,
+colonne ed espressioni, classe di operatori, collation, ordinamento, trattamento dei nulli, colonne
+`INCLUDE`, predicato. Due indici con la stessa firma sono equivalenti per definizione.
 
-| Caso | Perché non sono duplicati |
+⭐ **Il flag UNIQUE sta fuori dalla firma, apposta.** Un btree non unico identico a una UNIQUE è
+ridondante al cento per cento — la UNIQUE serve le stesse query e in più impone il vincolo — e
+mettere il flag nella firma lo renderebbe invisibile. Il flag decide invece l'**ordine** del gruppo,
+insieme ai vincoli (vedi sotto): a parità, si tiene il più vecchio.
+
+---
+
+### ⛔ Un indice che regge un vincolo non si propone per il `DROP`
+
+Un indice regge un vincolo quando lo sostiene (una `UNIQUE` o un `EXCLUDE` dichiarati come
+vincolo), quando una chiave esterna lo usa come riferito, o quando è la `REPLICA IDENTITY` della
+tabella. Toglierlo vorrebbe dire togliere il vincolo, o romperlo.
+
+L'ordine del gruppo è quindi: prima gli indici che reggono un vincolo, poi le UNIQUE, poi il più
+vecchio. `indice_da_tenere` è il primo, e `indici_da_droppare` non contiene **mai** un indice di
+vincolo, nemmeno quando nel gruppo ce n'è più d'uno: in quel caso propone solo gli altri, e un
+gruppo fatto di soli indici di vincolo non propone niente. Un gruppo così resta visibile: dice che
+due vincoli si sovrappongono, ed è una scelta di progetto, non una pulizia.
+
+---
+
+### ⚠️ Che cosa non è un duplicato
+
+| Caso | Perché convivono |
 | --- | --- |
-| GIN `trgm` e btree sulla stessa colonna | servono query diverse: `ILIKE '%x%'` contro uguaglianza e ordinamento |
-| Due UNIQUE parziali disgiunte | `WHERE stato='BOZZA'` e `WHERE stato='PUBBLICATA'` convivono legittimamente |
-| Un indice con colonne-espressione | il join su `pg_attribute` scartava gli `attnum = 0`, e un indice a 5 colonne di cui 4 `COALESCE(...)` veniva letto come indice a **una** colonna |
+| un GIN trigram e un btree sulla stessa colonna | servono query diverse: ricerca per sottostringa contro uguaglianza e ordinamento |
+| due UNIQUE parziali con predicati disgiunti | ognuna vale su un sottoinsieme diverso di righe |
+| due indici che differiscono per un'espressione | la firma confronta le espressioni, non le sole colonne sottostanti |
 
 ---
 
-### ⛔ Cosa questa view non può vedere
+### ⛔ Che cosa questa vista non può vedere
 
-La **ridondanza per prefisso**: un indice su `(a)` reso inutile da uno su `(a, b)`. Non è un duplicato — le colonne differiscono — quindi nessun affinamento di questa view potrà mai catturarlo.
-
-Serve la view sorella [vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso). **Le due si usano insieme.**
-
----
-
-### Colonne e Descrizione
-
-| Colonna | Descrizione |
-| --- | --- |
-| `schema_name`, `table_name` | Dove si trova il gruppo |
-| `index_columns` | Colonne chiave, espressioni comprese |
-| `metodo` | Metodo di accesso (`btree`, `gin`, `gist`, …) |
-| `predicato` | Predicato `WHERE` dell'indice parziale, `NULL` se totale |
-| `duplicate_index_names` | Nomi degli indici del gruppo, UNIQUE per primo |
-| `count_of_indexes` | Quanti indici nel gruppo |
-| `indice_da_tenere` | Quello da conservare |
-| `indici_da_droppare` | Tutti gli altri |
+* **La ridondanza per prefisso**: un indice su una colonna reso inutile da uno su quella colonna e
+  un'altra. Non è un duplicato — le colonne differiscono — e nessun affinamento della firma lo
+  catturerà mai: lo vede `dbops.vw_indici_ridondanti_prefisso`. Le due viste si usano insieme.
+* **Gli indici uguali alla chiave primaria**: la chiave primaria non entra nel confronto, quindi un
+  btree identico a lei non forma un gruppo qui. Lo vede la vista per prefisso, che ammette la chiave
+  primaria come indice coprente.
+* **L'equivalenza che dipende dai dati o dai vincoli**: due indici che si equivalgono solo perché le
+  colonne sono obbligatorie (un'espressione che sostituisce il nullo su una colonna che nullo non è
+  mai) hanno firme diverse e non compaiono.
 
 ---
 
-### Esempi di Utilizzo
+### ⚠️ Prima di togliere un indice del gruppo
 
-```sql
--- cosa tenere e cosa togliere, già pronto
-SELECT schema_name, table_name, indice_da_tenere, indici_da_droppare
-FROM dbops.vw_duplicate_indexes;
-```
-
-> ⚠️ Prima di droppare, verificare in [vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso) se l'indice è governato dall'automazione FK (`origine = 'AUTOMAZIONE_FK'`): in quel caso un `DROP` secco verrebbe annullato al primo `migrate` successivo, e serve prima portare a `false` il flag `consentito` in `dbops.fk_index_policy`.
+* Se l'indice è governato dall'automazione delle chiavi esterne (`origine = 'AUTOMAZIONE_FK'` nella
+  vista per prefisso), un `DROP` secco viene annullato al primo `migrate`: prima si spegne il flag in
+  `dbops.fk_index_policy`.
 
 ---
 
-### Vantaggi Operativi
+### Test
 
-* **Riduzione di ridondanze**: individua indici davvero eliminabili, senza falsi allarmi.
-* **Chiarezza**: `indice_da_tenere` e `indici_da_droppare` dicono l'azione, non solo il problema.
-* **Automazione**: utile in script di auditing o pulizia periodica.
+* `db/pgtap/dbops/test-indici-letture-trasversali-v1.sql`, test 10 — nessuno degli indici delle
+  letture trasversali è un duplicato esatto.
+* `db/pgtap/dbops/test-vw-duplicate-indexes-vincoli-v1.sql` — fra due UNIQUE identiche si tiene
+  quella di vincolo anche se è nata dopo, e si propone l'altra; la replica identity si tiene; due
+  indici di vincolo identici non danno proposte di `DROP`.
 
 ---
 
-> **“Con `vw_duplicate_indexes`, tenere sotto controllo gli indici duplicati diventa semplice, supportando azioni di consolidamento per ottimizzare il database.”**
+### Note di migrazione
+
+* 2026-07-27 — il raggruppamento passa dalla sola lista di colonne alla firma normalizzata. Prima la
+  vista segnalava diciannove gruppi, di cui sedici falsi: GIN contro btree, UNIQUE parziali disgiunte,
+  e indici con espressioni letti come indici a una colonna.
+* 2026-09-01 — un UNIQUE con espressioni sostitutive del nullo su colonne obbligatorie, gemello di
+  un altro UNIQUE, viene tolto a mano: è il caso di equivalenza che la vista non vede.
+* 2026-11-08 — gli indici che reggono un vincolo o la replica identity si tengono per primi e non
+  si propongono mai per il `DROP`: prima la vista poteva proporre di togliere la UNIQUE di un vincolo.
+
+---
+
+{% include-markdown "signature-core.md" %}

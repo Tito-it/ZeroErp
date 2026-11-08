@@ -1,19 +1,24 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: §26 B+D — sorgente_origine_tipo_id + tipo_doc_fiscale_id
+-- Test: §26 B+D — il tipo del documento d'origine + tipo_doc_fiscale_id
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, lotto C, giro C.1): il tipo
+--   del documento d'origine non si copia piu' sull'attivita' fatturabile
+--   (sorgente_origine_tipo_id e le altre sorgente_* si ritirano): si legge dalla
+--   riga di commessa, per la FK commessa_attivita_id. La regola §26 resta: il
+--   tipo documento viene dal documento di business, non da COMMESSA.
 -- ------------------------------------------------------------
 -- Indice test (1..10):
---  1) Colonna sorgente_origine_tipo_id presente su attivita_fatturabili
---  2) FK sorgente_origine_tipo_id -> config.sorgenti attiva
+--  1) attivita_fatturabili non ha piu' sorgente_origine_tipo_id
+--  2) FK commessa_attivita_id -> commesse_attivita: la provenienza
 --  3) config.sorgenti[PREVENTIVO].tipo_doc_fiscale_id configurato
 --  4) fn_list_preventivi_da_pushare restituisce tipo_doc_fiscale_id
 --  5) tipo_doc_fiscale_id coerente con config.sorgenti[PREVENTIVO]
---  6) fn_emit propaga sorgente_origine_tipo_id da commesse_attivita
+--  6) l'attivita' emessa raggiunge il tipo PREVENTIVO dalla sua riga di commessa
 --  7) fn_emit propaga tipo_doc_fiscale_id da commesse_attivita
 --  8) Trigger normalize: tipo_doc_fiscale_id gia` valorizzato non sovrascritto
---  9) Trigger normalize: risolve da sorgente_origine_tipo_id
--- 10) Trigger normalize: fallback legacy da sorgente_tipo_id
+--  9) Trigger normalize: risolve dal tipo del documento della riga di commessa
+-- 10) nessun ripiego su una colonna dell'attivita': sorgente_tipo_id non c'e'
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -35,20 +40,20 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(10);
 
 -- ============================================================
--- 1) Colonna sorgente_origine_tipo_id presente su AF
+-- 1) sorgente_origine_tipo_id non c'e' piu': il tipo si legge dalla riga di commessa
 -- ============================================================
-SELECT has_column(
+SELECT hasnt_column(
   'vendite', 'attivita_fatturabili', 'sorgente_origine_tipo_id',
-  'Colonna sorgente_origine_tipo_id presente su attivita_fatturabili'
+  'attivita_fatturabili non ha sorgente_origine_tipo_id: il tipo d''origine sta sulla riga di commessa'
 );
 
 -- ============================================================
--- 2) FK sorgente_origine_tipo_id -> config.sorgenti
+-- 2) La provenienza dell'attivita': FK commessa_attivita_id -> commesse_attivita
 -- ============================================================
 SELECT fk_ok(
-  'vendite', 'attivita_fatturabili', 'sorgente_origine_tipo_id',
-  'config', 'sorgenti', 'id',
-  'FK sorgente_origine_tipo_id -> config.sorgenti attiva'
+  'vendite', 'attivita_fatturabili', 'commessa_attivita_id',
+  'vendite', 'commesse_attivita', 'id',
+  'FK commessa_attivita_id -> vendite.commesse_attivita: la provenienza dell''attivita'''
 );
 
 -- ============================================================
@@ -177,8 +182,8 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sot),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_sot),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_sot)::text,
-  p_sorgente_riga => 1,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa_sot)::text,
+  p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
 
@@ -198,7 +203,7 @@ CREATE TEMP TABLE tmp_ca_sot AS
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sot),
-  p_segment_key => ('SOT-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
+  p_segment_key => ((SELECT script.fn_segment_key(s.codice_interno, d.documento_uid::text) FROM config.sorgenti s, script.fn_sorgente_documento_da_chiave(s.id, ((SELECT uid::text FROM tmp_prev_sot))::text) d WHERE s.id = (SELECT sorgente_preventivo_id FROM tmp_refs_sot)) || ':' || ('SOT-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_sot),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_sot),
   p_data_attivita => DATE '2026-07-15',
@@ -230,7 +235,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT sorgente_preventivo_id FROM tmp_refs_sot),
-  p_sorgente_uid => (SELECT uid::text FROM tmp_prev_sot),
+  p_sorgente_chiave => (SELECT uid::text FROM tmp_prev_sot),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'SORGENTE_ORIGINE_TEST')
 ) r;
@@ -244,16 +249,17 @@ SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
 );
 
 -- ============================================================
--- 6) fn_emit propaga sorgente_origine_tipo_id
+-- 6) L'attivita' emessa raggiunge il tipo d'origine dalla sua riga di commessa
 -- ============================================================
 SELECT ok(
   (
-    SELECT af.sorgente_origine_tipo_id = r.sorgente_preventivo_id
+    SELECT ca.sorgente_tipo_id = r.sorgente_preventivo_id
     FROM vendite.attivita_fatturabili af
+    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
     JOIN tmp_refs_sot r ON true
     WHERE af.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_ca_sot)
   ),
-  'fn_emit propaga sorgente_origine_tipo_id da commesse_attivita.sorgente_tipo_id'
+  'l''attivita'' emessa raggiunge il tipo PREVENTIVO dalla sua riga di commessa'
 );
 
 -- ============================================================
@@ -289,10 +295,10 @@ SELECT ok(
 );
 
 -- ============================================================
--- 9) Trigger normalize: risolve da sorgente_origine_tipo_id
+-- 9) Trigger normalize: risolve dal tipo della riga di commessa
 -- ============================================================
 -- Azzeriamo tipo_doc_fiscale_id e triggeriamo il normalize; deve risolvere
--- da sorgente_origine_tipo_id (PREVENTIVO), non da sorgente_tipo_id (COMMESSA).
+-- dal tipo del documento della riga di commessa (PREVENTIVO), non da COMMESSA.
 UPDATE vendite.attivita_fatturabili
 SET tipo_doc_fiscale_id = NULL
 WHERE commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_ca_sot);
@@ -304,27 +310,18 @@ SELECT ok(
     JOIN tmp_refs_sot r ON true
     WHERE af.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_ca_sot)
   ),
-  'Trigger normalize: risolve tipo_doc_fiscale_id da sorgente_origine_tipo_id'
+  'Trigger normalize: risolve tipo_doc_fiscale_id dal tipo del documento della riga di commessa'
 );
 
 -- ============================================================
--- 10) Trigger normalize: fallback legacy da sorgente_tipo_id
+-- 10) Nessun ripiego su una colonna dell'attivita'
 -- ============================================================
--- Azzeriamo sia tipo_doc_fiscale_id sia sorgente_origine_tipo_id;
--- deve risolvere il fallback da sorgente_tipo_id (COMMESSA).
-UPDATE vendite.attivita_fatturabili
-SET tipo_doc_fiscale_id = NULL,
-    sorgente_origine_tipo_id = NULL
-WHERE commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_ca_sot);
-
-SELECT ok(
-  (
-    SELECT af.tipo_doc_fiscale_id = r.commessa_tipo_doc_id
-    FROM vendite.attivita_fatturabili af
-    JOIN tmp_refs_sot r ON true
-    WHERE af.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_ca_sot)
-  ),
-  'Trigger normalize: fallback legacy da sorgente_tipo_id (COMMESSA)'
+-- Il ripiego di prima (sorgente_tipo_id = COMMESSA) leggeva una colonna che non
+-- c'e' piu'. La riga di commessa senza documento (onere, rettifica) prende
+-- COMMESSA dal normalize: lo prova vendite/test-sorgente-attivita-fatturabili-v1 (10).
+SELECT hasnt_column(
+  'vendite', 'attivita_fatturabili', 'sorgente_tipo_id',
+  'nessun ripiego su una colonna dell''attivita'': sorgente_tipo_id non c''e'''
 );
 
 -- ============================================================

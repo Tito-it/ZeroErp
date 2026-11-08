@@ -87,10 +87,10 @@ class FiltriVocabolarioCablaggioTests(TestCase):
         )
         for campo, chiamata in casi:
             with self.subTest(campo=campo), \
-                    patch("apps.vendite.services.vendite_service.VenditeRepository") as v_repo, \
-                    patch("apps.vendite.services.commesse_service.CommesseRepository") as c_repo, \
+                    patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True) as v_repo, \
+                    patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True) as c_repo, \
                     patch("apps.pagamenti.services.pagamenti_service.richiedi_codice_a_vocabolario"), \
-                    patch("apps.pagamenti.services.pagamenti_service.PagamentiRepository") as p_repo:
+                    patch("apps.pagamenti.services.pagamenti_service.PagamentiRepository", autospec=True) as p_repo:
                 with self.assertRaises(ServiceError) as ctx:
                     chiamata()
                 # Il parametro nominato nel context, senza `field` (filtro di query).

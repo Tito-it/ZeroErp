@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO SCOPE ROW_VALIDATOR ESCE DAL CATALOGO DELLE SORGENTI; LA NATURA IN categoria
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.1 (Z-b di Tid, 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   1. ROW_VALIDATOR era lo scope dei tipi *_RIGA di vendita (la riga come
+#      documento). Il giro R.2 li ha ritirati: nessuna sorgente lo usa, e il
+#      CHECK chk_sorgenti_scope lo ammetteva ancora. Esce, con lo stesso nome del
+#      vincolo. Nessun seed lo scrive (sorgenti.csv, l'unico scrittore del
+#      catalogo, non lo ha), quindi da zero il CHECK nuovo non incontra righe
+#      che lo violano.
+#   2. categoria dice la NATURA del tipo: DOCUMENTO (un documento, con o senza
+#      righe: EMAIL e ATTIVITA_CONSUMI non ne hanno) o EVENTO (un fatto con
+#      identita' propria senza righe, oggi EVENTO_ASSET). Non e' ricavabile dai
+#      livelli (Z-b). Qui il solo COMMENT: il valore nuovo di EVENTO_ASSET
+#      arriva dal CSV, e il CHECK sui due valori sta in 90_end/20261109-22, dopo
+#      il mirror (un CHECK qui fermerebbe dbdev, che ha ancora RIGA).
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261109-21-alter-config-sorgenti-scope-senza-row-validator-mctit.yaml
+
+  - changeSet:
+      id: 20261109-21-alter-config-sorgenti-scope-senza-row-validator
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.sorgenti: ROW_VALIDATOR esce da chk_sorgenti_scope; il COMMENT di categoria dice la
+        natura del tipo. brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti DROP CONSTRAINT chk_sorgenti_scope;
+              ALTER TABLE config.sorgenti
+                ADD CONSTRAINT chk_sorgenti_scope CHECK (scope::text = ANY (ARRAY[
+                    'PUSH_COMMESSA', 'PIPELINE_MARKER', 'POST_INVOICE', 'DIRECT_ENTRY',
+                    'PUSH_CONTRATTO', 'REVERSE_FLOW', 'MAGAZZINO', 'CATALOGO']::text[]));
+              COMMENT ON CONSTRAINT chk_sorgenti_scope ON config.sorgenti IS
+                'Gli scope ammessi di un tipo di sorgente: il ruolo che il tipo ha nei processi (push in commessa, marcatore di pipeline, dopo la fattura, inserimento diretto, push del contratto, flusso inverso, magazzino, catalogo).';
+
+              COMMENT ON COLUMN config.sorgenti.categoria IS
+                'La natura del tipo: DOCUMENTO (un documento, con o senza righe: config.sorgenti.righe_table dice se ne ha) o EVENTO (un fatto con identita'' propria e senza righe, come l''evento d''asset). Non si ricava dai livelli: un documento puo'' non avere righe. Si fissa all''inserimento (trg_sorgenti_a10_lock_columns_upd). Il backend la legge per elencare i tipi documento.';

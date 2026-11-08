@@ -22,12 +22,15 @@ congelati sul documento.
 
 È una simmetria voluta e utile — chi conosce il ciclo vendite riconosce subito questo — ma va
 maneggiata con una cautela: **la simmetria dei nomi non garantisce la simmetria delle
-colonne**. Il progetto ha già pagato un caso in cui `sorgente_uid` significava due cose
-diverse fra vendite e la sua controparte, e un guard è rimasto spento per tre changeSet senza
-che nessun test lo segnalasse.
+colonne**. Il caso più vistoso è la **provenienza** (`sorgente_tipo_id`, `sorgente_uid`): in
+`vendite` segue il modello comune ([sorgente polimorfa](/guide/sorgente-polimorfa)), con la
+chiave del documento tipizzata e la riga a parte; in `acquisti` (`ordini`, `ordini_righe`,
+`ddt`, `ddt_righe`) è ancora la grammatica precedente, una chiave in testo senza il guard
+unico. Le quattro tabelle sono l'elenco dichiarato del presidio di struttura, e passano al
+modello col cantiere degli acquisti.
 
 ⚠️ Prima di dare per scontato che una colonna qui si comporti come l'omonima in `vendite`,
-va verificato su `pg_constraint` e sulla popolazione reale.
+va verificato sulla struttura: tipo, `pg_constraint`, trigger montati.
 
 ---
 

@@ -1,86 +1,89 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_componenti_dettaglio`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:   
+> Approfondimento tabelle:
 >
-[catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)      
-> [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)     
+> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — i legami della distinta che la vista legge
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — codice e descrizione di kit e componente
+> * [config.esposizioni_componente](/dbzero/config/tabelle/esposizioni_componente) — la decodifica dell'esposizione in fattura
+> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — la lista configurabile che la usa come sorgente
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale della data di chiusura proposta
+>
+> Guide:
+>
+> * [Gestione listini](/guide/gestione-listini#53-immutabilita-della-bom-pattern-chiudi-nuova-versione) — chiudi e nuova versione
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 14-01-26)
-La vista **`catalogo.vw_articoli_componenti_dettaglio`** espone i legami
-prodotto–componente e arricchisce la riga con codice/descrizione di prodotto
-e componente.
 
-Restituisce **una riga per legame componente**.
+Le righe della distinta base, una per legame, con codice e descrizione del kit e del componente, la decodifica
+dell'esposizione in fattura e le capability che dicono se e da quando il legame si può chiudere.
 
----
-
-### Struttura logica della vista
-
-La vista parte da `catalogo.articoli_componenti` e aggiunge:
-
-* join a `catalogo.articoli` per il **prodotto**;
-* join a `catalogo.articoli` per il **componente**.
+È la sorgente unica delle righe della distinta: la lista configurabile `catalogo.articolo_componenti` la legge.
+Per cambiare un legame si scrive su `catalogo.articoli_componenti`.
 
 ---
 
-### 📑 Campi esposti (principali)
+### Che cosa aggiunge ai legami
 
-| Colonna                                       | Descrizione                |
-| --------------------------------------------- | -------------------------- |
-| `id`, `prodotto_id`, `componente_id`          | Identificativi del legame. |
-| `prodotto_codice`, `prodotto_descrizione`     | Dati articolo prodotto.    |
-| `componente_codice`, `componente_descrizione` | Dati articolo componente.  |
-| `coeff_qta`, `obbligatorio`                   | Parametri del legame. (`partecipa_qta` e `determina_qta_padre` ritirate il 2026-10-02, `20261002-62`.) |
-| `valid_from`, `valid_to`                      | Validita temporale.        |
-| `attivo`, `storicizza`, `tx_id`               | Stato e tracciamento.      |
+* **Le date** sono `valido_dal` e `valido_al` della tabella, così come sono.
+* **Kit e componente** con il loro codice e la descrizione.
+* **L'esposizione in fattura** in tre forme: `esposizione_in_fattura`, il codice interno (`NASCOSTO`,
+  `DESCRITTIVO`, `VALORIZZATO`) su cui ragiona la logica; `esposizione_in_fattura_codice`, il codice che la
+  lista mostra; `esposizione_in_fattura_etichetta_key`, la chiave della traduzione per il frontend.
 
-(Sono esposti anche i campi di audit e note di `catalogo.articoli_componenti`.)
+Tutte le decodifiche sono in `LEFT JOIN`: una riga che non aggancia un articolo o il vocabolario resta visibile.
+La vista non filtra su `attivo` né sulla validità: mostra anche i legami spenti, chiusi e futuri.
 
 ---
 
-### Modalita' d'uso tipiche
+### Le capability di chiusura
 
-```sql
-SELECT *
-FROM catalogo.vw_articoli_componenti_dettaglio
-WHERE prodotto_id = :articolo_id
-ORDER BY valid_from;
-```
+Chiudere è l'unica modifica di struttura ammessa su un legame, e la vista dice al frontend come proporla:
+
+* `puo_chiudersi` è vero solo se `valido_al` è vuoto. Un legame che ha già una data di fine, anche futura, conta
+  come chiuso, e `motivo_non_chiudibile` vale `RIGA_GIA_CHIUSA`.
+* `data_min_chiusura` è `valido_dal`: un legame si chiude al più presto il giorno in cui comincia.
+* `data_default_chiusura` è il giorno aziendale, oppure `valido_dal` se il legame comincia nel futuro.
+
+`attivo` non entra nel calcolo: un legame spento si può chiudere come uno acceso.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **La chiusura proposta può stare nel passato.** La data minima è l'inizio del legame, non il giorno aziendale:
+  la capability offre la chiusura all'indietro di un legame già usato, e il database la accetta.
+* **La data proposta e la nuova versione.** La chiusura proposta è oggi, e il periodo comprende l'ultimo giorno:
+  la nuova versione deve partire da domani, non da oggi, o si sovrappone alla vecchia. Le capability non danno la
+  data d'inizio della versione successiva.
 
 ---
 
-### Best practice e raccomandazioni
+### Test
 
-* Usare la vista per consultazione e composizione distinta base.
-* Per modifiche, aggiornare sempre `catalogo.articoli_componenti`.
-
----
-<!-- rev-2026-09-28-liste-righe -->
-### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
-
-**Diventa la sorgente unica delle righe della distinta base** (`20260928-27`, D-8.5): la lista configurabile `catalogo.articolo_componenti` e il repository la leggono. In coda `determina_qta_padre` ed `esposto_in_fattura` (dal 2026-10-01 `esposizione_in_fattura`, vedi sotto), che solo la copia Python aveva. La capability di chiusura resta qui, sede unica (il backend ritira la sua copia).
-
-<!-- rev-2026-10-01-esposizione -->
-### 🔄 rev 2026-10-01 — brief-db-esposizione-componenti-kit-in-fattura
-
-**L'esposizione in fattura passa da due a tre modi** (`20261001-44`; la vista è stata tolta da `20261001-42` per convertire la colonna e ricreata identica nel resto):
-
-| Colonna | Cosa porta |
-| --- | --- |
-| `esposizione_in_fattura` | al posto di `esposto_in_fattura`, nello stesso posto: il codice interno `NASCOSTO` \| `DESCRITTIVO` \| `VALORIZZATO`. È il valore su cui ragiona la logica |
-| `esposizione_in_fattura_codice` | in coda: il `codice` di `config.esposizioni_componente`, quello che la lista a video mostra |
-| `esposizione_in_fattura_etichetta_key` | in coda: la chiave i18n dell'etichetta, per il frontend |
-
-La decodifica è in `LEFT JOIN`: una riga che non aggancia il vocabolario resta visibile nella distinta. Il significato dei tre modi è in [`catalogo.articoli_componenti`](/dbzero/catalogo/tabelle/articoli_componenti); fino al 2026-10-01 la colonna era il booleano `esposto_in_fattura` (`false` → `NASCOSTO`, `true` → `DESCRITTIVO`).
-
-<!-- rev-2026-10-02-flag-qta -->
-### 🔄 rev 2026-10-02 — brief-db-bom-flag-quantita-e-kit-in-fattura
-
-**Senza `partecipa_qta` e `determina_qta_padre`** (`20261002-62`; la vista è stata tolta da `20261002-60` per ritirare le due colonne dalla tabella, e ricreata identica nel resto). Nessuna logica le leggeva: la quantità del componente è sempre `quantità padre × coeff_qta`. La lista configurabile non le mostrava.
+* `db/pgtap/catalogo/test-vw-articoli-componenti-dettaglio-capabilities-v1.sql` — le quattro capability su un
+  legame aperto, uno chiuso e uno futuro.
+* `db/pgtap/vendite/test-vw-righe-dettaglio-sorgente-lista-v1.sql` — come le viste delle righe dei documenti, non
+  ordina nel corpo; porta l'esposizione e le quattro capability, e non più le due colonne ritirate.
 
 ---
+
+### Note di migrazione
+
+* 2026-04-28 — nascono le capability di chiusura.
+* 2026-09-28 — diventa la sorgente unica delle righe della distinta: la lista configurabile e il repository la
+  leggono, e il backend ritira la sua copia della capability di chiusura.
+* 2026-10-01 — `esposto_in_fattura` lascia il posto a `esposizione_in_fattura`, con codice ed etichetta in coda.
+* 2026-10-02 — escono `partecipa_qta` e `determina_qta_padre`, ritirate dalla tabella.
+
+---
+
 {% include-markdown "signature-core.md" %}

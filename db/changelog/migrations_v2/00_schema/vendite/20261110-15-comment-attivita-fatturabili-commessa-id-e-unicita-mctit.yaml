@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI attivita_fatturabili.commessa_id E DELL'UNICITA' SULLA RIGA DI COMMESSA, AL PRESENTE
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale».
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Gemelli del 20261110-12, che era gia' applicato quando sono stati aggiunti: un changeSet
+#   applicato non si tocca, quindi stanno qui. commessa_id diceva «nullable in fase transitoria»
+#   (e' NOT NULL); l'indice portava «(post-backfill)». Solo COMMENT ON. Rollback: nessuno (i COMMENT
+#   di prima erano stantii).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261110-15-comment-attivita-fatturabili-commessa-id-e-unicita-mctit.yaml
+
+  - changeSet:
+      id: 20261110-15-comment-attivita-fatturabili-commessa-id-e-unicita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di vendite.attivita_fatturabili.commessa_id e dell'indice uq_attivita_fatturabili_commessa_attivita al presente. brief-db-sorgente-documento-e-riga §7.3, giro finale.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'vendite' AND c.relname = 'uq_attivita_fatturabili_commessa_attivita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.attivita_fatturabili.commessa_id IS
+                'La commessa dell''attivita'' fatturabile: FK verso vendite.commesse (fk_attivita_fatturabili_commessa), obbligatoria. E'' la commessa della riga di commessa_attivita_id: lo controlla vendite.trgfn_attivita_fatturabili_guard_commessa (E_COMMESSA_ATTIVITA_NON_COERENTE).';
+
+              COMMENT ON INDEX vendite.uq_attivita_fatturabili_commessa_attivita IS
+                'Una riga di commessa genera al piu'' un''attivita'' fatturabile: unicita'' su commessa_attivita_id. E'' l''idempotenza dell''emissione da commessa: vendite.fn_emit_attivita_fatturabili_da_commessa ritrova per questa chiave l''attivita'' gia'' emessa, invece di crearne una seconda.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: SELECT 1;

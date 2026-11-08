@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO E' MONTATO: LA SUA VOCE ESCE DAL REGISTRO DEI RIFERIMENTI MORTI
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R («le righe di vendita»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   20261106-16 ha messo script.trgfn_guard_sorgente in
+#   dbops.riferimenti_morti_esenzioni («senza alcun trigger»), per la durata del
+#   lotto 0, con l'uscita dichiarata: il changeSet che lo monta sulla prima
+#   tabella vera. E' 20261106-57: da li' la voce e' rientrata
+#   (dbops.vw_riferimenti_morti_rientrati) e il registro deve calare.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   DELETE sulla chiave naturale (schema_nome, funzione, esito_like), come
+#   20260915-18 per la sorella _tipizzata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261106-58-delete-esenzione-riferimenti-morti-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261106-58-delete-esenzione-riferimenti-morti-guard-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.riferimenti_morti_esenzioni la voce script.trgfn_guard_sorgente: il guard e' montato
+        sulle righe di vendita (20261106-57). brief-db-sorgente-documento-e-riga §7.2 lotto R.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgfoid = 'script.trgfn_guard_sorgente()'::regprocedure
+                 AND t.tgrelid = 'vendite.preventivi_righe'::regclass;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Sulla chiave naturale, non sull'id: e' UNIQUE (schema_nome, funzione, esito_like).
+              DELETE FROM dbops.riferimenti_morti_esenzioni e
+               WHERE (e.schema_nome, e.funzione, e.esito_like)
+                   = ('script', 'trgfn_guard_sorgente', '%senza alcun trigger%');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Nessun INSERT: il guard resta montato, la voce sarebbe falsa.
+              SELECT 1;

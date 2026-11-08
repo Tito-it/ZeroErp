@@ -25,7 +25,9 @@
 --   5) terzo parametro: stesso cliente e stessa azienda, lotto nuovo senza cliente
 --   6) p_del_cliente: il lotto e' legato al cliente
 --   7) DEFINITIVA raggiunta per la matrice, sul lotto vuoto
---   8) il gruppo trattenuto: un esito ERRORE E_PULL_COMMESSA, quello tornato
+--   8) il gruppo trattenuto: un esito ERRORE E_PULL_COMMESSA, quello tornato, con
+--      errore_quando (lo scrive la porta vendite.fn_segna_esito_gruppo_lotto, come la
+--      pipeline: brief-db-revisione-dbops D67)
 --   9) guard: uno stato che non esiste parla
 -- ------------------------------------------------------------
 
@@ -132,11 +134,12 @@ SELECT * FROM dbops.fn_pgtap_crea_lotto(
 SELECT is(
     (SELECT count(*)::text || ' ' || bool_and(e.id = t.esito_id)::text
             || ' ' || bool_and(e.stato_esecuzione = 'ERRORE' AND e.errore_codice = 'E_PULL_COMMESSA')::text
+            || ' ' || bool_and(e.errore_quando IS NOT NULL)::text
        FROM t_l5 t
        JOIN vendite.fatturazione_lotti_esiti e ON e.lotto_id = t.lotto_id
       WHERE e.gruppo_key = 'PGTAP-GRUPPO-TRATTENUTO'),
-    '1 true true',
-    'il gruppo trattenuto: un esito ERRORE E_PULL_COMMESSA sul lotto, quello tornato'
+    '1 true true true',
+    'il gruppo trattenuto: un esito ERRORE E_PULL_COMMESSA sul lotto, quello tornato, con errore_quando'
 );
 
 -- 9) Uno stato che non c'e'

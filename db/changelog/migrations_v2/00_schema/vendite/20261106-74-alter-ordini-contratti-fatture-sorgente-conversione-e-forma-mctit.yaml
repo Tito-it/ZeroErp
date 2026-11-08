@@ -1,0 +1,191 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ORDINI, CONTRATTI, FATTURE: LA PROVENIENZA DI TESTATA NELLA GRAMMATICA DEL MODELLO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3 (S-8, D-8, D-11).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Su ordini e fatture sorgente_* voleva dire «import da un sistema esterno»,
+#   che nessuno scrive: l'import avra' una tabella di collegamento sua. La
+#   provenienza vera dell'ordine stava in una colonna parallela
+#   (documento_origine_tipo + documento_origine_id, per id anche per il
+#   preventivo, che a catalogo ha chiave uid); quella del contratto era scritta
+#   due volte (sorgente_* e offerta_id). Col modello la provenienza e' una sola:
+#   sorgente_tipo_id + la chiave del key_selector.
+#
+# ── ⚠️ CHE COSA CAMBIA, nell'ordine ──────────────────────────────────
+#   1. via gli indici unici «idempotenza import» (uq_ordini_v_sorgente_fk,
+#      uq_fatture_v_sorgente_fk). Prima della conversione: su (tipo, uid)
+#      vieterebbero due ordini dallo stesso preventivo;
+#   2. ordini: la provenienza da documento_origine_* passa in sorgente_*, con la
+#      chiave del key_selector dal BB che scrive (script.fn_sorgente_chiave: il
+#      preventivo e l'offerta hanno chiave uid). Contratti: dove c'e' offerta_id
+#      la provenienza e' l'offerta, con la stessa chiave. Generico sul catalogo,
+#      non un join per tipo;
+#   3. i CHECK di forma sulle tre testate: nessuna sorgente, o il tipo con una
+#      chiave sola;
+#   4. i COMMENT delle colonne, al presente (prima dicevano «import»).
+#   Le colonne parallele (documento_origine_*, offerta_id) restano, scritte dai
+#   verbi accanto alla provenienza, e si ritirano nel giro T.5 con la loro FK, il
+#   CHECK di co-presenza e i loro indici: il ritiro va per ultimo.
+#   La conversione gira coi trigger della tabella spenti e riaccesi come erano
+#   (il lock fuori bozza fermerebbe l'ordine confermato): e' la migrazione del
+#   modello, non una modifica del documento. Da zero le tabelle sono vuote.
+#   Una chiave non risolta (un'origine che non esiste) farebbe sollevare il BB
+#   che scrive: il migrate si ferma, ed e' voluto (S-6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-74-alter-ordini-contratti-fatture-sorgente-conversione-e-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261106-74-alter-ordini-contratti-fatture-sorgente-conversione-e-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ordini, contratti, fatture: via gli indici «idempotenza import», la
+        provenienza dell'ordine da documento_origine_* e quella del contratto da
+        offerta_id passano in sorgente_* con la chiave del key_selector, CHECK di
+        forma, COMMENT di colonna al presente.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. I residui dell'import, prima della conversione.
+              DROP INDEX vendite.uq_ordini_v_sorgente_fk;
+              DROP INDEX vendite.uq_fatture_v_sorgente_fk;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 2. La conversione, su ordini e contratti, coi loro trigger spenti.
+              DO $do$
+              DECLARE
+                  v_tab  regclass;
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  FOREACH v_tab IN ARRAY ARRAY['vendite.ordini'::regclass, 'vendite.contratti'::regclass] LOOP
+                      -- L'elenco si legge UNA volta, prima di spegnere: uno spento di
+                      -- proposito resta spento, uno ALWAYS torna ALWAYS.
+                      SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                             array_agg(t.tgenabled    ORDER BY t.tgname)
+                        INTO v_nomi, v_modi
+                        FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = v_tab
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D';
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_tab, v_nomi[i]);
+                      END LOOP;
+
+                      IF v_tab = 'vendite.ordini'::regclass THEN
+                          -- L'ordine nato da un preventivo o da un'offerta: il tipo dal
+                          -- codice, la chiave dal BB che scrive (l'id diventa l'uid se il
+                          -- tipo ha chiave uid).
+                          UPDATE vendite.ordini o
+                             SET sorgente_tipo_id = s.id,
+                                 (sorgente_id, sorgente_uid) =
+                                     (SELECT k.sorgente_id, k.sorgente_uid
+                                        FROM script.fn_sorgente_chiave(s.id, o.documento_origine_id::text) k)
+                            FROM config.sorgenti s
+                           WHERE s.codice_interno = o.documento_origine_tipo
+                             AND o.documento_origine_id IS NOT NULL;
+                      ELSE
+                          -- Il contratto nato da un'offerta: la provenienza e' l'offerta.
+                          UPDATE vendite.contratti c
+                             SET sorgente_tipo_id = s.id,
+                                 (sorgente_id, sorgente_uid) =
+                                     (SELECT k.sorgente_id, k.sorgente_uid
+                                        FROM script.fn_sorgente_chiave(s.id, c.offerta_id::text) k)
+                            FROM config.sorgenti s
+                           WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'
+                             AND c.offerta_id IS NOT NULL;
+                      END IF;
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s ENABLE %s TRIGGER %I', v_tab,
+                                         CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                        WHEN 'R' THEN 'REPLICA'
+                                                        ELSE '' END,
+                                         v_nomi[i]);
+                      END LOOP;
+                  END LOOP;
+              END;
+              $do$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 3. La forma.
+              ALTER TABLE vendite.ordini
+                ADD CONSTRAINT chk_ordini_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_ordini_sorgente_forma ON vendite.ordini IS
+                'La forma della provenienza dell''ordine: o nessuna colonna sorgente_* valorizzata (l''ordine nasce da solo), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento esista, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE vendite.contratti
+                ADD CONSTRAINT chk_contratti_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_contratti_sorgente_forma ON vendite.contratti IS
+                'La forma della provenienza del contratto: o nessuna colonna sorgente_* valorizzata (il contratto nasce da solo), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento esista, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE vendite.fatture
+                ADD CONSTRAINT chk_fatture_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_fatture_sorgente_forma ON vendite.fatture IS
+                'La forma della provenienza della fattura: o nessuna colonna sorgente_* valorizzata, o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento esista, lo verifica script.trgfn_guard_sorgente.';
+
+              -- 4. Il significato delle colonne.
+              COMMENT ON COLUMN vendite.ordini.sorgente_tipo_id IS
+                'Il tipo del documento da cui l''ordine nasce (config.sorgenti): il preventivo (PREVENTIVO) o l''offerta (OFFERTA_COMMERCIALE). NULL per l''ordine nato da solo. La scrivono i verbi che generano l''ordine (vendite.fn_push_preventivo_a_ordine, vendite.fn_genera_ordine_da_offerta).';
+              COMMENT ON COLUMN vendite.ordini.sorgente_id IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave id (key_selector di config.sorgenti). Una sola fra sorgente_id e sorgente_uid (chk_ordini_sorgente_forma).';
+              COMMENT ON COLUMN vendite.ordini.sorgente_uid IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave uid (key_selector di config.sorgenti): il preventivo e l''offerta. Una sola fra sorgente_id e sorgente_uid (chk_ordini_sorgente_forma). Un''offerta genera al piu'' un ordine vivo (uq_ordini_v_sorgente_offerta).';
+              COMMENT ON COLUMN vendite.ordini.documento_origine_tipo IS
+                'Colonna parallela della provenienza: il codice di config.sorgenti del documento d''origine, lo stesso di sorgente_tipo_id. La scrivono i verbi che generano l''ordine accanto a sorgente_*, che e'' la provenienza letta dal database. NULL = ordine nato da solo; la coppia con documento_origine_id la presidia chk_ordini_documento_origine_copres.';
+              COMMENT ON COLUMN vendite.ordini.documento_origine_id IS
+                'Colonna parallela della provenienza: l''id del documento d''origine (preventivi.id, offerte_commerciali.id), anche quando il suo tipo ha chiave uid. La scrivono i verbi che generano l''ordine accanto a sorgente_*, che e'' la provenienza letta dal database. Un''offerta genera al piu'' un ordine vivo anche su questa coppia (uq_ordini_v_documento_origine_offerta).';
+
+              COMMENT ON COLUMN vendite.contratti.sorgente_tipo_id IS
+                'Il tipo del documento da cui il contratto nasce (config.sorgenti): l''offerta (OFFERTA_COMMERCIALE). NULL per il contratto nato da solo. La scrive vendite.fn_push_offerta_a_contratto.';
+              COMMENT ON COLUMN vendite.contratti.sorgente_id IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave id (key_selector di config.sorgenti). Una sola fra sorgente_id e sorgente_uid (chk_contratti_sorgente_forma).';
+              COMMENT ON COLUMN vendite.contratti.sorgente_uid IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave uid (key_selector di config.sorgenti): l''offerta. Una sola fra sorgente_id e sorgente_uid (chk_contratti_sorgente_forma). Un''offerta genera al piu'' un contratto vivo (uq_contratti_sorgente_offerta).';
+              COMMENT ON COLUMN vendite.contratti.offerta_id IS
+                'Colonna parallela della provenienza: l''offerta da cui il contratto nasce, con la FK fk_contratti_offerta. La scrive vendite.fn_push_offerta_a_contratto accanto a sorgente_*, che e'' la provenienza letta dal database. Un''offerta genera al piu'' un contratto vivo anche su questa colonna (uq_contratti_offerta_id).';
+
+              COMMENT ON COLUMN vendite.fatture.sorgente_tipo_id IS
+                'Il tipo del documento da cui la fattura nasce (config.sorgenti). Di norma NULL: la fattura aggrega le attivita'' di piu'' documenti, e la loro provenienza sta sulle righe (vendite.fatture_righe, vendite.attivita_fatturabili.fattura_riga_id).';
+              COMMENT ON COLUMN vendite.fatture.sorgente_id IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave id (key_selector di config.sorgenti). Una sola fra sorgente_id e sorgente_uid (chk_fatture_sorgente_forma).';
+              COMMENT ON COLUMN vendite.fatture.sorgente_uid IS
+                'La chiave del documento d''origine, se il suo tipo ha chiave uid (key_selector di config.sorgenti). Una sola fra sorgente_id e sorgente_uid (chk_fatture_sorgente_forma).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La conversione non si disfa (documento_origine_* e offerta_id restano):
+              -- si toglie la forma. Gli indici «import» non tornano.
+              ALTER TABLE vendite.ordini    DROP CONSTRAINT IF EXISTS chk_ordini_sorgente_forma;
+              ALTER TABLE vendite.contratti DROP CONSTRAINT IF EXISTS chk_contratti_sorgente_forma;
+              ALTER TABLE vendite.fatture   DROP CONSTRAINT IF EXISTS chk_fatture_sorgente_forma;

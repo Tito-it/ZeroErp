@@ -22,7 +22,7 @@ from apps.core.services.service_errors import ServiceError
 
 class ContestoPricingPerimetroTests(TestCase):
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_contratto_inesistente_e_404(self, repo_cls) -> None:
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -34,7 +34,7 @@ class ContestoPricingPerimetroTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
         repo.resolve_contesto_pricing_contratto.assert_not_called()
 
-    @patch("apps.vendite.services.preventivi_service.PreventiviRepository")
+    @patch("apps.vendite.services.preventivi_service.PreventiviRepository", autospec=True)
     def test_preventivo_inesistente_e_404(self, repo_cls) -> None:
         from apps.vendite.services import preventivi_service
 

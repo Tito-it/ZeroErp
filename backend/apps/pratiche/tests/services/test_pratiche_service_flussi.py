@@ -95,7 +95,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.addCleanup(p_exit.stop)
 
     # Scopo: Verifica creazione flusso con stato iniziale DA_ESEGUIRE.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.resolve_stato_flusso.return_value = 2
@@ -115,7 +115,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: workflow v2 — template_flusso_id obbligatorio (chiuso il path morto
     # del vecchio "flusso generico"). None o <= 0 → E_FLUSSO_VALIDATION fail-fast.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_flusso_errore_template_obbligatorio(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=None)  # type: ignore[arg-type]
@@ -127,7 +127,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         MockRepo.return_value.create_flusso.assert_not_called()
 
     # Scopo: Verifica transizione flusso DA_ESEGUIRE → IN_CORSO.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_avvia_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
         # Flusso senza handler (template None): avvia esegue solo IN_CORSO;
@@ -147,7 +147,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: modalita AUTOMATICO senza handler — avvia+completa con esito_default
     # in un colpo (DA_ESEGUIRE → IN_CORSO → COMPLETATO), senza scelta umana.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_avvia_flusso_automatico_senza_handler(self, MockRepo):
         from unittest.mock import call
 
@@ -166,7 +166,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: AUTOMATICO con handler — la auto-chiusura usa esito_default (NON il
     # vecchio POSITIVO cablato): qui esito_default=PARZIALE → COMPLETATO+PARZIALE.
     @patch("apps.pratiche.services.handler_registry.get_handler")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_avvia_flusso_automatico_handler_usa_esito_default(self, MockRepo, mock_get_handler):
         from unittest.mock import call
 
@@ -189,7 +189,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: MANUALE senza handler — solo IN_CORSO, nessuna auto-chiusura
     # (l'esito lo registra l'operatore dopo). Regressione del comportamento odierno.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_avvia_flusso_manuale_non_completa(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso_esito_config.return_value = ("MANUALE", None)
@@ -204,7 +204,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # di dominio, non un fallback verdetto. Resta IN_CORSO. Regressione dell'incidente
     # PRA-0000243 (esito_default NULL → auto_esito POSITIVO che il guard DB 504 vieta).
     @patch("apps.pratiche.services.handler_registry.get_handler")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_avvia_flusso_dominio_handler_non_completa(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         repo.get_flusso_esito_config.return_value = ("DOMINIO", None)
@@ -222,7 +222,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: modalita CONTESTUALE — avvia_e_completa_flusso porta DA_ESEGUIRE →
     # IN_CORSO → COMPLETATO con l'esito scelto dall'operatore, stessa transazione.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_avvia_e_completa_flusso_ok(self, MockRepo):
         from unittest.mock import call
 
@@ -241,7 +241,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: CONTESTUALE — esito fuori vocabolario (voce assente a DB) →
     # E_FLUSSO_VALIDATION fail-fast, prima di qualsiasi scrittura.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_avvia_e_completa_flusso_esito_non_valido(self, MockRepo):
         MockRepo.return_value.get_esito_flusso_vocabolario.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -250,7 +250,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: Verifica completamento flusso con esito POSITIVO. Nessun binding
     # evento → dispatch_handler_eventi e' un no-op (get_handler_eventi → []).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_completa_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1)
@@ -267,7 +267,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: completamento con binding evento COMPLETATO → l'handler di dominio
     # (es. post_smistamento) viene eseguito nella stessa transazione.
     @patch("apps.pratiche.services.handler_registry.get_handler")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_completa_flusso_dispatch_evento_completato(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9003)
@@ -288,7 +288,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: binding seedato ma handler non in HANDLER_MAP → fail-fast (non si
     # completa un flusso saltando silenziosamente l'azione di dominio promessa).
     @patch("apps.pratiche.services.handler_registry.get_handler")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_completa_flusso_handler_non_registrato(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9003)
@@ -300,7 +300,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_HANDLER_NON_REGISTRATO")
 
     # Scopo: Verifica errore con esito fuori vocabolario (voce assente a DB).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_completa_flusso_errore_esito_non_valido(self, MockRepo):
         MockRepo.return_value.get_esito_flusso_vocabolario.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -308,7 +308,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSO_VALIDATION")
 
     # Scopo: esito disattivato a vocabolario (attivo=false) → non valido.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_completa_flusso_errore_esito_disattivato(self, MockRepo):
         MockRepo.return_value.get_esito_flusso_vocabolario.return_value = (False, True)
         with self.assertRaises(ServiceError) as ctx:
@@ -317,7 +317,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: guard percorso operatore — esito di ramo (is_verdetto=false) →
     # respinto con errore parlante; un verdetto passa.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_require_esito_selezionabile_operatore(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_esito_flusso_vocabolario.return_value = (True, False)
@@ -329,7 +329,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: guard simmetrico (companion BE-1.3) — uno step DOMINIO non si completa
     # dal percorso operatore (errore parlante); uno step non-DOMINIO passa.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_require_completamento_operatore_ammesso(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso_esito_config.return_value = ("DOMINIO", None)
@@ -341,7 +341,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: marker guard di classe esito (id 504) — un DatabaseError col messaggio
     # catalogo si traduce nel ServiceError parlante FLUSSI_ESITO_NON_AMMESSO.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_completa_flusso_esito_non_ammesso_504(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -354,7 +354,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSI_ESITO_NON_AMMESSO")
 
     # Scopo: Verifica transizione generica di stato flusso.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cambia_stato_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -372,7 +372,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSO_VALIDATION")
 
     # Scopo: Verifica check prerequisiti delegato al repository.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_verifica_prerequisiti_ok(self, MockRepo):
         repo = MockRepo.return_value
         prerequisiti = [
@@ -387,7 +387,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: Verifica dispatch handler con handler trovato e eseguito.
     @patch("apps.pratiche.services.handler_registry.get_handler")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_dispatch_handler_ok(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=10)
@@ -408,7 +408,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: D3 — guard DB ripetibilita' (messaggio 483) sulla creazione
     # flusso tradotto in ServiceError parlante via marker.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_flusso_non_ripetibile_483(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -424,7 +424,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: guard pratica terminale (490) sulla creazione flusso → ServiceError
     # parlante via marker.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_flusso_pratica_terminale_490(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -440,7 +440,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: guard prerequisiti (flusso non ancora eseguibile) sulla creazione
     # flusso → ServiceError parlante invece di E_DATABASE generico.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_flusso_prerequisiti_non_soddisfatti(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -456,7 +456,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: guard pratica terminale (491) sul cambio stato flusso (avvia/
     # completa/cambia_stato) → ServiceError parlante via marker.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_avvia_flusso_pratica_terminale_491(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -470,7 +470,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             pratiche_service.avvia_flusso(1)
         self.assertEqual(ctx.exception.code, "E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_completa_flusso_pratica_terminale_491(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -483,7 +483,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             pratiche_service.completa_flusso(1, esito="POSITIVO")
         self.assertEqual(ctx.exception.code, "E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cambia_stato_flusso_pratica_terminale_491(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -498,7 +498,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: guard chiusura workflow-driven — il flusso di chiusura non puo'
     # completarsi finche' restano obbligatori bloccanti → ServiceError parlante.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_completa_flusso_chiusura_prematura(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -513,7 +513,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: guard transizione flusso (matrice config) → ServiceError parlante
     # invece di E_DATABASE 500 (gap ① allineamento marker+policy 2026-06-14).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cambia_stato_flusso_transizione_non_ammessa(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -527,7 +527,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSI_TRANSIZIONE_NON_AMMESSA")
 
     # Scopo: guard esito-aware — COMPLETATO senza esito → ServiceError parlante.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cambia_stato_flusso_esito_obbligatorio(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -541,7 +541,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSI_ESITO_OBBLIGATORIO")
 
     # Scopo: guard transizione pratica (matrice config) → ServiceError parlante.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cambia_stato_pratica_transizione_non_ammessa(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -693,7 +693,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # (l'handler fa meta.get). Il coerce di handler_params vive nel repo
     # (get_handler_info), quello del meta nel dispatch.
     @patch("apps.pratiche.services.handler_registry.get_handler")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_dispatch_handler_meta_jsonb_str(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         flusso = _mock_flusso_row(1, template_flusso_id=10)
@@ -727,7 +727,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(coerce_jsonb_dict([1, 2]), {})
 
     # Scopo: Verifica dispatch con template_flusso_id None → ritorna None.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_dispatch_handler_template_none(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=None)
@@ -737,7 +737,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertIsNone(result)
 
     # Scopo: Verifica dispatch con handler_info None (handler non configurato/inattivo).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_dispatch_handler_info_none(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=10)
@@ -749,7 +749,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     # Scopo: Verifica dispatch con handler_key non registrata → ritorna None.
     @patch("apps.pratiche.services.handler_registry.get_handler", return_value=None)
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_dispatch_handler_key_non_trovata(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=10)
@@ -760,7 +760,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertIsNone(result)
 
     # Scopo: Verifica lista canali delegata al repository.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_canali_disponibili_ok(self, MockRepo):
         repo = MockRepo.return_value
         canali = [
@@ -776,7 +776,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # -- Assegnazione flusso a operatore/reparto -------------------------
 
     # Scopo: Assegna un flusso a un operatore (set_risorsa) → update_flusso.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_assegna_flusso_operatore_ok(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -788,7 +788,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(data, {"risorsa_umana_id": 10})
 
     # Scopo: Assegna un flusso a un reparto (set_unita) → update_flusso.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_assegna_flusso_reparto_ok(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -799,7 +799,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(data, {"unita_organizzativa_id": 3})
 
     # Scopo: De-assegnazione esplicita (set_* True con valore None) azzera i campi.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_assegna_flusso_de_assegna_null(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -813,7 +813,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertIsNone(data["unita_organizzativa_id"])
 
     # Scopo: Senza flag set_* (chiave assente nel payload) non si chiama update.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_assegna_flusso_nessun_flag_no_update(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -828,7 +828,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
 
     # Scopo: prendi_in_carico — competenza mancante (caso A/D) tradotta via marker.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_prendi_in_carico_competenza_mancante(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -842,7 +842,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSI_COMPETENZA_MANCANTE")
 
     # Scopo: prendi_in_carico — operatore fuori reparto (caso B) → 496 via marker.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_prendi_in_carico_non_eligibile(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -856,7 +856,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSI_PRESA_NON_ELIGIBILE")
 
     # Scopo: lista operatori del reparto delegata al repository.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_list_operatori_reparto_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.list_operatori_reparto.return_value = [{"id": 1, "display": "Rossi Mario"}]
@@ -884,7 +884,7 @@ class CompletaStepPraticaTests(SimpleTestCase):
 
     # Scopo: step non istanziato (assente dal percorso) → flusso_id None, no-op.
     @patch(f"{_SVC}.completa_flusso")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_step_non_istanziato(self, MockRepo, mock_completa):
         MockRepo.return_value.get_percorso_pratica.return_value = []
         out = pratiche_service.completa_step_pratica(1, template_codice="SMISTAMENTO", esito="POSITIVO")
@@ -894,7 +894,7 @@ class CompletaStepPraticaTests(SimpleTestCase):
 
     # Scopo: step presente ma non istanziato (flusso_id None) → no-op.
     @patch(f"{_SVC}.completa_flusso")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_step_percorribile_non_istanziato(self, MockRepo, mock_completa):
         MockRepo.return_value.get_percorso_pratica.return_value = self._percorso(
             "SMISTAMENTO", flusso_id=None,
@@ -906,7 +906,7 @@ class CompletaStepPraticaTests(SimpleTestCase):
 
     # Scopo: step gia' terminale → completato False, nessuna transizione.
     @patch(f"{_SVC}.completa_flusso")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_step_terminale_idempotente(self, MockRepo, mock_completa):
         MockRepo.return_value.get_percorso_pratica.return_value = self._percorso(
             "SMISTAMENTO", stato="COMPLETATO",
@@ -918,7 +918,7 @@ class CompletaStepPraticaTests(SimpleTestCase):
 
     # Scopo: step IN_CORSO → completa_flusso, completato True.
     @patch(f"{_SVC}.completa_flusso")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_step_in_corso_completa(self, MockRepo, mock_completa):
         MockRepo.return_value.get_percorso_pratica.return_value = self._percorso(
             "CONFERMA_ORDINE", stato="IN_CORSO",
@@ -932,7 +932,7 @@ class CompletaStepPraticaTests(SimpleTestCase):
     # Scopo: step DA_ESEGUIRE → avvia+completa (CONTESTUALE).
     @patch(f"{_SVC}.avvia_e_completa_flusso")
     @patch(f"{_SVC}.completa_flusso")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_step_da_eseguire_avvia_e_completa(self, MockRepo, mock_completa, mock_avvia):
         MockRepo.return_value.get_percorso_pratica.return_value = self._percorso(
             "SMISTAMENTO", stato="DA_ESEGUIRE",

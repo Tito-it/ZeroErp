@@ -1,0 +1,300 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TIPO DEL DOCUMENTO SI LEGGE DALLA RIGA DI COMMESSA: vendite.trgfn_attivita_fatturabili_normalize
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1 (D-3).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   tipo_doc_fiscale_id, quando manca, si risolveva da sorgente_origine_tipo_id
+#   (copia del tipo della riga di commessa, scritta dal pull) con ripiego su
+#   sorgente_tipo_id (sempre COMMESSA). Le due colonne si ritirano: lo stesso
+#   valore si legge alla fonte, dalla riga di commessa per la FK
+#   commessa_attivita_id, e la riga di commessa senza documento (onere,
+#   rettifica) prende COMMESSA, come prima col ripiego. Esce anche il «0 se non
+#   applicabile» di sorgente_riga: nel modello lo 0 e' una riga che non esiste.
+#   Il trigger si rimonta senza le colonne della provenienza nell'UPDATE OF, e
+#   con commessa_attivita_id.
+#
+#   Corpo dal 20260227-06, uguale al vivo (dbdev e scratch, 2026-11-07). Rollback:
+#   il corpo e il trigger di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-42-update-trgfn-attivita-fatturabili-normalize-tipo-dalla-riga-di-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20261107-42-update-trgfn-attivita-fatturabili-normalize-tipo-dalla-riga-di-commessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_attivita_fatturabili_normalize: tipo_doc_fiscale_id dalla riga di commessa; il
+        trigger si rimonta senza le colonne della provenienza. brief-db-sorgente-documento-e-riga
+        §7.2 lotto C, giro C.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_emittente_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                v_tipo_origine vendite.commesse_attivita.sorgente_tipo_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizza campi base e risolve tipo_doc_fiscale/valuta.
+                --
+                -- Regole:
+                --   - competenza_mese sempre valorizzata e al primo del mese
+                --   - se NULL -> mese di posticipa_al (se presente)
+                --   - competenza_dal/al: se NULL, default su data_attivita
+                --   - tipo_doc_fiscale_id: dal tipo del documento da cui nasce la
+                --     riga di commessa (commesse_attivita.sorgente_tipo_id, per la FK
+                --     commessa_attivita_id); la riga senza documento (onere, rettifica)
+                --     nasce dalla commessa, e prende il tipo COMMESSA
+                --   - valuta_id: BA -> emittente fiscale -> gestore
+                --   - Commessa-aware: quando commessa_attivita_id IS NOT NULL
+                --     lo snapshot CA e` gia` completo per competenze,
+                --     si preserva risoluzione tipo_doc/valuta se NULL.
+                -- =========================================================
+
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- -------------------------------------------------------
+                -- Righe da commessa: lo snapshot competenze e` gia` completo.
+                -- Si preserva risoluzione tipo_doc_fiscale_id e valuta_id
+                -- perche` CA potrebbe non averli.
+                -- -------------------------------------------------------
+                IF NEW.commessa_attivita_id IS NOT NULL THEN
+                  -- tipo_doc_fiscale_id: CA potrebbe non averlo. Il tipo si legge dalla
+                  -- riga di commessa: la provenienza dell'attivita' e' la FK
+                  -- commessa_attivita_id, e la riga di commessa dice da quale documento nasce.
+                  IF NEW.tipo_doc_fiscale_id IS NULL THEN
+                    SELECT COALESCE(ca.sorgente_tipo_id, s.id)
+                      INTO v_tipo_origine
+                      FROM vendite.commesse_attivita ca
+                      LEFT JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA'
+                     WHERE ca.id = NEW.commessa_attivita_id;
+                    IF v_tipo_origine IS NOT NULL THEN
+                      NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(v_tipo_origine);
+                    END IF;
+                  END IF;
+
+                  -- valuta_id: emittente dalla commessa (gia` risolto da fn_get_or_create_commessa)
+                  IF NEW.valuta_id IS NULL AND NEW.billing_account_id IS NOT NULL THEN
+                    SELECT c.emittente_soggetto_ruolo_id
+                      INTO v_emittente_id
+                      FROM vendite.commesse c
+                     WHERE c.id = NEW.commessa_id;
+                    NEW.valuta_id := vendite.fn_get_valuta_id(
+                      NEW.billing_account_id, v_emittente_id
+                    );
+                  END IF;
+
+                  RETURN NEW;
+                END IF;
+
+                -- -------------------------------------------------------
+                -- Flusso standard (righe non da commessa)
+                -- -------------------------------------------------------
+                IF NEW.competenza_mese IS NULL AND NEW.posticipa_al IS NOT NULL THEN
+                  NEW.competenza_mese := date_trunc('month', NEW.posticipa_al)::date;
+                ELSIF NEW.competenza_mese IS NOT NULL THEN
+                  NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+                END IF;
+
+                IF NEW.competenza_dal IS NULL THEN
+                  NEW.competenza_dal := NEW.data_attivita;
+                END IF;
+
+                IF NEW.competenza_al IS NULL THEN
+                  NEW.competenza_al := NEW.competenza_dal;
+                END IF;
+
+                -- Risolvi emittente da BA per risoluzione valuta
+                IF NEW.billing_account_id IS NOT NULL THEN
+                  v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(
+                    NEW.billing_account_id
+                  );
+                END IF;
+
+                IF NEW.valuta_id IS NULL THEN
+                  NEW.valuta_id := vendite.fn_get_valuta_id(
+                    NEW.billing_account_id,
+                    v_emittente_id
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+              IS 'Normalizza le competenze e risolve tipo_doc_fiscale_id e valuta_id di vendite.attivita_fatturabili. Sulla riga nata da una riga di commessa (commessa_attivita_id) le competenze arrivano gia'' complete; se manca, tipo_doc_fiscale_id viene dal tipo del documento da cui nasce la riga di commessa (commesse_attivita.sorgente_tipo_id), o dal tipo COMMESSA per la riga senza documento (onere, rettifica), con vendite.fn_get_tipo_doc_fiscale_id; la valuta dall''emittente della commessa. Altrimenti competenza_mese al primo del mese, competenza_dal/al dalla data dell''attivita'', valuta dalla catena BA -> emittente -> gestore.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il trigger si rimonta senza le colonne della provenienza, che se ne vanno
+              -- dalla tabella, e con commessa_attivita_id: e' la riga di commessa a dire da
+              -- quale documento nasce l'attivita'.
+              DROP TRIGGER trg_attivita_fatturabili_normalize_ins_upd ON vendite.attivita_fatturabili;
+              CREATE TRIGGER trg_attivita_fatturabili_normalize_ins_upd
+                  BEFORE INSERT OR UPDATE OF competenza_mese, competenza_dal, competenza_al, posticipa_al,
+                      commessa_attivita_id, billing_account_id, tipo_doc_fiscale_id, valuta_id
+                  ON vendite.attivita_fatturabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_normalize();
+              COMMENT ON TRIGGER trg_attivita_fatturabili_normalize_ins_upd ON vendite.attivita_fatturabili
+              IS 'Normalizzazione di vendite.attivita_fatturabili (competenze, tipo_doc_fiscale_id, valuta_id) con vendite.trgfn_attivita_fatturabili_normalize; scatta anche quando cambia la riga di commessa da cui l''attivita'' nasce.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_emittente_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizza campi base e risolve tipo_doc_fiscale/valuta.
+                --
+                -- Regole:
+                --   - competenza_mese sempre valorizzata e al primo del mese
+                --   - se NULL -> mese di posticipa_al (se presente)
+                --   - competenza_dal/al: se NULL, default su data_attivita
+                --   - sorgente_riga default 0 se sorgente valorizzata
+                --   - tipo_doc_fiscale_id: da sorgente_origine_tipo_id
+                --     (business originale), fallback su sorgente_tipo_id
+                --   - valuta_id: BA -> emittente fiscale -> gestore
+                --   - Commessa-aware: quando commessa_attivita_id IS NOT NULL
+                --     lo snapshot CA e` gia` completo per competenze,
+                --     si preserva risoluzione tipo_doc/valuta se NULL.
+                -- =========================================================
+
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- -------------------------------------------------------
+                -- Righe da commessa: lo snapshot competenze e` gia` completo.
+                -- Si preserva risoluzione tipo_doc_fiscale_id e valuta_id
+                -- perche` CA potrebbe non averli.
+                -- -------------------------------------------------------
+                IF NEW.commessa_attivita_id IS NOT NULL THEN
+                  -- sorgente_riga default
+                  IF NEW.sorgente_tipo_id IS NOT NULL AND NEW.sorgente_riga IS NULL THEN
+                    NEW.sorgente_riga := 0;
+                  END IF;
+
+                  -- tipo_doc_fiscale_id: CA potrebbe non averlo
+                  IF NEW.tipo_doc_fiscale_id IS NULL THEN
+                    IF NEW.sorgente_origine_tipo_id IS NOT NULL THEN
+                      NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                        NEW.sorgente_origine_tipo_id
+                      );
+                    ELSIF NEW.sorgente_tipo_id IS NOT NULL THEN
+                      NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                        NEW.sorgente_tipo_id
+                      );
+                    END IF;
+                  END IF;
+
+                  -- valuta_id: emittente dalla commessa (gia` risolto da fn_get_or_create_commessa)
+                  IF NEW.valuta_id IS NULL AND NEW.billing_account_id IS NOT NULL THEN
+                    SELECT c.emittente_soggetto_ruolo_id
+                      INTO v_emittente_id
+                      FROM vendite.commesse c
+                     WHERE c.id = NEW.commessa_id;
+                    NEW.valuta_id := vendite.fn_get_valuta_id(
+                      NEW.billing_account_id, v_emittente_id
+                    );
+                  END IF;
+
+                  RETURN NEW;
+                END IF;
+
+                -- -------------------------------------------------------
+                -- Flusso standard (righe non da commessa)
+                -- -------------------------------------------------------
+                IF NEW.competenza_mese IS NULL AND NEW.posticipa_al IS NOT NULL THEN
+                  NEW.competenza_mese := date_trunc('month', NEW.posticipa_al)::date;
+                ELSIF NEW.competenza_mese IS NOT NULL THEN
+                  NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+                END IF;
+
+                IF NEW.competenza_dal IS NULL THEN
+                  NEW.competenza_dal := NEW.data_attivita;
+                END IF;
+
+                IF NEW.competenza_al IS NULL THEN
+                  NEW.competenza_al := NEW.competenza_dal;
+                END IF;
+
+                IF NEW.sorgente_tipo_id IS NOT NULL THEN
+                  IF NEW.sorgente_riga IS NULL THEN
+                    NEW.sorgente_riga := 0;
+                  END IF;
+                END IF;
+
+                -- Risolvi emittente da BA per risoluzione valuta
+                IF NEW.billing_account_id IS NOT NULL THEN
+                  v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(
+                    NEW.billing_account_id
+                  );
+                END IF;
+
+                -- §26 B+D: risolve tipo_doc_fiscale_id dalla sorgente business
+                -- originale (non da COMMESSA). Fallback legacy per righe senza
+                -- sorgente_origine_tipo_id.
+                IF NEW.tipo_doc_fiscale_id IS NULL THEN
+                  IF NEW.sorgente_origine_tipo_id IS NOT NULL THEN
+                    NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                      NEW.sorgente_origine_tipo_id
+                    );
+                  ELSIF NEW.sorgente_tipo_id IS NOT NULL THEN
+                    NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                      NEW.sorgente_tipo_id
+                    );
+                  END IF;
+                END IF;
+
+                IF NEW.valuta_id IS NULL THEN
+                  NEW.valuta_id := vendite.fn_get_valuta_id(
+                    NEW.billing_account_id,
+                    v_emittente_id
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+              IS 'Normalizza competenze/sorgente; risolve tipo_doc_fiscale_id e valuta_id (catena BA -> emittente -> gestore). Commessa-aware: skip normalizzazione competenze quando commessa_attivita_id IS NOT NULL.';
+
+
+              DROP TRIGGER trg_attivita_fatturabili_normalize_ins_upd ON vendite.attivita_fatturabili;
+              CREATE TRIGGER trg_attivita_fatturabili_normalize_ins_upd BEFORE INSERT OR UPDATE OF competenza_mese, competenza_dal, competenza_al, posticipa_al, sorgente_tipo_id, sorgente_origine_tipo_id, sorgente_riga, billing_account_id, tipo_doc_fiscale_id, valuta_id ON vendite.attivita_fatturabili FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_normalize();
+              COMMENT ON TRIGGER trg_attivita_fatturabili_normalize_ins_upd ON vendite.attivita_fatturabili IS 'Normalizzazione attivita_fatturabili (competenza/tipo_doc/valuta). §26: include sorgente_origine_tipo_id.';

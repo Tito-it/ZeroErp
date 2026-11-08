@@ -1,49 +1,44 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_pratiche_giornale_stato`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_giornale_stato`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.pratiche](pratiche.md)
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — il diario della pratica, dove finisce la riga
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la tabella su cui scatta il trigger
 >
-Overview:
+> Approfondimento funzioni:
 >
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.trgfn_flussi_giornale_stato](/dbzero/pratiche/funzioni/trgfn_flussi_giornale_stato) — lo stesso giornale per il cambio di stato di un flusso
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **STATO_CAMBIATO** nel giornale. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.pratiche`, solo quando il valore cambia realmente (`WHEN OLD.stato_id IS DISTINCT FROM NEW.stato_id`).
+
+La trigger function `pratiche.trgfn_pratiche_giornale_stato` scrive nel giornale l'azione
+`STATO_CAMBIATO` quando lo stato di una pratica cambia davvero.
 
 ---
 
-### Firma
+### La riga di giornale
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_stato()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+* È una riga della pratica, non di un flusso: `flusso_id` resta vuoto.
+* L'origine è `SISTEMA`: la scrive il database, qualunque sia la strada che ha cambiato lo stato.
+* Il dettaglio porta lo stato precedente e il nuovo, per id.
+* Il `tx_id` è quello della pratica o, se manca, quello della sessione: la riga di giornale resta
+  correlabile alla transazione che ha cambiato lo stato.
 
----
-
-### Logica
-
-Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `NEW.id` |
-| `flusso_id` | `NULL` |
-| `azione` | `'STATO_CAMBIATO'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('stato_precedente_id', OLD.stato_id, 'stato_nuovo_id', NEW.stato_id)` |
-| `tx_id` | `NEW.tx_id` |
+Il trigger scatta dopo l'aggiornamento di `stato_id`, e solo quando il valore cambia: riscrivere lo
+stesso stato non lascia traccia.
 
 ---
 
-### Trigger associato
+### Test
 
-| Nome | Fase | Evento | WHEN |
-|------|------|--------|------|
-| `trg_pratiche_z90_giornale_stato_upd` | AFTER | UPDATE OF stato_id | `OLD.stato_id IS DISTINCT FROM NEW.stato_id` |
+* `pratiche/test-trigger-giornale-pratiche` — il cambio di stato scrive `STATO_CAMBIATO`.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,81 +1,73 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.template_flussi_avanzamento_proiezione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [pratiche.fn_reconcile_sorgente](/dbzero/pratiche/funzioni/fn_reconcile_sorgente)
-> [config.esiti_flussi_pratiche](/dbzero/config/tabelle/esiti_flussi_pratiche)
-> [config.sorgenti](/dbzero/config/tabelle/sorgenti)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — il milestone che avanza, e il tipo di documento che attende
+> * [pratiche.template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi) — gli handler su evento, mutuamente esclusivi con questo binding
+> * [config.esiti_flussi_pratiche](/dbzero/config/tabelle/esiti_flussi_pratiche) — il vocabolario dei verdetti
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_reconcile_sorgente](/dbzero/pratiche/funzioni/fn_reconcile_sorgente) — il motore che legge questo binding
+> * [pratiche.fn_stato_sorgente](/dbzero/pratiche/funzioni/fn_stato_sorgente) — il verdetto proiettato dal documento
+> * [pratiche.trgfn_tfap_guard_compatibilita](/dbzero/pratiche/funzioni/trgfn_tfap_guard_compatibilita) — il guard di configurazione
+> * [pratiche.fn_copia_definizione](/dbzero/pratiche/funzioni/fn_copia_definizione) — copia il binding con la definizione
 
 ---
+
 ### 🎯 Scopo Principale
-(review 06-07-2026 — GUIDA D4, brief-db-guida-avanza-esito-proiettato)
 
-Binding **dedicato e leggero** che dichiara *quando* un milestone (template step) deve
-**avanzare automaticamente** perché il documento atteso ha raggiunto un **verdetto proiettato**.
+`pratiche.template_flussi_avanzamento_proiezione` dichiara con quale verdetto un milestone avanza da
+solo, quando il documento che attende ha proiettato un esito.
 
-È il tassello `G2` del meccanismo GUIDA: la `template_flussi.attende_sorgente_tipo_id` (`G1`)
-dice *quale tipo documento* attende il milestone; questa tabella dice *con quale verdetto*
-quel milestone si completa. Quando il documento proietta l'esito
-(`pratiche.fn_stato_sorgente.esito`), il motore `pratiche.fn_reconcile_sorgente` porta il
-milestone a **COMPLETATO** con quel verdetto.
-
-**Additiva**: senza una riga qui, nessun avanzamento automatico (comportamento pre-GUIDA).
+`template_flussi.attende_sorgente_tipo_id` dice quale tipo di documento il milestone attende; questa
+tabella dice con quale verdetto si completa. Quando il documento proietta l'esito
+(`pratiche.fn_stato_sorgente`), `pratiche.fn_reconcile_sorgente` porta il milestone a `COMPLETATO`
+con quel verdetto. Senza una riga qui il milestone non avanza da solo.
 
 ---
 
-### Ruolo nel processo
+### Il verdetto del documento è l'esito del milestone
 
-* **Dedicata** apposta, separata da `pratiche.template_flussi_handler_eventi`: la semantica
-  «avanza-su-proiezione» è diversa da «handler server-side su evento di flusso», e non si
-  vuole sovraccaricare il `CHECK` sull'evento (`chk_tfhe_evento`).
-* L'esito di **completamento** del milestone è **il verdetto proiettato** dal documento
-  (mappatura 1:1: i vocabolari coincidono, nessun remap). `esito_richiesto` NULL = «qualsiasi
-  verdetto».
-* È **config di step versionata**: viene **copiata** da `pratiche.fn_copia_definizione` a
-  fork / nuova-versione dell'edizione (ottavo blocco di copia figli).
-
----
-
-### Colonne specifiche
-
-| Colonna | Note |
-|---------|------|
-| `template_flusso_id` | INTEGER NOT NULL. FK a `pratiche.template_flussi` (ON DELETE CASCADE). Il milestone che avanza. Deve essere uno step **non-DOMINIO** (guard). |
-| `esito_richiesto` | VARCHAR(50) nullable. Verdetto richiesto per avanzare. NULL = qualsiasi verdetto. Se valorizzato ∈ 4 verdetti (CHECK). FK a `config.esiti_flussi_pratiche(codice)`. |
-| `attivo` | BOOLEAN DEFAULT true. Solo i binding **attivi** contano per la mutua-esclusione e per il motore. |
-| `meta` | JSONB DEFAULT '{}'. Metadati aggiuntivi. |
+* L'esito con cui il milestone si completa è il verdetto proiettato dal documento: i vocabolari
+  coincidono, e non c'è nessuna traduzione.
+* `esito_richiesto` vuoto vuol dire «qualsiasi verdetto»; valorizzato, è uno dei quattro verdetti
+  (`POSITIVO`, `NEGATIVO`, `PARZIALE`, `NON_APPLICABILE`).
+* Un binding non si ripete: la coppia (milestone, esito richiesto) è unica, e due righe «qualsiasi
+  verdetto» sullo stesso milestone sono un duplicato.
+* Contano solo i binding attivi, per il motore e per la mutua esclusione.
+* Il binding segue il milestone: cancellato il template di flusso, se ne va anche lui; il milestone deve
+  essere attivo.
 
 ---
 
-### Vincoli principali
+### ⭐ Una tabella sua, non un handler
 
-| Vincolo | Tipo | Descrizione |
-|---------|------|-------------|
-| `chk_tfap_esito_verdetto` | CHECK | `esito_richiesto IS NULL OR IN ('POSITIVO','NEGATIVO','PARZIALE','NON_APPLICABILE')` — whitelist chiusa dei 4 verdetti (`is_verdetto=true`). |
-| `uq_tfap_flusso_esito` | UNIQUE (NULLS NOT DISTINCT) | `(template_flusso_id, esito_richiesto)` — niente binding duplicati; due righe «qualsiasi verdetto» (NULL) sono un duplicato. |
-| `fk_tfap_template_flusso` | FK | `template_flusso_id → pratiche.template_flussi(id)` ON DELETE CASCADE. |
-| `fk_tfap_esito` | FK | `esito_richiesto → config.esiti_flussi_pratiche(codice)`. |
+La semantica «avanza quando il documento proietta» è diversa da «handler lato server su un evento di
+flusso», e ha una tabella dedicata invece di allargare il vocabolario degli eventi di
+`pratiche.template_flussi_handler_eventi`.
 
-**Guard config-time** (`pratiche.trgfn_tfap_guard_compatibilita`, BEFORE INSERT/UPDATE):
-il binding è ammesso **solo su step non-DOMINIO** e **non può coesistere** con un
-`template_flussi_handler_eventi` `COMPLETATO` **attivo** sullo stesso step (mutua esclusione).
+Il guard di configurazione `pratiche.trgfn_tfap_guard_compatibilita` ammette il binding solo su uno
+step non di tipo `DOMINIO`, e non lo lascia coesistere con un handler attivo sull'evento `COMPLETATO`
+dello stesso step: due meccanismi che completano lo stesso milestone si contraddirebbero.
 
 ---
 
-### Esempio d'uso
+### Configurazione versionata
 
-```sql
--- Il milestone APPROVAZIONE_CLIENTE avanza quando il preventivo atteso proietta POSITIVO.
-INSERT INTO pratiche.template_flussi_avanzamento_proiezione (template_flusso_id, esito_richiesto)
-VALUES (
-  (SELECT id FROM pratiche.template_flussi
-    WHERE codice = 'APPROVAZIONE_CLIENTE' AND tipo_prestazione_id = 9004),
-  'POSITIVO'
-);
-```
+È configurazione di step versionata: `pratiche.fn_copia_definizione` la copia quando un'edizione della
+definizione si deriva per fork o nuova versione.
+
+---
+
+### Note di migrazione
+
+* 2026-07-06 — nasce come secondo tassello dell'avanzamento guidato dall'esito proiettato
+  (brief-db-guida-avanza-esito-proiettato).
 
 ---
 

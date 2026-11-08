@@ -9,7 +9,7 @@
 -- 4) lo stesso messaggio passa se il padre esiste
 -- 5) un codice RITIRATO risolve ancora il suo messaggio
 -- 6) `note` con un a capo non passa                     (CHECK, 23514)
--- 7) un codice con spazi ai bordi non passa             (CHECK, 23514)
+-- 7) un codice gemello per spazi o maiuscole non passa (PK, 23505)
 -- 8) ogni codice del catalogo ha il suo padre           (invariante sui dati veri)
 --
 -- Scopo:
@@ -131,15 +131,21 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 7) Il codice e' la chiave: niente spazi ai bordi
---    Due stringhe che differiscono per uno spazio sarebbero chiavi diverse che
---    a occhio sono uguali. Su una PK testuale e' la trappola piu' banale.
+-- 7) Il codice e' la chiave: niente gemelli invisibili
+--    Due stringhe che differiscono per uno spazio ai bordi, o per le
+--    maiuscole, sarebbero chiavi diverse che a occhio sono uguali. Su una PK
+--    testuale e' la trappola piu' banale.
+--    ⚠️ Dal 2026-11-04 (automazione CODICE_MAIUSCOLO) la difesa e' il trigger
+--    a15 `trgfn_codice_maiuscolo`: salva upper(btrim()) PRIMA del CHECK
+--    `codice = btrim(codice)`, che da questa strada non vede piu' nulla.
+--    Si collauda la promessa, non il vincolo: ' test_ce_vivo ' diventa
+--    'TEST_CE_VIVO' e sbatte sulla PK della fixture.
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO config.codici_errore (codice, classe) VALUES (' TEST_CE_SPAZIO ', 'TECNICO')$$,
-    '23514',
+    $$INSERT INTO config.codici_errore (codice, classe) VALUES (' test_ce_vivo ', 'TECNICO')$$,
+    '23505',
     NULL,
-    '7. Un codice con spazi ai bordi non passa (CHECK: su una PK testuale sarebbe una chiave gemella invisibile)'
+    '7. Un codice gemello per spazi ai bordi o maiuscole non passa (normalizzato, sbatte sulla PK)'
 );
 
 -- ============================================================

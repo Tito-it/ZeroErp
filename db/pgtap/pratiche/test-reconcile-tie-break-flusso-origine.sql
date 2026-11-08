@@ -44,6 +44,7 @@
 --   degli scenari si portano allo stato con una riga (merce, 1 x 10) da
 --   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
 --   senza righe e' rifiutata. Nessuna attesa conta righe o importi.
+-- rev 2026-11-08 (brief-db-sorgente-documento-e-riga lotto P, giro P.1): il preventivo del fixture tiene l'uid come uuid, il reconcile prende (tipo, sorgente_id, sorgente_uid).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -75,8 +76,8 @@ ON CONFLICT (codice_interno) DO NOTHING;
 -- ============================================================
 -- 0) La funzione esiste
 -- ============================================================
-SELECT has_function('pratiche', 'fn_reconcile_sorgente', ARRAY['bigint','text'],
-  '0. pratiche.fn_reconcile_sorgente(bigint, text) presente');
+SELECT has_function('pratiche', 'fn_reconcile_sorgente', ARRAY['bigint','bigint','uuid'],
+  '0. pratiche.fn_reconcile_sorgente(bigint, bigint, uuid) presente');
 
 -- ============================================================
 -- Riferimenti minimi (pattern test-guida-avanza-esito-proiettato)
@@ -192,7 +193,7 @@ WITH ins AS (
     UNION ALL SELECT 'C2'
     UNION ALL SELECT 'C6'
   ) x
-  RETURNING id, (uid)::text AS uid, meta ->> 'tag' AS tag
+  RETURNING id, uid, meta ->> 'tag' AS tag
 )
 SELECT id, uid, tag FROM ins;
 
@@ -245,6 +246,7 @@ VALUES ((SELECT pratica_id FROM tmp_tb_c1_prat), (SELECT src_preventivo FROM tmp
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_tb_refs),
+    NULL,
     (SELECT uid FROM tmp_tb_prev WHERE tag = 'C1')),
   1,
   '1a. Origine != attesa: reconcile avanza 1 milestone (il WAIT in attesa)');
@@ -313,6 +315,7 @@ VALUES ((SELECT pratica_id FROM tmp_tb_c4_prat), (SELECT src_preventivo FROM tmp
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_tb_refs),
+    NULL,
     (SELECT uid FROM tmp_tb_prev WHERE tag = 'C4')),
   0,
   '4a. Due milestone in attesa + link d''origine (non usabile) -> 0 avanzamenti');
@@ -367,6 +370,7 @@ VALUES ((SELECT pratica_id FROM tmp_tb_c5_prat), (SELECT src_preventivo FROM tmp
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_tb_refs),
+    NULL,
     (SELECT uid FROM tmp_tb_prev WHERE tag = 'C5')),
   1,
   '5a. Link usabile fra piu'' candidati: avanza solo 1 (quello indicato, D-B5)');
@@ -412,6 +416,7 @@ VALUES ((SELECT pratica_id FROM tmp_tb_c2_prat), (SELECT src_preventivo FROM tmp
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_tb_refs),
+    NULL,
     (SELECT uid FROM tmp_tb_prev WHERE tag = 'C2')),
   1,
   '2a. Origine = attesa (regressione): il milestone che genera e attende avanza');
@@ -458,6 +463,7 @@ VALUES ((SELECT pratica_id FROM tmp_tb_c6_prat), (SELECT src_preventivo FROM tmp
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_tb_refs),
+    NULL,
     (SELECT uid FROM tmp_tb_prev WHERE tag = 'C6')),
   0,
   '6a. Nessun verdetto (preventivo EMESSO) -> 0 avanzamenti (invariato)');

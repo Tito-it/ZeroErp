@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_sorgente_provenienza: IL BB CHE SCRIVE, CITATO PER CODICE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R («le righe di vendita»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Sei verbi del lotto R generano righe da un documento e devono scrivere la
+#   provenienza con il BB che scrive (script.fn_sorgente_chiave), che vuole l'id
+#   del tipo. Ognuno avrebbe la stessa lettura del tipo per codice e lo stesso
+#   controllo «il tipo c'e'»: sei copie (regola del 2). Qui una volta.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Funzione nuova, plpgsql, STABLE, INVOKER: codice del tipo + chiave ->
+#   (tipo, sorgente_id, sorgente_uid). Delega a script.fn_sorgente_chiave.
+#   Nessun codice d'errore nuovo (E_SORG_CONF).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261106-48-create-fn-sorgente-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20261106-48-create-fn-sorgente-provenienza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_sorgente_provenienza: la provenienza di una riga da codice del tipo + chiave del documento,
+        sul BB che scrive. brief-db-sorgente-documento-e-riga §7.2 lotto R.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_sorgente_chiave';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_sorgente_provenienza(
+                  p_codice_interno config.sorgenti.codice_interno%TYPE,
+                  -- ⚠️ text DICHIARATO: la chiave del documento, id o uid, in forma canonica
+                  --   (come script.fn_sorgente_chiave).
+                  p_chiave         text)
+              RETURNS TABLE(
+                  sorgente_tipo_id config.sorgenti.id%TYPE,
+                  -- ⚠️ nudi DICHIARATI: la chiave POLIMORFA del documento, come in
+                  --   script.fn_sorgente_chiave.
+                  sorgente_id      bigint,
+                  sorgente_uid     uuid)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              ROWS 1
+              AS $function$
+              DECLARE
+                  v_tipo config.sorgenti.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la provenienza da scrivere su una riga nata da un
+                  --   documento, citato col codice del suo tipo e con una sua
+                  --   chiave qualsiasi: il tipo e la chiave giusta per il
+                  --   key_selector, da script.fn_sorgente_chiave.
+                  -- Ritorna: una riga.
+                  -- ⛔ Solleva su un codice che non e' un tipo (E_SORG_CONF) e,
+                  --   tramite script.fn_sorgente_chiave, su tutto cio' che non e'
+                  --   un documento esistente e visibile.
+                  -- =========================================================
+                  SELECT s.id INTO v_tipo
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = p_codice_interno;
+
+                  IF v_tipo IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_sorgente_provenienza', 'E_SORG_CONF',
+                          jsonb_build_object('codice_interno', p_codice_interno),
+                          NULL::uuid, COALESCE(p_codice_interno, '<nessuno>'));
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_tipo, k.sorgente_id, k.sorgente_uid
+                    FROM script.fn_sorgente_chiave(v_tipo, p_chiave) k;
+              END;
+              $function$;
+
+              REVOKE ALL ON FUNCTION script.fn_sorgente_provenienza(config.sorgenti.codice_interno%TYPE, text) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION script.fn_sorgente_provenienza(config.sorgenti.codice_interno%TYPE, text) TO zeroerp_app;
+
+              COMMENT ON FUNCTION script.fn_sorgente_provenienza(config.sorgenti.codice_interno%TYPE, text) IS
+                'La provenienza da scrivere su una riga nata da un documento, citato col codice del suo tipo (config.sorgenti.codice_interno) e con una sua chiave qualsiasi, id o uid in forma canonica: una riga (sorgente_tipo_id, sorgente_id, sorgente_uid), con la sola chiave del key_selector del tipo. La chiave e la verifica del documento sono di script.fn_sorgente_chiave. La chiamano i verbi che generano righe da un documento, una volta per documento; sorgente_riga la mette il verbo, riga per riga. Solleva E_SORG_CONF su un codice che non e'' un tipo, e gli errori di script.fn_sorgente_chiave (tipo spento, chiave mancante o malformata, documento assente o non visibile). STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_sorgente_provenienza(config.sorgenti.codice_interno%TYPE, text);

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `storico.indirizzi_dettaglio`
  
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**  
 >
 Approfondimento tabelle:   
@@ -34,7 +36,7 @@ Tutte le tabelle di storico in Zero ERP, incluso `storico.indirizzi_dettaglio`, 
 
 ### Meccanismo di Popolamento
 
-La popolazione degli snapshot avviene tramite la trigger function generica `script.trgfn_upd_dlt_storico_generic()` applicata sulla tabella sorgente, che:
+La popolazione degli snapshot avviene tramite la trigger function generica `script.trgfn_storico_generic()` applicata sulla tabella sorgente, che:
 
 1. Chiude eventuali snapshot precedenti (`valid_to = CURRENT_DATE`).
 2. Inserisce uno snapshot iniziale (se non esiste) con `valid_from` impostato a una data fissa (1950-01-01).

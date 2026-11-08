@@ -46,7 +46,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_cliente_ba_del_mondo(p_billing_account_id bigint, p_emittente_soggetto_ruolo_id bigint, p_chiamante text)
-IS 'Fixture pgTAP, building block: il cliente chiesto per billing account da un builder di documento (fn_pgtap_crea_fattura, fn_pgtap_crea_contratto, fn_pgtap_crea_ordine). Verifica che il BA sia legato all''azienda di chi agisce (anagrafiche.emittenti_fiscali_billing_account, non in RLS) e SOLLEVA prima di costruire, nominando il builder chiamante (p_chiamante), se e'' di un''altra azienda o di nessuna; altrimenti torna BA, istanza, soggetto_ruolo e utility. ⭐ Estratto alla terza copia (regola del 2; richiesta BE R-3, §9.11 di brief-be-utenti-di-sviluppo, 2026-10-22). STABLE, SECURITY INVOKER.';
+IS 'Fixture pgTAP, building block: verifica che un billing account sia legato all''azienda di chi agisce (anagrafiche.emittenti_fiscali_billing_account, non in RLS) e solleva prima di costruire, nominando la fixture chiamante (p_chiamante), se e'' di un''altra azienda o di nessuna; altrimenti torna BA, istanza, soggetto_ruolo e utility. Sede unica della verifica: la chiamano dbops.fn_pgtap_cliente_del_builder (per i builder di documento) e dbops.fn_pgtap_crea_mondo_cliente. STABLE, SECURITY INVOKER.';
 ```
 
 </div>

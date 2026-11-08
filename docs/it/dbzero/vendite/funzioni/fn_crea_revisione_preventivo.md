@@ -40,6 +40,9 @@ DECLARE
   v_has_draft           boolean;
   v_riga                vendite.preventivi_righe%ROWTYPE;
   v_new_riga_id         vendite.preventivi_righe.id%TYPE;
+  v_prov_tipo_id        vendite.preventivi_righe.sorgente_tipo_id%TYPE;
+  v_prov_id             vendite.preventivi_righe.sorgente_id%TYPE;
+  v_prov_uid            vendite.preventivi_righe.sorgente_uid%TYPE;
 BEGIN
   -- ==========================================================
   -- Scopo:
@@ -255,6 +258,12 @@ BEGIN
   -- Una riga alla volta, con RETURNING (rev 2026-10-08): la
   -- corrispondenza vecchia -> nuova e' quella dell'INSERT, non un ordine
   -- di assegnazione degli id dato per scontato.
+  -- La provenienza delle righe: il tipo e la chiave del documento, per il
+  -- key_selector del tipo (script.fn_sorgente_provenienza). Una volta sola.
+  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+    INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+    FROM script.fn_sorgente_provenienza('PREVENTIVO', p_preventivo_id::text) p;
+
   FOR v_riga IN
       SELECT pr.*
         FROM vendite.preventivi_righe pr
@@ -271,6 +280,7 @@ BEGIN
       data_consegna_richiesta_cliente,
       stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
       meta,
+      sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga,
       user_insert, user_update
     )
     VALUES (
@@ -286,6 +296,9 @@ BEGIN
            THEN v_riga.data_consegna_richiesta_cliente END,
       v_riga.stato_approvazione_prezzo, v_riga.pratica_approvazione_prezzo_id,
       v_riga.meta,
+      -- La provenienza: la rev N e la riga copiata. Non quella della rev N,
+      -- che dice da dove veniva lei.
+      v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.id,
       COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
     )
     RETURNING id INTO v_new_riga_id;
@@ -346,7 +359,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea revisione DRAFT da preventivo EMESSO o SCADUTO (gli stati di emissione e di scadenza del vocabolario, dal 2026-10-31): copia testata, righe attive, componenti BoM (tutti, anche gli spenti, rimappati per identita'') e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1. rev 2026-09-15 (20260915-41, D3 di Tid): la TESTATA copia emittente_fiscale_id dalla rev N — prima lo riempiva il default di sessione, e per un super admin su un altro emittente attivo la rev N+1 nasceva incoerente col BA (rifiutata dal guard). Brief: brief-db-emittente-di-default-un-bb-solo, sezione 7.1. rev 2026-09-24 (20260924-34, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (righe e componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione». Una riga in attesa ricopiata restava legata alla pratica della rev N e sulla rev N+1 non si esitava piu''''. Approvato e rifiutato continuano a ricopiarsi (azzerarli farebbe passare un prezzo rifiutato). Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-08 (20261008-35, brief-db-righe-e-componenti-le-altre-famiglie §2.1, D-1 di Tid): i componenti delle righe copiate si copiano TUTTI, anche gli opzionali spenti (la revisione e'' lo stesso documento: non portarli li cancellava, e nella rev N+1 non si potevano piu'' riaccendere), e si rimappano per identita'', una riga alla volta col suo RETURNING, invece che con un ROW_NUMBER sui due insiemi. Forma di fn_crea_revisione_offerta (20261005-19). rev 2026-10-08 (20261008-87, brief-db-righe-e-componenti-debiti-residui §3, D-3 di Tid): un componente SPENTO in PENDING si copia con stato_approvazione_prezzo e pratica_approvazione_prezzo_id a NULL. La pratica e'' della rev N e sulla rev N+1 non si esiterebbe mai; un attivo in attesa continua a fermare la revisione, approvato e rifiutato si copiano 1:1. La richiesta nuova alla riaccensione e'' dell''L3 dei componenti, che non esiste ancora (debito dichiarato). Gemella: fn_crea_revisione_offerta (20261008-88). ⭐ rev 2026-10-13 (20261013-68, collaudo date di consegna, decisione di Tid): una data_consegna_richiesta_cliente ANTERIORE alla data della rev N+1 (letta dal RETURNING della testata nuova) si copia NULL — script.fn_data_consegna_ammessa, la regola del guard di riga script.trgfn_doc_righe_guard_data_consegna, che altrimenti rifiuterebbe l''INSERT. Non si rifiuta la revisione (la rev N e'' fuori bozza e la data li'' non si correggerebbe) e non si porta alla data della revisione (sarebbe una richiesta mai fatta dal cliente): la rev N la conserva, la rev N+1 e'' DRAFT. Firma invariata. ⭐ rev 2026-10-31 (20261031-65, brief-db-scadenza-preventivi §8.1, E-3 (ii) di Tid): la revisione si crea dallo stato di emissione e da quello di scadenza, letti dalle colonne emissione e scadenza della riga del vocabolario (non piu'' il letterale ''EMESSO''): un preventivo SCADUTO si ripropone con una revisione, che nasce in bozza con la validita'' della rev N, da riscrivere. Lo stato della rev N non cambia. Gli altri stati restano esclusi (E_PREV_REVISIONE_STATO_NON_AMMESSO).';
+IS 'Crea la revisione N+1, in DRAFT, di un preventivo nello stato di emissione o in quello di scadenza del vocabolario (altrimenti E_PREV_REVISIONE_STATO_NON_AMMESSO; E_PREV_STATO_CORRENTE_NON_TROVATO se lo stato non si legge), se non ne esiste gia'' una in bozza (E_PREV_REVISIONE_BOZZA_ESISTENTE) e se nessun prezzo e'' in attesa (il primo motivo di script.fn_check_prezzi_in_attesa, lo stesso della capability). Copia la testata, con l''emittente della rev N; le righe attive con quantita'' maggiore di zero, nel loro ordine; per ogni riga tutti i suoi componenti, anche gli opzionali spenti, rimappati sulla riga nuova; gli indirizzi. Ogni riga copiata porta la provenienza: PREVENTIVO con la chiave della rev N da script.fn_sorgente_provenienza, e in sorgente_riga la riga copiata. La data chiesta dal cliente si copia, NULL se anteriore alla data della revisione (script.fn_data_consegna_ammessa). Le marche di approvazione prezzo si copiano 1:1 su righe e componenti; il componente spento in attesa si copia senza marca. Lo stato della rev N non cambia; lo stato iniziale della N+1 lo mette script.trgfn_doc_stato_iniziale. L''elenco delle colonne copiate lo presidia vendite/test-fn-crea-revisione-preventivo-riga-completa-v1.';
 ```
 
 </div>

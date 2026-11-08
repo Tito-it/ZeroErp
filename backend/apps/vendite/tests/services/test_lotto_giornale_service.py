@@ -76,7 +76,7 @@ class LottoGiornaleServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: lotto inesistente -> 404 di dominio.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_lotto_non_trovato_404(self, repo_cls):
         repo_cls.return_value.get_lotto.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -86,7 +86,7 @@ class LottoGiornaleServiceTests(TestCase):
     # Scopo: fuori scope e inesistente devono dare la STESSA risposta — un
     #        errore che li distinguesse confermerebbe l'esistenza del lotto di
     #        un altro emittente.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_fuori_scope_404_identico_a_inesistente(self, repo_cls):
         repo_cls.return_value.get_lotto.return_value = None
         with self.assertRaises(ServiceError) as fuori:
@@ -100,7 +100,7 @@ class LottoGiornaleServiceTests(TestCase):
     #    passaggio un lotto altrui riceverebbe «zero righe» — che si legge come
     #    «lotto senza storia», non come «non lo puoi vedere».
     #    ⛔ Se il giornale venisse letto lo stesso, il difetto sarebbe muto.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_giornale_non_letto_se_lotto_none(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = None
@@ -109,7 +109,7 @@ class LottoGiornaleServiceTests(TestCase):
         repo.list_giornale_lotto.assert_not_called()
 
     # Scopo: lo scope arriva al cancello — non applicarlo lo aprirebbe.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_scope_propagato_al_cancello(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
@@ -120,7 +120,7 @@ class LottoGiornaleServiceTests(TestCase):
     # ⭐ Le INFO si nascondono ma si CONTANO: un elenco filtrato e uno completo
     #    si leggono uguali, e «tre problemi» vs «tre problemi e 173 passi andati
     #    bene» sono due schermate diverse.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_info_nascoste_di_default_e_dichiarate(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
@@ -132,7 +132,7 @@ class LottoGiornaleServiceTests(TestCase):
 
     # Scopo: chiedendole, le INFO entrano nel totale e non c'e' piu' niente da
     #        dichiarare.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_info_incluse_su_richiesta(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
@@ -144,7 +144,7 @@ class LottoGiornaleServiceTests(TestCase):
 
     # Scopo: i due filtri sono indipendenti e si sommano sul totale — e' il caso
     #        in cui un errore di segno passa inosservato.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_ritirate_e_info_si_sommano_nel_totale(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
@@ -157,7 +157,7 @@ class LottoGiornaleServiceTests(TestCase):
     # ⚠️ Il totale e' una sottrazione, e una sottrazione puo' andare sotto zero
     #    se i conteggi arrivassero incoerenti. Un `count` negativo romperebbe il
     #    paginatore del client senza nessun errore lato server.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_totale_non_va_sotto_zero(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
@@ -169,7 +169,7 @@ class LottoGiornaleServiceTests(TestCase):
     #        preset di `vendite.giornale`, dal 2026-09-27): il service passa
     #        l'assenza, non ne scrive un secondo — fino a quel giorno qui era
     #        la gravita', e la stessa lista partiva in due modi.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_ordinamento_di_default_lo_decide_il_repository(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
@@ -178,7 +178,7 @@ class LottoGiornaleServiceTests(TestCase):
         self.assertIsNone(repo.list_giornale_lotto.call_args.kwargs["sort_by"])
 
     # Scopo: un lotto senza storia e' una risposta, non un errore.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_giornale_vuoto_non_e_un_errore(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
@@ -191,7 +191,7 @@ class LottoGiornaleServiceTests(TestCase):
     #    e «la fattura dice perche'» diventano due frasi indistinguibili nello
     #    stesso elenco — che e' la ragione per cui il pannello include le
     #    fatture.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_riga_dichiara_di_chi_e(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO

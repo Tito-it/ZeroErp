@@ -39,6 +39,8 @@ DECLARE
     v_data         magazzino.rettifiche.data%TYPE;
     v_stato        magazzino.rettifiche.stato_mag_rettifiche%TYPE;
     v_sorgente_id  config.sorgenti.id%TYPE;
+    v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+    v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
     v_motivi       jsonb;
     v_riga         magazzino.rettifiche_righe%ROWTYPE;
 BEGIN
@@ -73,13 +75,12 @@ BEGIN
         'magazzino', 'magazzino.fn_posta_rettifica', v_motivi, NULL, NULL::uuid,
         jsonb_build_object('rettifica_id', p_rettifica_id));
 
-    SELECT s.id INTO v_sorgente_id FROM config.sorgenti s WHERE s.codice_interno = 'RETTIFICA_RIGA' AND s.attivo;
-    IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('config', 'config.sorgenti.RETTIFICA_RIGA'),
-            NULL::uuid, VARIADIC ARRAY['sorgente RETTIFICA_RIGA (config.sorgenti, attiva)']);
-    END IF;
+    -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+    -- RETTIFICA e la chiave secondo il suo key_selector. Un tipo assente o
+    -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_sorgente_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('RETTIFICA', p_rettifica_id::text) p;
 
     PERFORM set_config('zeroerp.magazzino_posting_rettifica', p_rettifica_id::text, true);
 
@@ -94,6 +95,8 @@ BEGIN
             p_causale          => CASE WHEN v_riga.qta_delta > 0 THEN 'RETT_POS' ELSE 'RETT_NEG' END,
             p_qta              => v_riga.qta_delta,
             p_sorgente_tipo_id => v_sorgente_id,
+            p_sorgente_id      => v_prov_id,
+            p_sorgente_uid     => v_prov_uid,
             p_sorgente_riga    => v_riga.id,
             p_costo_unitario   => CASE WHEN v_riga.qta_delta > 0 THEN v_riga.costo_unitario END,
             p_lotto_id         => v_riga.lotto_id,
@@ -115,7 +118,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.fn_posta_rettifica(p_rettifica_id bigint)
-IS 'VERBO (rev 2026-09-24, brief-db-magazzino-verbi-con-permesso): registra una rettifica CONFIRM (D-L2-g). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''), lo stesso permesso dell''endpoint (E_PERMESSO_NEGATO, anche senza utente). SECURITY DEFINER del proprietario con search_path bloccato: e'' la sola strada verso la primitiva. La RLS qui non vale: la testata si prende FOR UPDATE con il predicato della policy (script.fn_scope_ef_whitelist_via_magazzino) nella WHERE — fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak) e nessun lock. Poi come prima: per ogni riga posta qta_delta con RETT_POS/RETT_NEG dal segno attraverso la primitiva (sorgente RETTIFICA_RIGA; costo della riga solo su un''entrata; is_rettifica: i blocchi non fermano, il fisico si''), porta la testata a POSTED con la GUC transazionale zeroerp.magazzino_posting_rettifica. UNA transazione. Ritorna (movimento_id, riga_id, qta) per riga.';
+IS 'VERBO (rev 2026-09-24, brief-db-magazzino-verbi-con-permesso): registra una rettifica CONFIRM (D-L2-g). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''), lo stesso permesso dell''endpoint (E_PERMESSO_NEGATO, anche senza utente). SECURITY DEFINER del proprietario con search_path bloccato: e'' la sola strada verso la primitiva. La RLS qui non vale: la testata si prende FOR UPDATE con il predicato della policy (script.fn_scope_ef_whitelist_via_magazzino) nella WHERE — fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak) e nessun lock. Poi come prima: per ogni riga posta qta_delta con RETT_POS/RETT_NEG dal segno attraverso la primitiva (sorgente RETTIFICA + la riga; costo della riga solo su un''entrata; is_rettifica: i blocchi non fermano, il fisico si''), porta la testata a POSTED con la GUC transazionale zeroerp.magazzino_posting_rettifica. UNA transazione. Ritorna (movimento_id, riga_id, qta) per riga. La provenienza del movimento e'' il documento (RETTIFICA, la chiave della testata) con la riga, dal BB script.fn_sorgente_provenienza (brief-db-sorgente-documento-e-riga lotto M).';
 ```
 
 </div>

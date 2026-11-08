@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RESO NASCE DA UNA BOLLA: LA PROVENIENZA STA IN sorgente_id
+#   chk_resi_sorgente_forma
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-3 (Tid, 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La provenienza di un reso e' solo DDT_VENDITA (G-3): il reso registra la merce che
+#   torna da una consegna, e la consegna e' la bolla. La bolla ha chiave id
+#   (key_selector), quindi la chiave del documento sta in sorgente_id e sorgente_uid e'
+#   sempre vuota. Il CHECK di forma lo dice sulla tabella, per chi scrive senza passare
+#   dal verbo; il tipo (che e' la bolla, per codice) lo fa valere
+#   vendite.trgfn_resi_guard_cliente_ddt (20261110-21), perche' un CHECK non legge il
+#   catalogo. Il vincolo resta col suo nome (linee-guida-sql §6e).
+#   Fatto datato (dbdev, 2026-11-08): tutti i resi hanno gia' la bolla in sorgente_id e
+#   sorgente_uid vuota; su un database da zero non ci sono resi di seed.
+#   Rollback: il CHECK di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261110-20-alter-resi-sorgente-forma-solo-chiave-id-mctit.yaml
+
+  - changeSet:
+      id: 20261110-20-alter-resi-sorgente-forma-solo-chiave-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.resi: chk_resi_sorgente_forma vuole la provenienza in sorgente_id (la bolla ha chiave id)
+        e sorgente_uid vuota. brief-db-sorgente-documento-e-riga §7.3, G-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'vendite.resi'::regclass AND conname = 'chk_resi_sorgente_forma';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.resi DROP CONSTRAINT chk_resi_sorgente_forma;
+              ALTER TABLE vendite.resi
+                ADD CONSTRAINT chk_resi_sorgente_forma
+                CHECK (sorgente_tipo_id IS NOT NULL AND sorgente_id IS NOT NULL AND sorgente_uid IS NULL);
+              COMMENT ON CONSTRAINT chk_resi_sorgente_forma ON vendite.resi IS
+                'Il reso ha sempre una provenienza, la bolla di vendita da cui torna la merce: il tipo e la chiave della bolla in sorgente_id (la bolla ha chiave id), sorgente_uid vuota. Che il tipo sia la bolla lo fa valere vendite.trgfn_resi_guard_cliente_ddt; che la bolla esista, script.trgfn_guard_sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.resi DROP CONSTRAINT chk_resi_sorgente_forma;
+              ALTER TABLE vendite.resi
+                ADD CONSTRAINT chk_resi_sorgente_forma
+                CHECK (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1);
+              COMMENT ON CONSTRAINT chk_resi_sorgente_forma ON vendite.resi IS
+                'Il reso ha sempre una provenienza: il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento esista, lo verifica script.trgfn_guard_sorgente.';

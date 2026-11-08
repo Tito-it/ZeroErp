@@ -1,118 +1,122 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_sorgente_emittente_sr_id`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[script.trgfn_guard_sorgente_polimorfa_testuale](/dbzero/script/manual/trgfn_guard_sorgente_polimorfa_testuale)
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento, che dice in quale tabella cercare
 >
-[vendite.trgfn_commesse_sorgenti_guard_emittente](/dbzero/vendite/manual/trgfn_commesse_sorgenti_guard_emittente)
+> Approfondimento funzioni:
 >
-Guide:
+> * [script.fn_sorgente_documento](/dbzero/script/funzioni/fn_sorgente_documento) — il BB che risolve il documento dalla sua chiave
+> * [vendite.fn_check_commessa_sorgente_emittente_omogeneo](/dbzero/vendite/funzioni/fn_check_commessa_sorgente_emittente_omogeneo) — la regola «una commessa, un emittente», che la usa
+> * [vendite.fn_guard_commessa_sorgente_emittente](/dbzero/vendite/funzioni/fn_guard_commessa_sorgente_emittente) — il guard che compone l'errore di quella regola
+> * [vendite.trgfn_commesse_sorgenti_guard_emittente](/dbzero/vendite/funzioni/trgfn_commesse_sorgenti_guard_emittente) — il trigger che la fa valere sui documenti di una commessa
 >
-[Sorgente polimorfa](/guide/sorgente-polimorfa)
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza: tipo, documento, riga
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 26-08-26)
 
-Dato un documento indicato «alla maniera universale» — un tipo e una chiave —
-risponde alla domanda **«chi lo emette?»**.
-
----
-
-### Il pezzo che mancava
-
-Il meccanismo con cui in Zero ERP ci si aggancia a un documento qualsiasi sapeva
-già rispondere a due domande:
-
-* **esiste?** — lo verifica il controllo della sorgente polimorfa;
-* **in che stato è?** — lo traduce la vista dello stato sorgente.
-
-Non sapeva rispondere alla terza, **chi lo emette** — ed è quella che serve per
-dire se due documenti appartengono allo stesso emittente. Da qui la funzione:
-una sola, scritta una volta, invece della stessa lettura ricopiata in ogni punto
-che ne avrà bisogno.
+Dato un documento indicato con le colonne della provenienza (il tipo e la chiave del documento,
+`sorgente_id` oppure `sorgente_uid`), risponde alla domanda **«chi lo emette?»**, nella convenzione
+del soggetto-ruolo dell'emittente.
 
 ---
 
-### ⛔ La strada sbagliata, e perché è istruttiva
+### Il pezzo che serve per confrontare due documenti
 
-La prima versione chiedeva l'emittente **al cliente** del documento: sembrava la
-strada generica. Non lo è.
+Il modello della provenienza sa rispondere a più domande, ognuna col suo pezzo: **esiste?** (il
+guard unico), **che documento è?** (il BB che risolve), **in che stato è?** (la vista dello stato
+della sorgente). Questa funzione risponde a **chi lo emette**, che serve per dire se due documenti
+appartengono allo stesso emittente: una sola definizione, invece della stessa lettura ricopiata in
+ogni punto che ne ha bisogno.
 
-| tabella | il cliente | l'emittente |
-| --- | --- | --- |
-| ordini, preventivi, DDT, resi | **può mancare** | c'è sempre |
-| contratti, offerte | c'è sempre | c'è sempre |
-
-Su **quattro tabelle su sei** il cliente può non esserci — ed è uno stato
-**legittimo**, non un errore. Il risolutore si fermava su documenti
-perfettamente validi.
-
-⇒ La regola che ne esce vale ben oltre questa funzione: **un controllo che
-rifiuta una situazione che il modello ammette non è severo, è rotto.**
-
-L'ha scoperto un test, non un ragionamento: un file di prova che crea ordini
-senza cliente **di proposito**.
+Il documento lo risolve `script.fn_sorgente_documento`, con la chiave che riceve: qui si legge solo
+l'emittente.
 
 ---
 
 ### Le tre strade, in ordine di direttezza
 
-1. **La colonna dell'emittente in convenzione interna** — commesse, fatture,
-   lotti: è già la risposta, si copia;
-2. **L'emittente del documento**, tradotto — i sei documenti di vendita: è la
-   strada normale, e quella colonna non è mai vuota;
-3. **Il cliente** — le due tabelle di attività, che un emittente proprio non ce
-   l'hanno.
+1. **La colonna dell'emittente come soggetto-ruolo**: commesse, fatture, lotti. È già la risposta,
+   si copia.
+2. **L'emittente fiscale del documento**, tradotto in soggetto-ruolo: i documenti di vendita. È la
+   strada normale, e quella colonna non è mai vuota.
+3. **Il billing account**, da cui si ricava l'emittente: le tabelle di attività, che un emittente
+   proprio non ce l'hanno.
 
-Nessuna delle tre disponibile ⇒ errore.
+La strada la sceglie la tabella del tipo, prima ancora di leggere il documento: una tabella senza
+nessuna delle tre colonne è un difetto di catalogo, non di un documento.
+
+---
+
+### ⛔ Il billing account non viene prima dell'emittente
+
+Chiedere l'emittente al cliente del documento sembra la strada generica, e non lo è: su ordini,
+preventivi, DDT e resi il billing account **può mancare**, ed è uno stato legittimo, mentre
+l'emittente c'è sempre. Un risolutore che passasse dal cliente si fermerebbe su documenti
+perfettamente validi.
+
+La regola vale oltre questa funzione: **un controllo che rifiuta una situazione che il modello
+ammette non è severo, è rotto.**
 
 ---
 
 ### Perché è privilegiata
 
-I documenti sono protetti da regole di visibilità per emittente. Se questa
-funzione girasse con i permessi di chi la chiama, **il documento di un altro
-emittente sarebbe invisibile**, e chi la interroga concluderebbe «non esiste»
-invece di «è di un altro».
+I documenti sono protetti da regole di visibilità per emittente. Se la funzione girasse con i
+permessi di chi la chiama, il documento di un altro emittente sarebbe invisibile, e chi la interroga
+concluderebbe «non esiste» invece di «è di un altro». Sono due risposte diverse: la prima è un
+errore da segnalare, la seconda è esattamente il caso che i controlli a valle devono bloccare.
 
-Sono due risposte diverse: la prima è un errore da segnalare, la seconda è
-esattamente il caso che i controlli a valle devono bloccare.
-
----
-
-### Perché non risponde mai «non lo so»
-
-Ogni strada che non porta a un risultato certo si ferma con un errore parlante.
-Non è rigidità: un risolutore che rispondesse «non lo so» lascerebbe passare il
-confronto a valle e trasformerebbe il controllo che lo usa in **un controllo che
-non controlla niente**. Silenziosamente.
+La funzione vede tutto **per rispondere correttamente**, non per aggirare il perimetro di chi la
+chiama: il filtro di visibilità resta di chi la usa.
 
 ---
 
-### La trappola della chiave
+### ⛔ Non risponde mai «non lo so»
 
-La chiave da passare è quella **canonica**, cioè quella che il sistema
-memorizza — per alcuni tipi l'identificativo numerico, per altri il codice
-universale. **Non** quella che il processo di push passa in giro, che è sempre
-la seconda forma.
-
-Dedurla da chi chiama, invece che dal catalogo, produce una funzione che non
-trova mai niente. In silenzio.
-
-«Canonica» vuol dire anche **scritta come la scrive il database** (dal 2026-10-05): una
-chiave con maiuscole, zeri davanti o spazi riceve `E_SORG_FORMATO`. La regola è quella dei
-building block [script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id) /
-[script.fn_sorgente_chiave_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid), la stessa del
-guard della sorgente polimorfa.
+Ogni strada che non porta a un risultato certo si ferma con un errore parlante. Un risolutore che
+rispondesse vuoto lascerebbe passare il confronto a valle, e trasformerebbe il controllo che lo usa
+in un controllo che non controlla niente, in silenzio. Un documento che non esiste e un documento
+senza un emittente risolvibile, per chi chiama, sono la stessa cosa: tutti e due sono un errore.
 
 ---
 
-### Impatto e Vantaggi
+### Codici errore
 
-* una definizione sola di «chi emette questo documento», riusabile da chiunque;
-* nessuna scorciatoia sui permessi: la funzione vede tutto **per rispondere
-  correttamente**, non per aggirare il perimetro di chi la chiama — il filtro di
-  visibilità resta di chi la usa.
+* `E_SORG_CONF` — il tipo manca, è spento o non ha una tabella, oppure la tabella non ha nessuna
+  delle tre colonne da cui si ricava l'emittente.
+* `E_SORG_KEY_MISSING` — non arriva nessuna delle due chiavi.
+* `E_SORG_EMITTENTE_NON_RISOLTO` — il documento non esiste, o non ha un emittente risolvibile.
+
+---
+
+### Test
+
+* `db/pgtap/vendite/test-commessa-sorgente-emittente-omogeneo-v1.sql` — la regola «una commessa, un
+  emittente», che si appoggia a questa funzione.
+* `db/pgtap/vendite/test-sorgente-commesse-sorgenti-v1.sql` — i documenti di una commessa con le
+  colonne del modello.
+
+---
+
+### Note di migrazione
+
+* 2026-10-05 — la chiave, allora in testo, deve essere nella forma canonica: una chiave con
+  maiuscole, zeri davanti o spazi riceve `E_SORG_FORMATO`.
+* 2026-11-08 — con il cantiere della provenienza documento e riga (`brief-db-sorgente-documento-e-riga`)
+  la funzione lavora sulle colonne del modello: tipo, `sorgente_id` e `sorgente_uid`, tipizzate, al
+  posto di un'unica chiave in testo che il chiamante doveva scrivere nella forma canonica del tipo.
+  Il documento lo risolve il BB che risolve, e la chiave in testo, dove esiste per costruzione, ha
+  il suo ponte (`script.fn_sorgente_documento_da_chiave`).
+
+---
+
+{% include-markdown "signature-core.md" %}

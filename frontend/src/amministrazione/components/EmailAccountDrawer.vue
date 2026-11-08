@@ -191,7 +191,7 @@ async function handleTest() {
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.email_codice') }}</label>
-          <InputText v-model="form.codice" :disabled="isEdit || isReadonly" fluid
+          <InputText v-model="form.codice" class="app-codice-input" :disabled="isEdit || isReadonly" fluid
             :invalid="campiErrati.includes('codice')"
           />
         </div>

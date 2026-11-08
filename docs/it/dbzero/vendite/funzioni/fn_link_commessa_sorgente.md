@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_link_commessa_sorgente`
 
 ```sql
-CREATE FUNCTION fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint, p_meta jsonb)
+CREATE FUNCTION fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_chiave text, p_sorgente_riga bigint, p_meta jsonb)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,21 +12,18 @@ CREATE FUNCTION fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint DEFAULT NULL::bigint, p_meta jsonb DEFAULT '{}'::jsonb)
+CREATE OR REPLACE FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_chiave text, p_sorgente_riga bigint DEFAULT NULL::bigint, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_link_id  vendite.commesse_sorgenti.id%TYPE;
-    v_uid      text := btrim(p_sorgente_uid);
+    v_uid      text := btrim(p_sorgente_chiave);
     v_existing vendite.commesse_sorgenti%ROWTYPE;
     v_ruolo    vendite.commesse_sorgenti.ruolo_link%TYPE;
-    -- Normalizzazione chiave canonica (brief-db-guard-sorgente-polimorfa §2a)
-    c_uuid_re  CONSTANT text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
-    v_target   regclass;
-    v_selector text;
-    v_norm     text;
     v_altra_commessa_id vendite.commesse_sorgenti.commessa_id%TYPE;
+    v_sorgente_id  vendite.commesse_sorgenti.sorgente_id%TYPE;
+    v_sorgente_uid vendite.commesse_sorgenti.sorgente_uid%TYPE;
 BEGIN
     -- Guard: parametri obbligatori
     IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
@@ -39,9 +36,9 @@ BEGIN
             jsonb_build_object('parametro', 'p_sorgente_tipo_id', 'valore', p_sorgente_tipo_id), NULL::uuid, 'p_sorgente_tipo_id obbligatorio e > 0');
     END IF;
 
-    IF p_sorgente_uid IS NULL OR v_uid = '' THEN
+    IF p_sorgente_chiave IS NULL OR v_uid = '' THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'p_sorgente_uid', 'valore', p_sorgente_uid), NULL::uuid, 'p_sorgente_uid obbligatoria');
+            jsonb_build_object('parametro', 'p_sorgente_chiave', 'valore', p_sorgente_chiave), NULL::uuid, 'p_sorgente_chiave obbligatoria');
     END IF;
 
     IF p_sorgente_riga IS NOT NULL AND p_sorgente_riga < 0 THEN
@@ -49,87 +46,16 @@ BEGIN
             jsonb_build_object('parametro', 'p_sorgente_riga', 'valore', p_sorgente_riga), NULL::uuid, 'p_sorgente_riga se fornita deve essere >= 0');
     END IF;
 
-    -- Normalizzazione chiave canonica: la chiave stoccata segue
-    -- config.sorgenti.key_selector ('id' -> id::text, 'uid' -> uuid).
-    -- I chiamanti storici passano l'uid del documento anche per i
-    -- tipi a chiave id: qui si traduce, prima di idempotenza e
-    -- insert, cosi' uq_commesse_sorgenti_src_uid lavora sempre
-    -- sulla forma canonica. Niente chiavi inventate: se l'uuid non
-    -- risolve la fn fallisce in modo parlante.
-    SELECT s.target_table, s.key_selector
-      INTO v_target, v_selector
-      FROM config.sorgenti s
-     WHERE s.id = p_sorgente_tipo_id
-       AND s.attivo = true;
-
-    IF v_target IS NULL OR v_selector IS NULL THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_CONF',
-            jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                               'target_table', COALESCE(v_target::text, '<NULL>'),
-                               'key_selector', COALESCE(v_selector, '<NULL>')),
-            NULL::uuid, concat('sorgente_tipo_id ', p_sorgente_tipo_id));
-    END IF;
-
-    IF v_selector = 'id' THEN
-        IF v_uid ~ c_uuid_re THEN
-            -- uuid ricevuto per tipo a chiave id: traduzione via colonna uid del target
-            IF NOT EXISTS (SELECT 1 FROM pg_attribute
-                            WHERE attrelid = v_target
-                              AND attname  = 'uid'
-                              AND attnum   > 0
-                              AND NOT attisdropped) THEN
-                PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_NORM_NON_RISOLTA',
-                    jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                                       'sorgente_uid', v_uid,
-                                       'target_table', v_target::text,
-                                       'detail', 'target_table senza colonna uid'),
-                    NULL::uuid, concat('target ', v_target::text, ' senza colonna uid; uid ', v_uid));
-            END IF;
-
-            EXECUTE format('SELECT id::text FROM %s WHERE uid = $1', v_target::text)
-              INTO v_norm
-              USING v_uid::uuid;
-
-            IF v_norm IS NULL THEN
-                PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_NORM_NON_RISOLTA',
-                    jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                                       'sorgente_uid', v_uid,
-                                       'target_table', v_target::text,
-                                       'detail', 'uuid non presente nella target_table'),
-                    NULL::uuid, concat('uid ', v_uid, ' non trovato in ', v_target::text));
-            END IF;
-
-            v_uid := v_norm;
-        -- ⭐ rev 2026-10-05 (20261005-25): forma CANONICA (id::text), con lo
-        --   stesso building block del guard e dei lettori. Prima '^[0-9]+$'
-        --   lasciava passare '007': chiave che esiste, ma che nessun lettore
-        --   risolve. v_uid e' gia' senza spazi (btrim in testa, normalizzazione
-        --   dichiarata di questo rubinetto).
-        ELSIF script.fn_sorgente_chiave_id(v_uid) IS NULL THEN
-            PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_FORMATO',
-                jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                                   'sorgente_uid', v_uid,
-                                   'key_selector', v_selector),
-                NULL::uuid, concat('atteso id numerico in testo, ricevuto ', v_uid));
-        END IF;
-    ELSIF v_selector = 'uid' THEN
-        -- ⭐ rev 2026-10-05 (20261005-25): forma CANONICA (uuid::text,
-        --   minuscolo). La regex accettava le maiuscole, e la chiave salvata
-        --   cosi' non la ritrova nessun lettore.
-        IF script.fn_sorgente_chiave_uuid(v_uid) IS NULL THEN
-            PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_FORMATO',
-                jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                                   'sorgente_uid', v_uid,
-                                   'key_selector', v_selector),
-                NULL::uuid, concat('atteso uuid, ricevuto ', v_uid));
-        END IF;
-    ELSE
-        -- key_selector fuori catalogo: config.sorgenti dovrebbe impedirlo con CHECK
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_SORG_KEYSEL',
-            jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                               'key_selector', v_selector),
-            NULL::uuid, concat('key_selector ', v_selector));
-    END IF;
+    -- La chiave da stoccare: il BB che scrive la provenienza
+    -- (script.fn_sorgente_chiave) legge il key_selector del tipo, traduce
+    -- l'uuid dei chiamanti per i tipi a chiave id (e l'id per i tipi a
+    -- chiave uid), verifica che il documento esista e solleva E_SORG_CONF /
+    -- E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA / E_SORG_NOT_FOUND. Restituisce
+    -- la chiave del modello, una delle due colonne: idempotenza, lock e insert
+    -- lavorano su quella. v_uid e' gia' senza spazi (btrim in testa).
+    SELECT k.sorgente_id, k.sorgente_uid
+      INTO v_sorgente_id, v_sorgente_uid
+      FROM script.fn_sorgente_chiave(p_sorgente_tipo_id, v_uid) k;
 
     -- Verifica esistenza + LOCK commessa: serializza la decisione del
     -- ruolo (ROOT vs COLLEGATO) tra sessioni concorrenti sulla stessa
@@ -141,29 +67,30 @@ BEGIN
             jsonb_build_object('commessa_id', p_commessa_id), NULL::uuid, concat('commessa_id ', p_commessa_id));
     END IF;
 
-    -- ⭐ rev 2026-10-12 (20261012-45, brief-db-annullo-a-valle-riapre-a-monte
-    --   D-12): il link RESTA come storia dopo la chiusura o l'annullo della
-    --   commessa (dal 20261012-43 l'unicita' della tabella e' per commessa).
+    -- Il link RESTA come storia dopo la chiusura o l'annullo della
+    --   commessa (l'unicita' della tabella e' per commessa).
     --   «Un documento in una sola commessa APERTA» si decide qui.
     --   Il lock advisory sulla SORGENTE serializza due invii dello stesso
     --   documento verso commesse DIVERSE: il lock sulla commessa (sopra) non
     --   li vede, perche' bloccano due righe diverse. Forma a due argomenti,
     --   namespace = questa funzione. ⚠️ Vale in READ COMMITTED, come lavora
     --   l'applicazione: chi aspetta il lock rilegge con una fotografia nuova.
+    --   La chiave del lock e' il tipo con la chiave del modello resa a testo
+    --   (id::text o uuid::text): una sola delle due c'e'.
     PERFORM pg_advisory_xact_lock(
         hashtext('vendite.fn_link_commessa_sorgente'),
-        hashtext(p_sorgente_tipo_id::text || ':' || v_uid));
+        hashtext(p_sorgente_tipo_id::text || ':'
+                 || COALESCE(v_sorgente_id::text, v_sorgente_uid::text)));
 
     -- Stessa commessa, stessa sorgente: idempotente. Il ruolo e la
     -- sorgente_riga gia' assegnati restano (link a livello documento).
-    -- ⭐ rev 2026-10-12: il meta si riscrive solo se cambia. Dal 20261012-46
-    --   la porta la chiama la madre delle righe, una volta per riga di
-    --   commessa: un UPDATE a vuoto scriverebbe una riga di storico per ogni
-    --   riga mandata.
+    -- Il meta si riscrive solo se cambia: la porta la chiama la madre
+    --   delle righe, una volta per riga di commessa, e un UPDATE a vuoto
+    --   scriverebbe una riga di storico per ogni riga mandata.
     SELECT cs.* INTO v_existing
       FROM vendite.commesse_sorgenti cs
      WHERE cs.sorgente_tipo_id = p_sorgente_tipo_id
-       AND cs.sorgente_uid     = v_uid
+       AND (cs.sorgente_id = v_sorgente_id OR cs.sorgente_uid = v_sorgente_uid)
        AND cs.commessa_id      = p_commessa_id
      FOR UPDATE;
 
@@ -179,7 +106,7 @@ BEGIN
     -- Il documento sta gia' in un'ALTRA commessa APERTA: rifiuto. Una
     -- commessa chiusa o annullata non lo trattiene, il suo link e' storia.
     -- La domanda «quale commessa aperta» ha una sede sola, il building block.
-    v_altra_commessa_id := vendite.fn_commessa_viva_di_sorgente(p_sorgente_tipo_id, v_uid);
+    v_altra_commessa_id := vendite.fn_commessa_viva_di_sorgente(p_sorgente_tipo_id, v_sorgente_id, v_sorgente_uid);
 
     IF v_altra_commessa_id IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_COMMESSA_SORGENTE_ALTRA_COMMESSA',
@@ -187,7 +114,8 @@ BEGIN
                 'commessa_richiesta', p_commessa_id,
                 'commessa_esistente', v_altra_commessa_id,
                 'sorgente_tipo_id', p_sorgente_tipo_id,
-                'sorgente_uid', v_uid
+                'sorgente_id', v_sorgente_id,
+                'sorgente_uid', v_sorgente_uid
             ), NULL::uuid, v_altra_commessa_id::text);
     END IF;
 
@@ -202,21 +130,20 @@ BEGIN
         v_ruolo := 'ROOT';
     END IF;
 
-    -- ⭐ rev 2026-10-12: niente piu' blocco EXCEPTION sull'unique_violation.
-    --   La corsa che catturava (la stessa sorgente su due commesse fra il
-    --   SELECT e l'INSERT) la serializza il lock advisory; il doppione sulla
-    --   stessa commessa, il lock sulla commessa. Il ramo era irraggiungibile, e
-    --   costava una sottotransazione per ogni riga di commessa.
-    INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, sorgente_riga, ruolo_link, meta)
-    VALUES (p_commessa_id, p_sorgente_tipo_id, v_uid, p_sorgente_riga, v_ruolo, COALESCE(p_meta, '{}'::jsonb))
+    -- Nessun blocco EXCEPTION sull'unique_violation: la corsa (la stessa
+    --   sorgente su due commesse fra il SELECT e l'INSERT) la serializza il
+    --   lock advisory; il doppione sulla stessa commessa, il lock sulla
+    --   commessa.
+    INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, ruolo_link, meta)
+    VALUES (p_commessa_id, p_sorgente_tipo_id, v_sorgente_id, v_sorgente_uid, p_sorgente_riga, v_ruolo, COALESCE(p_meta, '{}'::jsonb))
     RETURNING id INTO v_link_id;
 
     RETURN v_link_id;
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint, p_meta jsonb)
-IS 'La porta del link documento -> commessa (vendite.commesse_sorgenti): collega una sorgente a una commessa in modo idempotente decidendo il ruolo (prima sorgente della commessa -> ROOT, successive -> COLLEGATO: commessa multi-sorgente, aggregazione del fatturabile). NORMALIZZA la chiave secondo config.sorgenti.key_selector prima di idempotenza e insert (id -> id::text, traducendo l''uuid dei chiamanti via target_table.uid; uid -> uuid testuale; forma canonica con script.fn_sorgente_chiave_id / _uuid); formato non conforme o uuid non risolvibile -> E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA. ⭐ rev 2026-10-12 (20261012-45, brief-db-annullo-a-valle-riapre-a-monte D-12/D-13 di Tid): un documento sta in UNA SOLA COMMESSA APERTA alla volta, non piu'' in una commessa per sempre. Il link resta come storia dopo la chiusura o l''annullo della commessa (unicita'' della tabella per commessa, 20261012-43); se il documento sta gia'' in un''altra commessa aperta (vendite.fn_commessa_viva_di_sorgente) solleva E_COMMESSA_SORGENTE_ALTRA_COMMESSA. Due invii dello stesso documento verso commesse diverse li serializza un lock advisory sulla sorgente (forma a due argomenti, namespace = questa funzione; vale in READ COMMITTED, come l''applicazione); il lock sulla commessa serializza il ruolo. Senza piu'' il blocco EXCEPTION sull''unique_violation (irraggiungibile, e una sottotransazione per chiamata). Il meta si riscrive solo se cambia. Chiamante: vendite.fn_upsert_commessa_attivita, per ogni riga con una sorgente di scope PUSH_COMMESSA (D-13: il link nasce con la riga); il backend la chiamava a parte e la ritira. Storia: rev 2026-07-18 (brief-db-guard-sorgente-polimorfa §2a, normalizzazione), rev 2026-10-05 (20261005-25, forma canonica).';
+COMMENT ON FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_chiave text, p_sorgente_riga bigint, p_meta jsonb)
+IS 'La porta del link documento -> commessa (vendite.commesse_sorgenti): collega una sorgente a una commessa in modo idempotente decidendo il ruolo (prima sorgente della commessa -> ROOT, successive -> COLLEGATO: commessa multi-sorgente, aggregazione del fatturabile). La chiave la decide il BB che scrive la provenienza, script.fn_sorgente_chiave: legge il key_selector del tipo, traduce la chiave del chiamante (l''uuid per un tipo a chiave id, l''id per un tipo a chiave uid), verifica che il documento esista, solleva E_SORG_CONF / E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA / E_SORG_NOT_FOUND e restituisce la chiave del modello, sorgente_id oppure sorgente_uid: idempotenza, lock e insert lavorano su quella. p_sorgente_chiave e'' la chiave del documento come la passa il chiamante, id o uid resi a testo; nella tabella la riga e'' validata dal guard unico, script.trgfn_guard_sorgente. Un documento sta in UNA SOLA COMMESSA APERTA alla volta: il link resta come storia dopo la chiusura o l''annullo della commessa (unicita'' della tabella per commessa); se il documento sta gia'' in un''altra commessa aperta (vendite.fn_commessa_viva_di_sorgente) solleva E_COMMESSA_SORGENTE_ALTRA_COMMESSA. Due invii dello stesso documento verso commesse diverse li serializza un lock advisory sulla sorgente (forma a due argomenti, namespace = questa funzione; vale in READ COMMITTED, come l''applicazione); il lock sulla commessa serializza il ruolo. Il meta si riscrive solo se cambia. Chiamante: vendite.fn_upsert_commessa_attivita, per ogni riga con una sorgente di scope PUSH_COMMESSA.';
 ```
 
 </div>

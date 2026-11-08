@@ -84,7 +84,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ARTICOLO_NON_COMPOSITO": "L'articolo indicato non e' composito: non puo' avere una distinta base.",
     "E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C": "Articolo non negoziato sul contratto in modalita' C.",
     "E_ARTICOLO_NOT_FOUND": "Articolo non trovato.",
+    "E_ARTICOLO_OBSOLETO": "L'articolo e' ritirato: non si puo' scegliere per una riga nuova.",
     "E_ARTICOLO_ONERE_NATURA_MERCE": "Un articolo-onere non puo' avere una natura da merce: la merce va in ordine e in bolla, un onere si scrive in commessa.",
+    "E_ARTICOLO_ONERE_STRUTTURA": "Un articolo-onere e' un addebito, non un bene: non si gestisce a magazzino, non ha componenti, lotti o matricole.",
     "E_ARTICOLO_SENZA_EROGAZIONE": "L'articolo non ha nessuna erogazione ammessa: non puo' stare in un'offerta o in un contratto.",
     "E_ARTICOLO_SOLO_COMPONENTE": "Articolo utilizzabile solo come componente: non inseribile come riga autonoma.",
     "E_ARTICOLO_STRUTTURA_RIGHE_APERTE": "La correzione dell'articolo non si puo' fare: renderebbe non valide righe di documenti non ancora chiusi.",
@@ -119,7 +121,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ATTIVO_BLOCK_CHILDREN_EXIST": "Non si puo' disattivare: ci sono ancora righe collegate.",
     "E_ATTIVO_BLOCK_FKCOL_NOT_FOUND": "Configurazione trigger di protezione non valida.",
     "E_ATTIVO_BLOCK_REF_NULL": "Colonna di riferimento nulla nel guard di disattivazione.",
-    "E_ATTIVO_REQUIRE": "Regola di automazione ATTIVO_require non generata o trigger configurato male.",
+    "E_ATTIVO_PADRE_NON_ATTIVO": "La riga a cui si collega non e' attiva: non vi si puo' collegare una riga attiva.",
+    # Dal 2026-11-07 lo solleva solo il generatore (brief-db-revisione-dbops D46):
+    # il trigger dice E_ATTIVO_PADRE_NON_ATTIVO, E_PADRE_INESISTENTE ed
+    # E_TRIGGER_ARGOMENTI_INVALIDI. «Trigger configurato male» non e' piu' suo.
+    "E_ATTIVO_REQUIRE": "Generazione della regola di automazione ATTIVO_require fallita.",
     "E_AUDIT_SNAPSHOT_NON_TROVATO": "Snapshot audit non trovato.",
     "E_AUDIT_SOURCE_NON_TROVATO": "Sorgente audit non valida.",
     "E_AUDIT_SUMMARY_PARAM_NON_VALIDO": "Parametri audit non validi.",
@@ -185,17 +191,29 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "La riga della coda sta ancora lavorando: si mette via solo quando ha "
         "finito."
     ),
+    "E_CODA_CHIAVE_ALTRUI": "Un lavoro con la stessa chiave è già in coda per un'altra azienda.",
     "E_CODA_HANDLER_NON_REGISTRATO": "Tipo di lavoro non cablato nel sistema.",
     "E_CODA_IDENTITA_NON_ATTIVA": "Identità operatore non più attiva: lavoro non eseguibile.",
     "E_CODA_JOB_STANTIO": "Esecuzione interrotta (worker morto o kill): recuperata dal reaper.",
+    "E_CODA_LAVORO_SENZA_EMITTENTE": (
+        "Il lavoro non si accoda: un lavoro per conto di un operatore "
+        "appartiene a un'azienda, e la richiesta non ne indica una."
+    ),
+    "E_CODA_SCOPE_ALTRUI": (
+        "Il lavoro non si accoda: è intestato a un'altra persona o a un'azienda "
+        "che chi lo chiede non gestisce."
+    ),
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "Lavoro accodato con scope operatore incompleto.",
     "E_CODICE": "Codice di configurazione non trovato.",
+    "E_CODICE_MAIUSCOLO": "Automazione del codice in maiuscolo fallita su una tabella.",
+    "E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO": "Il codice, salvato in maiuscolo, supera la lunghezza ammessa.",
     "E_CODICE_NON_MODIFICABILE": "Il codice interno non e' modificabile.",
     "E_COD_INT_RUOLO": "Tipo ruolo non trovato per il codice indicato.",
     "E_COERENZA_ID": "Valore non coerente con il riferimento indicato.",
     "E_COLONNA_NON_MODIFICABILE": "Colonna non modificabile.",
     "E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE": "Annullamento non consentito: la commessa ha righe gia` emesse.",
-    "E_COMMESSA_ATTIVITA_GIA_EMESSA": "Riga commessa gia' emessa: modifica non consentita.",
+    "E_COMMESSA_ATTIVITA_CHIAVE_NON_DEL_DOCUMENTO": "La chiave della riga di commessa non nomina il documento di origine.",
+    "E_COMMESSA_ATTIVITA_GIA_EMESSA":"Riga commessa gia' emessa: modifica non consentita.",
     "E_COMMESSA_ATTIVITA_NON_COERENTE": "Attivita' non coerente con la commessa.",
     "E_COMMESSA_ATTIVITA_NOT_FOUND": "Attivita` commessa non trovata.",
     "E_COMMESSA_ATTIVITA_PREZZO_RETTIFICA_IMMUTABILE": "Il prezzo di una rettifica di nota di credito e' immutabile: e' copiato dalla riga di fattura che rettifica.",
@@ -220,6 +238,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_COMMESSA_STATO_TRANSIZIONE_INVALIDA": "Transizione di stato della commessa non ammessa dallo stato attuale.",
     "E_COMMESSA_VALIDATION": "Parametri commessa non validi.",
     "E_COMPONENTE_PREZZO_PENDENTE": "Impossibile emettere: componenti con approvazione prezzo in corso (PENDING).",
+    "E_COMUNE_NON_TROVATO": "Il comune indicato non esiste.",
     "E_CONFIG_MANCANTE": "Configurazione mancante nel sistema.",
     "E_CONFIG_MATRICE_DUPLICATA": "Esiste gia' una riga matrice per questa coppia utility/tipo ruolo.",
     "E_CONFIG_MATRICE_FK": "Utility o tipo ruolo inesistente.",
@@ -305,11 +324,14 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "Policy dati societari non configurata per questo tipo soggetto.",
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "Per questo tipo soggetto i dati societari non sono previsti.",
     "E_DATO_FISCALE_SENZA_TIPO_SOGGETTO": "Per indicare un regime fiscale o un titolo IVA serve prima il tipo soggetto.",
+    "E_DBOPS_CHIAMATA_NON_VALIDA": "Chiamata non valida a una funzione di amministrazione del database.",
     "E_DB_ROLE_UNSAFE": "Errore interno di sicurezza sessione.",
     # brief-db-ddt-righe-evase-dall-ordine (2026-10-11): la riga evasa dall'ordine
     # o dal reso, il suo legame e l'annullo della bolla che li porta.
     "E_DDT_ANNULLO_CON_LEGAMI": "La bolla ha righe che vengono da un ordine o da un reso: annullandola, quelle quantita' tornano da spedire. Serve una conferma.",
+    "E_DDT_EMISSIONE_SOLO_ONERI": "La bolla ha solo oneri e nessuna merce: non si emette. Un addebito senza merce si fa in commessa.",
     "E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO": "Il legame di una riga di DDT con la sua origine non si scrive direttamente: la quantita' si corregge col verbo, il legame si toglie con la riga.",
+    "E_DDT_ONERE_NON_FATTURABILE": "Sulla bolla c'e' un onere che non verrebbe mai fatturato: se l'ordine si fattura alla conferma, l'onere va sull'ordine.",
     "E_DDT_RIGA_EVASA_FERMA": "La riga viene da un ordine o da un reso: articolo, unita' di misura e quantita' non si cambiano dalla riga.",
     "E_DDT_RIGA_EVASA_LEGAMI_MULTIPLI": "La riga e' legata a piu' righe d'origine: la quantita' evasa non si puo' correggere da sola.",
     "E_DDT_RIGA_NON_EVASA": "La riga non viene da un ordine o da un reso: la sua quantita' si modifica dalla riga.",
@@ -333,8 +355,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DDT_RIGA_IVA_MANCANTE": "Una riga del DDT ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_DDT_RIGA_NON_TROVATA": "Riga DDT non trovata.",
     # Ritirato il 2026-10-25 (porta comune, E_DOC_STATO_SOLO_DAL_VERBO): resta per il diario.
+    "E_DDT_RIGA_ONERE_NON_CORREGGIBILE": "La riga e' un addebito: la correzione della quantita' evasa vale solo per la merce.",
     "E_DDT_STATO_SOLO_DA_VERBO": "La bolla muove merce: il cambio di stato si fa solo dall'operazione della bolla, che registra i movimenti di magazzino.",
     "E_DDT_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del DDT.",
+    "E_DDT_TRASPORTO_NON_DOVUTO": "La bolla addebita il trasporto al cliente, ma in porto assegnato o con addebito a terzi il cliente non lo deve.",
     "E_DDT_VALIDAZIONE": "Parametri DDT non validi.",
     "E_DEFAULT_CONTATTO_MISSING": "Contatto principale obbligatorio.",
     "E_DEFAULT_ERRATO": "Nessun valore di default configurato per il parametro.",
@@ -347,6 +371,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": "Transizione di stato dell'edizione non ammessa.",
     "E_DELETE_BLOCK": "Generazione del trigger di blocco cancellazione fallita.",
     "E_DELETE_BLOCKED_FUL": "Cancellazione bloccata: esistono legami fulfillment.",
+    "E_DELETE_CONTRATTO_CON_SUCCESSIVI": "Il contratto e' il precedente di altri contratti: non si puo' eliminare.",
+    "E_DELETE_DOC_CON_RIGHE": "Il documento ha ancora del contenuto (righe, eccezioni, attivita' o documenti collegati): si puo' eliminare solo una bozza vuota.",
     "E_DELETE_DOC_NON_BOZZA": "Il documento non e' piu' in bozza: si puo' eliminare solo finche' e' in bozza.",
     "E_DELETE_NOT_ALLOWED": "Cancellazione non permessa su questi dati.",
     "E_DELETE_RIGA_DOC_NON_BOZZA": "Il documento non e' piu' in bozza: le sue righe si possono togliere solo finche' e' in bozza.",
@@ -470,6 +496,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EMITTENTE_DEFAULT_MISSING": "Emittente fiscale default non configurato.",
     "E_EMITTENTE_DEFAULT_SINGLETON": "Un solo emittente fiscale puo' essere impostato come default.",
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "Impossibile disattivare l'emittente fiscale: esistono entita' collegate.",
+    "E_EMITTENTE_MODI_INVALIDO": "Il registro dei modi dell'emittente non si puo' usare: descrive una strada che il database non ha.",
+    "E_EMITTENTE_MODI_NON_SCRIVIBILE": "Il registro dei modi dell'emittente non si modifica dall'applicazione.",
     "E_EMITTENTE_NON_MODIFICABILE": "L'emittente fiscale di un operatore e' immutabile. Per cambiare l'associazione disattivare l'utente e crearne uno nuovo per l'altro emittente.",
     # BB emittente di default (2026-09-17): sostituisce E_ORDINE_/E_PREV_/
     # E_CONTRATTO_EMITTENTE_NON_RISOLTO, che restano qui perche' ritirati, non
@@ -607,6 +635,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_GROUP_ATTIVITA_INVALID_DATA": "Dati gruppo attivita non validi.",
     "E_GROUP_ATTIVITA_NOT_FOUND": "Gruppo attivita non trovato.",
     "E_GROUP_ATTIVITA_VALIDATION": "Parametri gruppo attivita non validi.",
+    "E_GUARD_UTILITY": "Automazione dei guard di utility e tipo ruolo non riuscita.",
     "E_GUC_RESET_FAILED": "Errore interno di sicurezza sessione.",
     "E_HANDLER_NON_REGISTRATO": "Handler di flusso non registrato: configurazione incompleta.",
     "E_IDEMPOTENCY_IN_PROGRESS": "L'operazione e' ancora in corso.",
@@ -655,6 +684,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_JOB_ELEMENTI_NON_COMPLETATI": (
         "Il lavoro automatico e' finito, ma alcuni elementi non sono stati completati."
     ),
+    "E_JOB_ESITO_CON_SCARTI": "Il lavoro è finito, ma una parte non è riuscita.",
     "E_JOB_NON_ANNULLABILE": "Il lavoro non e` piu` in attesa: annullo non possibile.",
     "E_JOB_NON_RIACCODABILE": "Il lavoro non e` riaccodabile nello stato corrente.",
     "E_JOB_NON_TROVATO": "Lavoro non trovato.",
@@ -924,6 +954,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # `script.fn_log_error_only` nominava un codice senza policy. Il rimedio e'
     # stato **rigenerare** — cioe' esattamente il flusso per cui sono stati
     # costruiti. Qui resta la sola riga a mano: il messaggio.
+    "E_MERGE_FIGLIA_SOTTO_RLS": "La fusione non puo' ripuntare una tabella di cui chi la lancia vede solo una parte.",
+    "E_MERGE_ORIGINE_UGUALE_DESTINAZIONE": "Origine e destinazione della fusione coincidono: devono essere due righe diverse.",
+    "E_MERGE_RIGHE_DOPPIE": "La fusione si ferma: alcune righe diventerebbero doppie di righe che la destinazione ha gia'.",
     "E_MESSAGGIO_NON_DEFINITO": "Messaggio di errore non definito a catalogo.",
     # ⚠️ Tolto il 2026-08-07 con la prima generazione (B-5):
     # `E_W_TXID_NOT_REGISTERED` era il gemello col prefisso `E_` di un codice che
@@ -984,6 +1017,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OPERATORE_SCOPE_MULTI_NON_AMMESSO": "Scope operatore multiplo non ammesso: un operatore ha un solo emittente.",
     "E_OPERATORE_SCOPE_PARAM_NON_VALIDO": "Parametri scope operatore non validi.",
     "E_ORDINE_CONFERMA_SENZA_RIGHE": "Ordine senza righe: impossibile confermare.",
+    "E_ORDINE_CONFERMA_SOLO_ONERI": "L'ordine ha solo oneri e nessuna merce: non si puo' confermare.",
     "E_ORDINE_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
     "E_ORDINE_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
     "E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA": "La merce di questa riga e' gia' partita con un DDT: la data di consegna confermata non si cambia piu'.",
@@ -993,6 +1027,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ORD_ANNULLA_CON_DDT": "L'ordine ha gia' DDT collegati: la merce e' uscita, per riportarla dentro si registra un reso.",
     "E_ORD_ANNULLA_IN_COMMESSA": "L'ordine e' gia' stato inviato a fatturazione: annulla prima le attivita' in commessa.",
     "E_ORD_CLIENTE_IMMUTABILE": "Cliente immutabile dopo la creazione: per cambiare cliente crea un nuovo ordine.",
+    "E_ORD_FUL_ONERE_NON_INTERO": "Un onere passa intero nella prima bolla: non si evade a pezzi. Per addebitarne una parte, correggerlo sull'ordine.",
     "E_ORD_NESSUNA_RIGA": "L'ordine non ha righe eleggibili per l'operazione.",
     "E_ORD_NOT_FOUND": "Ordine non trovato.",
     "E_ORD_OFFERTA_GIA_CONVERTITA": "Un ordine è già stato generato da questa offerta.",
@@ -1000,6 +1035,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ORD_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente dell'ordine.",
     "E_ORD_VALIDAZIONE": "Parametri ordine non validi.",
     "E_OUTBOX": "Errore gestione bozza email.",
+    "E_PADRE_INESISTENTE": "La riga a cui si collega non esiste.",
     "E_PAGAMENTI_CHIAMATA_NON_VALIDA": "Chiamata non valida al modulo pagamenti: e' un difetto del programma, non un dato da correggere.",
     "E_PAGAMENTI_VALIDATION": "Parametri non validi.",
     "E_PANNELLO_CAMPO_NON_AMMESSO": "Un campo non si puo' salvare da qui.",
@@ -1187,9 +1223,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_RIENTRI_INCOMPLETI": "I rientri di una riga del reso non coprono la quantita': indicare quali lotti o seriali rientrano, e dove.",
     "E_RESO_RIENTRO_INCOERENTE": "Rientro non valido: si rende la merce uscita con la riga di bolla da cui viene la riga di reso.",
     "E_RESO_RIENTRO_OLTRE_USCITO": "Da un lotto o seriale rientrerebbe piu' merce di quanta ne era uscita, contando anche gli altri resi della bolla.",
+    "E_RESO_RIGA_ONERE": "La riga e' un addebito, non merce: non si puo' rendere.",
     "E_RESO_RINUNCIA_ACCREDITO_ESEGUITO": "Rinuncia non piu' riapribile: l'accredito della quota e' gia' stato eseguito. Per riaprirla si deve prima annullare l'accredito.",
     "E_RESO_RINUNCIA_SUPERA_RESO": "La quantita' dichiarata definitiva supera la quantita' resa ancora da ri-consegnare.",
     "E_RESO_SENZA_RIGHE": "Il reso non ha righe: aggiungere almeno una riga prima della conferma.",
+    "E_RESO_SORGENTE_NON_DDT": "Un reso nasce da una bolla di vendita: creare il reso dalla bolla da cui torna la merce.",
     "E_RESO_STATO_NON_ANNULLABILE": "Il reso non e' in uno stato che ammette l'annullo.",
     "E_RESO_STATO_NON_CONFERMABILE": "Il reso non e' in bozza: non e' confermabile.",
     # Ritirato il 2026-10-25 (porta comune, E_DOC_STATO_SOLO_DAL_VERBO): resta per il diario.
@@ -1223,8 +1261,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RIGA_GIA_FATTURATA": "Riga gia' fatturata.",
     "E_RIGA_LISTINO_PROPAGATA": "Riga listino gia' propagata a valle: operazione non ammessa.",
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "Modifica righe listino non consentita: la versione non e' in stato BOZZA.",
-    "E_RIGA_NATURA_NON_AMMESSA": "In un ordine o in una bolla vanno solo merci: questo articolo non e' una merce.",
+    "E_RIGA_NATURA_NON_AMMESSA": "In un ordine o in una bolla vanno solo merci e articoli-onere: questo articolo non e' ne' una merce ne' un onere.",
     "E_RIGA_NATURA_VENDITA_IMMUTABILE": "La natura di vendita della riga non e' modificabile: la riga la riceve dall'articolo, o dal documento da cui nasce.",
+    "E_RIGA_ONERE_DATA_CONSEGNA": "Un onere non porta date di consegna: lasciarle vuote sulla sua riga.",
     "E_RIGA_PREZZO_PENDENTE": "La riga e' in attesa di approvazione: solo lo stato di approvazione e i campi audit sono modificabili.",
     "E_RIGA_QUANTITA_CON_FONTE_A_VALLE": "Con questa fonte la quantita' non si indica sulla riga: arriva a valle, periodo per periodo. Svuotare la quantita', o scegliere la fonte fissa.",
     "E_RIGA_TIPOLOGIA_FUORI_UTILITY": "Questo articolo appartiene a una tipologia che la utility del documento non prevede.",
@@ -1294,13 +1333,19 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE": "Un ruolo appartiene per sempre al suo soggetto: se e' sul soggetto sbagliato si ritira e si ricrea.",
     "E_SOGGETTO_RUOLO_NON_TROVATO": "Il ruolo del soggetto non esiste.",
     "E_SORGENTE_CON_RIGHE_EMESSE": "Il documento ha righe di commessa gia' emesse: non si puo' chiudere finche' ci sono. Si recuperano prima dalla dashboard di competenza, casella «Emesse non fatturate», col verbo «Riporta da emettere»; fatto questo il documento si chiude e il ritiro le prende insieme alle altre.",
+    "E_SORG_CHIAVE_NON_CONFORME": "La provenienza non e' scritta con la chiave che il suo tipo richiede.",
     "E_SORG_CONF": "Configurazione sorgente mancante o non attiva.",
+    "E_SORG_DETTAGLIO_NON_DELLA_RIGA": "Il dettaglio indicato non appartiene alla riga del documento di origine.",
     "E_SORG_EMITTENTE_NON_RISOLTO": "Impossibile stabilire chi emette il documento di origine: anomalia tecnica.",
     "E_SORG_FORMATO": "Chiave sorgente in formato non valido per il tipo indicato.",
     "E_SORG_KEYSEL": "Selettore di chiave sorgente non supportato.",
     "E_SORG_KEY_MISSING": "Chiave sorgente mancante.",
+    "E_SORG_LIVELLO_MANCANTE": "La provenienza non arriva fino al livello che la tabella richiede.",
+    "E_SORG_LIVELLO_NON_PREVISTO": "La provenienza indica un livello che il suo tipo non prevede.",
     "E_SORG_NORM_NON_RISOLTA": "Chiave sorgente non traducibile per il tipo indicato.",
     "E_SORG_NOT_FOUND": "Riferimento sorgente non trovato nella tabella target.",
+    "E_SORG_ORIGINE_REFERENZIATA": "Non si puo' cancellare: altre registrazioni dichiarano di nascere da qui.",
+    "E_SORG_RIGA_NON_DEL_DOCUMENTO": "La riga indicata non e' una riga del documento di origine.",
     "E_SOSPENSIONE_DATA_FINE": "La data di riattivazione deve essere successiva all'inizio della sospensione.",
     "E_SOSPENSIONE_DATA_FUTURA": "La data della sospensione non puo' essere nel futuro.",
     "E_SOSPENSIONE_INSERT": "Errore durante l'inserimento della sospensione.",
@@ -1325,6 +1370,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "padri non termina."
     ),
     "E_STORICO_UD": "Automazione di storicizzazione fallita.",
+    "E_STRADARIO_NON_TROVATO": "La via indicata non esiste nello stradario.",
+    "E_STRADARIO_SOPPRESSO": "La via e' soppressa: e' gia' stata fusa in un'altra e non si puo' piu' fondere.",
     "E_TABELLA_OP_NON_CONSENTITA": "Operazione non consentita su questa tabella.",
     "E_TASK": "Errore esecuzione task.",
     "E_TASK_FATTURA": "Errore task fattura.",
@@ -1535,5 +1582,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "W_FONDO_TRATTENUTO_DA_SISTEMAZIONE": "Fondo non azzerato: una sistemazione lo trattiene, e si disfa annullando quella.",
     "W_MESSAGGIO_ARITA": "Messaggio di errore con segnaposti non valorizzati: anomalia tecnica di catalogo.",
     "W_SCADENZE_TOTALE_NEGATIVO": "Totale a pagare negativo: nessun piano rate generato.",
+    "W_TXID_BYPASS_PARAMETRO_ASSENTE": "Avviso - il parametro del bypass del tx_id non e' valorizzato: il bypass resta spento.",
     "W_TXID_NOT_REGISTERED": "Transazione non registrata: anomalia tecnica di tracciamento.",
 }

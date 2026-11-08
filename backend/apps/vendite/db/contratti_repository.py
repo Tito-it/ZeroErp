@@ -669,19 +669,35 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #        `*_righe_componenti` (`vendite.fn_contratto_kit_componenti`, D-2
     #        (c)): per il kit che il contratto non negozia, la quota fissa del
     #        listino e l'ADESIONE. Il prezzo lo dice il resolver del DB.
-    #        Il contratto si nomina col suo `uid`, la sorgente della riga.
+    #        Il contratto si nomina con la CHIAVE della sorgente della riga
+    #        (quella del lister, id o uid in testo): l'id lo dà il BB del DB
+    #        `script.fn_sorgente_chiave` sul `key_selector` del tipo, non una
+    #        JOIN che presuma la forma della chiave.
+    #        ⛔ Una chiave che non risolve un contratto visibile SOLLEVA (dal
+    #        BB): fino al 2026-11-08 la JOIN su `c.uid` dava zero righe, cioè
+    #        un kit senza componenti, in silenzio.
     def list_componenti_kit_dal_listino(
-        self, *, contratto_uid: str, articolo_padre_id: Any, data: date,
+        self, *, sorgente_tipo_id: int, contratto_chiave: str,
+        articolo_padre_id: Any, data: date,
     ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT k.*
-                  FROM vendite.contratti c
-                 CROSS JOIN LATERAL vendite.fn_contratto_kit_componenti(c.id, %s::uuid, %s) k
-                 WHERE c.uid = %s::uuid
-                """,
-                [str(articolo_padre_id), data, str(contratto_uid)],
+                "SELECT sorgente_id FROM script.fn_sorgente_chiave(%s, %s::text)",
+                [int(sorgente_tipo_id), str(contratto_chiave)],
+            )
+            coppia = cursor.fetchone()
+            # ROWS 1: il BB solleva, non torna vuoto. Un id NULL è un tipo a
+            # chiave uid, cioè un tipo che non è il contratto: chiamante rotto.
+            # RuntimeError e non `assert`: resta acceso con `python -O`.
+            if coppia is None or coppia[0] is None:
+                raise RuntimeError(
+                    "list_componenti_kit_dal_listino: la chiave non dà l'id di un "
+                    f"contratto (sorgente_tipo_id={sorgente_tipo_id!r}, "
+                    f"chiave={contratto_chiave!r})"
+                )
+            cursor.execute(
+                "SELECT k.* FROM vendite.fn_contratto_kit_componenti(%s, %s::uuid, %s) k",
+                [int(coppia[0]), str(articolo_padre_id), data],
             )
             return rows_to_list(cursor)
 

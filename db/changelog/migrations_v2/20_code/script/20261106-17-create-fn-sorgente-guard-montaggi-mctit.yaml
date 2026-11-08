@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI MONTA IL GUARD UNICO, E CON QUALI ARGOMENTI: script.fn_sorgente_guard_montaggi
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0, giro 0.2.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il guard unico (script.trgfn_guard_sorgente) e' il contratto della provenienza:
+#   una tabella che lo monta scrive il modello (tipo + sorgente_id | sorgente_uid +
+#   sorgente_riga + sorgente_dettaglio). Tre lettori devono sapere quali tabelle
+#   sono e che cosa hanno dichiarato negli argomenti: il lato «in uscita»
+#   (l'azione quando l'origine si cancella), il presidio degli orfani (la
+#   grammatica) e il presidio di struttura. Lo dicono pg_trigger e i suoi
+#   argomenti, letti con la grammatica del guard (script.fn_sorgente_guard_argomenti
+#   su dbops.fn_trigger_argomenti): qui, una volta.
+#
+# ── ⚠️ LE TABELLE TEMPORANEE ─────────────────────────────────────────
+#   Un pgTAP monta il guard su una tabella temporanea. pg_trigger vede anche quelle
+#   delle altre sessioni, che nessuno puo' leggere: si tengono solo quelle della
+#   sessione corrente, e solo se chi chiede le puo' leggere (has_table_privilege:
+#   chiamata da una DEFINER, la domanda la fa il proprietario della funzione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261106-17-create-fn-sorgente-guard-montaggi-mctit.yaml
+
+  - changeSet:
+      id: 20261106-17-create-fn-sorgente-guard-montaggi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_sorgente_guard_montaggi(): le tabelle che montano il guard unico della provenienza, con
+        livello minimo, azione in cancellazione e colonne di riga e dettaglio. brief-db-sorgente-documento-e-riga
+        §7.2 lotto 0, giro 0.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_sorgente';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_sorgente_guard_montaggi()
+              RETURNS TABLE(
+                  tabella                regclass,
+                  schema_tabella         pg_catalog.pg_namespace.nspname%TYPE,
+                  nome_tabella           pg_catalog.pg_class.relname%TYPE,
+                  livello_minimo         text,
+                  azione_cancellazione   text,
+                  argomenti_validi       boolean,
+                  ha_sorgente_riga       boolean,
+                  ha_sorgente_dettaglio  boolean)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              BEGIN ATOMIC
+                  SELECT DISTINCT ON (tg.tgrelid)
+                         tg.tgrelid::regclass,
+                         n.nspname,
+                         c.relname,
+                         a.livello_minimo,
+                         a.azione_cancellazione,
+                         a.valido,
+                         EXISTS (SELECT 1 FROM pg_catalog.pg_attribute r
+                                  WHERE r.attrelid = tg.tgrelid AND r.attname = 'sorgente_riga'
+                                    AND r.attnum > 0 AND NOT r.attisdropped),
+                         EXISTS (SELECT 1 FROM pg_catalog.pg_attribute d
+                                  WHERE d.attrelid = tg.tgrelid AND d.attname = 'sorgente_dettaglio'
+                                    AND d.attnum > 0 AND NOT d.attisdropped)
+                    FROM pg_catalog.pg_trigger tg
+                    JOIN pg_catalog.pg_class c     ON c.oid = tg.tgrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    CROSS JOIN LATERAL script.fn_sorgente_guard_argomenti(
+                        dbops.fn_trigger_argomenti(tg.tgargs)) a
+                   WHERE tg.tgfoid = 'script.trgfn_guard_sorgente()'::regprocedure
+                     AND NOT tg.tgisinternal
+                     AND (c.relpersistence <> 't'
+                          OR (n.oid = pg_catalog.pg_my_temp_schema()
+                              AND pg_catalog.has_table_privilege(tg.tgrelid, 'SELECT')))
+                   ORDER BY tg.tgrelid, tg.tgname;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_sorgente_guard_montaggi() IS
+                'Le tabelle che montano il guard unico della provenienza (script.trgfn_guard_sorgente), con quello che hanno dichiarato negli argomenti del trigger, letti con script.fn_sorgente_guard_argomenti: il livello minimo, l''azione quando l''origine si cancella (BLOCCA o CANCELLA), se gli argomenti sono validi; piu'' se la tabella ha le colonne sorgente_riga e sorgente_dettaglio. Una riga per tabella. Delle tabelle temporanee tiene solo quelle della sessione, leggibili da chi chiede. La leggono il lato «in uscita» (script.trgfn_sorgente_in_uscita) e il perimetro dei presidi (dbops.fn_sorgenti_orfane_perimetro). INVOKER, STABLE.';
+
+              REVOKE EXECUTE ON FUNCTION script.fn_sorgente_guard_montaggi() FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION script.fn_sorgente_guard_montaggi() TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_sorgente_guard_montaggi();

@@ -49,7 +49,10 @@ BEGIN
     SELECT pg_get_userbyid(c.relowner), c.relrowsecurity
       INTO v_owner, v_rls
       FROM pg_catalog.pg_class c WHERE c.oid = v_sto_oid;
-    IF v_owner <> current_user THEN
+    -- Proprietario = chi ne ha i privilegi senza SET ROLE (membership con
+    -- INHERIT, o superuser): un membro di zeroerp_owner arma la shadow come
+    -- l'owner stesso. Il nome non conta.
+    IF NOT pg_has_role(current_user, v_owner, 'USAGE') THEN
         IF NOT p_dry_run THEN
             PERFORM dbops.fn_audit_log_once(
                 p_function_name => 'fn_storico_arma_scope',
@@ -195,7 +198,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_storico_arma_scope(p_schema_base text, p_table_base text, p_dry_run boolean)
-IS '⭐ rev 2026-10-18 (20261018-20, D-3b-2): la policy di lettura chiama script.fn_scope_ef_perimetro col perimetro in due sottoquery non correlate (una volta per istruzione), non piu'' script.fn_scope_ef_whitelist per riga. Porta la shadow storico.<tabella> di una madre alla forma dello scope congelato: colonne origine_schema e scope_emittente_fiscale_id (con indice) e, se dbops.storico_scope_policy dice che la madre è protetta (modo diverso da NESSUNO), RLS accesa con tre policy — rls_sto_<tab>_ef_whitelist FOR SELECT sull''emittente congelato (veste OPERATORE, adapter script.fn_scope_ef_whitelist), rls_sto_<tab>_trg_ins e rls_sto_<tab>_trg_upd con «true» perché la shadow la scrive il trigger e filtrare la scrittura romperebbe o zittirebbe la storicizzazione. Idempotente e forward-only: aggiunge solo ciò che manca e non disarma mai. ⚠️ Solo se il migratore possiede la shadow: altrimenti WARN nell''audit e si prosegue (le allinea il provisioning da superuser). Torna un jsonb con esito e azioni. La chiamano il generatore fn_ensure_storico_table sulla shadow appena creata e fn_storico_arma_scope_tutte. Brief: brief-db-rls-storico-scope-congelato §4b.';
+IS 'Porta la shadow storico.<tabella> di una madre alla forma dello scope congelato: colonne origine_schema e scope_emittente_fiscale_id (con indice) e, se dbops.storico_scope_policy dice che la madre e'' protetta (modo diverso da NESSUNO), RLS accesa con tre policy: rls_sto_<tab>_ef_whitelist FOR SELECT sull''emittente congelato (veste OPERATORE; il perimetro da script.fn_scope_ef_perimetro, calcolato una volta per istruzione), rls_sto_<tab>_trg_ins e rls_sto_<tab>_trg_upd con «true», perche'' la shadow la scrive il trigger e filtrare la scrittura romperebbe o zittirebbe la storicizzazione. Idempotente e forward-only: aggiunge solo cio'' che manca e non disarma mai. Lavora solo chi ha i privilegi del proprietario della shadow (pg_has_role USAGE: il proprietario, un suo membro con INHERIT, un superuser), non chi ne porta il nome; altrimenti WARN nell''audit ed esito SKIP_OWNER (le allinea il provisioning da superuser). Torna un jsonb con esito e azioni. La chiamano il generatore fn_ensure_storico_table sulla shadow appena creata e fn_storico_arma_scope_tutte.';
 ```
 
 </div>

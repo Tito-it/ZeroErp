@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.trgfn_righe_guard_articolo_ammesso`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — la check che chiama
@@ -28,7 +30,7 @@ dell'array.
 | `vendite.listini_righe` | `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd` (anche `UPDATE OF listino_versione_id`) | `('LISTINO_VERSIONE', 'listino_versione_id')` |
 | `vendite.promo_articoli` | `trg_promo_articoli_a10_guard_articolo_ammesso_ins_upd` | `('PROMO_ARTICOLO', 'id')`: la promo non ha un padre, il «documento» è la promo stessa |
 
-La distinta ha un guard suo, [catalogo.trgfn_articoli_componenti_guard_componente](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente):
+La distinta ha un guard suo, [catalogo.trgfn_articoli_componenti_guard_componente](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_guard_componente):
 lì l'articolo è `componente_id` e il padre un `uuid`. Sulla versione di listino questo guard ha
 preso il posto di `trgfn_listini_righe_guard_tipologia` e `trgfn_listini_righe_guard_no_composito`
 (ritirati dal `20261013-61`).
@@ -54,7 +56,7 @@ Sulla promo parla prima del guard delle date (`…_a10_guard_articolo_ammesso` <
 diventare invalida dopo: l'articolo con una promo è **usato** (A-10), e il suo flag «solo
 componente» non cambia più.
 
-Il picker ([catalogo.fn_articoli_ammessi](/dbzero/catalogo/manual/fn_articoli_ammessi)) mostra
+Il picker ([catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi)) mostra
 lo stesso motivo prima della scelta.
 
 Sul preventivo sostituisce il guard della ricorrenza `trgfn_preventivi_righe_set_natura_vendita`

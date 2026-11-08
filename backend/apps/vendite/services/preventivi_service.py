@@ -21,6 +21,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
 from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
+from apps.pratiche.types import RUOLO_LINK_COLLEGATO, RUOLO_LINK_ROOT
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
@@ -28,7 +29,6 @@ from apps.core.services.documento_modello import (
     e_stato_di_accettazione,
     e_stato_di_annullo,
     e_stato_di_emissione,
-    e_stato_iniziale,
     rifiuta_stato_di_emissione,
     stato_di_emissione,
 )
@@ -88,7 +88,9 @@ from apps.core.api.payload_validators import envelope_da_offset
 #    2026-10-31 (brief-modello-documento-vendita §17.6 BE-T2): lo stato di
 #    accettazione lo dice il vocabolario (colonna `accettazione`).
 #    E `_STATI_MODIFICABILI` ({"DRAFT"}) nello stesso giro: la bozza e' lo
-#    stato iniziale del vocabolario (`e_stato_iniziale`).
+#    stato iniziale del vocabolario. Dal 2026-11-08 (BE-Z.2-a) il service non
+#    la legge piu' nemmeno per l'eliminazione: la giudica il guard DB
+#    `trgfn_doc_guard_delete_solo_bozza` (script.fn_doc_stato_iniziale_id).
 _FN = "vendite.preventivi_service"
 # Il codice di validazione del dominio: una costante, non 35 letterali (2026-10-19).
 E_PREV_VALIDAZIONE = "E_PREV_VALIDAZIONE"
@@ -550,46 +552,26 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
 # subito l'inserimento righe (master-detail inline), ma esce senza inserire
 # righe. La BOZZA orfana viene cancellata su conferma utente.
 #
-# Guard di dominio (defense-in-depth: il caller FE filtra gia' su righe_count=0,
-# qui ricontrolliamo per sicurezza):
-#  - preventivo deve esistere
-#  - stato == BOZZA (DRAFT)
-#  - zero righe attive
-#  - zero pratiche collegate
+# ⛔ «Si cancella solo la bozza vuota» la giudica solo il guard DB
+# `vendite.trgfn_doc_guard_delete_solo_bozza` (brief-db-sorgente-
+# documento-e-riga §8.21 BE-Z.2-a); qui resta il 404 del DELETE che non
+# tocca niente (id inesistente o fuori perimetro RLS).
+# ⛔ Ritirato anche il pre-check «pratiche collegate» (BE-P.1-e, decisione A
+#    di Tid del 2026-11-08): il documento che altri citano lo protegge il lato
+#    «in uscita» del DB, non una lettura qui.
 # Non ammessa per preventivi gia' propagati a commessa o con stato avanzato:
 # in quei casi la "cancellazione" semantica e' cambia_stato → ANNULLATO.
 def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = _get_testata_or_raise(repo, preventivo_id, op="elimina_preventivo")
-    # Eliminabili solo i preventivi nello stato in cui nascono (la bozza: lo
-    # stato iniziale del vocabolario). Qualsiasi stato successivo
-    # (EMESSO/ACCETTATO/...) richiede cambia_stato → ANNULLATO invece
-    # dell'hard-delete.
+    with _db_errors("elimina_preventivo"):
+        deleted = repo.delete_preventivo(preventivo_id)
     ErrorManager.require(
-        e_stato_iniziale(TESTATA_PREVENTIVI, testata["stato_codice_interno"]),
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Solo i preventivi in stato BOZZA possono essere eliminati.",
-        detail=f"stato={testata['stato_codice_interno']}",
+        deleted,
+        code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
+        detail=f"preventivo_id={preventivo_id}",
         function_name=f"{_FN}.elimina_preventivo",
     )
-    righe_count = repo.count_righe(preventivo_id)
-    ErrorManager.require(
-        righe_count == 0,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Impossibile eliminare un preventivo con righe. Eliminare prima le righe.",
-        detail=f"righe_count={righe_count}",
-        function_name=f"{_FN}.elimina_preventivo",
-    )
-    pratiche_count = len(repo.list_pratiche(preventivo_id))
-    ErrorManager.require(
-        pratiche_count == 0,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Impossibile eliminare un preventivo con pratiche collegate.",
-        detail=f"pratiche_count={pratiche_count}",
-        function_name=f"{_FN}.elimina_preventivo",
-    )
-    deleted = repo.delete_preventivo(preventivo_id)
-    return {"status": "ok" if deleted else "noop", "preventivo_id": preventivo_id}
+    return {"status": "ok", "preventivo_id": preventivo_id}
 
 
 # Scopo: Aggiorna testata preventivo.
@@ -900,7 +882,7 @@ def collega_pratica(
     # sia DI questa pratica. flusso_id None = retrocompat / link non da flusso.
     PraticheRepository().upsert_pratica_sorgente(
         pratica_id=pratica_id, sorgente_codice=SORGENTE_PREVENTIVO,
-        sorgente_uid=prev["uid"], ruolo_link="ROOT", flusso_id=flusso_id,
+        sorgente_chiave=prev["uid"], ruolo_link=RUOLO_LINK_ROOT, flusso_id=flusso_id,
     )
     return {
         "preventivo_id": preventivo_id, "pratica_id": pratica_id,
@@ -1944,7 +1926,7 @@ def delete_componente(
 # Scopo: Push preventivo accettato in commessa per pipeline fatturazione.
 # Obiettivo: guard stato ACCETTATO + discovery righe eleggibili, poi delega
 # al CommessaPushOrchestrator filtrato sul singolo preventivo
-# (`pr_run_commesse_push_one(sorgente_codice='PREVENTIVO', sorgente_uid=preventivo_id)`).
+# (`pr_run_commesse_push_one(sorgente_codice='PREVENTIVO', sorgente_id=preventivo_id)`).
 # Perimetro: questa fn copre solo la Fase 1 (commesse_attivita); l'emit
 # verso attivita_fatturabili (Fase 3) per preventivi `fatturazione_immediata=TRUE`
 # e' tracciato in PR2 (vedi WIP sviluppo-push-singolo-preventivo §9).
@@ -1996,7 +1978,7 @@ def push_a_commessa(
     with transaction.atomic():
         report = pr_run_commesse_push_one(
             sorgente_codice=SORGENTE_PREVENTIVO,
-            sorgente_uid=preventivo_id,
+            sorgente_id=preventivo_id,
             righe_ids=righe_ids,
         )
 
@@ -2055,7 +2037,6 @@ def smistamento(preventivo_id: int) -> dict[str, Any]:
 _ESITO_SMISTAMENTO_MERCE = "MERCE_PRESENTE"
 _ESITO_SMISTAMENTO_SERVIZI = "SOLO_SERVIZI"
 _CODICE_FLUSSO_SMISTAMENTO = "SMISTAMENTO"
-_RUOLO_COLLEGATO = "COLLEGATO"
 
 
 # Scopo: Risolve la pratica di appartenenza di un preventivo dal suo link ROOT
@@ -2080,13 +2061,13 @@ def _aggancia_commessa_servizi_a_pratica(preventivo_id: int, preventivo_uid: str
     if pratica_id is None:
         return
     commessa_id = CommesseRepository().get_commessa_viva_by_sorgente(
-        sorgente_codice=SORGENTE_PREVENTIVO, sorgente_chiave=preventivo_uid,
+        sorgente_codice=SORGENTE_PREVENTIVO, sorgente_uid=preventivo_uid,
     )
     if commessa_id is None:
         return
     PraticheRepository().upsert_pratica_sorgente(
         pratica_id=pratica_id, sorgente_codice=SORGENTE_COMMESSA,
-        sorgente_uid=str(commessa_id), ruolo_link=_RUOLO_COLLEGATO,
+        sorgente_chiave=str(commessa_id), ruolo_link=RUOLO_LINK_COLLEGATO,
     )
 
 

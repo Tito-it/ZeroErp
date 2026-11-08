@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> ⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non aggancia piu' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Vista canonica lista/dettaglio ordini vendita: testata + decodifiche denormalizzate (stato, cliente, billing/emittente/utility, pagamento, valuta, agente, documento origine) + pdf_mode (modalita' bottone PDF per-riga, data-driven). Sola denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). rev 2026-07-11: +pdf_mode. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e' in ULTIMA posizione perche' CREATE OR REPLACE VIEW puo' solo appendere: non e' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e' `frontiera_tipo_codice`: quel valore e' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l'unico posto dove il guardrail li vede. ⭐ rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + data_consegna_richiesta_cliente_min, la prima data di consegna chiesta dal cliente sulle righe ATTIVE dell'ordine. E' un min() calcolato dalle righe e non una colonna di testata, perche' una colonna sarebbe una seconda sorgente di verita' che va fuori sincrono al primo cambio di riga; il suffisso _cliente dice di chi e' la data (D-16: non marcato = nostro, marcato = della controparte). NULL = nessuna riga attiva la dichiara. In ultima posizione perche' CREATE OR REPLACE VIEW puo' solo appendere. Serve la lista (ui.lista_colonna 746) e il drawer di testata, che leggono SELECT v.*. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, Q-E): + registro_codice, registro_descrizione in coda, LEFT JOIN vendite.registri_fatturazione su registro_id (20260831). E' lo stesso blocco appeso a vw_fatture_lista nello stesso giro: le sorelle che un registro ce l'hanno — fatture, ddt, ordini, resi — lo espongono allo stesso modo, cosi' chi scrive l'ottava copia non la copia da una vista senza. ⛔ contratti, preventivi e offerte NON hanno registro_id e non avranno queste colonne: non e' una dimenticanza. Nessun numero_documento qui: su questa vista `numero` e' gia' il numero parlante (varchar). ⭐ rev 2026-10-19 (20261019-91, brief-db-grammatica-unica-documenti lotto 2b, G-3 di Tid): ricreata dopo l'allargamento della colonna; il codice di origine o di destinazione e' quello di config.sorgenti (OFFERTA -&gt; OFFERTA_COMMERCIALE, ORDINE -&gt; ORDINE_VENDITA). Rev 2026-10-20 (20261020-75, brief-db-grammatica-unica-documenti L2c-1): ricreata identica dopo l'allargamento di registri_fatturazione.codice a varchar(80) (20261020-74).
+> Vista canonica della lista e del dettaglio degli ordini di vendita: la testata con le decodifiche denormalizzate (stato, cliente, billing account, emittente, utility, pagamento, valuta, agente, registro) e la provenienza. Sola denormalizzazione, nessuno scope: security_invoker=on, la RLS di vendite.ordini morde. La provenienza viene da sorgente_* (in coda: sorgente_tipo_id, sorgente_id, sorgente_uid), cercata con la regola d'incontro del modello (doc.id = sorgente_id OR doc.uid = sorgente_uid); documento_origine_tipo e' il codice di config.sorgenti, documento_origine_id l'id del documento d'origine (anche per preventivo e offerta, che hanno chiave uid), documento_origine_codice il suo numero (preventivi.numero, offerte_commerciali.codice). NULL = ordine nato da solo. pdf_mode e' la modalita' del bottone PDF, dallo stato. pratica_* da pratiche.fn_pratica_del_documento. data_consegna_richiesta_cliente_min e' la prima data di consegna chiesta dal cliente sulle righe attive (NULL: nessuna la dichiara), calcolata dalle righe e non salvata in testata. registro_codice e registro_descrizione da vendite.registri_fatturazione, come nelle liste sorelle che hanno un registro (fatture, bolle, resi). Le colonne del grafo (frontiera_*, discendenti, transito) non stanno qui: le legge il backend da vendite.fn_documento_lineage_sintesi. Le colonne nuove vanno in coda: CREATE OR REPLACE VIEW puo' solo appendere.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -49,9 +49,13 @@ SELECT o.id,
     o.canale_origine,
     o.agente_soggetto_ruolo_id,
     s_ag.ragione_sociale_completa AS agente_denominazione,
-    o.documento_origine_tipo,
-    o.documento_origine_id,
-        CASE o.documento_origine_tipo
+    so_or.codice_interno AS documento_origine_tipo,
+        CASE so_or.codice_interno
+            WHEN 'PREVENTIVO'::text THEN pv.id
+            WHEN 'OFFERTA_COMMERCIALE'::text THEN oc.id
+            ELSE o.sorgente_id
+        END AS documento_origine_id,
+        CASE so_or.codice_interno
             WHEN 'PREVENTIVO'::text THEN pv.numero
             WHEN 'OFFERTA_COMMERCIALE'::text THEN (oc.codice)::character varying
             ELSE NULL::character varying
@@ -68,8 +72,11 @@ SELECT o.id,
     pr.n_pratiche,
     dcr.data_consegna_richiesta_cliente_min,
     reg.codice AS registro_codice,
-    reg.descrizione AS registro_descrizione
-   FROM ((((((((((((((((((vendite.ordini o
+    reg.descrizione AS registro_descrizione,
+    o.sorgente_tipo_id,
+    o.sorgente_id,
+    o.sorgente_uid
+   FROM (((((((((((((((((((vendite.ordini o
      JOIN config.stati_doc_ordini sd ON ((sd.id = o.stato_doc_ordine_id)))
      JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
@@ -83,11 +90,12 @@ SELECT o.id,
      LEFT JOIN config.valute v_val ON ((v_val.id = o.valuta_id)))
      LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON ((sr_ag.id = o.agente_soggetto_ruolo_id)))
      LEFT JOIN anagrafiche.soggetti s_ag ON ((s_ag.id = sr_ag.soggetto_id)))
-     LEFT JOIN vendite.preventivi pv ON (((pv.id = o.documento_origine_id) AND ((o.documento_origine_tipo)::text = 'PREVENTIVO'::text))))
-     LEFT JOIN vendite.offerte_commerciali oc ON (((oc.id = o.documento_origine_id) AND ((o.documento_origine_tipo)::text = 'OFFERTA_COMMERCIALE'::text))))
+     LEFT JOIN config.sorgenti so_or ON ((so_or.id = o.sorgente_tipo_id)))
+     LEFT JOIN vendite.preventivi pv ON ((((so_or.codice_interno)::text = 'PREVENTIVO'::text) AND ((pv.id = o.sorgente_id) OR (pv.uid = o.sorgente_uid)))))
+     LEFT JOIN vendite.offerte_commerciali oc ON ((((so_or.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND ((oc.id = o.sorgente_id) OR (oc.uid = o.sorgente_uid)))))
      LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
            FROM config.sorgenti so_pr
-          WHERE (((so_pr.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (so_pr.attivo IS TRUE))), (o.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+          WHERE (((so_pr.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (so_pr.attivo IS TRUE))), o.id, o.uid) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
      LEFT JOIN LATERAL ( SELECT min(orr.data_consegna_richiesta_cliente) AS data_consegna_richiesta_cliente_min
            FROM vendite.ordini_righe orr
           WHERE ((orr.ordine_id = o.id) AND (orr.attivo IS TRUE))) dcr ON (true))

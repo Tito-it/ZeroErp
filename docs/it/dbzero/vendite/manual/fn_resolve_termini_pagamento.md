@@ -1,22 +1,28 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_resolve_termini_pagamento`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> **Tabelle:**
+> Approfondimento tabelle:
 >
-> • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento) — il catalogo delle regole
-> • [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento) — il **come**, separato dal **quando**
-> • [vendite.commesse](/dbzero/vendite/tabelle/commesse) — possiede le proprie condizioni (D-R)
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — l'input
+> * [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento) — il catalogo delle regole
+> * [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento) — il **come**, separato dal **quando**
+> * [vendite.commesse](/dbzero/vendite/tabelle/commesse) — possiede le proprie condizioni
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — la riga di commessa, che porta la provenienza
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — l'input
 >
-> **Funzioni:**
+> Approfondimento funzioni:
 >
-> • [vendite.fn_build_fattura_key](/dbzero/vendite/funzioni/fn_build_fattura_key) — chiama questa catena
-> • [vendite.fn_genera_scadenze_fattura](/dbzero/vendite/funzioni/fn_genera_scadenze_fattura) — **legge** il risultato, non lo ricalcola
+> * [vendite.fn_build_fattura_key](/dbzero/vendite/funzioni/fn_build_fattura_key) — chiama questa catena
+> * [vendite.fn_genera_scadenze_fattura](/dbzero/vendite/funzioni/fn_genera_scadenze_fattura) — **legge** il risultato, non lo ricalcola
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 ### 🎯 Scopo Principale
-(latest review 02-08-2026)
 
 `vendite.fn_resolve_termini_pagamento(p_attivita_id)` è l'**unica** implementazione
 della catena delle condizioni di pagamento. Per una singola attività fatturabile
@@ -27,8 +33,7 @@ restituendo la coppia `(termine_pagamento_id, modalita_pagamento_id)`.
 
 > ⚠️ **Perché è una sola.** Se esistessero due risolutori, prima o poi
 > divergerebbero — e divergerebbero **in silenzio**, perché entrambi
-> restituiscono un id plausibile. La Fase 3b del cantiere satelliti è servita
-> esattamente a togliere il secondo. Chi ha bisogno del termine **chiama questa**,
+> restituiscono un id plausibile. Chi ha bisogno del termine **chiama questa**,
 > non lo ricava per conto proprio.
 
 ---
@@ -37,13 +42,13 @@ restituendo la coppia `(termine_pagamento_id, modalita_pagamento_id)`.
 
 | # | Livello | Cosa porta |
 |---|---|---|
-| 1 | **Documento sorgente** | l'**ordine** porta termine *e* modalità; il **preventivo** il solo termine |
-| 2 | **Commessa** (D-R) | entrambi, se valorizzati |
+| 1 | **Documento d'origine** | l'**ordine** porta termine *e* modalità; il **preventivo** il solo termine |
+| 2 | **Commessa** | entrambi, se valorizzati |
 | 3 | **Cliente** del billing account **padre** | entrambi |
 | 4 | **Default** `TP_1RATA` | il solo **termine** |
 
 Nessun ramo per i **contratti** e i **DDT**: non hanno colonne di pagamento. Non
-è una dimenticanza — è il fatto che ha deciso D-R (vedi sotto).
+è una dimenticanza: è il fatto che fa spaccare la commessa alla fonte (vedi sotto).
 
 ---
 
@@ -75,54 +80,32 @@ cliente dà zero righe e avrebbe azzerato il termine trovato sul documento.
 
 ---
 
-### 🔁 Il livello 1 e la sorgente EFFETTIVA
+### 🔁 Il livello 1: il documento d'origine della riga di commessa
 
-> 🔴 **Rettifica 2026-08-03.** La prima stesura di questa pagina diceva che il
-> livello 1 era «dormiente perché `ordini` e `preventivi` hanno zero righe».
-> **Il motivo era sbagliato**: non scattava nemmeno a tabelle piene.
+L'attività fatturabile non porta una provenienza propria: nasce da una riga di commessa
+(`commessa_attivita_id`), ed è **quella riga** a dire da quale documento viene, con tipo e
+chiave del modello della provenienza. Il livello 1 risale lì: dall'attività alla riga di
+commessa, dalla riga al documento d'origine.
 
-Il **pull riscrive la sorgente**: l'attività che genera porta
-`sorgente = COMMESSA`, per disegno. Il resolver leggeva quel valore, non
-trovava né `ordini` né `preventivi`, e saltava — su **35 attività su 35**, cioè
-sulla totalità di ciò che arriva in fattura. Il livello non era dormiente, era
-**strutturalmente irraggiungibile**, e la catena a quattro livelli ne aveva uno
-decorativo.
-
-Il costo l'ha pagato una fattura vera: termine a 2 rate impostato su preventivo e
-ordine, documento uscito con **una** rata — e **senza errori**, perché le rate
-quadravano col totale.
-
-Da `20260803-03` il livello 1 risolve la **sorgente effettiva** e copre due
-strade:
-
-| Strada | Come |
+| Tipo d'origine della riga | Che cosa legge |
 |---|---|
-| attività inserita **direttamente** con sorgente documento | `a.sorgente_uid` — invariata |
-| attività prodotta dal **pull** (`sorgente = COMMESSA`) | risale via `a.commessa_attivita_id` → `commesse_attivita.sorgente_tipo_id` + `sorgente_uid` |
+| `ORDINE_VENDITA` | termine e modalità dell'ordine |
+| `PREVENTIVO` | il solo termine del preventivo |
+| ogni altro tipo, o nessuno | niente: il livello 1 non risponde e si passa alla commessa |
 
-**Perché dalla riga di commessa e non da `sorgente_origine_tipo_id`**:
-`attivita_fatturabili` conserva il **tipo** d'origine ma **non l'uid**. Si saprebbe
-che viene da un ordine, non da *quale*. La riga di commessa conserva entrambi, e la
-JOIN è totale (35 su 35).
+Il documento si cerca con la regola d'incontro del modello (l'id o l'uid del documento,
+secondo la chiave che la provenienza porta).
 
-⚠️ **La sovrascrittura è filtrata sui due tipi che il livello 1 gestisce**
-(`ORDINE_VENDITA`, `PREVENTIVO`), e non è una restrizione di comodo: la sorgente è
-**polimorfa** e `commesse_attivita.sorgente_uid` è `TEXT`, mentre
-`attivita_fatturabili.sorgente_uid` è `UUID`. Per convenzione preventivo e offerta
-usano l'uid, gli altri `id::text`: assegnare senza filtro farebbe **esplodere il
-cast** al primo contratto o consumo che arrivasse lì. Per contratti e DDT il
-livello 1 non avrebbe comunque nulla da leggere — non hanno colonne di pagamento.
-
-💡 **La lezione, che vale oltre questa funzione**: *un livello si verifica dal
-percorso che lo attraversa, non dal codice che lo dichiara*. Il primo test scritto
-per verificarlo lo aveva **confermato** — perché costruiva l'attività a mano con
-un `sorgente_tipo_id` che il pull non produce mai. Il presidio è ora il test 1 di
-`test-resolve-termini-livello-sorgente-v1.sql`, che asserisce la **forma** che il
-pull produce: se cambia, è il primo a dirlo.
+💡 **La lezione, che vale oltre questa funzione**: *un livello si verifica dal percorso che
+lo attraversa, non dal codice che lo dichiara*. Un livello che leggeva un dato che il percorso
+reale non produce mai è rimasto irraggiungibile senza errori, e una fattura è uscita con una
+rata invece di due, con le rate che quadravano col totale. Il presidio è il test 1 di
+`test-resolve-termini-livello-sorgente-v1.sql`, che costruisce l'attività nella **forma** che
+l'emissione dalla commessa produce: se quella forma cambia, è il primo a dirlo.
 
 ---
 
-### 💡 Perché il termine spacca la commessa alla fonte (D-R)
+### 💡 Perché il termine spacca la commessa alla fonte
 
 Le condizioni di pagamento sono parte della **chiave di raggruppamento** della
 commessa: un documento con condizioni diverse non riusa una commessa esistente,
@@ -150,13 +133,21 @@ Assenza di condizioni **non è un errore**: è il caso che il livello 4 esiste p
 coprire.
 
 ---
-{% include-markdown "signature-core.md" %}
-
----
 
 ### Note di migrazione
 
-* **2026-10-08** (`20261008-70`): il livello 3 (cliente del BA padre) aggancia il cliente **per BA**
+* 2026-08-03 — il livello 1 risolve la sorgente **effettiva**: l'attività prodotta dalla
+  commessa portava come sorgente la commessa stessa, e il livello leggeva quella, senza mai
+  trovare ordine o preventivo. Da allora risale alla riga di commessa. La prima stesura di
+  questa pagina lo diceva «dormiente perché le tabelle sono vuote»: il motivo era sbagliato.
+* 2026-10-08 — il livello 3 (cliente del BA padre) aggancia il cliente **per BA**
   (`cl.billing_account_id = ba.id`). Prima lo agganciava per istanza, contando su «un cliente per
   istanza»: con piu' BA per istanza avrebbe preso il termine di pagamento di un cliente qualunque.
   Deterministico grazie a `uq_clienti_billing_account`. Brief: brief-db-istanza-nasce-col-ba (R-8).
+* 2026-11-07 — ritirate le colonne di provenienza dell'attività fatturabile: il livello 1 ha
+  una sola strada, la riga di commessa, che porta la provenienza tipizzata
+  (brief-db-sorgente-documento-e-riga).
+
+---
+
+{% include-markdown "signature-core.md" %}

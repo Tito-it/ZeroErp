@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION ui.trgfn_preset_riga_tocca_preset()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: una riga di un preset aggiunta, tolta o cambiata e' un cambio
---   del preset: ne sposta data_update, la data che il flag
+--   del preset: ne sposta contenuto_aggiornato_il, la data che il flag
 --   preset_aggiornato confronta con lo snapshot della preferenza.
 --   TG_ARGV[0] = la tabella del preset (ui.lista_preset,
 --   ui.dashboard_preset); la riga figlia porta preset_id.
@@ -40,7 +40,7 @@ BEGIN
                     END;
 
     -- Il padre cancellato (CASCADE) non c'e' piu': zero righe.
-    EXECUTE format('UPDATE %s SET data_update = now() WHERE id = ANY ($1)',
+    EXECUTE format('UPDATE %s SET contenuto_aggiornato_il = now() WHERE id = ANY ($1)',
                    TG_ARGV[0]::regclass)
       USING v_preset_ids;
 
@@ -49,7 +49,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.trgfn_preset_riga_tocca_preset()
-IS 'Trigger AFTER INSERT OR UPDATE OR DELETE delle righe di un preset (ui.lista_preset_colonna, ui.dashboard_preset_widget): la riga aggiunta, tolta o cambiata sposta data_update del preset, la data che il flag preset_aggiornato dei resolver confronta con lo snapshot della preferenza. TG_ARGV[0] = la tabella del preset. Una riscrittura uguale (il seed loadUpdateData riscrive ogni riga a ogni giro) non tocca niente; una riga spostata su un altro preset tocca entrambi. Confronto sulla riga intera: le tabelle figlie non hanno colonne di audit. Richiesta BE/FE «preferenza di lista per chiave» (2026-11-01) §2.';
+IS 'Trigger AFTER INSERT OR UPDATE OR DELETE delle righe di un preset (ui.lista_preset_colonna, ui.dashboard_preset_widget): la riga aggiunta, tolta o cambiata sposta contenuto_aggiornato_il del preset, la data che il flag preset_aggiornato dei resolver confronta con lo snapshot della preferenza. TG_ARGV[0] = la tabella del preset. Una riscrittura uguale (il seed loadUpdateData riscrive ogni riga a ogni giro) non tocca niente; una riga spostata su un altro preset tocca entrambi. Confronto sulla riga intera: le tabelle figlie non hanno colonne di audit. Richiesta BE/FE «preferenza di lista per chiave» (2026-11-01) §2. rev 2026-11-08 (brief-db-revisione-dbops, giro 7-bis blocco c): la data del contenuto del preset sta in contenuto_aggiornato_il, lo snapshot in preset_base_contenuto_aggiornato_il; data_update e'' l''audit.';
 ```
 
 </div>

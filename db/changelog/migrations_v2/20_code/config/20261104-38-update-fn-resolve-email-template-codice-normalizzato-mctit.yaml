@@ -1,0 +1,224 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TEMPLATE SI CERCA COL CODICE NORMALIZZATO
+#   Censimento chiesto dal BE (brief-be-codice-maiuscolo §6), decisione Tid
+#   2026-11-04 (D-2).
+#
+#   config.email_template e' nel perimetro di CODICE_MAIUSCOLO: il codice
+#   salvato e' in maiuscolo, e config.fn_resolve_email_template('comunicazione_pratica')
+#   rispondeva NULL («nessun template»). Le cinque ricerche della catena di
+#   fallback confrontano ora con script.fn_codice_normalizzato(p_codice)
+#   (20261104-32). Nient'altro cambia.
+#   ⚠️ Niente variabile %TYPE sul codice: in maiuscolo puo' superare
+#   varchar(n) (ss), e l'assegnazione darebbe 22001 invece di «nessun template».
+#
+#   Corpo dall'ultimo changeSet (20260328-23-create-fn-resolve-email-template),
+#   verificato uguale al corpo vivo (prosrc su dbdev, 2026-11-04): la firma tiene i
+#   %TYPE che la doc auto-generata scioglie. Firma invariata; i GRANT restano
+#   (CREATE OR REPLACE), il COMMENT riceve la sua riga «Rev».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261104-38-update-fn-resolve-email-template-codice-normalizzato-mctit.yaml
+
+  - changeSet:
+      id: 20261104-38-update-fn-resolve-email-template-codice-normalizzato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.fn_resolve_email_template: le cinque ricerche confrontano con
+        script.fn_codice_normalizzato(p_codice). Tid 2026-11-04 (D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_codice_normalizzato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_resolve_email_template(
+                  p_codice                  config.email_template.codice%TYPE,
+                  p_unita_organizzativa_id  config.email_template.unita_organizzativa_id%TYPE
+                                            DEFAULT NULL,
+                  p_tipo_prestazione_id     config.email_template.tipo_prestazione_id%TYPE
+                                            DEFAULT NULL,
+                  p_lingua                  config.email_template.lingua%TYPE
+                                            DEFAULT 'it'
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_result jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Risolve il template email dato codice, reparto,
+                  --   tipo prestazione e lingua.
+                  --   Catena di fallback (primo trovato attivo):
+                  --     1. Reparto + tipo prestazione + lingua
+                  --     2. Reparto + lingua (senza tipo prestazione)
+                  --     3. Sistema + tipo prestazione + lingua
+                  --     4. Sistema + lingua
+                  --     5. Sistema + lingua 'it' (fallback finale)
+                  --
+                  -- Parametri:
+                  --   p_codice: codice tipo template (es. COMUNICAZIONE_PRATICA)
+                  --   p_unita_organizzativa_id: ID reparto (NULL = solo sistema)
+                  --   p_tipo_prestazione_id: ID tipo prestazione (NULL = generico)
+                  --   p_lingua: codice lingua ISO (default 'it')
+                  --
+                  -- Restituisce:
+                  --   JSONB con: id, codice, oggetto, corpo_html, corpo_testo,
+                  --   variabili_disponibili, lingua.
+                  --   NULL se nessun template attivo trovato.
+                  -- =========================================================
+
+                  IF p_codice IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Rev 2026-11-04: si cerca il codice come e' salvato (CODICE_MAIUSCOLO).
+                  -- ⚠️ Niente variabile ancorata a config.email_template.codice%TYPE: il
+                  --   codice in maiuscolo puo' allungarsi (ss) e superare varchar(n), e
+                  --   l'assegnazione darebbe 22001 dove la risposta giusta e' «nessun template».
+
+                  -- 1. Reparto + tipo prestazione + lingua
+                  IF p_unita_organizzativa_id IS NOT NULL AND p_tipo_prestazione_id IS NOT NULL THEN
+                      SELECT jsonb_build_object(
+                          'id',                     et.id,
+                          'codice',                 et.codice,
+                          'oggetto',                et.oggetto,
+                          'corpo_html',             et.corpo_html,
+                          'corpo_testo',            et.corpo_testo,
+                          'variabili_disponibili',  et.variabili_disponibili,
+                          'lingua',                 et.lingua
+                      )
+                      INTO v_result
+                      FROM config.email_template et
+                      WHERE et.codice = script.fn_codice_normalizzato(p_codice)
+                        AND et.unita_organizzativa_id = p_unita_organizzativa_id
+                        AND et.tipo_prestazione_id = p_tipo_prestazione_id
+                        AND et.lingua = p_lingua
+                        AND et.attivo = true;
+
+                      IF v_result IS NOT NULL THEN
+                          RETURN v_result;
+                      END IF;
+                  END IF;
+
+                  -- 2. Reparto + lingua (senza tipo prestazione)
+                  IF p_unita_organizzativa_id IS NOT NULL THEN
+                      SELECT jsonb_build_object(
+                          'id',                     et.id,
+                          'codice',                 et.codice,
+                          'oggetto',                et.oggetto,
+                          'corpo_html',             et.corpo_html,
+                          'corpo_testo',            et.corpo_testo,
+                          'variabili_disponibili',  et.variabili_disponibili,
+                          'lingua',                 et.lingua
+                      )
+                      INTO v_result
+                      FROM config.email_template et
+                      WHERE et.codice = script.fn_codice_normalizzato(p_codice)
+                        AND et.unita_organizzativa_id = p_unita_organizzativa_id
+                        AND et.tipo_prestazione_id IS NULL
+                        AND et.lingua = p_lingua
+                        AND et.attivo = true;
+
+                      IF v_result IS NOT NULL THEN
+                          RETURN v_result;
+                      END IF;
+                  END IF;
+
+                  -- 3. Sistema + tipo prestazione + lingua
+                  IF p_tipo_prestazione_id IS NOT NULL THEN
+                      SELECT jsonb_build_object(
+                          'id',                     et.id,
+                          'codice',                 et.codice,
+                          'oggetto',                et.oggetto,
+                          'corpo_html',             et.corpo_html,
+                          'corpo_testo',            et.corpo_testo,
+                          'variabili_disponibili',  et.variabili_disponibili,
+                          'lingua',                 et.lingua
+                      )
+                      INTO v_result
+                      FROM config.email_template et
+                      WHERE et.codice = script.fn_codice_normalizzato(p_codice)
+                        AND et.unita_organizzativa_id IS NULL
+                        AND et.tipo_prestazione_id = p_tipo_prestazione_id
+                        AND et.lingua = p_lingua
+                        AND et.attivo = true;
+
+                      IF v_result IS NOT NULL THEN
+                          RETURN v_result;
+                      END IF;
+                  END IF;
+
+                  -- 4. Sistema + lingua richiesta (senza tipo prestazione)
+                  SELECT jsonb_build_object(
+                      'id',                     et.id,
+                      'codice',                 et.codice,
+                      'oggetto',                et.oggetto,
+                      'corpo_html',             et.corpo_html,
+                      'corpo_testo',            et.corpo_testo,
+                      'variabili_disponibili',  et.variabili_disponibili,
+                      'lingua',                 et.lingua
+                  )
+                  INTO v_result
+                  FROM config.email_template et
+                  WHERE et.codice = script.fn_codice_normalizzato(p_codice)
+                    AND et.unita_organizzativa_id IS NULL
+                    AND et.tipo_prestazione_id IS NULL
+                    AND et.lingua = p_lingua
+                    AND et.attivo = true;
+
+                  IF v_result IS NOT NULL THEN
+                      RETURN v_result;
+                  END IF;
+
+                  -- 5. Fallback finale: sistema + lingua 'it'
+                  IF p_lingua <> 'it' THEN
+                      SELECT jsonb_build_object(
+                          'id',                     et.id,
+                          'codice',                 et.codice,
+                          'oggetto',                et.oggetto,
+                          'corpo_html',             et.corpo_html,
+                          'corpo_testo',            et.corpo_testo,
+                          'variabili_disponibili',  et.variabili_disponibili,
+                          'lingua',                 et.lingua
+                      )
+                      INTO v_result
+                      FROM config.email_template et
+                      WHERE et.codice = script.fn_codice_normalizzato(p_codice)
+                        AND et.unita_organizzativa_id IS NULL
+                        AND et.tipo_prestazione_id IS NULL
+                        AND et.lingua = 'it'
+                        AND et.attivo = true;
+                  END IF;
+
+                  RETURN v_result;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION config.fn_resolve_email_template(config.email_template.codice%TYPE, config.email_template.unita_organizzativa_id%TYPE, config.email_template.tipo_prestazione_id%TYPE, config.email_template.lingua%TYPE)
+                IS 'Risolve template email. Fallback a 5 livelli: reparto+tipo_prestazione+lingua -> reparto+lingua -> sistema+tipo_prestazione+lingua -> sistema+lingua -> sistema+it. Rev 2026-11-04 (20261104-38, D-2 di Tid): le cinque ricerche confrontano con il codice normalizzato (script.fn_codice_normalizzato), perche'' config.email_template salva il codice in maiuscolo (CODICE_MAIUSCOLO).';

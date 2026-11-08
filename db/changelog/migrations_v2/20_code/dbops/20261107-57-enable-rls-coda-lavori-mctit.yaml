@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ARMAMENTO — ENABLE ROW LEVEL SECURITY su dbops.coda_lavori
+#   Brief: brief-db-revisione-dbops, giro 5, blocco 5b (Q14 ③, §18.8).
+#
+# ── ⭐ PERCHE' UN CHANGESET A SE' ───────────────────────────────
+#   La policy rls_coda_lavori_ef_perimetro (20261107-54) e' nata inerte. Questo
+#   e' il momento in cui il comportamento cambia per tutti i lettori e gli
+#   scrittori della coda; isolato, si disarma col suo rollback e la policy resta.
+#
+# ── CHI TOCCA LA CODA, DOPO (censimento di §18.3) ───────────────
+#   - backend che accoda -> dbops.fn_accoda_lavoro, SECURITY DEFINER del
+#     proprietario: non subisce la RLS, e da una sessione dell'applicazione fa
+#     da se' lo stesso controllo (E_CODA_SCOPE_ALTRUI, E_CODA_CHIAVE_ALTRUI);
+#   - sveglie pgAgent -> zeroerp_job, procedura DEFINER, porta: proprietario,
+#     invariato;
+#   - drenatore (claim, reaper, mark_*) -> come app, un'azienda alla volta con
+#     l'utente tecnico di draina_coda_lavori (BE10 b, mergiato): vede i lavori
+#     della sua azienda e i lavori SISTEMA. Un'azienda senza utente tecnico non
+#     si drena, e lo dice dbops.vw_emittenti_non_serviti;
+#   - interfaccia -> come app con l'identita' della richiesta: i lavori delle
+#     sue aziende; i lavori SISTEMA solo il super admin. Il filtro di perimetro
+#     del backend (anticipo di BE9) resta accanto, difesa in profondita'
+#     (linee-guida-sql §10.7), finche' BE9 non lo ritira;
+#   - dbops.vw_coda_lavori_da_guardare -> security_invoker (20261107-55): la
+#     persona legge col suo perimetro, il digest conta tutto da
+#     fn_conta_presidio;
+#   - trgfn_coda_archiviazione -> trigger di riga, invariato.
+#
+# ── ⭐ LA POSTURA, nella preCondition ───────────────────────────
+#   Nella forma «nessun caso sbagliato» (expectedResult: 0), come il 20260904-06:
+#   la policy e' una e FOR ALL; la porta e' DEFINER (senza, ogni sveglia e ogni
+#   lavoro SISTEMA accodato da un operatore sarebbero respinti dalla WITH CHECK);
+#   la tabella non e' dell'applicazione e zeroerp_app non ha BYPASSRLS (con
+#   l'una o l'altra la RLS non morderebbe nessuno); FORCE spento (linee-guida-sql
+#   §10.5: con FORCE le DEFINER del proprietario smetterebbero di vedere oltre
+#   la RLS, e la porta sarebbe respinta come chiunque).
+#   ⚠️ Gli utenti tecnici del drenatore sono dati di macchina: nessuna
+#   preCondition puo' pretenderli (linee-guida-sql §11.4). Li dice il presidio.
+#
+# ── ⚠️ `NO FORCE` ───────────────────────────────────────────────
+#   Il proprietario resta esente: porta, sveglie e migrazioni non si fermano.
+#   Non significa «non morde»: il runtime e' zeroerp_app, che non e' owner ed e'
+#   NOBYPASSRLS.
+#
+# ── KILL-SWITCH ─────────────────────────────────────────────────
+#   ALTER TABLE dbops.coda_lavori DISABLE ROW LEVEL SECURITY;
+#   riporta al comportamento del blocco 5a senza toccare la policy (e la riga
+#   del registro del debito va rimessa: 20261108-08).
+#
+# Dipendenze: la policy del 20261107-54, la porta del 20261107-53.
+# Verifica: db/pgtap/rls/test-rls-coda-lavori-perimetro-v1.sql (test 15: la RLS
+#   e' accesa; 5-14: chi vede e scrive cosa).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-57-enable-rls-coda-lavori-mctit.yaml
+
+  - changeSet:
+      id: 20261107-57-enable-rls-coda-lavori
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ENABLE ROW LEVEL SECURITY (NO FORCE) su dbops.coda_lavori: arma la policy
+        rls_coda_lavori_ef_perimetro del 20261107-54. Il drenatore lavora un'azienda
+        alla volta con l'utente tecnico di draina_coda_lavori (BE10); la porta
+        dbops.fn_accoda_lavoro e' SECURITY DEFINER e non subisce la RLS. Corregge il
+        COMMENT di coda_lavori_tipi.run_as_default (diceva «worker BYPASSRLS»).
+        Blocco 5b di brief-db-revisione-dbops (Q14 ③).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_policy
+                   WHERE polrelid = 'dbops.coda_lavori'::regclass
+                     AND polname  = 'rls_coda_lavori_ef_perimetro'
+                     AND polcmd   = '*'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   WHERE p.pronamespace = 'dbops'::regnamespace
+                     AND p.proname = 'fn_accoda_lavoro'
+                     AND p.prosecdef
+            # ⚠️ «Nessun caso sbagliato»: 0 anche dove zeroerp_app non esiste
+            #    (un database senza provisioning), dove non c'e' niente da
+            #    proteggere.
+            - sqlCheck:
+                expectedResult: 0
+                sql: >-
+                  SELECT count(*)
+                    FROM pg_class c
+                   WHERE c.oid = 'dbops.coda_lavori'::regclass
+                     AND (   c.relforcerowsecurity
+                          OR EXISTS (SELECT 1 FROM pg_roles r
+                                      WHERE r.rolname = 'zeroerp_app'
+                                        AND (r.oid = c.relowner OR r.rolbypassrls)))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- NO FORCE: il proprietario (porta DEFINER, sveglie, migrazioni)
+              -- resta esente. zeroerp_app, NOBYPASSRLS e non owner, da qui in poi
+              -- vede e scrive solo i lavori che la policy gli da'.
+              ALTER TABLE dbops.coda_lavori ENABLE ROW LEVEL SECURITY;
+
+              -- ⚠️ Il COMMENT diceva «SISTEMA (worker BYPASSRLS)»: il drenatore non
+              --   ha mai avuto BYPASSRLS, e da qui un lavoro SISTEMA lo vede per la
+              --   policy. La regola fra canale e run_as e' quella del pgTAP
+              --   test-coda-tipi-canale-e-run-as (rev 2026-11-07).
+              COMMENT ON COLUMN dbops.coda_lavori_tipi.run_as_default IS
+                  'Default per coda_lavori.run_as se non passato all''enqueue. OPERATORE: '
+                  'il lavoro gira con l''identita'' catturata nello scope e appartiene a '
+                  'un''azienda. SISTEMA: niente scope ne'' azienda; sotto la row level '
+                  'security della coda lo vedono il super admin e l''utente tecnico del '
+                  'drenatore. Sotto un processo CODA di DOMINIO il tipo e'' OPERATORE; '
+                  'sotto un CODA di MANUTENZIONE puo'' essere SISTEMA, con chi preme '
+                  'come attore nel payload; sotto un PGAGENT e'' SISTEMA (pgTAP '
+                  'test-coda-tipi-canale-e-run-as). Il vincolo vero e'' il guard di '
+                  'classe di dbops.fn_accoda_lavoro: un lavoro DOMINIO e'' sempre '
+                  'OPERATORE. rev 2026-11-07.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Disarma senza toccare la policy: torna inerte, non sparisce.
+              ALTER TABLE dbops.coda_lavori DISABLE ROW LEVEL SECURITY;

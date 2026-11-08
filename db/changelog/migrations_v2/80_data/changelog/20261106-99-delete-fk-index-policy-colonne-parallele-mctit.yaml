@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI dbops.fk_index_policy DELLE DUE FK RITIRATE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5.
+#
+#   fk_ordini_documento_origine_tipo_sorgenti (-96) e fk_contratti_offerta (-97)
+#   cadono con le loro colonne. Le loro righe nel registro (consentito = f) sono
+#   innocue, ma un registro che nomina un vincolo inesistente e' sporco. Stanno nel
+#   CSV base fk_index_policy.csv, che nessun changeSet carica: il file le tiene, il
+#   database no, la stessa forma di 20261001-25. Forma: per coordinate complete,
+#   come la PK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261106-99-delete-fk-index-policy-colonne-parallele-mctit.yaml
+
+  - changeSet:
+      id: 20261106-99-delete-fk-index-policy-colonne-parallele
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.fk_index_policy le righe delle due FK delle colonne parallele, cadute
+        con le colonne. brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE (schema_name, table_name, constraint_name) IN (
+                     ('vendite', 'ordini',    'fk_ordini_documento_origine_tipo_sorgenti'),
+                     ('vendite', 'contratti', 'fk_contratti_offerta'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le righe le rimette fn_populate_fk_index_policy() se le FK tornano. Nessun INSERT qui.
+              SELECT 1;

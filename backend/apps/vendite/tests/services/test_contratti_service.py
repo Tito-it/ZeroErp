@@ -99,7 +99,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # --- lista ---------------------------------------------------------
 
     # Scopo: senza data_da il service non applica default temporali impliciti.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_list_contratti_does_not_apply_default_data_da(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -129,7 +129,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- dettaglio -----------------------------------------------------
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_get_contratto_not_found(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -139,7 +139,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             ContrattiService().get_contratto(42)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_get_contratto_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -163,7 +163,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        ⚠️ Il blob porta `stato_codice_interno`, che la testata ha gia':
     #        fuso, vinceva il blob in silenzio. Qui i due valori DIFFERISCONO
     #        apposta, e la testata deve restare la sua.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_get_contratto_include_capabilities(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -206,7 +206,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: in modalita' A/B il conteggio righe del detail usa la preview
     #        effettivamente mostrata dal drawer (listino + override).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_get_contratto_righe_count_usa_preview_per_modalita_ab(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -227,7 +227,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: in modalita' C il conteggio righe usa le righe persistite,
     #        perche' non esiste preview da listino.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_get_contratto_righe_count_usa_righe_persistite_per_modalita_c(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -246,7 +246,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- create contratto ---------------------------------------------
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_modalita_A_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -282,7 +282,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #    documentazione-api): prima lo applicava la sola PATCH. Se il gate
     #    rifiuta, il contratto non nasce.
     @patch("apps.vendite.services.contratti_service.check_limite_variazione_globale")
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_applica_il_gate_l2(self, repo_cls, gate):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -301,7 +301,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
         repo_cls.return_value.create_contratto_atomico.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_modalita_C_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -322,7 +322,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertNotIn("listino_id", testata)
         self.assertNotIn("tipo_variazione_globale", testata)
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_senza_listino_con_variazione_ok(self, repo_cls):
         # Refactor modalita 2026-05-15: nel modello unificato un contratto
         # "senza_listino" (ex-modalita C) puo' anche avere variazione globale.
@@ -351,7 +351,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(testata["tipo_variazione_globale"], "PERCENTUALE")
         self.assertNotIn("listino_id", testata)
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_variazione_coppia_incompleta_fallisce(
         self, repo_cls,
     ):
@@ -385,7 +385,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_overlap_temporal_unique_mappato(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -407,7 +407,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_CONTRATTO_OVERLAP_ESISTENTE")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_overlap_exclusion_partial_mappato(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -430,7 +430,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_CONTRATTO_OVERLAP_ESISTENTE")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_delega_numero_e_stato_alla_fn_madre(self, repo_cls):
         # Fix analisi-fix-transazioni #2: numero e stato DRAFT sono risolti
         # DENTRO vendite.fn_create_contratto. Il BE non li genera piu' ne' li
@@ -450,13 +450,15 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             "valido_dal": "2026-01-01",
         })
 
-        repo.generate_numero.assert_not_called()
+        # Il numero lo da' la fn madre: il repository non ha piu' un
+        # `generate_numero` (mock `autospec`: `hasattr` legge la classe vera).
+        self.assertFalse(hasattr(repo, "generate_numero"))
         kwargs = repo.create_contratto_atomico.call_args.kwargs
         self.assertNotIn("numero", kwargs["testata"])
         self.assertNotIn("stato_doc_contratto_id", kwargs["testata"])
         self.assertIsNone(kwargs["utility"])
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_con_utility_passa_alla_fn_madre(self, repo_cls):
         # Fix #2: testata + riga utility 1:1 fuse in un'unica fn madre atomica.
         # Il BE costruisce entrambi i dict e li passa insieme; nessun INSERT
@@ -499,7 +501,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        (brief-db-testata-dopo-emissione, D-0; la categoria e' fra le
     #        condizioni, ferma fuori bozza). Il service non ha piu' la tabella
     #        per stato e passa la scrittura: il 409 arriva dal DB.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_attivo_categoria_snapshot_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -520,7 +522,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: contratto ATTIVO -> ammessa solo modifica valido_al/meta
     #        (programma cessazione + note). Il PATCH valido_al passa.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_attivo_ammette_solo_valido_al(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -546,7 +548,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #   finche' la fattura non ne fa lo snapshot (I4). Negli appalti PA il CIG
     #   arriva quando arriva, e puo' arrivare a contratto gia' ATTIVO: negarlo
     #   costringerebbe a creare un contratto nuovo PER UN PEZZO DI CARTA.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_attivo_ammette_codici_atto(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -573,7 +575,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: stringa vuota su un riferimento dell'atto -> NULL, non ''.
     # ⚠️ `feedback_null_vs_empty`: un '' sarebbe un valore che SEMBRA un codice,
     #   e finirebbe nel blocco XML della FatturaPA come tag vuoto.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_codice_atto_vuoto_diventa_null(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -592,7 +594,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: un CIG piu' lungo della colonna e' respinto dal service.
     # ⚠️ Senza il guard arriverebbe come DataError del driver, cioe' come 500 con
     #   un messaggio che nomina una colonna invece del campo compilato.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_codice_atto_troppo_lungo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -607,7 +609,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: contratto CESSATO -> nessun rifiuto Python: a contratto chiuso
     #        tutto fermo lo dice il lock di testata (D-8, E_DOC_CHIUSO), anche
     #        per i riferimenti dell'atto. Il service passa la scrittura.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_cessato_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -628,7 +630,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: contratto ATTIVO -> create_riga rifiutato col codice del DB
     #        (E_RIGA_DOC_NON_BOZZA: lo stesso di trgfn_doc_righe_lock_fuori_bozza
     #        su contratti_righe), frase a catalogo con l'etichetta dal numero.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_rifiutata_su_contratto_attivo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -655,7 +657,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: contratto ATTIVO -> update_riga rifiutato (risale dal contratto
     #        della riga via get_riga).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_riga_rifiutata_su_contratto_attivo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -672,7 +674,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertIn(" modificare ", ctx.exception.message)
 
     # Scopo: contratto ATTIVO -> delete_riga rifiutato.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_delete_riga_rifiutata_su_contratto_attivo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -692,7 +694,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        «solo in bozza» dei satelliti a DB (`E_DOC_DATI_COLLEGATI_NON_BOZZA`,
     #        brief-db-testata-dopo-emissione §11, R-BE-6). Il service non ha
     #        piu' `_assert_contratto_draft` e passa la scrittura.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_utility_su_contratto_attivo_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -709,7 +711,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.create_utility.assert_called_once()
 
     # Scopo: idem per update_utility.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_utility_su_contratto_attivo_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -726,7 +728,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        data com'e': oggi o futura lo decide il DB, e la risposta porta
     #        `programmata` (brief-modello-documento-vendita §11.6 punto 2).
     #        Niente PATCH di `valido_al` prima, niente verbo di stato.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_cessazione_dal_suo_verbo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -758,7 +760,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        data passata (E_CONTRATTO_VALIDO_AL_RETROATTIVO), una seconda
     #        cessazione (E_DOC_GIA_NELLO_STATO). Il service non ne ha copie:
     #        anche la richiesta senza data arriva al verbo.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_i_rifiuti_della_cessazione_li_dice_il_verbo(self, repo_cls):
         from apps.core.tests.db_error_fakes import make_db_error
         from apps.vendite.services.contratti_service import ContrattiService
@@ -783,7 +785,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: la data accompagna solo la cessazione: con un altro stato e' un
     #        400 col campo, e nessun verbo parte (prima veniva scritta con una
     #        PATCH accanto a qualunque passaggio).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_valido_al_con_un_altro_stato_e_un_400(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -801,7 +803,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: uno stato che non e' ne' l'annullo ne' la cessazione va al verbo
     #        di stato col suo codice: la matrice, lo stato che non c'e' e
     #        quello che il contratto ha gia' li giudica il DB.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_ogni_altro_stato_dal_verbo_di_stato(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -822,7 +824,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo
     # `fn_annulla_contratto`, con la dichiarazione della conferma.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_annullo_passa_dal_verbo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -837,7 +839,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.annulla.assert_called_once_with(1, 2)
         repo.cambia_stato.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_campi_vuoto_fallisce(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -845,7 +847,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             ContrattiService().update_contratto(1, {})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_ok_variazione(self, repo_cls):
         """Update happy path: variazione globale PERCENTUALE accettata sulla testata.
 
@@ -873,7 +875,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(args[1]["tipo_variazione_globale"], "PERCENTUALE")
         self.assertEqual(args[1]["valore_variazione_globale"], Decimal("-5"))
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_variazione_valore_fisso_rifiutata(self, repo_cls):
         """VALORE_FISSO sulla testata → E_VENDITE_VALIDATION (decisione 2026-05-18)."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -895,7 +897,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         #    e il form non accendeva niente.
         self.assertEqual(ctx.exception.context["field"], "tipo_variazione_globale")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_variazione_none_azzera(self, repo_cls):
         """Tre stati del PATCH: `tipo_variazione_globale: null` AZZERA la
         variazione (e' una scrittura, non un campo saltato) — il caso che
@@ -915,7 +917,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertIn("tipo_variazione_globale", args[1])
         self.assertIsNone(args[1]["tipo_variazione_globale"])
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_ambito_fuori_vocabolario_nomina_il_campo(
         self, repo_cls,
     ):
@@ -941,7 +943,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
                 self.assertEqual(ctx.exception.context["field"], "ambito")
         repo.create_contratto_atomico.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_contratto_non_giudica_le_versioni_del_listino(self, repo_cls):
         """D.4.3 di brief-db-offerta-emissione-ed-erogazione (Tid, 2026-10-07).
 
@@ -972,7 +974,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: refactor 2026-05-15. update_riga non puo' settare prezzo NULL
     # su riga OVERRIDE esistente (la coerenza tipo/prezzo va salvaguardata).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_riga_override_prezzo_null_fallisce(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -997,7 +999,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: BE 2.6. get_contesto_pricing delega al repository e ritorna
     # l'envelope per il banner FE.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_get_contesto_pricing(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1027,10 +1029,10 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: refactor §3-bis-E. Gate L2 sulla variazione globale del contratto
     # al PATCH testata. Sconto PERCENTUALE oltre soglia -> E_PRICING_SCONTO_ECCESSIVO.
-    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository")
+    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository", autospec=True)
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
     @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_gate_l2_variazione_globale_sconto_eccessivo(
         self, repo_cls, mock_get_user_model, mock_param_service, mock_ba_repo,
     ):
@@ -1101,7 +1103,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        brief-db-testata-dopo-emissione §11, R-DB-4 e R-BE-5). Il service
     #        non conta piu' righe ne' eccezioni: passa la scrittura, e il 422
     #        (`E_DOC_LISTINO_CAMBIO_CON_RIGHE`) arriva dal DB.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_cambio_listino_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1117,7 +1119,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: idem per la rimozione del listino (`E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`
     #        dal DB): `null` arriva al repository.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_rimozione_listino_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1135,7 +1137,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Lo stato che il vocabolario non ha lo dice il verbo di stato, col codice
     # dei gemelli: il service non ne ha una copia (§11.6).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_cambia_stato_codice_sconosciuto(self, repo_cls):
         from apps.core.tests.db_error_fakes import make_db_error
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1151,7 +1153,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Il contratto che non c'e' (o fuori perimetro) lo rifiuta il verbo, col
     # suo codice (regola del 1, 2026-10-27): nessuna lettura della testata prima.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_cambia_stato_contratto_inesistente_dal_verbo(self, repo_cls):
         from apps.core.tests.db_error_fakes import make_db_error
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1170,7 +1172,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # nuovo flusso `ApiContrattoEmetti` che orchestra atomic state +
     # genera_documento + allegati nella view. cambia_stato fail-fast con
     # E_VENDITE_VALIDATION se invocato direttamente con 'ATTIVO'.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_cambia_stato_rifiuta_attivo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1190,7 +1192,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: marker DB "contratto senza listino e nessuna AGGIUNTA" -> codice
     # specifico E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE. Test riportato su
     # emetti() (refactor 2026-05-28): l'attivazione passa da li'.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_emetti_negoziato_puro_senza_righe_tradotto(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1210,7 +1212,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # verbo di stato, col codice: niente UPDATE della colonna (la porta lo
     # rifiuta, §11.6 punto 1). L'orchestrazione atomic stato+genera+allegati
     # vive nella view ApiContrattoEmetti.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_emetti_delega_a_repo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1233,7 +1235,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        (2026-10-19, `script.fn_check_contratto_sovrapposto`) col codice del
     #        catalogo, che passa com'e' con la sua frase: il backend non ha piu'
     #        una copia Python della regola (che scattava solo alla conferma).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_emetti_sovrapposto_lo_rifiuta_il_db(self, repo_cls):
         from apps.core.tests.db_error_fakes import make_db_error
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1257,7 +1259,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # `test_create_riga_modalita_C_senza_prezzo_tradotto` testava il trigger
     # DB di modalita C (droppato in step 2.1). Sostituito da test sulla
     # coerenza tipo_eccezione/prezzo (validazione service pre-DB).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_override_senza_prezzo_fallisce(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1280,7 +1282,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertIn("prezzo_unitario obbligatorio", ctx.exception.detail or "")
         repo.create_riga.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_esclusione_con_prezzo_arriva_al_db(self, repo_cls):
         # ⛔ Nessun 400 del service sul prezzo di un'ESCLUSIONE: e' uno dei
         #    dieci dati che il guard DB rifiuta col campo
@@ -1305,7 +1307,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
                 },
             )
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_tipo_eccezione_obbligatorio(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1325,7 +1327,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertIn("tipo_eccezione obbligatorio", ctx.exception.detail or "")
         repo.create_riga.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1354,7 +1356,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(args[1]["prezzo_unitario"], Decimal("25.50"))
         self.assertEqual(args[1]["tipo_eccezione"], "OVERRIDE")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_riga_rifiuta_articolo_id(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1366,7 +1368,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             ContrattiService().update_riga(1, 77, {"articolo_id": "...".ljust(36, "0")})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_riga_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1390,7 +1392,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         "apps.vendite.services.contratti_service."
         "resolve_or_check_override_prezzo_riga_contratto"
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_override_invoca_gate(self, repo_cls, mock_gate):
         # Scopo: OVERRIDE invoca il BB orchestratore L1+L2+L3 (zero gate L2
         # violazione qui — verifichiamo solo che venga chiamato e che il
@@ -1430,7 +1432,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         "apps.vendite.services.contratti_service."
         "resolve_or_check_override_prezzo_riga_contratto"
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_esclusione_skip_gate(self, repo_cls, mock_gate):
         # Scopo: ESCLUSIONE non passa per il gate (prezzo NULL per design,
         # nessun resolver da invocare). Decisione Alternativa B 2026-05-18.
@@ -1461,7 +1463,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         "apps.vendite.services.contratti_service."
         "resolve_or_check_override_prezzo_riga_contratto"
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_l3_richiesta_approvazione_pending(
         self, repo_cls, mock_gate, mock_orchestrate,
     ):
@@ -1521,7 +1523,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         "apps.vendite.services.contratti_service."
         "resolve_or_check_override_prezzo_riga_contratto"
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_aggiunta_senza_base_resolver_skip_l2(
         self, repo_cls, mock_gate,
     ):
@@ -1557,7 +1559,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         "apps.vendite.services.contratti_service."
         "resolve_or_check_override_prezzo_riga_contratto"
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_riga_override_invoca_gate(self, repo_cls, mock_gate):
         # Scopo: update_riga su OVERRIDE con prezzo_unitario nel PATCH →
         # gate invocato. Verifica passaggio di articolo_id/uom_id da
@@ -1591,7 +1593,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         "apps.vendite.services.contratti_service."
         "resolve_or_check_override_prezzo_riga_contratto"
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_riga_skip_gate_se_prezzo_non_in_patch(
         self, repo_cls, mock_gate,
     ):
@@ -1609,7 +1611,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
         mock_gate.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_delete_riga_not_found(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1629,7 +1631,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        non era il suo.
     # ⚠️ Tutti e due i contratti sono in bozza: e' il caso che il vecchio
     #    controllo lasciava passare.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_riga_di_un_altro_contratto_rifiutata(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1649,7 +1651,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- utility 1:1 ---------------------------------------------------
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_utility_tipo_classe_obbligatori_tradotto(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1665,7 +1667,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             ctx.exception.code, "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI"
         )
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_utility_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1691,7 +1693,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(args[1]["utility_id"], 3)
         self.assertEqual(args[1]["tipo_utenza_id"], 2)
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_utility_immutabili_rifiutati(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -1713,7 +1715,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        trattare l'assenza come "listino_id=NULL -> modalita' C".
     #        Bug trovato in review: `existing=None` passato sempre -> falso
     #        positivo "modalita' C: tipo/valore devono essere NULL".
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_modalita_B_con_listino_esistente_patch_solo_variazione(
         self, repo_cls
     ):
@@ -1821,7 +1823,7 @@ class ContrattiServiceComponentiTests(TestCase):
             )
         )
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_preview_componenti_riga_not_found(self, repo_cls):
         """Contratto inesistente → E_VENDITE_NOT_FOUND."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1845,7 +1847,7 @@ class ContrattiServiceComponentiTests(TestCase):
         "resolve_emittente_sr_id_for_testata",
         return_value=99,
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_preview_componenti_riga_ok(self, repo_cls, _mock_resolve):
         """Preview chiama repo.preview_componenti_riga con args derivati dal contratto.
 
@@ -1886,7 +1888,7 @@ class ContrattiServiceComponentiTests(TestCase):
         # Emittente risolto internamente dal service (mock → 99)
         self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 99)
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_list_componenti_riga_riga_fuori_scope(self, repo_cls):
         """Riga appartiene a contratto diverso → E_VENDITE_NOT_FOUND."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1899,7 +1901,7 @@ class ContrattiServiceComponentiTests(TestCase):
             ContrattiService().list_componenti_riga(1, 5)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_list_componenti_riga_ok(self, repo_cls):
         """List delega al repo passando solo_attivi."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1913,7 +1915,7 @@ class ContrattiServiceComponentiTests(TestCase):
         self.assertEqual(result, [{"id": 100}])
         repo.list_componenti_riga.assert_called_once_with(5, solo_attivi=False)
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_componente_contratto_attivo(self, repo_cls):
         """Contratto ATTIVO -> E_RIGA_DOC_NON_BOZZA; l'etichetta prende
         `numero` dallo scope del JOIN (senza, «Contratto #1» su un contratto
@@ -1938,7 +1940,7 @@ class ContrattiServiceComponentiTests(TestCase):
         self.assertTrue(ctx.exception.message.startswith("Contratto CNT0000001 non e' piu' in bozza (stato ATTIVO)"))
         repo.update_componente.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_componente_chiave_fuori_whitelist_400(self, repo_cls):
         """Chiave fuori `COMPONENTE_UPDATE_ALLOWED` -> 400 che la nomina,
         repository non chiamato. ⛔ Fino al 2026-09-26 il mixin la scartava
@@ -1963,7 +1965,7 @@ class ContrattiServiceComponentiTests(TestCase):
         self.assertEqual(ctx.exception.context["unknown_keys"], ["riga_contratto_id"])
         repo.update_componente.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_componente_campi_del_workflow_rifiutati(self, repo_cls):
         """⛔ L'operatore NON puo' approvarsi un prezzo L3. Fino al 2026-09-26
         la PATCH validava contro la whitelist del REPOSITORY, che contiene
@@ -1995,7 +1997,7 @@ class ContrattiServiceComponentiTests(TestCase):
                 self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         repo.update_componente.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_componente_anti_tampering_riga(self, repo_cls):
         """riga_id URL non matcha riga reale → E_VENDITE_NOT_FOUND."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -2027,7 +2029,7 @@ class ContrattiServiceComponentiTests(TestCase):
         "_resolve_emittente_sr_id_for_contratto",
         return_value=99,
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_articolo_composito_auto_init(
         self, repo_cls, _mock_resolve, _mock_atomic, _mock_l1,
     ):
@@ -2078,7 +2080,7 @@ class ContrattiServiceComponentiTests(TestCase):
         "validate_componenti_overrides_authorization",
     )
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_invoca_validate_l1_componenti(
         self, repo_cls, _atomic, mock_validate, _gate,
     ):
@@ -2112,7 +2114,7 @@ class ContrattiServiceComponentiTests(TestCase):
         "_resolve_emittente_sr_id_for_contratto",
         return_value=None,  # ← admin globale, niente emittente
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_articolo_composito_senza_emittente_solleva(
         self, repo_cls, _mock_resolve, _mock_atomic,
     ):
@@ -2151,7 +2153,7 @@ class ContrattiServiceComponentiTests(TestCase):
         "_resolve_emittente_sr_id_for_contratto",
         return_value=99,  # EF risolto, ma valido_dal mancante in testata
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_articolo_composito_senza_valido_dal_solleva(
         self, repo_cls, _mock_resolve, _mock_atomic,
     ):
@@ -2187,7 +2189,7 @@ class ContrattiServiceComponentiTests(TestCase):
         repo.init_componenti_riga.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_articolo_non_composito_no_init(
         self, repo_cls, _mock_atomic,
     ):
@@ -2228,7 +2230,7 @@ class ContrattiServiceComponentiTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("non finito", str(ctx.exception.message))
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_delete_componente_ok(self, repo_cls):
         """Soft delete con scope OK → ritorna {deleted: True}."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -2362,7 +2364,7 @@ class ContrattiServicePricingGateTests(TestCase):
 
     # === contratti_suggerisci_prezzo_riga ===
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_suggerisci_prezzo_riga_happy_path(self, repo_cls):
         """Contratto valido → PricingService chiamato → dict normalizzato."""
         from apps.vendite.services.contratti_service import (
@@ -2444,7 +2446,7 @@ class ContrattiServicePricingGateTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_suggerisci_prezzo_riga_contratto_not_found(self, repo_cls):
         """Contratto inesistente → E_VENDITE_NOT_FOUND."""
         from apps.vendite.services.contratti_service import (
@@ -2461,7 +2463,7 @@ class ContrattiServicePricingGateTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_suggerisci_prezzo_riga_senza_billing_account(self, repo_cls):
         """Contratto senza billing_account → E_VENDITE_VALIDATION."""
         from apps.vendite.services.contratti_service import (
@@ -2480,7 +2482,7 @@ class ContrattiServicePricingGateTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_suggerisci_prezzo_riga_senza_valido_dal(self, repo_cls):
         """Contratto senza valido_dal → E_VENDITE_VALIDATION."""
         from apps.vendite.services.contratti_service import (
@@ -2755,7 +2757,7 @@ class ContrattiFatturazioneImmediataTests(TestCase):
     """
 
     # 1) CREATE: il flag arriva al dict che va alla fn madre.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_porta_il_flag_alla_fn_madre(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2778,7 +2780,7 @@ class ContrattiFatturazioneImmediataTests(TestCase):
     # 2) CREATE senza la chiave: NON deve finire nel dict — la fn madre filtra
     #    sulla PRESENZA, e mandarla a None darebbe 23502 su colonna NOT NULL
     #    invece del DEFAULT false (contratto §C4 del brief DB).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_senza_chiave_non_la_inventa(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2799,7 +2801,7 @@ class ContrattiFatturazioneImmediataTests(TestCase):
 
     # 3) CREATE con la chiave a `null`: si OMETTE, non si propaga None (che sulla
     #    colonna NOT NULL diventerebbe un 23502 opaco per l'operatore).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_chiave_nulla_viene_omessa(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2821,7 +2823,7 @@ class ContrattiFatturazioneImmediataTests(TestCase):
 
     # 4) ⭐ PATCH: il flag raggiunge il repository. E' il test che sarebbe stato
     #    rosso col difetto — la whitelist bastava, il mapper no.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_patch_persiste_il_flag(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2839,7 +2841,7 @@ class ContrattiFatturazioneImmediataTests(TestCase):
     # 5) PATCH a `false`: valore legittimo, non «assente». Con un mapper che
     #    testasse la verita' del valore invece della presenza della chiave,
     #    riportare un contratto sulla corsia differita sarebbe impossibile.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_patch_false_e_un_valore_non_un_assenza(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2856,7 +2858,7 @@ class ContrattiFatturazioneImmediataTests(TestCase):
 
     # 6) Tipo sbagliato → 400. `bool("false")` sarebbe True: la validazione via
     #    `optional_bool` e' cio' che rende impossibile quella trappola.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_patch_valore_non_booleano_rifiutato(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2894,7 +2896,7 @@ class ContrattiCampiCanoneTests(TestCase):
     }
 
     # 1) CREATE: i due valori arrivano alla fn madre, il codice in maiuscolo.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_porta_i_due_campi_alla_fn_madre(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2910,7 +2912,7 @@ class ContrattiCampiCanoneTests(TestCase):
 
     # 2) CREATE con `null` (o senza): si omettono, decide il default del DB —
     #    le colonne sono NOT NULL e la madre filtra sulla PRESENZA della chiave.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_nulli_omessi(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2925,7 +2927,7 @@ class ContrattiCampiCanoneTests(TestCase):
         self.assertNotIn("mese_partenza_canone", testata)
 
     # 3) PATCH: i due valori raggiungono il repository.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_patch_persiste_i_due_campi(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -2938,7 +2940,7 @@ class ContrattiCampiCanoneTests(TestCase):
         self.assertEqual(data["mese_partenza_canone"], 7)
 
     # 4) Il mese non intero → 400 sul campo. Il dominio (1..12) lo dice il CHECK.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_mese_non_intero_rifiutato(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -3186,7 +3188,7 @@ class ContrattiCatenaUpdateTests(TestCase):
         "apps.vendite.services.contratti_service.risolvi_cliente_coppia",
         return_value=(7, 8),
     )
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_ogni_chiave_attraversa_il_mapper(self, repo_cls, _cliente) -> None:
         from apps.vendite.services.contratti_service import (
             UPDATE_KEYS_TESTATA,

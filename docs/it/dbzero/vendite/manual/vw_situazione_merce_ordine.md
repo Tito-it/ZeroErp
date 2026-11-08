@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_situazione_merce_ordine`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
@@ -15,11 +17,13 @@ Viste collegate:
 
 ---
 ### 🎯 Scopo Principale
-(rev 2026-09-21 — la vista è la proiezione di `fn_situazione_merce_ordine` · rev 2026-09-13 — le date e il ritardo · rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
+(rev 2026-11-03 — solo righe merce, gli oneri no · rev 2026-09-21 — la vista è la proiezione di `fn_situazione_merce_ordine` · rev 2026-09-13 — le date e il ritardo · rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 
 Risponde a **«come sta questa riga d'ordine?»** in una riga sola: quanto è
 uscito, quanto è tornato, quanto è stato fatturato, quanto resta da spedire, e
-che cosa c'è da fare.
+che cosa c'è da fare. Una riga per riga d'ordine attiva **di merce**: le
+righe-onere non hanno situazione merce e la funzione le esclude
+(`20261103-24`, brief-db-addebito-trasporto-ordine §8.1).
 
 È la vista che serve a **una persona che guarda un ordine**. Il conto per
 singola spedizione sta in [vw_partite_merce](vw_partite_merce.md); questa lo

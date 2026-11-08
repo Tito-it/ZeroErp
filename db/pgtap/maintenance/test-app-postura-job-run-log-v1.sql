@@ -41,7 +41,7 @@
 --   senso SOLO come app: da owner la SELECT passerebbe e l'INSERT non
 --   verrebbe respinto.
 --
--- Elenco test (plan 10):
+-- Elenco test (plan 11):
 --   POSTURA — lo schema
 --    1   : USAGE sullo schema maintenance (per risolvere i nomi)
 --   POSTURA — maintenance.job_run_log, la tabella dei cinque lettori
@@ -57,6 +57,12 @@
 --          dei sedici test Django del 19-09
 --    9   : INSERT diretto respinto con 42501 (insufficient_privilege)
 --   10   : la SELECT della vista di presidio non solleva
+--   POSTURA — il residuo del bootstrap
+--   11   : NESSUN privilegio su maintenance.test_pgagent_log: nessuno la
+--          scrive ne' la legge, rinasce a ogni ricostruzione da zero (albero
+--          v1), e un SELECT dato per sbaglio non lo vedrebbe nessuno.
+--          Brief: brief-db-privilegio-app-job-run-log §3.3, chiuso da
+--          brief-db-revisione-maintenance §5 (2026-11-03).
 --
 -- Read-only: tutto dentro BEGIN;/ROLLBACK;. Il test 9 non scrive niente:
 --   viene respinto prima di toccare la riga.
@@ -70,7 +76,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- ============================================================
 -- POSTURA — lo schema
@@ -132,6 +138,15 @@ SELECT throws_ok(
 SELECT lives_ok(
   $$SELECT count(*) FROM maintenance.vw_job_run_da_guardare$$,
   '10. la SELECT sulla vista di presidio non solleva');
+
+-- ============================================================
+-- POSTURA — il residuo del bootstrap
+-- ============================================================
+SELECT ok(NOT (has_table_privilege('zeroerp_app', 'maintenance.test_pgagent_log', 'SELECT')
+            OR has_table_privilege('zeroerp_app', 'maintenance.test_pgagent_log', 'INSERT')
+            OR has_table_privilege('zeroerp_app', 'maintenance.test_pgagent_log', 'UPDATE')
+            OR has_table_privilege('zeroerp_app', 'maintenance.test_pgagent_log', 'DELETE')),
+          '11. zeroerp_app non ha privilegi su maintenance.test_pgagent_log');
 
 SELECT * FROM finish();
 ROLLBACK;

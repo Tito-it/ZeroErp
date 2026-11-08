@@ -302,6 +302,9 @@ def costruisci_partita(cur, t, *, articolo_id, uom_id, componenti=None):
             tipo_doc_fiscale_id=t["tipo_doc_fiscale_id"], valuta_id=t["valuta_id"],
             stato_approvazione="APPROVATA", meta=meta,
             sorgente_codice="DDT_VENDITA", sorgente_uid=str(ddt_uid),
+            # La riga della bolla: e' la provenienza vera della riga del
+            # push (BE-C.3-a).
+            sorgente_riga=ddt_riga_id,
         )
         for (art, uom, seg, qta, prezzo, meta) in righe
     ]

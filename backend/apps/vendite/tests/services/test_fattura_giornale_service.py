@@ -54,7 +54,7 @@ class FatturaGiornaleServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: fattura inesistente -> 404 di dominio.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_fattura_non_trovata_404(self, repo_cls):
         repo_cls.return_value.get_fattura_testata.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -64,7 +64,7 @@ class FatturaGiornaleServiceTests(TestCase):
     # Scopo: fuori scope e inesistente devono dare la STESSA risposta — un
     #        errore che li distinguesse confermerebbe l'esistenza di una fattura
     #        di un altro emittente.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_fuori_scope_404_identico_a_inesistente(self, repo_cls):
         repo_cls.return_value.get_fattura_testata.return_value = None
         with self.assertRaises(ServiceError) as fuori:
@@ -80,7 +80,7 @@ class FatturaGiornaleServiceTests(TestCase):
     #    affatto se quella non ha autorizzato.
     # ⛔ Senza questo test la regressione sarebbe silenziosa: la risposta
     #    sbagliata e' un 200 con un elenco vuoto, che non somiglia a un difetto.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_giornale_non_letto_se_testata_none(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = None
@@ -90,7 +90,7 @@ class FatturaGiornaleServiceTests(TestCase):
 
     # Scopo: lo scope applicativo arriva alla testata — si SOMMA alla RLS, non
     #        la sostituisce.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_scope_propagato_alla_testata(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
@@ -101,7 +101,7 @@ class FatturaGiornaleServiceTests(TestCase):
     # Scopo: envelope paginato standard dal contratto di lista (`limit`/
     #        `offset`, 2026-09-27): la pagina si RICAVA dall'offset, e l'offset
     #        arriva intatto al repository.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_shape_risposta_e_paginazione(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
@@ -118,7 +118,7 @@ class FatturaGiornaleServiceTests(TestCase):
     # Scopo: un documento a cui non e' successo niente NON e' un errore — e'
     #        l'esito normale. ⚠️ Misurato il 2026-08-24: 15 fatture su 17 non
     #        hanno nessuna riga di giornale.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_giornale_vuoto_non_e_un_errore(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
@@ -130,7 +130,7 @@ class FatturaGiornaleServiceTests(TestCase):
     # Scopo: la vista e' POLIMORFA — il tipo di entita' non e' un dettaglio ma
     #        cio' che seleziona il ramo. Un `entity_type` sbagliato darebbe un
     #        elenco vuoto plausibile, non un errore.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_entity_type_e_fattura(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
@@ -143,7 +143,7 @@ class FatturaGiornaleServiceTests(TestCase):
     # ⭐ Le ritirate si nascondono di DEFAULT, e il conteggio le dichiara.
     # ⛔ Senza il conteggio, «nessun evento» e «tre eventi tutti superati» si
     #    leggerebbero uguali — che e' proprio il caso in cui la differenza conta.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_ritirate_nascoste_di_default(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
@@ -156,7 +156,7 @@ class FatturaGiornaleServiceTests(TestCase):
 
     # Scopo: chiedendole esplicitamente entrano nel conto e non c'e' piu' niente
     #        di nascosto da dichiarare.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_ritirate_incluse_su_richiesta(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
@@ -174,7 +174,7 @@ class FatturaGiornaleServiceTests(TestCase):
     #        copia che diverge (fino a quel giorno era la gravita').
     # ⛔ E l'ordinamento resta del SERVER: la lista e' paginata, quindi
     #    riordinare nel client riordinerebbe la sola pagina caricata.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_ordinamento_di_default_lo_decide_il_repository(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
@@ -186,7 +186,7 @@ class FatturaGiornaleServiceTests(TestCase):
 
     # Scopo: la cronologia resta a un clic — la colonna «quando» chiesta dal
     #        pannello arriva intatta al repository, verso compreso.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_ordinamento_chiesto_arriva_al_repository(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
@@ -199,7 +199,7 @@ class FatturaGiornaleServiceTests(TestCase):
     # ⛔ Una colonna fuori whitelist e' un 400, non un ripiego muto sul default:
     #    una lista ordinata diversamente da come e' stata chiesta non solleva
     #    niente. E il rifiuto arriva PRIMA di toccare il database.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_ordinamento_fuori_whitelist_400(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA

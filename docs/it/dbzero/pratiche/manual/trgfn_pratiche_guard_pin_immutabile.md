@@ -1,58 +1,63 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_pratiche_guard_pin_immutabile`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_guard_pin_immutabile`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md)
-> [pratiche.trgfn_flussi_guard_definizione](trgfn_flussi_guard_definizione.md)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica e il suo pin
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — le edizioni di workflow
 >
-Tabelle:
+> Approfondimento funzioni:
 >
-[pratiche.pratiche](pratiche.md)
-> [pratiche.workflow_definizioni](workflow_definizioni.md)
+> * [pratiche.trgfn_pratiche_default_definizione](/dbzero/pratiche/funzioni/trgfn_pratiche_default_definizione) — assegna il pin alla nascita
+> * [pratiche.trgfn_flussi_guard_definizione](/dbzero/pratiche/funzioni/trgfn_flussi_guard_definizione) — tiene i flussi sull'edizione della loro pratica
 
 ---
+
 ### 🎯 Scopo Principale
 
-**Immutabilità del pin** (cuore di V6): l'edizione di workflow che una pratica ha
-pinnato alla nascita (`pratiche.definizione_id`) è **definitiva**. Una volta valorizzata
-non cambia più → le pratiche in volo restano sull'edizione con cui sono nate, qualunque
-cosa accada alle definizioni dopo.
+La trigger function `pratiche.trgfn_pratiche_guard_pin_immutabile` rende definitiva l'edizione di
+workflow che una pratica ha ricevuto alla nascita (`definizione_id`, il «pin»): una volta valorizzata
+non cambia più.
 
-> `definizione_id` già valorizzato e cambiato → `PRATICHE_PIN_IMMUTABILE` (513)
-
----
-
-### Trigger associato
-
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_pratiche_a10_guard_pin_immutabile_upd` | BEFORE | UPDATE OF `definizione_id` | `pratiche.pratiche` |
-
-Complementare al [default/auto-pin](trgfn_pratiche_default_definizione.md) (BEFORE INSERT,
-descrizione `default` → gira sull'INSERT): l'uno **assegna** il pin, l'altro ne impedisce
-la modifica.
+Le pratiche in volo restano sull'edizione con cui sono nate, qualunque cosa accada dopo alle
+definizioni.
 
 ---
 
-### Regole
+### Le regole
 
-* Ammette **solo** la prima valorizzazione `NULL → valore`: è il caso del **backfill
-  Fase 0** (`20260702-25`), che in replay CI gira in `80_data` **dopo** questo guard
-  (creato in `20_code`). Condizione: `OLD.definizione_id IS NOT NULL AND OLD IS DISTINCT
-  FROM NEW`.
-* Una pratica non ancora pinnata (`OLD` NULL) può ricevere il pin; una già pinnata non
-  può cambiarlo (né verso un'altra definizione, né verso NULL).
-* La coerenza col tipo è garantita a monte dalla FK composita
-  `(definizione_id, tipo_prestazione_id)`; questo guard aggiunge l'**immutabilità**.
+* Scatta prima di un aggiornamento dell'edizione della pratica.
+* È ammessa solo la prima valorizzazione, da vuoto a un valore: una pratica senza pin può riceverlo.
+* Una pratica già pinnata non può cambiare edizione, né verso un'altra né verso il vuoto.
+* La coerenza col tipo di prestazione la garantisce già la FK composita (edizione, tipo di
+  prestazione); questo guard aggiunge l'immutabilità.
+
+L'una assegna il pin (`pratiche.trgfn_pratiche_default_definizione`, all'inserimento), l'altra ne
+impedisce la modifica. Per lavorare su un'altra edizione la pratica si ricrea: nasce col pin risolto
+al momento della creazione.
 
 ---
 
-### Note operative
+### Codici errore
 
-* Errore: `PRATICHE_PIN_IMMUTABILE` (513). Per usare un'altra edizione la pratica va
-  ricreata (nasce sul pin risolto alla creazione).
-* Introdotto con `20260703-04` (brief-db-step-dominio-e-definizioni-versionate, Parte 2 /
-  Fase 1, D2-9b).
-* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase1.sql` (caso 4).
+* `E_PRATICHE_PIN_IMMUTABILE` — si tenta di cambiare l'edizione di una pratica già pinnata.
+
+---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase1` — il cambio di pin di una pratica pinnata è rifiutato.
+
+---
+
+### Note di migrazione
+
+* 2026-07-03 — nasce con le definizioni versionate; la prima valorizzazione resta ammessa per il
+  backfill delle pratiche già esistenti (brief-db-step-dominio-e-definizioni-versionate).
+
+---
+
+{% include-markdown "signature-core.md" %}

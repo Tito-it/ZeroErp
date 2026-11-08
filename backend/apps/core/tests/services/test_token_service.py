@@ -30,7 +30,7 @@ _REPO = "apps.core.services.token_service.TokenRepository"
 class TokenServiceTests(TestCase):
 
     # Scopo: Verifica che create ritorni un token in chiaro (64 hex chars).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_returns_plain_token(self, MockRepo):
         repo = MockRepo.return_value
         repo.create.return_value = 1
@@ -49,7 +49,7 @@ class TokenServiceTests(TestCase):
     # Scopo: create NON invalida i token precedenti: quali spegnere lo decide
     # il chiamante (per tipo, o per veste). La prova che nemmeno il repository
     # lo fa e' sul DB vero: test_token_veste_db.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_non_invalida_i_precedenti(self, MockRepo):
         repo = MockRepo.return_value
         repo.create.return_value = 2
@@ -62,7 +62,7 @@ class TokenServiceTests(TestCase):
         repo.invalidate_for_identita.assert_not_called()
 
     # Scopo: Verifica validate con token valido.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_validate_valid_token(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -82,7 +82,7 @@ class TokenServiceTests(TestCase):
         repo.find_valid.assert_called_once_with(expected_hash, "RESET_PASSWORD")
 
     # Scopo: Verifica validate con token non trovato.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_validate_invalid_token(self, MockRepo):
         repo = MockRepo.return_value
         repo.find_valid.return_value = None
@@ -93,7 +93,7 @@ class TokenServiceTests(TestCase):
         self.assertIsNone(result)
 
     # Scopo: Verifica consume con token valido.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_consume_valid_token(self, MockRepo):
         repo = MockRepo.return_value
         repo.find_valid.return_value = {"id": 5, "auth_user_id": 42, "meta": {}}
@@ -106,7 +106,7 @@ class TokenServiceTests(TestCase):
         repo.consume.assert_called_once_with(5, ip="192.168.1.1")
 
     # Scopo: Verifica che consume con token invalido lanci ServiceError.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_consume_invalid_raises(self, MockRepo):
         repo = MockRepo.return_value
         repo.find_valid.return_value = None
@@ -116,7 +116,7 @@ class TokenServiceTests(TestCase):
             service.consume("token_scaduto", "RESET_PASSWORD")
 
     # Scopo: Verifica invalidate_all.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_invalidate_all(self, MockRepo):
         repo = MockRepo.return_value
         repo.invalidate_all.return_value = 3

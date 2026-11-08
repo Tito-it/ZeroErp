@@ -16,17 +16,14 @@ from apps.core.api.endpoint_helpers import (
     handle_post_json,
 )
 from apps.core.services.coda_lavori.repository import (
-    ORIGINE_API,
-    RUN_AS_OPERATORE,
     CodaLavoriRepository,
 )
 from apps.core.services.coda_lavori.scope import (
-    scope_key_da_emittenti,
     scope_operatore_da_request,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services.fatturazione_accodamento_service import accoda_per_azienda
 from apps.core.services.list_helpers import validate_order_params
-from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.db.vendite_repository import STATO_DEFINITIVA, TESTATA_LOTTI, VenditeRepository
@@ -61,9 +58,6 @@ from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     JOB_TYPE_FATTURAZIONE_NUMERA,
-    chiave_idempotenza_giro,
-    corsia_del_giro,
-    insieme_digest,
     parse_lotti,
     parse_gruppi,
 )
@@ -2716,26 +2710,25 @@ def _payload_con_data_documento(payload: dict[str, Any]) -> dict[str, Any]:
 #        2026-07-21): valida+normalizza `competenza_mese` al 1° del mese,
 #        cattura l'identità COMPLETA dell'operatore (id vero anche per
 #        superuser + username + identita_id dal JWT — il worker la riproporrà
-#        per intero, 5 GUC, RLS come nel web) e lo scope emittente, compone la
-#        chiave di BUSINESS `{job_type}:{mese}:{scope}` (dedup dei job VIVI) e
-#        accoda. `extra_payload_keys`: chiavi opzionali del payload HTTP da
-#        propagare al payload del job (es. `fino_a_stato` del giro). Ritorna
-#        l'handle `{job_id, stato}` per la risposta.
+#        per intero, RLS come nel web), valida il perimetro mirato e accoda
+#        UN LAVORO PER AZIENDA (`accoda_per_azienda`, BE10 a di
+#        brief-db-revisione-dbops). `extra_payload_keys`: chiavi opzionali del
+#        payload HTTP da propagare al payload del job (es. `fino_a_stato` del
+#        giro). Ritorna `{lavori: [{job_id, stato, emittente_fiscale_id,
+#        emittente_codice, gruppi?, lotti?}]}`.
 #
-#        `accetta_gruppi=True` (emissione mirata, solo il giro): valida la
-#        lista dei gruppi fatturabili e la porta nel payload del job. ⚠️ In quel
-#        caso la chiave di business include un DIGEST dei gruppi: senza,
-#        due emissioni mirate sullo stesso mese e scope con gruppi diversi
-#        cadrebbero sullo stesso job vivo e la seconda verrebbe assorbita in
-#        silenzio (l'operatore vede «accodato» e non succede nulla). Senza
-#        gruppi il digest e' vuoto → chiave IDENTICA a prima per il giro di
-#        massa (nessuna regressione sulla dedup esistente).
+#        ⭐ Dal 2026-11-07 la risposta è una LISTA anche con un'azienda scelta
+#        (un elemento): dalla modalità globale ne nascono N, e un contratto che
+#        cambia forma secondo la combo di topbar costringerebbe ogni client a
+#        due rami.
 #
+#        `accetta_gruppi=True` (emissione mirata, solo il giro) e
 #        `accetta_lotti=True` (numerazione su SELEZIONE, solo «Rendi
-#        definitive»): stessa identica meccanica con la lista dei lotti
-#        spuntati. ⛔ I due flag sono ALTERNATIVI per verbo — si fattura per
-#        gruppi, si numera per lotti — e non si combinano: sono due atti
-#        diversi, e un verbo che accettasse entrambi non saprebbe quale
+#        definitive»): la lista si valida QUI (400 parlante) e si divide per
+#        azienda nel service; la chiave di business di ogni lavoro include il
+#        DIGEST della sua parte. ⛔ I due flag sono ALTERNATIVI per verbo — si
+#        fattura per gruppi, si numera per lotti — e non si combinano: sono due
+#        atti diversi, e un verbo che accettasse entrambi non saprebbe quale
 #        perimetro sta applicando.
 def _accoda_job_fatturazione(
     request: Request,
@@ -2757,83 +2750,70 @@ def _accoda_job_fatturazione(
     # dedup dei job vivi è per-MESE, non per-giorno.
     competenza = competenza.replace(day=1)
     # Lo scope dell'operatore che accoda — terna dal JWT, emittente attivo
-    # congelato, whitelist e `scope_key` — catturato dal BB `coda_lavori.scope`
-    # (dal 2026-09-15 e' la sede unica: la stessa cattura serve a «Esegui ora»
-    # dal drawer dei processi). ⚠️ Senza `identita_id` rifiuta PRIMA di
-    # accodare, con lo stesso codice che il drenatore solleverebbe un minuto
-    # dopo (`E_CODA_SCOPE_OPERATORE_INVALIDO`): fino a quel giorno qui era
-    # `E_VALIDATION_INPUT` — stesso 400, ma un codice che non diceva DI CHE
-    # COSA fosse l'errore.
+    # congelato, whitelist e `scope_key` — catturato dal BB `coda_lavori.scope`.
+    # ⚠️ Senza `identita_id` rifiuta PRIMA di accodare, con lo stesso codice che
+    # il drenatore solleverebbe un minuto dopo (`E_CODA_SCOPE_OPERATORE_INVALIDO`).
     scope = scope_operatore_da_request(request)
-    # Whitelist e chiave dello scope servono anche QUI, alla chiave di
-    # business: dedup dei job vivi per (competenza, scope[, perimetro]).
-    scope_key = str(scope["scope_key"])
     job_payload: dict[str, Any] = {"competenza_mese": competenza.isoformat()}
     for key in extra_payload_keys:
         value = payload.get(key)
         if value:
             job_payload[key] = value
 
-    # Perimetro dell'emissione mirata: validato QUI (400 parlante al chiamante)
-    # e non solo nel worker, dove diventerebbe un job fallito da leggere nei log.
+    # Perimetro dell'emissione mirata e della numerazione su selezione:
+    # validato QUI (400 parlante al chiamante) e non solo nel worker, dove
+    # diventerebbe un job fallito da leggere nei log.
     gruppi = (
         parse_gruppi(payload.get("gruppi"), error_code=E_VALIDATION_INPUT)
         if accetta_gruppi
         else None
     )
-    if gruppi:
-        job_payload["gruppi"] = list(gruppi)
-
-    # Perimetro della numerazione su SELEZIONE (lista lotti). Stessa disciplina
-    # dei gruppi: validato qui, 400 parlante, mai un perimetro che degenera.
     lotti = (
         parse_lotti(payload.get("lotti"), error_code=E_VALIDATION_INPUT)
         if accetta_lotti
         else None
     )
-    if lotti:
-        job_payload["lotti"] = list(lotti)
 
-    # Chiave di BUSINESS (competenza + scope [+ perimetro mirato]), NON l'header
-    # HTTP: dedup dei job VIVI (due click sullo stesso mese/scope → stesso job).
-    # ⛔ Il digest COPRE il perimetro mirato, qualunque esso sia: senza, due
-    #    selezioni DIVERSE sullo stesso mese sarebbero lo stesso job e la
-    #    seconda verrebbe assorbita in silenzio — «accodato», e non succede
-    #    niente. Vuoto sui giri di massa, cosi' la loro chiave resta quella
-    #    storica.
-    # ⚠️ Un verbo accetta gruppi OPPURE lotti, mai entrambi (sono due atti
-    #    diversi): l'insieme che alimenta il digest e' quello dei due che c'e'.
-    digest = insieme_digest(gruppi or lotti)
-    # ⭐ La CORSIA entra nella chiave (2026-09-05, opzione A): qui il valore e'
-    #    determinato dal perimetro — «mirata» quando l'operatore ha scelto dei
-    #    gruppi, «differita» sul giro di massa — cioe' lo stesso che l'handler
-    #    userebbe. ⇒ la chiave cambia forma e NON cambia comportamento; serve al
-    #    secondo produttore, il batch, che le corsie le fa entrambe.
-    # ⛔ Il valore NON si ricalcola qui con un `if`: si chiede al modulo che
-    #    possiede la regola, o al primo cambio le due copie divergono.
-    corsia = corsia_del_giro(job_type, gruppi=gruppi)
-    idempotency_key = chiave_idempotenza_giro(
-        job_type=job_type, competenza=competenza, scope_key=scope_key,
-        corsia=corsia, digest=digest,
-    )
-
-    job_id = CodaLavoriRepository().accoda(
+    lavori = accoda_per_azienda(
+        scope,
         job_type=job_type,
+        competenza=competenza,
         payload=job_payload,
-        run_as=RUN_AS_OPERATORE,
-        scope=scope,
-        idempotency_key=idempotency_key,
-        origine=ORIGINE_API,
+        gruppi=gruppi,
+        lotti=lotti,
     )
-    return {"job_id": job_id, "stato": "PENDING"}
+    return {"lavori": lavori}
+
+
+# Scopo: Lo schema della risposta dei due verbi che accodano: un handle per
+#        azienda. ⚠️ Una CLASSE sola e un'ISTANZA per uso: un campo DRF si lega
+#        al primo genitore che lo usa (la seconda dichiarazione fallirebbe
+#        all'import), e due classi con lo stesso nome drf-spectacular le
+#        segnala come componenti in conflitto.
+_LavoroAccodato = type(inline_serializer(
+    name="VenditeFatturazioneLavoroAccodato",
+    fields={
+        "job_id": serializers.IntegerField(),
+        "stato": serializers.CharField(),
+        "emittente_fiscale_id": serializers.IntegerField(),
+        "emittente_codice": serializers.CharField(),
+        "gruppi": serializers.ListField(child=serializers.CharField(), required=False),
+        "lotti": serializers.ListField(child=serializers.IntegerField(), required=False),
+    },
+))
+
+
+def _lavori_accodati() -> Any:
+    return _LavoroAccodato(many=True)
 
 
 class ApiFatturazioneRun(DomainAPIView):
     """C-3: avvia un GIRO di fatturazione on-demand, NON bloccante (I-3).
-    Accoda un job `FATTURAZIONE_GIRO` in `dbops.coda_lavori` con lo scope
-    emittente CATTURATO dell'operatore (run_as=OPERATORE) e risponde subito con
-    l'handle del job (id + stato); il worker lo esegue poi con i permessi
-    dell'operatore (RLS). Idempotenza a DUE layer: header HTTP (`handle_post_json`
+    Accoda un job `FATTURAZIONE_GIRO` in `dbops.coda_lavori` PER AZIENDA (una
+    sola se l'operatore ne ha scelta una, ciascuna delle sue in modalità
+    globale) con lo scope emittente CATTURATO dell'operatore (run_as=OPERATORE)
+    e risponde subito con la lista degli handle (`lavori`); il worker esegue
+    ciascuno con i permessi dell'operatore dentro la sua azienda (RLS). Idempotenza a DUE layer: header HTTP (`handle_post_json`
     + `dbops.idempotency_keys`, replay della risposta) e chiave di BUSINESS
     della coda (competenza+scope[+gruppi], dedup dei giri VIVI).
 
@@ -2892,8 +2872,7 @@ class ApiFatturazioneRun(DomainAPIView):
                     "data": inline_serializer(
                         name="VenditeFatturazioneRunData",
                         fields={
-                            "job_id": serializers.IntegerField(),
-                            "stato": serializers.CharField(),
+                            "lavori": _lavori_accodati(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -2901,7 +2880,8 @@ class ApiFatturazioneRun(DomainAPIView):
             )
         },
     )
-    # Scopo: Accoda il giro (transazionale) e ritorna l'handle del job.
+    # Scopo: Accoda il giro (transazionale, un lavoro per azienda) e ritorna gli
+    #        handle dei lavori.
     def post(self, request: Request) -> JsonResponse:
         # Scopo: enqueue comune + `fino_a_stato` opzionale e `gruppi` (mirata).
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
@@ -2916,9 +2896,9 @@ class ApiFatturazioneRun(DomainAPIView):
 
 
 class ApiFatturazioneRunStato(DomainAPIView):
-    """C-3: stato di un giro accodato (polling NON bloccante). Ownership:
-    l'operatore vede solo i giri che HA accodato (un giro altrui → 404,
-    indistinguibile da inesistente)."""
+    """C-3: stato di un giro accodato (polling NON bloccante). Ownership per
+    azienda: l'operatore vede i giri delle aziende del suo perimetro (un giro
+    di un'altra azienda → 404, indistinguibile da inesistente)."""
 
     area_funzionale = "vendite"
 
@@ -2945,20 +2925,17 @@ class ApiFatturazioneRunStato(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce lo stato del job, con ownership SCOPE-based (non
-    #        per-enqueuer): l'operatore vede i job della propria scope_key —
-    #        così due operatori con la STESSA whitelist che condividono un giro
-    #        via dedup ne seguono entrambi l'avanzamento (fix cross-operatore).
-    #        Admin globale (whitelist None) → nessun filtro (vede ogni job).
+    # Scopo: Restituisce lo stato del job. Il perimetro lo fa la RLS della coda
+    #        (blocco 5b, BE9): chi chiede vede i lavori delle sue aziende, e un
+    #        lavoro di un'altra azienda è indistinguibile da inesistente. Così
+    #        chi accoda dalla modalità globale segue i lavori di ciascuna
+    #        azienda, e due colleghi della stessa azienda che condividono un giro
+    #        via dedup ne seguono entrambi l'avanzamento — per questo il polling
+    #        non restringe ai lavori «miei».
+    # ⭐ Fino al 2026-11-07 era la `scope_key` esatta, poi (BE10) il perimetro
+    #    scritto a mano nel repository; da BE9 lo fa il DB.
     def get(self, request: Request, job_id: int) -> JsonResponse:
-        emittente_ids = PermissionResolver.get_emittenti_pk_ids(request.user)
-        owner_scope_key = (
-            None if emittente_ids is None
-            else scope_key_da_emittenti(emittente_ids)
-        )
-        stato = CodaLavoriRepository().get_stato(
-            int(job_id), owner_scope_key=owner_scope_key,
-        )
+        stato = CodaLavoriRepository().get_stato(int(job_id))
         ErrorManager.require(
             stato is not None,
             code="E_JOB_NON_TROVATO",
@@ -2972,9 +2949,10 @@ class ApiFatturazioneRunStato(DomainAPIView):
 class ApiFatturazioneNumera(DomainAPIView):
     """C-4: «Rendi definitive competenza» — numerazione di PERIMETRO, NON
     bloccante (I-3). Accoda un job `FATTURAZIONE_NUMERA` in `dbops.coda_lavori`
-    con l'identità operatore CATTURATA (run_as=OPERATORE) e risponde subito con
-    l'handle del job; il worker esegue lo step DEFINITIVA (numera + accoda
-    stampa) sui lotti EMESSA del mese, sotto RLS operatore. Atto fiscale
+    per azienda, con l'identità operatore CATTURATA (run_as=OPERATORE), e
+    risponde subito con la lista degli handle (`lavori`); il worker esegue lo
+    step DEFINITIVA (numera + accoda stampa) sui lotti EMESSA del mese, sotto
+    RLS operatore. Atto fiscale
     SEPARATO dalla fatturazione (gate I-7): endpoint e permesso dedicati.
     Polling: `GET /vendite/fatturazione/run/<job_id>/` (stato job generico,
     ownership operatore). Idempotenza a DUE layer: header HTTP + chiave di
@@ -3033,8 +3011,7 @@ class ApiFatturazioneNumera(DomainAPIView):
                     "data": inline_serializer(
                         name="VenditeFatturazioneNumeraData",
                         fields={
-                            "job_id": serializers.IntegerField(),
-                            "stato": serializers.CharField(),
+                            "lavori": _lavori_accodati(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -3042,7 +3019,8 @@ class ApiFatturazioneNumera(DomainAPIView):
             )
         },
     )
-    # Scopo: Accoda la numerazione di perimetro e ritorna l'handle del job.
+    # Scopo: Accoda la numerazione di perimetro (un lavoro per azienda) e
+    #        ritorna gli handle dei lavori.
     def post(self, request: Request) -> JsonResponse:
         # Scopo: enqueue comune + la data documento dell'atto (facoltativa).
         # ⚠️ Validata QUI e non solo nel worker: una data malformata deve

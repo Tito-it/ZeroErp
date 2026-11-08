@@ -15,37 +15,40 @@ CREATE FUNCTION fn_ensure_logconn()
 CREATE OR REPLACE FUNCTION script.fn_ensure_logconn()
  RETURNS void
  LANGUAGE plpgsql
- SET search_path TO 'public', 'pg_temp'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
-DECLARE v_conn text := current_setting('myapp.dblink_log_connection', true);
+DECLARE
+  -- text: il tipo di current_setting, nessuna colonna lo porta
+  v_conn text := script.fn_canale_log_stringa();
 BEGIN
-  -- spegni via GUC di sessione
-  IF coalesce(current_setting('myapp.log_with_dblink', true), 'on') <> 'on' THEN
-    RETURN;
-  END IF;
-  -- -- niente connstring -> esci 
-  IF v_conn IS NULL OR length(trim(v_conn))=0 THEN RETURN; END IF;
-  
-  -- se 'logconn' è già aperta, non riconnettere
-  IF 'logconn' = ANY (coalesce(public.dblink_get_connections(), ARRAY[]::text[])) THEN
+  -- canale spento o non configurato: niente da aprire
+  IF v_conn IS NULL THEN
     RETURN;
   END IF;
 
-  -- tenta la connessione e gestisci eccezioni locali
+  -- ⛔ Nessun errore risale al chiamante: il canale di log e' un
+  --   servizio, non una precondizione della scrittura. Chi deve
+  --   sapere se la connessione c'e' guarda dblink_get_connections().
   BEGIN
-    PERFORM public.dblink_connect('logconn'::text, v_conn::text);
+    -- gia' aperta: non si riconnette
+    IF 'logconn' = ANY (coalesce(public.dblink_get_connections(), ARRAY[]::text[])) THEN
+      RETURN;
+    END IF;
+
+    PERFORM public.dblink_connect('logconn'::text, v_conn);
   EXCEPTION
     WHEN duplicate_object THEN
-      NULL;             -- già aperta (race)
-    WHEN SQLSTATE '53300' THEN
-      RETURN;           -- too_many_connections: non bloccare il chiamante
+      NULL;             -- gia' aperta (corsa)
+    WHEN OTHERS THEN
+      RAISE WARNING
+        'script.fn_ensure_logconn: canale di log non raggiungibile (SQLSTATE %): %; si prosegue senza.',
+        SQLSTATE, SQLERRM;
   END;
-END; 
+END;
 $function$
 
 COMMENT ON FUNCTION script.fn_ensure_logconn()
-IS 'Verifica che la connessione dblink logconn sia attiva. 
-      Se non lo è, la crea usando la GUC dblink.log_connection.';
+IS 'Apre la connessione dblink nominata logconn verso il canale di log, se il canale e'' acceso e la connessione non e'' gia'' aperta. Se il canale e'' acceso e con quale stringa lo dice script.fn_canale_log_stringa. Non solleva mai: un canale irraggiungibile (rete, credenziali, troppe connessioni) diventa un WARNING, perche'' il canale di log e'' un servizio e non una precondizione delle scritture. Chi deve sapere se la connessione c''e'' guarda dblink_get_connections(). SECURITY INVOKER, di postgres.';
 ```
 
 </div>

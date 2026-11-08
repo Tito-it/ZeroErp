@@ -111,9 +111,7 @@ class IdempotencyStore:
                     status = 'completed',
                     request_id = %s::uuid,
                     tx_id = %s::uuid,
-                    response_payload = %s::jsonb,
-                    data_update = now(),
-                    user_update = CURRENT_USER
+                    response_payload = %s::jsonb
                 WHERE idempotency_key = %s
                 """,
                 [request_id, str(tx_id), json.dumps(response_payload), idempotency_key],
@@ -130,9 +128,7 @@ class IdempotencyStore:
                     status = 'failed',
                     request_id = %s::uuid,
                     tx_id = NULL,
-                    response_payload = NULL,
-                    data_update = now(),
-                    user_update = CURRENT_USER
+                    response_payload = NULL
                 WHERE idempotency_key = %s
                 """,
                 [request_id, idempotency_key],

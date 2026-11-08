@@ -1,0 +1,583 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI ADDEBITI DEL CONTRATTO SULLA CHIAVE DEL MODELLO: vendite.fn_contratti_addebiti_maturati
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Tre letture della riga di commessa cercavano il contratto con
+#   ca.sorgente_uid = c.uid::text (l'uid testuale per ogni tipo): dal 20261107-70 il contratto
+#   sta in sorgente_id. Ora tipo CONTRATTO + sorgente_id (l'indice
+#   ix_commesse_attivita_sorgente_id, 20261107-71), e la base della chiave come prima.
+#   ⭐ Gli storni (ramo 2) uscivano con riga_id NULL: perdevano la riga del pezzo che
+#   stornano. Ora la prendono da lui (ca.sorgente_riga), cosi' il push scrive la stessa
+#   provenienza. Il lister vendite.fn_list_contratti_da_pushare la passa com'e'.
+#   Firma con i %TYPE dal 20261031-35, SECURITY INVOKER esplicito; corpo dal vivo (dbdev,
+#   2026-11-07). COMMENT: il vivo, con la frase sulla chiave e sugli storni.
+#   ⚠️ CREATE OR REPLACE mantiene il REVOKE da PUBLIC del 20261031-35.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-77-update-fn-contratti-addebiti-maturati-chiave-del-modello-mctit.yaml
+
+  - changeSet:
+      id: 20261107-77-update-fn-contratti-addebiti-maturati-chiave-del-modello
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_contratti_addebiti_maturati: la riga di commessa del contratto si cerca per tipo
+        e sorgente_id; gli storni portano la riga del pezzo. brief-db-sorgente-documento-e-riga §7.2
+        lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_contratti_addebiti_maturati(
+                  p_competenza_mese    vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL::bigint,
+                  p_contratto_id       vendite.contratti.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  -- nudi (utility_id, fatturazione_immediata, ramo, scarto): valori calcolati: nessuna colonna di cui siano il riflesso
+                  contratto_id                vendite.contratti.id%TYPE,
+                  contratto_uid               vendite.contratti.uid%TYPE,
+                  riga_id                     vendite.contratti_righe.id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  utility_id                  integer,
+                  emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  competenza_dal              vendite.commesse_attivita.competenza_dal%TYPE,
+                  competenza_al               vendite.commesse_attivita.competenza_al%TYPE,
+                  fatturazione_immediata      boolean,
+                  segment_key                 vendite.commesse_attivita.segment_key%TYPE,
+                  articolo_id                 vendite.commesse_attivita.articolo_id%TYPE,
+                  istanza_utility_id          vendite.commesse_attivita.istanza_utility_id%TYPE,
+                  data_attivita               vendite.commesse_attivita.data_attivita%TYPE,
+                  uom_id                      vendite.commesse_attivita.uom_id%TYPE,
+                  quantita                    vendite.commesse_attivita.quantita%TYPE,
+                  qta_operativa               vendite.commesse_attivita.qta_operativa%TYPE,
+                  uom_operativa_id            vendite.commesse_attivita.uom_operativa_id%TYPE,
+                  factor_to_base              vendite.commesse_attivita.factor_to_base%TYPE,
+                  competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE,
+                  prezzo_snapshot             vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                  prezzo_bloccato             vendite.commesse_attivita.prezzo_bloccato%TYPE,
+                  meta                        vendite.commesse_attivita.meta%TYPE,
+                  ramo                        integer,
+                  scarto                      text)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: gli addebiti maturati dei contratti a questo giro e non ancora in
+              --   commessa, CON gli scartati e il motivo (scarto). Sede unica della regola:
+              --   la leggono il lister del push (vendite.fn_list_contratti_da_pushare, solo
+              --   scarto NULL) e la dashboard (vendite.vw_dash_fatturazione_contratti,
+              --   tutte e due). Tre rami (brief-db-contratto-righe-periodiche-in-commessa
+              --   §6.12, §6.13):
+              --   1. UNA_TANTUM: una volta, il giorno di attivazione (come dal 20261013-24);
+              --   2. CANONE: i pezzi di periodo maturati e non ancora addebitati, da
+              --      vendite.fn_canone_periodi, per ogni riga a canone del contratto e per
+              --      ogni quota fissa del listino che il contratto non ritocca;
+              --   3. STORNO: la parte non goduta di un pezzo addebitato oltre valido_al,
+              --      come differenza dal gia' stornato (la fine si puo' spostare).
+              --   Regola completa nell'intestazione dei changeSet 20261030-01 e 20261031-01.
+              -- rev 2026-10-30 (20261030-01): i tre rami; prima solo UNA_TANTUM.
+              --   Gli scartati (scarto):
+              --   · SENZA_PERIODICITA: una fonte a canone senza periodicita' (riga del
+              --     contratto, o quota fissa del listino);
+              --   · DURATA_SENZA_CALENDARIO: una fonte a durata su un'unita' che non si
+              --     conta dal calendario;
+              --     per questi due una riga per fonte, ramo 3, senza pezzo (competenza,
+              --     chiave, quantita' NULL);
+              --   · SENZA_PREZZO: un pezzo (o la una tantum) senza prezzo alla data.
+              -- Nasce il 2026-10-31 (20261031-02) dal corpo del lister del 20261031-01.
+              -- rev 2026-10-31 (20261031-13, brief-modello-documento-vendita §17): gli stati del push
+              --   (emissione, cessazione) dal vocabolario, non 'ATTIVO' e 'CESSATO'.
+              -- rev 2026-10-31 (20261031-35, brief-db-contratto-righe-periodiche-in-commessa §7.7,
+              --   L14): i KIT del listino. La quota fissa di un kit si addebita (periodicita'
+              --   da vendite.listini_kit; senza, scarto SENZA_PERIODICITA); il prezzo del kit
+              --   che il contratto non negozia (quota fissa, ADESIONE) e' la somma dei
+              --   componenti del listino (vendite.fn_contratto_kit_componenti); la
+              --   periodicita' di una quota fissa dalla sede (vendite.fn_listino_periodicita_articolo);
+              --   una quota fissa che non si eroga a canone esce con lo scarto
+              --   QUOTA_FISSA_SENZA_CANONE, invece di sparire.
+              DECLARE
+                v_stato_attivo_id     config.stati_doc_contratti.id%TYPE;
+                v_stato_cessato_id    config.stati_doc_contratti.id%TYPE;
+                v_data_giro           vendite.commesse_attivita.competenza_al%TYPE;
+                v_mese_giro           vendite.commesse_attivita.competenza_mese%TYPE;
+              BEGIN
+                IF p_contratto_id IS NOT NULL AND p_contratto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_contratti_addebiti_maturati', 'E_PUSH_SORGENTE_ID_INVALIDO',
+                    jsonb_build_object('parametro', 'p_contratto_id', 'valore', p_contratto_id),
+                    NULL::uuid,
+                    'p_contratto_id', p_contratto_id::text
+                  );
+                END IF;
+              
+                v_stato_attivo_id := script.fn_stato_emissione_id('vendite.contratti'::regclass);
+              
+                -- Senza lo stato il filtro non ha un valore: si ferma, come per la
+                -- sorgente. Il push non lista mai contratti in uno stato qualunque.
+                IF v_stato_attivo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_contratti_addebiti_maturati', 'E_CONFIG_MANCANTE',
+                    jsonb_build_object('config', 'config.stati_doc_contratti.emissione'),
+                    NULL::uuid, 'stato di emissione (config.stati_doc_contratti.emissione)'
+                  );
+                END IF;
+              
+                -- I CESSATO generano i periodi mancanti fino a valido_al, e gli storni (G-2).
+                v_stato_cessato_id := script.fn_stato_cessazione_id('vendite.contratti'::regclass);
+              
+                IF v_stato_cessato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_contratti_addebiti_maturati', 'E_CONFIG_MANCANTE',
+                    jsonb_build_object('config', 'config.stati_doc_contratti.cessazione'),
+                    NULL::uuid, 'stato di cessazione (config.stati_doc_contratti.cessazione)'
+                  );
+                END IF;
+              
+                -- La data del giro (F-6): l'ultimo giorno del mese chiesto, o l'oggi
+                -- aziendale. La competenza delle righe di canone e storno e' il suo mese.
+                v_data_giro := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                    THEN (date_trunc('month', p_competenza_mese) + interval '1 month' - interval '1 day')::date
+                  ELSE script.fn_data_operativa()
+                END;
+                v_mese_giro := date_trunc('month', v_data_giro)::date;
+              
+                RETURN QUERY
+                WITH ctr AS (
+                  -- I contratti del giro: ATTIVO e CESSATO. Il ramo UNA_TANTUM ne tiene
+                  -- solo gli ATTIVO (sotto).
+                  SELECT c.id, c.uid, c.numero, c.billing_account_id, c.utility_id,
+                         c.istanza_utility_id, c.fatturazione_immediata, c.stato_doc_contratto_id,
+                         c.valido_dal, c.valido_al, c.data, c.generazione_canone, c.mese_partenza_canone,
+                         anagrafiche.fn_get_emittente_fiscale_id(c.billing_account_id) AS emittente_id,
+                         lo.listino_versione_id
+                    FROM vendite.contratti c
+                    LEFT JOIN LATERAL vendite.fn_documento_listino_operativo('CONTRATTO', c.id) lo ON true
+                   WHERE c.stato_doc_contratto_id IN (v_stato_attivo_id, v_stato_cessato_id)
+                     AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
+                     AND (p_contratto_id IS NULL OR c.id = p_contratto_id)
+                ),
+                fonti AS (
+                  -- Chi si addebita a canone (G-0, F-1). Una riga per articolo e contratto.
+                  --   · Le righe del contratto: ADESIONE e AGGIUNTA; l'OVERRIDE solo su una
+                  --     quota fissa (prende il posto della riga di listino che ritocca):
+                  --     altrove l'OVERRIDE e' solo il prezzo del cliente (F-1).
+                  --   · Le quote fisse del listino senza una riga del contratto sullo stesso
+                  --     articolo (un'eccezione la sostituisce o, l'ESCLUSIONE, la toglie):
+                  --     quantita' 1 per periodo, periodicita' della riga di listino.
+                  -- Senza periodicita', o a durata su un'unita' che non si conta dal
+                  -- calendario, la fonte non si puo' addebitare: esce con lo scarto.
+                  SELECT c.id AS contratto_id, cr.id AS riga_id, cr.articolo_id,
+                         a.uom_id, cr.periodicita,
+                         coalesce(cr.generazione_canone, c.generazione_canone) AS generazione,
+                         cr.fonte_quantita_attesa AS fonte, um.conta_dal_calendario AS calendario,
+                         cr.quantita AS qta, cr.qta_operativa, cr.uom_operativa_id, cr.factor_to_base,
+                         cr.prezzo_unitario AS prezzo, NULL::bigint AS listino_riga_id,
+                         c.uid::text AS uid_chiave, 'RIGA'::text AS origine,
+                         a.is_composito AS kit,
+                         CASE WHEN cr.periodicita IS NULL THEN 'SENZA_PERIODICITA'
+                              WHEN cr.fonte_quantita_attesa = 'DURATA' AND um.conta_dal_calendario IS NULL
+                                THEN 'DURATA_SENZA_CALENDARIO' END AS scarto
+                    FROM ctr c
+                    JOIN vendite.contratti_righe cr
+                      ON cr.contratto_id = c.id
+                     AND COALESCE(cr.attivo, TRUE) IS TRUE
+                     AND cr.tipo_erogazione = 'CANONE'
+                    JOIN catalogo.articoli a ON a.id = cr.articolo_id
+                    LEFT JOIN catalogo.unita_misura um ON um.id = a.uom_id
+                    LEFT JOIN config.listini_tipologie t ON t.id = a.listino_tipologia_id
+                   WHERE (cr.tipo_eccezione IN ('ADESIONE'::vendite.tipo_eccezione_contratto,
+                                                'AGGIUNTA'::vendite.tipo_eccezione_contratto)
+                          OR (cr.tipo_eccezione = 'OVERRIDE'::vendite.tipo_eccezione_contratto
+                              AND t.e_quota_fissa IS TRUE))
+                  UNION ALL
+                  SELECT q.contratto_id, NULL::bigint, q.articolo_id, q.uom_id, q.periodicita,
+                         q.generazione, q.fonte, q.calendario, 1::numeric, 1::numeric, q.uom_id, 1::numeric,
+                         NULL::numeric, q.listino_riga_id,
+                         -- La chiave della quota fissa nomina l'ARTICOLO, non la riga di
+                         -- listino: una versione nuova cambia la riga, non la quota.
+                         q.uid::text || ':A:' || q.articolo_id::text, 'LISTINO'::text,
+                         q.kit,
+                         -- rev 2026-10-31 (-35): una quota fissa che non si eroga a canone
+                         -- non sparisce piu': esce con il suo scarto (§7.3, la strada visibile).
+                         CASE WHEN q.canone IS NOT TRUE THEN 'QUOTA_FISSA_SENZA_CANONE'
+                              WHEN q.periodicita IS NULL THEN 'SENZA_PERIODICITA'
+                              WHEN q.fonte = 'DURATA' AND q.calendario IS NULL
+                                THEN 'DURATA_SENZA_CALENDARIO' END
+                    FROM (
+                      SELECT s.contratto_id, s.uid, s.articolo_id, s.uom_id, s.listino_riga_id, s.kit,
+                             -- La periodicita' dalla sede (regola del 2, 20261031-32): il kit
+                             -- da vendite.listini_kit, gli altri dalla riga di listino.
+                             vendite.fn_listino_periodicita_articolo(s.listino_versione_id, s.articolo_id) AS periodicita,
+                             s.generazione, er.fonte_quantita_attesa AS fonte, (er.fonte_quantita_attesa IS NOT NULL) AS canone,
+                             um.conta_dal_calendario AS calendario
+                        FROM (
+                          -- Le righe di listino delle quote fisse. Due righe sullo stesso
+                          -- articolo: vince quella con la periodicita' (ne da' uom e riga).
+                          (SELECT DISTINCT ON (c.id, lr.articolo_id)
+                                 c.id AS contratto_id, c.uid, c.listino_versione_id, lr.articolo_id, lr.uom_id,
+                                 lr.id AS listino_riga_id, false AS kit, c.generazione_canone AS generazione
+                            FROM ctr c
+                            JOIN vendite.listini_righe lr
+                              ON lr.listino_versione_id = c.listino_versione_id
+                             AND lr.attivo IS TRUE
+                            JOIN catalogo.articoli a ON a.id = lr.articolo_id
+                            JOIN config.listini_tipologie t
+                              ON t.id = a.listino_tipologia_id AND t.e_quota_fissa IS TRUE
+                           ORDER BY c.id, lr.articolo_id, (lr.periodicita IS NULL), lr.id)
+                          UNION ALL
+                          -- rev 2026-10-31 (-35): i KIT di quota fissa del listino. Il kit sul
+                          -- listino non ha una riga: e' sul listino se ha componenti attivi
+                          -- nella versione. L'unita' e' quella del kit.
+                          SELECT DISTINCT c.id, c.uid, c.listino_versione_id, a.id, a.uom_id,
+                                 NULL::bigint, true, c.generazione_canone
+                            FROM ctr c
+                            JOIN vendite.listini_righe_componenti lrc
+                              ON lrc.listino_versione_id = c.listino_versione_id
+                             AND lrc.attivo IS TRUE
+                            JOIN catalogo.articoli a ON a.id = lrc.articolo_padre_id AND a.is_composito IS TRUE
+                            JOIN config.listini_tipologie t
+                              ON t.id = a.listino_tipologia_id AND t.e_quota_fissa IS TRUE
+                        ) s
+                        LEFT JOIN catalogo.unita_misura um ON um.id = s.uom_id
+                        -- L'erogazione di default dell'articolo: si addebita da se' solo se e'
+                        -- un canone. rev 2026-10-31 (-35): LEFT, cosi' l'altra resta visibile.
+                        LEFT JOIN LATERAL (
+                          SELECT e.fonte_quantita_attesa
+                            FROM vendite.fn_articolo_erogazioni(s.articolo_id) e
+                           WHERE e.e_default IS TRUE AND e.tipo_erogazione = 'CANONE'
+                           LIMIT 1) er ON true
+                       WHERE NOT EXISTS (
+                               SELECT 1 FROM vendite.contratti_righe cx
+                                WHERE cx.contratto_id = s.contratto_id
+                                  AND cx.articolo_id = s.articolo_id
+                                  AND COALESCE(cx.attivo, TRUE) IS TRUE)
+                    ) q
+                ),
+                fonti_k AS (
+                  SELECT f.*, script.fn_segment_key('CONTRATTO', f.uid_chiave, f.riga_id) AS prefisso,
+                         p.mesi
+                    FROM fonti f
+                    JOIN config.periodicita p ON p.codice = f.periodicita
+                   WHERE f.scarto IS NULL
+                ),
+                una_tantum AS (
+                  SELECT
+                    c.id AS contratto_id, c.uid AS contratto_uid, cr.id AS riga_id,
+                    c.billing_account_id, c.utility_id, c.emittente_id,
+                    -- Competenza della riga UNA_TANTUM: il giorno di attivazione, in tutte
+                    -- e due le colonne (D-1 di Tid, 2026-10-13). valido_dal e' NOT NULL.
+                    c.valido_dal AS competenza_dal, c.valido_dal AS competenza_al,
+                    c.fatturazione_immediata,
+                    script.fn_segment_key('CONTRATTO', c.uid::text, cr.id, COALESCE(c.valido_dal, c.data)) AS segment_key,
+                    cr.articolo_id, c.istanza_utility_id,
+                    COALESCE(c.valido_dal, c.data) AS data_attivita,
+                    -- uom_id canonica da catalogo.articoli (fix bug proiezione NULL)
+                    a.uom_id,
+                    cr.quantita, cr.qta_operativa, cr.uom_operativa_id,
+                    COALESCE(cr.factor_to_base, 1::numeric) AS factor_to_base,
+                    date_trunc('month', COALESCE(c.valido_dal, c.data))::date AS competenza_mese,
+                    -- L'ADESIONE non ha un prezzo suo: quello del listino, alla data
+                    -- dell'attivazione (G-0-ter).
+                    -- rev 2026-10-31 (-35): il kit aderito, la somma dei componenti del listino.
+                    COALESCE(cr.prezzo_unitario, CASE WHEN a.is_composito THEN kp.prezzo ELSE rp.prezzo_finale END) AS prezzo,
+                    -- prezzo_bloccato: dipende dalla RIGA (prezzo valorizzato),
+                    -- INDIPENDENTE dal flag di corsia.
+                    (cr.prezzo_unitario IS NOT NULL) AS prezzo_bloccato,
+                    jsonb_build_object(
+                      'contratto_numero',    c.numero,
+                      'tipo_erogazione',     cr.tipo_erogazione,
+                      'tipo_commessa',       'AUTO',
+                      'policy_fatturazione', 'DA_DOCUMENTO'
+                    ) AS meta,
+                    0 AS ramo,
+                    CASE WHEN COALESCE(cr.prezzo_unitario, CASE WHEN a.is_composito THEN kp.prezzo ELSE rp.prezzo_finale END) IS NULL
+                         THEN 'SENZA_PREZZO' END AS scarto
+                  FROM ctr c
+                  JOIN vendite.contratti_righe cr
+                    ON cr.contratto_id = c.id
+                   AND COALESCE(cr.attivo, TRUE) IS TRUE
+                   -- Si addebitano ADESIONE e AGGIUNTA. L'ESCLUSIONE non si fattura; l'OVERRIDE
+                   -- e' il prezzo del cliente, se e quando compra (F-1).
+                   AND cr.tipo_eccezione IN ('ADESIONE'::vendite.tipo_eccezione_contratto,
+                                             'AGGIUNTA'::vendite.tipo_eccezione_contratto)
+                   AND cr.tipo_erogazione = 'UNA_TANTUM'
+                  JOIN catalogo.articoli a ON a.id = cr.articolo_id
+                  LEFT JOIN LATERAL (
+                    SELECT r.prezzo_finale
+                      FROM vendite.fn_resolve_prezzo_listino_v2_esito(
+                             cr.articolo_id, a.uom_id, c.valido_dal, c.billing_account_id,
+                             c.utility_id, c.emittente_id, NULL::integer, NULL::uuid,
+                             c.listino_versione_id) r
+                     WHERE cr.prezzo_unitario IS NULL
+                       AND a.is_composito IS NOT TRUE
+                       AND r.esito_codice IS NULL) rp ON true
+                  -- Il prezzo di un kit che il contratto non negozia: la somma prezzo x
+                  -- coefficiente dei componenti del listino alla data (D-2). Senza componenti,
+                  -- o con un componente senza prezzo, nessun prezzo.
+                  LEFT JOIN LATERAL (
+                    SELECT CASE WHEN count(*) = 0 OR bool_or(k.prezzo_unitario IS NULL) THEN NULL
+                                ELSE sum(k.prezzo_unitario * k.coeff_qta_snapshot) END AS prezzo
+                      FROM vendite.fn_contratto_kit_componenti(c.id, cr.articolo_id, c.valido_dal) k
+                     WHERE cr.prezzo_unitario IS NULL
+                       AND a.is_composito IS TRUE) kp ON true
+                  WHERE c.stato_doc_contratto_id = v_stato_attivo_id
+                    AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa())))
+                    AND (p_competenza_mese IS NULL
+                         OR date_trunc('month', COALESCE(c.valido_dal, c.data))::date = p_competenza_mese)
+                ),
+                canoni AS (
+                  SELECT
+                    c.id AS contratto_id, c.uid AS contratto_uid, f.riga_id,
+                    c.billing_account_id, c.utility_id, c.emittente_id,
+                    p.periodo_dal AS competenza_dal, p.periodo_al AS competenza_al,
+                    c.fatturazione_immediata,
+                    script.fn_segment_key('CONTRATTO', f.uid_chiave, f.riga_id, p.periodo_dal) AS segment_key,
+                    f.articolo_id, c.istanza_utility_id,
+                    p.periodo_dal AS data_attivita,
+                    f.uom_id,
+                    -- La quantita' del pezzo: a quantita' fissa la riga per la frazione del
+                    -- periodo; a durata i giorni del pezzo, o i mesi (frazione x mesi), e
+                    -- il periodo incompleto e' gia' dentro (G-9).
+                    CASE WHEN f.fonte = 'DURATA' THEN m.misura
+                         ELSE round(COALESCE(f.qta, 1) * m.misura, 6) END AS quantita,
+                    CASE WHEN f.fonte = 'DURATA' THEN m.misura
+                         ELSE round(COALESCE(f.qta_operativa, f.qta, 1) * m.misura, 6) END AS qta_operativa,
+                    CASE WHEN f.fonte = 'DURATA' THEN f.uom_id
+                         ELSE COALESCE(f.uom_operativa_id, f.uom_id) END AS uom_operativa_id,
+                    CASE WHEN f.fonte = 'DURATA' THEN 1::numeric
+                         ELSE COALESCE(f.factor_to_base, 1::numeric) END AS factor_to_base,
+                    p.competenza_mese,
+                    -- Il prezzo: quello della riga (OVERRIDE, AGGIUNTA), o quello del
+                    -- listino del contratto all'inizio del pezzo (ADESIONE, quota fissa),
+                    -- con la variazione globale (G-0).
+                    COALESCE(f.prezzo, CASE WHEN f.kit THEN kp.prezzo ELSE rp.prezzo_finale END) AS prezzo,
+                    (f.prezzo IS NOT NULL) AS prezzo_bloccato,
+                    jsonb_build_object(
+                      'contratto_numero',      c.numero,
+                      'tipo_erogazione',       'CANONE',
+                      'fonte_quantita_attesa', f.fonte,
+                      'periodicita',           f.periodicita,
+                      'generazione_canone',    f.generazione,
+                      'periodo_dal',           p.periodo_intero_dal,
+                      'periodo_al',            p.periodo_intero_al,
+                      'frazione',              p.frazione,
+                      'origine_canone',        f.origine,
+                      'listino_riga_id',       f.listino_riga_id,
+                      'tipo_commessa',         'AUTO',
+                      'policy_fatturazione',   'DA_DOCUMENTO'
+                    ) AS meta,
+                    1 AS ramo,
+                    CASE WHEN COALESCE(f.prezzo, CASE WHEN f.kit THEN kp.prezzo ELSE rp.prezzo_finale END) IS NULL
+                         THEN 'SENZA_PREZZO' END AS scarto
+                  FROM fonti_k f
+                  JOIN ctr c ON c.id = f.contratto_id
+                  -- Il «da» del giro (G-2): il giorno dopo l'ultimo pezzo addebitato di
+                  -- questa fonte (gli storni, negativi, non contano; i componenti di un
+                  -- kit hanno la base del pezzo e contano).
+                  LEFT JOIN LATERAL (
+                    SELECT max(ca.competenza_al) AS al
+                      FROM vendite.commesse_attivita ca
+                     WHERE ca.sorgente_tipo_id = (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'CONTRATTO')
+                       AND ca.sorgente_id = c.id
+                       AND ca.segment_base::text ~>=~ (f.prefisso || ':M:')
+                       AND ca.segment_base::text ~<~ (f.prefisso || ':M;')
+                       AND ca.tipo_movimento = 'NORMALE'
+                       AND ca.quantita > 0
+                       AND ca.stato_emissione <> 'ANNULLATA') u ON true
+                  CROSS JOIN LATERAL vendite.fn_canone_periodi(
+                    c.valido_dal, c.valido_al, f.periodicita, c.mese_partenza_canone,
+                    f.generazione, v_data_giro, u.al + 1) p
+                  CROSS JOIN LATERAL (
+                    SELECT CASE WHEN f.fonte = 'DURATA' AND f.calendario = 'GIORNO'
+                                  THEN (p.periodo_al - p.periodo_dal + 1)::numeric
+                                WHEN f.fonte = 'DURATA'
+                                  THEN round(p.frazione * f.mesi, 6)
+                                ELSE p.frazione END AS misura) m
+                  LEFT JOIN LATERAL (
+                    SELECT r.prezzo_finale
+                      FROM vendite.fn_resolve_prezzo_listino_v2_esito(
+                             f.articolo_id, f.uom_id, p.periodo_dal, c.billing_account_id,
+                             c.utility_id, c.emittente_id, NULL::integer, NULL::uuid,
+                             c.listino_versione_id) r
+                     WHERE f.prezzo IS NULL
+                       AND f.kit IS NOT TRUE
+                       AND r.esito_codice IS NULL) rp ON true
+                  -- Il kit (quota fissa, ADESIONE): la somma dei componenti all'inizio del pezzo.
+                  LEFT JOIN LATERAL (
+                    SELECT CASE WHEN count(*) = 0 OR bool_or(k.prezzo_unitario IS NULL) THEN NULL
+                                ELSE sum(k.prezzo_unitario * k.coeff_qta_snapshot) END AS prezzo
+                      FROM vendite.fn_contratto_kit_componenti(c.id, f.articolo_id, p.periodo_dal) k
+                     WHERE f.prezzo IS NULL
+                       AND f.kit IS TRUE) kp ON true
+                ),
+                storni AS (
+                  -- Lo storno (G-5): un pezzo addebitato che va oltre valido_al si storna
+                  -- per la parte non goduta, con la stessa regola dei mesi e dei giorni
+                  -- (F-2): addebitato meno quanto si sarebbe addebitato con la fine nota.
+                  -- Una riga per ogni riga addebitata (anche i componenti di un kit), al
+                  -- prezzo addebitato.
+                  -- La fine si puo' spostare finche' il contratto e' ATTIVO (prima, dopo,
+                  -- o toglierla): lo storno e' la DIFFERENZA fra il dovuto con la fine di
+                  -- oggi e quanto e' gia' stornato per quel pezzo. Negativa se la fine
+                  -- arretra, positiva se avanza o sparisce (si riaddebita). Ogni rettifica
+                  -- ha la sua chiave: #STO la prima, #STO:<n> le successive.
+                  SELECT
+                    -- La riga dello storno e' quella del pezzo che storna: la stessa provenienza.
+                    c.id AS contratto_id, c.uid AS contratto_uid, ca.sorgente_riga AS riga_id,
+                    c.billing_account_id, c.utility_id, c.emittente_id,
+                    CASE WHEN d.quantita < 0 THEN greatest(c.valido_al + 1, ca.competenza_dal)
+                         ELSE ca.competenza_dal END AS competenza_dal,
+                    ca.competenza_al,
+                    c.fatturazione_immediata,
+                    -- La chiave: la base del pezzo col suffisso, prima dell'eventuale #CMP
+                    -- del componente.
+                    (ca.segment_base::text || '#STO'
+                      || CASE WHEN g.n = 0 THEN '' ELSE ':' || (g.n + 1)::text END
+                      || substr(ca.segment_key::text, length(ca.segment_base::text) + 1))::varchar AS segment_key,
+                    ca.articolo_id, ca.istanza_utility_id,
+                    CASE WHEN d.quantita < 0 THEN greatest(c.valido_al + 1, ca.competenza_dal)
+                         ELSE ca.competenza_dal END AS data_attivita,
+                    ca.uom_id,
+                    d.quantita, d.qta_operativa,
+                    ca.uom_operativa_id, ca.factor_to_base,
+                    v_mese_giro AS competenza_mese,
+                    ca.prezzo_snapshot AS prezzo,
+                    true AS prezzo_bloccato,
+                    ca.meta || jsonb_build_object('movimento', 'STORNO_CANONE',
+                                                  'storno_di_attivita_id', ca.id) AS meta,
+                    2 AS ramo,
+                    NULL::text AS scarto
+                  FROM fonti_k f
+                  JOIN ctr c ON c.id = f.contratto_id
+                  -- I pezzi addebitati della fonte: le righe del canone, non le rettifiche.
+                  JOIN vendite.commesse_attivita ca
+                    ON ca.sorgente_tipo_id = (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'CONTRATTO')
+                   AND ca.sorgente_id = c.id
+                   AND ca.segment_base::text ~>=~ (f.prefisso || ':M:')
+                   AND ca.segment_base::text ~<~ (f.prefisso || ':M;')
+                   AND ca.segment_key::text !~ '#STO'
+                   AND ca.tipo_movimento = 'NORMALE'
+                   AND ca.quantita > 0
+                   AND ca.stato_emissione <> 'ANNULLATA'
+                  -- Le rettifiche gia' scritte per il pezzo: n le conta tutte, anche le
+                  -- annullate (la chiave resta occupata nella commessa); la somma solo le
+                  -- vive.
+                  CROSS JOIN LATERAL (
+                    SELECT count(*) AS n,
+                           COALESCE(sum(s.quantita) FILTER (WHERE s.stato_emissione <> 'ANNULLATA'), 0) AS q,
+                           COALESCE(sum(s.qta_operativa) FILTER (WHERE s.stato_emissione <> 'ANNULLATA'), 0) AS qo
+                      FROM vendite.commesse_attivita s
+                     WHERE s.sorgente_tipo_id = ca.sorgente_tipo_id
+                       AND s.sorgente_id = ca.sorgente_id
+                       AND s.segment_base = ca.segment_base
+                       AND s.segment_key::text ~ '#STO'
+                       AND s.meta ->> 'storno_di_attivita_id' = ca.id::text) g
+                  -- La misura del pezzo com'era e come sarebbe con la fine di oggi.
+                  CROSS JOIN LATERAL (
+                    SELECT x.frazione, (x.periodo_al - x.periodo_dal + 1) AS giorni
+                      FROM vendite.fn_canone_periodi(c.valido_dal, NULL, f.periodicita,
+                             c.mese_partenza_canone, 'INIZIO_PERIODO', ca.competenza_dal,
+                             ca.competenza_dal) x
+                     WHERE x.periodo_dal = ca.competenza_dal
+                     LIMIT 1) prima
+                  LEFT JOIN LATERAL (
+                    SELECT x.frazione, (x.periodo_al - x.periodo_dal + 1) AS giorni
+                      FROM vendite.fn_canone_periodi(c.valido_dal, c.valido_al, f.periodicita,
+                             c.mese_partenza_canone, 'INIZIO_PERIODO', ca.competenza_dal,
+                             ca.competenza_dal) x
+                     WHERE x.periodo_dal = ca.competenza_dal
+                     LIMIT 1) dopo ON true
+                  CROSS JOIN LATERAL (
+                    SELECT CASE WHEN f.fonte = 'DURATA' AND f.calendario = 'GIORNO'
+                                  THEN COALESCE(dopo.giorni, 0)::numeric / prima.giorni
+                                ELSE COALESCE(dopo.frazione, 0) / NULLIF(prima.frazione, 0) END AS rapporto) r
+                  CROSS JOIN LATERAL (
+                    SELECT round(ca.quantita * r.rapporto, 6) - ca.quantita - g.q AS quantita,
+                           round(ca.qta_operativa * r.rapporto, 6) - ca.qta_operativa - g.qo AS qta_operativa) d
+                  -- Solo i pezzi che la fine taglia, o che hanno gia' una rettifica (la
+                  -- fine e' poi avanzata o sparita).
+                  WHERE r.rapporto IS NOT NULL
+                    AND ((c.valido_al IS NOT NULL AND ca.competenza_al > c.valido_al) OR g.n > 0)
+                ),
+                scartate AS (
+                  -- Le fonti che non si possono addebitare: una riga per fonte, senza pezzo.
+                  SELECT
+                    c.id AS contratto_id, c.uid AS contratto_uid, f.riga_id,
+                    c.billing_account_id, c.utility_id, c.emittente_id,
+                    NULL::date AS competenza_dal, NULL::date AS competenza_al,
+                    c.fatturazione_immediata,
+                    NULL::varchar AS segment_key,
+                    f.articolo_id, c.istanza_utility_id,
+                    NULL::date AS data_attivita,
+                    f.uom_id,
+                    NULL::numeric AS quantita, NULL::numeric AS qta_operativa,
+                    NULL::bigint AS uom_operativa_id, NULL::numeric AS factor_to_base,
+                    NULL::date AS competenza_mese,
+                    f.prezzo,
+                    (f.prezzo IS NOT NULL) AS prezzo_bloccato,
+                    jsonb_build_object(
+                      'contratto_numero', c.numero,
+                      'tipo_erogazione',  'CANONE',
+                      'origine_canone',   f.origine,
+                      'listino_riga_id',  f.listino_riga_id
+                    ) AS meta,
+                    3 AS ramo,
+                    f.scarto
+                  FROM fonti f
+                  JOIN ctr c ON c.id = f.contratto_id
+                  WHERE f.scarto IS NOT NULL
+                ),
+                tutte AS (
+                  SELECT * FROM una_tantum
+                  UNION ALL
+                  SELECT * FROM canoni
+                  UNION ALL
+                  SELECT * FROM storni
+                  UNION ALL
+                  SELECT * FROM scartate
+                )
+                SELECT
+                  t.contratto_id, t.contratto_uid, t.riga_id,
+                  t.billing_account_id, t.utility_id, t.emittente_id,
+                  t.competenza_dal, t.competenza_al,
+                  t.fatturazione_immediata,
+                  t.segment_key,
+                  t.articolo_id, t.istanza_utility_id, t.data_attivita, t.uom_id,
+                  t.quantita, t.qta_operativa, t.uom_operativa_id, t.factor_to_base,
+                  t.competenza_mese,
+                  t.prezzo, t.prezzo_bloccato,
+                  t.meta,
+                  t.ramo,
+                  t.scarto
+                FROM tutte t
+                -- Le fonti scartate escono sempre. Per i pezzi: una quantita' a zero non e'
+                -- un addebito; ed esclusione "gia' inviato": eleggibile solo se MAI
+                -- instradata (LIBERA), classificatore condiviso coi rami reason della
+                -- capability: vede anche i componenti #CMP e non dipende da
+                -- stato_emissione (ALLOCATA basta).
+                WHERE t.ramo = 3
+                   OR (t.quantita <> 0
+                       AND script.fn_get_stato_push_segment(t.segment_key) = 'LIBERA');
+              END
+              $function$;
+              
+              COMMENT ON FUNCTION vendite.fn_contratti_addebiti_maturati(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, vendite.contratti.id%TYPE) IS
+                'Gli addebiti maturati dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, con gli scartati e il motivo (scarto). Sede unica della regola del push dei contratti: la leggono vendite.fn_list_contratti_da_pushare (scarto NULL) e vendite.vw_dash_fatturazione_contratti (tutte e due). Rami: 0 una tantum, 1 canoni a periodi (vendite.fn_canone_periodi), 2 storni come differenza dal gia'' stornato, 3 fonti scartate (una riga per fonte, senza pezzo). Le fonti del canone sono le righe del contratto (ADESIONE, AGGIUNTA, l''OVERRIDE di una quota fissa) e le quote fisse del listino senza una riga del contratto sullo stesso articolo, kit compresi (quota fissa da vendite.listini_kit, prezzo non negoziato = somma dei componenti da vendite.fn_contratto_kit_componenti; periodicita'' da vendite.fn_listino_periodicita_articolo). Scarto: SENZA_PERIODICITA, DURATA_SENZA_CALENDARIO, QUOTA_FISSA_SENZA_CANONE (ramo 3), SENZA_PREZZO (un pezzo o la una tantum senza prezzo alla data). Le righe gia'' inviate (script.fn_get_stato_push_segment <> LIBERA) e le quantita'' a zero non escono. La riga di commessa gia'' addebitata si riconosce per tipo CONTRATTO, id del contratto (sorgente_id) e base della chiave; uno storno porta in riga_id la riga del contratto del pezzo che storna (NULL per le quote fisse del listino, che non hanno una riga del contratto).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: l'uid testuale per il contratto non c'e' piu'.
+              SELECT 1;

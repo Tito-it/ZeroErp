@@ -33,7 +33,7 @@
 --   5  AF: quantita=1 e prezzo_unitario=importo
 --   6  AF: articolo = articolo-onere passato
 --   7  AF: approvato=true + link commessa_attivita_id
---   8  AF: sorgente COMMESSA (pull idempotente)
+--   8  AF: una sola per la riga di commessa dell'onere (pull idempotente)
 --   9  lotto creato
 -- ------------------------------------------------------------
 
@@ -96,8 +96,8 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
-  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_com)::text,
+  p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 
 -- ===== onere (penale 150,00) =====
 CREATE TEMP TABLE tmp_onere AS
@@ -148,10 +148,17 @@ SELECT ok(
   (SELECT approvato IS TRUE AND commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_onere) FROM tmp_af),
   '7) AF: approvato=true + link commessa_attivita_id');
 
+-- rev 2026-11-07 (lotto C, giro C.1 di brief-db-sorgente-documento-e-riga): l'AF
+--   non porta piu' una copia della provenienza (sorgente COMMESSA): la sua
+--   provenienza e' la riga di commessa, e il pull la ritrova per
+--   commessa_attivita_id. Un secondo pull non crea una seconda AF per l'onere.
+SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
+  p_commessa_id => (SELECT commessa_id FROM tmp_com));
 SELECT is(
-  (SELECT s.codice_interno FROM config.sorgenti s WHERE s.id = (SELECT sorgente_tipo_id FROM tmp_af)),
-  'COMMESSA'::varchar,
-  '8) AF: sorgente COMMESSA (pull idempotente)');
+  (SELECT count(*)::int FROM vendite.attivita_fatturabili af
+    WHERE af.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_onere)),
+  1,
+  '8) AF: una sola per la riga di commessa dell''onere (pull idempotente)');
 
 -- ===== lotto =====
 CREATE TEMP TABLE tmp_lotto AS

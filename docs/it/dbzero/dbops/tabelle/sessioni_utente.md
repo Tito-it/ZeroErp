@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Audit sessioni JWT: traccia login, refresh, logout, scadenza e revoca token.
+> Audit delle sessioni JWT e del secondo fattore: traccia login, refresh, logout e revoca dei token, e la disattivazione del secondo fattore. La scadenza di un token non e' un evento: si legge dalla scadenza del token.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

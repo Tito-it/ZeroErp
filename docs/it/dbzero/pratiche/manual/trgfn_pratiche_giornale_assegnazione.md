@@ -1,49 +1,32 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_pratiche_giornale_assegnazione`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_giornale_assegnazione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.pratiche](pratiche.md)
->
-Overview:
->
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica riassegnata
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove si scrive l'evento
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **ASSEGNAZIONE_CAMBIATA** nel giornale. Si attiva **AFTER UPDATE OF risorsa_umana_id, unita_organizzativa_id** su `pratiche.pratiche`, solo quando almeno uno dei due valori cambia realmente.
+
+La trigger function `pratiche.trgfn_pratiche_giornale_assegnazione` scrive nel giornale l'azione
+`ASSEGNAZIONE_CAMBIATA` quando cambia l'assegnatario di una pratica: la risorsa umana o l'unità
+organizzativa.
 
 ---
 
-### Firma
+### La regola
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione()
-RETURNS trigger
-LANGUAGE plpgsql
-```
-
----
-
-### Logica
-
-Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `NEW.id` |
-| `flusso_id` | `NULL` |
-| `azione` | `'ASSEGNAZIONE_CAMBIATA'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('risorsa_umana_precedente_id', 'risorsa_umana_nuova_id', 'unita_organizzativa_precedente_id', 'unita_organizzativa_nuova_id')` |
-| `tx_id` | `NEW.tx_id` |
+* Scatta dopo l'aggiornamento della pratica, e solo se almeno una delle due colonne di assegnazione
+  cambia davvero valore.
+* La riga del giornale è della pratica (senza flusso), con origine `SISTEMA`; il dettaglio porta la
+  risorsa umana e l'unità organizzativa, prima e dopo, anche quella delle due che non è cambiata.
+* La transazione della riga è quella della pratica; se manca, quella della sessione.
 
 ---
 
-### Trigger associato
-
-| Nome | Fase | Evento | WHEN |
-|------|------|--------|------|
-| `trg_pratiche_z90_giornale_assegnazione_upd` | AFTER | UPDATE OF risorsa_umana_id, unita_organizzativa_id | `OLD.risorsa_umana_id IS DISTINCT FROM NEW.risorsa_umana_id OR OLD.unita_organizzativa_id IS DISTINCT FROM NEW.unita_organizzativa_id` |
+{% include-markdown "signature-core.md" %}

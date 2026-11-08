@@ -35,7 +35,7 @@ La tabella `config.stati_pratiche` definisce i possibili **stati del ciclo di vi
 ### Convenzioni
 
 * Segue il pattern config standard: `codice` UNIQUE, `codice_interno` UNIQUE + locked, `attivo`, `meta`.
-* I trigger standard (audit, lock `codice_interno`, protezione `attivo`) sono applicati automaticamente da `dbops.fn_run_automations()`.
+* I trigger standard (audit, lock `codice_interno`, protezione `attivo`) sono applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 
 ---
 

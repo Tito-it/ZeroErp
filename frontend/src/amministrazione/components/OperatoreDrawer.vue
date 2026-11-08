@@ -13,8 +13,7 @@ import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito, getCredenzialePerEmail } from '../api/amministrazione'
 import { listEmittentiFiscali } from '../../core/apiCore'
-import { TIPO_RUOLO_CODICE } from '../constants'
-import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp, parseIsoDate, toDateStringOrNull } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
@@ -820,7 +819,7 @@ function onInvita() {
     <SoggettoResolver
       v-if="!isEdit"
       :visible="resolverVisible"
-      :tipo-ruolo-codice="TIPO_RUOLO_CODICE.RIS_UMANA"
+      :tipo-ruolo-codice="TIPO_RUOLO.RISORSA_UMANA"
       @update:visible="v => resolverVisible = v"
       @soggetto-selezionato="onSoggettoSelezionato"
       @soggetto-creato="onSoggettoCreato"

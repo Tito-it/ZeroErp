@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ONERE NON HA RESIDUO DA EVADERE — vendite.fn_ordine_ha_residuo_evasione
+#   Brief: brief-db-addebito-trasporto-ordine §8.1 «Evasione e stato
+#   dell'ordine» (decisione 3 di Tid, 2026-11-03: l'onere non si evade).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Con gli articoli-onere sulle righe d'ordine (20261103-17) una riga-onere
+#   non spedita avrebbe «residuo» per sempre: l'ordine non arriverebbe mai a
+#   EVASO, e fn_genera_ddt_da_ordine / i verbi del reso leggerebbero un residuo
+#   che nessuna bolla deve spedire. L'onere non si evade: non ha residuo.
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   · la riga conta solo se e' MERCE: script.fn_natura_e_merce(natura
+#     CONGELATA della riga) (20261103-16). Su ordine «non merce» = onere,
+#     perche' l'ammissione (-17) lascia entrare solo merce e articoli-onere;
+#   · firma ancorata con %TYPE (era bigint nudo nella doc; resta bigint).
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   La formula del residuo (quantita - Σ qta_evasa + addendo reso), il guard
+#   sul parametro, volatilita', INVOKER, linguaggio. Per un ordine di sola
+#   merce la risposta e' identica.
+#   Corpo dal vivo (doc auto-gen), cambiato solo nel filtro; dichiarazione
+#   dall'ultimo YAML (20260713-29).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261103-22-update-fn-ordine-ha-residuo-evasione-solo-merce-mctit.yaml
+
+  - changeSet:
+      id: 20261103-22-update-fn-ordine-ha-residuo-evasione-solo-merce
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ordine_ha_residuo_evasione: il residuo si cerca solo sulle righe MERCE
+        (script.fn_natura_e_merce sulla natura congelata): la riga-onere non si evade e non tiene
+        aperto l'ordine. brief-db-addebito-trasporto-ordine §8.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_ha_residuo_evasione(
+                  p_ordine_id vendite.ordini.id%TYPE)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: TRUE se l'ordine ha ancora quantita da evadere su almeno
+              --   una riga MERCE. RESO-AWARE:
+              --     residuo = quantita - Sigma qta_evasa
+              --               + fn_ordine_riga_qta_riconsegna(riga)
+              --   L'addendo reso (helper unico 20260713-28) e' 0 se non ci sono
+              --   resi per ri-consegna confermati. Gate per la proiezione stato
+              --   ordine in fn_genera_ddt_da_ordine / fn_conferma_reso.
+              -- rev 2026-11-03 (20261103-22, brief-db-addebito-trasporto-ordine
+              --   §8.1): la riga-onere non ha residuo (l'onere non si evade).
+              --   Il predicato e' script.fn_natura_e_merce sulla natura
+              --   CONGELATA della riga.
+              DECLARE
+                  -- boolean nudo: e' la risposta, nessuna colonna ne e' il riflesso.
+                  v_ha_residuo boolean;
+              BEGIN
+                  IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_ordine_ha_residuo_evasione', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_ordine_id', p_ordine_id),
+                          NULL::uuid, 'p_ordine_id deve essere > 0');
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.ordini_righe orr
+                       WHERE orr.ordine_id = p_ordine_id
+                         AND orr.attivo IS TRUE
+                         -- ⭐ L'onere non si evade: conta solo la merce.
+                         AND script.fn_natura_e_merce(orr.natura_vendita_id)
+                         AND orr.quantita
+                             - COALESCE((
+                                 SELECT SUM(f.qta_evasa)
+                                   FROM vendite.ordini_righe_fulfillment f
+                                  WHERE f.ordine_riga_id = orr.id
+                               ), 0)
+                             + vendite.fn_ordine_riga_qta_riconsegna(orr.id)
+                             > 0
+                  ) INTO v_ha_residuo;
+
+                  RETURN v_ha_residuo;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ordine_ha_residuo_evasione(vendite.ordini.id%TYPE)
+              IS 'TRUE se l''ordine ha residuo di evasione su almeno una riga MERCE (quantita - SUM qta_evasa + addendo reso via fn_ordine_riga_qta_riconsegna, unita base). Reso-aware. Gate stato ordine per fn_genera_ddt_da_ordine e fn_conferma_reso (via vendite.fn_ordine_proietta_stato_evasione). rev 2026-07-13. rev 2026-11-03 (20261103-22, brief-db-addebito-trasporto-ordine §8.1): la riga-onere non ha residuo — l''onere non si evade e non tiene aperto l''ordine; il predicato e'' script.fn_natura_e_merce sulla natura congelata della riga (su ordine «non merce» = onere, lo garantisce l''ammissione).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente (residuo su ogni riga attiva) e' nella doc
+              -- auto-gen alla revisione prima di questa. Non si riscrive un corpo stantio.
+              SELECT 1;

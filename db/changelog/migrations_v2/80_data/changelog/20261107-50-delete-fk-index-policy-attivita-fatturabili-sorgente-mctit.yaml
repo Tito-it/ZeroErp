@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DEGLI INDICI FK PERDE LE DUE FK RITIRATE DI attivita_fatturabili
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1.
+#
+#   Le due FK verso config.sorgenti sono cadute con le colonne: le loro righe di
+#   dbops.fk_index_policy restano senza oggetto. Forma del 20261106-99.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261107-50-delete-fk-index-policy-attivita-fatturabili-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261107-50-delete-fk-index-policy-attivita-fatturabili-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.fk_index_policy le righe delle due FK di attivita_fatturabili cadute con le
+        colonne. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE (schema_name, table_name, constraint_name) IN (
+                     ('vendite', 'attivita_fatturabili', 'fk_attivita_fatturabili_sorgente_tipo'),
+                     ('vendite', 'attivita_fatturabili', 'fk_attivita_fatturabili_sorgente_origine_tipo'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le righe le rimette fn_populate_fk_index_policy() se le FK tornano. Nessun INSERT qui.
+              SELECT 1;

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_punti_primo_motivo.md" %}
 # 🔍 View `vw_punti_primo_motivo`
 
 > 📝 **Descrizione**
@@ -8,7 +9,7 @@
 > ⭐ PESSIMISTA DI PROPOSITO: i codici sono l'UNIONE di quelli nominati da TUTTE le check citate nel corpo, perche' la vista legge il testo e non sa quale ramo sia stato preso. Un presidio che scegliesse il ramo ottimista assolverebbe il caso che deve segnalare; un falso positivo qui costa una riga in piu' nel VARIADIC, non un rifiuto sbagliato.
 > ⚠️ RAMO CIECO — un punto con check_funzione NULL non e' «a posto»: e' un sito che la lettura non sa legare alla sua check, e va visto. E' il test 3 di test-rubinetto-primo-motivo-v1.sql.
 > ⛔ NON serve a dbops.vw_codici_errore_forme_condizione: quella classifica la forma della GUARDIA, e sopra questi punti la guardia e' sempre «IF jsonb_array_length(v_motivi) &gt; 0», che non dice niente. Li' si classifica dove il codice e' NOMINATO (changeSet 20260908-35).
-> ⚠️ E' un'euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (V-0); risalita condivisa: brief-be-presidio-ui-action-e-canale-campi §4.
+> ⚠️ E' un'euristica sul corpo senza commenti (dbops.fn_corpo_funzione): riconosce la forma scritta, non il significato; una chiamata rimasta in un commento non e' un punto. Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (V-0); risalita condivisa: brief-be-presidio-ui-action-e-canale-campi §4.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -26,7 +27,7 @@ WITH punti AS (
              JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
           WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
                    FROM pg_language
-                  WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''::text) AND (NOT ((n.nspname = 'script'::name) AND (p.proname = 'fn_raise_primo_motivo_se_presente'::name))))
+                  WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''::text) AND ((dbops.fn_corpo_funzione(p.oid) COLLATE "C") ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''::text) AND (NOT ((n.nspname = 'script'::name) AND (p.proname = 'fn_raise_primo_motivo_se_presente'::name))))
         )
  SELECT pt.sch,
     pt.fn,

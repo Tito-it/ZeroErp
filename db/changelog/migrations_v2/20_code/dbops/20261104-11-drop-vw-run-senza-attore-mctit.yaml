@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro del presidio dbops.vw_run_senza_attore.
+#   Brief: brief-db-revisione-dbops, D42 (classe C). Decisione di Tid, 2026-11-04.
+#
+# La vista mostrava i job la cui ULTIMA corsa in maintenance.job_run_log non
+# aveva processo_codice. Dal 2026-09-05 il CHECK chk_job_run_log_processo_dichiarato
+# (90_end/20260905-16) rifiuta una corsa nuova senza processo: il debito che
+# la vista misurava non puo' piu' nascere, e in vista restavano solo job la cui
+# ultima corsa e' anteriore al vincolo, per sempre. Un presidio che non puo'
+# ne' accendersi ne' svuotarsi non presidia niente.
+#   ⇒ La regola resta, ed e' il CHECK.
+#
+# ── Censimento dei lettori (2026-11-04) ────────────────────────────────────
+#   - nessuna vista ne' funzione la legge (pg_depend, prosrc, viewdef);
+#   - 90_end/20260904-20 (GRANT all'app): gia' protetto da to_regclass, regge
+#     l'assenza su un database da zero;
+#   - il registro dei presidi (dbops.presidi, dbops.presidi_testi): le righe si
+#     tolgono dai due CSV e con il DELETE di 80_data/changelog/20261104-17, perche'
+#     i mirror aggiungono e aggiornano ma non cancellano, e il pgTAP del catalogo
+#     (test 3) pretende una vista viva per ogni riga;
+#   - db/pgtap/maintenance/test-job-run-attore.sql: il test 11 che interrogava la
+#     vista esce nello stesso giro;
+#   - commenti (85_pgagent/20260905-08, backend/apps/core/tests/services/test_job_run.py,
+#     db/pgtap/dbops/test-processi-jobname-wrapper.sql): solo testo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-11-drop-vw-run-senza-attore-mctit.yaml
+
+  - changeSet:
+      id: 20261104-11-drop-vw-run-senza-attore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro del presidio dbops.vw_run_senza_attore: il CHECK
+        chk_job_run_log_processo_dichiarato impedisce da solo la corsa senza processo, e la
+        vista non poteva piu' ne' accendersi ne' svuotarsi.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_run_senza_attore;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo che la ricrea dalla definizione di prima.
+              SELECT 1;

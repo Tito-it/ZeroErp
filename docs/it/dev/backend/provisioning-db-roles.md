@@ -1,6 +1,6 @@
 # Provisioning ruoli DB (runtime, migratore, RLS)
 
-> **Ultimo aggiornamento**: 15 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: chi prepara un database ZeroErp (sviluppo, CI, produzione) e
 > chi configura il backend che ci si collega.
@@ -133,7 +133,7 @@ esistono canali di sistema che scavalcano la RLS. Il modello sta nella guida
 
 ⛔ Un processo che ha bisogno di vedere i dati di più aziende **non** riceve un ruolo
 `BYPASSRLS`: riceve un utente tecnico per ogni azienda. Il controllo
-[vw_processi_che_bypassano](/dbzero/dbops/manual/vw_processi_che_bypassano) legge i
+[vw_processi_che_bypassano](/dbzero/dbops/views/vw_processi_che_bypassano) legge i
 ruoli in diretta e deve restare vuoto.
 
 Per togliere dal server un ruolo che non serve più c'è

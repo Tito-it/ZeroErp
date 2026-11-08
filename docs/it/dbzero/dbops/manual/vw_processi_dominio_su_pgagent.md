@@ -1,74 +1,96 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_processi_dominio_su_pgagent`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_dominio_su_pgagent`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[dbops.processi](/dbzero/dbops/manual/processi)
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — classe e canale del processo
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo in cui la vista è un presidio
 >
-Approfondimenti funzioni:
+> Approfondimento funzioni:
 >
-[dbops.fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze)
+> * [dbops.fn_accoda_chiusura_scadenze](/dbzero/dbops/funzioni/fn_accoda_chiusura_scadenze) — un job pgAgent che sveglia un processo di dominio accodandolo
+> * [dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro) — la porta della coda, dove il lavoro vero resta tracciato
+>
+> Guide:
+>
+> * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — chi suona la sveglia non è chi fa il lavoro
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 05-09-2026)
 
-Rende **verificabile** una regola presa il 5 settembre 2026:
-
-> ⛔ Nessun processo che tocca i documenti di un'azienda **esegue** dentro
-> pgAgent.
-
-Deve restare vuota. Al momento della scrittura lo è.
+Presidio: i processi di classe `DOMINIO` vivi (ritiro non raggiunto, `script.fn_e_obsoleto`), che
+**eseguono** dentro pgAgent.
+Deve restare vuota; ogni riga dice il rimedio.
 
 ---
 
-### Perché quella regola
+### ⛔ Perché un processo di dominio non esegue dentro pgAgent
 
 Dentro pgAgent un processo:
 
-* **non ha un'identità** — quindi nessun perimetro: tocca i dati di tutte le
-  aziende insieme;
-* **non ha un posto dove raccontare un fallimento** — la traccia finisce in una
-  tabella di sistema che nessuno guarda.
+* **non ha un'identità**, quindi nessun perimetro emittente: tocca i dati di tutte le aziende
+  insieme;
+* **non ha dove raccontare un fallimento**: la traccia finisce nel giornale di pgAgent, che
+  l'applicazione non vede e che nessuno guarda.
 
-⭐ Non è una preoccupazione teorica: un lavoro settimanale è morto ogni settimana
-per **sei mesi** senza che nessuno lo sapesse.
+⭐ L'argomento è sperimentale, non teorico: un lavoro settimanale è morto ogni settimana per sei mesi
+senza che nessuno lo sapesse.
 
 ---
 
-### ⭐ Che un job pgAgent SVEGLI un processo resta lecito
-
-E non è una scappatoia.
+### ⭐ Svegliare da pgAgent resta lecito
 
 | | |
 | --- | --- |
 | ⛔ **eseguire** dentro pgAgent | tocca i documenti senza identità e senza perimetro |
-| ✅ **svegliare** da pgAgent | mette in coda un lavoro e non tocca niente |
+| ✅ **svegliare** da pgAgent | mette in coda un lavoro e non tocca nessun documento |
 
-Un job che si limita ad accodare, se muore, **non ha fatto danni** — e il lavoro
-vero resta tracciato nella coda, che sa dire se è fallito.
+Un job che si limita ad accodare, se muore, non ha fatto danni, e il lavoro vero resta tracciato
+nella coda, che sa dire se è fallito. Il registro descrive **il processo**, non chi suona la
+sveglia: per un processo così il canale è `CODA_AUTOMATICA`, ed è il rimedio che il `motivo` di ogni
+riga indica.
 
-⇒ Per questo il registro descrive **il processo**, non chi suona la sveglia: il
-canale diventa `CODA_AUTOMATICA`.
-
----
-
-### ⛔ Perché è una vista e non un vincolo
-
-Un vincolo sarebbe più stretto, e proprio per questo sbagliato:
-
-1. **quando è nata**, la riga da spostare c'era ancora: un vincolo avrebbe fatto
-   fallire l'aggiornamento del database **prima** di poterla spostare;
-2. **anche dopo**, il registro dei processi è **catalogo** e si cambia da un
-   file di configurazione. Un vincolo trasformerebbe un errore di configurazione
-   in un aggiornamento rotto — cioè in un problema di tutti, invece che di
-   quella riga.
+⚠️ Il presidio non è una tassa su pgAgent: la manutenzione del database su pgAgent è al suo posto, e
+non compare.
 
 ---
 
-### Verifica
+### ⛔ Perché una vista e non un vincolo
 
-`db/pgtap/dbops/test-vw-processi-dominio-su-pgagent.sql` — verifica che sia
-vuota **e** che si accenda su un caso costruito: una vista vuota è
-indistinguibile da un controllo spento.
+Il registro dei processi è **catalogo**, e si cambia dal seed. Un vincolo trasformerebbe un errore
+di configurazione in un aggiornamento del database rotto, cioè in un problema di tutti invece che
+di quella riga. E quando la regola è nata, il processo da spostare c'era ancora: un vincolo avrebbe
+fermato la migrazione prima di poterlo spostare.
+
+---
+
+### Chi la guarda
+
+Nel catalogo dei presidi è un presidio che deve restare vuoto, guardato ogni settimana, che tocca
+allo sviluppo: da quando è vuota, una riga è una regressione. La vista gira coi privilegi del
+proprietario.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-vw-processi-dominio-su-pgagent.sql` — è vuota, e per il motivo giusto (la
+  chiusura per scadenze è passata a `CODA_AUTOMATICA`, non è stata spenta); un processo di dominio
+  su `PGAGENT`, costruito, compare col rimedio nel motivo; un processo di manutenzione su `PGAGENT`
+  non compare.
+
+---
+
+### Note di migrazione
+
+* 2026-09-05 — nasce con la regola «nessun processo di dominio esegue dentro pgAgent»
+  (`brief-db-processi-automatici-identita-e-perimetro`, §12.12); lo stesso giorno
+  `chiusura_scadenze_daily` passa a `CODA_AUTOMATICA` e la vista diventa vuota.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -275,7 +275,7 @@ function chiudiDopoSalvataggio() {
           <div class="form-grid-2col">
             <div class="form-field">
               <label>{{ t('vendite.listini.field_codice') }} *</label>
-              <InputText v-model="form.codice" :disabled="isEdit"
+              <InputText v-model="form.codice" class="app-codice-input" :disabled="isEdit"
                 :invalid="campiErrati.includes('codice')"
               />
             </div>

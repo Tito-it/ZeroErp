@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automation_rules_tbl perde existence_strategy (D17 con N1).
+#   Brief: brief-db-revisione-dbops, giro 10b (§26).
+#
+#   Un trigger del framework si riconosce dalla funzione (e, per ATTIVO, dagli
+#   argomenti): la strategia per nome, per funzione o tutte e due non la legge piu'
+#   nessun runner (20_code/dbops/20261109-68 ... -72). Il DROP sta in 80_data e non in
+#   00_schema: su un database da zero 80_data/changelog/20260110-13 scrive ancora la
+#   colonna, e gira dopo 00_schema. Il CSV e il mirror (20250918-02, runOnChange + ANY)
+#   sono ripuliti sul posto nello stesso giro. Rollback: la colonna torna col suo
+#   default, e i valori del seed di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261109-74-alter-automation-rules-tbl-drop-existence-strategy-mctit.yaml
+
+  - changeSet:
+      id: 20261109-74-alter-automation-rules-tbl-drop-existence-strategy
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        automation_rules_tbl: via existence_strategy, il trigger si riconosce dalla funzione. Brief: brief-db-revisione-dbops, giro 10b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'automation_rules_tbl'
+                 AND column_name = 'existence_strategy'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automation_rules_tbl DROP COLUMN existence_strategy;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automation_rules_tbl
+                  ADD COLUMN existence_strategy text NOT NULL DEFAULT 'BY_NAME';
+              UPDATE dbops.automation_rules_tbl
+                 SET existence_strategy = CASE
+                       WHEN rule_type IN ('TX_ID', 'AUDIT_UPDATE', 'ATTIVO', 'STORICO_PROVISION', 'STORICO',
+                                          'LOCK_COLUMNS', 'DATE_VALIDITA') THEN 'BOTH'
+                       WHEN rule_type = 'CODICE_MAIUSCOLO' THEN 'BY_FUNCTION'
+                       ELSE 'BY_NAME' END;

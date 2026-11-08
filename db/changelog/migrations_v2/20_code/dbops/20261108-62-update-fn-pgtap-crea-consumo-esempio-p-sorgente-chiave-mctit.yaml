@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER DEL CONSUMO MOSTRA LA CHIAVE COL NOME DELLA MADRE: dbops.fn_pgtap_crea_consumo
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 «Il giro K.2» (decisione e via di Tid del 2026-11-07).
+#
+#   L'esempio d'uso nel corpo mostra la chiamata alla madre
+#   vendite.fn_upsert_commessa_attivita con p_sorgente_uid =>: dal giro K.1
+#   (20261108-23) il parametro si chiama p_sorgente_chiave, e chi copia l'esempio
+#   riceve «la funzione non esiste». Cambia solo quella riga del commento.
+#   CREATE OR REPLACE, stessa firma: dichiarazione e corpo da 20261107-99, uguale al vivo
+#   (dbdev e scratch, 2026-11-07). Nessun cambio di comportamento.
+#   Rollback: il commento di prima torna rieseguendo il corpo di 20261107-99.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-62-update-fn-pgtap-crea-consumo-esempio-p-sorgente-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261108-62-update-fn-pgtap-crea-consumo-esempio-p-sorgente-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_consumo: l'esempio d'uso nomina p_sorgente_chiave. brief-db-sorgente-documento-e-riga §7.2 «Il giro K.2» (via di Tid del 2026-11-07).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_consumo(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                  p_competenza_mese    vendite.attivita_consumi.competenza_mese%TYPE DEFAULT NULL,
+                  p_meta               vendite.attivita_consumi.meta%TYPE DEFAULT NULL)
+               RETURNS TABLE(consumo_id       vendite.attivita_consumi.id%TYPE,
+                             consumo_uid      vendite.attivita_consumi.uid%TYPE,
+                             sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                             segment_key      vendite.commesse_attivita.segment_key%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un documento d'origine vero per una riga
+              --   di commessa, il piu' leggero che il modello ammette: un consumo
+              --   (vendite.attivita_consumi), che non ha righe. Lo scrive il test come
+              --   lo scriverebbe il calcolo dei consumi: billing account e mese (di
+              --   default quello corrente). Restituisce anche il tipo della provenienza
+              --   (ATTIVITA_CONSUMI) e la chiave del push che il push dei consumi
+              --   comporrebbe (script.fn_segment_key): un test che scrive piu' righe
+              --   dallo stesso consumo la estende col suffisso ':<etichetta>'.
+              -- Uso:
+              --   CREATE TEMP TABLE _src AS SELECT * FROM dbops.fn_pgtap_crea_consumo(<ba>);
+              --   ... p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM _src),
+              --       p_sorgente_chiave  => (SELECT consumo_id::text FROM _src),
+              --       p_segment_key      => (SELECT segment_key FROM _src) || ':A' ...
+              -- ⚠️ Sotto la RLS il billing account deve stare nel perimetro di chi
+              --   agisce (lo stesso della commessa della fixture).
+              -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_id   vendite.attivita_consumi.id%TYPE;
+                  v_uid  vendite.attivita_consumi.uid%TYPE;
+                  v_tipo vendite.commesse_attivita.sorgente_tipo_id%TYPE;
+              BEGIN
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_consumo: serve il billing account (> 0), ricevuto %',
+                          p_billing_account_id;
+                  END IF;
+
+                  SELECT s.id INTO v_tipo
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'ATTIVITA_CONSUMI' AND s.attivo;
+
+                  INSERT INTO vendite.attivita_consumi (billing_account_id, competenza_mese, meta)
+                  VALUES (p_billing_account_id,
+                          date_trunc('month', COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa())))::date,
+                          jsonb_build_object('test_scope', 'pgtap_consumo') || COALESCE(p_meta, '{}'::jsonb))
+                  RETURNING id, uid INTO v_id, v_uid;
+
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_id, v_uid, v_tipo, script.fn_segment_key('ATTIVITA_CONSUMI', v_uid::text);
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il commento di prima torna rieseguendo il corpo di 20261107-99.
+              SELECT 1;

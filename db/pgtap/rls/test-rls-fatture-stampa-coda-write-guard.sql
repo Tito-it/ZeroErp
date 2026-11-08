@@ -28,7 +28,7 @@
 --    l'operatore riceverebbe «new row violates row-level security policy» —
 --    vero e inservibile. Il test 5 chiede il messaggio, non solo il rifiuto;
 --  - ⚠️ fissare col test 3 l'ASSUNTO su cui il modo `fattura` regge. La tabella
---    porta `sorgente_tipo_id` e `sorgente_uid`, cioe' la forma delle sorgenti
+--    porta `sorgente_tipo_id` e `sorgente_id`, cioe' la forma delle sorgenti
 --    polimorfe: quello che la rende non-polimorfa e' una FK dura. Se cadesse,
 --    il guard punterebbe alla tabella sbagliata e la policy pure — e nessuno
 --    dei due lo direbbe da solo.
@@ -117,7 +117,7 @@ SELECT is(
 );
 
 -- ⭐ QUESTO TEST FISSA UN ASSUNTO, ed e' il motivo per cui esiste.
---   `sorgente_tipo_id` + `sorgente_uid` sono la forma delle sorgenti polimorfe,
+--   `sorgente_tipo_id` + `sorgente_id` sono la forma delle sorgenti polimorfe,
 --   dove il portante puo' essere l'uid e puntare `sorgente_id` a UNA tabella
 --   sarebbe sbagliato. Qui e' lecito solo perche' una FK dura lo fissa alle
 --   fatture. ⛔ Se cadesse, guard e policy assumerebbero entrambi una cosa
@@ -137,10 +137,10 @@ SELECT isnt_empty(
 -- il test 5 senza essere corretto.
 SELECT lives_ok(
     format($$INSERT INTO vendite.fatture_stampa_coda
-                 (sorgente_tipo_id, sorgente_id, sorgente_uid, stato)
+                 (sorgente_tipo_id, sorgente_id, stato)
              SELECT (SELECT id FROM config.sorgenti
                       WHERE codice_interno = 'FATTURA'),
-                    %s, 'pgtap-guard-mia', 'PENDING'$$,
+                    %s, 'PENDING'$$,
            current_setting('pgtap.fattura_mia')),
     '4. accodare la stampa di una PROPRIA fattura passa'
 );
@@ -161,10 +161,10 @@ DECLARE
 BEGIN
     BEGIN
         INSERT INTO vendite.fatture_stampa_coda
-            (sorgente_tipo_id, sorgente_id, sorgente_uid, stato)
+            (sorgente_tipo_id, sorgente_id, stato)
         SELECT (SELECT id FROM config.sorgenti WHERE codice_interno = 'FATTURA'),
                current_setting('pgtap.fattura_altrui')::bigint,
-               'pgtap-guard-altrui', 'PENDING';
+               'PENDING';
     EXCEPTION WHEN OTHERS THEN
         v_esito := SQLSTATE || '|' ||
                    CASE WHEN SQLERRM ILIKE '%scope emittente fiscale%'

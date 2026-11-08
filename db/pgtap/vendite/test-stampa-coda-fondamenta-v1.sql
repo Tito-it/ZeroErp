@@ -11,7 +11,8 @@
 --   1)  esiste tabella vendite.fatture_stampa_coda
 --   2)  colonna stato
 --   3)  colonna sorgente_id
---   4)  colonna sorgente_uid
+--   4)  NESSUNA colonna sorgente_uid: era il doppione testuale di sorgente_id
+--        (ritirata da 20261108-18, brief-db-sorgente-documento-e-riga lotto D)
 --   5)  colonna tentativi
 --   6)  colonna ultimo_errore
 --   7)  colonna documento_id
@@ -56,8 +57,8 @@ SELECT has_column('vendite', 'fatture_stampa_coda', 'stato',
     'coda: colonna stato');
 SELECT has_column('vendite', 'fatture_stampa_coda', 'sorgente_id',
     'coda: colonna sorgente_id');
-SELECT has_column('vendite', 'fatture_stampa_coda', 'sorgente_uid',
-    'coda: colonna sorgente_uid');
+SELECT hasnt_column('vendite', 'fatture_stampa_coda', 'sorgente_uid',
+    'coda: nessuna colonna sorgente_uid, la fattura sta in sorgente_id');
 SELECT has_column('vendite', 'fatture_stampa_coda', 'tentativi',
     'coda: colonna tentativi');
 SELECT has_column('vendite', 'fatture_stampa_coda', 'ultimo_errore',

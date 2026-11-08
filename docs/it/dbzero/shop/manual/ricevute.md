@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `shop.ricevute`
 
+> **Ultimo aggiornamento**: 7 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > Architettura di riferimento:
@@ -109,9 +111,15 @@ riferimento pagamento, dati di spedizione, ecc.
   `20260421-02`. Fail-closed se il BA non esiste (protezione ulteriore
   oltre la FK).
 
-I trigger framework (audit `data_insert`/`user_insert`/`data_update`/
-`user_update`, `tx_id`, storicizzazione) sono applicati
-dall'automation post-creazione tabella — non elencati qui.
+I trigger del framework (audit di `data_update`/`user_update`, `tx_id`,
+storicizzazione) li monta la convergenza delle automazioni: lo schema `shop`
+è nello scope di `dbops.automation_scope` dal 7 novembre 2026. Prima non lo
+era, e `storicizza` e `tx_id` erano colonne che nessuno eseguiva: nessuna
+versione in `storico.ricevute`, `tx_id` sempre vuoto.
+
+* La storia si congela con l'emittente del **billing account** della
+  ricevuta (modo `BA` in `dbops.storico_scope_policy`): il soggetto-ruolo
+  della riga è il cliente, non l'emittente.
 
 ---
 

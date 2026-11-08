@@ -118,8 +118,11 @@ function onSoggettoSelezionato(data) { soggettoSelezionato.value = data }
 function onSoggettoCreato(data) { soggettoSelezionato.value = data }
 function clearSoggetto() { soggettoSelezionato.value = null }
 
-// Carica dati
-watch(() => props.visible, async (val) => {
+// Carica dati. ⚠️ Anche su `mode` e id: dopo la CREATE il padre riapre in
+// modifica (`useDrawerSavedListRefresh` → `editRow`) col drawer GIA' visibile,
+// e col solo `visible` il dettaglio non si rileggeva (codice e stato assenti,
+// form ancora quello della creazione).
+watch([() => props.visible, () => props.mode, () => props.fornitoreId], async ([val]) => {
   if (!val) return
   if (!codiceField.loaded.value) codiceField.load()
   if (isEdit.value && props.fornitoreId) {
@@ -261,7 +264,7 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
       <!-- === Codice manuale (solo create, se non auto-generato) === -->
       <div v-if="!isEdit && codiceField.isEditable.value" class="form-field">
         <label>{{ t('anagrafiche.fornitori.col_codice') }}</label>
-        <InputText v-model="form.codice" :placeholder="t('anagrafiche.fornitori.placeholder_codice')"
+        <InputText v-model="form.codice" class="app-codice-input" :placeholder="t('anagrafiche.fornitori.placeholder_codice')"
           :invalid="campiErrati.includes('codice')"
         />
       </div>
@@ -441,7 +444,7 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
     <SoggettoResolver
       v-if="!isEdit"
       :visible="resolverVisible"
-      tipo-ruolo-codice="FO"
+      :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE"
       @update:visible="v => resolverVisible = v"
       @soggetto-selezionato="onSoggettoSelezionato"
       @soggetto-creato="onSoggettoCreato"

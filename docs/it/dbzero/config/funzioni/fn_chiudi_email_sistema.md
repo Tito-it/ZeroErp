@@ -15,7 +15,7 @@ CREATE OR REPLACE FUNCTION config.fn_chiudi_email_sistema(p_email_log_id bigint,
  RETURNS boolean
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_ambito config.email_log.ambito%TYPE;

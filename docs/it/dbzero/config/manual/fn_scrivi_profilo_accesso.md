@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `config.fn_scrivi_profilo_accesso()`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+
 ### 🎯 Scopo
 (18-10-2026 — brief `brief-db-processi-accensione-per-ambiente`, 2b-1 lotto 8)
 
@@ -12,6 +14,11 @@ sviluppo (i profili di prova `DEV_LETTURA` e `DEV_OPERATIVO`).
 
 ### Regole
 
+* Il profilo si cerca col codice **normalizzato**
+  ([script.fn_codice_normalizzato](/dbzero/script/manual/fn_codice_normalizzato)): il codice si
+  salva in maiuscolo, quindi `reparto_x` e `REPARTO_X` sono lo stesso profilo, e una seconda
+  chiamata col codice in minuscolo aggiorna quello che c'è invece di provare a crearne un altro
+  (correzione del 4 novembre 2026, su segnalazione del backend).
 * Un codice ha un tipo solo: un profilo non cambia tipo.
 * Attivo e «richiede il secondo fattore»: alla nascita attivo e senza
   secondo fattore, se non si dice altro; dopo, restano come sono se non si

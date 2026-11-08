@@ -22,6 +22,8 @@
 -- 6) ⭐ Sigla conforme: passa
 -- 7) ⭐ Sigla in MINUSCOLO: non respinta — alzata a maiuscolo
 -- 8) ⭐ Il catalogo vivo e' conforme, e non e' vuoto
+-- 9) ⛔ Sigla di dieci caratteri con una ß: in maiuscolo e' di undici, e la
+--    respinge la FRASE del guard, non il 22001 di varchar(10) (20261104-34)
 --
 -- Scopo:
 --   Dal 2026-08-31 la sigla dell'emittente sta DENTRO il codice commessa —
@@ -51,7 +53,7 @@ BEGIN;
 --   qui il COMMIT non arriva mai.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
+SELECT plan(9);
 
 -- ============================================================
 -- 0) Fixture: due soggetti liberi, e i loro ruoli di emittente
@@ -140,6 +142,18 @@ SELECT throws_ok(
     'P0001',
     NULL,
     '5) Una sigla di undici caratteri e'' respinta: il tetto e'' dieci');
+
+-- ⛔ 9) La forma si giudica sul valore normalizzato, PRIMA di assegnarlo:
+--   'straßeabc1' e' di dieci caratteri e diventa 'STRASSEABC1', undici.
+--   Assegnato prima, varchar(10) avrebbe risposto 22001 senza frase.
+PREPARE ecf_lunga_in_maiuscolo AS
+INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice)
+SELECT r.soggetto_ruolo_id, 'straßeabc1' FROM tmp_ecf_ruoli r WHERE r.n = 1;
+
+SELECT throws_like(
+    'EXECUTE ecf_lunga_in_maiuscolo',
+    '%da 2 a 10 caratteri%',
+    '9) Una sigla che in maiuscolo supera i dieci caratteri: parla la frase del guard');
 
 -- ============================================================
 -- 6) ⭐ IL GEMELLO POSITIVO — senza, un guard che respinge tutto passerebbe

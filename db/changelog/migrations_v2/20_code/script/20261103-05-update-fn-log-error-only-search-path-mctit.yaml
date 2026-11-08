@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D6-bis di migliorie-generali-da-test-valutazione — script.fn_log_error_only
+# nella forma di casa: pg_catalog, public, pg_temp
+#
+# ── PERCHE' A PARTE ─────────────────────────────────────────────────────
+#   E' la ventesima del censimento del 2026-11-03 (le altre 19:
+#   20261103-04), ed e' di POSTGRES (voce in dbops.sec_functions_owner):
+#   l'ALTER del migratore e' rifiutato con «bisogna essere proprietari della
+#   funzione».
+#   ⭐ La forma e' quella delle revisioni precedenti della stessa funzione
+#   (20260807-19): la PROPRIETA' SI PRENDE IN PRESTITO via
+#   dbops.fn_sync_functions_owner (DEFINER di postgres), si verifica che il
+#   prestito sia riuscito, si fa la modifica e la si restituisce. Gira col
+#   migrate normale, nessun provision-post.
+#   ⛔ La prima stesura (stesso giorno, mai registrata) stava in
+#   context provision nel provision-post: sul migrate senza contesti di dbdev
+#   la eseguiva il migratore, ed era rifiutata.
+#
+# ── CHE COSA CAMBIA ───────────────────────────────────────────────────
+#   Era `public, pg_temp`: pg_catalog non elencato e' cercato comunque per
+#   primo, quindi la semantica non cambia. ⛔ public RESTA: la funzione
+#   chiama dblink_exec senza schema (dblink vive in public). E' la forma
+#   delle tre DEFINER di postgres asserita dal test 3 del presidio.
+#   ALTER FUNCTION senza firma (nome unico): il corpo non si tocca.
+#
+# Presidio: db/pgtap/dbops/test-security-definer-search-path-v1.sql (test 5,
+#   ora a zero).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261103-05-update-fn-log-error-only-search-path-mctit.yaml
+
+  - changeSet:
+      id: 20261103-05-update-fn-log-error-only-search-path
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D6-bis: script.fn_log_error_only da `public, pg_temp` alla forma
+        esplicita pg_catalog, public, pg_temp (stessa semantica; public resta
+        per dblink). La funzione e' di postgres: la proprieta' si prende in
+        prestito via dbops.fn_sync_functions_owner e si restituisce, come in
+        20260807-19.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_log_error_only'
+                 AND p.prosecdef
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- 1) Presa in prestito della proprieta' (forma di 20260807-19).
+              --    La funzione e' posseduta da postgres (voce in
+              --    dbops.sec_functions_owner): senza questo passaggio l'ALTER
+              --    qui sotto viene rifiutato con «bisogna essere proprietari».
+              -- ==========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name   = 'script'
+                 AND function_name = 'fn_log_error_only';
+
+              SELECT dbops.fn_sync_functions_owner();
+
+              DO $guard$
+              DECLARE
+                v_owner text;
+              BEGIN
+                -- fn_sync_functions_owner non solleva mai: degrada a WARNING.
+                -- Qui si verifica l'esito, perche' un prestito fallito deve
+                -- fermare il changeSet con un messaggio comprensibile.
+                SELECT pg_get_userbyid(p.proowner)
+                  INTO v_owner
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_log_error_only';
+
+                IF v_owner IS DISTINCT FROM current_user THEN
+                  RAISE EXCEPTION
+                    'fn_log_error_only e'' di %, non di % : il prestito della proprieta'' via dbops.fn_sync_functions_owner() non e'' riuscito. Verificare che dbops.fn_sync_functions_owner sia SECURITY DEFINER e posseduta da postgres, e che esista la voce in dbops.sec_functions_owner.',
+                    coalesce(v_owner, '(funzione assente)'), current_user;
+                END IF;
+              END
+              $guard$;
+
+              -- ==========================================================
+              -- 2) Il search_path nella forma esplicita. Il corpo non si tocca.
+              -- ==========================================================
+              ALTER FUNCTION script.fn_log_error_only
+                  SET search_path = pg_catalog, public, pg_temp;
+
+              -- ==========================================================
+              -- 3) Restituzione della proprieta' a postgres.
+              --    Ridondante ma esplicito: il seed 80_data riscrive comunque
+              --    required_owner='postgres' e 90_end/20251123-04 rilancia la
+              --    sync a ogni update (runAlways). Farlo qui evita che il
+              --    database resti, anche solo per il tempo di una migration, con
+              --    una SECURITY DEFINER di proprieta' del migratore.
+              -- ==========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name   = 'script'
+                 AND function_name = 'fn_log_error_only';
+
+              SELECT dbops.fn_sync_functions_owner();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name = 'script' AND function_name = 'fn_log_error_only';
+              SELECT dbops.fn_sync_functions_owner();
+              ALTER FUNCTION script.fn_log_error_only
+                  SET search_path = public, pg_temp;
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name = 'script' AND function_name = 'fn_log_error_only';
+              SELECT dbops.fn_sync_functions_owner();

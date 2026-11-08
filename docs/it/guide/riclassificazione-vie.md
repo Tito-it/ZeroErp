@@ -1,14 +1,18 @@
 # Guida Operativa – Riclassificazione Vie e Toponomastica
 
-> (latest review 02-03-26)
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
-> Destinatari: amministratori database, operatori manutenzione dati
+> **Destinatari**: amministratori database, operatori manutenzione dati
 >
-> Vedi anche
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) — rinormalizza gli indirizzi di una via
+> * [maintenance.proc_bump_toponomastica](/dbzero/maintenance/funzioni/proc_bump_toponomastica) — corregge la descrizione di un toponimo in uso
+> * [anagrafiche.trgfn_indirizzi_dettaglio_protect_update](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update) — il guard su `stradario_id`
+>
+> **Vedi anche** — guide correlate:
 >
 > * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — guida architetturale completa
-> * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio)
-> * [maintenance.proc_bump_toponomastica](/dbzero/maintenance/funzioni/proc_bump_toponomastica)
 
 ---
 
@@ -46,30 +50,36 @@ Per tutte le casistiche si adotta la stessa logica in quattro passi:
 
 ## Protezione stradario_id
 
-Il campo `stradario_id` su `anagrafiche.indirizzi_dettaglio` e protetto dal guard `trgfn_indirizzi_dettaglio_protect_update`: la modifica manuale e bloccata. Per eseguire la riclassificazione serve abilitare la modalita manutenzione tramite la procedura dedicata.
+Il campo `stradario_id` su `anagrafiche.indirizzi_dettaglio` è protetto dal guard `trgfn_indirizzi_dettaglio_protect_update`: cambiarlo è bloccato, a meno che nella transazione sia acceso il flag di manutenzione `zeroerp.maintenance_indirizzi_dettaglio`.
+
+⚠️ Il passo 2 della policy — puntare un indirizzo a un'altra via — ha una funzione, [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario): fonde due vie, registra la fusione in `storico.stradario_trasformazioni` e ripunta sulla destinazione gli indirizzi della via d'origine. Apre la porta di manutenzione degli indirizzi solo per il tempo del ripuntamento, e la richiude subito dopo: fuori dalla fusione il cambio di `stradario_id` resta rifiutato (`E_COLONNA_NON_MODIFICABILE`). Se un indirizzo della via d'origine è identico a uno della destinazione, la fusione **si ferma** con `E_MERGE_RIGHE_DOPPIE` e l'elenco dei doppi, e non unisce niente da sola: si corregge il doppio, poi si rilancia. ⭐ La via d'origine resta nello stradario, **soppressa**: è la radice della catena delle trasformazioni, ma non si propone più nelle ricerche, non riceve indirizzi e non si fonde più. Se poi si fondono due comuni, una via soppressa non collide con la via viva che ne ha preso il posto. Le due procedure di manutenzione qui sotto non cambiano `stradario_id`: **rinormalizzano** i dati esistenti, non spostano gli indirizzi.
 
 ---
 
 ## Procedure di manutenzione
 
-### Riclassificazione indirizzi
+I flag di manutenzione valgono per la **transazione** in cui sono accesi, non per la sessione: per questo una procedura che ne accende uno lo spegne prima di proseguire, anche in caso di errore.
+
+### Rinormalizzazione degli indirizzi di una via
 
 La procedura [`maintenance.proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio):
 
-* Abilita la modalita manutenzione per la sessione (`zeroerp.maintenance_indirizzi_dettaglio = 'on'`)
-* Aggiorna le righe di `indirizzi_dettaglio` per un dato `stradario_id`
-* Forza la rinormalizzazione dei campi calcolati
-* La storicizzazione avviene automaticamente tramite i trigger standard
+* riscrive senza cambiarle le righe di `indirizzi_dettaglio` di un dato `stradario_id`, così i trigger di normalizzazione ricalcolano `via_norm` e `indirizzo_normalizzato`;
+* non accende il flag `zeroerp.maintenance_indirizzi_dettaglio`: lo `stradario_id` non cambia, e il guard non scatta. Il flag resta la porta del verbo che sposterà gli indirizzi su un'altra via, quando nascerà;
+* lascia la storicizzazione ai trigger standard, che storicizzano solo le righe con `storicizza` attivo.
 
-### Correzione toponomastica
+### Correzione della descrizione di un toponimo
 
 La procedura [`maintenance.proc_bump_toponomastica`](/dbzero/maintenance/funzioni/proc_bump_toponomastica):
 
-* Abilita la modalita manutenzione per la sessione (`zeroerp.maintenance_toponomastica = 'on'`)
-* Aggiorna la riga di `config.toponomastica` con la nuova descrizione
-* La propagazione ai record di `config.stradario_generale` e automatica
+* accende il flag `zeroerp.maintenance_toponomastica`, con cui il guard lascia cambiare la descrizione di un toponimo già in uso, e lo spegne subito dopo la scrittura, anche in caso di errore;
+* scrive la nuova descrizione su `config.toponomastica`;
+* fa rinormalizzare dai trigger le righe di `config.stradario_generale` che usano quel toponimo;
+* chiama `proc_bump_indirizzi_dettaglio` per ogni via che usa il toponimo, nella stessa transazione: anche gli indirizzi di dettaglio prendono la descrizione nuova.
 
-**Nota:** la correzione di un toponimo non avviene modificando la riga in uso. Si crea una **nuova** voce in `config.toponomastica`, si riallineano i record di `config.stradario_generale` interessati e si lascia che la normalizzazione aggiorni `indirizzo_normalizzato`.
+Si può chiamare anche dentro un'unità di lavoro più grande: il flag non resta acceso dopo la procedura.
+
+In alternativa alla correzione sul posto, si può creare una **nuova** voce in `config.toponomastica` e riallineare i record di `config.stradario_generale` interessati.
 
 ---
 

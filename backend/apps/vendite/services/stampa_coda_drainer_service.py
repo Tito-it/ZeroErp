@@ -42,9 +42,10 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from apps.core.db.processi_repository import ProcessiRepository
-from apps.core.services.coda_lavori.context import operator_identity_context
+from apps.core.services.coda_lavori.drain_engine import CHIAVI_ESITO_DRENAGGIO
 from apps.core.services.db_error_fields import bersagli_envelope, diagnostica_db
 from apps.core.services.error_manager import ServiceError
+from apps.core.services.giro_per_azienda import giro_per_azienda
 from apps.core.services.processi import PROCESSO_DRAINA_CODA_STAMPA
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
@@ -64,11 +65,6 @@ _LIMIT_DEFAULT = 500
 # Reaper: righe IN_CORSO più vecchie di N minuti = worker morto → riportate a
 # PENDING. Soglia larga (≫ tempo di un render) per non toccare worker lenti.
 _STALE_MINUTI_DEFAULT = 30
-
-# I contatori che il giro completo somma emittente per emittente. Sede unica:
-# aggiungerne uno qui lo fa comparire nell'esito senza toccare il ciclo.
-_CHIAVI_AGGREGATE = ("recuperate", "claimate", "fatto", "errore", "riprovabili")
-
 
 # Scopo: Drena la coda stampa. Perimetro e risultato:
 #         1. (opz.) reaper delle righe IN_CORSO stantie → PENDING (o ERRORE
@@ -162,63 +158,39 @@ def draina_coda_stampa_per_roster(
     on_emittente_esito: Callable[[Mapping[str, Any], dict[str, Any] | None, Exception | None], None] | None = None,
     processi_repo: ProcessiRepository | None = None,
 ) -> dict[str, Any]:
-    processi_repo = processi_repo or ProcessiRepository()
-    roster = processi_repo.roster_processo(PROCESSO_DRAINA_CODA_STAMPA)
-    scoperti = processi_repo.emittenti_non_serviti(PROCESSO_DRAINA_CODA_STAMPA)
-
-    per_emittente: list[dict[str, Any]] = []
-    falliti: list[dict[str, Any]] = []
-    # ⚠️ Le chiavi da sommare si dichiarano UNA volta: iterare il dizionario
-    #    che si sta modificando funziona, ma e' la forma che si rompe il giorno
-    #    in cui qualcuno ci aggiunge una chiave dentro il ciclo.
-    totali = dict.fromkeys(_CHIAVI_AGGREGATE, 0)
-
-    for badge in roster:
-        try:
-            with operator_identity_context(
-                badge["auth_user_id"],
-                username=badge["username"],
-                identita_id=badge["identita_id"],
-                # ⚠️ L'emittente ATTIVO congelato: e' l'unico che questo badge
-                #    ha, ma dichiararlo evita che il worker giri in modalita'
-                #    globale se un giorno l'utente ne avesse due.
-                emittente_attivo_id=badge["emittente_fiscale_id"],
-            ):
-                esito = draina_coda_stampa(
-                    emittente_fiscale_id=badge["emittente_fiscale_id"],
-                    limit=limit,
-                    soglia_tentativi=soglia_tentativi,
-                    stale_minuti=stale_minuti,
-                    on_item_esito=on_item_esito,
-                )
-        except Exception as exc:  # isolamento per emittente voluto
-            logger.warning(
-                "stampa_coda.emittente_fallito emittente=%s badge=%s errore=%s",
-                badge["emittente_codice"], badge["username"], exc, exc_info=True,
-            )
-            falliti.append({
-                "emittente_codice": badge["emittente_codice"],
-                "errore": str(exc),
-            })
-            if on_emittente_esito is not None:
-                on_emittente_esito(badge, None, exc)
-            continue
-
+    # Scopo: il lavoro di UN badge, gia' dentro la sua identita' (la apre il BB).
+    def _drena(badge: Mapping[str, Any]) -> dict[str, Any]:
+        esito = draina_coda_stampa(
+            emittente_fiscale_id=badge["emittente_fiscale_id"],
+            limit=limit,
+            soglia_tentativi=soglia_tentativi,
+            stale_minuti=stale_minuti,
+            on_item_esito=on_item_esito,
+        )
         esito["emittente_codice"] = badge["emittente_codice"]
-        per_emittente.append(esito)
-        for chiave in _CHIAVI_AGGREGATE:
-            totali[chiave] += esito.get(chiave, 0)
-        if on_emittente_esito is not None:
-            on_emittente_esito(badge, esito, None)
+        return esito
 
+    # ⭐ Il giro (roster, identita', isolamento, non serviti) e' il BB
+    #    `giro_per_azienda` (regola del 2, 2026-11-07): qui restano il lavoro e
+    #    il riepilogo.
+    giro = giro_per_azienda(
+        PROCESSO_DRAINA_CODA_STAMPA,
+        _drena,
+        evento="stampa_coda",
+        on_badge=on_emittente_esito,
+        processi_repo=processi_repo,
+    )
+    per_emittente = [esito for _badge, esito in giro.serviti]
+    # ⚠️ Le chiavi da sommare sono il vocabolario del drenaggio, dichiarato una
+    #    volta nel motore (`CHIAVI_ESITO_DRENAGGIO`).
     return {
-        **totali,
+        **giro.totali(CHIAVI_ESITO_DRENAGGIO),
         "emittenti_serviti": len(per_emittente),
-        "emittenti_falliti": falliti,
+        "emittenti_falliti": giro.falliti,
         # ⭐ Il numero che rompe il silenzio: emittenti attivi che nessun badge
         #    copre. Zero e' la condizione normale; diverso da zero e' una
         #    persona che deve creare un utente tecnico.
-        "emittenti_non_serviti": [e["emittente_codice"] for e in scoperti],
+        "emittenti_non_serviti": giro.non_serviti,
         "soglia_tentativi": soglia_tentativi,
         "limit": limit,
         "per_emittente": per_emittente,
@@ -289,8 +261,9 @@ def _lavora_item(
             None,
             emittente_fiscale_id=int(entity["emittente_fiscale_id"]),
             sorgente_tipo_id=int(item["sorgente_tipo_id"]),
+            # La fattura per id: la chiave della stampa la sceglie il DB dal
+            # tipo (giro D.1; la coda non porta più `sorgente_uid`).
             sorgente_id=fattura_id,
-            sorgente_uid=str(item["sorgente_uid"]),
             # Il tipo lo porta la riga (§9): senza, su una sorgente con piu'
             # tipi la risoluzione si fermerebbe con AMBIGUO.
             tipo_documento_output_id=item.get("tipo_documento_output_id"),

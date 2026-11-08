@@ -32,7 +32,7 @@ _BASE = "apps.ui.api.export_helpers"
 def coda_export_finta(nome_file: str = "lista.csv") -> Iterator[MagicMock]:
     with ExitStack() as stack:
         ui_svc = stack.enter_context(patch(f"{_BASE}.UiService"))
-        ui_repo = stack.enter_context(patch(f"{_BASE}.UiRepository"))
+        ui_repo = stack.enter_context(patch(f"{_BASE}.UiRepository", autospec=True))
         render_cls = stack.enter_context(patch(f"{_BASE}.ListaExportService"))
         ui_svc.return_value.get_lista_config.return_value = {"colonne": [], "pagina_dimensione": 10}
         ui_repo.return_value.list_colonne_by_codice.return_value = []

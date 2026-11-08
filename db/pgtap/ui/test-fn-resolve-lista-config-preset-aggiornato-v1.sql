@@ -4,14 +4,14 @@
 -- Test: ui.fn_resolve_lista_config — flag preset_aggiornato (DEF-2)
 -- ------------------------------------------------------------
 -- Indice test (1..6):
--- Caso A) snapshot allineato (preset_base_data_update = lista_preset.data_update)
+-- Caso A) snapshot allineato (preset_base_contenuto_aggiornato_il = lista_preset.contenuto_aggiornato_il)
 --         → preset_aggiornato = FALSE
--- Caso B) admin modifica il preset (UPDATE lista_preset.data_update a ts_v2 > snapshot)
+-- Caso B) admin modifica il preset (UPDATE lista_preset.contenuto_aggiornato_il a ts_v2 > snapshot)
 --         → preset_aggiornato = TRUE
 -- Caso C) utente preme "Ignora" (preset_aggiornato_ignored_at = ts_ignored > ts_v2)
 --         → preset_aggiornato = FALSE
 -- Caso D) admin modifica il preset di nuovo (ts_v3 > ts_ignored)
---         → preset_aggiornato = TRUE (ignored_at < data_update)
+--         → preset_aggiornato = TRUE (ignored_at < contenuto_aggiornato_il)
 -- Caso E) nessuna preferenza utente (usa preset di sistema, no snapshot)
 --         → preset_aggiornato = FALSE
 -- Caso F) cambio preset_base_id (trigger azzera snapshot e ignored_at)
@@ -97,9 +97,9 @@ INSERT INTO ui.lista_preset_colonna (preset_id, colonna_id, ordine, visibile, fi
 SELECT p.preset_id, c.col_id, 10, TRUE, FALSE
 FROM _t_preset_pa p, _t_col_pa c;
 
--- Imposta data_update del preset a ts_v1 (prima versione)
+-- Imposta contenuto_aggiornato_il del preset a ts_v1 (prima versione)
 UPDATE ui.lista_preset
-   SET data_update = TIMESTAMP '2026-01-01 10:00:00'
+   SET contenuto_aggiornato_il = TIMESTAMP '2026-01-01 10:00:00'
  WHERE id = (SELECT preset_id FROM _t_preset_pa);
 
 -- auth_user di test
@@ -118,11 +118,11 @@ WITH ins AS (
 SELECT id AS user_id FROM ins;
 
 -- Preferenza utente con preset_base_id puntato al preset sistema,
--- snapshot allineato (preset_base_data_update = ts_v1 = data_update corrente del preset)
+-- snapshot allineato (preset_base_contenuto_aggiornato_il = ts_v1 = contenuto_aggiornato_il corrente del preset)
 CREATE TEMP TABLE _t_pref_pa AS
 WITH ins AS (
   INSERT INTO ui.lista_preferenza_utente (
-    auth_user_id, lista_id, preset_base_id, preset_base_data_update,
+    auth_user_id, lista_id, preset_base_id, preset_base_contenuto_aggiornato_il,
     configurazione
   )
   SELECT
@@ -146,9 +146,9 @@ SELECT id AS pref_id, auth_user_id, lista_id FROM ins;
 
 -- ============================================================
 -- CASO A) snapshot allineato → preset_aggiornato = FALSE
--- lista_preset.data_update = TIMESTAMP '2026-01-01 10:00:00'
--- preset_base_data_update  = TIMESTAMP '2026-01-01 10:00:00'
--- → data_update NON > snapshot → FALSE
+-- lista_preset.contenuto_aggiornato_il = TIMESTAMP '2026-01-01 10:00:00'
+-- preset_base_contenuto_aggiornato_il  = TIMESTAMP '2026-01-01 10:00:00'
+-- → contenuto_aggiornato_il NON > snapshot → FALSE
 -- ============================================================
 SELECT is(
   (SELECT ui.fn_resolve_lista_config(l.lista_codice, u.user_id, NULL)->>'preset_aggiornato'
@@ -160,10 +160,10 @@ SELECT is(
 
 -- ============================================================
 -- CASO B) admin modifica il preset → preset_aggiornato = TRUE
--- Simula: UPDATE lista_preset SET data_update = ts_v2 (> ts_v1)
+-- Simula: UPDATE lista_preset SET contenuto_aggiornato_il = ts_v2 (> ts_v1)
 -- ============================================================
 UPDATE ui.lista_preset
-   SET data_update = TIMESTAMP '2026-03-01 10:00:00'
+   SET contenuto_aggiornato_il = TIMESTAMP '2026-03-01 10:00:00'
  WHERE id = (SELECT preset_id FROM _t_preset_pa);
 
 SELECT is(
@@ -187,15 +187,15 @@ SELECT is(
      FROM _t_lista_pa l, _t_au_pa u
   ),
   'false',
-  'Caso C: ignored_at >= data_update → preset_aggiornato = FALSE'
+  'Caso C: ignored_at >= contenuto_aggiornato_il → preset_aggiornato = FALSE'
 );
 
 -- ============================================================
 -- CASO D) admin modifica il preset di nuovo dopo l'ignore → TRUE
--- data_update = ts_v3 > ts_ignored → banner riappare
+-- contenuto_aggiornato_il = ts_v3 > ts_ignored → banner riappare
 -- ============================================================
 UPDATE ui.lista_preset
-   SET data_update = TIMESTAMP '2026-05-01 10:00:00'
+   SET contenuto_aggiornato_il = TIMESTAMP '2026-05-01 10:00:00'
  WHERE id = (SELECT preset_id FROM _t_preset_pa);
 
 SELECT is(

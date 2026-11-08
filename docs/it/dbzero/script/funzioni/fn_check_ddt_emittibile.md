@@ -17,6 +17,10 @@ CREATE OR REPLACE FUNCTION script.fn_check_ddt_emittibile(p_ddt vendite.ddt)
  LANGUAGE plpgsql
  STABLE
 AS $function$
+-- rev 2026-11-03 (20261103-41, brief-db-addebito-trasporto-ordine §8.3, K-2/K-7/K-8):
+--   due motivi nuovi sugli oneri di bolla — 1-bis E_DDT_EMISSIONE_SOLO_ONERI
+--   (righe attive ma nessuna di merce) e 3-ter E_DDT_ONERE_NON_FATTURABILE
+--   (un onere che non verrebbe mai fatturato).
 -- rev 2026-10-20 (20261020-54, brief-db-grammatica-unica-documenti, 2d G-6):
 --   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
 --   sorgente.
@@ -41,6 +45,17 @@ DECLARE
     v_riga_senza  vendite.ddt_righe.id%TYPE;
     v_riga_no_iva vendite.ddt_righe.id%TYPE;
     v_riga_no_iva_nr vendite.ddt_righe.riga_nr%TYPE;
+    -- rev 2026-11-03: la riga-onere che non verrebbe fatturata, e il
+    --   trigger di fatturazione dell'ordine sorgente di TESTATA.
+    v_riga_onere     vendite.ddt_righe.id%TYPE;
+    v_riga_onere_nr  vendite.ddt_righe.riga_nr%TYPE;
+    v_trigger_testata vendite.ordini.fatturazione_trigger%TYPE;
+    -- rev 2026-11-03 (T-3 bis): la riga di trasporto non dovuto e la
+    --   modalita' di addebito che la rende tale.
+    v_riga_trasporto     vendite.ddt_righe.id%TYPE;
+    v_riga_trasporto_nr  vendite.ddt_righe.riga_nr%TYPE;
+    v_modalita           config.modalita_addebito_trasporto.codice_interno%TYPE;
+    v_modalita_descr     config.modalita_addebito_trasporto.descrizione%TYPE;
     v_presenti    integer[];
     v_mancanti    text[];
 BEGIN
@@ -56,6 +71,30 @@ BEGIN
             'codice',     'E_DDT_EMISSIONE_SENZA_RIGHE',
             'reason',     'DOCUMENTO_SENZA_RIGHE',
             'reason_key', 'common.azione_reason.senza_righe',
+            'dettaglio',  NULL);
+    END IF;
+
+    -- 1-bis. STRUTTURA — rev 2026-11-03 (K-2, decisione di Tid): righe
+    --   attive, ma nessuna di MERCE. Una bolla di soli oneri non porta niente:
+    --   un addebito senza merce si fa in commessa. «Merce» e' il BB
+    --   script.fn_natura_e_merce sulla natura CONGELATA della riga; IS NOT
+    --   FALSE: una natura sconosciuta conta come merce (il motivo non scatta).
+    -- ⚠️ Codice suo e non una variante di 543: la frase e il rimedio sono
+    --   diversi («aggiungi una riga» non dice nulla a chi ha gia' righe).
+    IF EXISTS (
+        SELECT 1 FROM vendite.ddt_righe dr
+         WHERE dr.ddt_id = p_ddt.id
+           AND dr.attivo IS TRUE
+    ) AND NOT EXISTS (
+        SELECT 1 FROM vendite.ddt_righe dr
+         WHERE dr.ddt_id = p_ddt.id
+           AND dr.attivo IS TRUE
+           AND script.fn_natura_e_merce(dr.natura_vendita_id) IS NOT FALSE
+    ) THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_DDT_EMISSIONE_SOLO_ONERI',
+            'reason',     'DOCUMENTO_SOLO_ONERI',
+            'reason_key', 'vendite.ddt.azione_reason.solo_oneri',
             'dettaglio',  NULL);
     END IF;
 
@@ -182,6 +221,86 @@ BEGIN
                                              'riga_nr', v_riga_no_iva_nr));
     END IF;
 
+    -- 3-ter. L'ONERE CHE NON VERREBBE MAI FATTURATO — rev 2026-11-03
+    --   (brief-db-addebito-trasporto-ordine §8.3, K-7, K-8; decisione di Tid:
+    --   errore, non avviso — un addebito perso non lo vede nessuno). Due casi,
+    --   un codice:
+    --   (a) una riga-onere qualunque, anche copiata dall'ordine, su una bolla
+    --       con causale NON fatturabile (K-8): la bolla non va in commessa
+    --       (rank 2 della diagnosi del push). Stessa colonna del punto 3,
+    --       config.causali_trasporto.fatturabile, letta una volta sopra;
+    --       causale assente = gia' E_DDT_CAUSALE_OBBLIGATORIA, qui non scatta;
+    --   (b) una riga-onere SENZA legame (scritta a mano) su una bolla il cui
+    --       ordine sorgente di TESTATA fattura alla conferma: l'ordine e' gia'
+    --       in commessa per conto suo, e la bolla non spinge (rank 6 della
+    --       diagnosi, che per l'onere senza legame legge lo stesso trigger di
+    --       testata). La copia dall'ordine ha il legame ed e' lecita: la
+    --       fattura l'ordine (§7.2).
+    -- ⚠️ All'emissione e non all'inserimento (K-7): nella copia la riga nasce
+    --   PRIMA del suo legame, e un guard all'INSERT non distinguerebbe la copia
+    --   dall'onere scritto a mano.
+    -- ⚠️ Nel dettaglio l'id (per chi diagnostica) e il numero di riga (per la
+    --   frase che legge una persona).
+    -- rev 2026-11-03 (20261103-45, P-1): il trigger dell'ordine di testata
+    --   dal BB, sede unica con la diagnosi del push.
+    -- rev 2026-11-06 (20261106-26, giro 0.3): anche sorgente_id (lotto T).
+    v_trigger_testata := vendite.fn_ddt_trigger_ordine_testata(
+        p_ddt.sorgente_tipo_id, p_ddt.sorgente_uid, p_ddt.sorgente_id);
+
+    SELECT dr.id, dr.riga_nr INTO v_riga_onere, v_riga_onere_nr
+      FROM vendite.ddt_righe dr
+     WHERE dr.ddt_id = p_ddt.id
+       AND dr.attivo IS TRUE
+       AND script.fn_natura_e_merce(dr.natura_vendita_id) IS FALSE
+       AND (v_fatturabile IS FALSE
+            OR (v_trigger_testata = 'CONFERMATO'
+                AND NOT EXISTS (
+                    SELECT 1 FROM vendite.ordini_righe_fulfillment ful
+                     WHERE ful.ddt_riga_id = dr.id)))
+     ORDER BY dr.riga_nr, dr.id
+     LIMIT 1;
+
+    IF v_riga_onere IS NOT NULL THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_DDT_ONERE_NON_FATTURABILE',
+            'reason',     'ONERE_NON_FATTURABILE',
+            'reason_key', 'vendite.ddt.azione_reason.onere_non_fatturabile',
+            'dettaglio',  jsonb_build_object('riga_id', v_riga_onere,
+                                             'riga_nr', v_riga_onere_nr));
+    END IF;
+
+    -- 3-quater. IL TRASPORTO CHE IL CLIENTE NON CI DEVE — rev 2026-11-03
+    --   (20261103-47, brief-db-addebito-trasporto-ordine §10.2, T-3 bis di
+    --   Tid): in porto ASSEGNATO il trasporto lo paga il destinatario al
+    --   vettore, con addebito a TERZI un terzo. Un onere di causale
+    --   TRASPORTO sulla bolla, scritto o copiato, lo farebbe pagare al
+    --   cliente. FRANCO: nessuna regola (il mittente puo' rifatturarlo o no).
+    -- ⚠️ Causale e modalita' per codice_interno, mai per id. La causale
+    --   dall'articolo: qui serve il suo valore, non «e' un onere».
+    SELECT dr.id, dr.riga_nr, ma.codice_interno, ma.descrizione
+      INTO v_riga_trasporto, v_riga_trasporto_nr, v_modalita, v_modalita_descr
+      FROM vendite.ddt_righe dr
+      JOIN catalogo.articoli a ON a.id = dr.articolo_id
+      JOIN config.causali_onere co ON co.id = a.causale_onere_id
+      JOIN config.modalita_addebito_trasporto ma ON ma.id = p_ddt.modalita_addebito_trasporto_id
+     WHERE dr.ddt_id = p_ddt.id
+       AND dr.attivo IS TRUE
+       AND co.codice_interno = 'TRASPORTO'
+       AND ma.codice_interno IN ('ASSEGNATO', 'TERZI')
+     ORDER BY dr.riga_nr, dr.id
+     LIMIT 1;
+
+    IF v_riga_trasporto IS NOT NULL THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_DDT_TRASPORTO_NON_DOVUTO',
+            'reason',     'TRASPORTO_NON_DOVUTO',
+            'reason_key', 'vendite.ddt.azione_reason.trasporto_non_dovuto',
+            'dettaglio',  jsonb_build_object('riga_id',  v_riga_trasporto,
+                                             'riga_nr',  v_riga_trasporto_nr,
+                                             'modalita', v_modalita,
+                                             'modalita_descrizione', v_modalita_descr));
+    END IF;
+
     -- 4. TESTATA — indirizzi marcati obbligatori per l'ambito DDT.
     SELECT array_agg(di.tipo_indirizzo_id) INTO v_presenti
       FROM vendite.ddt_indirizzi di
@@ -274,7 +393,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ddt_emittibile(p_ddt vendite.ddt)
-IS 'Single source dei motivi che impediscono l''emissione (EMESSO) di un DDT: righe attive (543), causale (544), prezzo risolvibile se causale fatturabile (545), aliquota sulle righe che portano un prezzo, indirizzi obbligatori, componenti BoM CASO A pendenti/non valorizzati. Ritorna [] se emittibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva. rev 2026-08-19: i due motivi sui COMPONENTI si valutano solo se la causale e'' fatturabile, come gia'' faceva il motivo sulle righe. ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter, decisione di Tid): sesto motivo E_DDT_RIGA_IVA_MANCANTE — una riga attiva CON PREZZO e senza iva_id non si emette. Chiudeva un difetto silenzioso: vw_ddt_righe_iva_base filtra prezzo_unitario e NON iva_id, quindi quella riga entrava nel riepilogo con imponibile pieno, codice IVA vuoto e imposta zero, su un documento stampato. ⭐ Il discrimine e'' il PREZZO e non la causale, e per questo il controllo sta FUORI dal ramo fatturabile: la vista del riepilogo la causale non la guarda, e il vincolo deve avere lo stesso perimetro del consumatore che protegge. ⚠️ Si guarda dr.prezzo_unitario e NON il COALESCE col fulfillment del punto 3: una riga dal prezzo solo derivato non entra nella vista, quindi non ha il difetto. ⛔ Non e'' un NOT NULL di colonna, e non poteva esserlo: ordini_righe.iva_id e'' nullable e fn_genera_ddt_da_ordine la copia, quindi il vincolo avrebbe fatto fallire l''evasione ordine con un 23502 muto. ⚠️ Il punto nuovo sta fra il prezzo e gli indirizzi: fn_available_actions_ddt legge il PRIMO motivo, quindi l''ordine e'' il contratto. rev 2026-09-24: il punto 5 dei componenti BoM (prezzo in attesa) passa al building block script.fn_check_prezzi_autorizzati — PENDING E REJECTED, solo componenti attivi di righe attive, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO (prima E_COMPONENTE_PREZZO_PENDENTE, reason COMPONENTI_PREZZO_PENDENTE). La politica resta qui: si chiede solo se la causale vende. Il guard trgfn_ddt_guard_transizione_approvazione solleva i due codici nuovi. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, P-6): settimo punto, i motivi FISICI di una bolla che muove merce, accodati da script.fn_check_ddt_merce (magazzino di partenza/arrivo, prelievi incompleti, posizione che la primitiva rifiuterebbe, merce non disponibile). In coda, perche'' la capability legge il primo motivo; in una check a se'' perche'' portano i valori della frase (li solleva il verbo vendite.fn_cambia_stato_ddt). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2/D-2-bis): motivo 2-bis E_DDT_CLIENTE_OBBLIGATORIO (reason CLIENTE_MANCANTE, reason_key vendite.ddt.azione_reason.cliente_mancante, dettaglio {causale}): la causale vuole un cliente (config.causali_trasporto.richiede_cliente) e la bolla non ha il billing account. Fra la causale e il prezzo: la capability legge il primo motivo. La causale si legge una volta per il 2-bis e il 3. rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-3 di Tid): punto 4-bis E_INDIRIZZO_DOC_NON_DEL_CLIENTE (reason INDIRIZZO_NON_DEL_CLIENTE, reason_key common.azione_reason.indirizzo_non_del_cliente) da script.fn_check_indirizzi_documento_cliente(''DDT'', id): un indirizzo d''anagrafica che non e'' del cliente della bolla (altro ruolo, o fornitura diversa) ferma l''emissione. Dopo gli indirizzi mancanti; lo solleva vendite.trgfn_ddt_guard_indirizzi_obbligatori. ⭐ rev 2026-10-19 (20261019-55, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. Rev 2026-10-20 (20261020-54, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente.';
+IS 'I motivi che impediscono l''emissione (EMESSO) di una bolla. Pura: non solleva; [] se emittibile, altrimenti un array ordinato di {codice, reason, reason_key, dettaglio}, e l''ordine e'' il contratto (la capability legge il primo). 1) righe attive (543); 1-bis) almeno una riga di merce, E_DDT_EMISSIONE_SOLO_ONERI (un addebito senza merce si fa in commessa); 2) causale (544); 2-bis) il cliente, se la causale lo chiede (config.causali_trasporto.richiede_cliente): E_DDT_CLIENTE_OBBLIGATORIO; 3) prezzo risolvibile, se la causale e'' fatturabile (545); 3-bis) l''aliquota su ogni riga attiva con prezzo, E_DDT_RIGA_IVA_MANCANTE (il discrimine e'' il prezzo della riga, come in vw_ddt_righe_iva_base); 3-ter) la riga-onere che non verrebbe mai fatturata, E_DDT_ONERE_NON_FATTURABILE: qualunque onere su una causale non fatturabile, o un onere senza legame su una bolla il cui ordine di testata fattura alla conferma (il trigger da vendite.fn_ddt_trigger_ordine_testata, con la sorgente intera della bolla); 3-quater) il trasporto non dovuto, E_DDT_TRASPORTO_NON_DOVUTO: un articolo con causale onere TRASPORTO su una bolla con addebito ASSEGNATO o TERZI; 4) indirizzi obbligatori; 4-bis) indirizzi del cliente della bolla (script.fn_check_indirizzi_documento_cliente), E_INDIRIZZO_DOC_NON_DEL_CLIENTE; 5) se la causale vende, i prezzi dei componenti attivi di righe attive (script.fn_check_prezzi_autorizzati: E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO); 6) in coda, i motivi fisici di una bolla che muove merce (script.fn_check_ddt_merce). Li sollevano i guard della bolla (vendite.trgfn_ddt_guard_causale_emissione, trgfn_ddt_guard_indirizzi_obbligatori, trgfn_ddt_guard_transizione_approvazione) e il verbo vendite.fn_cambia_stato_ddt.';
 ```
 
 </div>

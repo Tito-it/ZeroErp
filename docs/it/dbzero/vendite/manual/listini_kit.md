@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.listini_kit`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 6 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -40,7 +40,12 @@ condizione del listino, non del catalogo).
   [vendite.trgfn_listini_kit_guard](/dbzero/vendite/funzioni/trgfn_listini_kit_guard).
 * Kit e versione sono l'identità della riga: dopo l'inserimento non cambiano
   (`E_LISTINO_RIGA_IDENTITA_IMMUTABILE`, il lucchetto generato, come sulla riga di listino).
-* Il clone della versione la copia, l'eliminazione la porta via
+* **Il kit non nasce su un articolo ritirato** (6-11-2026, `20261106-02`): il guard generico
+  [dbops.trgfn_child_requires_non_obsolete_parent](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent)
+  su `articolo_padre_id`, senza esenzione, perché una versione di listino è sempre una scelta
+  (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`). Il kit esistente, il cui articolo è poi ritirato, si
+  modifica. Vedi la [guida dell'obsoleto](/guide/uso-di-obsoleto).
+* Il clone della versione la copia (non il kit di un articolo ritirato), l'eliminazione la porta via
   ([vendite.fn_clona_versione_listino](/dbzero/vendite/manual/fn_clona_versione_listino),
   [vendite.fn_elimina_versione_listino](/dbzero/vendite/manual/fn_elimina_versione_listino)).
 * RLS della famiglia dei listini.

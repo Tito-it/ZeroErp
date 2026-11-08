@@ -1,123 +1,145 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_storico`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
+> Approfondimento tabelle:
 >
-[Automazione DB](/guide/automazione-db)   
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `STORICO`: bersaglio e template del nome
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — l'override `STORICO_FK` della colonna di legame
+> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — simulazioni e salti
 >
-Approfondimento tabelle:
+> Approfondimento funzioni:
 >
-[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — il trigger che la funzione monta
+> * [dbops.fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) — crea le shadow; questa funzione monta il trigger solo dove la shadow c'è
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — l'ambito degli schemi
+> * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — il filtro per tabella
+> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col) — il nome della colonna di legame
+> * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger
+> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — il trigger riconosciuto dalla funzione
+> * [maintenance.proc_automations_storico_job](/dbzero/maintenance/funzioni/proc_automations_storico_job) — il wrapper del job
 >
-Approfondimento funzioni e trigger:
+> Guide:
 >
-[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)    
-> [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
-> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
-> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
+> * [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle) — il provisioning del trigger
+> * [Automazione DB](/guide/automazione-db) — il framework delle regole
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 25-09-26)
-La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) del **trigger unico di storicizzazione** `BEFORE UPDATE OR DELETE` per le tabelle applicative, delegando la logica alla funzione `script.trgfn_storico_generic`. È uno dei moduli orchestrati da `fn_run_automations`.
+
+Monta il trigger generico di storicizzazione, `BEFORE UPDATE OR DELETE` su `script.trgfn_storico_generic`,
+sulle tabelle che hanno già la loro shadow nello schema `storico`, passandogli il nome della colonna
+della shadow che lega una versione alla madre. Aggiunge e non toglie.
+
+È uno dei runner del framework delle automazioni. Lo chiamano il job pgAgent (tramite il suo
+wrapper), la convergenza dei processi strutturali e la passata `ci_apply`, tutti e tre dopo il
+runner che crea le shadow.
 
 ---
 
-### Parametri di input
+### Su quali tabelle
 
-| Parametro     | Tipo    | Obbligatorio | Descrizione                                                               |
-| ------------- | ------- | :----------: | ------------------------------------------------------------------------- |
-| `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione delle regole (`AUTO`, `FORCE`, `CHECK`).           |
-| `p_schemas`   | text[]  |      ❌       | Schemi nell'ambito. Se `NULL`, risolti da `fn_resolve_scope`.             |
-| `p_dry_run`   | boolean |      ✔️       | Se `true`, non crea trigger ma registra eventi **DRYRUN** in `audit_log`. |
+Le tabelle ordinarie degli schemi dell'ambito, tolto `storico`, che passano il filtro per tabella. Per
+ciascuna valgono le regole `STORICO` attive del registro il cui bersaglio di schema e di tabella la
+comprende (`*all`, o un pattern sul nome) e il cui modo di esecuzione è `AUTO` o quello della corsa.
 
----
-
-### Valore di ritorno
-
-`void` – non restituisce valori; crea i trigger richiesti o produce log di simulazione.
+Il trigger si monta solo se esiste `storico.<tabella>`: la shadow la crea un altro runner. Due madri
+omonime in schemi diversi hanno la stessa shadow, e ricevono entrambe il trigger.
 
 ---
 
-### Flusso logico
+### ⛔ La colonna di legame deve esistere nella shadow
 
-1. **Ambito**: determina gli schemi effettivi con `fn_resolve_scope`; esclude sempre lo schema `storico`.
-2. **Scansione tabelle**: per ogni tabella nell'ambito e in `fn_table_in_scope`, verifica che esista la **tabella omologa** nello schema `storico`.
-3. **Regole**: seleziona da `automation_rules_tbl` le regole abilitate con `rule_type='STORICO'`, rispettando `exec_mode`, priorità e target (schema/tabella).
-4. **Risoluzione FK storico**: calcola il nome della FK verso lo storico con `fn_get_override_col(...,'STORICO_FK', '{table}_id')`.
-   ⛔ **Dal 2026-09-25, prima di montare il trigger verifica che quella colonna
-   esista nella gemella.** Se non c'è, solleva `E_STORICO_FK_COL_ASSENTE` e
-   `ci_apply` si ferma. È voluto: il trigger userebbe quel nome per chiudere lo
-   snapshot aperto, e senza la colonna ogni `UPDATE`/`DELETE` di una riga
-   storicizzata della madre morirebbe con `E_SNAPSHOT_CLOSE_ERROR`. Vale anche in
-   dry run. Cinque gemelle del 2025 erano nate così, con il nome al singolare e
-   senza eccezione (`parameters`, `comuni`, `indirizzi`, `indirizzi_dettaglio`,
-   `catasto_unita_immobiliari`), e sono state rinominate da `20260925-26`.
-   Una gemella con un nome diverso da `<tabella>_id` si dichiara come
-   `STORICO_FK` in `automation_overrides_cols.csv`.
-5. **Naming trigger**: usa `name_template` (default: `trg_z90_{table}_storico_upd_dlt`) tramite `fn_name_from_template`.
-6. **Strategia esistenza**: controlla esistenza **per nome** e/o **per funzione** secondo `existence_strategy` (`BY_NAME`, `BY_FUNCTION`, `BOTH`).
-7. **Azione**:
+Il trigger riceve il nome della colonna che lega la versione alla madre: l'override `STORICO_FK`,
+altrimenti `<tabella>_id`. Nel ramo di chiusura cerca la versione aperta per quella colonna: se la
+colonna non c'è, ogni `UPDATE` o `DELETE` di una riga storicizzata della madre morirebbe alla chiusura
+dello snapshot.
 
-   * `p_dry_run=true` → registra evento `DRYRUN_CREATE_TRIGGER_UD` con `fn_audit_log_once`.
-   * `p_dry_run=false` → esegue `CREATE TRIGGER ... EXECUTE FUNCTION script.trgfn_storico_generic(fk_col)`; gestisce duplicate con log `SKIP_EXISTS`.
-~~8. **Pulizia legacy (opz.)**: se `params->>'drop_legacy_ud' = true`, rimuove eventuali vecchi trigger separati `upd/dlt`.~~
+Per questo, **prima** di montare un trigger, la funzione verifica che la colonna esista nella shadow;
+se no solleva `E_STORICO_FK_COL_ASSENTE` e la corsa si ferma. Vale anche in simulazione: un «verrebbe
+creato» su un trigger rotto è una risposta sbagliata. Una shadow con un nome diverso da `<tabella>_id`
+si dichiara con l'override `STORICO_FK`.
 
-> ⛔ **Il passo 8 è stato RIMOSSO il 2026-09-01** (changeSet `20260901-01`), e
-> con lui l'ultima chiave di `params` che questa funzione leggesse: la riga
-> `STORICO` di `dbops.automation_rules_tbl` ha ora `params = {}`.
->
-> ⚠️ **Non è stata una migrazione portata a termine: era una pulizia puntata
-> sul nome sbagliato.** Cancellava `trg_{table}_upd_storico` e
-> `trg_{table}_dlt_storico`, mentre i trigger legacy davvero creati dai
-> changelog storici si chiamano `trg_<tab>_upd_dlt_storico_<tab>` e quelli
-> montati oggi `trg_<tab>_z90_storico_upd_dlt`. **Tre forme diverse**: il
-> `DROP TRIGGER IF EXISTS` non ha mai potuto agganciare le altre due.
->
-> ⭐ E il flag era `COALESCE(..., false)`: il ramo non è mai stato eseguito
-> nemmeno per sbaglio. Si è tolta **una leva che prometteva una pulizia
-> impossibile**, non un comportamento — il dry-run della funzione produce
-> output identico a prima.
+Il controllo guarda i trigger che **nascono**; quelli già montati li presidia un pgTAP a parte.
 
 ---
 
-### Casi d’uso tipici
+### ⚠️ Quando un trigger «c'è già»
 
-* **Uniformare la storicizzazione**: passare da due trigger separati (UPDATE/DELETE) a un **unico trigger** standard.
-* **Post‑deploy**: applicare la regola a tutte le nuove tabelle con storico presente.
-* **Simulazione**: validare impatto in `dry_run` prima di intervenire in produzione.
+Il trigger c'è se sulla madre esiste un trigger su `script.trgfn_storico_generic`, con qualunque
+nome: si riconosce dalla **funzione**. Il nome serve solo a creare un trigger nuovo.
 
----
+Il nome viene dal template della regola, obbligatorio: la funzione non ha un nome di ripiego. Il
+seed usa la forma `trg_<tabella>_z90_storico_upd_dlt`, con l'infisso che fa scattare il trigger di
+storico dopo i guard.
 
-### Permessi e sicurezza
-
-* Richiede privilegi DDL sulle tabelle target.
-* In `dry_run` non modifica oggetti, utile per audit/analisi preventiva.
-
----
-
-### Esempi di utilizzo
-
-* **Simulazione**: `SELECT dbops.fn_run_automations_storico('AUTO', ARRAY['anagrafiche'], true);`
-* **Applicazione**: `SELECT dbops.fn_run_automations_storico('FORCE', NULL, false);`
+Se il controllo dice «assente» ma il nome è già preso da un altro trigger (un trigger col nome del
+template su un'altra funzione), la creazione fallisce per nome duplicato: la
+funzione salta la tabella e lo scrive nell'audit con status `WARN` e azione `SKIP_EXISTS`. Il salto non
+ferma la corsa.
 
 ---
 
-### Considerazioni
+### Che cosa non fa
 
-* La presenza dell’omologo nello schema `storico` è prerequisito: in caso contrario, il trigger non viene creato.
-* `name_template` e `existence_strategy` rendono la regola adattabile a naming legacy o transizioni graduali.
-* La colonna FK della gemella deve chiamarsi come l'argomento che la funzione passa al trigger (passo 4): è il controllo che ferma un trigger destinato a non chiudere mai uno snapshot. Il controllo guarda i trigger che **nascono**; quelli già montati li presidia `db/pgtap/dbops/test-storico-colonna-fk-dei-trigger-v1.sql`.
+* Non crea le shadow e non le arma: è `fn_run_automations_storico_provision`, con
+  `fn_ensure_storico_table`.
+* Non toglie trigger: un trigger legacy con un'altra forma si toglie a mano.
+* Non legge parametri dalla regola: la regola `STORICO` ha i parametri vuoti.
 
----
-
-### Benefici
-
-* **Coerenza**: stessa semantica di storicizzazione su tutte le tabelle.
-* **Manutenibilità**: un solo trigger da gestire, con logica centralizzata.
-* **Sicurezza operativa**: supporto `dry_run` e gestione duplicati con log espliciti.
+In simulazione non monta niente e registra nell'audit, per ogni trigger che monterebbe, la tabella e il
+nome.
 
 ---
 
-> **In sintesi**: `fn_run_automations_storico` è il modulo che standardizza la **storicizzazione** in Zero ERP, creando in modo idempotente il trigger unico `UPDATE OR DELETE` basato su `trgfn_storico_generic`.
+### Codici errore
+
+* `E_STORICO_FK_COL_ASSENTE` — la colonna di legame che il trigger riceverebbe non esiste nella shadow.
+  Si solleva prima del montaggio, anche in simulazione.
+* `E_STORICO_UD` — il montaggio del trigger fallisce per un motivo diverso dal nome duplicato. ⚠️ Un
+  guasto dell'**ambiente** (connessione, risorse, arresto, privilegio, lock) si scrive nel registro
+  errori con questo codice e poi si rilancia **col suo SQLSTATE**.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-storico-automazione-colonna-fk-v1.sql` — colonna di legame assente nella shadow:
+  la funzione solleva, anche in simulazione; rinominata la colonna, il trigger nasce con l'argomento
+  giusto e un aggiornamento della madre scrive lo snapshot.
+* `db/pgtap/dbops/test-storico-colonna-fk-dei-trigger-v1.sql` — su tutti i trigger di storico già
+  montati, l'argomento è una colonna della shadow.
+* `db/pgtap/dbops/test-storico-nome-funzione-ritirato-v1.sql` — una madre che ha già il trigger
+  generico con un altro nome non ne riceve un secondo, perché il trigger si riconosce dalla
+  funzione; la colonna `existence_strategy` non c'è; su una madre senza trigger, il trigger nasce.
+* `db/pgtap/dbops/test-storico-salto-trigger-presente-v1.sql` — nome del template preso da un trigger
+  su un'altra funzione: la corsa vive, l'audit ha `WARN` con `SKIP_EXISTS`, nessun trigger di storico
+  nasce.
+* `db/pgtap/dbops/test-automazioni-guasto-ambiente-rilanciato-v1.sql` — il ramo dell'ambiente nel
+  gestore d'errore (presidio sul testo).
+
+---
+
+### Note di migrazione
+
+* 2026-09-01 — tolto il ramo di pulizia dei trigger legacy separati: cercava nomi che nessun changelog
+  aveva mai creato, e il flag che lo attivava era spento di default. Il dry run produceva lo stesso
+  output di prima.
+* 2026-09-25 — arriva il controllo della colonna di legame (`brief-db-storico-colonna-fk-dei-trigger`):
+  cinque shadow del 2025 avevano la colonna al singolare, e sono state rinominate al nome
+  dell'automazione.
+* 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-03 — il controllo per funzione cerca il nome vivo `script.trgfn_storico_generic`: prima cercava
+  un nome ritirato e con `BY_FUNCTION` non trovava mai il trigger (`brief-db-revisione-maintenance`, D3).
+  Lo stesso giorno il salto per nome duplicato si scrive con status `WARN`: prima lo status
+  `SKIP_EXISTS` era rifiutato dal vincolo dell'audit e il salto fermava la corsa (R4).
+* 2026-11-08 — il trigger si riconosce dalla funzione: la strategia d'esistenza della regola esce; il
+  nome viene solo dal template della regola, senza il ripiego `trg_z90_<tabella>_storico_upd_dlt`,
+  diverso dal seed (`20261109-70`, brief-db-revisione-dbops D17, D20).
+
+---
+
+{% include-markdown "signature-core.md" %}

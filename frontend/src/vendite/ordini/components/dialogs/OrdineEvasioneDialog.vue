@@ -16,7 +16,7 @@
 // caricava le righe anche a chi non stava evadendo nulla; ora la fetch e'
 // all'APERTURA (lazy) e a ogni riapertura (residui freschi dopo un'evasione).
 // Stesso pattern di DdtResoDialog.
-import { watch, computed } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppDialog from '../../../../core/components/AppDialog.vue'
 import { useApiHandler } from '../../../../core/composables/useApiHandler'
@@ -50,13 +50,30 @@ function residuoDi(r) {
   return Number(r.qta_residua_operativa) || 0
 }
 
+// Gli oneri dell'ordine (`e_onere` della vista, brief-db-addebito-trasporto-
+// ordine K-5): non si evadono, passano da soli e interi nella prima bolla. In
+// tabella sarebbero una riga «senza residuo», cioe' evasa, e non lo sono: si
+// tolgono, e due note dicono quanti viaggeranno con la bolla e quanti sono gia'
+// partiti. «Gia' partito» lo dice il DB (`onere_in_bolla`, 20261103-65), con la
+// stessa regola della copia nella bolla: qui non si ricostruisce dai legami.
+const oneriDaPassare = ref(0)
+const oneriInBolla = ref(0)
+
 // Macchina selezione/quantità (BB): le righe gia' completamente evase restano
 // visibili come consuntivo (ordinata/evasa), le evadibili sono preselezionate
 // con qta = residuo.
 const selezione = useRigheSelezioneQta({
   fetchRighe: async () => {
+    // Azzerati prima della lettura: senza ordine, o con una lettura fallita,
+    // le note non devono restare quelle dell'ordine aperto prima.
+    oneriDaPassare.value = 0
+    oneriInBolla.value = 0
     if (!props.ordineId) return []
-    return (await store.loadRighe(props.ordineId)) || []
+    const righe = (await store.loadRighe(props.ordineId)) || []
+    const oneri = righe.filter((r) => r.e_onere === true)
+    oneriInBolla.value = oneri.filter((r) => r.onere_in_bolla === true).length
+    oneriDaPassare.value = oneri.length - oneriInBolla.value
+    return righe.filter((r) => r.e_onere !== true)
   },
   residuoDi,
   readonly: () => props.readonly,
@@ -161,8 +178,14 @@ function onGenera() {
     @cancel="close"
   >
     <div class="form-grid">
-      <p style="margin: 0; font-size: 0.85rem; color: var(--app-text-muted);">
+      <p class="app-dialog-intro">
         {{ t('vendite.ordini.evasione_intro') }}
+      </p>
+      <p v-if="oneriDaPassare > 0" class="app-dialog-intro">
+        {{ t('vendite.ordini.evasione_oneri_nota', { n: oneriDaPassare }, oneriDaPassare) }}
+      </p>
+      <p v-if="oneriInBolla > 0" class="app-dialog-intro">
+        {{ t('vendite.ordini.evasione_oneri_in_bolla_nota', { n: oneriInBolla }, oneriInBolla) }}
       </p>
 
       <TabellaSelezioneRighe :macchina="selezione"

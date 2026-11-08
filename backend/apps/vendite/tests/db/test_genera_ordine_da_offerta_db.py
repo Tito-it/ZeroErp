@@ -34,6 +34,8 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 4) test_un_offerta_che_non_c_e — E_OFFERTA_NON_TROVATA
 5) test_annullo_da_accettata_con_l_ordine_vivo_rifiutato — E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI
 6) test_annullo_da_accettata_senza_documenti_vivi — il service non lo ferma
+7) test_il_dettaglio_porta_il_contratto_vivo — BE-T.5-b: `contratto_id` dalla provenienza
+8) test_i_legami_dell_ordine_riportano_l_offerta — PROVENIENZA col codice della sorgente e il tipo da aprire
 """
 from __future__ import annotations
 
@@ -43,10 +45,11 @@ from typing import Any
 
 from django.db import connection, transaction
 
-from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
+from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE, SORGENTE_ORDINE_VENDITA
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 from apps.vendite.services import ordini_service
+from apps.vendite.services._annullo_con_legami import legami_del_documento
 from apps.vendite.services.offerte_service import OfferteService
 
 _FIXTURE: tuple[str, ...] = (
@@ -126,7 +129,7 @@ class GeneraOrdineDaOffertaDbTests(unittest.TestCase):
             offerta_id = self._offerta(cur)
             out = ordini_service.crea_ordine_da_offerta(offerta_id)
             cur.execute(
-                "SELECT o.documento_origine_tipo, o.documento_origine_id, o.numero, s.codice_interno,"
+                "SELECT v.documento_origine_tipo, v.documento_origine_id, o.numero, s.codice_interno,"
                 # La riga della MERCE dell'offerta. ⚠️ Dal giro 12 la versione
                 # del listino ha anche la riga d'appoggio della fixture (un
                 # articolo suo, brief-modello-documento-vendita §16.4), che
@@ -136,6 +139,9 @@ class GeneraOrdineDaOffertaDbTests(unittest.TestCase):
                 " (SELECT max(r.prezzo_unitario) FROM vendite.ordini_righe r"
                 "   WHERE r.ordine_id = o.id AND r.articolo_id = (SELECT id FROM _a))"
                 " FROM vendite.ordini o JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id"
+                # L'origine dagli alias stabili della vista, calcolati dalla
+                # provenienza: le colonne parallele sono uscite col giro T.5.
+                " JOIN vendite.vw_ordini_lista v ON v.id = o.id"
                 " WHERE o.id = %s",
                 [out["ordine_id"]],
             )
@@ -201,3 +207,39 @@ class GeneraOrdineDaOffertaDbTests(unittest.TestCase):
 
         offerta = self._nel_mondo(azione)
         self.assertEqual(offerta["stato_codice_interno"], "ANNULLATA")
+
+    # 7. BE-T.5-b: il dettaglio dell'offerta porta il contratto VIVO nato dal
+    #    push, dalla sede unica `vendite.fn_offerta_documenti_vivi`. Fino al
+    #    giro T.5 lo leggeva da `contratti.offerta_id`, che non esiste piu':
+    #    il dettaglio intero si rompeva, e nessun test sul DB lo leggeva.
+    def test_il_dettaglio_porta_il_contratto_vivo(self):
+        def azione(cur):
+            offerta_id = self._offerta(cur)
+            prima = OfferteService().get_offerta(offerta_id)
+            pushato = OfferteService().push_a_contratto(offerta_id)
+            dopo = OfferteService().get_offerta(offerta_id)
+            return prima, pushato, dopo
+
+        prima, pushato, dopo = self._nel_mondo(azione)
+        self.assertIsNone(prima["contratto_id"])
+        self.assertIsNone(prima["contratto_numero"])
+        self.assertEqual(dopo["contratto_id"], pushato["contratto_id"])
+        self.assertEqual(dopo["contratto_numero"], pushato["contratto_codice"])
+
+    # 8. I legami dell'ordine generato riportano l'offerta come PROVENIENZA:
+    #    l'origine e' il codice della sorgente, ed e' anche il tipo da aprire.
+    #    Stava in `test_origine_ordine_sorgente_db` su un id d'offerta inventato,
+    #    che dal giro T.2 il guard unico della provenienza rifiuta.
+    def test_i_legami_dell_ordine_riportano_l_offerta(self):
+        def azione(cur):
+            offerta_id = self._offerta(cur)
+            out = ordini_service.crea_ordine_da_offerta(offerta_id)
+            return offerta_id, legami_del_documento(SORGENTE_ORDINE_VENDITA, out["ordine_id"])
+
+        offerta_id, legami = self._nel_mondo(azione)
+        provenienze = [r for r in legami["righe"] if r["natura"] == "PROVENIENZA"]
+        self.assertEqual(len(provenienze), 1, legami["righe"])
+        riga = provenienze[0]
+        self.assertEqual(riga["origine"], SORGENTE_OFFERTA_COMMERCIALE)
+        self.assertEqual(riga["origine_id"], offerta_id)
+        self.assertEqual(riga["origine_tipo_codice_interno"], SORGENTE_OFFERTA_COMMERCIALE)

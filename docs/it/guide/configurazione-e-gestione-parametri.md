@@ -1,6 +1,6 @@
 # Guida — Configurazione e Gestione Parametri
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -356,7 +356,7 @@ override per record né audit.
 | `myapp.user_language`         | Lingua corrente per i messaggi (usata da `fn_get_messaggio`)                                         |
 | `myapp.dblink_log_connection` | Connessione dblink per il logging persistente                                                        |
 | `myapp.logconn`               | Connessione (DSN) per il logging via dblink: se valorizzato, vince su `myapp.dblink_log_connection`  |
-| `myapp.log_with_dblink`       | Attiva il logging fuori transazione via dblink (`on`/`off`)                                          |
+| `myapp.log_with_dblink`       | Interruttore del logging fuori transazione via dblink: solo `off` lo spegne, assente vale acceso     |
 | `myapp.bypass_tx_id_check`    | Bypass della validazione `tx_id` (debug)                                                             |
 | `myapp.env`                   | Nome dell'ambiente (`ci`, …): serve ai changeSet e ai gate che devono comportarsi diversamente in CI |
 | `dbops.tx_id`                 | UUID della transazione corrente (gestito dal trigger `trgfn_tx_id_managed`)                          |
@@ -366,6 +366,10 @@ override per record né audit.
 I GUC si impostano a livelli diversi — database e ruolo in modo persistente, sessione in modo
 temporaneo ([esempio](#area-tecnica-esempi)). Il secondo parametro `true` in `current_setting`
 restituisce `NULL` se il GUC non esiste, invece di sollevare errore.
+
+Il canale di log fuori transazione è acceso quando c'è una stringa di connessione e l'interruttore
+non vale `off`: la regola, una sola per tutte le funzioni che scrivono sul canale, è descritta in
+[script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa).
 
 Per i dettagli completi, vedi [Parametri Personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)).
 

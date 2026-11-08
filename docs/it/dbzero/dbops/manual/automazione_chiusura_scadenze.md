@@ -1,171 +1,153 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_chiusura_scadenze`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
-> [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali)
-> [Automazione DB](/guide/automazione-db)
-> [Linee guida SQL §7c — Ciclo stato + finestra di validita'](/linee-guida-sql)
+> Approfondimento tabelle:
 >
-Approfondimento tabelle:
-> [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)
-> [vendite.contratti](/dbzero/vendite/tabelle/contratti)
+> * [vendite.contratti](/dbzero/vendite/tabelle/contratti) — bersaglio: il contratto cessa alla scadenza
+> * [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) — bersaglio: la versione di listino si chiude alla scadenza
+> * [vendite.preventivi](/dbzero/vendite/tabelle/preventivi) — bersaglio: il preventivo emesso scade
+> * [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) — dove la chiusura arriva come lavoro, uno per azienda
 >
-Approfondimento funzioni:
-> [dbops.fn_apply_chiusura_scadenze](/dbzero/dbops/funzioni/fn_apply_chiusura_scadenze)
+> Approfondimento funzioni:
 >
-WIP:
-> [Automazione chiusure per scadenza](/dev/work-done/automazione-chiusure-scadenze)
+> * [dbops.fn_apply_chiusura_scadenze](/dbzero/dbops/funzioni/fn_apply_chiusura_scadenze) — il motore che legge questa tabella e chiude
+> * [dbops.fn_accoda_chiusura_scadenze](/dbzero/dbops/funzioni/fn_accoda_chiusura_scadenze) — la sveglia che accoda la chiusura per ogni azienda
+> * [script.trgfn_doc_stato_solo_dal_verbo](/dbzero/script/funzioni/trgfn_doc_stato_solo_dal_verbo) — la porta del modello del documento, che decide fra verbo e scrittura diretta
+>
+> Guide:
+>
+> * [Processi automatici: classe e identità](/guide/processi-automatici-classe-e-identita) — perché la chiusura gira con l'identità di un'azienda
+> * [Linee guida SQL — 7c Ciclo stato + finestra di validità](/linee-guida-sql#7c-ciclo-stato-finestra-di-validita) — il modello delle tabelle che entrano qui
+
+---
 
 ### 🎯 Scopo Principale
 
-(latest review 26-04-2026)
+Il registro delle tabelle che si chiudono **per scadenza**: una riga per tabella bersaglio, con
+quello che serve a portare lo stato da «attivo» a «chiuso» quando la data di fine validità è
+passata. Lo legge solo `dbops.fn_apply_chiusura_scadenze`.
 
-La tabella **`dbops.automazione_chiusura_scadenze`** centralizza la
-configurazione del **framework parametrico di chiusura per scadenza**
-applicato alle tabelle che presentano il pattern **"ciclo stato +
-finestra di validita'"** (linee-guida-sql §7c).
-
-Ogni riga descrive una tabella target e i parametri necessari alla
-funzione `dbops.fn_apply_chiusura_scadenze()` per portare lo stato
-gestionale al valore "chiuso" quando `valido_al < CURRENT_DATE`. La
-funzione e' invocata dal job pgAgent unico `chiusura_scadenze_daily`
-ogni notte alle 00:05.
-
-Il framework e' la **promozione al nucleo `dbops`** del pattern gia'
-applicato a `vendite.listini_versioni` (24-04-2026) e
-`vendite.contratti` (26-04-2026), secondo il principio §7 del
-manifesto sviluppo concentrico (due consumatori reali → astrazione
-validata).
+Aggiungere una tabella al giro non chiede codice nuovo: basta una riga nel seed, purché la tabella
+segua il modello «ciclo stato + finestra di validità».
 
 ---
 
-### ⭐ Il verbo di chiusura (rev 2026-10-28)
+### Che cosa descrive una riga
 
-* **`verbo_chiusura`** *(text NULL)* – per una testata sotto la porta del modello del documento:
-  il verbo che chiude le righe scadute (`schema.funzione`, senza argomenti, ritorna quante ne ha
-  chiuse). Oggi `vendite.fn_cessa_contratti_scaduti` (contratti),
-  `vendite.fn_chiudi_preventivi_scaduti` (preventivi, EMESSO -> SCADUTO, dal 31-10-2026,
-  `col_valido_al = validita_al`) e
-  `vendite.fn_chiudi_versioni_listino_scadute` (versioni di listino, che dal 28-10-2026 hanno lo
-  stato nel vocabolario `config.stati_doc_listino_versioni`: `tipo_stato = FK`). NULL = nessuna
-  porta, il framework fa l'`UPDATE` dinamico.
+Una riga dice **dove** guardare e **come** cambiare lo stato:
 
-### Campi chiave e semantica
+* la tabella, la colonna di stato e la colonna con la data di fine validità (`col_valido_al`, che
+  non si chiama sempre `valido_al`: sul preventivo è `validita_al`);
+* il codice dello stato «attivo» e di quello «chiuso». Sono sempre **codici**, mai id numerici:
+  restano gli stessi fra sviluppo, CI e produzione;
+* `tipo_stato`: `VARCHAR` se la colonna contiene direttamente il codice, `FK` se punta a un
+  vocabolario. Con `FK` le quattro colonne `fk_lookup_*` dicono in quale tabella e su quali colonne
+  il codice si traduce nell'id da scrivere; con `VARCHAR` restano vuote. Il vincolo
+  `chk_automazione_chiusura_scadenze_fk_coerente` tiene insieme le due cose;
+* `verbo_chiusura`: per una testata sotto la porta del modello del documento, la funzione che la
+  chiude (vedi sotto);
+* `attivo`: una riga spenta resta in tabella ma non entra nel giro.
 
-* **`id`** *(smallserial PK)* – id tecnico della riga di config.
-* **`schema_tabella`** *(text NN)* – schema PostgreSQL della tabella target (es. `vendite`).
-* **`nome_tabella`** *(text NN)* – nome tabella target (es. `listini_versioni`, `contratti`).
-* **`col_stato`** *(text NN)* – nome colonna stato sulla tabella target (es. `stato`, `stato_doc_contratto_id`).
-* **`tipo_stato`** *(text NN, CHECK IN `VARCHAR`/`FK`)* – discrimina la modalita' di lookup del codice stato:
-  * `VARCHAR`: la colonna stato contiene direttamente il codice (varchar + CHECK constraint sui valori ammessi);
-  * `FK`: la colonna stato e' FK a una tabella catalogo, il codice viene risolto via lookup su `codice_interno`.
-* **`col_valido_al`** *(text NN, default `valido_al`)* – nome colonna data fine validita'.
-* **`stato_attivo_codice`** *(text NN)* – valore stato pre-chiusura. Per `VARCHAR` e' il valore stesso (es. `ATTIVA`); per `FK` e' il `codice_interno` della riga lookup (es. `ATTIVO`).
-* **`stato_chiuso_codice`** *(text NN)* – valore stato post-chiusura. Semantica analoga (`CHIUSA` per VARCHAR, `CESSATO` come codice_interno per FK).
-* **`fk_lookup_schema`** *(text NULL)* – per `tipo_stato='FK'`: schema della tabella di lookup (es. `config`).
-* **`fk_lookup_table`** *(text NULL)* – per `tipo_stato='FK'`: nome tabella di lookup (es. `stati_doc_contratti`).
-* **`fk_lookup_codice_col`** *(text NULL)* – colonna chiave logica per il match (tipicamente `codice_interno`). Va specificata esplicitamente per `tipo_stato='FK'`.
-* **`fk_lookup_id_col`** *(text NULL)* – colonna PK della tabella di lookup, usata come valore da scrivere nella `col_stato` target (tipicamente `id`). Va specificata esplicitamente per `tipo_stato='FK'`.
-* **`classe`** *(text NN, CHECK)* – ⭐ *(dal 2026-09-04)* la natura del
-  **bersaglio**: `MANUTENZIONE` | `AMMINISTRAZIONE` | `DOMINIO`. Vedi sotto.
-* **`attivo`** *(boolean NN, default true)* – abilita/disabilita la riga senza eliminarla.
-* **`descrizione`** *(text)* – documentazione inline sul caso d'uso.
-* **Audit** – `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`.
+La chiave naturale è la coppia schema e tabella: una tabella ha **una** riga, non due regole che
+potrebbero contraddirsi.
 
 ---
 
-### Vincoli
+### ⭐ Una testata sotto la porta si chiude col suo verbo
 
-| Tipo | Nome | Descrizione |
-| --- | --- | --- |
-| PK | `pk_automazione_chiusura_scadenze` | `id` |
-| UNIQUE | `uq_automazione_chiusura_scadenze_target` | `(schema_tabella, nome_tabella)` — una sola riga per tabella |
-| CHECK | `chk_automazione_chiusura_scadenze_tipo_stato` | `tipo_stato IN ('VARCHAR','FK')` |
-| CHECK | `chk_automazione_chiusura_scadenze_fk_coerente` | per `tipo_stato='VARCHAR'` i campi `fk_lookup_*` devono essere NULL; per `tipo_stato='FK'` tutti valorizzati |
-| CHECK | `chk_automazione_chiusura_scadenze_classe` | `classe IN ('MANUTENZIONE','AMMINISTRAZIONE','DOMINIO')` |
+Le testate che seguono il modello del documento (oggi contratto, versione di listino e preventivo)
+hanno lo stato protetto dalla porta `script.trgfn_doc_stato_solo_dal_verbo`: lo stato lo scrive
+solo un verbo, e una scrittura diretta della colonna è rifiutata. Per loro il framework non scrive
+lo stato: chiama il verbo dichiarato in `verbo_chiusura`, una funzione senza argomenti, qualificata
+con lo schema, che chiude le righe scadute e dice quante sono.
 
-L'indice parziale `ix_automazione_chiusura_scadenze_attivo` su `(id) WHERE attivo IS TRUE` supporta la lettura tipica del job (filtra solo righe attive).
+Il vincolo `chk_automazione_chiusura_scadenze_verbo_qualificato` pretende la forma
+`schema.funzione`; che la funzione esista e non abbia argomenti lo controlla il framework al
+momento di usarla.
 
----
+Porta e verbo si guardano **prima** di scegliere come scrivere lo stato, con qualunque
+`tipo_stato` (`VARCHAR` o `FK`):
 
-### ⭐ Rev 2026-09-04 — la classe sta sul BERSAGLIO, non sul job
+| La riga | Che cosa fa il framework |
+| --- | --- |
+| dichiara un verbo | lo chiama, sempre: lo stato lo scrive il verbo, e il conteggio è il suo |
+| non dichiara un verbo, e la tabella è sotto la porta | rifiuta la riga: è una configurazione non valida, perché la scrittura diretta sarebbe respinta |
+| non dichiara un verbo, e la tabella non ha la porta | scrive lo stato direttamente |
 
-È il caso che non entrava nello schema generale, e va spiegato perché la
-soluzione è diversa da quella degli altri processi.
-
-`chiusura_scadenze_daily` è **un solo job** che chiude scadenze su **più
-tabelle**. Le tabelle però non sono tutte uguali: `vendite.contratti` e
-`vendite.listini_versioni` appartengono a un'azienda, un'eventuale tabella
-tecnica no.
-
-⛔ Mettere la classe sul **job** avrebbe costretto a scegliere una natura sola
-per tutte le tabelle: o si dichiara di dominio un lavoro che tocca anche cose di
-nessuno, o si dichiara di manutenzione un lavoro che tocca fatture.
-
-⇒ La classe sta su **ogni riga di configurazione**, cioè su ogni bersaglio.
-
-⚠️ **Il `NOT NULL` è il cancello della cosa**: una riga nuova nel CSV
-*deve* dichiarare che natura ha. Senza, arruolerebbe un'altra tabella nel giro
-notturno senza dire di chi sono le righe che tocca — che è esattamente il
-difetto per cui questa colonna esiste.
-
-⭐ **Oggi entrambi i bersagli sono `DOMINIO`**, ed è la ragione per cui il job
-non si spacca in due: portano entrambi l'emittente (`contratti` con la colonna
-diretta, `listini_versioni` attraverso il listino padre).
+Oggi tutte e tre le righe del seed sono testate sotto la porta, con il loro verbo:
+`vendite.fn_cessa_contratti_scaduti`, `vendite.fn_chiudi_versioni_listino_scadute` e
+`vendite.fn_chiudi_preventivi_scaduti`.
 
 ---
 
-### Comportamento previsto
+### ⭐ La classe sta sul bersaglio, non sul job
 
-1. Una nuova riga (via INSERT seed in `80_data/sql/dbops/automazione_chiusura_scadenze.csv`) descrive una tabella che vuole partecipare alla chiusura per scadenza.
-2. Il job pgAgent `chiusura_scadenze_daily` invoca `dbops.fn_apply_chiusura_scadenze()`, che itera sulle righe `attivo=true` e applica UPDATE dinamici alle tabelle target.
-3. Per `tipo_stato='VARCHAR'`: UPDATE diretto con i codici come stringhe.
-4. Per `tipo_stato='FK'`: prima lookup id chiuso/attivo da `fk_lookup_schema.fk_lookup_table` via `codice_interno`, poi UPDATE con id risolti.
-5. Pre-check di esistenza schema/tabella/colonne (e per FK anche tabella lookup + codici): in caso di config invalida raise `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` (no exec parziale).
+`classe` dice la natura della **tabella** che si chiude. Sta qui e non sul processo perché la
+natura del giro è quella dei suoi bersagli: una classe sul job avrebbe costretto a dichiarare di
+dominio un lavoro che tocca anche dati di nessuno, o di manutenzione uno che tocca contratti.
 
----
+⛔ **Il registro ammette solo `DOMINIO`** (`chk_automazione_chiusura_scadenze_classe`). Il giro
+gira dentro la coda, un lavoro per azienda con l'identità e la row level security di quell'azienda:
+è l'esecutore giusto per righe che hanno un padrone, e solo per quelle. Un bersaglio di un'altra
+natura (`MANUTENZIONE`, `AMMINISTRAZIONE`) chiede un esecutore che lavori una volta sola con
+un'identità tecnica, e quell'esecutore non c'è: finché non lo si sviluppa, il CHECK respinge la
+riga e il motore la rifiuterebbe (`E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`, motivo
+`classe_senza_esecutore`).
 
-### Esempi
+⛔ **Il `NOT NULL` è il cancello**: una riga nuova deve dichiarare di chi sono le righe che tocca.
+Senza, arruolerebbe un'altra tabella nel giro senza dirlo, che è il difetto per cui la colonna
+esiste.
 
-**1) Seed VARCHAR (listini_versioni):**
-
-```csv
-2,vendite,listini_versioni,stato,VARCHAR,valido_al,ATTIVA,CHIUSA,,,,,t,...
-```
-
-Risultato: `UPDATE vendite.listini_versioni SET stato='CHIUSA' WHERE stato='ATTIVA' AND valido_al < CURRENT_DATE`.
-
-**2) Seed FK (contratti):**
-
-```csv
-3,vendite,contratti,stato_doc_contratto_id,FK,valido_al,ATTIVO,CESSATO,config,stati_doc_contratti,codice_interno,id,t,...
-```
-
-Risultato: lookup id `ATTIVO`/`CESSATO` su `config.stati_doc_contratti`, poi `UPDATE vendite.contratti SET stato_doc_contratto_id=<id_cessato> WHERE stato_doc_contratto_id=<id_attivo> AND valido_al < CURRENT_DATE`.
-
-**3) Disattivare temporaneamente una riga (es. manutenzione):**
-
-```sql
-UPDATE dbops.automazione_chiusura_scadenze
-   SET attivo = false
- WHERE schema_tabella = 'vendite'
-   AND nome_tabella   = 'contratti';
-```
-
-Il job successivo non processera' i contratti finche' non viene riattivata.
+I bersagli portano l'emittente: il contratto e il preventivo con una colonna propria, la
+versione di listino attraverso il listino. La row level security fa il perimetro.
 
 ---
 
-### Note operative
+### Chi la scrive
 
-* I codici stato sono espressi come **`codice_interno`** (per FK) o come valore varchar (per VARCHAR), **mai come id numerico**: stabilita' tra ambienti dev/CI/prod.
-* Aggiungere una nuova tabella al pattern non richiede nuovo codice DB: basta una INSERT seed con i parametri corretti.
-* Compatibilita' con guard tabella-specifici: l'UPDATE eseguito dalla funzione attraversa eventuali trigger guard transizione e li soddisfa per costruzione (precondizione temporale `valido_al < CURRENT_DATE` identica al WHERE).
-* La tabella e' di **configurazione amministrativa**: le righe sono inserite via Liquibase seed, non da utenti finali.
+È configurazione: la scrive solo il seed (`80_data/sql/dbops/automazione_chiusura_scadenze.csv`),
+mai un utente. Per sospendere la chiusura di una tabella si spegne la sua riga (`attivo`), e il
+giro successivo la salta.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-fn-apply-chiusura-scadenze-v1.sql` — il giro col verbo su versione di
+  listino e contratto, l'idempotenza, i rifiuti di una riga che punta a una tabella, una colonna o
+  un codice inesistente, una testata sotto la porta senza verbo o con un verbo che non esiste.
+* `db/pgtap/dbops/test-chiusura-scadenze-classe.sql` — la colonna `classe`, il CHECK che ammette
+  solo `DOMINIO`, il `NOT NULL` come cancello, i bersagli del seed tutti `DOMINIO`, il motore senza
+  argomenti e il suo rifiuto di un bersaglio di altra classe; il verbo usato anche con
+  `tipo_stato = VARCHAR`, e una testata `VARCHAR` sotto la porta senza verbo rifiutata.
+* `db/pgtap/dbops/test-chiusura-scadenze-audit-v1.sql` — un giro scrive la sua riga di audit.
+* `db/pgtap/vendite/test-listino-versione-al-modello-v1.sql` e
+  `db/pgtap/vendite/test-preventivo-scadenza-v1.sql` — la riga del seed della versione di listino e
+  del preventivo, e la chiusura attraverso il loro verbo.
+
+---
+
+### Note di migrazione
+
+* 2026-04-26 — nasce come promozione a `dbops` della chiusura per scadenza già scritta per la
+  versione di listino e per il contratto.
+* 2026-09-04 — nasce `classe`, `NOT NULL` dalla stessa data
+  (`brief-db-processi-automatici-identita-e-perimetro`).
+* 2026-09-05 — la chiusura passa da pgAgent alla coda: pgAgent sveglia, il lavoro lo fa il
+  drenatore, un'azienda alla volta.
+* 2026-10-28 — nasce `verbo_chiusura`; la versione di listino passa a stato in vocabolario
+  (`tipo_stato = FK`) e sotto la porta (`brief-modello-documento-vendita`).
+* 2026-10-31 — entra il preventivo (`brief-db-scadenza-preventivi`).
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
+* 2026-11-08 — `classe` ammette solo `DOMINIO` (prima anche `MANUTENZIONE` e `AMMINISTRAZIONE`,
+  che il motore avrebbe lavorato con l'identità di ogni azienda); porta e verbo valgono per ogni
+  `tipo_stato` (prima il verbo si leggeva solo con `FK` sotto la porta).
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

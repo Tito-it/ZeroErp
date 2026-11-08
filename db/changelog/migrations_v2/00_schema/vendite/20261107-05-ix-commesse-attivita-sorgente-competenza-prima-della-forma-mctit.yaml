@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'INDICE C'E' QUANDO IL -70 LO TOGLIE (database da zero)
+#   Scritto il 2026-11-07 (brief-db-sorgente-documento-e-riga, lotto C, giro C.3:
+#   la CI da zero si e' fermata sul -70, «index ... does not exist»).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   00_schema/vendite/20261107-70 toglie ix_commesse_attivita_sorgente_competenza
+#   senza IF EXISTS. L'indice nasce in 90_end (20260703-58). Su dbdev il -58 era
+#   gia' passato e il migrate e' andato. Da zero l'ordine e' PER FASE: tutto
+#   00_schema prima di 90_end, quindi al -70 l'indice non esiste ancora.
+#
+# ── IL RIMEDIO ──────────────────────────────────────────────────────
+#   Il -70 e' committato: non si tocca (checksum). Gli si da' la condizione che
+#   pretende, in un passo suo che gira PRIMA: l'indice si crea se manca, ma SOLO
+#   finche' sorgente_uid e' ancora testo, cioe' finche' il -70 non ha girato. Su
+#   dbdev il -70 e' passato (la colonna e' uuid): non fa niente, e non rimette
+#   l'indice ritirato. Da zero la tabella e' vuota, l'indice nasce senza dati e
+#   il -70 lo toglie.
+#   Il seguito, cioe' che da zero il -58 di 90_end lo ricrea dopo il -70, lo fa
+#   90_end/20261108-35.
+#
+# ── IL NUMERO ───────────────────────────────────────────────────────
+#   Deve girare PRIMA di 20261107-70 nel master autogenerato (ordine per data e
+#   numero, modalita' stretta). -05 e' l'unico numero libero del 07-11 su tutti i
+#   livelli (cercato il 2026-11-07). Fra -05 e -70 nessun changeSet tocca
+#   l'indice o sorgente_uid di commesse_attivita.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261107-05-ix-commesse-attivita-sorgente-competenza-prima-della-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261107-05-ix-commesse-attivita-sorgente-competenza-prima-della-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea ix_commesse_attivita_sorgente_competenza se manca e se sorgente_uid e' ancora testo,
+        prima di 20261107-70 che lo toglie senza IF EXISTS: da zero l'indice nasce in 90_end
+        (20260703-58), dopo. Su dbdev, dove il -70 e' passato, non fa niente.
+        Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: commesse_attivita }
+            - columnExists: { schemaName: vendite, tableName: commesse_attivita, columnName: sorgente_uid }
+            - columnExists: { schemaName: vendite, tableName: commesse_attivita, columnName: competenza_mese }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $ix$
+              BEGIN
+                  -- Solo prima della forma del -70: dopo, l'indice e' ritirato.
+                  IF (SELECT a.atttypid = 'text'::regtype
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attrelid = 'vendite.commesse_attivita'::regclass
+                         AND a.attname  = 'sorgente_uid'
+                         AND NOT a.attisdropped)
+                     AND to_regclass('vendite.ix_commesse_attivita_sorgente_competenza') IS NULL THEN
+                      CREATE INDEX ix_commesse_attivita_sorgente_competenza
+                        ON vendite.commesse_attivita (sorgente_uid, competenza_mese)
+                        WHERE sorgente_uid IS NOT NULL;
+                  END IF;
+              END
+              $ix$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

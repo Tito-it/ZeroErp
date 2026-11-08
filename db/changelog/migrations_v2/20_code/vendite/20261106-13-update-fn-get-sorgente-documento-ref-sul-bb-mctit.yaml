@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_get_sorgente_documento_ref SUL BB CHE RISOLVE (regola del 2)
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 («le copie si ritirano nello
+#   stesso giro»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La regola di risoluzione (tipo + chiave -> id e numero del documento) e'
+#   passata in script.fn_sorgente_documento (20261106-11). Questa funzione la
+#   teneva in copia: resta, con firma, colonne e ROWS 1 invariati, per i suoi
+#   chiamanti (sette funzioni, vw_dash_competenza_gruppi, il backend), e chiede al
+#   ponte script.fn_sorgente_documento_da_chiave.
+#
+# ── ⚠️ CHE COSA CAMBIA PER CHI LA CHIAMA ─────────────────────────────
+#   · un id su un tipo a chiave uid (il preventivo per id) ora si risolve; prima
+#     restava NULL;
+#   · un id su un tipo a chiave id si risolve solo se il documento esiste ed e'
+#     visibile; prima l'id tornava com'era anche per un documento che non c'e'.
+#   Tutto il resto uguale: una riga sempre, mai un errore, l'etichetta dichiarata
+#   da label_selector, «cade tutto» su un refuso di catalogo.
+#   ⭐ Diventa LANGUAGE sql BEGIN ATOMIC: un passaggio senza logica sua.
+#   ⚠️ BEGIN ATOMIC da solo nel suo sql:, COMMENT nel secondo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-13-update-fn-get-sorgente-documento-ref-sul-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261106-13-update-fn-get-sorgente-documento-ref-sul-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_get_sorgente_documento_ref sul ponte script.fn_sorgente_documento_da_chiave: la copia
+        della regola di risoluzione si ritira. brief-db-sorgente-documento-e-riga §7.2 lotto 0.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_sorgente_documento_da_chiave';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_sorgente_documento_ref(
+                  p_sorgente_tipo_id bigint,
+                  p_sorgente_uid     text)
+              RETURNS TABLE(documento_id bigint, documento_numero text)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              ROWS 1
+              BEGIN ATOMIC
+                  SELECT d.documento_id, d.documento_numero
+                    FROM script.fn_sorgente_documento_da_chiave(p_sorgente_tipo_id, p_sorgente_uid) d;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_get_sorgente_documento_ref(bigint, text) IS
+                'Il documento di origine di una riga a sorgente polimorfa che scrive la chiave come testo: documento_id (per l''azione «apri documento sorgente») e documento_numero (il numero che l''operatore legge, dalla colonna che config.sorgenti dichiara in label_selector). Passa al ponte script.fn_sorgente_documento_da_chiave, che riconosce l''id o l''uid in forma canonica e risolve con script.fn_sorgente_documento: stessa regola per tutti i lettori. Restituisce SEMPRE una riga, anche tutta NULL, e non solleva: una sorgente non risolta fa solo sparire l''azione, come per le voci manuali, gli oneri e le rettifiche, che un documento a monte non ce l''hanno. INVOKER: NULL vuol dire anche «non visibile a chi chiede».';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20261005-26 con ROWS 1 (20261008-21):
+              -- un rollback lo riprende da li'.
+              SELECT 1;

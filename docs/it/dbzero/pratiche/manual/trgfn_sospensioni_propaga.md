@@ -1,39 +1,39 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_sospensioni_propaga`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_sospensioni_propaga`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-[pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
-> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> [config.transizioni_stati_flussi_pratiche](/dbzero/config/manual/transizioni_stati_flussi_pratiche)
+> Approfondimento tabelle:
+>
+> * [pratiche.sospensioni](/dbzero/pratiche/tabelle/sospensioni) — la sospensione che scatena la propagazione
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — i flussi che passano a `SOSPESO`
+> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche) — gli stati del flusso
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_sospensioni_riattiva](/dbzero/pratiche/funzioni/trgfn_sospensioni_riattiva) — il verso opposto, alla chiusura della sospensione
 
 ---
+
 ### 🎯 Scopo Principale
-Propaga la sospensione a livello pratica ai flussi attivi. AFTER INSERT su `pratiche.sospensioni`: se `flusso_id IS NULL`, tutti i flussi con stato DA_ESEGUIRE o IN_CORSO passano a SOSPESO.
+
+La trigger function `pratiche.trgfn_sospensioni_propaga` porta a `SOSPESO` i flussi attivi di una
+pratica quando nasce una sospensione dell'intera pratica.
 
 ---
 
-### Firma
+### La regola
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_propaga()
-RETURNS trigger LANGUAGE plpgsql
-```
+* Scatta dopo l'inserimento di una riga in `pratiche.sospensioni`.
+* Agisce solo sulle sospensioni di pratica (`flusso_id` vuoto): una sospensione di un solo flusso non
+  si propaga.
+* I flussi della pratica in `DA_ESEGUIRE` o `IN_CORSO` passano a `SOSPESO`; quelli già chiusi o già
+  sospesi restano come sono.
 
----
-
-### Logica
-
-1. Se `NEW.flusso_id IS NOT NULL` → nessuna propagazione (sospensione singolo flusso).
-2. Recupera gli ID degli stati DA_ESEGUIRE, IN_CORSO, SOSPESO da `config.stati_flussi_pratiche`.
-3. UPDATE tutti i flussi della pratica con stato in (DA_ESEGUIRE, IN_CORSO) → SOSPESO.
-
----
-
-### Trigger associato
-
-| Nome                                          | Fase  | Evento | Tabella                |
-| --------------------------------------------- | ----- | ------ | ---------------------- |
-| `trg_sospensioni_z90_propaga_sospensione_ins` | AFTER | INSERT | `pratiche.sospensioni` |
+⭐ La funzione non salva lo stato di partenza dei flussi: il cambio di stato lo registra il giornale
+del flusso, ed è da lì che `pratiche.trgfn_sospensioni_riattiva` ritrova lo stato da ripristinare
+quando la sospensione si chiude.
 
 ---
 

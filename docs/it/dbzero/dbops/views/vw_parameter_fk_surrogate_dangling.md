@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Diagnostica: parametri (default + override) il cui valore non esiste nel target del registry FK-surrogata. Output non vuoto = righe da risolvere manualmente. Sorgente: config.parameters + config.parameter_overrides.
+> Presidio: parametri (default e override) il cui valore non esiste nel target della regola FK-surrogata che li governa. Una riga per valore, con la regola che lo governa (matched_pattern, matched_mode, target): la sceglie script.fn_parameter_fk_surrogate_regola, la stessa che usa la check, quindi un codice preso da piu' pattern esce una volta sola e col target giusto. Righe = valori da correggere a mano. Sorgenti: config.parameters e config.parameter_overrides.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -19,7 +19,7 @@ SELECT 'parameter'::text AS source,
     pfs.code_pattern AS matched_pattern,
     pfs.match_mode AS matched_mode
    FROM (config.parameters p
-     JOIN config.parameter_fk_surrogate pfs ON ((pfs.enabled AND ((((pfs.match_mode)::text = 'EXACT'::text) AND ((pfs.code_pattern)::text = (p.code)::text)) OR (((pfs.match_mode)::text = 'LIKE'::text) AND ((p.code)::text ~~ (pfs.code_pattern)::text))))))
+     JOIN config.parameter_fk_surrogate pfs ON ((pfs.id = script.fn_parameter_fk_surrogate_regola((p.code)::text))))
   WHERE ((p.default_value IS NOT NULL) AND (NOT script.fn_check_parameter_fk_surrogate((p.code)::text, p.default_value)))
 UNION ALL
  SELECT 'parameter_override'::text AS source,
@@ -31,7 +31,7 @@ UNION ALL
     pfs.match_mode AS matched_mode
    FROM ((config.parameter_overrides po
      JOIN config.parameters p ON ((p.id = po.parameter_id)))
-     JOIN config.parameter_fk_surrogate pfs ON ((pfs.enabled AND ((((pfs.match_mode)::text = 'EXACT'::text) AND ((pfs.code_pattern)::text = (p.code)::text)) OR (((pfs.match_mode)::text = 'LIKE'::text) AND ((p.code)::text ~~ (pfs.code_pattern)::text))))))
+     JOIN config.parameter_fk_surrogate pfs ON ((pfs.id = script.fn_parameter_fk_surrogate_regola((p.code)::text))))
   WHERE ((po.overridden_value IS NOT NULL) AND (NOT script.fn_check_parameter_fk_surrogate((p.code)::text, po.overridden_value)));
 ```
 

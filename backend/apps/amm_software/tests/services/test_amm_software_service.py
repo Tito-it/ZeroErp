@@ -123,7 +123,7 @@ class TestCreateOperatore(TestCase):
 
     # Scopo: Happy path: la credenziale nuova nasce col segnaposto NON
     # utilizzabile (la password la sceglie la persona attivando l'invito).
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_ok(self, mock_repo_cls):
         from django.contrib.auth.hashers import is_password_usable
 
@@ -140,7 +140,7 @@ class TestCreateOperatore(TestCase):
     # controllo qui. Il flusso A crea un privato (REQUIRED) e il rifiuto arriva
     # dal guard `trgfn_soggetti_guard_sesso_policy`, prima del consenso al
     # riuso (brief-db-sesso-senza-default §6). `X` passa: e' un valore.
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_senza_sesso_non_lo_inventa(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         mock_repo = self._repo(mock_repo_cls)
@@ -151,7 +151,7 @@ class TestCreateOperatore(TestCase):
 
     # Scopo: un campo persona che non e' una stringa e' un 400 sul campo, non
     # un 500: prima `(payload.get(k) or "").strip()` era un AttributeError.
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_campo_non_stringa_400_col_campo(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         mock_repo = self._repo(mock_repo_cls)
@@ -165,7 +165,7 @@ class TestCreateOperatore(TestCase):
 
     # Scopo: Email di una credenziale esistente (D-6): la risposta lo dice,
     # perche' il pannello avvisi l'admin.
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_credenziale_riusata(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         self._repo(mock_repo_cls, riusata=True)
@@ -175,7 +175,7 @@ class TestCreateOperatore(TestCase):
     # Scopo: Il consenso al riuso (`20260925-51`) e' una dichiarazione del
     # client: il service la trasporta com'e' e, assente, non la inventa (la
     # prima chiamata DEVE andare senza, perche' la madre chieda conferma).
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_consenso_al_riuso(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         mock_repo = self._repo(mock_repo_cls, riusata=True)
@@ -186,7 +186,7 @@ class TestCreateOperatore(TestCase):
 
     # Scopo: `password` nel payload e' rifiutata: un client che la manda
     # crederebbe che valga.
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_rifiuta_password(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
@@ -195,7 +195,7 @@ class TestCreateOperatore(TestCase):
         self.assertIn("password", ctx.exception.message)
         mock_repo_cls.return_value.crea_operatore.assert_not_called()
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_missing_cognome(self, mock_repo_cls):
         """Cognome vuoto -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
@@ -204,7 +204,7 @@ class TestCreateOperatore(TestCase):
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
         self.assertIn("Cognome", ctx.exception.message)
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_missing_qualifica(self, mock_repo_cls):
         """Qualifica None -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
@@ -215,7 +215,7 @@ class TestCreateOperatore(TestCase):
 
     # Scopo: Fase 1 multi-face — il payload con `ruolo_sistema` legacy e'
     # rifiutato (E_AMM_VALIDAZIONE) prima di toccare il repo.
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_rifiuta_ruolo_sistema_legacy(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
@@ -224,7 +224,7 @@ class TestCreateOperatore(TestCase):
         mock_repo_cls.return_value.crea_operatore.assert_not_called()
 
     # Scopo: `is_super_admin` passa al repo come bool (default False).
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_operatore_is_super_admin_passato_al_repo(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         mock_repo = self._repo(mock_repo_cls)
@@ -241,7 +241,7 @@ class TestCreateOperatore(TestCase):
 class TestGetOperatore(TestCase):
     """Test AmmSoftwareService.get_operatore()."""
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_get_operatore_ok(self, mock_repo_cls):
         mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = {"auth_user_id": 1}
@@ -249,7 +249,7 @@ class TestGetOperatore(TestCase):
         result = AmmSoftwareService().get_operatore(1)
         self.assertEqual(result["auth_user_id"], 1)
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_get_operatore_not_found(self, mock_repo_cls):
         mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = None
@@ -261,7 +261,7 @@ class TestGetOperatore(TestCase):
     # Scopo: Una credenziale di categoria SISTEMA o ALTRO risponde come un id
     #        inesistente, e il dettaglio non si legge: i comandi dell'operatore
     #        spegnerebbero la veste OPERATORE di un utente tecnico (R-DB-A1).
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_get_operatore_di_un_altra_categoria(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         for categoria in ("SISTEMA", "ALTRO", None):
@@ -285,7 +285,7 @@ class TestUpdateOperatore(TestCase):
         self.addCleanup(patcher.stop)
 
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_ok(self, mock_repo_cls, mock_invalidate):
         """Aggiorna e invalida cache."""
         mock_repo = mock_repo_cls.return_value
@@ -296,7 +296,7 @@ class TestUpdateOperatore(TestCase):
         mock_repo.update_operatore.assert_called_once()
         mock_invalidate.assert_called_once_with(1)
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_not_found(self, mock_repo_cls):
         mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = None
@@ -310,7 +310,7 @@ class TestUpdateOperatore(TestCase):
     # «Disabilita» (2026-10-04). I due flag restano ortogonali.
     @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_passa_flag_multiface_al_repo(
         self, mock_repo_cls, _mock_invalidate, _tx,
     ):
@@ -357,7 +357,7 @@ class TestUpdateOperatore(TestCase):
     # utilizzabile §10: assente -> MISSING (non si tocca), una data -> date,
     # `null` -> None (si toglie). Un formato sbagliato non arriva al repository.
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_valido_al_tre_stati(self, mock_repo_cls, _mock_invalidate):
         from datetime import date
 
@@ -387,7 +387,7 @@ class TestUpdateOperatore(TestCase):
     # E_AMM_VALIDAZIONE sul campo `attivo`, e niente arriva al repository.
     # Si riattiva col reinvio dell'invito.
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_non_riaccende_la_veste_spenta(
         self, mock_repo_cls, mock_invalidate,
     ):
@@ -406,7 +406,7 @@ class TestUpdateOperatore(TestCase):
     # `ruolo_sistema`. Il payload con la chiave legacy viene rifiutato
     # con E_AMM_VALIDAZIONE per forzare i client al nuovo contract
     # (is_super_admin + attivo).
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_rifiuta_ruolo_sistema_legacy(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
@@ -421,7 +421,7 @@ class TestUpdateOperatore(TestCase):
     # oggi`, sync), nella stessa strada che chiude sessioni e inviti.
     @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_attivo_only(
         self, mock_repo_cls, mock_invalidate, _tx,
     ):
@@ -448,7 +448,7 @@ class TestUpdateOperatore(TestCase):
     #        riferimento potrebbe essere un'altra (l'accesa vince sulla spenta).
     @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_spento_legge_la_veste_prima(
         self, mock_repo_cls, _mock_invalidate, _tx,
     ):
@@ -468,7 +468,7 @@ class TestUpdateOperatore(TestCase):
     #        riaccenderlo (D-3) resta valido, e nessuna sessione si tocca.
     @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_gia_spento_non_invalida_l_invito(
         self, mock_repo_cls, mock_invalidate, _tx,
     ):
@@ -487,7 +487,7 @@ class TestUpdateOperatore(TestCase):
     # Scopo: Salvare senza spegnere (anche con `attivo: true` su una veste
     #        accesa) non chiude sessioni.
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_senza_spegnere_non_chiude_sessioni(
         self, mock_repo_cls, mock_invalidate,
     ):
@@ -506,7 +506,7 @@ class TestUpdateOperatore(TestCase):
     # traduce DatabaseError in E_PROFILO_ULTIMO_SUPER_ADMIN preservando
     # il code per l'envelope errore.
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_operatore_super_admin_guard_dbtrigger(
         self, mock_repo_cls, _mock_invalidate
     ):
@@ -536,7 +536,7 @@ class TestDisabilitaOperatore(TestCase):
 
     @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_disabilita_operatore_ok(self, mock_repo_cls, mock_invalidate, _tx):
         """Disabilita, invalida cache, chiude le sessioni della veste operatore."""
         mock_repo = mock_repo_cls.return_value
@@ -558,7 +558,7 @@ class TestDisabilitaOperatore(TestCase):
     #        disattivato con le sessioni vive.
     @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_disabilita_operatore_revoca_fallita_propaga(
         self, mock_repo_cls, mock_invalidate, _tx,
     ):
@@ -573,7 +573,7 @@ class TestDisabilitaOperatore(TestCase):
             AmmSoftwareService().disabilita_operatore(1)
         mock_invalidate.assert_not_called()
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_disabilita_operatore_not_found(self, mock_repo_cls):
         mock_repo_cls.return_value.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo_cls.return_value.get_operatore_detail.return_value = None
@@ -584,7 +584,7 @@ class TestDisabilitaOperatore(TestCase):
     # Scopo: Preview `can_disable=false` -> short-circuit Python con
     # E_PROFILO_ULTIMO_SUPER_ADMIN, niente round-trip DB. Il `disable_reason`
     # e' un codice macchina (§16): NON finisce nel `detail`, sta nel contesto.
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_disabilita_operatore_ultimo_super_admin_preview(self, mock_repo_cls):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_categoria_accesso.return_value = "OPERATORE"
@@ -609,7 +609,7 @@ class TestDisabilitaOperatore(TestCase):
     # ServiceError E_PROFILO_ULTIMO_SUPER_ADMIN.
     @patch(TRANSACTION, new_callable=_TransazioneFinta)
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_disabilita_operatore_ultimo_super_admin_dbtrigger(
         self, mock_repo_cls, _mock_invalidate, _tx,
     ):
@@ -634,7 +634,7 @@ class TestOverrideCache(TestCase):
     """Test cache invalidation su override e profili."""
 
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_put_override_aree_invalidates_cache(self, mock_repo_cls, mock_invalidate):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_categoria_accesso.return_value = "OPERATORE"
@@ -645,7 +645,7 @@ class TestOverrideCache(TestCase):
         mock_invalidate.assert_called_once_with(1)
 
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_put_override_azioni_invalidates_cache(self, mock_repo_cls, mock_invalidate):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_categoria_accesso.return_value = "OPERATORE"
@@ -656,7 +656,7 @@ class TestOverrideCache(TestCase):
         mock_invalidate.assert_called_once_with(1)
 
     @patch(INVALIDATE_USER)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_put_emittenti_scope_invalidates_cache(self, mock_repo_cls, mock_invalidate):
         # Fase 2: signature cambiata da `(auth_user_id, list)` a
         # `(auth_user_id, payload)` con scope_mode + emittenti_ids.
@@ -674,7 +674,7 @@ class TestOverrideCache(TestCase):
         mock_invalidate.assert_called_once_with(1)
 
     @patch(INVALIDATE_DEPT)
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_put_profilo_reparto_invalidates_department(self, mock_repo_cls, mock_invalidate):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_profilo_reparto.return_value = {}
@@ -841,7 +841,7 @@ class TestListEmittenteRoundingModes(TestCase):
 class TestListAuditSources(TestCase):
     """Lookup audit sources delega al repo (Fase 5 — A13)."""
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_list_audit_sources_delegates_to_repo(self, mock_repo_cls):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
 
@@ -860,7 +860,7 @@ class TestListAuditSources(TestCase):
 class TestGetAuditSummary(TestCase):
     """Validazioni get_audit_summary + traduzione errori (Fase 5)."""
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_get_audit_summary_param_invalido_code_assente(self, mock_repo_cls):
         del mock_repo_cls
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
@@ -869,7 +869,7 @@ class TestGetAuditSummary(TestCase):
             AmmSoftwareService().get_audit_summary(None, 5)
         self.assertEqual(ctx.exception.code, "E_AUDIT_SUMMARY_PARAM_NON_VALIDO")
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_get_audit_summary_param_invalido_storico_id_zero(self, mock_repo_cls):
         del mock_repo_cls
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
@@ -878,7 +878,7 @@ class TestGetAuditSummary(TestCase):
             AmmSoftwareService().get_audit_summary("user_override_aree", 0)
         self.assertEqual(ctx.exception.code, "E_AUDIT_SUMMARY_PARAM_NON_VALIDO")
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_get_audit_summary_source_non_trovato(self, mock_repo_cls):
         # Whitelist `vw_audit_sources` non contiene il code: errore esplicito
         # prima di toccare la funzione DB (defense-in-depth).
@@ -892,7 +892,7 @@ class TestGetAuditSummary(TestCase):
             AmmSoftwareService().get_audit_summary("source_inesistente", 5)
         self.assertEqual(ctx.exception.code, "E_AUDIT_SOURCE_NON_TROVATO")
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_get_audit_summary_snapshot_non_trovato(self, mock_repo_cls):
         # Repo ritorna None (DB ha sollevato E_AUDIT_SNAPSHOT_NON_TROVATO,
         # tradotto a None dal repo) -> service mappa a ServiceError 404.
@@ -907,7 +907,7 @@ class TestGetAuditSummary(TestCase):
             AmmSoftwareService().get_audit_summary("user_override_aree", 9999)
         self.assertEqual(ctx.exception.code, "E_AUDIT_SNAPSHOT_NON_TROVATO")
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_get_audit_summary_ok(self, mock_repo_cls):
         # Happy path: shape jsonb {summary, diff} preservato.
         from apps.amm_software.services.amm_software_service import AmmSoftwareService

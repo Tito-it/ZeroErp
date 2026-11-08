@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO DELLA CODA DI STAMPA, SENZA IL DOPPIONE: dbops.vw_fatture_stampa_coda_da_guardare
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1.
+#
+#   La vista l'ha tolta 20261108-18 col DROP della colonna sorgente_uid. Torna
+#   uguale a 20260911-12 meno quella colonna: stesse righe, stessi motivi, stessa
+#   soglia. ⚠️ Una vista ricreata perde le opzioni e i privilegi: security_invoker
+#   si riscrive nel CREATE (la tabella ha la RLS, una persona legge col suo
+#   perimetro), il GRANT a zeroerp_app si ripete come in 20260911-12. Il catalogo
+#   dei presidi la nomina in testo (dbops.presidi.vista): non si tocca.
+#   Rollback: DROP VIEW.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-20-create-vw-fatture-stampa-coda-da-guardare-senza-sorgente-uid-mctit.yaml
+
+  - changeSet:
+      id: 20261108-20-create-vw-fatture-stampa-coda-da-guardare-senza-sorgente-uid
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_fatture_stampa_coda_da_guardare ricreata senza sorgente_uid, security_invoker e
+        GRANT come prima. brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_fatture_stampa_coda_da_guardare
+              WITH (security_invoker = true) AS
+              SELECT c.id,
+                     c.sorgente_tipo_id,
+                     c.sorgente_id,
+                     c.lotto_id,
+                     c.stato,
+                     c.tentativi,
+                     -- ⭐ Tre motivi, perche' sono tre guasti diversi e vogliono
+                     --   tre gesti diversi — gli stessi della gemella.
+                     CASE
+                         WHEN c.stato = 'ERRORE'
+                             THEN 'fallito: tentativi esauriti'
+                         WHEN c.stato = 'IN_CORSO'
+                             THEN 'preso e mai chiuso: il worker e'' morto a meta'''
+                         ELSE 'mai preso: il drenatore della stampa non sta girando'
+                     END AS motivo,
+                     -- ⭐ data_update = ultima transizione di stato: l'audit
+                     --   trigger lo scrive a ogni UPDATE, e sulle righe vive
+                     --   il drenatore fa solo transizioni.
+                     now() - c.data_update AS da_quanto,
+                     c.ultimo_errore,
+                     c.documento_id,
+                     c.data_insert,
+                     c.data_update
+                FROM vendite.fatture_stampa_coda c
+               WHERE NOT c.archiviato
+                 AND (
+                     c.stato = 'ERRORE'
+                     -- Preso da un worker che non l'ha mai chiuso — e il reaper
+                     -- del drenatore, che lo riporterebbe PENDING a 30 minuti,
+                     -- non e' passato: e' morto anche lui.
+                     OR (c.stato = 'IN_CORSO'
+                         AND c.data_update < now() - interval '60 minutes')
+                     -- ⛔ Il caso che conta di piu' e si vede di meno: nessuno
+                     --   l'ha nemmeno preso. Un drenatore spento non produce
+                     --   errori, produce ASSENZA.
+                     OR (c.stato = 'PENDING'
+                         AND c.data_update < now() - interval '60 minutes')
+                 );
+
+              COMMENT ON VIEW dbops.vw_fatture_stampa_coda_da_guardare IS
+                  'PRESIDIO: le stampe in coda che chiedono un occhio — fallite (ERRORE), '
+                  'prese e mai chiuse (IN_CORSO da oltre un''ora: il worker e'' morto a '
+                  'meta'' e il reaper non e'' passato), o mai prese (PENDING da oltre '
+                  'un''ora: ⛔ il drenatore della stampa non sta girando). DEVE restare '
+                  'VUOTA. E'' la gemella di dbops.vw_coda_lavori_da_guardare, nata il '
+                  '2026-09-11 perche'' delle due code gemelle una sola aveva il presidio. '
+                  '⭐ data_update e'' l''ultima transizione di stato: l''audit trigger lo porta '
+                  'a now() a ogni scrittura, e sulle righe vive l''unica scrittura del '
+                  'drenatore e'' una transizione (archiviato vale solo sugli stati terminali) '
+                  '— il reaper lo legge gia'' cosi''. ⚠️ Non e'' un vincolo: una scrittura non '
+                  'di stato su una riga viva azzererebbe l''orologio, e il presidio tacerebbe '
+                  'un''ora in piu'' (non suonerebbe a vuoto). ⚠️ Un''ora non deriva dalla cadenza di '
+                  'due minuti: una soglia dedotta dai tempi di oggi si taglierebbe addosso '
+                  'al carico di oggi. ⚠️ Niente ANNULLATO: la stampa non ce l''ha. Fuori '
+                  'archiviato (gia'' guardato). La fattura e'' in sorgente_id. ⛔ Perimetro '
+                  'DEFINER a catalogo: la tabella ha la RLS e la vista e'' security_invoker — '
+                  'una persona legge col suo perimetro, il digest conta da proprietario e '
+                  'riporta il numero. Brief: brief-db-quattro-processi-senza-presidio §4.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_fatture_stampa_coda_da_guardare TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW dbops.vw_fatture_stampa_coda_da_guardare;

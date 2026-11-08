@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D6-bis di migliorie-generali-da-test-valutazione — pg_temp ULTIMO ED
+# ESPLICITO nel search_path di ogni SECURITY DEFINER
+#   19 funzioni di zeroerp_owner (la ventesima, script.fn_log_error_only, e'
+#   di postgres: 20261103-05, con la proprieta' presa in prestito)
+#
+# ── ⛔ IL DIFETTO ──────────────────────────────────────────────────────
+#   Quando pg_temp NON e' elencato nel search_path, PostgreSQL lo cerca per
+#   PRIMO per le relazioni e i tipi. In una SECURITY DEFINER e' la porta
+#   classica: chi la chiama crea una tabella temporanea con il nome di una
+#   tabella che la funzione legge senza schema, e la funzione — coi privilegi
+#   del proprietario — legge quella del chiamante. Censite su dbdev il
+#   2026-11-03, su 139 DEFINER del progetto:
+#   * 14 con `pg_catalog, public`;
+#   * 2 con `pg_catalog, anagrafiche, config, script`;
+#   * 3 con `public, pg_temp` (piu' fn_log_error_only, 20261103-05): non sono
+#     un difetto di semantica — pg_catalog non elencato e' cercato comunque
+#     per PRIMO — ma sono la forma che il rubinetto 5 conta, e si scrivono
+#     nella forma esplicita.
+#
+# ── ⭐ LA CURA: CHE COSA CAMBIA E CHE COSA NO ──────────────────────────
+#   Si aggiunge pg_temp IN CODA, e pg_catalog in testa dove mancava. Gli
+#   altri schemi restano esattamente quelli di oggi, nello stesso ordine.
+#   ⛔ `public` NON si toglie, anche se nessuno dei 19 corpi chiama qualcosa
+#   che sta solo in public (censimento statico del 2026-11-03: zero). Il
+#   search_path di una DEFINER lo eredita anche cio' che la DEFINER mette in
+#   moto — le INVOKER che chiama, i trigger che le sue scritture fanno
+#   scattare — e li' una cecita' su un'estensione (unaccent, dblink, postgis,
+#   pg_trgm stanno in public) non fa un rosso: dentro un EXCEPTION WHEN OTHERS
+#   degrada in silenzio (lezione del 12-09, §7 D6). Togliere public si decide
+#   funzione per funzione guardando tutta la catena dei chiamati; qui si
+#   chiude il difetto che c'e', senza cambiare cio' che ciascuna funzione vede.
+#   ⚠️ Per le funzioni nessun effetto: pg_temp non si cerca mai per le
+#   funzioni e gli operatori. Per le relazioni: un nome senza schema che oggi
+#   non esiste negli schemi elencati (le tabelle temporanee che la funzione
+#   crea da se') si trova comunque in pg_temp, ora per ultimo.
+#
+# ── ⭐ ALTER FUNCTION SENZA FIRMA, e perche' ─────────────────────────────
+#   `ALTER FUNCTION schema.nome SET …` senza l'elenco degli argomenti, che
+#   PostgreSQL accetta quando il nome e' unico (tutte e 19, 2026-11-03). Il
+#   corpo non si tocca, quindi non si riprende da nessuna parte e nessuna
+#   revisione intermedia puo' regredire; e la firma non si DEDUCE (memoria
+#   del progetto: le firme di COMMENT/DROP/GRANT scritte a tipi nudi sono
+#   gia' costate un migrate fallito). Se domani nascesse un secondo overload,
+#   questo changeSet fallirebbe con «nome non univoco» invece di agganciare
+#   la funzione sbagliata.
+#
+# Dipendenze: le ultime revisioni delle 19 funzioni, tutte in 20_code e
+#   tutte prima del 2026-11-03.
+# Presidio: db/pgtap/dbops/test-security-definer-search-path-v1.sql — i
+#   rubinetti 4 e 5 (16 e 4) diventano divieti a zero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261103-04-update-search-path-definer-pg-temp-ultimo-mctit.yaml
+
+  - changeSet:
+      id: 20261103-04-update-search-path-definer-pg-temp-ultimo
+      author: mctit
+      failOnError: true
+      comment: >
+        D6-bis: pg_temp ultimo ed esplicito (e pg_catalog in testa) nel
+        search_path di 19 SECURITY DEFINER di zeroerp_owner. Gli altri schemi
+        restano quelli di oggi: public non si toglie senza la catena dei
+        chiamati. ALTER FUNCTION senza firma: il corpo non si tocca.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 19
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE p.prosecdef
+                 AND (n.nspname, p.proname) IN (
+                       ('anagrafiche', 'trgfn_stiva_movimenti_guard_annullo'),
+                       ('anagrafiche', 'fn_ba_ha_storia_emittente'),
+                       ('anagrafiche', 'fn_get_storia_emittente_ba'),
+                       ('anagrafiche', 'fn_guard_albero_ba_emittente'),
+                       ('anagrafiche', 'fn_guard_ba_cambio_emittente'),
+                       ('anagrafiche', 'fn_guard_ba_gestore_globale_storia'),
+                       ('config',      'fn_accoda_email_sistema'),
+                       ('config',      'fn_chiudi_email_sistema'),
+                       ('dbops',       'fn_get_pgagent_job_stato'),
+                       ('script',      'fn_check_annullo_movimento_titolo_iva'),
+                       ('script',      'fn_check_ba_cambio_emittente'),
+                       ('script',      'fn_check_famiglia_documento_disattivabile'),
+                       ('script',      'fn_check_registro_disattivabile'),
+                       ('script',      'fn_get_sorgente_emittente_sr_id'),
+                       ('vendite',     'fn_check_commessa_sorgente_emittente_omogeneo'),
+                       ('vendite',     'fn_guard_commessa_sorgente_emittente'),
+                       ('vendite',     'fn_provision_registri'),
+                       ('vendite',     'fn_provision_registri_emittente'),
+                       ('vendite',     'fn_provision_registri_famiglia'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- era: pg_catalog, anagrafiche, config, script
+              ALTER FUNCTION anagrafiche.trgfn_stiva_movimenti_guard_annullo
+                  SET search_path = pg_catalog, anagrafiche, config, script, pg_temp;
+              ALTER FUNCTION script.fn_check_annullo_movimento_titolo_iva
+                  SET search_path = pg_catalog, anagrafiche, config, script, pg_temp;
+
+              -- era: pg_catalog, public
+              ALTER FUNCTION anagrafiche.fn_ba_ha_storia_emittente
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION anagrafiche.fn_get_storia_emittente_ba
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION anagrafiche.fn_guard_albero_ba_emittente
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION anagrafiche.fn_guard_ba_cambio_emittente
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION anagrafiche.fn_guard_ba_gestore_globale_storia
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION script.fn_check_ba_cambio_emittente
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION script.fn_check_famiglia_documento_disattivabile
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION script.fn_check_registro_disattivabile
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION script.fn_get_sorgente_emittente_sr_id
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION vendite.fn_guard_commessa_sorgente_emittente
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION vendite.fn_provision_registri
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION vendite.fn_provision_registri_emittente
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION vendite.fn_provision_registri_famiglia
+                  SET search_path = pg_catalog, public, pg_temp;
+
+              -- era: public, pg_temp (pg_catalog cercato comunque per primo:
+              -- stessa semantica, forma esplicita)
+              ALTER FUNCTION config.fn_accoda_email_sistema
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION config.fn_chiudi_email_sistema
+                  SET search_path = pg_catalog, public, pg_temp;
+              ALTER FUNCTION dbops.fn_get_pgagent_job_stato
+                  SET search_path = pg_catalog, public, pg_temp;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION anagrafiche.trgfn_stiva_movimenti_guard_annullo
+                  SET search_path = pg_catalog, anagrafiche, config, script;
+              ALTER FUNCTION script.fn_check_annullo_movimento_titolo_iva
+                  SET search_path = pg_catalog, anagrafiche, config, script;
+              ALTER FUNCTION anagrafiche.fn_ba_ha_storia_emittente                 SET search_path = pg_catalog, public;
+              ALTER FUNCTION anagrafiche.fn_get_storia_emittente_ba                SET search_path = pg_catalog, public;
+              ALTER FUNCTION anagrafiche.fn_guard_albero_ba_emittente              SET search_path = pg_catalog, public;
+              ALTER FUNCTION anagrafiche.fn_guard_ba_cambio_emittente              SET search_path = pg_catalog, public;
+              ALTER FUNCTION anagrafiche.fn_guard_ba_gestore_globale_storia        SET search_path = pg_catalog, public;
+              ALTER FUNCTION script.fn_check_ba_cambio_emittente                   SET search_path = pg_catalog, public;
+              ALTER FUNCTION script.fn_check_famiglia_documento_disattivabile      SET search_path = pg_catalog, public;
+              ALTER FUNCTION script.fn_check_registro_disattivabile                SET search_path = pg_catalog, public;
+              ALTER FUNCTION script.fn_get_sorgente_emittente_sr_id                SET search_path = pg_catalog, public;
+              ALTER FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo SET search_path = pg_catalog, public;
+              ALTER FUNCTION vendite.fn_guard_commessa_sorgente_emittente          SET search_path = pg_catalog, public;
+              ALTER FUNCTION vendite.fn_provision_registri                         SET search_path = pg_catalog, public;
+              ALTER FUNCTION vendite.fn_provision_registri_emittente               SET search_path = pg_catalog, public;
+              ALTER FUNCTION vendite.fn_provision_registri_famiglia                SET search_path = pg_catalog, public;
+              ALTER FUNCTION config.fn_accoda_email_sistema                        SET search_path = public, pg_temp;
+              ALTER FUNCTION config.fn_chiudi_email_sistema                        SET search_path = public, pg_temp;
+              ALTER FUNCTION dbops.fn_get_pgagent_job_stato                        SET search_path = public, pg_temp;

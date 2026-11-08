@@ -68,7 +68,7 @@ class FusoAziendaleLetturaTests(SimpleTestCase):
     # 1. Due chiamate, una sola domanda al DB: il fuso si legge al primo uso
     #    e non si invalida (T-6).
     def test_si_legge_una_volta_per_processo(self) -> None:
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.get_fuso_operativo.return_value = "Asia/Tokyo"
             self.assertEqual(fuso_aziendale().key, "Asia/Tokyo")
             self.assertEqual(fuso_aziendale().key, "Asia/Tokyo")
@@ -77,7 +77,7 @@ class FusoAziendaleLetturaTests(SimpleTestCase):
     # 2. Un nome che il DB ha accettato ma Python non conosce (tzdata
     #    dell'host diversa da quella del server PG) ferma tutto: nessun UTC.
     def test_nome_sconosciuto_a_python_e_un_errore_di_configurazione(self) -> None:
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.get_fuso_operativo.return_value = "Marte/Olympus"
             with self.assertRaises(ImproperlyConfigured):
                 fuso_aziendale()
@@ -86,7 +86,7 @@ class FusoAziendaleLetturaTests(SimpleTestCase):
     # 3. Il fail-loud del DB (E_CONFIG_MANCANTE) arriva al chiamante, e la
     #    cache resta vuota: la domanda successiva riprova.
     def test_errore_del_db_si_propaga_senza_ripiego(self) -> None:
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.get_fuso_operativo.side_effect = ServiceError(
                 code="E_CONFIG_MANCANTE", message="SYSTEM_FUSO_ORARIO",
             )

@@ -102,7 +102,7 @@ class TestCreaOperatoreSuccess(TestCase):
         _, kwargs = mock_handle.call_args
         self.assertIn("handler", kwargs)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
@@ -207,7 +207,7 @@ VALID_PAYLOAD_SPRINT3 = {
 class TestCreaOperatoreSprint3(TestCase):
     """POST /api/v1/amm-software/operatori/ — parametri Sprint 3."""
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
@@ -231,7 +231,7 @@ class TestCreaOperatoreSprint3(TestCase):
         self.assertEqual(call_kwargs["indirizzo_resid_dettaglio_id"], 101)
         self.assertEqual(call_kwargs["indirizzo_domfisc_dettaglio_id"], 102)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
@@ -268,7 +268,7 @@ VALID_PAYLOAD_FLOW_B = {
 class TestCreaOperatoreFlowB(TestCase):
     """POST /api/v1/amm-software/operatori/ — flusso B (soggetto esistente)."""
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
@@ -295,7 +295,7 @@ class TestCreaOperatoreFlowB(TestCase):
         # Col soggetto esistente il sesso non serve e non si inventa.
         self.assertIsNone(call_kwargs["sesso"])
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
@@ -351,7 +351,7 @@ class TestCreaOperatoreFlowB(TestCase):
     # Scopo: ⛔ `is_super_admin` dal BB, non da `bool(...)`. Con `bool("false")`
     #        (che e' True) una stringa nel corpo creava un SUPER_ADMIN: ora e'
     #        un 400 `E_AMM_VALIDAZIONE` sul campo, e il repository non e' toccato.
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")

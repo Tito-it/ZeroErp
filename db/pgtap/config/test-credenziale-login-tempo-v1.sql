@@ -128,7 +128,7 @@ SELECT is(
     (SELECT p.cleanup_at FROM config.credenziali_provenienze p
        JOIN config.credenziali c ON c.id = p.credenziale_id
       WHERE c.auth_user_id = (SELECT rinnovo FROM _c)),
-    now() + make_interval(days => (dbops.fn_cleanup_at_params('config', 'credenziali_provenienze') ->> 'ttl_days')::integer),
+    now() + make_interval(days => (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('config', 'credenziali_provenienze') r WHERE r.motivo_salto IS NULL)),
     '5) al rinnovo di una coppia la scadenza si ricalcola: now() + ttl della regola CLEANUP_AT');
 
 SELECT * FROM finish();

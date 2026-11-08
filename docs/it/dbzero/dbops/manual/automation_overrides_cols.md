@@ -1,116 +1,84 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_overrides_cols`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento funzioni: 
-> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
-> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
+> Approfondimento tabelle:
+>
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole che, per una tabella, usano il nome di colonna scritto qui
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col) — la lettura: il nome di qui, o il default del chiamante
+> * [dbops.fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) — legge `STORICO_FK` e `STORICIZZA_COL`
+> * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) — legge `STORICO_FK`
+> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — legge `ATTIVO_COL` del padre e del figlio
+> * [dbops.fn_get_lookup_codici](/dbzero/dbops/funzioni/fn_get_lookup_codici) — legge `CODICE_COL` e `CODICE_INTERNO_COL`
+>
+> Guide:
+>
+> * [Framework di automazione DB](/guide/automazione-db) — il giro delle automazioni e le sue regole
 
-> Esempio Helper: [dbops.fn_get_override_col(schema, table, key, default)]
+---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.).
-Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.
+
+Le eccezioni di **nome di colonna** per tabella: quando una tabella chiama in un altro modo una
+colonna che il framework si aspetta con un nome standard, qui si scrive il nome vero. Una riga
+dice, per (`schema_name`, `table_name`), che la colonna con il ruolo `col_role` si chiama
+`col_name`.
+
+La chiave è (`schema_name`, `table_name`, `col_role`): un solo nome per ruolo e tabella. Il
+confronto è esatto: niente modelli, niente `*all`.
 
 ---
 
-### Come funziona (lookup & precedenze)
+### Il nome si risolve in tre passi
 
-Gli automatismi risolvono il nome della colonna così:
+Chi ha bisogno di una colonna chiede a `dbops.fn_get_override_col` il nome per il suo ruolo,
+passando il proprio default. Vince:
 
-1. **Override tabellare** da `automation_overrides_cols` (match esatto su `target_schema` + `target_table` + `key`).
-2. **Parametro di regola** (es. `automation_rules_tbl.params` → `audit_ts`, `audit_user`).
-3. **Default di framework** (es. `attivo`, `data_update`, `user_update`, `<table>_id`).
+1. la riga di questa tabella, se c'è;
+2. altrimenti il default del chiamante, cioè il nome standard.
 
-L’helper `fn_get_override_col(schema, table, key, default)` incapsula questa logica e restituisce il valore finale.
-
-> *Match*: `target_table` è normalmente un nome esatto; opzionalmente puoi usare pattern (LIKE), ma in tal caso gestisci **priorità** per evitare sorprese.
+La lettura non controlla che la colonna esista: lo fa, dove serve, chi la usa.
 
 ---
 
-### Chiavi supportate (key)
+### I ruoli che qualcuno legge
 
-* **`ATTIVO_COL`** → nome della colonna boolean che indica lo stato attivo/disattivo.
-  *Default*: `attivo`.
-* **`AUDIT_TS`** → timestamp aggiornamento.
-  *Default*: `data_update` (sovrascrivibile anche via params della regola `AUDIT_UPDATE`).
-* **`AUDIT_USER`** → utente aggiornamento.
-  *Default*: `user_update` (sovrascrivibile anche via params della regola `AUDIT_UPDATE`).
-* **`STORICO_FK`** → FK verso la tabella base nella tabella `storico.<table>_storico`.
-  *Default*: `<table>_id`.
-* **`CODICE_COL`** → colonna da esporre come alias `codice` in `dbops.fn_get_lookup_codici`. Usare per tabelle che non hanno la colonna `codice` standard ma hanno una chiave naturale stabile con nome diverso (es. `codice_iso` su `config.lingue`). *Nessun default* — se assente, la funzione usa l'introspezione pg_attribute.
-* **`CODICE_INTERNO_COL`** → colonna da esporre come alias `codice_interno` in `dbops.fn_get_lookup_codici`. Usare per tabelle che non hanno `codice_interno` ma hanno una chiave naturale ISO o simile (es. `codice_iso`, `iso_code`). *Nessun default* — se assente, la funzione restituisce `NULL::text` per `codice_interno`.
+* `ATTIVO_COL` — la colonna booleana dello stato attivo, sul padre e sul figlio dei guard ATTIVO.
+  Default `attivo`.
+* `STORICO_FK` — la colonna della tabella di storico che punta alla riga di origine. Default
+  `<tabella>_id`, che non va bene quando il nome della tabella è al plurale: il seed la dichiara
+  per esempio per `anagrafiche.clienti` (`cliente_id`).
+* `STORICIZZA_COL` — la colonna che dice se una riga si storicizza. Default `storicizza`.
+* `CODICE_COL`, `CODICE_INTERNO_COL` — le colonne che `dbops.fn_get_lookup_codici` espone come
+  `codice` e `codice_interno`, per una tabella che ha una chiave naturale con un altro nome (per
+  esempio `codice_iso` su `config.lingue`). Senza riga, la funzione guarda la struttura della
+  tabella, e senza `codice_interno` restituisce un valore vuoto.
 
-> Se in futuro serviranno altre chiavi (es. `TX_ID_COL`), basterà inserirle nella stessa tabella e aggiornare gli automatismi che le usano.
+`col_role` è un vocabolario chiuso (CHECK `chk_automation_overrides_cols_col_role`): `ATTIVO_COL`,
+`STORICIZZA_COL`, `STORICO_FK`, `CODICE_COL`, `CODICE_INTERNO_COL`. Un ruolo scritto male non
+entra. Un ruolo nuovo serve solo se un automatismo lo legge, e allarga il CHECK.
 
----
-
-### Precedenza e conflitti
-
-* Se esistono più righe che matchano (es. pattern di schema/tabla):
-
-  * applica la **più specifica** (match esatto) o la **priority** più alta secondo la tua convenzione;
-  * mantieni **univocità logica** per `schema+table+key` per evitare ambiguità.
-* Gli automatismi loggano la risoluzione in `dbops.audit_log` se vuoi tracciare i casi dubbi.
+Le colonne di audit (`data_update`, `user_update`) non hanno un ruolo qui: hanno nome fisso per
+contratto, e il trigger di audit le scrive per nome.
 
 ---
 
-### Esempi
+### Quando il nome si legge
 
-**Override `ATTIVO_COL`** per una tabella che usa `is_enabled`:
+Non tutti i lettori lo leggono nello stesso momento:
 
-```sql
-INSERT INTO dbops.automation_overrides_cols(target_schema, target_table, key, value, note)
-VALUES ('anagrafiche','utenti','ATTIVO_COL','is_enabled','colonna attivo non standard');
-```
+* la preparazione dello storico lo legge quando crea la tabella di storico: un `STORICO_FK`
+  aggiunto dopo non rinomina una colonna già creata;
+* i guard ATTIVO leggono `ATTIVO_COL` del figlio a ogni esecuzione, e il runner passa quella del
+  padre come argomento del trigger.
 
-**Override `AUDIT_TS`/`AUDIT_USER`** per una tabella che usa convenzioni inglesi:
-
-```sql
-INSERT INTO dbops.automation_overrides_cols(target_schema, target_table, key, value, note)
-VALUES ('vendite','ordini','AUDIT_TS','updated_at','ts aggiornamento custom');
-
-INSERT INTO dbops.automation_overrides_cols(target_schema, target_table, key, value, note)
-VALUES ('vendite','ordini','AUDIT_USER','updated_by','utente aggiornamento custom');
-```
-
-**Override `STORICO_FK`** quando la FK dello storico non è `<table>_id`:
-
-```sql
-INSERT INTO dbops.automation_overrides_cols(target_schema, target_table, key, value, note)
-VALUES ('catalogo','articoli','STORICO_FK','articolo_id','storico con fk esplicita');
-```
+Un override si scrive quindi **prima** che la tabella entri nel giro.
 
 ---
 
-### Buone pratiche
-
-* Standardizza dove possibile; usa gli override solo per i casi necessari.
-* Documenta gli override nel **modulo applicativo** che mantiene la tabella, per ridurre la “conoscenza tribale”.
-* Evita sovrapposizioni (pattern + match esatto) senza una **priority** chiara.
-
----
-
-
-### Vincoli (logici)
-
-* Unicità consigliata: `(target_schema, target_table, key)`.
-* Attenzione ai pattern: se usati, governa con `priority` per evitare collisioni.
-
-### Interazione con gli automatismi
-
-* **AUDIT_UPDATE**: legge `AUDIT_TS` e `AUDIT_USER` per scegliere la funzione `script.trgfn_audit_data_user_generic()`.
-* **ATTIVO**: legge `ATTIVO_COL` su **padre** e **figlio** per i tre trigger (cascade/require/block).
-* **STORICO**: legge `STORICO_FK` per i trigger `trgfn_upd_dlt_storico_generic()`.
-
----
-
-### Troubleshooting
-
-* Se un override non sembra applicarsi, verifica con:
-
-```sql
-SELECT dbops.fn_get_override_col('schema','tabella','ATTIVO_COL','attivo');
-```
-
-* Controlla i log in `dbops.audit_log` (status `DRYRUN` / `OK`) per vedere quale colonna è stata risolta.
+{% include-markdown "signature-core.md" %}

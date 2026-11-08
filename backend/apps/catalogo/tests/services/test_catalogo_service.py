@@ -79,7 +79,7 @@ from apps.core.services.service_errors import ServiceError
 
 class CatalogoServiceTests(TestCase):
     # Scopo: Lista articoli valida -> envelope paginato coerente.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_list_articoli_ok(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_list_articoli
 
@@ -102,9 +102,9 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: Dettaglio articolo trovato -> dict ritornato senza trasformazioni.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_get_articolo_ok(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_get_articolo
 
@@ -128,7 +128,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["note"][0]["id"], 9)
 
     # Scopo: Dettaglio articolo assente -> not found uniforme.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_get_articolo_not_found(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_get_articolo
 
@@ -141,8 +141,8 @@ class CatalogoServiceTests(TestCase):
     # Scopo: «Leggi prima la testata» sulla PAGINA della distinta (§9.6 del
     #        brief-db-liste-righe-documento, 2026-10-04): un articolo che non
     #        c'e' e' un 404, e le righe non si leggono.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_list_componenti_pagina_legge_prima_l_articolo(self, mock_repo_cls, mock_bom_cls):
         from apps.catalogo.services.catalogo_service import fn_list_componenti_pagina
 
@@ -160,7 +160,7 @@ class CatalogoServiceTests(TestCase):
         )
 
     # Scopo: Lookup articoli valido -> count e results coerenti.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_lookup_articoli_ok(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_lookup_articoli
 
@@ -179,7 +179,7 @@ class CatalogoServiceTests(TestCase):
     # Scopo: la riga di un documento passa il suo contesto al repository della
     # sede unica, e il `motivo` torna intero (brief-db-articoli-ammessi-per-
     # documento §9.6, Lotto 4).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_lookup_articoli_ammessi_passa_il_contesto(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_lookup_articoli_ammessi
 
@@ -204,7 +204,7 @@ class CatalogoServiceTests(TestCase):
 
     # Scopo: un tipo d'eccezione fuori enum e' un 400 PRIMA del cast, che
     # sarebbe un 500 (22P02): il picker non viene nemmeno chiamato.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_lookup_articoli_ammessi_tipo_eccezione_estraneo(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_lookup_articoli_ammessi
 
@@ -222,7 +222,7 @@ class CatalogoServiceTests(TestCase):
     # non parte. L'atomicita' e' provata su DB vero
     # (tests/db/test_articoli_ammessi_db.py).
     @patch("apps.catalogo.services.catalogo_service.fn_get_articolo")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_update_articolo_con_correzione_di_struttura(self, mock_repo_cls, mock_get):
         from apps.catalogo.services.catalogo_service import fn_update_articolo
 
@@ -255,7 +255,7 @@ class CatalogoServiceTests(TestCase):
     #        sapere che l'elenco era parziale.
     #        ⚠️ Il conteggio resta quello delle righe consegnate: cio' che cambia
     #        e' che accanto c'e' la sola informazione che lo rende leggibile.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_lookup_articoli_dichiara_il_troncamento(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_lookup_articoli
 
@@ -272,8 +272,8 @@ class CatalogoServiceTests(TestCase):
     #        essere tagliata: due nature, due envelope. Tenerle sullo stesso
     #        helper era il difetto — la forma sbagliata era indistinguibile da
     #        quella giusta perche' era la stessa riga di codice.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_una_collezione_intera_non_dichiara_troncamento(self, _mock_repo, mock_bom):
         from apps.catalogo.services.catalogo_service import fn_list_componenti
 
@@ -293,9 +293,9 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: Create articolo valido -> insert + dettaglio finale.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_articolo_ok(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_articolo
 
@@ -337,7 +337,7 @@ class CatalogoServiceTests(TestCase):
         self.assertIn("uom_id", ctx.exception.detail or "")
 
     # Scopo: duplicate codice -> traduzione IntegrityError in validazione catalogo.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_articolo_duplicate_codice(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_articolo
 
@@ -351,9 +351,9 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.message, "Codice articolo gia' esistente.")
 
     # Scopo: update articolo valido -> update delta e dettaglio riletto.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_update_articolo_ok(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_update_articolo
 
@@ -398,9 +398,9 @@ class CatalogoServiceTests(TestCase):
         self.assertIn("uom_id", ctx.exception.detail or "")
 
     # Scopo: disattiva articolo -> update attivo=false e dettaglio finale.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_disattiva_articolo_ok(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_disattiva_articolo
 
@@ -428,9 +428,9 @@ class CatalogoServiceTests(TestCase):
         repo.deactivate_articolo.assert_called_once_with("019bbee2-5f6a-704f-bbd0-34ed84db252d")
 
     # Scopo: articolo gia' inattivo -> risposta idempotente senza secondo update.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_disattiva_articolo_already_inactive(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_disattiva_articolo
 
@@ -450,9 +450,9 @@ class CatalogoServiceTests(TestCase):
         repo.deactivate_articolo.assert_not_called()
 
     # Scopo: riattiva articolo inattivo -> chiama fn DB e restituisce dettaglio attivo.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_riattiva_articolo_ok(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
 
@@ -471,9 +471,9 @@ class CatalogoServiceTests(TestCase):
         repo.reactivate_articolo.assert_called_once_with("019bbee2-5f6a-704f-bbd0-34ed84db252d")
 
     # Scopo: articolo gia' attivo -> idempotente, fn DB non chiamata.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_riattiva_articolo_already_active(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
 
@@ -493,7 +493,7 @@ class CatalogoServiceTests(TestCase):
         repo.reactivate_articolo.assert_not_called()
 
     # Scopo: riattiva articolo inesistente -> NOT_FOUND uniforme dal pre-flight.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_riattiva_articolo_not_found(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
 
@@ -627,8 +627,8 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: create UoM operativa -> insert e rilettura riga arricchita.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_uom_operativa_ok(self, mock_repo_cls, mock_uom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_uom_operativa
 
@@ -643,8 +643,8 @@ class CatalogoServiceTests(TestCase):
         uom_repo.create_uom_operativa.assert_called_once()
 
     # Scopo: update UoM su riga assente -> 404 dominio catalogo.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_update_uom_operativa_not_found(self, mock_repo_cls, mock_uom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_update_uom_operativa
 
@@ -656,8 +656,8 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_UOM_NOT_FOUND")
 
     # Scopo: create componente -> insert e rilettura riga arricchita.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_componente_ok(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
@@ -675,7 +675,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["id"], comp_id)
 
     # Scopo: tentativo di update componente_id -> errore per immutabilita'.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_update_componente_immutabile(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_update_componente
 
@@ -689,14 +689,16 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: create nota articolo -> insert e rilettura nota arricchita.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_nota_articolo_ok(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_nota_articolo
 
         mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
         bom_repo = mock_bom_repo_cls.return_value
-        bom_repo.create_nota_articolo.return_value = 5
+        # Il servizio scrive con `create_nota` (target ARTICOLO): il vecchio
+        # `create_nota_articolo` non esiste, e il 5 non arrivava mai.
+        bom_repo.create_nota.return_value = 5
         # Shape allineata al pattern partizionato vendite (2026-05-22):
         # alias senza prefisso `nota_` (id/testo invece di nota_id/nota_testo).
         bom_repo.get_nota_articolo.return_value = {"id": 5, "testo": "Demo"}
@@ -704,6 +706,7 @@ class CatalogoServiceTests(TestCase):
         result = fn_create_nota_articolo("art-1", {"id_stile": 1, "testo": "Demo"})
 
         self.assertEqual(result["id"], 5)
+        bom_repo.get_nota_articolo.assert_called_once_with("art-1", 5)
 
     # Scopo: create nota articolo senza target_riga_id -> anchor_tipo/posizione
     # default DOCUMENTO/HEADER applicati dal service (allineamento col pattern
@@ -711,8 +714,8 @@ class CatalogoServiceTests(TestCase):
     # contenga i default — senza questi i NOT NULL DB su anchor_tipo/posizione
     # rifiuterebbero l'INSERT (regression check per il bug E_CATALOGO_VALIDATION
     # rilevato durante lo smoke Fase 2.B del refactor UI drawer).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_nota_articolo_default_documento_header(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_nota_articolo
 
@@ -731,8 +734,8 @@ class CatalogoServiceTests(TestCase):
 
     # Scopo: create nota componente con target_riga_id -> anchor_tipo/posizione
     # default RIGA/AFTER applicati dal service.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
     def test_fn_create_nota_componente_default_riga_after(self, mock_bom_repo_cls, _mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_nota_componente
 
@@ -756,8 +759,8 @@ class CatalogoServiceTests(TestCase):
     #        note non si leggono ne' si scrivono (2026-10-21, §B8 del
     #        brief-be-verifica-documentazione-api): prima `articolo_id` del path
     #        era ignorato.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
     def test_note_componente_di_un_altro_articolo_404(self, mock_bom_repo_cls, _mock_repo_cls):
         from apps.catalogo.services.catalogo_service import (
             fn_create_nota_componente,
@@ -780,8 +783,8 @@ class CatalogoServiceTests(TestCase):
     # Scopo: create nota con coppia incoerente anchor_tipo='DOCUMENTO' +
     # target_riga_id valorizzato -> errore E_CATALOGO_VALIDATION (guard
     # defense-in-depth simmetrica a vendite).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_nota_articolo_anchor_riga_inconsistency(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_nota_articolo
 
@@ -802,7 +805,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: update nota inesistente -> 404 dominio catalogo.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
     def test_fn_update_nota_not_found(self, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_update_nota
 
@@ -814,7 +817,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_NOTA_NOT_FOUND")
 
     # Scopo: create componente self-reference -> errore anticipato senza delega al DB.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_componente_self_reference(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
@@ -832,9 +835,9 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: create articolo con listino_tipologia_id -> campo propagato al repo (pricing v5).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_articolo_listino_tipologia_id_ok(
         self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls
     ):
@@ -884,9 +887,9 @@ class CatalogoServiceTests(TestCase):
 
     # Scopo: create articolo con natura_vendita_id -> campo propagato al repo
     # (modello split per natura: instradamento ordine/commessa/contratto).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_articolo_natura_vendita_id_ok(
         self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls
     ):
@@ -939,9 +942,9 @@ class CatalogoServiceTests(TestCase):
     #        i tre campi «da dove arriva l'articolo» arrivano al repository con
     #        il loro tipo: il modo come id, il flag come bool, il lead time come
     #        int (0 e' un valore, non «non si applica»; NULL si').
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_update_articolo_approvvigionamento_propagato(
         self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls
     ):
@@ -1006,8 +1009,8 @@ class CatalogoServiceTests(TestCase):
     # Scopo: create componente con esposizione_in_fattura -> codice propagato
     # al repo com'e' (dal 2026-10-01 un codice, non un booleano; i valori li
     # giudica la FK su config.esposizioni_componente).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_componente_esposizione_in_fattura_ok(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
@@ -1032,8 +1035,8 @@ class CatalogoServiceTests(TestCase):
 
     # Scopo: il booleano ritirato non e' piu' una chiave ammessa: chi lo manda
     # ancora riceve un 400 che lo nomina, non un salvataggio che lo ignora.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_componente_booleano_ritirato_rifiutato(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
@@ -1050,8 +1053,8 @@ class CatalogoServiceTests(TestCase):
 
     # Scopo: l'esposizione e' NOT NULL a DB: un `null` esplicito si ferma nel
     # service con il campo nominato.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_componente_esposizione_null_rifiutata(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
@@ -1096,8 +1099,8 @@ class CatalogoServiceTests(TestCase):
     # Scopo: payload create componente senza valido_dal -> service applica
     # oggi_aziendale() prima del repository call. Il DDL DB non ha
     # DEFAULT CURRENT_DATE, il fallback vive nel service (Fase 4 BE-only).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_componente_valido_dal_fallback_today(self, mock_repo_cls, mock_bom_repo_cls):
 
         from apps.catalogo.services.catalogo_service import fn_create_componente
@@ -1117,8 +1120,8 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(args[1]["valido_dal"], oggi_aziendale())
 
     # Scopo: payload create UoM operativa senza valido_dal -> service applica today.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_uom_operativa_valido_dal_fallback_today(self, mock_repo_cls, mock_uom_repo_cls):
 
         from apps.catalogo.services.catalogo_service import fn_create_uom_operativa
@@ -1135,7 +1138,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(args[1]["valido_dal"], oggi_aziendale())
 
     # Scopo: payload create conversione UoM senza valido_dal -> service applica today.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_conversione_valido_dal_fallback_today(self, mock_repo_cls):
 
         from apps.catalogo.services.catalogo_service import fn_create_conversione
@@ -1157,10 +1160,10 @@ class CatalogoServiceTests(TestCase):
     # Scopo: detail articolo include non_editable_fields. Almeno "codice" e
     # "uom_id" devono essere presenti (dal gap Python; DB potrebbe arricchire).
     # Mock LockColumnsRepository per evitare query DB reali sul testbed.
-    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_get_articolo_includes_non_editable_fields(
         self, mock_repo_cls, mock_uom_cls, mock_bom_cls, mock_lock_cls,
     ):
@@ -1179,9 +1182,9 @@ class CatalogoServiceTests(TestCase):
         self.assertIn("codice", result["non_editable_fields"])
 
     # Scopo: lista UoM operative espone non_editable_fields envelope-level.
-    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_list_uom_operative_envelope_non_editable_fields(
         self, mock_repo_cls, mock_uom_cls, mock_lock_cls,
     ):
@@ -1196,8 +1199,8 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["non_editable_fields"], ["uom_id"])
 
     # Scopo: detail conversione UoM include non_editable_fields (uom_from_id, uom_to_id).
-    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_get_conversione_includes_non_editable_fields(self, mock_repo_cls, mock_lock_cls):
         from apps.catalogo.services.catalogo_service import fn_get_conversione
 
@@ -1209,7 +1212,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["non_editable_fields"], ["uom_from_id", "uom_to_id"])
 
     # Scopo: lista articoli propaga capability BoM dalla vista DB (Fase 6).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_list_articoli_proietta_capability_bom(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_list_articoli
 
@@ -1244,9 +1247,9 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(results[1]["motivo_non_gestibile_bom"], "ARTICOLO_NON_COMPOSITO")
 
     # Scopo: lista UoM operative propaga capability eliminazione dalla vista DB (Fase 6).
-    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_list_uom_operative_proietta_capability_eliminabile(
         self, mock_repo_cls, mock_uom_cls, mock_lock_cls,
     ):
@@ -1286,9 +1289,9 @@ class CatalogoServiceTests(TestCase):
     #    PRIMA del repository — per ogni scrittura, comprese le chiavi che il
     #    repository scrive da se' (padre dal path, partizione della nota).
     @patch("apps.catalogo.services.catalogo_service._resolve_single_nota")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_chiave_fuori_contratto_e_un_400_prima_del_repository(
         self, mock_repo_cls, mock_bom_cls, mock_uom_cls, mock_resolve,
     ):

@@ -17,24 +17,27 @@ from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.vendite.api.preventivi_documenti_views import ApiPreventivoDocumentiList
 
 
-# Mappa codice sorgente -> resolver (sorgente_id -> sorgente_uid). Un
-# resolver e' una callable che, dato l'id applicativo del record sorgente,
-# ritorna l'uid stabile usato dal motore documentale come chiave di
-# correlazione dei documenti generati. Estendere questa mappa quando una
-# nuova sorgente viene attivata (es. CONTRATTO -> contratti_service.get).
-def _resolve_uid_preventivo(sorgente_id: int) -> str | None:
+# Mappa codice sorgente -> verifica d'accesso (sorgente_id -> il record c'è
+# ed è visibile a chi chiede). È anche l'elenco delle sorgenti che il tool
+# abilita. Estendere questa mappa quando una nuova sorgente viene attivata
+# (es. CONTRATTO -> contratti_service.get).
+# ⭐ Fino al giro D.1 di brief-db-sorgente-documento-e-riga (2026-11-07) il
+#    resolver restituiva l'uid, che era la chiave della stampa per ogni tipo:
+#    oggi la chiave la sceglie il DB dal `key_selector`, e il service vuole
+#    l'id dell'entità.
+def _preventivo_accessibile(sorgente_id: int) -> bool:
     from apps.core.services.error_manager import ServiceError
     from apps.vendite.services import preventivi_service
 
     try:
-        detail = preventivi_service.get_preventivo(sorgente_id)
+        preventivi_service.get_preventivo(sorgente_id)
     except ServiceError:
-        return None
-    return str(detail.get("uid") or "") or None
+        return False
+    return True
 
 
-_SORGENTE_UID_RESOLVERS: dict[str, Callable[[int], str | None]] = {
-    SORGENTE_PREVENTIVO: _resolve_uid_preventivo,
+_SORGENTE_VERIFICHE: dict[str, Callable[[int], bool]] = {
+    SORGENTE_PREVENTIVO: _preventivo_accessibile,
 }
 
 
@@ -46,10 +49,11 @@ class CercaDocumentiGeneratiTool(AITool):
     Lo scope emittente del JWT viene applicato automaticamente dal service
     (`resolve_emittente_scope(user)`).
 
-    Cross-sorgente: il tool risolve l'`uid` della sorgente partendo dal
-    `sorgente_code` + `sorgente_id`. Oggi e' attiva solo la sorgente
-    PREVENTIVO; nuove sorgenti si abilitano aggiungendo un resolver alla
-    mappa `_SORGENTE_UID_RESOLVERS` (no schema change).
+    Cross-sorgente: il tool verifica che il record `sorgente_code` +
+    `sorgente_id` esista e sia visibile, poi chiede le stampe per id. Oggi
+    e' attiva solo la sorgente PREVENTIVO; nuove sorgenti si abilitano
+    aggiungendo una verifica alla mappa `_SORGENTE_VERIFICHE` (no schema
+    change).
     """
 
     def __init__(self) -> None:
@@ -70,7 +74,7 @@ class CercaDocumentiGeneratiTool(AITool):
                 "properties": {
                     "sorgente_code": {
                         "type": "string",
-                        "enum": list(_SORGENTE_UID_RESOLVERS.keys()),
+                        "enum": list(_SORGENTE_VERIFICHE.keys()),
                         "description": "Codice della sorgente applicativa. Oggi e' attiva 'PREVENTIVO'; le altre saranno aggiunte quando il dominio espone la sorgente.",
                     },
                     "sorgente_id": {
@@ -85,7 +89,7 @@ class CercaDocumentiGeneratiTool(AITool):
                 "required": ["sorgente_code", "sorgente_id"],
             },
             # ⚠️ Il gemello e' la lista documenti del PREVENTIVO perche'
-            #    `_SORGENTE_UID_RESOLVERS` ne attiva una sola. Ogni sorgente
+            #    `_SORGENTE_VERIFICHE` ne attiva una sola. Ogni sorgente
             #    ha la sua lista, con la sua area (`build_documenti_sorgente_views`):
             #    attivarne una seconda vuol dire un tool per sorgente, non una
             #    voce in piu' nella mappa sotto il gemello di un'altra.
@@ -102,7 +106,7 @@ class CercaDocumentiGeneratiTool(AITool):
         "template_codice": "template_codice",
     }
 
-    # Scopo: Risolve sorgente_uid + sorgente_tipo_id e delega al service.
+    # Scopo: Verifica il record sorgente, risolve sorgente_tipo_id e delega al service.
     def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         from apps.config.db.sorgenti_repository import SorgentiRepository
         from apps.documenti.services.document_generation_service import (
@@ -110,15 +114,15 @@ class CercaDocumentiGeneratiTool(AITool):
         )
 
         sorgente_code = str(params["sorgente_code"]).upper()
-        resolver = _SORGENTE_UID_RESOLVERS.get(sorgente_code)
-        if resolver is None:
+        verifica = _SORGENTE_VERIFICHE.get(sorgente_code)
+        if verifica is None:
             return {
                 "error": f"Sorgente '{sorgente_code}' non supportata.",
-                "supportate": sorted(_SORGENTE_UID_RESOLVERS.keys()),
+                "supportate": sorted(_SORGENTE_VERIFICHE.keys()),
             }
 
-        sorgente_uid = resolver(int(params["sorgente_id"]))
-        if not sorgente_uid:
+        sorgente_id = int(params["sorgente_id"])
+        if not verifica(sorgente_id):
             return {"error": "Record sorgente non trovato o non accessibile."}
 
         sorgente = SorgentiRepository().get_sorgente_attiva(sorgente_code)
@@ -132,7 +136,7 @@ class CercaDocumentiGeneratiTool(AITool):
         result = DocumentGenerationService().list_documenti_per_sorgente(
             user,
             sorgente_tipo_id=sorgente_tipo_id,
-            sorgente_uid=sorgente_uid,
+            sorgente_id=sorgente_id,
             limit=self.safe_limit(params),
             offset=0,
         )

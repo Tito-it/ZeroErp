@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_get_pipeline_task_implementation: una variante chiesta e assente
+# non ripiega sul default, e i rifiuti hanno il codice giusto.
+#   Brief: brief-db-revisione-dbops, D44 e Q14 ① (giro 2).
+#
+# Base: 20_code/dbops/20260208-09 (l'unico changeSet della funzione),
+# verificato uguale al vivo (doc auto-generata).
+#
+# ⚠️ I DUE DIFETTI.
+#   - Q14 ①: con una variante chiesta (p_implementation_key) e assente, la
+#     funzione ripiegava in silenzio sull'implementazione di default: chi
+#     chiede «la variante X» riceveva un'altra cosa senza saperlo.
+#   - D44: i rifiuti uscivano con E_GENERICO, con i nomi dei parametri nel
+#     VARIADIC.
+#
+# ⭐ LA REGOLA (decisione di Tid, Q14 ①). Il default vale solo quando la
+#   variante non e' chiesta. Con una variante chiesta e assente la funzione
+#   non restituisce righe: il backend (pipeline_repository) solleva gia'
+#   E_PIPELINE_TASK_HANDLER_NOT_FOUND quando non riceve righe. Senza variante e
+#   senza default la funzione solleva lei lo stesso codice, com'era (con
+#   E_GENERICO). I parametri mancanti escono con E_DBOPS_CHIAMATA_NON_VALIDA.
+#   Il controllo del task registrato resta dbops.fn_check_pipeline_task_registered.
+#
+# Firma e colonne del risultato invariate, ancorate con %TYPE al registro
+#   (tipi risolti uguali a prima): CREATE OR REPLACE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-08-update-fn-get-pipeline-task-implementation-variante-mctit.yaml
+
+  - changeSet:
+      id: 20261107-08-update-fn-get-pipeline-task-implementation-variante
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_get_pipeline_task_implementation: una variante chiesta e assente non ripiega
+        sul default (Q14 ①); codici registrati al posto di E_GENERICO (D44).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_get_pipeline_task_implementation';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_get_pipeline_task_implementation(
+                  p_dominio_id         dbops.pipeline_task_registry.dominio_id%TYPE,
+                  p_task_code          dbops.pipeline_task_registry.task_code%TYPE,
+                  p_implementation_key dbops.pipeline_task_registry_impl.implementation_key%TYPE DEFAULT NULL::text
+              )
+              RETURNS TABLE(
+                  handler_code       dbops.pipeline_task_registry_impl.handler_code%TYPE,
+                  implementation_key dbops.pipeline_task_registry_impl.implementation_key%TYPE,
+                  task_registry_id   dbops.pipeline_task_registry_impl.task_registry_id%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: risolvere l'implementazione di un task. Con una variante
+              --   chiesta, quella o niente; senza, il default o un errore.
+              DECLARE
+                  v_chi dbops.error_log.function_name%TYPE := 'dbops.fn_get_pipeline_task_implementation';
+              BEGIN
+                  IF p_dominio_id IS NULL OR p_dominio_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_dominio_id', 'dominio_id', p_dominio_id),
+                          NULL::uuid,
+                          v_chi, 'manca il dominio del task');
+                  END IF;
+
+                  IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_task_code'),
+                          NULL::uuid,
+                          v_chi, 'manca il codice del task');
+                  END IF;
+
+                  PERFORM dbops.fn_check_pipeline_task_registered(p_dominio_id, p_task_code);
+
+                  -- 1) Una variante chiesta: quella, o nessuna riga.
+                  IF p_implementation_key IS NOT NULL AND btrim(p_implementation_key) <> '' THEN
+                      RETURN QUERY
+                      SELECT i.handler_code, i.implementation_key, i.task_registry_id
+                        FROM dbops.pipeline_task_registry r
+                        JOIN dbops.pipeline_task_registry_impl i ON i.task_registry_id = r.id
+                       WHERE r.dominio_id = p_dominio_id
+                         AND r.task_code = p_task_code
+                         AND r.attivo IS TRUE
+                         AND i.attivo IS TRUE
+                         AND i.implementation_key = p_implementation_key
+                       ORDER BY i.id
+                       LIMIT 1;
+                      RETURN;
+                  END IF;
+
+                  -- 2) Nessuna variante: il default.
+                  RETURN QUERY
+                  SELECT i.handler_code, i.implementation_key, i.task_registry_id
+                    FROM dbops.pipeline_task_registry r
+                    JOIN dbops.pipeline_task_registry_impl i ON i.task_registry_id = r.id
+                   WHERE r.dominio_id = p_dominio_id
+                     AND r.task_code = p_task_code
+                     AND r.attivo IS TRUE
+                     AND i.attivo IS TRUE
+                     AND i.is_default IS TRUE
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_PIPELINE_TASK_HANDLER_NOT_FOUND',
+                          jsonb_build_object('detail', 'nessuna implementazione di default attiva',
+                                             'dominio_id', p_dominio_id,
+                                             'task_code', p_task_code),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_get_pipeline_task_implementation(bigint, text, text) IS
+                  'Risolve l''implementazione di un task di pipeline registrato (il controllo lo fa dbops.fn_check_pipeline_task_registered). Con una variante chiesta (p_implementation_key) restituisce quella, se e'' attiva, o nessuna riga: non ripiega sul default, e chi chiama decide (il backend solleva E_PIPELINE_TASK_HANDLER_NOT_FOUND). Senza variante restituisce l''implementazione di default attiva, e se non c''e'' solleva E_PIPELINE_TASK_HANDLER_NOT_FOUND. Dominio o codice mancanti escono con E_DBOPS_CHIAMATA_NON_VALIDA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260208-09.
+              SELECT 1;

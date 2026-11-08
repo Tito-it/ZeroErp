@@ -42,11 +42,12 @@ Indice test eseguiti:
 import inspect
 from decimal import Decimal
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_ui_overrides import UI_ACTION_OVERRIDE
 from apps.pagamenti.services import pagamenti_service, saldi_service
+from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
 
 _RIGA = {
     "id": 11,
@@ -58,7 +59,7 @@ _RIGA = {
 
 
 def _repo() -> MagicMock:
-    repo = MagicMock()
+    repo = create_autospec(PagamentiRepository, instance=True)
     repo.get_riga.return_value = dict(_RIGA)
     repo.abbina_riga.return_value = 1
     repo.list_righe_coda.return_value = ([], 0)
@@ -99,7 +100,7 @@ class _Base(TestCase):
         self.repo = _repo()
         for modulo in (pagamenti_service, saldi_service):
             patcher = patch.object(
-                modulo, "PagamentiRepository", return_value=self.repo
+                modulo, "PagamentiRepository", autospec=True, return_value=self.repo
             )
             patcher.start()
             self.addCleanup(patcher.stop)

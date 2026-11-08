@@ -13,6 +13,19 @@
 --   DDT_VENDITA_RIGA non c'era, e lo scarico del Lotto 3 sarebbe stato verde
 --   su dev e rosso in CI. Ora stanno nel CSV, attive (D-L1-f), e questo file
 --   lo asserisce su ogni database.
+-- rev 2026-11-06 (brief-db-sorgente-documento-e-riga lotto R, giro R.2, 20261106-60):
+--   le sei *_RIGA di vendita escono dalle sorgenti (S-2: una riga si scrive col tipo
+--   del suo documento + sorgente_riga). Restano le quattro di magazzino, che il
+--   lotto M porta allo stesso modello; il ritiro delle sei lo asserisce
+--   vendite/test-sorgente-righe-vendita-v1.
+-- rev 2026-11-09 (brief-db-sorgente-documento-e-riga lotto M, giro M.3, 20261109-20):
+--   escono anche le tre *_RIGA di magazzino (e DDT_VENDITA_PRELIEVO, RESO_VENDITA_RIENTRO):
+--   il registro e le testate scrivono il tipo del DOCUMENTO. Le sorgenti di magazzino sono
+--   ora i tre documenti interni (INVENTARIO, RETTIFICA, TRASFERIMENTO: scope CATALOGO, con la
+--   tabella delle righe) e l'evento d'asset (EVENTO_ASSET: MAGAZZINO, senza righe). Il ritiro
+--   lo asserisce magazzino/test-sorgente-registro-v1 (16, 17).
+-- Dal 2026-11-08 (20261110-19) lo scope dice a quale meccanismo serve un tipo: MAGAZZINO,
+--   che nessun meccanismo leggeva, e' ritirato, e anche l'evento d'asset e' CATALOGO.
 -- ⚠️ Nessuna fixture: il soggetto e' il seed. Le asserzioni sono sull'INSIEME
 --   dei codici (un catalogo puo' crescere con i lotti successivi: si asserisce
 --   che i sedici ci siano, non che siano gli unici).
@@ -26,10 +39,10 @@
 --    5) magazzino.ambito_causale non esiste (D-8)
 --    6) le due causali dello storno hanno verso opposto (D-L1-d), INV_INIZIALE non e' una rettifica
 --   config.sorgenti:
---    7) le dieci sorgenti di P-2 esistono, ATTIVE
---    8) ...e ogni target_table risolve (to_regclass): le tabelle esistono
---    9) le cinque *_RIGA di vendite sono ROW_VALIDATOR, le cinque di magazzino sono MAGAZZINO
---   10) MAGAZZINO e' ammesso dal CHECK chk_sorgenti_scope
+--    7) le quattro sorgenti di magazzino (tre documenti interni e l'evento) esistono, ATTIVE
+--    8) ...e ogni target_table (e tabella delle righe) risolve (to_regclass): le tabelle esistono
+--    9) ognuna ha lo scope atteso: CATALOGO, l'evento compreso
+--   10) MAGAZZINO non e' piu' ammesso dal CHECK chk_sorgenti_scope
 --   catalogo.articoli:
 --   11) requires_lotto esiste, NOT NULL, default false — accanto a requires_serial
 -- ------------------------------------------------------------
@@ -94,25 +107,19 @@ SELECT ok(
 -- ============================================================
 -- 7..10 config.sorgenti
 -- ============================================================
-CREATE TEMP TABLE _attese_sorgenti (codice_interno text, scope text, target_table text) ON COMMIT DROP;
+CREATE TEMP TABLE _attese_sorgenti (codice_interno text, scope text, target_table text, righe_table text) ON COMMIT DROP;
 INSERT INTO _attese_sorgenti VALUES
-    ('PREVENTIVO_RIGA',     'ROW_VALIDATOR', 'vendite.preventivi_righe'),
-    ('CONTRATTO_RIGA',      'ROW_VALIDATOR', 'vendite.contratti_righe'),
-    ('ORDINE_VENDITA_RIGA', 'ROW_VALIDATOR', 'vendite.ordini_righe'),
-    ('DDT_VENDITA_RIGA',    'ROW_VALIDATOR', 'vendite.ddt_righe'),
-    ('FATTURA_RIGA',        'ROW_VALIDATOR', 'vendite.fatture_righe'),
-    ('RESO_VENDITA_RIGA',   'ROW_VALIDATOR', 'vendite.resi_righe'),
-    ('INVENTARIO_RIGA',     'MAGAZZINO',     'magazzino.inventari_righe'),
-    ('RETTIFICA_RIGA',      'MAGAZZINO',     'magazzino.rettifiche_righe'),
-    ('TRASFERIMENTO_RIGA',  'MAGAZZINO',     'magazzino.trasferimenti_righe'),
-    ('EVENTO_ASSET',        'MAGAZZINO',     'magazzino.eventi_assets');
+    ('INVENTARIO',     'CATALOGO',  'magazzino.inventari',     'magazzino.inventari_righe'),
+    ('RETTIFICA',      'CATALOGO',  'magazzino.rettifiche',    'magazzino.rettifiche_righe'),
+    ('TRASFERIMENTO',  'CATALOGO',  'magazzino.trasferimenti', 'magazzino.trasferimenti_righe'),
+    ('EVENTO_ASSET',   'CATALOGO',  'magazzino.eventi_assets', NULL);
 
 SELECT is(
     (SELECT count(*)::int FROM _attese_sorgenti a
       WHERE NOT EXISTS (SELECT 1 FROM config.sorgenti s
                          WHERE s.codice_interno = a.codice_interno AND s.attivo)),
     0,
-    '7) le dieci sorgenti di P-2 esistono e sono ATTIVE — comprese le cinque *_RIGA di vendite (D-L1-f)');
+    '7) le quattro sorgenti di magazzino (tre documenti interni e l''evento) esistono e sono ATTIVE');
 
 SELECT is(
     (SELECT count(*)::int FROM _attese_sorgenti a
@@ -120,21 +127,23 @@ SELECT is(
       WHERE s.target_table IS NULL
          OR s.target_table::text <> a.target_table
          OR to_regclass(a.target_table) IS NULL
+         OR s.righe_table::text IS DISTINCT FROM a.righe_table
+         OR (a.righe_table IS NOT NULL AND to_regclass(a.righe_table) IS NULL)
          OR s.key_selector <> 'id'),
     0,
-    '8) ogni target_table e'' quella attesa, risolve davvero, e la chiave e'' id');
+    '8) ogni target_table e tabella delle righe e'' quella attesa, risolve davvero, e la chiave e'' id');
 
 SELECT is(
     (SELECT count(*)::int FROM _attese_sorgenti a
        JOIN config.sorgenti s ON s.codice_interno = a.codice_interno
       WHERE s.scope <> a.scope),
     0,
-    '9) le sei *_RIGA di documento sono ROW_VALIDATOR, le quattro operazioni di magazzino sono MAGAZZINO (D-7)');
+    '9) lo scope atteso: CATALOGO, l''evento d''asset compreso');
 
 SELECT ok(
-    (SELECT pg_get_constraintdef(oid) ~ '''MAGAZZINO'''
+    (SELECT pg_get_constraintdef(oid) !~ '''MAGAZZINO'''
        FROM pg_constraint WHERE conrelid = 'config.sorgenti'::regclass AND conname = 'chk_sorgenti_scope'),
-    '10) MAGAZZINO e'' ammesso da chk_sorgenti_scope');
+    '10) MAGAZZINO non e'' piu'' ammesso da chk_sorgenti_scope: nessun meccanismo lo leggeva');
 
 -- ============================================================
 -- 11 catalogo.articoli

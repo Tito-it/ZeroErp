@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MONTAGGIO DEL GUARD DELLA CHIAVE DEL PUSH SU vendite.commesse_attivita
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   BEFORE INSERT OR UPDATE OF segment_key e le colonne della chiave: nessun trigger BEFORE della
+#   tabella le scrive. Il nome lo mette dopo il guard unico (guard_sorgente < guard_sorgente_segment).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261108-04-create-trigger-commesse-attivita-guard-sorgente-segment-mctit.yaml
+
+  - changeSet:
+      id: 20261108-04-create-trigger-commesse-attivita-guard-sorgente-segment
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_attivita: montato il guard della chiave del push. brief-db-sorgente-
+        documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_commesse_attivita_a10_guard_sorgente_segment_ins_upd
+                  BEFORE INSERT OR UPDATE OF segment_key, sorgente_tipo_id, sorgente_id, sorgente_uid
+                  ON vendite.commesse_attivita
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_sorgente_segment();
+              COMMENT ON TRIGGER trg_commesse_attivita_a10_guard_sorgente_segment_ins_upd ON vendite.commesse_attivita IS
+                'La chiave del push nomina il documento della provenienza (vendite.trgfn_commesse_attivita_guard_sorgente_segment). Dopo trg_commesse_attivita_a10_guard_sorgente_ins_upd per ordine alfabetico: quando parla, il documento esiste.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_commesse_attivita_a10_guard_sorgente_segment_ins_upd ON vendite.commesse_attivita;

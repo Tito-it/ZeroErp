@@ -1,49 +1,38 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_flussi_giornale_ins`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_giornale_ins`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.flussi](flussi.md)
->
-Overview:
->
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove scrive
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — la tabella su cui è montata
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **FLUSSO_CREATO** nel giornale. Si attiva **AFTER INSERT** su `pratiche.flussi`.
+
+La trigger function `pratiche.trgfn_flussi_giornale_ins` registra nel giornale della pratica la
+nascita di un flusso, con l'azione `FLUSSO_CREATO`.
 
 ---
 
-### Firma
+### Che cosa scrive
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_ins()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+Scatta `AFTER INSERT` su `pratiche.flussi` e scrive una riga di `pratiche.giornale` per la pratica
+del flusso e per il flusso stesso, con origine `SISTEMA`. Il dettaglio porta il template da cui il
+flusso nasce, lo stato iniziale e la sequenza.
 
----
-
-### Logica
-
-Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `NEW.pratica_id` |
-| `flusso_id` | `NEW.id` |
-| `azione` | `'FLUSSO_CREATO'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('template_flusso_id', 'stato_id', 'sequenza')` |
-| `tx_id` | `NEW.tx_id` |
+La transazione è quella del flusso; se il flusso non la porta, quella della sessione.
 
 ---
 
-### Trigger associato
+### Test
 
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_flussi_z90_giornale_ins` | AFTER | INSERT | `pratiche.flussi` |
+* `pratiche/test-trigger-giornale-flussi` — l'inserimento di un flusso scrive `FLUSSO_CREATO`, col
+  dettaglio atteso.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Processi DOMINIO che non possono dire CHI agisce, guardato nei TRE versi: processo senza utente tecnico, utente tecnico senza identita' OPERATORE col flag, identita' col flag che nessun processo rivendica. DEVE restare VUOTA. ⭐ Rev 2026-09-05 (R-E, strada B): il filtro sul canale include CODA_AUTOMATICA — un lavoro di coda messo in coda da una MACCHINA non ha un'identita' prestata da nessuno, quindi ne vuole una propria. ⚠️ I processi CODA «umani» restano esclusi, ed e' voluto: li' l'identita' la porta l'operatore che accoda, e dargliene una tecnica cancellerebbe il suo nome. Brief: brief-db-processi-automatici-residui-be, sezione 1-quater.
+> Processi DOMINIO che non possono dire CHI agisce, guardati in tre versi: processo vivo (ritiro non raggiunto, script.fn_e_obsoleto) senza utente tecnico, utente tecnico senza identita' OPERATORE col flag tecnica, identita' col flag che nessun processo rivendica. DEVE restare VUOTA. Canali: PGAGENT, COMMAND e CODA_AUTOMATICA: un lavoro accodato da una macchina non ha un'identita' prestata da nessuno. I processi CODA restano esclusi: l'identita' la porta l'operatore che accoda, e dargliene una tecnica cancellerebbe il suo nome.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -16,7 +16,7 @@ SELECT p.codice AS processo_codice,
     NULL::integer AS auth_user_id,
     'processo DOMINIO headless senza utente tecnico'::text AS motivo
    FROM dbops.processi p
-  WHERE ((p.classe = 'DOMINIO'::text) AND p.attivo AND (p.obsoleto_dal IS NULL) AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND (NOT (EXISTS ( SELECT 1
+  WHERE ((p.classe = 'DOMINIO'::text) AND (NOT script.fn_e_obsoleto(p.obsoleto_dal)) AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND (NOT (EXISTS ( SELECT 1
            FROM dbops.processi_identita pi
           WHERE ((pi.processo_id = p.id) AND pi.attivo)))))
 UNION ALL

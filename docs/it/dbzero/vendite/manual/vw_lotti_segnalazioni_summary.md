@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – View `vendite.vw_lotti_segnalazioni_summary`
 
+> **Ultimo aggiornamento**: 7 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimenti funzioni:
@@ -10,7 +12,7 @@ Approfondimenti viste:
 >
 [dbops.vw_lotti_fermi_da_guardare](/dbzero/dbops/manual/vw_lotti_fermi_da_guardare) — *il lettore del presidio: i lotti pre-fiscali fermi da oltre un'ora*
 > [vendite.vw_lotti_fase](/dbzero/vendite/manual/vw_lotti_fase) — *«in che fase è questo lotto?»: l'asse pre-fiscale*
-> [vendite.vw_lotti_chiusi_con_gruppi_in_errore](/dbzero/vendite/views/vw_lotti_chiusi_con_gruppi_in_errore) — *la contraddizione opposta: chiuso e in errore*
+> [vendite.vw_lotti_congelati_con_gruppi_in_errore](/dbzero/vendite/views/vw_lotti_congelati_con_gruppi_in_errore) — *la contraddizione opposta: congelato e in errore*
 >
 Approfondimenti tabelle:
 >
@@ -62,9 +64,10 @@ in un posto e lo vedono insieme banner, digest e pallino.
 
 ⚠️ **`fermo` è il verdetto su ogni lotto, qualunque sia il suo stato fiscale.**
 Un `DEFINITIVA` con un esito `ERRORE` è `fermo` qui come lo era per il Python.
-La spartizione con `vw_lotti_chiusi_con_gruppi_in_errore` sull'asse
-`pre_fiscale` la fa il **presidio**, non questa vista: una sede risponde a una
-domanda.
+La spartizione sull'asse `pre_fiscale` la fanno i due **presidi**
+(`dbops.vw_lotti_fermi_da_guardare` per i pre-fiscali,
+`vw_lotti_congelati_con_gruppi_in_errore` per i congelati), non questa vista:
+una sede risponde a una domanda.
 
 #### ⭐ Perché il fatto più recente, e non il più vecchio
 

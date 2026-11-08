@@ -267,27 +267,30 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa(
     'guard transizione ordini', 'APERTA',
     (SELECT billing_account_id FROM tmp_gt_cli), true);
 
-INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
 SELECT (SELECT commessa_id FROM tmp_gt_com),
        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-       (SELECT ordine_id FROM tmp_gt_f)::text,
-       'ROOT';
+       (SELECT ordine_id FROM tmp_gt_f),
+       -- COLLEGATO: la ROOT della commessa e' gia' il consumo della sua attivita'
+       -- (il builder; la madre lo lega e il primo link e' ROOT).
+       'COLLEGATO';
 
 -- ⛔ E la riga che davvero FERMA: una commessa_attivita gia' EMESSA spinta da
 --    questo ordine. Senza, dal 2026-08-26 l'annullamento passerebbe — ed e'
 --    voluto, perche' il documento ritira da se' cio' che nessuno ha emesso.
 -- ⚠️ La chiave e' l'`uid` dell'ordine, non il suo `id`: e' quella che
 --    fn_list_ordini_da_pushare scrive in commesse_attivita.sorgente_uid.
---    ⭐ E NON e' la stessa che commesse_sorgenti usa qui sopra (li' e' l'id):
+--    ⭐ E NON e' la stessa che commesse_sorgenti usa qui sopra (li' e' l'id, in sorgente_id):
 --    due chiavi polimorfe diverse per la stessa sorgente, e confonderle non
 --    darebbe un errore — darebbe un guard che non ferma.
 INSERT INTO vendite.commesse_attivita (
   commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
   uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
   valuta_id, prezzo_snapshot, pricing_mode,
-  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id, sorgente_uid)
 SELECT (SELECT commessa_id FROM tmp_gt_com),
-       'ORDINE_VENDITA:PGTAP-GT:R:1',
+       -- la chiave del push nomina l'ordine (il suo uid), come la compone il push
+       script.fn_segment_key('ORDINE_VENDITA', (SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM tmp_gt_f))) || ':PGTAP-GT:R:1',
        r.articolo_id,
        -- ⚠️ vendite.commesse non ha istanza_utility_id: si risolve dal
        --    billing account della commessa, che e' dove vive.
@@ -301,7 +304,7 @@ SELECT (SELECT commessa_id FROM tmp_gt_com),
        r.valuta_id, 10.000000, 'FIXED',
        'BOZZA', 'EMESSA',
        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-       (SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM tmp_gt_f))
+       (SELECT k.sorgente_id FROM script.fn_sorgente_chiave((SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'), ((SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM tmp_gt_f)))::text) k), (SELECT k.sorgente_uid FROM script.fn_sorgente_chiave((SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'), ((SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM tmp_gt_f)))::text) k)
   FROM tmp_refs_gt r;
 
 SELECT throws_ok(

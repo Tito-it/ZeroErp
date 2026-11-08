@@ -118,7 +118,7 @@ REPO_PATH = "apps.amm_software.services.amm_software_service.AmmSoftwareReposito
 class TestAuditSourcesLookupView(TestCase):
     """View GET /api/v1/amm-software/lookup/audit-sources/ (Fase 5 — A13)."""
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_audit_sources_lookup_ok(self, mock_repo_cls: MagicMock) -> None:
         # Service delega a repo (vw_audit_sources). Il mock evita il DB:
         # verifichiamo il passaggio della shape attraverso la view.

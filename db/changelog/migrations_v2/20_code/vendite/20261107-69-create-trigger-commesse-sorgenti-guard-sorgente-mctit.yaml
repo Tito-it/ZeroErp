@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO SUL LINK DOCUMENTO -> COMMESSA: script.trgfn_guard_sorgente su vendite.commesse_sorgenti
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.2 (S-4, S-6).
+#
+#   Al posto del guard testuale (tolto da 20261107-59), con lo STESSO nome: i
+#   BEFORE ROW scattano in ordine alfabetico, e il guard dell'emittente
+#   (...a10_guard_sorgente_omogeneita_ins_upd, 20261107-64) deve parlare dopo
+#   quello che verifica che il documento esista.
+#   Livello minimo DOCUMENTO: il link e' al documento intero, e una riga, se
+#   c'e', si verifica. Azione BLOCCA, come una FK: un documento collegato a una
+#   commessa non si cancella (il link resta come storia). Il lato in uscita sulle
+#   tabelle dei documenti lo monta la convergenza a ci_apply
+#   (dbops.fn_sorgente_converge_uscita).
+#   Rollback: DROP TRIGGER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-69-create-trigger-commesse-sorgenti-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261107-69-create-trigger-commesse-sorgenti-guard-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_sorgenti: montato script.trgfn_guard_sorgente(DOCUMENTO, BLOCCA) al posto
+        del guard testuale. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON vendite.commesse_sorgenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_ins_upd ON vendite.commesse_sorgenti IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector del tipo, il documento esiste, la riga se c''e'' appartiene al documento. Scatta prima di ...a10_guard_sorgente_omogeneita_ins_upd (ordine alfabetico), che risolve l''emittente di un documento che a quel punto esiste.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_ins_upd ON vendite.commesse_sorgenti;

@@ -1,147 +1,100 @@
-# fn_non_editable_fields
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_non_editable_fields`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-> - [dbops.lock_columns_conditional](/dbzero/dbops/manual/lock_columns_conditional) — registro lock condizionali (condition_expr)
-> - [dbops.vw_non_editable_fields](/dbzero/dbops/manual/vw_non_editable_fields) — lock statici (incondizionati)
-> - [dbops.automation_lock_columns](/dbzero/dbops/manual/automation_lock_columns) — tabella sorgente dei lock statici
-> - [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva) — prima applicazione: guard trigger simmetrico
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [dbops.lock_columns_conditional](/dbzero/dbops/tabelle/lock_columns_conditional) — le regole di blocco che dipendono dallo stato della riga
+> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns) — le colonne bloccate sempre
+>
+> Approfondimento viste:
+>
+> * [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields) — i blocchi incondizionati, letti dai trigger di lock vivi
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — il confronto fra il lock vivo e il registro
+> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi), [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — i predicati che le regole dell'articolo condividono coi guard
+> * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — un guard che rifiuta il salvataggio che la funzione annuncia
 
-## Scopo
+---
 
-(latest review 2026-05-22)
+### 🎯 Scopo Principale
 
-`dbops.fn_non_editable_fields` e' l'entry-point unificato per conoscere i campi
-non editabili di una **riga specifica**: unisce i lock statici
-(da `dbops.vw_non_editable_fields`) con i lock condizionali
-(da `dbops.lock_columns_conditional`, valutati dinamicamente sulla riga).
+Le colonne non modificabili di **una riga precisa**: i blocchi incondizionati della tabella più i
+blocchi condizionali che, valutati su quella riga, risultano veri. Restituisce un elenco senza
+ripetizioni, in ordine alfabetico, e mai nullo: vuoto se non c'è nessun blocco.
 
-Differenza rispetto alla sola vista `vw_non_editable_fields`:
+Il backend la usa nelle schede di dettaglio per dire al frontend quali campi presentare in sola
+lettura.
 
-| | `vw_non_editable_fields` | `fn_non_editable_fields` |
+---
+
+### Due fonti, una risposta
+
+| Blocco | Da dove | Quando vale |
 | --- | --- | --- |
-| Lock statici | ✅ | ✅ |
-| Lock condizionali | ❌ | ✅ |
-| Richiede id riga | No | Sì (`p_record_id text`) |
-| Tipo | Vista SQL | Funzione PL/pgSQL |
-| Volatility | STABLE | VOLATILE |
+| incondizionato | `dbops.vw_non_editable_fields` (le colonne che un trigger di lock vivo blocca, `codice_interno` compreso) | sempre |
+| condizionale | le regole abilitate di `dbops.lock_columns_conditional` per quella tabella | quando la condizione, valutata sull'identificativo della riga, è vera |
+
+Ogni regola condizionale è un'espressione booleana che riceve l'identificativo della riga come
+parametro, passato come testo: la conversione al tipo della chiave la fa l'espressione stessa.
+L'identificativo entra come parametro, non incollato nel testo, quindi non può iniettare niente;
+l'espressione invece viene dal registro e la scrive chi scrive il seed. Una condizione che non dà
+vero (falsa o nulla) non blocca.
+
+⚠️ Un'espressione condizionale che fallisce fa fallire la chiamata intera, non solo la sua regola.
 
 ---
 
-## Schema DB
+### ⚠️ Annuncia, non difende
 
-`dbops`
+La funzione dice al frontend che cosa è bloccato; a rifiutare il salvataggio sono i trigger del
+database. Sono due difese indipendenti di proposito: se l'annuncio manca, il database rifiuta lo
+stesso.
 
-## Firma
-
-```sql
-dbops.fn_non_editable_fields(
-    p_schema     text,   -- schema tabella target (es. 'catalogo')
-    p_table      text,   -- nome tabella target (es. 'articoli')
-    p_record_id  text    -- PK della riga come text (cast a tipo target in condition_expr)
-) RETURNS text[]
-```
-
----
-
-## Output
-
-Array di nomi colonna non editabili, **deduplicato e ordinato alfabeticamente**.
-Restituisce `ARRAY[]::text[]` (mai NULL) se nessun lock e' attivo.
-
-Esempi:
-
-```sql
--- Articolo senza BoM attive: solo lock statici
-SELECT dbops.fn_non_editable_fields('catalogo', 'articoli', art_id::text);
--- → '{codice}'
-
--- Articolo padre di BoM attiva: lock statici + condizionali
-SELECT dbops.fn_non_editable_fields('catalogo', 'articoli', art_composito_id::text);
--- → '{codice,is_composito,requires_serial}'
-```
+⭐ **Perché l'annuncio sia vero, legge le stesse regole di chi difende.** I blocchi incondizionati
+vengono dai trigger stessi (`dbops.vw_non_editable_fields`), quindi coincidono con ciò che l'UPDATE
+rifiuta. Un blocco condizionale chiama lo **stesso predicato** del guard che rifiuterebbe la
+modifica: per l'articolo, i predicati della distinta (`catalogo.fn_articolo_padre_di_distinta_in_vigore`,
+`…_componente_di_distinta_in_vigore`, `…_primo_padre_da_oggi`) e `catalogo.fn_articolo_usato`.
+Una regola che ricopiasse la condizione del guard prima o poi risponderebbe in un altro modo.
 
 ---
 
-## Algoritmo
+### Legge con gli occhi di chi chiama
 
-1. **Lock statici**: `array_agg(column_name)` da `dbops.vw_non_editable_fields`
-   filtrata per `(target_schema, target_table)`.
-2. **Lock condizionali**: loop su `dbops.lock_columns_conditional` per
-   `(schema_name, table_name, enabled IS TRUE)`. Per ogni riga:
-   ```sql
-   EXECUTE 'SELECT (' || condition_expr || ')' USING p_record_id INTO v_match
-   ```
-   Se `v_match IS TRUE`, aggiunge `column_name` al risultato.
-3. **Deduplicazione + ordinamento**: `ARRAY(SELECT DISTINCT col FROM unnest(...) ORDER BY col)`.
-
-La concatenazione diretta (`||`) invece di `format()` evita ambiguita' sul carattere `%`
-in `condition_expr`. `$1` e' parametrico via `USING` — non soggetto a SQL injection.
+La funzione gira coi privilegi del chiamante: le tabelle che le espressioni condizionali leggono
+devono essere leggibili dal ruolo applicativo, e con la row level security accesa le espressioni
+vedono solo le righe del perimetro di chi chiama. È volatile: legge lo stato corrente, e due
+chiamate nella stessa transazione possono rispondere diversamente se i dati cambiano in mezzo.
 
 ---
 
-## Volatility e sicurezza
+### Test
 
-**VOLATILE**: le `condition_expr` leggono stato corrente del DB (righe BoM, date,
-flag `attivo`). Il risultato puo' cambiare nella stessa transazione se i dati
-sottostanti cambiano. Non usare in contesti dove ci si aspetta stabilita' del piano.
-
-**SECURITY INVOKER**: la funzione esegue le query con i permessi del chiamante.
-Prerequisito: le tabelle referenziate nelle `condition_expr` devono avere
-`GRANT SELECT` al ruolo applicativo (`zeroerp_app`). Con RLS attiva, vengono
-viste solo le righe accessibili al chiamante — comportamento corretto.
-
----
-
-## Uso BE (Python)
-
-Il repository `LockColumnsRepository` chiama la funzione passando `record_id::text`.
-La chiamata sostituisce `list_non_editable` per i detail endpoint che hanno l'id riga:
-
-```python
-# apps/core/db/lock_columns_repository.py (futuro metodo)
-def list_non_editable_with_record(schema: str, table: str, record_id: str) -> tuple[str, ...]:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT dbops.fn_non_editable_fields(%s, %s, %s)",
-            [schema, table, record_id],
-        )
-        row = cursor.fetchone()
-        assert row is not None
-        return tuple(row[0] or [])
-```
-
-Il service usa il risultato per costruire `non_editable_fields` nel DTO/detail:
-
-```python
-# Nel service detail
-non_editable = lock_repo.list_non_editable_with_record(
-    'catalogo', 'articoli', str(articolo['id'])
-)
-articolo['non_editable_fields'] = sorted(non_editable)
-```
+* `db/pgtap/dbops/test-fn-non-editable-fields-conditional.sql` — blocchi incondizionati e
+  condizionali insieme, sulla stessa riga.
+* `db/pgtap/dbops/test-non-editable-fields-dal-lock-vivo-v1.sql` — i blocchi incondizionati vengono
+  dal trigger vivo, `codice_interno` compreso.
+* `db/pgtap/catalogo/test-distinta-predicati-guard-e-form-v1.sql` — per i flag di struttura
+  dell'articolo il form e il guard rispondono uguale.
+* `db/pgtap/catalogo/test-articolo-usato-struttura-v1.sql`,
+  `test-distinta-un-livello-e-onere-natura-v1.sql` e `db/pgtap/vendite/test-righe-articolo-ammesso-v1.sql`
+  — le regole condizionali dell'articolo e delle righe, lette come le legge il backend.
 
 ---
 
-## Dipendenze
+### Note di migrazione
 
-| Oggetto | Tipo | Motivo |
-| --- | --- | --- |
-| `dbops.vw_non_editable_fields` | Vista | Lock statici (passo 1) |
-| `dbops.lock_columns_conditional` | Tabella | Registro regole condizionali (passo 2) |
+* 2026-05-22 — nasce con il registro dei blocchi condizionali, per i flag di struttura dell'articolo
+  bloccati quando l'articolo è padre di una distinta attiva.
+* 2026-11-08 — i blocchi incondizionati vengono dai trigger vivi, `codice_interno` compreso, e le
+  regole della distinta chiamano i predicati del guard (`20261109-61`, `-64`,
+  brief-db-revisione-dbops D25 e D28).
 
 ---
 
-## Note operative
-
-- **Nessun caching a DB**: la funzione e' VOLATILE, ogni chiamata esegue le query.
-  Per la stessa riga in un detail endpoint (1 chiamata), il costo e' trascurabile.
-  Se il numero di regole condizionali per `(schema, table)` cresce molto, valutare
-  un indice su `(schema_name, table_name, enabled)`.
-- **Backward compat**: `vw_non_editable_fields` resta invariata per i caller
-  che non hanno bisogno dei lock condizionali (list endpoint, lookup statici).
-  `fn_non_editable_fields` e' addizionale, non sostitutiva della vista.
-- **Guard trigger disaccoppiato**: questa funzione segnala al FE cosa e' bloccato;
-  il trigger DB rifiuta il save anche se il segnale non viene emesso.
-  Sono due difese indipendenti, intenzionalmente disaccoppiate.
-- Migration di riferimento: `20260522-03`.
+{% include-markdown "signature-core.md" %}

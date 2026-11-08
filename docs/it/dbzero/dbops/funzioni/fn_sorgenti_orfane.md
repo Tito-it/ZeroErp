@@ -13,60 +13,143 @@ CREATE FUNCTION fn_sorgenti_orfane()
 
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane()
- RETURNS TABLE(tabella regclass, riga_id bigint, sorgente_tipo_id bigint, sorgente_codice_interno character varying, sorgente_riga bigint, sorgente_uid text, target_table regclass)
+ RETURNS TABLE(tabella regclass, riga_id bigint, grammatica text, livello text, sorgente_tipo_id bigint, sorgente_codice_interno character varying, sorgente_id bigint, sorgente_uid text, sorgente_riga bigint, sorgente_dettaglio bigint, target_table regclass)
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
--- Scopo: le righe la cui sorgente (tipo + chiave) punta a un record del
---   target_table che non c'e' piu' (D-9). Il guard tipizzato impedisce di
---   INSERIRLE; questa funzione trova quelle rimaste orfane DOPO, cancellando il
---   bersaglio — la FK non c'e' e non puo' esserci. Per ogni tabella del
---   perimetro e per ogni sorgente_tipo_id presente, un anti-join dinamico
---   verso target_table sulla chiave che key_selector dichiara (id | uid).
--- DEFINER del PROPRIETARIO (attraversa la RLS: un orfano in una tabella
---   protetta va visto comunque), STABLE: legge e basta. I nomi di tabella e
---   colonna vengono dal catalogo (regclass, %I): mai da un input.
--- ⚠️ rev 18-09: il ciclo interno legge TRE SCALARI TIPIZZATI, non un record.
---   Un `record` riempito da SQL DINAMICO ha tupla indeterminata per
---   plpgsql_check: ogni campo letto dopo e' «non ancora assegnato» (55000) e
---   il presidio dei riferimenti morti lo riferisce REALE. Con i tipi
---   dichiarati (%TYPE su config.sorgenti) il controllo sa cosa legge.
---   `v_t` resta un record: viene da un SELECT statico, le colonne si sanno.
 DECLARE
-    v_t             record;
-    v_tipo_id       config.sorgenti.id%TYPE;
-    v_key_selector  config.sorgenti.key_selector%TYPE;
-    v_target_table  config.sorgenti.target_table%TYPE;
+    v_relid      oid;
+    v_schema     pg_catalog.pg_namespace.nspname%TYPE;
+    v_tabella    pg_catalog.pg_class.relname%TYPE;
+    v_grammatica text;
+    v_ha_id      boolean;
+    v_ha_uid     boolean;
+    v_ha_riga    boolean;
+    v_ha_dett    boolean;
+
+    v_tipo       config.sorgenti.id%TYPE;
+    v_codice     config.sorgenti.codice_interno%TYPE;
+    v_selector   config.sorgenti.key_selector%TYPE;
+    v_d_relid    oid;
+    v_d_schema   pg_catalog.pg_namespace.nspname%TYPE;
+    v_d_tabella  pg_catalog.pg_class.relname%TYPE;
+    v_d_ha_uid   boolean;
+    v_r_relid    oid;
+    v_r_schema   pg_catalog.pg_namespace.nspname%TYPE;
+    v_r_tabella  pg_catalog.pg_class.relname%TYPE;
+    v_r_fk       config.sorgenti.righe_fk_column%TYPE;
+    v_t_relid    oid;
+    v_t_schema   pg_catalog.pg_namespace.nspname%TYPE;
+    v_t_tabella  pg_catalog.pg_class.relname%TYPE;
+    v_t_fk       config.sorgenti.dettaglio_fk_column%TYPE;
+
+    -- La testa comune della riga restituita, e le espressioni delle
+    -- colonne che la tabella puo' non avere.
+    v_testa      text;
+    v_e_id       text;
+    v_e_uid      text;
+    v_e_riga     text;
+    v_e_dett     text;
+    v_chiave_x   text;
+    v_chiave_d   text;
 BEGIN
-    FOR v_t IN SELECT * FROM dbops.fn_sorgenti_orfane_perimetro() LOOP
-        -- Per ogni tipo di sorgente presente nella tabella: il bersaglio e la
-        -- chiave dichiarati a catalogo (regclass e key_selector).
-        FOR v_tipo_id, v_key_selector, v_target_table IN
-            EXECUTE format(
-                'SELECT DISTINCT s.id, s.key_selector, s.target_table '
-                '  FROM %1$s x JOIN config.sorgenti s ON s.id = x.%2$I '
-                ' WHERE s.target_table IS NOT NULL',
-                v_t.tabella, v_t.col_tipo)
+    -- =========================================================
+    -- Scopo: le righe la cui provenienza punta a un documento, una
+    --   riga o un dettaglio che non c'e' piu'. Per tabella del
+    --   perimetro e per tipo presente, un anti-join dinamico nella
+    --   grammatica della tabella.
+    -- =========================================================
+    FOR v_relid, v_schema, v_tabella, v_grammatica, v_ha_id, v_ha_uid, v_ha_riga, v_ha_dett IN
+        SELECT p.tabella::oid, p.schema_tabella, p.nome_tabella, p.grammatica,
+               p.ha_sorgente_id, p.ha_sorgente_uid, p.ha_sorgente_riga, p.ha_sorgente_dettaglio
+          FROM dbops.fn_sorgenti_orfane_perimetro() p
+         WHERE p.orfani_esclusi_perche IS NULL
+    LOOP
+        v_e_id   := CASE WHEN v_ha_id   THEN 'x.sorgente_id::bigint'      ELSE 'NULL::bigint' END;
+        v_e_uid  := CASE WHEN v_ha_uid  THEN 'x.sorgente_uid::text'       ELSE 'NULL::text'   END;
+        v_e_riga := CASE WHEN v_ha_riga THEN 'x.sorgente_riga::bigint'    ELSE 'NULL::bigint' END;
+        v_e_dett := CASE WHEN v_ha_dett THEN 'x.sorgente_dettaglio::bigint' ELSE 'NULL::bigint' END;
+
+        FOR v_tipo IN
+            EXECUTE format('SELECT DISTINCT x.sorgente_tipo_id::bigint FROM %I.%I x '
+                           'WHERE x.sorgente_tipo_id IS NOT NULL', v_schema, v_tabella)
         LOOP
-            -- La chiave: uid -> t.uid = x.sorgente_uid; altrimenti t.id = x.sorgente_riga.
-            -- Scelta QUI, non in un CASE SQL: il bersaglio potrebbe non avere uid.
-            -- Confronto su ::text: non tutte le tabelle del perimetro tipizzano
-            -- sorgente_uid come uuid (vendite ne ha di text).
-            RETURN QUERY EXECUTE format(
-                $q$
-                SELECT %1$L::regclass, x.id::bigint, s.id, s.codice_interno,
-                       x.%2$I::bigint, x.%3$I::text, s.target_table
-                  FROM %1$s x
-                  JOIN config.sorgenti s ON s.id = x.%4$I
-                 WHERE x.%4$I = %5$L
-                   AND x.%6$I IS NOT NULL
-                   AND NOT EXISTS (SELECT 1 FROM %7$s t WHERE t.%8$I::text = x.%6$I::text)
-                $q$,
-                v_t.tabella::text, v_t.col_riga, v_t.col_uid, v_t.col_tipo, v_tipo_id,
-                CASE WHEN v_key_selector = 'uid' THEN v_t.col_uid ELSE v_t.col_riga END,
-                v_target_table::text,
-                CASE WHEN v_key_selector = 'uid' THEN 'uid' ELSE 'id' END);
+            SELECT l.codice_interno, l.key_selector,
+                   l.documento_relid, l.documento_schema, l.documento_tabella, l.documento_ha_uid,
+                   l.righe_relid, l.righe_schema, l.righe_tabella, l.righe_fk_column,
+                   l.dettaglio_relid, l.dettaglio_schema, l.dettaglio_tabella, l.dettaglio_fk_column
+              INTO v_codice, v_selector,
+                   v_d_relid, v_d_schema, v_d_tabella, v_d_ha_uid,
+                   v_r_relid, v_r_schema, v_r_tabella, v_r_fk,
+                   v_t_relid, v_t_schema, v_t_tabella, v_t_fk
+              FROM config.fn_sorgente_livelli(v_tipo) l;
+
+            CONTINUE WHEN v_d_tabella IS NULL;
+
+            v_testa := format(
+                'SELECT %s::oid::regclass, x.id::bigint, %L::text, %%L::text, '
+                'x.sorgente_tipo_id::bigint, %L::varchar, %s, %s, %s, %s, %%s::oid::regclass '
+                'FROM %I.%I x ',
+                v_relid, v_grammatica, v_codice, v_e_id, v_e_uid, v_e_riga, v_e_dett,
+                v_schema, v_tabella);
+
+            IF v_grammatica = 'UNICO' THEN
+                -- La chiave del documento secondo il key_selector.
+                IF v_selector = 'uid' THEN
+                    CONTINUE WHEN NOT v_ha_uid;
+                    v_chiave_x := 'x.sorgente_uid';
+                    v_chiave_d := 'd.uid';
+                ELSE
+                    CONTINUE WHEN NOT v_ha_id;
+                    v_chiave_x := 'x.sorgente_id';
+                    v_chiave_d := 'd.id';
+                END IF;
+
+                -- documento
+                RETURN QUERY EXECUTE format(v_testa, 'DOCUMENTO', v_d_relid)
+                    || format('WHERE x.sorgente_tipo_id = $1 AND %s IS NOT NULL '
+                              'AND NOT EXISTS (SELECT 1 FROM %I.%I d WHERE %s = %s)',
+                              v_chiave_x, v_d_schema, v_d_tabella, v_chiave_d, v_chiave_x)
+                    USING v_tipo;
+
+                -- riga
+                IF v_ha_riga AND v_r_tabella IS NOT NULL THEN
+                    RETURN QUERY EXECUTE format(v_testa, 'RIGA', v_r_relid)
+                        || format('JOIN %I.%I d ON %s = %s '
+                                  'WHERE x.sorgente_tipo_id = $1 AND x.sorgente_riga IS NOT NULL '
+                                  'AND NOT EXISTS (SELECT 1 FROM %I.%I r '
+                                  'WHERE r.id = x.sorgente_riga AND r.%I = d.id)',
+                                  v_d_schema, v_d_tabella, v_chiave_d, v_chiave_x,
+                                  v_r_schema, v_r_tabella, v_r_fk)
+                        USING v_tipo;
+                END IF;
+
+                -- dettaglio
+                IF v_ha_dett AND v_t_tabella IS NOT NULL THEN
+                    RETURN QUERY EXECUTE format(v_testa, 'DETTAGLIO', v_t_relid)
+                        || format('JOIN %I.%I r ON r.id = x.sorgente_riga '
+                                  'WHERE x.sorgente_tipo_id = $1 AND x.sorgente_dettaglio IS NOT NULL '
+                                  'AND NOT EXISTS (SELECT 1 FROM %I.%I t '
+                                  'WHERE t.id = x.sorgente_dettaglio AND t.%I = x.sorgente_riga)',
+                                  v_r_schema, v_r_tabella, v_t_schema, v_t_tabella, v_t_fk)
+                        USING v_tipo;
+                END IF;
+
+            ELSE
+                -- TESTUALE: la chiave in sorgente_uid, come id o come uid, nella
+                -- forma canonica dei BB della chiave (la regola del ponte).
+                CONTINUE WHEN NOT v_ha_uid;
+                RETURN QUERY EXECUTE format(v_testa, 'DOCUMENTO', v_d_relid)
+                    || format('WHERE x.sorgente_tipo_id = $1 AND x.sorgente_uid IS NOT NULL '
+                              'AND NOT EXISTS (SELECT 1 FROM %I.%I d '
+                              'WHERE d.id = script.fn_sorgente_chiave_id(x.sorgente_uid::text)%s)',
+                              v_d_schema, v_d_tabella,
+                              CASE WHEN v_d_ha_uid
+                                   THEN ' OR d.uid = script.fn_sorgente_chiave_uuid(x.sorgente_uid::text)'
+                                   ELSE '' END)
+                    USING v_tipo;
+            END IF;
         END LOOP;
     END LOOP;
     RETURN;
@@ -74,7 +157,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_sorgenti_orfane()
-IS 'Le righe la cui SORGENTE (sorgente_tipo_id + sorgente_riga | sorgente_uid) punta a un record di config.sorgenti.target_table che non esiste piu'' (D-9, aggancio 8-quater). Perimetro derivato dal vincolo (fn_sorgenti_orfane_perimetro: FK verso config.sorgenti + le due colonne di chiave), anti-join dinamico per tabella e per tipo sulla chiave che key_selector dichiara (id | uid). Il guard tipizzato del Lotto 1 impedisce di inserire un orfano; qui si trovano quelli creati dopo, cancellando il bersaglio — la FK non c''e'' e non puo'' esserci. SECURITY DEFINER del PROPRIETARIO, non di un superuser (attraversa la RLS), STABLE. Letta da dbops.vw_sorgenti_orfane, che deve restare vuota. ⚠️ rev 18-09 (20260918-27): il ciclo interno legge tre scalari con %TYPE su config.sorgenti e non un record — un record riempito da SQL dinamico ha tupla indeterminata per plpgsql_check, e il presidio dei riferimenti morti (test-riferimenti-morti-v1) lo riferiva REALE (55000 sul RETURN QUERY). Chi tocca questa funzione tenga la forma: la regola vale per ogni FOR ... IN EXECUTE. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.7.';
+IS 'Le righe la cui provenienza punta a un record che non esiste piu'': un documento (livello DOCUMENTO), una riga che non c''e'' o non e'' di quel documento (RIGA), un dettaglio che non c''e'' o non e'' di quella riga (DETTAGLIO). Una riga per orfano, con la tabella, l''id, la grammatica, il tipo, le colonne della provenienza e target_table, la tabella dove manca il record. Perimetro: dbops.fn_sorgenti_orfane_perimetro, tranne le tabelle con orfani_esclusi_perche. Per tabella e per tipo un anti-join dinamico nella grammatica della tabella: UNICO a tre livelli; TESTUALE con la chiave in sorgente_uid, riconosciuta in forma canonica (script.fn_sorgente_chiave_id / _uuid). Il guard impedisce di scrivere un orfano; qui si trovano quelli nati dopo, cancellando l''origine senza il lato «in uscita». SECURITY DEFINER del proprietario (attraversa la RLS), STABLE. Letta da dbops.vw_sorgenti_orfane, che deve restare vuota.';
 ```
 
 </div>

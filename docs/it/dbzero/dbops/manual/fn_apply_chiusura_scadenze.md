@@ -1,173 +1,164 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_chiusura_scadenze`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
-> [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali)
-> [Linee guida SQL §7c — Ciclo stato + finestra di validita'](/linee-guida-sql)
+> Approfondimento tabelle:
 >
-Approfondimento tabelle:
-> [dbops.automazione_chiusura_scadenze](/dbzero/dbops/tabelle/automazione_chiusura_scadenze)
-> [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)
+> * [dbops.automazione_chiusura_scadenze](/dbzero/dbops/tabelle/automazione_chiusura_scadenze) — il registro dei bersagli che la funzione legge
+> * [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) — il lavoro `CHIUSURA_SCADENZE` dentro cui la funzione gira
+> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — dove resta la riga di ogni giro
 >
-Approfondimento funzioni:
-> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> Approfondimento funzioni:
 >
-WIP:
-> [Automazione chiusure per scadenza](/dev/work-done/automazione-chiusure-scadenze)
+> * [dbops.fn_accoda_chiusura_scadenze](/dbzero/dbops/funzioni/fn_accoda_chiusura_scadenze) — la sveglia che accoda un lavoro per azienda
+> * [script.trgfn_doc_stato_solo_dal_verbo](/dbzero/script/funzioni/trgfn_doc_stato_solo_dal_verbo) — la porta che manda una testata al suo verbo di chiusura
+> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale con cui si confronta la scadenza
+> * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la scrittura dell'audit
+>
+> Guide:
+>
+> * [Processi automatici: classe e identità](/guide/processi-automatici-classe-e-identita) — perché la chiusura gira con l'identità di un'azienda
+> * [Linee guida SQL — 7c Ciclo stato + finestra di validità](/linee-guida-sql#7c-ciclo-stato-finestra-di-validita) — il modello delle tabelle bersaglio
+
+---
 
 ### 🎯 Scopo Principale
 
-(latest review 26-04-2026)
+Il motore della chiusura per scadenza: per ogni riga attiva di
+`dbops.automazione_chiusura_scadenze` porta allo stato «chiuso» le righe ancora «attive» la cui
+data di fine validità è passata, e restituisce quante ne ha chiuse per tabella.
 
-La funzione **`dbops.fn_apply_chiusura_scadenze()`** e' il **motore del
-framework parametrico di chiusura per scadenza**: itera su
-`dbops.automazione_chiusura_scadenze` (righe `attivo=true`) ed esegue
-UPDATE dinamici per portare lo stato gestionale al valore "chiuso"
-sulle righe target con `valido_al` scaduto.
-
-E' invocata dal job pgAgent unico `chiusura_scadenze_daily` ogni
-notte alle 00:05. Ritorna un JSONB con conteggio righe chiuse per
-tabella + meta-info di esecuzione.
+La chiama l'handler del lavoro di coda `CHIUSURA_SCADENZE`, un'azienda alla volta, senza
+argomenti. È `SECURITY INVOKER`: vede e chiude solo ciò che vede l'identità con cui gira.
 
 ---
 
-### Firma
+### ⭐ Il perimetro è l'identità, non un parametro
 
-```sql
-CREATE OR REPLACE FUNCTION dbops.fn_apply_chiusura_scadenze(
-    p_classe text DEFAULT NULL     -- NULL = tutti i bersagli, come prima
-) RETURNS jsonb
-LANGUAGE plpgsql;
-```
+pgAgent non chiama questa funzione: sveglia `dbops.fn_accoda_chiusura_scadenze`, che accoda un
+lavoro per ogni azienda con l'identità tecnica di quell'azienda. Il drenatore apre quell'identità e
+l'handler chiama la funzione: la row level security dei bersagli fa il resto. Nessun argomento
+dice per quale azienda lavorare, perché una seconda sede del perimetro è quella che si dimentica.
 
-La configurazione vive nella tabella
-[dbops.automazione_chiusura_scadenze](/dbzero/dbops/manual/automazione_chiusura_scadenze):
-una riga per tabella bersaglio.
-
-#### ⭐ `p_classe` *(dal 2026-09-04)* — lavora solo i bersagli di quella natura
-
-⚠️ **Il default `NULL` non è pigrizia, è un requisito**: il job pgAgent chiama
-la funzione **senza argomenti**, e la configurazione dello scheduler è una fase
-che in CI **non gira mai**. Cambiare la chiamata avrebbe voluto dire modificare
-qualcosa che nessun test esercita, e scoprire l'errore di notte.
-
-⇒ Chiamata senza argomenti: comportamento **identico a prima**. Con una classe:
-lavora solo quei bersagli.
-
-⭐ **A cosa serve davvero**: è ciò che permetterà ai bersagli di `DOMINIO` di
-migrare sulla coda — dove girano con l'identità di un operatore — **senza che
-pgAgent li lavori una seconda volta**. Il filtro esiste prima della migrazione,
-non dopo, così la migrazione non richiede di toccare il job.
+Anche «scaduto» è dell'azienda: la scadenza si confronta con `script.fn_data_operativa()`, il
+giorno nel fuso dell'azienda, non con la data del server. Una riga con data di fine vuota non
+scade mai.
 
 ---
 
-### Output (JSONB)
+### Due strade per chiudere
 
-```json
-{
-  "vendite.listini_versioni": 3,
-  "vendite.contratti": 12,
-  "_total": 15,
-  "_executed_at": "2026-04-27T00:05:01.234567+02:00"
-}
-```
+Porta e verbo si guardano **prima** di scegliere come scrivere lo stato, e per ogni `tipo_stato`
+(`VARCHAR` e `FK`):
 
-* Una chiave `<schema>.<tabella>` per ciascuna riga di config processata, con il numero di righe chiuse (puo' essere 0).
-* `_total`: somma dei conteggi.
-* `_executed_at`: timestamp di chiusura del run.
+* **Un verbo dichiarato** in `verbo_chiusura` si usa **sempre**: la funzione non scrive lo stato,
+  chiama il verbo, e il conteggio è quello che il verbo restituisce. È la strada di tutti i
+  bersagli di oggi, testate sotto la porta del modello del documento
+  (`script.trgfn_doc_stato_solo_dal_verbo`).
+* **Una testata sotto la porta senza verbo** è una configurazione non valida: un `UPDATE` diretto
+  sarebbe rifiutato dalla porta, e la funzione lo dice prima di provarci.
+* **Senza porta e senza verbo**: un `UPDATE` della colonna di stato dallo stato attivo a quello
+  chiuso, sulle righe scadute. Con `tipo_stato = FK` i due codici si traducono prima nei loro id,
+  nella tabella di vocabolario dichiarata.
 
----
-
-### Logica operativa
-
-1. **Iterazione** sulle righe `attivo=true` di `dbops.automazione_chiusura_scadenze`, ordinate per `id`.
-2. **Pre-check** per ogni riga di config:
-   * **Tabella target esistente**: verifica via `to_regclass(format('%I.%I', schema, nome))`.
-   * **Colonne `col_stato` + `col_valido_al` esistenti**: verifica su `pg_attribute`.
-   * **Per `tipo_stato='FK'`**: anche `fk_lookup_schema.fk_lookup_table` deve esistere; pre-check del lookup combinato di `stato_attivo_codice` + `stato_chiuso_codice` su `codice_interno`.
-   * In caso di config invalida: `script.fn_log_and_raise_error` con codice `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` (fail-fast, no exec parziale).
-3. **UPDATE dinamico** con `format(%I)` / `format(%L)` per identificatori e valori:
-   * `tipo_stato='VARCHAR'`: UPDATE diretto.
-   * `tipo_stato='FK'`: lookup combinato id_attivo/id_chiuso (via pivot `MAX(CASE...)` in 1 round-trip), poi UPDATE con id risolti.
-4. **Aggregazione** del conteggio righe chiuse in JSONB.
-5. **Audit log** (best-effort): chiamata a `dbops.fn_audit_log_once(p_function_name='dbops.fn_apply_chiusura_scadenze', p_status='INFO', p_params=<risultato JSONB>)`. Eventuali errori di audit sono catturati con `EXCEPTION WHEN OTHERS THEN NULL` per non bloccare il caller (il JSONB con i conteggi viene comunque ritornato).
+Gli identificatori e i valori del registro entrano nello SQL dinamico sempre quotati, anche se il
+registro lo scrive solo il seed.
 
 ---
 
-### Sicurezza SQL dinamico
+### ⛔ Una riga di configurazione rotta ferma il giro
 
-* **Identificatori**: `format(%I)` (alias di `quote_ident`) per `schema_tabella`, `nome_tabella`, `col_stato`, `col_valido_al`, e i campi di lookup FK.
-* **Valori**: `format(%L)` (alias di `quote_literal`) per `stato_attivo_codice`, `stato_chiuso_codice`, e gli id risolti (cast a text).
-* I valori in `dbops.automazione_chiusura_scadenze` sono comunque amministrativamente controllati (Liquibase seed), ma l'igiene e' applicata per principio.
+Prima di lavorare una riga la funzione controlla che il bersaglio sia di classe `DOMINIO`, che
+esistano la tabella, la colonna di stato e quella della data; che un verbo dichiarato sia una
+funzione viva senza argomenti, e che una testata sotto la porta un verbo ce l'abbia; per `FK`
+anche la tabella di vocabolario e i due codici. Qualunque mancanza
+solleva `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`, e il motivo nel contesto dice quale.
 
----
-
-### Le testate sotto la porta del modello (rev 2026-10-28)
-
-Una testata con la porta del modello del documento (`script.trgfn_doc_stato_solo_dal_verbo`)
-non si chiude con l'`UPDATE` dinamico: la funzione chiama il **verbo di chiusura** dichiarato
-nella colonna `verbo_chiusura` del registro (oggi `vendite.fn_cessa_contratti_scaduti` per il
-contratto, `vendite.fn_chiudi_versioni_listino_scadute` per la versione di listino e, dal
-31-10-2026, `vendite.fn_chiudi_preventivi_scaduti` per il preventivo). Verbo
-assente, o non una funzione viva senza argomenti: `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`.
-
-### Compatibilita' con guard tabella-specifici
-
-Ogni UPDATE eseguito dalla funzione attraversa eventuali trigger
-`trg_<tabella>_a10_guard_transizione_stato_upd` e li **soddisfa per
-costruzione**: la precondizione temporale del guard
-(`NEW.valido_al < CURRENT_DATE`) e' identica al WHERE della query
-del framework. Nessun bypass, nessun GUC, nessun privilegio elevato.
+Il fallimento non si isola per riga: il giro si ferma e la transazione si annulla, comprese le
+tabelle già chiuse prima. È voluto: il lavoro di coda va in errore, si riprova fino ai tentativi
+del tipo, e poi resta in `dbops.vw_coda_lavori_da_guardare`. L'isolamento c'è, ma è **per
+azienda**, un livello sopra: lo dà la coda.
 
 ---
 
-### Errori sollevati
+### Che cosa restituisce
 
-| Codice | Quando |
-| --- | --- |
-| `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` | Riga di config inapplicabile: tabella/colonna/tabella lookup inesistenti, o codice FK non trovato. Il `context` JSONB contiene `config_id`, `target`, `motivo`. |
+Un oggetto con una chiave `schema.tabella` per ogni bersaglio lavorato, col numero di righe chiuse
+(anche zero), più il totale (`_total`) e l'istante del giro (`_executed_at`). L'handler lo scrive
+nel risultato del lavoro di coda.
 
----
-
-### Esempi
-
-**1) Esecuzione manuale (debug/recovery):**
-
-```sql
-SELECT dbops.fn_apply_chiusura_scadenze();
--- {"vendite.listini_versioni": 0, "vendite.contratti": 1, "_total": 1, "_executed_at": "..."}
-```
-
-**2) Esecuzione schedulata via job pgAgent:**
-
-```sql
--- Da dentro il job step 'run_chiusura_scadenze':
-SELECT dbops.fn_apply_chiusura_scadenze();
-```
-
-**3) Disattivare temporaneamente una tabella prima di eseguire:**
-
-```sql
-UPDATE dbops.automazione_chiusura_scadenze
-   SET attivo = false
- WHERE schema_tabella = 'vendite' AND nome_tabella = 'contratti';
-
-SELECT dbops.fn_apply_chiusura_scadenze();
--- {"vendite.listini_versioni": 0, "_total": 0, "_executed_at": "..."}
-```
+Ripetere il giro nello stesso giorno non chiude niente di nuovo: le righe già chiuse non sono più
+nello stato attivo.
 
 ---
 
-### Note operative
+### L'audit di ogni giro
 
-* **Idempotenza**: la query seleziona solo righe ancora attive con `valido_al` scaduto; esecuzioni ripetute nella stessa giornata sono no-op.
-* **Performance**: le query sono O(N×K) dove N = righe config attive (oggi 2), K = costo UPDATE singola tabella. Trascurabile per i volumi previsti. Indice parziale `ix_automazione_chiusura_scadenze_attivo` supporta la scansione iniziale anche con N grande.
-* **Fail-fast**: nessun EXCEPTION handling per "isolare" il fallimento di una riga: se UPDATE su una tabella fallisce, l'intero run termina in errore (visibile in `pga_joblog`). Scelta deliberata per non nascondere errori.
-* **Concorrenza**: nessun lock esplicito; MVCC garantisce atomicita' per riga. Edge case di modifica concorrente da utente: l'UPDATE del job semplicemente non chiude quella riga, verra' ripreso al run successivo.
+A giro finito la funzione scrive una riga in `dbops.audit_log`, status `OK`, con il riepilogo nei
+parametri. La scrittura è **best-effort**: se fallisce, l'errore si inghiotte e il riepilogo arriva
+comunque a chi ha chiamato. Lo stesso inghiottimento rende muto un audit che non si scrive:
+nessuno se ne accorgerebbe se non contando le righe.
+
+---
+
+### ⛔ Solo bersagli `DOMINIO`
+
+La funzione lavora tutti i bersagli attivi del registro, e li lavora con l'identità e la row level
+security dell'azienda per cui gira: è l'esecutore giusto solo per righe che hanno un padrone. Per
+questo il registro ammette solo bersagli `DOMINIO`, e la funzione rifiuta comunque un bersaglio di
+un'altra classe (motivo `classe_senza_esecutore`), come difesa se il CHECK del registro mancasse.
+
+Un bersaglio di `MANUTENZIONE` o di `AMMINISTRAZIONE` chiede un esecutore diverso, che lavori una
+volta sola con un'identità tecnica: non c'è, e va sviluppato prima di aprirgli il registro.
+
+---
+
+### Codici errore
+
+* `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` — una riga attiva del registro non è applicabile:
+  bersaglio di una classe senza esecutore (`classe_senza_esecutore`), tabella, colonna o tabella di
+  vocabolario inesistente, codice attivo o chiuso non trovato, verbo dichiarato che non è una
+  funzione viva senza argomenti, testata sotto la porta senza verbo (`porta_senza_verbo_di_chiusura`),
+  tipo di stato non gestito. Il contesto porta l'id della riga, la tabella bersaglio e il motivo.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-fn-apply-chiusura-scadenze-v1.sql` — la chiusura col verbo su versione di
+  listino e contratto, l'idempotenza, i rifiuti per tabella, colonna o codice inesistenti, la
+  testata sotto la porta senza verbo, il verbo che non esiste. ⚠️ Il ramo `UPDATE` diretto non ha
+  un bersaglio configurato: lo attraversano solo i controlli preliminari.
+* `db/pgtap/dbops/test-chiusura-scadenze-classe.sql` — una sola firma, senza argomenti, e la
+  chiamata funziona; un bersaglio non `DOMINIO` (col CHECK tolto nella transazione) è rifiutato;
+  un verbo dichiarato si usa anche con `tipo_stato = VARCHAR` e l'`UPDATE` diretto non gira; una
+  testata `VARCHAR` sotto la porta senza verbo è rifiutata.
+* `db/pgtap/dbops/test-chiusura-scadenze-audit-v1.sql` — un giro scrive una riga di audit `OK`
+  con il riepilogo restituito.
+* `db/pgtap/dbops/test-fn-accoda-chiusura-scadenze.sql` — la sveglia che porta qui.
+* `db/pgtap/vendite/test-contratto-al-modello-v1.sql`,
+  `db/pgtap/vendite/test-contratti-guard-transizione-stato-v1.sql` — la cessazione del contratto
+  passando dal motore.
+
+---
+
+### Note di migrazione
+
+* 2026-04-26 — nasce, chiamata ogni notte da pgAgent su tutti i bersagli.
+* 2026-09-04 — nasce `p_classe` (`brief-db-processi-automatici-identita-e-perimetro`).
+* 2026-09-05 — pgAgent smette di chiamarla: la chiama il lavoro di coda, un'azienda alla volta.
+* 2026-10-26 — una testata sotto la porta si chiude col suo verbo; la GUC
+  `app.cessazione_automatica` si ritira (`brief-modello-documento-vendita`).
+* 2026-10-28 — il verbo si legge da `verbo_chiusura` del registro, non da un caso scritto per il
+  contratto.
+* 2026-11-03 — l'audit si scrive con status `OK`: fino ad allora era `INFO`, fuori dal vincolo, e
+  non si è mai scritto (`brief-db-revisione-maintenance` R5).
+* 2026-11-08 — `p_classe` esce, e la firma resta senza argomenti: il registro ammette solo
+  `DOMINIO`. Porta e verbo si valutano per ogni `tipo_stato`: prima la porta si guardava solo con
+  `FK`, e una testata `VARCHAR` sotto la porta finiva sull'`UPDATE` diretto.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

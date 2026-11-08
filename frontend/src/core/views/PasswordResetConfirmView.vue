@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { usePasswordValidation } from '../composables/usePasswordValidation'
 import { extractApiError } from '../utils/apiError'
 import { validaTokenResetPassword, confermaResetPassword } from '../api/password'
+import LinkInformazioni from '../components/LinkInformazioni.vue'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 
@@ -135,6 +136,7 @@ async function handleConfirm() {
         </router-link>
       </form>
     </div>
+    <LinkInformazioni />
   </div>
 </template>
 

@@ -143,7 +143,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: search sotto soglia NON e' un errore (fino al 2026-09-23 era un
     #        400): il termine arriva al repository, dove la soglia la applica
     #        il BB `add_ricerca_full_condition` come per tutte le liste.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_list_offerte_search_corta_non_e_un_errore(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -156,7 +156,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # --- dettaglio ----------------------------------------------------
 
     # Scopo: get_offerta su id inesistente -> 404 (E_VENDITE_NOT_FOUND).
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_get_offerta_not_found(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -169,7 +169,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: get_offerta arricchisce con eccezioni + utility + capability blob
     #        (data-driven 2026-05-26: il blob arriva da script.fn_available_actions_offerta,
     #        e dal 2026-09-23 viaggia SOTTO `capabilities`, non fuso nel dettaglio).
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_get_offerta_ok_arricchisce_eccezioni_e_utility(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -210,7 +210,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo (Step 5 atterrato 2026-05-25): `codice` in payload rifiutato come
     #        unknown_key (la whitelist lo esclude — il trigger DB lo genera).
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_offerta_codice_rifiutato_in_payload(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -227,7 +227,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: payload senza `validita_dal` -> ServiceError.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_offerta_richiede_validita_dal(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -244,7 +244,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: create OK risolve stato BOZZA via lookup e passa al repository.
     # Step 5: `codice` NON nel payload (lo genera il trigger DB).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_offerta_ok_non_passa_lo_stato(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -282,7 +282,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: PATCH testata su offerta EMESSA: quali colonne si cambiano lo
     #        dice il lock di testata del DB (brief-db-testata-dopo-emissione,
     #        D-0). Il service non ha piu' un «solo in BOZZA» e passa la scrittura.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_su_emessa_decide_il_db(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -296,7 +296,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        «solo in bozza» dei satelliti a DB (`E_DOC_DATI_COLLEGATI_NON_BOZZA`,
     #        brief-db-testata-dopo-emissione §11, R-BE-6). Il service non legge
     #        piu' `can_edit_utility` e passa la scrittura.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_utility_su_emessa_decide_il_db(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -316,7 +316,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        al 2026-10-26 lo anticipava un «solo da BOZZA» Python
     #        (brief-modello-documento-vendita §13.6 punto 4).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_emetti_secondo_emetti_lo_rifiuta_il_verbo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -338,7 +338,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: «Emetti» su un'offerta che non c'e' (o fuori perimetro): il 404 e'
     #        del verbo, col suo codice (regola del 1, 2026-10-27).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_emetti_offerta_inesistente_e_404(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -356,7 +356,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: registra_accettazione da BOZZA: la matrice la rifiuta al verbo
     #        (E_OFFERTA_TRANSIZIONE_NON_AMMESSA), col suo codice.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_accettazione_da_bozza_la_rifiuta_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -377,7 +377,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        (E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, O-3). ⛔ Fino al 2026-10-26 era
     #        `guard_non_empty_string` qui.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_rifiuto_senza_motivazione_la_rifiuta_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -397,7 +397,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: una motivazione che non e' una stringa e' un 400 col campo, prima
     #        del verbo (non un 500 dal cast del DB).
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_rifiuto_motivazione_non_stringa_e_400(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -408,7 +408,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo (C3): registra_rifiuto da BOZZA: la matrice lo rifiuta al verbo.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_rifiuto_da_bozza_lo_rifiuta_il_db_c3(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -429,7 +429,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        anche l'annullo da ACCETTATA ammesso dal DB
     #        (brief-db-offerta-emissione-ed-erogazione H-R3).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_annulla_da_emessa_lo_rifiuta_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -449,7 +449,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        (nessuno stato di partenza ne' stato d'annullo scritto qui), senza
     #        dichiarazione al primo tentativo.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_annulla_da_accettata_arriva_al_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -468,7 +468,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: annulla di un'offerta che non c'e' (o fuori perimetro): il 404 e'
     #        del verbo, col suo codice (regola del 1, 2026-10-27).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_annulla_offerta_inesistente_e_404(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -484,7 +484,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: annulla da BOZZA OK passa la motivazione (normalizzata) al verbo.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_annulla_da_bozza_ok_passa_motivazione(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -500,12 +500,48 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
         repo.annulla.assert_called_once_with(1, "errore impostazione", None)
 
+    # --- eliminazione della bozza (abbandono drawer) -------------------
+
+    # Scopo: «si cancella solo la bozza vuota» (fuori bozza, con eccezioni
+    #        attive) lo giudica il DB: il rifiuto del guard arriva col suo
+    #        codice, e il service non legge lo stato prima del DELETE. ⛔ Fino
+    #        al 2026-11-08 lo anticipava `_STATI_EDITABILI`
+    #        (brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
+    def test_elimina_rifiuto_del_db_passa_col_suo_codice(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        for codice in ("E_DELETE_DOC_NON_BOZZA", "E_DELETE_DOC_CON_RIGHE"):
+            with self.subTest(codice=codice):
+                repo.delete_offerta.side_effect = DatabaseError(f"{codice}: rifiutato")
+                with self.assertRaises(ServiceError) as cm:
+                    OfferteService().elimina_offerta(1)
+                self.assertEqual(cm.exception.code, codice)
+        repo.get_stato_codice.assert_not_called()
+
+    # Scopo: il DELETE che non tocca niente e' il 404, non un successo.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
+    def test_elimina_inesistente_e_404(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo_cls.return_value.delete_offerta.return_value = False
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().elimina_offerta(99)
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
     # Scopo (O-4): l'annullo di una revisione senza conferma lo rifiuta il DB
     #        con E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`), e il codice
     #        arriva com'e'; la conferma dichiara i legami visti, e il verbo li
     #        riceve.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_annulla_revisione_chiede_e_poi_riceve_la_conferma(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -529,7 +565,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: la dichiarazione non intera e la motivazione non stringa sono un
     #        400 col campo, prima del verbo.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_annulla_corpo_malformato_e_400(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -546,7 +582,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: i legami per la finestra: prima la testata (404 del dominio),
     #        poi il BB col codice della sorgente.
     @patch("apps.vendite.services.offerte_service.legami_del_documento")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_get_legami_legge_prima_la_testata(self, repo_cls, legami):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -569,7 +605,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        documenti. Fino al 2026-10-13 il service lo anticipava con
     #        `E_VENDITE_VALIDATION` (422) e una frase generica.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_su_emessa_fallisce(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -593,7 +629,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: create_utility doppio (UNIQUE offerta_id) -> E_VENDITE_DUPLICATO.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_utility_duplicato_mappato(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -619,7 +655,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        DB nella stessa scrittura (brief-db-offerta-emissione-ed-erogazione
     #        A-R1). Fino al 2026-10-07 il service la fissava prima, in Python.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_emetti_ok(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -642,7 +678,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        stato di arrivo dal vocabolario (§17.6 BE-T2): il codice lo
     #        sceglie il test, e la domanda va al BB con la testata dell'offerta.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_accettazione_ok(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -663,7 +699,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: senza uno stato di accettazione nel vocabolario «Accetta» non
     #        arriva al verbo: e' configurazione rotta (E_CONFIG_MANCANTE).
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_accettazione_senza_lo_stato_nel_vocabolario(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -674,7 +710,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: registra_esito routing: ACCETTATA delega a registra_accettazione.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_esito_routing_accettata(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -697,7 +733,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        campo della richiesta, non la colonna. ⛔ Fino al 2026-10-31 il
     #        rifiuto era una copia Python (E_VENDITE_VALIDATION).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_esito_accettata_con_motivazione_la_rifiuta_il_verbo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
         from apps.core.services.error_translator import ErrorTranslator
@@ -718,7 +754,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: registra_esito routing: RIFIUTATA porta la motivazione al verbo
     #        (assente = None); l'obbligo lo dice il DB.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_esito_routing_rifiutata_motivazione_al_verbo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -750,7 +786,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: aggiorna_offerta payload vuoto -> 400 (no-op evitato, fix #3).
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_payload_vuoto_fallisce(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -761,7 +797,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: aggiorna_offerta OK su BOZZA con campi mutabili.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_ok(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -781,7 +817,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: crea_eccezione OK su BOZZA passa il payload al repository.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_ok(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -805,7 +841,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        contratto: fino al 2026-10-31 qui passavano grezzi, e « trimestrale »
     #        o '' finivano nella FK come «inesistente».
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_codici_normalizzati_come_il_contratto(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -833,7 +869,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: 67) simmetrico in PATCH: un codice che non e' una stringa e' un
     #        400 col campo, prima di toccare il repository.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_eccezione_codice_non_stringa_e_400(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -845,7 +881,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.update_eccezione.assert_not_called()
 
     # Scopo: aggiorna_eccezione ownership cross-offerta -> 404.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_eccezione_ownership_violata(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -859,7 +895,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: trigger DB E_OFFERTA_* viene propagato come ServiceError con il
     #        codice originale (fix #1): non piu' rimpiazzato da E_VENDITE_VALIDATION.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_emetti_trigger_db_codice_propagato(self, repo_cls, _atomic):
         from django.db import DatabaseError
         from apps.vendite.services.offerte_service import OfferteService
@@ -886,7 +922,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        DB (E_OFFERTA_REVISIONE_STATO_NON_AMMESSO), col suo codice. ⛔ Fino
     #        al 2026-10-26 la anticipava `_assert_stato_corrente` (§13.6 punto 4).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_revisione_stato_lo_dice_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -906,7 +942,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        404 e' del verbo, col suo codice (R-1, §17.6 BE-T3): nessuna
     #        lettura della testata prima.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_revisione_offerta_inesistente_404(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -923,7 +959,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: crea_revisione OK da EMESSA: chiama fn DB, legge la rev.N+1
     #        via get_offerta(new_id).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_revisione_ok_passa_user_e_legge_nuova(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -946,7 +982,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: errore P0001 della fn DB (es. revisione di non-EMESSA via bypass
     #        guard applicativo) viene propagato col codice originale.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_revisione_trigger_db_codice_propagato(self, repo_cls, _atomic):
         from django.db import DatabaseError
         from apps.vendite.services.offerte_service import OfferteService
@@ -965,7 +1001,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
 
     # Scopo: list_revisioni su offerta inesistente -> 404.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_list_revisioni_offerta_inesistente_404(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -977,7 +1013,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: list_revisioni delega al repository la PAGINA (id, limit/offset,
     #        ordinamento) e ritorna (righe, totale).
     #        ⚠️ Dal 2026-09-27 e' paginata: prima tornava la catena intera.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_list_revisioni_ok_passa_id_al_repo(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1004,7 +1040,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        (E_OFFERTA_PUSH_STATO_NON_AMMESSO), col suo codice. ⛔ Fino al
     #        2026-10-26 lo anticipava `_assert_stato_corrente` (§13.6 punto 4).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_push_a_contratto_stato_lo_dice_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1022,7 +1058,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: push di un'offerta che non c'e' (o fuori perimetro): il 404 e'
     #        della fn, col suo codice (regola del 1, 2026-10-27).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_push_a_contratto_offerta_inesistente_404(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1038,9 +1074,9 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: push ok costruisce OffertaPushResult con id+numero+uid del nuovo
     #        contratto letto da get_contratto_minimal.
-    @patch("apps.vendite.services.offerte_service.ContrattiRepository")
+    @patch("apps.vendite.services.offerte_service.ContrattiRepository", autospec=True)
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_push_a_contratto_ok_costruisce_result(self, repo_cls, _atomic, contratti_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1074,7 +1110,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        E_OFFERTA_CONTRATTO_GIA_GENERATO e il service lo propaga col
     #        codice originale (non rimpiazzato da E_VENDITE_VALIDATION).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_push_a_contratto_idempotenza_codice_propagato(self, repo_cls, _atomic):
         from django.db import DatabaseError
         from apps.vendite.services.offerte_service import OfferteService
@@ -1093,9 +1129,9 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
 
     # Scopo: pratica_id viene passato al repository quando valorizzato.
-    @patch("apps.vendite.services.offerte_service.ContrattiRepository")
+    @patch("apps.vendite.services.offerte_service.ContrattiRepository", autospec=True)
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_push_a_contratto_con_pratica_passa_pratica_id(self, repo_cls, _atomic, _contratti_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1114,7 +1150,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.push_a_contratto.assert_called_once_with(1, 77, False)
 
     # Scopo: pratica_id <=0 o non-int viene rifiutato dal guard applicativo.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_push_a_contratto_pratica_id_invalido_fallisce(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1132,7 +1168,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        coppia "POST testata + PATCH utility" che potrebbe lasciare
     #        l'offerta orfana di utility in caso di fallimento intermedio.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_offerta_con_utility_inline_atomico(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1177,7 +1213,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        anagrafici "offerta minimale" dove la utility non viene
     #        compilata in testata e si arricchisce in edit successivo.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_offerta_senza_utility_inline_non_chiama_repo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1205,7 +1241,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        (UPDATE atomico, niente create duplicato) filtrando il payload
     #        sui campi modificabili (istanza_utility_id/utility_id immutabili).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_con_utility_inline_update_atomico(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1245,7 +1281,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        appena rifatta dal contatore nuovo, e l'upsert ci scriverebbe sopra
     #        quella del contatore di prima.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     @patch(
         "apps.vendite.services.offerte_service.risolvi_cliente_coppia",
         return_value=(11, 4),
@@ -1280,7 +1316,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: stesso cliente (anche se arriva come testo dal JSON): non e' un
     #        cambio di coppia, la scheda del payload si applica.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     @patch(
         "apps.vendite.services.offerte_service.risolvi_cliente_coppia",
         return_value=(10, 3),
@@ -1308,7 +1344,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        scritto. Fino al 2026-10-14 passava il guard (il payload aveva una
     #        chiave) e la risposta era «salvata» a vuoto.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_scheda_vuota_da_sola_e_400(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1325,7 +1361,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        record utility (es. creata senza utility, ora arricchita) ->
     #        il service chiama `create_utility` con merge id testata.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_con_utility_inline_create_atomico(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1361,7 +1397,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        blob capability. Il FE cade in readonly conservativo ma l'utente
     #        vede comunque l'offerta. Pattern: "capability layer rotto non
     #        deve impedire la read della testata".
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_get_offerta_capability_db_error_graceful_fallback(self, repo_cls):
         from django.db import DatabaseError
 
@@ -1401,7 +1437,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     )
     @patch("apps.vendite.services.offerte_service.resolve_emittente_sr_id_for_testata")
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_articolo_composito_invoca_init(
         self, repo_cls, _atomic, _resolve, _l1,
     ):
@@ -1448,7 +1484,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         return_value=(None, None),
     )
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_articolo_atomico_non_invoca_init(
         self, repo_cls, _atomic, _gate,
     ):
@@ -1480,7 +1516,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        senza emittente_fiscale_id) -> 400 parlante, no INSERT cascade.
     @patch("apps.vendite.services.offerte_service.resolve_emittente_sr_id_for_testata")
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_composito_senza_emittente_fallisce(
         self, repo_cls, _atomic, _resolve,
     ):
@@ -1512,7 +1548,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: preview_componenti_eccezione delega al repo con tutti i campi
     #        derivati dalla testata + emittente risolto.
     @patch("apps.vendite.services.offerte_service.resolve_emittente_sr_id_for_testata")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_preview_componenti_eccezione_ok(self, repo_cls, _resolve):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1536,7 +1572,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 555)
 
     # Scopo: preview su offerta inesistente -> 404 prima del lookup repo.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_preview_componenti_eccezione_offerta_not_found(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1549,7 +1585,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: list_componenti_eccezione tenta tampering offerta/eccezione
     #        -> 404 (eccezione_id non appartiene a offerta_id richiesto).
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_list_componenti_eccezione_ownership_violata(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1564,7 +1600,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        (campi struttura immutabili) -> 400 che NOMINA la chiave, e il
     #        repository non viene chiamato. ⛔ Fino al 2026-09-26 la chiave
     #        arrivava al mixin, che la scartava in silenzio.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_update_componente_eccezione_payload_vuoto_fallisce(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1588,7 +1624,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        contro la whitelist del REPOSITORY, che contiene
     #        `stato_approvazione_prezzo`. ⚠️ Sono chiavi che il repository
     #        AMMETTE: e' il caso che distingue il codice vecchio dal nuovo.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_update_componente_eccezione_campi_del_workflow_rifiutati(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1611,7 +1647,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: update_componente tenta tampering (componente non appartiene
     #        all'eccezione) -> 404.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_update_componente_eccezione_ownership_violata(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1629,7 +1665,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
 
     # Scopo: delete_componente happy path -> attivo=False, ritorna deleted=true.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_delete_componente_eccezione_ok(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1659,7 +1695,7 @@ class OfferteGatePrezzoTests(TestCase):
            return_value=(None, None))
     @patch("apps.vendite.services.offerte_service.validate_componenti_overrides_authorization")
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_invoca_validate_l1_componenti(
         self, repo_cls, _atomic, mock_validate, _gate,
     ):
@@ -1696,7 +1732,7 @@ class OfferteGatePrezzoTests(TestCase):
     @patch("apps.vendite.services.offerte_service.OfferteService._apply_pricing_gate_eccezione",
            return_value=(None, None))
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_override_invoca_gate(
         self, repo_cls, _atomic, mock_gate, _l1,
     ):
@@ -1731,7 +1767,7 @@ class OfferteGatePrezzoTests(TestCase):
            return_value=None)
     @patch("apps.vendite.services.offerte_service.OfferteService._apply_pricing_gate_eccezione")
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_esclusione_non_invoca_gate(
         self, repo_cls, _atomic, mock_gate, _l1,
     ):
@@ -1878,7 +1914,7 @@ class OfferteScrittureBbTests(TestCase):
     # 59. ⭐ Una stringa che contiene un oggetto JSON arriva al repository come
     #     dict (prima: `json.dumps` di nuovo -> scalare stringa jsonb).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_meta_stringa_json_diventa_dict(self, repo_cls, _atomic):
         svc, repo = self._svc(repo_cls, _atomic)
         svc.aggiorna_offerta(1, {"meta": '{"nota": "x"}'})
@@ -1887,7 +1923,7 @@ class OfferteScrittureBbTests(TestCase):
     # 60. `null` = reset a `{}`: la colonna e' NOT NULL DEFAULT '{}' (prima:
     #     NULL al database, violazione NOT NULL con errore generico).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_meta_null_diventa_oggetto_vuoto(self, repo_cls, _atomic):
         svc, repo = self._svc(repo_cls, _atomic)
         svc.aggiorna_offerta(1, {"meta": None})
@@ -1896,7 +1932,7 @@ class OfferteScrittureBbTests(TestCase):
     # 61. ⛔ Un `meta` che non e' un oggetto e' un 400 educato, non un errore
     #     di cast al database (o, prima, uno scalare scritto in silenzio).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_crea_eccezione_meta_non_oggetto_e_400(self, repo_cls, _atomic):
         svc, repo = self._svc(repo_cls, _atomic)
         with self.assertRaises(ServiceError) as cm:
@@ -1911,7 +1947,7 @@ class OfferteScrittureBbTests(TestCase):
 
     # 62. Stessa regola sull'utility 1:1 (stringa che non e' un oggetto).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_utility_meta_non_oggetto_e_400(self, repo_cls, _atomic):
         svc, repo = self._svc(repo_cls, _atomic)
         with self.assertRaises(ServiceError) as cm:
@@ -1924,7 +1960,7 @@ class OfferteScrittureBbTests(TestCase):
     #     SCONOSCIUTA e' un 400 (prima l'intersezione con la whitelist la
     #     scartava). Gli id immutabili, che il form riporta, si tolgono ancora.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_utility_inline_chiave_estranea_e_400(self, repo_cls, _atomic):
         svc, repo = self._svc(repo_cls, _atomic)
         with self.assertRaises(ServiceError) as cm:
@@ -1939,7 +1975,7 @@ class OfferteScrittureBbTests(TestCase):
     #     regola del 2): il codice in maiuscolo, il mese intero. Prima
     #     l'offerta passava i valori grezzi: «fine_periodo» era un 400 del CHECK.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_campi_canone_come_il_contratto(self, repo_cls, _atomic):
         svc, repo = self._svc(repo_cls, _atomic)
         svc.aggiorna_offerta(1, {"generazione_canone": "fine_periodo", "mese_partenza_canone": "2"})
@@ -1950,7 +1986,7 @@ class OfferteScrittureBbTests(TestCase):
     # 69. `null` si omette (NOT NULL col default): prima arrivava NULL al DB.
     #     Senza altri campi la PATCH non ha niente da scrivere: 400.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_aggiorna_offerta_campi_canone_null_omessi(self, repo_cls, _atomic):
         svc, repo = self._svc(repo_cls, _atomic)
         svc.aggiorna_offerta(1, {"generazione_canone": None, "meta": {"nota": "x"}})

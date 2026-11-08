@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_ritira_attivo_eccezioni: gli argomenti dalla grammatica condivisa.
+#   Brief: brief-db-revisione-dbops, D18 (giro 3).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE. Riconosceva i trigger per posizione (a[4] per il
+#   require, a[1..3] per il block): la grammatica dei trigger ATTIVO scritta
+#   un'altra volta. Ora la legge da dbops.fn_trigger_attivo_argomenti, per nome:
+#   la colonna FK e, per il block, schema e tabella della figlia.
+#
+# ⚠️ Un montaggio fuori grammatica non e' riconosciuto come eccezione (i campi
+#   sono NULL): non e' un ritiro, e' un errore di scrittura, che riporta
+#   dbops.fn_trigger_attivo_orfani.
+#
+# INVARIATO: la firma, il ritorno (quanti ne ha tolti), il NOTICE, chi la chiama.
+# Corpo di partenza: la scheda auto-generata del 2026-11-07.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-27-update-fn-ritira-attivo-eccezioni-grammatica-condivisa-mctit.yaml
+
+  - changeSet:
+      id: 20261107-27-update-fn-ritira-attivo-eccezioni-grammatica-condivisa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_ritira_attivo_eccezioni riconosce i trigger dalla colonna FK e dalla figlia
+        lette con dbops.fn_trigger_attivo_argomenti, non per posizione (D18).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_trigger_attivo_argomenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_ritira_attivo_eccezioni()
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: togliere i trigger ATTIVO gia' generati per le FK dichiarate
+              --   eccezione in dbops.automazione_attivo_eccezioni.
+              -- Uso: SELECT dbops.fn_ritira_attivo_eccezioni();  -- quanti ne ha tolti
+              DECLARE
+                  v_trigger pg_catalog.pg_trigger.tgname%TYPE;
+                  v_tabella pg_catalog.pg_trigger.tgrelid%TYPE;
+                  -- conteggio: nessuna colonna da ancorare
+                  v_n       integer := 0;
+              BEGIN
+                  FOR v_trigger, v_tabella IN
+                      WITH trg AS (
+                          SELECT t.tgname,
+                                 t.tgrelid,
+                                 p.proname,
+                                 g.figlia_schema,
+                                 g.figlia_tabella,
+                                 g.fk_col
+                            FROM pg_catalog.pg_trigger t
+                            JOIN pg_catalog.pg_proc p      ON p.oid = t.tgfoid
+                            JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                            CROSS JOIN LATERAL dbops.fn_trigger_attivo_argomenti(
+                                p.proname, dbops.fn_trigger_argomenti(t.tgargs)) AS g
+                           WHERE NOT t.tgisinternal
+                             AND n.nspname = 'dbops'
+                             AND p.proname IN ('trgfn_child_requires_active_parent',
+                                               'trgfn_prevent_deactivate_if_children')
+                      )
+                      SELECT trg.tgname, trg.tgrelid
+                        FROM trg
+                        JOIN dbops.automazione_attivo_eccezioni e
+                          ON (    trg.proname        = 'trgfn_child_requires_active_parent'
+                              AND trg.tgrelid        = to_regclass(format('%I.%I', e.schema_figlia, e.tabella_figlia))
+                              AND trg.fk_col         = e.colonna_fk)
+                          OR (    trg.proname        = 'trgfn_prevent_deactivate_if_children'
+                              AND trg.figlia_schema  = e.schema_figlia
+                              AND trg.figlia_tabella = e.tabella_figlia
+                              AND trg.fk_col         = e.colonna_fk)
+                  LOOP
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %s', v_trigger, v_tabella::regclass);
+                      RAISE NOTICE 'fn_ritira_attivo_eccezioni: ritirato % su %', v_trigger, v_tabella::regclass;
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_ritira_attivo_eccezioni() IS
+                'Toglie i trigger ATTIVO gia'' generati per le FK dichiarate eccezione in dbops.automazione_attivo_eccezioni: il require sul figlio (dbops.trgfn_child_requires_active_parent, sulla tabella figlia, con quella colonna FK) e il block sul padre (dbops.trgfn_prevent_deactivate_if_children, che nomina quella figlia e quella colonna FK). Li riconosce per FUNZIONE e ARGOMENTI, non per nome (i nomi generati oltre 63 caratteri sono troncati con un hash); gli argomenti li legge per nome dbops.fn_trigger_attivo_argomenti, la grammatica delle funzioni trigger. Un montaggio fuori grammatica non e'' riconosciuto: lo riporta dbops.fn_trigger_attivo_orfani. Torna quanti ne ha tolti. Chiamata in testa da dbops.fn_run_automations_attivo (chi genera ritira).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della scheda auto-generata del 2026-11-07.
+              SELECT 1;

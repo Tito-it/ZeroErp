@@ -10,9 +10,11 @@ export function getCodeConteggi() {
   return api.get('/core/tracciamento/code/conteggi/')
 }
 
-// GET lista paginata della coda lavori generica. params: ambito ('miei'|
-// 'tutti', tutti richiede code_manage), stato, tipo, solo_vivi, data_da,
-// data_a, limit, offset. Ogni riga porta is_mio (calcolato dal BE, P-5).
+// GET lista paginata della coda lavori generica. params: ambito ('miei' = i
+// lavori accodati da me | 'tutti' = quelli delle mie aziende, cioe' cio' che
+// la RLS mostra; aperto a ogni operatore — BE9, 2026-11-07), stato, tipo,
+// solo_vivi, data_da, data_a, limit, offset. Ogni riga porta is_mio
+// (calcolato dal BE, P-5: accodato da me).
 export function listCodaLavori(params) {
   return api.get('/core/tracciamento/coda-lavori/', { params })
 }

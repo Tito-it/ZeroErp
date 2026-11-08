@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI fn_documento_lineage_nodi E DI vw_stato_sorgente_reso, AL PRESENTE
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale».
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Gemelli del 20261110-07 (la funzione dei nodi della lineage) e del 20261110-08 (la vista dello
+#   stato del reso), che erano gia' applicati quando sono stati aggiunti: un changeSet applicato non
+#   si tocca, quindi stanno qui. Il primo cominciava con un marcatore di rev e finiva col nome di un
+#   brief; il secondo diceva che resi.sorgente_uid punta alla bolla (il reso la dichiara in
+#   sorgente_id). Solo COMMENT ON. Rollback: nessuno (i COMMENT di prima erano stantii).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261110-16-comment-lineage-nodi-e-stato-sorgente-reso-mctit.yaml
+
+  - changeSet:
+      id: 20261110-16-comment-lineage-nodi-e-stato-sorgente-reso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di vendite.fn_documento_lineage_nodi e di vendite.vw_stato_sorgente_reso al presente. brief-db-sorgente-documento-e-riga §7.3, giro finale.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_lineage_nodi' AND p.pronargs = 2;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_documento_lineage_nodi(bigint[], text[]) IS
+                'I NODI della lineage dei documenti, per chiave del nodo: una riga per documento delle otto testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con codice, stato nativo, fase, is_abortito, pipeline_rank, natura fiscale (solo sulla fattura) e codice del tipo; un tipo spento in config.sorgenti non da'' nodi. Il seme e'' la chiave del nodo, in due array paralleli: p_tipo_ids[i] e'' un config.sorgenti.id, p_uids[i] la chiave del documento in testo secondo il key_selector (l''uid per preventivo e offerta, l''id per ordine, contratto, DDT, fattura, commessa e reso). Entrambi NULL = tutti i nodi (vendite.vw_documento_lineage_nodi ne e'' la proiezione); array vuoti = zero righe; una coppia con un tipo ignoto o una chiave inesistente non seleziona niente; una chiave fuori forma per il suo tipo fa fallire il cast del seme. Il seme si smista una volta in array tipizzati e ogni ramo cerca per indice (= ANY). I due modi, tutti e col seme, sono rami in UNION ALL, mai `p IS NULL OR`. SET jit = off e plan_cache_mode = force_generic_plan: con un seme non costante il piano tiene i rami dei due modi, e il JIT ne compilerebbe le espressioni a ogni chiamata; con le due clausole la funzione non si incorpora e si pianifica una volta per sessione, e chi la chiama non deve dichiarare niente. BEGIN ATOMIC (le dipendenze stanno in pg_depend), SECURITY INVOKER: la RLS resta di chi legge.';
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_reso IS
+                'Resolver dello stato del reso di vendita per la proiezione di stato della sorgente polimorfa: traduce lo stato nativo del reso (config.stati_doc_reso) nel vocabolario comune fase / esito / terminale. Una riga per reso, read-time. Il tipo RESO_VENDITA e'' a chiave id (config.sorgenti.key_selector), agganciato per codice_interno e solo se attivo. La chiave esce in due forme: sorgente_chiave_id = id (bigint), con sorgente_chiave_uuid NULL, e'' la chiave nel suo tipo, quella che pratiche.fn_stato_sorgente confronta con la chiave tipizzata di pratiche.pratiche_sorgenti e quella da usare per cercare un reso (sotto RLS il confronto sul testo non arriva all''indice, int8out non e'' leakproof); sorgente_uid e'' lo stesso id in testo, la chiave dei nodi della lineage e delle join. Le colonne sorgente_* del reso sono un''altra cosa: dicono da quale bolla nasce il reso, con l''id della bolla in sorgente_id, e non c''entrano con la chiave del reso. esito e terminale sono derivati, come nel ramo vendite.vw_stato_sorgente_ddt, perche'' config.stati_doc_reso non li espone: is_abortito -> NEGATIVO (ANNULLATO), fase CHIUSO non abortito -> POSITIVO (CONFERMATO), altrimenti NULL (DRAFT); terminale = fase CHIUSO. Un reso confermato e'' concluso: la riconsegna e'' un altro documento. terminale e'' la conclusione commerciale, non un lucchetto: la matrice ammette ancora CONFERMATO -> ANNULLATO, lo storno del reso confermato (vendite.fn_annulla_reso). security_invoker: vale la RLS di chi legge. I consumatori la leggono da script.vw_stato_sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: SELECT 1;

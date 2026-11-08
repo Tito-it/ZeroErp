@@ -182,9 +182,9 @@ BEGIN
                 commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
                 uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
                 tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-                stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+                stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
             VALUES (v_comm,
-                    'PGTAP-CE-' || r.caso || '-' || substr(md5(clock_timestamp()::text), 1, 12),
+                    ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa(v_comm) x) || ':' || 'PGTAP-CE-' || r.caso || '-' || substr(md5(clock_timestamp()::text), 1, 12)),
                     v_modello.articolo_id, v_modello.istanza_utility_id,
                     (v_mese + (r.off_mese || ' month')::interval)::date,
                     v_modello.uom_id, 1,
@@ -194,8 +194,7 @@ BEGIN
                       + INTERVAL '1 month - 1 day')::date,
                     v_modello.tipo_doc_fiscale_id, v_modello.valuta_id, 10.000000, 'FIXED',
                     r.approvazione, r.emissione,
-                    -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-                    (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text)
+                    (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa(v_comm) x), (SELECT x.consumo_id FROM dbops.fn_pgtap_consumo_della_commessa(v_comm) x))
             RETURNING id INTO v_ca;
 
             PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
@@ -215,8 +214,8 @@ BEGIN
         INSERT INTO tmp_ce VALUES (
             r.caso, v_comm, v_ca,
             -- ⭐ La chiave si CHIEDE alla sola fonte, non si scrive a mano.
-            vendite.fn_build_gruppo_fatturabile_key(
-                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm));
+            (SELECT vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)
+                FROM vendite.commesse_attivita ca WHERE ca.id = v_ca));
     END LOOP;
 END;
 $fixture$;

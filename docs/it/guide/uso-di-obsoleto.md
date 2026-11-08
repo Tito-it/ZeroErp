@@ -1,6 +1,6 @@
 # Guida — Mandare in pensione una voce di catalogo (`obsoleto_dal`)
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori database e backend
 >
@@ -9,11 +9,15 @@
 > * [dbops.fn_get_lookup_codici](/dbzero/dbops/funzioni/fn_get_lookup_codici) — il lookup generico, con l'asse `obsoleto_dal` (`p_includi_obsoleti`)
 > * [dbops.trgfn_child_requires_non_obsolete_parent](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent) — il guard che rifiuta le nuove istanze su una voce in pensione
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il gemello sull'altro asse (`attivo`)
+> * [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto) — il predicato unico: «ritirato alla data operativa»
+> * [script.fn_check_articolo_riga_su_contesto](/dbzero/script/funzioni/fn_check_articolo_riga_su_contesto) — la check delle righe di documento, con il motivo `E_ARTICOLO_OBSOLETO`
+> * [catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi) — il picker degli articoli di riga, che legge la stessa check
 >
 > **Vedi anche** — tabelle:
 >
 > * [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione) · [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — i cataloghi con la colonna **e** il guard agganciato
 > * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) · [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — le tabelle figlie protette
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — il secondo caso: l'articolo ritirato
 >
 > **Vedi anche** — guide correlate:
 >
@@ -59,6 +63,10 @@ Una voce di catalogo ha **due interruttori diversi**, che rispondono a due doman
 | **vuoto** (NULL)          | Voce pienamente selezionabile.                                                |
 | **data futura**           | **Ritiro programmato**: ancora selezionabile fino a quella data, poi non più. |
 | **data passata (o oggi)** | Voce **in pensione**: non più offerta per il nuovo.                           |
+
+«Oggi» è la **data operativa** dell'azienda, non l'orologio del server. Il confronto lo fa un solo
+building block, [`script.fn_e_obsoleto`](/dbzero/script/funzioni/fn_e_obsoleto): lo usano il lookup,
+i guard, il picker degli articoli e le viste. Nessuno riscrive il confronto a mano.
 
 ---
 
@@ -132,7 +140,10 @@ Per ogni tabella "figlia" che non deve accettare nuove righe su una voce in pens
 [`dbops.trgfn_child_requires_non_obsolete_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent)
 ([istruzione](#area-tecnica-esempi)). La funzione non ha firma: riceve i suoi argomenti dal
 `CREATE TRIGGER`, in quest'ordine — schema e nome del catalogo, la colonna-data del padre, la
-colonna FK del figlio e, se la FK non punta alla PK, la colonna referenziata.
+colonna FK del figlio, la colonna referenziata (di solito `id`) e, facoltativa, la **colonna di
+esenzione**: se all'inserimento è valorizzata, la riga è *derivata* da un altro documento e passa
+anche su una voce in pensione (vedi *Il secondo caso: gli articoli*). Una colonna di esenzione che
+la tabella non ha è un errore di montaggio, e il guard lo dice subito.
 
 Timing `AFTER INSERT OR UPDATE OF <colonna_fk>`: l'`UPDATE OF` fa scattare il controllo **solo
 quando cambia il riferimento al catalogo**, così gli avanzamenti di stato di un'istanza storica
@@ -164,6 +175,61 @@ condivisa. L'errore parlante (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`) è già regis
 
 ---
 
+## Il secondo caso: gli articoli
+
+Un articolo che non si vende più non si cancella (ha documenti, movimenti, listini) e non si
+spegne: `attivo` resta `true` per sempre su un articolo usato. Si ritira con `obsoleto_dal`, come
+ogni voce di catalogo. Qui però serve una distinzione in più, perché una riga di documento può
+nascere in due modi.
+
+| La riga…                                                                                        | Su un articolo ritirato                          |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| è **nuova**: l'operatore sceglie l'articolo (preventivo, ordine, listino, contratto, distinta…) | ⛔ respinta                                       |
+| è **derivata**: copiata da un altro documento (l'ordine dal preventivo, la bolla dall'ordine…)  | ✅ passa: non è una scelta                        |
+| esiste già, e le si **cambia l'articolo**                                                       | ⛔ è una scelta nuova                             |
+| esiste già, e si modifica altro (o si riscrive lo stesso articolo)                              | ✅ passa                                          |
+| è di **magazzino** (movimenti, inventari, rettifiche, trasferimenti)                            | ✅ mai bloccata: la giacenza residua va scaricata |
+
+**Come si riconosce la riga derivata.** Dalla riga stessa, mai da un parametro di chi chiama: una
+riga derivata porta la sua **sorgente** (`sorgente_tipo_id` valorizzata, con il documento e la
+riga da cui nasce: [sorgente polimorfa](/guide/sorgente-polimorfa)). La scrivono i verbi che
+generano una riga da un altro documento — l'ordine dal preventivo, la revisione, la bolla
+dall'ordine, la riconsegna, l'ordine e il contratto dall'offerta. Il controllo vale solo alla
+nascita: dopo, conta solo il cambio di articolo.
+
+**Dove sta la regola.** In due posti, secondo la riga:
+
+* **Le righe che hanno la check condivisa** (preventivo, ordine, bolla, offerta, contratto,
+  versione di listino, distinta, promo): «ritirato» è il primo motivo di
+  [`script.fn_check_articolo_riga_su_contesto`](/dbzero/script/funzioni/fn_check_articolo_riga_su_contesto),
+  `E_ARTICOLO_OBSOLETO`, con il codice dell'articolo e la data del ritiro. La stessa check la legge
+  il picker [`catalogo.fn_articoli_ammessi`](/dbzero/catalogo/funzioni/fn_articoli_ammessi): l'articolo
+  ritirato resta nell'elenco, fra gli esclusi, con il suo motivo. Il picker propone solo ciò che
+  la riga accetta.
+* **Le righe dove la check non arriva**: il guard generico, con la colonna di esenzione quando la
+  riga può essere derivata (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`).
+
+**Casi particolari.**
+
+* **La copia di una versione di listino** salta l'articolo ritirato, con i suoi componenti e il
+  suo kit, e non si ferma: una versione nuova è un impegno nuovo a vendere. Il risultato dice
+  quante righe ha saltato (`righe_saltate`).
+* **La revisione di un preventivo** ricopia anche l'articolo ritirato: è la stessa proposta allo
+  stesso cliente. L'operatore lo toglie a mano, se vuole.
+* **L'onere di commessa**: si controlla solo l'onere scelto a mano dalla porta oneri. Quello
+  arrivato da un ordine o da una bolla è derivato e passa. Le righe normali e le rettifiche non
+  si controllano: arrivano in commessa già predisposte per la fattura.
+
+**Cosa vede l'applicazione.** La vista dell'articolo
+([`catalogo.vw_articoli_dettaglio`](/dbzero/catalogo/views/vw_articoli_dettaglio)) porta
+`obsoleto_dal` (la data, che il form modifica; cancellarla riattiva l'articolo) ed `e_obsoleto`
+(ritirato alla data operativa, già calcolato: l'applicazione non confronta date).
+
+> ⚠️ Righe di fattura e righe d'acquisto non hanno ancora la regola: un articolo ritirato ci entra
+> come in qualunque altra riga.
+
+---
+
 ## Quando smettere di cablare a mano
 
 Oggi si aggancia **un trigger per relazione**: semplice e leggibile finché i casi sono pochi.
@@ -176,21 +242,28 @@ trigger, sullo stile del framework che già genera i controlli su `attivo`. Per 
 
 ## Dove è applicato
 
-**La colonna** è su undici cataloghi, in quattro schemi:
+**La colonna** è su dodici cataloghi, in cinque schemi:
 
 | Schema      | Cataloghi con `obsoleto_dal`                                                           |
 | ----------- | -------------------------------------------------------------------------------------- |
 | `pratiche`  | `tipi_prestazione`, `template_flussi`                                                  |
+| `catalogo`  | `articoli`                                                                             |
 | `config`    | `classi_errore`, `codici_errore`, `eventi_dominio`, `registri_giornale`, `tipi_entita` |
 | `dbops`     | `processi`, `presidi`                                                                  |
 | `pagamenti` | `vendite_contabili_stati`, `vendite_contabili_righe_stati`                             |
 
-**Il guard** è agganciato su due relazioni, entrambe nel dominio pratiche:
+**Il guard generico** è agganciato su quattro relazioni:
 
-| Figlio (istanza)    | FK                    | Padre (catalogo)            |
-| ------------------- | --------------------- | --------------------------- |
-| `pratiche.pratiche` | `tipo_prestazione_id` | `pratiche.tipi_prestazione` |
-| `pratiche.flussi`   | `template_flusso_id`  | `pratiche.template_flussi`  |
+| Figlio (istanza)            | FK                    | Padre (catalogo)            | Esenzione                              |
+| --------------------------- | --------------------- | --------------------------- | -------------------------------------- |
+| `pratiche.pratiche`         | `tipo_prestazione_id` | `pratiche.tipi_prestazione` | —                                      |
+| `pratiche.flussi`           | `template_flusso_id`  | `pratiche.template_flussi`  | —                                      |
+| `vendite.commesse_attivita` | `articolo_id`         | `catalogo.articoli`         | `sorgente_tipo_id`; solo righe `ONERE` |
+| `vendite.listini_kit`       | `articolo_padre_id`   | `catalogo.articoli`         | —                                      |
+
+**Il motivo `E_ARTICOLO_OBSOLETO`** della check condivisa protegge le righe di preventivi, ordini,
+bolle, offerte, contratti, versioni di listino, distinte e promo; su preventivi, ordini, bolle e
+contratti con l'esenzione della riga derivata.
 
 > 💡 **Le due colonne non vanno lette insieme**: un catalogo può portare `obsoleto_dal` per
 > governare le proprie *viste e selezioni* (è il caso di `config.*` e `dbops.processi`, dove le
@@ -236,6 +309,20 @@ CREATE TRIGGER trg_pratiche_a10_tipi_prestazione_require_non_obsoleto_ins_upd
   FOR EACH ROW
   EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
     'pratiche', 'tipi_prestazione', 'obsoleto_dal', 'tipo_prestazione_id', 'id'
+  );
+```
+
+**Guard con esenzione** — la riga derivata (con la sorgente) passa all'inserimento; il `WHEN`
+limita il controllo alle righe che sono una scelta:
+
+```sql
+CREATE TRIGGER trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd
+  AFTER INSERT OR UPDATE OF articolo_id
+  ON vendite.commesse_attivita
+  FOR EACH ROW
+  WHEN (NEW.tipo_movimento::text = 'ONERE')
+  EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
+    'catalogo', 'articoli', 'obsoleto_dal', 'articolo_id', 'id', 'sorgente_tipo_id'
   );
 ```
 

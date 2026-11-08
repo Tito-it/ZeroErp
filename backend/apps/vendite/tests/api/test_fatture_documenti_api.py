@@ -53,8 +53,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    parametri estratti dalla fattura a genera_documento.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_VEN_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_VEN_REPO, autospec=True)
     def test_genera_ok_passa_parametri(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
@@ -84,15 +84,14 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 10)
         self.assertEqual(kwargs["sorgente_id"], 42)
-        self.assertEqual(
-            kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000042",
-        )
+        # Giro D.1: la view passa l'id, la chiave della stampa la sceglie il DB.
+        self.assertNotIn("sorgente_uid", kwargs)
 
     # 2. Lista documenti generati per la sorgente: 200 envelope paginato.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_VEN_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_VEN_REPO, autospec=True)
     def test_lista_ok_envelope(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
@@ -138,8 +137,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    e riemetterlo non è un'opzione.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_VEN_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_VEN_REPO, autospec=True)
     def test_ristampa_ok_stream_pdf_inline(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
@@ -178,8 +177,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    esce 200 e l'header lo DICHIARA, così la UI può avvisare.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_VEN_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_VEN_REPO, autospec=True)
     def test_ristampa_pdf_hash_diverso_header_a_zero(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:

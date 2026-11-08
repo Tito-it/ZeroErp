@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# maintenance.proc_automations_lock_columns_job: anche l'automazione
+#   CODICE_MAIUSCOLO (dbops.fn_run_automations_codice_maiuscolo, 20261104-04).
+#
+# ── PERCHE' QUI ────────────────────────────────────────────────────────
+#   Stessa famiglia del lock di colonna e del guard delle date: un trigger che
+#   nasce dalla sola struttura della tabella. Come per DATE_VALIDITA
+#   (20260923-46), il giro notturno del lock lo riporta a convergenza; a ogni
+#   migrate lo fa la rete in 90_end (20261104-08). Nessun processo nuovo in
+#   dbops.processi: la corsa resta una, nel giornale, sotto
+#   automations_lock_columns.
+#
+# ⚠️ DDL e commento dalla doc auto-generata (rev 20261014-55/-56 e
+#   20261103-63): SECURITY DEFINER e il search_path li aveva messi un ALTER, e
+#   un CREATE OR REPLACE che non li ripete li perde (linee-guida-sql §13.7).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261104-05-update-proc-automations-lock-columns-job-codice-maiuscolo-mctit.yaml
+
+  - changeSet:
+      id: 20261104-05-update-proc-automations-lock-columns-job-codice-maiuscolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il job automations_lock_columns esegue anche dbops.fn_run_automations_codice_maiuscolo,
+        dopo il lock e il guard delle date. SECURITY DEFINER e search_path ripetuti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'proc_automations_lock_columns_job'
+                 AND pronamespace = 'maintenance'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_automations_lock_columns_job()
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
+              AS $procedure$
+                BEGIN
+                  -- rev 20260923-46: anche il guard delle date di validita'
+                  --   (automazione DATE_VALIDITA), stessa famiglia del lock.
+                  -- rev 20260926-05: niente piu' fn_run_automations_drop_lock_trg;
+                  --   togliere un lock e' un'azione del runner che converge.
+                  -- rev 20261104-05: anche il codice in maiuscolo (automazione
+                  --   CODICE_MAIUSCOLO), stessa famiglia.
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'automations_lock_columns',
+                    p_stepname := 'run_automations_lock_columns',
+                    p_sql      := 'SELECT dbops.fn_run_automations_lock_columns(''SCHEDULED'', NULL, false); ' ||
+                                 'SELECT dbops.fn_run_automations_date_validita(''SCHEDULED'', NULL, false); ' ||
+                                 'SELECT dbops.fn_run_automations_codice_maiuscolo(''SCHEDULED'', NULL, false);',
+                    p_lock_key := hashtext('automations_lock_columns')
+                  );
+                END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job()
+              IS 'Wrapper del processo automations_lock_columns: in una sola corsa esegue in modo SCHEDULED dbops.fn_run_automations_lock_columns, poi dbops.fn_run_automations_date_validita e dbops.fn_run_automations_codice_maiuscolo su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il primo runner porta i trigger di lock di colonna al registro dichiarato: li crea, li rigenera, li toglie; se un lock vivo blocca una colonna che il registro non nomina, si ferma con E_LOCK_COLUMNS prima di ogni DDL. Il secondo monta, sulle tabelle con valido_dal e valido_al, il guard che rifiuta una fine precedente all''inizio. Il terzo (rev 20261104-05) porta il trigger che salva il codice in maiuscolo su ogni colonna codice dell''ambito, tranne le eccezioni di dbops.automazione_codice_eccezioni: lo crea, lo rigenera, lo toglie. Le tre istruzioni stanno nella stessa transazione e lasciano una riga sola nel giornale: se il lock si ferma, gli altri due quella volta non girano. Lo chiamano il job pgAgent automations_lock_columns e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Nessun ritorno: togliere la chiamata lascerebbe i trigger senza
+              -- convergenza notturna. Il rollback e' un no-op dichiarato.
+              SELECT 1;

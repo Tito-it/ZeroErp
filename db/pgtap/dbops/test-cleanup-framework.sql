@@ -23,9 +23,21 @@
 -- 12) Orchestratore: esclusione disattivata elimina
 -- 13) ⭐ una tabella che RIFIUTA non fa morire il giro
 -- 14) ...e ha rifiutato davvero: la sua riga scaduta e' ancora li'
--- 15) ⭐ ...e il giro E' PROSEGUITO: la regola successiva sulla stessa tabella
---     ha lasciato la sua riga di audit
+-- 15) ⭐ ...e il giro E' PROSEGUITO: il purge della stessa tabella, che viene
+--     dopo la scadenza, ha lasciato la sua riga di audit
 -- 16) ...e il rifiuto ha lasciato una riga di audit ERROR con lo SQLSTATE
+-- 17) ⭐ il riepilogo restituito conta il rifiuto in _falliti, con la tabella
+--     nel _dettaglio (BLOCKED_BY_TABLE e SQLSTATE): e' cio' che rende rossa la
+--     corsa del job in fn_run_and_log (D40)
+-- 18) ...e conta in _applicate la regola che e' passata
+-- 19) l'app esegue ancora l'orchestratore: il DROP e CREATE del cambio di tipo
+--     non ha perso il permesso
+--
+-- ⭐ rev 20261104-51 (brief-db-revisione-dbops D40): l'orchestratore
+--   restituisce il riepilogo jsonb invece di void. Il test 13 fotografa quel
+--   riepilogo nella stessa chiamata, e le 17-18 lo leggono. Su un database
+--   senza il -51 la 13 e' rossa (un void non si fotografa), e con lei le 15-16:
+--   e' il segnale che il cambio non c'e', non una regressione del giro.
 --
 -- ⚠️ **Le 11 e la 12 erano cieche su questo database, e ora non lo sono piu'.**
 --   `dbops.automation_scope` elenca per lo schema `dbops` tre sole tabelle
@@ -53,7 +65,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(19);
 
 CREATE TEMP TABLE tmp_cleanup_ctx AS
 SELECT to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') AS tag;
@@ -203,7 +215,6 @@ WITH ins AS (
     target_table,
     exec_mode,
     name_template,
-    existence_strategy,
     params,
     priority,
     note
@@ -215,8 +226,7 @@ WITH ins AS (
     'tst_cleanup_framework',
     'AUTO',
     NULL,
-    'BY_NAME',
-    '{"cleanup_column":"cleanup_at","batch_limit":5000}'::jsonb,
+    '{"batch_limit":5000}'::jsonb,
     10,
     'pgtap_cleanup_' || (SELECT tag FROM tmp_cleanup_ctx)
   )
@@ -280,12 +290,16 @@ END;
 --   il veto va FABBRICATO: un trigger locale al test, incondizionato, che
 --   muore col ROLLBACK. Non e' un finto guard che finge di essere vero: e' la
 --   forma dichiarata di «una tabella che si oppone», qualunque ne sia la causa.
+--   ⏱️ 2026-11-08 (giro 10b, blocco 10b-3): il runner fa prima la scadenza
+--   (CLEANUP_AT, un UPDATE) e poi il purge, su ogni tabella. Il veto e' quindi
+--   sull'UPDATE: la scadenza rifiuta, e il purge che viene dopo prova che il
+--   giro e' proseguito.
 CREATE OR REPLACE FUNCTION dbops.tst_trgfn_cleanup_veto_dlt()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $veto$
 BEGIN
-  RAISE EXCEPTION 'pgTAP: questa tabella rifiuta ogni DELETE (veto di prova)'
+  RAISE EXCEPTION 'pgTAP: questa tabella rifiuta ogni UPDATE (veto di prova)'
     USING ERRCODE = 'P0001';
 END
 $veto$;
@@ -300,46 +314,47 @@ CREATE TABLE IF NOT EXISTS dbops.tst_cleanup_veto (
 TRUNCATE TABLE dbops.tst_cleanup_veto;
 
 INSERT INTO dbops.tst_cleanup_veto (payload, data_insert, cleanup_at)
-VALUES ('row_bloccata', now() - interval '30 days', now() - interval '1 hour');
+VALUES ('row_bloccata', now() - interval '30 days', NULL);
 
 DROP TRIGGER IF EXISTS trg_tst_cleanup_veto_guard_dlt ON dbops.tst_cleanup_veto;
 CREATE TRIGGER trg_tst_cleanup_veto_guard_dlt
-  BEFORE DELETE ON dbops.tst_cleanup_veto
+  BEFORE UPDATE ON dbops.tst_cleanup_veto
   FOR EACH ROW EXECUTE FUNCTION dbops.tst_trgfn_cleanup_veto_dlt();
 
 -- Due regole sulla STESSA tabella, ed e' qui che il test diventa
---   deterministico: le regole di una tabella si eseguono in ordine di
---   priorita' (il ciclo interno le ordina), mentre l'ordine fra TABELLE non e'
---   garantito da niente. Se il rifiuto della prima uccidesse il giro, la
---   seconda non lascerebbe mai la sua traccia — ed e' cio' che dice la 15.
---   ⚠️ La seconda e' un CLEANUP_AT, cioe' un UPDATE: il guard vieta il DELETE,
---   non questo. Non tocca nessuna riga (hanno gia' cleanup_at) ma passa e si
---   registra: serve la PROVA DEL PASSAGGIO, non un effetto.
+--   deterministico: su una tabella il runner fa prima la scadenza e poi il
+--   purge, mentre l'ordine fra TABELLE non e' garantito da niente. Se il
+--   rifiuto della scadenza uccidesse il giro, il purge non lascerebbe mai la
+--   sua traccia — ed e' cio' che dice la 15.
+--   ⚠️ Il purge e' un DELETE: il veto vieta l'UPDATE, non questo. Non tocca
+--   nessuna riga (la riga non ha scadenza) ma passa e si registra: serve la
+--   PROVA DEL PASSAGGIO, non un effetto.
 INSERT INTO dbops.automation_rules_tbl (
   enabled, rule_type, target_schema, target_table, exec_mode,
-  name_template, existence_strategy, params, priority, note)
+  name_template, params, priority, note)
 VALUES
-  (true, 'CLEANUP_PURGE', 'dbops', 'tst_cleanup_veto', 'AUTO', NULL, 'BY_NAME',
-   '{"cleanup_column":"cleanup_at","batch_limit":5000}'::jsonb, 5,
+  (true, 'CLEANUP_PURGE', 'dbops', 'tst_cleanup_veto', 'AUTO', NULL,
+   '{"batch_limit":5000}'::jsonb, 5,
    'pgtap_cleanup_veto_' || (SELECT tag FROM tmp_cleanup_ctx)),
-  (true, 'CLEANUP_AT', 'dbops', 'tst_cleanup_veto', 'AUTO', NULL, 'BY_NAME',
-   '{"cleanup_column":"cleanup_at","base_ts_column":"data_insert","ttl_days":10,"apply_on_update":false}'::jsonb, 10,
+  (true, 'CLEANUP_AT', 'dbops', 'tst_cleanup_veto', 'AUTO', NULL,
+   '{"base_ts_column":"data_insert","ttl_days":10,"apply_on_update":false}'::jsonb, 10,
    'pgtap_cleanup_veto_dopo_' || (SELECT tag FROM tmp_cleanup_ctx));
 
 CREATE TEMP TABLE tmp_audit_prima_ptr AS
 SELECT COALESCE(max(id), 0) AS ultimo_id FROM dbops.audit_log;
 
 SELECT lives_ok(
-  $$ SELECT dbops.fn_run_automations_cleanup('AUTO', ARRAY['dbops'], false) $$,
+  $$ CREATE TEMP TABLE tmp_cleanup_esito AS
+     SELECT dbops.fn_run_automations_cleanup('AUTO', ARRAY['dbops'], false) AS esito $$,
   'Orchestratore: una tabella che rifiuta non fa morire il giro'
 );
 
 -- ⚠️ Senza questa, la 13 sarebbe vera anche se il guard non avesse morso:
 --   «non e'' morto nessuno» non significa niente se nessuno ha sparato.
 SELECT is(
-  (SELECT count(*)::int FROM dbops.tst_cleanup_veto WHERE payload = 'row_bloccata'),
+  (SELECT count(*)::int FROM dbops.tst_cleanup_veto WHERE payload = 'row_bloccata' AND cleanup_at IS NULL),
   1,
-  'Orchestratore: la tabella col guard ha davvero rifiutato, la riga scaduta e'' ancora li'''
+  'Orchestratore: la tabella col veto ha davvero rifiutato, la riga e'' ancora senza scadenza'
 );
 
 SELECT ok(
@@ -348,11 +363,11 @@ SELECT ok(
       FROM dbops.audit_log a
      WHERE a.id > (SELECT ultimo_id FROM tmp_audit_prima_ptr)
        AND a.function_name = 'dbops.fn_run_automations_cleanup'
-       AND a.rule_type = 'CLEANUP_AT'
+       AND a.rule_type = 'CLEANUP_PURGE'
        AND a.status = 'OK'
        AND a.params->>'table' = 'dbops.tst_cleanup_veto'
   ),
-  'Orchestratore: dopo il rifiuto il giro prosegue — la regola successiva ha lasciato la sua traccia'
+  'Orchestratore: dopo il rifiuto il giro prosegue — il purge della stessa tabella ha lasciato la sua traccia'
 );
 
 SELECT ok(
@@ -367,6 +382,23 @@ SELECT ok(
        AND a.sqlstate IS NOT NULL
   ),
   'Orchestratore: il rifiuto lascia una riga ERROR con lo SQLSTATE, non un silenzio'
+);
+
+-- 17-18. Il riepilogo della stessa chiamata (D40).
+SELECT ok(
+  (SELECT jsonb_typeof(e.esito -> '_falliti') = 'number'
+          AND (e.esito ->> '_falliti')::int >= 1
+          AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.esito -> '_dettaglio') d
+                       WHERE d ->> 'tabella' = 'dbops.tst_cleanup_veto'
+                         AND d ->> 'motivo'  = 'BLOCKED_BY_TABLE'
+                         AND d ->> 'sqlstate' IS NOT NULL)
+     FROM tmp_cleanup_esito e),
+  'Orchestratore: il riepilogo conta il rifiuto in _falliti, con la tabella nel _dettaglio (la corsa del job diventa rossa)'
+);
+
+SELECT ok(
+  (SELECT (e.esito ->> '_applicate')::int >= 1 FROM tmp_cleanup_esito e),
+  'Orchestratore: il riepilogo conta in _applicate la regola che e'' passata'
 );
 
 DROP TRIGGER IF EXISTS trg_tst_cleanup_veto_guard_dlt ON dbops.tst_cleanup_veto;
@@ -386,6 +418,13 @@ WHERE id IN (SELECT id FROM tmp_cleanup_rule)
    OR note LIKE 'pgtap_cleanup_veto%';
 
 DROP TABLE IF EXISTS dbops.tst_cleanup_framework;
+
+-- 19. Il permesso dell'app sopravvive al DROP e CREATE del cambio di tipo.
+SELECT ok(
+  has_function_privilege('zeroerp_app',
+      'dbops.fn_run_automations_cleanup(text, text[], boolean)', 'EXECUTE'),
+  'L''app esegue ancora l''orchestratore dopo il cambio del tipo restituito'
+);
 
 SELECT * FROM finish();
 

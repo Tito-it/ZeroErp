@@ -222,7 +222,9 @@ class EmailAccountListView(AdminAPIView):
             _V_EMAIL.validate_allowed_keys(
                 payload, allowed=_ACCOUNT_CREATE_KEYS, message="Campi dell'account non ammessi.",
             )
-            codice = (payload.get("codice") or "").strip().upper()
+            # Il maiuscolo lo mette il DB (CODICE_MAIUSCOLO, trigger):
+            # qui non si ricopia. La risposta rilegge la riga.
+            codice = (payload.get("codice") or "").strip()
             ErrorManager.require(bool(codice), code=E_EMAIL_ADMIN, message="Codice obbligatorio.")
 
             descrizione = (payload.get("descrizione") or "").strip()
@@ -293,8 +295,6 @@ class EmailAccountDetailView(AdminAPIView):
             update_fields["unita_organizzativa_id"] = optional_int(data, "unita_organizzativa_id")
         if "smtp_password" in data and data["smtp_password"]:
             update_fields["smtp_password"] = data["smtp_password"]
-        if "codice" in update_fields and update_fields["codice"]:
-            update_fields["codice"] = update_fields["codice"].upper()
 
         # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
         #    2026-10-20, brief-be-verifica-documentazione-api §A2).
@@ -400,7 +400,9 @@ class EmailTemplateListView(AdminAPIView):
             _V_EMAIL.validate_allowed_keys(
                 payload, allowed=_TEMPLATE_CREATE_KEYS, message="Campi del template non ammessi.",
             )
-            codice = (payload.get("codice") or "").strip().upper()
+            # Il maiuscolo lo mette il DB (CODICE_MAIUSCOLO, trigger):
+            # qui non si ricopia. La risposta rilegge la riga.
+            codice = (payload.get("codice") or "").strip()
             ErrorManager.require(bool(codice), code=E_EMAIL_ADMIN, message="Codice obbligatorio.")
 
             oggetto = (payload.get("oggetto") or "").strip()
@@ -461,8 +463,6 @@ class EmailTemplateDetailView(AdminAPIView):
             update_fields["tipo_prestazione_id"] = optional_int(data, "tipo_prestazione_id")
         if "variabili_disponibili" in data:
             update_fields["variabili_disponibili"] = data["variabili_disponibili"]
-        if "codice" in update_fields and update_fields["codice"]:
-            update_fields["codice"] = update_fields["codice"].upper()
 
         # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
         #    2026-10-20, brief-be-verifica-documentazione-api §A2).

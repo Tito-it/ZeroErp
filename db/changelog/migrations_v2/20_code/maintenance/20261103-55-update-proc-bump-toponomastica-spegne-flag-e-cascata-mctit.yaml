@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# proc_bump_toponomastica richiude la porta che apre, e porta la correzione
+# fino agli indirizzi di dettaglio.
+#   Brief: brief-db-revisione-maintenance D1 e D9 (decisioni di Tid, 2026-11-03).
+#
+# ⚠️ D1 — IL FLAG RESTAVA ACCESO. La procedura alzava
+#   `zeroerp.maintenance_toponomastica` per poter cambiare la descrizione di un
+#   toponimo in uso (config.trgfn_toponomastica_protect_update la blocca), e
+#   non lo riabbassava mai. `set_config(..., true)` vale per la TRANSAZIONE:
+#   dentro un'unita' di lavoro piu' grande, ogni UPDATE successivo su
+#   config.toponomastica passava senza guard. E' lo stesso difetto gia'
+#   corretto il 2026-08-06 sulla gemella proc_bump_indirizzi_dettaglio, e la
+#   correzione ha la stessa forma: flag spento prima di uscire, anche in caso
+#   di errore. Il commento nel corpo diceva «per la sessione corrente».
+#
+# ⚠️ D9 — LA CORREZIONE SI FERMAVA ALLO STRADARIO GENERALE. Il trigger AFTER
+#   UPDATE del toponimo fa rinormalizzare config.stradario_generale; gli
+#   indirizzi di anagrafiche.indirizzi_dettaglio su quelle vie tenevano la via
+#   normalizzata calcolata con la descrizione vecchia, finche' qualcuno non li
+#   riscriveva. ⭐ La procedura e' il gesto di manutenzione e lo completa: per
+#   ogni via (config.stradario) il cui stradario generale usa il toponimo,
+#   chiama maintenance.proc_bump_indirizzi_dettaglio, nella stessa
+#   transazione. Si chiama la procedura e non si ricopia la sua UPDATE: la
+#   rinormalizzazione di una via ha una sede sola.
+#
+# ℹ️ La cascata gira a flag gia' spento: non le serve.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261103-55-update-proc-bump-toponomastica-spegne-flag-e-cascata-mctit.yaml
+
+  - changeSet:
+      id: 20261103-55-update-proc-bump-toponomastica-spegne-flag-e-cascata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_bump_toponomastica: il flag di manutenzione si spegne prima di
+        uscire (anche in errore), e la correzione arriva agli indirizzi di dettaglio delle
+        vie che usano il toponimo, via proc_bump_indirizzi_dettaglio. Firma invariata.
+        Brief: brief-db-revisione-maintenance D1, D9.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'proc_bump_toponomastica'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'proc_bump_indirizzi_dettaglio'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_bump_toponomastica(IN p_toponomastica_id integer, IN p_descrizione text)
+               LANGUAGE plpgsql
+              AS $procedure$
+              -- Scopo: correggere la descrizione di un toponimo gia' in uso
+              --   (config.toponomastica) e portare la correzione fino agli
+              --   indirizzi: stradario generale e indirizzi di dettaglio.
+              DECLARE
+                v_stradario_id config.stradario.id%TYPE;
+              BEGIN
+                -- ⚠️ IL BYPASS DURA QUANTO L'UPDATE, NON DI PIU'.
+                --   `set_config(..., true)` vale per la TRANSAZIONE: lasciato
+                --   acceso, ogni modifica successiva a config.toponomastica
+                --   nella stessa transazione girerebbe senza
+                --   trgfn_toponomastica_protect_update. Il blocco EXCEPTION lo
+                --   spegne anche quando l'UPDATE fallisce.
+                --   Brief: brief-db-revisione-maintenance D1.
+                PERFORM set_config('zeroerp.maintenance_toponomastica', 'on', true);
+
+                BEGIN
+                  -- Il trigger AFTER UPDATE del toponimo
+                  -- (trgfn_toponomastica_bump_normalize) rinormalizza le righe
+                  -- di config.stradario_generale che lo usano.
+                  UPDATE config.toponomastica
+                     SET descrizione = p_descrizione
+                   WHERE id = p_toponomastica_id;
+                EXCEPTION WHEN OTHERS THEN
+                  PERFORM set_config('zeroerp.maintenance_toponomastica', 'off', true);
+                  RAISE;
+                END;
+
+                PERFORM set_config('zeroerp.maintenance_toponomastica', 'off', true);
+
+                -- ⭐ La cascata fino agli indirizzi di dettaglio: la loro via
+                --   normalizzata si calcola solo quando la riga viene scritta.
+                --   Una via alla volta, con la procedura che ne e' la sede.
+                --   Brief: brief-db-revisione-maintenance D9.
+                FOR v_stradario_id IN
+                  SELECT s.id
+                    FROM config.stradario s
+                    JOIN config.stradario_generale sg ON sg.id = s.stradario_generale_id
+                   WHERE sg.toponomastica_id = p_toponomastica_id
+                   ORDER BY s.id
+                LOOP
+                  CALL maintenance.proc_bump_indirizzi_dettaglio(v_stradario_id);
+                END LOOP;
+              END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_bump_toponomastica(IN p_toponomastica_id integer, IN p_descrizione text)
+              IS 'Corregge la descrizione di un toponimo in uso: accende il flag zeroerp.maintenance_toponomastica solo per la UPDATE di config.toponomastica e lo spegne prima di proseguire, anche in caso di errore (vale per la transazione: lasciato acceso, ogni modifica successiva ai toponimi passerebbe senza guard). Il trigger del toponimo rinormalizza config.stradario_generale; poi la procedura chiama maintenance.proc_bump_indirizzi_dettaglio per ogni via che usa il toponimo, cosi'' anche gli indirizzi di dettaglio prendono la descrizione nuova.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20260102-06).
+              SELECT 1;

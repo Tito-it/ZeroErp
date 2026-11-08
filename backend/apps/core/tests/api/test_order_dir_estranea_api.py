@@ -131,7 +131,7 @@ class TestOrderDirEstraneaApi(JwtMockedApiTest):
     #    `DESC` era un 400 sulla lookup e passava sulle liste. Ora e' ammesso
     #    ovunque, e al repository arriva la forma che l'SQL vuole.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_LOOKUP_REPO)
+    @patch(_LOOKUP_REPO, autospec=True)
     def test_lookup_order_dir_maiuscola_ammessa(self, repo_cls, _auth):
         repo_cls.return_value.list_lookup_codici.return_value = ([], 0)
         resp = self.client.get("/api/v1/core/lookup/codici/?rel=config.stati_sdi&order_dir=DESC")
@@ -141,7 +141,7 @@ class TestOrderDirEstraneaApi(JwtMockedApiTest):
 
     # 6. Un valore estraneo resta il 400 del dominio, prima del repository.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_LOOKUP_REPO)
+    @patch(_LOOKUP_REPO, autospec=True)
     def test_lookup_order_dir_estranea_e_400_di_dominio(self, repo_cls, _auth):
         resp = self.client.get("/api/v1/core/lookup/codici/?rel=config.stati_sdi&order_dir=giu")
         self.assertEqual(resp.status_code, 400, resp.content)

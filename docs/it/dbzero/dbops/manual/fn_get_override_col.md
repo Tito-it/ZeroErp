@@ -1,83 +1,52 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_get_override_col`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)   
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — il registro delle eccezioni di nome
 >
-Approfondimento funzioni:
+> Approfondimento funzioni:
 >
-[dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)   
-> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
+> * [dbops.fn_col_exists](/dbzero/dbops/funzioni/fn_col_exists) — verifica che la colonna restituita esista davvero
+> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — la chiede per la colonna `attivo`
+> * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) — la chiede per la chiave verso lo storico
+> * [dbops.fn_storico_risolvi_scope](/dbzero/dbops/funzioni/fn_storico_risolvi_scope) — la chiede per la chiave verso lo storico
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — la chiede, a ogni scrittura, per la colonna `attivo` del padre
+> * [dbops.fn_get_lookup_codici](/dbzero/dbops/funzioni/fn_get_lookup_codici) — legge lo stesso registro direttamente, per i ruoli dei codici
+>
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db) — le convenzioni di nome su cui le automazioni contano
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-La funzione **`dbops.fn_get_override_col(p_schema, p_table, p_role, p_default)`** permette di ottenere in modo centralizzato il nome di una colonna “override” per un ruolo specifico, qualora sia stato definito nella tabella di configurazione `dbops.automation_overrides_cols`. Se non esiste un override registrato, viene restituito il valore di default passato come parametro.
+
+Restituisce il nome della colonna che una tabella usa per un **ruolo** delle automazioni (la colonna
+`attivo`, la chiave verso lo storico…): l'eccezione registrata in
+`dbops.automation_overrides_cols`, se c'è, altrimenti il nome di convenzione che il chiamante passa.
+Restituisce sempre un nome.
 
 ---
 
-### Parametri di input
+### Le automazioni lavorano per convenzione, con eccezioni scritte
 
-| Parametro   | Tipo | Obbligatorio | Descrizione                                                     |
-| ----------- | ---- | :----------: | --------------------------------------------------------------- |
-| `p_schema`  | text |      ✔️       | Nome dello schema contenente la tabella target.                 |
-| `p_table`   | text |      ✔️       | Nome della tabella target.                                      |
-| `p_role`    | text |      ✔️       | Ruolo/etichetta della colonna (es. `fk`, `pk`, `code`).         |
-| `p_default` | text |      ✔️       | Valore predefinito da restituire se non è presente un override. |
+I runner delle automazioni si aspettano nomi di colonna fissi. Una tabella che per una buona
+ragione ne usa un altro non si rinomina e non si esclude: si registra l'eccezione, una riga per
+tabella e ruolo. La chiave del registro è (schema, tabella, ruolo), quindi l'eccezione è al più una.
 
----
+I ruoli sono quelli che i chiamanti chiedono, scritti in maiuscolo: `ATTIVO_COL` (i runner e i due
+trigger di attivazione padre/figlio), `STORICO_FK` e `STORICIZZA_COL`. Il registro porta anche
+ruoli che non passano da qui: `CODICE_COL` e `CODICE_INTERNO_COL` li legge direttamente
+`dbops.fn_get_lookup_codici`. Le colonne di audit (`data_update`, `user_update`) non hanno
+eccezioni: hanno nome fisso per contratto.
 
-### Valore di ritorno
-
-`text` – il nome effettivo della colonna da utilizzare secondo la configurazione di override, oppure il valore `p_default` se nessuna regola è trovata.
-
----
-
-### Flusso logico
-
-1. Interroga la tabella `automation_overrides_cols` cercando una riga che corrisponda a (`schema_name`, `table_name`, `col_role`).
-2. Se presente, ritorna il valore di `col_name` configurato.
-3. Se assente, ritorna il valore di `p_default` fornito dal chiamante.
+⚠️ La funzione non verifica che la colonna restituita esista: lo fa il chiamante, di norma con
+`dbops.fn_col_exists`.
 
 ---
 
-### Casi d’uso tipici
-
-* **Naming flessibile**: quando alcune tabelle non rispettano le convenzioni standard, è possibile definire eccezioni in `automation_overrides_cols`.
-* **Automazioni di DDL**: script o funzioni di sistema possono recuperare il nome corretto della colonna chiave senza hardcoding.
-* **Compatibilità retroattiva**: consente di gestire tabelle legacy mantenendo invariato il comportamento delle automazioni.
-
----
-
-### Permessi e sicurezza
-
-* Richiede accesso in lettura a `dbops.automation_overrides_cols`.
-* Non modifica dati: è una funzione **read-only**.
-
----
-
-### Esempi di utilizzo
-
-* **Controllo chiave esterna**: un processo cerca la colonna di riferimento per una FK; se per la tabella `clienti` esiste un override (`id_cliente` invece di `cliente_id`), la funzione restituirà `id_cliente`. In assenza, verrà restituito il `p_default` specificato.
-* **Normalizzazione naming**: in uno script di generazione indici, usare `fn_get_override_col(schema, table, 'fk', 'default_fk')` assicura che vengano rispettate eventuali eccezioni definite.
-
----
-
-### Considerazioni
-
-* La presenza di override va usata con parsimonia: troppe eccezioni riducono l’efficacia delle regole generali.
-* La tabella `automation_overrides_cols` diventa la fonte autorevole per mappare ruoli-colonne speciali.
-
----
-
-### Benefici
-
-* **Flessibilità**: consente di gestire casi particolari senza alterare le policy generali.
-* **Centralizzazione**: tutte le eccezioni sono in un unico punto di configurazione.
-* **Manutenibilità**: riduce il rischio di errori hardcoded nel codice SQL.
-
----
-
-> **In sintesi**: `fn_get_override_col` è una funzione utility fondamentale per rendere **le automazioni adattabili a eccezioni di naming o legacy**, mantenendo comunque la coerenza complessiva del sistema.
+{% include-markdown "signature-core.md" %}

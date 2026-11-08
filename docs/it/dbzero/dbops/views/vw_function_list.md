@@ -20,11 +20,10 @@ SELECT n.nspname AS schema,
     p.proname AS function_name,
     pg_get_function_arguments(p.oid) AS arguments,
     pg_get_function_result(p.oid) AS return_type,
-    array_length(string_to_array(pg_get_function_arguments(p.oid), ','::text), 1) AS num_args,
-    d.description AS comment
-   FROM ((pg_proc p
+    (p.pronargs)::integer AS num_args,
+    obj_description(p.oid, 'pg_proc'::name) AS comment
+   FROM (pg_proc p
      JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
-     LEFT JOIN pg_description d ON ((p.oid = d.objoid)))
   WHERE (n.nspname = ANY (ARRAY['dbops'::name, 'script'::name]));
 ```
 

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> CANCELLO — deve restare VUOTA. Gli oggetti dello schema magazzino che nominano uno schema di processo (vendite, acquisti, pagamenti: il perimetro e' scritto nella vista, uno schema nuovo si aggiunge qui). Il registro di magazzino e' un servizio dell'anello 2 (D-1): chi muove merce scrive il proprio posting e chiama la primitiva, e il registro non conosce i suoi consumatori. Due lenti: CATALOGO (pg_depend — FK, viste, default, policy, trigger, firme, corpi SQL standard) e CORPO (prosrc delle funzioni senza dipendenze registrate, commenti di riga tolti). Non vede gli argomenti dei trigger (i block_deact generati dal framework ATTIVO riflettono una FK che punta verso il registro: il verso giusto). Una riga fa rosso db/pgtap/magazzino/test-registro-non-nomina-i-consumatori-v1.sql, che gira in CI. security_invoker: legge solo il catalogo. Brief: brief-db-magazzino-registro-anello-interno (P-6).
+> CANCELLO — deve restare VUOTA. Gli oggetti dello schema magazzino che nominano uno schema di processo (vendite, acquisti, pagamenti: il perimetro e' scritto nella vista, uno schema nuovo si aggiunge qui). Il registro di magazzino e' un servizio dell'anello 2 (D-1): chi muove merce scrive il proprio posting e chiama la primitiva, e il registro non conosce i suoi consumatori. Due lenti: CATALOGO (pg_depend — FK, viste, default, policy, trigger, firme, corpi SQL standard) e CORPO (il corpo delle funzioni senza dipendenze registrate, letto da dbops.fn_corpo_funzione: senza commenti, con i letterali intatti). Non vede gli argomenti dei trigger (i block_deact generati dal framework ATTIVO riflettono una FK che punta verso il registro: il verso giusto). Una riga fa rosso db/pgtap/magazzino/test-registro-non-nomina-i-consumatori-v1.sql, che gira in CI. security_invoker: legge solo il catalogo. Brief: brief-db-magazzino-registro-anello-interno (P-6).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -70,7 +70,7 @@ WITH schemi_processo AS (
           WHERE ((d.deptype = ANY (ARRAY['n'::"char", 'a'::"char"])) AND (COALESCE(o.schema, (pn.nspname)::text) = 'magazzino'::text))
         ), sorgenti AS (
          SELECT p.oid,
-            regexp_replace(p.prosrc, '--[^\n]*'::text, ''::text, 'g'::text) AS corpo
+            (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS corpo
            FROM (pg_proc p
              JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
           WHERE ((n.nspname = 'magazzino'::name) AND (p.prosqlbody IS NULL))

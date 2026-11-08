@@ -1,53 +1,103 @@
-## 📘 Documentazione Concettuale – Funzione `script.trgfn_note_validate_generic()`
+## 📘 Documentazione Concettuale – Trigger function `script.trgfn_note_validate_generic`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-• [vendite.note](/dbzero/vendite/tabelle/note)  
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)  
+> Approfondimento tabelle:
+>
+> * [vendite.note](/dbzero/vendite/tabelle/note) — la tabella partizionata delle note di vendita
+> * [acquisti.note](/dbzero/acquisti/tabelle/note) — la tabella partizionata delle note di acquisto
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — l'etichetta del tipo di documento nella frase d'errore
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva gli errori
 
 ---
+
 ### 🎯 Scopo Principale
-La trigger function `script.trgfn_note_validate_generic()` valida la coerenza
-delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando
-che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
+
+La trigger function `script.trgfn_note_validate_generic` valida le note ancorate a una riga di
+documento (`anchor_tipo = 'RIGA'`): la riga indicata da `target_riga_id` deve appartenere davvero
+alla testata indicata da `target_id`.
+
+Impedisce che una nota resti agganciata a una riga che appartiene a un altro documento.
 
 ---
 
-### Regole principali
+### Le regole
 
-* se `anchor_tipo <> 'RIGA'` non applica controlli di appartenenza;
-* per note a riga:
-  * `target_riga_id` e` obbligatorio;
-  * la tabella righe configurata in `TG_ARGV` deve esistere;
-  * la FK della riga verso la testata deve coincidere con `NEW.target_id`;
-* in caso di mismatch/config errata genera errore tramite `script.fn_log_and_raise_error`.
+* Se `anchor_tipo` non è `'RIGA'`, la nota è ancorata alla testata e la funzione non controlla
+  niente.
+* Per una nota a riga:
+  * `target_riga_id` è obbligatorio;
+  * la tabella delle righe passata come primo argomento del trigger deve esistere;
+  * la colonna della riga che punta alla testata (secondo argomento) deve valere `NEW.target_id`.
+* Ogni violazione si solleva con `script.fn_log_and_raise_error`, nell'area dello schema della
+  tabella su cui scatta il trigger.
 
 ---
 
-### Utilizzo
+### ⭐ Una funzione, un montaggio per partizione
 
-Validatore **generico**: vive in `script` proprio perche' non appartiene a un
-dominio solo. E' agganciato a **sette** trigger `BEFORE INSERT/UPDATE` sulle
-tabelle note — `note_contratto`, `note_ddt`, `note_fatture`,
-`note_offerte_commerciali`, `note_ordini`, `note_preventivo` — ed evita che una
-nota resti agganciata a una riga che appartiene a un altro documento.
+Il validatore vive in `script` perché non appartiene a un dominio solo: non sa niente delle tabelle
+che controlla. Il montaggio gli passa due soli argomenti, la tabella delle righe (qualificata con lo
+schema) e il nome della colonna che collega la riga alla sua testata.
 
-La tabella righe e la colonna FK si passano per `TG_ARGV` (i due soli argomenti), quindi la stessa
-funzione serve domini diversi senza sapere niente di loro.
+È montato come trigger `BEFORE INSERT OR UPDATE`, riga per riga, su **otto** partizioni di note,
+ognuna con la tabella righe del proprio documento:
 
-### Il dominio dell'errore
+| Partizione | Tabella delle righe |
+| --- | --- |
+| `vendite.note_preventivo` | `vendite.preventivi_righe` |
+| `vendite.note_offerte_commerciali` | `vendite.offerte_commerciali_eccezioni` (le righe di un'offerta sono le sue eccezioni) |
+| `vendite.note_contratto` | `vendite.contratti_righe` |
+| `vendite.note_ordini` | `vendite.ordini_righe` |
+| `vendite.note_ddt` | `vendite.ddt_righe` |
+| `vendite.note_fatture` | `vendite.fatture_righe` |
+| `acquisti.note_ordini` | `acquisti.ordini_righe` |
+| `acquisti.note_ddt` | `acquisti.ddt_righe` |
 
-> Ultima revisione: 2026-10-25 (brief-db-grammatica-unica-documenti, lotto 3), L3-4.
+⛔ `vendite.note_attivita_fatturabili` non ha il montaggio: un'attività fatturabile non ha righe a cui
+ancorare una nota.
 
-In `E_NOTE_RIGA_MISMATCH` il dominio viene dalla riga, non da un argomento del trigger:
+---
 
-* nel payload (`p_context ->> 'dominio'`, per la macchina) c'è `NEW.target_tipo`, il codice;
-* nella frase per l'operatore («…al documento di dominio %s…») c'è la parola che una persona riconosce,
-  `config.sorgenti.etichetta` di quel codice («DDT», «Ordine»), o il codice se il tipo non è una sorgente.
+### Il dominio dell'errore viene dalla nota
 
-Fino al 2026-10-25 il dominio era un terzo argomento (`'DDT'`, `'ORDINE'`, `'OFFERTA'`…) che ripeteva a mano il
-confine della partizione: ritirato dal `20261025-66`, e i montaggi lo hanno perso (`-67`, `-68`). Il pgTAP
-`config/test-grammatica-note-target-tipo-v1` presidia i due argomenti e la frase.
+In `E_NOTE_RIGA_MISMATCH` il tipo di documento si legge dalla nota stessa, non da un argomento del
+trigger:
+
+* nel contesto dell'errore, per la macchina, c'è `NEW.target_tipo`, il codice della sorgente;
+* nella frase per l'operatore c'è la parola che una persona riconosce, l'`etichetta` di quel codice in
+  `config.sorgenti` («DDT», «Ordine»), o il codice stesso se il tipo non è una sorgente.
+
+---
+
+### Codici errore
+
+* `E_NOTE_TARGET_ID` — nota a riga senza `target_riga_id`.
+* `E_NOTE_CONFIG` — la tabella delle righe passata al montaggio non esiste: è un errore di
+  configurazione del trigger, non dei dati.
+* `E_NOTE_RIGA_MISMATCH` — la riga non esiste o appartiene a un'altra testata.
+
+---
+
+### Test
+
+* `vendite/test-note-partitioning` — il trigger di validazione esiste sulle note di preventivi,
+  contratti, ordini, DDT e fatture di vendita, e manca su `note_attivita_fatturabili`.
+* `config/test-grammatica-note-target-tipo-v1` — i montaggi passano i soli due argomenti che la
+  funzione legge, e la frase di `E_NOTE_RIGA_MISMATCH` porta l'etichetta della sorgente, non il codice.
+
+---
+
+### Note di migrazione
+
+* 2026-10-25 — il dominio dell'errore era un terzo argomento del trigger (`'DDT'`, `'ORDINE'`,
+  `'OFFERTA'`…) che ripeteva a mano il confine della partizione: è stato ritirato e i montaggi lo hanno
+  perso (brief-db-grammatica-unica-documenti).
 
 ---
 

@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_function_list: num_args e comment letti dal catalogo, non dal testo.
+#   Brief: brief-db-revisione-dbops, D55 (classe C).
+#
+#   - num_args contava le virgole di pg_get_function_arguments: sbagliava con
+#     numeric(p,s) e con i DEFAULT che contengono una virgola, e a zero
+#     argomenti dava NULL. ⇒ p.pronargs (::integer, il tipo della colonna di
+#     prima, che CREATE OR REPLACE VIEW non lascia cambiare).
+#   - comment si agganciava a pg_description per il solo OID, senza classoid
+#     ne' objsubid: poteva prendere la descrizione di un altro oggetto con lo
+#     stesso OID, o duplicare la riga. ⇒ obj_description(p.oid, 'pg_proc').
+#   Colonne, nomi e ordine invariati. Nessun lettore nel progetto (censimento
+#   2026-11-04): e' uno strumento DBA.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-13-update-vw-function-list-dal-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261104-13-update-vw-function-list-dal-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_function_list: num_args da pg_proc.pronargs e comment da
+        obj_description(oid, 'pg_proc'), invece del conteggio delle virgole e del join
+        su pg_description per il solo OID.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_function_list AS
+              SELECT n.nspname AS schema,
+                  p.oid AS function_oid,
+                  p.proname AS function_name,
+                  pg_get_function_arguments(p.oid) AS arguments,
+                  pg_get_function_result(p.oid) AS return_type,
+                  p.pronargs::integer AS num_args,
+                  obj_description(p.oid, 'pg_proc') AS comment
+                 FROM pg_proc p
+                 JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = ANY (ARRAY['dbops'::name, 'script'::name]);
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (definizione di prima dal doc auto-generato).
+              SELECT 1;

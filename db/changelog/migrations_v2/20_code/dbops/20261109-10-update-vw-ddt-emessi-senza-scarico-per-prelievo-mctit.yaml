@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA BOLLA SENZA SCARICO, PRELIEVO PER PRELIEVO: dbops.vw_ddt_emessi_senza_scarico
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, «Riverifica fatta» (Tid, 2026-11-08);
+#   brief-db-revisione-dbops D58 (+ M22).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   D58: la vista chiedeva «la bolla ha almeno uno scarico?» con un NOT EXISTS
+#   sul documento intero. Il contratto del posting (vendite.fn_posta_ddt) e' un
+#   movimento per prelievo delle righe ATTIVE: con la domanda sul documento uno
+#   scarico parziale non accendeva niente. La domanda passa alla grana del
+#   prelievo: per ogni prelievo di una riga attiva, la sua uscita (tipo
+#   DDT_VENDITA, la bolla, la riga, il prelievo come dettaglio; qta < 0, non uno
+#   storno). Un prelievo di una riga non attiva non conta: il verbo non lo
+#   scarica.
+#   Decisione A di Tid (2026-11-08): la riga della vista resta la BOLLA, con in
+#   coda prelievi_senza_scarico (quanti prelievi non hanno l'uscita). Il
+#   rimedio e' sulla bolla («da dove e' passata l'emissione»).
+#   Le provenienze sono quelle del modello (20261108-94): sparisce la
+#   traduzione foglia -> documento.
+#   M22: il COMMENT nomina la porta di oggi (il verbo, attraverso
+#   script.trgfn_doc_stato_solo_dal_verbo), non la regola ritirata.
+#   security_invoker ri-specificata; CREATE OR REPLACE con le colonne di prima
+#   e le nuove IN CODA (ACL, catalogo dei presidi e digest restano).
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-10-update-vw-ddt-emessi-senza-scarico-per-prelievo-mctit.yaml
+
+  - changeSet:
+      id: 20261109-10-update-vw-ddt-emessi-senza-scarico-per-prelievo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_ddt_emessi_senza_scarico: la domanda per prelievo di riga attiva (D58), con
+        prelievi_senza_scarico in coda; provenienza del modello. brief-db-sorgente-documento-e-riga §7.2
+        lotto M, giro M.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_ddt_emessi_senza_scarico
+              WITH (security_invoker = true) AS
+              SELECT d.id AS ddt_id,
+                     d.numero,
+                     d.data,
+                     d.emittente_fiscale_id,
+                     d.magazzino_id,
+                     s.codice_interno AS stato_codice_interno,
+                     n.prelievi_senza_scarico
+                FROM vendite.ddt d
+                JOIN script.vw_stati_doc_ddt_merce_partita s ON s.id = d.stato_doc_ddt_id
+                CROSS JOIN LATERAL (
+                      SELECT count(*) AS prelievi_senza_scarico
+                        FROM vendite.ddt_righe dr
+                        JOIN vendite.ddt_righe_prelievi p ON p.ddt_riga_id = dr.id
+                       WHERE dr.ddt_id = d.id
+                         AND dr.attivo
+                         AND NOT EXISTS (
+                               SELECT 1
+                                 FROM magazzino.movimenti m
+                                 JOIN config.sorgenti so ON so.id = m.sorgente_tipo_id
+                                                        AND so.codice_interno = 'DDT_VENDITA'
+                                WHERE m.sorgente_id        = d.id
+                                  AND m.sorgente_riga      = dr.id
+                                  AND m.sorgente_dettaglio = p.id
+                                  AND m.qta < 0
+                                  AND m.storno_di_movimento_id IS NULL)) n
+               WHERE s.merce_partita
+                 AND d.magazzino_id IS NOT NULL
+                 AND n.prelievi_senza_scarico > 0
+                 AND vendite.fn_ddt_muove_merce(d.*);
+
+              COMMENT ON VIEW dbops.vw_ddt_emessi_senza_scarico IS
+                  'Presidio, DEVE restare vuota. Una riga e'' una bolla in uno stato che presuppone lo scarico (merce partita: il BB script.vw_stati_doc_ddt_merce_partita, uscito dalla bozza e non abortito), con un magazzino, che muove merce (vendite.fn_ddt_muove_merce), con almeno un prelievo di una riga attiva senza la sua uscita a registro (provenienza DDT_VENDITA: la bolla, la riga, il prelievo come dettaglio; quantita'' negativa, non uno storno). La domanda e'' PRELIEVO PER PRELIEVO, come il contratto del posting (vendite.fn_posta_ddt: un movimento per prelievo delle righe attive): uno scarico parziale si vede (D58). prelievi_senza_scarico dice quanti. E'' la porta del registro che non ha tenuto (lo stato lo scrive solo il verbo vendite.fn_cambia_stato_ddt, attraverso script.trgfn_doc_stato_solo_dal_verbo): una bolla uscita senza la sua merce, cioe'' una giacenza che mente. Il rimedio non e'' scrivere il movimento a mano: e'' capire da dove e'' passata l''emissione. Le bolle senza magazzino sono nate prima del Lotto 3 e non sono questo difetto. security_invoker; il digest conta da proprietario (fn_conta_presidio, perimetro DEFINER). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-13); rev 2026-10-12 lo stato dal BB; rev 2026-11-09 (brief-db-sorgente-documento-e-riga lotto M; D58 e M22 di brief-db-revisione-dbops) la grana del prelievo e la provenienza del modello.';
+
+              COMMENT ON COLUMN dbops.vw_ddt_emessi_senza_scarico.prelievi_senza_scarico IS
+                  'Quanti prelievi delle righe attive della bolla non hanno la loro uscita a registro. Sempre maggiore di zero in una riga della vista.';

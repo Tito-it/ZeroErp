@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `storico.parameters`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento Tabelle:
@@ -52,7 +54,7 @@ La tabella **`storico.parameters`** conserva gli **snapshot** delle modifiche su
 * **Consistenza e performance**
   L'indice su `parameters_id` rende veloce la chiusura dello snapshot aperto.
 * **Uniformità di processo**
-  Usa la funzione `script.trgfn_upd_dlt_storico_generic` come per tutte le altre entità del progetto, semplificando la manutenzione.
+  Usa la funzione `script.trgfn_storico_generic` come per tutte le altre entità del progetto, semplificando la manutenzione.
 
 ---
 

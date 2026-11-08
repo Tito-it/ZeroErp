@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ORDINI, CONTRATTI, FATTURE: IL GUARD UNICO DELLA PROVENIENZA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3 (S-6, S-8).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La testata di ordine, contratto e fattura non aveva un controllo
+#   d'esistenza della provenienza: documento_origine_id e' polimorfo e senza FK
+#   (un id inesistente passava), e offerta_id aveva la FK solo verso l'offerta.
+#   script.trgfn_guard_sorgente controlla la forma dal catalogo (tipo attivo, una
+#   sola chiave, quella del key_selector) e che il documento esista.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   * livello DOCUMENTO: la testata cita il documento intero (non ha
+#     sorgente_riga);
+#   * azione BLOCCA, come una FK: un preventivo o un'offerta citati non si
+#     cancellano (E_SORG_ORIGINE_REFERENZIATA, dal lato «in uscita» che il
+#     catalogo monta gia' su preventivi e offerte). Per il contratto e' la
+#     protezione che oggi da' fk_contratti_offerta, e che resta quando offerta_id
+#     si ritira (giro T.5);
+#   * INSERT e UPDATE OF le tre colonne. Nome a10, come sulle altre testate;
+#   * chi scrive una chiave della specie sbagliata e' rifiutato
+#     (E_SORG_CHIAVE_NON_CONFORME): i tre verbi di push la prendono dal BB che
+#     scrive in questo giro (20261106-85 … -87).
+#   Il presidio di struttura (dbops/test-sorgenti-struttura-v1) perde le tre
+#   tabelle dal debito nello stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-76-create-trigger-ordini-contratti-fatture-guard-sorgente-unico-mctit.yaml
+
+  - changeSet:
+      id: 20261106-76-create-trigger-ordini-contratti-fatture-guard-sorgente-unico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard unico della provenienza (script.trgfn_guard_sorgente, DOCUMENTO,
+        BLOCCA) sulle testate di ordine, contratto e fattura.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ordini_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid
+                  ON vendite.ordini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+
+              CREATE TRIGGER trg_contratti_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid
+                  ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+
+              CREATE TRIGGER trg_fatture_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid
+                  ON vendite.fatture
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_sorgente_ins_upd ON vendite.ordini;
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_sorgente_ins_upd ON vendite.contratti;
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_sorgente_ins_upd ON vendite.fatture;

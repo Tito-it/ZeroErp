@@ -80,7 +80,7 @@ _RICERCA_SOGGETTI = RicercaFull(
 #    §Enforcement RLS) — togliere il JOIN toglierebbe un cancello in silenzio.
 _RUOLO_CL_SCOPE_SQL = """(
                  %s::bigint[] IS NULL
-                 OR COALESCE(tr.codice_interno, tr.codice) != 'CL'
+                 OR tr.codice_interno != 'CL'
                  OR EXISTS (
                      SELECT 1
                        FROM anagrafiche.clienti cl
@@ -245,7 +245,7 @@ class SoggettiRepository:
                    ts.natura_soggetto,
                    (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                        'soggetto_ruolo_id', sr.id,
-                       'codice', COALESCE(tr.codice_interno, tr.codice),
+                       'codice', tr.codice_interno,
                        'descrizione', tr.descrizione
                    ) ORDER BY tr.descrizione), '[]'::jsonb)
                     FROM anagrafiche.soggetti_ruoli sr
@@ -783,7 +783,7 @@ class SoggettiRepository:
     ) -> list[dict[str, Any]]:
         sql = f"""
             SELECT sr.id, sr.tipo_ruolo_id,
-                   COALESCE(tr.codice_interno, tr.codice) AS ruolo_codice,
+                   tr.codice_interno AS ruolo_codice_interno,
                    tr.descrizione AS ruolo_descrizione
               FROM anagrafiche.soggetti_ruoli sr
               JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
@@ -820,7 +820,7 @@ class SoggettiRepository:
             WITH matches AS (
                 SELECT s.id AS soggetto_id,
                        sr.id AS soggetto_ruolo_id,
-                       COALESCE(tr.codice_interno, tr.codice) AS ruolo_codice,
+                       tr.codice_interno AS ruolo_codice_interno,
                        tr.descrizione AS ruolo_descrizione,
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
@@ -832,7 +832,7 @@ class SoggettiRepository:
                         OR s.codice_fiscale ILIKE %s
                         OR s.partita_iva ILIKE %s)
                    AND (%s::text IS NULL
-                        OR COALESCE(tr.codice_interno, tr.codice) = %s::text)
+                        OR tr.codice_interno = %s::text)
                    AND {_RUOLO_CL_SCOPE_SQL}
                 UNION ALL
                 SELECT s.id, NULL::bigint, NULL::varchar, NULL::varchar,
@@ -868,7 +868,7 @@ class SoggettiRepository:
               FROM matches m
               LEFT JOIN LATERAL {_FORNITURE_LATERAL_TPL.format(sr_ref="m.soggetto_ruolo_id")} forn ON true
              ORDER BY m.ragione_sociale_completa ASC NULLS LAST,
-                      m.ruolo_codice ASC NULLS FIRST,
+                      m.ruolo_codice_interno ASC NULLS FIRST,
                       m.soggetto_ruolo_id ASC NULLS FIRST
              LIMIT %s
         """  # noqa: S608
@@ -917,7 +917,7 @@ class SoggettiRepository:
             sql = f"""
                 SELECT s.id AS soggetto_id,
                        sr.id AS soggetto_ruolo_id,
-                       COALESCE(tr.codice_interno, tr.codice) AS ruolo_codice,
+                       tr.codice_interno AS ruolo_codice_interno,
                        tr.descrizione AS ruolo_descrizione,
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
@@ -935,7 +935,7 @@ class SoggettiRepository:
             sql = f"""
                 SELECT s.id AS soggetto_id,
                        NULL::bigint AS soggetto_ruolo_id,
-                       NULL::varchar AS ruolo_codice,
+                       NULL::varchar AS ruolo_codice_interno,
                        NULL::varchar AS ruolo_descrizione,
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
@@ -1004,12 +1004,16 @@ class SoggettiRepository:
     #    codice di una riga puo' essere il codice interno di un'altra. Vince il
     #    `codice` (e' il campo del payload), e l'ORDER BY rende la scelta
     #    deterministica invece di lasciarla al `LIMIT 1`.
+    # ⚠️ Il `codice` il DB lo salva normalizzato (automazione CODICE_MAIUSCOLO):
+    #    il payload si confronta con `script.fn_codice_normalizzato`, la sede
+    #    unica della forma — mai ricopiarne la formula. Il `codice_interno` e'
+    #    fuori da quella regola e resta un confronto esatto.
     def resolve_tipo_ruolo(self, codice_ruolo: str) -> dict[str, Any] | None:
         sql = """
             SELECT codice_interno, codice, descrizione
               FROM config.tipi_ruoli
-             WHERE codice = %s OR codice_interno = %s
-             ORDER BY (codice = %s) DESC
+             WHERE codice = script.fn_codice_normalizzato(%s) OR codice_interno = %s
+             ORDER BY (codice = script.fn_codice_normalizzato(%s)) DESC
              LIMIT 1
         """
         with connection.cursor() as cursor:
@@ -1036,9 +1040,9 @@ class SoggettiRepository:
     ) -> dict[str, Any] | None:
         # 1. Recupera tipo_ruolo
         sql_ruolo = """
-            SELECT tr.id, COALESCE(tr.codice_interno, tr.codice) AS codice, tr.descrizione
+            SELECT tr.id, tr.codice_interno, tr.descrizione
               FROM config.tipi_ruoli tr
-             WHERE COALESCE(tr.codice_interno, tr.codice) = %s
+             WHERE tr.codice_interno = %s
         """
         # 2. Nature ammesse per il ruolo (dalla matrice config)
         sql_nature = """
@@ -1094,11 +1098,11 @@ class SoggettiRepository:
 
         # 4. Default tipo_soggetto_dettaglio per ruolo (codice_interno via
         # config.parameters, override gratuito per emittente). Usiamo
-        # ruolo["codice"] (validato dal DB) per costruire la chiave: evita
+        # ruolo["codice_interno"] (validato dal DB) per costruire la chiave: evita
         # di propagare l'input utente raw nella stringa parametro.
         # Delega a ParameterRepository per coerenza con la firma di
         # script.fn_get_parameter_full.
-        param_code = f"DEFAULT_TIPO_SOGGETTO_DETTAGLIO_{ruolo['codice']}"
+        param_code = f"DEFAULT_TIPO_SOGGETTO_DETTAGLIO_{ruolo['codice_interno']}"
         # ⚠️ FACOLTATIVO (2026-10-11): il default e' una preferenza, non un
         #    obbligo — il seed lo dichiara per CL e FO, e il FE ripiega sul primo
         #    tipo ammesso. Con `get_parameter` un ruolo senza parametro
@@ -1116,7 +1120,7 @@ class SoggettiRepository:
         ) if default_codice else None
 
         return {
-            "tipo_ruolo": ruolo["codice"],
+            "tipo_ruolo": ruolo["codice_interno"],
             "tipo_ruolo_descrizione": ruolo["descrizione"],
             "nature_ammesse": nature_ammesse,
             "tipi_soggetto_dettaglio": dettagli,

@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_cleanup_esclusa: la tabella e' esclusa dal cleanup? Una sede per la domanda che
+#   facevano da se' il runner del cleanup e la vista dei marcatori senza esecutore, e che il
+#   risolutore della scadenza (-85) aggiunge: alla seconda copia si estrae (D16 con N3).
+#   Brief: brief-db-revisione-dbops, giro 10b, blocco 10b-3 (§27).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-84-create-fn-cleanup-esclusa-mctit.yaml
+
+  - changeSet:
+      id: 20261109-84-create-fn-cleanup-esclusa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_cleanup_esclusa: la tabella e' esclusa dal cleanup. Brief: brief-db-revisione-dbops, giro 10b, blocco 10b-3 (§27).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_cleanup_esclusa'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_cleanup_esclusa(
+                  p_schema dbops.automation_cleanup_exclusions.schema_name%TYPE,
+                  p_table  dbops.automation_cleanup_exclusions.table_name%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: la tabella e' esclusa dal cleanup? Una riga abilitata di
+                  --   dbops.automation_cleanup_exclusions la toglie a tutte le regole CLEANUP_AT e
+                  --   CLEANUP_PURGE: niente scadenza, niente purge.
+                  -- Lettori: dbops.fn_cleanup_at_regola (la scadenza, per il trigger alla nascita e
+                  --   per il runner), dbops.fn_run_automations_cleanup (il salto della tabella),
+                  --   dbops.vw_marcatori_automazione_senza_esecutore (cleanup_at senza purge).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM dbops.automation_cleanup_exclusions e
+                       WHERE e.enabled
+                         AND e.schema_name = p_schema
+                         AND e.table_name  = p_table);
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_cleanup_esclusa(
+                  dbops.automation_cleanup_exclusions.schema_name%TYPE,
+                  dbops.automation_cleanup_exclusions.table_name%TYPE) IS
+              'true se la tabella ha una riga abilitata in dbops.automation_cleanup_exclusions: per il cleanup non esiste, ne'' per la scadenza (CLEANUP_AT) ne'' per il purge (CLEANUP_PURGE). Confronto esatto su schema e tabella. La leggono dbops.fn_cleanup_at_regola, dbops.fn_run_automations_cleanup e dbops.vw_marcatori_automazione_senza_esecutore.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_cleanup_esclusa(text, text);

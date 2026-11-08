@@ -40,7 +40,11 @@ BEGIN
         INSERT INTO config.stradario (
             stradario_generale_id, comune_id, codice_postale_id)
         VALUES (v_stradario_gen_id, p_comune_id, p_codice_postale_id)
-        ON CONFLICT (comune_id, stradario_generale_id, codice_postale_id) DO UPDATE
+        -- La chiave delle vie VIVE: l'indice e' parziale, e l'ON CONFLICT
+        -- nomina il predicato (senza, non lo troverebbe).
+        ON CONFLICT (comune_id, stradario_generale_id, codice_postale_id)
+           WHERE obsoleto_dal IS NULL
+        DO UPDATE
            SET comune_id = EXCLUDED.comune_id
         RETURNING id INTO v_stradario_id;
     END IF;
@@ -57,7 +61,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_create_indirizzo(p_stradario_id integer, p_toponomastica_id integer, p_descrizione_via character varying, p_comune_id integer, p_codice_postale_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying)
-IS 'Funzione madre atomica: risolve/crea lo stradario (upsert generale + civico-strada) e l''indirizzo di dettaglio in un''unica statement (o tutto o rollback). SECURITY INVOKER. Le validazioni via-nuova restano pre-check del service. Piano: analisi-fix-transazioni Classe D #13.';
+IS 'Funzione madre atomica dell''indirizzo: risolve o crea la via (la via generale e la via del comune, idempotenti) e l''indirizzo di dettaglio, in una sola istruzione. Una via nuova si cerca fra le vie vive: una via soppressa (config.stradario.obsoleto_dal) non si riusa, e se c''e'' solo lei nasce la via viva. Un indirizzo su una via soppressa passata per id lo rifiuta il guard del ritiro su anagrafiche.indirizzi_dettaglio. SECURITY INVOKER. Le validazioni della via nuova restano controlli preventivi del service.';
 ```
 
 </div>

@@ -7,7 +7,6 @@ Indice test eseguiti:
 5) FattureRigheServiceAggregazioneTests.test_stessa_chiave_produce_una_riga_sommata
 6) FattureRigheServiceAggregazioneTests.test_prezzo_diverso_produce_due_righe
 7) FattureRigheServiceAggregazioneTests.test_quantita_aggregata_non_arrotondata
-8) FattureRigheServiceAggregazioneTests.test_sorgente_non_scritta_su_riga_aggregata
 9) FattureRigheServiceAggregazioneTests.test_riga_nr_ordina_per_codice_articolo
 9b) FattureRigheServiceAggregazioneTests.test_riga_nr_stabile_al_variare_dell_ordine_di_arrivo
 9c) FattureRigheServiceAggregazioneTests.test_riga_senza_codice_resta_in_testa
@@ -239,9 +238,6 @@ def _attivita_base(attivita_id, quantita="2.0", articolo_id=ART_A, meta=None,
         quantita=Decimal(quantita),
         prezzo_unitario=Decimal("10.50"),
         uom_id=3,
-        sorgente_tipo_id=1,
-        sorgente_uid=f"SRC-{attivita_id}",
-        sorgente_riga=attivita_id,
         articolo_descrizione="Articolo test",
         meta=meta,
     )
@@ -325,7 +321,7 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
     #    il lookup dell'emittente aprirebbe una connessione, e in CI fallirebbe
     #    per un motivo che col grouping non c'entra.
     @patch("apps.vendite.services.iva_resolver_service.IvaResolverService")
-    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository", autospec=True)
     def test_group_attivita_returns_group_key(self, mock_ba_cls, mock_resolver_cls):
         mock_ba_cls.return_value.get_emittente_fiscale_id.return_value = 77
         mock_resolver_cls.return_value = _ResolverMock({})
@@ -404,14 +400,6 @@ class FattureRigheServiceAggregazioneTests(SimpleTestCase):
         # 0.666666 e NON 0.667: arrotondamento_quantita_dec=3 non si applica
         # all'aggregato.
         self.assertEqual(repo.last_kwargs["righe_qtas"], [Decimal("0.666666")])
-
-    # Scopo: Con n sorgenti non ne esiste una singola da dichiarare.
-    def test_sorgente_non_scritta_su_riga_aggregata(self):
-        repo = _RepoMock(attivita=[_attivita_base(11), _attivita_base(12)])
-        _genera(repo)
-        # Il repository non riceve affatto le sorgenti: le scrive NULL in SQL.
-        for chiave in ("sorgente_tipo_ids", "sorgente_uids", "sorgente_righe"):
-            self.assertNotIn(chiave, repo.last_kwargs)
 
     # Scopo: L'ordine dei gruppi non segue l'ordine di arrivo delle attività.
     # ⛔ E ORDINA PER CODICE, NON PER UUID (decisione di Tid, 2026-08-31): qui

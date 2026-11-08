@@ -60,7 +60,7 @@ gli esiti di **dominio** sono seedati dai domini in `80_data`. Fonte gestita: il
 ### Convenzioni
 
 * Pattern config standard: `codice`, `codice_interno` locked, `attivo`, `meta`, audit.
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 * Vocabolario **estendibile per configurazione**: nuovi esiti = nuove righe (nessun DDL,
   nessun codice di motore).
 

@@ -1,47 +1,52 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_flussi_guard_prerequisiti`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_guard_prerequisiti`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.fn_guard_prerequisiti_flusso](fn_guard_prerequisiti_flusso.md)
-> [pratiche.fn_check_prerequisiti_flusso](fn_check_prerequisiti_flusso.md)
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — la tabella su cui scatta il trigger
+> * [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti) — i prerequisiti dichiarati sul template
 >
-Tabelle:
+> Approfondimento funzioni:
 >
-[pratiche.flussi](flussi.md)
-> [pratiche.template_flussi_prerequisiti](template_flussi_prerequisiti.md)
+> * [pratiche.fn_guard_prerequisiti_flusso](/dbzero/pratiche/funzioni/fn_guard_prerequisiti_flusso) — la sentinella che solleva l'errore
+> * [pratiche.fn_check_prerequisiti_flusso](/dbzero/pratiche/funzioni/fn_check_prerequisiti_flusso) — il controllo puro, dove sta la regola
+> * [pratiche.trgfn_flussi_guard_ripetibilita](/dbzero/pratiche/funzioni/trgfn_flussi_guard_ripetibilita) — l'involucro gemello per la ripetibilità
 
 ---
+
 ### 🎯 Scopo Principale
-Trigger function wrapper per la guard prerequisiti. Si attiva **BEFORE INSERT** su `pratiche.flussi`: se il flusso ha un `template_flusso_id` valorizzato, delega la verifica a `fn_guard_prerequisiti_flusso`.
 
-I flussi manuali (senza template, `template_flusso_id IS NULL`) bypassano il controllo.
-
----
-
-### Firma
-
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_prerequisiti()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+La trigger function `pratiche.trgfn_flussi_guard_prerequisiti` applica i prerequisiti del template a
+ogni nuovo flusso di pratica: delega la verifica a `pratiche.fn_guard_prerequisiti_flusso`, che rifiuta
+l'inserimento quando i prerequisiti non sono soddisfatti.
 
 ---
 
-### Logica
+### Le regole
 
-1. Se `NEW.template_flusso_id IS NOT NULL` → chiama `fn_guard_prerequisiti_flusso(NEW.pratica_id, NEW.template_flusso_id)`.
-2. Se i prerequisiti non sono soddisfatti, la guard solleva eccezione e blocca l'INSERT.
-3. Se `template_flusso_id IS NULL` → nessun controllo, RETURN NEW.
+* Il controllo vale per ogni flusso, perché ognuno nasce da un template (`template_flusso_id` è
+  obbligatorio); un template senza prerequisiti dichiarati passa.
+* La regola non è scritta qui: sta in `pratiche.fn_check_prerequisiti_flusso`, e la sentinella aggiunge
+  l'errore. Il trigger è solo l'aggancio, così la regola vale per ogni strada di scrittura.
+
+Scatta prima di ogni inserimento in `pratiche.flussi`, nella fase dei guard.
 
 ---
 
-### Trigger associato
+### Codici errore
 
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_flussi_a10_guard_prerequisiti_ins` | BEFORE | INSERT | `pratiche.flussi` |
+* `E_PRATICHE_PREREQUISITI_NON_SODDISFATTI` — sollevato dalla sentinella.
 
-Fase `_a10_`: guard/block — esegue prima di qualsiasi altra logica.
+---
+
+### Test
+
+* `pratiche/test-fn-guard-prerequisiti-flusso` — la sentinella e il rifiuto sull'inserimento.
+* `pratiche/test-trigger-guard-flussi` — i guard montati su `pratiche.flussi`.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.emittente_modi: il registro dei modi con cui una riga raggiunge il suo
+#   emittente. La sede unica del vocabolario e della strada di ogni modo.
+#   Brief: brief-db-revisione-dbops, D21 (blocco 4b; decisione di Tid del
+#   2026-11-07: sede unica, risolutore generato dal registro).
+#
+# ⚠️ IL DIFETTO (D21). I modi erano scritti in quattro posti: i rami di
+#   script.fn_resolve_emittente_fiscale_id, il messaggio del suo ramo ELSE, i
+#   tre rami del gemello script.fn_resolve_emittente_sr_id e il CHECK
+#   chk_processi_bersagli_via, gia' divergente (cinque valori, uno, «padre», che
+#   il risolutore non conosce).
+#
+# ⭐ LA FORMA. Ogni modo legge una tabella per chiave e trova l'emittente in uno
+#   di tre modi:
+#     PK    la colonna e' l'id dell'emittente fiscale (emittente_fiscale_id);
+#     SR    la colonna e' il soggetto-ruolo dell'emittente;
+#     SALTO la colonna e' la FK verso una testata, che ha il suo modo (modo_padre).
+#   I due risolutori li genera dbops.fn_genera_risolutori_emittente da queste
+#   righe, con SQL statico (un ramo per modo, i salti appiattiti in JOIN): la
+#   strada si scrive qui, una volta.
+#
+# Le righe le scrive solo il seed (80_data/sql/dbops/emittente_modi.csv), dal
+#   proprietario della tabella: il guard dbops.trgfn_emittente_modi_solo_migrazione
+#   (20_code) rifiuta gli altri. Un modo e' DDL della funzione che regge la
+#   separazione fra aziende, non configurazione.
+#
+# modo_padre: FK su se stessa, differita (il loader del CSV inserisce riga per
+#   riga, e un salto puo' venire prima della sua testata).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261107-31-create-emittente-modi-mctit.yaml
+
+  - changeSet:
+      id: 20261107-31-create-emittente-modi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova dbops.emittente_modi: il registro dei modi di risoluzione dell'emittente (tabella,
+        chiave, forma PK/SR/SALTO, colonna, modo padre), sede unica da cui si generano i due
+        risolutori (D21, blocco 4b).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists: { schemaName: dbops, tableName: emittente_modi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE dbops.emittente_modi (
+                  modo            text NOT NULL
+                                    CONSTRAINT pk_emittente_modi PRIMARY KEY,
+                  schema_tabella  text NOT NULL,
+                  nome_tabella    text NOT NULL,
+                  colonna_chiave  text NOT NULL DEFAULT 'id',
+                  forma           text NOT NULL,
+                  colonna         text NOT NULL,
+                  modo_padre      text NULL,
+                  note            text NULL,
+                  data_insert     timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert     text NOT NULL DEFAULT CURRENT_USER,
+                  data_update     timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update     text NOT NULL DEFAULT CURRENT_USER,
+                  tx_id           uuid NULL,
+                  -- il modo finisce in un letterale del risolutore e nei montaggi dei guard
+                  CONSTRAINT chk_emittente_modi_modo
+                      CHECK (modo ~ '^[a-z][a-z0-9_]*$'),
+                  CONSTRAINT chk_emittente_modi_forma
+                      CHECK (forma IN ('PK', 'SR', 'SALTO')),
+                  -- un salto ha la sua testata, una radice no
+                  CONSTRAINT chk_emittente_modi_padre
+                      CHECK ((forma = 'SALTO') = (modo_padre IS NOT NULL)),
+                  CONSTRAINT chk_emittente_modi_padre_diverso
+                      CHECK (modo_padre IS DISTINCT FROM modo),
+                  CONSTRAINT fk_emittente_modi_modo_padre
+                      FOREIGN KEY (modo_padre) REFERENCES dbops.emittente_modi (modo)
+                      DEFERRABLE INITIALLY DEFERRED
+              );
+
+              CREATE INDEX ix_emittente_modi_modo_padre
+                  ON dbops.emittente_modi (modo_padre);
+
+              COMMENT ON TABLE dbops.emittente_modi IS
+                  'I modi con cui una riga raggiunge il suo emittente: la sede unica del vocabolario e della strada di ogni modo. Ogni riga legge una tabella per chiave (colonna_chiave) e trova l''emittente nella colonna, secondo la forma: PK (la colonna e'' l''id dell''emittente fiscale), SR (la colonna e'' il soggetto-ruolo dell''emittente), SALTO (la colonna e'' la FK verso la testata, che ha il suo modo, modo_padre). Da queste righe dbops.fn_genera_risolutori_emittente genera script.fn_resolve_emittente_fiscale_id e script.fn_resolve_emittente_sr_id: un modo nuovo e'' una riga del seed, mai un ramo scritto a mano. La scrive solo il proprietario della tabella, cioe'' il migrate (dbops.trgfn_emittente_modi_solo_migrazione). La leggono anche dbops.processi_bersagli (la via dichiarata e'' un modo) e i guard di scrittura script.trgfn_guard_emittente_scope, che ricevono il modo come primo argomento.';
+              COMMENT ON COLUMN dbops.emittente_modi.modo IS
+                  'Il nome del modo: il primo argomento di script.fn_resolve_emittente_fiscale_id e di script.fn_resolve_emittente_sr_id, e del guard di scrittura che li chiama.';
+              COMMENT ON COLUMN dbops.emittente_modi.schema_tabella IS
+                  'Lo schema della tabella da cui il modo parte.';
+              COMMENT ON COLUMN dbops.emittente_modi.nome_tabella IS
+                  'La tabella da cui il modo parte: la riga si cerca qui, per colonna_chiave.';
+              COMMENT ON COLUMN dbops.emittente_modi.colonna_chiave IS
+                  'La colonna su cui si cerca il valore passato al risolutore; id per tutti i modi tranne soggetto_ruolo, che cerca un emittente fiscale per il suo soggetto-ruolo.';
+              COMMENT ON COLUMN dbops.emittente_modi.forma IS
+                  'Come la riga trovata porta all''emittente: PK, la colonna e'' l''id dell''emittente fiscale; SR, la colonna e'' il soggetto-ruolo dell''emittente; SALTO, la colonna e'' la FK verso la testata, che si risolve col modo_padre.';
+              COMMENT ON COLUMN dbops.emittente_modi.colonna IS
+                  'La colonna della riga che la forma legge: l''emittente fiscale (PK), il soggetto-ruolo dell''emittente (SR) o la FK verso la testata (SALTO).';
+              COMMENT ON COLUMN dbops.emittente_modi.modo_padre IS
+                  'Per un SALTO, il modo della testata a cui la FK punta; la sua chiave e'' la colonna_chiave del modo padre. Vuoto per le radici (PK, SR).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.emittente_modi;

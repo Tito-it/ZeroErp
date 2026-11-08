@@ -1,82 +1,118 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_riferimenti_morti_rientrati`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/tabelle/riferimenti_morti_esenzioni)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [dbops.fn_check_funzioni_riferimenti_morti](/dbzero/dbops/funzioni/fn_check_funzioni_riferimenti_morti)
+> * [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/tabelle/riferimenti_morti_esenzioni) — il registro che la vista rilegge
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — la riga di catalogo del presidio
 >
-Approfondimento viste:
-> • [dbops.vw_riferimenti_morti_da_sanare](/dbzero/dbops/views/vw_riferimenti_morti_da_sanare)
+> Approfondimento viste:
+>
+> * [dbops.vw_riferimenti_morti_da_sanare](/dbzero/dbops/views/vw_riferimenti_morti_da_sanare) — la gemella, dal verso dei difetti
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_check_funzioni_riferimenti_morti](/dbzero/dbops/funzioni/fn_check_funzioni_riferimenti_morti) — la misura
+>
+> Guide:
+>
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — perché un registro ha due versi
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
-
-Le voci del registro del debito che **non corrispondono più a nessun difetto**: righe da
-**togliere**.
-
-È il verso opposto della gemella `vw_riferimenti_morti_da_sanare`, e insieme fanno una cosa
-che nessuna delle due fa da sola — **impedire al registro di gonfiarsi**.
-
-Al 2026-08-21: **zero righe**.
+Le voci del registro del debito sui riferimenti morti che non corrispondono più a nessun difetto:
+righe da togliere. È ciò che impedisce al registro di diventare un elenco di eccezioni permanenti.
 
 ---
 
 ### ⚠️ Perché senza questa vista il presidio si degrada da solo
 
-Un registro di esenzioni ha una tendenza naturale: si riempie e non si svuota. Ogni difetto
-giudicato accettabile aggiunge una riga; quando il difetto viene sanato, **nessuno torna
-indietro a togliere l'esenzione**, perché niente lo segnala.
-
-Il risultato, dopo un po', è un guardrail verde che non presidia quasi nulla: la maggior parte
-del perimetro è esentata, e nessuno sa più quali esenzioni servano davvero.
-
-Questa vista è ciò che rompe quel meccanismo: rende **visibile** l'esenzione diventata
-inutile. È la ragione per cui il registro può essere chiamato «debito» e non «elenco di
-eccezioni».
+Un registro di esenzioni tende a riempirsi e a non svuotarsi: ogni difetto giudicato accettabile
+aggiunge una riga, e quando il difetto si sana nessuno torna a togliere l'esenzione, perché niente
+lo segnala. Dopo un po' il guardrail è verde e non presidia quasi nulla. Questa vista rende visibile
+l'esenzione diventata inutile: è la ragione per cui il registro si può chiamare «debito».
 
 ---
 
 ### Come funziona
 
-`NOT EXISTS` rovesciato: per ogni riga di `riferimenti_morti_esenzioni`, verifica se esiste
-ancora un difetto `REALE`/`ORFANA` che corrisponda a quello schema, quella funzione e quel
-pattern `esito_like`. Se non esiste, la riga è **rientrata** e va rimossa.
+Per ogni voce del registro la vista pone due domande alla misura:
 
-Espone anche `motivo` e `data_registrazione`, così chi la toglie vede perché era stata messa e
-da quanto tempo.
+1. trova ancora un difetto `REALE` o `ORFANA` con lo stesso schema, la stessa funzione e un esito
+   che corrisponde al pattern?
+2. la funzione della voce è uscita `NON_MISURATO`, cioè `plpgsql_check` non l'ha potuta controllare?
+
+La voce è rientrata solo se la risposta è **no a entrambe**. Espone anche il motivo e la data di
+registrazione, così chi la toglie vede perché era stata messa e da quanto.
+
+La misura si legge **una volta sola** per interrogazione: compila centinaia di funzioni, e le due
+domande la chiederebbero due volte.
+
+---
+
+### ⛔ Una funzione non misurata non è «rientrata»
+
+Se lo strumento non ha potuto misurare la funzione esentata (`NON_MISURATO`), di quella funzione non
+si sa niente: né che il difetto c'è ancora, né che è sparito. Dare la voce per rientrata vorrebbe
+dire svuotare il registro proprio quando lo strumento si rompe. Per questo la vista la tiene fuori,
+e resta in silenzio.
+
+⇒ Il rosso della misura mancata non sta qui: lo danno
+[vw_riferimenti_morti_da_sanare](/dbzero/dbops/views/vw_riferimenti_morti_da_sanare), che elenca le
+funzioni `NON_MISURATO`, e il guardrail della CI, che si ferma per primo su quella classe. Le due
+viste vanno lette insieme.
+
+⚠️ Una funzione che **non esiste più** non compare nella misura, né come difetto né come
+`NON_MISURATO`: la sua voce esce rientrata, ed è giusto, perché non copre più niente.
 
 ---
 
 ### ⚠️ Una riga qui non è sempre «difetto sanato»
 
-Può anche voler dire che la **funzione è stata rinominata o eliminata**, o che l'`esito_like`
-non corrisponde più perché il messaggio di `plpgsql_check` è cambiato — per esempio dopo un
-aggiornamento dell'estensione, o dopo un ritocco che ha spostato i numeri di riga.
-
-Prima di togliere una voce vale quindi la pena controllare che la funzione esista ancora e che
-il difetto sia davvero sparito, non solo che il pattern non agganci più.
+La funzione può essere stata **rinominata o eliminata**, o il messaggio di `plpgsql_check` può
+essere cambiato (un aggiornamento dell'estensione, un ritocco che sposta il testo): il pattern non
+aggancia più. Prima di togliere una voce si controlla che il difetto sia davvero sparito.
 
 ---
 
-### ⚠️ Costa quanto la funzione che la alimenta
+### Legge con gli occhi di chi interroga
 
-Come la gemella: fa girare `plpgsql_check_function` su tutto il database. Guardrail e test,
-non percorsi frequenti.
-
-Comporre le due viste in una query sola è **corretto** — verificato il 2026-08-21, lo stato
-d'appoggio condiviso della funzione non crea interferenza — ma esegue il controllo **due
-volte**.
+La vista è `security_invoker`, e la misura sotto vede solo ciò che il chiamante può compilare: da un
+ruolo che non possiede gli oggetti ispezionati la risposta cambia. Nel catalogo il suo perimetro è
+`DEFINER`: il digest la conta come proprietario e riporta il numero, non le righe. Costa quanto la
+gemella: fa girare `plpgsql_check` su tutto il database.
 
 ---
 
-### Scope
+### Test
 
-`WITH (security_invoker = on)`.
+* `db/pgtap/dbops/test-riferimenti-morti-v1.sql`:
+  * nessuna voce rientrata nel registro, dallo stesso ruolo da cui si misura;
+  * test 9-11 — la vista viva su una misura **costruita**: il testo della vista, con la chiamata
+    alla misura sostituita da una funzione temporanea con le stesse colonne (il 9 prova che la
+    sostituzione avviene). Il 10 prova che una voce su una funzione `NON_MISURATO` non è rientrata;
+    l'11 che una voce ancora coperta da un difetto non è rientrata, e una su una funzione che la
+    misura non vede più sì. La misura è costruita perché il caso vero non si riproduce in un test:
+    `plpgsql_check` riferisce qualunque funzione costruibile, e solleva solo per l'ambiente
+    (estensione irraggiungibile, lock).
+
+---
+
+### Note di migrazione
+
+* 2026-08-04 — nasce con `brief-db-bonifica-riferimenti-morti` §5, insieme alla gemella.
+* 2026-09-10 — la riga di catalogo passa a perimetro `DEFINER`: letta da un ruolo che non possiede
+  gli oggetti ispezionati, la vista rispondeva in modo diverso dal proprietario.
+* 2026-09-14 — il primo digest settimanale dà rientrata la voce legata a pgAgent: era il ruolo che
+  misurava, non la funzione. Da lì una classe nuova nella misura e una voce che segue la macchina.
+* 2026-11-04 — D7 di `brief-db-revisione-dbops`: una voce la cui funzione esce `NON_MISURATO` non è
+  più rientrata (prima il registro si svuotava proprio quando lo strumento si rompeva); la misura si
+  legge una volta sola.
 
 ---
 

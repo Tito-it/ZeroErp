@@ -11,14 +11,12 @@
 | target_schema | text | NO |  |
 | target_table | text | NO |  |
 | column_name | text | NO |  |
-| error_code | text | NO | 'CODICE_NON_MODIFICABILE'::text |
+| error_code | text | NO |  |
 | exec_mode | text | NO | 'AUTO'::text |
 | enabled | boolean | NO | true |
 | note | text | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -1,310 +1,312 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.articoli`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento Tabelle**   
-> • [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)     
-> • [`vendite.articoli_tipologie`](/dbzero/vendite/tabelle/articoli_tipologie)    
-> • [`vendite.articoli_gruppi`](/dbzero/vendite/tabelle/articoli_gruppi)    
-> • [`vendite.articoli_spesa`](/dbzero/vendite/tabelle/articoli_spesa)   
-> • [`config.iva`](/dbzero/config/tabelle/iva)   
-> • [`config.conti_contabili`](/dbzero/config/tabelle/conti_contabili)   
-> • *(opz.)* [`catalogo.articoli_componenti`](/dbzero/catalogo/tabelle/articoli_componenti) – per gli articoli compositi   
+> Approfondimento tabelle:
 >
-**Approfondimento Trigger/Funzioni**   
-> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
-> • [`script.trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
-> • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)   
+> * [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura) — l'unità principale dell'articolo
+> * [catalogo.articoli_uom_operativa](/dbzero/catalogo/tabelle/articoli_uom_operativa) — le unità in cui l'articolo si muove, con la riga base che nasce qui
+> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — la distinta di un articolo composito
+> * [config.nature_vendita](/dbzero/config/tabelle/nature_vendita) — dove va la riga venduta
+> * [config.causali_onere](/dbzero/config/tabelle/causali_onere) — la causale che fa di un articolo un onere
+> * [config.modi_approvvigionamento](/dbzero/config/tabelle/modi_approvvigionamento) — da dove arriva la merce
+> * [dbops.lock_columns_conditional](/dbzero/dbops/tabelle/lock_columns_conditional) — le regole che spengono i campi nel form
+>
+> Approfondimento viste:
+>
+> * [catalogo.vw_articoli_dettaglio](/dbzero/catalogo/views/vw_articoli_dettaglio) — l'articolo con le decodifiche, per la lista e il drawer
+>
+> Approfondimento funzioni:
+>
+> * [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — il predicato «l'articolo è usato»
+> * [catalogo.trgfn_articoli_guard_struttura_se_usato](/dbzero/catalogo/funzioni/trgfn_articoli_guard_struttura_se_usato) — un articolo usato non cambia struttura
+> * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — i flag di struttura e la distinta
+> * [catalogo.trgfn_articoli_guard_iva_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_iva_bom_attiva) — l'IVA uguale fra kit e componenti
+> * [catalogo.trgfn_articoli_guard_onere_natura](/dbzero/catalogo/funzioni/trgfn_articoli_guard_onere_natura) — un onere non è merce né un bene
+> * [catalogo.trgfn_articoli_seed_uom_base](/dbzero/catalogo/funzioni/trgfn_articoli_seed_uom_base) — la riga base dell'unità operativa
+> * [catalogo.fn_articolo_correggi_struttura](/dbzero/catalogo/funzioni/fn_articolo_correggi_struttura) — la porta amministratore per un errore di caricamento
+> * [vendite.fn_resolve_iva_riga](/dbzero/vendite/funzioni/fn_resolve_iva_riga) — il risolutore IVA, che chiede prima all'articolo
+>
+> Guide:
+>
+> * [Uso di obsoleto](/guide/uso-di-obsoleto) — ritirare un articolo senza cancellarlo
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 13-01-26)
-`catalogo.articoli` è l’anagrafica **centrale** di articoli/voci, utilizzabile sia per il **catalogo prodotti** tradizionale sia per **voci utility** (canoni, oneri, misurazioni, ecc.). Supporta:
 
-* **classificazione** (tipologia, gruppo, voce di spesa);
-* **fiscalità** (IVA, conti contabili di vendita/acquisto);
-* **logistica/tracciabilità** (`requires_serial`, `requires_lotto` — due domande **indipendenti**, vedi sotto);
-* **distinta base leggera** (`is_composito`, via tabella componenti);
-* **aspetti documentali** (`voce_utility`).
+Anagrafica unica di articoli, servizi e oneri, comune a tutte le aziende. Ogni riga di
+documento, listino, commessa e movimento di magazzino punta a un articolo di questa tabella.
 
----
-
-### Relazioni
-
-| Tipo | Tabella ↔ Campo                                                  | Descrizione                  |
-| ---- | ---------------------------------------------------------------- | ---------------------------- |
-| FK → | `catalogo.unita_misura(id)` ← `uom_id`                           | Unità di misura principale   |
-| FK → | `vendite.articoli_tipologie(id)` ← `tipo_voce_id`                | Tipologia articolo/voce      |
-| FK → | `vendite.articoli_gruppi(id)` ← `gruppo_voce_id`                 | Raggruppamento merceologico  |
-| FK → | `vendite.articoli_spesa(id)` ← `spesa_id`                        | Collegamento a voce di spesa |
-| FK → | `config.iva(id)` ← `iva_id`                                      | Aliquota IVA                 |
-| FK → | `config.conti_contabili(id)` ← `conto_contabile_vendita_id`      | Conto vendite                |
-| FK → | `config.conti_contabili(id)` ← `conto_contabile_acquisto_id`     | Conto acquisti               |
-| FK → | `catalogo.note(target_tipo, id)` ← `(note_target_tipo, note_id)` | Nota associata all’articolo  |
-| FK → | `config.listini_tipologie(id)` ← `listino_tipologia_id`          | Tipologia listino v5         |
+L'articolo dice come si vende (natura di vendita, IVA, tipologia di listino), come sta a
+magazzino (gestito o no, a lotti, a matricola), se è un kit (`is_composito`) o solo un pezzo
+di un kit (`is_solo_componente`), e se è un onere. Il catalogo non ha RLS: un articolo è lo
+stesso per tutte le aziende, i documenti che lo usano no.
 
 ---
 
-### Struttura logica (campi chiave)
+### ⭐ Il codice e l'unità principale non cambiano
 
-* **Identità**: `id UUID` (PK), `codice VARCHAR(50)` (**UNIQUE**), `descrizione VARCHAR(150)`, `descrizione_breve VARCHAR(80)`
-* **Classificazione**: `uom_id`, `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`
-* **Fiscale/Contabile**: `iva_id`, `conto_contabile_vendita_id`, `conto_contabile_acquisto_id`
-
-> ⭐ **`iva_id` e` il PRIMO gradino del risolutore IVA** (dal 2026-08-29):
-> `vendite.fn_resolve_iva_riga` chiede prima all'articolo, e se l'articolo
-> risponde la sua risposta **vince** — nemmeno l'uso della fornitura la scavalca.
->
-> ⛔ **E il suo `NULL` SIGNIFICA qualcosa: «non ho un'opinione sull'IVA».** Non e`
-> un dato mancante da bonificare, ed e` il motivo per cui la colonna e` nullabile.
-> Renderla `NOT NULL` «per igiene» spegnerebbe il secondo gradino — quello che
-> legge il tipo d'uso della fornitura — perche` il risolutore non avrebbe piu`
-> modo di sapere quando l'articolo non ha niente da dire.
-* **Flag funzionali**: `is_composito` (distinta), `is_solo_componente` (solo componente), `requires_serial` (serializzazione), `requires_lotto` (partita, dal 2026-09-14), `voce_utility` (voce utility)
-* **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
-* **Tecnico**: `meta JSONB`, `attivo BOOLEAN` (default `true`), `storicizza BOOLEAN` (default `true`), `tx_id UUID`
-* **Audit**: `user_insert`, `user_update`, `data_insert`, `data_update`
+* `codice` è univoco (`uq_articoli_codice`) ed è scritto sempre in maiuscolo da
+  `script.trgfn_codice_maiuscolo`, all'inserimento e a ogni modifica.
+* `codice` e `uom_id` non si cambiano dopo la creazione. Il lock lo genera l'automazione dal
+  registro `dbops.automation_lock_columns`, con `script.trgfn_lock_columns`; il nome del trigger
+  lo decide il template, e chi lo verifica lo cerca per funzione e argomenti.
+* Una manutenzione può aprire il lock nella sola transazione con la GUC
+  `zeroerp.allow_lock_columns_override`.
+* Per cambiare l'unità principale si crea un articolo nuovo: il vecchio resta com'è, insieme ai
+  documenti che lo usano.
 
 ---
 
-### 🚦 Vincoli & Regole
+### La riga base dell'unità operativa nasce con l'articolo
 
-* **Univocità**: `uq_articoli_codice (codice)` → un codice per articolo.
-* **Integrità referenziale**: tutte le FK sono `ON UPDATE CASCADE` / `ON DELETE NO ACTION` (salvo diversa policy su note).
-* **Note**: `note_target_tipo` è vincolato a `ARTICOLO` quando valorizzato (il codice della partizione
-  `catalogo.note_articoli`; fino al 2026-10-25 `ARTICOLI`, varchar(32), ora varchar(50)).
-* **Solo componente**: se `is_solo_componente=true` l’articolo non può essere usato come prodotto in `articoli_componenti`.
-* **`uom_id` obbligatorio**: dalla revisione del 07-04-2026 la colonna è `NOT NULL`. L'unità di misura principale è anagrafica e necessaria per il seed automatico della UoM operativa base.
-* **Tipologia listino (pricing v5, 14-04-2026)**: `listino_tipologia_id` nullable, FK a `config.listini_tipologie`. Un articolo senza tipologia non puo' essere inserito in un listino tipizzato (motivo di `script.fn_check_articolo_riga` per la versione di listino, sollevato dal guard `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd`; codice errore `E_ARTICOLO_TIPOLOGIA_MANCANTE`). Un articolo con tipologia diversa dalla tipologia del listino genera `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`. Backfill iniziale (14-04-2026): articoli con `voce_utility = false` mappati automaticamente a `PRODOTTI`; articoli voce utility lasciati NULL per mapping manuale alle 4 tipologie tecniche (`CONSUMO`, `QUOTA_FISSA`, `IMPOSTA`, `ONERE_SISTEMA`).
-
-> Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
+Dopo l'inserimento di un articolo, `catalogo.trgfn_articoli_seed_uom_base` scrive in
+`catalogo.articoli_uom_operativa` la riga base: l'unità principale dell'articolo, con fattore
+uno. Così l'unità principale è subito usabile nei documenti, senza un secondo passo. Se la coppia
+articolo-unità esiste già, la scrittura non fa niente.
 
 ---
 
-### Seed automatico UoM operativa base
+### Le relazioni
 
-(introdotto 07-04-2026)
-
-Quando viene inserito un articolo, il trigger **`trg_articoli_a10_seed_uom_base_ins`**
-(funzione `catalogo.trgfn_articoli_seed_uom_base`) crea automaticamente una riga
-in `catalogo.articoli_uom_operativa` con:
-
-* `articolo_id` = `NEW.id`
-* `uom_id` = `NEW.uom_id` (la UoM anagrafica dell'articolo)
-* `is_base` = `true`
-* `factor_to_base` = `1`
-* `attivo` = `true`
-
-Questo garantisce che la **UoM principale** dell'articolo sia sempre disponibile come
-**UoM operativa base** senza richiedere uno step manuale dopo la creazione.
-
-**Caratteristiche del seed**:
-
-* Trigger `AFTER INSERT` per garantire che la riga padre in `articoli` esista già
-* Idempotente via `ON CONFLICT ON CONSTRAINT uq_artuomop_articolo_uom DO NOTHING`
-* Nessun backfill sugli articoli pre-esistenti: si applica solo ai nuovi `INSERT`
+* Quasi tutte le FK sono `ON UPDATE CASCADE` e senza azione alla cancellazione. Fanno eccezione
+  `uom_id` e `causale_onere_id`, senza `CASCADE`.
+* La nota dell'articolo è la coppia `note_target_tipo`, `note_id`, che punta a `catalogo.note`.
+  `note_target_tipo` vale `ARTICOLO` o è vuoto. Se la nota si cancella, la coppia si svuota.
+* I vocabolari puntati devono essere attivi: unità, IVA, natura, causale, tipologia di
+  listino, modo di approvvigionamento, tipologia, gruppo e spesa (i conti contabili no). Il
+  controllo è un trigger differito, quindi l'errore arriva al COMMIT.
 
 ---
 
-### Lock di `codice` e `uom_id` su UPDATE
+### ⛔ `iva_id` vuota vuol dire «l'articolo non ha un'opinione sull'IVA»
 
-`codice` e `uom_id` di `catalogo.articoli` sono bloccati in UPDATE da **un solo**
-trigger, `trg_articoli_a10_lock_columns_upd`, che riusa `script.trgfn_lock_columns`.
-Il codice è l'identità dell'articolo e la UoM principale è **anagrafica**: nessuno
-dei due si cambia dopo la creazione.
+L'articolo è il primo gradino del risolutore IVA (`vendite.fn_resolve_iva_riga`). Se
+l'articolo ha un'aliquota, è quella che compete alla merce, e l'uso della fornitura non la
+scavalca; un titolo IVA del cliente la può sostituire sulla riga. Se `iva_id` è vuota, il
+risolutore passa al gradino dopo, il tipo d'uso della fornitura.
 
-* **Codice errore**: `E_CODICE_NON_MODIFICABILE` (messaggio parametrico sul nome della colonna)
-* **Override manutenzione**: `SET LOCAL zeroerp.allow_lock_columns_override = 'on';` consente la modifica nei contesti di migrazione/manutenzione
-* **Per cambiare la UoM principale**: creare un nuovo articolo (l'articolo storico resta intatto)
-
-⚠️ **Fino al 22-09-2026 i trigger erano DUE e scritti a mano**
-(`trg_articoli_a10_protect_codice_upd`, `trg_articoli_a10_protect_uom_id_upd`):
-sollevavano `CODICE_NON_MODIFICABILE`, ritirato il 2026-08-05, e — pur usando la
-stessa funzione dell'automazione — `codice` non era nel registro
-[dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns),
-cioè erano oggetti che *sembravano* governati dall'automazione e non lo erano.
-Dal 23-09 il registro li dichiara entrambi e il trigger lo **genera l'automazione**:
-uno solo, con tutte le colonne. Brief: `brief-db-codici-ritirati-negli-argomenti-dei-trigger`.
-
-⛔ **Il nome non si cita come contratto**: lo decide il template dell'automazione.
-Chi deve verificare il lock lo cerca per **funzione e argomenti**, come fa
-`db/pgtap/catalogo/test-articoli-seed-uom-base-lock.sql` (test 3) — che infatti era
-diventato rosso pinnando il nome vecchio.
+Per questo la colonna è nullabile e deve restarlo. Renderla obbligatoria «per igiene»
+spegnerebbe il secondo gradino.
 
 ---
 
-### Indicizzazione
+### La natura di vendita dice dove va la riga venduta
 
-* *(Valuta se necessario)* indici su FK usate spesso in filtro: `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`, `iva_id`, `attivo`.
-
----
-
-
----
-
-### Query tipiche
-
-**1) Articoli attivi per tipologia e gruppo**
-
-```sql
-SELECT a.id, a.codice, a.descrizione
-FROM catalogo.articoli a
-WHERE a.attivo = true
-  AND a.tipo_voce_id   = :tipo_id
-  AND a.gruppo_voce_id = :gruppo_id
-ORDER BY a.descrizione;
-```
-
-**2) Articoli compositi con componenti (schema indicativo)**
-
-```sql
-SELECT p.codice   AS prodotto,
-       c.codice   AS componente
-FROM catalogo.articoli_componenti ac
-JOIN catalogo.articoli p ON p.id = ac.prodotto_id
-JOIN catalogo.articoli c ON c.id = ac.componente_id
-WHERE p.is_composito = true
-  AND p.attivo = true
-ORDER BY p.codice, c.codice;
-```
-
-**3) Verifica coerenza UoM attiva (diagnostica)**
-
-```sql
-SELECT a.id, a.codice
-FROM catalogo.articoli a
-LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
-WHERE a.uom_id IS NOT NULL
-  AND (u.attivo IS DISTINCT FROM true);
-```
+`natura_vendita_id` è obbligatoria, e un articolo creato senza dirla nasce merce. La
+destinazione della natura instrada la riga dopo l'accettazione: `ORDINE_VENDITA` per la merce,
+`COMMESSA` per il servizio una tantum, `CONTRATTO` per il servizio ricorrente. La natura è
+copiata sulla riga del documento quando la riga nasce: cambiarla qui non tocca le righe
+esistenti.
 
 ---
 
-### Best practice
+### La tipologia di listino
 
-* **Normalizzazione codice**: valuta un trigger di normalizzazione (trim/uppercase opzionale) e **protezione update** del campo `codice`.
-* **Serializzazione e lotto — due booleani, non un enum** (magazzino Lotto 1, 2026-09-14):
-  `requires_serial` dice *«ogni pezzo ha una matricola»* → `magazzino.assets`, una riga per
-  pezzo, `|qta| = 1` sul movimento; `requires_lotto` dice *«ogni carico appartiene a una
-  partita»* → `magazzino.lotti`, con data d'arrivo e scadenza. Un articolo può volerne uno,
-  entrambi o nessuno (reagente / apparecchiatura / dispositivo medico). Li legge la
-  **primitiva di scrittura del magazzino** (Lotto 2): un movimento senza il lotto o il
-  seriale che l'articolo pretende è rifiutato lì.
-  ⚠️ **Non sono simmetrici nel comportamento**: `requires_serial` è anche un **flag di
-  struttura BoM** — congelato da `trgfn_articoli_guard_flags_struttura_bom_attiva` insieme a
-  `is_composito`/`is_solo_componente` quando l'articolo è padre di una distinta attiva,
-  registrato in `dbops.lock_columns_conditional`, e il drawer lo disabilita via
-  `non_editable_fields`. `requires_lotto` è **fuori** da quel guard e da quel registro per
-  decisione (analisi carico/scarico §7-quater p.3: una partita non è struttura di
-  composizione): chi lo espone nel drawer **non** deve copiare il lucchetto. Dal 2026-09-18
-  `requires_lotto` è in `vw_articoli_dettaglio` (in coda, `20260918-10`) e la primitiva di
-  magazzino lo fa rispettare (`E_MAG_LOTTO_OBBLIGATORIO`/`_NON_AMMESSO`); il drawer lo prende
-  con la richiesta BE/FE del Lotto 2. `gestito_a_magazzino` è la prima cosa che la primitiva
-  guarda (`E_MAG_ARTICOLO_NON_GESTITO`, campo `articolo_id`), e la spia
-  `dbops.vw_articoli_a_magazzino_prontezza` dice se almeno un articolo attivo è marcato.
-* **IVA e conti contabili**: applica regole applicative per la coerenza tra `iva_id` e tipo articolo (es. voci esenti).
-* **`meta` JSONB**: usa chiavi stabili (namespace logici: `utility.*`, `ui.*`, `calc.*`) e considera indici GIN se interrogato.
-* **Storicizza** anziché cancellare: usa `attivo=false` e lascia che i trigger di storico fotografino le modifiche.
+Un articolo senza `listino_tipologia_id` non entra in un listino tipizzato
+(`E_ARTICOLO_TIPOLOGIA_MANCANTE`), e un articolo di un'altra tipologia nemmeno
+(`E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`). Lo decide la check delle righe di listino, non questa
+tabella.
 
 ---
 
-### 🔒 Un articolo usato non cambia la sua struttura (A-10, 2026-10-13)
+### Matricola e lotto sono due domande diverse
 
-Un articolo **usato** non cambia più i campi che decidono **come si vende** e **come sta a
-magazzino**. A valle ci sono listini, ordini, bolle, giacenze: costruiti su quelle
-caratteristiche, non le rincorrono se cambiano.
+* `requires_serial`: ogni pezzo ha una matricola, una riga per pezzo in `magazzino.assets`.
+* `requires_lotto`: ogni carico appartiene a una partita di `magazzino.lotti`, con data d'arrivo
+  e scadenza.
 
-| Bloccate se usato | Libere |
-| --- | --- |
-| `is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`, `listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial` | `iva_id` (l'aliquota cambia per legge, e ogni riga ha la sua), descrizioni, gruppi, conti, tempi di consegna, modo di approvvigionamento |
+Un articolo può volere l'una, l'altra, tutte e due o nessuna. La primitiva di scrittura del
+magazzino le fa rispettare: un movimento senza il lotto o la matricola che l'articolo pretende
+è rifiutato (`E_MAG_LOTTO_OBBLIGATORIO`, `E_MAG_LOTTO_NON_AMMESSO`).
 
-`codice` e `uom_id` sono immutabili sempre (sezione sotto).
-
-* **Usato** = compare in una tabella che lo punta con una FK — righe di documento di vendita e
-  d'acquisto, fatture, resi, offerte, listini e promo, commesse, magazzino — **in qualunque
-  stato**, anche chiusa o annullata: lo dice
-  [`catalogo.fn_articolo_usato`](/dbzero/catalogo/manual/fn_articolo_usato). Non contano le
-  tabelle di anagrafica dell'articolo stesso (distinta, UoM operative, descrizioni, note, regole
-  di fatturazione, ambiti IVA).
-* **Tutte le aziende**: gli articoli sono unici per tutte le aziende, i documenti no. L'uso conta
-  anche se sta in un documento che chi modifica non vede; il messaggio non dice dove.
-* **Chi lo fa rispettare**: il guard
-  [`trgfn_articoli_guard_struttura_se_usato`](/dbzero/catalogo/manual/trgfn_articoli_guard_struttura_se_usato)
-  (`E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`) e, nel form, le regole gemelle in
-  `dbops.lock_columns_conditional`, che spengono il campo con lo stesso predicato.
-* **La via d'uscita** è un articolo nuovo (il vecchio non va per forza ritirato). Un errore di
-  caricamento lo corregge un amministratore col verbo
-  [`catalogo.fn_articolo_correggi_struttura`](/dbzero/catalogo/manual/fn_articolo_correggi_struttura)
-  (solo SUPER_ADMIN).
-
-Le regole della distinta sugli stessi campi (`trgfn_articoli_guard_flags_struttura_bom_attiva`)
-restano: valgono anche per un articolo non ancora usato.
-
-### Articolo-onere (porta oneri)
-
-Un articolo **è un onere** quando ha `causale_onere_id` valorizzato (FK verso
-[`config.causali_onere`](/dbzero/config/tabelle/causali_onere), legame **1:1** —
-`uq_articoli_causale_onere`). È il modello «un articolo è un onere collegandogli una causale»:
-così **ogni onere porta la propria IVA** (la `iva_id` dell'articolo — es. spese/trasferte 22%,
-penale fuori campo art.15), mentre la causale ne è la classificazione business. La madre
-[`vendite.fn_aggiungi_onere_commessa`](/dbzero/vendite/funzioni/fn_aggiungi_onere_commessa)
-riceve l'articolo-onere e ne deriva causale, `uom` e IVA. Riferimento:
-`brief-db-immutabilita-quantita-e-porta-oneri` §4c.8.
-
-**Un onere non è merce** (dal 2026-10-13): la natura di un articolo-onere non ha
-destinazione `ORDINE` (guard [`trgfn_articoli_guard_onere_natura`](/dbzero/catalogo/manual/trgfn_articoli_guard_onere_natura),
-`E_ARTICOLO_ONERE_NATURA_MERCE`). `natura_vendita_id` ha come default la merce: un onere creato
-senza dire la natura sarebbe stato un bene da evadere in ordine e in bolla, e una cessione di beni.
-Gli oneri del seed hanno la natura del servizio una tantum (destinazione commessa).
+I due flag non sono simmetrici. `requires_serial` è anche un flag di struttura della distinta:
+non cambia su un articolo padre di una distinta in vigore. `requires_lotto` non entra nella
+distinta. Tutti e due, però, non cambiano più quando l'articolo è usato (sezione sotto), e il
+form li spegne con la stessa regola.
 
 ---
 
-### Diagramma ER relazioni (focus articolo)
+### Da dove arriva l'articolo: tre domande separate
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    articoli ||--o{ articoli_componenti : usa_componenti
-    unita_misura ||--o{ articoli : misura
-    articoli_tipologie ||--o{ articoli : tipizza
-    articoli_gruppi ||--o{ articoli : raggruppa
-    articoli_spesa ||--o{ articoli : spesa
-    iva ||--o{ articoli : aliquota
-    conti_contabili ||--o{ articoli : conto_vendita
-    conti_contabili ||--o{ articoli : conto_acquisto
-```
+* `modo_approvvigionamento_id`: acquisto, produzione, stock o non applicabile. Obbligatorio;
+  un articolo nuovo nasce «acquisto».
+* `gestito_a_magazzino`: l'articolo movimenta giacenza. Obbligatorio; un articolo nuovo nasce
+  «non a magazzino». È la prima cosa che la primitiva di magazzino guarda
+  (`E_MAG_ARTICOLO_NON_GESTITO`).
+* `lead_time_giorni`: i giorni fra «lo chiedo» e «ce l'ho». Può restare vuoto, perché per una
+  prestazione non significa niente, e `0` non vuol dire «non si applica». Non è mai negativo.
+
+⭐ Sono tre domande perché le risposte non si deducono l'una dall'altra: una merce acquistata
+può arrivare direttamente dal fornitore, senza passare dal magazzino, e la natura di vendita
+dice dove va la riga venduta, non da dove arriva.
+
+⚠️ Il default prudente ha un costo: finché nessuno marca la merce, il magazzino si comporta come
+se non ci fosse merce, senza errori. La spia `dbops.vw_articoli_a_magazzino_prontezza` dice se
+almeno un articolo attivo è marcato.
+
+---
+
+### 🔒 Un articolo usato non cambia la sua struttura
+
+Un articolo usato non cambia più le otto colonne che decidono come si vende e come sta a
+magazzino: `is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`,
+`listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial`. A valle ci
+sono listini, ordini, bolle e giacenze costruiti su quelle caratteristiche, e non le rincorrono.
+
+* **Usato** vuol dire che l'articolo compare in una tabella che lo punta con una FK, in
+  qualunque stato, anche chiusa o annullata (`catalogo.fn_articolo_usato`). Non contano le
+  tabelle che sono anagrafica dell'articolo: distinta, unità operative, descrizioni, note,
+  regole di fatturazione, ambiti IVA.
+* L'uso conta in tutte le aziende, anche in un documento che chi modifica non vede. Il messaggio
+  non dice dove.
+* Lo fa rispettare `catalogo.trgfn_articoli_guard_struttura_se_usato`
+  (`E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`). Nel form le regole gemelle di
+  `dbops.lock_columns_conditional` spengono il campo con lo stesso predicato.
+* La via d'uscita è un articolo nuovo. Un errore di caricamento lo corregge il SUPER_ADMIN con
+  `catalogo.fn_articolo_correggi_struttura`.
+
+Descrizioni, gruppi, conti, tempi di consegna e modo di approvvigionamento restano liberi.
+Anche `iva_id` resta fuori da questa regola, ma su un articolo che sta in una distinta la blocca
+il guard dell'IVA (sezione sotto).
+
+---
+
+### Le regole della distinta sull'articolo
+
+Valgono anche per un articolo non ancora usato.
+
+* `catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva`: `is_composito`,
+  `requires_serial` e `is_solo_componente` non cambiano mentre l'articolo è padre o componente
+  di una distinta in vigore, e un componente non diventa composito (la distinta ha un livello).
+* `catalogo.trgfn_articoli_guard_iva_bom_attiva`: un kit e i suoi componenti hanno la stessa
+  IVA.
+* `catalogo.trgfn_articoli_guard_listino_se_composito`: un articolo con righe di listino attive
+  non diventa composito.
+
+---
+
+### Un articolo è un onere quando ha una causale
+
+Un articolo con `causale_onere_id` è un onere: trasferta, urgenza, spese, penale. Il legame con
+la causale è uno a uno (`uq_articoli_causale_onere`). Così ogni onere porta la sua IVA, quella
+dell'articolo, e la causale ne è la classificazione. La porta oneri della commessa
+(`vendite.fn_aggiungi_onere_commessa`) riceve l'articolo-onere e ne prende causale, unità e
+IVA.
+
+Un onere è un addebito, non un bene (`catalogo.trgfn_articoli_guard_onere_natura`): la sua
+natura non ha destinazione `ORDINE_VENDITA`, e non è gestito a magazzino, composito, a lotti o
+a matricola.
+
+---
+
+### Ritirare un articolo senza cancellarlo: `obsoleto_dal`
+
+Un articolo usato non si cancella e non si spegne: `attivo` vuol dire «riferimento valido», e i
+trigger generati `block_deact` impediscono di spegnerlo finché qualcuno lo usa. Per dire «non si
+sceglie più per il nuovo» c'è `obsoleto_dal`:
+
+* vuota: si sceglie;
+* data passata o di oggi: ritirato;
+* data futura: ritiro programmato.
+
+Il confronto è alla data operativa, con `script.fn_e_obsoleto`.
+
+* Una **riga nuova** su un articolo ritirato è respinta (`E_ARTICOLO_OBSOLETO`). È il primo
+  motivo della check delle righe, che legge anche il picker `catalogo.fn_articoli_ammessi`.
+* Una **riga derivata** da un'altra passa. Una **riga esistente** si modifica; solo il cambio di
+  articolo è una scelta nuova.
+* Il **magazzino** non è mai bloccato. La **copia di un listino** salta l'articolo ritirato.
+
+La regola completa, coi casi, è nella guida dell'obsoleto.
+
+---
+
+### Disattivare e riattivare
+
+Spegnere un articolo (`attivo = false`) è un UPDATE diretto. I trigger `block_deact` lo
+rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderlo è il verbo
+`catalogo.fn_riattiva_articolo`, che non riaccende i figli.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Un articolo creato non attivo non si salva.** La riga base dell'unità operativa nasce
+  sempre attiva, e le unità operative pretendono un articolo attivo. Il controllo è differito:
+  l'inserimento di un articolo con `attivo = false` fallisce al COMMIT con
+  `E_ATTIVO_PADRE_NON_ATTIVO`.
+* **La riga base dell'unità operativa non è protetta.** Nessun vincolo impone fattore 1 sulla
+  riga base, né impedisce di cambiarne l'unità o di cancellarla.
+* **Un articolo può essere composito e solo componente insieme.** Nessun vincolo lo esclude, e
+  un articolo così non fa da padre né da componente.
+* **Una nota impedisce di spegnere l'articolo.** La partizione delle note di articolo non ha
+  `attivo`, quindi per il trigger `block_deact` ogni nota è un figlio vivo
+  (`E_ATTIVO_BLOCK_CHILDREN_EXIST`).
+* **L'IVA di un kit non si cambia più**, se il kit ha legami attivi: vedi
+  `catalogo.trgfn_articoli_guard_iva_bom_attiva`.
+
+---
+
+### Codici errore
+
+* `E_CODICE_NON_MODIFICABILE`: UPDATE di `codice` o di `uom_id`. Lo stesso codice vale per
+  tutte e due le colonne.
+* `E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`: una delle otto colonne strutturali cambia su un
+  articolo usato.
+* `E_BOM_MODIFICA_VIETATA`, `E_BOM_COMPONENTE_DIVENTA_COMPOSITO`: i flag di struttura contro la
+  distinta.
+* `E_BOM_IVA_DISCORDANTE`: l'IVA del kit e quella di un componente divergono.
+* `E_LISTINO_RIGA_COMPOSITO_VIETATO`: un articolo con righe di listino attive diventa
+  composito.
+* `E_ARTICOLO_ONERE_NATURA_MERCE`, `E_ARTICOLO_ONERE_STRUTTURA`: un onere con natura di merce o
+  con una caratteristica da bene.
+* `E_ATTIVO_PADRE_NON_ATTIVO`: un vocabolario puntato è spento (al COMMIT).
+* `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`: l'articolo si spegne mentre
+  una tabella figlia lo usa.
+
+---
+
+### Test
+
+* `db/pgtap/catalogo/test-articoli-seed-uom-base-lock.sql` — la riga base nasce, è una sola, e
+  il lock su `codice` e `uom_id` c'è (cercato per funzione e argomenti) e si apre solo con la
+  GUC di manutenzione.
+* `db/pgtap/catalogo/test-articoli-approvvigionamento-v1.sql` — i default delle tre colonne di
+  approvvigionamento, il `lead_time_giorni` negativo rifiutato e lo zero ammesso, il modo spento
+  rifiutato.
+* `db/pgtap/catalogo/test-articoli-natura-vendita-notnull-default-v1.sql` — un articolo senza
+  natura nasce merce.
+* `db/pgtap/catalogo/test-articolo-usato-struttura-v1.sql` — un articolo usato non cambia
+  struttura, anche se l'uso è di un'altra azienda; `iva_id` e descrizione restano libere.
+* `db/pgtap/catalogo/test-articolo-onere-struttura-v1.sql` — un onere non nasce né diventa un
+  bene.
+* `db/pgtap/vendite/test-articolo-ritirato-v1.sql` — l'articolo ritirato sulla riga nuova, sulla
+  copia di listino e sugli oneri.
+
+---
+
+### Note di migrazione
+
+* 2026-04-07 — `uom_id` diventa obbligatoria, e nasce la riga base automatica dell'unità
+  operativa (senza recupero sugli articoli che c'erano già).
+* 2026-04-14 — nasce `listino_tipologia_id`; gli articoli non utility di allora sono stati
+  mappati a `PRODOTTI`.
+* 2026-09-13 — nascono `modo_approvvigionamento_id`, `gestito_a_magazzino` e `lead_time_giorni`
+  (brief-db-modifiche-certe-ciclo-vendita-e-articolo).
+* 2026-09-14 — nasce `requires_lotto`.
+* 2026-09-23 — i due trigger di lock scritti a mano su `codice` e `uom_id` sono sostituiti da
+  quello generato dall'automazione (brief-db-codici-ritirati-negli-argomenti-dei-trigger).
+* 2026-10-13 — un articolo usato non cambia struttura, e un onere non è merce
+  (brief-db-articoli-ammessi-per-documento).
+* 2026-10-19 — la destinazione della merce si chiama `ORDINE_VENDITA` (prima `ORDINE`).
+* 2026-10-25 — `note_target_tipo` vale `ARTICOLO` (prima `ARTICOLI`).
+* 2026-11-03 — un onere non è nemmeno un bene (brief-db-addebito-trasporto-ordine).
+* 2026-11-05 — nasce `obsoleto_dal` (brief-db-articoli-obsoleto-dal).
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----
-
-### 🔄 rev 2026-09-13 — da dove arriva l'articolo: tre colonne di approvvigionamento
-
-Nate con `20260913-05` (e `-10`/`-11` per il default), brief
-`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3.
-
-| Colonna | Che cosa dice | Vuoto ammesso? |
-|---|---|---|
-| `modo_approvvigionamento_id` | **da dove arriva la merce**: acquisto, produzione, stock, non applicabile — vocabolario [config.modi_approvvigionamento](/dbzero/config/tabelle/modi_approvvigionamento) | no, default **acquisto** |
-| `gestito_a_magazzino` | l'articolo **movimenta giacenza** | no, default **no** |
-| `lead_time_giorni` | giorni fra «lo chiedo» e «ce l'ho» | sì: per una prestazione non significa niente, e `0` non è «non si applica» |
-
-⭐ **Perché tre domande e non una.** «Da dove arriva» non dice «passa da
-magazzino» — una merce può essere consegnata direttamente dal fornitore — e
-nessuna delle due si deduce dalla natura di vendita, che dice invece *dove va*
-la riga venduta. Sono domande diverse, e vanno tenute separate anche quando oggi
-le risposte coincidono.
-
-⚠️ **Al rilascio tutti gli articoli risultano «non a magazzino».** Il default è
-volutamente prudente — nessun articolo comincia a movimentare giacenza per
-distrazione — ma la conseguenza è che la merce **va marcata**: è un lavoro di
-dato, e il magazzino, finché non lo si fa, si comporta come se non ci fosse
-merce, senza nessun errore. Il controllo di prontezza sta nel catalogo dei
-presidi (`dbops.presidi`), non in un rosso.
-
-Le tre colonne escono dalla vista
-[vw_articoli_dettaglio](/dbzero/catalogo/views/vw_articoli_dettaglio) (con la
-decodifica del modo) e sono configurate come colonne della lista articoli,
-**spente** finché il backend non le proietta.

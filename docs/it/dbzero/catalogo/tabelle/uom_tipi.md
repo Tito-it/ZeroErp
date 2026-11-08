@@ -29,7 +29,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_uom_tipi_codice_interno_upper | `CREATE INDEX ix_uom_tipi_codice_interno_upper ON catalogo.uom_tipi USING btree (upper((codice_interno)::text))` |
-| ix_uom_tipi_codice_upper | `CREATE INDEX ix_uom_tipi_codice_upper ON catalogo.uom_tipi USING btree (upper((codice)::text))` |
 | pk_uom_tipi | `CREATE UNIQUE INDEX pk_uom_tipi ON catalogo.uom_tipi USING btree (id)` |
 | uq_uom_tipi_codice | `CREATE UNIQUE INDEX uq_uom_tipi_codice ON catalogo.uom_tipi USING btree (codice)` |
 | uq_uom_tipi_codice_interno | `CREATE UNIQUE INDEX uq_uom_tipi_codice_interno ON catalogo.uom_tipi USING btree (codice_interno)` |
@@ -39,6 +38,8 @@
 |------|--------|--------|--------|
 | trg_uom_tipi_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_uom_tipi_a10_unita_misura_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'unita_misura', 'tipo_uom_id', 'id', 'attivo')` |
+| trg_uom_tipi_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_uom_tipi_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_uom_tipi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_uom_tipi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

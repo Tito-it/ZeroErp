@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_ba_ha_storia_emittente(p_billing_accou
  RETURNS boolean
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti, 2c G-5):
 --   la tabella dei documenti di ogni famiglia e' la target_table della

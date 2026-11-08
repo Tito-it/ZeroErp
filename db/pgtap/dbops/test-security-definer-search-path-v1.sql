@@ -15,8 +15,8 @@
 --  3) ⭐ le tre di `postgres` (dbops.fn_generate_tx_id,
 --        fn_get_or_create_session_tx_id, fn_sync_functions_owner) pinnano
 --        ESATTAMENTE pg_catalog, public, pg_temp
---  4) ⚠️ DEBITO A SOGLIA (D6-bis): DEFINER con un path che NON elenca pg_temp
---  5) ⚠️ DEBITO A SOGLIA (D6-bis): DEFINER con `public` PRIMA di pg_catalog
+--  4) ⛔ DIVIETO (D6-bis, dal 2026-11-03): DEFINER con un path che NON elenca pg_temp
+--  5) ⛔ DIVIETO (D6-bis, dal 2026-11-03): DEFINER con `public` PRIMA di pg_catalog
 --
 -- ⭐ PERCHE' UN INVARIANTE GENERALE E NON TRE NOMI. Fino al 2026-09-12 il
 --   `search_path` delle DEFINER era asserito caso per caso (maintenance.fn_job_run_*,
@@ -30,14 +30,14 @@
 --   un CREATE OR REPLACE su una funzione di estensione non e' una cosa che si
 --   fa. Si escludono per DIPENDENZA (pg_depend deptype 'e'), non per nome.
 --
--- ⚠️ I TEST 4 E 5 SONO RUBINETTI, non divieti. Le forme del path sono cinque
---   (D6), e 18 DEFINER non elencavano pg_temp il 2026-09-12 (17 dal
---   2026-10-05, 16 dal 2026-10-10) — quando non e' elencato PostgreSQL lo cerca per PRIMO per le
---   relazioni, che e' semantica e non stile. Vietarlo
---   oggi farebbe nascere il file rosso, e un cancello rosso il primo giorno
---   viene spento. La soglia PUO' SOLO CALARE: chi sana una DEFINER la abbassa
---   qui. ⛔ Se per far passare la CI la soglia dovesse SALIRE, il difetto e'
---   nella funzione nuova.
+-- ⛔ I TEST 4 E 5 ERANO RUBINETTI, dal 2026-11-03 SONO DIVIETI. 18 DEFINER
+--   non elencavano pg_temp il 2026-09-12 (17 dal 2026-10-05, 16 dal
+--   2026-10-10) — quando non e' elencato PostgreSQL lo cerca per PRIMO per le
+--   relazioni, che e' semantica e non stile. Vietarlo allora avrebbe fatto
+--   nascere il file rosso; si e' tenuta una soglia che poteva solo calare, e
+--   il 2026-11-03 le ultime 16 (e le 4 col path che comincia da public) sono
+--   state sanate insieme (20261103-04, -05). Ora una DEFINER nuova che nasce
+--   senza pg_temp in coda e' rossa, col suo nome nel messaggio.
 --
 -- ⚠️ IL PIN NON E' UNA FORMA SOLA, ed e' il motivo per cui il test 3 asserisce
 --   la forma solo sulle tre di postgres: una DEFINER il cui percorso tocca
@@ -114,23 +114,29 @@ SELECT is(
 --   Test 4: 17 -> 16 il 2026-10-10 (20261010-59): sanata
 --   anagrafiche.fn_guard_albero_ba_gestore_globale, riscritta per D-5 di
 --   brief-db-istanza-nasce-col-ba-residui.
-SELECT cmp_ok(
-    (SELECT count(*) FROM _definer
+--   Test 4: 16 -> 0 il 2026-11-03 (20261103-04): il rubinetto e' chiuso e
+--   diventa un DIVIETO, con l'elenco dei colpevoli come il test 1.
+SELECT is(
+    (SELECT coalesce(string_agg(firma || ' [' || search_path || ']', ', ' ORDER BY firma), '')
+       FROM _definer
       WHERE search_path IS NOT NULL
         AND search_path NOT LIKE '%pg_temp%'),
-    '<=', 16::bigint,
-    '4. ⚠️ DEFINER con search_path senza pg_temp: al massimo 16 (rubinetto D6-bis, puo'' solo calare)'
+    '',
+    '4. ⛔ nessuna DEFINER con un search_path che non elenca pg_temp: non elencato, PostgreSQL lo cerca PER PRIMO per le relazioni (D6-bis, chiuso il 2026-11-03)'
 );
 
 -- ⚠️ Test 5: 5 -> 4 il 2026-10-15 (20261015-03, provision-post): sanata
 --   maintenance.fn_job_run_log_failure, riscritta per D-5 di
 --   brief-db-ruoli-di-sistema. ⚠️ Vale DOPO il provision-post: e' li' che
 --   quel changeSet si applica (la funzione e' di un superuser).
-SELECT cmp_ok(
-    (SELECT count(*) FROM _definer
+--   Test 5: 4 -> 0 il 2026-11-03 (20261103-04 e, per script.fn_log_error_only
+--   che e' di postgres, 20261103-05 con la proprieta' presa in prestito): divieto.
+SELECT is(
+    (SELECT coalesce(string_agg(firma || ' [' || search_path || ']', ', ' ORDER BY firma), '')
+       FROM _definer
       WHERE search_path LIKE 'public,%'),
-    '<=', 4::bigint,
-    '5. ⚠️ DEFINER con public PRIMA di pg_catalog: al massimo 4 (rubinetto D6-bis, puo'' solo calare)'
+    '',
+    '5. ⛔ nessuna DEFINER con public PRIMA di pg_catalog nel path scritto: si scrive pg_catalog in testa (D6-bis, chiuso il 2026-11-03)'
 );
 
 SELECT * FROM finish();

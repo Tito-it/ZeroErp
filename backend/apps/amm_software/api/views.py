@@ -37,7 +37,6 @@ from apps.core.api.success_responses import success_response
 from apps.amm_software.db.amm_software_repository import REPARTI_ORDER_COLUMNS
 from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE, AmmSoftwareService
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS
-from apps.core.services.coda_lavori.scope import scope_operatore_da_request
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import INTEGER_MAX
 from apps.core.services.processi_service import ProcessiService
@@ -664,18 +663,19 @@ class ProcessiEseguiOraView(AdminAPIView):
             name="ProcessiEseguiOraResp", fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Accoda «Esegui ora» sulla sveglia indicata, con lo scope di chi
-    #        preme catturato dalla richiesta (terna rifiutata PRIMA di accodare).
+    # Scopo: Accoda «Esegui ora» sulla sveglia indicata, come lavoro SISTEMA
+    #        con l'attore di chi preme (BE10, 2026-11-07).
     def post(self, request: Request, codice: str) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            # Lo scope si cattura QUI, dalla richiesta, con il BB della coda:
-            # e' cio' con cui il drenatore ripropone l'identita' di chi ha
-            # premuto, minuti dopo e senza token. Senza `identita_id` il BB
-            # rifiuta con `E_CODA_SCOPE_OPERATORE_INVALIDO` — 400 adesso, a chi
-            # puo' fare qualcosa, invece di un lavoro che muore nel drenatore.
-            scope = scope_operatore_da_request(request)
+            # ⭐ L'id VERO di chi preme, anche per un superuser: e' l'attore del
+            #    giornale del comando lanciato, non un'identita' con cui il
+            #    lavoro gira (un lavoro SISTEMA gira senza).
+            # ⚠️ `AdminAPIView` fa entrare solo un utente autenticato: un id
+            #    vuoto qui e' un difetto della porta, non un caso da gestire.
+            richiesto_da = request.user.id
+            assert richiesto_da is not None
             return ProcessiService().esegui_ora(
-                codice, unit=payload.get("unit"), scope=scope,
+                codice, unit=payload.get("unit"), richiesto_da=int(richiesto_da),
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

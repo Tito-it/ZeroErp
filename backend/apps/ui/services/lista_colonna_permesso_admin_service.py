@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
@@ -27,7 +26,6 @@ from apps.core.services.payload_helpers import (
     map_integrity_error,
 )
 from apps.ui.db.ui_admin_repository import UiAdminRepository
-from apps.ui.services._audit import user_label
 
 E_PERMESSO_VALIDATION = "E_UI_PERMESSO_VALIDAZIONE"
 E_PERMESSO_NOT_FOUND = "E_UI_PERMESSO_NON_TROVATO"
@@ -99,7 +97,6 @@ class ListaColonnaPermessoAdminService:
     #        e ritorna l'id risultante (nuovo o aggiornato).
     def upsert_permesso(
         self,
-        user: AbstractBaseUser | AnonymousUser | None,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         self._v.validate_allowed_keys(
@@ -122,7 +119,6 @@ class ListaColonnaPermessoAdminService:
                 colonna_id=colonna_id,
                 profilo_accesso_id=profilo_id,
                 livello_accesso=livello,
-                user_insert=user_label(user),
             )
         except IntegrityError as exc:
             map_integrity_error(

@@ -79,7 +79,7 @@ CREATE TEMP TABLE t_att_b AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM t_c), 10,
            p_articolo_id      => (SELECT articolo_id FROM t_refs),
            p_sorgente_codice  => 'DDT_VENDITA',
-           p_sorgente_uid     => (SELECT ddt_uid FROM t_db)::text,
+           p_sorgente_chiave  => (SELECT ddt_uid FROM t_db)::text,
            p_sorgente_riga_id => (SELECT ddt_riga_id FROM t_db),
            p_quantita         => 2);
 
@@ -88,7 +88,7 @@ CREATE TEMP TABLE t_att_a AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM t_c), 25,
            p_articolo_id      => (SELECT articolo_id FROM t_refs),
            p_sorgente_codice  => 'DDT_VENDITA',
-           p_sorgente_uid     => (SELECT ddt_uid FROM t_da)::text,
+           p_sorgente_chiave  => (SELECT ddt_uid FROM t_da)::text,
            p_sorgente_riga_id => (SELECT ddt_riga_id FROM t_da),
            p_quantita         => 10);
 

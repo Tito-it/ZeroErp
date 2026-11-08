@@ -298,13 +298,27 @@ SELECT min(s.data_scadenza) AS prima_rata
 -- ⚠️ La data dichiarata e' nel FUTURO rispetto al pavimento del sezionale: la
 --   madre ha un guard sul minimo, e una data bassa verrebbe rifiutata per una
 --   ragione che non e' quella che questo test vuole misurare.
+-- ⛔ Rev 2026-11-03 (D16 di migliorie-generali-da-test-valutazione): le date
+--   dei test 10..15 erano LETTERALI (2027-06-15, 2027-02-01, 2027-07-20,
+--   2027-01-01). Il pavimento e' «oggi meno N giorni»: una data scritta oggi
+--   nel futuro diventa, col passare dei mesi, troppo vecchia, e la madre la
+--   rifiuta — i test 10, 11 e 13 sarebbero diventati rossi da soli a meta'
+--   2027, senza che nessuno toccasse niente. Ora sono RELATIVE a oggi
+--   (fn_data_operativa, la data dell'azienda), sempre nel futuro e DIVERSE fra
+--   loro: il test 12 vuole un CAMBIO di data, non un UPDATE allo stesso valore.
+CREATE TEMP TABLE tmp_ddoc_date AS
+SELECT script.fn_data_operativa() + 60  AS d_lotto,
+       script.fn_data_operativa() + 90  AS d_cambio,
+       script.fn_data_operativa() + 120 AS d_lotto_numerato,
+       script.fn_data_operativa() + 150 AS d_numerata;
+
 CREATE TEMP TABLE tmp_ddoc_esito AS
 SELECT * FROM vendite.fn_imposta_data_documento_lotto(
-                (SELECT lotto_id FROM tmp_ddoc_refs), date '2027-06-15');
+                (SELECT lotto_id FROM tmp_ddoc_refs), (SELECT d_lotto FROM tmp_ddoc_date));
 
 SELECT is(
   (SELECT f.data FROM vendite.fatture f WHERE f.id = (SELECT id FROM tmp_ddoc_f)),
-  date '2027-06-15',
+  (SELECT d_lotto FROM tmp_ddoc_date),
   '10) fn_imposta_data_documento_lotto scrive la data sulla fattura non numerata');
 
 -- ⭐ IL PUNTO 4: le scadenze si calcolano da f.data, e il guard D-K verifica la
@@ -326,25 +340,25 @@ SELECT isnt(
 --   brief-db-esclusioni-implicite) la regola lo vieta — una fattura numerata non
 --   cambia identita' fiscale — e il file moriva li'. La domanda e' la stessa;
 --   la si fa sulla fattura quando non e' ancora numerata.
--- ⚠️ Una data diversa da quella dei test 14-15 (2027-01-01): li' deve essere un
+-- ⚠️ Una data diversa da quella dei test 14-15 (d_numerata): li' deve essere un
 --   CAMBIO, e un UPDATE allo stesso valore non lo e'.
-UPDATE vendite.fatture SET data = date '2027-02-01'
+UPDATE vendite.fatture SET data = (SELECT d_cambio FROM tmp_ddoc_date)
  WHERE id = (SELECT id FROM tmp_ddoc_f);
 
 SELECT is(
   (SELECT f.data FROM vendite.fatture f WHERE f.id = (SELECT id FROM tmp_ddoc_f)),
-  date '2027-02-01',
+  (SELECT d_cambio FROM tmp_ddoc_date),
   '12) su una fattura NON numerata la data si cambia (il guard non blocca tutto)');
 
 -- Adesso la fattura diventa numerata: la madre deve saltarla e contarla, non
 -- fallire. ⚠️ Il caso «lotto numerato a meta'» esiste nei dati veri.
 UPDATE vendite.fatture
-   SET numero = 999001, anno = 2027, serie = 'PGT'
+   SET numero = 999001, anno = extract(year FROM data)::int, serie = 'PGT'
  WHERE id = (SELECT id FROM tmp_ddoc_f);
 
 SELECT is(
   (SELECT saltate_numerate FROM vendite.fn_imposta_data_documento_lotto(
-             (SELECT lotto_id FROM tmp_ddoc_refs), date '2027-07-20')),
+             (SELECT lotto_id FROM tmp_ddoc_refs), (SELECT d_lotto_numerato FROM tmp_ddoc_date))),
   1,
   '13) le fatture gia'' numerate si SALTANO e si contano (il lotto non fallisce)');
 
@@ -352,16 +366,16 @@ SELECT is(
 -- 14..15) DB-14: la data di una fattura numerata e' immutabile
 -- ============================================================
 SELECT throws_ok(
-  format($$ UPDATE vendite.fatture SET data = date '2027-01-01' WHERE id = %s $$,
-         (SELECT id FROM tmp_ddoc_f)),
+  format($$ UPDATE vendite.fatture SET data = %L::date WHERE id = %s $$,
+         (SELECT d_numerata FROM tmp_ddoc_date), (SELECT id FROM tmp_ddoc_f)),
   'P0001', NULL,
   '14) cambiare la data di una fattura NUMERATA -> rifiutato');
 
 -- ⚠️ `throws_like` perche' la frase e' la posta in gioco: deve dire CHE COSA
 --   blocca (il numero), non «colonna non modificabile».
 SELECT throws_like(
-  format($$ UPDATE vendite.fatture SET data = date '2027-01-01' WHERE id = %s $$,
-         (SELECT id FROM tmp_ddoc_f)),
+  format($$ UPDATE vendite.fatture SET data = %L::date WHERE id = %s $$,
+         (SELECT d_numerata FROM tmp_ddoc_date), (SELECT id FROM tmp_ddoc_f)),
   '%999001%',
   '15) ... e la frase nomina il NUMERO del documento');
 

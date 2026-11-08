@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BB «IL RESO HA FATTO RIENTRARE LA MERCE»: script.vw_stati_doc_reso_merce_rientrata
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M (decisione B di Tid, 2026-11-08);
+#   brief-db-revisione-dbops D29 (+ M22).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   «In questo stato il reso ha fatto rientrare la merce» era scritto come
+#   letterale 'CONFERMATO' in tre posti: il presidio
+#   dbops.vw_resi_confermati_senza_carico, vendite.vw_resi_righe_effettive
+#   («helper unico merce tornata indietro») e vendite.vw_resi_da_riconsegnare.
+#   Regola del 2: la sede diventa un BB gemello di
+#   script.vw_stati_doc_ddt_merce_partita, letto dal catalogo; le tre copie
+#   passano al BB nello stesso giro (20261109-08, -09, -11).
+#
+# ── LA REGOLA ────────────────────────────────────────────────────────
+#   merce_rientrata = uscito dalla bozza (ordine >= quello di CONFERMATO) e non
+#   abortito (is_abortito false). Uno stato nuovo dopo la conferma entra da
+#   solo. ⛔ Mai NULL: un ordine NULL o un catalogo senza CONFERMATO rispondono
+#   false.
+#   Fuori, dichiarato: fn_annulla_reso (v_stato NOT IN ('DRAFT','CONFERMATO')) e'
+#   una regola di transizione, non «merce rientrata».
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261109-06-create-vw-stati-doc-reso-merce-rientrata-mctit.yaml
+
+  - changeSet:
+      id: 20261109-06-create-vw-stati-doc-reso-merce-rientrata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.vw_stati_doc_reso_merce_rientrata: per ogni stato del reso, se la merce e' rientrata
+        (ordine >= CONFERMATO e non abortito). Gemello del BB della bolla. brief-db-sorgente-documento-e-riga
+        §7.2 lotto M, giro M.1 (D29).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW script.vw_stati_doc_reso_merce_rientrata
+              WITH (security_invoker = true) AS
+              SELECT s.id,
+                     s.codice_interno,
+                     -- ⛔ Mai NULL: ordine NULL o CONFERMATO assente = non rientrata.
+                     COALESCE(NOT s.is_abortito AND s.ordine >= c.ordine, false) AS merce_rientrata
+                FROM config.stati_doc_reso s
+                -- codice_interno e' unico nel vocabolario: al piu' una riga.
+                LEFT JOIN config.stati_doc_reso c ON c.codice_interno = 'CONFERMATO';
+
+              COMMENT ON VIEW script.vw_stati_doc_reso_merce_rientrata IS
+                  'BB (2026-11-09, brief-db-sorgente-documento-e-riga lotto M, regola del 2; D29 di brief-db-revisione-dbops): in questo stato del reso la merce e'' rientrata? Una riga per ogni stato di config.stati_doc_reso; merce_rientrata = uscito dalla bozza (ordine >= quello di CONFERMATO) e non abortito (is_abortito false). Letta dal catalogo, non da un elenco di codici: uno stato nuovo dopo la conferma entra da solo. ⛔ Mai NULL: uno stato con ordine NULL, o un catalogo senza CONFERMATO, risponde false. Gemello di script.vw_stati_doc_ddt_merce_partita. Sede unica della regola che viveva come letterale CONFERMATO in dbops.vw_resi_confermati_senza_carico, vendite.vw_resi_righe_effettive e vendite.vw_resi_da_riconsegnare. Chi filtra mette merce_rientrata in WHERE, chi distingue la proietta. security_invoker.';
+
+              COMMENT ON COLUMN script.vw_stati_doc_reso_merce_rientrata.merce_rientrata IS
+                  'Vero se un reso in questo stato ha fatto rientrare la merce: ordine >= quello di CONFERMATO e non is_abortito. Mai NULL (false nel dubbio).';
+
+              GRANT SELECT ON script.vw_stati_doc_reso_merce_rientrata TO zeroerp_app;

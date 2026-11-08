@@ -1,49 +1,38 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_pratiche_giornale_ins`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_giornale_ins`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.pratiche](pratiche.md)
->
-Overview:
->
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la tabella su cui è montata
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove scrive
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **PRATICA_CREATA** nel giornale. Si attiva **AFTER INSERT** su `pratiche.pratiche`.
+
+`pratiche.trgfn_pratiche_giornale_ins` registra nel giornale l'azione `PRATICA_CREATA` alla nascita di
+una pratica.
 
 ---
 
-### Firma
+### Che cosa scrive
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_ins()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+È montata `AFTER INSERT`, riga per riga, su `pratiche.pratiche`, nella fase `_z90_`.
 
----
-
-### Logica
-
-Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `NEW.id` |
-| `flusso_id` | `NULL` |
-| `azione` | `'PRATICA_CREATA'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('tipo_prestazione_id', 'stato_id', 'priorita_id', 'soggetto_id', 'canale_origine_id')` |
-| `tx_id` | `NEW.tx_id` |
+* La riga di giornale è a livello di pratica: nessun flusso.
+* L'origine è `SISTEMA`; il dettaglio fotografa la pratica alla nascita: tipo di prestazione, stato,
+  priorità, soggetto e canale di origine.
+* La transazione è quella della pratica, o quella di sessione se la pratica non la porta.
 
 ---
 
-### Trigger associato
+### Test
 
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_pratiche_z90_giornale_ins` | AFTER | INSERT | `pratiche.pratiche` |
+* `pratiche/test-trigger-giornale-pratiche` — i trigger di giornale della pratica.
+
+---
+
+{% include-markdown "signature-core.md" %}

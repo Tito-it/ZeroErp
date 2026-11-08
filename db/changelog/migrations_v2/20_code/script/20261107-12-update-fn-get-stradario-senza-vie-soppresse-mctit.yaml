@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_stradario: le vie di un comune escludono le vie soppresse.
+#   Brief: brief-db-revisione-dbops, Q16 (giro 2, blocco 2b).
+#
+# Base: 20_code/script/20260804-38, verificato uguale al vivo (doc auto-generata).
+#
+# ⭐ Il ramo per comune legge config.stradario: si filtra obsoleto_dal IS NULL,
+#   come la chiave unica delle vie. Il ramo senza comune legge solo le vie
+#   generali e non cambia. COMMENT al presente (§5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261107-12-update-fn-get-stradario-senza-vie-soppresse-mctit.yaml
+
+  - changeSet:
+      id: 20261107-12-update-fn-get-stradario-senza-vie-soppresse
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_stradario: per comune, esclude le vie soppresse (Q16).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_stradario';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = 'config.stradario'::regclass
+                 AND attname = 'obsoleto_dal' AND NOT attisdropped;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_stradario(p_comune_id integer DEFAULT NULL::integer, p_indirizzo text DEFAULT ''::text)
+               RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale text, comune character varying, provincia text, geoloc geometry, descrizione_completa text)
+               LANGUAGE plpgsql
+              AS $function$
+                BEGIN
+                  -- Funzione per ottenere le informazioni dello stradario
+                  /* La funzione se indicato uno specifico comune restituisce le informazioni
+                      relative a tutte le vie di quel comune, altrimenti restituisce tutte le vie
+                      dello stradario_generale che contengono l'indirizzo indicato.
+
+                      p_comune_id: ID del comune (opzionale)
+                      p_indirizzo: stringa da cercare nell'indirizzo (opzionale)
+                     */
+
+                  IF p_comune_id IS NOT NULL THEN
+                    -- ricerca filtrata per comune
+                    -- ⚠️ cp.codice (era cp.codice_postale fino a 20250817-24)
+                    --    e i due ::text allineano la query ai tipi dichiarati.
+                    RETURN QUERY
+                    SELECT
+                      s.id                      AS stradario_id,
+                      v.id                      AS via_id,
+                      t.id                      AS toponomastica_id,
+                      t.descrizione             AS descrizione_toponomastica,
+                      st.sigla_stato            AS sigla_stato,
+                      v.descrizione             AS descrizione_via,
+                      v.descrizione_breve       AS descrizione_breve,
+                      cp.codice::text           AS cod_postale,
+                      c.descrizione             AS comune,
+                      pr.sigla::text            AS provincia,
+                      s.geoloc                  AS geoloc,
+                      CONCAT_WS(' ', t.descrizione, v.descrizione)
+                                              AS descrizione_completa
+                    FROM config.stradario s
+                      JOIN config.stradario_generale v  ON s.stradario_generale_id = v.id
+                      JOIN config.toponomastica t       ON v.toponomastica_id = t.id
+                      JOIN config.comuni c              ON s.comune_id = c.id
+                      JOIN config.province pr           ON c.provincia_id = pr.id
+                      JOIN config.codici_postali cp     ON s.codice_postale_id = cp.id
+                      LEFT JOIN config.stati st         ON t.stato_id = st.id
+                    WHERE s.comune_id = p_comune_id
+                      AND s.obsoleto_dal IS NULL        -- una via soppressa non si sceglie
+                      AND (t.descrizione || ' ' || v.descrizione)
+                          ILIKE '%' || p_indirizzo || '%'
+                    ORDER BY v.descrizione;
+
+                  ELSE
+                    -- ricerca libera su tutto lo stradario_generale
+                    -- Qui comune/CAP/provincia non sono determinati: restano
+                    -- i segnaposto vuoti, ora ::text come la dichiarazione.
+                    RETURN QUERY
+                    SELECT
+                      NULL::integer             AS stradario_id,
+                      v.id                      AS via_id,
+                      t.id                      AS toponomastica_id,
+                      t.descrizione             AS descrizione_toponomastica,
+                      st.sigla_stato            AS sigla_stato,
+                      v.descrizione             AS descrizione_via,
+                      v.descrizione_breve       AS descrizione_breve,
+                      ''::text                  AS cod_postale,
+                      ''::character varying     AS comune,
+                      ''::text                  AS provincia,
+                      NULL::geometry            AS geoloc,
+                      CONCAT_WS(' ', t.descrizione, v.descrizione)
+                                              AS descrizione_completa
+                    FROM config.stradario_generale v
+                      JOIN config.toponomastica t   ON v.toponomastica_id = t.id
+                      LEFT JOIN config.stati st     ON t.stato_id = st.id
+                    WHERE (t.descrizione || ' ' || v.descrizione)
+                          ILIKE '%' || p_indirizzo || '%'
+                    ORDER BY v.descrizione;
+                  END IF;
+                END;
+                $function$;
+
+              COMMENT ON FUNCTION script.fn_get_stradario(integer, text) IS
+                  'Le vie di un comune (config.stradario), filtrate per testo; senza comune, la ricerca libera sulle vie generali. Per comune restituisce solo le vie vive: una via soppressa (obsoleto_dal valorizzata, fusa in un''altra) non si sceglie per il nuovo. cod_postale e provincia sono text esplicito.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260804-38.
+              SELECT 1;

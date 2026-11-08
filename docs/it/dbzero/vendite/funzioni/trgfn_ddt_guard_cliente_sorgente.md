@@ -39,7 +39,8 @@ BEGIN
     IF TG_OP = 'UPDATE'
        AND NEW.billing_account_id IS NOT DISTINCT FROM OLD.billing_account_id
        AND NEW.sorgente_tipo_id   IS NOT DISTINCT FROM OLD.sorgente_tipo_id
-       AND NEW.sorgente_uid       IS NOT DISTINCT FROM OLD.sorgente_uid THEN
+       AND NEW.sorgente_uid       IS NOT DISTINCT FROM OLD.sorgente_uid
+       AND NEW.sorgente_id        IS NOT DISTINCT FROM OLD.sorgente_id THEN
         RETURN NEW;
     END IF;
 
@@ -54,7 +55,8 @@ BEGIN
           FROM vendite.fn_ddt_vincoli_cliente(
                  CASE WHEN v_ba_cambia THEN NEW.id END,
                  NEW.sorgente_tipo_id,
-                 NEW.sorgente_uid) AS v
+                 NEW.sorgente_uid,
+                 NEW.sorgente_id) AS v
     LOOP
         -- 1. La sorgente di testata.
         IF v_vincolo.vincolo = 'SORGENTE' THEN
@@ -69,7 +71,8 @@ BEGIN
                         'campo',        'sorgente_uid',
                         'ddt_id',       NEW.id,
                         'sorgente',     v_vincolo.sorgente,
-                        'sorgente_uid', NEW.sorgente_uid),
+                        'sorgente_uid', NEW.sorgente_uid,
+                        'sorgente_id',  NEW.sorgente_id),
                     NEW.tx_id,
                     v_doc_label,
                     CASE v_vincolo.sorgente WHEN 'ORDINE_VENDITA' THEN 'ordine' ELSE 'reso' END);
@@ -84,6 +87,7 @@ BEGIN
                         'billing_account_id', NEW.billing_account_id,
                         'sorgente',           v_vincolo.sorgente,
                         'sorgente_uid',       NEW.sorgente_uid,
+                        'sorgente_id',        NEW.sorgente_id,
                         'billing_account_sorgente', v_vincolo.billing_account_id),
                     NEW.tx_id,
                     v_doc_label,
@@ -113,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_cliente_sorgente()
-IS 'Guard BEFORE INSERT OR UPDATE su vendite.ddt, fascia _z10_ (dopo trgfn_ddt_normalize): il DDT ha il billing account del documento da cui nasce (D-6 di brief-db-esecutivi-ba-coppia, «un esecutivo derivato ha il BA della sua sorgente»). (1) sorgente di testata ORDINE_VENDITA -> BA dell''ordine, RESO_VENDITA -> BA del reso, NULL compreso; (2) su UPDATE il BA non cambia se il DDT evade gia'' righe d''ordine (quelle righe hanno il BA di prima: si rifiuta il cambio, senza ricopiare il predicato del guard del fulfillment). E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, VARIADIC documento e sorgente leggibili. Ordine e reso letti come INVOKER, come il normalize. rev 2026-10-10 (§10.2 domanda 3, Tid): una sorgente ORDINE_VENDITA o RESO_VENDITA dichiarata e non trovata — inesistente o invisibile sotto RLS, che rispondono uguale — e'' E_DOC_SORGENTE_NON_TROVATA (fail-closed: prima passava, e una bolla poteva dichiarare l''ordine di un altro emittente col BA del proprio). Una sorgente di un altro tipo resta fuori dal confronto. La terza porta, il fulfillment, e'' in vendite.trgfn_ordini_ful_guard_consistenza; il reso ha vendite.trgfn_resi_guard_cliente_ddt. rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-1): il predicato («da dove viene il cliente della bolla») esce dal corpo in vendite.fn_ddt_vincoli_cliente, che legge anche la capability script.fn_available_actions_ddt per spegnere billing_account_id: guard e capability non possono rispondere in due modi. Codici, contesto e valori della frase invariati; il fulfillment si legge solo quando il BA cambia su UPDATE, come prima.';
+IS 'Guard BEFORE INSERT OR UPDATE su vendite.ddt, fascia _z10_ (dopo vendite.trgfn_ddt_normalize): la bolla ha il billing account del documento da cui nasce. I vincoli li dice vendite.fn_ddt_vincoli_cliente, la stessa funzione da cui script.fn_available_actions_ddt spegne il campo, con la sorgente intera (tipo, uid, id): (1) sorgente di testata ORDINE_VENDITA o RESO_VENDITA -> il billing account del documento, NULL compreso; (2) su UPDATE il billing account non cambia se la bolla evade gia'' righe d''ordine. E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, coi valori leggibili di documento e sorgente; una sorgente dichiarata e non trovata, inesistente o invisibile sotto RLS, e'' E_DOC_SORGENTE_NON_TROVATA. Non e'' un doppione del guard unico della provenienza (script.trgfn_guard_sorgente): quello verifica il documento quando si scrive la sorgente, questo scatta anche quando cambia il solo billing account, e se non vede il documento rifiuta invece di non confrontare. Una sorgente di un altro tipo resta fuori dal confronto. Il cambio di sorgente si vede su tutte e due le chiavi; il fulfillment si legge solo quando il billing account cambia. Ordine e reso si leggono come INVOKER. Le altre porte: il fulfillment (vendite.trgfn_ordini_ful_guard_consistenza) e il reso (vendite.trgfn_resi_guard_cliente_ddt).';
 ```
 
 </div>

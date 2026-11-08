@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Storicizzazione: su pgAgent il sync gira PRIMA dell'apply, come in CI; i
+# job dicono quello che fanno.
+#   Brief: brief-db-revisione-maintenance D7, M1, M2, M6 (decisione di Tid, 2026-11-03).
+#
+# ⚠️ D7 — L'ORDINE ERA ROVESCIATO. La convergenza in CI chiama prima il sync
+#   (ci_ordine 100) e poi l'apply (110), e il pgTAP
+#   dbops/test-processi-convergenza-ci lo pretende: l'apply mette DEFAULT
+#   true sulle colonne storicizza delle tabelle che il sync ha appena messo
+#   nell'insieme. Su pgAgent invece l'apply partiva il sabato alle 07:00 e il
+#   sync alle 07:05: l'apply lavorava sempre sull'insieme della settimana
+#   prima, e una tabella nuova riceveva il DEFAULT con sette giorni di
+#   ritardo. ⭐ L'ordine e' uno solo: sync alle 07:00, apply alle 07:05.
+#
+# ℹ️ M1 — la descrizione del job sync era copiata da quella dell'apply.
+# ℹ️ M2 — lo stesso step aveva due nomi: in pgAgent run_apply_storicizza (per
+#   tutti e due i job), nel giornale il p_stepname dei wrapper. Si allinea
+#   pgAgent al giornale: run_proc_apply_storicizza e
+#   run_sync_storico_set_storicizza. Nessun altro oggetto legge jstname.
+# ℹ️ M6 — sync_auth_user_expired_daily diceva «giornaliero ore 06:00»: dal
+#   20261009-61 suona ogni ora, al minuto 10 (giorno aziendale).
+#
+# ⚠️ Solo nomi, descrizioni e orari: il codice degli step (col cancello
+#   maintenance.fn_sveglia_accesa, 20261016-30) non si tocca.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/85_pgagent/20261103-61-update-pgagent-storicizza-sync-prima-dell-apply-mctit.yaml
+
+  - changeSet:
+      id: 20261103-61-update-pgagent-storicizza-sync-prima-dell-apply
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Storicizzazione: sync il sabato alle 07:00, apply alle 07:05 (lo stesso ordine della
+        convergenza in CI). Descrizioni dei job sync e sync_auth_user_expired_daily
+        corrette; nomi degli step pgAgent uguali al p_stepname del giornale.
+        Brief: brief-db-revisione-maintenance D7, M1, M2, M6.
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_extension WHERE extname = 'pgagent'
+            - sqlCheck:
+                expectedResult: 3
+                sql: |
+                  SELECT COUNT(*) FROM pgagent.pga_job
+                   WHERE jobname IN ('apply_storicizza_weekly', 'sync_storico_set_storicizza',
+                                     'sync_auth_user_expired_daily')
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- D7: il sync prima, alle 07:00 del sabato.
+              UPDATE pgagent.pga_schedule s
+                 SET jscname    = 'sat_07_00',
+                     jscminutes = (SELECT array_agg((i = 0)::boolean) FROM generate_series(0,59) AS g(i))
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jscjobid
+                 AND j.jobname = 'sync_storico_set_storicizza';
+
+              -- D7: l'apply dopo, alle 07:05, sull'insieme appena allineato.
+              UPDATE pgagent.pga_schedule s
+                 SET jscname    = 'sat_07_05',
+                     jscminutes = (SELECT array_agg((i = 5)::boolean) FROM generate_series(0,59) AS g(i))
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jscjobid
+                 AND j.jobname = 'apply_storicizza_weekly';
+
+              -- M1, M6: le descrizioni dicono quello che i job fanno.
+              UPDATE pgagent.pga_job
+                 SET jobdesc = 'Allinea config.storico_set_storicizza alla sua derivazione (aggiunge le tabelle con la colonna storicizza, pota le righe senza bersaglio): ogni sabato alle 07:00, prima di apply_storicizza_weekly.'
+               WHERE jobname = 'sync_storico_set_storicizza';
+
+              UPDATE pgagent.pga_job
+                 SET jobdesc = 'Mette DEFAULT true sulle colonne storicizza delle tabelle di config.storico_set_storicizza: ogni sabato alle 07:05, dopo sync_storico_set_storicizza.'
+               WHERE jobname = 'apply_storicizza_weekly';
+
+              UPDATE pgagent.pga_job
+                 SET jobdesc = 'Disattiva gli auth_user delle risorse umane con la finestra temporale scaduta: ogni ora al minuto 10, una volta per giorno aziendale.'
+               WHERE jobname = 'sync_auth_user_expired_daily';
+
+              -- M2: il nome dello step e' quello che il giornale registra.
+              UPDATE pgagent.pga_jobstep st
+                 SET jstname = 'run_sync_storico_set_storicizza'
+                FROM pgagent.pga_job j
+               WHERE j.jobid = st.jstjobid
+                 AND j.jobname = 'sync_storico_set_storicizza';
+
+              UPDATE pgagent.pga_jobstep st
+                 SET jstname = 'run_proc_apply_storicizza'
+                FROM pgagent.pga_job j
+               WHERE j.jobid = st.jstjobid
+                 AND j.jobname = 'apply_storicizza_weekly';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Torna all'ordine di prima: apply alle 07:00, sync alle 07:05.
+              UPDATE pgagent.pga_schedule s
+                 SET jscname    = 'sat_07',
+                     jscminutes = (SELECT array_agg((i = 5)::boolean) FROM generate_series(0,59) AS g(i))
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jscjobid
+                 AND j.jobname = 'sync_storico_set_storicizza';
+
+              UPDATE pgagent.pga_schedule s
+                 SET jscname    = 'sat_07',
+                     jscminutes = (SELECT array_agg((i = 0)::boolean) FROM generate_series(0,59) AS g(i))
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jscjobid
+                 AND j.jobname = 'apply_storicizza_weekly';

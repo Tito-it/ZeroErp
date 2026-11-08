@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.catasto_unita_immobiliari`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:   
@@ -14,7 +16,6 @@ Approfondimento funzioni:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 10-12-25)
 La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 
 * **Evita ridondanza** delle informazioni catastali su più istanze nello stesso indirizzo.
@@ -57,7 +58,7 @@ La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali**
 ### Vantaggi Operativi
 
 * **Normalizzazione**: un solo set di dati catastali per combinazione indirizzo+istanza.
-* **Storico**: ogni modifica viene snapshot con `trg_z90_catasto_unita_immobiliari_storico_upd_dlt`.
+* **Storico**: ogni modifica viene snapshot con `trg_catasto_unita_immobiliari_z90_storico_upd_dlt`.
 * **Audit**: i trigger di audit mantengono traccia delle modifiche in `data_update`/`user_update`.
 
 ---
@@ -68,7 +69,7 @@ La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali**
 | --------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------- |
 | `trg_catasto_unita_immobiliari_gen_tx_id_ins_upd`   | `catasto_unita_immobiliari` | Genera `tx_id` se assente (dbops.trgfn_tx_id_managed)                             |
 | `trg_catasto_unita_immobiliari_audit_data_user_upd` | `catasto_unita_immobiliari` | Aggiorna `data_update` e `user_update` (script.trgfn_audit_data_user_generic) |
-| `trg_z90_catasto_unita_immobiliari_storico_upd_dlt` | `catasto_unita_immobiliari` | Crea snapshot in storico (script.trgfn_upd_dlt_storico_generic)                   |
+| `trg_catasto_unita_immobiliari_z90_storico_upd_dlt` | `catasto_unita_immobiliari` | Crea snapshot in storico (script.trgfn_storico_generic)                   |
 
 ---
 

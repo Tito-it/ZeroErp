@@ -1,120 +1,153 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_lock_columns`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:  
-> 
-[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)    
-> [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> 
-[dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `LOCK_COLUMNS` che dice dove il lock si monta e con che nome
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — l'ambito: su una tabella fuori ambito il runner non monta lock
+> * [dbops.lock_columns_conditional](/dbzero/dbops/tabelle/lock_columns_conditional) — i lock che valgono solo in uno stato della riga
 >
-Approfondimento trigger:
-> 
-[script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)   
+> Approfondimento funzioni:
+>
+> * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — confronta il lock dichiarato qui con quello vivo
+> * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns) — porta il lock vivo a quello dichiarato
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — la funzione del trigger che rifiuta il cambio
+>
+> Guide:
+>
+> * [Framework di automazione DB](/guide/automazione-db) — il giro delle automazioni e le sue regole
+> * [Linee guida SQL — 6b, la chiave naturale stabile](/linee-guida-sql#6b-riferimenti-esterni-a-tabelle-di-catalogo-chiave-naturale-stabile) — perché `codice_interno` è bloccato
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-Centralizzare la configurazione delle **colonne extra** da bloccare con `script.trgfn_lock_columns`.
 
-La colonna **`codice_interno` non si configura qui**: se presente nella tabella target,
-il runner la include automaticamente nel trigger.
+Il registro delle colonne che, dopo la nascita della riga, **non si cambiano**: una riga per
+colonna, con il codice errore che il rifiuto solleva. Il giro delle automazioni ne ricava un
+trigger per tabella su `script.trgfn_lock_columns`.
 
----
-
-### Campi chiave e semantica
-
-* **`target_schema`** *(text)* – schema di destinazione.
-* **`target_table`** *(text)* – tabella di destinazione.
-* **`column_name`** *(text)* – colonna da bloccare.
-* **`error_code`** *(text)* – codice errore (default `E_CODICE_NON_MODIFICABILE`).
-  ⛔ Dev'essere un codice **vivo** a catalogo: non assente da `config.codici_errore`,
-  e senza `obsoleto_dal` scaduta. Una riga qui è un **call site differito** — il
-  codice non solleva niente finché l'automazione non genera il trigger, e da quel
-  momento lo solleva per sempre. Lo presidia il controllo (H) di
-  `scripts/sql/guardrail_codice_errore_strutturato.sql`, che gira in CI.
-* **`exec_mode`** *(text)* – `AUTO` | `CI` | `SCHEDULED`: in quale giro il lock **nasce**. Il
-  runner fa nascere la riga se `exec_mode='AUTO'` oppure `exec_mode = p_exec_mode`; una
-  colonna già bloccata da un altro giro resta, non si toglie.
-* **`enabled`** *(boolean)* – `true`: la colonna si blocca. `false`: è una **decisione** di
-  togliere il blocco, e la convergenza lo toglie. ⚠️ Non è la stessa cosa di una riga che
-  **manca**: una colonna bloccata dal vivo che il registro non nomina affatto ferma il runner.
-* **`note`** *(text)* – note descrittive.
-* **Audit** – `data_insert`, `user_insert`, `data_update`, `user_update`.
+`codice_interno` non si scrive qui: se la tabella ce l'ha, il lock lo prende sempre, con
+`E_CODICE_NON_MODIFICABILE`. Qui stanno le colonne **in più** — un'identità scelta alla nascita
+(il magazzino di un inventario, la catena di revisione di un'offerta), un dato che non deve
+cambiare significato dopo l'uso (l'aliquota di un codice IVA).
 
 ---
 
-### Comportamento del runner
+### ⛔ Un lock di colonna si dichiara qui, non si scrive a mano
 
-`dbops.fn_run_automations_lock_columns` **converge** (dal 2026-09-26):
+Il trigger lo calcola e lo monta solo il giro, a partire da questo registro. Un
+`CREATE TRIGGER` su `script.trgfn_lock_columns` scritto in un changeSet sarebbe un secondo posto
+che decide l'elenco delle colonne, e la prima convergenza lo riassorbe: lo toglie e lo ricrea col
+nome e gli argomenti del registro.
 
-1. per ogni tabella nell'ambito calcola il lock **atteso**: `codice_interno` se presente,
-   poi le colonne di questo registro che esistono fisicamente;
-2. lo confronta con i lock **vivi**, cioè tutti i trigger su `script.trgfn_lock_columns`
-   della tabella, qualunque nome abbiano (`dbops.fn_lock_columns_divergenze`);
-3. crea, rigenera o toglie finché resta **un unico trigger** per tabella, col nome da
-   template, `UPDATE OF` sulle colonne attese e gli argomenti attesi;
-4. ⛔ se un lock vivo blocca una colonna che questo registro non nomina, **si ferma** prima
-   di qualunque DDL e nomina tutte le colonne in quella situazione.
+Un lock che esiste come trigger scritto a mano e che il registro non nomina **ferma** il giro (vedi
+sotto): prima di convergere va portato qui. Il censimento si fa sui changelog, non sul database
+di sviluppo: un lock scritto a mano può mancare su uno e vivere sull'altro.
 
 ---
 
-### Esempi
+### ⚠️ Fuori dall'ambito: il lock lo monta una migrazione, il registro lo dichiara
 
-**Bloccare una colonna extra con codice errore custom:**
+Su una tabella fuori dall'ambito delle automazioni il runner non arriva. Se una sua colonna va
+bloccata e la tabella non deve entrare nell'ambito (porterebbe con sé tutte le altre automazioni),
+il trigger lo monta una migrazione, ed è l'unico caso in cui un lock si scrive in un changeSet. Due
+condizioni, entrambe obbligatorie:
 
-```sql
-INSERT INTO dbops.automation_lock_columns
-  (target_schema, target_table, column_name, error_code, exec_mode, enabled, note)
-VALUES
-  ('config','utilities','categoria','E_CODICE_NON_MODIFICABILE','AUTO',true,'blocco categoria');
-```
+* la colonna ha **comunque** la sua riga attiva qui, con il codice errore: il registro resta la
+  dichiarazione;
+* il trigger ha il nome che darebbe il template della regola `LOCK_COLUMNS` e gli argomenti che
+  monterebbe il runner.
 
-**Solo `codice_interno` (nessuna riga necessaria):**
+Il presidio `dbops/test-lock-columns-convergenza` tiene uguali le due metà: fuori dall'ambito ogni
+colonna di un lock vivo ha una riga attiva qui con lo stesso codice, e ogni riga attiva su una
+tabella fuori dall'ambito ha il suo lock vivo, abilitato, con la colonna nell'`UPDATE OF`. Il caso
+di oggi è il `codice` di [dbops.domini_task](/dbzero/dbops/tabelle/domini_task).
 
-> Se la tabella ha `codice_interno`, il trigger viene applicato automaticamente.
+---
+
+### Che cosa dice ogni riga
+
+La chiave è (`target_schema`, `target_table`, `column_name`).
+
+* `error_code` — il codice che il trigger solleva quando qualcuno cambia la colonna. ⛔ Dev'essere
+  un codice **vivo** di `config.codici_errore`: una riga qui è un punto di chiamata differito, che
+  non solleva niente finché il giro non monta il trigger e da allora lo solleva per sempre. Lo
+  presidia il controllo (H) di `scripts/sql/guardrail_codice_errore_strutturato.sql`, in CI.
+  ⭐ La colonna è obbligatoria e **non ha default**: ogni riga dichiara il suo codice, e una riga
+  che lo dimentica fallisce subito, all'inserimento.
+* `exec_mode` — in quale giro il lock **nasce**: `AUTO` in ogni giro, `CI` solo nella convergenza
+  del rilascio, `SCHEDULED` solo nel giro notturno. Una colonna già bloccata da un altro giro
+  resta bloccata: altrimenti un giro toglierebbe ogni volta ciò che l'altro ha messo.
+* `enabled` — vero: la colonna si blocca. Falso: è la **decisione** di togliere il blocco, e il
+  giro lo toglie.
+* `note` — il perché del lock, per chi legge.
+
+Una riga su una colonna che la tabella non ha è ignorata. E il runner agisce solo sulle tabelle
+dell'ambito coperte da una regola `LOCK_COLUMNS` attiva di `dbops.automation_rules_tbl`: su una
+tabella che nessuna regola copre, le righe di qui non montano niente. Fuori dall'ambito una riga
+attiva è la dichiarazione di un lock montato da una migrazione (sopra), e il presidio pretende che
+quel lock esista.
+
+---
+
+### ⚠️ Riga disattivata e riga mancante non sono la stessa cosa
+
+* Una colonna con una riga `enabled = false` è un blocco che si toglie: la convergenza lo toglie
+  senza fermarsi.
+* Una colonna bloccata da un trigger vivo che il registro **non nomina affatto** è un lock nato
+  fuori dal registro: toglierlo lo cancellerebbe in silenzio. Il giro si ferma con
+  `E_LOCK_COLUMNS` prima di qualunque DDL, e nomina tutte le colonne in quella situazione. Il
+  rimedio è una riga nel registro, attiva se il lock va tenuto, disattivata se va tolto.
 
 ---
 
 ### Cambiare una riga cambia il trigger al giro successivo
 
-Modificare `error_code`, aggiungere una colonna o disattivare una riga arriva nel
-trigger vivo alla prossima convergenza: a ogni migrazione (`ci_apply` in CI), ogni
-sera alle 21:10 (job `automations_lock_columns`), oppure subito con
-`SELECT dbops.fn_run_automations_lock_columns('AUTO', NULL, false);`.
-Non serve più un changeSet che droppa e rigenera a mano.
-
-⚠️ **Fino al 2026-09-26 non era così**: il runner creava il trigger solo se mancava, e
-non confrontava mai gli argomenti di uno esistente. Il 2026-09-23 erano **69 trigger
-su 68 tabelle** a sollevare `CODICE_NON_MODIFICABILE`, ritirato quarantanove giorni
-prima, e ci sono voluti sei changeSet `90_end/*provision-lock*` scritti a mano per
-riallineare perimetri fissi. Brief: `brief-db-codici-ritirati-negli-argomenti-dei-trigger`,
-`brief-db-lock-di-colonna-fuori-registro`.
-
-⛔ E non si riscrive il `CREATE TRIGGER` a mano: sarebbe un secondo posto che calcola
-l'elenco delle colonne, accanto al runner — cioè il difetto che questo registro esiste
-per chiudere. La prima convergenza lo riassorbirebbe comunque.
+Il giro **converge**: confronta il lock vivo con quello dichiarato e lo rigenera quando
+differisce. Un codice errore cambiato, una colonna aggiunta, una riga disattivata arrivano nel
+trigger alla convergenza successiva: a ogni rilascio, nella passata `ci_apply`, e ogni sera col
+processo `automations_lock_columns`. Non serve un changeSet che tolga e rimonti il trigger.
 
 ---
 
-### Best practice
+### Test
 
-* Inserisci qui solo le colonne **extra** non standard.
-* Mantieni `exec_mode='AUTO'` salvo esigenze di rilascio controllato.
-* Verifica che la colonna esista davvero, altrimenti il runner la ignora.
-* ⛔ **Un lock di colonna si dichiara qui, non si scrive a mano** in un changeSet.
-* Un lock che esiste come trigger **scritto a mano** va portato qui: `catalogo.articoli.codice`
-  e `config.sorgenti.categoria` ci sono entrati il 2026-09-23 dopo essere stati in vigore
-  per anni fuori dal registro — un oggetto che *sembra* governato dall'automazione e non
-  lo è. Finché la riga manca, la prima rigenerazione fa **sparire** quel lock.
-  Lo stesso giorno sono entrati anche i lock di `config.iva.assoggettamento_id` e
-  di `config.iva_stati` (`aliquota_override`, `assoggettamento_id_override`), scritti
-  a mano nel 2025 e rimasti fuori dal registro; il 2026-09-26 quello di
-  `vendite.fatture.natura_doc_id`.
-* ⛔ **I lock scritti a mano si cercano nei changelog, non sul database di sviluppo.**
-  Su quello di sviluppo i lock di `config.iva_stati` e di `vendite.fatture` non c'erano
-  più: li cancellava ogni sera `fn_run_automations_drop_lock_trg` (ritirata il 2026-09-26),
-  che in CI non gira perché `85_pgagent` è `MARK_RAN`. Il censimento fatto su dev non li
-  ha visti, mentre il database ricostruito da zero li ha ancora.
+* `db/pgtap/dbops/test-lock-columns-convergenza.sql` — su tutto il database nessun lock diverge
+  dal registro; una riga disattivata toglie il lock; una colonna aggiunta arriva nel trigger; una
+  colonna non nominata ferma il giro; una riga di un altro `exec_mode` non toglie un lock già
+  montato e non ne crea uno nuovo; fuori dall'ambito lock vivo e registro coincidono, nei due
+  versi (test 23 e 30).
+* Le prove dei singoli lock stanno coi domini: per esempio
+  `db/pgtap/vendite/test-ordini-lock-cliente.sql` e
+  `db/pgtap/vendite/offerte_commerciali/test-offerte-commerciali-codice-lock.sql`.
 
+---
+
+### Note di migrazione
+
+* 2026-01-10 — nasce col runner dei lock di colonna.
+* 2026-09-23 — entrano nel registro i lock scritti a mano nel 2025 e rimasti fuori
+  (`catalogo.articoli.codice`, `config.sorgenti.categoria`, `config.iva`, `config.iva_stati`); il
+  2026-09-26 quello di `vendite.fatture.natura_doc_id`. Lo stesso mese i trigger che portavano
+  ancora negli argomenti il codice ritirato `CODICE_NON_MODIFICABILE` sono stati riallineati
+  (`brief-db-codici-ritirati-negli-argomenti-dei-trigger`).
+* 2026-09-26 — il giro converge invece di creare solo dove manca, e si ferma sulle colonne che il
+  registro non nomina (`brief-db-lock-di-colonna-fuori-registro`). Prima un lock nato una volta
+  non si riallineava più, e la funzione ritirata `fn_run_automations_drop_lock_trg` cancellava ogni
+  sera anche i lock scritti a mano.
+* 2026-11-04 — `error_code` perde il default `CODICE_NON_MODIFICABILE`, un codice ritirato il
+  2026-08-05: una riga che non dichiarava il codice lo riceveva, e la fermava solo il guardrail a
+  valle. Nessuna riga si appoggiava al default (`brief-db-revisione-dbops`).
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
+* 2026-11-08 — fuori dall'ambito un lock montato da una migrazione è ammesso se il registro lo
+  dichiara, e una riga attiva su una tabella fuori ambito pretende il suo lock vivo; il primo caso
+  è `dbops.domini_task.codice` (`20261109-94`, brief-db-revisione-dbops, giro 10b).
+
+---
+
+{% include-markdown "signature-core.md" %}

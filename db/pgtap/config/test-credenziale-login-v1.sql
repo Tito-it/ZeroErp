@@ -185,7 +185,7 @@ SELECT is(
 -- ============================================================
 SELECT is(
     (SELECT bool_and(p.cleanup_at = p.ultimo_fallimento_at
-                     + make_interval(days => (dbops.fn_cleanup_at_params('config', 'credenziali_provenienze') ->> 'ttl_days')::integer))
+                     + make_interval(days => (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('config', 'credenziali_provenienze') r WHERE r.motivo_salto IS NULL)))
        FROM config.credenziali_provenienze p
        JOIN config.credenziali c ON c.id = p.credenziale_id
       WHERE c.auth_user_id = (SELECT attesa FROM _c)),

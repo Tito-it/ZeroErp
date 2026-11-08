@@ -20,8 +20,8 @@
 """
 Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 1) ScrittureEmailAccountDbTests.test_update_account_cifra_la_password_e_strippa_i_campi
-   `codice` strippato, password ri-cifrata INTATTA (spazi compresi),
-   `data_update` scritta; una chiave estranea e' RuntimeError.
+   `codice` strippato, password ri-cifrata INTATTA (spazi compresi);
+   una chiave estranea e' RuntimeError.
 2) ScrittureNotePartizionateDbTests.test_nota_con_meta_create_e_update
    Dal service (percorso reale) una nota di fattura con `meta` nasce e si
    aggiorna; `target_*` restano quelli del repository.
@@ -72,27 +72,26 @@ class ScrittureEmailAccountDbTests(unittest.TestCase):
                     smtp_username="utente", smtp_password="vecchia",
                     email_from="scrdin@esempio.test",
                 )
-                cur.execute(
-                    "UPDATE config.email_account SET data_update = now() - interval '1 day' "
-                    "WHERE id = %s",
-                    [account_id],
-                )
+                # ⚠️ `data_update` non si prova qui (2026-11-08): la scrive il
+                #    trigger di audit, non il repository, e dentro la stessa
+                #    transazione nessun controllo distingue chi l'ha scritta —
+                #    portarla indietro con un UPDATE passa dallo stesso trigger,
+                #    che la rimette a now(): il controllo di prima era verde a
+                #    vuoto. La regola sta nel trigger (pgTAP).
 
                 self.assertTrue(repo.update_account(
                     account_id, codice="  SCRDINACC2  ", smtp_password=" nuova segreta ",
                 ))
                 cur.execute(
-                    "SELECT codice, codice_interno, smtp_password_encrypted, "
-                    "       data_update > now() - interval '1 hour' "
+                    "SELECT codice, codice_interno, smtp_password_encrypted "
                     "FROM config.email_account WHERE id = %s",
                     [account_id],
                 )
-                codice, codice_interno, cifrata, aggiornata = cur.fetchone()
+                codice, codice_interno, cifrata = cur.fetchone()
                 self.assertEqual(codice, "SCRDINACC2")
                 self.assertEqual(codice_interno, "SCRDINACC")
                 # ⛔ La password in chiaro non passa dallo strip del BB.
                 self.assertEqual(crypto_service.decrypt(cifrata), " nuova segreta ")
-                self.assertTrue(aggiornata)
 
                 # ⛔ Whitelist rigida: niente scarto silenzioso.
                 with self.assertRaises(RuntimeError):

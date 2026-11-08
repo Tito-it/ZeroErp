@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DATA DEL CONTENUTO DEL PRESET SI SCRIVE NELLA SUA COLONNA
+#   ui.trgfn_preset_contenuto_aggiornato (nuova) prende il posto di
+#   ui.trgfn_preset_data_update_contenuto (ritirata nello stesso changeSet);
+#   i due trigger a20 dei preset si ricreano col nome nuovo, stesso WHEN.
+#   Brief: brief-db-revisione-dbops, giro 7-bis, blocco c (§23.12, N1).
+#
+#   La colonna e' nata in 20261109-32: data_update torna l'audit, e il
+#   trigger del contenuto non la tocca piu'. Il WHEN resta quello di prima,
+#   tabella per tabella (le colonne di contenuto): una riscrittura uguale,
+#   come quella del seed, non sposta la data.
+#   Il vecchio nome diceva «data_update»: con la colonna cambiata il nome
+#   mentirebbe, e una funzione ritirata si toglie, non resta accanto.
+#   Chi la nominava: i due trigger (qui) e il pgTAP
+#   ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1 (riscritto).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261109-34-create-trgfn-preset-contenuto-aggiornato-mctit.yaml
+
+  - changeSet:
+      id: 20261109-34-create-trgfn-preset-contenuto-aggiornato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preset_contenuto_aggiornato scrive contenuto_aggiornato_il al posto di data_update;
+        i due trigger a20 dei preset si ricreano, la funzione vecchia si ritira.
+        Brief: brief-db-revisione-dbops, giro 7-bis, blocco c.
+      preConditions:
+        - onFail: HALT
+        - changeSetExecuted:
+            id: 20261109-32-alter-ui-preset-contenuto-aggiornato-il
+            author: mctit
+            changeLogFile: migrations_v2/00_schema/ui/20261109-32-alter-ui-preset-contenuto-aggiornato-il-mctit.yaml
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preset_contenuto_aggiornato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: contenuto_aggiornato_il di un preset (ui.lista_preset,
+              --   ui.dashboard_preset) e' la data dell'ultimo cambio del suo
+              --   CONTENUTO, quella che il flag preset_aggiornato confronta con lo
+              --   snapshot della preferenza.
+              --   Quali colonne sono contenuto lo dice il WHEN del trigger, tabella
+              --   per tabella: qui si scrive soltanto la data.
+              -- ⚠️ Non e' l'audit (data_update, trigger del framework): un UPDATE
+              --   che riscrive la riga uguale (il seed loadUpdateData lo fa a ogni
+              --   giro) non sposta la data.
+              BEGIN
+                  NEW.contenuto_aggiornato_il := now();
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preset_contenuto_aggiornato() IS
+                'Trigger BEFORE UPDATE dei preset (ui.lista_preset, ui.dashboard_preset): contenuto_aggiornato_il = now() quando cambia il CONTENUTO del preset. Le colonne di contenuto le dice il WHEN di ciascun trigger (a20). Non e'' l''audit: data_update la scrive il trigger del framework.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_a20_data_update_contenuto_upd ON ui.lista_preset;
+              CREATE TRIGGER trg_ui_lista_preset_a20_contenuto_aggiornato_upd
+                  BEFORE UPDATE ON ui.lista_preset
+                  FOR EACH ROW
+                  WHEN (OLD.ordinamento_default IS DISTINCT FROM NEW.ordinamento_default
+                        OR OLD.filtri_default IS DISTINCT FROM NEW.filtri_default
+                        OR OLD.pagina_dimensione IS DISTINCT FROM NEW.pagina_dimensione)
+                  EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato();
+
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preset_a20_data_update_contenuto_upd ON ui.dashboard_preset;
+              CREATE TRIGGER trg_ui_dashboard_preset_a20_contenuto_aggiornato_upd
+                  BEFORE UPDATE ON ui.dashboard_preset
+                  FOR EACH ROW
+                  WHEN (OLD.dimensione_max IS DISTINCT FROM NEW.dimensione_max)
+                  EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato();
+
+              DROP FUNCTION IF EXISTS ui.trgfn_preset_data_update_contenuto();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preset_data_update_contenuto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  NEW.data_update := now();
+                  RETURN NEW;
+              END;
+              $function$;
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_a20_contenuto_aggiornato_upd ON ui.lista_preset;
+              CREATE TRIGGER trg_ui_lista_preset_a20_data_update_contenuto_upd
+                  BEFORE UPDATE ON ui.lista_preset
+                  FOR EACH ROW
+                  WHEN (OLD.ordinamento_default IS DISTINCT FROM NEW.ordinamento_default
+                        OR OLD.filtri_default IS DISTINCT FROM NEW.filtri_default
+                        OR OLD.pagina_dimensione IS DISTINCT FROM NEW.pagina_dimensione)
+                  EXECUTE FUNCTION ui.trgfn_preset_data_update_contenuto();
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preset_a20_contenuto_aggiornato_upd ON ui.dashboard_preset;
+              CREATE TRIGGER trg_ui_dashboard_preset_a20_data_update_contenuto_upd
+                  BEFORE UPDATE ON ui.dashboard_preset
+                  FOR EACH ROW
+                  WHEN (OLD.dimensione_max IS DISTINCT FROM NEW.dimensione_max)
+                  EXECUTE FUNCTION ui.trgfn_preset_data_update_contenuto();
+              DROP FUNCTION IF EXISTS ui.trgfn_preset_contenuto_aggiornato();

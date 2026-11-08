@@ -147,6 +147,12 @@ qualunque firma: un service che chiama un metodo tolto, o passa `None` dove la f
 caso che lo ha acceso: riallinea e sblocca del prezzo di una riga di commessa chiamavano da sei
 mesi un metodo che non esisteva più, e il test lo fabbricava col mock.
 
+⭐ Dal 2026-11-08 i mock dei **repository** sono `autospec` (regola in [api.md](api.md) §Test,
+presidio `apps/core/tests/test_presidio_autospec_repository.py`): lì un metodo tolto o un
+parametro rinominato è rosso anche nei test. mypy resta la difesa per tutto il resto — i mock
+che non sono repository, i tipi dei valori (`None` dove serve un `int`) e il codice che i test
+non percorrono; e nessuno dei due prova la **forma dei dati** che il mock restituisce.
+
 ### Le scelte
 
 | Voce | Scelta | Perché |

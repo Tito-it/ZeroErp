@@ -1,15 +1,24 @@
-## Documentazione Concettuale – Funzione `vendite.fn_list_ordini_da_pushare(...)`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_ordini_da_pushare`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-[vendite.ordini](/dbzero/vendite/tabelle/ordini)
-> [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)
-> [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare) — funzione complementare per DDT
-> [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
-> [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [vendite.ordini](/dbzero/vendite/tabelle/ordini)
+> * [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare) — funzione complementare per DDT
+> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
+> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
 
 ---
+
 ### 🎯 Scopo Principale
+
 `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine
 pronte per il push verso `commesse_attivita`, restituendo un payload completo
 per l’handler di acquisizione.
@@ -22,7 +31,7 @@ delegati a `fn_list_ddt_da_pushare`.
 
 ### Regole principali
 
-* **stato documento libero sull'asse spedizione** *(rev 2026-07-10)*: esclusi solo
+* **stato documento libero sull'asse spedizione**: esclusi solo
   `DRAFT`, `ANNULLATO` (documento commercialmente inesistente) e `FATTURATO`
   (cintura). Un ordine `PARZIALMENTE_EVASO`/`EVASO` resta eleggibile: per il
   trigger CONFERMATO la fatturazione è ortogonale alla spedizione (fix «orfano
@@ -34,19 +43,17 @@ delegati a `fn_list_ddt_da_pushare`.
   nullable, il filtro tornerebbe necessario;
 * include solo righe attive con quantita` e prezzo validi;
 * esclude segmenti gia` emessi in `commesse_attivita` (idempotenza batch);
-* costruisce `segment_key` deterministica (`ORD:{uid}:R:{riga_id}`);
+* costruisce `segment_key` deterministica con `script.fn_segment_key` (`ORDINE_VENDITA:{uid}:R:{riga_id}`);
 * forza `prezzo_bloccato = TRUE` (ordine confermato);
 * supporta filtri opzionali:
   * `p_competenza_mese`
   * `p_billing_account_id`
   * `p_limit`
-  * `p_ordine_id` *(2026-05)* — vedi sezione dedicata
+  * `p_ordine_id` — vedi sezione dedicata
 
 ---
 
 ### Push singolo ordine (estensione coordinata)
-
-> **Aggiunto:** 2026-05 — migration `20260510-02`
 
 Il parametro `p_ordine_id` (tipo `vendite.ordini.id%TYPE`, default `NULL`) consente
 di restringere il risultato a un singolo ordine.
@@ -55,7 +62,7 @@ di restringere il risultato a un singolo ordine.
 |---------|--------------------------------------------------------------|
 | `NULL`  | Lista globale — comportamento batch invariato                |
 | `> 0`   | Filtra all'ordine specificato; tutti gli altri filtri in AND |
-| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO` (id 433)        |
+| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO`                 |
 
 Estensione coordinata con le altre 4 `fn_list_*_da_pushare` per uniformare
 la signature al client Python `CommesseRepository.fetch_pushable_rows` (4 args posizionali).
@@ -76,44 +83,33 @@ Il valore di `fatturazione_trigger` e` ereditato da
 
 ---
 
+### La riga-onere va in commessa come ONERE
+
+Dal `20261103-38` (brief-db-addebito-trasporto-ordine §8.1, K-1) la riga-onere dell'ordine
+(`script.fn_natura_e_merce` falso sulla natura congelata) esce con `tipo_movimento = 'ONERE'` e con la
+causale dell'articolo nella colonna **nuova** `causale_onere_id`, in coda (NULL sulla merce). La
+sorgente è l'ordine, come per le altre righe. Il RETURNS TABLE è cambiato (DROP + CREATE).
+
+⚠️ La madre `vendite.fn_upsert_commessa_attivita` vuole `ONERE` ⇔ causale: il backend deve passare
+`causale_onere_id` (`p_causale_onere_id`), o la riga ONERE si rifiuta (`E_PARAMETRO_INVALIDO`).
+
+---
+
 ### 📦 Output (alto livello)
 
 Restituisce per ogni riga candidata:
 * contesto documento (`ordine_id`, `ordine_uid`, `riga_id`),
 * dati commessa/competenza,
 * dati economici (`prezzo_snapshot`, `prezzo_bloccato`, `pricing_mode`),
-* sorgente (`sorgente_tipo_id`, `sorgente_uid`, `segment_key`),
+* provenienza (`sorgente_tipo_id`, `sorgente_chiave`, `segment_key`): `sorgente_chiave` è l'uid
+  dell'ordine in testo, e la madre `fn_upsert_commessa_attivita` la traduce con
+  `script.fn_sorgente_chiave` nella colonna del `key_selector` del tipo (`sorgente_id`, perché
+  l'ordine si riconosce dall'id); `riga_id` arriva in commessa come la riga della provenienza (`sorgente_riga`),
 * `meta` tecnico per il push.
 
 ---
 
-### Esempi d’uso
-
-**Batch globale (orchestrator):**
-
-```sql
-SELECT *
-FROM vendite.fn_list_ordini_da_pushare(
-  p_competenza_mese => DATE ‘2026-02-01’,
-  p_billing_account_id => NULL,
-  p_limit => 500
-);
-```
-
-**Push singolo ordine:**
-
-```sql
-SELECT *
-FROM vendite.fn_list_ordini_da_pushare(
-  p_ordine_id => 12345
-);
-```
-
----
-
----
-
-### `fatturazione_immediata`: dalla costante alla colonna (rev 2026-07-27)
+### `fatturazione_immediata`: dalla costante alla colonna
 
 Fino al 2026-07-27 questa funzione proiettava la **costante `FALSE`** nello slot
 `fatturazione_immediata`: il contratto della `RETURNS TABLE` era simmetrico a
@@ -136,5 +132,18 @@ Presidio a valle: dopo il push il flag non è più modificabile sul documento
 ([`trgfn_guard_fatturazione_immediata_immutabile`](/dbzero/vendite/funzioni/trgfn_guard_fatturazione_immediata_immutabile)).
 
 Brief: `brief-db-emissione-fattura-per-documento-sorgente` PARTE B (step B3).
+
+---
+
+### Note di migrazione
+
+* 2026-05-10 — arriva `p_ordine_id`, in coordinamento con le altre `fn_list_*_da_pushare`.
+* 2026-10-20 — la `segment_key` la compone `script.fn_segment_key` col codice del tipo, al posto
+  del prefisso `ORD:` (brief-db-grammatica-unica-documenti).
+* 2026-11-07 — `riga_id` arriva in commessa come `sorgente_riga` (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — la colonna d'uscita `sorgente_uid` diventa `sorgente_chiave`, la chiave del
+  documento in testo che la madre traduce (brief-db-sorgente-documento-e-riga).
+
+---
 
 {% include-markdown "signature-core.md" %}

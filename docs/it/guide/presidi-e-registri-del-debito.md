@@ -1,27 +1,27 @@
 # Guida — Presidi e registri del debito
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, e chi costruisce o mantiene un
 > controllo automatico (un guardrail, un pgTAP di presidio, una vista di controllo)
 >
 > **Vedi anche** — schemi DB:
 >
-> * [dbops.presidi](/dbzero/dbops/manual/presidi) — il catalogo delle viste di controllo: che cosa significa una riga, con che cadenza si guarda, a chi tocca
-> * [dbops.presidi_testi](/dbzero/dbops/manual/presidi_testi) — cosa vuol dire una riga e cosa fare, per chi deve agire
-> * [dbops.presidi_cause](/dbzero/dbops/manual/presidi_cause) — a chi tocca, causa per causa, sui presidi che elencano guasti diversi
-> * [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/manual/riferimenti_morti_esenzioni) — il registro dei riferimenti morti
-> * [dbops.messaggi_errore_codici_legacy](/dbzero/dbops/manual/messaggi_errore_codici_legacy) — il registro dei nomi di codice fuori convenzione
-> * [dbops.codici_errore_senza_policy](/dbzero/dbops/manual/codici_errore_senza_policy) — il registro dei codici senza tipo di risposta
-> * [dbops.stati_check_dichiarazioni](/dbzero/dbops/manual/stati_check_dichiarazioni) — il registro degli stati ammessi che nessuna funzione scrive
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo delle viste di controllo: che cosa significa una riga, con che cadenza si guarda, a chi tocca
+> * [dbops.presidi_testi](/dbzero/dbops/tabelle/presidi_testi) — cosa vuol dire una riga e cosa fare, per chi deve agire
+> * [dbops.presidi_cause](/dbzero/dbops/tabelle/presidi_cause) — a chi tocca, causa per causa, sui presidi che elencano guasti diversi
+> * [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/tabelle/riferimenti_morti_esenzioni) — il registro dei riferimenti morti
+> * [dbops.messaggi_errore_codici_legacy](/dbzero/dbops/tabelle/messaggi_errore_codici_legacy) — il registro dei nomi di codice fuori convenzione
+> * [dbops.codici_errore_senza_policy](/dbzero/dbops/tabelle/codici_errore_senza_policy) — il registro dei codici senza tipo di risposta
+> * [dbops.stati_check_dichiarazioni](/dbzero/dbops/tabelle/stati_check_dichiarazioni) — il registro degli stati ammessi che nessuna funzione scrive
 >
 > **Vedi anche** — funzioni e viste DB:
 >
-> * [dbops.fn_check_funzioni_riferimenti_morti](/dbzero/dbops/manual/fn_check_funzioni_riferimenti_morti) — la misura dei riferimenti morti
-> * [dbops.vw_codici_errore_da_dichiarare](/dbzero/dbops/manual/vw_codici_errore_da_dichiarare) — la misura del tipo di risposta
-> * [dbops.vw_codici_errore_forme_condizione](/dbzero/dbops/manual/vw_codici_errore_forme_condizione) — la misura delle famiglie di condizione
-> * [dbops.vw_stati_check_scrittori](/dbzero/dbops/manual/vw_stati_check_scrittori) — chi scrive ogni stato ammesso
-> * [dbops.fn_conta_presidio](/dbzero/dbops/manual/fn_conta_presidio) — il conteggio onesto di un presidio letto senza utente
+> * [dbops.fn_check_funzioni_riferimenti_morti](/dbzero/dbops/funzioni/fn_check_funzioni_riferimenti_morti) — la misura dei riferimenti morti
+> * [dbops.vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare) — la misura del tipo di risposta
+> * [dbops.vw_codici_errore_forme_condizione](/dbzero/dbops/views/vw_codici_errore_forme_condizione) — la misura delle famiglie di condizione
+> * [dbops.vw_stati_check_scrittori](/dbzero/dbops/views/vw_stati_check_scrittori) — chi scrive ogni stato ammesso
+> * [dbops.fn_conta_presidio](/dbzero/dbops/funzioni/fn_conta_presidio) — il conteggio onesto di un presidio letto senza utente
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la sede unica che solleva un errore
 >
 > **Vedi anche** — guide correlate:
@@ -112,7 +112,7 @@ già»*. Resta la domanda che viene dopo: **chi va a leggerli, e quando?**
 
 Per i presidi del §3 la risposta è un **cancello**: girano in CI e bloccano
 l'integrazione. Per le **viste di controllo** del database — qualche decina, e
-crescono — la risposta è il catalogo [`dbops.presidi`](/dbzero/dbops/manual/presidi),
+crescono — la risposta è il catalogo [`dbops.presidi`](/dbzero/dbops/tabelle/presidi),
 letto da due consumatori:
 
 * il **digest** dei presidi, un comando del backend lanciato da due timer systemd
@@ -134,9 +134,9 @@ nuova nascerebbe **fuori** dal giro, in silenzio.
 | `colonna_stato`, `stato_atteso` | per le viste con una colonna di stato, l'**unico** stato atteso: l'allarme è tutto il resto |
 | `registro` | la tabella che tiene le voci note, sui presidi di natura `REGISTRO` |
 | `cadenza` | ogni quanto si guarda; `MAI` per inventari e cancelli, che non vanno nel digest |
-| `perimetro` | se il conteggio è onesto letto da un programma senza utente, o se va fatto con [`fn_conta_presidio`](/dbzero/dbops/manual/fn_conta_presidio) |
+| `perimetro` | se il conteggio è onesto letto da un programma senza utente, o se va fatto con [`fn_conta_presidio`](/dbzero/dbops/funzioni/fn_conta_presidio) |
 | `chi_agisce` | a chi tocca spegnerlo: `AMMINISTRATORE`, `SISTEMISTA` o `SVILUPPO` |
-| `colonna_variante` | sui presidi che elencano guasti **diversi**, la colonna da cui si legge la causa di ogni riga; testo e destinatario si scelgono causa per causa ([`presidi_cause`](/dbzero/dbops/manual/presidi_cause)) |
+| `colonna_variante` | sui presidi che elencano guasti **diversi**, la colonna da cui si legge la causa di ogni riga; testo e destinatario si scelgono causa per causa ([`presidi_cause`](/dbzero/dbops/tabelle/presidi_cause)) |
 
 Il dettaglio di ogni colonna è nella scheda della tabella. Qui conta la ragione
 di tre scelte:
@@ -154,7 +154,7 @@ di tre scelte:
   scritti per chi **mantiene** il presidio; chi lo legge nel pannello o nel digest
   deve **agire**, e ha due domande sole — cosa vuol dire, cosa devo fare — a cui
   rispondono `significato` e `azione` di
-  [`presidi_testi`](/dbzero/dbops/manual/presidi_testi). I due testi non si
+  [`presidi_testi`](/dbzero/dbops/tabelle/presidi_testi). I due testi non si
   sostituiscono.
 
 #### Le regole che tengono onesto il catalogo
@@ -190,9 +190,9 @@ compilatore non vede.
 
 | Pezzo | Dove |
 |---|---|
-| La misura | [`dbops.fn_check_funzioni_riferimenti_morti`](/dbzero/dbops/manual/fn_check_funzioni_riferimenti_morti) |
-| Il registro | [`dbops.riferimenti_morti_esenzioni`](/dbzero/dbops/manual/riferimenti_morti_esenzioni) |
-| Le due viste | [`vw_riferimenti_morti_da_sanare`](/dbzero/dbops/manual/vw_riferimenti_morti_da_sanare) · [`vw_riferimenti_morti_rientrati`](/dbzero/dbops/manual/vw_riferimenti_morti_rientrati) |
+| La misura | [`dbops.fn_check_funzioni_riferimenti_morti`](/dbzero/dbops/funzioni/fn_check_funzioni_riferimenti_morti) |
+| Il registro | [`dbops.riferimenti_morti_esenzioni`](/dbzero/dbops/tabelle/riferimenti_morti_esenzioni) |
+| Le due viste | [`vw_riferimenti_morti_da_sanare`](/dbzero/dbops/views/vw_riferimenti_morti_da_sanare) · [`vw_riferimenti_morti_rientrati`](/dbzero/dbops/views/vw_riferimenti_morti_rientrati) |
 | Strumento a mano | `scripts/sql/check_funzioni_riferimenti_morti.sql` |
 | Cancello automatico | `scripts/sql/guardrail_riferimenti_morti.sql` (passo CI) |
 | Test della suite | `db/pgtap/dbops/test-riferimenti-morti-v1.sql` |
@@ -291,7 +291,7 @@ abusivi: un presidio che parte da zero non chiede mai a nessuno di sanare un
 arretrato. È la forma da preferire ogni volta che si apre un canale nuovo.
 
 ⭐ **Il controllo (H) guarda un punto che solleverà in futuro.** Una riga di
-[`dbops.automation_lock_columns`](/dbzero/dbops/manual/automation_lock_columns)
+[`dbops.automation_lock_columns`](/dbzero/dbops/tabelle/automation_lock_columns)
 non solleva niente finché l'automazione non genera il trigger, e da quel momento
 lo solleva per sempre: un codice sbagliato lì nasce in silenzio e si manifesta
 alla prima rigenerazione, quando nessuno lo sta più guardando.
@@ -299,7 +299,7 @@ alla prima rigenerazione, quando nessuno lo sta più guardando.
 | Pezzo | Dove |
 |---|---|
 | La sede unica che scrive i campi | `script.fn_log_and_raise_error` |
-| Il registro dei nomi ereditati | [`dbops.messaggi_errore_codici_legacy`](/dbzero/dbops/manual/messaggi_errore_codici_legacy) — **a zero, e non si toglie** (§2.1) |
+| Il registro dei nomi ereditati | [`dbops.messaggi_errore_codici_legacy`](/dbzero/dbops/tabelle/messaggi_errore_codici_legacy) — **a zero, e non si toglie** (§2.1) |
 | Il ritiro di un codice | `config.codici_errore.obsoleto_dal` |
 | Cancello automatico | `scripts/sql/guardrail_codice_errore_strutturato.sql` (passo CI) — controlli (A)…(H) |
 | Test della suite | `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` · `db/pgtap/config/test-codici-errore-obsoleto-dal.sql` · `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` |
@@ -360,8 +360,8 @@ riportarti indietro, un allarme, un tentativo automatico — no.
 
 | Pezzo | Dove |
 |---|---|
-| La misura | [`dbops.vw_codici_errore_da_dichiarare`](/dbzero/dbops/manual/vw_codici_errore_da_dichiarare) |
-| Il registro | [`dbops.codici_errore_senza_policy`](/dbzero/dbops/manual/codici_errore_senza_policy) — **a zero, e non si toglie** (§2.1) |
+| La misura | [`dbops.vw_codici_errore_da_dichiarare`](/dbzero/dbops/views/vw_codici_errore_da_dichiarare) |
+| Il registro | [`dbops.codici_errore_senza_policy`](/dbzero/dbops/tabelle/codici_errore_senza_policy) — **a zero, e non si toglie** (§2.1) |
 | Cancello automatico | `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py` (suite Django, in CI) |
 
 ⭐ **Un registro fatto bene fa emergere i difetti di modellazione.** Assegnare il
@@ -400,7 +400,7 @@ guarda lo stato, ma il **cambiamento**.
 **Perché non è un cancello sullo stato.** Dire «questo codice è generico?»
 richiede di leggere, per ogni punto che lo solleva, la condizione che lo precede —
 e di capirla. La misura che lo fa
-([`dbops.vw_codici_errore_forme_condizione`](/dbzero/dbops/manual/vw_codici_errore_forme_condizione))
+([`dbops.vw_codici_errore_forme_condizione`](/dbzero/dbops/views/vw_codici_errore_forme_condizione))
 ci riesce per una parte dei codici, e per gli altri **dichiara di non sapere**.
 Un cancello che capisce solo una parte dei casi boccia a caso e passa a caso, e
 boccerebbe anche i codici trasversali per costruzione (`E_PERMESSO_NEGATO` è
@@ -449,12 +449,12 @@ caso che quel valore doveva raccontare. Di regola è il fallimento: un esito
 
 **Come misura.** Il perimetro non è un elenco: è ogni `CHECK` di appartenenza su
 una colonna il cui nome dice «stato», letto dal catalogo di PostgreSQL. Per ogni
-valore la misura ([`dbops.vw_stati_check_scrittori`](/dbzero/dbops/manual/vw_stati_check_scrittori))
+valore la misura ([`dbops.vw_stati_check_scrittori`](/dbzero/dbops/views/vw_stati_check_scrittori))
 cerca **chi lo scrive**: il default della colonna, una funzione che scrive la
 tabella col valore nel corpo, o una funzione che chiama uno scrittore passandogli
 il valore. Guarda la struttura, non il contenuto: non conta le righe.
 
-**Il registro** ([`dbops.stati_check_dichiarazioni`](/dbzero/dbops/manual/stati_check_dichiarazioni))
+**Il registro** ([`dbops.stati_check_dichiarazioni`](/dbzero/dbops/tabelle/stati_check_dichiarazioni))
 porta un **canale**, perché il database non vede tutti gli scrittori: una parte
 dei valori li scrive l'applicazione. Il canale dice chi verifica la riga:
 
@@ -468,7 +468,7 @@ vede. Il caso tipico è un log che riceve lo stato **copiandolo** dal padre:
 scritto a ogni riga, e nessun valore compare in nessuna funzione. Stringere il
 `CHECK` romperebbe il log.
 
-**La lista di lavoro** ([`dbops.vw_stati_check_da_sanare`](/dbzero/dbops/manual/vw_stati_check_da_sanare))
+**La lista di lavoro** ([`dbops.vw_stati_check_da_sanare`](/dbzero/dbops/views/vw_stati_check_da_sanare))
 è un cancello: `db/pgtap/dbops/test-stati-check-scrittori-v1.sql` la fa rossa su
 un valore che nessuno scrive e nessuno ha dichiarato, e su una riga di registro
 che non serve più. Lo stesso pgTAP tiene l'elenco delle colonne di stato misurate,
@@ -481,6 +481,38 @@ vede. E PostgreSQL stampa lo stesso `CHECK` in due forme diverse (colonna `text`
 `varchar`): una misura che ne riconosce una sola si restringe senza dirlo. Ognuno
 di questi limiti è scritto nel commento della vista e ha un caso costruito nel
 pgTAP.
+
+### 3.7 Una colonna che promette un'automazione
+
+**Cosa sorveglia.** Alcune colonne sono una promessa: `tx_id` dice «qui si scrive
+la transazione», `storicizza` dice «di questa riga resta la storia», `cleanup_at`
+dice «questa riga scade». A mantenerle sono le automazioni del database, che però
+lavorano solo sulle tabelle del loro ambito. Una tabella fuori dall'ambito che ha
+una di quelle colonne promette qualcosa che nessuno fa: la storia non c'è, il
+transaction id resta vuoto, le righe non scadono mai. E non lo dice nessuno.
+
+**Come misura.** Il perimetro lo dà il catalogo: ogni tabella con una delle tre
+colonne. La misura
+([`dbops.vw_marcatori_automazione_senza_esecutore`](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore))
+chiede se c'è un esecutore: la tabella è nell'ambito, con lo stesso filtro dei
+runner, oppure, per `tx_id` e `storicizza`, il trigger è montato a mano. Per
+`cleanup_at` il trigger a mano non basta: il purge è solo del runner. La colonna di
+storicizzazione si cerca come la cerca la provision dello storico, con l'override
+di colonna (`STORICIZZA_COL`) quando c'è.
+
+**Il registro**
+([`dbops.marcatori_automazione_debito`](/dbzero/dbops/tabelle/marcatori_automazione_debito))
+porta i casi noti, con la ragione e il modo di chiuderli: l'ambito, il trigger a
+mano o la colonna tolta. Oggi è vuoto: i cataloghi di `dbops` che portavano un
+`tx_id` senza trigger l'hanno perso, perché li scrive solo la migrazione (la regola
+in [automazione-db.md](automazione-db.md) §1.1). Il cancello è
+`db/pgtap/dbops/test-marcatori-automazione-senza-esecutore-v1.sql`: rosso su una
+riga non dichiarata e su una riga di registro che non serve più.
+
+**Il limite, detto qui.** `data_update` e `user_update` restano fuori dal
+criterio, per decisione, anche dove nessuno li riscrive. E `cleanup_at` si
+riconosce per **nome**: la colonna del purge la sceglie un parametro della regola
+di pulizia, e una tabella che la chiama in un altro modo la misura non la vede.
 
 ---
 
@@ -496,7 +528,7 @@ e per questo alcuni hanno anche un giro a mano.
 | Codice errore e canali (§3.3) | guardrail SQL | — |
 | Tipo di risposta (§3.4) | suite Django, con database provvisto | `ZEROERP_TEST_DB_E2E=1` |
 | Famiglie di condizione (§3.5) | `codici-errore-baseline.sh` | stesso script |
-| Baseline pgTAP, con i pgTAP di presidio (§2.2, §3.2, §3.6) | suite pgTAP con `baseline-rossi-ci.tsv` | `pgtap-baseline.sh` con `baseline-rossi.tsv` |
+| Baseline pgTAP, con i pgTAP di presidio (§2.2, §3.2, §3.6, §3.7) | suite pgTAP con `baseline-rossi-ci.tsv` | `pgtap-baseline.sh` con `baseline-rossi.tsv` |
 
 ### Cosa dà davvero il cancello in CI
 
@@ -616,8 +648,8 @@ La ricetta, nell'ordine:
    sono scritti, chi legge un verde crede che copra tutto.
 8. **Motiva ogni esenzione con la sua ragione tecnica**, non con la categoria
    (§5).
-9. **Se è una vista di controllo, mettila nel catalogo** [`dbops.presidi`](/dbzero/dbops/manual/presidi)
-   con le sue parole in [`presidi_testi`](/dbzero/dbops/manual/presidi_testi): è
+9. **Se è una vista di controllo, mettila nel catalogo** [`dbops.presidi`](/dbzero/dbops/tabelle/presidi)
+   con le sue parole in [`presidi_testi`](/dbzero/dbops/tabelle/presidi_testi): è
    così che qualcuno la legge. Se ci si dimentica, il pgTAP del catalogo diventa
    rosso. I passi sono nella scheda della tabella.
 

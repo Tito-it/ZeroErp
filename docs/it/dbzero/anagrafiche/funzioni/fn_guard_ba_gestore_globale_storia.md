@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_ba_gestore_globale_storia(p_emit
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_ba_id anagrafiche.billing_account.id%TYPE;

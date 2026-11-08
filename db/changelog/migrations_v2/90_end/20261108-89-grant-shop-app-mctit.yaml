@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO SCHEMA shop ENTRA FRA GLI SCHEMI DELL'APPLICAZIONE
+#   Brief: brief-db-revisione-dbops §22 (decisione di Tid, 2026-11-08: «sì»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────────
+#   shop.ricevute e' letta dall'applicazione: ha la RLS accesa e le policy per
+#   il cliente dello shop e per l'operatore (20260420-07, 20260912-42,
+#   20261021-39), che scattano solo per zeroerp_app. Ma shop non era in nessuno
+#   dei due elenchi degli schemi dell'app (il loop ci_apply 20260205-41 e la
+#   fase post di scripts/sql/provision_zeroerp.sql): l'app non aveva USAGE
+#   sullo schema ne' grant sulla tabella, e le policy non avevano un lettore.
+#   shop entra nei due elenchi, nello stesso giro.
+#
+# ── QUI ──────────────────────────────────────────────────────────────────
+#   Il loop ci_apply converge in CI a ogni build, su dev solo al prossimo
+#   `make db-ci-apply`; il provisioning non si rilancia su dev. Questo
+#   changeSet da' subito, in ogni contesto, la stessa postura che i due
+#   elenchi danno a ogni schema dell'app:
+#   * USAGE sullo schema;
+#   * SELECT, INSERT, UPDATE, DELETE sulle tabelle e le viste del migratore
+#     (shop.ricevute non e' fra i registri append-only ne' fra le eccezioni
+#     del loop);
+#   * USAGE, SELECT sulle sequenze; EXECUTE sulle funzioni;
+#   * le default privileges del migratore sullo schema, come la fase post del
+#     provisioning (ALTER DEFAULT PRIVILEGES FOR ROLE <migratore> IN SCHEMA).
+#   Idempotente (un GRANT gia' dato non cambia niente); senza il ruolo app non
+#   fa nulla. Gli oggetti sono del migratore: si concede da proprietario.
+#   Rollback: i REVOKE corrispondenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261108-89-grant-shop-app-mctit.yaml
+
+  - changeSet:
+      id: 20261108-89-grant-shop-app
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lo schema shop fra gli schemi dell'applicazione: USAGE, DML sulle tabelle, sequenze, funzioni
+        e default privileges a zeroerp_app, come il loop ci_apply e il provisioning.
+        brief-db-revisione-dbops §22.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_obj      text;
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RAISE NOTICE 'Ruolo % assente: skip grant su shop.', v_app_role;
+                  RETURN;
+                END IF;
+
+                EXECUTE format('GRANT USAGE ON SCHEMA shop TO %I', v_app_role);
+
+                -- Tabelle e viste del migratore: la postura di default del loop.
+                FOR v_obj IN
+                  SELECT c.oid::regclass::text
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'shop'
+                     AND c.relkind IN ('r','p','v','m','f')
+                     AND c.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+                LOOP
+                  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO %I', v_obj, v_app_role);
+                END LOOP;
+
+                FOR v_obj IN
+                  SELECT c.oid::regclass::text
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'shop'
+                     AND c.relkind = 'S'
+                     AND c.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+                LOOP
+                  EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO %I', v_obj, v_app_role);
+                END LOOP;
+
+                FOR v_obj IN
+                  SELECT p.oid::regprocedure::text
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'shop'
+                     AND p.prokind = 'f'
+                     AND p.proowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+                LOOP
+                  EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', v_obj, v_app_role);
+                END LOOP;
+
+                -- Gli oggetti futuri del migratore, come la fase post del provisioning.
+                EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA shop GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I', current_user, v_app_role);
+                EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA shop GRANT USAGE, SELECT ON SEQUENCES TO %I', current_user, v_app_role);
+                EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA shop GRANT EXECUTE ON FUNCTIONS TO %I', current_user, v_app_role);
+              END;
+              $$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RETURN;
+                END IF;
+                EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA shop REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM %I', current_user, v_app_role);
+                EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA shop REVOKE USAGE, SELECT ON SEQUENCES FROM %I', current_user, v_app_role);
+                EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA shop REVOKE EXECUTE ON FUNCTIONS FROM %I', current_user, v_app_role);
+                EXECUTE format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA shop FROM %I', v_app_role);
+                EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA shop FROM %I', v_app_role);
+                EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA shop FROM %I', v_app_role);
+                EXECUTE format('REVOKE USAGE ON SCHEMA shop FROM %I', v_app_role);
+              END;
+              $$;

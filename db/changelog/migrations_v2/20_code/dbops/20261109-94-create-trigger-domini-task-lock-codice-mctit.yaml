@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.domini_task: il lock del codice, montato da una migrazione (N5 del giro 10a, strada A
+#   nella forma confermata da Tid il 2026-11-08). La riga di automation_lock_columns dichiarava il
+#   lock, ma la tabella e' fuori dall'ambito delle automazioni e il runner non ci arriva: il codice
+#   restava modificabile. La tabella non entra nell'ambito (porterebbe con se' anche le altre
+#   automazioni): il trigger lo monta questo changeSet, con il nome del template della regola
+#   LOCK_COLUMNS e gli argomenti che monterebbe il runner. La riga del registro resta, ed e' la
+#   dichiarazione; il test 23 di dbops/test-lock-columns-convergenza tiene uguali le due cose.
+#   Non e' un trigger generato da ci_apply (linee-guida-sql §11.5): fuori dall'ambito il runner
+#   non lo crea mai. Brief: brief-db-revisione-dbops, giro 10b, blocco 10b-4 (§27).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-94-create-trigger-domini-task-lock-codice-mctit.yaml
+
+  - changeSet:
+      id: 20261109-94-create-trigger-domini-task-lock-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.domini_task: il lock del codice montato da una migrazione (tabella fuori ambito). Brief: brief-db-revisione-dbops, giro 10b, blocco 10b-4 (§27).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class
+               WHERE oid = to_regclass('dbops.domini_task')
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger
+               WHERE tgrelid = to_regclass('dbops.domini_task')
+                 AND tgfoid = to_regprocedure('script.trgfn_lock_columns()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_domini_task_a10_lock_columns_upd
+                  BEFORE UPDATE OF codice ON dbops.domini_task
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_CODICE_NON_MODIFICABILE');
+
+              COMMENT ON TRIGGER trg_domini_task_a10_lock_columns_upd ON dbops.domini_task IS
+                  'Il codice di un dominio della pipeline non si cambia: e'' una chiave di sistema. Lo dichiara la riga di dbops.automation_lock_columns; la tabella e'' fuori dall''ambito delle automazioni, quindi il lock non lo monta il runner ma una migrazione, con lo stesso nome (dal template della regola LOCK_COLUMNS) e gli stessi argomenti. Che registro e lock vivo restino uguali lo controlla dbops/test-lock-columns-convergenza.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_domini_task_a10_lock_columns_upd ON dbops.domini_task;

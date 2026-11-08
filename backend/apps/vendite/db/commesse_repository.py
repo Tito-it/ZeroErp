@@ -121,7 +121,7 @@ ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
     "gruppo_key",
 })
 
-# Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
+# Nomi delle colonne condivise da tutte le fn_list_*_da_pushare.
 # La colonna opzionale `riga_id` (presente in preventivi/ordini/contratti/ddt,
 # assente in consumi) e' aggiunta al col_map a runtime dentro
 # `fetch_pushable_rows` e mappata su `PushableRow.riga_sorgente_id`
@@ -134,7 +134,7 @@ _PUSHABLE_SHARED_COLS = (
     "competenza_al",
     "fatturazione_immediata",
     "sorgente_tipo_id",
-    "sorgente_uid",
+    "sorgente_chiave",
     "segment_key",
     "articolo_id",
     "istanza_utility_id",
@@ -164,7 +164,23 @@ _PUSHABLE_SHARED_COLS = (
     # successo davvero (smoke-push-termine-documento-commessa, test 0).
     "termine_pagamento_id",
     "modalita_pagamento_id",
+    # La causale della riga ONERE (20261103-38/-40, brief-db-addebito-trasporto-
+    # ordine §9.3): gli oneri sono righe di ordine e bolla, e la madre vuole
+    # ONERE <=> causale. Solo ordini e bolle la espongono; per gli altri lister
+    # resta None, ed e' giusto: le loro righe non sono ONERE.
+    "causale_onere_id",
 )
+
+# Le colonne della whitelist che non ogni lister espone: `_map_pushable_row`
+# le legge con tolleranza (assenti -> None) e SOLO loro; tutte le altre sono
+# obbligatorie (`_col`, KeyError se mancano). Una sede per il binding e per il
+# presidio sul catalogo (`test_commesse_porta_nomi_db`), che ne prova la forma
+# contro le RETURNS TABLE dei cinque lister.
+_PUSHABLE_OPTIONAL_COLS: frozenset[str] = frozenset({
+    "termine_pagamento_id",
+    "modalita_pagamento_id",
+    "causale_onere_id",
+})
 
 
 # --- Risultati upsert ---
@@ -260,6 +276,8 @@ class CommessaAttivitaInput:
     stato_approvazione: str = STATO_APPROVAZIONE_BOZZA
     stato_emissione: str = STATO_EMISSIONE_NON_EMESSA
     tipo_movimento: str = TIPO_MOVIMENTO_NORMALE
+    # Valorizzata se e solo se tipo_movimento = ONERE (guard della madre).
+    causale_onere_id: int | None = None
 
     # === Campi opzionali ===
     istanza_utility_id: int | None = None
@@ -274,7 +292,19 @@ class CommessaAttivitaInput:
     listino_versione_id: int | None = None
     listino_riga_id: int | None = None  # la riga di listino del prezzo (la rende «propagata»)
     sorgente_tipo_id: int | None = None
-    sorgente_uid: str | None = None
+    # ⭐ La chiave del documento d'origine COME LA HA CHI CHIAMA, in testo: l'id
+    #    o l'uid, secondo il tipo. La madre la traduce nella colonna del suo
+    #    `key_selector` (`script.fn_sorgente_chiave`). Fino al giro K.1 di
+    #    brief-db-sorgente-documento-e-riga (2026-11-07) si chiamava
+    #    `sorgente_uid`, come il parametro della madre: un nome che diceva
+    #    «uid» anche quando portava un id.
+    sorgente_chiave: str | None = None
+    # ⭐ La RIGA del documento d'origine (dal giro C.3 di
+    #    brief-db-sorgente-documento-e-riga, BE-C.3-a). None = provenienza dal
+    #    documento intero (consumi, quote fisse del listino di un contratto):
+    #    il guard la ammette, ma una riga che ce l'ha e non la passa perde la
+    #    sua provenienza.
+    sorgente_riga: int | None = None
     meta: dict[str, Any] | None = None
 
     # === Snapshot pricing v5 (F2-BE-11) ===
@@ -295,7 +325,7 @@ class CommessaAttivitaInput:
 
 @dataclass(frozen=True)
 class PushableRow:
-    """Riga normalizzata da fn_list_*_da_pushare — 26 colonne condivise."""
+    """Riga normalizzata da fn_list_*_da_pushare — le colonne condivise."""
 
     billing_account_id: int
     utility_id: int | None
@@ -304,7 +334,12 @@ class PushableRow:
     competenza_al: date | None
     fatturazione_immediata: bool
     sorgente_tipo_id: int
-    sorgente_uid: str
+    # La chiave del documento d'origine come la restituisce il lister (l'uid
+    # del documento in testo, per ogni tipo), con lo stesso nome della colonna
+    # (giro K.2 di brief-db-sorgente-documento-e-riga, BE-K.2-a), del campo di
+    # `CommessaAttivitaInput` e della chiave del batch: un nome solo, nessun
+    # punto che traduce.
+    sorgente_chiave: str
     segment_key: str
     articolo_id: Any  # UUID o None (consumi)
     istanza_utility_id: int | None
@@ -340,6 +375,9 @@ class PushableRow:
     # (brief scadenze §8).
     termine_pagamento_id: int | None = None
     modalita_pagamento_id: int | None = None
+    # La causale della riga ONERE (righe-onere di ordini e bolle). None per i
+    # lister che non la espongono: preventivi, contratti e consumi.
+    causale_onere_id: int | None = None
 
 
 def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
@@ -349,13 +387,13 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
 
     meta_raw = jsonb_out(_col("meta")) or {}
 
-    # Guard: sorgente_uid e segment_key devono essere non-null dal DB.
-    raw_sorgente_uid = _col("sorgente_uid")
+    # Guard: sorgente_chiave e segment_key devono essere non-null dal DB.
+    raw_sorgente_chiave = _col("sorgente_chiave")
     raw_segment_key = _col("segment_key")
-    if raw_sorgente_uid is None or raw_segment_key is None:
+    if raw_sorgente_chiave is None or raw_segment_key is None:
         raise ValueError(
-            f"sorgente_uid o segment_key NULL dal DB: "
-            f"sorgente_uid={raw_sorgente_uid!r}, segment_key={raw_segment_key!r}"
+            f"sorgente_chiave o segment_key NULL dal DB: "
+            f"sorgente_chiave={raw_sorgente_chiave!r}, segment_key={raw_segment_key!r}"
         )
 
     # Guard: factor_to_base=None → default Decimal(1); Decimal(0) preservato.
@@ -376,6 +414,10 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
     # aggiunta ANCHE alla whitelist o il binding resta muto (lezione del
     # 2026-08-03: la prima stesura si fermo' qui e lo smoke la scopri').
     def _opt_int(nome: str) -> int | None:
+        # Una lettura tollerante fuori dall'elenco renderebbe muta una colonna
+        # obbligatoria: il presidio sul catalogo non la vedrebbe.
+        if nome not in _PUSHABLE_OPTIONAL_COLS:
+            raise RuntimeError(f"colonna {nome!r} letta come opzionale ma non dichiarata tale")
         if nome not in col_map:
             return None
         valore = row[col_map[nome]]
@@ -389,7 +431,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         competenza_al=_col("competenza_al"),
         fatturazione_immediata=bool(_col("fatturazione_immediata")),
         sorgente_tipo_id=_col("sorgente_tipo_id"),
-        sorgente_uid=str(raw_sorgente_uid),
+        sorgente_chiave=str(raw_sorgente_chiave),
         riga_sorgente_id=(
             int(riga_sorgente_id_raw) if riga_sorgente_id_raw is not None else None
         ),
@@ -412,6 +454,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         tipo_doc_fiscale_id=_col("tipo_doc_fiscale_id"),
         termine_pagamento_id=_opt_int("termine_pagamento_id"),
         modalita_pagamento_id=_opt_int("modalita_pagamento_id"),
+        causale_onere_id=_opt_int("causale_onere_id"),
     )
 
 
@@ -472,7 +515,7 @@ class CommesseRepository(EventLogRepositoryMixin):
 
     # Scopo: invoca la fn_list_<sorgente>_da_pushare parametrizzata e restituisce
     # le righe normalizzate come PushableRow. Unico punto di accesso per tutti gli handler.
-    # `sorgente_uid` (opzionale) restringe la query alla riga sorgente del documento
+    # `sorgente_id` (opzionale) restringe la query alla riga sorgente del documento
     # specifico (es. preventivo_id per sorgente PREVENTIVO): None = lista globale del
     # batch orchestrator, valorizzato = push singolo UI-driven. Allinea col 4o param
     # `p_<sorgente>_id DEFAULT NULL` aggiunto alle fn DB lato `dev/db-tid` (vedi
@@ -484,7 +527,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         competenza_mese: date | None = None,
         billing_account_id: int | None = None,
         limit: int | None = None,
-        sorgente_uid: int | None = None,
+        sorgente_id: int | None = None,
         righe_ids: list[int] | None = None,
     ) -> list[PushableRow]:
         """Chiama fn_list_<sorgente>_da_pushare e restituisce PushableRow normalizzati."""
@@ -512,7 +555,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         # `p_righe_ids` SOLO quando valorizzato: le fn delle altre sorgenti
         # hanno 4 parametri e il 5o le romperebbe.
         placeholders = "%s, %s, %s, %s"
-        params: list = [competenza_mese, billing_account_id, limit, sorgente_uid]
+        params: list = [competenza_mese, billing_account_id, limit, sorgente_id]
         if righe_ids is not None:
             placeholders += ", %s::bigint[]"
             params.append(righe_ids)
@@ -824,16 +867,24 @@ class CommesseRepository(EventLogRepositoryMixin):
         return int(row[0] or 0)
 
     def get_commessa_viva_by_sorgente(
-        self, *, sorgente_codice: str, sorgente_chiave: str,
+        self,
+        *,
+        sorgente_codice: str,
+        sorgente_id: int | None = None,
+        sorgente_uid: str | None = None,
     ) -> int | None:
         """La commessa APERTA in cui sta un documento sorgente, o None.
 
         Wrapper di `vendite.fn_commessa_viva_di_sorgente`: un documento puo'
         avere piu' link (quelli verso commesse chiuse o annullate restano
         come storia, D-12 di brief-db-annullo-a-valle-riapre-a-monte), e
-        quale conta lo dice il DB. `sorgente_chiave` e' la chiave CANONICA
-        del link (`config.sorgenti.key_selector`): l'uid per il preventivo,
-        `id::text` per ordine, contratto, bolla e consumi.
+        quale conta lo dice il DB. Il documento si nomina con le sue DUE
+        chiavi, come le tiene il link dal giro C.2 di
+        brief-db-sorgente-documento-e-riga (BE-C.2-a): `sorgente_uid` per i
+        tipi a uid (il preventivo), `sorgente_id` per ordine, contratto, bolla
+        e consumi. Chi ha il documento può passarle entrambe: l'incontro lo fa
+        la funzione, con la regola del modello. Fino a quel giorno era una
+        chiave testuale sola (`sorgente_chiave`).
 
         ⛔ Niente `SELECT` propria su `commesse_sorgenti`: quella di prima
         (`LIMIT 1` senza stato) con due link poteva dare la commessa morta.
@@ -842,12 +893,16 @@ class CommesseRepository(EventLogRepositoryMixin):
         None: «nessuna commessa aperta» e «sorgente sbagliata» non si
         confondono (un codice errato farebbe saltare l'aggancio in silenzio)."""
         sql = """
-            SELECT vendite.fn_commessa_viva_di_sorgente(s.id, %s)
+            SELECT vendite.fn_commessa_viva_di_sorgente(s.id, %s::bigint, %s::uuid)
             FROM config.sorgenti s
             WHERE s.codice_interno = %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [sorgente_chiave, sorgente_codice])
+            cursor.execute(sql, [
+                None if sorgente_id is None else int(sorgente_id),
+                sorgente_uid,
+                sorgente_codice,
+            ])
             row = cursor.fetchone()
         ErrorManager.require(
             row is not None,
@@ -1026,10 +1081,12 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_stato_approvazione => %s,
                     p_stato_emissione => %s,
                     p_sorgente_tipo_id => %s,
-                    p_sorgente_uid => %s,
+                    p_sorgente_chiave => %s,
                     p_tipo_movimento => %s,
                     p_meta => %s::jsonb,
-                    p_listino_riga_id => %s
+                    p_causale_onere_id => %s,
+                    p_listino_riga_id => %s,
+                    p_sorgente_riga => %s
                 )
                 """,
                 [
@@ -1066,10 +1123,12 @@ class CommesseRepository(EventLogRepositoryMixin):
                     inp.stato_approvazione,
                     inp.stato_emissione,
                     inp.sorgente_tipo_id,
-                    inp.sorgente_uid,
+                    inp.sorgente_chiave,
                     inp.tipo_movimento,
                     self._to_jsonb_param(inp.meta),
+                    inp.causale_onere_id,
                     inp.listino_riga_id,
+                    inp.sorgente_riga,
                 ],
             )
             row = cursor.fetchone()
@@ -1114,8 +1173,16 @@ class CommesseRepository(EventLogRepositoryMixin):
             "stato_approvazione": inp.stato_approvazione,
             "stato_emissione": inp.stato_emissione,
             "sorgente_tipo_id": inp.sorgente_tipo_id,
-            "sorgente_uid": inp.sorgente_uid,
+            # La chiave del documento (id o uid in testo): la legge il wrapper
+            # batch come `sorgente_chiave` dal giro K.1. ⛔ Con la chiave vecchia
+            # (`sorgente_uid`) la riga passerebbe la chiave NULL, senza errore.
+            "sorgente_chiave": inp.sorgente_chiave,
+            # La riga del documento: la legge il wrapper batch (giro C.3).
+            "sorgente_riga": inp.sorgente_riga,
             "tipo_movimento": inp.tipo_movimento,
+            # Chiave facoltativa del wrapper (20261103-49): senza, ogni riga
+            # ONERE del push e' rifiutata dalla madre.
+            "causale_onere_id": inp.causale_onere_id,
             "meta": inp.meta or {},
             # Snapshot pricing v5 (F2-BE-11). Il wrapper batch DB deve
             # estrarre queste chiavi e passarle a fn_upsert_commessa_attivita
@@ -2027,8 +2094,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                        classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
                        listino_riga_id = %(listino_riga_id)s,
                        listino_versione_id = %(listino_versione_id)s,
-                       meta = %(meta)s::jsonb,
-                       data_update = now()
+                       meta = %(meta)s::jsonb
                  WHERE id = %(att_id)s
                 """,
                 parametri,
@@ -2047,8 +2113,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                        contratto_id = %(contratto_id)s,
                        categoria_cliente_id_snapshot = %(categoria_cliente_id_snapshot)s,
                        classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
-                       listino_riga_id = %(listino_riga_id)s,
-                       data_update = now()
+                       listino_riga_id = %(listino_riga_id)s
                  WHERE commessa_attivita_id = %(att_id)s
                    AND fattura_riga_id IS NULL
                 """,

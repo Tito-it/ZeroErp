@@ -26,7 +26,7 @@
 
 import unittest
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services import vendite_service as vs
@@ -72,11 +72,12 @@ class ValidazioneIdsRiportoTests(unittest.TestCase):
     # ⚠️ Due volte lo stesso id e' la stessa riga e la madre la tratterebbe una
     #    volta sola: senza dedup il conteggio a video direbbe un numero diverso
     #    da quello che si e' spuntato.
-    @patch.object(vs.VenditeRepository, "riporta_attivita_da_emettere")
+    @patch.object(vs.VenditeRepository, "riporta_attivita_da_emettere", autospec=True)
     def test_duplicati_rimossi_ordine_preservato(self, mock_riporta):
         mock_riporta.return_value = {"riportate": 3, "riemesse_attivita": 3}
         vs.fn_riporta_attivita_da_emettere(attivita_fatturabili_ids=[9, 4, 9, 7, 4])
-        mock_riporta.assert_called_once_with([9, 4, 7])
+        # `ANY` e' `self`: il mock `autospec` di un metodo registra l'istanza.
+        mock_riporta.assert_called_once_with(ANY, [9, 4, 7])
 
 
 class VerboRiportaTests(unittest.TestCase):
@@ -84,7 +85,7 @@ class VerboRiportaTests(unittest.TestCase):
     # Scopo: Verifica che il verbo deleghi alla madre DB in UNA sola chiamata.
     # ⛔ L'atomicita' e' del database (due scritture + evento di registro in una
     #    transazione): ricomporla qui sarebbe una seconda implementazione.
-    @patch.object(vs.VenditeRepository, "riporta_attivita_da_emettere")
+    @patch.object(vs.VenditeRepository, "riporta_attivita_da_emettere", autospec=True)
     def test_delega_alla_madre_una_sola_chiamata(self, mock_riporta):
         mock_riporta.return_value = {"riportate": 5, "riemesse_attivita": 5}
         esito = vs.fn_riporta_attivita_da_emettere(attivita_fatturabili_ids=[1, 2, 3, 4, 5])
@@ -92,8 +93,8 @@ class VerboRiportaTests(unittest.TestCase):
         self.assertEqual(mock_riporta.call_count, 1)
 
     # Scopo: Verifica che la lettura dei motivi non chiami la mutazione.
-    @patch.object(vs.VenditeRepository, "riporta_attivita_da_emettere")
-    @patch.object(vs.VenditeRepository, "check_attivita_riportabili_da_emettere")
+    @patch.object(vs.VenditeRepository, "riporta_attivita_da_emettere", autospec=True)
+    @patch.object(vs.VenditeRepository, "check_attivita_riportabili_da_emettere", autospec=True)
     def test_check_non_muta(self, mock_check, mock_riporta):
         mock_check.return_value = []
         vs.fn_check_attivita_riportabili(attivita_fatturabili_ids=[1])
@@ -103,7 +104,7 @@ class VerboRiportaTests(unittest.TestCase):
     # ⛔ `reason_key` e gli id del bersaglio non si riscrivono nel backend: il
     #    frontend risolve l'indirizzo i18n che il DATABASE dichiara, e riscriverlo
     #    qui sarebbe una seconda copia del vocabolario.
-    @patch.object(vs.VenditeRepository, "check_attivita_riportabili_da_emettere")
+    @patch.object(vs.VenditeRepository, "check_attivita_riportabili_da_emettere", autospec=True)
     def test_motivi_passano_intatti(self, mock_check):
         motivo = {
             "codice": "E_ATTIVITA_ANCORA_IN_FATTURA",
@@ -125,7 +126,7 @@ class ListaResiduiTests(unittest.TestCase):
 
     # Scopo: Verifica che la lista deleghi al repository col mese normalizzato al
     #        primo giorno, e che la paginazione arrivi come limit/offset.
-    @patch.object(vs.VenditeRepository, "list_dash_competenza_residui")
+    @patch.object(vs.VenditeRepository, "list_dash_competenza_residui", autospec=True)
     def test_lista_residui_filtra_e_pagina(self, mock_list):
         mock_list.return_value = ([], 0)
         vs.fn_dash_competenza_residui(competenza_mese=date(2026, 7, 18), limit=25, offset=25)

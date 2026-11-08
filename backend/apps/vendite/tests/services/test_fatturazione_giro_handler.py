@@ -147,7 +147,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
 
     # 5. Emissione mirata che non produce lotti: fallisce, e il messaggio dice
     #    PERCHE' (il difetto misurato era un «fatto» muto con lotti: []).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_mirata_senza_lotti_fallisce_con_motivo(self, mock_giro, mock_repo) -> None:
         mock_giro.return_value = {"lane": 0, "lotti": [], "falliti": 0, "esiti": []}
@@ -176,7 +176,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
         )
 
     # 6. Il fallimento e' deterministico → terminale: la coda non lo ritenta 5 volte.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_mirata_senza_lotti_e_terminale(self, mock_giro, mock_repo) -> None:
         mock_giro.return_value = {"lane": 0, "lotti": [], "falliti": 0}
@@ -190,7 +190,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
 
     # 7. Percorso felice: nessuna diagnosi (dopo l'emissione le righe sono EMESSA
     #    e la fotografia racconterebbe l'arrivo, non l'ostacolo).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_mirata_con_lotti_non_diagnostica(self, mock_giro, mock_repo) -> None:
         mock_giro.return_value = {
@@ -213,7 +213,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     #    prodotti), non piu' da una previsione fatta alla discovery: fra
     #    discovery e pipeline un giro concorrente puo' prendersi le righe, e la
     #    previsione dava quel gruppo per coperto.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_mirata_parziale_spiega_i_non_serviti_senza_fallire(
         self, mock_giro, mock_repo,
@@ -254,7 +254,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     #    lavoro preso da un altro giro — quindi NON si diagnostica (non c'e'
     #    ostacolo da spiegare) e va su una chiave sua, altrimenti verrebbe
     #    raccontato come «non servito».
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_fatturato_altrove_non_e_un_non_servito(self, mock_giro, mock_repo) -> None:
         mock_giro.return_value = {
@@ -282,7 +282,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     #    del FE — e la coda rifarebbe il giro, che al secondo colpo non trova
     #    piu' nulla e fallisce con «gia' emesse»: un'emissione riuscita
     #    raccontata come fallita. Il buco pero' si DICHIARA, non si ingoia.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_consuntivo_rotto_non_affonda_il_giro_riuscito(
         self, mock_giro, mock_repo,
@@ -314,7 +314,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     #      - uno con la commessa in BOZZA   → «la testata blocca», che resta.
     #    Un `if falliti > 0` globale avrebbe spento anche il secondo,
     #    sostituendo un messaggio impreciso con un silenzio.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_corsia_rotta_e_testata_bloccata_convivono_nello_stesso_giro(
         self, mock_giro, mock_repo,
@@ -370,7 +370,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     # 8. Giro di MASSA a vuoto: resta un successo. Il perimetro non e' nominale —
     #    «questo mese non c'era nulla da fatturare» e' un esito legittimo, e il
     #    cron lo produce di routine.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_giro_di_massa_a_vuoto_resta_successo(self, mock_giro, mock_repo) -> None:
         mock_giro.return_value = {"lane": 0, "lotti": [], "falliti": 0}
@@ -387,7 +387,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     #    `terne_pronte`: ora la diagnosi gira col contesto e per il gruppo
     #    della corsia rotta risponde ESECUZIONE_FALLITA, non piu'
     #    NON_DETERMINATO. Il messaggio primario resta quello degli errori.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_mirata_con_terne_fallite_riporta_errori_terna(
         self, mock_giro, mock_repo,
@@ -428,7 +428,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     #    dietro l'errore dell'altra corsia — la stessa classe di silenzio del
     #    §11.4 punto 3, sull'altro ramo. Ora il messaggio la nomina
     #    («Inoltre: …») e il context porta entrambe le cause.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_giro_a_vuoto_misto_nomina_anche_la_causa_non_di_corsia(
         self, mock_giro, mock_repo,

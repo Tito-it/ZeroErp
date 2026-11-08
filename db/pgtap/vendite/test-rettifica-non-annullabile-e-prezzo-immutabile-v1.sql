@@ -173,7 +173,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione  => 'APPROVATA',
   p_stato_emissione     => 'NON_EMESSA',
   p_sorgente_tipo_id    => NULL,
-  p_sorgente_uid        => NULL,
+  p_sorgente_chiave     => NULL,
   p_tipo_movimento      => 'RETTIFICA',
   p_meta                => jsonb_build_object('case', 'RNP_RETTIFICA')
 ) r;

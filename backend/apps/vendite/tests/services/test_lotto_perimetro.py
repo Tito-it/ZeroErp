@@ -28,31 +28,34 @@ from apps.vendite.services._lotto_perimetro import lotto_visibile
 class LottoPerimetroTests(TestCase):
 
     def test_lotto_non_visibile_e_404_su_ogni_satellite(self) -> None:
+        # Il quarto campo dice su QUALE repository vive la query dell'elenco:
+        # prima si verificava su tutti e due, e sul repository sbagliato
+        # `assert_not_called` di un metodo inesistente passava a vuoto.
         letture = (
             ("fatture", lambda: vendite_service.fn_list_lotto_fatture(lotto_id=7, auth_user_id=3),
-             "list_lotto_fatture"),
+             "list_lotto_fatture", "vendite"),
             ("gruppi", lambda: vendite_service.fn_list_lotto_gruppi(lotto_id=7, auth_user_id=3),
-             "list_lotto_gruppi"),
+             "list_lotto_gruppi", "vendite"),
             ("segnalazioni", lambda: pipeline_service.fn_list_lotto_segnalazioni(lotto_id=7, auth_user_id=3),
-             "list_lotto_segnalazioni"),
+             "list_lotto_segnalazioni", "pipeline"),
             ("riepilogo", lambda: pipeline_service.fn_get_lotto_segnalazioni_summary(lotto_id=7, auth_user_id=3),
-             "get_lotto_segnalazioni_summary"),
+             "get_lotto_segnalazioni_summary", "pipeline"),
             ("task-run", lambda: pipeline_service.fn_get_lotto_task_runs(lotto_id=7, auth_user_id=3),
-             "list_lotto_task_runs"),
+             "list_lotto_task_runs", "pipeline"),
         )
-        for nome, lettura, query in letture:
+        for nome, lettura, query, sede in letture:
             with self.subTest(nome), \
-                    patch("apps.vendite.db.vendite_repository.VenditeRepository") as vendite_cls, \
+                    patch("apps.vendite.db.vendite_repository.VenditeRepository", autospec=True) as vendite_cls, \
                     patch.object(vendite_service, "VenditeRepository", vendite_cls), \
-                    patch("apps.vendite.services.pipeline_service.VenditePipelineRepository") as pipe_cls, \
+                    patch("apps.vendite.services.pipeline_service.VenditePipelineRepository", autospec=True) as pipe_cls, \
                     patch("apps.vendite.services.lotto_segnalazioni_service.VenditePipelineRepository", pipe_cls):
                 vendite_cls.return_value.get_lotto.return_value = None
                 with self.assertRaises(ServiceError) as ctx:
                     lettura()
                 self.assertEqual(ctx.exception.code, "E_LOTTO_NON_TROVATO")
                 vendite_cls.return_value.get_lotto.assert_called_once_with(lotto_id=7, auth_user_id=3)
-                getattr(vendite_cls.return_value, query).assert_not_called()
-                getattr(pipe_cls.return_value, query).assert_not_called()
+                repo = vendite_cls if sede == "vendite" else pipe_cls
+                getattr(repo.return_value, query).assert_not_called()
 
     def test_lotto_visibile_restituisce_la_testata(self) -> None:
         repo = MagicMock()

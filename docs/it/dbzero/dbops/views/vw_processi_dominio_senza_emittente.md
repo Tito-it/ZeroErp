@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> LIVELLO 1 del presidio sui processi: processi dichiarati DOMINIO che non possono rispettare un perimetro emittente — nessun bersaglio dichiarato, bersaglio senza percorso, o percorso dichiarato su tabella/colonna inesistente. DEVE restare VUOTA. ⭐ Prende l'omissione di progetto PRIMA che il processo giri: a runtime non e' recuperabile, perche' la RLS non puo' filtrare su una colonna che non esiste. ⚠️ Dal 2026-09-05 porta `stato` (DEBITO_DICHIARATO / NON_DICHIARATO, da dbops.processi_bersagli.debito_dichiarato) e `nota`, come la sorella di livello 2: il frontend le mostra in un pannello solo e deve poter leggere dal DATO se una riga era attesa, invece che da una tabella di eccezioni scritta a mano nel codice. ⛔ Dichiarare un debito non lo assolve: una riga DEBITO_DICHIARATO e' un lavoro con un nome, una NON_DICHIARATO e' un allarme — l'invariante verificabile e' «nessuna riga NON_DICHIARATO». ⚠️ Come dbops.vw_liste_multi_emittente_non_certificate, prova che la struttura c'e', non che il codice la usi bene; e non prende il verso opposto (dovrebbe essere DOMINIO ma e' dichiarato manutenzione), che resta un errore umano. Brief: brief-db-processi-automatici-identita-e-perimetro §8.
+> LIVELLO 1 del presidio sui processi: processi DOMINIO vivi (ritiro non raggiunto, script.fn_e_obsoleto) che non possono rispettare un perimetro emittente: nessun bersaglio dichiarato, bersaglio senza percorso, o percorso su tabella o colonna inesistente. DEVE restare VUOTA. Prende l'omissione di progetto prima che il processo giri: la RLS non puo' filtrare su una colonna che non esiste. `stato` (DEBITO_DICHIARATO / NON_DICHIARATO, da dbops.processi_bersagli.debito_dichiarato) e `nota` come la sorella di livello 2, dbops.vw_processi_dominio_senza_difesa. Dichiarare un debito non lo assolve: l'invariante verificabile e' «nessuna riga NON_DICHIARATO». Prova che la struttura c'e', non che il codice la usi bene, e non prende il verso opposto (un processo che dovrebbe essere DOMINIO e' dichiarato di manutenzione).
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -16,7 +16,7 @@ WITH dominio AS (
             p.codice,
             p.canale
            FROM dbops.processi p
-          WHERE ((p.classe = 'DOMINIO'::text) AND p.attivo AND (p.obsoleto_dal IS NULL))
+          WHERE ((p.classe = 'DOMINIO'::text) AND (NOT script.fn_e_obsoleto(p.obsoleto_dal)))
         )
  SELECT d.codice AS processo_codice,
     d.canale,

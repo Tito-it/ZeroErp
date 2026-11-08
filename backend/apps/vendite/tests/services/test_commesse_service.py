@@ -20,9 +20,9 @@ Indice test eseguiti:
 8c) CommesseServiceTests.test_fn_list_commessa_attivita_order_dir_invalido
 9) CommesseServiceTests.test_pr_run_commesse_push_invalid_source_types
 10) CommesseServiceTests.test_build_handlers_only_active_sources
-11) CommesseServiceTests.test_pr_run_commesse_push_one_ok_passa_sorgente_uid
+11) CommesseServiceTests.test_pr_run_commesse_push_one_ok_passa_sorgente_id
 12) CommesseServiceTests.test_pr_run_commesse_push_one_codice_sorgente_invalido
-13) CommesseServiceTests.test_pr_run_commesse_push_one_sorgente_uid_invalido
+13) CommesseServiceTests.test_pr_run_commesse_push_one_sorgente_id_invalido
 13a) CommesseServiceTests.test_pr_run_commesse_push_one_parziale_solleva_all_or_nothing
 13b) CommesseServiceTests.test_pr_run_commesse_push_one_errore_solleva_all_or_nothing
 13c) CommesseServiceTests.test_pr_run_commesse_push_one_skipped_passa_dritto
@@ -87,7 +87,6 @@ CommessaTestataLeggibileTests (Blocco C di brief-db-modifiche-certe-ciclo-vendit
 - test_aggiorna_testata_null_toglie_il_responsabile
 - test_aggiorna_testata_chiave_estranea_400 / _nessun_campo_400
 - test_aggiorna_testata_descrizione_troppo_lunga_400
-- test_aggiorna_testata_responsabile_non_attivo_400 / _inesistente_400
 - test_aggiorna_testata_commessa_inesistente_o_fuori_scope_404
 """
 
@@ -111,7 +110,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: push ok → stato COMPLETATO con handler nel risultato.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_ok(self, mock_build, mock_repo_cls, mock_orch_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push
@@ -139,7 +138,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: lock non acquisito → stato SKIPPED, nessun handler.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_skipped(self, mock_build, mock_repo_cls, mock_orch_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push
@@ -157,7 +156,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(result["handlers"], [])
 
     # Scopo: source_types con codice non riconosciuto → ServiceError validazione.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_pr_run_commesse_push_invalid_source_types(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push
 
@@ -185,11 +184,11 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # --- pr_run_commesse_push_one ---
 
     # Scopo: push singolo ok → orchestrator chiamato con source_types=[codice]
-    # e sorgente_uid valorizzato. Payload ritorno equivalente al batch.
+    # e sorgente_id valorizzato. Payload ritorno equivalente al batch.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
-    def test_pr_run_commesse_push_one_ok_passa_sorgente_uid(self, mock_build, mock_repo_cls, mock_orch_cls):
+    def test_pr_run_commesse_push_one_ok_passa_sorgente_id(self, mock_build, mock_repo_cls, mock_orch_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
         mock_repo_cls.return_value = MagicMock()
@@ -207,14 +206,14 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
         mock_orch_cls.return_value.run.return_value = report
 
-        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
+        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=42)
 
         # Orchestrator chiamato con i parametri attesi (righe_ids=None:
         # push completo, nessun sottoinsieme selettivo).
         mock_orch_cls.return_value.run.assert_called_once_with(
             source_types=["PREVENTIVO"],
             dry_run=False,
-            sorgente_uid=42,
+            sorgente_id=42,
             righe_ids=None,
         )
         # Payload coerente con pr_run_commesse_push (forma identica).
@@ -258,7 +257,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # brief-db-annullo-a-valle-riapre-a-monte) nella stessa transazione, e le
     # commesse sono esposte nel payload di ritorno.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_one_ponte_emittibilita(self, mock_build, mock_repo_cls, mock_orch_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push_one
@@ -268,7 +267,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self._push_one_con_commesse(mock_build, mock_orch_cls, commesse_ids={7701})
 
         result = pr_run_commesse_push_one(
-            sorgente_codice="PREVENTIVO", sorgente_uid=42, user="alice",
+            sorgente_codice="PREVENTIVO", sorgente_id=42, user="alice",
         )
 
         # Il ponte passa SOLO le righe upsertate da questo push (T1): mai
@@ -288,7 +287,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # testata va comunque a PRONTA; None = approva tutto. Che la madre faccia
     # cosi' lo prova il pgTAP; qui si prova che il backend non confonde le due.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_one_ponte_non_approva_righe_di_terzi(
         self, mock_build, mock_repo_cls, mock_orch_cls,
@@ -303,7 +302,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             attivita_ids_per_commessa={7701: []},
         )
 
-        pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
+        pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=42)
 
         mock_repo.rendi_commessa_emittibile.assert_called_once_with(
             commessa_id=7701, righe_ids=[], user=None,
@@ -312,7 +311,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: dry-run non scrive → ponte NON attivato (nessuna approvazione,
     # nessuna transizione), ma le commesse simulate restano nel report.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_one_dry_run_non_attiva_ponte(self, mock_build, mock_repo_cls, mock_orch_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push_one
@@ -324,7 +323,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
 
         result = pr_run_commesse_push_one(
-            sorgente_codice="PREVENTIVO", sorgente_uid=42, dry_run=True,
+            sorgente_codice="PREVENTIVO", sorgente_id=42, dry_run=True,
         )
 
         mock_repo.rendi_commessa_emittibile.assert_not_called()
@@ -333,7 +332,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: batch best-effort — una commessa che fallisce il ponte finisce in
     # emittibilita_errors senza bloccare le altre ne' far fallire il run.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_batch_ponte_best_effort(self, mock_build, mock_repo_cls, mock_orch_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push
@@ -372,7 +371,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO e' classificato a parte
     # (emittibilita_tipo_doc_mancante) e tracciato in event_log (EMITTIBILITA_FALLITA).
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_emittibilita_tipo_doc_mancante_osservabile(
         self, mock_build, mock_repo_cls, mock_orch_cls,
@@ -435,7 +434,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertIn("E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO", per_commessa[1]["payload"]["errore"])
 
     # Scopo: codice sorgente non riconosciuto → ServiceError validazione.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_one_codice_sorgente_invalido(self, mock_build, mock_repo_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push_one
@@ -446,14 +445,14 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_build.return_value = [handler_mock]
 
         with self.assertRaises(ServiceError) as ctx:
-            pr_run_commesse_push_one(sorgente_codice="SORGENTE_INESISTENTE", sorgente_uid=1)
+            pr_run_commesse_push_one(sorgente_codice="SORGENTE_INESISTENTE", sorgente_id=1)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
         self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail or "")
 
-    # Scopo: sorgente_uid non valido (None/0/negativo) → ServiceError validazione.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    # Scopo: sorgente_id non valido (None/0/negativo) → ServiceError validazione.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
-    def test_pr_run_commesse_push_one_sorgente_uid_invalido(self, mock_build, mock_repo_cls):
+    def test_pr_run_commesse_push_one_sorgente_id_invalido(self, mock_build, mock_repo_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
         mock_repo_cls.return_value = MagicMock()
@@ -461,9 +460,9 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         handler_mock.sorgente_codice = "PREVENTIVO"
         mock_build.return_value = [handler_mock]
 
-        for invalid_uid in (0, -1):
+        for invalid_id in (0, -1):
             with self.assertRaises(ServiceError) as ctx:
-                pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=invalid_uid)
+                pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=invalid_id)
             self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
 
     # Scopo: all-or-nothing su PARZIALE — l'orchestrator ritorna PARZIALE
@@ -471,7 +470,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # E_COMMESSA_PUSH_PARZIALE_VIETATO con detail = primo errore handler.
     # L'atomic esterna rolla ogni scrittura: niente attivita orfane in commessa.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_one_parziale_solleva_all_or_nothing(
         self, mock_build, mock_repo_cls, mock_orch_cls,
@@ -497,14 +496,14 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_orch_cls.return_value.run.return_value = report
 
         with self.assertRaises(ServiceError) as ctx:
-            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=7)
+            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=7)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
         self.assertIn("segment_key=PREVENTIVO:abc:R:4", ctx.exception.detail or "")
 
     # Scopo: all-or-nothing su ERRORE — stesso pattern del PARZIALE
     # (ogni handler con errors → rollback totale + raise).
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_one_errore_solleva_all_or_nothing(
         self, mock_build, mock_repo_cls, mock_orch_cls,
@@ -529,7 +528,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_orch_cls.return_value.run.return_value = report
 
         with self.assertRaises(ServiceError) as ctx:
-            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=8)
+            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=8)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
 
     # Scopo: dry_run con esito PARZIALE NON solleva — la simulazione e'
@@ -537,7 +536,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # proteggere). L'utente vuole vedere la diagnostica delle righe che
     # fallirebbero, non un errore generico.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_one_dry_run_parziale_non_solleva(
         self, mock_build, mock_repo_cls, mock_orch_cls,
@@ -563,7 +562,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_orch_cls.return_value.run.return_value = report
 
         result = pr_run_commesse_push_one(
-            sorgente_codice="PREVENTIVO", sorgente_uid=10, dry_run=True,
+            sorgente_codice="PREVENTIVO", sorgente_id=10, dry_run=True,
         )
         # Diagnostica esposta normalmente: caller decide cosa farne.
         self.assertEqual(result["stato"], "PARZIALE")
@@ -573,7 +572,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # dominio: nessun rollback, nessuna raise — l'utente vede il toast warn
     # "push gia' in corso" tramite la response JSON normale.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service._build_handlers")
     def test_pr_run_commesse_push_one_skipped_passa_dritto(
         self, mock_build, mock_repo_cls, mock_orch_cls,
@@ -588,13 +587,13 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         report = PushReport(dry_run=False, stato="SKIPPED", durata_ms=0)
         mock_orch_cls.return_value.run.return_value = report
 
-        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=9)
+        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=9)
         self.assertEqual(result["stato"], "SKIPPED")
 
     # --- fn_get_commesse_push_log ---
 
     # Scopo: push log trovato → restituisce dict con i dati.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_get_commesse_push_log_ok(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_get_commesse_push_log
 
@@ -614,7 +613,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(result["stato"], "COMPLETATO")
 
     # Scopo: push log non trovato → ServiceError.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_get_commesse_push_log_not_found(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_get_commesse_push_log
 
@@ -628,7 +627,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: commessa trovata → restituisce commessa_id + stato_codice_interno +
     #        flag governance e contatori propagati dal repo (ApiCommessaStato).
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_get_commessa_stato_ok(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_get_commessa_stato
 
@@ -671,7 +670,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(result["cliente_display"], "Rossi Mario SRL")
 
     # Scopo: commessa non trovata → ServiceError.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_get_commessa_stato_not_found(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_get_commessa_stato
 
@@ -684,7 +683,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # --- azioni di stato commessa (#7) ---
 
     # Scopo: fn_get_commessa_stato propaga il blob capabilities dal repo.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_get_commessa_stato_include_capabilities(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_get_commessa_stato
 
@@ -714,7 +713,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: la transizione va al verbo, con la firma del giro 10 (C-4: senza
     #        l'utente, lo dice l'audit dalla sessione).
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_cambia_stato_commessa_ok(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import cambia_stato_commessa
 
@@ -736,7 +735,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        che non e' un'azione dell'operatore arriva al verbo, e il rifiuto
     #        e' del DB col SUO codice (qui il passaggio di processo chiesto a
     #        mano), non un codice inventato qui.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_cambia_stato_commessa_il_rifiuto_e_del_verbo(self, mock_repo_cls):
         from django.db import DatabaseError
 
@@ -755,7 +754,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: commessa inesistente o fuori perimetro → il 404 e' del verbo, col
     #        suo codice (regola del 1, 2026-10-27): il service non lo ridice.
     #        La giuntura vera: `test_commessa_cambia_stato_db`.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_cambia_stato_commessa_not_found(self, mock_repo_cls):
         from django.db import DatabaseError
 
@@ -772,7 +771,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.get_commessa_stato_codice.assert_not_called()
 
     # Scopo: input non valido (nuovo_stato vuoto) → validazione, nessun lookup.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_cambia_stato_commessa_validation(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import cambia_stato_commessa
 
@@ -786,7 +785,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: ANNULLATA passa SEMPRE dal verbo `vendite.fn_annulla_commessa`,
     #        mai dal cambio di stato generico; la dichiarazione arriva intera.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annullo_passa_dal_verbo(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import cambia_stato_commessa
 
@@ -807,7 +806,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: una dichiarazione che non e' un intero e' un 400 col campo, non un
     #        500 dal cast del DB; il verbo non parte.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annullo_dichiarazione_non_numerica(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import cambia_stato_commessa
 
@@ -823,7 +822,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # ⭐ Il rifiuto del verbo arriva col SUO codice: e' il comportamento che la
     #    finestra di conferma riconosce (`confirm_and_retry`).
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annullo_con_legami_codice_del_db(self, mock_repo_cls):
         from django.db import DatabaseError
 
@@ -845,7 +844,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        DEFINER, quindi una commessa inesistente o fuori perimetro e' un
     #        404 PRIMA di chiamarlo.
     @patch("apps.vendite.services.commesse_service.legami_del_documento")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_get_legami_dopo_la_testata(self, mock_repo_cls, bb_legami):
         from apps.vendite.services import commesse_service
 
@@ -863,7 +862,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # --- fn_list_commessa_attivita ---
 
     # Scopo: lista attivita → restituisce dict con commessa_id e dati paginati.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_list_commessa_attivita_ok(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
 
@@ -878,7 +877,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(result["count"], 0)
 
     # Scopo: order_by in whitelist → normalizzato e propagato al repository.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_list_commessa_attivita_order_by_ok(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
 
@@ -906,7 +905,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: il filtro movimento arriva al repository normalizzato (spazi via,
     #        maiuscolo), come gia' fanno order_by/order_dir.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_list_commessa_attivita_tipo_movimento_normalizzato(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
         mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "results": []}
@@ -919,7 +918,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: ⚠️ Filtro VUOTO = «tutti i movimenti», non un valore da validare.
     #        Un filtro appena azzerato dal frontend arriva come stringa vuota:
     #        rifiutarlo direbbe «valore non valido» a chi ha tolto il filtro.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_list_commessa_attivita_tipo_movimento_vuoto_e_tutti(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
         mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "results": []}
@@ -935,7 +934,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        ONERE), un movimento INVENTATO deve sollevare. Senza questa
     #        distinzione «lista vuota» sarebbe la risposta a due domande
     #        diverse — «non ce ne sono» e «hai scritto una parola sbagliata».
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_list_commessa_attivita_tipo_movimento_fuori_vocabolario(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
 
@@ -949,7 +948,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        400 e dice il limite; il repository non ne ha piu' una seconda copia
     #        silenziosa — ed era proprio quella che avrebbe tagliato il file a
     #        200 righe su una commessa che ne ha mille, senza dirlo a nessuno.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_list_commessa_attivita_export_supera_il_tetto_di_pagina(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
         mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "results": []}
@@ -964,7 +963,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        `max_rows` un limit fuori range e' ancora un 400 parlante, non una
     #        pagina da diecimila righe.
     # Scopo: order_by fuori whitelist → ServiceError, repo mai chiamato.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_list_commessa_attivita_order_by_fuori_whitelist(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
 
@@ -977,7 +976,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
 
     # Scopo: order_dir non asc/desc → ServiceError, repo mai chiamato.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_fn_list_commessa_attivita_order_dir_invalido(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
 
@@ -1047,7 +1046,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: N7 - variazione eccezionale su commessa modificabile OK.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_variazione_eccezionale_ok(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
 
@@ -1071,7 +1070,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: N7 - commessa in stato non modificabile rifiutata (flag data-driven
     #        stati_commessa.modificabile=false, es. CHIUSA/ANNULLATA).
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_variazione_eccezionale_commessa_stato_bloccato(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
 
@@ -1086,7 +1085,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA")
 
     # Scopo: N7 - riga gia` fatturata bloccata.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_variazione_eccezionale_riga_fatturata_bloccata(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
 
@@ -1101,7 +1100,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: N7 - variazione su prezzo gia` bloccato rifiutata (DEC-3): prima
     #        si sblocca (con motivo), poi si varia. Niente ri-override silenzioso.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_variazione_eccezionale_su_prezzo_bloccato_rifiutata(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
 
@@ -1116,7 +1115,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.update_attivita_prezzo.assert_not_called()
 
     # Scopo: N7 - senza motivo rifiutata.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_variazione_eccezionale_senza_motivo(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
 
@@ -1131,7 +1130,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        E_VENDITE_VALIDATION, non un 500. Prima del fix il
     #        _parse_meta_json locale faceva json.loads bubble-ando il ValueError.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_variazione_eccezionale_meta_malformato_rifiutata(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
 
@@ -1149,7 +1148,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: N7 sblocco - sblocco prezzo bloccato OK.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
     @patch("apps.vendite.services.commesse_service.PricingService")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_sblocca_prezzo_ok(self, mock_comm_repo, mock_pricing, mock_atomic):
         from apps.vendite.services.commesse_service import fn_sblocca_prezzo
 
@@ -1171,7 +1170,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(provenienza["listino_versione_id"], 101)
 
     # Scopo: N7 sblocco - prezzo non bloccato rifiutato.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_sblocca_prezzo_non_bloccato(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_sblocca_prezzo
 
@@ -1187,7 +1186,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: N5 - riallineamento OK su prezzo non bloccato.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
     @patch("apps.vendite.services.commesse_service.PricingService")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_riallinea_prezzo_ok(self, mock_comm_repo, mock_pricing, mock_atomic):
         from apps.vendite.services.commesse_service import fn_riallinea_prezzo
 
@@ -1213,7 +1212,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
 
     # Scopo: N5 - riallineamento su prezzo bloccato rifiutato.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_riallinea_prezzo_bloccato(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_riallinea_prezzo
 
@@ -1228,7 +1227,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # Scopo: N5 - versione cambiata senza conferma restituisce warning.
     @patch("apps.vendite.services.commesse_service.PricingService")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_riallinea_prezzo_versione_cambiata_senza_conferma(self, mock_comm_repo, mock_pricing):
         from apps.vendite.services.commesse_service import fn_riallinea_prezzo
 
@@ -1251,7 +1250,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        `meta` e, senza `data_attivita`, la competenza.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
     @patch("apps.vendite.services.commesse_service.PricingService")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_riallinea_chiede_contesto_kit_e_ripiego_data(
         self, mock_comm_repo, mock_pricing, mock_atomic,
     ):
@@ -1281,7 +1280,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # Scopo: L0 — una commessa senza utility non sa chiedere il prezzo al
     #        listino: errore che lo dice, nessuna chiamata, nessun UPDATE.
     @patch("apps.vendite.services.commesse_service.PricingService")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_sblocca_senza_dati_per_il_listino_rifiutato(self, mock_comm_repo, mock_pricing):
         from apps.vendite.services.commesse_service import fn_sblocca_prezzo
 
@@ -1303,7 +1302,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     #        rispondere 404 E_COMMESSA_ATTIVITA_NOT_FOUND SENZA eseguire alcun UPDATE
     #        (probe-first: nessun no-op silenzioso su UPDATE morto). Blinda anche il
     #        futuro FORCE ROW LEVEL SECURITY: il 404 e' garantito dalla lettura.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_prezzi_attivita_fuori_scope_o_inesistente_404(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import (
             fn_riallinea_prezzo,
@@ -1332,7 +1331,7 @@ class CommesseApprovazioneServiceTests(TestCase):
     """Test A-1/A-2 cockpit: approva_commessa_attivita + approva_attivita_competenza."""
 
     # Scopo: approvazione di tutte le righe (righe_ids omesso) → repo con None.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_commessa_attivita_tutte(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import approva_commessa_attivita
 
@@ -1347,7 +1346,7 @@ class CommesseApprovazioneServiceTests(TestCase):
         )
 
     # Scopo: selezione righe → passthrough della lista al repo.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_commessa_attivita_selezione(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import approva_commessa_attivita
 
@@ -1362,7 +1361,7 @@ class CommesseApprovazioneServiceTests(TestCase):
         )
 
     # Scopo: righe_ids invalido (lista vuota / tipi errati) → 400 E_COMMESSA_VALIDATION.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_commessa_attivita_righe_ids_invalido(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import approva_commessa_attivita
 
@@ -1377,7 +1376,7 @@ class CommesseApprovazioneServiceTests(TestCase):
 
     # Scopo: commessa inesistente o fuori perimetro → il 404 e' della fn, col
     #        suo codice (regola del 1, 2026-10-27): il service non lo ridice.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_commessa_attivita_not_found(self, mock_repo_cls):
         from django.db import DatabaseError
 
@@ -1394,7 +1393,7 @@ class CommesseApprovazioneServiceTests(TestCase):
         repo.get_commessa_stato_codice.assert_not_called()
 
     # Scopo: commessa_id invalido → 400 senza toccare il repo.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_commessa_attivita_id_invalido(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import approva_commessa_attivita
 
@@ -1404,7 +1403,7 @@ class CommesseApprovazioneServiceTests(TestCase):
         mock_repo_cls.return_value.approva_commessa_attivita.assert_not_called()
 
     # Scopo: massiva ok — normalizza al 1° del mese, un giro per commessa, somma esiti.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_attivita_competenza_ok(self, mock_repo_cls):
         from datetime import date as _date
 
@@ -1433,7 +1432,7 @@ class CommesseApprovazioneServiceTests(TestCase):
         )
 
     # Scopo: perimetro vuoto → esito a zero senza scritture (non è un errore).
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_attivita_competenza_vuota(self, mock_repo_cls):
         from datetime import date as _date
 
@@ -1450,7 +1449,7 @@ class CommesseApprovazioneServiceTests(TestCase):
         repo.approva_commessa_attivita.assert_not_called()
 
     # Scopo: competenza_mese mancante → 400 E_COMMESSA_VALIDATION.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_attivita_competenza_senza_mese(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import approva_attivita_competenza
 
@@ -1460,7 +1459,7 @@ class CommesseApprovazioneServiceTests(TestCase):
         mock_repo_cls.return_value.list_da_approvare_per_competenza.assert_not_called()
 
     # Scopo: filtro commessa_ids → passthrough al repo (subset del mese).
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_attivita_competenza_filtro_commesse(self, mock_repo_cls):
         from datetime import date as _date
 
@@ -1481,7 +1480,7 @@ class CommesseApprovazioneServiceTests(TestCase):
 
     # Scopo: errore su una commessa → all-or-nothing, l'eccezione propaga
     #        (la transazione avvolge il loop: niente esiti parziali).
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_approva_attivita_competenza_all_or_nothing(self, mock_repo_cls):
         from datetime import date as _date
 
@@ -1553,8 +1552,8 @@ class CommessaPortaOneriServiceTests(TestCase):
 
     # Scopo: happy path — parametri inoltrati alla madre DB, istanza derivata
     #        dal billing account della commessa (campo assente nel payload).
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_aggiungi_onere_ok_deriva_istanza_da_ba(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
 
@@ -1584,8 +1583,8 @@ class CommessaPortaOneriServiceTests(TestCase):
     # Scopo: istanza esplicita nel payload → ammessa SOLO se coincide con
     #        quella derivata dal BA della commessa (un BA ha una sola istanza,
     #        guida gestione-delle-istanze-utility; review 2026-07-23, ok Tid).
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_aggiungi_onere_istanza_esplicita_coincidente_ok(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
 
@@ -1606,8 +1605,8 @@ class CommessaPortaOneriServiceTests(TestCase):
     #        rifiuto parlante, la madre DB non viene nemmeno chiamata (senza
     #        il guard si aggancerebbe l'onere all'istanza di un altro cliente:
     #        la FK verifica solo l'esistenza).
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_aggiungi_onere_istanza_esplicita_incoerente_raises(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
 
@@ -1632,8 +1631,8 @@ class CommessaPortaOneriServiceTests(TestCase):
     # Scopo: commessa senza billing account (FK nullable, ON DELETE SET NULL):
     #        l'onere non ha un'istanza a cui agganciarsi, ne' derivata ne'
     #        verificabile → rifiuto parlante, col BA non si interroga niente.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_aggiungi_onere_commessa_senza_ba_raises(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
 
@@ -1654,7 +1653,7 @@ class CommessaPortaOneriServiceTests(TestCase):
         repo.aggiungi_onere.assert_not_called()
 
     # Scopo: payload non valido → 400 parlante prima del round-trip DB.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_aggiungi_onere_payload_invalido(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
 
@@ -1688,7 +1687,7 @@ class CommessaPortaOneriServiceTests(TestCase):
         repo.aggiungi_onere.assert_not_called()
 
     # Scopo: commessa inesistente (o fuori scope RLS) → 404 prima della madre.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_aggiungi_onere_commessa_not_found(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
 
@@ -1707,8 +1706,8 @@ class CommessaPortaOneriServiceTests(TestCase):
 
     # Scopo: i guard della madre DB arrivano all'operatore col LORO codice
     #        (non E_DATABASE): e' un errore d'uso, non un guasto.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_aggiungi_onere_traduce_errori_madre(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
 
@@ -1740,8 +1739,8 @@ class CommessaPortaOneriServiceTests(TestCase):
 
     # Scopo: errore DB non riconosciuto → fallback di validazione, mai un 500
     #        muto sull'operatore.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_aggiungi_onere_errore_db_sconosciuto_fallback(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
 
@@ -1790,7 +1789,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
 
     # Scopo: happy path — la madre riceve id riga e motivo normalizzato, la
     #        risposta dichiara lo stato raggiunto.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_ok_delega_alla_madre(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1815,7 +1814,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
     #        senza il marker l'operatore vedrebbe un errore di VALIDAZIONE al
     #        posto di un conflitto di stato (409) — messaggio giusto, reazione
     #        sbagliata, e in silenzio. Misurato in-app il 2026-08-20.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_movimento_non_annullabile_conserva_il_codice(self, mock_repo_cls):
         from django.db import DatabaseError
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
@@ -1838,7 +1837,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
     #        `trgfn_commesse_attivita_guard_prezzo_rettifica` sulla tabella,
     #        perche' il prezzo si scrive con una UPDATE diretta. Qui si guadagna
     #        un 400 parlante al posto del 409 che risalirebbe a UPDATE tentata.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_prezzo_rettifica_immutabile_sui_tre_percorsi(self, mock_repo_cls):
         from apps.vendite.services import commesse_service as cs
 
@@ -1867,7 +1866,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
     #        whitelist emittente della commessa, non appartenenza della riga a
     #        QUESTA commessa: fra due commesse dello stesso emittente non
     #        distingue. Questo guard e' l'unico che chiude il caso.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_riga_fuori_scope_o_inesistente_404(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1882,7 +1881,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
 
     # Scopo: G5 — annullare una riga *e'* modificare la commessa: stesso guard
     #        data-driven (stati_commessa.modificabile) delle azioni prezzo.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_commessa_non_modificabile_rifiutata(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1898,7 +1897,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
 
     # Scopo: G1 — riannullare NON cade su «gia' emessa» (messaggio falso, manda
     #        a cercare una fattura che non esiste): codice dedicato.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_riga_gia_annullata_codice_dedicato(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1912,7 +1911,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
 
     # Scopo: riga da push (sourceful) → non annullabile qui, il rimedio e' a
     #        monte sul documento.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_riga_da_push_non_manuale(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1928,7 +1927,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
 
     # Scopo: riga gia' emessa → ha generato un'AF; annullarla qui la lascerebbe
     #        orfana in viaggio verso la fattura.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_riga_gia_emessa(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1944,7 +1943,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
     #        EMESSA deve sentirsi dire «nasce da un documento», non «gia'
     #        emessa»: il secondo suggerisce che, se non lo fosse, si potrebbe
     #        annullare (falso). Stesso ordine della madre DB.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_ordine_guard_identita_prima_di_stato(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1960,7 +1959,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
     # Scopo: motivo obbligatorio col codice DEDICATO (567), simmetrico alla
     #        madre: l'annullamento e' irreversibile e l'unica traccia del
     #        PERCHE' e' l'evento di log.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_senza_motivo(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1977,7 +1976,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
         repo.annulla_attivita.assert_not_called()
 
     # Scopo: motivo oltre il cap → stesso codice dedicato, non un 500 dal DB.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_motivo_troppo_lungo(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -1993,7 +1992,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
     #        rilettura applicativa non vede) arrivano all'operatore col LORO
     #        codice — altrimenti la policy 409 verrebbe scavalcata dal 400 di
     #        fallback.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_traduce_errori_madre(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -2014,7 +2013,7 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
 
     # Scopo: errore DB non riconosciuto → fallback di validazione, mai un 500
     #        muto sull'operatore.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository", autospec=True)
     def test_annulla_errore_db_sconosciuto_fallback(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale
 
@@ -2030,12 +2029,11 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
 # Scopo: La TESTATA LEGGIBILE della commessa (Blocco C del brief modifiche
 #        certe): descrizione, data di apertura e responsabile arrivano nel
 #        dettaglio dallo stesso payload di `/stato/`, e si scrivono con un
-#        PATCH parziale. Il responsabile deve essere una persona ATTIVA e lo
-#        si dice con un 400 che nomina il campo — a DB lo rifiuterebbe il
-#        require sul figlio con `E_ATTIVO_REQUIRE`, che e' TECNICO (500).
+#        PATCH parziale. Che il responsabile sia una persona ATTIVA lo dice il
+#        DB (`E_ATTIVO_PADRE_NON_ATTIVO`, dal 2026-11-07): il service non lo
+#        legge piu', e lo prova `tests/db/test_commessa_testata_db.py`.
 class CommessaTestataLeggibileTests(TestCase):
     _REPO = "apps.vendite.services.commesse_service.CommesseRepository"
-    _ANAG = "apps.vendite.services.commesse_service.AnagraficheService"
     _STATO = "apps.vendite.services.commesse_service.fn_get_commessa_stato"
 
     def _repo_con_stato(self, repo_cls):
@@ -2054,7 +2052,7 @@ class CommessaTestataLeggibileTests(TestCase):
         }
         return repo
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_il_dettaglio_porta_la_testata_leggibile_e_data_apertura_iso(self, repo_cls):
         from apps.vendite.services.commesse_service import fn_get_commessa_stato
 
@@ -2068,16 +2066,12 @@ class CommessaTestataLeggibileTests(TestCase):
         self.assertEqual(out["commessa_codice"], "COMM-0042")
 
     @patch(_STATO, return_value={"commessa_id": 1, "descrizione": "Nuova"})
-    @patch(_ANAG)
-    @patch(_REPO)
-    def test_aggiorna_testata_ok_e_risponde_col_dettaglio(self, repo_cls, anag_cls, stato):
+    @patch(_REPO, autospec=True)
+    def test_aggiorna_testata_ok_e_risponde_col_dettaglio(self, repo_cls, stato):
         from apps.vendite.services.commesse_service import aggiorna_commessa_testata
 
         repo = repo_cls.return_value
         repo.update_commessa_testata.return_value = True
-        anag_cls.return_value.get_risorsa_umana_lookup.return_value = {
-            "id": 7, "display": "Bianchi Anna", "attivo": True,
-        }
         out = aggiorna_commessa_testata(
             1, {"descrizione": "  Nuova  ", "responsabile_risorsa_umana_id": 7},
         )
@@ -2088,9 +2082,8 @@ class CommessaTestataLeggibileTests(TestCase):
         self.assertEqual(out["descrizione"], "Nuova")
 
     @patch(_STATO, return_value={"commessa_id": 1})
-    @patch(_ANAG)
-    @patch(_REPO)
-    def test_aggiorna_testata_null_toglie_il_responsabile(self, repo_cls, anag_cls, _stato):
+    @patch(_REPO, autospec=True)
+    def test_aggiorna_testata_null_toglie_il_responsabile(self, repo_cls, _stato):
         from apps.vendite.services.commesse_service import aggiorna_commessa_testata
 
         repo = repo_cls.return_value
@@ -2099,10 +2092,8 @@ class CommessaTestataLeggibileTests(TestCase):
         repo.update_commessa_testata.assert_called_once_with(
             1, {"responsabile_risorsa_umana_id": None},
         )
-        # Niente lookup per un azzeramento: non c'e' nessuna persona da verificare.
-        anag_cls.return_value.get_risorsa_umana_lookup.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_aggiorna_testata_chiave_estranea_400(self, repo_cls):
         from apps.vendite.services.commesse_service import aggiorna_commessa_testata
 
@@ -2112,7 +2103,7 @@ class CommessaTestataLeggibileTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
         repo_cls.return_value.update_commessa_testata.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_aggiorna_testata_nessun_campo_400(self, repo_cls):
         from apps.vendite.services.commesse_service import aggiorna_commessa_testata
 
@@ -2120,7 +2111,7 @@ class CommessaTestataLeggibileTests(TestCase):
             aggiorna_commessa_testata(1, {})
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_aggiorna_testata_descrizione_troppo_lunga_400(self, repo_cls):
         from apps.vendite.services.commesse_service import aggiorna_commessa_testata
 
@@ -2129,32 +2120,7 @@ class CommessaTestataLeggibileTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
         self.assertEqual(ctx.exception.context.get("field"), "descrizione")
 
-    @patch(_ANAG)
-    @patch(_REPO)
-    def test_aggiorna_testata_responsabile_non_attivo_400(self, repo_cls, anag_cls):
-        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
-
-        anag_cls.return_value.get_risorsa_umana_lookup.return_value = {
-            "id": 7, "display": "Bianchi Anna", "attivo": False,
-        }
-        with self.assertRaises(ServiceError) as ctx:
-            aggiorna_commessa_testata(1, {"responsabile_risorsa_umana_id": 7})
-        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-        self.assertEqual(ctx.exception.context.get("field"), "responsabile_risorsa_umana_id")
-        repo_cls.return_value.update_commessa_testata.assert_not_called()
-
-    @patch(_ANAG)
-    @patch(_REPO)
-    def test_aggiorna_testata_responsabile_inesistente_400(self, repo_cls, anag_cls):
-        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
-
-        anag_cls.return_value.get_risorsa_umana_lookup.return_value = None
-        with self.assertRaises(ServiceError) as ctx:
-            aggiorna_commessa_testata(1, {"responsabile_risorsa_umana_id": 99})
-        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-        self.assertEqual(ctx.exception.context.get("field"), "responsabile_risorsa_umana_id")
-
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_aggiorna_testata_commessa_inesistente_o_fuori_scope_404(self, repo_cls):
         from apps.vendite.services.commesse_service import aggiorna_commessa_testata
 

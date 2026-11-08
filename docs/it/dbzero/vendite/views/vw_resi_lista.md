@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> ⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non aggancia piu' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Lista/dettaglio resi vendita (mirror vw_ddt_lista). security_invoker=on + RLS su base; espone emittente_fiscale_id/_codice e emittente_ragione_sociale. ⭐ rev 2026-08-25 — LA SESTA SORELLA: fase + colonne di genealogia da vendite.vw_documento_lineage (pratica, frontiera, discendenti, is_transitato), nella stessa forma delle altre liste documento. `fase` non c'era: la vista aveva lo stato ma non la fase normalizzata, e il seed della colonna omonima la cerca con quel nome esatto — senza, la colonna sarebbe nata vuota e in silenzio. ⭐ SU UN RESO frontiera_codice E' IL NUMERO DELLA NOTA DI CREDITO: con l'arco S (20260825-19) il reso smette di essere una foglia e la sua frontiera diventa la nota che lo accredita. La colonna «Transito» risponde percio' a «questo reso e' gia' stato accreditato, e con quale documento» — che prima era una QUANTITA' (gia_accreditato) in un drawer, non un documento in lista. ⚠️ Il join al lineage e' LEFT come sulle sorelle: un reso senza genealogia compare senza genealogia, non sparisce. Consumo: ui.lista_definizione 'vendite.resi' (id 9) + preset resi_default; il frontend e' gia' &lt;ListaConfigurabile&gt;, quindi le colonne arrivano dal seed. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e' in ULTIMA posizione perche' CREATE OR REPLACE VIEW puo' solo appendere: non e' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e' `frontiera_tipo_codice`: quel valore e' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l'unico posto dove il guardrail li vede. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, Q-E): + registro_codice, registro_descrizione in coda, LEFT JOIN vendite.registri_fatturazione su registro_id (20260831). E' lo stesso blocco appeso a vw_fatture_lista nello stesso giro: le sorelle che un registro ce l'hanno — fatture, ddt, ordini, resi — lo espongono allo stesso modo, cosi' chi scrive l'ottava copia non la copia da una vista senza. ⛔ contratti, preventivi e offerte NON hanno registro_id e non avranno queste colonne: non e' una dimenticanza. Nessun numero_documento qui: su questa vista `numero` e' gia' il numero parlante (varchar). Rev 2026-10-20 (20261020-79, brief-db-grammatica-unica-documenti L2c-1): ricreata identica dopo l'allargamento di registri_fatturazione.codice a varchar(80) (20261020-74).
+> Vista flat della lista dei resi di vendita, per l'interfaccia: testata, destinatario (dal soggetto_ruolo), billing account, emittente fiscale, utility, valuta, la fase dello stato, la pratica (pratiche.fn_pratica_del_documento) e il registro (codice e descrizione). La provenienza: sorgente_tipo_id e sorgente_codice_interno, la chiave della bolla in sorgente_id (sorgente_uid resta vuota: la bolla ha chiave id); ddt_origine_id e ddt_origine_numero, la bolla da cui il reso nasce (tipo DDT_VENDITA, cercata per sorgente_id). security_invoker=on.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -50,7 +50,8 @@ SELECT r.id,
     pr.pratica_numero,
     pr.n_pratiche,
     reg.codice AS registro_codice,
-    reg.descrizione AS registro_descrizione
+    reg.descrizione AS registro_descrizione,
+    r.sorgente_id
    FROM (((((((((((((vendite.resi r
      JOIN config.stati_doc_reso sr ON ((sr.id = r.stato_doc_reso_id)))
      JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = r.destinatario_soggetto_ruolo_id)))
@@ -62,10 +63,10 @@ SELECT r.id,
      LEFT JOIN config.utilities u ON ((u.id = r.utility_id)))
      LEFT JOIN config.valute v_val ON ((v_val.id = r.valuta_id)))
      LEFT JOIN config.sorgenti src ON ((src.id = r.sorgente_tipo_id)))
-     LEFT JOIN vendite.ddt d_src ON ((d_src.uid = r.sorgente_uid)))
+     LEFT JOIN vendite.ddt d_src ON (((d_src.id = r.sorgente_id) AND ((src.codice_interno)::text = 'DDT_VENDITA'::text))))
      LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
            FROM config.sorgenti so_pr
-          WHERE (((so_pr.codice_interno)::text = 'RESO_VENDITA'::text) AND (so_pr.attivo IS TRUE))), (r.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+          WHERE (((so_pr.codice_interno)::text = 'RESO_VENDITA'::text) AND (so_pr.attivo IS TRUE))), r.id, r.uid) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
      LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = r.registro_id)));
 ```
 

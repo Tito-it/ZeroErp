@@ -3,16 +3,18 @@
 -- pgTAP test per Zero ERP
 -- Test: Pulizia config.sorgenti — scope + trigger polimorfo + RIGA
 -- ------------------------------------------------------------
--- Indice test (1..9):
+-- Indice test (1..11):
 --  1) Colonna scope presente su config.sorgenti
 --  2) Constraint chk_sorgenti_scope attivo
 --  3) scope NOT NULL su tutti i record
 --  4) Sorgenti PUSH_COMMESSA: 5 record attivi
---  5) Sorgenti PIPELINE_MARKER: 2 record attivi
---  6) Sorgenti ROW_VALIDATOR: le SEI sorgenti di riga sono attive (D-L1-f)
+--  5) Sorgenti PIPELINE_MARKER: la sola COMMESSA (ATTIVITA e' uscita col lotto C)
+--  6) Sorgenti ROW_VALIDATOR: nessuna (le sei di riga di vendita sono uscite col lotto R)
 --  7) Sorgente POST_INVOICE: FATTURA attiva
 --  8) Trigger polimorfo rimosso da attivita_fatturabili
 --  9) Nessuna sorgente porta piu' il marchio meta.archived
+-- 10) chk_sorgenti_scope non ammette piu' ROW_VALIDATOR (lotto Z, giro Z.1)
+-- 11) categoria e' la natura del tipo: NOT NULL, DOCUMENTO o EVENTO; EVENTO_ASSET e' un EVENTO (Z-b)
 --
 -- ⚠️ Rev 2026-09-15 (brief-db-magazzino-lotto-1-terreno-vuoto, D-L1-f). I test
 --   6 e 9 pinnavano lo stato OPPOSTO: cinque *_RIGA «archiviate», attivo=false
@@ -25,6 +27,11 @@
 --   nominato come sorgente — sei tabelle di riga che esistono — non chi lo
 --   nomina oggi; il guard tipizzato pretende attivo=true. Il file tiene il
 --   nome storico (la pulizia dello scope resta il suo oggetto: test 1-5, 7, 8).
+-- rev 2026-11-06 (brief-db-sorgente-documento-e-riga lotto R, giro R.2, 20261106-60):
+--   il test 6 si capovolge di nuovo, e questa volta per il modello: una riga si
+--   scrive col tipo del suo documento + sorgente_riga (S-2), e i sei tipi *_RIGA di
+--   vendita escono da config.sorgenti (restano entita' in config.tipi_entita). Lo
+--   scope ROW_VALIDATOR resta ammesso dal CHECK finche' il lotto Z non lo ritira.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -44,7 +51,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(11);
 
 -- ============================================================
 -- 1) Colonna scope presente su config.sorgenti
@@ -84,32 +91,29 @@ SELECT ok(
 );
 
 -- ============================================================
--- 5) Sorgenti PIPELINE_MARKER: 2 record attivi
+-- 5) Sorgenti PIPELINE_MARKER: la sola COMMESSA
 -- ============================================================
-SELECT ok(
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga lotto C, giro C.4,
+--   20261108-06): ATTIVITA non e' piu' una sorgente (D-2: niente nasce da
+--   un'attivita' fatturabile); resta come entita' in config.tipi_entita.
+SELECT is(
   (
-    SELECT count(*) = 2
+    SELECT string_agg(s.codice_interno::text, ',' ORDER BY s.codice_interno)
     FROM config.sorgenti s
     WHERE s.scope = 'PIPELINE_MARKER'
       AND s.attivo IS TRUE
   ),
-  'PIPELINE_MARKER: 2 sorgenti attive (ATTIVITA, COMMESSA)'
+  'COMMESSA',
+  '5) PIPELINE_MARKER: una sorgente attiva, COMMESSA'
 );
 
 -- ============================================================
--- 6) Sorgenti ROW_VALIDATOR: le sei sorgenti di riga sono attive (D-L1-f)
+-- 6) Sorgenti ROW_VALIDATOR: nessuna. La riga non e' un documento: si cita col
+--    tipo del suo documento e sorgente_riga (vendite/test-sorgente-righe-vendita-v1).
 -- ============================================================
--- Per NOME e non per conteggio: un conteggio resta vero anche se una riga
--- sparisce e un'altra entra. L'insieme e' il contratto del CSV di sorgenti.
-SELECT is(
-  (
-    SELECT string_agg(s.codice_interno, ',' ORDER BY s.id)
-    FROM config.sorgenti s
-    WHERE s.scope = 'ROW_VALIDATOR'
-      AND s.attivo IS TRUE
-  ),
-  'PREVENTIVO_RIGA,CONTRATTO_RIGA,ORDINE_VENDITA_RIGA,DDT_VENDITA_RIGA,FATTURA_RIGA,RESO_VENDITA_RIGA',
-  'ROW_VALIDATOR: le sei sorgenti di riga sono ATTIVE — il catalogo dice che cosa puo'' essere nominato (D-L1-f)'
+SELECT is_empty(
+  $$SELECT s.codice_interno FROM config.sorgenti s WHERE s.scope = 'ROW_VALIDATOR'$$,
+  'ROW_VALIDATOR: nessuna sorgente di riga — una riga si cita col tipo del suo documento e sorgente_riga'
 );
 
 -- ============================================================
@@ -156,5 +160,26 @@ SELECT is(
 );
 
 -- ============================================================
+-- 10-11) lotto Z, giro Z.1 di brief-db-sorgente-documento-e-riga (20261109-21, 90_end/20261109-22).
+SELECT throws_ok(
+    $$INSERT INTO config.sorgenti (id, codice_interno, codice, categoria, descrizione, attivo, meta,
+                                   target_table, key_selector, scope, apribile, etichetta)
+      VALUES ((SELECT max(id) + 1 FROM config.sorgenti), 'PGT_SCOPE_RV', 'PGT_SCOPE_RV', 'DOCUMENTO',
+              'prova', true, '{}', 'vendite.ordini', 'id', 'ROW_VALIDATOR', false, 'prova')$$,
+    '23514', NULL,
+    '10) lo scope ROW_VALIDATOR non e'' piu'' ammesso (chk_sorgenti_scope)');
+
+SELECT is(
+    (SELECT (a.attnotnull,
+             pg_get_constraintdef(c.oid) ~ 'DOCUMENTO' AND pg_get_constraintdef(c.oid) ~ 'EVENTO'
+               AND pg_get_constraintdef(c.oid) !~ 'RIGA',
+             (SELECT s.categoria FROM config.sorgenti s WHERE s.codice_interno = 'EVENTO_ASSET'),
+             (SELECT count(*) FROM config.sorgenti s WHERE s.categoria NOT IN ('DOCUMENTO', 'EVENTO')))::text
+       FROM pg_catalog.pg_attribute a
+       JOIN pg_catalog.pg_constraint c ON c.conrelid = a.attrelid AND c.conname = 'chk_sorgenti_categoria'
+      WHERE a.attrelid = 'config.sorgenti'::regclass AND a.attname = 'categoria'),
+    '(t,t,EVENTO,0)',
+    '11) categoria e'' la natura: NOT NULL, solo DOCUMENTO o EVENTO, EVENTO_ASSET e'' un EVENTO');
+
 SELECT * FROM finish();
 ROLLBACK;

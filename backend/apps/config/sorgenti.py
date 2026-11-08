@@ -23,7 +23,9 @@
 #    QUESTO vocabolario dal 2026-10-19 (brief-db-grammatica-unica-documenti,
 #    lotto 2a): a DB `p_documento` e' `config.sorgenti.codice_interno%TYPE`.
 #    Dal lotto 2b (stesso giorno) lo sono anche l'ORIGINE e la DESTINAZIONE:
-#    `vendite.ordini.documento_origine_tipo` e
+#    `vendite.ordini.documento_origine_tipo` (ritirata il 2026-11-07, giro
+#    T.5 di brief-db-sorgente-documento-e-riga: l'origine e' la provenienza
+#    `sorgente_tipo_id`, e la vista lista ne da' il codice) e
 #    `config.nature_vendita.destinazione_tipo` (FK verso `config.sorgenti`),
 #    l'`origine` di `fn_documento_legami` (tranne `ONERE`, che non e' una
 #    sorgente). Dal 2026-10-20 (§12.8) anche l'`origine` delle partite di
@@ -55,6 +57,11 @@ SORGENTE_FATTURA: Final = "FATTURA"
 SORGENTE_COMMESSA: Final = "COMMESSA"
 SORGENTE_ATTIVITA_CONSUMI: Final = "ATTIVITA_CONSUMI"
 
-# Righe di magazzino (categoria RIGA).
-SORGENTE_INVENTARIO_RIGA: Final = "INVENTARIO_RIGA"
-SORGENTE_RETTIFICA_RIGA: Final = "RETTIFICA_RIGA"
+# Documenti di magazzino (categoria DOCUMENTO). ⭐ Dal giro M.1 di
+# brief-db-sorgente-documento-e-riga (2026-11-08) il movimento porta il tipo
+# del DOCUMENTO, la chiave in `sorgente_id` e la riga in `sorgente_riga`.
+# ⛔ Fino a quel giorno qui c'erano `SORGENTE_INVENTARIO_RIGA` /
+#    `SORGENTE_RETTIFICA_RIGA` (categoria RIGA): nessun movimento li porta
+#    piu', e nessun modulo li nomina. Le righe del seed escono col giro M.3.
+SORGENTE_INVENTARIO: Final = "INVENTARIO"
+SORGENTE_RETTIFICA: Final = "RETTIFICA"

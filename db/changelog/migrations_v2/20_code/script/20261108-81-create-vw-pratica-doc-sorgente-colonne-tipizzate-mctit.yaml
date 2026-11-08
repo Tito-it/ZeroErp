@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DOCUMENTO PIU' VIVO DI UNA PRATICA, SULLE COLONNE DEL MODELLO
+#   script.vw_pratica_doc_sorgente
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4).
+#
+#   La vista e' stata tolta da 20261108-64 (legava il tipo di sorgente_uid) e
+#   rinasce qui. Due cambi, il resto identico (colonne, regola d'ancora,
+#   COMMENT nella sostanza):
+#   * il documento di ogni link si cerca in script.vw_stato_sorgente sulle
+#     colonne native, sorgente_chiave_uuid = ps.sorgente_uid in un ramo e
+#     sorgente_chiave_id = ps.sorgente_id nell'altro, al posto dei due rami coi
+#     BB canonici che indovinavano la specie della chiave testuale. Un link ha
+#     una chiave sola, quindi un ramo solo trova righe. Restano la LATERAL e i
+#     DUE rami con l'uguaglianza: dentro la sottoquery la chiave del link e' un
+#     parametro esterno e arriva all'Index Cond di ogni ramo della union
+#     (int8eq e uuid_eq sono leakproof). ⚠️ Provato in transazione su dbdev
+#     (2026-11-08): con un OR sulle due chiavi in un ramo solo il planner non
+#     spinge la chiave dentro la union e legge per intero tutte le
+#     tabelle-documento (hash join), anche per una pratica sola;
+#   * la chiave del documento esce nelle due colonne del modello, sorgente_id e
+#     sorgente_uid uuid, al posto della chiave testuale (richiesta al backend:
+#     brief §8).
+#   COMMENT al presente. security_invoker come prima. Nessun GRANT: lo danno le
+#   ALTER DEFAULT PRIVILEGES del proprietario.
+#   Rollback: DROP VIEW.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261108-81-create-vw-pratica-doc-sorgente-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261108-81-create-vw-pratica-doc-sorgente-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.vw_pratica_doc_sorgente: rinasce sulle colonne del modello (sorgente_id,
+        sorgente_uid uuid), il documento con la regola d'incontro sulle colonne native di
+        script.vw_stato_sorgente. brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW script.vw_pratica_doc_sorgente WITH (security_invoker=on) AS
+               SELECT DISTINCT ON (ps.pratica_id) ps.pratica_id,
+                  ps.sorgente_tipo_id,
+                  ps.sorgente_id,
+                  ps.sorgente_uid,
+                  ps.ruolo_link,
+                  so.descrizione AS sorgente_descrizione,
+                  COALESCE(ss.risolto, false) AS risolto,
+                  ss.stato_codice_interno,
+                  ss.stato_codice,
+                  ss.stato_descrizione,
+                  ss.fase,
+                  ss.esito,
+                  ss.terminale
+                 FROM pratiche.pratiche_sorgenti ps
+                   JOIN config.sorgenti so ON so.id = ps.sorgente_tipo_id
+                   LEFT JOIN LATERAL ( SELECT v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                         FROM script.vw_stato_sorgente v
+                        WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
+                          AND v.sorgente_chiave_uuid = ps.sorgente_uid
+                      UNION ALL
+                       SELECT v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                         FROM script.vw_stato_sorgente v
+                        WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
+                          AND v.sorgente_chiave_id = ps.sorgente_id) ss ON true
+                ORDER BY ps.pratica_id, (COALESCE(ss.risolto, false)) DESC, (NOT COALESCE(ss.terminale, false)) DESC, (ps.ruolo_link::text = 'ROOT'::text) DESC, ps.id DESC;
+
+              COMMENT ON VIEW script.vw_pratica_doc_sorgente IS
+                'Una riga per pratica col descrittore del documento PIU'' VIVO fra i suoi link (ROOT e COLLEGATO) in pratiche.pratiche_sorgenti. Regola d''ancora, NULL-safe: prima il risolto, poi il vivo (non terminale), poi il ROOT, poi il link piu'' recente (ps.id). Cosi'' un ordine COLLEGATO vivo accende la pratica preventivo -> ordine senza far regredire preventivo -> commessa (la commessa non risolta perde sul risolto). Link non risolto: risolto=false e stato_* NULL (non la sentinella UNKNOWN di pratiche.fn_stato_sorgente). La chiave del documento nelle colonne del modello: sorgente_id o sorgente_uid, una sola, secondo il key_selector del tipo. Il documento si cerca in script.vw_stato_sorgente sulle sue colonne native, un ramo per chiave (sorgente_chiave_uuid = sorgente_uid, sorgente_chiave_id = sorgente_id), in una LATERAL: dentro la sottoquery la chiave del link e'' un parametro esterno, e sotto RLS arriva all''indice di ogni ramo della union (int8eq e uuid_eq sono leakproof). Un OR sulle due chiavi in un ramo solo non scende nella union e legge tutte le tabelle-documento. Sede unica della regola; la legge il backend. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW script.vw_pratica_doc_sorgente;

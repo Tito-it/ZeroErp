@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# proc_sync_storico_set_storicizza: il commento nel corpo dice dove va il
+# riepilogo.
+#   Brief: brief-db-revisione-maintenance M13 (decisione di Tid, 2026-11-03,
+#   insieme a D11).
+#
+# ℹ️ Il commento accanto al RAISE NOTICE diceva «il riepilogo finisce nel log
+#   del server». Un NOTICE va al client: con log_min_messages di default non
+#   arriva al log, e pgAgent non lo conserva. Il COMMENT dell'oggetto e' gia'
+#   corretto (20261103-63); qui si allinea il commento nel corpo, che si
+#   cambia solo ridefinendo la procedura. Nient'altro cambia.
+#   Corpo dalla doc auto-generata (= 20260905-28). Il COMMENT resta quello
+#   del 20261103-63: CREATE OR REPLACE non lo tocca.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261103-68-update-proc-sync-storico-set-storicizza-commento-riepilogo-mctit.yaml
+
+  - changeSet:
+      id: 20261103-68-update-proc-sync-storico-set-storicizza-commento-riepilogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_sync_storico_set_storicizza: il commento nel corpo dice che il
+        riepilogo e' un NOTICE per chi la lancia a mano, non una riga del log del server.
+        Comportamento e firma invariati. Brief: brief-db-revisione-maintenance M13.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'proc_sync_storico_set_storicizza'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_sync_storico_set_storicizza()
+               LANGUAGE plpgsql
+              AS $procedure$
+              DECLARE
+                  v_aggiunte integer := 0;
+                  v_potate   integer := 0;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Tenere `config.storico_set_storicizza` allineato alla sua
+                  --   DERIVAZIONE: le tabelle ordinarie che hanno la colonna
+                  --   `storicizza` con DEFAULT true.
+                  --
+                  -- ⭐ Una sincronizzazione ha due meta'. Prima ne aveva una:
+                  --   aggiungeva e non toglieva mai, quindi una tabella ritirata
+                  --   lasciava una riga che puntava a niente — e il consumatore
+                  --   (apply_storicizza_weekly) ci moriva sopra, in silenzio.
+                  -- =========================================================
+
+                  -- ── 1. Aggiungi cio' che la derivazione produce ──────────
+                  -- ⚠️ Nome QUALIFICATO esplicitamente: `regclass::text` lo
+                  --   ometterebbe per gli schemi nel search_path del chiamante,
+                  --   e una chiave che dipende dal search_path e' una chiave che
+                  --   un giorno non ritrova la propria riga.
+                  INSERT INTO config.storico_set_storicizza (table_name, insert_manuale)
+                  SELECT n.nspname || '.' || c.relname, false
+                    FROM pg_attribute a
+                    JOIN pg_class c ON c.oid = a.attrelid AND c.relkind = 'r'
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+                   WHERE a.attname = 'storicizza'
+                     AND NOT a.attisdropped
+                     -- Si confronta il TESTO dell'espressione, senza cast:
+                     -- forma invariata dalla versione precedente.
+                     AND pg_get_expr(ad.adbin, ad.adrelid) = 'true'
+                  ON CONFLICT (table_name) DO NOTHING;
+
+                  GET DIAGNOSTICS v_aggiunte = ROW_COUNT;
+
+                  -- ── 2. La meta' che mancava: pota cio' che non ha piu' un
+                  --      referente ─────────────────────────────────────────
+                  -- ⛔ SOLO le righe derivate, e SOLO quelle il cui nome non
+                  --   risolve piu' a nessun oggetto. Una tabella che esiste ma
+                  --   ha perso il DEFAULT non si pota: e' il caso transitorio
+                  --   che `apply_storicizza_weekly` ripara, e potarlo qui
+                  --   spegnerebbe la storicizzazione di una tabella viva.
+                  -- ⛔ `insert_manuale = true` non si tocca mai: e' una
+                  --   decisione di una persona, e se il suo bersaglio sparisce
+                  --   va detto a qualcuno, non cancellato di nascosto.
+                  DELETE FROM config.storico_set_storicizza s
+                   WHERE NOT s.insert_manuale
+                     AND to_regclass(s.table_name) IS NULL;
+
+                  GET DIAGNOSTICS v_potate = ROW_COUNT;
+
+                  -- ℹ️ Il riepilogo e' un NOTICE per chi la lancia a mano: va al
+                  --   client, e con le impostazioni di default non arriva al log del
+                  --   server. Lanciata dal job, la traccia e' la riga di
+                  --   maintenance.job_run_log. Brief: brief-db-revisione-maintenance M13.
+                  RAISE NOTICE 'storico_set_storicizza: % aggiunte, % potate',
+                               v_aggiunte, v_potate;
+              END
+              $procedure$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20260905-28).
+              SELECT 1;

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96/-97): le colonne parallele
+--   della provenienza (ordini.documento_origine_*, contratti.offerta_id) sono ritirate; la fixture
+--   scrive e il test legge la sola provenienza (sorgente_*), come i verbi. Attese invariate.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'ordine collegato all'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
 --   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
@@ -221,14 +224,15 @@ SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.id, 'ACCETT
 --     comportamento di una porta aperta, adesso attraversa il guard come lo
 --     attraversa l'applicazione.
 
--- Ordine collegato all'offerta (documento_origine OFFERTA).
+-- Ordine collegato all'offerta (la provenienza: OFFERTA_COMMERCIALE + uid).
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1/D-6): l'ordine ha sempre il
 --   BA, ed e' quello dell'offerta da cui nasce, col suo ruolo. Prima nasceva col
 --   BA NULL (per saltare il guard emittente<->BA) e col primo ruolo del database.
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
-    documento_origine_tipo, documento_origine_id
+    -- la provenienza, come la scrive il verbo (giro T.5 di brief-db-sorgente-documento-e-riga)
+    sorgente_tipo_id, sorgente_uid
 )
 SELECT
     (SELECT c.soggetto_ruolo_id FROM tmp_push_cli c),
@@ -237,7 +241,8 @@ SELECT
     (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1),
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
     DATE '2102-01-02', false,
-    'OFFERTA_COMMERCIALE', (SELECT id FROM tmp_push_offerta_ord)
+    (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+    (SELECT o.uid FROM vendite.offerte_commerciali o WHERE o.id = (SELECT id FROM tmp_push_offerta_ord))
   FROM tmp_push_ctx ctx;
 
 -- ============================================================
@@ -273,7 +278,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 3) contratto.offerta_id valorizzato + sorgente_uid = offerta.uid
+-- 3) la provenienza del contratto: OFFERTA_COMMERCIALE + sorgente_uid = offerta.uid
 -- ============================================================
 SELECT ok(
     EXISTS (
@@ -281,11 +286,11 @@ SELECT ok(
           JOIN tmp_push_contratto_id tc ON c.id = tc.contratto_id
           JOIN tmp_push_offerta_acc oa ON TRUE
           JOIN tmp_push_ctx ctx ON TRUE
-         WHERE c.offerta_id   = oa.id
-           AND c.sorgente_uid = oa.uid
+         WHERE c.sorgente_uid = oa.uid
+           AND c.sorgente_id IS NULL
            AND c.sorgente_tipo_id = ctx.sorgente_ofc_id
     ),
-    '3) contratto.offerta_id, sorgente_uid e sorgente_tipo_id valorizzati correttamente'
+    '3) la provenienza del contratto: sorgente_tipo_id e sorgente_uid dell''offerta'
 );
 
 -- ============================================================

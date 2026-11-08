@@ -1,45 +1,68 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.template_flussi_canali`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche)
-> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `solo_interna`)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — lo step esposto
+> * [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche) — il catalogo dei canali
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_template_flussi_figli_guard_immutabile](/dbzero/pratiche/funzioni/trgfn_template_flussi_figli_guard_immutabile) — protegge i collegamenti di un'edizione emessa
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `pratiche.template_flussi_canali` e' la **relazione M:N** tra template flussi e canali di visibilita'. Definisce su quali interfacce esterne un flusso e' esposto (es. portale clienti, app tecnica).
+
+La tabella `pratiche.template_flussi_canali` collega gli step di workflow ai canali su cui sono
+esposti fuori dal gestionale (per esempio il portale clienti o l'app dei tecnici): una riga per coppia
+(template, canale).
 
 ---
 
-### Ruolo nel processo
+### Le regole
 
-* Ogni template flusso puo' essere visibile su zero, uno o piu' canali.
-* Pratiche con `solo_interna = true` non espongono flussi su alcun canale — la relazione esiste ma viene ignorata dalla logica applicativa.
-* Il sistema canali e' **estensibile**: nuovi canali si aggiungono in `config.canali_pratiche` e si collegano qui senza modifiche al codice.
-
----
-
-### Caratteristiche
-
-| Aspetto | Dettaglio |
-|---------|-----------|
-| **Relazione** | Immutabile: si cancella e ricrea (no UPDATE). |
-| **Audit** | Solo `data_insert/user_insert` — coerente con l'immutabilita'. |
-| **UQ** | `(template_flusso_id, canale_id)` — no duplicati. |
-| **FK template** | ON DELETE CASCADE — se il template viene rimosso, i canali collegati spariscono. |
-| **FK canale** | ON DELETE NO ACTION — il canale non puo' essere rimosso se ha collegamenti. |
+* Un template può stare su nessuno, uno o più canali; la stessa coppia non si ripete.
+* Un canale nuovo si aggiunge a catalogo in `config.canali_pratiche` e si collega qui, senza toccare il
+  codice.
+* La visibilità esterna è una proprietà dello step, non della singola pratica: la dicono questa tabella
+  e la `direzione` del template.
+* Il collegamento si spegne con `attivo`. Un collegamento attivo vuole il template e il canale attivi,
+  e un template con collegamenti attivi non si spegne.
+* Cancellando il template i suoi collegamenti spariscono con lui; un canale collegato non si cancella.
 
 ---
 
-### Esempio
+### ⛔ I collegamenti seguono l'edizione
 
-| template_flusso | canale | Significato |
-|-----------------|--------|-------------|
-| "Richiesta Allacciamento" | WEB_CLIENTI | Il cliente puo' avviare la richiesta dal portale web |
-| "Sopralluogo" | APP_TECNICA | Il tecnico vede e gestisce il sopralluogo dall'app mobile |
+Il template appartiene a un'edizione di workflow, e i suoi collegamenti con lui: la copia di un'edizione
+li porta con sé. Su un'edizione di un emittente già pubblicata o ritirata i collegamenti non si
+inseriscono né si modificano, e su una pubblicata non si cancellano: la correzione passa da una nuova
+versione.
+
+---
+
+### Codici errore
+
+* `E_TEMPLATE_DEFINIZIONE_CONGELATA` — modifica di un collegamento di un'edizione emessa.
+
+---
+
+### Test
+
+* `pratiche/test-canali-flussi` — collegamento, unicità della coppia, chiave esterna verso il canale.
+* `pratiche/test-definizione-ritirata-edit-freeze` — la protezione dei figli di un'edizione ritirata, provata su prerequisiti e formule.
+
+---
+
+### Note di migrazione
+
+* 2026-03-07 — ritirata la colonna `solo_interna` di `pratiche.pratiche`: la visibilità esterna si governa dallo step (questa
+  tabella e la `direzione`), non dalla pratica.
+* 2026-06-18 — la tabella, nata con l'audit del solo inserimento, riceve l'audit degli aggiornamenti.
 
 ---
 

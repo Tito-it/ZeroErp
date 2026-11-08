@@ -65,7 +65,7 @@ class DigestPresidiInvioTests(SimpleTestCase):
         # ⚠️ Dal 2026-09-11 la chiamata a `insert_log` vive in
         #    `presidi_digest.accoda_email_presidi` (una sede per il command e per
         #    l'handler del guardiano): il doppio si mette dove sta la chiamata.
-        patcher = patch.object(presidi_digest, "EmailRepository")
+        patcher = patch.object(presidi_digest, "EmailRepository", autospec=True)
         self.repo_email = patcher.start()
         self.addCleanup(patcher.stop)
         self.comando = Command()

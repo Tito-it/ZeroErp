@@ -61,7 +61,7 @@ class LottoCapabilitiesServiceTests(SimpleTestCase):
         self.repo.get_lotto.return_value = dict(_TESTATA)
         self.repo.get_available_actions_lotto.return_value = dict(_BLOB)
         patcher = patch(
-            "apps.vendite.services.vendite_service.VenditeRepository",
+            "apps.vendite.services.vendite_service.VenditeRepository", autospec=True,
             return_value=self.repo,
         )
         patcher.start()

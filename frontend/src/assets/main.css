@@ -1712,6 +1712,17 @@ a {
   flex: none;
 }
 
+/* La frase introduttiva di un dialog di processo, sopra la tabella delle
+ * righe (evasione dell'ordine, reso dalla bolla, riconsegna del reso): piccola
+ * e sottotono, senza margine — lo spazio lo da' il contenitore del dialog.
+ * Regola del 2 (2026-11-03, ok Tid): era uno `style` inline copiato quattro
+ * volte in tre dialog. */
+.app-dialog-intro {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--app-text-muted);
+}
+
 /* ===== Modalita' sola lettura (pattern protect) =====
  * Overlay CSS ispirato ai formati protect AS/400.
  * Blocca ogni interazione, permette copia testo, feedback visivo.
@@ -2215,6 +2226,16 @@ a {
  * di PrimeFlex — che qui non esiste. Una regola sola; la taglia e il peso
  * restano al chiamante, che li dichiara nella sua classe. */
 .app-mono { font-family: monospace; }
+/* ⭐ `app-codice-input` (2026-11-04, brief-be-codice-maiuscolo §4): il campo
+ * `codice` mostra in maiuscolo cio' che l'operatore digita, perche' il DB lo
+ * salva cosi' (automazione CODICE_MAIUSCOLO, `upper(btrim())`). ⛔ E' SOLO
+ * VISIVO: il valore del form resta come digitato e la regola vive nel DB, non
+ * si ricopia in JavaScript. Il placeholder resta com'e' scritto: e' un
+ * suggerimento, non un codice. Va su ogni input `v-model="….codice"` di una
+ * tabella del perimetro; le eccezioni (le tabelle dove il DB conserva il
+ * codice com'e') stanno, col motivo, in `scripts/check-campo-codice.mjs`. */
+.app-codice-input { text-transform: uppercase; }
+.app-codice-input::placeholder { text-transform: none; }
 
 /* Un NUMERO che sotto zero e' un allarme (la disponibilita' di magazzino: una
  * promessa non piu' mantenibile, D-L2-d). Rosso di severita' e in grassetto,

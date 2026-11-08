@@ -53,6 +53,7 @@ from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from scripts.tests._smoke_contesto import apri_contesto_smoke
 from scripts.tests._smoke_fatturazione import (
+    chiave_di_commessa,
     costruisci_base_fatturazione,
     crea_articolo_di_prova,
     crea_attivita_di_commessa,
@@ -97,7 +98,8 @@ with transaction.atomic():
         ]
         attivita_ids = [
             crea_attivita_di_commessa(
-                cur, t, segment_key=f"SMOKE:{marker}:G{n}", lock_batch_id=lock_batch_id,
+                cur, t,
+                segment_key=chiave_di_commessa(cur, t, t["commessa_id"], f"SMOKE:{marker}:G{n}"), lock_batch_id=lock_batch_id,
                 prezzo=Decimal("10.00"), articolo_id=art,
             )[1]
             for n, art in enumerate(articoli)

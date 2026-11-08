@@ -15,7 +15,9 @@
 #       ⭐ Le scelte sono quelle dei builder del DB (`dbops.fn_pgtap_crea_fattura`,
 #       `fn_pgtap_crea_commessa_attivita`): il catalogo si SCEGLIE con un
 #       ORDER BY, l'articolo si COSTRUISCE (`dbops.fn_pgtap_crea_articolo`),
-#       la sorgente di una riga di commessa e' la commessa. Se cambiano la',
+#       la sorgente di una riga di commessa e' un consumo della commessa
+#       (`consumo_della_commessa`), e la sua chiave lo nomina
+#       (`chiave_di_commessa`, dal giro C.3). Se cambiano la',
 #       si allinea qui.
 #       ⚠️ Lo smoke resta sull'emittente di prova (`seleziona_emittente_di_prova`):
 #       da qui in poi vede e scrive solo il suo perimetro. Tutto cio' che si
@@ -28,6 +30,9 @@
 #       (`dbops.fn_pgtap_crea_fattura`, `fn_pgtap_crea_contratto`, …), che dal
 #       2026-10-21 accettano `dev.smoke` sull'emittente di prova (R-2): qui non
 #       se ne scrive una seconda versione.
+#       ⭐ Terza estrazione (regola del 2, ok Tid, 2026-11-03): la DATA ISOLATA
+#       dei documenti di prova (`data_documento_isolata`), copiata in
+#       `smoke-push-termine-documento-commessa` e `smoke-push-onere-ordine`.
 #       Uso: `from scripts.tests._smoke_fatturazione import costruisci_base_fatturazione`,
 #       dopo `apri_contesto_smoke(cur)`. Il trattino basso lo tiene fuori dalla
 #       scoperta di `smoke-baseline.sh`.
@@ -37,12 +42,30 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from scripts.tests._smoke_commessa import crea_riga_commessa
+from apps.core.services.fuso_aziendale import oggi_aziendale
+from scripts.tests._smoke_commessa import (
+    SORGENTE_CONSUMO,
+    consumo_di_commessa,
+    crea_riga_commessa,
+)
 from scripts.tests._smoke_contesto import seleziona_emittente_di_prova
+
+
+# Scopo: la data dei documenti di prova, ISOLATA: ~14 mesi nel futuro
+#        (`oggi_aziendale()` + 425 giorni), a meta' mese. La competenza che ne
+#        nasce (`.replace(day=1)`) non incrocia attivita' vive dell'ambiente:
+#        la selezione di un lotto, gia' filtrata per BA + emittente + tipo
+#        documento, non le rastrella e non ne e' inquinata.
+#        Il 15 lascia spazio a chi ha bisogno del mese prima o dopo.
+_GIORNI_ISOLAMENTO = 425
+
+
+def data_documento_isolata() -> date:
+    return (oggi_aziendale() + timedelta(days=_GIORNI_ISOLAMENTO)).replace(day=15)
 
 
 # Scopo: costruisce un articolo di prova (non gestito a magazzino) col builder
@@ -169,10 +192,6 @@ def costruisci_base_fatturazione(
         "SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1"
     )
     tipo_doc_fiscale_id = cur.fetchone()[0]
-    cur.execute(
-        "SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA' AND s.attivo"
-    )
-    sorgente_tipo_id = cur.fetchone()[0]
     if competenza_mese is None:
         cur.execute("SELECT date_trunc('month', script.fn_data_operativa())::date")
         competenza_mese = cur.fetchone()[0]
@@ -184,7 +203,6 @@ def costruisci_base_fatturazione(
         "istanza_utility_id": istanza_id, "billing_account_id": ba_id,
         "uom_id": uom_id, "valuta_id": valuta_id,
         "tipo_doc_fiscale_id": tipo_doc_fiscale_id,
-        "sorgente_tipo_id": sorgente_tipo_id, "sorgente_origine_tipo_id": None,
         "competenza_mese": competenza_mese, "data": competenza_mese,
         "emittente_sr_id": ef_sr_id, "emittente_fiscale_id": ef_id,
         "cliente_sr_id": cliente_sr_id, "utility_id": utility_id,
@@ -227,6 +245,10 @@ def crea_lotto_di_prova(cur: Any, t: dict[str, Any], *, codice: str, lock_batch_
 #        deve avere. `articolo_id` di default quello della base.
 # Note: ⭐ Regola del 2: lo stesso INSERT stava in sei smoke, con varianti di
 #       quantita', meta e marca del giro.
+#       ⛔ Nessuna colonna di provenienza (dal 2026-11-07, giro C.1 di
+#       brief-db-sorgente-documento-e-riga, BE-C.1-b): `sorgente_*` di
+#       `vendite.attivita_fatturabili` non esistono piu'. La provenienza di
+#       un'attivita' e' la sua riga di commessa (`commessa_attivita_id`).
 def crea_attivita_lockata(
     cur: Any,
     t: dict[str, Any],
@@ -248,12 +270,11 @@ def crea_attivita_lockata(
             prezzo_unitario, valuta_id, tipo_doc_fiscale_id,
             competenza_mese, competenza_dal, competenza_al,
             commessa_id, commessa_attivita_id,
-            sorgente_tipo_id, sorgente_uid, sorgente_origine_tipo_id,
             lock_batch_id, emit_batch_id, lock_in_fatturazione, approvato,
             stato_esecuzione, prezzo_bloccato, meta
         ) VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
             %s, %s, TRUE, TRUE, 'PENDING', TRUE, %s::jsonb
         ) RETURNING id
         """,
@@ -261,10 +282,34 @@ def crea_attivita_lockata(
          t["data"], quantita, t["uom_id"], quantita, t["uom_id"], prezzo,
          t["valuta_id"], t["tipo_doc_fiscale_id"], t["competenza_mese"],
          t["data"], t["data"], commessa_id, ca_id,
-         t["sorgente_tipo_id"], str(uuid.uuid4()), t["sorgente_origine_tipo_id"],
          lock_batch_id, emit_batch_id, meta],
     )
     return int(cur.fetchone()[0])
+
+
+# Scopo: Il CONSUMO d'origine delle righe di una commessa della fixture, e la
+#        sua chiave: uno per commessa, creato alla prima richiesta e tenuto in
+#        `t["consumi"]` (la fixture e' gia' lo stato dello smoke: niente
+#        cache di modulo). Ritorna `(consumo_id, chiave)`.
+# ⚠️ Uno per commessa, non uno per riga: un documento sta in una sola
+#    commessa aperta, e le righe di una commessa — i componenti di un kit col
+#    loro padre — devono condividere la radice della chiave.
+def consumo_della_commessa(cur: Any, t: dict[str, Any], commessa_id: int) -> tuple[int, str]:
+    consumi = t.setdefault("consumi", {})
+    if commessa_id not in consumi:
+        consumi[commessa_id] = consumo_di_commessa(cur, commessa_id, t["competenza_mese"])
+    return consumi[commessa_id]
+
+
+# Scopo: La CHIAVE del push di una riga di una commessa della fixture: quella
+#        del suo consumo (`consumo_della_commessa`), e dopo `:` l'etichetta
+#        dello smoke. È la chiave che `crea_attivita_di_commessa` vuole.
+# ⛔ Dal giro C.3 (brief-db-sorgente-documento-e-riga, BE-C.3-c) la chiave
+#    nomina il documento: un `SMOKE:<marker>:...` scritto a mano e' rifiutato
+#    (`E_COMMESSA_ATTIVITA_CHIAVE_NON_DEL_DOCUMENTO`).
+def chiave_di_commessa(cur: Any, t: dict[str, Any], commessa_id: int, etichetta: str) -> str:
+    _consumo_id, chiave = consumo_della_commessa(cur, t, commessa_id)
+    return f"{chiave}:{etichetta}"
 
 
 # Scopo: riga di commessa (dalla madre, `crea_riga_commessa`) + la sua
@@ -295,6 +340,9 @@ def crea_attivita_di_commessa(
 ) -> tuple[int, int]:
     commessa = commessa_id or t["commessa_id"]
     articolo = articolo_id or t["articolo_id"]
+    # La provenienza e' il consumo della commessa: `segment_key` la deve
+    # nominare (`chiave_di_commessa`), o il guard la rifiuta.
+    consumo_id, _chiave = consumo_della_commessa(cur, t, commessa)
     ca_id = crea_riga_commessa(
         cur, commessa_id=commessa, segment_key=segment_key,
         articolo_id=articolo, istanza_utility_id=t["istanza_utility_id"],
@@ -303,7 +351,7 @@ def crea_attivita_di_commessa(
         competenza_al=t["data"], quantita=quantita, prezzo=prezzo,
         tipo_doc_fiscale_id=t["tipo_doc_fiscale_id"], valuta_id=t["valuta_id"],
         stato_approvazione=stato_approvazione, stato_emissione=stato_emissione,
-        meta=meta,
+        meta=meta, sorgente_codice=SORGENTE_CONSUMO, sorgente_uid=str(consumo_id),
     )
     af_id = crea_attivita_lockata(
         cur, t, commessa_id=commessa, ca_id=ca_id, lock_batch_id=lock_batch_id,

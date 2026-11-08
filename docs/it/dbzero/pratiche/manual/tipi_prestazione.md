@@ -1,59 +1,80 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.tipi_prestazione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [pratiche.regole_generazione](/dbzero/pratiche/tabelle/regole_generazione)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — le pratiche di quel tipo
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — le edizioni di workflow del tipo
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — gli step
+> * [pratiche.regole_generazione](/dbzero/pratiche/tabelle/regole_generazione) — il tipo come destinazione della generazione fra pratiche
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'attivazione del cliente, che `pre_attivazione` e `post_attivazione` guardano
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_tipi_prestazione_bootstrap_definizione](/dbzero/pratiche/funzioni/trgfn_tipi_prestazione_bootstrap_definizione) — crea l'edizione preset alla nascita del tipo
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `pratiche.tipi_prestazione` definisce il **catalogo dei tipi di pratica** gestibili dal sistema. Ogni pratica ha un `tipo_prestazione_id` che ne determina la natura e il workflow applicabile.
+
+La tabella `pratiche.tipi_prestazione` è il catalogo dei tipi di pratica che il sistema gestisce: ogni
+pratica ha un tipo, che ne dice la natura e il workflow applicabile.
 
 ---
 
-### Ruolo nel processo
+### Il tipo è l'identità, le edizioni versionano il workflow
 
-* Definisce **quali pratiche** il sistema puo' gestire (es. "Sopralluogo", "Allacciamento", "Reclamo").
-* Ogni tipo e' collegato a uno o piu' **template flussi** che definiscono gli step del workflow.
-* Ogni tipo nasce con la sua **definizione workflow preset v1 PUBBLICATA**
-  ([workflow_definizioni](workflow_definizioni.md), trigger di
-  [bootstrap](trgfn_tipi_prestazione_bootstrap_definizione.md)): il tipo resta
-  l'identita' condivisa (reporting), le edizioni ne versionano il workflow.
-* Le **regole di generazione cross-pratica** fanno riferimento al tipo_prestazione come destinazione.
-* Il campo `categoria` (VARCHAR(50), nullable) consente raggruppamenti liberi (es. "TECNICA", "COMMERCIALE", "AMMINISTRATIVA").
+* Ogni tipo nasce con la sua edizione di workflow preset, versione 1 pubblicata, creata dal trigger di
+  bootstrap. Il tipo resta l'identità condivisa (anche per il reporting); le edizioni, preset e copie
+  degli emittenti, ne versionano gli step.
+* Le regole di generazione fra pratiche usano il tipo come destinazione.
+* `categoria` è un raggruppamento libero, senza vocabolario chiuso.
+* `codice` e `codice_interno` sono unici; il `codice` si scrive in maiuscolo.
 
 ---
 
-### Colonne specifiche
+### Prima o dopo l'attivazione del cliente
 
-| Colonna | Note |
-|---------|------|
-| `categoria` | Raggruppamento libero (nullable). Non vincolato da CHECK — flessibilita' operativa. |
-| `pre_attivazione` | BOOLEAN NOT NULL DEFAULT true. Se true, il tipo prestazione e' applicabile **prima** dell'attivazione del cliente (billing_account senza data_attivazione). |
-| `post_attivazione` | BOOLEAN NOT NULL DEFAULT true. Se true, il tipo prestazione e' applicabile **dopo** l'attivazione del cliente (billing_account con data_attivazione valorizzata). |
-| `storicizza` | Se true, le modifiche vengono tracciate in `storico.tipi_prestazione`. |
-| `tx_id` | Identificativo transazione per correlazione cross-tabella. |
+`pre_attivazione` e `post_attivazione` dicono se il tipo si apre per un cliente non ancora attivato, già
+attivato, o per entrambi. «Attivato» vuol dire che il soggetto ha un billing account attivo con
+l'emittente della pratica.
 
-#### Matrice pre/post attivazione
+| `pre_attivazione` | `post_attivazione` | Significato |
+| --- | --- | --- |
+| sì | sì | Sempre ammesso (predefinito) |
+| sì | no | Solo per un cliente non ancora attivato |
+| no | sì | Solo per un cliente attivato |
+| no | no | Non legato al ciclo di vita del cliente: ammesso sempre |
 
-| `pre_attivazione` | `post_attivazione` | Significato                                                        |
-| ----------------- | ------------------ | ------------------------------------------------------------------ |
-| true              | true               | Universale — applicabile sempre (default).                         |
-| true              | false              | Solo pre-attivazione — esclusa dopo l'attivazione del cliente.     |
-| false             | true               | Solo post-attivazione — richiede cliente attivato.                 |
-| false             | false              | Interna — prestazione non vincolata al ciclo di vita del cliente.  |
-
-La validazione avviene nel **service Django** (non nel DB) perche' richiede lookup cross-schema su `anagrafiche.billing_account`.
+⚠️ La regola la applica il servizio del backend alla creazione della pratica, e solo quando i due flag
+sono diversi: il database non la controlla.
 
 ---
 
-### Convenzioni
+### Ritiro e disattivazione
 
-* Struttura config-like nel schema `pratiche`: `codice` UNIQUE, `codice_interno` UNIQUE + locked, `attivo`, `meta`, audit.
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* `obsoleto_dal` toglie il tipo dalla scelta per le pratiche nuove da quella data, senza toccare
+  `attivo` né le pratiche esistenti; le letture storiche lo vedono ancora.
+* Un tipo non si spegne finché ha pratiche, edizioni, template, regole di generazione, formule del tempo
+  o modelli di mail attivi.
+* Le modifiche sono storicizzate.
+
+---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase0` — il bootstrap dell'edizione preset.
+* `pratiche/test-obsoleto-dal-catalogo-v1` — il ritiro programmato.
+
+---
+
+### Note di migrazione
+
+* 2026-07-02 — con le edizioni versionate il workflow passa dal tipo alle sue edizioni; il tipo resta
+  l'identità.
 
 ---
 

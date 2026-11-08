@@ -111,12 +111,15 @@ class FattureRepository(RigheListaCompletaMixin):
     # ⚠️ `riga_key` e non `id`: il padre di un kit non esiste in tabella e non
     #    ha un id. ⚠️ Nessun filtro `attivo`: la vista non lo ha — le righe di
     #    una fattura non si disattivano, si rettificano con una nota di credito.
-    # ⭐ L'ordine del documento e' `ordinamento, riga_nr`: `ordinamento` tiene
-    #    la capofila accanto alle sue parti di plafond, `riga_nr` le mette in fila.
+    # ⭐ L'ordine del documento e' `sezione_documento, ordinamento, riga_nr`:
+    #    la sezione (1 articoli, 2 oneri; 20261103-50) mette gli oneri dopo gli
+    #    articoli, `ordinamento` tiene la capofila accanto alle sue parti di
+    #    plafond, `riga_nr` le mette in fila. La regola e' del DB: qui si legge
+    #    la colonna, non si ricostruisce chi e' un onere.
     _righe_vista = "vendite.vw_fattura_righe_lista"
     _righe_fk_documento = "fattura_id"
-    _righe_ordine_documento = "ordinamento"
-    _righe_ordine_documento_extra = ("riga_nr",)
+    _righe_ordine_documento = "sezione_documento"
+    _righe_ordine_documento_extra = ("ordinamento", "riga_nr")
     _righe_chiave = "riga_key"
     _righe_solo_attive = False
     _righe_ordinamento = _ORDER_COLS_RIGHE_FATTURA

@@ -38,7 +38,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
@@ -48,7 +47,6 @@ from apps.core.services.payload_helpers import (
     map_integrity_error,
 )
 from apps.ui.db.ui_admin_repository import UiAdminRepository
-from apps.ui.services._audit import user_label
 
 E_LISTA_NOT_FOUND = "E_UI_LISTA_NON_TROVATA"
 E_DEFINIZIONE_NOT_FOUND = "E_UI_DEFINIZIONE_NON_TROVATA"
@@ -186,7 +184,6 @@ class ListaColonnaAdminService:
     #        arriva dal path della view (non dal payload).
     def create_colonna(
         self,
-        user: AbstractBaseUser | AnonymousUser | None,
         lista_id: int,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
@@ -206,9 +203,7 @@ class ListaColonnaAdminService:
         data = self._build_create_data(lista_id, payload)
 
         try:
-            new_id = self._repo.create_colonna(
-                data, user_insert=user_label(user)
-            )
+            new_id = self._repo.create_colonna(data)
         except IntegrityError as exc:
             map_integrity_error(
                 exc,
@@ -229,7 +224,6 @@ class ListaColonnaAdminService:
     #        una colonna fra liste si cancella e ricrea.
     def update_colonna(
         self,
-        user: AbstractBaseUser | AnonymousUser | None,
         colonna_id: int,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
@@ -260,9 +254,7 @@ class ListaColonnaAdminService:
         )
 
         try:
-            updated = self._repo.update_colonna(
-                colonna_id, data, user_update=user_label(user)
-            )
+            updated = self._repo.update_colonna(colonna_id, data)
         except IntegrityError as exc:
             map_integrity_error(
                 exc,

@@ -1,336 +1,248 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_processi_programmazione`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_programmazione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[dbops.processi](/dbzero/dbops/manual/processi)
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — il catalogo: canale, job dichiarato, contratto di liveness, accensione
+> * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — il giornale delle corse
+> * [dbops.presidi_testi](/dbzero/dbops/tabelle/presidi_testi) — il testo per chi agisce, scelto dalla causa
+> * [dbops.presidi_cause](/dbzero/dbops/tabelle/presidi_cause) — a chi tocca ogni causa
 >
-[maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log)
+> Approfondimento viste:
 >
-Approfondimenti viste:
+> * [dbops.vw_processi_programmazione_da_guardare](/dbzero/dbops/views/vw_processi_programmazione_da_guardare) — il presidio: questo panorama proiettato sui guasti
+> * [maintenance.vw_job_run_da_guardare](/dbzero/maintenance/views/vw_job_run_da_guardare) — l'altro presidio: le corse che falliscono
+> * [dbops.vw_ambiente_non_dichiarato](/dbzero/dbops/views/vw_ambiente_non_dichiarato) — il presidio dell'ambiente, quando `acceso` è vuoto
 >
-[dbops.vw_processi_programmazione_da_guardare](/dbzero/dbops/manual/vw_processi_programmazione_da_guardare)
+> Approfondimento funzioni:
+>
+> * [dbops.fn_get_pgagent_job_stato](/dbzero/dbops/funzioni/fn_get_pgagent_job_stato) — lo stato del job letto da pgAgent
+> * [dbops.fn_processo_acceso_dichiarato](/dbzero/dbops/funzioni/fn_processo_acceso_dichiarato) — la colonna `acceso`
+> * [dbops.fn_conta_presidio](/dbzero/dbops/funzioni/fn_conta_presidio) — il conteggio del digest, che legge da un altro ruolo
+>
+> Guide:
+>
+> * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — chi suona la sveglia e come si vede se è andata bene
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 07-09-2026)
 
-È il **panorama** dei lavori che il sistema fa da solo: per ognuno, chi dovrebbe
-svegliarlo, quando girerà, e quando ha girato davvero.
+Il panorama dei processi automatici vivi: per ognuno, chi lo sveglia, quando girerà, quando ha
+girato secondo lo scheduler e secondo il giornale, e uno `stato` che dice se i conti tornano.
+Elenca anche i sani.
 
-Risponde a una domanda che prima non aveva risposta scritta da nessuna parte:
-
-> **Questo lavoro sta ancora girando?**
-
-⭐ E la risposta non viene da una fonte sola: viene dal **confronto** fra due.
-Lo scheduler del database dice *quando* ha fatto partire un lavoro; il giornale
-delle corse dice *che cosa quel lavoro ha fatto*. Finché le due si somigliano,
-va bene. Quando si smentiscono, è successo qualcosa che nessuno ha raccontato.
+Vivo vuol dire ritiro non raggiunto (`script.fn_e_obsoleto`): un processo a ritiro programmato
+compare fino al suo giorno, uno a ritiro raggiunto esce.
 
 ---
 
-### ⭐ La colonna che vale più di tutte è `stato`
+### ⭐ Il confronto fra due fonti
 
-E il valore che conta è **«è girato e non l'ha detto»**: lo scheduler dichiara di
-aver fatto partire il lavoro, il giornale non ne sa niente.
+La risposta non viene da una fonte sola. Lo scheduler dice **quando** ha fatto partire un lavoro;
+il giornale dice **che cosa** quel lavoro ha fatto. Finché le due si somigliano, va bene; quando si
+smentiscono, è successo qualcosa che nessuno ha raccontato.
 
-È la firma esatta di un lavoro che muore **prima** di riuscire a raccontarlo. Non
-è un caso di scuola: un lavoro settimanale di manutenzione è morto ogni settimana
-per **sei mesi**, con l'ultimo verdetto agli atti a «fatto», e lo si è scoperto
-per caso. Questo confronto lo avrebbe trovato in un giorno.
+⭐ Lo stato che vale più di tutti è `GIRA_E_NON_REGISTRA`: lo scheduler dice che il job è girato, il
+giornale non lo sa. È la firma di un lavoro che muore prima di riuscire a raccontarlo: un lavoro
+settimanale è morto così per sei mesi, con l'ultimo verdetto agli atti a «fatto», e lo si è scoperto
+per caso.
 
-| stato | che cosa vuol dire |
-| --- | --- |
-| `OK` | lo scheduler lo sveglia e il giornale lo registra |
-| `GIRA_E_NON_REGISTRA` | ⛔ girato secondo lo scheduler, mai arrivato al giornale |
-| `MAI_PARTITO` | programmato, acceso, e non è mai partito |
-| `IN_ATTESA` | job pgAgent acceso, mai partito, ma la sua prima corsa è ancora da venire: non è un guasto (dal 2026-10-14) |
-| `IN_RITARDO` | job pgAgent che ha già girato, ma la corsa dovuta è passata da più di un'ora: il programmatore si è fermato (dal 2026-10-14) |
-| `JOB_SPENTO` | il lavoro esiste ma qualcuno l'ha disattivato |
-| `JOB_ASSENTE` | il catalogo dichiara un lavoro che lo scheduler non ha |
-| `NON_PROGRAMMATO` | nessuno ha dichiarato chi lo sveglia |
-| `FUORI_PORTATA` | la sveglia vive fuori dal database |
-| `SU_RICHIESTA` | lo sveglia una persona: una cadenza non esiste |
+Due cose da sapere leggendo la vista:
+
+* il legame col job non è il nome: si legge da `dbops.processi.jobname_pgagent`, perché un job può
+  chiamarsi diversamente dal processo;
+* il giornale si legge per codice del processo **oppure** per nome del job, perché le corse storiche
+  non hanno il processo valorizzato.
 
 ---
 
-### ⚠️ Due stati non sono guasti, e per ragioni **opposte**
+### Gli stati, in ordine di decisione
 
-È la distinzione entrata il 2026-09-07, e serve perché prima quei due casi
-stavano sotto la stessa parola — facendo contare insieme cose diverse.
+L'ordine conta: il primo caso che vale decide lo stato.
 
-| | Che cosa vuol dire | Perché non è un guasto |
+| Caso | `stato` | `causa` |
 | --- | --- | --- |
-| **`FUORI_PORTATA`** | il lavoro lo fa partire il sistema operativo **e il catalogo non ha dichiarato che cosa aspettarsi** | è un limite di **vista**: il database non può saperlo. ⚠️ Dal 2026-09-11 vale **solo** per i `COMMAND` senza contratto: chi dichiara `tolleranza_minuti` o `segno_di_vita = SESSIONE` non è più fuori portata (sezione sotto) |
-| **`SU_RICHIESTA`** | il lavoro lo mette in coda una **persona** | non esiste nessuna cadenza da confrontare: è la **natura** del lavoro, e non cambierà |
+| canale `CODA` | `SU_RICHIESTA` | — |
+| sveglia spenta su questa installazione | `SPENTO` | — |
+| `COMMAND` a `SESSIONE`: c'è una connessione viva col codice del processo | `OK` | — |
+| `COMMAND` a `SESSIONE`: non c'è | `MUTO` | `SERVIZIO_GIU` |
+| `COMMAND` con tolleranza: nessuna corsa nel giornale | `MAI_PARTITO` | `TIMER_NON_INSTALLATO` |
+| `COMMAND` con tolleranza: l'ultima corsa è più vecchia della tolleranza | `MUTO` | `TIMER_FERMO` |
+| `COMMAND` con tolleranza: corsa entro la tolleranza | `OK` | — |
+| `COMMAND` senza contratto | `FUORI_PORTATA` | — |
+| nessun job dichiarato | `NON_PROGRAMMATO` | `NON_PROGRAMMATO` |
+| il job dichiarato non esiste in pgAgent | `JOB_ASSENTE` | `JOB_ASSENTE` |
+| il job è disabilitato dentro pgAgent | `JOB_SPENTO` | `JOB_SPENTO` |
+| il job è girato, e il giornale non ha nessuna corsa dello scheduler più recente di un'ora prima dell'ultima esecuzione di pgAgent | `GIRA_E_NON_REGISTRA` | `GIRA_E_NON_REGISTRA` |
+| il job non è mai girato e la corsa dovuta è passata da più di un'ora, o non ce n'è una | `MAI_PARTITO` | `JOB_MAI_PARTITO` |
+| il job non è mai girato e la prima corsa è ancora da venire | `IN_ATTESA` | — |
+| il job è girato e la corsa dovuta è passata da più di un'ora | `IN_RITARDO` | `JOB_IN_RITARDO` |
+| altrimenti | `OK` | — |
 
-Il primo è un confine che un giorno si potrebbe spostare; il secondo no.
+I rami dopo `FUORI_PORTATA` valgono per `PGAGENT` e `CODA_AUTOMATICA`, che hanno un job pgAgent.
 
-⛔ **Dire «tutto bene» su un lavoro che non si vede sarebbe una bugia**, ed è il
-modo più efficace di far smettere di guardare. La vista si ferma dove deve.
+⭐ **`SPENTO` non è morto.** Una sveglia spenta per il default del suo ambiente o per una scelta a
+mano non è un guasto, e viene prima di ogni verdetto di liveness. `JOB_SPENTO` è un'altra cosa: il
+job disabilitato dentro pgAgent, fuori dal catalogo, e si guarda.
 
-⚠️ **Il listener sempre acceso era fra i `FUORI_PORTATA` di proposito** (fino al
-2026-09-11): scrive una sola corsa — quella di avvio — e presidiarne la vitalità
-sull'ultima corsa direbbe «fermo» su un servizio sano acceso da tre settimane.
-Ma **che sia un listener il database non lo sapeva**: nessuna colonna lo diceva.
-*«Se servirà, è una colonna»* — è servita, ed è `segno_di_vita` (sezione sotto).
+⭐ **pgAgent: il segnale è la corsa dovuta.** Col demone fermo pgAgent non aggiorna più la prossima
+esecuzione, che resta nel passato: è il fatto che dice «il programmatore non gira». Un job nuovo
+che aspetta la prima corsa non è un guasto (`IN_ATTESA`); un job che ha già girato e salta la corsa
+dovuta lo è (`IN_RITARDO`).
 
 ---
 
-### ⭐ I `COMMAND` con un contratto non sono più fuori portata
+### ⚠️ Due stati sani, per ragioni opposte
 
-Dal 2026-09-11 `dbops.processi` dichiara il **contratto di liveness** di un
-`COMMAND` (decisione di Tid, brief *quattro processi senza presidio* §10.2):
+| Stato | Che cosa vuol dire | Perché non è un guasto |
+| --- | --- | --- |
+| `FUORI_PORTATA` | il lavoro lo sveglia l'host e il catalogo non dichiara che cosa aspettarsi | è un limite di **vista**: il database non può saperlo, e lo presidia il backend |
+| `SU_RICHIESTA` | il lavoro lo accoda una **persona** | una cadenza da confrontare non esiste: è la **natura** del lavoro |
+
+Il primo è un confine che si sposta dichiarando un contratto; il secondo no. ⛔ Dire «tutto bene»
+su un lavoro che non si vede sarebbe una bugia, ed è il modo più rapido per far smettere di
+guardare.
+
+---
+
+### ⭐ Il contratto dei `COMMAND`
+
+Un `COMMAND` che dichiara un contratto di liveness in `dbops.processi` non è fuori portata:
+
+* `GIORNALE` con tolleranza: il segno di vita è l'ultima corsa nel giornale, chiunque l'abbia
+  scritta. `MAI_PARTITO` qui è il timer dichiarato e mai installato; `MUTO` è il timer fermo;
+* `SESSIONE`: il segno di vita è una connessione viva sul database corrente col codice del processo
+  come `application_name`. Se il servizio muore, o sta riconnettendo, la connessione non c'è, ed è
+  vero.
+
+⛔ **Il verdetto `SESSIONE` poggia sull'esistenza della connessione, non sulla sua ora di avvio.**
+L'elenco delle sessioni mostra a tutti la riga di ogni sessione, ma ne maschera l'ora di avvio a chi
+non è lo stesso utente e non legge le statistiche; e una vista non cambia l'utente con cui quell'elenco
+si legge. Un verdetto sull'ora di avvio darebbe `OK` all'applicazione, padrona della sessione, e
+`MUTO` a chiunque altro, compreso il conteggio del digest. ⇒ `ultimo_segno_di_vita` per `SESSIONE`
+è informazione («da quando»), vuota per chi non può leggerla, non verdetto.
+
+`tolleranza_minuti`, `segno_di_vita` e `ultimo_segno_di_vita` (l'ultima corsa per `GIORNALE`,
+l'avvio della sessione per `SESSIONE`) stanno in coda alla riga.
+
+---
+
+### ⛔ Le date del giornale sono due, e il confronto usa la seconda
 
 | Colonna | Che cosa dice |
 | --- | --- |
-| `tolleranza_minuti` | *«se sto bene, lascio un segno almeno ogni N minuti»*. `NULL` = non si presidia da qui |
-| `segno_di_vita` | **dove** il database cerca quel segno: `GIORNALE` (una corsa su `job_run_log`) o `SESSIONE` (una connessione viva in `pg_stat_activity` con `application_name = codice`) |
-
-E il panorama, che prima diceva `FUORI_PORTATA` a tutti i `COMMAND`, ora **sa**:
-
-| Contratto | Stati possibili |
-| --- | --- |
-| `GIORNALE` + tolleranza | `OK` (ultima corsa entro la tolleranza) · **`MUTO`** (più vecchia) · `MAI_PARTITO` (nessuna corsa) |
-| `SESSIONE` | `OK` (una connessione col codice del processo è viva) · **`MUTO`** (non c'è) |
-| nessuno | `FUORI_PORTATA`, come prima |
-
-**`MUTO` è l'unico stato nuovo**: *«era vivo ed è taciuto»*. È la firma di un
-timer morto, di un servizio caduto, di un digest che non gira più. `MAI_PARTITO`
-su un `COMMAND` è il timer **dichiarato e mai installato** — il buco «fra
-dichiarato e acceso non guarda nessuno» (presidi §11.5), visto dal database.
-
-⭐ **Niente da fare su `da_guardare`**: non cambia forma, quindi `MUTO` e
-`MAI_PARTITO` entrano da soli nel presidio, nel pannello e nel digest. E
-[maintenance.vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare),
-che nel proprio commento dichiarava *«non vede il job che non parte affatto: per
-quello servirebbe che ogni processo dichiarasse ogni quanto deve girare»*, ha il
-suo complemento.
-
-⚠️ **Il segno di vita a `SESSIONE` è un fatto, non una dichiarazione**: se il
-processo muore la sessione sparisce; se sta riconnettendo non c'è — ed è vero.
-Nessun battito sul giornale, nessuna tabella nuova. Il backend si presenta con
-`application_name = codice del processo` (una riga in `notify_listener`).
-
-⛔ **E il verdetto poggia sull'*esistenza* della sessione, non su `backend_start`**
-(rev `20260914-01`). `pg_stat_activity` mostra a **tutti** la riga di ogni
-sessione (`pid`, `usename`, `application_name`), ma **maschera** le altre
-colonne — `backend_start`, `state`, `query` — a chi non è lo stesso utente della
-sessione né membro di `pg_read_all_stats`; e una vista non cambia l'utente che
-`pg_stat_get_activity()` guarda. Fino al 14-09 il ramo leggeva `viva_dal IS NOT
-NULL`: **OK** per `zeroerp_app` (la sessione del listener è sua) e **MUTO** per
-chiunque altro — `titodb` compreso, cioè `fn_conta_presidio`, che conta per il
-digest. Il primo digest della giornaliera ha contato 1 su un listener vivo da 31
-ore, e il perimetro `LIBERO` del presidio ha protestato: *«il conteggio dice 1 ma
-da qui la vista risponde vuota»*. Era la vista a dare due verdetti, e quello vero
-era dell'app. ⇒ `ultimo_segno_di_vita` per `SESSIONE` è **informazione** («da
-quando»), non verdetto: è `NULL` per chi non può leggerlo, e lo stato dice `OK`
-lo stesso. Il caso «sessione di un altro utente» sta nel test 19 del pgTAP
-(`dbops/test-vw-processi-programmazione.sql`), costruito con `dblink` dove il
-DSN lo permette e **dichiarato** con `skip()` dove no.
-
-⛔ **Il limite, dichiarato**: il catalogo non sa quali processi sono **accesi su
-questo host** (`abilita` sta nel deploy). Oggi non morde — ogni sveglia accesa è
-universale, e `run_fatturazione_batch` è spento per decisione di prodotto
-(tolleranza `NULL`). Un processo acceso su un host e spento su un altro vorrà un
-registro di silenziamento, non una colonna nel JSON.
-
-Tre colonne in coda dal 2026-09-11: `tolleranza_minuti`, `segno_di_vita`,
-`ultimo_segno_di_vita` (la corsa per `GIORNALE`, l'avvio della sessione per
-`SESSIONE`).
-
----
-
-### ⭐ La causa: non solo *che cosa* non va, ma *perché*
-
-Dal 2026-10-09 la vista porta, accanto allo stato, la **causa** del guasto. Due
-stati, da soli, non bastano a dire che cosa fare:
-
-| Stato | Causa | Che cosa è successo | Chi interviene |
-| --- | --- | --- | --- |
-| `MUTO` | `TIMER_FERMO` | il timer del lavoro ha smesso di girare | chi gestisce il server |
-| `MUTO` | `SERVIZIO_GIU` | un servizio sempre acceso è spento, o ha perso la connessione al database | chi gestisce il server |
-| `MAI_PARTITO` | `TIMER_NON_INSTALLATO` | il timer è previsto ma non è mai stato installato | chi gestisce il server |
-| `MAI_PARTITO` | `JOB_MAI_PARTITO` | il lavoro programmato nel database è acceso, non è mai partito e la sua corsa era dovuta da più di un'ora | chi gestisce il database |
-| `IN_RITARDO` | `JOB_IN_RITARDO` | il lavoro ha già girato, ma la corsa dovuta è passata da più di un'ora: il programmatore si è fermato | chi gestisce il database |
-| `NON_PROGRAMMATO` | `NON_PROGRAMMATO` | il catalogo non dice quale lavoro lo fa partire | lo sviluppo |
-| `JOB_ASSENTE` | `JOB_ASSENTE` | il lavoro programmato nominato dal catalogo non esiste | chi gestisce il database |
-| `JOB_SPENTO` | `JOB_SPENTO` | il lavoro programmato è stato spento | chi gestisce il database |
-| `GIRA_E_NON_REGISTRA` | `GIRA_E_NON_REGISTRA` | è partito ma non ha lasciato traccia | lo sviluppo |
-
-È la causa a scegliere il **testo** che il pannello e il digest mostrano a chi
-deve agire ([`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi)) e **a chi**
-mandarlo ([`dbops.presidi_cause`](/dbzero/dbops/manual/presidi_cause): la colonna
-«chi interviene» qui sopra è quel dato, non una frase): il 9
-ottobre 2026 il testo unico diceva *«Esegui ora»* a un servizio sempre acceso,
-che quel pulsante non ce l'ha.
-
-⭐ Stato e causa escono **dallo stesso punto** della vista, in coppia: scriverli in
-due punti separati vorrebbe dire due elenchi degli stessi casi, che prima o poi
-smettono di coincidere.
-
----
-
-### ⭐ `da_guardare`: il criterio del guasto sta in un posto solo
-
-La vista porta una colonna che dice, per ogni riga, **se quello stato è un
-guasto**. Non è una comodità: è la sede unica di quel criterio. Dal 2026-10-09
-la regola è una sola: **è un guasto ciò che ha una causa**. I tre casi sani
-(`OK`, fuori portata, su richiesta) non ne hanno; ogni guasto ce l'ha per
-costruzione — quindi nel presidio non può comparire una riga senza il suo
-rimedio.
-
-⛔ La vista di presidio ([vw_processi_programmazione_da_guardare](/dbzero/dbops/manual/vw_processi_programmazione_da_guardare))
-la **proietta** invece di ripetere un elenco di stati sani. Se lo ripetesse, il
-vocabolario degli stati sarebbe scritto in **due** posti, e il giorno in cui ne
-nasce uno nuovo qualcuno dovrebbe *ricordarsi* di andare a decidere da che parte
-cade. ⚠️ Un allineamento affidato alla memoria è quello che manca per primo, e
-mancherebbe senza dare nessun errore: cambierebbe soltanto ciò che il presidio
-smette di mostrare.
-
-⇒ Chi aggiunge uno stato passa di qui, e lì deve decidere. **Non c'è un
-comportamento predefinito in cui cadere per distrazione.**
-
----
-
-### ⚠️ Due cose da sapere leggendo la vista
-
-* **Il legame col lavoro dello scheduler non è il nome.** Si legge da una
-  colonna dichiarata (`dbops.processi.jobname_pgagent`), perché due lavori su
-  quattordici si chiamano diversamente dal processo che registrano.
-* **Il giornale si legge in due modi**, per processo *oppure* per nome del
-  lavoro: le corse storiche non hanno il processo valorizzato, e senza il
-  ripiego ogni lavoro sembrerebbe non aver mai girato prima di settembre 2026.
-
----
-
-### ⛔ Le date del giornale sono **due**, e il confronto usa la seconda
-
-Dal 2026-09-07 la vista porta due date di giornale, e la differenza fra loro non
-è un dettaglio.
-
-| | Che cosa dice |
-| --- | --- |
 | `giornale_ultima_corsa` | l'ultima corsa registrata sotto questo lavoro, **chiunque** l'abbia scritta |
-| `giornale_ultima_corsa_pgagent` | l'ultima corsa che può valere come **risposta dello scheduler** |
+| `giornale_ultima_corsa_pgagent` | l'ultima corsa registrata con origine pgAgent: la sola che vale come risposta dello scheduler |
 
-La domanda del confronto è **«la sveglia dello scheduler ha lasciato
-traccia?»**. Una corsa scritta da qualcun altro — un comando lanciato a mano, un
-programma del backend che registra sotto lo stesso nome — non è una risposta a
-quella domanda: parla di un altro fatto. ⛔ Ma prima **contava lo stesso**, e
-spostando avanti la data spegneva l'allarme proprio sul lavoro che si stava
-sorvegliando.
+La domanda di `GIRA_E_NON_REGISTRA` è «la sveglia dello scheduler ha lasciato traccia?». Una corsa
+scritta da qualcun altro, un comando lanciato a mano o il backend sotto lo stesso nome, non risponde
+a quella domanda: se contasse, sposterebbe avanti la data e spegnerebbe l'allarme proprio sul lavoro
+sorvegliato, e su un lavoro settimanale lo coprirebbe per una settimana.
 
-⚠️ **Non era un'ipotesi.** Il 2026-09-07 un lavoro di amministrazione risultava
-«ultima corsa alle 11:11» per via di **sei righe lasciate da una prova**, mentre
-lo scheduler l'aveva fatto partire alle 06:00. Su un lavoro *giornaliero* un
-equivoco così rientra da solo il giorno dopo; su uno *settimanale* — cioè
-esattamente sul lavoro che ha reso famoso questo difetto — copre l'intera
-settimana.
+⭐ Le due date restano tutte e due: quella piena è l'unica informazione utile per i lavori che lo
+scheduler non sveglia, e quando le due divergono qualcuno ha registrato sotto questo nome senza
+essere lo scheduler.
 
-⭐ **Le due date restano entrambe, e sono due apposta.** Quella piena serve ai
-lavori che lo scheduler non sveglia affatto: per loro è l'unica informazione
-utile della riga, e filtrarla la svuoterebbe. E quando le due **divergono**,
-quella divergenza è essa stessa un'informazione: vuol dire che qualcuno ha
-registrato sotto questo nome senza essere lo scheduler.
+⚠️ L'origine di una corsa ha come valore predefinito lo scheduler: chi registra senza dichiararsi
+finisce lì. Il confronto distingue il backend, che si dichiara sempre, e **non** distingue lo
+scheduler da un lavoro lanciato a mano dalla console del database.
 
-⚠️ **Il limite, detto qui e non scoperto dopo.** Chi ha scritto una corsa si
-legge da una colonna il cui valore *predefinito* è «lo scheduler»: chi registra
-senza dichiararsi finisce lì dentro. ⇒ Il confronto distingue il backend, che si
-dichiara sempre, e **non** distingue lo scheduler da un lavoro lanciato a mano
-dalla console del database. È meno di quanto sembri, ed è molto più di niente.
+---
 
-⚠️ E l'esito dell'ultima corsa (`ultimo_esito`) **non** è filtrato per chi l'ha
-scritta: è contesto, non la prova del verdetto. Le corse andate male hanno un
-presidio loro
-([maintenance.vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare)).
+### ⭐ Le corse saltate: la sveglia sì, l'esito no
 
-### ⭐ Le corse saltate: la sveglia sì, l'esito no *(rev 2026-10-10)*
+Una corsa saltata (il lock della corsia era occupato) non ha fatto lavoro, ma prova che la sveglia è
+suonata:
 
-Una corsa **saltata** (`job_run_log.saltata`: il lock della corsia era occupato)
-non ha fatto lavoro, ma prova che la sveglia è suonata. Le tre colonne del
-giornale la trattano secondo la domanda che fanno:
-
-| colonna | la corsa saltata | perché |
+| Colonna | La corsa saltata | Perché |
 | --- | --- | --- |
-| `ultimo_esito` | **esclusa** | l'esito è del lavoro, e una skip non ne ha: più recente di una corsa fallita, la nascondeva |
-| `giornale_ultima_corsa` (→ `TIMER_FERMO`) | **contata** | il timer si è svegliato: escluderla darebbe `TIMER_FERMO` a un timer che gira |
-| `giornale_ultima_corsa_pgagent` (→ `GIRA_E_NON_REGISTRA`) | **contata** | una skip è una registrazione: pgAgent è scattato e il giornale lo sa |
+| `ultimo_esito` | esclusa | l'esito è del lavoro, e una saltata non ne ha: più recente di una corsa fallita, la nasconderebbe |
+| `giornale_ultima_corsa` | contata | il timer si è svegliato: escluderla darebbe `TIMER_FERMO` a un timer che gira |
+| `giornale_ultima_corsa_pgagent` | contata | pgAgent è scattato e il giornale lo sa |
 
-⚠️ Quindi una corsa **appesa** (processo vivo e bloccato, sveglie che saltano)
-qui risulta `OK`: la sveglia funziona. Il lavoro fermo lo mostra
-[maintenance.vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare)
-(«presa e mai chiusa»). Uno stato `APPESO` in questa vista non c'è, per decisione
-di Tid. Brief: `brief-db-corsa-saltata-non-e-una-corsa`.
+⚠️ Una corsa **appesa** (processo vivo e bloccato, sveglie che saltano) qui risulta `OK`: la sveglia
+funziona. Il lavoro fermo lo mostra [maintenance.vw_job_run_da_guardare](/dbzero/maintenance/views/vw_job_run_da_guardare)
+(«presa e mai chiusa»). Uno stato «appeso» in questa vista non c'è, per decisione.
 
----
-
-### ⭐ È un panorama, non un presidio
-
-Elenca **anche i sani**, ed è voluto: senza sapere quanti sono i sani, un guasto
-sembra la norma. È la tabella che si apre per capire, non la lista delle cose da
-fare — quella è la vista di presidio, e sta apposta da un'altra parte.
+`ultimo_esito` non è filtrato per chi ha scritto la corsa: è contesto, non la prova del verdetto.
 
 ---
 
-### Verifica
+### ⭐ La causa e `da_guardare`: il criterio del guasto sta in un posto solo
 
-`db/pgtap/dbops/test-vw-processi-programmazione.sql` — i test del panorama.
+Ogni ramo della decisione consegna la coppia stato e causa insieme: un secondo elenco per le cause
+farebbe due elenchi degli stessi casi, che prima o poi smettono di coincidere. La causa serve perché
+lo stesso stato può avere rimedi diversi (un timer fermo non si ripara come un servizio caduto): sceglie
+il testo che il pannello e il digest mostrano ([dbops.presidi_testi](/dbzero/dbops/tabelle/presidi_testi))
+e a chi mandarlo ([dbops.presidi_cause](/dbzero/dbops/tabelle/presidi_cause)).
 
-Quelli che contano **costruiscono** il caso invece di cercarlo fra i dati di
-oggi: si toglie il giornale a un lavoro e si pretende «è girato e non l'ha
-detto»; gli si rimette una corsa dello scheduler e si pretende che torni sano;
-gli si rimette una corsa di **qualcun altro** e si pretende che l'allarme
-**resti acceso**.
-
-⚠️ Il lavoro su cui si costruisce si sceglie sulla **struttura** — canale
-dichiarato, sveglia accesa, almeno una partenza dello scheduler — e non sul
-verdetto che la vista dà oggi. Sceglierlo sul verdetto era il difetto corretto
-il 2026-09-07: bastava una rottura che eliminasse tutti i lavori sani perché il
-file non trovasse nessun soggetto e **smettesse di verificare senza diventare
-rosso**.
-
-Gli ultimi due tengono legati due vocabolari che vivono in posti diversi: i
-canali ammessi dal vincolo di tabella e i rami che la vista dichiara, e —
-allo stesso modo — i modi in cui una corsa può essere stata registrata e quali
-di essi valgono come risposta dello scheduler. Un valore nuovo senza verdetto fa
-rosso il test, invece di produrre un falso allarme in produzione.
-
-`db/pgtap/dbops/test-presidio-processi-testo-per-causa-v1.sql` costruisce le otto
-cause una per una (le tre che vivono nello scheduler del database solo dove
-c'è) e pretende per ciascuna lo stato e la causa giusti; e pretende che **ogni**
-causa che la vista può produrre abbia il suo testo. L'elenco delle cause si legge
-dalla definizione della vista, non dalle righe di oggi: vale anche su un database
-appena creato, dove nessun lavoro è guasto.
+⇒ `da_guardare` è «la riga ha una causa»: i rami sani non ne hanno, i guasti ce l'hanno per
+costruzione. Il presidio [vw_processi_programmazione_da_guardare](/dbzero/dbops/views/vw_processi_programmazione_da_guardare)
+la **proietta** invece di ripetere un elenco di stati sani; chi aggiunge uno stato passa di qui e
+deve decidere, senza un comportamento predefinito in cui cadere per distrazione.
 
 ---
 
-### ⭐ pgAgent: il segnale è la corsa dovuta (rev 2026-10-14)
+### `acceso` e l'ambiente
 
-Il presidio vuole dire *«il programmatore dei lavori del database non gira»*.
-Fino al 2026-10-14 lo deduceva da *«il job non ha mai girato»*, e sbagliava due
-volte:
+`acceso` è lo stato della sveglia su questa installazione, da
+[fn_processo_acceso_dichiarato](/dbzero/dbops/funzioni/fn_processo_acceso_dichiarato). È vuoto per
+i `CODA` e quando l'ambiente non è dichiarato: in quel caso il panorama non solleva, dà il verdetto
+di liveness come se la sveglia fosse accesa, e la causa la dice il presidio
+[vw_ambiente_non_dichiarato](/dbzero/dbops/views/vw_ambiente_non_dichiarato).
 
-* **falso allarme** su ogni job nuovo fino alla sua prima corsa: quel giorno
-  `analyze_statistiche`, creato nel pomeriggio e programmato alle 02:30, era
-  `MAI_PARTITO` con pgAgent vivo e gli altri quattordici job `OK`;
-* **silenzio** sul demone fermo: un job che aveva già girato una volta restava
-  `OK` per sempre.
+---
 
-Ora il segnale è **la corsa dovuta e non fatta**: la prossima esecuzione che
-pgAgent dichiara (`prossima_corsa`, cioè `jobnextrun`) è passata da più di
-un'ora, lo stesso margine di `GIRA_E_NON_REGISTRA`. Col demone fermo pgAgent non
-aggiorna più quella data, che resta nel passato.
+### Chi la vede
 
-| Il job | La corsa dovuta | Stato |
-| --- | --- | --- |
-| non ha mai girato | passata da più di un'ora, o nessuna | `MAI_PARTITO` / `JOB_MAI_PARTITO` |
-| non ha mai girato | ancora da venire | `IN_ATTESA`, senza causa |
-| ha già girato | passata da più di un'ora | `IN_RITARDO` / `JOB_IN_RITARDO` |
-| ha già girato | ancora da venire | `OK` |
+Nel catalogo dei presidi è un inventario, che non si conta: elenca anche i sani, perché senza sapere
+quanti sono i sani un guasto sembra la norma. La vista gira coi privilegi del proprietario.
 
-⚠️ La regola resta nel `CASE` della vista, nella forma `ARRAY['stato', 'causa']`:
-è da lì che `dbops/test-presidio-processi-testo-per-causa-v1` fa il censimento
-delle cause. ChangeSet `20261014-54`; brief
-`brief-db-statistiche-tabelle-job-notturno` §8.
+---
+
+### Test
+
+* `db/pgtap/dbops/test-vw-processi-programmazione.sql` — il legame dichiarato col job; tolto il
+  giornale `GIRA_E_NON_REGISTRA`, rimessa una corsa dello scheduler `OK`, rimessa una corsa di un
+  altro attore l'allarme resta; ogni canale e ogni origine del giornale hanno un verdetto
+  dichiarato; i `COMMAND` con e senza contratto; la sessione viva, assente e di un altro utente
+  (questa costruita dove la connessione lo permette, dichiarata con `skip` dove no). Il lavoro su
+  cui costruire si sceglie sulla struttura, non sul verdetto di oggi.
+* `db/pgtap/dbops/test-presidio-processi-testo-per-causa-v1.sql` — l'elenco delle cause letto dalla
+  definizione della vista; ogni causa costruita con lo stato giusto; i tre stati sani senza causa;
+  `IN_RITARDO` e `IN_ATTESA` (dove pgAgent c'è); ogni causa ha il suo testo.
+* `db/pgtap/maintenance/test-job-run-saltata-v1.sql` — l'esito è quello della corsa vera, e una
+  saltata nella tolleranza tiene `OK`.
+* `db/pgtap/dbops/test-processi-accensione-v1.sql`, `db/pgtap/dbops/test-processi-accensione-produzione-v1.sql`
+  — un processo spento è `SPENTO`, non da guardare; `db/pgtap/dbops/test-installazione-ambiente-v1.sql`
+  — senza ambiente il panorama non solleva.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — il panorama mostra il ritiro programmato e il
+  processo vivo con `attivo` falso, non il ritiro raggiunto.
+
+---
+
+### Note di migrazione
+
+* 2026-09-06 — nasce, col legame dichiarato fra processo e job (`brief-db-sveglia-dei-processi`).
+* 2026-09-07 — `FUORI_PORTATA` e `SU_RICHIESTA` diventano due stati, e nasce `giornale_ultima_corsa_pgagent`:
+  quel giorno un lavoro di amministrazione risultava girato alle 11:11 per sei righe lasciate da una
+  prova, mentre lo scheduler l'aveva fatto partire alle 06:00.
+* 2026-09-11 — i `COMMAND` con un contratto escono da `FUORI_PORTATA`: nascono `MUTO` e le tre colonne
+  del contratto (`brief-db-quattro-processi-senza-presidio`).
+* 2026-09-14 — il verdetto `SESSIONE` poggia sull'esistenza della sessione: il primo digest della
+  giornata aveva contato `MUTO` un listener vivo da trentuno ore, perché contava da un altro ruolo.
+* 2026-10-09 — nasce `causa`, e `da_guardare` diventa «la riga ha una causa» (`brief-db-presidio-processi-testo-per-causa`):
+  il testo unico diceva «Esegui ora» a un servizio sempre acceso.
+* 2026-10-10 — le corse saltate escono da `ultimo_esito` (`brief-db-corsa-saltata-non-e-una-corsa`).
+* 2026-10-14 — per pgAgent il segnale diventa la corsa dovuta: nascono `IN_ATTESA` e `IN_RITARDO`
+  (`brief-db-statistiche-tabelle-job-notturno`). Prima un job nuovo era `MAI_PARTITO` fino alla prima
+  corsa, e un demone fermo lasciava `OK` ogni job che aveva già girato.
+* 2026-10-16 — nascono `SPENTO` e `acceso` (`brief-db-processi-accensione-per-ambiente`).
+
+---
+
+{% include-markdown "signature-core.md" %}

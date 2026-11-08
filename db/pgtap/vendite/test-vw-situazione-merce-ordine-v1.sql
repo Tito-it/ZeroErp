@@ -271,8 +271,8 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
-  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_com)::text,
+  p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 -- Componente di kit SENZA `coeff_qta`: la quantita' del padre non e' ricostruibile.
 DO $mk$
 DECLARE r RECORD;
@@ -281,8 +281,10 @@ BEGIN
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com),
     -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-    p_sorgente_uid => ((SELECT commessa_id FROM tmp_com))::text,
+    -- La provenienza e' l'ordine che la chiave nomina, con la sua riga (come nel push).
+    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
+    p_sorgente_chiave => (SELECT ordine_uid FROM tmp_f)::text,
+    p_sorgente_riga => (SELECT ordine_riga_id FROM tmp_f),
     p_segment_key => 'ORDINE_VENDITA:' || (SELECT ordine_uid FROM tmp_f)::text || ':R:'
                      || (SELECT ordine_riga_id FROM tmp_f)::text || '#CMP:senza-coeff',
     p_articolo_id => r.articolo_id, p_istanza_utility_id => r.istanza_utility_id,

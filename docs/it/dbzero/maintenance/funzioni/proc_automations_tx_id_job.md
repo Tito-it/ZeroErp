@@ -26,6 +26,9 @@ BEGIN
   );
 END;
 $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_automations_tx_id_job()
+IS 'Wrapper del processo automations_tx_id: esegue dbops.fn_run_automations_tx_id in modo SCHEDULED su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il runner monta il trigger dbops.trgfn_tx_id_managed sulle tabelle che hanno la colonna tx_id di tipo uuid: le righe toccate nella stessa transazione ricevono lo stesso identificativo. Non crea la colonna. Aggiunge e non toglie. Lo chiamano il job pgAgent automations_tx_id e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
 ```
 
 </div>

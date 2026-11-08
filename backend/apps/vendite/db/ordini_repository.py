@@ -20,6 +20,7 @@ from typing import Any
 from django.db import connection
 
 from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA
+from apps.pratiche.types import RUOLO_LINK_COLLEGATO
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -120,7 +121,10 @@ class OrdiniRepository(
     _righe_vista = "vendite.vw_ordini_righe_dettaglio"
     _righe_tabella = "vendite.ordini_righe"
     _righe_fk_documento = "ordine_id"
-    _righe_ordine_documento = "riga_nr"
+    # Gli oneri dopo gli articoli: la sezione (1 articoli, 2 oneri) e' del DB
+    # (20261103-51), poi la posizione della riga.
+    _righe_ordine_documento = "sezione_documento"
+    _righe_ordine_documento_extra = ("riga_nr",)
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
     _righe_colonne_desc = ("data_consegna_confermata", "data_consegna_richiesta_cliente")
@@ -420,16 +424,25 @@ class OrdiniRepository(
     #        aggancerebbe alla pratica quello sbagliato.
     #        L'offerta non passa piu' da qui: «l'offerta e' gia' trasformata?»
     #        lo dice `vendite.fn_offerta_documenti_vivi`, dentro il verbo DB.
+    # ⭐ L'origine e' la PROVENIENZA (`sorgente_*`): `documento_origine_tipo/_id`
+    #        non esistono piu' dal giro T.5 di brief-db-sorgente-documento-e-riga
+    #        (2026-11-07). La coppia da cercare la da' il BB che la scrive,
+    #        `script.fn_sorgente_provenienza(tipo, chiave)` — tipo e chiave che
+    #        il `key_selector` vuole (per il preventivo l'uid) — e l'ordine si
+    #        incontra con la regola del modello, una delle due chiavi.
+    #        ⚠️ Il BB solleva se il documento non e' visibile: un preventivo
+    #        fuori perimetro non ha ordini da cercare.
     def get_ordine_by_documento_origine(
         self, tipo: str, origine_id: int,
     ) -> dict[str, Any] | None:
         sql = """
-            SELECT id, numero
-              FROM vendite.ordini
-             WHERE documento_origine_tipo = %s
-               AND documento_origine_id   = %s
-               AND NOT is_abortito_snapshot
-             ORDER BY id
+            SELECT o.id, o.numero
+              FROM script.fn_sorgente_provenienza(%s, %s::text) p
+              JOIN vendite.ordini o
+                ON o.sorgente_tipo_id = p.sorgente_tipo_id
+               AND (o.sorgente_id = p.sorgente_id OR o.sorgente_uid = p.sorgente_uid)
+             WHERE NOT o.is_abortito_snapshot
+             ORDER BY o.id
              LIMIT 1
         """
         with connection.cursor() as cursor:
@@ -441,20 +454,21 @@ class OrdiniRepository(
     #        PostSmistamentoHandler). Alimenta gli step pratica a valle
     #        (CONFERMA_ORDINE / INVIO_COMMESSA) che aprono l'OrdiniDrawer su
     #        quell'ordine. None se non agganciato. Cross-schema read vendite→pratiche
-    #        (direzione anelli consentita). sorgente_uid = id ordine (text).
+    #        (direzione anelli consentita). L'ordine ha key_selector id: il link lo
+    #        porta in `sorgente_id` (giro P.1 di brief-db-sorgente-documento-e-riga).
     def get_ordine_id_by_pratica(self, pratica_id: int) -> int | None:
         sql = """
-            SELECT ps.sorgente_uid::bigint
+            SELECT ps.sorgente_id
               FROM pratiche.pratiche_sorgenti ps
               JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
              WHERE s.codice_interno = %s
-               AND ps.ruolo_link    = 'COLLEGATO'
+               AND ps.ruolo_link    = %s
                AND ps.pratica_id    = %s
              ORDER BY ps.id DESC
              LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [SORGENTE_ORDINE_VENDITA, pratica_id])
+            cursor.execute(sql, [SORGENTE_ORDINE_VENDITA, RUOLO_LINK_COLLEGATO, pratica_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 

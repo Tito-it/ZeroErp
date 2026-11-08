@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ORDINE PERDE LA COLONNA PARALLELA DELLA PROVENIENZA: documento_origine_*
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5 (S-8).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   documento_origine_tipo e documento_origine_id dicevano da dove nasce l'ordine
+#   accanto alla provenienza (sorgente_*), che dal giro T.3 e' quella che il
+#   database legge. I verbi smettono di scriverle (-92, -93), il lock fuori bozza le
+#   toglie dal montaggio (-95): qui si ritirano, con cio' che vive solo per loro.
+#
+# ── ⚠️ CHE COSA SE NE VA ────────────────────────────────────────────
+#   * uq_ordini_v_documento_origine_offerta: «un'offerta, un ordine vivo» sulla
+#     colonna parallela; la regola resta su uq_ordini_v_sorgente_offerta (D-8, T.3);
+#   * ix_ordini_documento_origine, chk_ordini_documento_origine_copres,
+#     fk_ordini_documento_origine_tipo_sorgenti (la FK per codice verso
+#     config.sorgenti); la riga di quest'ultima nel registro degli indici esce in -99;
+#   * le due colonne, coi loro COMMENT.
+#   Il COMMENT di is_abortito_snapshot e quello del suo trigger nominavano l'indice
+#   che se ne va: si riscrivono sull'indice della provenienza.
+#
+#   Nessuna funzione, vista o trigger generato le legge (catalogo vivo, 2026-11-07):
+#   vendite.vw_ordini_lista tiene gli alias documento_origine_* calcolati dalla
+#   provenienza (T.3). Nessun changeSet di 80_data o 90_end le nomina. Il BE le legge
+#   ancora: §8.6 del brief (BE-T.3-b), accettato dal piano. Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-96-alter-ordini-drop-documento-origine-mctit.yaml
+
+  - changeSet:
+      id: 20261106-96-alter-ordini-drop-documento-origine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini: via documento_origine_tipo e documento_origine_id, con l'indice unico,
+        l'indice, il CHECK e la FK che vivevano per loro. brief-db-sorgente-documento-e-riga
+        §7.2 lotto T, giro T.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX vendite.uq_ordini_v_documento_origine_offerta;
+              DROP INDEX vendite.ix_ordini_documento_origine;
+
+              ALTER TABLE vendite.ordini
+                  DROP CONSTRAINT chk_ordini_documento_origine_copres,
+                  DROP CONSTRAINT fk_ordini_documento_origine_tipo_sorgenti,
+                  DROP COLUMN documento_origine_tipo,
+                  DROP COLUMN documento_origine_id;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.ordini.is_abortito_snapshot
+              IS 'Snapshot di config.stati_doc_ordini.is_abortito (2026-10-11, brief-db-annullo-documento-con-legami D-6): l''ordine e'' in uno stato di annullo. Lo scrive il BB vendite.trgfn_doc_snapshot_da_stato, BEFORE INSERT e UPDATE: non si scrive a mano. Serve all''indice unico parziale uq_ordini_v_sorgente_offerta (un''offerta genera al piu'' un ordine VIVO, sulla provenienza; dal 2026-11-07, giro T.5 di brief-db-sorgente-documento-e-riga), che non puo'' leggere il vocabolario. Gemella di vendite.contratti.is_abortito_snapshot.';
+
+              COMMENT ON TRIGGER trg_ordini_z90_snapshot_da_stato_ins_upd ON vendite.ordini
+              IS 'Snapshot di stato (BB vendite.trgfn_doc_snapshot_da_stato): is_abortito_snapshot da config.stati_doc_ordini.is_abortito, per uq_ordini_v_sorgente_offerta (un''offerta genera al piu'' un ordine vivo, sulla provenienza). 2026-10-11, brief-db-annullo-documento-con-legami D-6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: le colonne tornerebbero vuote, e la loro verita' e' la provenienza.
+              SELECT 1;

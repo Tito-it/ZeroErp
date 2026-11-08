@@ -73,6 +73,20 @@ function isFieldLocked(name) {
   return isEdit.value && nonEditableFields.value.includes(name)
 }
 
+// Un articolo-ONERE e' un addebito, non un bene: non va a magazzino, non e'
+// composito, non e' a lotti ne' a matricola. Lo rifiuta il guard del DB
+// (`trgfn_articoli_guard_onere_natura`, `E_ARTICOLO_ONERE_STRUTTURA`, nessuna
+// porta amministratore), e qui i quattro interruttori si spengono invece di
+// lasciarli accendere per farsi rispondere. «E' un onere» lo dice il dettaglio
+// (`e_onere` di `vw_articoli_dettaglio`, 20261103-53): la causale non e' in
+// questo form, quindi in creazione un articolo non e' mai un onere.
+// ⚠️ Spenti anche nella correzione di struttura: il guard non ha eccezioni.
+const ONERE_SENZA = ['gestito_a_magazzino', 'is_composito', 'requires_lotto', 'requires_serial']
+const eOnere = computed(() => detail.value?.e_onere === true)
+function isFieldDisabled(name) {
+  return (eOnere.value && ONERE_SENZA.includes(name)) || isFieldLocked(name)
+}
+
 // ⭐ La CORREZIONE DI STRUTTURA (A-10, Lotto 3u): un articolo usato non cambia
 // la sua struttura, e la via normale e' un articolo nuovo. Per un errore di
 // caricamento il SUPER_ADMIN ha una porta sola, il verbo
@@ -472,7 +486,7 @@ const drawerActions = computed(() => {
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('catalogo.field_codice') }} *</label>
-        <InputText v-model="form.codice" :disabled="isFieldLocked('codice')"
+        <InputText v-model="form.codice" class="app-codice-input" :disabled="isFieldLocked('codice')"
           :invalid="campiErrati.includes('codice')"
         />
       </div>
@@ -543,7 +557,8 @@ const drawerActions = computed(() => {
       <div class="form-field">
         <label>{{ t('catalogo.field_composito') }}</label>
         <ToggleSwitch v-model="form.is_composito"
-          :disabled="isFieldLocked('is_composito')" />
+          :disabled="isFieldDisabled('is_composito')" />
+        <small v-if="eOnere" class="app-text-muted mt-025">{{ t('catalogo.hint_onere_struttura') }}</small>
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_solo_componente') }}</label>
@@ -562,12 +577,12 @@ const drawerActions = computed(() => {
       <div class="form-field">
         <label>{{ t('catalogo.field_requires_serial') }}</label>
         <ToggleSwitch v-model="form.requires_serial"
-          :disabled="isFieldLocked('requires_serial')" />
+          :disabled="isFieldDisabled('requires_serial')" />
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_requires_lotto') }}</label>
         <ToggleSwitch v-model="form.requires_lotto"
-          :disabled="isFieldLocked('requires_lotto')" />
+          :disabled="isFieldDisabled('requires_lotto')" />
         <small class="app-text-muted mt-025">{{ t('catalogo.hint_requires_lotto') }}</small>
       </div>
     </div>
@@ -588,8 +603,10 @@ const drawerActions = computed(() => {
       <div class="form-field">
         <label>{{ t('catalogo.field_gestito_a_magazzino') }}</label>
         <ToggleSwitch v-model="form.gestito_a_magazzino"
-          :disabled="isFieldLocked('gestito_a_magazzino')" />
-        <small class="app-text-muted mt-025">{{ t('catalogo.hint_gestito_a_magazzino') }}</small>
+          :disabled="isFieldDisabled('gestito_a_magazzino')" />
+        <!-- Su un onere l'interruttore e' spento: qui, nella sua sezione, si
+             dice perche' (la stessa frase sta sotto «composito»). -->
+        <small class="app-text-muted mt-025">{{ t(eOnere ? 'catalogo.hint_onere_struttura' : 'catalogo.hint_gestito_a_magazzino') }}</small>
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_lead_time_giorni') }}</label>

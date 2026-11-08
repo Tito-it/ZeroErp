@@ -16,6 +16,7 @@ from typing import Any, cast
 from django.db import connection
 
 from apps.config.sorgenti import SORGENTE_PREVENTIVO
+from apps.pratiche.types import RUOLO_LINK_ROOT
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -41,7 +42,6 @@ from apps.vendite.db._righe_repo_mixin import (
 from apps.vendite.types import (
     PreventivoDetailRow,
     PreventivoListRow,
-    PreventivoPraticaRow,
     PreventivoSmistamentoRow,
 )
 
@@ -126,19 +126,43 @@ PREVENTIVO_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
 # gratis da is_attiva). Nessun UPDATE del link, nessun trigger: risoluzione a
 # read-time (Fase 4 uniformità pratica preventivi). Interpolato come costante
 # (nessun input utente) → S608 ok.
-# ⚠️ Il frammento porta UN parametro, il codice della sorgente
-# (`SORGENTE_PREVENTIVO`): va PRIMO nella lista, prima di quelli del chiamante.
-_ROOT_PREVENTIVO_ATTIVO_FROM = """
+# Il preventivo ha key_selector uid: il link lo porta in `sorgente_uid`
+# (giro P.1 di brief-db-sorgente-documento-e-riga, 2026-11-08).
+# ⚠️ I due frammenti portano DUE parametri, il codice della sorgente e il ruolo
+# ROOT: li da' `_root_preventivo_params`, PRIMI nella lista, prima di quelli
+# del chiamante.
+_ROOT_PREVENTIVO_LINK = """
     FROM pratiche.pratiche_sorgenti ps
     JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-    JOIN vendite.preventivi p_link ON p_link.uid::text = ps.sorgente_uid
+    JOIN vendite.preventivi p_link ON p_link.uid = ps.sorgente_uid
+"""
+_ROOT_PREVENTIVO_WHERE = """
+    WHERE s.codice_interno = %s
+      AND ps.ruolo_link = %s
+"""
+# Dal link alla rev ATTIVA dello stesso numero (lettori pratica → preventivo).
+_ROOT_PREVENTIVO_ATTIVO_FROM = _ROOT_PREVENTIVO_LINK + """
     JOIN vendite.vw_preventivi p_attivo
       ON p_attivo.numero = p_link.numero
      AND p_attivo.emittente_fiscale_id = p_link.emittente_fiscale_id
      AND p_attivo.is_attiva
-    WHERE s.codice_interno = %s
-      AND ps.ruolo_link = 'ROOT'
+""" + _ROOT_PREVENTIVO_WHERE
+# Da QUALSIASI revisione del numero agganciato (`p_in`, il preventivo del
+# chiamante) al link (lettori preventivo → pratica/flusso): match per
+# numero+emittente, non per uid, cosi' anche una rev successiva lo trova.
+_ROOT_PREVENTIVO_DI_REVISIONE_FROM = _ROOT_PREVENTIVO_LINK + """
+    JOIN vendite.preventivi p_in
+      ON p_in.numero = p_link.numero
+     AND p_in.emittente_fiscale_id = p_link.emittente_fiscale_id
+""" + _ROOT_PREVENTIVO_WHERE + """
+      AND p_in.id = %s
 """
+
+
+# Scopo: i parametri dei due frammenti qui sopra, nell'ordine dei loro `%s`,
+#        seguiti da quelli del chiamante.
+def _root_preventivo_params(*del_chiamante: Any) -> list[Any]:
+    return [SORGENTE_PREVENTIVO, RUOLO_LINK_ROOT, *del_chiamante]
 
 
 # Le righe del documento come lista configurabile `vendite.preventivo_righe` (BB
@@ -577,7 +601,7 @@ class PreventiviRepository(
     def get_preventivo_id_by_pratica_root(self, pratica_id: int) -> int | None:
         sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [SORGENTE_PREVENTIVO, pratica_id])
+            cursor.execute(sql, _root_preventivo_params(pratica_id))
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -590,7 +614,7 @@ class PreventiviRepository(
     def get_preventivo_id_by_flusso_root(self, flusso_id: int) -> int | None:
         sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [SORGENTE_PREVENTIVO, flusso_id])
+            cursor.execute(sql, _root_preventivo_params(flusso_id))
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -602,22 +626,12 @@ class PreventiviRepository(
     #        numero agganciato trova il flusso (emissione di una rev successiva
     #        completa comunque PREVENTIVAZIONE).
     def get_flusso_id_by_preventivo_root(self, preventivo_id: int) -> int | None:
-        sql = """
-            SELECT ps.flusso_id
-              FROM pratiche.pratiche_sorgenti ps
-              JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-              JOIN vendite.preventivi p_link ON p_link.uid::text = ps.sorgente_uid
-              JOIN vendite.preventivi p_in
-                ON p_in.numero = p_link.numero
-               AND p_in.emittente_fiscale_id = p_link.emittente_fiscale_id
-             WHERE s.codice_interno = %s
-               AND ps.ruolo_link = 'ROOT'
-               AND ps.flusso_id IS NOT NULL
-               AND p_in.id = %s
-             LIMIT 1
-        """
+        sql = (
+            f"SELECT ps.flusso_id {_ROOT_PREVENTIVO_DI_REVISIONE_FROM}"
+            " AND ps.flusso_id IS NOT NULL LIMIT 1"
+        )
         with connection.cursor() as cursor:
-            cursor.execute(sql, [SORGENTE_PREVENTIVO, preventivo_id])
+            cursor.execute(sql, _root_preventivo_params(preventivo_id))
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -630,22 +644,12 @@ class PreventiviRepository(
     #        step del percorso pratica risolti dal preventivo (es.
     #        completa_smistamento).
     def get_pratica_id_by_preventivo_root(self, preventivo_id: int) -> int | None:
-        sql = """
-            SELECT ps.pratica_id
-              FROM pratiche.pratiche_sorgenti ps
-              JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-              JOIN vendite.preventivi p_link ON p_link.uid::text = ps.sorgente_uid
-              JOIN vendite.preventivi p_in
-                ON p_in.numero = p_link.numero
-               AND p_in.emittente_fiscale_id = p_link.emittente_fiscale_id
-             WHERE s.codice_interno = %s
-               AND ps.ruolo_link = 'ROOT'
-               AND p_in.id = %s
-             ORDER BY ps.id DESC
-             LIMIT 1
-        """
+        sql = (
+            f"SELECT ps.pratica_id {_ROOT_PREVENTIVO_DI_REVISIONE_FROM}"
+            " ORDER BY ps.id DESC LIMIT 1"
+        )
         with connection.cursor() as cursor:
-            cursor.execute(sql, [SORGENTE_PREVENTIVO, preventivo_id])
+            cursor.execute(sql, _root_preventivo_params(preventivo_id))
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -1398,17 +1402,4 @@ class PreventiviRepository(
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
-
-    # Scopo: Restituisce pratiche collegate al preventivo via vista DB.
-    # La vista filtra gia' per sorgente_tipo codice = 'PREVENTIVO'.
-    def list_pratiche(self, preventivo_id: int) -> list[PreventivoPraticaRow]:
-        sql = """
-            SELECT *
-            FROM vendite.vw_preventivi_pratiche
-            WHERE preventivo_id = %s
-            ORDER BY data_apertura DESC NULLS LAST
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
-            return cast("list[PreventivoPraticaRow]", rows_to_list(cursor))
 

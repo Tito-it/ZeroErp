@@ -394,6 +394,17 @@ BEGIN
     DELETE FROM vendite.commesse c
     WHERE c.id = (SELECT commessa_id FROM tmp_ids_guard);
 
+    -- Il consumo da cui nasce l'attivita' della fixture (dbops.fn_pgtap_crea_commessa_attivita):
+    --   cita il BA, e si cancella dopo le righe di commessa e i link che lo citano.
+    DELETE FROM vendite.attivita_consumi ac
+    WHERE ac.billing_account_id IN (
+        SELECT ba.id FROM anagrafiche.billing_account ba
+        WHERE ba.istanza_utility_id IN (
+            SELECT iu.id FROM anagrafiche.istanze_utilities iu
+            WHERE iu.codice LIKE 'TST-GUARD-PARENT-%'
+        )
+    );
+
     -- ⚠️ Prima il legame con l'emittente, poi il BA. Ogni billing account viene
     --   agganciato a un emittente fiscale da
     --   `trg_billing_account_z90_link_ef_ins`, e dal 2026-08-19 quel legame ha

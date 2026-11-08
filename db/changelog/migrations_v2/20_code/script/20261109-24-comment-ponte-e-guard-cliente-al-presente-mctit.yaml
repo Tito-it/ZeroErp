@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DEL PONTE E DEI DUE GUARD DEL CLIENTE, AL PRESENTE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.1 (Z-a, Z-c di Tid, 2026-11-08).
+#
+#   * script.fn_sorgente_documento_da_chiave: il COMMENT diceva «si svuota lotto
+#     per lotto». Le tabelle hanno lasciato la chiave in testo (lotti 0 ... M); il
+#     ponte resta per le chiavi che sono testo per costruzione (Z-a: restano anche
+#     script.fn_sorgente_chiave_id / _uuid, che le leggono).
+#   * vendite.trgfn_ddt_guard_cliente_sorgente, vendite.trgfn_resi_guard_cliente_ddt:
+#     il controllo E_DOC_SORGENTE_NON_TROVATA resta (Z-c). Il COMMENT dice che
+#     cosa copre che il guard unico non copre: il cambio del solo billing account.
+#   Solo COMMENT: nessun corpo cambia. Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261109-24-comment-ponte-e-guard-cliente-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261109-24-comment-ponte-e-guard-cliente-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente del ponte del BB che risolve e dei due guard del cliente di bolla e reso.
+        brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_sorgente_documento_da_chiave(bigint, text) IS
+                'Il ponte del BB che risolve la provenienza, per le chiavi che sono testo per costruzione: i nodi della lineage, la chiave del gruppo fatturabile (costruita con l''uid del documento), il riferimento al documento di origine di un gruppo. Riconosce la forma CANONICA con script.fn_sorgente_chiave_id / _uuid (id::text o uuid::text) e risolve con script.fn_sorgente_documento: stesso risultato, una riga sempre, mai un errore. Una chiave che non e'' in forma canonica (zeri davanti, spazi, maiuscole) non si risolve. Le tabelle non lo usano: scrivono la chiave nelle colonne sorgente_id / sorgente_uid.';
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_cliente_sorgente() IS
+                'Guard BEFORE INSERT OR UPDATE su vendite.ddt, fascia _z10_ (dopo vendite.trgfn_ddt_normalize): la bolla ha il billing account del documento da cui nasce. I vincoli li dice vendite.fn_ddt_vincoli_cliente, la stessa funzione da cui script.fn_available_actions_ddt spegne il campo, con la sorgente intera (tipo, uid, id): (1) sorgente di testata ORDINE_VENDITA o RESO_VENDITA -> il billing account del documento, NULL compreso; (2) su UPDATE il billing account non cambia se la bolla evade gia'' righe d''ordine. E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, coi valori leggibili di documento e sorgente; una sorgente dichiarata e non trovata, inesistente o invisibile sotto RLS, e'' E_DOC_SORGENTE_NON_TROVATA. Non e'' un doppione del guard unico della provenienza (script.trgfn_guard_sorgente): quello verifica il documento quando si scrive la sorgente, questo scatta anche quando cambia il solo billing account, e se non vede il documento rifiuta invece di non confrontare. Una sorgente di un altro tipo resta fuori dal confronto. Il cambio di sorgente si vede su tutte e due le chiavi; il fulfillment si legge solo quando il billing account cambia. Ordine e reso si leggono come INVOKER. Le altre porte: il fulfillment (vendite.trgfn_ordini_ful_guard_consistenza) e il reso (vendite.trgfn_resi_guard_cliente_ddt).';
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_cliente_ddt() IS
+                'Guard BEFORE INSERT OR UPDATE su vendite.resi, fascia _z10_ (dopo vendite.trgfn_resi_normalize): il reso ha il billing account della bolla sorgente (DDT_VENDITA), NULL compreso; altrimenti E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, come bolla e fulfillment. La bolla si cerca con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid), e un cambio di sorgente si vede su tutte e due le chiavi. Una bolla dichiarata e non trovata, inesistente o invisibile sotto RLS, e'' E_DOC_SORGENTE_NON_TROVATA (su INSERT parla prima vendite.trgfn_resi_guard_ddt_consegnato). Non e'' un doppione del guard unico della provenienza (script.trgfn_guard_sorgente): quello verifica la bolla quando si scrive la sorgente, questo scatta anche quando cambia il solo billing account, e se non vede la bolla rifiuta invece di non confrontare. Vale in qualunque stato: il billing account della bolla e'' bloccato fuori bozza e la bolla di un reso e'' consegnata, quindi il reso non ha un lock fuori bozza sul cliente. La bolla si legge come INVOKER, come nel normalize.';

@@ -115,7 +115,7 @@ async function handleSave() {
     <div class="form-grid">
       <div class="form-field">
         <label>{{ t('catalogo.field_codice') }}</label>
-        <InputText v-model="form.codice" :disabled="isEdit || isReadonly"
+        <InputText v-model="form.codice" class="app-codice-input" :disabled="isEdit || isReadonly"
           :invalid="campiErrati.includes('codice')"
         />
       </div>

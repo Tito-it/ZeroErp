@@ -1,6 +1,6 @@
 # Guida — Sistema di Audit Logging
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -9,14 +9,11 @@
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — il registro delle attività
 > * [dbops.error_log](/dbzero/dbops/tabelle/error_log) — il registro degli errori: sistema separato e complementare
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole di automazione che producono record di audit
-> * [dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/manual/vw_audit_log_scrittori_fuori_perimetro) — chi scrive nel registro senza averne titolo; **deve restare vuota**
+> * [dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/views/vw_audit_log_scrittori_fuori_perimetro) — chi scrive nel registro senza averne titolo; **deve restare vuota**
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
-> * [dbops.fn_audit_begin](/dbzero/dbops/funzioni/fn_audit_begin) — apre una sessione di audit
-> * [dbops.fn_audit_end](/dbzero/dbops/funzioni/fn_audit_end) — la chiude, calcolando la durata
-> * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — l'evento singolo: **l'unica porta dell'applicazione**
-> * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn) — la connessione di log per la scrittura fuori transazione
+> * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la riga intera in una volta: **l'unica funzione di audit**
 >
 > **Vedi anche** — guide correlate:
 >
@@ -33,20 +30,17 @@ Ogni volta che il framework di automazione crea un trigger, un processo batch es
 
 A differenza dell'error log (che registra solo gli errori), l'audit log registra **tutte le operazioni rilevanti** — successi, errori, skip, simulazioni. E il registro di attivita del sistema, non il registro dei problemi.
 
-Il modello supporta due modalita di utilizzo:
+Il registro si scrive in un modo solo: **una riga intera in una volta**, con `dbops.fn_audit_log_once` — stato, parametri, messaggio, esito. Non esiste una modalità che apra una corsa e la chiuda dopo: una riga, una volta scritta, non si riscrive.
 
-* **Sessione** (begin/end): per processi che durano nel tempo — si registra l'inizio, poi la chiusura con esito e durata
-* **Evento singolo** (log once): per operazioni atomiche — un singolo record con tutti i dati
-
-Entrambe le modalita possono scrivere **fuori transazione** via dblink, garantendo che il log sopravviva anche in caso di rollback.
+La riga si scrive sempre nella transazione di chi chiama, e ne segue il destino (vedi *Una riga della transazione*).
 
 **Cosa troverai in questa guida:**
 
 * La tabella `audit_log` e i suoi campi
-* Le tre funzioni di audit e quando usarle
+* La funzione di audit e quando usarla
 * Il rapporto con il framework di automazione
-* Il supporto al logging fuori transazione
-* Gli esempi pronti — sessione, evento singolo, lettura del registro — in coda, in [Area tecnica](#area-tecnica-esempi)
+* Perché l'audit vive nella transazione, e gli errori no
+* Gli esempi pronti — un processo con la sua durata, un evento singolo, la lettura del registro — in coda, in [Area tecnica](#area-tecnica-esempi)
 
 ---
 
@@ -55,21 +49,13 @@ Entrambe le modalita possono scrivere **fuori transazione** via dblink, garanten
 ```text
 dbops.audit_log (registro attivita)
     │
-    ├── fn_audit_begin(function_name, params, ...)
-    │       apre una sessione → INSERT con status='START'
-    │       restituisce audit_id
-    │
-    ├── fn_audit_end(audit_id, status, message, result, ...)
-    │       chiude la sessione → UPDATE con esito finale
-    │       calcola duration_ms automaticamente
-    │
     └── fn_audit_log_once(function_name, status, params, ...)
-            evento singolo → INSERT completo in una sola chiamata
+            una riga completa → INSERT in una sola chiamata
+            restituisce audit_id
 ```
 
-* **Sessione** = un record che nasce con `fn_audit_begin` (status=START) e viene aggiornato con `fn_audit_end` (status=OK/ERROR/...)
-* **Evento** = un record completo creato con `fn_audit_log_once`, senza bisogno di chiusura
-* **Fuori transazione** = se `myapp.log_with_dblink` e attivo, la scrittura avviene su connessione separata (sopravvive al rollback)
+* **Riga** = un record completo creato con `fn_audit_log_once`, senza bisogno di chiusura. Un processo che dura nel tempo scrive la sua riga alla fine, con l'esito; la durata, se l'ha misurata, la passa in `p_duration_ms`
+* **Nella transazione** = la riga d'audit nasce nella transazione del chiamante, e se quella si annulla si annulla anche la riga; il canale fuori transazione (`myapp.log_with_dblink`) serve al registro degli errori, non all'audit
 
 ---
 
@@ -81,7 +67,7 @@ La tabella `dbops.audit_log` e il punto unico in cui vengono registrate tutte le
 
 Il framework di automazione e il principale produttore di record: ogni trigger creato, ogni dry-run, ogni errore viene registrato qui con il tipo di regola applicata e i dettagli della tabella coinvolta.
 
-La tabella e progettata per supportare sia operazioni rapide (un singolo insert) sia processi lunghi (begin + end con durata calcolata). I campi JSONB `params` e `result` garantiscono flessibilita per qualsiasi tipo di contesto.
+La tabella e progettata per righe scritte una volta sola: un processo lungo registra la sua riga alla fine, con l'esito. I campi JSONB `params` e `result` garantiscono flessibilita per qualsiasi tipo di contesto.
 
 Da un punto di vista tecnico:
 
@@ -91,9 +77,9 @@ Da un punto di vista tecnico:
 | `function_name` | TEXT        |    no    | —              | Nome della funzione/processo                                                                               |
 | `executed_by`   | TEXT        |    no    | `current_user` | **Ruolo di database** che ha scritto la riga (non l'operatore: quello sta nelle GUC `app.*` e nel `tx_id`) |
 | `executed_at`   | TIMESTAMPTZ |    no    | `now()`        | Timestamp di inizio                                                                                        |
-| `status`        | TEXT        |    no    | —              | Stato: `START`, `OK`, `ERROR`, `DRYRUN`, `SKIP_EXISTS`, `WARN`                                             |
+| `status`        | TEXT        |    no    | —              | Esito: `OK`, `ERROR`, `DRYRUN`, `WARN` (vincolo `chk_audit_status`) |
 | `message`       | TEXT        |    si    | —              | Messaggio descrittivo                                                                                      |
-| `duration_ms`   | INTEGER     |    si    | —              | Durata in millisecondi (calcolata da `fn_audit_end`)                                                       |
+| `duration_ms`   | INTEGER     |    si    | —              | Durata in millisecondi, misurata da chi scrive e passata in `p_duration_ms`: la sede unica della durata |
 | `params`        | JSONB       |    si    | —              | Parametri di input / contesto strutturato                                                                  |
 | `result`        | JSONB       |    si    | —              | Risultato strutturato                                                                                      |
 | `exec_mode`     | TEXT        |    si    | —              | Modalita di esecuzione (`AUTO`, `CI`, `SCHEDULED`)                                                         |
@@ -122,56 +108,13 @@ Da un punto di vista tecnico:
 
 ---
 
-### 2. Le funzioni di audit
+### 2. La funzione di audit
 
-Il sistema espone tre funzioni, ciascuna con un caso d'uso distinto. La scelta dipende dal tipo di operazione da tracciare.
-
-#### `dbops.fn_audit_begin`
-
-Apre una sessione di audit per un processo che dura nel tempo. Inserisce un record con `status='START'` e restituisce l'`audit_id` da passare poi a `fn_audit_end` per chiudere la sessione.
-
-E la funzione da usare per processi batch, migrazioni, pipeline — qualsiasi operazione con una durata misurabile e un esito finale. ⚠️ **Riservata a chi possiede la tabella** (migratore, job di manutenzione): l'applicazione non la può eseguire, perché la chiusura che le fa da coppia è un `UPDATE` del registro — vedi *Chi può scrivere*.
-
-Da un punto di vista tecnico:
-
-| Parametro         | Tipo    | Default | Descrizione                      |
-| ----------------- | ------- | ------- | -------------------------------- |
-| `p_function_name` | TEXT    | —       | Nome del processo (obbligatorio) |
-| `p_params`        | JSONB   | `{}`    | Parametri iniziali               |
-| `p_exec_mode`     | TEXT    | NULL    | Modalita esecuzione              |
-| `p_parts`         | TEXT[]  | NULL    | Schemi/parti coinvolti           |
-| `p_rule_type`     | TEXT    | NULL    | Tipo regola (per automazioni)    |
-| `p_dry_run`       | BOOLEAN | NULL    | Flag simulazione                 |
-| `p_host`          | TEXT    | NULL    | Host di origine                  |
-| `p_app_version`   | TEXT    | NULL    | Versione applicazione            |
-
-**Restituisce:** `BIGINT` — l'`audit_id` del record creato.
-
-> Documentazione dettagliata: [dbops.fn_audit_begin](/dbzero/dbops/funzioni/fn_audit_begin)
-
-#### `dbops.fn_audit_end`
-
-Chiude una sessione aperta con `fn_audit_begin`. Aggiorna il record con lo stato finale, il messaggio, eventuali errori e il risultato. Calcola automaticamente `duration_ms` dalla differenza tra `clock_timestamp()` e `executed_at`.
-
-Da un punto di vista tecnico:
-
-| Parametro         | Tipo    | Default | Descrizione                                      |
-| ----------------- | ------- | ------- | ------------------------------------------------ |
-| `p_id`            | BIGINT  | —       | ID restituito da `fn_audit_begin` (obbligatorio) |
-| `p_status`        | TEXT    | `'OK'`  | Stato finale                                     |
-| `p_message`       | TEXT    | NULL    | Messaggio descrittivo                            |
-| `p_sqlstate`      | TEXT    | NULL    | SQLSTATE se errore                               |
-| `p_error_context` | TEXT    | NULL    | Contesto dell'errore                             |
-| `p_rows_affected` | INTEGER | NULL    | Righe coinvolte                                  |
-| `p_result`        | JSONB   | NULL    | Risultato strutturato                            |
-
-> Documentazione dettagliata: [dbops.fn_audit_end](/dbzero/dbops/funzioni/fn_audit_end)
+Il sistema espone una sola funzione di scrittura. La modalità sessione — una funzione che apriva una riga `START` e una che la chiudeva con un `UPDATE`, calcolando la durata — è stata ritirata: non la chiamava nessuno, e la chiusura era una riscrittura del registro.
 
 #### `dbops.fn_audit_log_once`
 
-Registra un evento singolo in una sola chiamata, senza sessione. E la funzione da usare per operazioni atomiche: un trigger che rileva una condizione, un check che verifica uno stato, un'azione puntuale.
-
-Combina i parametri di `fn_audit_begin` e `fn_audit_end` in un'unica chiamata. Restituisce l'`audit_id` del record creato.
+Registra una riga intera in una sola chiamata. È la funzione da usare per ogni registrazione: un'azione puntuale, una simulazione, un salto motivato, l'esito di un processo che dura nel tempo (chi ha misurato la durata la passa in `p_duration_ms`). Restituisce l'`audit_id` del record creato.
 
 Da un punto di vista tecnico:
 
@@ -191,6 +134,7 @@ Da un punto di vista tecnico:
 | `p_result`        | JSONB   | NULL    | Risultato strutturato        |
 | `p_host`          | TEXT    | NULL    | Host origine                 |
 | `p_app_version`   | TEXT    | NULL    | Versione applicazione        |
+| `p_duration_ms`   | INTEGER | NULL    | Durata in millisecondi       |
 
 > Documentazione dettagliata: [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once)
 
@@ -211,12 +155,10 @@ cancellare, non svuotare. Lo stesso vale per il registro gemello degli errori,
 | `zeroerp_app` (l'applicazione)                                | `SELECT`, `INSERT` | legge il registro dall'area di amministrazione e vi aggiunge righe con `fn_audit_log_once` |
 | chi possiede la tabella (il migratore, i job di manutenzione) | tutto              | è chi scrive le automazioni e chi, un giorno, farà la retention su `cleanup_at`            |
 
-**La modalità sessione è riservata.** Chiudere una sessione (`fn_audit_end`) è un
-`UPDATE` del registro: per questo la coppia `fn_audit_begin` / `fn_audit_end` **non
-è eseguibile dall'applicazione**, e nemmeno da `PUBLIC`. Se l'applicazione non può
-chiudere una sessione non deve nemmeno poterla aprire, altrimenti lascerebbe righe
-`START` che nessuno chiude. L'applicazione scrive l'audit con la sola
-`fn_audit_log_once`, che registra l'evento intero in una volta.
+**Una riga non si chiude dopo.** Non esiste una porta che riscriva una riga già
+scritta: l'applicazione, come ogni altro scrittore, registra l'audit con la sola
+`fn_audit_log_once`, che scrive l'evento intero in una volta: per questo fra gli esiti
+ammessi non c'è uno stato «aperto».
 
 ⚠️ **La postura non si difende con un `REVOKE` scritto una volta.** I privilegi
 dell'applicazione vengono riallineati a ogni passata `ci_apply` da un loop che li
@@ -249,9 +191,9 @@ regola di visibilità per riga sul log: è impedire **alla fonte** che una funzi
 `vendite`, `anagrafiche`, `pagamenti` ci scriva.
 
 Il cancello è
-[dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/manual/vw_audit_log_scrittori_fuori_perimetro):
+[dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/views/vw_audit_log_scrittori_fuori_perimetro):
 elenca le funzioni che scrivono nel registro — con DML diretto o passando da
-`fn_audit_log_once` / `fn_audit_begin` / `fn_audit_end` — e stanno fuori dagli schemi
+`fn_audit_log_once` — e stanno fuori dagli schemi
 ammessi, dichiarati nella vista stessa. **Deve restare vuota**; la presidia
 `db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` in CI. Se un giorno un altro
 schema dovesse scrivere l'audit, è un changeSet su quella vista, firmato — non una
@@ -275,17 +217,11 @@ Si riconoscono così, e restano così: chi le scrisse non si può ricostruire.
 
 ---
 
-## Logging fuori transazione
+## Una riga della transazione
 
-Tutte e tre le funzioni di audit supportano la scrittura **fuori transazione** via dblink. Questo e utile quando si vuole conservare il log anche se la transazione principale fallisce e va in rollback.
+La riga d'audit si scrive **sempre nella transazione di chi chiama**, qualunque valore abbia l'interruttore del canale di log (`myapp.log_with_dblink`): se la transazione si annulla, si annulla anche la riga. È una scelta di modello: l'audit racconta ciò che è successo davvero, e un lavoro annullato non è successo.
 
-Il meccanismo si attiva con il GUC `myapp.log_with_dblink='on'`. Quando e attivo, la funzione:
-
-1. Tenta di usare la connessione `logconn` (dblink)
-2. Se la connessione non e disponibile, tenta di stabilirla tramite `script.fn_ensure_logconn()`
-3. Se anche questo fallisce, ricade sulla scrittura locale (in-transazione)
-
-Il fallback e silenzioso: l'operazione non viene mai bloccata per un problema di logging.
+⭐ Ciò che deve sopravvivere a un errore non sta nell'audit ma nel **registro degli errori** (`dbops.error_log`), che `fn_log_and_raise_error` scrive dal canale fuori transazione prima di sollevare. Per questo una funzione che fallisce non scrive una riga d'audit `ERROR` prima di rilanciare l'errore: la riga sparirebbe con l'errore, e il fallimento è già nel registro degli errori con il suo codice.
 
 Per i dettagli sulla configurazione di dblink, vedi la [Guida Messaggi di Errore](/guide/Messaggi-di-Errore-e-Generazione-Log#setup-operativo-devops).
 
@@ -297,14 +233,13 @@ L'audit log e il sistema di tracciamento principale del [framework di automazion
 
 | Campo           | Contenuto per le automazioni                          |
 | --------------- | ----------------------------------------------------- |
-| `function_name` | Nome dell'orchestratore (es. `run_automations_tx_id`) |
+| `function_name` | Nome del runner (es. `dbops.fn_run_automations_tx_id`); ⚠️ le simulazioni di `lock_columns`, `audit_update` e `date_validita` portano ancora `dbops.fn_run_automations`, l'orchestratore ritirato |
 | `rule_type`     | Tipo regola (`TX_ID`, `AUDIT_UPDATE`, `STORICO`, ...) |
-| `status`        | `DRYRUN`, `OK`, `ERROR`, `SKIP_EXISTS`                |
-| `params`        | Tabella target, trigger creato, azione eseguita       |
+| `status`        | `DRYRUN`, `OK`, `ERROR`, `WARN`                       |
+| `params`        | Tabella target, trigger, azione (es. `SKIP_EXISTS`)   |
 | `exec_mode`     | `AUTO`, `CI`, `SCHEDULED`                             |
-| `duration_ms`   | Tempo di esecuzione                                   |
 
-Questo rende possibile ricostruire l'intera sequenza di azioni di un deploy: quali trigger sono stati creati, su quali tabelle, in quanto tempo, e quali hanno dato errore.
+Questo rende possibile ricostruire l'intera sequenza di azioni di un deploy: quali trigger sono stati creati, su quali tabelle, e quali hanno dato errore.
 
 ---
 
@@ -315,8 +250,8 @@ L'audit log e l'error log sono sistemi **complementari ma separati**:
 | Aspetto            | `dbops.audit_log`                    | `dbops.error_log`                                     |
 | ------------------ | ------------------------------------ | ----------------------------------------------------- |
 | **Cosa traccia**   | Operazioni (successi, errori, skip)  | Solo errori                                           |
-| **Chi scrive**     | Funzioni `fn_audit_*`                | `script.fn_log_error_only` / `fn_log_and_raise_error` |
-| **Persistenza**    | In-transazione (default) o dblink    | Sempre dblink (fuori transazione)                     |
+| **Chi scrive**     | `dbops.fn_audit_log_once`            | `script.fn_log_error_only` / `fn_log_and_raise_error` |
+| **Persistenza**    | Sempre nella transazione             | Sempre dblink (fuori transazione)                     |
 | **Messaggi**       | Testo libero                         | Da catalogo `config.messaggi_errore`                  |
 | **Uso principale** | Tracciamento processi, deploy, batch | Diagnosi errori, audit eccezioni                      |
 
@@ -326,11 +261,10 @@ In un processo complesso (es. automazione batch), l'audit log traccia l'avanzame
 
 ## Best practice
 
-* Usare `fn_audit_begin` / `fn_audit_end` per processi con durata misurabile — il calcolo automatico di `duration_ms` e utile per il monitoraggio. ⚠️ **Solo da chi possiede la tabella** (migratore, job di manutenzione): la chiusura è un `UPDATE` del registro e l'applicazione non la può eseguire — vedi *Chi può scrivere*
-* Usare `fn_audit_log_once` per operazioni atomiche o dry-run — evita la complessita della sessione. ⭐ **È l'unica porta dell'applicazione**
+* Usare `fn_audit_log_once` per ogni registrazione. ⭐ **È l'unica funzione di audit**: un processo con durata misurabile scrive la sua riga alla fine, con l'esito, e la durata misurata in `p_duration_ms`
 * Popolare sempre `params` con dati strutturati (JSONB) che identifichino l'operazione — tabella, trigger, schemi coinvolti
 * Non usare l'audit log per tracciare errori di dominio — usare `dbops.error_log` e i log di dominio specifici (vedi guida errori)
-* Per processi critici, attivare il logging via dblink (`myapp.log_with_dblink='on'`) per garantire la persistenza
+* Non scrivere una riga `ERROR` prima di rilanciare un errore: si annullerebbe con la transazione; il fallimento lo registra `dbops.error_log`
 * Sfruttare `cleanup_at` per la retention automatica dei record non piu necessari
 * Interrogare regolarmente `audit_log` con `status='ERROR'` per identificare problemi ricorrenti
 
@@ -381,45 +315,31 @@ erDiagram
 
 ## Area tecnica — esempi
 
-**Un processo batch con sessione** — apertura, corpo, e chiusura in entrambi i finali possibili:
-l'esito buono e l'eccezione, che chiude la sessione e **rilancia** (`RAISE`) perché il fallimento
-non va inghiottito dal logging:
+**Un processo batch** — il corpo, poi **una** riga d'audit con l'esito. La durata, misurata dal
+processo, va in `p_duration_ms`. Un errore non scrive una riga d'audit: rilanciato, annullerebbe
+anche quella, e lo registra già `dbops.error_log`:
 
 ```sql
 DO $$
 DECLARE
-  v_audit_id BIGINT;
+  v_inizio timestamptz := clock_timestamp();
 BEGIN
-  v_audit_id := dbops.fn_audit_begin(
-    'run_automations_tx_id',
-    jsonb_build_object('schemas', ARRAY['anagrafiche'], 'dry_run', false),
-    'CI'                -- exec_mode
-  );
-
   -- logica del batch
 
-  PERFORM dbops.fn_audit_end(
-    v_audit_id,
+  PERFORM dbops.fn_audit_log_once(
+    'dbops.mio_batch',
     'OK',
+    jsonb_build_object('schemas', ARRAY['anagrafiche']),
     'Trigger TX_ID applicati su 12 tabelle',
-    p_rows_affected := 12
+    p_exec_mode     := 'CI',
+    p_rows_affected := 12,
+    p_duration_ms   := floor(extract(epoch FROM clock_timestamp() - v_inizio) * 1000)::int
   );
-
-EXCEPTION WHEN OTHERS THEN
-  PERFORM dbops.fn_audit_end(
-    v_audit_id,
-    'ERROR',
-    SQLERRM,
-    p_sqlstate := SQLSTATE,
-    p_error_context := PG_EXCEPTION_CONTEXT
-  );
-  RAISE;
 END;
 $$;
 ```
 
-**Un evento singolo** — un controllo puntuale che registra il risultato senza aprire una
-sessione. È la forma che l'applicazione può usare:
+**Un evento singolo** — un controllo puntuale che registra il risultato:
 
 ```sql
 SELECT dbops.fn_audit_log_once(
@@ -444,7 +364,7 @@ SELECT executed_at, status, rule_type,
        params->>'table' AS tabella,
        message, duration_ms
 FROM dbops.audit_log
-WHERE function_name LIKE 'run_automations%'
+WHERE function_name LIKE 'dbops.fn_run_automations%'
 ORDER BY executed_at DESC
 LIMIT 20;
 

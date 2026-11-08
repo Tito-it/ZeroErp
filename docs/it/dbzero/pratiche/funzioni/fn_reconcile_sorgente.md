@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_reconcile_sorgente`
 
 ```sql
-CREATE FUNCTION fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
+CREATE FUNCTION fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid 
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION pratiche.fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
+CREATE OR REPLACE FUNCTION pratiche.fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
@@ -25,6 +25,8 @@ DECLARE
   v_esito         pratiche.flussi.esito%TYPE;
   v_stato_incorso config.stati_flussi_pratiche.id%TYPE;
   v_stato_compl   config.stati_flussi_pratiche.id%TYPE;
+  -- Tipi espliciti: due contatori, un record di ciclo e un flag calcolato,
+  -- nessuna colonna di cui siano il riflesso.
   v_avanzati      integer := 0;
   r_ps            record;
   r_f             record;
@@ -38,11 +40,12 @@ BEGIN
       jsonb_build_object('param','p_sorgente_tipo_id','valore',p_sorgente_tipo_id),
       NULL::uuid,'p_sorgente_tipo_id obbligatorio e > 0');
   END IF;
-  IF p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+  -- La chiave del documento: almeno una delle due colonne del modello.
+  IF num_nonnulls(p_sorgente_id, p_sorgente_uid) = 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'pratiche','pratiche.fn_reconcile_sorgente','E_PARAMETRO_INVALIDO',
-      jsonb_build_object('param','p_sorgente_uid'),
-      NULL::uuid,'p_sorgente_uid obbligatorio');
+      jsonb_build_object('param','p_sorgente_id, p_sorgente_uid'),
+      NULL::uuid,'p_sorgente_id o p_sorgente_uid obbligatorio');
   END IF;
 
   -- Nessun aggancio pratica<->documento -> niente da riconciliare.
@@ -56,14 +59,14 @@ BEGIN
     SELECT 1
       FROM pratiche.pratiche_sorgenti ps
      WHERE ps.sorgente_tipo_id = p_sorgente_tipo_id
-       AND ps.sorgente_uid = p_sorgente_uid
+       AND (ps.sorgente_id = p_sorgente_id OR ps.sorgente_uid = p_sorgente_uid)
   ) THEN
     RETURN 0;
   END IF;
 
   -- Descrittore normalizzato: esito e' SEMPRE un verdetto o NULL.
   SELECT d.esito INTO v_esito
-    FROM pratiche.fn_stato_sorgente(p_sorgente_tipo_id, p_sorgente_uid) d;
+    FROM pratiche.fn_stato_sorgente(p_sorgente_tipo_id, p_sorgente_id, p_sorgente_uid) d;
 
   -- Nessun verdetto (es. EMESSO) -> nessun avanzamento automatico.
   IF v_esito IS NULL THEN
@@ -76,12 +79,13 @@ BEGIN
   SELECT id INTO v_stato_compl
     FROM config.stati_flussi_pratiche WHERE codice_interno = 'COMPLETATO';
 
-  -- Ogni aggancio pratica<->documento su (tipo, uid).
+  -- Ogni aggancio pratica<->documento su tipo e chiave (regola d'incontro:
+  -- la colonna che il key_selector del tipo non usa e' NULL).
   FOR r_ps IN
-    SELECT ps.pratica_id, ps.flusso_id
+    SELECT ps.pratica_id, ps.flusso_id, ps.sorgente_id, ps.sorgente_uid
       FROM pratiche.pratiche_sorgenti ps
      WHERE ps.sorgente_tipo_id = p_sorgente_tipo_id
-       AND ps.sorgente_uid = p_sorgente_uid
+       AND (ps.sorgente_id = p_sorgente_id OR ps.sorgente_uid = p_sorgente_uid)
   LOOP
     -- Il link e' usabile come TIE-BREAK (D-B5) SOLO se il flusso
     -- linkato attende esso stesso questo tipo di sorgente (milestone
@@ -120,16 +124,17 @@ BEGIN
     -- deve propagare (best-effort) -> fallback RAISE WARNING (server log).
     IF NOT v_link_usabile AND v_cand_count > 1 THEN
       BEGIN
+        -- La chiave dal link: quella del key_selector, una sola (il CHECK del log).
         INSERT INTO pratiche.reconcile_errori
-               (sorgente_tipo_id, sorgente_uid, pratica_id, errcode, messaggio, tx_id)
-        VALUES (p_sorgente_tipo_id, p_sorgente_uid, r_ps.pratica_id,
+               (sorgente_tipo_id, sorgente_id, sorgente_uid, pratica_id, errcode, messaggio, tx_id)
+        VALUES (p_sorgente_tipo_id, r_ps.sorgente_id, r_ps.sorgente_uid, r_ps.pratica_id,
                 'E_RECONCILE_AMBIGUO',
                 format('%s milestone candidati per tipo %s senza flusso_id usabile come tie-break (link d''origine o assente): skip',
                        v_cand_count, p_sorgente_tipo_id),
                 dbops.fn_get_or_create_session_tx_id());
       EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'reconcile_errori log (ambiguo) fallito per (tipo %, uid %): [%] %',
-          p_sorgente_tipo_id, p_sorgente_uid, SQLSTATE, SQLERRM;
+        RAISE WARNING 'reconcile_errori log (ambiguo) fallito per (tipo %, chiave %): [%] %',
+          p_sorgente_tipo_id, COALESCE(p_sorgente_id::text, p_sorgente_uid::text), SQLSTATE, SQLERRM;
       END;
       CONTINUE;
     END IF;
@@ -166,8 +171,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION pratiche.fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
-IS 'GUIDA D4/G3a: motore di avanzamento milestone su esito proiettato. Se il documento (tipo, uid) proietta un verdetto (fn_stato_sorgente.esito), completa i milestone in attesa (template_flussi.attende_sorgente_tipo_id + binding template_flussi_avanzamento_proiezione), a due salti (D-B2), idempotente sui non-terminali (D-B11). Tie-break multi-istanza via pratiche_sorgenti.flusso_id (D-B5) applicato SOLO se il flusso linkato attende esso stesso il tipo (v_link_usabile): un link ancorato al flusso d''ORIGINE non esclude piu'' il milestone in attesa. INVOKER (D-B4). Ritorna il numero di milestone avanzati. ⭐ rev 2026-10-05 (20261005-22): se il documento non e'' agganciato a nessuna pratica (nessuna riga visibile di pratiche_sorgenti su tipo e uid) esce con 0 PRIMA di calcolarne l''esito. Stesso risultato di prima — senza agganci il ciclo non girava — ma il trigger AFTER UPDATE di stato sui documenti smette di pagare fn_stato_sorgente, che per un documento solo legge tutte le tabelle-documento sotto RLS (dbdev come applicazione, 2026-10-05: ~15 ms contro 0,16 ms dell''EXISTS su ix_pratiche_sorgenti_tipo_uid).';
+COMMENT ON FUNCTION pratiche.fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)
+IS 'Motore di avanzamento dei milestone sull''esito proiettato di un documento. Il documento si passa con le colonne del modello (tipo, sorgente_id, sorgente_uid): i suoi link alle pratiche si cercano con la regola d''incontro (sorgente_id = p_sorgente_id OR sorgente_uid = p_sorgente_uid), l''esito lo da'' pratiche.fn_stato_sorgente. Se il documento non e'' agganciato a nessuna pratica (nessuna riga visibile di pratiche_sorgenti) esce con 0 prima di calcolarne l''esito. Se l''esito e'' un verdetto, completa i milestone in attesa (template_flussi.attende_sorgente_tipo_id e binding template_flussi_avanzamento_proiezione), a due salti dove la matrice non ha il passaggio diretto, idempotente sui non terminali. Tie-break fra piu'' istanze con pratiche_sorgenti.flusso_id, solo se il flusso del link attende esso stesso il tipo: un link ancorato al flusso d''origine non esclude il milestone in attesa. Piu'' candidati senza un link usabile: niente avanzamento, una riga E_RECONCILE_AMBIGUO in pratiche.reconcile_errori con la chiave del link (log a prova di fallimento: un errore nello scriverlo diventa un WARNING). Guard parametri: E_PARAMETRO_INVALIDO su tipo NULL o <= 0, o senza chiave. Ritorna il numero di milestone avanzati. INVOKER.';
 ```
 
 </div>

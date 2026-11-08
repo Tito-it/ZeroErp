@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automation_rules_tbl: il CHECK chk_automation_rules_tbl_regola_valida si ricrea, cosi'
+#   le righe si ricontrollano col validatore di 20_code/dbops/20261109-92 (un CREATE OR REPLACE
+#   della funzione non ricontrolla le righe gia' entrate). In 90_end, dopo il CSV del registro
+#   senza cleanup_column. Rollback: il COMMENT di prima (il CHECK resta, il validatore lo riporta
+#   il rollback di -92). Brief: brief-db-revisione-dbops, giro 10b, blocco 10b-3 (§27).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261109-93-alter-automation-rules-tbl-ricontrollo-regola-valida-mctit.yaml
+
+  - changeSet:
+      id: 20261109-93-alter-automation-rules-tbl-ricontrollo-regola-valida
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        automation_rules_tbl: il CHECK della forma ricontrolla le righe. Brief: brief-db-revisione-dbops, giro 10b, blocco 10b-3 (§27).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conname = 'chk_automation_rules_tbl_regola_valida'
+                 AND conrelid = 'dbops.automation_rules_tbl'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automation_rules_tbl
+                  DROP CONSTRAINT chk_automation_rules_tbl_regola_valida,
+                  ADD CONSTRAINT chk_automation_rules_tbl_regola_valida
+                      CHECK (dbops.fn_regola_automazione_valida(rule_type, exec_mode, name_template, params));
+
+              COMMENT ON CONSTRAINT chk_automation_rules_tbl_regola_valida ON dbops.automation_rules_tbl IS
+                  'La regola e'' ben formata secondo dbops.fn_regola_automazione_valida: nome del trigger dichiarato, parametri del cleanup del tipo giusto e nessun altro, scadenza in AUTO.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_automation_rules_tbl_regola_valida ON dbops.automation_rules_tbl IS
+                  'La regola e'' ben formata secondo dbops.fn_regola_automazione_valida: nome del trigger dichiarato, parametri del cleanup del tipo giusto, scadenza in AUTO.';

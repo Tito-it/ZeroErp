@@ -1,10 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_articolo_riga_su_contesto`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — le regole, documento per documento
 > [script.fn_articolo_riga_contesto](/dbzero/script/manual/fn_articolo_riga_contesto) — il contesto che riceve
-> [catalogo.fn_articoli_ammessi](/dbzero/catalogo/manual/fn_articoli_ammessi) — il picker
+> [catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi) — il picker
 
 ### 🎯 Scopo Principale
 
@@ -34,6 +36,13 @@ trovato. Una regola, due chiamanti (A-2).
   (`E_PROMO_ARTICOLO_SOLO_COMPONENTE`).
 * Rev 2026-10-14 (`20261014-06`, D-7): il kit senza nessun componente attivo è il motivo 2 di
   preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE (`E_ARTICOLO_KIT_SENZA_COMPONENTI`).
+* ⭐ Rev 2026-11-03 (`20261103-17`, brief-db-addebito-trasporto-ordine §8.1): **ordine e bolla
+  ammettono la merce e l'articolo-onere** (`causale_onere_id` valorizzato). Un servizio che non
+  è un onere resta fuori con `E_RIGA_NATURA_NON_AMMESSA`. «È merce» è il building block
+  [script.fn_natura_e_merce](/dbzero/script/funzioni/fn_natura_e_merce), sulla natura
+  giudicata (quella congelata della riga, altrimenti quella dell'articolo). Che l'onere sia un
+  addebito e non un bene lo garantisce l'articolo
+  ([catalogo.trgfn_articoli_guard_onere_natura](/dbzero/catalogo/funzioni/trgfn_articoli_guard_onere_natura)).
 
 ---
 {% include-markdown "signature-core.md" %}

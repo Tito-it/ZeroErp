@@ -154,13 +154,15 @@ Regole:
 
 - `data_apertura` **non** si scrive: la mette il default alla nascita, e una
   chiave estranea è un `400` (`E_COMMESSA_VALIDATION`, whitelist chiusa).
-- Il responsabile deve essere una **risorsa umana attiva**: il service lo
-  verifica prima dell'`UPDATE` e risponde `400` col campo
-  (`fields: ["responsabile_risorsa_umana_id"]`). ⚠️ A DB lo rifiuterebbe
-  comunque il require sul figlio (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`,
-  nato da `ci_apply`) — ma con `E_ATTIVO_REQUIRE`, che è di classe `TECNICO`
-  (500) e parla di trigger: non è una frase per l'operatore. Il guard DB resta
-  l'autorità, il service è il messaggio.
+- Il responsabile deve essere una **risorsa umana attiva**, e lo dice il DB:
+  il require sul figlio (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`,
+  nato da `ci_apply`) risponde `409` `E_ATTIVO_PADRE_NON_ATTIVO` con la colonna
+  nel campo (`fields: ["responsabile_risorsa_umana_id"]`). Una persona che non
+  esiste è la FK: `400` `E_VENDITE_FK` col campo. Il service non legge la
+  persona prima dell'`UPDATE`: fino al 2026-11-07 lo faceva, perché il require
+  rispondeva `E_ATTIVO_REQUIRE` (`TECNICO`, 500); ritirato con
+  `brief-db-revisione-dbops` BE3. Prova sul DB vero:
+  `vendite/tests/db/test_commessa_testata_db.py`.
 - Nessun guard di **stato**: il DB non ne mette, di proposito — la descrizione
   di una commessa chiusa si può correggere.
 - Zero righe toccate (commessa inesistente **o fuori scope RLS**) → `404`

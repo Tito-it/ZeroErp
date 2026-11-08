@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_crea_sorgente.md" %}
 # ⚙️ Funzione `fn_pgtap_crea_sorgente`
 
 ```sql
@@ -50,7 +51,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_sorgente(p_codice_interno character varying, p_target_table regclass)
-IS 'Builder pgTAP: una sorgente di PROVA (codice, tabella dei documenti opzionale), costruita e non pescata; ritorna l''id, il primo libero (config.sorgenti.id non ha default). Spenta come documento: apribile falso, scope CATALOGO. Serve a chi costruisce una famiglia di numerazione di prova, che dal 2026-10-20 e'' una sorgente (G-5). Brief: brief-db-grammatica-unica-documenti §13.';
+IS 'Builder pgTAP: una sorgente di PROVA, costruita e non pescata: un tipo di documento che il catalogo non ha, col codice dato (codice_interno e codice) e la tabella dei documenti facoltativa (NULL = nessuna: il caso del riferimento che manca). Ritorna l''id, il primo libero dentro la transazione del test (config.sorgenti.id non ha default: gli id li da'' il seed). Categoria DOCUMENTO, attiva, key_selector id, nel meta il marchio pgtap. Spenta come documento: apribile falso, scope CATALOGO, etichetta uguale al codice; il test la vede, nessuna lista la propone. Un codice gia'' a catalogo collide con l''unicita''. Serve a chi costruisce una famiglia di numerazione di prova (la famiglia e'' una sorgente: fk_famiglie_documento_sorgenti) o un ambito di prova.';
 ```
 
 </div>

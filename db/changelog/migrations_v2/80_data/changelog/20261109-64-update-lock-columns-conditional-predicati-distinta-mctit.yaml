@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.lock_columns_conditional (catalogo.articoli): le quattro regole gemelle del
+#   guard dei flag di struttura chiamano i predicati di 20_code/catalogo/20261109-62
+#   invece di ricopiarne l'EXISTS (D28, N3, N4).
+#   Brief: brief-db-revisione-dbops, giro 10a (§25).
+#
+#   La tabella non ha un CSV: la sua sede sono i changeSet SQL di 80_data
+#   (20260522-04, 20261010-01, 20261013-04, -46, -51), e questo e' il seguito di
+#   20261010-01, nella stessa forma (N4 a). Righe chiavate su colonna e testo di
+#   prima; il conteggio ferma il changeSet se le righe aggiornate non sono quattro.
+#   La riga is_composito «componente non composito» tiene la sua meta' di stato
+#   (l'articolo non e' gia' composito); il guard la legge come transizione.
+#   Rollback = espressioni e descrizioni di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261109-64-update-lock-columns-conditional-predicati-distinta-mctit.yaml
+
+  - changeSet:
+      id: 20261109-64-update-lock-columns-conditional-predicati-distinta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        lock_columns_conditional (catalogo.articoli): le quattro regole della distinta chiamano gli stessi predicati del guard. Brief: brief-db-revisione-dbops, giro 10a.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('catalogo.fn_articolo_primo_padre_da_oggi(uuid)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $seed$
+              DECLARE
+                  v_n   bigint;
+                  v_tot bigint := 0;
+              BEGIN
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'catalogo.fn_articolo_padre_di_distinta_in_vigore($1::uuid)',
+                         descrizione    = 'is_composito non modificabile se l''articolo e'' padre di una distinta in vigore: stesso predicato del check 1 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'is_composito'
+                     AND condition_expr = 'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE prodotto_id = $1::uuid AND attivo IS TRUE AND validita @> script.fn_data_operativa())';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'catalogo.fn_articolo_padre_di_distinta_in_vigore($1::uuid)',
+                         descrizione    = 'requires_serial non modificabile se l''articolo e'' padre di una distinta in vigore: stesso predicato del check 1 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'requires_serial'
+                     AND condition_expr = 'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE prodotto_id = $1::uuid AND attivo IS TRUE AND validita @> script.fn_data_operativa())';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'catalogo.fn_articolo_componente_di_distinta_in_vigore($1::uuid)',
+                         descrizione    = 'is_solo_componente non modificabile se l''articolo e'' componente di una distinta in vigore: stesso predicato del check 2 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'is_solo_componente'
+                     AND condition_expr = 'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE componente_id = $1::uuid AND attivo IS TRUE AND validita @> script.fn_data_operativa())';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'NOT COALESCE((SELECT a.is_composito FROM catalogo.articoli a WHERE a.id = $1::uuid), false) AND catalogo.fn_articolo_primo_padre_da_oggi($1::uuid) IS NOT NULL',
+                         descrizione    = 'is_composito non attivabile se l''articolo semplice e'' componente di una distinta in vigore o futura (la distinta ha un livello solo): stesso predicato del check 3 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'is_composito'
+                     AND condition_expr = 'EXISTS (SELECT 1 FROM catalogo.articoli_componenti ac JOIN catalogo.articoli a ON a.id = ac.componente_id WHERE ac.componente_id = $1::uuid AND a.is_composito IS NOT TRUE AND ac.attivo IS TRUE AND ac.validita && daterange(script.fn_data_operativa(), NULL, ''[)''))';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  IF v_tot <> 4 THEN
+                      RAISE EXCEPTION 'lock_columns_conditional (predicati della distinta): attese 4 righe, aggiornate %', v_tot;
+                  END IF;
+              END
+              $seed$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $seed$
+              DECLARE
+                  v_n   bigint;
+                  v_tot bigint := 0;
+              BEGIN
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE prodotto_id = $1::uuid AND attivo IS TRUE AND validita @> script.fn_data_operativa())',
+                         descrizione    = 'is_composito immutabile se articolo padre di BoM attiva (simmetrico a trg_articoli_a10_guard_flags_struttura_bom_attiva_upd check 1)'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'is_composito'
+                     AND condition_expr = 'catalogo.fn_articolo_padre_di_distinta_in_vigore($1::uuid)';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE prodotto_id = $1::uuid AND attivo IS TRUE AND validita @> script.fn_data_operativa())',
+                         descrizione    = 'requires_serial immutabile se articolo padre di BoM attiva (simmetrico a trg_articoli_a10_guard_flags_struttura_bom_attiva_upd check 1)'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'requires_serial'
+                     AND condition_expr = 'catalogo.fn_articolo_padre_di_distinta_in_vigore($1::uuid)';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE componente_id = $1::uuid AND attivo IS TRUE AND validita @> script.fn_data_operativa())',
+                         descrizione    = 'is_solo_componente immutabile se articolo figlio in BoM attiva (simmetrico a trg_articoli_a10_guard_flags_struttura_bom_attiva_upd check 2)'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'is_solo_componente'
+                     AND condition_expr = 'catalogo.fn_articolo_componente_di_distinta_in_vigore($1::uuid)';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'EXISTS (SELECT 1 FROM catalogo.articoli_componenti ac JOIN catalogo.articoli a ON a.id = ac.componente_id WHERE ac.componente_id = $1::uuid AND a.is_composito IS NOT TRUE AND ac.attivo IS TRUE AND ac.validita && daterange(script.fn_data_operativa(), NULL, ''[)''))',
+                         descrizione    = 'is_composito non attivabile se articolo componente di una distinta in vigore o futura: la distinta ha un livello solo (simmetrico a trg_articoli_a10_guard_flags_struttura_bom_attiva_upd check 3)'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'is_composito'
+                     AND condition_expr = 'NOT COALESCE((SELECT a.is_composito FROM catalogo.articoli a WHERE a.id = $1::uuid), false) AND catalogo.fn_articolo_primo_padre_da_oggi($1::uuid) IS NOT NULL';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  IF v_tot <> 4 THEN
+                      RAISE EXCEPTION 'lock_columns_conditional (rollback): attese 4 righe, aggiornate %', v_tot;
+                  END IF;
+              END
+              $seed$;

@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_bersagli_non_dichiarati: «obsoleto» dal building block.
+#   Brief: brief-db-articoli-obsoleto-dal §4 (regola del 2, Tid 2026-11-05).
+#
+# Base: 20261104-22, verificato uguale al vivo. Cambia solo il ramo OBSOLETO:
+# script.fn_e_obsoleto(te.obsoleto_dal) (20261105-04) al posto della copia in
+# linea (obsoleto_dal <= data operativa). Stesso esito: per un tipo che esiste
+# il BB e' falso su NULL e su data futura, vero su data raggiunta.
+#   ⛔ security_invoker si ripete: un CREATE OR REPLACE che non lo dice lo azzera.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261105-07-update-vw-bersagli-non-dichiarati-obsoleto-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261105-07-update-vw-bersagli-non-dichiarati-obsoleto-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_bersagli_non_dichiarati: il ramo OBSOLETO chiede a script.fn_e_obsoleto, sede unica del
+        predicato. brief-db-articoli-obsoleto-dal §4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_e_obsoleto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_bersagli_non_dichiarati WITH (security_invoker=true) AS
+               SELECT m.m[1] AS tipo,
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END AS motivo,
+                  count(DISTINCT p.oid) AS n_funzioni,
+                  string_agg(DISTINCT (((n.nspname)::text || '.'::text) || (p.proname)::text), ', '::text ORDER BY (((n.nspname)::text || '.'::text) || (p.proname)::text)) AS funzioni
+                 FROM (((pg_proc p
+                   JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
+                   CROSS JOIN LATERAL regexp_matches((dbops.fn_corpo_funzione(p.oid) COLLATE "C"), '''tipo''\s*,\s*''([A-Z][A-Z0-9_]{0,30})'''::text, 'g'::text) m(m))
+                   LEFT JOIN config.tipi_entita te ON ((te.codice = m.m[1])))
+                WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
+                         FROM pg_language
+                        WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~~ '%bersaglio%'::text) AND ((te.codice IS NULL) OR script.fn_e_obsoleto(te.obsoleto_dal)))
+                GROUP BY m.m[1],
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_bersagli_non_dichiarati WITH (security_invoker=true) AS
+               SELECT m.m[1] AS tipo,
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END AS motivo,
+                  count(DISTINCT p.oid) AS n_funzioni,
+                  string_agg(DISTINCT (((n.nspname)::text || '.'::text) || (p.proname)::text), ', '::text ORDER BY (((n.nspname)::text || '.'::text) || (p.proname)::text)) AS funzioni
+                 FROM (((pg_proc p
+                   JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
+                   CROSS JOIN LATERAL regexp_matches((dbops.fn_corpo_funzione(p.oid) COLLATE "C"), '''tipo''\s*,\s*''([A-Z][A-Z0-9_]{0,30})'''::text, 'g'::text) m(m))
+                   LEFT JOIN config.tipi_entita te ON ((te.codice = m.m[1])))
+                WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
+                         FROM pg_language
+                        WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~~ '%bersaglio%'::text) AND ((te.codice IS NULL) OR (te.obsoleto_dal <= (SELECT script.fn_data_operativa()))))
+                GROUP BY m.m[1],
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END;

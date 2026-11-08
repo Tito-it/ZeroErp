@@ -47,6 +47,11 @@ BEGIN
         RETURN NULL;
     END IF;
 
+    -- Rev 2026-11-04: si cerca il codice come e' salvato (CODICE_MAIUSCOLO).
+    -- ⚠️ Niente variabile ancorata a config.email_template.codice%TYPE: il
+    --   codice in maiuscolo puo' allungarsi (ss) e superare varchar(n), e
+    --   l'assegnazione darebbe 22001 dove la risposta giusta e' «nessun template».
+
     -- 1. Reparto + tipo prestazione + lingua
     IF p_unita_organizzativa_id IS NOT NULL AND p_tipo_prestazione_id IS NOT NULL THEN
         SELECT jsonb_build_object(
@@ -60,7 +65,7 @@ BEGIN
         )
         INTO v_result
         FROM config.email_template et
-        WHERE et.codice = p_codice
+        WHERE et.codice = script.fn_codice_normalizzato(p_codice)
           AND et.unita_organizzativa_id = p_unita_organizzativa_id
           AND et.tipo_prestazione_id = p_tipo_prestazione_id
           AND et.lingua = p_lingua
@@ -84,7 +89,7 @@ BEGIN
         )
         INTO v_result
         FROM config.email_template et
-        WHERE et.codice = p_codice
+        WHERE et.codice = script.fn_codice_normalizzato(p_codice)
           AND et.unita_organizzativa_id = p_unita_organizzativa_id
           AND et.tipo_prestazione_id IS NULL
           AND et.lingua = p_lingua
@@ -108,7 +113,7 @@ BEGIN
         )
         INTO v_result
         FROM config.email_template et
-        WHERE et.codice = p_codice
+        WHERE et.codice = script.fn_codice_normalizzato(p_codice)
           AND et.unita_organizzativa_id IS NULL
           AND et.tipo_prestazione_id = p_tipo_prestazione_id
           AND et.lingua = p_lingua
@@ -131,7 +136,7 @@ BEGIN
     )
     INTO v_result
     FROM config.email_template et
-    WHERE et.codice = p_codice
+    WHERE et.codice = script.fn_codice_normalizzato(p_codice)
       AND et.unita_organizzativa_id IS NULL
       AND et.tipo_prestazione_id IS NULL
       AND et.lingua = p_lingua
@@ -154,7 +159,7 @@ BEGIN
         )
         INTO v_result
         FROM config.email_template et
-        WHERE et.codice = p_codice
+        WHERE et.codice = script.fn_codice_normalizzato(p_codice)
           AND et.unita_organizzativa_id IS NULL
           AND et.tipo_prestazione_id IS NULL
           AND et.lingua = 'it'
@@ -166,7 +171,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.fn_resolve_email_template(p_codice character varying, p_unita_organizzativa_id integer, p_tipo_prestazione_id integer, p_lingua character varying)
-IS 'Risolve template email. Fallback a 5 livelli: reparto+tipo_prestazione+lingua -> reparto+lingua -> sistema+tipo_prestazione+lingua -> sistema+lingua -> sistema+it.';
+IS 'Risolve template email. Fallback a 5 livelli: reparto+tipo_prestazione+lingua -> reparto+lingua -> sistema+tipo_prestazione+lingua -> sistema+lingua -> sistema+it. Rev 2026-11-04 (20261104-38, D-2 di Tid): le cinque ricerche confrontano con il codice normalizzato (script.fn_codice_normalizzato), perche'' config.email_template salva il codice in maiuscolo (CODICE_MAIUSCOLO).';
 ```
 
 </div>

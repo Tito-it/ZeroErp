@@ -18,6 +18,7 @@ Indice test eseguiti:
 6) CommesseSourceHandlersTests.test_process_rows_default_priorita_operativa_normale
 7) CommesseSourceHandlersTests.test_process_rows_default_prezzo_da_riallineare_false
 8) CommesseSourceHandlersTests.test_process_rows_default_stato_approvazione_bozza
+8b) CommesseSourceHandlersTests.test_process_rows_onere_porta_la_causale
 9) CommesseSourceHandlersTests.test_process_rows_isolamento_errori_per_riga
 10) CommesseSourceHandlersTests.test_handler_contratti_esiste
 10b) CommesseSourceHandlersTests.test_contratto_apre_la_commessa_senza_periodo
@@ -123,7 +124,7 @@ def _make_row(**overrides) -> PushableRow:
         "competenza_al": date(2026, 6, 30),
         "fatturazione_immediata": False,
         "sorgente_tipo_id": 5,
-        "sorgente_uid": "uid-001",
+        "sorgente_chiave": "uid-001",
         "segment_key": "TEST:uid-001:R:1",
         "articolo_id": "art-uuid-001",
         "istanza_utility_id": 4,
@@ -220,8 +221,8 @@ class CommesseSourceHandlersTests(TestCase):
         repo = _mock_repo()
         repo.get_or_create_commessa.side_effect = [10, 11]
         repo.fetch_pushable_rows.return_value = [
-            _make_row(segment_key="K:1", sorgente_uid="uid-1", termine_pagamento_id=3),
-            _make_row(segment_key="K:2", sorgente_uid="uid-2", termine_pagamento_id=7),
+            _make_row(segment_key="K:1", sorgente_chiave="uid-1", termine_pagamento_id=3),
+            _make_row(segment_key="K:2", sorgente_chiave="uid-2", termine_pagamento_id=7),
         ]
         HandlerPreventivi(repo).run()
 
@@ -237,8 +238,8 @@ class CommesseSourceHandlersTests(TestCase):
     def test_cache_commessa_riusa_a_parita_di_termine(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [
-            _make_row(segment_key="K:1", sorgente_uid="uid-1", termine_pagamento_id=3),
-            _make_row(segment_key="K:2", sorgente_uid="uid-2", termine_pagamento_id=3),
+            _make_row(segment_key="K:1", sorgente_chiave="uid-1", termine_pagamento_id=3),
+            _make_row(segment_key="K:2", sorgente_chiave="uid-2", termine_pagamento_id=3),
         ]
         HandlerPreventivi(repo).run()
 
@@ -252,7 +253,7 @@ class CommesseSourceHandlersTests(TestCase):
     def test_process_rows_esclude_segment_key_fallite_dalla_risoluzione_id(self):
         repo = _mock_repo()
         riga_ok = _make_row(segment_key="TEST:uid-001:R:1")
-        riga_ko = _make_row(sorgente_uid="uid-002", segment_key="TEST:uid-002:R:1")
+        riga_ko = _make_row(sorgente_chiave="uid-002", segment_key="TEST:uid-002:R:1")
         repo.fetch_pushable_rows.return_value = [riga_ok, riga_ko]
         repo.batch_upsert_attivita.return_value = BatchUpsertResult(
             total_rows=2, inserted=1, updated=0,
@@ -269,22 +270,22 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(result.skipped, 1)
         self.assertTrue(any("TEST:uid-002:R:1" in e for e in result.errors))
 
-    # Scopo: sorgente_uid valorizzato → propagato a fetch_pushable_rows del repo.
+    # Scopo: sorgente_id valorizzato → propagato a fetch_pushable_rows del repo.
     # Assicura che il push singolo UI-driven filtri davvero a livello DB.
-    def test_run_propaga_sorgente_uid_al_fetch_pushable_rows(self):
+    def test_run_propaga_sorgente_id_al_fetch_pushable_rows(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [_make_row()]
         handler = HandlerPreventivi(repo)
 
-        handler.run(sorgente_uid=42)
+        handler.run(sorgente_id=42)
 
         repo.fetch_pushable_rows.assert_called_once()
         kwargs = repo.fetch_pushable_rows.call_args.kwargs
-        self.assertEqual(kwargs["sorgente_uid"], 42)
+        self.assertEqual(kwargs["sorgente_id"], 42)
 
-    # Scopo: sorgente_uid omesso → fetch_pushable_rows riceve None
+    # Scopo: sorgente_id omesso → fetch_pushable_rows riceve None
     # (regressione: comportamento batch invariato).
-    def test_run_senza_sorgente_uid_passa_none(self):
+    def test_run_senza_sorgente_id_passa_none(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [_make_row()]
         handler = HandlerPreventivi(repo)
@@ -292,7 +293,7 @@ class CommesseSourceHandlersTests(TestCase):
         handler.run()
 
         kwargs = repo.fetch_pushable_rows.call_args.kwargs
-        self.assertIsNone(kwargs["sorgente_uid"])
+        self.assertIsNone(kwargs["sorgente_id"])
 
     # Scopo: righe_ids valorizzato (smistamento selettivo) → propagato a
     # fetch_pushable_rows; omesso → None (push completo invariato).
@@ -301,13 +302,13 @@ class CommesseSourceHandlersTests(TestCase):
         repo.fetch_pushable_rows.return_value = [_make_row()]
         handler = HandlerPreventivi(repo)
 
-        handler.run(sorgente_uid=42, righe_ids=[7, 9])
+        handler.run(sorgente_id=42, righe_ids=[7, 9])
 
         kwargs = repo.fetch_pushable_rows.call_args.kwargs
         self.assertEqual(kwargs["righe_ids"], [7, 9])
 
         repo.fetch_pushable_rows.reset_mock()
-        handler.run(sorgente_uid=42)
+        handler.run(sorgente_id=42)
         kwargs = repo.fetch_pushable_rows.call_args.kwargs
         self.assertIsNone(kwargs["righe_ids"])
 
@@ -382,6 +383,22 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(inp.stato_approvazione, "BOZZA")
         self.assertEqual(inp.stato_emissione, "NON_EMESSA")
 
+    # Scopo: la riga ONERE di un ordine porta la sua causale fino all'input del
+    #        batch (brief-db-addebito-trasporto-ordine §9.3): la madre vuole
+    #        ONERE <=> causale, e senza la riga e' rifiutata.
+    def test_process_rows_onere_porta_la_causale(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(tipo_movimento="ONERE", causale_onere_id=6),
+        ]
+        handler = HandlerOrdini(repo)
+
+        handler.run()
+
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertEqual(inp.tipo_movimento, "ONERE")
+        self.assertEqual(inp.causale_onere_id, 6)
+
     # Scopo: errore su riga 1 non blocca riga 2 — isolamento per riga.
     def test_process_rows_isolamento_errori_per_riga(self):
         repo = _mock_repo()
@@ -416,9 +433,9 @@ class CommesseSourceHandlersTests(TestCase):
     def test_contratto_apre_la_commessa_senza_periodo(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [
-            _make_row(segment_key="CONTRATTO:uid-1:R:1:M:2026-06", sorgente_uid="uid-1",
+            _make_row(segment_key="CONTRATTO:uid-1:R:1:M:2026-06", sorgente_chiave="uid-1",
                       competenza_dal=date(2026, 6, 1), competenza_al=date(2026, 6, 30)),
-            _make_row(segment_key="CONTRATTO:uid-1:R:1:M:2026-07", sorgente_uid="uid-1",
+            _make_row(segment_key="CONTRATTO:uid-1:R:1:M:2026-07", sorgente_chiave="uid-1",
                       competenza_dal=date(2026, 7, 1), competenza_al=date(2026, 7, 31)),
         ]
         HandlerContratti(repo).run()
@@ -440,9 +457,9 @@ class CommesseSourceHandlersTests(TestCase):
         repo = _mock_repo()
         repo.get_or_create_commessa.side_effect = [10, 11]
         repo.fetch_pushable_rows.return_value = [
-            _make_row(segment_key="K:1", sorgente_uid="uid-1",
+            _make_row(segment_key="K:1", sorgente_chiave="uid-1",
                       competenza_dal=date(2026, 6, 1), competenza_al=date(2026, 6, 30)),
-            _make_row(segment_key="K:2", sorgente_uid="uid-2",
+            _make_row(segment_key="K:2", sorgente_chiave="uid-2",
                       competenza_dal=date(2026, 7, 1), competenza_al=date(2026, 7, 31)),
         ]
         HandlerPreventivi(repo).run()
@@ -506,8 +523,8 @@ class CommesseSourceHandlersTests(TestCase):
     def test_process_rows_cache_commessa_evita_chiamate_ripetute(self):
         repo = _mock_repo(inserted=2)
         # Due righe con stessi parametri commessa ma segment_key diverso.
-        row1 = _make_row(segment_key="TEST:uid-001:R:1", sorgente_uid="uid-001")
-        row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_uid="uid-002")
+        row1 = _make_row(segment_key="TEST:uid-001:R:1", sorgente_chiave="uid-001")
+        row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_chiave="uid-002")
         repo.fetch_pushable_rows.return_value = [row1, row2]
         handler = HandlerPreventivi(repo)
 
@@ -532,8 +549,8 @@ class CommesseSourceHandlersTests(TestCase):
         repo = _mock_repo(inserted=1)
         # Stessa chiave commessa: senza la protezione, la 2a riuserebbe l'id
         # della 1a (annullata dal rollback).
-        row1 = _make_row(segment_key="TEST:uid-001:R:1", sorgente_uid="uid-001")
-        row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_uid="uid-002")
+        row1 = _make_row(segment_key="TEST:uid-001:R:1", sorgente_chiave="uid-001")
+        row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_chiave="uid-002")
         repo.fetch_pushable_rows.return_value = [row1, row2]
         # La 1a riga cade DOPO get_or_create_commessa (che ha gia' popolato la
         # cache nella vecchia forma), nella costruzione del suo input; la 2a passa.
@@ -565,8 +582,8 @@ class CommesseSourceHandlersTests(TestCase):
     # Scopo: Verifica distinzione created vs updated da BatchUpsertResult.
     def test_process_rows_batch_created_vs_updated(self):
         repo = _mock_repo(inserted=1, updated=1)
-        row1 = _make_row(segment_key="NEW:row1", sorgente_uid="uid-001")
-        row2 = _make_row(segment_key="UPD:row2", sorgente_uid="uid-002")
+        row1 = _make_row(segment_key="NEW:row1", sorgente_chiave="uid-001")
+        row2 = _make_row(segment_key="UPD:row2", sorgente_chiave="uid-002")
         repo.fetch_pushable_rows.return_value = [row1, row2]
         handler = HandlerPreventivi(repo)
 
@@ -596,7 +613,7 @@ def _make_composito_row(**overrides) -> PushableRow:
         "competenza_al": date(2026, 6, 30),
         "fatturazione_immediata": False,
         "sorgente_tipo_id": 7,
-        "sorgente_uid": "uid-preventivo-001",
+        "sorgente_chiave": "uid-preventivo-001",
         "segment_key": "PREVENTIVO:uid-preventivo-001:R:42",
         "articolo_id": "art-composito-01",
         "istanza_utility_id": 11,
@@ -912,7 +929,7 @@ class BoMComponentExpanderTests(TestCase):
         self.assertEqual(result[1].quantita, Decimal("1.2321"))
 
     # Scopo: DEC-5 — campi di contesto padre (tipo_doc_fiscale_id, valuta,
-    # BA, utility, sorgente_uid, emittente, competenza, fatturazione_immediata)
+    # BA, utility, sorgente_chiave, emittente, competenza, fatturazione_immediata)
     # ereditati dai componenti, non sovrascritti.
     def test_snapshot_eredita_tipo_doc_fiscale_e_valuta_dal_padre(self):
         snapshot_loader = MagicMock(return_value=[_make_snapshot_componente()])
@@ -925,7 +942,7 @@ class BoMComponentExpanderTests(TestCase):
             valuta_id=555,
             billing_account_id=111,
             utility_id=222,
-            sorgente_uid="SRC-abc",
+            sorgente_chiave="SRC-abc",
             emittente_soggetto_ruolo_id=333,
             competenza_mese=date(2026, 9, 1),
             fatturazione_immediata=True,
@@ -939,7 +956,7 @@ class BoMComponentExpanderTests(TestCase):
         self.assertEqual(componente.valuta_id, 555)
         self.assertEqual(componente.billing_account_id, 111)
         self.assertEqual(componente.utility_id, 222)
-        self.assertEqual(componente.sorgente_uid, "SRC-abc")
+        self.assertEqual(componente.sorgente_chiave, "SRC-abc")
         self.assertEqual(componente.emittente_soggetto_ruolo_id, 333)
         self.assertEqual(componente.competenza_mese, date(2026, 9, 1))
         self.assertTrue(componente.fatturazione_immediata)
@@ -1155,13 +1172,13 @@ class BoMHandlerIntegrationTests(TestCase):
             _make_composito_row(
                 articolo_id="art-composito",
                 segment_key="PREVENTIVO:uid-1:R:1",
-                sorgente_uid="uid-1",
+                sorgente_chiave="uid-1",
                 riga_sorgente_id=11,
             ),
             _make_composito_row(
                 articolo_id="art-semplice",
                 segment_key="PREVENTIVO:uid-1:R:2",
-                sorgente_uid="uid-1",
+                sorgente_chiave="uid-1",
                 riga_sorgente_id=12,
             ),
         ]
@@ -1417,8 +1434,8 @@ class PricingAuditSnapshotTests(TestCase):
     def test_audit_cache_dedup_stesso_contesto_un_solo_resolve(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [
-            _make_row(uom_id=9, segment_key="S:1", sorgente_uid="u1"),
-            _make_row(uom_id=9, segment_key="S:2", sorgente_uid="u2"),
+            _make_row(uom_id=9, segment_key="S:1", sorgente_chiave="u1"),
+            _make_row(uom_id=9, segment_key="S:2", sorgente_chiave="u2"),
         ]
         ps = self._resolver_full()
         handler = self._handler(repo, ps)
@@ -1471,18 +1488,19 @@ class CompositiFanOutWiringTests(TestCase):
 
     # Scopo: il secondo lettore (i componenti dal listino, D-2 (c)) ce l'ha
     #        solo il contratto; legge alla data del pezzo, col contratto della
-    #        riga (`sorgente_uid` = `contratti.uid`).
+    #        riga (`sorgente_chiave`, col suo tipo).
     def test_solo_il_contratto_legge_i_kit_dal_listino(self):
         for cls in (HandlerPreventivi, HandlerOrdini, HandlerDdt):
             self.assertIsNone(cls(_mock_repo())._bom_expander._componenti_listino_loader)
         comp_repo = MagicMock()
         comp_repo.list_componenti_kit_dal_listino.return_value = ["c1"]
         loader = HandlerContratti._componenti_listino_loader(comp_repo)
-        row = _make_composito_row(sorgente_uid="uid-ctr", data_attivita=date(2026, 7, 1))
+        row = _make_composito_row(sorgente_chiave="uid-ctr", data_attivita=date(2026, 7, 1))
 
         self.assertEqual(loader(row), ["c1"])
         comp_repo.list_componenti_kit_dal_listino.assert_called_once_with(
-            contratto_uid="uid-ctr", articolo_padre_id=row.articolo_id, data=date(2026, 7, 1),
+            sorgente_tipo_id=row.sorgente_tipo_id, contratto_chiave="uid-ctr",
+            articolo_padre_id=row.articolo_id, data=date(2026, 7, 1),
         )
 
     # Scopo: una lettura per (contratto, kit, data) nel giro; un'altra data
@@ -1491,8 +1509,8 @@ class CompositiFanOutWiringTests(TestCase):
         comp_repo = MagicMock()
         comp_repo.list_componenti_kit_dal_listino.return_value = ["c1"]
         loader = HandlerContratti._componenti_listino_loader(comp_repo)
-        luglio = _make_composito_row(sorgente_uid="uid-ctr", data_attivita=date(2026, 7, 1))
-        agosto = _make_composito_row(sorgente_uid="uid-ctr", data_attivita=date(2026, 8, 1))
+        luglio = _make_composito_row(sorgente_chiave="uid-ctr", data_attivita=date(2026, 7, 1))
+        agosto = _make_composito_row(sorgente_chiave="uid-ctr", data_attivita=date(2026, 8, 1))
 
         loader(luglio)
         loader(luglio)

@@ -56,7 +56,7 @@ BEGIN
     INSERT INTO anagrafiche.gestori
         (soggetto_ruolo_id, descrizione, cd_prod_software, valuta_id)
     VALUES (v_sr, 'Gestore pgTAP ' || p_etichetta, 'ZEROERP',
-            (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1))
+            dbops.fn_pgtap_valuta())
     RETURNING id INTO v_id;
 
     -- Saga completa: i guard differiti scattano QUI, su un mondo
@@ -68,7 +68,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_gestore(p_etichetta text)
-IS 'Fixture pgTAP: il GESTORE dell''installazione — lo PRENDE se c''e'', lo costruisce (soggetto + ruolo GE + riga, dentro la finestra differita) se non c''e''. ⚠️ anagrafiche.gestori e'' dato di MACCHINA: su un database ricostruito e'' vuota, e i quattro file che leggevano «il primo Gestore» non trovavano niente. ⛔ Prendi-o-costruisci e non costruisci-sempre, perche'' il gestore e'' un SINGLETON: un secondo lo rifiuta un guard, quindi un builder che creasse sempre sarebbe rosso proprio su dbdev. ⛔ I conti bancari del gestore NON li scrive: uso, IBAN e predefinito sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2.';
+IS 'Fixture pgTAP: il GESTORE dell''installazione — lo PRENDE se c''e'', lo costruisce (soggetto + ruolo GE + riga, dentro la finestra differita) se non c''e'', con la valuta di dbops.fn_pgtap_valuta (il gestore e'' l''ultima radice della catena vendite.fn_get_valuta_id). ⚠️ anagrafiche.gestori e'' dato di MACCHINA: su un database ricostruito e'' vuota, e i quattro file che leggevano «il primo Gestore» non trovavano niente. ⛔ Prendi-o-costruisci e non costruisci-sempre, perche'' il gestore e'' un SINGLETON: un secondo lo rifiuta un guard, quindi un builder che creasse sempre sarebbe rosso proprio su dbdev. ⛔ I conti bancari del gestore NON li scrive: uso, IBAN e predefinito sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
 ```
 
 </div>

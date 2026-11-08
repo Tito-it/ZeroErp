@@ -1,58 +1,59 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.handler_flussi`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [pratiche.template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — i template che delegano all'handler l'avvio dello step
+> * [pratiche.template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi) — i collegamenti fra template, evento ed handler
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `pratiche.handler_flussi` e' il **registry degli handler flusso**. Ogni record mappa una `handler_key` univoca a un handler Python nel `handler_registry.py` di Django. Il DB contiene solo la chiave; il mapping effettivo e' nel codice applicativo.
+
+La tabella `pratiche.handler_flussi` è il registro degli handler dei flussi: ogni riga associa una
+`handler_key` univoca a un handler del backend. Il database tiene solo la chiave; la classe che la
+esegue sta nel registro del backend.
 
 ---
 
-### Ruolo nel processo
+### Il ruolo nel processo
 
-* I template flussi con `handler_id NOT NULL` delegano l'esecuzione a un handler automatico (su evento **IN_CORSO**).
-* I template con `handler_id NULL` rappresentano **step manuali** (completati dall'operatore).
-* Il campo `handler_key` e' la chiave usata da Django per risolvere la classe Python associata.
-* Gli handler non scattano più solo all'avvio: il legame [`template_flussi_handler_eventi`](/dbzero/pratiche/tabelle/template_flussi_handler_eventi) permette di eseguire un handler anche al **COMPLETATO** di uno step, **esito-aware** (es. `vendita.post_smistamento` su `SMISTAMENTO` COMPLETATO/MERCE_PRESENTE). Stesso registry, stesso `HANDLER_MAP`.
-* ⛔ Il registro del DB e `HANDLER_MAP` devono dire la stessa cosa: un handler si ritira **prima** a DB (collegamenti spenti, poi handler spento) e solo dopo dal codice. L'ordine e il perché stanno in [`template_flussi_handler_eventi`](/dbzero/pratiche/tabelle/template_flussi_handler_eventi). In Fase 2 anche l'esecuzione IN_CORSO (oggi su `template_flussi.handler_id`) confluirà in quella tabella.
+* Un template di flusso con `handler_id` valorizzato delega l'esecuzione a un handler automatico,
+  all'avvio dello step (`IN_CORSO`); un template senza handler è uno step manuale, completato
+  dall'operatore.
+* `pratiche.template_flussi_handler_eventi` permette di eseguire un handler anche al `COMPLETATO` di
+  uno step, in funzione dell'esito. Il registro degli handler è lo stesso.
+* I parametri operativi dell'handler stanno sul template (`handler_params`) o sul collegamento
+  all'evento, non qui.
 
----
-
-### Relazione con Django
-
-```python
-# In services/handler_registry.py
-HANDLER_MAP: dict[str, type[BaseFlussoHandler]] = {
-    "APPUNTAMENTO": AppuntamentoHandler,
-    "SOPRALLUOGO":  SopralluogoHandler,
-    # ...
-}
-```
-
-Il dispatch avviene tramite lookup: `handler_key` → classe Python → `execute(flusso_id, pratica_id, params)`.
-
-I parametri operativi per l'handler sono configurati nel campo `handler_params` del template flusso associato.
+Il backend risolve `handler_key` nella classe dell'handler e le passa il flusso e la pratica.
 
 ---
 
-### Colonne specifiche
+### ⛔ Il registro del database e quello del backend dicono la stessa cosa
 
-| Colonna | Note |
-|---------|------|
-| `handler_key` | VARCHAR(100), UNIQUE. Chiave per il mapping Python. |
-| `codice` | VARCHAR(50), UNIQUE. Codice leggibile per interfaccia. |
+Un handler si ritira prima nel database (collegamenti spenti, poi handler spento) e solo dopo dal
+codice: l'ordine e il perché stanno in `pratiche.template_flussi_handler_eventi`. Il database aiuta a
+tenerlo: un handler non si spegne finché un template o un collegamento all'evento attivi lo usano. La
+coerenza fra le chiavi del database e quelle del backend la verifica un test del backend.
+
+---
+
+### Le colonne che non si capiscono dal nome
+
+* `handler_key` — la chiave, unica, con cui il backend trova la classe.
+* `codice` — un codice leggibile, unico, scritto in maiuscolo.
 
 ---
 
 ### Convenzioni
 
-* Registry puro: no `storicizza`, no `tx_id` (non serve tracciamento transazionale).
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+È un registro di configurazione: niente storico e niente `tx_id`. I trigger standard (audit, blocco
+della disattivazione con figli attivi, codice maiuscolo) li applicano i runner del framework di
+automazione.
 
 ---
 

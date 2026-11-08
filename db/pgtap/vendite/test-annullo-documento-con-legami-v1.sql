@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96/-97): le colonne parallele
+--   (ordini.documento_origine_*, contratti.offerta_id) e i loro indici unici sono ritirati. Il 5 guarda
+--   gli indici della provenienza (uq_contratti_sorgente_offerta, uq_ordini_v_sorgente_offerta), la
+--   fixture dell'ordine da offerta scrive la sola provenienza, il 14 e il 19 la leggono. Attese invariate.
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'offerta della fixture
 --   (pg_temp.al_mk_offerta) arriva ACCETTATA dal verbo, con dbops.fn_pgtap_porta_a_stato, non con
 --   due UPDATE diretti dello stato: la porta dell'offerta li ferma. Attese invariate.
@@ -149,11 +153,11 @@ SELECT ok(
 SELECT is(
   (SELECT count(*)::int FROM pg_indexes i
     WHERE i.schemaname = 'vendite'
-      AND i.indexname IN ('uq_contratti_offerta_id', 'uq_ordini_v_documento_origine_offerta')
+      AND i.indexname IN ('uq_contratti_sorgente_offerta', 'uq_ordini_v_sorgente_offerta')
       AND i.indexdef LIKE 'CREATE UNIQUE INDEX%'
       AND i.indexdef LIKE '%NOT is_abortito_snapshot%'),
   2,
-  '5) uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta sono unici sui soli vivi');
+  '5) uq_contratti_sorgente_offerta e uq_ordini_v_sorgente_offerta sono unici sui soli vivi');
 
 -- ============================================================
 -- Fixture — COSTRUITE coi builder
@@ -296,9 +300,14 @@ DECLARE r RECORD; v_ord bigint;
 BEGIN
   SELECT * INTO r FROM tmp_al_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, storicizza, documento_origine_tipo, documento_origine_id)
+      stato_doc_ordine_id, valuta_id, data, storicizza,
+      sorgente_tipo_id, sorgente_uid)
+  -- la provenienza, come la scrive il verbo (giro T.5 di brief-db-sorgente-documento-e-riga:
+  -- la colonna parallela documento_origine_* e' ritirata)
   VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.emittente_fiscale_id, r.ord_draft_id,
-          r.valuta_id, script.fn_data_operativa(), false, 'OFFERTA_COMMERCIALE', p_offerta)
+          r.valuta_id, script.fn_data_operativa(), false,
+          (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+          (SELECT o.uid FROM vendite.offerte_commerciali o WHERE o.id = p_offerta))
   RETURNING id INTO v_ord;
   RETURN v_ord;
 END $$ LANGUAGE plpgsql;
@@ -382,11 +391,13 @@ SELECT ok(pg_temp.al_rifiuto('13_contr_diretto', 'Serve una conferma'),
 
 SELECT vendite.fn_annulla_contratto(pg_temp.al_fix('c1_contr'), 1);
 SELECT ok(
-  (SELECT s.codice_interno = 'ANNULLATO' AND c.offerta_id = pg_temp.al_fix('c_off')
+  (SELECT s.codice_interno = 'ANNULLATO'
+          AND c.sorgente_tipo_id = (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'OFFERTA_COMMERCIALE')
+          AND c.sorgente_uid = (SELECT o.uid FROM vendite.offerte_commerciali o WHERE o.id = pg_temp.al_fix('c_off'))
           AND c.is_abortito_snapshot AND NOT c.is_draft_snapshot
      FROM vendite.contratti c JOIN config.stati_doc_contratti s ON s.id = c.stato_doc_contratto_id
     WHERE c.id = pg_temp.al_fix('c1_contr')),
-  '14) confermato: contratto ANNULLATO, offerta_id resta (provenienza), snapshot abortito');
+  '14) confermato: contratto ANNULLATO, la provenienza dall''offerta resta, snapshot abortito');
 
 SELECT ok(
   NOT EXISTS (SELECT 1 FROM vendite.fn_offerta_documenti_vivi(pg_temp.al_fix('c_off')))
@@ -422,7 +433,8 @@ SELECT is(vendite.fn_annulla_ordine(pg_temp.al_fix('d1_ord'), 1), 1,
   '19a) confermato l''annullo del primo ordine: un legame (l''offerta)');
 SELECT ok(
   (SELECT s.codice_interno = 'ANNULLATO' AND o.is_abortito_snapshot
-          AND o.documento_origine_tipo = 'OFFERTA_COMMERCIALE' AND o.documento_origine_id = pg_temp.al_fix('d_off')
+          AND o.sorgente_tipo_id = (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'OFFERTA_COMMERCIALE')
+          AND o.sorgente_uid = (SELECT f.uid FROM vendite.offerte_commerciali f WHERE f.id = pg_temp.al_fix('d_off'))
      FROM vendite.ordini o JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
     WHERE o.id = pg_temp.al_fix('d1_ord')),
   '19) ANNULLATO, snapshot abortito, provenienza conservata');
@@ -453,10 +465,10 @@ BEGIN
   SELECT * INTO r FROM tmp_al_refs;
   SELECT c.commessa_id INTO v_commessa FROM tmp_al_commessa c;
   SELECT p.uid::text INTO v_uid FROM vendite.preventivi p WHERE p.id = pg_temp.al_fix('e_prev');
-  SELECT a.attivita_id INTO v_ca FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa) a;
-  UPDATE vendite.commesse_attivita
-     SET sorgente_tipo_id = r.sorg_preventivo_id, sorgente_uid = v_uid
-   WHERE id = v_ca;
+  -- La riga nasce dal preventivo: il builder compone la chiave del push col suo uid.
+  SELECT a.attivita_id INTO v_ca
+    FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa, p_sorgente_codice => 'PREVENTIVO',
+                                               p_sorgente_chiave => v_uid) a;
   INSERT INTO tmp_al_fix VALUES ('e_ca', v_ca);
   SELECT a.attivita_id INTO v_ca FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa) a;
   INSERT INTO tmp_al_fix VALUES ('e_ca_altra', v_ca);

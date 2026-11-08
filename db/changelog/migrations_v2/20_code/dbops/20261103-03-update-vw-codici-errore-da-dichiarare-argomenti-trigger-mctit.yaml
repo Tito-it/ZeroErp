@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D24 di migliorie-generali-da-test-valutazione — LA MISURA DEL TERZO LATO
+# VEDE I CODICI CHE ARRIVANO DAGLI ARGOMENTI DI UN TRIGGER
+#   dbops.vw_codici_errore_da_dichiarare
+#
+# ── ⛔ IL DIFETTO ──────────────────────────────────────────────────────
+#   La misura cercava i letterali E_* nel CORPO delle funzioni plpgsql. Un
+#   codice che un trigger passa al suo building block in TG_ARGV
+#   (pg_trigger.tgargs) non sta nel corpo, e per la misura non esisteva.
+#   Censito su dbdev il 2026-11-03: 30 codici stanno SOLO negli argomenti
+#   (16 di trgfn_lock_columns, 12 di trgfn_doc_testata_lock_fuori_bozza, …).
+#   Oggi hanno tutti la loro policy, quindi nessun buco. Ma il cancello
+#   test_error_codes_db_policy_guardrail legge questa vista: un codice NUOVO
+#   passato cosi' a un BB, senza policy, non faceva rosso il verso 1. Era
+#   l'unico punto in cui il registro a zero dei codici
+#   (dbops.codici_errore_senza_policy) poteva essere ottimista.
+#
+# ── ⭐ LA CURA ───────────────────────────────────────────────────────
+#   Una seconda sorgente in UNION ALL prima del GROUP BY: i codici di
+#   dbops.vw_codici_errore_argomenti_trigger (20261103-01, sede unica della
+#   lettura, la stessa del presidio C2), con da_trigger = true — per
+#   costruzione stanno sul percorso di una richiesta — e la funzione trigger
+#   in `funzioni`/`n_funzioni`. Stesso perimetro della sorgente del corpo:
+#   funzioni plpgsql fuori da pg_catalog e information_schema.
+#
+# ── LE COLONNE NON CAMBIANO ──────────────────────────────────────────
+#   codice, da_trigger, n_funzioni, funzioni: stessi nomi, tipi, ordine.
+#   CREATE OR REPLACE basta; nessun lettore nel database (pg_depend,
+#   2026-11-03). security_invoker ripetuto, GRANT conservato dal REPLACE.
+#
+# ── EFFETTO ATTESO (dbdev, 2026-11-03) ────────────────────────────────
+#   +30 codici, tutti con policy in error_policies_generated.py: il cancello
+#   BE resta verde. Il numero della misura sale (702 al 23-10): e' la misura
+#   che vede di piu', non debito — il registro resta a zero.
+#
+# Corpo di partenza: 20260805-35 (l'unica revisione, uguale alla doc
+#   auto-generata), riscritto come UNION ALL di due sorgenti.
+# Dipendenze: 20261103-01.
+# Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql (t.18, COSTRUITO);
+#   il cancello resta backend/apps/core/tests/test_error_codes_db_policy_guardrail.py.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261103-03-update-vw-codici-errore-da-dichiarare-argomenti-trigger-mctit.yaml
+
+  - changeSet:
+      id: 20261103-03-update-vw-codici-errore-da-dichiarare-argomenti-trigger
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_codici_errore_da_dichiarare vede anche i codici che un trigger
+        passa alla sua funzione negli argomenti (TG_ARGV), letti da
+        vw_codici_errore_argomenti_trigger: un codice nuovo passato cosi' a un
+        building block senza policy ora fa rosso il cancello del terzo lato (D24).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops' AND viewname = 'vw_codici_errore_argomenti_trigger'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops' AND viewname = 'vw_codici_errore_da_dichiarare'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_codici_errore_da_dichiarare
+              WITH (security_invoker = true) AS
+              WITH sorgenti AS (
+                  -- (1) i letterali del CORPO
+                  SELECT m[1]                                   AS codice,
+                         t.agganciata                           AS da_trigger,
+                         p.oid                                  AS funzione_oid,
+                         n.nspname || '.' || p.proname          AS funzione
+                    FROM pg_proc p
+                    JOIN pg_namespace n
+                      ON n.oid = p.pronamespace
+                    CROSS JOIN LATERAL (
+                           SELECT EXISTS (SELECT 1 FROM pg_trigger tg
+                                           WHERE tg.tgfoid = p.oid AND NOT tg.tgisinternal) AS agganciata
+                         ) t,
+                         -- ⚠️ Commenti tolti PRIMA di cercare: un codice nominato in
+                         -- un commento non e' un codice sollevato, e senza questa
+                         -- riga il conteggio si gonfia in silenzio.
+                         LATERAL regexp_matches(
+                           regexp_replace(p.prosrc, '--[^\n]*', '', 'g'),
+                           '''(E_[A-Z0-9_]+)''', 'g') AS m
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+                  UNION ALL
+                  -- (2) rev 20261103-03: i codici che un trigger passa alla
+                  -- funzione negli ARGOMENTI. Agganciata per costruzione.
+                  SELECT a.codice,
+                         true,
+                         p.oid,
+                         n.nspname || '.' || p.proname
+                    FROM dbops.vw_codici_errore_argomenti_trigger a
+                    JOIN pg_proc p
+                      ON p.oid = a.funzione_oid
+                    JOIN pg_namespace n
+                      ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+              )
+              SELECT s.codice,
+                     bool_or(s.da_trigger)                  AS da_trigger,
+                     count(DISTINCT s.funzione_oid)         AS n_funzioni,
+                     string_agg(DISTINCT s.funzione, ', '
+                                ORDER BY s.funzione)        AS funzioni
+                FROM sorgenti s
+               GROUP BY s.codice;
+
+              COMMENT ON VIEW dbops.vw_codici_errore_da_dichiarare IS
+              'Misura canonica del "terzo lato" del presidio sui codici errore: ogni codice E_* nominato da un corpo plpgsql vivo (commenti esclusi) o passato da un trigger alla sua funzione negli ARGOMENTI (dbops.vw_codici_errore_argomenti_trigger, rev 20261103-03), con da_trigger = la funzione che lo nomina e'' agganciata a un trigger, quindi sta sul percorso di una richiesta. ⚠️ VOLUTAMENTE LARGA: raccoglie ogni letterale, non solo quelli dentro una chiamata a fn_log_and_raise_error, perche'' restringere perderebbe i codici che arrivano da espressione (gruppo C: v_motivi -> 0 ->> ''codice'') — 19 codici, 4 dei quali senza policy. Fra i due errori possibili si sceglie quello che si corregge guardando i falsi positivi, non quello che non si vede. Prima della rev 20261103-03 non vedeva i codici dei building block trigger che li ricevono da TG_ARGV (30 al 2026-11-03, D24). Non vede: codici costruiti per concatenazione, e i RAISE EXCEPTION diretti che non passano dall''helper. Brief: brief-db-be-terzo-lato-presidio-codici.md.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_codici_errore_da_dichiarare
+              WITH (security_invoker = true) AS
+              SELECT m[1]                                   AS codice,
+                     bool_or(t.agganciata)                  AS da_trigger,
+                     count(DISTINCT p.oid)                  AS n_funzioni,
+                     string_agg(DISTINCT n.nspname || '.' || p.proname, ', '
+                                ORDER BY n.nspname || '.' || p.proname) AS funzioni
+                FROM pg_proc p
+                JOIN pg_namespace n
+                  ON n.oid = p.pronamespace
+                CROSS JOIN LATERAL (
+                       SELECT EXISTS (SELECT 1 FROM pg_trigger tg
+                                       WHERE tg.tgfoid = p.oid AND NOT tg.tgisinternal) AS agganciata
+                     ) t,
+                     LATERAL regexp_matches(
+                       regexp_replace(p.prosrc, '--[^\n]*', '', 'g'),
+                       '''(E_[A-Z0-9_]+)''', 'g') AS m
+               WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                 AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+               GROUP BY m[1];

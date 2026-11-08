@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DATA DEL CONTENUTO DI UN PRESET HA UNA COLONNA SUA
+#   ui.lista_preset, ui.dashboard_preset: nasce contenuto_aggiornato_il
+#   ui.lista_preferenza_utente, ui.dashboard_preferenza_utente:
+#     preset_base_data_update -> preset_base_contenuto_aggiornato_il
+#   Brief: brief-db-revisione-dbops, giro 7-bis, blocco c (§23.12, N1).
+#
+# ── ⭐ PERCHE' (decisione di Tid, 2026-11-08) ─────────────────────────
+#   data_update di un preset era la data dell'ultimo cambio del suo
+#   CONTENUTO: la scrivevano a mano ui.trgfn_preset_data_update_contenuto
+#   (solo quando cambia una colonna di contenuto) e
+#   ui.trgfn_preset_riga_tocca_preset (dalle righe figlie), e il flag
+#   «preset aggiornato» la confronta con lo snapshot della preferenza. Con
+#   ui nell'ambito delle automazioni il trigger di audit la riscriverebbe a
+#   ogni UPDATE, anche alla riscrittura uguale del seed: il badge si
+#   accenderebbe per tutti dopo ogni migrazione. Una colonna, un
+#   significato: la data del contenuto va in contenuto_aggiornato_il, e
+#   data_update torna l'audit come in ogni altra tabella.
+#
+#   Il backfill copia la data di oggi: il valore di data_update E' la data
+#   del contenuto, finche' l'audit non e' montato. COALESCE su data_insert
+#   perche' data_update e' nullable. Lo snapshot della preferenza cambia
+#   nome, non valore: confronta la stessa data.
+#
+# ── ⚠️ CHI LE LEGGE (censito sullo scratch, 2026-11-08, §23.12) ───────
+#   DB: le due trgfn del contenuto, le due z90_clear_preset_base_ts,
+#   ui.fn_resolve_lista_config e ui.fn_resolve_dashboard_config, riscritte
+#   in 20_code nello stesso giro (20261109-34 ... -39). BE: ui_repository.py,
+#   dashboard_repository.py e i due service delle preferenze (BE11, §5). Il
+#   JSON dei risolutori espone solo il booleano preset_aggiornato: nessuna
+#   chiave cambia per il FE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261109-32-alter-ui-preset-contenuto-aggiornato-il-mctit.yaml
+
+  - changeSet:
+      id: 20261109-32-alter-ui-preset-contenuto-aggiornato-il
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La data del contenuto di un preset passa da data_update a contenuto_aggiornato_il;
+        lo snapshot della preferenza si rinomina. Brief: brief-db-revisione-dbops, giro 7-bis, blocco c.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: ui, tableName: lista_preset, columnName: data_update }
+        - columnExists:
+            { schemaName: ui, tableName: dashboard_preset, columnName: data_update }
+        - columnExists:
+            { schemaName: ui, tableName: lista_preferenza_utente, columnName: preset_base_data_update }
+        - columnExists:
+            { schemaName: ui, tableName: dashboard_preferenza_utente, columnName: preset_base_data_update }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_preset
+                  ADD COLUMN contenuto_aggiornato_il timestamptz;
+              UPDATE ui.lista_preset
+                 SET contenuto_aggiornato_il = COALESCE(data_update, data_insert);
+              ALTER TABLE ui.lista_preset
+                  ALTER COLUMN contenuto_aggiornato_il SET DEFAULT now(),
+                  ALTER COLUMN contenuto_aggiornato_il SET NOT NULL;
+              COMMENT ON COLUMN ui.lista_preset.contenuto_aggiornato_il IS
+                'Data dell''ultimo cambio del CONTENUTO del preset (ordinamento, filtri, dimensione di pagina, colonne): la scrivono ui.trgfn_preset_contenuto_aggiornato e ui.trgfn_preset_riga_tocca_preset, e la confronta lo snapshot preset_base_contenuto_aggiornato_il della preferenza (flag preset_aggiornato). Non e'' l''audit: quello e'' data_update.';
+
+              ALTER TABLE ui.dashboard_preset
+                  ADD COLUMN contenuto_aggiornato_il timestamptz;
+              UPDATE ui.dashboard_preset
+                 SET contenuto_aggiornato_il = COALESCE(data_update, data_insert);
+              ALTER TABLE ui.dashboard_preset
+                  ALTER COLUMN contenuto_aggiornato_il SET DEFAULT now(),
+                  ALTER COLUMN contenuto_aggiornato_il SET NOT NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.contenuto_aggiornato_il IS
+                'Data dell''ultimo cambio del CONTENUTO del preset (dimensione massima, widget): la scrivono ui.trgfn_preset_contenuto_aggiornato e ui.trgfn_preset_riga_tocca_preset, e la confronta lo snapshot preset_base_contenuto_aggiornato_il della preferenza (flag preset_aggiornato). Non e'' l''audit: quello e'' data_update.';
+
+              ALTER TABLE ui.lista_preferenza_utente
+                  RENAME COLUMN preset_base_data_update TO preset_base_contenuto_aggiornato_il;
+              COMMENT ON COLUMN ui.lista_preferenza_utente.preset_base_contenuto_aggiornato_il IS
+                'Snapshot di ui.lista_preset.contenuto_aggiornato_il del preset di base quando l''utente ha salvato la preferenza: se il preset cambia dopo, ui.fn_resolve_lista_config accende preset_aggiornato. NULL se il preset di base cambia (trigger z90).';
+              ALTER TABLE ui.dashboard_preferenza_utente
+                  RENAME COLUMN preset_base_data_update TO preset_base_contenuto_aggiornato_il;
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.preset_base_contenuto_aggiornato_il IS
+                'Snapshot di ui.dashboard_preset.contenuto_aggiornato_il del preset di base quando l''utente ha salvato la preferenza: se il preset cambia dopo, ui.fn_resolve_dashboard_config accende preset_aggiornato. NULL se il preset di base cambia (trigger z90).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.dashboard_preferenza_utente
+                  RENAME COLUMN preset_base_contenuto_aggiornato_il TO preset_base_data_update;
+              ALTER TABLE ui.lista_preferenza_utente
+                  RENAME COLUMN preset_base_contenuto_aggiornato_il TO preset_base_data_update;
+              UPDATE ui.dashboard_preset SET data_update = contenuto_aggiornato_il;
+              ALTER TABLE ui.dashboard_preset DROP COLUMN contenuto_aggiornato_il;
+              UPDATE ui.lista_preset SET data_update = contenuto_aggiornato_il;
+              ALTER TABLE ui.lista_preset DROP COLUMN contenuto_aggiornato_il;

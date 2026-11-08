@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FK DELL'AZIENDA DEL LAVORO ENTRA SOTTO GOVERNO, a false
+#   dbops.fk_index_policy:
+#     * dbops.coda_lavori.fk_coda_lavori_emittente_fiscale -> false
+#   Brief: brief-db-revisione-dbops, giro 5, blocco 5b (§18.8); checklist di
+#   linee-guida-sql §10.9 (la FK della colonna emittente ha una decisione
+#   dichiarata prima dell'ENABLE).
+#
+# ── PERCHE' `consentito = false` ────────────────────────────────────
+#   Un indice su `emittente_fiscale_id` non e' l'ingresso di nessuna query:
+#
+#   * il drenatore prende i lavori vivi da `ix_coda_lavori_da_lavorare`
+#     (parziale sui vivi, `priorita, id`), e l'azienda e' un filtro sopra;
+#   * gli elenchi, i conteggi e il polling dell'interfaccia entrano per stato,
+#     per id o per uid, che hanno gia' il loro indice;
+#   * il perimetro non entra come confronto in un piano: la policy passa la
+#     colonna a `script.fn_scope_coda_lavori_perimetro(...)`, e un indice su una
+#     colonna passata a una funzione non viene scelto (linee-guida-sql §10.9:
+#     l'indice si decide sulla query dell'applicazione, non sulla policy);
+#   * il controllo dal padre (la FK e il blocco ATTIVO nati con lei) scatta
+#     quando un'azienda si spegne o si cancella: un gesto di amministrazione,
+#     non un percorso dell'applicazione.
+#
+#   E' la stessa decisione della gemella `config.email_log`
+#   (`fk_email_log_emittente_fiscale`, false).
+#
+#   ⚠️ La policy e' OPT-IN: senza riga l'automazione non crea niente. La riga
+#   serve a DICHIARARE la scelta, perche' nessuno ci pianti sopra un indice
+#   senza sapere che era una decisione.
+#
+# ── ⚠️ `dll_command` VALORIZZATO ANCHE A `false` ────────────────────
+#   Lo impone `chk_fk_index_policy_dll_command_forma`, e il ramo `false` di
+#   `dbops.apply_fk_index_policy()` ne estrae il nome dell'indice per il DROP.
+#   Il nome e' quello che l'automazione genererebbe.
+#
+# ⚠️ CSV DEDICATO col loader suo, come i seed del registro che lo precedono
+#   (ultimo: 20261106-91): fk_index_policy.csv non ha un changeSet che lo carica
+#   in migrations_v2.
+# ⛔ Creazione e rimozione restano di dbops.apply_fk_index_policy() in 90_end.
+#
+# Dipendenze: la FK fk_coda_lavori_emittente_fiscale (20261107-51).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261107-58-upsert-fk-index-policy-coda-lavori-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261107-58-upsert-fk-index-policy-coda-lavori-emittente
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Registro indici FK del blocco 5b di brief-db-revisione-dbops: la FK
+        fk_coda_lavori_emittente_fiscale a false, dichiarata. Nessuna query
+        dell'applicazione entra dall'azienda del lavoro (drenatore dai vivi,
+        interfaccia da stato, id, uid); la policy la passa a una funzione. Come
+        config.email_log.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+            - columnExists:
+                schemaName: dbops
+                tableName: coda_lavori
+                columnName: emittente_fiscale_id
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/fk_index_policy_coda_lavori_emittente.csv
+            tableName: fk_index_policy
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            primaryKey: "schema_name,table_name,constraint_name"
+            columns:
+              - column: { name: schema_name,         type: STRING }
+              - column: { name: table_name,          type: STRING }
+              - column: { name: constraint_name,     type: STRING }
+              - column: { name: consentito,          type: BOOLEAN }
+              - column: { name: dll_command,         type: STRING }
+              - column: { name: generated_by_script, type: BOOLEAN }
+              - column: { name: user_insert,         type: STRING }
+              - column: { name: data_insert,         type: STRING }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE schema_name = 'dbops'
+                 AND table_name = 'coda_lavori'
+                 AND constraint_name = 'fk_coda_lavori_emittente_fiscale';

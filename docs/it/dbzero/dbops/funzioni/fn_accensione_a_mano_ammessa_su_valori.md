@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_accensione_a_mano_ammessa_su_valori.md" %}
 # ⚙️ Funzione `fn_accensione_a_mano_ammessa_su_valori`
 
 ```sql

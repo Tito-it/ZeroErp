@@ -1,0 +1,298 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_accoda_lavoro: la porta della coda diventa SECURITY DEFINER, e non
+#   restituisce piu' un id vuoto senza aver accodato.
+#   Brief: brief-db-revisione-dbops, giro 5 (Q14 ③, D9).
+#
+# ⭐ PERCHE' DEFINER (decisione di Tid, 2026-11-07). La coda va sotto row level
+#   security. Una porta INVOKER, sotto la policy, non saprebbe distinguere due
+#   casi opposti dopo un ON CONFLICT senza riga: «il lavoro vivo si e' chiuso nel
+#   frattempo» (si riprova) e «il lavoro vivo c'e', ma e' di un'altra azienda»
+#   (l'indice unico lo vede, la rilettura no). La porta vede tutte le righe, e
+#   quindi controlla da se' cio' che la policy controllerebbe:
+#   * da una sessione dell'applicazione (session_user membro di zeroerp_app) un
+#     lavoro OPERATORE si accoda solo con la PROPRIA identita' (scope.auth_user_id
+#     = app.current_user_id, veste OPERATORE) e dentro il proprio perimetro;
+#   * un lavoro vivo con la stessa chiave si restituisce solo se chi chiama
+#     potrebbe vederlo; altrimenti E_CODA_CHIAVE_ALTRUI;
+#   * fuori dall'applicazione la porta la raggiunge solo il proprietario
+#     (l'esecuzione e' tolta a PUBLIC e data a zeroerp_app): i lavori di pgAgent,
+#     che arrivano da procedure DEFINER, accodano come oggi.
+#   Un lavoro SISTEMA lo puo' accodare anche un operatore: non ha azienda, e la
+#   classe del processo (guard qui sotto) dice gia' che non tocca dati di dominio.
+#
+# ⭐ UN LAVORO OPERATORE NASCE DENTRO UN'AZIENDA. La porta scrive
+#   emittente_fiscale_id dallo scope (emittente_attivo_id) e rifiuta un lavoro
+#   OPERATORE senza (E_CODA_LAVORO_SENZA_EMITTENTE): in modalita' globale se ne
+#   accoda uno per azienda (20261107-51).
+#
+# ⛔ D9. Dopo un INSERT … ON CONFLICT DO NOTHING senza riga la rilettura prende
+#   uno snapshot nuovo: se il drenatore ha chiuso il lavoro vivo nel frattempo,
+#   la funzione restituiva NULL, e chi chiama (fn_accoda_chiusura_scadenze)
+#   contava l'azienda come accodata. Ora e' il ciclo dell'upsert: se la rilettura
+#   non trova il vivo, l'INSERT si riprova. Converge: ogni giro senza esito
+#   richiede che un'altra transazione abbia chiuso un lavoro vivo; in
+#   REPEATABLE READ il conflitto con una riga fuori snapshot e' gia' un 40001.
+#
+# ⭐ %TYPE in firma e nel RETURNS: risolvono negli stessi tipi base, quindi
+#   l'identita' della funzione non cambia e CREATE OR REPLACE basta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-53-update-fn-accoda-lavoro-porta-definer-mctit.yaml
+
+  - changeSet:
+      id: 20261107-53-update-fn-accoda-lavoro-porta-definer
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_accoda_lavoro SECURITY DEFINER: da una sessione dell'applicazione un lavoro OPERATORE si
+        accoda solo con la propria identita' e nel proprio perimetro, e un lavoro vivo con la stessa chiave si
+        restituisce solo se chi chiama potrebbe vederlo; scrive emittente_fiscale_id dallo scope e rifiuta un
+        lavoro OPERATORE senza azienda; D9, il ciclo dell'upsert al posto della rilettura che poteva tornare
+        vuota. Esecuzione tolta a PUBLIC, data a zeroerp_app. Giro 5 di brief-db-revisione-dbops.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: dbops, tableName: coda_lavori, columnName: emittente_fiscale_id }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE pronamespace = 'dbops'::regnamespace AND proname = 'fn_accoda_lavoro'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_accoda_lavoro(
+                  p_job_type        dbops.coda_lavori.job_type%TYPE,
+                  p_payload         dbops.coda_lavori.payload%TYPE         DEFAULT '{}'::jsonb,
+                  p_run_as          dbops.coda_lavori.run_as%TYPE          DEFAULT NULL,
+                  p_scope           dbops.coda_lavori.scope%TYPE           DEFAULT NULL,
+                  p_idempotency_key dbops.coda_lavori.idempotency_key%TYPE DEFAULT NULL,
+                  p_priorita        dbops.coda_lavori.priorita%TYPE        DEFAULT 100,
+                  p_run_after       dbops.coda_lavori.run_after%TYPE       DEFAULT NULL,
+                  p_max_tentativi   dbops.coda_lavori.max_tentativi%TYPE   DEFAULT NULL,
+                  p_origine         dbops.coda_lavori.origine%TYPE         DEFAULT 'API')
+               RETURNS dbops.coda_lavori.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_tipo         dbops.coda_lavori_tipi%ROWTYPE;
+                  v_classe       dbops.processi.classe%TYPE;
+                  v_run_as       dbops.coda_lavori.run_as%TYPE;
+                  v_max_tent     dbops.coda_lavori.max_tentativi%TYPE;
+                  v_emittente    dbops.coda_lavori.emittente_fiscale_id%TYPE;
+                  v_id           dbops.coda_lavori.id%TYPE;
+                  v_vivo_run_as  dbops.coda_lavori.run_as%TYPE;
+                  v_vivo_emitt   dbops.coda_lavori.emittente_fiscale_id%TYPE;
+                  v_da_app       boolean;
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  v_chiamante    integer;
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  v_perimetro    bigint[];
+              BEGIN
+                  -- Scopo: la porta della coda. Valida il tipo, risolve i
+                  --   default, controlla classe e scope, scrive l'azienda del
+                  --   lavoro, accoda idempotente sui lavori vivi. SECURITY
+                  --   DEFINER: vede tutte le righe, quindi controlla da se' chi
+                  --   puo' accodare che cosa (vedi testata del changeSet).
+
+                  -- Guard parametro: job_type obbligatorio e non vuoto.
+                  IF p_job_type IS NULL OR btrim(p_job_type) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_job_type'),
+                          NULL::uuid, 'p_job_type obbligatorio');
+                  END IF;
+
+                  -- Guard: tipo registrato in coda_lavori_tipi.
+                  SELECT * INTO v_tipo
+                    FROM dbops.coda_lavori_tipi
+                   WHERE codice = p_job_type;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_JOB_TYPE_NON_TROVATO',
+                          jsonb_build_object('job_type', p_job_type),
+                          NULL::uuid, p_job_type);
+                  END IF;
+
+                  -- Guard: tipo attivo (l'handler dev'essere registrato lato BE).
+                  IF NOT v_tipo.attivo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_JOB_TYPE_NON_ATTIVO',
+                          jsonb_build_object('job_type', p_job_type),
+                          NULL::uuid, p_job_type);
+                  END IF;
+
+                  -- Default per tipo, se non passati.
+                  v_run_as   := COALESCE(p_run_as, v_tipo.run_as_default);
+                  v_max_tent := COALESCE(p_max_tentativi, v_tipo.max_tentativi_default);
+
+                  -- Guard di classe: il default del tipo e' un suggerimento che
+                  --   p_run_as sovrascrive; un lavoro di DOMINIO resta OPERATORE.
+                  --   La classe si legge dal registro dei processi, non da una
+                  --   copia. ⚠️ Sotto-select scalare: un tipo senza processo da' NULL
+                  --   e il ramo non scatta (processo_codice e' NOT NULL, ma qui non
+                  --   si assume).
+                  v_classe := (SELECT pr.classe
+                                 FROM dbops.processi pr
+                                WHERE pr.codice = v_tipo.processo_codice);
+
+                  IF v_classe = 'DOMINIO' AND v_run_as <> 'OPERATORE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro',
+                          'E_JOB_DOMINIO_SENZA_OPERATORE',
+                          jsonb_build_object('job_type', p_job_type,
+                                             'run_as', v_run_as,
+                                             'processo_codice', v_tipo.processo_codice),
+                          NULL::uuid, p_job_type, v_run_as);
+                  END IF;
+
+                  -- Guard run_as <-> scope (messaggio parlante prima del CHECK):
+                  --   un OPERATORE senza scope girerebbe senza identita'. Il caso
+                  --   simmetrico (SISTEMA con scope) lo copre il CHECK.
+                  IF v_run_as = 'OPERATORE' AND p_scope IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_scope', 'run_as', v_run_as),
+                          NULL::uuid, 'p_scope obbligatorio per run_as=OPERATORE');
+                  END IF;
+
+                  -- Un lavoro OPERATORE appartiene a un'azienda: l'emittente
+                  --   attivo di chi l'ha accodato, catturato nello scope.
+                  IF v_run_as = 'OPERATORE' THEN
+                      v_emittente := (p_scope ->> 'emittente_attivo_id')::bigint;
+                      IF v_emittente IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'dbops.fn_accoda_lavoro',
+                              'E_CODA_LAVORO_SENZA_EMITTENTE',
+                              jsonb_build_object('job_type', p_job_type,
+                                                 'parametro', 'p_scope'),
+                              NULL::uuid, p_job_type);
+                      END IF;
+                  END IF;
+
+                  -- Chi chiama. ⭐ Da una sessione dell'applicazione la porta
+                  --   controlla cio' che la policy controllerebbe; fuori la
+                  --   raggiunge solo il proprietario (l'esecuzione e' tolta a
+                  --   PUBLIC), cioe' le procedure di pgAgent e la migrazione.
+                  --   ⚠️ session_user e non current_user: qui dentro current_user
+                  --   e' il proprietario, sempre.
+                  v_da_app := CASE
+                                  WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                                WHERE rolname = 'zeroerp_app')
+                                  THEN pg_catalog.pg_has_role(session_user, 'zeroerp_app', 'MEMBER')
+                                  ELSE false
+                              END;
+
+                  IF v_da_app THEN
+                      v_chiamante := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                      v_perimetro := script.fn_get_emittenti_scope_pk_ids(v_chiamante);
+
+                      IF v_run_as = 'OPERATORE'
+                         AND (v_chiamante IS NULL
+                              OR current_setting('app.ruolo_applicativo', true) IS DISTINCT FROM 'OPERATORE'
+                              OR (p_scope ->> 'auth_user_id')::integer IS DISTINCT FROM v_chiamante
+                              OR NOT script.fn_scope_ef_perimetro(v_perimetro, v_emittente)) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'dbops.fn_accoda_lavoro', 'E_CODA_SCOPE_ALTRUI',
+                              jsonb_build_object('job_type', p_job_type,
+                                                 'emittente_fiscale_id', v_emittente,
+                                                 'scope_auth_user_id', p_scope ->> 'auth_user_id',
+                                                 'chiamante', v_chiamante),
+                              NULL::uuid, p_job_type);
+                      END IF;
+                  END IF;
+
+                  -- ⛔ D9: il ciclo dell'upsert. L'unique parziale
+                  --   uq_coda_lavori_vivo_idem assorbe il doppione vivo (stessa
+                  --   job_type + idempotency_key in PENDING/IN_CORSO); se il vivo
+                  --   si chiude fra l'INSERT e la rilettura, si riprova l'INSERT.
+                  LOOP
+                      INSERT INTO dbops.coda_lavori (
+                          job_type, payload, run_as, scope, emittente_fiscale_id,
+                          origine, priorita, stato, max_tentativi, run_after,
+                          idempotency_key
+                      ) VALUES (
+                          p_job_type,
+                          COALESCE(p_payload, '{}'::jsonb),
+                          v_run_as,
+                          p_scope,
+                          v_emittente,
+                          p_origine,
+                          COALESCE(p_priorita, 100::smallint),
+                          'PENDING',
+                          v_max_tent,
+                          p_run_after,
+                          p_idempotency_key
+                      )
+                      ON CONFLICT (job_type, idempotency_key)
+                          WHERE idempotency_key IS NOT NULL
+                            AND stato IN ('PENDING', 'IN_CORSO')
+                          DO NOTHING
+                      RETURNING id INTO v_id;
+
+                      EXIT WHEN v_id IS NOT NULL;
+
+                      -- Conflitto: il lavoro vivo con la stessa chiave.
+                      SELECT c.id, c.run_as, c.emittente_fiscale_id
+                        INTO v_id, v_vivo_run_as, v_vivo_emitt
+                        FROM dbops.coda_lavori c
+                       WHERE c.job_type = p_job_type
+                         AND c.idempotency_key = p_idempotency_key
+                         AND c.stato IN ('PENDING', 'IN_CORSO')
+                       ORDER BY c.id
+                       LIMIT 1;
+
+                      IF v_id IS NOT NULL THEN
+                          -- ⛔ La porta vede oltre la policy: restituisce solo cio'
+                          --   che chi chiama potrebbe vedere. Un lavoro SISTEMA non
+                          --   ha azienda, e lo si accoda anche da operatore.
+                          IF v_da_app
+                             AND v_vivo_run_as = 'OPERATORE'
+                             AND NOT script.fn_scope_ef_perimetro(v_perimetro, v_vivo_emitt) THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', 'dbops.fn_accoda_lavoro', 'E_CODA_CHIAVE_ALTRUI',
+                                  jsonb_build_object('job_type', p_job_type,
+                                                     'idempotency_key', p_idempotency_key),
+                                  NULL::uuid, p_job_type, p_idempotency_key);
+                          END IF;
+                          EXIT;
+                      END IF;
+                      -- Il vivo si e' chiuso nel frattempo: si riprova l'INSERT.
+                  END LOOP;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION dbops.fn_accoda_lavoro(
+                  text, jsonb, text, jsonb, text, smallint, timestamptz, integer, text) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION dbops.fn_accoda_lavoro(
+                  text, jsonb, text, jsonb, text, smallint, timestamptz, integer, text) TO zeroerp_app;
+
+              COMMENT ON FUNCTION dbops.fn_accoda_lavoro(
+                  text, jsonb, text, jsonb, text, smallint, timestamptz, integer, text) IS
+              'La porta della coda dbops.coda_lavori, l''unica. Valida il tipo (E_JOB_TYPE_NON_TROVATO, E_JOB_TYPE_NON_ATTIVO), risolve i default del tipo, tiene di DOMINIO i soli lavori OPERATORE (E_JOB_DOMINIO_SENZA_OPERATORE, la classe da dbops.processi), pretende lo scope per un OPERATORE e un''azienda nello scope (E_CODA_LAVORO_SENZA_EMITTENTE), che scrive in emittente_fiscale_id. SECURITY DEFINER: vede tutte le righe, quindi da una sessione dell''applicazione controlla cio'' che la policy controllerebbe: un lavoro OPERATORE si accoda solo con la propria identita'' e nel proprio perimetro (E_CODA_SCOPE_ALTRUI), e un lavoro vivo con la stessa chiave si restituisce solo se chi chiama potrebbe vederlo (E_CODA_CHIAVE_ALTRUI). Fuori dall''applicazione la raggiunge solo il proprietario: l''esecuzione e'' tolta a PUBLIC. Idempotente sui lavori vivi col ciclo dell''upsert: se il vivo si chiude fra l''INSERT e la rilettura, l''INSERT si riprova, e la funzione non restituisce mai un id vuoto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della scheda
+              -- auto-generata del 2026-11-07. ⛔ Non si ridà l'esecuzione a PUBLIC
+              -- qui: con la funzione ancora DEFINER aprirebbe la porta.
+              SELECT 1;

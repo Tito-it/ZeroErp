@@ -1,6 +1,6 @@
 # fn_resolve_lista_config
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 
 ### 🎯 Scopo Principale
 
@@ -36,7 +36,7 @@ ui.fn_resolve_lista_config(
 
 **2. Cascata per chiave** (dal 1-11-2026) — le quattro chiavi `colonne`, `ordinamento`, `filtri` e `pagina_dimensione` si risolvono **ognuna per conto suo**: ciascuna viene dal primo livello che la contiene.
 
-  1. Preferenza personale utente (`ui.lista_preferenza_utente`): una chiave **presente** è una scelta dell'utente; una chiave **assente** (o `null`) vuol dire «come lo standard». Si legge anche `preset_base_id`, `preset_base_data_update`, `preset_aggiornato_ignored_at` per lo step 2.5
+  1. Preferenza personale utente (`ui.lista_preferenza_utente`): una chiave **presente** è una scelta dell'utente; una chiave **assente** (o `null`) vuol dire «come lo standard». Si legge anche `preset_base_id`, `preset_base_contenuto_aggiornato_il`, `preset_aggiornato_ignored_at` per lo step 2.5
   2. Il **preset di base**: il primo, in quest'ordine, che ha almeno una colonna attiva — preset di ruolo (`ambito='ruolo'`, `profilo_accesso_id = ANY(v_profili_ids)`, il più prioritario), preset di emittente fiscale (`ambito='emittente_fiscale'`), preset di sistema (`ambito='sistema'`); sempre `is_default=TRUE` e `attivo=TRUE`. Si cerca **sempre**, anche quando c'è una preferenza: dà lo standard delle chiavi che la preferenza non ha. Un preset è completo, colonne comprese
   3. Catalogo grezzo: per le colonne, tutte quelle attive (`visibile=TRUE`, `fissata` se identificatore); `ordinamento` vuoto, `filtri` vuoti, la misura di default `PAGINA`
 
@@ -44,15 +44,15 @@ Per `pagina_dimensione` lo **standard** è la misura del preset di base se è ne
 
 > ⚠️ Fino al 31-10-2026 la cascata sceglieva **un** livello, il primo con le colonne, e da lì prendeva tutte e quattro le chiavi: una preferenza di sole colonne rispondeva ordinamento e filtri vuoti e la misura di default, scavalcando il preset. E il frontend, che salvava la configurazione risolta, congelava nella preferenza ordinamento, filtri e misura del preset di quel momento. Le preferenze esistenti sono state ripulite (changeSet `20261101-28`).
 
-**2.5 DEF-2: calcolo flag `preset_aggiornato`** — eseguito dopo la cascata. Se la preferenza utente ha `preset_base_id IS NOT NULL` e `preset_base_data_update IS NOT NULL`, legge `lista_preset.data_update` corrente del preset di base e calcola:
+**2.5 DEF-2: calcolo flag `preset_aggiornato`** — eseguito dopo la cascata. Se la preferenza utente ha `preset_base_id IS NOT NULL` e `preset_base_contenuto_aggiornato_il IS NOT NULL`, legge `lista_preset.contenuto_aggiornato_il` corrente del preset di base e calcola:
 
 ```text
 preset_aggiornato = TRUE sse:
-  (a) preset_base_data_update IS NOT NULL
-  (b) lista_preset.data_update IS NOT NULL
-  (c) lista_preset.data_update > preset_base_data_update   ← il preset è più recente dello snapshot
+  (a) preset_base_contenuto_aggiornato_il IS NOT NULL
+  (b) lista_preset.contenuto_aggiornato_il IS NOT NULL
+  (c) lista_preset.contenuto_aggiornato_il > preset_base_contenuto_aggiornato_il   ← il preset è più recente dello snapshot
   (d) preset_aggiornato_ignored_at IS NULL                 ← mai ignorato
-      OPPURE preset_aggiornato_ignored_at < lista_preset.data_update  ← preset cambiato dopo l'ultimo ignore
+      OPPURE preset_aggiornato_ignored_at < lista_preset.contenuto_aggiornato_il  ← preset cambiato dopo l'ultimo ignore
 ```
 
 In tutti gli altri casi (no preferenza, `preset_base_id IS NULL`, snapshot allineato, ignore attivo) il flag è `FALSE`.
@@ -97,7 +97,7 @@ JSONB con le chiavi:
 
 - [`ui.fn_lista_da_codice`](/dbzero/ui/funzioni/fn_lista_da_codice) — la riga della lista dal codice (passo 0)
 - `ui.lista_colonna` — catalogo colonne e flag sensibile/esportabile
-- `ui.lista_preset` + `ui.lista_preset_colonna` — configurazioni predefinite; il loro `data_update` è la data dell'ultimo cambio del contenuto (vedi [ui.lista_preset](/dbzero/ui/tabelle/lista_preset))
+- `ui.lista_preset` + `ui.lista_preset_colonna` — configurazioni predefinite; il loro `contenuto_aggiornato_il` è la data dell'ultimo cambio del contenuto (vedi [ui.lista_preset](/dbzero/ui/tabelle/lista_preset))
 - `ui.lista_preferenza_utente` — preferenza personale
 - `ui.lista_colonna_permesso` — permessi a livello colonna
 - `script.fn_get_profili_accesso_applicabili` — risoluzione profili (passo 1 e preset di ruolo)
@@ -113,3 +113,9 @@ SELECT ui.fn_resolve_lista_config('anagrafiche.clienti', 42, 1);
 -- Variante senza contesto emittente (admin globale)
 SELECT ui.fn_resolve_lista_config('vendite.fatture', 42, NULL);
 ```
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — il flag `preset_aggiornato` legge `lista_preset.contenuto_aggiornato_il` e lo snapshot rinominato (`brief-db-revisione-dbops`, giro 7-bis blocco c). Il JSON in uscita non cambia.

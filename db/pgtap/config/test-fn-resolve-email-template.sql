@@ -22,6 +22,8 @@
 --  9)  livello 2 ha priorita' su livello 3
 -- 10)  template inattivo ignorato → fallback
 -- 11)  codice inesistente → NULL
+-- 12)  codice in minuscolo → trovato: config.email_template salva il codice
+--       in maiuscolo (CODICE_MAIUSCOLO), la ricerca lo normalizza (20261104-38)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -41,7 +43,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ============================================================
 -- 0. Setup: raccolta riferimenti e creazione template di test
@@ -242,6 +244,15 @@ SELECT is(
     config.fn_resolve_email_template('CODICE_CHE_NON_ESISTE_MAI'),
     NULL::jsonb,
     'fn_resolve: codice inesistente → NULL'
+);
+
+-- ============================================================
+-- 12) Codice in minuscolo → trovato (20261104-38)
+-- ============================================================
+SELECT is(
+    (config.fn_resolve_email_template(' _pgtap_test_tpl '))->>'oggetto',
+    'Oggetto sistema it',
+    'fn_resolve: il codice in minuscolo e con spazi trova lo stesso template'
 );
 
 SELECT * FROM finish();

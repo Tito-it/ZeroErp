@@ -66,6 +66,13 @@ Lo schema `acquisti` ha gia' ordini e DDT con il pattern fornitore consolidato:
 controparte via `soggetto_ruolo_id` (ruolo FORNITORE), serie/numero/anno,
 `sorgente_tipo_id` + `sorgente_uid` per tracciabilita' documento sorgente.
 
+> ⚠️ **Allineamento (2026-11-08).** La provenienza ha ora un modello solo (`brief-db-sorgente-documento-e-riga`,
+> guida [Sorgente polimorfa](../../guide/sorgente-polimorfa.md), `linee-guida-sql` §6e): il tipo, **una** chiave
+> del documento tipizzata (`sorgente_id` o `sorgente_uid`, secondo il tipo), la riga in `sorgente_riga`, il `CHECK`
+> di forma, il BB che scrive e il guard unico. Le tabelle d'acquisto di oggi sono ancora nella grammatica precedente
+> e passano al modello col cantiere `acquisti` (`analisi-simmetria-ordini-acquisto` §4.6-bis): il preventivo
+> d'acquisto nasce già nel modello, e il legame ordine → preventivo qui sotto si legge così.
+
 Il preventivo di acquisto (RFQ — Richiesta di Preventivo) segue lo stesso pattern.
 E' il documento che precede l'ordine fornitore, come il preventivo di vendita
 precede la commessa/fatturazione.

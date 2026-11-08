@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -186,12 +186,12 @@ catalogo, e l'operatore non può cambiarla sulla riga.
 > *destinazione*: `MERCE → ordine`, `SERVIZIO_UNA_TANTUM → commessa`,
 > `SERVIZIO_RICORRENTE → contratto`. Quando aggiungi una riga, il sistema copia e
 > **congela** la natura dall'articolo sulla riga
-> ([`script.trgfn_righe_natura_vendita`](/dbzero/script/manual/trgfn_righe_natura_vendita)).
+> ([`script.trgfn_righe_natura_vendita`](/dbzero/script/funzioni/trgfn_righe_natura_vendita)).
 > Se la destinazione è `CONTRATTO`, l'inserimento è bloccato subito con l'errore
 > `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`; lo stesso vale per un articolo «solo
 > componente», che si vende solo dentro il suo kit, e per un kit senza componenti
 > (dal 2026-10-14), che va prima completato. Le regole stanno in un controllo
-> unico ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)),
+> unico ([`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga)),
 > sono *data-driven* (valgono per qualunque natura mappata a contratto) e scattano
 > all'inserimento, non alla conferma. Le destinazioni operative del preventivo
 > sono quindi solo **ordine** e **commessa**.
@@ -784,8 +784,18 @@ PRV-0042 è morta, ne emetti un'altra (PRV-0043).
 
 Va ricordato che l'annullamento manuale è disponibile **solo da DRAFT**: da EMESSO
 in poi non esiste un "Annulla", la chiusura semantica passa dal **rifiuto** o dalla
+**scadenza**. L'eliminazione fisica (hard-delete) è possibile solo su una **bozza vuota**:
+in DRAFT e senza righe attive. È la regola di tutti i documenti di vendita, e la fa valere il
+database ([vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza)),
+per ogni strada che cancella: un preventivo emesso non si cancella (`E_DELETE_DOC_NON_BOZZA`),
+una bozza con righe nemmeno (`E_DELETE_DOC_CON_RIGHE`) — si tolgono le righe, o si annulla.
+Neanche una bozza vuota si cancella se qualcosa ne dichiara la provenienza — una pratica che la
+collega, un ordine che ne nasce, una stampa: lo dice `E_SORG_ORIGINE_REFERENZIATA`
+([sorgente polimorfa](/guide/sorgente-polimorfa), il lato «in uscita»).
 **scadenza**. L'eliminazione fisica (hard-delete) è possibile solo su una **bozza
-priva di righe e pratiche**; una bozza con righe non si cancella, si annulla.
+priva di righe**; una bozza con righe non si cancella, si annulla. La regola la
+giudica il database (`E_DELETE_DOC_NON_BOZZA`, `E_DELETE_DOC_CON_RIGHE`), e dal
+2026-11-08 una pratica collegata non impedisce più l'eliminazione.
 
 ---
 
@@ -811,6 +821,9 @@ Codici lanciati dal dominio preventivi (registrati in `error_policies`):
 | `E_DOC_PREZZO_PENDENTE`                     | 409  | Emissione o accettazione con un prezzo in attesa di approvazione (§6.4)               |
 | `E_DOC_PREZZO_RIFIUTATO`                    | 409  | Emissione o accettazione con un prezzo rifiutato (§6.4)                               |
 | `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`     | 400  | Riga con natura ricorrente (destinazione CONTRATTO): usa l'offerta commerciale (§2.2) |
+| `E_DELETE_DOC_NON_BOZZA`                    | 409  | Eliminazione di un preventivo uscito dalla bozza: si rifiuta, scade o si annulla da DRAFT |
+| `E_DELETE_DOC_CON_RIGHE`                    | 409  | Eliminazione di una bozza con righe attive                                              |
+| `E_SORG_ORIGINE_REFERENZIATA`               | 409  | Eliminazione di un preventivo da cui nasce qualcosa (una pratica, un ordine, una stampa) |
 
 `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` è **ritirato** dal 2026-09-24: bloccava solo
 l'accettazione e solo per i prezzi in attesa. Lo sostituiscono i due `E_DOC_PREZZO_*`.

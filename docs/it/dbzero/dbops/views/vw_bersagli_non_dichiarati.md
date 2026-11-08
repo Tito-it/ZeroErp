@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_bersagli_non_dichiarati.md" %}
 # 🔍 View `vw_bersagli_non_dichiarati`
 
 > 📝 **Descrizione**
@@ -22,11 +23,11 @@ SELECT m.m[1] AS tipo,
     string_agg(DISTINCT (((n.nspname)::text || '.'::text) || (p.proname)::text), ', '::text ORDER BY (((n.nspname)::text || '.'::text) || (p.proname)::text)) AS funzioni
    FROM (((pg_proc p
      JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
-     CROSS JOIN LATERAL regexp_matches(regexp_replace(p.prosrc, '--[^\n]*'::text, ''::text, 'g'::text), '''tipo''\s*,\s*''([A-Z][A-Z0-9_]{0,30})'''::text, 'g'::text) m(m))
+     CROSS JOIN LATERAL regexp_matches((dbops.fn_corpo_funzione(p.oid) COLLATE "C"), '''tipo''\s*,\s*''([A-Z][A-Z0-9_]{0,30})'''::text, 'g'::text) m(m))
      LEFT JOIN config.tipi_entita te ON ((te.codice = m.m[1])))
   WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
            FROM pg_language
-          WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~~ '%bersaglio%'::text) AND ((te.codice IS NULL) OR (te.obsoleto_dal <= ( SELECT script.fn_data_operativa() AS fn_data_operativa))))
+          WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~~ '%bersaglio%'::text) AND ((te.codice IS NULL) OR script.fn_e_obsoleto(te.obsoleto_dal)))
   GROUP BY m.m[1],
         CASE
             WHEN (te.codice IS NULL) THEN 'ASSENTE'::text

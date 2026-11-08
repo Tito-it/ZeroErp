@@ -6,7 +6,7 @@ search:
 # Schema `documenti`
 
 ## 📚 Tabelle
-- [documenti_generati](tabelle/documenti_generati.md) — (latest review 29-04-2026) `documenti.documenti_generati` è il **registro storico delle generazioni persistite** del motore documentale. Ogni riga rappresenta un documento prodotto, con snapshot del contesto, hash di audit e collegamento alla versione template usata.
+- [documenti_generati](tabelle/documenti_generati.md) — `documenti.documenti_generati` è il **registro storico delle generazioni persistite** del motore documentale. Ogni riga rappresenta un documento prodotto, con snapshot del contesto, hash di audit e collegamento alla versione template usata.
 - [documenti_generati_eventi](tabelle/documenti_generati_eventi.md) — (introdotta 03-05-2026, anticipo Fase B → v1)
 - [documenti_generati_file](tabelle/documenti_generati_file.md) — (latest review 29-04-2026) `documenti.documenti_generati_file` conserva i **file persistiti** collegati a un documento già generato, separando il record storico logico dalla memorizzazione fisica del file.
 - [formati_pagina](tabelle/formati_pagina.md)
@@ -34,7 +34,7 @@ search:
 - [trgfn_documenti_generati_eventi_block_update](funzioni/trgfn_documenti_generati_eventi_block_update.md)
 - [trgfn_documenti_generati_file_protect_file](funzioni/trgfn_documenti_generati_file_protect_file.md)
 - [trgfn_documenti_generati_guard_versione_contesto](funzioni/trgfn_documenti_generati_guard_versione_contesto.md)
-- [trgfn_documenti_generati_protect_snapshot](funzioni/trgfn_documenti_generati_protect_snapshot.md)
+- [trgfn_documenti_generati_protect_snapshot](funzioni/trgfn_documenti_generati_protect_snapshot.md) — Trigger function `BEFORE UPDATE` su `documenti.documenti_generati` che blocca la modifica di **tutti i campi snapshot** del record di generazione.
 - [trgfn_template_asset_block_delete](funzioni/trgfn_template_asset_block_delete.md)
 - [trgfn_template_asset_protect_file](funzioni/trgfn_template_asset_protect_file.md)
 - [trgfn_template_documenti_versioni_block_delete](funzioni/trgfn_template_documenti_versioni_block_delete.md)

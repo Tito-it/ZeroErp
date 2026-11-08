@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_ritira_commessa_attivita_da_sorgente`
 
 ```sql
-CREATE FUNCTION fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_motivo text, p_commessa_id bigint)
+CREATE FUNCTION fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid, p_motivo text, p_commessa_id bigint)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,13 +12,12 @@ CREATE FUNCTION fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigin
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_motivo text, p_commessa_id bigint DEFAULT NULL::bigint)
+CREATE OR REPLACE FUNCTION vendite.fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid, p_motivo text, p_commessa_id bigint DEFAULT NULL::bigint)
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_motivo   text;
-    v_uid      vendite.commesse_attivita.sorgente_uid%TYPE;
     v_prima    jsonb;
     v_ritirate integer := 0;
 BEGIN
@@ -55,12 +54,12 @@ BEGIN
     --   fn_annulla_commessa_attivita, per la rettifica
     --   fn_annulla_accredito_riga_reso.
     --
-    -- ⛔ LA CHIAVE e' `<testata>.uid::text`, quella che le cinque
-    --   fn_list_*_da_pushare scrivono in
-    --   commesse_attivita.sorgente_uid. NON e' quella di
-    --   commesse_sorgenti, che varia per sorgente. Passare la
-    --   chiave sbagliata non solleva niente: ritira ZERO righe.
-    --   Per questo la funzione restituisce il conteggio.
+    -- ⛔ LA CHIAVE e' quella del modello: tipo + sorgente_id o
+    --   sorgente_uid, con la regola d'incontro. Chi ha il
+    --   documento passa il suo id e il suo uid (la colonna che il
+    --   key_selector non usa e' NULL nella riga e non incontra
+    --   niente). Una chiave sbagliata non solleva: ritira ZERO
+    --   righe, ed e' per questo che si restituisce il conteggio.
     -- =========================================================
     IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -71,14 +70,16 @@ BEGIN
             NULL::uuid, 'p_sorgente_tipo_id');
     END IF;
 
-    v_uid := btrim(COALESCE(p_sorgente_uid, ''));
-    IF v_uid = '' THEN
+    -- Una chiave almeno; un id, se c'e', positivo.
+    IF (p_sorgente_id IS NULL AND p_sorgente_uid IS NULL)
+       OR p_sorgente_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_ritira_commessa_attivita_da_sorgente',
             'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
-            jsonb_build_object('parametro', 'p_sorgente_uid',
-                               'valore',    p_sorgente_uid),
-            NULL::uuid, 'p_sorgente_uid');
+            jsonb_build_object('parametro', 'p_sorgente_id',
+                               'valore',    p_sorgente_id,
+                               'sorgente_uid', p_sorgente_uid),
+            NULL::uuid, 'p_sorgente_id / p_sorgente_uid');
     END IF;
 
     IF p_commessa_id IS NOT NULL AND p_commessa_id <= 0 THEN
@@ -114,7 +115,7 @@ BEGIN
     PERFORM 1
        FROM vendite.commesse_attivita ca
       WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
-        AND ca.sorgente_uid     = v_uid
+        AND (ca.sorgente_id = p_sorgente_id OR ca.sorgente_uid = p_sorgente_uid)
         AND ca.stato_emissione  = 'NON_EMESSA'
         -- rev 2026-10-12: limitato a una commessa, se chiesto (vedi la
         -- testa). Filtro residuo: l'accesso resta dalla sorgente.
@@ -133,7 +134,7 @@ BEGIN
       INTO v_prima
       FROM vendite.commesse_attivita ca
      WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
-       AND ca.sorgente_uid     = v_uid
+       AND (ca.sorgente_id = p_sorgente_id OR ca.sorgente_uid = p_sorgente_uid)
        AND ca.stato_emissione  = 'NON_EMESSA'
        -- rev 2026-10-12: limitato a una commessa, se chiesto (vedi la
        -- testa). Filtro residuo: l'accesso resta dalla sorgente.
@@ -151,7 +152,7 @@ BEGIN
     UPDATE vendite.commesse_attivita ca
        SET stato_emissione = 'ANNULLATA'
      WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
-       AND ca.sorgente_uid     = v_uid
+       AND (ca.sorgente_id = p_sorgente_id OR ca.sorgente_uid = p_sorgente_uid)
        AND ca.stato_emissione  = 'NON_EMESSA'
        -- rev 2026-10-12: limitato a una commessa, se chiesto (vedi la
        -- testa). Filtro residuo: l'accesso resta dalla sorgente.
@@ -173,7 +174,8 @@ BEGIN
            jsonb_build_object(
                'motivo',             v_motivo,
                'sorgente_tipo_id',   p_sorgente_tipo_id,
-               'sorgente_uid',       v_uid,
+               'sorgente_id',        p_sorgente_id,
+               'sorgente_uid',       p_sorgente_uid,
                'stato_precedente',   e -> 'stato_precedente',
                'segment_key',        e -> 'segment_key',
                'prezzo_snapshot',    e -> 'prezzo_snapshot',
@@ -185,8 +187,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_motivo text, p_commessa_id bigint)
-IS 'IL RITIRO: il documento riprende cio'' che aveva spinto. Porta ad ANNULLATA le sole righe di vendite.commesse_attivita in NON_EMESSA della sorgente indicata, e scrive una riga di vendite.commesse_attivita_log (evento RIGA_RITIRATA_DA_SORGENTE) per ciascuna. Restituisce quante ne ha ritirate. ⭐ E'' l''OGGETTO di una promessa che il modello faceva gia'' per iscritto: il guard 4 di fn_annulla_commessa_attivita dice «per una riga da push il rimedio e'' SEMPRE a monte, sul documento» — e fino al 2026-08-26 a monte non c''era nessun rimedio, perche'' annullare il documento fermava i push FUTURI e non ritirava cio'' che era gia'' passato. ⭐ Le due funzioni sono COMPLEMENTARI e non in contraddizione: fn_annulla_commessa_attivita rifiuta le righe CON sorgente e lavora sulle sourceless, questa lavora SOLO su quelle con sorgente. ⛔ NON tocca le righe EMESSA: sono in volo verso una fattura, e a fermare la chiusura ci pensa script.fn_check_sorgente_chiudibile — la via d''uscita per l''operatore e'' «Riporta da emettere» (L5), che le riporta a NON_EMESSA e le rende ritirabili. ⛔ NON tocca le ANNULLATA: sono uscite di proposito. ⚠️ E NON raggiunge le righe SOURCELESS — ONERE e RETTIFICA — perche'' non hanno sorgente: e'' corretto, e la via per loro e'' rispettivamente fn_annulla_commessa_attivita e fn_annulla_accredito_riga_reso. E'' la stessa distinzione ORIGINE/NATURA che ha morso il dominio il 2026-08-20. ⛔ LA CHIAVE e'' <testata>.uid::text, cioe'' quella che le cinque fn_list_*_da_pushare scrivono in commesse_attivita.sorgente_uid (verificato sui corpi). ⚠️ NON e'' la chiave di vendite.commesse_sorgenti, che VARIA per sorgente (uid per il preventivo, id::text per l''ordine): passare quella sbagliata non solleva niente e ritira ZERO righe, cioe'' un ritiro che non ritira — ed e'' per questo che la funzione restituisce il conteggio e chi la chiama deve guardarlo. ⚠️ Il MOTIVO e'' obbligatorio, come per l''annullamento manuale: ANNULLATA e'' irreversibile (fn_approva_commessa_attivita la filtra e non esiste ripristino) e l''unica traccia del perche'' e'' l''evento di log. ⭐ Qui vale il doppio, perche'' chi chiude il documento non sta guardando la commessa e il ritiro e'' per lui un effetto a distanza: un ritiro senza registro renderebbe «il lavoro e'' sparito» indistinguibile da un difetto. ⚠️ Il predicato e'' scritto in positivo (= NON_EMESSA) e non come «<> EMESSA»: se domani il CHECK ammettesse un quarto stato, il default resta il non toccarlo. Piano: brief-db-lavoro-che-non-torna-indietro, L7 / Q-5'' strada A. ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-1): quarto parametro p_commessa_id, in coda e DEFAULT NULL (DROP + CREATE: firma nuova). NULL = tutte le commesse della sorgente, com''era: e'' l''annullo del DOCUMENTO, che riprende tutto cio'' che ha spinto. Valorizzato = le sole righe di quella commessa: e'' l''annullo della COMMESSA (vendite.fn_documento_ritira_legami), dove una sorgente puo'' avere righe vive in un''altra commessa che non c''entra. Filtro residuo: l''accesso resta dalla coppia sorgente. Valore <= 0: E_RITIRO_SORGENTE_PARAMETRO_MANCANTE.';
+COMMENT ON FUNCTION vendite.fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid, p_motivo text, p_commessa_id bigint)
+IS 'Il ritiro: il documento riprende cio'' che aveva spinto in commessa. Porta ad ANNULLATA le sole righe di vendite.commesse_attivita in NON_EMESSA che vengono dal documento indicato, e scrive una riga di vendite.commesse_attivita_log (evento RIGA_RITIRATA_DA_SORGENTE) per ciascuna. Restituisce quante ne ha ritirate. Il documento si passa con le colonne del modello (tipo, sorgente_id, sorgente_uid) e si cerca con la regola d''incontro (sorgente_id = p_sorgente_id OR sorgente_uid = p_sorgente_uid): chi ha il documento passa il suo id e il suo uid. Una chiave sbagliata non solleva: ritira zero righe, e il conteggio lo dice. p_commessa_id NULL = tutte le commesse del documento (l''annullo del documento); valorizzato = le sole righe di quella commessa (l''annullo della commessa, vendite.fn_documento_ritira_legami). Non tocca le righe EMESSA (in volo verso una fattura: la chiusura la ferma script.fn_check_sorgente_chiudibile, e la via d''uscita e'' «Riporta da emettere»), ne'' le ANNULLATA, ne'' le righe senza documento (ONERE, RETTIFICA: per loro ci sono vendite.fn_annulla_commessa_attivita e vendite.fn_annulla_accredito_riga_reso), complementare a vendite.fn_annulla_commessa_attivita, che lavora solo su quelle. Il motivo e'' obbligatorio: ANNULLATA e'' irreversibile, e l''evento di log e'' l''unica traccia del perche''. Il predicato e'' in positivo (= NON_EMESSA): uno stato nuovo resta non toccato. Solleva E_RITIRO_SORGENTE_PARAMETRO_MANCANTE su tipo, chiave, motivo o commessa mancanti o <= 0.';
 ```
 
 </div>

@@ -33,9 +33,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_modalita_addebito_trasporto_a10_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt', 'modalita_addebito_trasporto_id', 'id', 'attivo')` |
+| trg_modalita_addebito_trasporto_a10_ddt_block_deact_upd_5ff5b6 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt', 'modalita_addebito_trasporto_id', 'id', 'attivo')` |
+| trg_modalita_addebito_trasporto_a10_ddt_block_deact_upd_965d8f | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'modalita_addebito_trasporto_id', 'id', 'attivo')` |
 | trg_modalita_addebito_trasporto_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_modalita_addebito_trasporto_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini', 'modalita_addebito_trasporto_id', 'id', 'attivo')` |
+| trg_modalita_addebito_trasporto_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_modalita_addebito_trasporto_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 
 ---
 {% include-markdown "signature-core.md" %}

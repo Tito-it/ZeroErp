@@ -11,7 +11,7 @@
 #          un cast sbagliato (nome del tipo, schema) i mock non lo vedono.
 #
 # Indice test (0..N):
-#   0. test_set_con_i_tre_cast_audit_e_where
+#   0. test_set_con_i_tre_cast_senza_audit_e_where
 #   1. test_chiave_fuori_whitelist_rifiutata
 #   2. test_payload_vuoto_nessuna_query
 #   3. test_i_tre_cast_legano_sul_db_vero                 (E2E)
@@ -36,10 +36,11 @@ class UpdateColonnaSqlTests(unittest.TestCase):
         cursore.rowcount = 1
         with patch(_BB) as conn:
             conn.cursor.return_value.__enter__.return_value = cursore
-            esito = UiAdminRepository().update_colonna(9, data, user_update="tester")
+            esito = UiAdminRepository().update_colonna(9, data)
         return esito, cursore
 
-    def test_set_con_i_tre_cast_audit_e_where(self) -> None:
+    # L'audit non compare: lo scrive il trigger del DB (BE11, 2026-11-08).
+    def test_set_con_i_tre_cast_senza_audit_e_where(self) -> None:
         esito, cursore = self._sql({
             "etichetta": " Et ", "tipo_colonna": "informazione",
             "tipo_dato": "testo", "allineamento": "right",
@@ -50,10 +51,9 @@ class UpdateColonnaSqlTests(unittest.TestCase):
             sql,
             "UPDATE ui.lista_colonna SET etichetta = %s, "
             "tipo_colonna = %s::ui.tipo_colonna, tipo_dato = %s::ui.tipo_dato, "
-            "allineamento = %s::ui.allineamento_colonna, user_update = %s, "
-            "data_update = now() WHERE id = %s",
+            "allineamento = %s::ui.allineamento_colonna WHERE id = %s",
         )
-        self.assertEqual(params, ["Et", "informazione", "testo", "right", "tester", 9])
+        self.assertEqual(params, ["Et", "informazione", "testo", "right", 9])
 
     # ⛔ Il SET a mano scartava `lista_id` (e qualunque altra chiave) in
     #    silenzio. Ora e' un errore di programmazione: il service la
@@ -61,12 +61,12 @@ class UpdateColonnaSqlTests(unittest.TestCase):
     def test_chiave_fuori_whitelist_rifiutata(self) -> None:
         with patch(_BB) as conn:
             with self.assertRaises(RuntimeError):
-                UiAdminRepository().update_colonna(9, {"lista_id": 3}, user_update="t")
+                UiAdminRepository().update_colonna(9, {"lista_id": 3})
             conn.cursor.assert_not_called()
 
     def test_payload_vuoto_nessuna_query(self) -> None:
         with patch(_BB) as conn:
-            self.assertFalse(UiAdminRepository().update_colonna(9, {}, user_update="t"))
+            self.assertFalse(UiAdminRepository().update_colonna(9, {}))
             conn.cursor.assert_not_called()
 
 
@@ -111,7 +111,6 @@ class UpdateColonnaCastDbTests(unittest.TestCase):
                     "tipo_colonna": tipo_colonna, "tipo_dato": tipo_dato,
                     "allineamento": altro[0],
                 },
-                user_update="test_update_colonna_cast",
             )
             with connection.cursor() as cur:
                 cur.execute(

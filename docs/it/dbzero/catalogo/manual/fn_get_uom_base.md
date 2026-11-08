@@ -1,75 +1,58 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_get_uom_base`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento Tabelle**   
-> • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)    
-> • [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)    
+> Approfondimento tabelle:
 >
-**Approfondimento Funzioni**  
-> • [`catalogo.fn_get_uom_factor`](/dbzero/catalogo/funzioni/fn_get_uom_factor)     
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — la colonna `uom_id` che la funzione legge
+> * [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura) — l'unità restituita
+>
+> Approfondimento funzioni:
+>
+> * [catalogo.fn_get_uom_factor](/dbzero/catalogo/funzioni/fn_get_uom_factor) — il suo unico chiamante nel database
+> * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — legge l'unità base da sé, senza passare di qui
 
 ---
+
 ### 🎯 Scopo Principale
-(latest updates 13-01-26)
-La funzione **`catalogo.fn_get_uom_base(p_articolo_id)`** ritorna la **UoM base** dell’articolo, leggendo il campo `catalogo.articoli.uom_id`.
 
-Se l’articolo non esiste o non ha UoM base, ritorna `NULL`.
-
----
-
-### Logica di calcolo
-
-1. Cerca `catalogo.articoli.uom_id` per `p_articolo_id`.
-2. Se trovato → ritorna l’ID della UoM base.
-3. Se non trovato → ritorna `NULL`.
+Restituisce l'unità di misura base di un articolo, cioè il suo `articoli.uom_id`. Se
+l'articolo non esiste restituisce NULL, e il chiamante decide se è un errore.
 
 ---
 
-### Esempi d’uso
+### NULL vuol dire «articolo che non c'è»
 
-**1) Recupero UoM base**
+`articoli.uom_id` è obbligatorio, quindi un articolo che esiste ha sempre un'unità base: la
+funzione restituisce NULL solo quando l'id non corrisponde a nessun articolo (o l'articolo
+non è visibile a chi la chiama). Il COMMENT parla anche di articolo «senza UoM», ma è un caso
+che il modello non ammette.
 
-```sql
-SELECT catalogo.fn_get_uom_base(:articolo_id);
-```
-
-**2) Uso con fallback applicativo**
-
-```sql
-WITH base AS (
-  SELECT catalogo.fn_get_uom_base(:articolo_id) AS uom_base_id
-)
-SELECT CASE
-  WHEN uom_base_id IS NULL THEN 'UoM base non definita'
-  ELSE 'UoM base = ' || uom_base_id::text
-END
-FROM base;
-```
-
-**3) Recupero codice UoM base**
-
-```sql
-SELECT u.codice
-FROM catalogo.articoli a
-JOIN catalogo.unita_misura u ON u.id = catalogo.fn_get_uom_base(a.id)
-WHERE a.id = :articolo_id;
-```
-
-**4) Articoli senza UoM base**
-
-```sql
-SELECT a.id, a.codice, a.descrizione
-FROM catalogo.articoli a
-WHERE catalogo.fn_get_uom_base(a.id) IS NULL;
-```
+L'unità base di un articolo non cambia dopo la creazione: `articoli.uom_id` è bloccato.
 
 ---
 
-### Best practice
+### Chi la usa
 
-* Assicurati che `catalogo.articoli.uom_id` sia valorizzato per gli articoli gestiti in magazzino/fatturazione.
-* Gestisci `NULL` a livello applicativo quando l’articolo non ha UoM base.
+Nel database la chiama solo `fn_get_uom_factor`, come primo passo. Il calcolo della
+quantità sulle righe di vendita (`script.trgfn_qta_from_operativa`) l'unità base la legge
+direttamente da `articoli`, quando la riga non dice l'unità. Fuori dal database la chiama
+solo un metodo del repository del backend, che a sua volta non ha chiamanti.
+
+---
+
+### Test
+
+* `db/pgtap/catalogo/test-fn-get-uom.sql` — restituisce l'unità base di due articoli
+  costruiti dal test.
+
+---
+
+### Note di migrazione
+
+* 2025-11-03 — nasce insieme a `fn_get_uom_factor`.
 
 ---
 

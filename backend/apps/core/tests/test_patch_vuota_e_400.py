@@ -107,7 +107,10 @@ def _casi() -> list[tuple[str, str, str, Callable[[], Any], Callable[[MagicMock]
 class PatchVuotaTests(TestCase):
     def test_ogni_patch_vuota_e_400_e_non_scrive(self) -> None:
         for nome, bersaglio, scrittura, chiamata, prepara in _casi():
-            with self.subTest(patch=nome), patch(bersaglio) as classe:
+            # ⛔ `autospec`: senza, `getattr(repo, scrittura)` su un nome che il
+            #    repository non ha crea un mock nuovo, mai chiamato, e
+            #    `assert_not_called` passa a vuoto (anche dopo una rinomina).
+            with self.subTest(patch=nome), patch(bersaglio, autospec=True) as classe:
                 repo = classe.return_value
                 prepara(repo)
                 with self.assertRaises(ServiceError) as ctx:

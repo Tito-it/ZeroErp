@@ -12,7 +12,7 @@
 | auth_user_id | integer | NO |  |
 | lista_id | integer | NO |  |
 | preset_base_id | integer | YES |  |
-| preset_base_data_update | timestamp with time zone | YES |  |
+| preset_base_contenuto_aggiornato_il | timestamp with time zone | YES |  |
 | configurazione | jsonb | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | YES |  |

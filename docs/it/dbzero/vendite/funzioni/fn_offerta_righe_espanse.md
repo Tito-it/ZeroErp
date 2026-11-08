@@ -13,7 +13,7 @@ CREATE FUNCTION fn_offerta_righe_espanse(p_offerta_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
- RETURNS TABLE(articolo_id uuid, articolo_codice character varying, descrizione character varying, is_composito boolean, quantita numeric, uom_operativa_id bigint, qta_operativa numeric, factor_to_base numeric, prezzo_unitario numeric, sconto_percentuale numeric, iva_id integer, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, componenti jsonb)
+ RETURNS TABLE(articolo_id uuid, articolo_codice character varying, descrizione character varying, is_composito boolean, quantita numeric, uom_operativa_id bigint, qta_operativa numeric, factor_to_base numeric, prezzo_unitario numeric, sconto_percentuale numeric, iva_id integer, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, componenti jsonb, eccezione_id bigint)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -70,7 +70,8 @@ BEGIN
             WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN 'OVERRIDE'
             ELSE                                      'DA_LISTINO'
         END::varchar,
-        base.componenti
+        base.componenti,
+        ecc.id
       FROM vendite.fn_espandi_listino_versione(
                v_listino_versione_id, v_tipo_var, v_valore_var
            ) base
@@ -100,7 +101,8 @@ BEGIN
         a.iva_id::integer,
         ecc.tipo_eccezione,
         'AGGIUNTA'::varchar,
-        NULL::jsonb
+        NULL::jsonb,
+        ecc.id
       FROM vendite.offerte_commerciali_eccezioni ecc
       JOIN catalogo.articoli a
         ON a.id = ecc.articolo_id AND a.is_composito = FALSE AND a.attivo = TRUE
@@ -140,7 +142,8 @@ BEGIN
               JOIN catalogo.unita_misura umf ON umf.id = af.uom_id
              WHERE oecc_c.eccezione_offerta_id = ecc.id
                AND oecc_c.attivo               = TRUE
-        )
+        ),
+        ecc.id
       FROM vendite.offerte_commerciali_eccezioni ecc
       JOIN catalogo.articoli a
         ON a.id = ecc.articolo_id AND a.is_composito = TRUE AND a.attivo = TRUE
@@ -151,7 +154,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
-IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto_percentuale NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. Versione operativa e variazione da vendite.fn_documento_listino_operativo(''OFFERTA'', id) (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende: sede unica con la lista delle righe e coi guard). Non e'' la lista del drawer: quella e'' vendite.fn_offerta_righe_preview. ⭐ rev 2026-10-19 (20261019-25, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE.';
+IS 'Le righe che riceve un ordine generato dall''offerta, nell''ordine in cui le copia vendite.fn_genera_ordine_da_offerta. Prima le righe del listino operativo dell''offerta (versione e variazione globale da vendite.fn_documento_listino_operativo, espanse da vendite.fn_espandi_listino_versione), con sopra le eccezioni OVERRIDE (il prezzo) e ADESIONE (la quantita''), senza le ESCLUSE; poi le AGGIUNTE, semplici e composte (componenti da offerte_commerciali_eccezioni_componenti). iva_id e'' quella dell''articolo; sconto_percentuale e'' NULL, perche'' il prezzo e'' gia'' netto; senza eccezione la quantita'' e'' 1. origine dice da dove viene il prezzo (DA_LISTINO, OVERRIDE, AGGIUNTA). eccezione_id e'' la riga di offerte_commerciali_eccezioni da cui la riga viene, NULL per la riga del solo listino: e'' la sorgente_riga della riga d''ordine. Offerta assente o fuori perimetro: nessuna riga. Non e'' la lista del drawer, che e'' vendite.fn_offerta_righe_preview. STABLE, SECURITY INVOKER.';
 ```
 
 </div>

@@ -16,3 +16,6 @@ dbops,idempotency_keys
 dbops,request_log
 dbops,error_log
 dbops,audit_log
+shop,*all
+dbops,ai_query_log
+ui,*all

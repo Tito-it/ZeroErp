@@ -34,17 +34,17 @@ AS $function$
 --    valle cio' che il livello a monte aveva gia' risolto.
 DECLARE
     v_sorgente_codice  config.sorgenti.codice_interno%TYPE;
-    v_sorgente_uid     vendite.attivita_fatturabili.sorgente_uid%TYPE;
+    -- La chiave del documento d'origine, nelle due specie del modello: l'ordine
+    -- e il preventivo sono le sole origini che il livello 1 legge, e hanno uid.
+    v_sorgente_id      vendite.commesse_attivita.sorgente_id%TYPE;
+    v_sorgente_uid     vendite.ordini.uid%TYPE;
     v_commessa_id      vendite.commesse.id%TYPE;
     v_ba_fattura_id    anagrafiche.billing_account.id%TYPE;
     v_termine          config.termini_pagamento.id%TYPE;
     v_modalita         config.modalita_pagamento.id%TYPE;
     v_liv_termine      config.termini_pagamento.id%TYPE;
     v_liv_modalita     config.modalita_pagamento.id%TYPE;
-    -- T.2: risoluzione della sorgente EFFETTIVA (vedi blocco piu' sotto).
     v_ca_id            vendite.attivita_fatturabili.commessa_attivita_id%TYPE;
-    v_src_codice       config.sorgenti.codice_interno%TYPE;
-    v_src_uid          vendite.commesse_attivita.sorgente_uid%TYPE;
 BEGIN
     -- Guard: id numerico obbligatorio e positivo (linee-guida-sql).
     IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
@@ -58,15 +58,12 @@ BEGIN
     -- BA della FATTURA = padre se c'e', stessa espressione di
     -- fn_build_fattura_key: le condizioni sono di chi riceve il
     -- documento, non del conto figlio che ha generato la riga.
-    SELECT s.codice_interno,
-           a.sorgente_uid,
-           a.commessa_id,
+    SELECT a.commessa_id,
            a.commessa_attivita_id,
            COALESCE(ba.parent_account_id, a.billing_account_id)
-      INTO v_sorgente_codice, v_sorgente_uid, v_commessa_id, v_ca_id, v_ba_fattura_id
+      INTO v_commessa_id, v_ca_id, v_ba_fattura_id
       FROM vendite.attivita_fatturabili a
       JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id
-      LEFT JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
      WHERE a.id = p_attivita_id;
 
     IF v_ba_fattura_id IS NULL THEN
@@ -77,43 +74,21 @@ BEGIN
         );
     END IF;
 
-    -- ── Sorgente EFFETTIVA (T.2) ─────────────────────────────────
-    -- Il pull riscrive `sorgente = COMMESSA` sull'attivita' che genera, per
-    -- disegno: il tipo originale resta su `sorgente_origine_tipo_id`, ma
-    -- l'UID del documento vero NON e' conservato su attivita_fatturabili.
-    -- Senza questo blocco il livello 1 non scatta MAI sulle attivita' che
-    -- arrivano dal pull -- cioe' su tutte quelle che finiscono in fattura --
-    -- e la catena a quattro livelli ne ha uno decorativo.
-    -- Il documento vero si ritrova sulla riga di commessa, che conserva
-    -- sorgente_tipo_id e sorgente_uid ORIGINALI.
-    -- ⚠️ Si legge in variabili PROPRIE e si sovrascrive solo se la sorgente
-    --    risolve: un `SELECT INTO` senza righe azzera, e azzerare qui
-    --    significherebbe perdere anche il caso legittimo dell'attivita'
-    --    inserita direttamente con sorgente documento.
-    IF v_sorgente_codice = 'COMMESSA' AND v_ca_id IS NOT NULL THEN
-        SELECT s2.codice_interno, ca.sorgente_uid
-          INTO v_src_codice, v_src_uid
-          FROM vendite.commesse_attivita ca
-          LEFT JOIN config.sorgenti s2 ON s2.id = ca.sorgente_tipo_id
-         WHERE ca.id = v_ca_id;
-
-        -- ⚠️ Si accettano SOLO i due tipi che il livello 1 gestisce.
-        --    Non e' una restrizione di comodo: la sorgente e'
-        --    POLIMORFA e `commesse_attivita.sorgente_uid` e' TEXT,
-        --    mentre `attivita_fatturabili.sorgente_uid` e' UUID.
-        --    Per convenzione del modello preventivo/offerta usano
-        --    l'uid, gli altri `id::text`: assegnare senza filtro
-        --    farebbe esplodere il cast il giorno in cui una riga
-        --    CONTRATTO o CONSUMI arriva qui (oggi non ce ne sono
-        --    -- misurato: 39 ORDINE, 44 PREVENTIVO, 1 DDT, tutti
-        --    uuid validi -- ma e' un rischio che matura da solo).
-        --    Per contratti e DDT il livello 1 non avrebbe comunque
-        --    nulla da leggere: non hanno colonne di pagamento.
-        IF v_src_codice IN ('ORDINE_VENDITA', 'PREVENTIVO') THEN
-            v_sorgente_codice := v_src_codice;
-            v_sorgente_uid    := v_src_uid::uuid;
-        END IF;
-    END IF;
+    -- ── Il documento d'origine ───────────────────────────────────
+    -- L'attivita' nasce da una riga di commessa (commessa_attivita_id, FK NOT
+    -- NULL), e la riga di commessa dice da quale documento nasce: tipo e chiave
+    -- della provenienza. Si leggono solo ordine e preventivo, gli unici
+    -- documenti con colonne di pagamento; per loro la chiave si legge nelle due
+    -- specie del modello (sorgente_id o sorgente_uid), con la regola d'incontro
+    -- del livello 1.
+    SELECT s.codice_interno,
+           ca.sorgente_id,
+           CASE WHEN s.codice_interno IN ('ORDINE_VENDITA', 'PREVENTIVO')
+                THEN ca.sorgente_uid::uuid END
+      INTO v_sorgente_codice, v_sorgente_id, v_sorgente_uid
+      FROM vendite.commesse_attivita ca
+      LEFT JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+     WHERE ca.id = v_ca_id;
 
     -- ── Livello 1: documento sorgente ────────────────────────────
     -- L'ordine porta entrambi, il preventivo il solo termine. Nessun
@@ -122,14 +97,14 @@ BEGIN
         SELECT o.termine_pagamento_id, o.modalita_pagamento_id
           INTO v_liv_termine, v_liv_modalita
           FROM vendite.ordini o
-         WHERE o.uid = v_sorgente_uid;
+         WHERE (o.id = v_sorgente_id OR o.uid = v_sorgente_uid);
         v_termine  := COALESCE(v_termine,  v_liv_termine);
         v_modalita := COALESCE(v_modalita, v_liv_modalita);
     ELSIF v_sorgente_codice = 'PREVENTIVO' THEN
         SELECT p.termine_pagamento_id
           INTO v_liv_termine
           FROM vendite.preventivi p
-         WHERE p.uid = v_sorgente_uid;
+         WHERE (p.id = v_sorgente_id OR p.uid = v_sorgente_uid);
         v_termine := COALESCE(v_termine, v_liv_termine);
     END IF;
 
@@ -189,7 +164,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(p_attivita_id bigint)
-IS 'Catena unica condizioni di pagamento per attivita'' (C-13): ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento sorgente -> COMMESSA (D-R) -> cliente del BA padre -> default TP_1RATA sul solo termine. I due campi scendono in modo indipendente: il preventivo porta il termine ma non la modalita''. rev 2026-08-03 (T.2): il livello 1 risolve la SORGENTE EFFETTIVA. Il pull riscrive sorgente = COMMESSA sull''attivita'' generata, quindi il livello 1 non scattava MAI su cio'' che arriva in fattura (misurato: 35 attivita'' su 35). Il documento vero si ritrova da commessa_attivita_id -> commesse_attivita.sorgente_tipo_id/sorgente_uid, perche'' attivita_fatturabili conserva il TIPO d''origine ma non l''UID. Copre due strade: attivita'' inserita direttamente con sorgente documento (invariata) e attivita'' dal pull. La sovrascrittura avviene solo se la sorgente risolve: un SELECT INTO senza righe azzera, e azzerare perderebbe la prima strada. Ogni livello legge in variabili proprie e la fusione avviene con COALESCE in codice. rev 2026-10-08 (20261008-70): il livello 3 aggancia il cliente per BA (uq_clienti_billing_account), non piu'' per istanza: un''istanza ha tanti clienti quanti BA. Brief: brief-db-istanza-nasce-col-ba (R-8, D-6).';
+IS 'Catena unica delle condizioni di pagamento di un''attivita'' fatturabile: ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento d''origine -> commessa -> cliente del BA padre -> default TP_1RATA sul solo termine. Il documento d''origine e'' quello da cui nasce la riga di commessa dell''attivita'' (commessa_attivita_id -> commesse_attivita, tipo e chiave della provenienza): l''ordine porta termine e modalita'', il preventivo il solo termine; gli altri documenti non hanno colonne di pagamento. La commessa possiede le proprie condizioni; il cliente si aggancia per BA (uq_clienti_billing_account). I due campi scendono in modo indipendente, ognuno livello per livello in variabili proprie fuse con COALESCE. Solleva E_PARAMETRO_INVALIDO su un id non valido, E_VALORE_MANCANTE su un''attivita'' che non esiste.';
 ```
 
 </div>

@@ -1,0 +1,653 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SCHEDA CRITICHE NOMINA IL DOCUMENTO CON LA COMMESSA DI QUEL LOTTO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.5 (V-7-bis, Tid 2026-11-08).
+#
+#   Il ramo LOTTO passa al riferimento la commessa della riga
+#   (fatturazione_lotti_log.commessa_id, -80) o, se la riga non la dice,
+#   quella unica dichiarata dalle altre righe dello stesso documento nello
+#   stesso lotto. Nessun'altra riga cambia; firma, RETURNS TABLE, COMMENT e
+#   privilegi restano (CREATE OR REPLACE sulla definizione viva, uguale a
+#   20260908-32). La sottoquery legge lo stesso lotto, che ha il suo indice.
+#   Rollback: la definizione viva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261109-83-update-fn-list-lotto-segnalazioni-commessa-del-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20261109-83-update-fn-list-lotto-segnalazioni-commessa-del-lotto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_list_lotto_segnalazioni: il riferimento con la commessa del documento in quel lotto. brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.5 (V-7-bis, Tid 2026-11-08).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text DEFAULT NULL::text, p_livello character DEFAULT NULL::bpchar, p_solo_attive boolean DEFAULT true, p_solo_job_corrente boolean DEFAULT false, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'desc'::text)
+               RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint, target jsonb, gruppo_key text, riferimento text)
+               LANGUAGE plpgsql
+              AS $function$
+
+              DECLARE
+                  v_order_col   text;
+                  -- ⭐ Il verso dei NULL non e' piu' una costante: dipende da COSA vuol dire
+                  --    il NULL su quella colonna. Vedi dove viene deciso, piu' sotto.
+                  v_order_nulls text;
+                  v_order_dir   text;
+                  v_solo_attive boolean;
+                  v_solo_job    boolean;
+                  v_limit       integer;
+                  v_offset      integer;
+                  -- L'istante di inizio dell'ultima corsa. `timestamptz` esplicito:
+                  -- e' un confine, non il valore di una colonna di queste tabelle.
+                  v_ancora      timestamptz;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- ⚠️ Un valore fuori vocabolario SOLLEVA e non filtra a vuoto:
+                  --    una lista vuota si legge come «non c'e' niente», cioe' il
+                  --    difetto si traveste da dato. Stessa scelta di
+                  --    fn_list_commessa_attivita su p_tipo_movimento.
+                  IF p_origine IS NOT NULL
+                     AND upper(btrim(p_origine)) NOT IN ('FATTURA', 'LOTTO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_origine', 'valore', p_origine),
+                          NULL::uuid, concat('p_origine non ammesso: ', p_origine));
+                  END IF;
+
+                  IF p_livello IS NOT NULL
+                     AND upper(btrim(p_livello::text)) NOT IN ('C', 'W', 'I') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_livello', 'valore', p_livello),
+                          NULL::uuid, concat('p_livello non ammesso: ', p_livello));
+                  END IF;
+
+                  -- ⛔ IL PERIMETRO VIENE DAL LOTTO. `fatturazione_lotti` ha la RLS
+                  --    e questa funzione e' SECURITY INVOKER: un lotto fuori dal
+                  --    perimetro emittente si legge come «non c'e'». Qui si SOLLEVA
+                  --    invece di rispondere zero righe, perche' «non lo vedo» e
+                  --    «non ce ne sono» non devono leggersi uguali.
+                  PERFORM 1 FROM vendite.fatturazione_lotti l WHERE l.id = p_lotto_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('lotto_id', p_lotto_id),
+                          NULL::uuid, concat('lotto_id ', p_lotto_id));
+                  END IF;
+
+                  v_solo_attive := COALESCE(p_solo_attive, TRUE);
+                  v_solo_job    := COALESCE(p_solo_job_corrente, FALSE);
+                  v_limit       := LEAST(GREATEST(COALESCE(p_limit, 500), 1), 500);
+                  v_offset      := GREATEST(COALESCE(p_offset, 0), 0);
+
+                  -- ⭐ L'ANCORA DELL'ULTIMO JOB. Il runner scrive PIPELINE_STARTED
+                  --    a ogni corsa: e' l'unica cosa che distingue una corsa dalla
+                  --    precedente (il correlation_id e' il lock_batch_id, che due
+                  --    corse condividono).
+                  --    ⚠️ NULL = il lotto non e' mai passato dal runner: allora non
+                  --    c'e' nessuna corsa precedente da cui distinguersi, e tutto
+                  --    conta come corrente.
+                  SELECT max(e.event_time)
+                    INTO v_ancora
+                    FROM vendite.event_log e
+                   -- ⚠️ Rev 2026-08-22 (L4): via il filtro `e.domain = 'PIPELINE'`.
+                   --   Era RIDONDANTE — la query filtra gia' `event_code =
+                   --   'PIPELINE_STARTED'`, e un codice appartiene a un dominio solo —
+                   --   e la colonna non esiste piu': il dominio e' una proprieta' del
+                   --   codice e vive in config.eventi_dominio, non copiata su ogni riga
+                   --   dove potrebbe dissentire.
+                   WHERE e.entity_type = 'LOTTO'
+                     AND e.entity_id   = p_lotto_id
+                     AND e.event_code  = 'PIPELINE_STARTED';
+
+                  -- ⭐ WHITELIST CHIUSA. I nomi sono i `campo_sorgente` delle
+                  --    colonne del seed della lista `vendite.lotto_segnalazioni`.
+                  --    ⚠️ `messaggio` e `disabilitato` NON ci sono di proposito: il
+                  --    seed li offre `ordinabile = f`, e una voce che il seed non
+                  --    offre e' una capacita' irraggiungibile che il presidio
+                  --    segnala.
+                  v_order_col := CASE lower(btrim(COALESCE(p_order_by, '')))
+                      -- ⛔ Il default e la voce `livello` NON ordinano per il valore
+                      --    dello status: 'C' viene prima di 'I' in ordine alfabetico
+                      --    PER CASO, e 'W' finisce in fondo PER CASO. Serve un rango.
+                      --    ⚠️ I tre letterali sono MAIUSCOLI di necessita': il
+                      --    lettore della whitelist (gen_seed_lista.py) cerca
+                      --    `WHEN '<nome>' THEN` con [a-z_0-9]+, quindi un `WHEN 'c'`
+                      --    verrebbe scambiato per il nome di una colonna ordinabile.
+                      WHEN ''                  THEN 'CASE x.livello WHEN ''C'' THEN 3 WHEN ''W'' THEN 2 ELSE 1 END'
+                      WHEN 'livello'           THEN 'CASE x.livello WHEN ''C'' THEN 3 WHEN ''W'' THEN 2 ELSE 1 END'
+                      WHEN 'data_ora'          THEN 'x.data_ora'
+                      WHEN 'origine'           THEN 'x.origine'
+                      WHEN 'documento_display' THEN 'x.documento_display'
+                      WHEN 'importo'           THEN 'x.importo'
+                      WHEN 'error_code'        THEN 'x.error_code'
+                      WHEN 'fase'              THEN 'x.fase'
+                      WHEN 'job_corrente'      THEN 'x.job_corrente'
+                      -- ⭐ Si ordina sul RIFERIMENTO, non sulla chiave: e' l'etichetta che
+                      --    l'operatore legge, e raggruppare le critiche per documento e'
+                      --    come si legge questa scheda.
+                      -- ⛔ `gruppo_key` NON entra in whitelist: dal 2026-09-08 la sua colonna
+                      --    e' spenta a catalogo (la chiave viaggia in riga per il pulsante,
+                      --    non per l'occhio), quindi non c'e' nessuna freccia da cliccare —
+                      --    e una voce che il seed non offre e' una capacita' irraggiungibile
+                      --    che il presidio di gen_seed_lista.py segnala.
+                      WHEN 'riferimento'       THEN 'x.riferimento'
+                      ELSE NULL
+                  END;
+
+                  IF v_order_col IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_order_by', 'valore', p_order_by),
+                          NULL::uuid, concat('p_order_by non ammesso: ', p_order_by));
+                  END IF;
+
+                  v_order_dir := CASE WHEN lower(btrim(COALESCE(p_order_dir, 'desc'))) = 'asc'
+                                      THEN 'ASC' ELSE 'DESC' END;
+
+                  -- ⭐ DOVE VANNO LE CRITICHE DEL GIRO, e non e' un dettaglio estetico.
+                  --    Il NULLS LAST di default e' scritto per le colonne dove il NULL vuol
+                  --    dire «questo dato non c'e'» — l'importo su una riga di lotto, la fase
+                  --    su una riga di fattura. Roba da mettere in fondo.
+                  -- ⛔ Sul RIFERIMENTO il NULL non e' un dato mancante: e' la critica DEL
+                  --    GIRO, quella che blocca e che l'operatore non puo' togliere in nessun
+                  --    modo. In coda finirebbe sotto le altre — su una lista paginata,
+                  --    magari a pagina due: l'operatore toglierebbe trenta documenti uno per
+                  --    uno e il lotto non ripartirebbe lo stesso, per una riga che non ha
+                  --    mai visto.
+                  -- ⚠️ FIRST in ENTRAMBI i versi, come il LAST che sostituisce: la posizione
+                  --    dice «questa e' di un'altra specie», non «e' la piu' piccola».
+                  v_order_nulls := CASE WHEN v_order_col = 'x.riferimento'
+                                        THEN 'NULLS FIRST' ELSE 'NULLS LAST' END;
+
+                  -- ⚠️ NULLS LAST in ENTRAMBI i versi: meta' delle colonne e' NULL
+                  --    su meta' delle righe PER COSTRUZIONE (documento e importo
+                  --    solo su FATTURA, fase solo su LOTTO). Sul DESC PostgreSQL
+                  --    mette i NULL in testa, quindi «per importo, dal piu' grande»
+                  --    comincerebbe dagli eventi di lotto, che un importo non ce
+                  --    l'hanno.
+                  --    Il pareggio si rompe su (origine, id): la union ha due spazi
+                  --    di id, e la coppia e' l'unica chiave stabile.
+                  RETURN QUERY EXECUTE format($q$
+                      WITH base AS (
+                          SELECT 'FATTURA'::text                                  AS origine,
+                                 fl.id,
+                                 fl.data_ora,
+                                 fl.status                                        AS livello,
+                                 fl.messaggio,
+                                 NULLIF(btrim(fl.meta->>'error_code'), '')        AS error_code,
+                                 NULL::text                                       AS fase,
+                                 fl.fattura_id,
+                                 -- ⭐ L'identita' del documento si legge dallo
+                                 --    SNAPSHOT sulla riga fattura, non da un join ad
+                                 --    anagrafiche: `billing_account` ha la RLS, e il
+                                 --    nome sparirebbe per una ragione che col log non
+                                 --    c'entra. Lo snapshot lo scrive il task DRAFT
+                                 --    `snapshot_indirizzi_lotto`, quindi su un lotto
+                                 --    che ha girato c'e'; il ripiego sul codice del
+                                 --    billing account copre la fattura che non ci e'
+                                 --    ancora passata.
+                                 COALESCE(
+                                     NULLIF(btrim(f.cliente_snapshot->>'denominazione'), ''),
+                                     NULLIF(btrim(f.cliente_snapshot->>'ba_codice'), '')
+                                 )                                                AS documento_display,
+                                 f.totale_doc                                     AS importo,
+                                 fl.disabilitato,
+                                 ($2 IS NULL OR fl.data_ora >= $2)                AS job_corrente,
+                                 -- ⭐ IL BERSAGLIO, dalla stessa borsa da cui esce il
+                                 --   codice: la strada esisteva gia'.
+                                 -- ⚠️ La chiave scritta e' `bersagli`; la colonna si
+                                 --   chiama `target` perche' e' il nome deciso dal brief
+                                 --   del bersaglio (§4.2) e quello con cui il toast lo
+                                 --   conosce. La normalizzazione sta QUI, in un posto
+                                 --   solo: cosi' le due superfici usano lo stesso
+                                 --   resolver, che e' la ragione della richiesta.
+                                 -- ⛔ L'array passa INTATTO, elementi `{id, type}`: NON
+                                 --   si traduce `type` in `tipo`. Dev'essere
+                                 --   byte-identico a quello che il toast riceve
+                                 --   dall'envelope, o per risolvere una seconda forma ne
+                                 --   avremmo creata una terza. Il disallineamento
+                                 --   `bersaglio`/`bersagli`/`target` si chiude a monte:
+                                 --   qui si dichiara, non si nasconde.
+                                 fl.meta -> 'bersagli'                            AS target,
+                                 -- ⛔ NULL, e non e' un buco: una bozza puo' coprire PIU'
+                                 --   documenti, quindi una segnalazione appesa alla FATTURA
+                                 --   non ne nomina uno. Sceglierne uno sarebbe una scommessa.
+                                 NULL::text                                       AS gruppo_key,
+                                 -- Senza chiave non c'e' riferimento: e' lo stesso NULL di
+                                 -- sopra, letto dall'altro lato.
+                                 NULL::text                                       AS riferimento
+                            FROM vendite.fatturazione_lotti_fatture lf
+                            JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+                            -- LEFT: il log esiste anche se la fattura non e'
+                            -- visibile; la riga resta, senza nome e senza importo.
+                            LEFT JOIN vendite.fatture f ON f.id = lf.fattura_id
+                           WHERE lf.lotto_id = $1
+
+                          UNION ALL
+
+                          SELECT 'LOTTO'::text,
+                                 ll.id,
+                                 ll.data_ora,
+                                 ll.status,
+                                 ll.messaggio,
+                                 -- 🔴 CORREZIONE 2026-08-24. Due scrittori, due chiavi:
+                                 --   `fn_log_pipeline_fase` (DB) scrive `error_code`, il
+                                 --   PipelineErrorLogger (backend) scrive `code`, e il
+                                 --   lettore ne conosceva una sola.
+                                 -- ⚠️ Le righe del backend sono 17 e TUTTE di livello `C`:
+                                 --   il codice mancava esattamente dove serve. Nessuno se
+                                 --   n'era accorto perche' il percorso DB funziona, quindi
+                                 --   il meccanismo SEMBRA a posto.
+                                 -- ⚠️ COALESCE e non sostituzione: regge entrambe, quindi
+                                 --   non si rompe ne' oggi ne' il giorno che chi scrive
+                                 --   si allinea.
+                                 COALESCE(
+                                     NULLIF(btrim(ll.meta->>'error_code'), ''),
+                                     NULLIF(btrim(ll.meta->>'code'), '')
+                                 ),
+                                 ll.fase,
+                                 NULL::bigint,
+                                 NULL::text,
+                                 NULL::numeric,
+                                 ll.disabilitato,
+                                 ($2 IS NULL OR ll.data_ora >= $2),
+                                 -- ⚠️ Nessun bersaglio sul ramo LOTTO, e non e' un buco
+                                 --   da riempire adesso: nessuno lo scrive (misurato: 14
+                                 --   chiavi in `meta`, nessuna e' un bersaglio). Il patto
+                                 --   e' offerta, non promessa — li' nessun pulsante.
+                                 NULL::jsonb,
+                                 -- ⭐ Di CHI parla questa segnalazione. NULL = e' del GIRO
+                                 --   (un emittente non risolto, una configurazione mancante):
+                                 --   non ha un documento da togliere, e blocca.
+                                 ll.gruppo_key,
+                                 -- ⭐ L'ETICHETTA, accanto alla chiave. La chiave serve al
+                                 --   PULSANTE (fn_escludi_documento_da_giro la vuole), il
+                                 --   riferimento serve alla persona: 'ORD0036004' invece di
+                                 --   'ORDINE_VENDITA:01a06ce4-35a6-721a-9cd8-9da48bf77626'.
+                                 -- ⛔ La risoluzione NON e' scritta qui: vive in
+                                 --   vendite.fn_riferimento_gruppo_fatturabile, che compone
+                                 --   lo split della chiave e fn_get_sorgente_documento_ref.
+                                 --   Riscriverla qui sarebbe la terza sede della stessa
+                                 --   scala di ripiego.
+                                 -- ⚠️ NULL entra e NULL esce: la segnalazione del GIRO non
+                                 --   ha un documento da nominare.
+                                 -- ⭐ rev 2026-11-08 (giro Z.5, V-7-bis): con la COMMESSA
+                                 --   DI QUESTO LOTTO, per il documento senza numero. La
+                                 --   dichiara la riga (commessa_id, scritta da chi solleva);
+                                 --   se la riga non la dice (l'uscita dal giro), quella che
+                                 --   dichiarano le altre righe dello stesso documento nello
+                                 --   stesso lotto, se e' UNA sola. Due commesse diverse per
+                                 --   lo stesso documento nello stesso lotto non si scelgono:
+                                 --   si lascia il ripiego della funzione.
+                                 vendite.fn_riferimento_gruppo_fatturabile(
+                                     ll.gruppo_key,
+                                     COALESCE(
+                                         ll.commessa_id,
+                                         (SELECT CASE WHEN count(DISTINCT s.commessa_id) = 1
+                                                      THEN min(s.commessa_id) END
+                                            FROM vendite.fatturazione_lotti_log s
+                                           WHERE s.lotto_id   = ll.lotto_id
+                                             AND s.gruppo_key = ll.gruppo_key
+                                             AND s.commessa_id IS NOT NULL)))
+                            FROM vendite.fatturazione_lotti_log ll
+                           WHERE ll.lotto_id = $1
+                      ), filtrata AS (
+                          SELECT b.*
+                            FROM base b
+                           WHERE ($3 IS NULL OR b.origine = upper(btrim($3)))
+                             AND ($4 IS NULL OR b.livello = upper(btrim($4)))
+                             AND (NOT $5 OR b.disabilitato IS FALSE)
+                      )
+                      SELECT format('%%s:%%s', x.origine, x.id)                   AS riga_key,
+                             x.id,
+                             x.origine,
+                             x.data_ora,
+                             x.livello,
+                             x.messaggio,
+                             x.error_code,
+                             x.fase,
+                             x.fattura_id,
+                             x.documento_display,
+                             x.importo,
+                             x.disabilitato,
+                             x.job_corrente,
+                             count(*) OVER ()::bigint                             AS total_count,
+                             -- ⭐ Quante righe VIVE restano fuori dalla finestra del
+                             --    job. Si conta su `filtrata`, cioe' PRIMA del filtro
+                             --    sul job: e' l'unico posto da cui si vedono.
+                             (SELECT count(*) FROM filtrata y
+                               WHERE y.job_corrente IS FALSE)::bigint             AS fuori_job_count,
+                             x.target,
+                             x.gruppo_key,
+                             x.riferimento
+                        FROM filtrata x
+                       WHERE (NOT $6 OR x.job_corrente)
+                       ORDER BY %s %s %s, x.data_ora DESC, x.origine, x.id
+                       LIMIT $7 OFFSET $8
+                  $q$, v_order_col, v_order_dir, v_order_nulls)
+                  USING p_lotto_id, v_ancora, p_origine, p_livello,
+                        v_solo_attive, v_solo_job, v_limit, v_offset;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text DEFAULT NULL::text, p_livello character DEFAULT NULL::bpchar, p_solo_attive boolean DEFAULT true, p_solo_job_corrente boolean DEFAULT false, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'desc'::text)
+               RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint, target jsonb, gruppo_key text, riferimento text)
+               LANGUAGE plpgsql
+              AS $function$
+
+              DECLARE
+                  v_order_col   text;
+                  -- ⭐ Il verso dei NULL non e' piu' una costante: dipende da COSA vuol dire
+                  --    il NULL su quella colonna. Vedi dove viene deciso, piu' sotto.
+                  v_order_nulls text;
+                  v_order_dir   text;
+                  v_solo_attive boolean;
+                  v_solo_job    boolean;
+                  v_limit       integer;
+                  v_offset      integer;
+                  -- L'istante di inizio dell'ultima corsa. `timestamptz` esplicito:
+                  -- e' un confine, non il valore di una colonna di queste tabelle.
+                  v_ancora      timestamptz;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- ⚠️ Un valore fuori vocabolario SOLLEVA e non filtra a vuoto:
+                  --    una lista vuota si legge come «non c'e' niente», cioe' il
+                  --    difetto si traveste da dato. Stessa scelta di
+                  --    fn_list_commessa_attivita su p_tipo_movimento.
+                  IF p_origine IS NOT NULL
+                     AND upper(btrim(p_origine)) NOT IN ('FATTURA', 'LOTTO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_origine', 'valore', p_origine),
+                          NULL::uuid, concat('p_origine non ammesso: ', p_origine));
+                  END IF;
+
+                  IF p_livello IS NOT NULL
+                     AND upper(btrim(p_livello::text)) NOT IN ('C', 'W', 'I') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_livello', 'valore', p_livello),
+                          NULL::uuid, concat('p_livello non ammesso: ', p_livello));
+                  END IF;
+
+                  -- ⛔ IL PERIMETRO VIENE DAL LOTTO. `fatturazione_lotti` ha la RLS
+                  --    e questa funzione e' SECURITY INVOKER: un lotto fuori dal
+                  --    perimetro emittente si legge come «non c'e'». Qui si SOLLEVA
+                  --    invece di rispondere zero righe, perche' «non lo vedo» e
+                  --    «non ce ne sono» non devono leggersi uguali.
+                  PERFORM 1 FROM vendite.fatturazione_lotti l WHERE l.id = p_lotto_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('lotto_id', p_lotto_id),
+                          NULL::uuid, concat('lotto_id ', p_lotto_id));
+                  END IF;
+
+                  v_solo_attive := COALESCE(p_solo_attive, TRUE);
+                  v_solo_job    := COALESCE(p_solo_job_corrente, FALSE);
+                  v_limit       := LEAST(GREATEST(COALESCE(p_limit, 500), 1), 500);
+                  v_offset      := GREATEST(COALESCE(p_offset, 0), 0);
+
+                  -- ⭐ L'ANCORA DELL'ULTIMO JOB. Il runner scrive PIPELINE_STARTED
+                  --    a ogni corsa: e' l'unica cosa che distingue una corsa dalla
+                  --    precedente (il correlation_id e' il lock_batch_id, che due
+                  --    corse condividono).
+                  --    ⚠️ NULL = il lotto non e' mai passato dal runner: allora non
+                  --    c'e' nessuna corsa precedente da cui distinguersi, e tutto
+                  --    conta come corrente.
+                  SELECT max(e.event_time)
+                    INTO v_ancora
+                    FROM vendite.event_log e
+                   -- ⚠️ Rev 2026-08-22 (L4): via il filtro `e.domain = 'PIPELINE'`.
+                   --   Era RIDONDANTE — la query filtra gia' `event_code =
+                   --   'PIPELINE_STARTED'`, e un codice appartiene a un dominio solo —
+                   --   e la colonna non esiste piu': il dominio e' una proprieta' del
+                   --   codice e vive in config.eventi_dominio, non copiata su ogni riga
+                   --   dove potrebbe dissentire.
+                   WHERE e.entity_type = 'LOTTO'
+                     AND e.entity_id   = p_lotto_id
+                     AND e.event_code  = 'PIPELINE_STARTED';
+
+                  -- ⭐ WHITELIST CHIUSA. I nomi sono i `campo_sorgente` delle
+                  --    colonne del seed della lista `vendite.lotto_segnalazioni`.
+                  --    ⚠️ `messaggio` e `disabilitato` NON ci sono di proposito: il
+                  --    seed li offre `ordinabile = f`, e una voce che il seed non
+                  --    offre e' una capacita' irraggiungibile che il presidio
+                  --    segnala.
+                  v_order_col := CASE lower(btrim(COALESCE(p_order_by, '')))
+                      -- ⛔ Il default e la voce `livello` NON ordinano per il valore
+                      --    dello status: 'C' viene prima di 'I' in ordine alfabetico
+                      --    PER CASO, e 'W' finisce in fondo PER CASO. Serve un rango.
+                      --    ⚠️ I tre letterali sono MAIUSCOLI di necessita': il
+                      --    lettore della whitelist (gen_seed_lista.py) cerca
+                      --    `WHEN '<nome>' THEN` con [a-z_0-9]+, quindi un `WHEN 'c'`
+                      --    verrebbe scambiato per il nome di una colonna ordinabile.
+                      WHEN ''                  THEN 'CASE x.livello WHEN ''C'' THEN 3 WHEN ''W'' THEN 2 ELSE 1 END'
+                      WHEN 'livello'           THEN 'CASE x.livello WHEN ''C'' THEN 3 WHEN ''W'' THEN 2 ELSE 1 END'
+                      WHEN 'data_ora'          THEN 'x.data_ora'
+                      WHEN 'origine'           THEN 'x.origine'
+                      WHEN 'documento_display' THEN 'x.documento_display'
+                      WHEN 'importo'           THEN 'x.importo'
+                      WHEN 'error_code'        THEN 'x.error_code'
+                      WHEN 'fase'              THEN 'x.fase'
+                      WHEN 'job_corrente'      THEN 'x.job_corrente'
+                      -- ⭐ Si ordina sul RIFERIMENTO, non sulla chiave: e' l'etichetta che
+                      --    l'operatore legge, e raggruppare le critiche per documento e'
+                      --    come si legge questa scheda.
+                      -- ⛔ `gruppo_key` NON entra in whitelist: dal 2026-09-08 la sua colonna
+                      --    e' spenta a catalogo (la chiave viaggia in riga per il pulsante,
+                      --    non per l'occhio), quindi non c'e' nessuna freccia da cliccare —
+                      --    e una voce che il seed non offre e' una capacita' irraggiungibile
+                      --    che il presidio di gen_seed_lista.py segnala.
+                      WHEN 'riferimento'       THEN 'x.riferimento'
+                      ELSE NULL
+                  END;
+
+                  IF v_order_col IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_segnalazioni', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_order_by', 'valore', p_order_by),
+                          NULL::uuid, concat('p_order_by non ammesso: ', p_order_by));
+                  END IF;
+
+                  v_order_dir := CASE WHEN lower(btrim(COALESCE(p_order_dir, 'desc'))) = 'asc'
+                                      THEN 'ASC' ELSE 'DESC' END;
+
+                  -- ⭐ DOVE VANNO LE CRITICHE DEL GIRO, e non e' un dettaglio estetico.
+                  --    Il NULLS LAST di default e' scritto per le colonne dove il NULL vuol
+                  --    dire «questo dato non c'e'» — l'importo su una riga di lotto, la fase
+                  --    su una riga di fattura. Roba da mettere in fondo.
+                  -- ⛔ Sul RIFERIMENTO il NULL non e' un dato mancante: e' la critica DEL
+                  --    GIRO, quella che blocca e che l'operatore non puo' togliere in nessun
+                  --    modo. In coda finirebbe sotto le altre — su una lista paginata,
+                  --    magari a pagina due: l'operatore toglierebbe trenta documenti uno per
+                  --    uno e il lotto non ripartirebbe lo stesso, per una riga che non ha
+                  --    mai visto.
+                  -- ⚠️ FIRST in ENTRAMBI i versi, come il LAST che sostituisce: la posizione
+                  --    dice «questa e' di un'altra specie», non «e' la piu' piccola».
+                  v_order_nulls := CASE WHEN v_order_col = 'x.riferimento'
+                                        THEN 'NULLS FIRST' ELSE 'NULLS LAST' END;
+
+                  -- ⚠️ NULLS LAST in ENTRAMBI i versi: meta' delle colonne e' NULL
+                  --    su meta' delle righe PER COSTRUZIONE (documento e importo
+                  --    solo su FATTURA, fase solo su LOTTO). Sul DESC PostgreSQL
+                  --    mette i NULL in testa, quindi «per importo, dal piu' grande»
+                  --    comincerebbe dagli eventi di lotto, che un importo non ce
+                  --    l'hanno.
+                  --    Il pareggio si rompe su (origine, id): la union ha due spazi
+                  --    di id, e la coppia e' l'unica chiave stabile.
+                  RETURN QUERY EXECUTE format($q$
+                      WITH base AS (
+                          SELECT 'FATTURA'::text                                  AS origine,
+                                 fl.id,
+                                 fl.data_ora,
+                                 fl.status                                        AS livello,
+                                 fl.messaggio,
+                                 NULLIF(btrim(fl.meta->>'error_code'), '')        AS error_code,
+                                 NULL::text                                       AS fase,
+                                 fl.fattura_id,
+                                 -- ⭐ L'identita' del documento si legge dallo
+                                 --    SNAPSHOT sulla riga fattura, non da un join ad
+                                 --    anagrafiche: `billing_account` ha la RLS, e il
+                                 --    nome sparirebbe per una ragione che col log non
+                                 --    c'entra. Lo snapshot lo scrive il task DRAFT
+                                 --    `snapshot_indirizzi_lotto`, quindi su un lotto
+                                 --    che ha girato c'e'; il ripiego sul codice del
+                                 --    billing account copre la fattura che non ci e'
+                                 --    ancora passata.
+                                 COALESCE(
+                                     NULLIF(btrim(f.cliente_snapshot->>'denominazione'), ''),
+                                     NULLIF(btrim(f.cliente_snapshot->>'ba_codice'), '')
+                                 )                                                AS documento_display,
+                                 f.totale_doc                                     AS importo,
+                                 fl.disabilitato,
+                                 ($2 IS NULL OR fl.data_ora >= $2)                AS job_corrente,
+                                 -- ⭐ IL BERSAGLIO, dalla stessa borsa da cui esce il
+                                 --   codice: la strada esisteva gia'.
+                                 -- ⚠️ La chiave scritta e' `bersagli`; la colonna si
+                                 --   chiama `target` perche' e' il nome deciso dal brief
+                                 --   del bersaglio (§4.2) e quello con cui il toast lo
+                                 --   conosce. La normalizzazione sta QUI, in un posto
+                                 --   solo: cosi' le due superfici usano lo stesso
+                                 --   resolver, che e' la ragione della richiesta.
+                                 -- ⛔ L'array passa INTATTO, elementi `{id, type}`: NON
+                                 --   si traduce `type` in `tipo`. Dev'essere
+                                 --   byte-identico a quello che il toast riceve
+                                 --   dall'envelope, o per risolvere una seconda forma ne
+                                 --   avremmo creata una terza. Il disallineamento
+                                 --   `bersaglio`/`bersagli`/`target` si chiude a monte:
+                                 --   qui si dichiara, non si nasconde.
+                                 fl.meta -> 'bersagli'                            AS target,
+                                 -- ⛔ NULL, e non e' un buco: una bozza puo' coprire PIU'
+                                 --   documenti, quindi una segnalazione appesa alla FATTURA
+                                 --   non ne nomina uno. Sceglierne uno sarebbe una scommessa.
+                                 NULL::text                                       AS gruppo_key,
+                                 -- Senza chiave non c'e' riferimento: e' lo stesso NULL di
+                                 -- sopra, letto dall'altro lato.
+                                 NULL::text                                       AS riferimento
+                            FROM vendite.fatturazione_lotti_fatture lf
+                            JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+                            -- LEFT: il log esiste anche se la fattura non e'
+                            -- visibile; la riga resta, senza nome e senza importo.
+                            LEFT JOIN vendite.fatture f ON f.id = lf.fattura_id
+                           WHERE lf.lotto_id = $1
+
+                          UNION ALL
+
+                          SELECT 'LOTTO'::text,
+                                 ll.id,
+                                 ll.data_ora,
+                                 ll.status,
+                                 ll.messaggio,
+                                 -- 🔴 CORREZIONE 2026-08-24. Due scrittori, due chiavi:
+                                 --   `fn_log_pipeline_fase` (DB) scrive `error_code`, il
+                                 --   PipelineErrorLogger (backend) scrive `code`, e il
+                                 --   lettore ne conosceva una sola.
+                                 -- ⚠️ Le righe del backend sono 17 e TUTTE di livello `C`:
+                                 --   il codice mancava esattamente dove serve. Nessuno se
+                                 --   n'era accorto perche' il percorso DB funziona, quindi
+                                 --   il meccanismo SEMBRA a posto.
+                                 -- ⚠️ COALESCE e non sostituzione: regge entrambe, quindi
+                                 --   non si rompe ne' oggi ne' il giorno che chi scrive
+                                 --   si allinea.
+                                 COALESCE(
+                                     NULLIF(btrim(ll.meta->>'error_code'), ''),
+                                     NULLIF(btrim(ll.meta->>'code'), '')
+                                 ),
+                                 ll.fase,
+                                 NULL::bigint,
+                                 NULL::text,
+                                 NULL::numeric,
+                                 ll.disabilitato,
+                                 ($2 IS NULL OR ll.data_ora >= $2),
+                                 -- ⚠️ Nessun bersaglio sul ramo LOTTO, e non e' un buco
+                                 --   da riempire adesso: nessuno lo scrive (misurato: 14
+                                 --   chiavi in `meta`, nessuna e' un bersaglio). Il patto
+                                 --   e' offerta, non promessa — li' nessun pulsante.
+                                 NULL::jsonb,
+                                 -- ⭐ Di CHI parla questa segnalazione. NULL = e' del GIRO
+                                 --   (un emittente non risolto, una configurazione mancante):
+                                 --   non ha un documento da togliere, e blocca.
+                                 ll.gruppo_key,
+                                 -- ⭐ L'ETICHETTA, accanto alla chiave. La chiave serve al
+                                 --   PULSANTE (fn_escludi_documento_da_giro la vuole), il
+                                 --   riferimento serve alla persona: 'ORD0036004' invece di
+                                 --   'ORDINE_VENDITA:01a06ce4-35a6-721a-9cd8-9da48bf77626'.
+                                 -- ⛔ La risoluzione NON e' scritta qui: vive in
+                                 --   vendite.fn_riferimento_gruppo_fatturabile, che compone
+                                 --   lo split della chiave e fn_get_sorgente_documento_ref.
+                                 --   Riscriverla qui sarebbe la terza sede della stessa
+                                 --   scala di ripiego.
+                                 -- ⚠️ NULL entra e NULL esce: la segnalazione del GIRO non
+                                 --   ha un documento da nominare.
+                                 vendite.fn_riferimento_gruppo_fatturabile(ll.gruppo_key)
+                            FROM vendite.fatturazione_lotti_log ll
+                           WHERE ll.lotto_id = $1
+                      ), filtrata AS (
+                          SELECT b.*
+                            FROM base b
+                           WHERE ($3 IS NULL OR b.origine = upper(btrim($3)))
+                             AND ($4 IS NULL OR b.livello = upper(btrim($4)))
+                             AND (NOT $5 OR b.disabilitato IS FALSE)
+                      )
+                      SELECT format('%%s:%%s', x.origine, x.id)                   AS riga_key,
+                             x.id,
+                             x.origine,
+                             x.data_ora,
+                             x.livello,
+                             x.messaggio,
+                             x.error_code,
+                             x.fase,
+                             x.fattura_id,
+                             x.documento_display,
+                             x.importo,
+                             x.disabilitato,
+                             x.job_corrente,
+                             count(*) OVER ()::bigint                             AS total_count,
+                             -- ⭐ Quante righe VIVE restano fuori dalla finestra del
+                             --    job. Si conta su `filtrata`, cioe' PRIMA del filtro
+                             --    sul job: e' l'unico posto da cui si vedono.
+                             (SELECT count(*) FROM filtrata y
+                               WHERE y.job_corrente IS FALSE)::bigint             AS fuori_job_count,
+                             x.target,
+                             x.gruppo_key,
+                             x.riferimento
+                        FROM filtrata x
+                       WHERE (NOT $6 OR x.job_corrente)
+                       ORDER BY %s %s %s, x.data_ora DESC, x.origine, x.id
+                       LIMIT $7 OFFSET $8
+                  $q$, v_order_col, v_order_dir, v_order_nulls)
+                  USING p_lotto_id, v_ancora, p_origine, p_livello,
+                        v_solo_attive, v_solo_job, v_limit, v_offset;
+              END;
+              $function$;

@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -119,14 +119,14 @@ erDiagram
     bigint id PK
     bigint commessa_id FK
     bigint sorgente_tipo_id
-    text sorgente_uid
+    bigint sorgente_id
+    uuid sorgente_uid
+    bigint sorgente_riga
   }
   ATTIVITA_FATTURABILI {
     bigint id PK
     bigint commessa_id FK
-    bigint commessa_attivita_id FK
-    bigint sorgente_tipo_id
-    uuid sorgente_uid
+    bigint commessa_attivita_id FK "unica"
   }
 ```
 
@@ -312,9 +312,10 @@ Componenti Python:
 
 ### Regole emissione
 
-* sorgente AF forzata a tipo `COMMESSA`;
-* mapping deterministico di `segment_key` su identificativo sorgente AF (`md5 → UUID`);
-* idempotenza su chiave sorgente in AF (`sorgente_tipo_id`, `sorgente_uid`);
+* ogni AF nasce da **una** riga di commessa e la punta con una FK vera (`commessa_attivita_id`):
+  la provenienza dell'AF è quella della riga di commessa, e l'AF non ha colonne di sorgente sue;
+* idempotenza sulla riga di commessa: una riga di commessa produce al più un'AF
+  (`uq_attivita_fatturabili_commessa_attivita`);
 * blocco aggiornamento se la riga AF risulta già fatturata;
 * aggiornamento stato righe commessa emesse (`stato_emissione = EMESSA`);
 * supporto `dry_run` e filtro `only_approved` sulla funzione SQL.
@@ -681,6 +682,14 @@ Per evitare ambiguità tra SQL legacy e runtime applicativo:
 Il legame fra i primi due è `attivita_fatturabili.fattura_riga_id`. Non esiste
 una tabella di dettaglio *sotto* la riga di fattura: **il dettaglio sono le
 attività**.
+
+⭐ **La riga di fattura non ha una provenienza propria.** Aggrega attività che
+possono venire da documenti diversi, quindi «da dove viene» non è una sola cosa:
+si legge dalle sue attività, ognuna con la sua riga di commessa, che dice il
+documento e la riga d'origine. È la strada di `vendite.fn_fattura_origini`, la
+catena delle origini stampata in fattura. La riga di fattura resta invece
+**bersaglio** di una provenienza: una nota di credito può dire «vengo dalla riga
+5 di questa fattura».
 
 ### Come si aggrega
 
@@ -1171,6 +1180,13 @@ La seconda forma non è un dettaglio: senza, gli oneri sarebbero **contati** nel
 numero della card ma irraggiungibili da qualunque azione mirata — lavoro
 invisibile, recuperabile solo dal giro schedulato.
 
+⚠️ **Gli oneri di commessa sono solo quelli senza documento.** Un onere scritto su un
+ordine o su una bolla (il trasporto di quell'ordine: vedi
+[Gestione Ordini](/guide/gestione-ordini) §3.6 e [Gestione DDT](/guide/gestione-ddt) §3.6)
+arriva in commessa **con il suo documento**, ed è nel gruppo di quel documento:
+fatturando `ORD-0033` si fattura anche il suo trasporto. Il gruppo «Oneri · commessa»
+raccoglie gli addebiti aggiunti dalla commessa, che non riguardano nessun documento.
+
 #### Cosa garantisce
 
 |                                               |                                                                  |
@@ -1307,7 +1323,7 @@ Regole tecniche:
 
 1. Creazione/riuso commessa serializzata con advisory lock in `fn_get_or_create_commessa`.
 2. Upsert righe commessa idempotente su `(commessa_id, segment_key)`.
-3. Emissione verso AF idempotente su chiave sorgente (`sorgente_tipo_id`, `sorgente_uid`).
+3. Emissione verso AF idempotente sulla riga di commessa (`commessa_attivita_id`, unica).
 4. Se una riga AF risulta già fatturata, l'update deve essere bloccato.
 5. Endpoint di orchestrazione protetti da `Idempotency-Key`.
 

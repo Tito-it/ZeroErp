@@ -1,27 +1,36 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.offerte_commerciali` (testata)
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.offerte_commerciali_eccezioni](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni)
-> • [vendite.offerte_commerciali_utilities](/dbzero/vendite/tabelle/offerte_commerciali_utilities)
-> • [vendite.note_offerte_commerciali](/dbzero/vendite/tabelle/note_offerte_commerciali)
-> • [vendite.contratti](/dbzero/vendite/tabelle/contratti)
-> • [config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte)
-> • [vendite.listini](/dbzero/vendite/tabelle/listini)
-> • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+> * [vendite.offerte_commerciali_eccezioni](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni) — le eccezioni articolo per articolo
+> * [vendite.offerte_commerciali_utilities](/dbzero/vendite/tabelle/offerte_commerciali_utilities) — le utility negoziate
+> * [vendite.note_offerte_commerciali](/dbzero/vendite/tabelle/note_offerte_commerciali) — le note
+> * [vendite.contratti](/dbzero/vendite/tabelle/contratti) — il contratto che l'offerta può generare
+> * [vendite.ordini](/dbzero/vendite/tabelle/ordini) — l'ordine che l'offerta può generare, in alternativa al contratto
+> * [config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte) — gli stati del documento
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento, dove l'offerta è `OFFERTA_COMMERCIALE`
+> * [vendite.listini](/dbzero/vendite/tabelle/listini) — il listino proposto
+> * [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) — la versione congelata all'emissione
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il billing account
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza utility
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — l'emittente
 >
-**Trigger e funzioni associate:**
+> Approfondimento funzioni:
 >
-> • `vendite.trgfn_offerte_commerciali_guard_transizione` — guard state machine ✅ (Step 4)
-> • `vendite.trgfn_offerte_commerciali_gen_codice` — generazione `OFC-NNNNNNN` ✅ (Step 5)
-> • `vendite.trgfn_offerte_commerciali_revisione` — all'INSERT rev.N+1 chiama la proiezione che marca il padre SUPERATA ✅ (Step 6; dal 2026-10-26 `vendite.fn_offerta_proietta_stato_revisione`)
-> • [`vendite.fn_crea_revisione_offerta`](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — crea revisione N+1 ✅ (Step 7)
-> • [`vendite.fn_push_offerta_a_contratto`](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto) — push idempotente a contratto DRAFT ✅ (Step 8)
+> * `vendite.trgfn_offerte_commerciali_guard_transizione` — il guard della macchina a stati
+> * `vendite.trgfn_offerte_commerciali_gen_codice` — la generazione del codice `OFC-NNNNNNN`
+> * `vendite.trgfn_offerte_commerciali_revisione` — all'inserimento della revisione N+1 chiama la proiezione che marca il padre SUPERATA (`vendite.fn_offerta_proietta_stato_revisione`)
+> * [vendite.fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — crea la revisione N+1
+> * [vendite.fn_push_offerta_a_contratto](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto) — il push idempotente a contratto DRAFT
+> * [vendite.fn_offerta_documenti_vivi](/dbzero/vendite/funzioni/fn_offerta_documenti_vivi) — i documenti vivi generati dall'offerta
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 
@@ -36,9 +45,9 @@ prima della formalizzazione in contratto.
 A differenza del preventivo (transazione puntuale → commessa → fattura),
 l'offerta commerciale segue il percorso:
 
-```
+```text
 offerta ACCETTATA → fn_push_offerta_a_contratto → contratto DRAFT
-offerta ACCETTATA → fn_genera_ordine_da_offerta → ordine DRAFT   (in alternativa, mai entrambi)
+offerta ACCETTATA → fn_genera_ordine_da_offerta → ordine DRAFT   (in alternativa: al più un documento vivo)
 ```
 
 La simmetria strutturale con `vendite.contratti` e' intenzionale e garantisce che
@@ -115,8 +124,10 @@ a `meta` JSONB.
 
 ### Identita e numerazione
 
-- **`uid`** (UUID, default `uuidv7()`, UNIQUE, immutabile) — usato come `sorgente_uid`
-  in `vendite.contratti` al momento del push (pattern sorgente §6.3 pratiche).
+- **`uid`** (UUID, default `uuidv7()`, UNIQUE, immutabile) — la chiave con cui l'offerta
+  si riconosce come documento d'origine: il tipo `OFFERTA_COMMERCIALE` di `config.sorgenti` ha
+  chiave `uid`, quindi chi nasce da un'offerta (il contratto, l'ordine)
+  la scrive in `sorgente_uid`.
 - **`codice`** (`OFC-NNNNNNN`, UNIQUE, immutabile) — generato da
   `trgfn_offerte_commerciali_gen_codice` tramite `config.sistema_codici` (Step 5).
 
@@ -187,10 +198,14 @@ All'accettazione, `fn_push_offerta_a_contratto` crea un `vendite.contratti` DRAF
   listino, listino_versione, variazione globale);
 - copia eccezioni da `offerte_commerciali_eccezioni` → `contratti_righe`;
 - copia snapshot da `offerte_commerciali_utilities` → `contratti_utilities`;
-- imposta `contratti.offerta_id` e `sorgente_uid = offerta.uid` (idempotenza UNIQUE).
+- scrive sul contratto la **provenienza** dall'offerta (tipo `OFFERTA_COMMERCIALE` e il suo
+  uid), e su ogni riga anche l'eccezione d'origine.
 
-La funzione e' **idempotente**: rilanciarla sullo stesso `offerta_id` non crea duplicati
-grazie al vincolo UNIQUE su `contratti.offerta_id` (pattern A §6.9.3).
+La funzione e' **idempotente**: rilanciarla sulla stessa offerta non crea duplicati finché il
+contratto generato è vivo. Un'offerta genera al più **un documento vivo**, o un contratto o un
+ordine (`vendite.fn_offerta_documenti_vivi`); gli indici unici `uq_contratti_sorgente_offerta`
+e `uq_ordini_v_sorgente_offerta` valgono sui soli documenti vivi, quindi un documento annullato
+non consuma l'offerta.
 
 ---
 
@@ -200,10 +215,6 @@ Un'offerta riguarda una sola utility (mono-utility §5.1): `istanza_utility_id` 
 `utility_id` sono NOT NULL e non ammettono array o pivot. Il caso multi-utility
 viene gestito con N offerte distinte, eventualmente raggruppate in futuro tramite
 un pacchetto commerciale additivo (§5.1-bis, non implementato in v1).
-
----
-
-{% include-markdown "signature-core.md" %}
 
 ---
 
@@ -217,3 +228,14 @@ check pura `script.fn_check_listino_documento(listino, utility, emittente_fiscal
 rigiudicano. La tendina del form legge la stessa check da `vendite.fn_listini_selezionabili(utility,
 emittente_fiscale_id)`. Brief `brief-db-offerta-emissione-ed-erogazione` §F.2.
 
+---
+
+### Note di migrazione
+
+* 2026-11-06 — ritirata `vendite.contratti.offerta_id` con il suo indice unico: il legame del
+  contratto all'offerta è la provenienza `sorgente_*`, e l'unicità vale sui soli documenti vivi
+  (brief-db-sorgente-documento-e-riga).
+
+---
+
+{% include-markdown "signature-core.md" %}

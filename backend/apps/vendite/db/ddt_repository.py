@@ -116,7 +116,10 @@ class DdtRepository(
     _righe_vista = "vendite.vw_ddt_righe_dettaglio"
     _righe_tabella = "vendite.ddt_righe"
     _righe_fk_documento = "ddt_id"
-    _righe_ordine_documento = "riga_nr"
+    # Gli oneri dopo gli articoli: la sezione (1 articoli, 2 oneri) e' del DB
+    # (20261103-52), poi la posizione della riga.
+    _righe_ordine_documento = "sezione_documento"
+    _righe_ordine_documento_extra = ("riga_nr",)
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
     _righe_colonne_desc = ()

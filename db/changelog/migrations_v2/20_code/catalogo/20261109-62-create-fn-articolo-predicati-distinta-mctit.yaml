@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo: i tre predicati della distinta, sede unica del guard dei flag di
+#   struttura e delle regole gemelle del form (D28, N3).
+#   Brief: brief-db-revisione-dbops, giro 10a (§25).
+#
+#   Prima l'EXISTS di ciascun check stava scritto due volte: nel guard
+#   (catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva) e nella
+#   condition_expr della sua regola in dbops.lock_columns_conditional, e le due
+#   copie erano gia' divergite una volta (CURRENT_DATE contro il giorno aziendale).
+#   Il guard le chiama da -63, le regole da 80_data -64.
+#   BEGIN ATOMIC (linee-guida-sql §5c): le tabelle lette stanno in pg_depend. Ogni
+#   funzione sta da sola nel suo change (pgjdbc), i COMMENT nell'ultimo.
+#   SECURITY INVOKER: catalogo.articoli_componenti non ha RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261109-62-create-fn-articolo-predicati-distinta-mctit.yaml
+
+  - changeSet:
+      id: 20261109-62-create-fn-articolo-predicati-distinta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo: i tre predicati della distinta (padre in vigore, componente in vigore, primo padre da oggi), sede unica di guard e form. Brief: brief-db-revisione-dbops, giro 10a.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'catalogo'
+                 AND p.proname IN ('fn_articolo_padre_di_distinta_in_vigore',
+                                   'fn_articolo_componente_di_distinta_in_vigore',
+                                   'fn_articolo_primo_padre_da_oggi')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_articolo_padre_di_distinta_in_vigore(p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT EXISTS (
+                   SELECT 1
+                     FROM catalogo.articoli_componenti ac
+                    WHERE ac.prodotto_id = p_articolo_id
+                      AND ac.attivo IS TRUE
+                      AND ac.validita @> script.fn_data_operativa()
+               );
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_articolo_componente_di_distinta_in_vigore(p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT EXISTS (
+                   SELECT 1
+                     FROM catalogo.articoli_componenti ac
+                    WHERE ac.componente_id = p_articolo_id
+                      AND ac.attivo IS TRUE
+                      AND ac.validita @> script.fn_data_operativa()
+               );
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_articolo_primo_padre_da_oggi(p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS catalogo.articoli.codice%TYPE
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT a_padre.codice
+                 FROM catalogo.articoli_componenti ac
+                 JOIN catalogo.articoli a_padre ON a_padre.id = ac.prodotto_id
+                WHERE ac.componente_id = p_articolo_id
+                  AND ac.attivo IS TRUE
+                  AND ac.validita && daterange(script.fn_data_operativa(), NULL, '[)')
+                ORDER BY a_padre.codice
+                LIMIT 1;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_articolo_padre_di_distinta_in_vigore(uuid) IS
+                  'true se l''articolo e'' il PADRE di una distinta in vigore: un legame attivo di catalogo.articoli_componenti con prodotto_id = l''articolo e validita che contiene il giorno aziendale (script.fn_data_operativa). NULL -> false. Predicato unico del check 1 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva (is_composito e requires_serial non si cambiano) e delle sue regole gemelle per il form in dbops.lock_columns_conditional.';
+
+              COMMENT ON FUNCTION catalogo.fn_articolo_componente_di_distinta_in_vigore(uuid) IS
+                  'true se l''articolo e'' COMPONENTE di una distinta in vigore: un legame attivo di catalogo.articoli_componenti con componente_id = l''articolo e validita che contiene il giorno aziendale (script.fn_data_operativa). NULL -> false. Predicato unico del check 2 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva (is_solo_componente non si cambia) e della sua regola gemella per il form in dbops.lock_columns_conditional.';
+
+              COMMENT ON FUNCTION catalogo.fn_articolo_primo_padre_da_oggi(uuid) IS
+                  'Il codice del primo padre, per codice, di una distinta in vigore o futura di cui l''articolo e'' componente: un legame attivo di catalogo.articoli_componenti con componente_id = l''articolo e validita che interseca [giorno aziendale, infinito). NULL se non ce n''e'' nessuno, o se l''articolo e'' NULL. Predicato unico del check 3 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva (un componente non diventa composito: la distinta ha un livello solo), che usa il codice nel messaggio, e della sua regola gemella per il form in dbops.lock_columns_conditional (IS NOT NULL).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_articolo_primo_padre_da_oggi(uuid);
+              DROP FUNCTION IF EXISTS catalogo.fn_articolo_componente_di_distinta_in_vigore(uuid);
+              DROP FUNCTION IF EXISTS catalogo.fn_articolo_padre_di_distinta_in_vigore(uuid);

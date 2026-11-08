@@ -1,0 +1,192 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_parameter_fk_surrogate_regola(text): la regola che governa un codice di
+#   parametro in un posto solo; script.fn_check_parameter_fk_surrogate la chiama (D24).
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9b (§24).
+#   Restituisce l'id della regola: chi legge unisce il registro e ne prende le
+#   colonne coi loro tipi (un RETURNS TABLE perderebbe la lunghezza dei varchar, e
+#   la vista del presidio non si potrebbe sostituire). Il presidio e' nel -55.
+#   Corpo della check dal catalogo dello scratch (2026-11-08); rollback = corpo e COMMENT di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261109-54-create-fn-parameter-fk-surrogate-regola-mctit.yaml
+
+  - changeSet:
+      id: 20261109-54-create-fn-parameter-fk-surrogate-regola
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_parameter_fk_surrogate_regola: la regola di un codice di parametro, letta da check e presidio. Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: parameter_fk_surrogate }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_parameter_fk_surrogate_regola(p_code text)
+               RETURNS config.parameter_fk_surrogate.id%TYPE
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: l'id della regola del registro che governa un codice di
+                  --   parametro, al massimo una: EXACT prima di LIKE, poi il pattern piu'
+                  --   lungo. NULL = nessuna regola. E' la sola sede della scelta: la leggono
+                  --   la check e il presidio.
+                  SELECT pfs.id
+                    FROM config.parameter_fk_surrogate pfs
+                   WHERE pfs.enabled
+                     AND (
+                            (pfs.match_mode = 'EXACT' AND pfs.code_pattern = p_code)
+                         OR (pfs.match_mode = 'LIKE'  AND p_code LIKE pfs.code_pattern)
+                     )
+                   ORDER BY (pfs.match_mode = 'EXACT') DESC, length(pfs.code_pattern) DESC
+                   LIMIT 1;
+              $function$;
+
+              GRANT EXECUTE ON FUNCTION script.fn_parameter_fk_surrogate_regola(text) TO zeroerp_app;
+
+              COMMENT ON FUNCTION script.fn_parameter_fk_surrogate_regola(text) IS
+                  'L''id della regola di config.parameter_fk_surrogate che governa un codice di parametro, al massimo una: fra le regole abilitate che lo prendono, EXACT prima di LIKE, poi il pattern piu'' lungo. NULL = nessuna regola, il parametro non e'' soggetto alla check. E'' la sola sede della scelta: la leggono script.fn_check_parameter_fk_surrogate (i dispatcher dei parametri) e il presidio dbops.vw_parameter_fk_surrogate_dangling, che quindi nominano la stessa regola. Due LIKE della stessa lunghezza che prendono lo stesso codice sono un''ambiguita'' del registro: la scelta fra loro non e'' definita.';
+
+              CREATE OR REPLACE FUNCTION script.fn_check_parameter_fk_surrogate(p_code text, p_value text)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: check FK-surrogata generico per parametri.
+              -- Chiede a script.fn_parameter_fk_surrogate_regola la regola
+              -- che governa p_code (EXACT prioritario su LIKE), poi verifica
+              -- che p_value esista in <target_schema>.<target_table>.
+              -- <target_column> via SQL dinamico.
+              -- Ritorna true (passa) se: p_value assente, o nessun pattern
+              -- matcha, o lookup trova il valore. Ritorna false solo se
+              -- pattern matcha E valore non esiste.
+              DECLARE
+                  v_target_schema text;
+                  v_target_table  text;
+                  v_target_column text;
+                  v_lookup_sql    text;
+                  v_found         boolean;
+              BEGIN
+                  -- ⭐ rev 2026-08-31: «assente» comprende la STRINGA VUOTA.
+                  --    default_value (config.parameters) e overridden_value
+                  --    (config.parameter_overrides) sono ENTRAMBE NOT NULL,
+                  --    quindi il solo ramo NULL era irraggiungibile da tutti e
+                  --    due i chiamanti: su un parametro il vuoto E' l'unica
+                  --    forma che «nessun valore» puo' assumere.
+                  -- ⚠️ Solo `= ''`, non btrim(): un valore fatto di spazi resta
+                  --    rifiutato. Un codice_interno non e' mai bianco, quindi
+                  --    ' ' e' un refuso, e questa check e' l'unica cosa che lo
+                  --    intercetta — allargare a btrim spegnerebbe quel presidio
+                  --    in cambio di niente.
+                  IF p_value IS NULL OR p_value = '' THEN
+                      RETURN true;
+                  END IF;
+
+                  -- La regola la sceglie il risolutore, la stessa che legge il presidio
+                  -- dbops.vw_parameter_fk_surrogate_dangling.
+                  SELECT pfs.target_schema, pfs.target_table, pfs.target_column
+                    INTO v_target_schema, v_target_table, v_target_column
+                    FROM config.parameter_fk_surrogate pfs
+                   WHERE pfs.id = script.fn_parameter_fk_surrogate_regola(p_code);
+
+                  IF v_target_schema IS NULL THEN
+                      -- Nessuna regola: code non soggetto a guard.
+                      RETURN true;
+                  END IF;
+
+                  v_lookup_sql := format(
+                      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = $1)',
+                      v_target_schema, v_target_table, v_target_column
+                  );
+                  EXECUTE v_lookup_sql INTO v_found USING p_value;
+                  RETURN v_found;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_check_parameter_fk_surrogate(text, text) IS
+                  'Check FK-surrogata generica per i parametri: la regola che governa p_code la sceglie script.fn_parameter_fk_surrogate_regola, poi un lookup dinamico verifica che p_value esista in <target_schema>.<target_table>.<target_column>. Ritorna true se il valore e'' assente, se nessuna regola governa il codice o se il lookup lo trova; false solo se una regola lo governa e il valore non esiste. «Valore assente» comprende la stringa vuota: config.parameters.default_value e config.parameter_overrides.overridden_value sono NOT NULL, e su un parametro il vuoto e'' l''unica forma che «nessun valore» puo'' assumere. Solo la stringa vuota, non il bianco: un valore fatto di spazi resta rifiutato, perche'' un codice_interno non e'' mai bianco. La usano i dispatcher config.trgfn_parameters_fk_surrogate_dispatch e config.trgfn_parameter_overrides_fk_surrogate_dispatch, e il presidio dbops.vw_parameter_fk_surrogate_dangling.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_parameter_fk_surrogate(p_code text, p_value text)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: check FK-surrogata generico per parametri.
+              -- Cerca un pattern abilitato in config.parameter_fk_surrogate
+              -- che matchi p_code (EXACT prioritario su LIKE), poi verifica
+              -- che p_value esista in <target_schema>.<target_table>.
+              -- <target_column> via SQL dinamico.
+              -- Ritorna true (passa) se: p_value assente, o nessun pattern
+              -- matcha, o lookup trova il valore. Ritorna false solo se
+              -- pattern matcha E valore non esiste.
+              DECLARE
+                  v_target_schema text;
+                  v_target_table  text;
+                  v_target_column text;
+                  v_lookup_sql    text;
+                  v_found         boolean;
+              BEGIN
+                  -- ⭐ rev 2026-08-31: «assente» comprende la STRINGA VUOTA.
+                  --    default_value (config.parameters) e overridden_value
+                  --    (config.parameter_overrides) sono ENTRAMBE NOT NULL,
+                  --    quindi il solo ramo NULL era irraggiungibile da tutti e
+                  --    due i chiamanti: su un parametro il vuoto E' l'unica
+                  --    forma che «nessun valore» puo' assumere.
+                  -- ⚠️ Solo `= ''`, non btrim(): un valore fatto di spazi resta
+                  --    rifiutato. Un codice_interno non e' mai bianco, quindi
+                  --    ' ' e' un refuso, e questa check e' l'unica cosa che lo
+                  --    intercetta — allargare a btrim spegnerebbe quel presidio
+                  --    in cambio di niente.
+                  IF p_value IS NULL OR p_value = '' THEN
+                      RETURN true;
+                  END IF;
+
+                  SELECT pfs.target_schema, pfs.target_table, pfs.target_column
+                    INTO v_target_schema, v_target_table, v_target_column
+                    FROM config.parameter_fk_surrogate pfs
+                   WHERE pfs.enabled
+                     AND (
+                            (pfs.match_mode = 'EXACT' AND pfs.code_pattern = p_code)
+                         OR (pfs.match_mode = 'LIKE'  AND p_code LIKE pfs.code_pattern)
+                     )
+                   ORDER BY (pfs.match_mode = 'EXACT') DESC, length(pfs.code_pattern) DESC
+                   LIMIT 1;
+
+                  IF v_target_schema IS NULL THEN
+                      -- Nessuna regola: code non soggetto a guard.
+                      RETURN true;
+                  END IF;
+
+                  v_lookup_sql := format(
+                      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = $1)',
+                      v_target_schema, v_target_table, v_target_column
+                  );
+                  EXECUTE v_lookup_sql INTO v_found USING p_value;
+                  RETURN v_found;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_check_parameter_fk_surrogate(text, text) IS
+                  'Check FK-surrogata generico per parametri. Lookup registry config.parameter_fk_surrogate (EXACT > LIKE), poi lookup dinamico sul target. Ritorna boolean. Usata dai dispatcher config.trgfn_parameters_fk_surrogate_dispatch e config.trgfn_parameter_overrides_fk_surrogate_dispatch. ⭐ rev 2026-08-31: «valore assente» comprende la STRINGA VUOTA e non solo il NULL. L''argomento sta sul modello e non sulla comodita'': config.parameters.default_value e config.parameter_overrides.overridden_value sono ENTRAMBE NOT NULL, quindi il ramo NULL era codice irraggiungibile da tutti e due i chiamanti e la regola che dichiarava — «assenza di valore, nessun controllo» — non si applicava mai; su un parametro il vuoto e'' l''unica forma che «nessun valore» puo'' assumere. ⛔ Senza questa rev, db/changelog/migrations_v2/80_data/sql/config/parameters.csv e'' un file INTOCCABILE: la riga DEFAULT_UTILITY ha default_value vuoto e una riga di registry attiva, il suo mirror e'' runOnChange, e qualunque modifica al CSV lo sveglia e fa morire il migrate su quella riga (successo il 2026-08-25). ⚠️ Solo la stringa vuota, NON il bianco: un valore fatto di spazi resta rifiutato, perche'' un codice_interno non e'' mai bianco e questa check e'' l''unica cosa che intercetta quel refuso. brief-db-default-iva-chiave-naturale §2-bis (decisione A, Tid 2026-08-31).
+              -- ACL: {=X/zeroerp_owner,zeroerp_owner=X/zeroerp_owner,zeroerp_app=X/zeroerp_owner}';
+
+              DROP FUNCTION IF EXISTS script.fn_parameter_fk_surrogate_regola(text);

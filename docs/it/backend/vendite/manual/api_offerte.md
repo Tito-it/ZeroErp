@@ -507,11 +507,13 @@ testata) e' ammesso ed esegue solo l'upsert utility.
 
 ### Delete `DELETE /api/v1/vendite/offerte/<id>/`
 
-Solo in stato BOZZA (pre-check del service: altrimenti 400
-`E_VENDITE_VALIDATION`). ⚠️ E' l'unico stato scritto nel service, e resta: la
-cancellazione non e' un passaggio della matrice e la tabella non ha un guard
-sul DELETE. Hard delete dell'offerta + cascade su
+Solo la bozza vuota: la regola «si cancella solo la bozza vuota» la giudica **solo il DB** (`vendite.trgfn_doc_guard_delete_solo_bozza`, dal 2026-11-08: il service non la ripete, brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a): fuori bozza 409 `E_DELETE_DOC_NON_BOZZA`, bozza con contenuto 409 `E_DELETE_DOC_CON_RIGHE`, documento citato come origine da un altro 409 `E_SORG_ORIGINE_REFERENZIATA`; il service legge solo l'esito del `DELETE`. Per l'offerta il contenuto sono le
+eccezioni attive. Il pre-check di stato del service (400 `E_VENDITE_VALIDATION`)
+è ritirato, e con lui `_STATI_EDITABILI`. L'offerta che non c'è è un 404
+`E_VENDITE_NOT_FOUND`. Hard delete dell'offerta + cascade su
 `offerte_commerciali_eccezioni` e `offerte_commerciali_utilities` via FK.
+Il FE non offre l'eliminazione (UI-Z.2-a): l'azione `elimina` dello store e
+`deleteOfferta` sono ritirate il 2026-11-08.
 
 **Annullamento di processo**: per "ritirare" un'offerta gia' presentata
 internamente si usa `POST /<id>/annulla/` (stato ANNULLATA), non DELETE.

@@ -47,8 +47,8 @@ IND_REPO = "apps.anagrafiche.services.geo_service.IndirizziRepository"
 class TestToponomasticaService(TestCase):
     """Test GeoService — metodi toponomastica."""
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_toponomastica_ok(self, mock_ind, mock_geo):
         """Happy path: crea tipo strada."""
         mock_geo.return_value.create_toponomastica.return_value = {"id": 1, "descrizione": "Viale", "attivo": True}
@@ -56,8 +56,8 @@ class TestToponomasticaService(TestCase):
         result = GeoService().create_toponomastica({"descrizione": "Viale"})
         self.assertEqual(result["descrizione"], "Viale")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_toponomastica_empty(self, mock_ind, mock_geo):
         """Descrizione vuota → ServiceError E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.geo_service import GeoService
@@ -65,8 +65,8 @@ class TestToponomasticaService(TestCase):
             GeoService().create_toponomastica({"descrizione": "  "})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_toponomastica_duplicate(self, mock_ind, mock_geo):
         """IntegrityError → ServiceError E_ANAG_DUPLICATO."""
         mock_geo.return_value.create_toponomastica.side_effect = make_integrity_error(SQLSTATE_UNICITA)
@@ -75,8 +75,8 @@ class TestToponomasticaService(TestCase):
             GeoService().create_toponomastica({"descrizione": "Via"})
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_update_toponomastica_ok(self, mock_ind, mock_geo):
         """Aggiorna descrizione → True."""
         mock_geo.return_value.update_toponomastica.return_value = True
@@ -84,8 +84,8 @@ class TestToponomasticaService(TestCase):
         result = GeoService().update_toponomastica(1, {"descrizione": "Corso"})
         self.assertEqual(result, {"updated": True})
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_update_toponomastica_not_found(self, mock_ind, mock_geo):
         """ID inesistente → ServiceError E_ANAG_NOT_FOUND."""
         mock_geo.return_value.update_toponomastica.return_value = False
@@ -94,8 +94,8 @@ class TestToponomasticaService(TestCase):
             GeoService().update_toponomastica(999, {"descrizione": "Test"})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_update_toponomastica_empty_desc(self, mock_ind, mock_geo):
         """Descrizione vuota dopo strip → E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.geo_service import GeoService
@@ -107,16 +107,16 @@ class TestToponomasticaService(TestCase):
 class TestComuniService(TestCase):
     """Test GeoService — metodi comuni."""
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_comune_ok(self, mock_ind, mock_geo):
         mock_geo.return_value.create_comune.return_value = {"id": 1, "descrizione": "TestComune"}
         from apps.anagrafiche.services.geo_service import GeoService
         result = GeoService().create_comune({"descrizione": "TestComune"})
         self.assertEqual(result["descrizione"], "TestComune")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_comune_empty(self, mock_ind, mock_geo):
         from apps.anagrafiche.services.geo_service import GeoService
         with self.assertRaises(ServiceError) as ctx:
@@ -127,24 +127,24 @@ class TestComuniService(TestCase):
 class TestProvinceService(TestCase):
     """Test GeoService — metodi province."""
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_provincia_ok(self, mock_ind, mock_geo):
         mock_geo.return_value.create_provincia.return_value = {"id": 1, "descrizione": "Test", "sigla": "TS"}
         from apps.anagrafiche.services.geo_service import GeoService
         result = GeoService().create_provincia({"descrizione": "Test", "sigla": "TS"})
         self.assertEqual(result["sigla"], "TS")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_provincia_missing_sigla(self, mock_ind, mock_geo):
         from apps.anagrafiche.services.geo_service import GeoService
         with self.assertRaises(ServiceError) as ctx:
             GeoService().create_provincia({"descrizione": "Test", "sigla": ""})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_provincia_duplicate(self, mock_ind, mock_geo):
         mock_geo.return_value.create_provincia.side_effect = make_integrity_error(SQLSTATE_UNICITA)
         from apps.anagrafiche.services.geo_service import GeoService
@@ -156,16 +156,16 @@ class TestProvinceService(TestCase):
 class TestRegioniService(TestCase):
     """Test GeoService — metodi regioni."""
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_regione_ok(self, mock_ind, mock_geo):
         mock_geo.return_value.create_regione.return_value = {"id": 1, "descrizione": "Lombardia"}
         from apps.anagrafiche.services.geo_service import GeoService
         result = GeoService().create_regione({"descrizione": "Lombardia"})
         self.assertEqual(result["descrizione"], "Lombardia")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_regione_duplicate(self, mock_ind, mock_geo):
         mock_geo.return_value.create_regione.side_effect = make_integrity_error(SQLSTATE_UNICITA)
         from apps.anagrafiche.services.geo_service import GeoService
@@ -177,16 +177,16 @@ class TestRegioniService(TestCase):
 class TestStatiService(TestCase):
     """Test GeoService — metodi stati."""
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_stato_ok(self, mock_ind, mock_geo):
         mock_geo.return_value.create_stato.return_value = {"id": 1, "descrizione": "Italia", "codice_iso2": "IT"}
         from apps.anagrafiche.services.geo_service import GeoService
         result = GeoService().create_stato({"descrizione": "Italia", "codice_iso2": "IT"})
         self.assertEqual(result["codice_iso2"], "IT")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_stato_empty(self, mock_ind, mock_geo):
         from apps.anagrafiche.services.geo_service import GeoService
         with self.assertRaises(ServiceError) as ctx:
@@ -197,8 +197,8 @@ class TestStatiService(TestCase):
 class TestIndirizziService(TestCase):
     """Test GeoService — metodi indirizzi (orchestrazione)."""
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_indirizzo_via_esistente(self, mock_ind, mock_geo):
         """Con stradario_id → una sola fn madre create_indirizzo_atomico (fix #13);
         l'upsert stradario e' saltato dalla fn (stradario_id valorizzato)."""
@@ -211,11 +211,13 @@ class TestIndirizziService(TestCase):
         self.assertEqual(kwargs["stradario_id"], 10)
         self.assertEqual(kwargs["civico"], 1)
         # I metodi separati non sono piu' invocati: la composizione e' nella fn.
-        mock_ind.return_value.get_or_create_stradario.assert_not_called()
-        mock_ind.return_value.create_indirizzo_dettaglio.assert_not_called()
+        # Non esistono piu' tutti e due (mock `autospec`: `hasattr` legge la
+        # classe vera), quindi il servizio non li puo' chiamare.
+        for separato in ("get_or_create_stradario", "create_indirizzo_dettaglio"):
+            self.assertFalse(hasattr(mock_ind.return_value, separato), separato)
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_indirizzo_via_nuova(self, mock_ind, mock_geo):
         """Senza stradario_id → una sola fn madre create_indirizzo_atomico coi
         campi 'via nuova' (upsert stradario ×2 + dettaglio, atomici nel DB)."""
@@ -234,10 +236,10 @@ class TestIndirizziService(TestCase):
         self.assertEqual(kwargs["comune_id"], 10)
         self.assertEqual(kwargs["codice_postale_id"], 20)
         self.assertEqual(kwargs["civico"], 15)
-        mock_ind.return_value.get_or_create_stradario.assert_not_called()
+        self.assertFalse(hasattr(mock_ind.return_value, "get_or_create_stradario"))
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_create_indirizzo_via_nuova_missing_fields(self, mock_ind, mock_geo):
         """Via nuova senza toponomastica_id → E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.geo_service import GeoService
@@ -245,8 +247,8 @@ class TestIndirizziService(TestCase):
             GeoService().create_indirizzo({"descrizione_via": "Roma", "comune_id": 10, "codice_postale_id": 20})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_get_indirizzo_not_found(self, mock_ind, mock_geo):
         """ID inesistente → E_ANAG_NOT_FOUND."""
         mock_ind.return_value.get_indirizzo_dettaglio.return_value = None
@@ -255,8 +257,8 @@ class TestIndirizziService(TestCase):
             GeoService().get_indirizzo(999)
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_update_indirizzo_not_found(self, mock_ind, mock_geo):
         """Update id inesistente → E_ANAG_NOT_FOUND."""
         mock_ind.return_value.update_indirizzo_dettaglio.return_value = False
@@ -265,8 +267,8 @@ class TestIndirizziService(TestCase):
             GeoService().update_indirizzo(999, {"civico": 10})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(GEO_REPO)
-    @patch(IND_REPO)
+    @patch(GEO_REPO, autospec=True)
+    @patch(IND_REPO, autospec=True)
     def test_list_codici_postali_invalid(self, mock_ind, mock_geo):
         """comune_id 0 → E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.geo_service import GeoService

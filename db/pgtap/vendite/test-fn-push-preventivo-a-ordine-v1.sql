@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96/-97): le colonne parallele
+--   della provenienza (ordini.documento_origine_*, contratti.offerta_id) sono ritirate; la fixture
+--   scrive e il test legge la sola provenienza (sorgente_*), come i verbi. Attese invariate.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: CREATE TRIGGER su vendite.preventivi — fault injection sulla transizione a
 --   EVASO, per dimostrare che il push e' atomico. Il ruolo applicativo ha la
@@ -145,13 +148,13 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- 3) Ordine creato con documento_origine = (PREVENTIVO, id)
+-- 3) Ordine creato con la provenienza (PREVENTIVO, uid del preventivo)
 -- ============================================================
 SELECT ok(
   EXISTS(SELECT 1 FROM vendite.ordini o
-          WHERE o.documento_origine_tipo = 'PREVENTIVO'
-            AND o.documento_origine_id = (SELECT id FROM tmp_prev)),
-  '3) creato ordine con documento_origine=(PREVENTIVO, id)'
+          WHERE o.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')
+            AND o.sorgente_uid = (SELECT p.uid FROM vendite.preventivi p WHERE p.id = (SELECT id FROM tmp_prev))),
+  '3) creato ordine con la provenienza (PREVENTIVO, uid)'
 );
 
 -- ============================================================
@@ -228,8 +231,8 @@ RESET lock_timeout;
 
 SELECT is(
   (SELECT count(*) FROM vendite.ordini o
-    WHERE o.documento_origine_tipo = 'PREVENTIVO'
-      AND o.documento_origine_id = (SELECT id FROM tmp_prev_atom)),
+    WHERE o.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')
+      AND o.sorgente_uid = (SELECT p.uid FROM vendite.preventivi p WHERE p.id = (SELECT id FROM tmp_prev_atom))),
   0::bigint,
   '8b) nessun ordine orfano: la creazione e'' stata annullata con la transizione'
 );

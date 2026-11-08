@@ -133,9 +133,12 @@ SELECT
   JOIN vendite.commesse_attivita cb_a ON cb_a.id = b.attivita_id
  WHERE a.slot = 'CA';
 
+-- Due preventivi VERI: la provenienza di una riga di commessa deve nominare un
+-- documento che esiste. Le righe si scrivono a mano (senza la porta del link),
+-- perche' qui lo stesso documento sta in piu' commesse.
 CREATE TEMP TABLE tmp_dg_uid AS
-SELECT 'GA'::text AS slot, uuidv7()::text AS uid
-UNION ALL SELECT 'GB', uuidv7()::text;
+SELECT 'GA'::text AS slot, (SELECT p.preventivo_uid::text FROM dbops.fn_pgtap_crea_preventivo('dg GA') p) AS uid
+UNION ALL SELECT 'GB', (SELECT p.preventivo_uid::text FROM dbops.fn_pgtap_crea_preventivo('dg GB') p);
 
 SELECT ok(
   (SELECT r.billing_account_id IS NOT NULL AND r.articolo_id IS NOT NULL
@@ -170,16 +173,18 @@ CREATE FUNCTION pg_temp.mk_dg(
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id, sorgente_uid)
   SELECT (SELECT commessa_id FROM tmp_dg_commessa WHERE slot = p_commessa_slot),
-         'PGTAP-DG-' || p_uid_slot || '-' || substr(md5(clock_timestamp()::text), 1, 10),
+         -- la chiave del push nomina il preventivo; l'etichetta del test dopo ':'
+         script.fn_segment_key('PREVENTIVO', (SELECT uid FROM tmp_dg_uid WHERE slot = p_uid_slot))
+           || ':PGTAP-DG-' || p_uid_slot || '-' || substr(md5(clock_timestamp()::text), 1, 10),
          r.articolo_id, r.istanza_utility_id, p_comp, r.uom_id, 1,
          p_comp, date_trunc('month', p_comp)::date,
          (date_trunc('month', p_comp) + INTERVAL '1 month - 1 day')::date,
          CASE WHEN p_con_tipo_doc THEN r.tipo_doc_fiscale_id ELSE NULL END,
          r.valuta_id, 10.000000, 'FIXED',
          p_appr, p_emiss, r.sorgente_tipo_id,
-         (SELECT uid FROM tmp_dg_uid WHERE slot = p_uid_slot)
+         (SELECT k.sorgente_id FROM script.fn_sorgente_chiave(r.sorgente_tipo_id, ((SELECT uid FROM tmp_dg_uid WHERE slot = p_uid_slot))::text) k), (SELECT k.sorgente_uid FROM script.fn_sorgente_chiave(r.sorgente_tipo_id, ((SELECT uid FROM tmp_dg_uid WHERE slot = p_uid_slot))::text) k)
     FROM tmp_dg_refs r
   RETURNING id;
 $$;
@@ -203,10 +208,9 @@ SELECT pg_temp.mk_dg('CB', 'GB', 'APPROVATA', 'NON_EMESSA', DATE '2082-01-01', t
 -- significherebbe verificare la copia invece dell'originale.
 CREATE TEMP TABLE tmp_dg_key AS
 SELECT DISTINCT u.slot,
-       vendite.fn_build_gruppo_fatturabile_key(
-         ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
+       vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key
   FROM tmp_dg_uid u
-  JOIN vendite.commesse_attivita ca ON ca.sorgente_uid = u.uid;
+  JOIN vendite.commesse_attivita ca ON ca.sorgente_uid = u.uid::uuid;
 
 -- La fotografia si calcola UNA volta: le asserzioni parlano della stessa.
 CREATE TEMP TABLE tmp_dg_foto AS
@@ -407,8 +411,8 @@ BEGIN
     SELECT ca.tipo_doc_fiscale_id INTO v_tdf
       FROM vendite.commesse_attivita ca WHERE ca.id = v_ca;
 
-    v_key := vendite.fn_build_gruppo_fatturabile_key(
-                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm);
+    v_key := (SELECT vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)
+                FROM vendite.commesse_attivita ca WHERE ca.id = v_ca);
 
     -- Il lotto DRAFT che trattiene il gruppo: il builder scrive anche l'esito
     --   ERRORE E_PULL_COMMESSA. Il codice lo decide la madre.

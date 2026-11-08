@@ -1,219 +1,218 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.presidi`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento guide:**
+> Approfondimento tabelle:
 >
-• [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — *il meccanismo condiviso: la misura e il registro*
+> * [dbops.presidi_testi](/dbzero/dbops/tabelle/presidi_testi) — le parole per chi deve agire
+> * [dbops.presidi_cause](/dbzero/dbops/tabelle/presidi_cause) — le cause di un presidio, e a chi tocca ciascuna
+> * [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/tabelle/riferimenti_morti_esenzioni) — un registro del debito che una riga nomina
+> * [dbops.codici_errore_senza_policy](/dbzero/dbops/tabelle/codici_errore_senza_policy) — un altro registro del debito
+> * [dbops.rls_perimetro_debito](/dbzero/dbops/tabelle/rls_perimetro_debito) — un altro registro del debito
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [dbops.fn_conta_presidio](/dbzero/dbops/manual/fn_conta_presidio)
+> * [dbops.fn_conta_presidio](/dbzero/dbops/funzioni/fn_conta_presidio) — il conteggio onesto di una vista a catalogo
+> * [dbops.fn_conta_presidio_per_variante](/dbzero/dbops/funzioni/fn_conta_presidio_per_variante) — lo stesso conteggio per causa, ed è la sede del filtro
 >
-**Approfondimento tabelle:**
+> Guide:
 >
-• [dbops.presidi_testi](/dbzero/dbops/manual/presidi_testi) — *il testo per chi deve agire*
-> • [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/manual/riferimenti_morti_esenzioni)
-> • [dbops.codici_errore_senza_policy](/dbzero/dbops/manual/codici_errore_senza_policy)
-> • [dbops.processi](/dbzero/dbops/manual/processi)
->
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — il meccanismo condiviso: la misura e il registro
+
+---
 
 ### 🎯 Scopo Principale
-(latest review 10-09-2026)
 
-Il database ha una trentina di **viste di controllo**: guardano se qualcosa si è
-rotto in silenzio — un lavoro notturno fallito, un operatore configurato a metà,
-una tabella che dovrebbe filtrare e non filtra.
+Il catalogo delle viste di presidio: per ogni vista di controllo dice **che cosa significa una
+sua riga**, ogni quanto si guarda, se il conteggio è onesto letto da un programma senza utente e
+a chi tocca spegnerla.
 
-Fanno il loro mestiere. Il problema è un altro, e questa tabella nasce da lì:
-
-> **Guardare non è di nessuno.**
-
-Il 9 settembre 2026 un lavoro notturno era fallito **quattro notti di fila**. La
-riga che lo diceva stava in una vista che porta nel nome ciò che serviva —
-*`vw_coda_lavori_da_guardare`* — ed è rimasta lì quattro notti. Il controllo
-aveva funzionato benissimo: non aveva un destinatario.
-
-`dbops.presidi` è il pezzo che mancava: **per ogni vista di controllo, che cosa
-significa una sua riga**. È quello che permette a un programma di prendere
-quelle viste e portarne il contenuto davanti a una persona, senza sommergerla.
+Le viste di controllo guardano se qualcosa si è rotto in silenzio: un lavoro notturno fallito,
+un operatore configurato a metà, una tabella che dovrebbe filtrare e non filtra. Una vista che
+nessuno guarda però non presidia niente: questo catalogo è ciò che permette al digest e al
+pannello dei processi automatici di prendere quelle viste e portarne il contenuto davanti a una
+persona, senza sommergerla.
 
 ---
 
-### ⭐ Perché non bastava «manda un elenco delle viste non vuote»
+### ⛔ Non è un elenco in Python
 
-Perché **non tutte le viste dicono la stessa cosa quando non sono vuote**.
-
-* Su `vw_coda_lavori_da_guardare` una riga è un guasto **di adesso**: un lavoro è
-  fallito stanotte.
-* Su `vw_riferimenti_morti_da_sanare` le righe sono un **debito noto**, con un
-  registro accanto che dice quali sono già state decise: l'allarme non è «ce ne
-  sono», è «ce n'è una che nessuno aveva registrato».
-* Su `vw_trigger_functions` ci sono **duemila righe** ed è la condizione normale:
-  è l'elenco dei trigger del database, non un allarme.
-
-Un avviso che non distingue questi tre casi si apre con duemila righe di
-inventario. E un avviso rumoroso viene ignorato al secondo invio — cioè finisce
-esattamente come il controllo che voleva salvare.
-
-⭐ **E nessuna delle tre nature è deducibile dal nome della vista.** La sa chi
-l'ha scritta, e infatti in trentuno casi su trentadue era già scritta — in
-prosa, nel commento della vista, cioè in una forma che nessun programma può
-leggere. Questa tabella la rende leggibile a una macchina senza toglierla di lì.
+Un elenco scritto nel backend sarebbe una seconda sorgente di verità e diverrebbe stantio alla
+prima vista nuova: il presidio nuovo nascerebbe fuori dal digest, in silenzio, cioè lo stesso
+guasto che il digest chiude. Il catalogo sta nel database, accanto alle viste che descrive, e un
+pgTAP pretende che le due cose coincidano (vedi *Test*).
 
 ---
 
-### Le cinque nature
+### ⭐ Le nature: nessuna si deduce dal nome della vista
 
-| Natura | Che cosa significa una riga | Va nel digest? |
+Non tutte le viste dicono la stessa cosa quando non sono vuote. Su una lista di lavori falliti
+una riga è un guasto di adesso; su un registro di debito noto l'allarme è la voce che nessuno
+aveva registrato; su un inventario dei trigger le righe sono la condizione normale. Un avviso
+che non distingue questi casi si apre con l'inventario, e un avviso rumoroso viene ignorato al
+secondo invio.
+
+| Natura | Che cosa significa una riga | Nel digest |
 | --- | --- | --- |
-| **ZERO** | un guasto **adesso**: qualunque riga è un allarme | sì, e per prima |
-| **REGISTRO** | un **debito noto**. L'allarme è la voce che *nessuno aveva registrato* | sì, se il registro non la conosce |
-| **LAVORAZIONE** | una **coda** che qualcuno o qualcosa consuma, o una **spia** da guardare per tendenza | sì, come tendenza |
-| **CANCELLO** | è **già presidiata** altrove — in CI o in un test — e quel controllo blocca già il lavoro | no: ripetere ciò che un cancello ha già fermato è rumore |
-| **INVENTARIO** | un **panorama**: elenca anche i sani | no, mai |
+| `ZERO` | un guasto **adesso**: qualunque riga è un allarme | sì |
+| `REGISTRO` | un **debito noto**: l'allarme è la voce non registrata | sì |
+| `LAVORAZIONE` | una **coda** che qualcuno consuma, o una **spia** da guardare per tendenza | sì, se la cadenza non è `MAI` |
+| `CANCELLO` | è già presidiata in CI o in un pgTAP, che blocca il lavoro | no: ripetere ciò che un cancello ha fermato è rumore |
+| `INVENTARIO` | un **panorama**: elenca anche i sani | no, mai |
 
-⛔ **Anche un inventario si dichiara.** Se una vista mancasse dal catalogo non si
-saprebbe se è un inventario o una dimenticanza — e la differenza è tutta lì.
+La natura la sa chi ha scritto la vista, e di solito l'ha già scritta in prosa nel `COMMENT`:
+il catalogo la rende leggibile a un programma. ⛔ **Anche un inventario si dichiara**: se una
+vista mancasse dal catalogo non si saprebbe se è un inventario o una dimenticanza.
 
----
-
-### ⭐ Il debito si tiene con un registro, non con un numero
-
-La strada breve sarebbe stata una colonna `soglia`: *«oggi sono 508, l'allarme
-scatta a 509»*. È stata scartata, e la ragione vale oltre questo caso.
-
-Un numero vede solo il **totale**. È cieco sullo **scambio**: un debito saldato e
-un difetto nuovo comparsi lo stesso giorno lasciano il conteggio fermo, e il
-controllo tace.
-
-E non è un caso di scuola. Su `vw_processi_che_bypassano` c'è oggi **una** riga:
-un ruolo tecnico che scavalca i filtri, dichiarato, con la data in cui verrà
-ritirato. Il giorno in cui quel debito si chiude e — nello stesso giro — un altro
-ruolo prende lo stesso privilegio senza dichiararlo, il numero resta **uno**, e
-il controllo sulla sicurezza delle righe diventa muto.
-
-⇒ La colonna `registro` porta il **nome della tabella** che tiene le voci note.
-Il progetto ne aveva già tre, tutte con la stessa forma: una voce per caso, il
-motivo scritto, la data.
-
-⚠️ Dove il registro non esiste ancora, `registro` è vuoto **e la nota dice che
-quello è il lavoro**. Un vuoto dichiarato, non una dimenticanza.
+Il database tiene coerente il vocabolario: un `CANCELLO` deve dire **dove** è presidiato
+(`presidiato_da`), e un `CANCELLO` o un `INVENTARIO` ha per forza cadenza `MAI`.
 
 ---
 
-### ⭐ Si dichiara lo stato *atteso*, non quelli di allarme
+### ⭐ Il debito si tiene con un registro, non con una soglia
 
-Su quattro viste la domanda non è «è vuota?». Portano una colonna di stato, e la
-regola scritta nel loro commento è *«nessuna riga NON_DICHIARATO»*: una riga
-dichiarata è **attesa**, e suonare su di essa vorrebbe dire suonare su una cosa
-già decisa.
+Non c'è una colonna `soglia` («l'allarme scatta oltre N»). Un numero vede solo il totale ed è
+cieco sullo **scambio**: un debito saldato e un difetto nuovo comparsi lo stesso giorno lasciano
+il conteggio fermo, e il controllo tace.
 
-Si sarebbe potuto elencare gli stati **di allarme**. Sembra più naturale ed è la
-scelta sbagliata, perché è quella permissiva:
-
-> Uno stato **nuovo**, aggiunto domani a una di quelle viste, non sarebbe
-> nell'elenco — e cadrebbe nel **silenzio**.
-
-È l'unico verso in cui un controllo marcisce senza che nessuno se ne accorga.
-Perciò si dichiara l'unico stato **accettato**, e l'allarme è tutto il resto:
-uno stato nuovo cade nell'allarme, e chi lo aggiunge deve venire qui a decidere.
-
-⭐ E si prende gratis il caso a più valori. Su `vw_rls_perimetro_scoperto` gli
-stati sono **tre**: uno atteso, uno che è un allarme, e uno che è una riga di
-registro da togliere. *«Diverso da quello atteso»* prende gli altri due senza
-doverli nominare.
+La colonna `registro` porta invece il **nome della tabella** che tiene le voci note, una per
+caso, con il motivo scritto e la data. Dove il registro non esiste ancora la colonna è vuota e
+la `nota` dice che quello è il lavoro: un vuoto dichiarato, non una dimenticanza. Il nome deve
+essere qualificato, e il pgTAP verifica che la tabella esista.
 
 ---
 
-### ⚠️ Due colonne che sembrano dettagli e non lo sono
+### ⭐ Si dichiara lo stato atteso, non quelli di allarme
 
-**`cadenza`** non è solo una scelta di rumore, è anche una di **costo**:
-`vw_riferimenti_morti_da_sanare` ricompila circa cinquecento funzioni a ogni
-lettura. Non è una vista da interrogare tutte le notti, e il costo è un attributo
-della singola riga — non una proprietà del digest.
+Su alcune viste la domanda non è «è vuota?»: la vista ha una colonna di stato, e una riga con lo
+stato «debito dichiarato» è **attesa**. Per queste il catalogo dichiara la coppia
+`colonna_stato` + `stato_atteso`, e si conta tutto ciò che è **diverso** dallo stato atteso.
 
-**`perimetro`** risponde a una domanda che sfugge: *questo conteggio è onesto
-letto da un programma senza utente?* Tre viste leggono tabelle protette dal
-filtro per righe. Un comando lanciato da un timer non ha una veste, quindi il
-filtro le rende **zero** — e su una vista che deve restare vuota, «zero righe» e
-«non ho potuto vedere» **si scrivono uguale**. Quelle tre si contano solo
-attraverso [`dbops.fn_conta_presidio`](/dbzero/dbops/manual/fn_conta_presidio), e
-di quelle il digest riporta il **numero** e non le righe.
+Elencare gli stati di allarme sembrerebbe più naturale ed è la scelta permissiva: uno stato
+nuovo, aggiunto domani alla vista, non sarebbe nell'elenco e cadrebbe nel silenzio. Dichiarando
+l'unico stato accettato, uno stato nuovo cade nell'allarme e chi lo aggiunge deve venire qui a
+decidere. E il caso a più valori viene da sé: «diverso dall'atteso» prende un allarme e una riga
+di registro da togliere senza doverli nominare.
+
+⛔ La coppia è indivisibile: o ci sono tutte e due, o nessuna, e uno stato atteso vuoto è
+rifiutato (sarebbe un filtro che accende su tutto). ⚠️ Non ogni colonna chiamata `stato` va
+qui: se lo stato è quello del lavoro e ogni riga va comunque guardata, filtrarla spegnerebbe il
+presidio.
+
+---
+
+### ⚠️ Cadenza e perimetro: due colonne che sembrano dettagli
+
+**`cadenza`** (`GIORNALIERA`, `SETTIMANALE`, `MAI`) non è solo una scelta di rumore ma anche di
+**costo**: la lista di lavoro dei riferimenti morti ricompila ogni funzione del database a ogni
+lettura, e non è una vista da interrogare tutte le notti. Il costo è un attributo della singola
+riga, non del digest.
+
+**`perimetro`** risponde a una domanda che sfugge: *il conteggio è onesto letto da un programma
+senza utente?* `LIBERO` vuol dire sì. `DEFINER` vuol dire che la vista attraversa una tabella in
+row level security o una funzione che vede solo ciò che possiede chi la chiama: da un comando
+lanciato da un timer tornerebbe zero, e su una vista che deve restare vuota «zero righe» e «non
+ho potuto vedere» si scrivono uguale. Il conteggio passa sempre da
+[dbops.fn_conta_presidio](/dbzero/dbops/funzioni/fn_conta_presidio), che lo fa onesto per tutte;
+`perimetro` dice se chi legge può anche **elencare** le righe, e per le `DEFINER` il digest
+riporta il numero e non le righe.
 
 ---
 
 ### Chi lo spegne, e con quali parole
 
-Dal 2026-10-06 ogni presidio che può accendersi dice anche **a chi tocca
-spegnerlo**, nella colonna `chi_agisce`:
+`chi_agisce` dice a chi tocca spegnere il presidio:
 
-| Valore | Chi è | Che cosa significa per chi legge il pannello |
+| Valore | Chi è | Per chi legge il pannello |
 | --- | --- | --- |
 | `AMMINISTRATORE` | chi usa l'applicazione | «puoi sistemarlo tu» |
 | `SISTEMISTA` | chi gestisce server, servizi, timer e ruoli del database | «da segnalare a chi gestisce il server» |
 | `SVILUPPO` | serve una modifica al codice o al database | «da segnalare allo sviluppo» |
 
-È un **dato** e non una frase perché il pannello deve poter distinguere *«tocca a
-te»* da *«inoltra»*, e il digest deve poterli raggruppare. È obbligatoria su ogni
-natura tranne `INVENTARIO`, che non si accende: lo impone un vincolo del database.
+È un **dato** e non una frase perché il pannello deve distinguere «tocca a te» da «inoltra», e il
+digest deve poterli raggruppare. Il database la pretende su ogni natura tranne `INVENTARIO`, che
+non si accende.
 
-Le **parole** per chi agisce — cosa vuol dire una riga, cosa fare — stanno in
-[`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi). La `nota` di questa
-tabella e il `COMMENT` della vista restano scritti per chi **mantiene** il
-presidio, e non si riscrivono.
+Le **parole** per chi agisce stanno in [dbops.presidi_testi](/dbzero/dbops/tabelle/presidi_testi).
+La `nota` di questa tabella e il `COMMENT` della vista restano scritti per chi **mantiene** il
+presidio.
 
-Dal 2026-10-09 la colonna `colonna_variante` dice, per i presidi le cui righe
-sono guasti **diversi**, da quale colonna della vista si legge la causa di ogni
-riga: il testo si sceglie da lì, riga per riga. Vuota = un testo solo per tutto
-il presidio. Per questi presidi anche «a chi tocca» si legge per causa, da
-[`dbops.presidi_cause`](/dbzero/dbops/manual/presidi_cause): `chi_agisce` qui resta
-il valore del presidio nel suo insieme. Dettaglio in
-[`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi).
-
-Anche il **conteggio** si legge per causa, dal 2026-10-10:
-[`dbops.fn_conta_presidio_per_variante`](/dbzero/dbops/manual/fn_conta_presidio_per_variante)
-dice quante righe ci sono per ciascuna causa, perché il pannello e il digest
-mostrano solo un campione delle righe e da un campione non si contano i gruppi.
+**`colonna_variante`** serve ai presidi le cui righe sono guasti **diversi**: dice da quale
+colonna della vista si legge la causa di ogni riga, e da lì si scelgono il testo e «a chi tocca»
+riga per riga ([dbops.presidi_cause](/dbzero/dbops/tabelle/presidi_cause)); `chi_agisce` qui resta
+il valore del presidio nel suo insieme. Vuota vuol dire un testo solo per tutto il presidio. Anche
+il conteggio si legge per causa, da
+[dbops.fn_conta_presidio_per_variante](/dbzero/dbops/funzioni/fn_conta_presidio_per_variante),
+perché pannello e digest mostrano solo un campione delle righe e da un campione non si contano i
+gruppi.
 
 ---
 
-### ⛔ Che cosa NON sta qui
+### ⛔ Che cosa non sta qui
 
-**Il destinatario.** A chi arriva la posta è un fatto di **questa installazione**,
-non del software: un indirizzo dentro un catalogo o viaggia su ogni installazione
-o rende la riga non seminabile. È la stessa ragione per cui la cadenza dei lavori
-notturni non sta su `dbops.processi` e le sveglie dei comandi stanno nei file di
-deploy del backend: *come e a chi si suona è un fatto di deploy, e vive dove vive
-il deploy*.
-
-**La soglia.** Vedi sopra.
-
-**Le viste stesse.** Nessuna è stata toccata: sono già scritte bene, e il
-catalogo rende leggibile a un programma ciò che loro spiegano già in prosa.
+* **Il destinatario.** A chi arriva la posta è un fatto di questa installazione, non del
+  software: un indirizzo in un catalogo o viaggia su ogni installazione o rende la riga non
+  seminabile. Vive dove vive il deploy, nel backend.
+* **La soglia.** Vedi sopra.
+* **Il ritiro per cancellazione.** `attivo = false` spegne una riga, ma la `nota` resta
+  obbligatoria e non vuota anche lì; per ritirare una vista dal catalogo si usa `obsoleto_dal`.
+  Una riga spenta o ritirata non si conta: il contatore la rifiuta come una vista sconosciuta.
+  ⚠️ L'eccezione è la vista che sparisce dal database: ogni riga, anche ritirata, deve puntare a
+  una vista viva, quindi quando la vista si toglie la sua riga si cancella, prima i testi e poi
+  il presidio, nello stesso giro.
 
 ---
 
 ### Come si aggiunge una riga
 
-1. Si scrive la vista, con il suo `COMMENT` come sempre.
-2. Si aggiunge una riga al CSV di seed, `80_data/sql/dbops/presidi.csv`, con
-   `chi_agisce` (vuota, cioè `NULL`, solo su un `INVENTARIO`).
-3. Se il presidio può accendersi, si aggiunge la riga `it` a
-   `80_data/sql/dbops/presidi_testi.csv`: significato e azione.
-4. ⛔ **Non c'è un passo 4.** Se il passo 2 si dimentica, il test
-   `db/pgtap/dbops/test-catalogo-presidi-v1.sql` diventa rosso: è il verso che
-   impedisce a una vista nuova di nascere fuori dal digest. E il verso opposto —
-   una riga di catalogo che non trova più la sua vista — è il test accanto. Se
-   si dimentica il passo 3, è rosso `db/pgtap/dbops/test-presidi-testi-v1.sql`;
-   senza `chi_agisce` la riga la rifiuta il database.
+1. Si scrive la vista, con il suo `COMMENT`, nello schema `dbops` o in un altro schema già
+   presente nel catalogo.
+2. Si aggiunge la riga a `80_data/sql/dbops/presidi.csv`, con `nota` e `chi_agisce` (vuota solo
+   su un `INVENTARIO`). La chiave del seed è la colonna `vista`, il nome qualificato.
+3. Se il presidio può accendersi, si aggiunge la riga `it` a `80_data/sql/dbops/presidi_testi.csv`;
+   se dichiara `colonna_variante`, anche le cause e i loro testi.
 
-⚠️ Il seed è un mirror `runOnChange`: rilegge **tutto** il file a ogni migrate,
-quindi appendere una riga ri-propone ai vincoli anche tutte quelle già scritte.
-Prima di toccarlo conviene provare l'upsert su tutte le righe dentro una
-transazione che si annulla.
+Non c'è un passo 4: se si dimentica il passo 2 un pgTAP diventa rosso, e la vista non nasce fuori
+dal digest; se si dimentica il 3 è rosso il pgTAP dei testi; senza `chi_agisce` la riga la rifiuta
+il database.
+
+⚠️ Il seed è un upsert `runOnChange` sulla chiave `vista`: a ogni modifica del file rilegge
+**tutte** le righe e le ripropone ai vincoli, quindi appendere una riga mette alla prova anche le
+altre. Una riga tolta dal file non sparisce dal database: serve una modifica a parte.
 
 ---
 
-*Brief: `docs/it/dev/work-done/brief-db-un-destinatario-per-i-presidi.md`;
-`chi_agisce` e i testi: `docs/it/dev/work-done/brief-db-presidi-cosa-significa-cosa-fare.md`.*
+### Test
+
+* `db/pgtap/dbops/test-catalogo-presidi-v1.sql` — i due versi: ogni vista degli schemi presenti
+  nel catalogo ha la sua riga, e ogni riga punta a una vista viva; la colonna di stato e il
+  registro dichiarati esistono; la `nota` e il `presidiato_da` di un `CANCELLO` sono pretesi dal
+  database; il contatore rifiuta una vista non a catalogo, conta la vista intera senza colonna di
+  stato e «diverso dall'atteso» con la colonna; il proprietario delle tabelle protette lette dalle
+  viste `DEFINER` è ancora quello della funzione che conta.
+* `db/pgtap/dbops/test-presidi-testi-v1.sql` — `chi_agisce` obbligatoria tranne che su un
+  `INVENTARIO`, il suo dominio, e la `colonna_variante` che esiste nella vista.
+
+---
+
+### Note di migrazione
+
+* 2026-09-10 — nasce con `brief-db-un-destinatario-per-i-presidi` §4.1, il giorno dopo un lavoro
+  notturno fallito quattro notti di fila mentre la vista che lo diceva restava lì senza un
+  destinatario. Il perimetro del pgTAP si legge dagli schemi presenti nel catalogo e non da un
+  prefisso: la trentaduesima vista era nata il giorno stesso in cui se ne contavano trentuno.
+* 2026-10-06 — nasce `chi_agisce` (`brief-db-presidi-cosa-significa-cosa-fare`).
+* 2026-10-09 — nasce `colonna_variante` (`brief-db-presidio-processi-testo-per-causa`); il
+  conteggio per causa arriva il 2026-10-10.
+* 2026-11-04 — esce dal catalogo `dbops.vw_run_senza_attore`, tolta dal database: la riga è
+  cancellata, non ritirata con `obsoleto_dal`, perché la vista non c'è più
+  (`brief-db-revisione-dbops`).
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
+
+---
+
+{% include-markdown "signature-core.md" %}

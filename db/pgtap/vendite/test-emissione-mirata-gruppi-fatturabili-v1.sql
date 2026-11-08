@@ -192,7 +192,7 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_id FROM tmp_gr_comm),
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_gr_refs),
-  p_sorgente_uid     => (SELECT uid::text FROM tmp_gr_prev),
+  p_sorgente_chiave  => (SELECT uid::text FROM tmp_gr_prev),
   p_meta             => jsonb_build_object('test_scope', 'pgtap_gruppi')
 );
 
@@ -231,10 +231,12 @@ CROSS JOIN LATERAL dbops.fn_pgtap_crea_commessa_attivita(
     p_sorgente_codice  => CASE WHEN x.g = 'P' THEN 'PREVENTIVO' ELSE 'CONTRATTO' END,
     -- ⚠️ UID anche per CONTRATTO (key_selector='id'): e' la convenzione del
     -- push, cioe' cio' che commesse_attivita contiene davvero (D-9).
-    p_sorgente_uid     => CASE WHEN x.g = 'P'
+    p_sorgente_chiave  => CASE WHEN x.g = 'P'
                                THEN (SELECT uid::text FROM tmp_gr_prev)
                                ELSE (SELECT uid::text FROM tmp_gr_contr) END,
-    p_sorgente_riga_id => x.n,
+    -- Le due righe di ogni documento si distinguono con l'etichetta della chiave:
+    -- la provenienza e' il documento intero (il test guarda i gruppi, non le righe).
+    p_chiave_etichetta => x.n::text,
     p_quantita         => 1.000000,
     p_competenza_dal   => DATE '2080-01-01',
     p_competenza_al    => DATE '2080-01-31') r;
@@ -245,8 +247,8 @@ DO $chk$ BEGIN
   IF (SELECT count(*) FROM vendite.commesse_attivita ca
         JOIN tmp_gr_righe t ON t.attivita_id = ca.id
        WHERE ca.stato_approvazione = 'APPROVATA' AND ca.stato_emissione = 'NON_EMESSA'
-         AND ca.segment_key LIKE CASE t.gruppo WHEN 'P' THEN 'PREVENTIVO:%:R:_'
-                                               ELSE 'CONTRATTO:%:R:_' END) <> 4 THEN
+         AND ca.segment_key LIKE CASE t.gruppo WHEN 'P' THEN 'PREVENTIVO:%:_'
+                                               ELSE 'CONTRATTO:%:_' END) <> 4 THEN
     RAISE EXCEPTION 'fixture: attese 4 righe documentali dal builder';
   END IF;
 END $chk$;
@@ -326,8 +328,7 @@ SELECT is(
   (SELECT count(*)::int FROM vendite.attivita_fatturabili af
      JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
     WHERE ca.commessa_id = (SELECT commessa_id FROM tmp_gr_comm)
-      AND vendite.fn_build_gruppo_fatturabile_key(
-            ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
+      AND vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)
           <> (SELECT k_prev FROM tmp_gr_key)),
   0,
   '7) G3: nessuna AF creata per contratto e oneri'

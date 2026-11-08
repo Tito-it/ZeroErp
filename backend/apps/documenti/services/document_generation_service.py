@@ -82,6 +82,9 @@ E_RENDER_FAILED = "E_DOCUMENTI_RENDER_FAILED"
 E_STORAGE_FAILED = "E_DOCUMENTI_STORAGE_FAILED"
 E_VERSIONE_CONTESTO_NON_VERIFICABILE = "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE"
 E_TEMPLATE_NON_RISOLTO = "E_DOCUMENTI_TEMPLATE_NON_RISOLTO"
+# Il ripiego della chiave della stampa (`_chiave_documento`): codice del DB
+# (`script.fn_sorgente_chiave`), registrato nella policy generata.
+E_SORG_NOT_FOUND = "E_SORG_NOT_FOUND"
 
 # Codice del tipo file usato in v1 (seed `tipi_file_documento` Fase A).
 # Memoria feedback_no_hardcoded_ids: lookup per codice, non ID numerici.
@@ -178,9 +181,13 @@ class DocumentGenerationService:
     # =================================================================
 
     # Scopo: Genera e persiste un documento PDF a partire da una sorgente.
-    #        Il caller fornisce gli identificativi della sorgente
-    #        (`sorgente_tipo_id`, `sorgente_uid`, opzionale `sorgente_riga`)
-    #        e l'`emittente_fiscale_id`. Modello e versione li dice il DB
+    #        Il caller fornisce la sorgente (`sorgente_tipo_id`, l'id
+    #        dell'entità `sorgente_id`, opzionale `sorgente_riga`) e
+    #        l'`emittente_fiscale_id`. ⭐ Dal giro D.1 di
+    #        brief-db-sorgente-documento-e-riga (2026-11-07) la stampa cita il
+    #        documento nella colonna del `key_selector` del suo tipo: la coppia
+    #        la chiede `_chiave_documento` al DB, e il caller non passa più
+    #        l'uid (era la chiave per ogni tipo, ed è il modello ritirato). Modello e versione li dice il DB
     #        (`_resolve_template`): coi due livelli (predefinito dell'emittente,
     #        se no lo standard), o verificando l'override esplicito
     #        `template_documento_id`. Ritorna un dict con id+uid+nome_file
@@ -196,7 +203,6 @@ class DocumentGenerationService:
         emittente_fiscale_id: int,
         sorgente_tipo_id: int,
         sorgente_id: int,
-        sorgente_uid: str,
         sorgente_riga: int | None = None,
         tipo_documento_output_id: int | None = None,
         template_documento_id: int | None = None,
@@ -208,7 +214,6 @@ class DocumentGenerationService:
         self._v.guard_positive_int(emittente_fiscale_id, field="emittente_fiscale_id")
         self._v.guard_positive_int(sorgente_tipo_id, field="sorgente_tipo_id")
         self._v.guard_positive_int(sorgente_id, field="sorgente_id")
-        self._v.guard_non_empty_string(sorgente_uid, field="sorgente_uid")
         if sorgente_riga is not None:
             self._v.guard_positive_int(sorgente_riga, field="sorgente_riga")
 
@@ -224,6 +229,11 @@ class DocumentGenerationService:
         #    sistema riceve lo scope gia' risolto dal chiamante (C-0).
         scope = self._resolve_scope_chiamante(user, emittente_scope)
         guard_emittente_in_scope(scope, emittente_fiscale_id)
+
+        # 1-bis) la chiave con cui la stampa cita il documento, PRIMA del
+        #        render: un documento che non si vede è un rifiuto, non un PDF
+        #        da buttare.
+        chiave_id, chiave_uid = self._chiave_documento(sorgente_tipo_id, sorgente_id)
 
         # 2-3) il modello e la versione con cui si stampa, dal DB in una
         #      domanda sola, anche quando il chiamante indica il modello: e' il
@@ -302,7 +312,8 @@ class DocumentGenerationService:
         # 9) sequenza atomica: INSERT 3 record + storage.write
         progressivo = self._repo.next_progressivo_sorgente(
             sorgente_tipo_id=sorgente_tipo_id,
-            sorgente_uid=sorgente_uid,
+            sorgente_id=chiave_id,
+            sorgente_uid=chiave_uid,
             sorgente_riga=sorgente_riga,
         )
 
@@ -311,7 +322,8 @@ class DocumentGenerationService:
             "template_documento_id": template["id"],
             "template_versione_id": versione["id"],
             "sorgente_tipo_id": sorgente_tipo_id,
-            "sorgente_uid": sorgente_uid,
+            "sorgente_id": chiave_id,
+            "sorgente_uid": chiave_uid,
             "sorgente_riga": sorgente_riga,
             "progressivo_sorgente": progressivo,
             "stato": "GENERATO",
@@ -368,7 +380,8 @@ class DocumentGenerationService:
                         fallback_message="Violazione vincolo DB su documento generato.",
                         context={
                             "sorgente_tipo_id": sorgente_tipo_id,
-                            "sorgente_uid": sorgente_uid,
+                            "sorgente_id": chiave_id,
+                            "sorgente_uid": chiave_uid,
                             "progressivo": progressivo,
                         },
                     )
@@ -505,7 +518,7 @@ class DocumentGenerationService:
         user: AbstractBaseUser | AnonymousUser | None,
         *,
         sorgente_tipo_id: int,
-        sorgente_uid: str,
+        sorgente_id: int,
         sorgente_riga: int | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
@@ -514,15 +527,19 @@ class DocumentGenerationService:
         order_dir: str | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_tipo_id, field="sorgente_tipo_id")
-        self._v.guard_non_empty_string(sorgente_uid, field="sorgente_uid")
+        self._v.guard_positive_int(sorgente_id, field="sorgente_id")
         if sorgente_riga is not None:
             self._v.guard_positive_int(sorgente_riga, field="sorgente_riga")
         guard_user_authenticated(user)
         assert user is not None
         scope = resolve_emittente_scope(user)
+        # La stessa chiave con cui `genera_documento` la scrive: la lista vede
+        # le stampe del web e quelle del drenatore della coda.
+        chiave_id, chiave_uid = self._chiave_documento(sorgente_tipo_id, sorgente_id)
         rows, total = self._repo.list_documenti_per_sorgente(
             sorgente_tipo_id=sorgente_tipo_id,
-            sorgente_uid=sorgente_uid,
+            sorgente_id=chiave_id,
+            sorgente_uid=chiave_uid,
             sorgente_riga=sorgente_riga,
             emittente_ids_scope=scope,
             limit=limit,
@@ -1151,6 +1168,30 @@ class DocumentGenerationService:
         ):
             self._repo.guard_versione_contesto(
                 versione["id"], builder.CONTEXT_VERSION,
+            )
+
+    # Scopo: La chiave con cui una stampa cita il suo documento: dall'id
+    #        dell'entità la coppia `(sorgente_id, sorgente_uid)` del
+    #        `key_selector` del tipo, dal DB (`DocumentiRepository.chiave_sorgente`,
+    #        wrapper di `script.fn_sorgente_chiave`). Una sede per i due usi,
+    #        scrivere (`genera_documento`) e cercare (`list_documenti_per_sorgente`):
+    #        se divergessero, la lista non vedrebbe le stampe appena fatte.
+    # ⛔ I rifiuti della funzione (tipo spento `E_SORG_CONF`, documento che
+    #    non c'e' o non si vede `E_SORG_NOT_FOUND`, `E_SORG_FORMATO`) si
+    #    traducono qui in ServiceError col codice del DB, come i due vicini
+    #    `_resolve_template` e `_guard_versione_contesto`: senza, il
+    #    `DatabaseError` grezzo usciva dalla view come 500 e dal tool AI come
+    #    eccezione (il drenatore reggeva solo per il suo `except Exception`).
+    def _chiave_documento(
+        self, sorgente_tipo_id: int, sorgente_id: int,
+    ) -> tuple[int | None, str | None]:
+        with translate_db_errors(
+            context={"sorgente_tipo_id": sorgente_tipo_id, "sorgente_id": sorgente_id},
+            fallback_code=E_SORG_NOT_FOUND,
+            fallback_message=USER_MESSAGE_FALLBACK[E_SORG_NOT_FOUND],
+        ):
+            return self._repo.chiave_sorgente(
+                sorgente_tipo_id=int(sorgente_tipo_id), chiave=str(int(sorgente_id)),
             )
 
     # Scopo: Invoca `build_context(sorgente_id)` sul builder gia' risolto.

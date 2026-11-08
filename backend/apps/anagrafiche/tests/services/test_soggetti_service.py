@@ -81,7 +81,7 @@ FAKE_UUID = "019bac81-3f96-7ce8-a086-7e0bd0a2fec1"
 class TestSoggettiListDetail(TestCase):
     """Test lista e dettaglio soggetti."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_list_soggetti_ok(self, mock_repo):
         """Happy path: lista soggetti."""
         mock_repo.return_value.list_soggetti.return_value = (
@@ -92,7 +92,7 @@ class TestSoggettiListDetail(TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(results[0]["ragione_sociale_completa"], "Rossi Mario")
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_get_soggetto_ok(self, mock_repo):
         """Dettaglio soggetto con contatti, indirizzi, ruoli."""
         repo = mock_repo.return_value
@@ -108,7 +108,7 @@ class TestSoggettiListDetail(TestCase):
         # Fase 6 B4: campo non_editable_fields presente, vuoto se senza CF/PIVA
         self.assertEqual(result["non_editable_fields"], [])
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_get_soggetto_non_editable_fields_with_cf_and_piva(self, mock_repo):
         """Fase 6 B4: CF e PIVA valorizzati → entrambi non editabili."""
         repo = mock_repo.return_value
@@ -127,7 +127,7 @@ class TestSoggettiListDetail(TestCase):
             ["codice_fiscale", "partita_iva"],
         )
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_get_soggetto_non_editable_fields_only_piva(self, mock_repo):
         """Solo PIVA valorizzata → solo PIVA non editabile (CF resta editable)."""
         repo = mock_repo.return_value
@@ -143,7 +143,7 @@ class TestSoggettiListDetail(TestCase):
         result = SoggettiService().get_soggetto(FAKE_UUID)
         self.assertEqual(result["non_editable_fields"], ["partita_iva"])
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_get_soggetto_not_found(self, mock_repo):
         """Soggetto inesistente → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_soggetto.return_value = None
@@ -156,7 +156,7 @@ class TestSoggettiListDetail(TestCase):
 class TestSoggettiCreate(TestCase):
     """Test creazione soggetti."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_ok(self, mock_repo):
         """Happy path: crea soggetto PF."""
         repo = mock_repo.return_value
@@ -178,7 +178,7 @@ class TestSoggettiCreate(TestCase):
         kwargs = repo.crea_soggetto_pf.call_args.kwargs
         self.assertEqual((kwargs["sesso"], kwargs["tipo_soggetto_dettaglio_id"]), ("M", 1))
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_missing_tipo(self, mock_repo):
         """Tipo mancante → E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
@@ -186,7 +186,7 @@ class TestSoggettiCreate(TestCase):
             SoggettiService().create_soggetto({"cognome": "Rossi"})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_missing_cognome(self, mock_repo):
         """Cognome vuoto → E_ANAG_VALIDAZIONE."""
         mock_repo.return_value.get_natura_by_tipo_id.return_value = "PF"
@@ -202,7 +202,7 @@ class TestSoggettiCreate(TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_duplicate_cf(self, mock_repo):
         """CF duplicato → E_ANAG_DUPLICATO."""
         repo = mock_repo.return_value
@@ -220,7 +220,7 @@ class TestSoggettiCreate(TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_cf_duplicato_accende_il_campo(self, mock_repo):
         """Il duplicato sull'identificativo fiscale di una PF accende il campo
         `codice_fiscale`, come il REA accende `iscrizione_rea`."""
@@ -242,7 +242,7 @@ class TestSoggettiCreate(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
         self.assertEqual(ctx.exception.context, {"field": "codice_fiscale"})
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_senza_sesso_non_lo_inventa(self, mock_repo):
         """Sesso assente (o vuoto) → None al repository, nessun default e nessun
         controllo: QUANDO serve lo dice la natura, e lo giudica il guard DB
@@ -266,7 +266,7 @@ class TestSoggettiCreate(TestCase):
                 })
                 self.assertIsNone(repo.crea_soggetto_pf.call_args.kwargs["sesso"])
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_passa_dettaglio_e_piva(self, mock_repo):
         """Ditta individuale: il dettaglio scelto e la P.IVA arrivano al
         repository. Fino al 2026-10-09 la funzione DB cablava PR e la P.IVA si
@@ -291,7 +291,7 @@ class TestSoggettiCreate(TestCase):
             (2, "01234567890", "X"),
         )
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_congruenza_cf_legge_il_sesso_normalizzato(self, mock_repo):
         """« f » e' F: su un CF maschile la congruenza lo rifiuta. Prima la
         verifica rileggeva il sesso grezzo, « F » non era ne' M ne' F e il
@@ -311,7 +311,7 @@ class TestSoggettiCreate(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         repo.crea_soggetto_pf.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_genera_cf_con_sesso_x_rifiutato(self, mock_repo):
         """Il CF codifica solo M e F: con X un calcolo darebbe il CF di un
         uomo, cioe' un sesso inventato."""
@@ -324,7 +324,7 @@ class TestSoggettiCreate(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.get_codice_catastale.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pg_ok(self, mock_repo):
         """Happy path: crea soggetto PG."""
         repo = mock_repo.return_value
@@ -348,7 +348,7 @@ class TestSoggettiCreate(TestCase):
         self.assertEqual(result["id"], FAKE_UUID)
         repo.crea_soggetto_pg.assert_called_once()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pg_sezione_intera_con_la_data(self, mock_repo):
         """La sezione arriva alla porta INTERA, data di costituzione compresa
         (brief-db-dati-societari-in-creazione §6): fino al 2026-10-22 la data
@@ -372,7 +372,7 @@ class TestSoggettiCreate(TestCase):
         self.assertEqual((ds["destinatario_fe"], ds["codice_sdi"]), ("C", "ABC1234"))
         self.assertIsNone(ds["pec_fatturazione"])
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_ditta_individuale_con_la_sezione(self, mock_repo):
         """La DI porta la sua sezione alla porta delle persone fisiche: fino al
         2026-10-22 `_create_pf` non la leggeva, e l'operatore leggeva «creato»
@@ -397,7 +397,7 @@ class TestSoggettiCreate(TestCase):
             (9, "P", "di@pec.it"),
         )
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_senza_sezione_la_porta_non_la_riceve(self, mock_repo):
         """Chiave assente = nessuna sezione: alla porta va None, e QUANDO
         scrivere lo decide il DB dalla policy della natura."""
@@ -416,7 +416,7 @@ class TestSoggettiCreate(TestCase):
         })
         self.assertIsNone(repo.crea_soggetto_pf.call_args.kwargs["dati_societari"])
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_dati_societari_contratto(self, mock_repo):
         """In creazione la sezione ha lo stesso contratto della PATCH, per le
         due porte. Prima la PG la leggeva chiave per chiave: una chiave ignota
@@ -446,7 +446,7 @@ class TestSoggettiCreate(TestCase):
 class TestSoggettiUpdate(TestCase):
     """Test aggiornamento soggetti."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_ok(self, mock_repo):
         """Aggiorna campi soggetto."""
         mock_repo.return_value.update_soggetto.return_value = True
@@ -454,7 +454,7 @@ class TestSoggettiUpdate(TestCase):
         result = SoggettiService().update_soggetto(FAKE_UUID, {"cognome": "Bianchi"})
         self.assertTrue(result["updated"])
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_not_found(self, mock_repo):
         """Soggetto inesistente → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.update_soggetto.return_value = False
@@ -463,7 +463,7 @@ class TestSoggettiUpdate(TestCase):
             SoggettiService().update_soggetto(FAKE_UUID, {"cognome": "X"})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_sesso_stessa_forma_della_creazione(self, mock_repo):
         """Il sesso in modifica ha la forma della creazione: «x» e' «X», il
         vuoto e' None. Prima la creazione normalizzava e l'update no: «x»
@@ -476,7 +476,7 @@ class TestSoggettiUpdate(TestCase):
                 payload = mock_repo.return_value.update_soggetto.call_args.args[1]
                 self.assertEqual(payload["sesso"], atteso)
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_flag_fiscali_ok(self, mock_repo):
         """I0/D8: `split_payment` e `cliente_pa` arrivano al repository.
 
@@ -494,7 +494,7 @@ class TestSoggettiUpdate(TestCase):
         self.assertEqual(payload["split_payment"], "S")
         self.assertEqual(payload["cliente_pa"], "S")
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_flag_fiscali_normalizza(self, mock_repo):
         """Minuscole e spazi sono normalizzati prima dell'UPDATE.
 
@@ -514,7 +514,7 @@ class TestSoggettiUpdate(TestCase):
         #   immutabile l'assegnamento avrebbe anche sollevato.
         self.assertEqual(originale, {"split_payment": " s "})
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_flag_fiscali_valore_ignoto(self, mock_repo):
         """Un valore fuori da ('S','N') e' respinto con la SUA classe.
 
@@ -532,7 +532,7 @@ class TestSoggettiUpdate(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.update_soggetto.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_dati_societari_al_verbo(self, mock_repo):
         """Parte B (brief-db-dati-fiscali-e-societari-del-soggetto): la chiave
         `dati_societari` va al verbo DB, STATO INTERO — una chiave assente
@@ -564,7 +564,7 @@ class TestSoggettiUpdate(TestCase):
         self.assertIsNone(kwargs["pec_fatturazione"])
         self.assertIsNone(kwargs["iscrizione_rea"])
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_solo_dati_societari_non_tocca_il_soggetto(self, mock_repo):
         """Con i soli dati societari non c'e' un UPDATE vuoto (che direbbe «non
         trovato»): il soggetto inesistente lo dice il verbo."""
@@ -576,7 +576,7 @@ class TestSoggettiUpdate(TestCase):
         mock_repo.return_value.update_soggetto.assert_not_called()
         mock_repo.return_value.scrivi_dati_societari.assert_called_once()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_soggetto_dati_societari_contratto(self, mock_repo):
         """Il contratto della sezione: un oggetto, con le sole chiavi del verbo.
         Fuori contratto → 400 E_ANAG_VALIDAZIONE, e niente scrive."""
@@ -593,7 +593,7 @@ class TestSoggettiUpdate(TestCase):
 class TestSoggettiContatti(TestCase):
     """Test contatti soggetto."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_contatto_ok(self, mock_repo):
         """Crea contatto."""
         repo = mock_repo.return_value
@@ -606,7 +606,7 @@ class TestSoggettiContatti(TestCase):
         self.assertEqual(result["nominativo"], "Luigi Verdi")
         self.assertEqual(repo.crea_contatto.call_args.kwargs["tipo_contatto_id"], 2)
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_contatto_incompleto(self, mock_repo):
         """Nominativo o tipo mancanti → E_CONTATTO_INCOMPLETO col campo da
         accendere, prima del DB (fino al 2026-10-09 il tipo mancante arrivava
@@ -625,7 +625,7 @@ class TestSoggettiContatti(TestCase):
                 self.assertIn(campo, ctx.exception.fields)
         repo.crea_contatto.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_update_contatto_not_found(self, mock_repo):
         """Contatto inesistente → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.update_contatto.return_value = False
@@ -638,7 +638,7 @@ class TestSoggettiContatti(TestCase):
 class TestSoggettiIndirizzi(TestCase):
     """Test indirizzi soggetto."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_indirizzo_soggetto_ok(self, mock_repo):
         """Crea indirizzo soggetto."""
         repo = mock_repo.return_value
@@ -651,7 +651,7 @@ class TestSoggettiIndirizzi(TestCase):
         })
         self.assertEqual(result["id"], 42)
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_indirizzo_libero_porta_comune_e_cap(self, mock_repo):
         """L'indirizzo libero del soggetto arriva alla madre com'e', nell'oggetto
         della firma nuova (2026-10-18): la forma estera compresa, vuoti tolti.
@@ -669,7 +669,7 @@ class TestSoggettiIndirizzi(TestCase):
             "stato_id": 1, "locality": "Berlin", "postal_code": "10115",
         })
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_indirizzo_missing_tipo(self, mock_repo):
         """Tipo mancante → E_ANAG_VALIDAZIONE."""
         mock_repo.return_value.exists_soggetto.return_value = True
@@ -680,7 +680,7 @@ class TestSoggettiIndirizzi(TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_create_indirizzo_chiave_vecchia_rifiutata(self, mock_repo):
         """La chiave d'ingresso e' `tipo_indirizzo_codice_interno` (2026-11-01,
         regola C del naming): la vecchia `tipo_indirizzo_codice` vale come tipo
@@ -700,7 +700,7 @@ class TestSoggettiIndirizzi(TestCase):
 class TestSoggettiRuoli(TestCase):
     """Test ruoli soggetto."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_assign_ruolo_ok(self, mock_repo):
         """Assegna ruolo."""
         repo = mock_repo.return_value
@@ -716,7 +716,7 @@ class TestSoggettiRuoli(TestCase):
         repo.assign_ruolo.assert_called_once_with(FAKE_UUID, "VT")
         repo.crea_indirizzo_ruolo.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_assign_ruolo_con_flusso_dedicato_rifiutato(self, mock_repo):
         """I ruoli con un flusso dedicato non nascono dall'endpoint generico
         (decisione di Tid, 2026-10-09): rifiuto sul campo, nessuna scrittura."""
@@ -739,7 +739,7 @@ class TestSoggettiRuoli(TestCase):
                 self.assertIn(f"Descr {codice}", ctx.exception.message)
         repo.assign_ruolo.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_assign_ruolo_con_indirizzi_del_ruolo(self, mock_repo):
         """Gli indirizzi del payload diventano indirizzi DEL RUOLO, scritti dalla
         madre del DB (`fn_crea_indirizzi_ruolo`, che legge il tipo di ruolo e
@@ -760,7 +760,7 @@ class TestSoggettiRuoli(TestCase):
             5, [{"tipo_indirizzo_codice_interno": "SEDELEG", "indirizzo_dettaglio_id": 77}],
         )
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_indirizzi_ruolo_pre_check_della_via_nuova(self, mock_repo):
         """Una via nuova senza comune si ferma prima di scrivere, col messaggio
         per l'operatore; un elemento che non e' un oggetto pure, e un elenco
@@ -777,7 +777,7 @@ class TestSoggettiRuoli(TestCase):
             self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.crea_indirizzi_ruolo.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_assign_ruolo_missing_codice(self, mock_repo):
         """Codice vuoto → E_ANAG_VALIDAZIONE."""
         mock_repo.return_value.exists_soggetto.return_value = True
@@ -812,7 +812,7 @@ class TestAutoCloneIndirizzi(TestCase):
         repo.crea_indirizzi_soggetto.return_value = 2
         return repo
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_auto_clone_tipi_obbligatori(self, mock_sogg):
         """auto_clone assente vale vero: la madre copia gli obbligatori. Ogni
         elemento le arriva con la SUA via, le stringhe vuote tolte."""
@@ -835,7 +835,7 @@ class TestAutoCloneIndirizzi(TestCase):
         )
         repo.crea_indirizzo_soggetto.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_no_auto_clone_if_flag_false(self, mock_sogg):
         """auto_clone=False: la madre non copia."""
         repo = self._repo(mock_sogg)
@@ -847,14 +847,14 @@ class TestAutoCloneIndirizzi(TestCase):
         })
         self.assertIs(repo.crea_indirizzi_soggetto.call_args.kwargs["copia_obbligatori"], False)
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_senza_indirizzi_la_madre_non_si_chiama(self, mock_sogg):
         repo = self._repo(mock_sogg)
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         SoggettiService().create_soggetto(dict(self._PAYLOAD))
         repo.crea_indirizzi_soggetto.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_via_nuova_incompleta_e_un_400_prima_della_madre(self, mock_sogg):
         """Il pre-check per l'operatore (`indirizzo_per_madre`) resta: una via
         nuova senza i suoi campi non arriva al DB."""
@@ -867,7 +867,7 @@ class TestAutoCloneIndirizzi(TestCase):
             })
         repo.crea_indirizzi_soggetto.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_auto_clone_non_booleano_e_un_400(self, mock_sogg):
         """La stringa "false" non e' un booleano: con `bool(...)` accendeva la copia."""
         repo = self._repo(mock_sogg)
@@ -881,7 +881,7 @@ class TestAutoCloneIndirizzi(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         repo.crea_soggetto_pf.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_indirizzi_malformati_non_si_scartano(self, mock_sogg):
         """Un elenco che non e' una lista, o un elemento che non e' un oggetto, e'
         un 400: fino al 2026-10-19 si scartavano e il soggetto nasceva senza."""
@@ -893,7 +893,7 @@ class TestAutoCloneIndirizzi(TestCase):
             self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         repo.crea_soggetto_pf.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_fk_dentro_la_madre_e_un_400(self, mock_sogg):
         """Una FK violata dentro la madre plurale e' `E_ANAG_FK`, non un 500."""
         from apps.core.tests.db_error_fakes import SQLSTATE_FK, make_integrity_error
@@ -913,7 +913,7 @@ class TestAutoCloneIndirizzi(TestCase):
 class TestResolveFiltriExportLabel(TestCase):
     """DEF-1: traduzione filtri attivi in label leggibili per header export."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_resolve_filtri_export_label_completo(self, mock_repo):
         """Mapping completo (la ricerca la dichiara `filtri_export_con_ricerca`): tipo_soggetto_dettaglio_id."""
         repo = mock_repo.return_value
@@ -927,7 +927,7 @@ class TestResolveFiltriExportLabel(TestCase):
         self.assertEqual(result, {"Tipo": "Persona Fisica"})
         repo.get_tipo_soggetto_dettaglio_descrizione.assert_called_once_with(3)
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_resolve_filtri_export_label_fallback_id(self, mock_repo):
         """Lookup descrizione mancante (id obsoleto): fallback 'id=N'."""
         repo = mock_repo.return_value
@@ -940,7 +940,7 @@ class TestResolveFiltriExportLabel(TestCase):
 
         self.assertEqual(result, {"Tipo": "id=999"})
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_resolve_filtri_export_label_vuoto(self, mock_repo):
         """Nessun filtro attivo: dict vuoto."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
@@ -953,14 +953,14 @@ class TestResolveFiltriExportLabel(TestCase):
 class TestSearchRuoliLookup(TestCase):
     """Test lookup ricco soggetti-ruoli (selezione contesto pratica)."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_search_ruoli_lookup_ok(self, mock_repo):
-        """Happy path: delega al repo con tipo_ruolo normalizzato upper."""
+        """Happy path: delega al repo; tipo_ruolo e' il codice_interno, passa com'e' (solo strip)."""
         repo = mock_repo.return_value
         repo.search_ruoli_lookup.return_value = (
             [{
                 "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": 7,
-                "ruolo_codice": "CL", "ruolo_descrizione": "Cliente",
+                "ruolo_codice_interno": "CL", "ruolo_descrizione": "Cliente",
                 "ragione_sociale_completa": "Rossi Mario",
                 "id_fiscale": "RSSMRA80A01H501U", "soggetto_codice": "SOG-1",
                 "n_billing_account": 2,
@@ -969,17 +969,17 @@ class TestSearchRuoliLookup(TestCase):
         )
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().search_ruoli_lookup(
-            q="  rossi ", tipo_ruolo="cl", emittente_ids=[5],
+            q="  rossi ", tipo_ruolo=" CL ", emittente_ids=[5],
         )
         self.assertEqual(result["total_count"], 1)
-        self.assertEqual(result["results"][0]["ruolo_codice"], "CL")
+        self.assertEqual(result["results"][0]["ruolo_codice_interno"], "CL")
         self.assertEqual(result["limit"], 20)
         repo.search_ruoli_lookup.assert_called_once_with(
             q="rossi", tipo_ruolo="CL", emittente_ids=[5], limit=20,
             con_ruolo=False,
         )
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_search_ruoli_lookup_q_troppo_corta(self, mock_repo):
         """q < 2 char solleva E_ANAG_VALIDAZIONE senza chiamare il repo."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
@@ -988,7 +988,7 @@ class TestSearchRuoliLookup(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.search_ruoli_lookup.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_search_ruoli_lookup_limit_cap(self, mock_repo):
         """limit oltre il massimo viene cappato a 50."""
         repo = mock_repo.return_value
@@ -999,7 +999,7 @@ class TestSearchRuoliLookup(TestCase):
         _, kwargs = repo.search_ruoli_lookup.call_args
         self.assertEqual(kwargs["limit"], 50)
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_search_ruoli_lookup_con_ruolo(self, mock_repo):
         """con_ruolo arriva al repo, senza restringere il tipo di ruolo."""
         repo = mock_repo.return_value
@@ -1014,35 +1014,35 @@ class TestSearchRuoliLookup(TestCase):
 class TestGetRuoliLookupById(TestCase):
     """Test restore by-id del lookup contesto pratica."""
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_by_id_ruolo_ok(self, mock_repo):
         """Restore riga ruolo via soggetto_ruolo_id."""
         repo = mock_repo.return_value
         repo.get_ruolo_lookup_by_id.return_value = {
             "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": 165,
-            "ruolo_codice": "CL", "n_billing_account": 1,
+            "ruolo_codice_interno": "CL", "n_billing_account": 1,
         }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=165, emittente_ids=[7])
-        self.assertEqual(result["ruolo_codice"], "CL")
+        self.assertEqual(result["ruolo_codice_interno"], "CL")
         # Lo scope arriva al repository: e' li' che decide (D10-bis).
         repo.get_ruolo_lookup_by_id.assert_called_once_with(
             soggetto_ruolo_id=165, soggetto_id=None, emittente_ids=[7],
         )
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_by_id_senza_ruolo_ok(self, mock_repo):
         """Restore riga 'senza ruolo' via soggetto_id (UUID)."""
         repo = mock_repo.return_value
         repo.get_ruolo_lookup_by_id.return_value = {
             "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": None,
-            "ruolo_codice": None, "n_billing_account": 0,
+            "ruolo_codice_interno": None, "n_billing_account": 0,
         }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().get_ruoli_lookup_by_id(soggetto_id=FAKE_UUID, emittente_ids=None)
         self.assertIsNone(result["soggetto_ruolo_id"])
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_by_id_chiavi_entrambe_o_nessuna(self, mock_repo):
         """Zero o due chiavi → E_ANAG_VALIDAZIONE (esattamente una richiesta)."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
@@ -1055,7 +1055,7 @@ class TestGetRuoliLookupById(TestCase):
             )
         mock_repo.return_value.get_ruolo_lookup_by_id.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_by_id_uuid_malformato(self, mock_repo):
         """soggetto_id non-UUID → E_ANAG_VALIDAZIONE prima del repo."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
@@ -1064,7 +1064,7 @@ class TestGetRuoliLookupById(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.get_ruolo_lookup_by_id.assert_not_called()
 
-    @patch(SOGG_REPO)
+    @patch(SOGG_REPO, autospec=True)
     def test_by_id_not_found(self, mock_repo):
         """Record inesistente o fuori scope → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_ruolo_lookup_by_id.return_value = None

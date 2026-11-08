@@ -43,7 +43,13 @@ class PipelineErrorLogger:
         context: dict[str, Any] | None = None,
         function_name: str = "vendite.pipeline_error_logger.log_error",
         gruppo_key: str | None = None,
+        commessa_id: int | None = None,
     ) -> None:
+        # ⭐ `commessa_id` — DI QUALE COMMESSA parla la segnalazione di LOTTO
+        #    (V-7-bis, brief-db-sorgente-documento-e-riga §8.23): la dichiara chi
+        #    la solleva, come la `gruppo_key`. ⛔ Non si ricava dal `context`:
+        #    il JSON non ha contratto, la colonna si'. Vale solo per
+        #    `scope="LOTTO"`, come la `gruppo_key`.
         # ⭐ `gruppo_key` — DI QUALE DOCUMENTO parla la segnalazione di LOTTO
         #    (brief-db-uscita-documento-dal-giro §6.1). `None` = e' del GIRO, ed
         #    e' il default che dice il vero: chi non lo dichiara sta parlando del
@@ -102,6 +108,7 @@ class PipelineErrorLogger:
                 messaggio=message,
                 meta=meta,
                 gruppo_key=gruppo_key,
+                commessa_id=commessa_id,
             )
             return
 

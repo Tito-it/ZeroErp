@@ -1,45 +1,55 @@
-## 📘 Documentazione Funzione – `pratiche.fn_valuta_tempo_esecuzione_da_a`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_valuta_tempo_esecuzione_da_a`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-[pratiche.formule_tempo](/dbzero/pratiche/manual/formule_tempo)
-> [fn_calcola_tempo_netto_da_a](/dbzero/pratiche/manual/fn_calcola_tempo_netto_da_a)
+> Approfondimento tabelle:
+>
+> * [pratiche.formule_tempo](/dbzero/pratiche/tabelle/formule_tempo) — la formula: giorni di esecuzione e soglie
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_calcola_tempo_netto_da_a](/dbzero/pratiche/funzioni/fn_calcola_tempo_netto_da_a) — i giorni netti fra i due flussi
 
 ---
+
 ### 🎯 Scopo Principale
-Funzione **check** (pura, STABLE): confronta il tempo netto trascorso tra due flussi con la formula tempo configurata. Restituisce lo stato temporale corrente.
+
+`pratiche.fn_valuta_tempo_esecuzione_da_a` è un controllo puro che confronta il tempo netto trascorso fra
+due flussi di una pratica con la formula di tempo configurata, e ne ricava lo stato temporale: `OK`,
+`WARNING`, `CRITICO` o `SFORATO`.
 
 ---
 
-### Firma
+### La formula
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.fn_valuta_tempo_esecuzione_da_a(
-    p_pratica_id   BIGINT,
-    p_flusso_da_id BIGINT,
-    p_flusso_a_id  BIGINT
-) RETURNS TABLE(
-    giorni_netti      INTEGER,
-    giorni_esecuzione INTEGER,
-    giorni_rimanenti  INTEGER,
-    stato_tempo       TEXT
-)
-LANGUAGE plpgsql STABLE
-```
+La formula si cerca per tipo di prestazione della pratica e per la coppia di template dei due flussi
+(da, a), fra le formule attive. Porta i giorni di esecuzione ammessi e le due soglie di avviso.
+
+La funzione restituisce una riga con i giorni netti, i giorni di esecuzione, i giorni rimanenti
+(esecuzione meno netti) e lo stato.
 
 ---
 
-### Logica
+### Lo stato
 
-1. Recupera `tipo_prestazione_id` dalla pratica e `template_flusso_id` dai due flussi.
-2. Cerca la formula matching in `formule_tempo` per la combinazione tipo + da + a.
-3. Se non esiste formula o un flusso non ha template → restituisce zero righe (nessuna valutazione).
-4. Chiama `fn_calcola_tempo_netto_da_a` per i giorni netti.
-5. Determina `stato_tempo`:
-   - `giorni_rimanenti <= 0` → **SFORATO**
-   - `giorni_rimanenti <= giorni_critico` → **CRITICO**
-   - `giorni_rimanenti <= giorni_warning` → **WARNING**
-   - Altrimenti → **OK**
+* `SFORATO` — non resta nessun giorno.
+* `CRITICO` — i giorni rimanenti sono entro la soglia critica.
+* `WARNING` — i giorni rimanenti sono entro la soglia di avviso.
+* `OK` — altrimenti.
+
+---
+
+### ⚠️ Quando non valuta
+
+La funzione non restituisce nessuna riga, invece di un errore, quando:
+
+* uno dei due flussi non ha template (un flusso manuale);
+* non c'è una formula attiva per quel tipo e quella coppia di template;
+* i giorni netti non si possono calcolare, perché il flusso di partenza non è ancora finito.
+
+Chi la chiama legge l'assenza di righe come «nessuna valutazione», non come «in tempo».
 
 ---
 

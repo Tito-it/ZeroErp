@@ -158,8 +158,8 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com1),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_com1)::text,
-  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_com1)::text,
+  p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 
 -- Riga A: quella che verra' annullata.
 CREATE TEMP TABLE tmp_riga_a AS
@@ -313,10 +313,20 @@ SELECT vendite.fn_aggiungi_onere_commessa(
   p_motivo             => 'riga che diventera'' con sorgente — pgtap'
 ) AS id;
 
-UPDATE vendite.commesse_attivita
-   SET sorgente_tipo_id = (SELECT sorgente_root_id FROM tmp_refs),
-       sorgente_uid     = (SELECT commessa_id FROM tmp_com1)::text
- WHERE id = (SELECT id FROM tmp_riga_c);
+-- La provenienza e' un documento vero con un numero (un ordine sul billing account
+-- della commessa), e la chiave del push lo nomina: le due cose cambiano insieme.
+CREATE TEMP TABLE tmp_ord_c AS
+SELECT o.ordine_id, o.ordine_uid
+  FROM dbops.fn_pgtap_crea_ordine('annulla attivita con sorgente', 'DRAFT',
+         (SELECT c.billing_account_id FROM vendite.commesse c
+           WHERE c.id = (SELECT commessa_id FROM tmp_com1))) o;
+
+UPDATE vendite.commesse_attivita ca
+   SET sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
+       sorgente_id      = o.ordine_id,
+       segment_key      = script.fn_segment_key('ORDINE_VENDITA', o.ordine_uid::text) || ':onere-con-sorgente'
+  FROM tmp_ord_c o
+ WHERE ca.id = (SELECT id FROM tmp_riga_c);
 
 SELECT throws_ok(
   $$ SELECT vendite.fn_annulla_commessa_attivita(
@@ -339,16 +349,14 @@ SELECT is(
 --   vendite.fn_get_sorgente_documento_ref e porta il numero che si legge.
 -- ⚠️ Il pattern NON attraversa i segnaposto (AGENTS.md): si aggancia al
 --   testo stabile prima e dopo, e al valore atteso in mezzo.
--- ℹ️ La fixture punta la sorgente COMMESSA sulla commessa stessa, e per
---   quella riga di config.sorgenti il label_selector e' `codice`: il numero
---   atteso e' quindi il CODICE della commessa. E' un caso vero della
---   famiglia polimorfa, non un caso costruito per far passare il test.
+-- ℹ️ La riga viene da un ordine, e per quella riga di config.sorgenti il
+--   label_selector e' `numero`: il numero atteso e' quello dell'ordine.
 SELECT throws_like(
   $$ SELECT vendite.fn_annulla_commessa_attivita(
        (SELECT id FROM tmp_riga_c), 'tentativo su riga da push') $$,
   '%nasce dal documento sorgente ' ||
-    (SELECT co.codice FROM vendite.commesse co
-      WHERE co.id = (SELECT commessa_id FROM tmp_com1)) || '%',
+    (SELECT o.numero FROM vendite.ordini o
+      WHERE o.id = (SELECT ordine_id FROM tmp_ord_c)) || '%',
   '18-bis) [D-6] il messaggio NOMINA il documento sorgente, non ne stampa l uid');
 
 -- ============================================================

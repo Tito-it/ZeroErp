@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-97): contratti.offerta_id e'
+--   ritirata; il contratto nato dall'offerta si riconosce dalla provenienza (sorgente_uid = l'uid
+--   dell'offerta, col tipo OFFERTA_COMMERCIALE). Attese invariate.
 -- pgTAP test per Zero ERP
 --
 -- Test: dbops.fn_pgtap_crea_contratto — il builder del contratto
@@ -220,7 +223,7 @@ SELECT * FROM dbops.fn_pgtap_crea_contratto(
                  (SELECT offerta_id FROM t_off));
 
 SELECT is(
-    (SELECT (k.offerta_id = o.offerta_id)::text
+    (SELECT (k.sorgente_uid = (SELECT f.uid FROM vendite.offerte_commerciali f WHERE f.id = o.offerta_id))::text
          || ' ' || (k.billing_account_id = k4.billing_account_id)::text
          || ' ' || s.codice_interno::text
        FROM t_k5 k5
@@ -238,7 +241,7 @@ SELECT * FROM dbops.fn_pgtap_crea_contratto(
                  (SELECT offerta_id FROM t_off));
 
 SELECT is(
-    (SELECT s.codice_interno::text || ' ' || (k.offerta_id = o.offerta_id)::text
+    (SELECT s.codice_interno::text || ' ' || (k.sorgente_uid = (SELECT f.uid FROM vendite.offerte_commerciali f WHERE f.id = o.offerta_id))::text
          || ' ' || (k.listino_id = l.listino_id)::text
        FROM t_k6 k6
        JOIN vendite.contratti k ON k.id = k6.contratto_id

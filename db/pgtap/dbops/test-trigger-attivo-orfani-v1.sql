@@ -2,6 +2,13 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test monta trigger ATTIVO su tabelle TEMP sue e ne
+--   toglie tabelle e colonne (DDL), e il test 9 fa scattare un block: la
+--   ricerca delle figlie (dbops.fn_trigger_figlie_presenti) risponde solo per
+--   tabelle del proprietario del database, e una TEMP dell'applicazione la
+--   rifiuta apposta. L'applicazione non monta trigger.
+--
 -- Test: i trigger ATTIVO orfani — il lettore dbops.fn_trigger_attivo_orfani,
 --   il ritiro dbops.fn_ritira_attivo_orfani e il loro aggancio al generatore.
 -- Riferimento: brief-be-utenti-di-sviluppo §9.5 (R-1, Q-1); changeSet
@@ -13,8 +20,9 @@
 --     o un DROP COLUMN della colonna FK (COLONNA_ASSENTE);
 --   - ⛔ «senza FK» NON e' orfano: un require scritto a mano su una chiave
 --     polimorfa ha i nomi vivi e resta;
---   - un trigger con meno argomenti del minimo e' un errore di scrittura:
---     il lettore lo riporta, il ritiro non lo tocca;
+--   - un trigger fuori dalla grammatica degli argomenti
+--     (dbops.fn_trigger_attivo_argomenti: tutti obbligatori) e' un errore di
+--     scrittura: il lettore lo riporta, il ritiro non lo tocca;
 --   - dopo il ritiro il padre si spegne, e i trigger validi sono ancora li';
 --   - il generatore chiama il ritiro (chi genera ritira).
 --
@@ -25,7 +33,7 @@
 --   4) lettore sulla fixture: esattamente i tre casi attesi, col loro motivo
 --   5) COLONNA_ASSENTE nomina la colonna che manca
 --   6) il ritiro toglie i due orfani della fixture
---   7) dopo il ritiro, sulla fixture resta solo ARGOMENTI_INSUFFICIENTI
+--   7) dopo il ritiro, sulla fixture resta solo ARGOMENTI_INVALIDI
 --   8) i due trigger validi (block con FK, require polimorfo) ci sono ancora
 --   9) il padre si spegne
 --  10) il generatore chiama dbops.fn_ritira_attivo_orfani nel ramo fuori dal dry run
@@ -96,7 +104,7 @@ BEGIN
     -- require scritto a mano su chiave polimorfa: legittimo
     EXECUTE format($t$CREATE TRIGGER trg_t_poli_require AFTER INSERT OR UPDATE ON %1$I.t_polimorfa FOR EACH ROW
         EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(%1$L, 't_padre', 'attivo', 'target_id', 'id')$t$, v_s);
-    -- errore di scrittura: due argomenti, il minimo del block e' tre
+    -- errore di scrittura: due argomenti, il block ne vuole cinque
     EXECUTE format($t$CREATE TRIGGER trg_t_rotto_block BEFORE UPDATE OF attivo ON %1$I.t_padre_rotto FOR EACH ROW
         EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(%1$L, 't_figlia_ok')$t$, v_s);
 END
@@ -117,9 +125,9 @@ SELECT o.trigger_nome::text AS trigger_nome, o.motivo, o.dettaglio
 SELECT set_eq(
     $$SELECT trigger_nome, motivo FROM v_orfani_fixture$$,
     $$VALUES ('trg_t_col_block',   'COLONNA_ASSENTE'),
-             ('trg_t_rotto_block', 'ARGOMENTI_INSUFFICIENTI'),
+             ('trg_t_rotto_block', 'ARGOMENTI_INVALIDI'),
              ('trg_t_via_block',   'TABELLA_ASSENTE')$$,
-    'lettore: tabella assente, colonna assente e argomenti insufficienti; il block con FK e il require polimorfo no'
+    'lettore: tabella assente, colonna assente e argomenti fuori grammatica; il block con FK e il require polimorfo no'
 );
 
 -- ============================================================
@@ -149,8 +157,8 @@ SELECT is(
 -- ============================================================
 SELECT set_eq(
     $$SELECT trigger_nome, motivo FROM v_orfani_fixture$$,
-    $$VALUES ('trg_t_rotto_block', 'ARGOMENTI_INSUFFICIENTI')$$,
-    'dopo il ritiro resta solo ARGOMENTI_INSUFFICIENTI: non e'' un residuo, lo corregge una persona'
+    $$VALUES ('trg_t_rotto_block', 'ARGOMENTI_INVALIDI')$$,
+    'dopo il ritiro resta solo ARGOMENTI_INVALIDI: non e'' un residuo, lo corregge una persona'
 );
 
 -- ============================================================

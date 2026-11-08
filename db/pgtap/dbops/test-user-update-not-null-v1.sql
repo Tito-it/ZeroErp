@@ -38,14 +38,17 @@
 --   Le voci al 2026-10-08 sono le tabelle senza trigger di audit, dove la
 --   colonna non la scrive nessuno: chiuderle chiede di decidere chi la
 --   scrive, non un ALTER.
---     * dbops.fk_index_policy (registro caricato dai seed fk_index_policy_*,
---       senza la colonna) e dbops.transaction_ids (lo scrivono le funzioni
---       del tx_id, dbops.fn_generate_tx_id e vicine): registri tecnici, fuori dal perimetro
---       delle automazioni di audit;
---     * ui.dashboard_definizione, ui.dashboard_preset, ui.lista_colonna,
---       ui.lista_colonna_permesso, ui.lista_definizione, ui.lista_preset,
---       ui.widget: cataloghi della UI, caricati da seed senza la colonna e
---       senza DEFAULT.
+--     * dbops.transaction_ids (lo scrivono le funzioni del tx_id,
+--       dbops.fn_generate_tx_id e vicine): registro tecnico, fuori dal perimetro
+--       delle automazioni di audit.
+--   ✅ Chiuse il 2026-11-08 (brief-db-revisione-dbops, giro 7-bis):
+--     * dbops.fk_index_policy, che non ha piu' la colonna (blocco b,
+--       20261109-31: in dbops un catalogo scritto dal solo migratore non tiene
+--       data_update/user_update);
+--     * le sette tabelle di ui (dashboard_definizione, dashboard_preset,
+--       lista_colonna, lista_colonna_permesso, lista_definizione, lista_preset,
+--       widget): ui e' entrata nell'ambito e prende l'audit, le due colonne
+--       sono NOT NULL col DEFAULT (blocco c, 20261109-33).
 --
 -- ⚠️ pg_attribute e non information_schema.columns: la vista standard
 --   mostra solo le colonne su cui il ruolo connesso ha un privilegio, e i
@@ -66,15 +69,7 @@ SELECT plan(4);
 -- ============================================================
 CREATE TEMP TABLE _debito_user_update (tabella text PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO _debito_user_update (tabella) VALUES
-    ('dbops.fk_index_policy'),
-    ('dbops.transaction_ids'),
-    ('ui.dashboard_definizione'),
-    ('ui.dashboard_preset'),
-    ('ui.lista_colonna'),
-    ('ui.lista_colonna_permesso'),
-    ('ui.lista_definizione'),
-    ('ui.lista_preset'),
-    ('ui.widget');
+    ('dbops.transaction_ids');
 
 -- ============================================================
 -- La lente: le colonne user_update delle tabelle del progetto

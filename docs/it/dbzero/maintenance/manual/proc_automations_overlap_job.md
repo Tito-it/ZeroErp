@@ -1,55 +1,190 @@
 ## 📘 Documentazione Concettuale – Procedura `maintenance.proc_automations_overlap_job`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
-> [Automazione DB](/guide/automazione-db)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap)
-> [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — il processo `automations_overlap`: job pgAgent, procedura e posto nella convergenza del rilascio
+> * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — il giornale in cui ogni corsa lascia la sua riga
+> * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap) — la configurazione: chiave, periodo, predicato, `active` ed `exec_mode` di ogni tabella
 >
-Approfondimento tabelle:
-> [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)
+> Approfondimento viste:
+>
+> * [dbops.vw_processi_programmazione](/dbzero/dbops/views/vw_processi_programmazione) — il calendario vivo e lo stato del processo
+> * [maintenance.vw_job_run_da_guardare](/dbzero/maintenance/views/vw_job_run_da_guardare) — dove una corsa fallita diventa una cosa da guardare
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — il lavoro vero: i vincoli `EXCLUDE` che mancano
+> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — il giornale da cui passa la chiamata, col lock e il verbale del fallimento
+> * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/funzioni/fn_sveglia_accesa) — il cancello dello step pgAgent
+>
+> Guide:
+>
+> * [Framework di Automazione DB, §4.3](/guide/automazione-db#43-overlap-anti-sovrapposizione-temporale) — la regola OVERLAP
+> * [Framework di Automazione DB, §9](/guide/automazione-db#9-quando-girano-le-automazioni) — quando girano le automazioni
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 02-06-26)
-La procedura **`maintenance.proc_automations_overlap_job()`** e' un wrapper per
-eseguire `dbops.fn_apply_automazione_overlap` in modalita' schedulata, con logging
-centralizzato e lock applicativo anti-concorrenza.
 
-E' il **runner notturno** del rule OVERLAP: ricrea i vincoli `EXCLUDE` mancanti
-per le tabelle marcate `active=true` in `dbops.automazione_overlap`. E' il
-meccanismo di **auto-guarigione** che impedisce a un EXCLUDE droppato per errore
-(es. da un refactor) di restare assente. Introdotta con `refactor-overlap-v2`:
-prima OVERLAP era l'unico rule con seed+apply ma senza job schedulato.
+Il wrapper del processo `automations_overlap`: esegue `dbops.fn_apply_automazione_overlap`, che ricrea i vincoli `EXCLUDE` mancanti
+dalle righe accese di `dbops.automazione_overlap`, passando dal giornale delle esecuzioni
+sotto il codice del processo.
+
+La procedura non aggiunge logica: delega a `maintenance.fn_run_and_log`, che apre la riga
+della corsa in `maintenance.job_run_log`, esegue il runner e chiude la riga con l'esito.
 
 ---
 
-### Logica operativa
+### ⭐ Auto-guarigione: un `EXCLUDE` sparito torna al giro dopo
 
-1. Chiama `maintenance.fn_run_and_log` con:
-   * `p_jobname = 'automations_overlap'`
-   * `p_stepname = 'run_automations_overlap'`
-   * `p_sql = SELECT dbops.fn_apply_automazione_overlap('SCHEDULED', false)`
-2. Usa `hashtext('automations_overlap')` come lock per impedire esecuzioni concorrenti.
+Per ogni riga accesa della configurazione, il runner crea sulla tabella il vincolo `EXCLUDE`
+che impedisce a due righe con la stessa chiave di avere periodi sovrapposti: la chiave è fatta
+di colonne e di espressioni, il periodo è una colonna intervallo o la coppia delle date, e un
+predicato rende il vincolo parziale.
 
-E' **idempotente**: `fn_apply` crea solo i vincoli mancanti e salta quelli gia'
-presenti (di norma, a regime, non fa nulla).
+Salta la riga, e lo scrive nel registro delle azioni, quando la tabella non esiste
+(`TABLE_NOT_FOUND`), quando manca la chiave o una sua colonna (`KEY_COLUMN_MISSING`), quando
+mancano le colonne del periodo, e quando la regola ha già il suo vincolo: l'`EXCLUDE` col nome
+della riga (`EXCLUDE_EXISTS`) o un vincolo temporale `UNIQUE … WITHOUT OVERLAPS` sul periodo
+(`TEMPORAL_UNIQUE_EXISTS`). A regime quindi non fa niente; ma se un `EXCLUDE` viene tolto per
+errore, il giro dopo lo ricrea.
+
+⚠️ Il runner **crea e non modifica**: cambiare la chiave o il predicato di una tabella chiede di
+togliere prima il vincolo vecchio, che altrimenti il giro trova e salta. E non toglie: una regola
+spenta lascia il suo vincolo, perché togliere un vincolo d'integrità è una decisione di chi
+migra.
 
 ---
 
-### Schedulazione
+### ⭐ Un difetto ferma la regola, non il giro
 
-Invocata dal job pgAgent `automations_overlap` (schedule `daily_21`, ogni giorno
-alle 21:00), allineato agli altri job automazioni.
+Il registro non ha una chiave esterna verso il catalogo, e non può averla: una riga può restare
+indietro rispetto a una tabella rinominata o ritirata. Quella riga è un **salto dichiarato**: il
+runner la scrive nel registro delle azioni col motivo `TABLE_NOT_FOUND` e passa alla successiva.
+
+Lo stesso per i dati: una tabella che ha già righe sovrapposte non può ricevere il vincolo. Il
+runner lo scrive come `WARN DATI_SOVRAPPOSTI`, con il dettaglio della prima coppia in conflitto e
+lo SQLSTATE, e le altre tabelle ricevono il loro vincolo. Un nome già preso è un
+`WARN NOME_OCCUPATO`. La corsa resta verde: il difetto si legge nel registro delle azioni.
+
+Gli altri errori — un'espressione o un predicato scritti male — non si catturano: fermano la
+corsa intera, arrivano col loro SQLSTATE, e la corsa annulla anche i vincoli creati prima nello
+stesso giro.
 
 ---
 
-### Esempio di esecuzione
+### Due strade, la stessa procedura
 
-`CALL maintenance.proc_automations_overlap_job();`
+| Dove | Chi la chiama | Quando |
+| --- | --- | --- |
+| dbdev e installazioni con pgAgent | il job `automations_overlap`, step `run_automations_overlap` | al giro del suo calendario |
+| CI, database ricostruito da zero, ogni migrazione di sviluppo | la convergenza del rilascio (passata `ci_apply`) | `ci_ordine` 80: dopo `automations_guard_utility`, prima di `automations_cleanup` |
+
+Lo step pgAgent chiama la procedura solo se `maintenance.fn_sveglia_accesa('automations_overlap')`
+è vero: a processo spento il giro programmato non parte e il giornale non scrive niente. La
+convergenza invece gira sempre — spegnere ferma la sveglia, non l'aggiornamento — e dopo la
+chiamata pretende nel giornale una riga riuscita di quel giro, che non sia un salto; altrimenti
+la migrazione si ferma nominando il processo.
+
+Il calendario dei job è in [Job pgAgent](/dbzero/maintenance/job_pgagent), quello vivo di
+un'installazione in `dbops.vw_processi_programmazione`. ⚠️ In CI il job non esiste
+(`85_pgagent` finisce `MARK_RAN`): lì il lavoro lo fa solo la convergenza.
+
+⚠️ Nel giornale le due strade hanno la stessa `origine` (`PGAGENT`, il valore di partenza
+della colonna): a distinguerle è `ruolo_sessione`, cioè chi si è collegato.
+
+---
+
+### ⭐ Una corsa, una riga nel giornale
+
+Il meccanismo è quello di `maintenance.fn_run_and_log`, e la sua scheda lo racconta per intero.
+Per chi legge il giornale di questo processo:
+
+* **Il nome della corsa è il codice del processo**, `automations_overlap`: così il giornale
+  risale alla riga di `dbops.processi`, e la convergenza riconosce la corsa del suo giro.
+* **Una corsa alla volta.** La procedura passa come chiave un advisory lock sull'hash del
+  codice. Se una corsa dello stesso processo è già in giro, la seconda non esegue niente e
+  lascia una riga **saltata**: `saltata` vero, `ok` vuoto, già chiusa. Un salto non è una
+  corsa riuscita.
+* **Un fallimento si propaga, e il verbale resta.** Se il runner fallisce, `fn_run_and_log`
+  scrive il verbale **fuori transazione**, con `maintenance.fn_job_run_log_failure`, e poi
+  rilancia l'errore: lo step pgAgent fallisce, la convergenza si ferma, e la transazione si
+  annulla con tutto il DDL del giro. La riga rossa porta in `error_code` il codice di dominio
+  del runner (`E_…`) o, in mancanza, lo SQLSTATE, che sta anche in `sqlstate`. Questo runner
+  non passa dal registro errori: in `dbops.error_log` non resta niente. Da lì la corsa compare in
+  `maintenance.vw_job_run_da_guardare`.
+* **Gira come il proprietario.** La procedura è `SECURITY DEFINER`, con `search_path` fissato,
+  e appartiene a `zeroerp_owner`: chiunque la chiami — `zeroerp_job` di notte, la convergenza —
+  il DDL gira come `zeroerp_owner`, e i vincoli nascono suoi. Il giornale registra come ruolo
+  della sessione chi si è collegato.
+
+---
+
+### `SCHEDULED`, tutto il registro, mai in simulazione
+
+La procedura chiama il runner con tre scelte fisse:
+
+* **modo `SCHEDULED`.** Una riga di `dbops.automazione_overlap` gira se il suo `exec_mode` è
+  `AUTO` oppure uguale al modo della chiamata. ⚠️ Il modo dice **chi** chiama, non
+  **quando**: anche la convergenza del rilascio passa da questa procedura, e quindi chiama in
+  `SCHEDULED`.
+* **nessun ambito.** Il runner non ha un elenco di schemi e non legge
+  `dbops.automation_scope`: lavora su tutte le righe accese della configurazione, dovunque
+  stia la loro tabella.
+* **niente simulazione.** Il DDL si fa. Per sapere che cosa farebbe un giro non si passa dalla
+  procedura: si chiama il runner con la simulazione accesa, e `dbops.audit_log` registra le
+  azioni previste.
+
+---
+
+### Codici errore
+
+La procedura non ne solleva di suoi, e il runner non ha codici di dominio: un errore arriva
+col suo SQLSTATE, e `error_code` del giornale riporta quello.
+
+---
+
+### Test
+
+* `db/pgtap/maintenance/test-proc-job-definer-v1.sql` — per ogni `maintenance.proc_*_job`:
+  `SECURITY DEFINER`, `search_path` fissato, proprietario dello schema, nessun `EXECUTE` a
+  `PUBLIC` né a `zeroerp_app`.
+* `db/pgtap/dbops/test-processi-jobname-wrapper.sql` — il nome che il wrapper passa al giornale
+  esiste in `dbops.processi`.
+* `db/pgtap/dbops/test-processi-convergenza-ci.sql` — la procedura dichiarata esiste e ha
+  girato con esito positivo sul database.
+* `db/pgtap/dbops/test-fn-apply-automazione-overlap-key-expressions-v1.sql` e
+  `db/pgtap/dbops/test-fn-apply-automazione-overlap-where-predicate-v1.sql` — il runner: le
+  chiavi su espressione e i vincoli parziali.
+* `db/pgtap/dbops/test-overlap-tabella-sparita-v1.sql` — una riga del registro su una tabella
+  che non esiste non ferma il giro, e lascia nel registro delle azioni il salto col motivo
+  `TABLE_NOT_FOUND`.
+* `db/pgtap/dbops/test-overlap-regola-e-vincolo-v1.sql` — righe già sovrapposte su una tabella
+  non fermano il giro; ogni regola attiva ha il suo vincolo per nome.
+
+---
+
+### Note di migrazione
+
+* 2026-06-02 — nasce col suo job notturno: fino a quel giorno OVERLAP aveva il seed e
+  l'applicazione ma nessun giro, e la configurazione restava inerte (`refactor-overlap-v2`).
+* 2026-09-26 — entra nella convergenza del rilascio, che chiama le procedure dei job
+  strutturali dove pgAgent non c'è (`brief-db-job-notturni-in-ci`).
+* 2026-10-14 — diventa `SECURITY DEFINER`, come tutte le `maintenance.proc_*_job`
+  (`brief-db-ruoli-di-sistema`).
+* 2026-10-16 — lo step pgAgent passa dal cancello `maintenance.fn_sveglia_accesa`
+  (`brief-db-processi-accensione-per-ambiente`).
+* 2026-11-03 — una riga del registro su una tabella sparita diventa un salto dichiarato
+  (`TABLE_NOT_FOUND`). Prima fermava il giro intero con lo SQLSTATE grezzo, e le tabelle che
+  venivano dopo restavano senza vincolo (`brief-db-revisione-maintenance` D6).
+* 2026-11-08 — righe già sovrapposte e nome occupato diventano salti dichiarati; una colonna di
+  chiave assente ferma la regola invece di accorciare la chiave; la regola è applicata solo col
+  suo vincolo, per nome. Nella convergenza viene dopo il nuovo `automations_guard_utility`
+  (`brief-db-revisione-dbops`, giro 10c).
 
 ---
 

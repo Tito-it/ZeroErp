@@ -596,7 +596,8 @@ class SoggettiService:
             function_name=function_name,
             log_to_db=False,
         )
-        cleaned_tipo = tipo_ruolo.strip().upper() if tipo_ruolo else None
+        # Il tipo ruolo e' il `codice_interno`, chiave tecnica: si confronta ESATTA, niente maiuscolo (Tid, 2026-11-04, brief-be-codice-maiuscolo §7.2).
+        cleaned_tipo = tipo_ruolo.strip() if tipo_ruolo else None
 
         # Cap di sicurezza sul limit — default 20, max 50.
         if limit is None or limit <= 0:

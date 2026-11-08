@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -385,6 +385,46 @@ vesti.
 che l'ha scritta e lo si **verifica uguale al vivo**, oppure si legge il vivo con
 `SET search_path = pg_catalog`, che qualifica tutto.
 
+### 5d. ⛔ Il `COMMENT` descrive l'oggetto, non la sua storia
+
+Vale per ogni `COMMENT ON` (tabella, colonna, vista, funzione, trigger, vincolo, tipo). Il COMMENT
+è il **primo paragrafo** della scheda auto-generata dell'oggetto: chi apre la pagina lo legge come
+la definizione di ciò che ha davanti. La storia ha già le sue sedi: la testata del changeSet, git e
+i documenti di lavoro.
+
+**Che cosa ci va.** Che cos'è l'oggetto e come si comporta, **al presente**: che cosa restituisce o
+custodisce, le regole che fa valere, i codici d'errore che solleva, i casi limite che chi lo usa
+deve conoscere, gli oggetti con cui lavora.
+
+**⛔ Che cosa non ci va.**
+
+* **Nessun brief, mai**: né il percorso né il nome (`brief-db-…`), né le sigle di cantiere o di
+  decisione (`D-13a di Tid`, `R-BE-13`, `§6.12`). Vale anche dove un catalogo CSV li ammette nelle
+  sue note: il COMMENT non è una nota di lavoro.
+* **Nessun marcatore di revisione**: `Rev 2026-10-21`, `⭐ rev …`, «nasce il…», «fino al … faceva…».
+* **Nessun riferimento a changeSet o commit**: id come `20261021-67`, hash.
+* **Nessuna misura usata come argomento**: «168 su 349», «12 righe OK», «su 102 dei 185 file».
+  Sono vere il giorno in cui si scrivono e false dopo.
+
+```sql
+-- ⛔ cronaca
+COMMENT ON FUNCTION script.fn_x() IS
+  'Rev 2026-10-21 (20261021-67): ora risolve dal risolutore. D-4 di Tid, brief-db-y §8.';
+
+-- ✅ descrizione
+COMMENT ON FUNCTION script.fn_x() IS
+  'L''emittente su cui l''operatore corrente può scrivere, con la regola di
+   script.fn_resolve_emittente_for_user. Senza contesto solleva.';
+```
+
+Il nome di un **oggetto** (`script.fn_resolve_emittente_for_user`, `dbops.presidi`, il pgTAP che lo
+prova) ci va: è un rimando a qualcosa che esiste, non alla sua storia. Gli apostrofi si raddoppiano
+(§11.3).
+
+**Quando si applica.** Ogni COMMENT nuovo o riscritto la rispetta da subito. I COMMENT esistenti
+che non la rispettano sono debito: si riscrivono **per famiglia**, quando un lavoro riapre quegli
+oggetti, e non con una riscrittura di massa.
+
 ---
 
 ### 6. Viste (Views)
@@ -515,6 +555,29 @@ usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.m
 
 ---
 
+### 6e. ⭐ «Nasce da»: la provenienza ha un modello solo
+
+Una tabella che dice **da quale documento nasce** una riga non inventa le sue colonne: usa
+quelle del modello comune, e il meccanismo intero sta nella guida
+[Sorgente polimorfa](/guide/sorgente-polimorfa).
+
+| Regola | Perché |
+| --- | --- |
+| Le colonne sono `sorgente_tipo_id` (il tipo, da `config.sorgenti`), **una** fra `sorgente_id` e `sorgente_uid` (la chiave del **documento**, secondo il `key_selector` del tipo), `sorgente_riga` e, dove serve, `sorgente_dettaglio` | una grammatica sola per tutte le tabelle: chi legge non deve sapere come l'ha scritta ognuna |
+| ⛔ La riga non va al posto del documento | la chiave dice il documento, `sorgente_riga` la riga: confonderle è il difetto da cui il modello nasce |
+| Un `CHECK` di forma per tabella, `chk_<tabella>_sorgente_forma`: tutto vuoto, o il tipo con una chiave | la forma la tiene la tabella, anche per chi scrive senza passare dal verbo |
+| La coppia di colonne la scrive `script.fn_sorgente_chiave`, chiamato dal verbo | nessuno compone a mano quale chiave usa un tipo |
+| La tabella monta il guard unico `script.trgfn_guard_sorgente`, col livello minimo e l'azione in cancellazione (`BLOCCA` / `CANCELLA`) | forma, esistenza, riga del documento: un controllo, in un posto |
+| L'unicità solo dove il dominio ha una regola, sulla chiave giusta (`NULLS NOT DISTINCT`, parziale sul tipo) | un vincolo «una riga per sorgente» generico vieta casi che il modello ammette |
+| ⛔ Il lato «in uscita» non si scrive a mano | lo monta la convergenza dal catalogo, su ogni tabella che `config.sorgenti` dichiara come documento, righe o dettaglio |
+| Se il dominio ammette **un solo tipo** d'origine, lo dice: il `CHECK` di forma vuole la sola chiave di quel tipo, e un guard fa valere il tipo per codice (il reso nasce solo dalla bolla: `vendite.trgfn_resi_guard_cliente_ddt`) | un tipo che il dominio non ammette passerebbe per buono, e i controlli che confrontano col documento d'origine uscirebbero senza controllare |
+| ⛔ Una riga che **aggrega** più origini non ha provenienza propria (la riga di fattura): l'origine si legge dai suoi dettagli | una colonna sola non può dire «vengo da tre documenti»; la copia sarebbe sempre vuota o ripetuta |
+
+Il presidio è in CI (`dbops/test-sorgenti-struttura-v1`): una tabella con `sorgente_id` o
+`sorgente_uid` che non monta il guard unico è rossa, salvo le esenzioni dichiarate col loro
+motivo. Un id che arriva da un sistema esterno non usa queste colonne: va in una tabella di
+collegamento propria.
+
 ### 7. Colonne di Audit e Log
 
 Standardizzare i campi di auditing:
@@ -543,6 +606,16 @@ nel codice (`_SOGGETTI_ORDER_COLS`), dove non da` errore: fa semplicemente
 smettere di funzionare l'ordinamento per data di creazione.
 
 I trigger o constraint di sistema possono aggiornare `data_update/user_update` su UPDATE manuale o con `trigger` dedicato.
+
+⛔ **Eccezione: nello schema `dbops` le colonne seguono lo scrittore** (Tid,
+2026-11-07). `dbops` sta fuori dall'ambito delle automazioni, salvo i registri
+con una scadenza: una sua tabella che si scrive a runtime (una funzione, il
+backend, un job) tiene `data_update`/`user_update` e `tx_id` e monta **a mano** i
+due trigger del framework; una tabella che scrive solo la migrazione, dai CSV di
+`80_data`, **non** li porta (né `data_update`/`user_update` una tabella che a
+runtime riceve solo `INSERT`: conta chi **aggiorna**, come `dbops.fk_index_policy`) — direbbero sempre «il migratore», e chi e quando lo
+dicono già `databasechangelog` e git. `data_insert`/`user_insert` restano sempre.
+Dettaglio e presidio: [automazione-db.md](guide/automazione-db.md) §1.1.
 
 ---
 
@@ -1085,6 +1158,24 @@ Preferire:
 * colonne normalizzate
 * predicati compatibili con la forma dell’indice
 
+⭐ Per i **codici dell'operatore** la colonna normalizzata c'è già: ogni colonna `codice` dell'ambito
+si salva in maiuscolo dall'automazione CODICE_MAIUSCOLO, tranne le eccezioni dichiarate
+([Framework di automazione DB §4.8](/guide/automazione-db)). Un «trova per codice» confronta
+quindi l'input passato per `script.fn_codice_normalizzato(…)`, non quello grezzo (§8.4-bis, «il
+lookup confronta i valori come sono salvati»). ⛔ La formula non si ricopia: la sede è la funzione,
+e la presidia `script/test-fn-codice-normalizzato-v1`.
+
+⚠️ In maiuscolo un codice può allungarsi (`ß` → `SS`). Per questo:
+
+* chi **cerca** mette la funzione nel `WHERE`, senza passare da una variabile
+  `<colonna>%TYPE`: su `varchar(n)` l'assegnazione darebbe 22001 dove la risposta giusta è «non
+  trovato»;
+* chi **scrive** passa il codice com'è e lascia normalizzare il trigger, che rifiuta con
+  `E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO` invece del 22001 della colonna.
+
+Un indice su `upper(codice)` accanto a una colonna normalizzata è un doppione: l'ultimo,
+`catalogo.ix_uom_tipi_codice_upper`, è ritirato il 2026-11-04 (`20261104-44`).
+
 ---
 
 ### 8.5-bis ⛔ Sotto una policy RLS entra nell'indice solo una clausola leakproof
@@ -1255,7 +1346,7 @@ Warning e non eccezione: la procedura gira a ogni `migrate` e nel job settimanal
 
 Per garantire **coerenza transazionale** fra tutte le tabelle che registrano modifiche, ogni entità deve avere la colonna `tx_id UUID` che accetta anche valori nulli:
 
-* **Trigger (opzione DB)**: applicare `trg_assign_tx_id` (su ogni tabella) che utilizza la function `dbops.trgfn_tx_id_managed()` per generare o recuperare il `tx_id` di sessione.
+* **Trigger (opzione DB)**: il trigger `trg_{table}_gen_tx_id_ins_upd` (nome di default del modulo `TX_ID`, montato da [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) su ogni tabella con la colonna `tx_id`) esegue la function `dbops.trgfn_tx_id_managed()` per generare o recuperare il `tx_id` di sessione.
 * **Function (opzione backend)**: invocare `dbops.fn_get_or_create_session_tx_id()` prima delle operazioni e passare il `tx_id` in tutti gli `INSERT/UPDATE`.
 
 Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la consultazione)**:
@@ -1416,6 +1507,12 @@ Per le tabelle **senza** colonna emittente l'emittente della riga lo dà
 una lettura per chiave, senza rieseguire la policy del padre (rev 2026-10-18,
 `20261018-31…-33`):
 `script.fn_scope_ef_perimetro((SELECT …perimetro…), script.fn_resolve_emittente_fiscale_id('ddt', ddt_id))`.
+⛔ **Un modo nuovo è una riga del registro, mai un ramo scritto a mano** (rev 2026-11-07). I modi, e la
+strada di ognuno fino all'emittente, stanno in `dbops.emittente_modi` (seed
+`80_data/sql/dbops/emittente_modi.csv`); i due risolutori, fiscale e soggetto-ruolo, li genera il migrate
+da lì, e un corpo toccato a mano torna quello del registro alla migrazione dopo. La via dichiarata di un
+bersaglio dei processi è un modo dello stesso registro. Pagina:
+[`dbops.emittente_modi`](/dbzero/dbops/manual/emittente_modi).
 Il billing account ha un emittente che **non** è un fatto della riga
 (`script.fn_get_ba_emittente_sr_id`: legame, altrimenti l'emittente dell'utente in
 sessione, altrimenti il default): lì il perimetro va in convenzione soggetto_ruolo,
@@ -2820,11 +2917,13 @@ metà. Le regole restano in un posto solo. Precedente:
 ### 13.3 ⛔ Un cast o una funzione nel join verso una tabella sotto policy
 
 Sotto RLS una condizione di join entra nell'indice solo se è **leakproof**
-(§8.5-bis vale anche per i join, non solo per i `WHERE`). `p.uid =
-cs.sorgente_uid::uuid` non lo è: il cast resta un filtro sopra la policy, e la
+(§8.5-bis vale anche per i join, non solo per i `WHERE`). Un join come `p.uid =
+x.chiave_testo::uuid` non lo è: il cast resta un filtro sopra la policy, e la
 tabella si legge tutta. La chiave si converte **prima**, in una CTE
-`MATERIALIZED`, e il join confronta tipi uguali. Caso:
-`vendite.fn_documento_lineage_archi` (`20261011-92`).
+`MATERIALIZED`, e il join confronta tipi uguali. È anche la ragione per cui la
+provenienza ha colonne tipizzate (§6e): una chiave nel suo tipo non chiede cast.
+Caso: `vendite.fn_documento_lineage_archi` (`20261011-92`), quando la provenienza
+era ancora una chiave in testo.
 
 ### 13.4 Il piano generico: `plan_cache_mode` sulla funzione
 

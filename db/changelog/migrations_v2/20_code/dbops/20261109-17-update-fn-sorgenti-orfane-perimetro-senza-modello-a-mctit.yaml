@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIMETRO DELLA PROVENIENZA SENZA LA GRAMMATICA MODELLO_A: dbops.fn_sorgenti_orfane_perimetro()
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.2.
+#
+#   Il modello A (la chiave in sorgente_riga, guard tipizzato) era montato solo
+#   sulle testate di magazzino e sull'evento: col giro M.2 (20261109-15, -16)
+#   passano al guard unico, e nessuna tabella lo monta piu'. Il perimetro perde
+#   il ramo MODELLO_A e il riferimento al guard tipizzato, che si ritira
+#   (20261109-19): restano UNICO e TESTUALE.
+#   Corpo dalla doc auto-generata (= 20261108-21), cambiano solo il CASE e il
+#   COMMENT. La firma non cambia: CREATE OR REPLACE.
+#   Rollback: forward-only (il corpo di prima e' in 20261108-21).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-17-update-fn-sorgenti-orfane-perimetro-senza-modello-a-mctit.yaml
+
+  - changeSet:
+      id: 20261109-17-update-fn-sorgenti-orfane-perimetro-senza-modello-a
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_sorgenti_orfane_perimetro: esce la grammatica MODELLO_A, nessuna tabella monta piu'
+        il guard tipizzato. brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane_perimetro()
+              RETURNS TABLE(
+                  tabella                regclass,
+                  schema_tabella         pg_catalog.pg_namespace.nspname%TYPE,
+                  nome_tabella           pg_catalog.pg_class.relname%TYPE,
+                  grammatica             text,
+                  ha_sorgente_id         boolean,
+                  ha_sorgente_uid        boolean,
+                  ha_sorgente_riga       boolean,
+                  ha_sorgente_dettaglio  boolean,
+                  orfani_esclusi_perche  text,
+                  guard_esente_perche    text)
+              LANGUAGE sql
+              STABLE
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              BEGIN ATOMIC
+                  WITH col AS (
+                      SELECT a.attrelid,
+                             bool_or(a.attname = 'sorgente_tipo_id')   AS ha_tipo,
+                             bool_or(a.attname = 'sorgente_id')        AS ha_id,
+                             bool_or(a.attname = 'sorgente_uid')       AS ha_uid,
+                             bool_or(a.attname = 'sorgente_riga')      AS ha_riga,
+                             bool_or(a.attname = 'sorgente_dettaglio') AS ha_dett
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attnum > 0 AND NOT a.attisdropped
+                         AND a.attname IN ('sorgente_tipo_id', 'sorgente_id', 'sorgente_uid',
+                                           'sorgente_riga', 'sorgente_dettaglio')
+                       GROUP BY a.attrelid
+                  ),
+                  esenzioni(tabella, orfani_perche, guard_perche) AS (
+                      VALUES
+                        (pg_catalog.to_regclass('pratiche.reconcile_errori'),
+                         'e'' un log: rimanda per costruzione anche a documenti che non ci sono piu''',
+                         'e'' un log scritto dentro un EXCEPTION: un guard d''esistenza lo farebbe tacere'),
+                        (pg_catalog.to_regclass('vendite.fatture_stampa_coda'),
+                         NULL::text,
+                         'sorgente_id e'' una FK vera verso vendite.fatture (ON DELETE CASCADE): esistenza '
+                         || 'e cancellazione le tiene la FK, e la cleanup delle fatture trova la coda da pg_constraint')
+                  )
+                  SELECT c.oid::regclass,
+                         n.nspname,
+                         c.relname,
+                         CASE
+                             WHEN EXISTS (SELECT 1 FROM script.fn_sorgente_guard_montaggi() m
+                                           WHERE m.tabella = c.oid::regclass) THEN 'UNICO'
+                             ELSE 'TESTUALE'
+                         END,
+                         col.ha_id,
+                         col.ha_uid,
+                         col.ha_riga,
+                         col.ha_dett,
+                         e.orfani_perche,
+                         e.guard_perche
+                    FROM col
+                    JOIN pg_catalog.pg_class c     ON c.oid = col.attrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    LEFT JOIN esenzioni e          ON e.tabella = c.oid::regclass
+                   WHERE c.relkind IN ('r', 'p')
+                     AND n.nspname <> 'storico'
+                     AND col.ha_tipo
+                     AND (col.ha_id OR col.ha_uid)
+                     AND (c.relpersistence <> 't'
+                          OR (n.oid = pg_catalog.pg_my_temp_schema()
+                              AND pg_catalog.has_table_privilege(c.oid, 'SELECT')))
+                   ORDER BY n.nspname, c.relname;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_sorgenti_orfane_perimetro() IS
+                'Il perimetro della provenienza polimorfa: ogni tabella (fuori lo storico) con sorgente_tipo_id e almeno una fra sorgente_id e sorgente_uid, con le colonne che ha e la sua GRAMMATICA, dal guard che monta: UNICO (script.trgfn_guard_sorgente: tipo + sorgente_id | sorgente_uid + riga + dettaglio), TESTUALE (nessun guard: la chiave in sorgente_uid, come id o uid, in testo o uuid). Le esenzioni sono dichiarate con il motivo, in due colonne: orfani_esclusi_perche (fuori dal presidio degli orfani) e guard_esente_perche (fuori dal guard unico); il log dei reconcile (pratiche.reconcile_errori), fuori da tutte e due, e la coda di stampa (vendite.fatture_stampa_coda), fuori dal solo guard unico perche'' la sua chiave e'' una FK vera verso la fattura. Delle tabelle temporanee, solo quelle della sessione leggibili da chi chiede. Derivato dal catalogo di PostgreSQL, non da un elenco: una tabella nuova con la provenienza entra da sola. Lo leggono dbops.fn_sorgenti_orfane e il presidio di struttura (dbops/test-sorgenti-struttura-v1).';

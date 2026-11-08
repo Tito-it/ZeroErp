@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI DERIVA DA X, PER LE RIGHE DI FATTURA: tre indici parziali su vendite.fatture_righe
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1.
+#
+#   Li usa il lato in uscita della provenienza a ogni cancellazione di
+#   un'origine (commessa, riga di commessa), come gli otto del giro R.1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261107-47-create-indici-fatture-righe-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261107-47-create-indici-fatture-righe-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_righe: tre indici non unici «chi deriva da X» sulla provenienza. brief-db-
+        sorgente-documento-e-riga §7.2 lotto C, giro C.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_fatture_righe_sorgente_id ON vendite.fatture_righe USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_fatture_righe_sorgente_id IS
+                'Chi deriva da X: le righe di fattura nate da un documento, per tipo e chiave del documento. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_fatture_righe_sorgente_uid ON vendite.fatture_righe USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_fatture_righe_sorgente_uid IS
+                'Chi deriva da X: le righe di fattura nate da un documento, per tipo e chiave del documento. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_fatture_righe_sorgente_riga ON vendite.fatture_righe USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_fatture_righe_sorgente_riga IS
+                'Chi deriva da X: le righe di fattura nate da una riga di un documento, per tipo e riga. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico: piu'' righe derivano dalla stessa riga.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX vendite.ix_fatture_righe_sorgente_id;
+              DROP INDEX vendite.ix_fatture_righe_sorgente_uid;
+              DROP INDEX vendite.ix_fatture_righe_sorgente_riga;

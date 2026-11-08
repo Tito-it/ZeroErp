@@ -62,6 +62,7 @@ Indice test eseguiti:
 43) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_agganciata_al_registry_reale
 44) PipelineStepExecutorUnitTests.test_pull_una_segnalazione_per_documento (§6.1)
 45) PipelineStepExecutorUnitTests.test_pull_senza_proprietario_scrive_una_riga_del_giro (§6.1)
+46) PipelineStepExecutorUnitTests.test_pull_ogni_segnalazione_dichiara_la_commessa (V-7-bis)
 """
 
 from contextlib import nullcontext
@@ -2034,3 +2035,26 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
         self.assertEqual(error_logger.log_error.call_count, 1)
         self.assertIsNone(error_logger.log_error.call_args.kwargs["gruppo_key"])
+
+    # 46) ⭐ OGNI SEGNALAZIONE DEL PULL DICHIARA LA COMMESSA (V-7-bis,
+    #     brief-db-sorgente-documento-e-riga §8.23): e' la commessa da cui il
+    #     pull ricava i documenti, l'unica sede che la sa nel momento del
+    #     fallimento. ⚠️ Anche la riga «del giro» (nessun documento) la porta:
+    #     la commessa resta vera anche quando il proprietario manca.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_ogni_segnalazione_dichiara_la_commessa(self, _mock_txn):
+        for gruppi in (["ORDINE_VENDITA:aaa", "ORDINE_VENDITA:bbb"], []):
+            with self.subTest(gruppi=gruppi):
+                executor, repo, commesse_repo, error_logger = self._build_executor_pull([10])
+                commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+                repo.gruppi_di_commessa_nel_lotto.side_effect = (
+                    lambda lotto_id, commessa_id, _g=gruppi: list(_g)
+                )
+
+                executor.execute_step(
+                    lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                    rollback=False, dry_run=False,
+                )
+
+                commesse = [c.kwargs["commessa_id"] for c in error_logger.log_error.call_args_list]
+                self.assertEqual(commesse, [10] * max(len(gruppi), 1))

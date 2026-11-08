@@ -17,7 +17,7 @@ Handler registrati:
 - HandlerConsumi     — consumi utility → commesse mensili AUTO (fan-out 1→N)
 
 Architettura:
-  Tutte le 5 fn_list_*_da_pushare SQL restituiscono 26 colonne condivise
+  Tutte le 5 fn_list_*_da_pushare SQL restituiscono le colonne condivise
   normalizzate in PushableRow. _process_rows è l'unico punto di
   orchestrazione: cicla le righe, crea/riusa commesse e upsert attivita.
 """
@@ -438,20 +438,20 @@ class BaseSourceHandler(ABC):
         return self._pricing_service
 
     # Scopo: esegue la sincronizzazione della sorgente verso commesse_attivita.
-    # `sorgente_uid` (opzionale) restringe l'esecuzione alla riga sorgente del
+    # `sorgente_id` (opzionale) restringe l'esecuzione alla riga sorgente del
     # documento specifico (push singolo UI-driven); None = batch handler standard.
-    # `righe_ids` (opzionale, richiede sorgente_uid) restringe ulteriormente al
+    # `righe_ids` (opzionale, richiede sorgente_id) restringe ulteriormente al
     # sottoinsieme di righe scelto dall'operatore (smistamento selettivo dal
     # Pannello Smistamento — brief-db-smistamento-preventivi.md C).
     def run(
         self,
         *,
         dry_run: bool = False,
-        sorgente_uid: int | None = None,
+        sorgente_id: int | None = None,
         righe_ids: list[int] | None = None,
     ) -> HandlerResult:
         return self._process_rows(
-            dry_run=dry_run, sorgente_uid=sorgente_uid, righe_ids=righe_ids,
+            dry_run=dry_run, sorgente_id=sorgente_id, righe_ids=righe_ids,
         )
 
     # --- Logica condivisa ---
@@ -463,7 +463,7 @@ class BaseSourceHandler(ABC):
         competenza_mese=None,
         billing_account_id=None,
         limit=None,
-        sorgente_uid: int | None = None,
+        sorgente_id: int | None = None,
         righe_ids: list[int] | None = None,
     ) -> HandlerResult:
         """Ciclo principale: fetch → get_or_create_commessa → upsert.
@@ -480,7 +480,7 @@ class BaseSourceHandler(ABC):
             competenza_mese=competenza_mese,
             billing_account_id=billing_account_id,
             limit=limit,
-            sorgente_uid=sorgente_uid,
+            sorgente_id=sorgente_id,
             righe_ids=righe_ids,
         )
 
@@ -758,6 +758,7 @@ class BaseSourceHandler(ABC):
             prezzo_bloccato=row.prezzo_bloccato,
             pricing_mode=row.pricing_mode,
             tipo_movimento=row.tipo_movimento,
+            causale_onere_id=row.causale_onere_id,
             istanza_utility_id=row.istanza_utility_id,
             data_attivita=row.data_attivita,
             competenza_dal=row.competenza_dal,
@@ -766,7 +767,13 @@ class BaseSourceHandler(ABC):
             uom_operativa_id=row.uom_operativa_id,
             factor_to_base=row.factor_to_base,
             sorgente_tipo_id=row.sorgente_tipo_id,
-            sorgente_uid=row.sorgente_uid,
+            # La chiave che il lister restituisce (l'uid del documento) va
+            # alla madre così com'è: la traduce lei (giri K.1 e K.2).
+            sorgente_chiave=row.sorgente_chiave,
+            # La riga del documento che il lister restituisce (`riga_id`); i
+            # consumi non ce l'hanno e passano None (BE-C.3-a). Un componente
+            # di kit eredita la riga del suo padre: e' quella del documento.
+            sorgente_riga=row.riga_sorgente_id,
             meta=row.meta,
             # ⭐ La versione di listino da cui verrebbe il prezzo (2026-10-08):
             #    senza, il guard «versione cambiata» di `fn_riallinea_prezzo`
@@ -855,7 +862,8 @@ class HandlerContratti(BaseSourceHandler):
     #        ADESIONE) prende i componenti dal listino del contratto, alla
     #        data del pezzo (`data_attivita`, la stessa a cui il lister prezza
     #        il kit; D-2 (c)). Il contratto e' la sorgente della riga
-    #        (`sorgente_uid` = `contratti.uid`).
+    #        (`sorgente_chiave`, la chiave del lister: il repository la
+    #        risolve col BB del DB, senza presumerne la forma).
     #        ⭐ Una lettura per (contratto, kit, data) nel giro: lo stesso pezzo
     #        si rilegge per ogni riga che lo porta. L'handler nasce a ogni giro
     #        di push (`commesse_service._build_handlers`), quindi la memoria
@@ -871,10 +879,11 @@ class HandlerContratti(BaseSourceHandler):
             data = row.data_attivita or row.competenza_dal
             if data is None:
                 return []
-            chiave = (row.sorgente_uid, row.articolo_id, data)
+            chiave = (row.sorgente_chiave, row.articolo_id, data)
             if chiave not in letti:
                 letti[chiave] = repo_componenti.list_componenti_kit_dal_listino(
-                    contratto_uid=row.sorgente_uid,
+                    sorgente_tipo_id=row.sorgente_tipo_id,
+                    contratto_chiave=row.sorgente_chiave,
                     articolo_padre_id=row.articolo_id,
                     data=data,
                 )

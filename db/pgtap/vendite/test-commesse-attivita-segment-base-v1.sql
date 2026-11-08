@@ -89,7 +89,11 @@ SELECT vendite.fn_get_or_create_commessa(
   p_force_new              => true) AS commessa_id;
 
 -- Un prefisso di segmento INVENTATO: la colonna non dereferenzia nulla.
-CREATE TEMP TABLE tmp_seg_sb AS SELECT 'PGTAPSB:' || gen_random_uuid()::text AS pre;
+-- La base delle chiavi del test: la chiave del push di un consumo vero della
+-- commessa (la provenienza delle righe), a cui il test aggiunge i suoi suffissi.
+CREATE TEMP TABLE tmp_seg_sb AS
+SELECT x.segment_key::text AS pre, x.consumo_id, x.sorgente_tipo_id
+  FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_com_sb)) x;
 
 -- Helper: un'attivita' con segment_key esplicita, in BOZZA (cosi' il CHECK
 -- del tipo documento emittibile non pretende nulla). Restituisce l'id.
@@ -104,14 +108,14 @@ BEGIN
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
-    sorgente_tipo_id, sorgente_uid)   -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+    sorgente_tipo_id, sorgente_id)   -- La riga NORMALE ha la sua sorgente: il consumo della commessa.
   VALUES (
     (SELECT commessa_id FROM tmp_com_sb), p_segment, r.articolo_id, r.istanza_utility_id,
     DATE '2026-08-15', r.uom_id, 1,
     DATE '2026-08-01', DATE '2026-08-01', DATE '2026-08-31',
     r.tipo_doc_fiscale_id, r.valuta_id, 10.0,
     'FIXED', 'BOZZA', 'NON_EMESSA',
-    (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), (SELECT commessa_id FROM tmp_com_sb)::text)
+    (SELECT sorgente_tipo_id FROM tmp_seg_sb), (SELECT consumo_id FROM tmp_seg_sb))
   RETURNING id INTO v_id;
   RETURN v_id;
 END $$ LANGUAGE plpgsql;

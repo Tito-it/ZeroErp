@@ -186,9 +186,12 @@ class AttivitaDaFatturare:
     quantita: Decimal | None
     prezzo_unitario: Decimal | None
     uom_id: int | None
-    sorgente_tipo_id: int | None
-    sorgente_uid: str | None
-    sorgente_riga: int | None
+    # ⛔ Nessuna provenienza qui (dal 2026-11-07, giro C.1 di
+    #    brief-db-sorgente-documento-e-riga, BE-C.1-a): le colonne
+    #    `sorgente_*` di `vendite.attivita_fatturabili` non esistono più. La
+    #    provenienza di un'attività è la sua riga di commessa
+    #    (`commessa_attivita_id`), e il consumatore unico
+    #    (`fatture_righe_service`) non l'ha mai letta.
     articolo_descrizione: str | None
     # ⭐ Il CODICE dell'articolo, e serve a una cosa sola: ordinare le righe del
     # documento in un modo che una PERSONA sappia leggere. Fino al 2026-08-31 si
@@ -1102,9 +1105,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                                 to_jsonb(%s::text),
                                 true
                               )
-                           END,
-                    data_update = now(),
-                    user_update = current_user
+                           END
                 WHERE id = %s
                 """,
                 [stato_input, messaggio, messaggio, lotto_id],
@@ -1326,9 +1327,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 UPDATE vendite.fatturazione_lotti
-                SET stato_operativo = 'CHIUSO',
-                    data_update = now(),
-                    user_update = current_user
+                SET stato_operativo = 'CHIUSO'
                 WHERE id = %s
                 """,
                 [lotto_id],
@@ -1345,7 +1344,16 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         # `Mapping`: si serializza e basta, anche un TypedDict (`PipelineStepLogMeta`).
         meta: Mapping[str, Any] | None,
         gruppo_key: str | None = None,
+        commessa_id: int | None = None,
     ) -> None:
+        # ⭐ `commessa_id` = DI QUALE COMMESSA parla la segnalazione, quando chi
+        #    la solleva ce l'ha in mano (il pull per commessa). Va in
+        #    `fatturazione_lotti_log.commessa_id`, ed e' cio' che la scheda
+        #    Critiche usa per il riferimento di un gruppo senza numero: la
+        #    commessa di QUEL lotto, anche se oggi e' chiusa o il documento e'
+        #    rientrato in un'altra (V-7-bis, brief-db-sorgente-documento-e-riga
+        #    §8.23). `None` = la segnalazione non nasce da una commessa.
+        #
         # ⭐ `gruppo_key` = DI QUALE DOCUMENTO parla questa segnalazione
         #    (changeSet `20260908-20`). `None` = e' del GIRO, ed e' un valore, non
         #    un'assenza: una segnalazione del giro deve fermare il giro, mentre
@@ -1367,7 +1375,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     p_status               => %s,
                     p_messaggio            => %s,
                     p_meta                 => %s::jsonb,
-                    p_gruppo_key           => %s
+                    p_gruppo_key           => %s,
+                    p_commessa_id          => %s
                 )
                 """,
                 [
@@ -1378,6 +1387,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     messaggio,
                     self._to_jsonb_param(meta),
                     gruppo_key,
+                    commessa_id,
                 ],
             )
 
@@ -1821,9 +1831,6 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     a.quantita,
                     a.prezzo_unitario,
                     a.uom_id,
-                    a.sorgente_tipo_id,
-                    a.sorgente_uid,
-                    a.sorgente_riga,
                     art.descrizione,
                     a.meta,
                     a.tipo_movimento,
@@ -1857,16 +1864,13 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 quantita=row[2],
                 prezzo_unitario=row[3],
                 uom_id=None if row[4] is None else int(row[4]),
-                sorgente_tipo_id=None if row[5] is None else int(row[5]),
-                sorgente_uid=row[6],
-                sorgente_riga=row[7],
-                articolo_descrizione=row[8],
+                articolo_descrizione=row[5],
                 # Il driver restituisce `jsonb` come STRINGA: senza coercion
                 # lo snapshot kit a valle farebbe `str.get(...)`. I test
                 # mockati non lo vedono, iniettano gia' dei dict.
-                meta=coerce_jsonb_dict(row[9]),
-                tipo_movimento=row[10] or TIPO_MOVIMENTO_NORMALE,
-                articolo_codice=row[11],
+                meta=coerce_jsonb_dict(row[6]),
+                tipo_movimento=row[7] or TIPO_MOVIMENTO_NORMALE,
+                articolo_codice=row[8],
             )
             for row in rows
         ]
@@ -1956,7 +1960,6 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 SELECT r.id, r.riga_nr, r.articolo_id, r.descrizione, r.uom_id,
                        r.qta, r.prezzo_unitario, r.sconto_percentuale, r.iva_id,
                        r.imponibile_riga, r.dest_billing_account_id,
-                       r.sorgente_tipo_id, r.sorgente_uid, r.sorgente_riga,
                        r.kit_key, r.kit_esposizione, r.kit_articolo_padre_id,
                        r.kit_descrizione_padre, r.kit_qta, r.kit_uom_id,
                        r.meta
@@ -1981,6 +1984,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #    parte. La FK e' COMPOSITA `(riga_capofila_id, fattura_id)`: una parte
     #    che puntasse a una riga di un altro documento non viene scritta — non
     #    per sorveglianza, per vincolo.
+    # ⭐ La riga di fattura non dichiara una provenienza (G-4, brief-db-
+    #    sorgente-documento-e-riga): la tracciabilita' e'
+    #    `attivita_fatturabili.fattura_riga_id`, quindi non c'e' niente da
+    #    copiare dalla capofila.
     # ⭐ La parte di un componente di kit COPIA le colonne kit dalla capofila
     #    (R-BE-P5): senza, usciva dal kit come riga sciolta. Solo `kit_qta` si
     #    passa, perche' e' la sua quota di kit (D-5). Su una riga sciolta le
@@ -2002,16 +2009,14 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 INSERT INTO vendite.fatture_righe (
                     fattura_id, riga_nr, articolo_id, descrizione, uom_id,
                     qta, prezzo_unitario, sconto_percentuale, iva_id,
-                    dest_billing_account_id, sorgente_tipo_id, sorgente_uid,
-                    sorgente_riga, riga_capofila_id, competenza_dal,
+                    dest_billing_account_id, riga_capofila_id, competenza_dal,
                     competenza_al, kit_key, kit_esposizione,
                     kit_articolo_padre_id, kit_descrizione_padre, kit_uom_id,
                     kit_qta, meta
                 )
                 SELECT c.fattura_id, %s, c.articolo_id, c.descrizione, c.uom_id,
                        %s, c.prezzo_unitario, c.sconto_percentuale, %s,
-                       c.dest_billing_account_id, c.sorgente_tipo_id,
-                       c.sorgente_uid, c.sorgente_riga, c.id,
+                       c.dest_billing_account_id, c.id,
                        -- La parte e' la stessa riga spezzata per IVA: stesso
                        -- periodo della capofila.
                        c.competenza_dal, c.competenza_al,
@@ -2293,9 +2298,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 UPDATE vendite.fatturazione_lotti_log
-                   SET disabilitato = TRUE,
-                       data_update = now(),
-                       user_update = current_user
+                   SET disabilitato = TRUE
                  WHERE lotto_id = %s
                    AND disabilitato IS FALSE
                    AND status = 'C'
@@ -2343,9 +2346,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 UPDATE vendite.fatture_log fl
-                   SET disabilitato = TRUE,
-                       data_update = now(),
-                       user_update = current_user
+                   SET disabilitato = TRUE
                   FROM vendite.fatturazione_lotti_fatture lf
                  WHERE lf.lotto_id = %s
                    AND fl.fattura_id = lf.fattura_id
@@ -2652,9 +2653,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                        stato = CASE
                                  WHEN tentativi + 1 >= %s THEN %s
                                  ELSE %s
-                               END,
-                       data_update = now(),
-                       user_update = CURRENT_USER
+                               END
                  WHERE stato = %s
                    AND data_update < now() - make_interval(mins => %s)
                 """,
@@ -2673,8 +2672,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        drainer. `FOR UPDATE SKIP LOCKED` → più worker in parallelo non si
     #        pestano (ognuno prende righe diverse); il flip a IN_CORSO nella
     #        stessa istruzione le sottrae ai claim successivi (e al
-    #        ri-accodamento, ex_fatture_stampa_coda_vivo). `data_update = now()`
-    #        = claimed_at per il reaper (la tabella non ha trigger audit).
+    #        ri-accodamento, ex_fatture_stampa_coda_vivo). `data_update` = claimed_at per il
+    #        reaper: la scrive il trigger di audit (`trgfn_audit_data_user_generic`)
+    #        a ogni UPDATE, il flip compreso; qui non si nomina (2026-11-08).
     #        Ordine per id (indice parziale ix_fatture_stampa_coda_da_lavorare).
     #        Il render avviene FUORI da qui: la connessione non tiene il lock
     #        durante l'I/O (I-4b). Ritorna i work-item claimati (lista dict),
@@ -2692,12 +2692,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                  LIMIT %s
             )
             UPDATE vendite.fatture_stampa_coda c
-               SET stato = %s,
-                   data_update = now(),
-                   user_update = CURRENT_USER
+               SET stato = %s
               FROM claimed
              WHERE c.id = claimed.id
-            RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id, c.sorgente_uid,
+            RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id,
                       c.lotto_id, c.template_documento_id,
                       c.tipo_documento_output_id, c.tentativi
         """
@@ -2731,9 +2729,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 UPDATE vendite.fatture_stampa_coda
                    SET stato = %s,
                        documento_id = %s,
-                       ultimo_errore = NULL,
-                       data_update = now(),
-                       user_update = CURRENT_USER
+                       ultimo_errore = NULL
                  WHERE id = %s
                 """,
                 [self.STAMPA_STATO_FATTO, int(documento_id), int(coda_id)],
@@ -2758,9 +2754,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                        stato = CASE
                                  WHEN tentativi + 1 >= %s THEN %s
                                  ELSE %s
-                               END,
-                       data_update = now(),
-                       user_update = CURRENT_USER
+                               END
                  WHERE id = %s
                 RETURNING stato
                 """,
@@ -3327,9 +3321,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 UPDATE vendite.attivita_fatturabili a
-                   SET stato_esecuzione = 'RUNNING',
-                       data_update = now(),
-                       user_update = current_user
+                   SET stato_esecuzione = 'RUNNING'
                  WHERE a.lock_batch_id = (
                            SELECT fl.lock_batch_id
                            FROM vendite.fatturazione_lotti fl
@@ -3486,7 +3478,6 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         fattura_id, riga_nr, articolo_id, descrizione,
                         uom_id, qta, prezzo_unitario, iva_id,
                         dest_billing_account_id,
-                        sorgente_tipo_id, sorgente_uid, sorgente_riga,
                         kit_key, kit_esposizione,
                         kit_articolo_padre_id, kit_descrizione_padre,
                         sconto_percentuale, riga_rettificata_id,
@@ -3497,10 +3488,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         d.fattura_id, d.riga_nr, d.articolo_id, d.descrizione,
                         d.uom_id, d.qta, d.prezzo_unitario, d.iva_id,
                         d.dest_billing_account_id,
-                        -- La riga aggrega n attivita' con n sorgenti: nessuna
-                        -- singola da dichiarare. La tracciabilita' passa dal
-                        -- puntatore attivita_fatturabili.fattura_riga_id (D4).
-                        NULL, NULL, NULL,
+                        -- La riga di fattura non ha una provenienza (G-4,
+                        -- brief-db-sorgente-documento-e-riga): la
+                        -- tracciabilita' passa dal puntatore
+                        -- attivita_fatturabili.fattura_riga_id (D4).
                         d.kit_key, d.kit_esposizione,
                         d.kit_articolo_padre_id,
                         CASE WHEN d.kit_articolo_padre_id IS NULL THEN NULL
@@ -3552,9 +3543,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 --    Piano: brief-db-lavoro-che-non-torna-indietro, L3b.
                 UPDATE vendite.attivita_fatturabili a
                 SET fattura_riga_id = c.fattura_riga_id,
-                    stato_esecuzione = 'COMPLETED',
-                    data_update = now(),
-                    user_update = current_user
+                    stato_esecuzione = 'COMPLETED'
                 FROM correlated c
                 WHERE a.id = c.attivita_id
                 """,

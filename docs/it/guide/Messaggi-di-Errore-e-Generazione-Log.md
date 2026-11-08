@@ -1,6 +1,6 @@
 # Guida — Gestione dei Messaggi di Errore e Generazione Log
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e devops
 >
@@ -83,7 +83,7 @@ config.messaggi_errore (frasi: 1 riga per codice+lingua)
 
 * **Identità** = *cosa è* quel codice (la classe), da cui il backend deriva la risposta HTTP
 * **Catalogo** = i template dei messaggi, mantenuti in tabella e mai hard-coded nel codice
-* **Registro** = il log tecnico immutabile, scritto fuori transazione per sopravvivere ai rollback
+* **Registro** = il log tecnico append-only (scade a 90 giorni), scritto fuori transazione per sopravvivere ai rollback
 * **Routing** = i log di dominio specifici per processo, che si affiancano al registro tecnico
 
 ---
@@ -172,9 +172,11 @@ Da un punto di vista tecnico:
 
 ### 2. Il registro errori: `dbops.error_log`
 
-Il registro e l'archivio immutabile di tutte le occorrenze di errore nel sistema. Ogni volta che una funzione rileva un errore e chiama `fn_log_and_raise_error` o `fn_log_error_only`, viene creato un record con il timestamp, l'area funzionale, la funzione di origine, il codice errore e un contesto JSONB con i dati rilevanti per il debug.
+Il registro raccoglie le occorrenze di errore nel sistema. Per l'applicazione è append-only (`zeroerp_app` legge e aggiunge, non modifica né cancella), ma non è un archivio permanente: una riga scade **90 giorni** dopo `occurred_at`, e le righe scadute si cancellano con la pulizia delle automazioni (`cleanup_at`). Ogni volta che una funzione rileva un errore e chiama `fn_log_and_raise_error` o `fn_log_error_only`, viene creato un record con il timestamp, l'area funzionale, la funzione di origine, il codice errore e un contesto JSONB con i dati rilevanti per il debug.
 
-La caratteristica critica del registro e la **persistenza fuori transazione**: la scrittura avviene tramite dblink su una connessione separata, quindi il record sopravvive anche se la transazione principale viene annullata. Questo garantisce che nessun errore venga perso silenziosamente.
+La caratteristica critica del registro e la **persistenza fuori transazione**: la scrittura avviene tramite dblink su una connessione separata, quindi il record sopravvive anche se la transazione principale viene annullata.
+
+⚠️ Senza canale di log configurato, o con `dblink` che non risponde, la funzione emette solo un WARNING nel log del server e **la riga non nasce**: il registro non ha un ripiego in transazione. Il dettaglio è in [dbops.error_log](/dbzero/dbops/tabelle/error_log).
 
 Da un punto di vista tecnico:
 
@@ -215,7 +217,7 @@ Da un punto di vista tecnico:
 
 Scrive un record nel registro `dbops.error_log` senza sollevare eccezione. E la funzione su cui si basa l'intero meccanismo di logging persistente: usa dblink per scrivere su una connessione separata, garantendo che il log sopravviva al rollback.
 
-Questa e la funzione piu critica dal punto di vista operativo. Per funzionare correttamente **deve essere `SECURITY DEFINER`** con **owner superuser** (`postgres`). La connessione dblink viene risolta dalla GUC `myapp.dblink_log_connection` (o `myapp.logconn`). Se la configurazione manca o e errata, la funzione emette un WARNING senza propagare errori al chiamante — il logging fallisce silenziosamente ma l'operazione principale non viene compromessa.
+Questa e la funzione piu critica dal punto di vista operativo. Per funzionare correttamente **deve essere `SECURITY DEFINER`** con **owner superuser** (`postgres`). Se il canale di log è acceso, e con quale stringa di connessione, lo decide una regola sola, descritta in [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa): con `myapp.log_with_dblink = off` il canale è spento e il log non si scrive. Se la configurazione manca o e errata, la funzione emette un WARNING senza propagare errori al chiamante — il logging fallisce silenziosamente ma l'operazione principale non viene compromessa.
 
 Da un punto di vista tecnico:
 
@@ -721,7 +723,7 @@ ritrova nel registro ([esempio](#area-tecnica-esempi)).
 **Errori tipici:**
 
 * **`2F003` (password/GSSAPI richiesti)** — la funzione non e `SECURITY DEFINER` o non e owner superuser; oppure `pg_service.conf` / `.pgpass` non sono visibili al processo postgres
-* **Log non presente ma nessun errore** — verificare `myapp.dblink_log_connection`, `pg_service.conf` / `.pgpass`, e permessi del ruolo `zeroerp_log`
+* **Log non presente ma nessun errore** — verificare che `myapp.log_with_dblink` non valga `off`, poi `myapp.dblink_log_connection` (o `myapp.logconn`), `pg_service.conf` / `.pgpass`, e permessi del ruolo `zeroerp_log`
 
 ---
 

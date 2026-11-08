@@ -1,0 +1,298 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_sorgente_emittente_sr_id SUL BB CHE RISOLVE (regola del 2)
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Chi emette un documento della sorgente polimorfa: la funzione rileggeva da se'
+#   il documento (target_table + key_selector + EXECUTE sulla chiave testuale), una
+#   seconda copia della regola di script.fn_sorgente_documento (20261106-11).
+#   Nasce la firma sulle colonne del modello (tipo, sorgente_id, sorgente_uid): il
+#   documento lo risolve il BB, qui si legge solo l'emittente, per id. La firma
+#   testuale resta per i suoi due chiamanti (vendite.fn_check_commessa_sorgente_
+#   emittente_omogeneo, fn_guard_commessa_sorgente_emittente, che leggono
+#   commesse_sorgenti G3), controlla la forma come prima e passa a quella nuova.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Nessun cambio per i chiamanti della firma testuale: stessi codici, stessi
+#   argomenti dei messaggi, stessa strada (SR, emittente, BA). La firma nuova
+#   legge la chiave che riceve, l'id o l'uid, qualunque sia il key_selector (la
+#   coerenza la fa valere il guard). Il lotto C passa i chiamanti alla firma nuova
+#   e ritira quella testuale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261106-23-update-fn-get-sorgente-emittente-sr-id-sul-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261106-23-update-fn-get-sorgente-emittente-sr-id-sul-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_sorgente_emittente_sr_id(tipo, sorgente_id, sorgente_uid) sul BB che risolve; la firma
+        testuale controlla la forma e le passa. brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_sorgente_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_get_sorgente_emittente_sr_id(
+                  -- ⚠️ Tipi nudi DICHIARATI per la chiave: e' quella POLIMORFA del
+                  --   documento (la tabella la dice il tipo), come in script.fn_sorgente_documento.
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_id      bigint,
+                  p_sorgente_uid     uuid)
+              RETURNS anagrafiche.soggetti_ruoli.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_codice    config.sorgenti.codice_interno%TYPE;
+                  v_attivo    config.sorgenti.attivo%TYPE;
+                  v_selector  config.sorgenti.key_selector%TYPE;
+                  v_relid     pg_catalog.pg_class.oid%TYPE;
+                  v_schema    pg_catalog.pg_namespace.nspname%TYPE;
+                  v_tabella   pg_catalog.pg_class.relname%TYPE;
+                  v_colonna   pg_catalog.pg_attribute.attname%TYPE;
+                  v_chiave    text;      -- la chiave ricevuta resa a testo, per i messaggi
+                  v_doc_id    bigint;    -- id del documento: polimorfo, la tabella la dice il tipo
+                  v_valore    bigint;    -- la colonna letta: SR, emittente o BA, secondo la strada
+                  v_sr_id     anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dato (tipo sorgente, chiave del documento) dire CHI EMETTE
+                  --   quel documento, in convenzione soggetto_ruolo.
+                  --   La chiave e' quella delle colonne del modello: sorgente_id o
+                  --   sorgente_uid. Il documento lo risolve il BB
+                  --   script.fn_sorgente_documento (brief-db-sorgente-documento-e-riga
+                  --   §7.2 giro 0.3): qui si legge solo l'emittente, per id.
+                  --
+                  -- ⛔ NON si passa dal billing account se il documento ha un
+                  --   emittente: su ordini, preventivi, ddt e resi il BA e' NULLABLE,
+                  --   uno stato LEGALE; emittente_fiscale_id e' NOT NULL.
+                  --
+                  -- ⚠️ SECURITY DEFINER: le tabelle documento hanno la RLS. Da
+                  --   INVOKER la sorgente di un altro emittente sarebbe invisibile e
+                  --   il chiamante concluderebbe «non esiste» invece di «e' di un
+                  --   altro». Il BB che risolve e' INVOKER: chiamato da qui legge
+                  --   come il proprietario.
+                  --
+                  -- ⛔ Fail-closed ovunque: mai un NULL silenzioso.
+                  -- =========================================================
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Tipo sorgente non valorizzato',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, COALESCE(p_sorgente_tipo_id::text, '<nessuno>'));
+                  END IF;
+
+                  SELECT l.codice_interno, l.attivo, l.key_selector,
+                         l.documento_relid, l.documento_schema, l.documento_tabella
+                    INTO v_codice, v_attivo, v_selector, v_relid, v_schema, v_tabella
+                    FROM config.fn_sorgente_livelli(p_sorgente_tipo_id) l;
+
+                  IF v_attivo IS NOT TRUE OR v_tabella IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Sorgente non attiva o senza target_table',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'target_table', COALESCE(v_schema || '.' || v_tabella, '<NULL>')),
+                          NULL::uuid, p_sorgente_tipo_id::text);
+                  END IF;
+
+                  v_chiave := COALESCE(p_sorgente_id::text, p_sorgente_uid::text);
+                  IF v_chiave IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEY_MISSING',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'key_selector', v_selector),
+                          NULL::uuid, p_sorgente_tipo_id::text, v_selector);
+                  END IF;
+
+                  -- La strada, dal catalogo: prima la colonna SR (commesse, fatture,
+                  -- lotti: e' gia' la risposta), poi l'emittente del documento (i sei
+                  -- documenti, NOT NULL), poi il billing account (attivita_consumi,
+                  -- attivita_fatturabili). Nessuna delle tre: la sorgente non e'
+                  -- interrogabile, a prescindere dal documento.
+                  SELECT a.attname INTO v_colonna
+                    FROM pg_catalog.pg_attribute a
+                   WHERE a.attrelid = v_relid
+                     AND a.attname IN ('emittente_soggetto_ruolo_id', 'emittente_fiscale_id', 'billing_account_id')
+                     AND a.attnum > 0 AND NOT a.attisdropped
+                   ORDER BY array_position(ARRAY['emittente_soggetto_ruolo_id', 'emittente_fiscale_id',
+                                                 'billing_account_id']::name[], a.attname)
+                   LIMIT 1;
+
+                  IF v_colonna IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'target_table senza colonna emittente ne'' billing account',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'target_table', v_schema || '.' || v_tabella),
+                          NULL::uuid, p_sorgente_tipo_id::text);
+                  END IF;
+
+                  -- Il documento, dal BB che risolve: legge la chiave che riceve.
+                  SELECT d.documento_id INTO v_doc_id
+                    FROM script.fn_sorgente_documento(p_sorgente_tipo_id, p_sorgente_id, p_sorgente_uid) d;
+
+                  IF v_doc_id IS NOT NULL THEN
+                      EXECUTE format('SELECT t.%I::bigint FROM %I.%I t WHERE t.id = $1',
+                                     v_colonna, v_schema, v_tabella)
+                         INTO v_valore
+                        USING v_doc_id;
+
+                      IF v_colonna = 'emittente_soggetto_ruolo_id' THEN
+                          v_sr_id := v_valore;
+                      ELSIF v_colonna = 'emittente_fiscale_id' THEN
+                          SELECT ef.soggetto_ruolo_id INTO v_sr_id
+                            FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.id = v_valore;
+                      ELSIF v_valore IS NOT NULL THEN
+                          v_sr_id := anagrafiche.fn_get_emittente_fiscale_id(v_valore);
+                      END IF;
+                  END IF;
+
+                  -- ⛔ Documento inesistente, oppure esistente ma senza un emittente
+                  --    risolvibile: per il chiamante sono la stessa cosa, e un NULL
+                  --    qui disarmerebbe il guard a valle.
+                  IF v_sr_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_EMITTENTE_NON_RISOLTO',
+                          jsonb_build_object('detail', 'documento inesistente o senza emittente risolvibile',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'sorgente_id', p_sorgente_id,
+                                             'sorgente_uid', p_sorgente_uid,
+                                             'target_table', v_schema || '.' || v_tabella),
+                          NULL::uuid, COALESCE(v_codice, p_sorgente_tipo_id::text), v_chiave);
+                  END IF;
+
+                  RETURN v_sr_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_sorgente_emittente_sr_id(config.sorgenti.id%TYPE, bigint, uuid) IS
+                'Risolve «CHI EMETTE questo documento» per la sorgente polimorfa, sulle colonne del modello: dato il tipo (config.sorgenti) e la chiave del documento (sorgente_id o sorgente_uid) restituisce il soggetto_ruolo dell''emittente. Il documento lo risolve script.fn_sorgente_documento (legge la chiave che riceve, qualunque sia il key_selector); qui si legge solo l''emittente, per id, per TRE STRADE in ordine di direttezza: (1) emittente_soggetto_ruolo_id se la tabella ce l''ha (commesse, fatture, lotti); (2) emittente_fiscale_id tradotto in SR (i sei documenti, NOT NULL: non si passa dal billing account, NULLABLE su ordini, preventivi, ddt, resi); (3) billing_account_id con anagrafiche.fn_get_emittente_fiscale_id (attivita_consumi, attivita_fatturabili). La strada la sceglie il catalogo prima del documento. ⛔ FAIL-CLOSED, mai un NULL silenzioso: tipo assente o spento -> E_SORG_CONF; nessuna chiave -> E_SORG_KEY_MISSING; tabella senza nessuna delle tre colonne -> E_SORG_CONF; documento inesistente o senza emittente -> E_SORG_EMITTENTE_NON_RISOLTO. ⚠️ SECURITY DEFINER: da INVOKER la sorgente di un altro emittente sarebbe invisibile sotto RLS, e il chiamante concluderebbe «non esiste» invece di «e'' di un altro». Nata il 2026-11-06 (20261106-23, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3) dal corpo della firma testuale (tipo, chiave text), che ora controlla la forma e passa qui.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_sorgente_emittente_sr_id(config.sorgenti.id%TYPE, bigint, uuid) TO zeroerp_app;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_sorgente_emittente_sr_id(
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     vendite.commesse_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS anagrafiche.soggetti_ruoli.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_selector  config.sorgenti.key_selector%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la porta per chi ha la chiave del documento come TESTO
+                  --   canonico (vendite.commesse_sorgenti, G3: id::text o uuid::text
+                  --   secondo key_selector). Controlla la forma come prima, poi passa
+                  --   la chiave giusta alla funzione sulle colonne del modello
+                  --   (tipo, sorgente_id, sorgente_uid), che risolve e legge
+                  --   l'emittente (brief-db-sorgente-documento-e-riga §7.2 giro 0.3).
+                  -- ⭐ Il ponte: si ritira quando l'ultimo chiamante passa le colonne
+                  --   tipizzate (lotto C, commesse_sorgenti a sorgente_id/sorgente_uid).
+                  -- =========================================================
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Tipo sorgente non valorizzato',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, COALESCE(p_sorgente_tipo_id::text, '<nessuno>'));
+                  END IF;
+
+                  SELECT s.key_selector INTO v_selector
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id
+                     AND s.attivo = true;
+
+                  IF v_selector IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Sorgente non attiva o senza key_selector',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, p_sorgente_tipo_id::text);
+                  END IF;
+
+                  IF NULLIF(btrim(p_sorgente_uid), '') IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEY_MISSING',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'key_selector', v_selector),
+                          NULL::uuid, p_sorgente_tipo_id::text, v_selector);
+                  END IF;
+
+                  -- La forma CANONICA secondo il catalogo (script.fn_sorgente_chiave_id /
+                  -- _uuid, la stessa regola del guard), sul valore RICEVUTO.
+                  IF v_selector = 'id' THEN
+                      IF script.fn_sorgente_chiave_id(p_sorgente_uid) IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', p_sorgente_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso id::text, ricevuto «', p_sorgente_uid, '»'));
+                      END IF;
+                      RETURN script.fn_get_sorgente_emittente_sr_id(
+                          p_sorgente_tipo_id, script.fn_sorgente_chiave_id(p_sorgente_uid), NULL::uuid);
+                  ELSIF v_selector = 'uid' THEN
+                      IF script.fn_sorgente_chiave_uuid(p_sorgente_uid) IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', p_sorgente_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso uuid, ricevuto «', p_sorgente_uid, '»'));
+                      END IF;
+                      RETURN script.fn_get_sorgente_emittente_sr_id(
+                          p_sorgente_tipo_id, NULL::bigint, script.fn_sorgente_chiave_uuid(p_sorgente_uid));
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEYSEL',
+                      jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                         'key_selector', v_selector),
+                      NULL::uuid, v_selector);
+                  RETURN NULL;  -- non si arriva qui: fn_log_and_raise_error solleva
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_sorgente_emittente_sr_id(config.sorgenti.id%TYPE, vendite.commesse_sorgenti.sorgente_uid%TYPE) IS
+                '⭐ rev 2026-11-06 (20261106-23, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): la firma testuale e'' una PORTA: controlla tipo, chiave e forma canonica come prima (E_SORG_CONF, E_SORG_KEY_MISSING, E_SORG_FORMATO, E_SORG_KEYSEL) e passa la chiave giusta per il key_selector alla firma sulle colonne del modello script.fn_get_sorgente_emittente_sr_id(tipo, sorgente_id, sorgente_uid), che risolve il documento con il BB script.fn_sorgente_documento e legge l''emittente: la seconda copia della lettura del documento si ritira (regola del 2). Stessi codici e stessi argomenti per i chiamanti. Si ritira nel lotto C, quando commesse_sorgenti passa alle colonne tipizzate. Risolve «CHI EMETTE questo documento» per la sorgente polimorfa: dato (sorgente_tipo_id, chiave CANONICA secondo config.sorgenti.key_selector) restituisce il soggetto_ruolo dell''emittente. ⛔ SOSTITUISCE script.fn_get_sorgente_billing_account_id (20260826-43), che passava dal BILLING ACCOUNT ed era la strada sbagliata: letto sulla doc auto-gen il 2026-08-26, billing_account_id e'' NULLABLE su QUATTRO tabelle sorgente su sei (ordini, preventivi, ddt, resi) — uno stato LEGALE del modello — mentre emittente_fiscale_id e'' NOT NULL su tutte e sei. Il risolutore vecchio si fermava fail-closed su documenti perfettamente validi, e un guard che rifiuta uno stato che il modello ammette non e'' severo: e'' rotto. Trovato da un pgTAP (vendite/test-ordini-guard-transizione-v1, che crea ordini con billing_account_id NULL di proposito), non da un ragionamento. ⭐ La correzione rende il guard piu'' FORTE e non piu'' debole: la tentazione era «BA nullo -> salta il controllo», che e'' cio'' che fanno i sei guard fratelli (trgfn_ordini_guard_emittente_ba e famiglia, «Skip: nessun BA su cui ancorare la coerenza») — li'' e'' giusto perche'' quei guard confrontano PROPRIO il BA con l''emittente, qui si confrontano DUE EMITTENTI e non c''e'' niente da saltare. TRE STRADE, in ordine di direttezza: (1) emittente_soggetto_ruolo_id se la target ce l''ha — commesse, fatture, lotti: nessuna traduzione, e'' una copia; (2) emittente_fiscale_id tradotto in SR con il join 1:1 su anagrafiche.emittenti_fiscali — i sei documenti; (3) billing_account_id delegato ad anagrafiche.fn_get_emittente_fiscale_id — attivita_consumi e attivita_fatturabili, che l''emittente non ce l''hanno. Nessuna delle tre -> E_SORG_CONF. ⛔ FAIL-CLOSED ovunque, mai un NULL silenzioso: documento inesistente o senza emittente risolvibile -> E_SORG_EMITTENTE_NON_RISOLTO; chiave malformata -> E_SORG_FORMATO; key_selector fuori catalogo -> E_SORG_KEYSEL. ⚠️ SECURITY DEFINER: le tabelle documento hanno la RLS, e da SECURITY INVOKER la sorgente di un altro emittente sarebbe invisibile — il chiamante concluderebbe «non esiste» invece di «e'' di un altro». ⚠️ La chiave attesa e'' quella CANONICA, cioe'' quella che vendite.fn_link_commessa_sorgente normalizza in scrittura, non quella che il push passa (guida /guide/sorgente-polimorfa §4a). Piano: brief-db-emittente-commessa-invariante, L6. ⭐ rev 2026-10-05 (20261005-26): il formato CANONICO della chiave lo controllano i building block script.fn_sorgente_chiave_id / _uuid (chiamati per nome qualificato: DEFINER con search_path stretto), la stessa regola del guard della sorgente polimorfa e del rubinetto. Prima le regex larghe accettavano ''007'' e gli uuid maiuscoli, contro quanto la funzione dichiarava.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_sorgente_emittente_sr_id(bigint, bigint, uuid);
+              -- Il corpo precedente della firma testuale e' quello di 20261005-26 (search_path
+              -- con pg_temp da 20261103-04): un rollback lo riprende da li'.

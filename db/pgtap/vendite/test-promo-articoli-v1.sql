@@ -48,13 +48,44 @@ UPDATE tmp_ctx_articolo t SET uom_id = a.uom_id
   FROM catalogo.articoli a
  WHERE a.id = t.articolo_id;
 
+-- ⛔ Rev 2026-11-03 (D16 di migliorie-generali-da-test-valutazione): le date
+--   erano LETTERALI (2030-2032). Il guard vendite.trgfn_promo_articoli_guard_
+--   data_driven crea una promo solo se `valido_dal` e' DOPO oggi
+--   (fn_data_operativa): scritte quando erano future, dal 2030-01-01 i test
+--   1..4 sarebbero diventati rossi da soli. Ora derivano tutte da UNA base, il
+--   primo del mese fra un anno: sempre nel futuro, trimestri consecutivi che
+--   non si sovrappongono (test 1..4), e il test 8 cade DENTRO il primo.
+CREATE TEMP TABLE tmp_promo_date AS
+WITH b AS (
+    SELECT (date_trunc('month', script.fn_data_operativa()) + interval '1 year')::date AS base
+)
+SELECT base                                           AS t1_dal,
+       (base + interval '3 months'  - interval '1 day')::date AS t1_al,
+       (base + interval '3 months')::date              AS t2_dal,
+       (base + interval '6 months'  - interval '1 day')::date AS t2_al,
+       (base + interval '6 months')::date              AS t3_dal,
+       (base + interval '9 months'  - interval '1 day')::date AS t3_al,
+       (base + interval '9 months')::date              AS t4_dal,
+       (base + interval '12 months' - interval '1 day')::date AS t4_al,
+       (base + interval '12 months')::date             AS t5_dal,
+       (base + interval '15 months' - interval '1 day')::date AS t5_al,
+       -- test 6: al PRIMA di dal
+       (base + interval '17 months')::date             AS t6_dal,
+       (base + interval '12 months')::date             AS t6_al,
+       (base + interval '24 months')::date             AS t7_dal,
+       (base + interval '27 months' - interval '1 day')::date AS t7_al,
+       -- test 8: un mese dentro il trimestre del test 1
+       (base + interval '1 month')::date               AS t8_dal,
+       (base + interval '2 months'  - interval '1 day')::date AS t8_al
+  FROM b;
+
 -- 1) PERCENTUALE positivo ammesso
 SELECT lives_ok(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_PERC', 'Test PERCENTUALE', a.articolo_id, a.uom_id,
-             'PERCENTUALE', 10, '2030-01-01', '2030-03-31'
-        FROM tmp_ctx_articolo a$$,
+             'PERCENTUALE', 10, d.t1_dal, d.t1_al
+        FROM tmp_ctx_articolo a, tmp_promo_date d$$,
     'Promo PERCENTUALE con valore > 0 ammessa'
 );
 
@@ -63,8 +94,8 @@ SELECT lives_ok(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_VFISS', 'Test VALORE_FISSO', a.articolo_id, a.uom_id,
-             'VALORE_FISSO', 5, '2030-04-01', '2030-06-30'
-        FROM tmp_ctx_articolo a$$,
+             'VALORE_FISSO', 5, d.t2_dal, d.t2_al
+        FROM tmp_ctx_articolo a, tmp_promo_date d$$,
     'Promo VALORE_FISSO con valore > 0 ammessa'
 );
 
@@ -73,8 +104,8 @@ SELECT lives_ok(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_PFISS', 'Test PREZZO_FISSO', a.articolo_id, a.uom_id,
-             'PREZZO_FISSO', 0, '2030-07-01', '2030-09-30'
-        FROM tmp_ctx_articolo a$$,
+             'PREZZO_FISSO', 0, d.t3_dal, d.t3_al
+        FROM tmp_ctx_articolo a, tmp_promo_date d$$,
     'Promo PREZZO_FISSO con valore 0 ammessa (chk_promo_articoli_valore: PREZZO_FISSO >= 0)'
 );
 
@@ -84,8 +115,8 @@ SELECT lives_ok(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_PERC_ZERO', 'Test PERC zero', a.articolo_id, a.uom_id,
-             'PERCENTUALE', 0, '2030-10-01', '2030-12-31'
-        FROM tmp_ctx_articolo a$$,
+             'PERCENTUALE', 0, d.t4_dal, d.t4_al
+        FROM tmp_ctx_articolo a, tmp_promo_date d$$,
     'PERCENTUALE con valore = 0 ora ammesso (nessun vincolo DB sul segno)'
 );
 
@@ -94,8 +125,8 @@ SELECT throws_ok(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_BAD', 'Test tipo invalido', a.articolo_id, a.uom_id,
-             'SCONTO', 10, '2031-01-01', '2031-03-31'
-        FROM tmp_ctx_articolo a$$,
+             'SCONTO', 10, d.t5_dal, d.t5_al
+        FROM tmp_ctx_articolo a, tmp_promo_date d$$,
     '23514',
     NULL,
     'tipo_variazione fuori dominio viola chk_promo_articoli_tipo_variazione'
@@ -108,8 +139,8 @@ SELECT throws_like(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_DATE_BAD', 'Test date invertite', a.articolo_id, a.uom_id,
-             'PERCENTUALE', 5, '2031-06-01', '2031-01-01'
-        FROM tmp_ctx_articolo a$$,
+             'PERCENTUALE', 5, d.t6_dal, d.t6_al
+        FROM tmp_ctx_articolo a, tmp_promo_date d$$,
     '%è inferiore alla data dal%',
     'valido_al < valido_dal: parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
@@ -119,8 +150,8 @@ SELECT throws_ok(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_PERC', 'Duplicato codice', a.articolo_id, a.uom_id,
-             'PERCENTUALE', 8, '2032-01-01', '2032-03-31'
-        FROM tmp_ctx_articolo a$$,
+             'PERCENTUALE', 8, d.t7_dal, d.t7_al
+        FROM tmp_ctx_articolo a, tmp_promo_date d$$,
     '23505',
     NULL,
     'Insert con codice duplicato viola uq_promo_articoli_codice'
@@ -131,8 +162,8 @@ SELECT throws_ok(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_OVERLAP', 'Test overlap', a.articolo_id, a.uom_id,
-             'PERCENTUALE', 5, '2030-02-01', '2030-02-28'
-        FROM tmp_ctx_articolo a$$,
+             'PERCENTUALE', 5, d.t8_dal, d.t8_al
+        FROM tmp_ctx_articolo a, tmp_promo_date d$$,
     '23P01',
     NULL,
     'EXCLUDE blocca overlap su (articolo, uom) attive'
@@ -143,7 +174,7 @@ SELECT throws_ok(
 SELECT is(
     (SELECT validita::text FROM vendite.promo_articoli
       WHERE codice = 'PGTAP_PROMO_PERC'),
-    '[2030-01-01,2030-04-01)',
+    (SELECT '[' || t1_dal || ',' || (t1_al + 1) || ')' FROM tmp_promo_date),
     'La colonna generata validita e'' sincronizzata (daterange normalizzato [), +1gg su valido_al)'
 );
 

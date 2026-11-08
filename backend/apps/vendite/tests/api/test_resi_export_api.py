@@ -119,7 +119,7 @@ class TestResiCodeExportApi(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SCOPE, return_value=None)
     @patch(_RENDER)
-    @patch(_UI_REPO)
+    @patch(_UI_REPO, autospec=True)
     @patch(_UI_SVC)
     @patch(f"{_SVC}.list_da_accreditare")
     # La soglia della ricerca e' del catalogo (DB): qui e' un contorno finto.
@@ -153,7 +153,7 @@ class TestResiCodeExportApi(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SCOPE, return_value=None)
     @patch(_RENDER)
-    @patch(_UI_REPO)
+    @patch(_UI_REPO, autospec=True)
     @patch(_UI_SVC)
     @patch(f"{_SVC}.list_da_riconsegnare")
     def test_export_riconsegnare_csv_envelope_ok(
@@ -208,7 +208,7 @@ class TestResiListaExportApi(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SCOPE, return_value=None)
     @patch(_RENDER)
-    @patch(_UI_REPO)
+    @patch(_UI_REPO, autospec=True)
     @patch(_UI_SVC)
     @patch(f"{_SVC}.list_resi_rows")
     # La soglia della ricerca e' del catalogo (DB): qui e' un contorno finto.

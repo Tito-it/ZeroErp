@@ -82,7 +82,7 @@ class CodaLavoroServiceTests(SimpleTestCase):
         self.addCleanup(p_enter.stop)
         self.addCleanup(p_exit.stop)
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_coda_lavoro_ok(self, MockRepo):
         # Scopo: verifica che get_coda_lavoro restituisca i risultati del repository.
         repo = MockRepo.return_value
@@ -122,7 +122,7 @@ class PrendiInCaricoServiceTests(SimpleTestCase):
         self.addCleanup(p_enter.stop)
         self.addCleanup(p_exit.stop)
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_prendi_in_carico_ok(self, MockRepo):
         # Scopo: verifica assegnazione riuscita.
         repo = MockRepo.return_value
@@ -132,7 +132,7 @@ class PrendiInCaricoServiceTests(SimpleTestCase):
         self.assertTrue(result)
         repo.prendi_in_carico_flusso.assert_called_once_with(10, 100)
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_prendi_in_carico_gia_assegnato(self, MockRepo):
         # Scopo: verifica ritorno False se gia' assegnato allo stesso operatore.
         repo = MockRepo.return_value
@@ -167,7 +167,7 @@ class CompetenzeFlussiServiceTests(SimpleTestCase):
         self.addCleanup(p_enter.stop)
         self.addCleanup(p_exit.stop)
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_competenze_ok(self, MockRepo):
         # Scopo: verifica che get_competenze_flussi restituisca i risultati.
         repo = MockRepo.return_value
@@ -177,7 +177,7 @@ class CompetenzeFlussiServiceTests(SimpleTestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["template_flusso_codice"], "VALUTAZIONE")
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_competenza_ok(self, MockRepo):
         # Scopo: verifica creazione riuscita.
         repo = MockRepo.return_value
@@ -200,7 +200,7 @@ class CompetenzeFlussiServiceTests(SimpleTestCase):
                 risorsa_umana_id=100,
             )
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_elimina_competenza_ok(self, MockRepo):
         # Scopo: verifica eliminazione riuscita.
         repo = MockRepo.return_value
@@ -209,7 +209,7 @@ class CompetenzeFlussiServiceTests(SimpleTestCase):
         pratiche_service.elimina_competenza_flusso(42)
         repo.delete_competenza_flusso.assert_called_once_with(42)
 
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_elimina_competenza_non_trovata(self, MockRepo):
         # Scopo: verifica errore se competenza non trovata.
         repo = MockRepo.return_value

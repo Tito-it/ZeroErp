@@ -1,93 +1,89 @@
-## Documentazione Concettuale -- Tabella `dbops.sessioni_utente`
+## 📘 Documentazione Concettuale – Tabella `dbops.sessioni_utente`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-**Piano di riferimento:**
+> 👀 **Vedi anche**
 >
-[Audit Sessioni, Request Logging e Sicurezza Token](/dev/work-done/Audit-logging-sessionii-request-token)
+> Approfondimento tabelle:
 >
-**Tabelle correlate:**
+> * [dbops.request_log](/dbzero/dbops/tabelle/request_log) — la richiesta HTTP di ogni evento, legata da `request_id`
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola di retention della tabella
 >
-[dbops.request_log](/dbzero/dbops/manual/request_log) -- correlazione via `request_id`
-> [dbops.audit_log](/dbzero/dbops/manual/audit_log) -- pattern retention `cleanup_at`
+> Approfondimento funzioni:
 >
+> * [script.fn_totp_disabilita_device](/dbzero/script/funzioni/fn_totp_disabilita_device) — lo scrittore a database: il secondo fattore spento dal server
+> * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup) — la pulizia che scrive la scadenza e cancella
+>
+> Guide:
+>
+> * [Audit e tracciabilità](/guide/audit-e-tracciabilita) — gli strati dell'audit e la retention
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — login, sessioni e secondo fattore
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 05-03-2026)
 
-`dbops.sessioni_utente` e` la tabella di **audit sessioni JWT**. Traccia il ciclo
-di vita completo dei token di autenticazione: emissione (login), rinnovo (refresh),
-revoca esplicita, logout e scadenza naturale.
-
-Risponde alle domande:
-
-* Quando un utente ha fatto login?
-* Quante volte e da dove ha refreshato il token?
-* Il token e` stato revocato? Quando e perche`?
+Il registro degli eventi di sessione di una persona: il ciclo di vita dei token di accesso (login,
+rinnovo, logout, revoca) e lo spegnimento del secondo fattore dal server. Risponde a «quando è
+entrato, da dove, quante volte ha rinnovato, quando e perché un token è stato revocato».
 
 ---
 
-### Campi chiave
+### Gli eventi
 
-| Colonna | Ruolo |
-|---------|-------|
-| `auth_user_id` | Riferimento all'utente Django (`auth_user.id`). |
-| `evento` | Tipo evento: `LOGIN`, `REFRESH`, `LOGOUT`, `SCADENZA`, `REVOCA` (le sessioni, le scrive il backend); `TOTP_DISABILITATO` (dal 29-09-2026: il secondo fattore della persona disattivato **dal server** da chi amministra il database — lo scrive `script.fn_totp_disabilita_device`, senza `jti`, con da dove, chi e perché nel `dettaglio`). Validato da CHECK. |
-| `jti` | JWT ID (`jti` claim) -- identifica univocamente il token coinvolto. |
-| `ip_address` | IP del client al momento dell'evento. |
-| `user_agent` | User-Agent HTTP del client. |
-| `request_id` | UUID dalla `RequestContextMiddleware`, consente correlazione 1:1 con `dbops.request_log`. |
-| `dettaglio` | JSONB per dati aggiuntivi (es. motivo revoca, errore specifico). |
-| `tx_id` | Transaction ID (pattern standard dbops, trigger `trgfn_tx_id_managed`). |
-| `cleanup_at` | Timestamp retention per pulizia schedulata (pattern `dbops.audit_log`). |
+* `LOGIN`, `REFRESH`, `LOGOUT`, `REVOCA`: li scrive il backend, a ogni accesso e rinnovo riuscito,
+  all'uscita e alla revoca di un token. Portano il `jti`, l'identificativo del token coinvolto.
+* `TOTP_DISABILITATO`: il secondo fattore della persona spento. Quando lo spegne l'applicazione la
+  traccia la scrive il backend; quando lo spegne **dal server** chi amministra il database, la scrive
+  `script.fn_totp_disabilita_device`, senza `jti`, con da dove, chi e perché nel `dettaglio`.
+Un evento fuori da questo elenco è respinto dal vincolo `chk_sessioni_utente_evento`.
+
+⭐ **La scadenza di un token non è un evento**: non la compie nessuno, e scriverla vorrebbe dire
+inventare un gesto da un'assenza. Le sessioni scadute si leggono dalla scadenza del token.
 
 ---
 
-### Caratteristiche tecniche
+### Le colonne che si leggono male
 
-* **Insert-only**: la tabella non prevede UPDATE. Non ha colonne `data_update` / `user_update`.
-* **No storicizzazione**: essendo gia` un log, non necessita di snapshot temporali.
-* **Retention**: gestita da `cleanup_at` + job schedulato (pattern `dbops.fn_purge_cleanup_expired`).
-* **Grant**: automatici via CI grant dinamico su schema `dbops`.
-
----
-
-### Indici
-
-| Nome | Colonne | Scopo |
-|------|---------|-------|
-| `ix_sessioni_utente_auth_user_id` | `auth_user_id` | Ricerca sessioni per utente. |
-| `ix_sessioni_utente_data_insert` | `data_insert DESC` | Ordinamento cronologico, query recenti. |
-| `ix_sessioni_utente_jti` | `jti` | Lookup per token ID (revoca, correlazione refresh). |
-| `ix_sessioni_utente_cleanup_at` | `cleanup_at` | Supporto job pulizia retention. |
+* `auth_user_id`: l'utente Django, senza chiave esterna: le tabelle di Django non sono di Liquibase.
+* `request_id`: l'identificativo della richiesta, lo stesso di `dbops.request_log`: lega l'evento
+  alla richiesta HTTP che l'ha prodotto.
+* `ip_address`, `user_agent`: da dove arrivava la richiesta.
+* `dettaglio`: i dati in più dell'evento (il motivo di una revoca, chi ha spento il secondo fattore).
 
 ---
 
-### Ruolo operativo
+### Un registro: si scrive, non si corregge
 
-1. Le view JWT override (`AuditTokenObtainPairView`, `AuditTokenRefreshView`) inseriscono
-   un record ad ogni login e refresh riuscito.
-2. La revoca token (Area 3 -- blacklist) inserisce un record `REVOCA`.
-3. Il job di pulizia schedulato elimina i record oltre la retention configurata.
-4. L'API di consultazione (fase 2) espone i dati filtrati per utente e data.
+Gli eventi si inseriscono e non si modificano. L'unico aggiornamento è quello della pulizia, che
+scrive `cleanup_at` dove manca; per questo la tabella ha comunque i trigger di audit
+(`data_update`, `user_update`) e del `tx_id`. Non si storicizza: è già un registro.
 
 ---
 
-### Correlazione con request_log
+### 🧹 Retention: centottanta giorni
 
-Il campo `request_id` condiviso tra `sessioni_utente` e `request_log` consente
-di correlare ogni evento sessione alla request HTTP che lo ha generato:
-
-```sql
-SELECT s.evento, s.jti, r.method, r.path, r.status_code
-  FROM dbops.sessioni_utente s
-  JOIN dbops.request_log r USING (request_id)
- WHERE s.auth_user_id = :user_id;
-```
+Non c'è un trigger alla nascita che scriva la scadenza. La scrive la pulizia settimanale, dalla
+regola di cleanup della tabella (centottanta giorni invece dei trenta di default), sulle righe che
+non l'hanno ancora; la stessa pulizia cancella le righe scadute.
 
 ---
 
-> **In sintesi**: `sessioni_utente` completa il sistema di audit fornendo visibilita`
-> sul ciclo di vita delle sessioni JWT, informazione finora assente nel sistema.
+### Test
+
+* `db/pgtap/config/test-totp-disabilita-migratore-v1.sql` — lo spegnimento del secondo fattore dal
+  server lascia il suo evento `TOTP_DISABILITATO`.
+* `db/pgtap/config/test-totp-device-verbi-v1.sql` — dall'applicazione il verbo del database non
+  scrive la traccia: la scrive il backend.
+
+---
+
+### Note di migrazione
+
+* 2026-03-05 — nasce, per gli eventi dei token.
+* 2026-04-09 — riceve le colonne di aggiornamento dell'audit.
+* 2026-09-29 — il vincolo ammette `TOTP_DISABILITATO` (`brief-db-secondo-fattore-totp`).
+* 2026-11-08 — il vincolo non ammette più `SCADENZA`, che nessuno scriveva.
 
 ---
 

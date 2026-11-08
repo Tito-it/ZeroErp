@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE ID DEL DOCUMENTO DI ORIGINE: sorgente_id SULLE TABELLE DELLE PRATICHE
+#   Brief: brief-db-sorgente-documento-e-riga §4, §6.1 S-4, §7.2 lotto 0. Stessa
+#   forma di 20261106-05 (vendite).
+#
+#   pratiche_sorgenti oggi scrive la chiave come TESTO in sorgente_uid (id::text o
+#   uuid::text, modello B). Col lotto P passa alle due colonne tipizzate; qui nasce
+#   solo la seconda, vuota. reconcile_errori e' un log: prende la forma delle
+#   colonne, ma non il guard d'esistenza (D-9).
+#   ⚠️ vendite.vw_preventivi_pratiche espone gia' una colonna sorgente_id (l'id del
+#   legame, E-10): la vista ha l'elenco esplicito e non cambia. La rinomina e'
+#   del lotto P.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20261106-08-alter-pratiche-add-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-08-alter-pratiche-add-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        sorgente_id (bigint, vuota) su pratiche.pratiche_sorgenti e reconcile_errori: la colonna del
+        modello della provenienza. brief-db-sorgente-documento-e-riga §7.2 lotto 0.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'pratiche' AND column_name = 'sorgente_id'
+                 AND table_name IN ('pratiche_sorgenti', 'reconcile_errori');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.pratiche_sorgenti ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE pratiche.reconcile_errori  ADD COLUMN sorgente_id bigint NULL;
+
+              COMMENT ON COLUMN pratiche.pratiche_sorgenti.sorgente_id IS
+                  'La chiave del documento collegato alla pratica quando il suo tipo (sorgente_tipo_id, config.sorgenti) ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due. La chiave giusta la restituisce script.fn_sorgente_chiave; la verifica il guard script.trgfn_guard_sorgente. Resta NULL finche'' la tabella scrive la chiave come testo in sorgente_uid.';
+
+              COMMENT ON COLUMN pratiche.reconcile_errori.sorgente_id IS
+                  'La chiave del documento che ha innescato il reconcile quando il suo tipo ha key_selector ''id''. In alternativa a sorgente_uid. E'' un log: nessun guard ne verifica l''esistenza, perche'' si scrive proprio quando qualcosa e'' andato storto. Resta NULL finche'' la tabella scrive la chiave come testo in sorgente_uid.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.reconcile_errori  DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE pratiche.pratiche_sorgenti DROP COLUMN IF EXISTS sorgente_id;

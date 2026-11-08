@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il presidio dbops.vw_run_senza_attore esce dal registro dei presidi.
+#   Brief: brief-db-revisione-dbops, D42. La vista la ritira
+#   20_code/dbops/20261104-11.
+#
+# ⭐ La sorgente resta il CSV: le due righe (presidi.csv, presidi_testi.csv)
+#   sono gia' tolte dai file. Questo DELETE e' il complemento che il CSV da solo
+#   non sa fare: i mirror (20260910-35 per dbops.presidi, 20261006-06 per
+#   dbops.presidi_testi) sono loadUpdateData, aggiungono e aggiornano ma non
+#   cancellano. Su un database da zero le righe non nascono e il DELETE non
+#   trova niente; su un database esistente toglie quelle seminate prima.
+#   ⚠️ Prima i testi, poi il presidio: fk_presidi_testi_presidi.
+#   Il presidio non ha cause (presidi_cause) e le tabelle non hanno trigger.
+#
+# Perche' il DELETE e non obsoleto_dal: il test 3 di
+#   db/pgtap/dbops/test-catalogo-presidi-v1.sql pretende una vista viva per OGNI
+#   riga del catalogo, ritirate comprese, e la vista non c'e' piu'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261104-17-delete-presidio-vw-run-senza-attore-mctit.yaml
+
+  - changeSet:
+      id: 20261104-17-delete-presidio-vw-run-senza-attore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro dei presidi (dbops.presidi_testi, poi dbops.presidi) le righe di
+        dbops.vw_run_senza_attore, ritirata. Complemento dei CSV, da cui le righe sono gia'
+        tolte: i mirror non cancellano.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi_testi
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.presidi_testi WHERE vista = 'dbops.vw_run_senza_attore';
+              DELETE FROM dbops.presidi       WHERE vista = 'dbops.vw_run_senza_attore';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Le righe si riseminano rimettendole nei CSV.
+              SELECT 1;

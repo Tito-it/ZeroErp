@@ -123,14 +123,6 @@ def e_stato_di_cessazione(testata: str, stato_codice: str) -> bool:
     return DocumentoModelloRepository().e_stato_di_cessazione(testata, stato_codice)
 
 
-# Scopo: Lo stato e' quello in cui il documento nasce (colonna `iniziale` del
-#        vocabolario, la bozza)? Lo leggono le regole che valgono «solo in
-#        bozza» (l'eliminazione del preventivo orfano): mai `'DRAFT'` scritto
-#        nel service.
-def e_stato_iniziale(testata: str, stato_codice: str) -> bool:
-    return DocumentoModelloRepository().e_stato_iniziale(testata, stato_codice)
-
-
 # Scopo: Lo stato e' l'accettazione del documento (colonna `accettazione` del
 #        vocabolario)? Lo leggono le regole che valgono «da accettato»
 #        (fatturazione, pratica del preventivo).

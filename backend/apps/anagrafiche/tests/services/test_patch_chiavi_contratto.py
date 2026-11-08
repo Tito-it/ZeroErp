@@ -56,7 +56,7 @@ class _Asserzioni(TestCase):
 
 class SoggettiPatchChiaviTests(_Asserzioni):
 
-    @patch(_SOGG_REPO)
+    @patch(_SOGG_REPO, autospec=True)
     def test_update_soggetto_chiave_ignota(self, mock_repo):
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
@@ -65,14 +65,14 @@ class SoggettiPatchChiaviTests(_Asserzioni):
         mock_repo.return_value.update_soggetto.assert_not_called()
 
     # L'alias del frontend fa parte del contratto: il repository lo mappa.
-    @patch(_SOGG_REPO)
+    @patch(_SOGG_REPO, autospec=True)
     def test_update_soggetto_alias_comune_nascita_ammesso(self, mock_repo):
         mock_repo.return_value.update_soggetto.return_value = True
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         SoggettiService().update_soggetto(_FAKE_UUID, {"comune_nascita_id": 7})
         mock_repo.return_value.update_soggetto.assert_called_once()
 
-    @patch(_SOGG_REPO)
+    @patch(_SOGG_REPO, autospec=True)
     def test_update_contatto_chiave_ignota(self, mock_repo):
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
@@ -82,7 +82,7 @@ class SoggettiPatchChiaviTests(_Asserzioni):
 
     # ⚠️ Prima del 2026-09-26 la view del RUOLO scriveva `request.data` nel
     #    repository senza passare da un service: nessuno validava le chiavi.
-    @patch(_SOGG_REPO)
+    @patch(_SOGG_REPO, autospec=True)
     def test_update_contatto_ruolo_chiave_ignota(self, mock_repo):
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
@@ -90,7 +90,7 @@ class SoggettiPatchChiaviTests(_Asserzioni):
         self.assert_chiave_rifiutata(ctx, "soggetto_id")
         mock_repo.return_value.update_contatto.assert_not_called()
 
-    @patch(_SOGG_REPO)
+    @patch(_SOGG_REPO, autospec=True)
     def test_update_contatto_ruolo_ok_passa_ownership_ruolo(self, mock_repo):
         mock_repo.return_value.update_contatto.return_value = True
         from apps.anagrafiche.services.soggetti_service import SoggettiService
@@ -100,7 +100,7 @@ class SoggettiPatchChiaviTests(_Asserzioni):
             1, {"email": "a@b.it"}, soggetto_ruolo_id=10,
         )
 
-    @patch(_SOGG_REPO)
+    @patch(_SOGG_REPO, autospec=True)
     def test_update_indirizzo_ruolo_chiave_ignota(self, mock_repo):
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
@@ -113,8 +113,8 @@ class ContiBancariPatchChiaviTests(_Asserzioni):
 
     # ⛔ Il legame SOGGETTO non ha la colonna `istanza_utility_id`: prima la
     #    PATCH arrivava a PostgreSQL e usciva come 500.
-    @patch(_CB_SOGG_REPO)
-    @patch(_CB_REPO)
+    @patch(_CB_SOGG_REPO, autospec=True)
+    @patch(_CB_REPO, autospec=True)
     def test_legame_soggetto_rifiuta_istanza_utility(self, mock_cb, _sogg):
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         with self.assertRaises(ServiceError) as ctx:
@@ -124,8 +124,8 @@ class ContiBancariPatchChiaviTests(_Asserzioni):
         self.assert_chiave_rifiutata(ctx, "istanza_utility_id")
         mock_cb.return_value.update_conto_soggetto.assert_not_called()
 
-    @patch(_CB_SOGG_REPO)
-    @patch(_CB_REPO)
+    @patch(_CB_SOGG_REPO, autospec=True)
+    @patch(_CB_REPO, autospec=True)
     def test_legame_ruolo_ammette_istanza_utility(self, mock_cb, _sogg):
         repo = mock_cb.return_value
         repo.get_legame_flags_ruolo.return_value = {"predefinito": False, "bloccato": False}
@@ -139,7 +139,7 @@ class EmittentiPatchChiaviTests(_Asserzioni):
 
     # ⚠️ Fino al 2026-09-26 `codice` in PATCH era accettato e ignorato: ora e'
     #    un 400 che lo nomina (e' immutabile, trigger `lock_columns`).
-    @patch(_EF_REPO)
+    @patch(_EF_REPO, autospec=True)
     def test_update_emittente_rifiuta_codice(self, mock_repo):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliService,
@@ -149,8 +149,8 @@ class EmittentiPatchChiaviTests(_Asserzioni):
         self.assert_chiave_rifiutata(ctx, "codice")
         mock_repo.return_value.update_emittente.assert_not_called()
 
-    @patch(_EF_REPO)
-    @patch(_EFU_REPO)
+    @patch(_EF_REPO, autospec=True)
+    @patch(_EFU_REPO, autospec=True)
     def test_aggiorna_record_utility_chiave_ignota(self, mock_repo, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
@@ -163,7 +163,7 @@ class EmittentiPatchChiaviTests(_Asserzioni):
 
 class FornitoriPatchChiaviTests(_Asserzioni):
 
-    @patch(_FO_REPO)
+    @patch(_FO_REPO, autospec=True)
     def test_update_fornitore_chiave_ignota(self, mock_repo):
         from apps.anagrafiche.services.fornitori_service import FornitoriService
         with self.assertRaises(ServiceError) as ctx:

@@ -54,7 +54,7 @@ def _testata() -> dict[str, Any]:
 
 class ContrattoCambioClienteTests(SimpleTestCase):
     def setUp(self) -> None:
-        p_repo = patch(f"{_SVC}.ContrattiRepository")
+        p_repo = patch(f"{_SVC}.ContrattiRepository", autospec=True)
         self.repo = p_repo.start().return_value
         self.addCleanup(p_repo.stop)
         self.repo.get_contratto.return_value = _testata()
@@ -154,9 +154,9 @@ class ContrattoCambioClienteTests(SimpleTestCase):
 class ContrattoBaFuoriCoppiaTests(SimpleTestCase):
     # Il BB vero, col repository del BA finto: il BA dichiarato non e' quello
     # della coppia (istanza del BA, utility del contratto).
-    @patch("apps.vendite.services._cliente_coppia_documento.BillingAccountRepository")
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch(f"{_SVC}.ContrattiRepository")
+    @patch("apps.vendite.services._cliente_coppia_documento.BillingAccountRepository", autospec=True)
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch(f"{_SVC}.ContrattiRepository", autospec=True)
     def test_10_ba_fuori_coppia_errore_sul_ba(self, repo_cls, ba_bb_cls, ba_cls) -> None:
         repo_cls.return_value.get_contratto.return_value = _testata()
         ba_bb_cls.return_value.get_istanza_utility_id.return_value = 21

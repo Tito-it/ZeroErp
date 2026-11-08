@@ -1,173 +1,93 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_non_editable_fields`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
-> [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)
+> Approfondimento viste:
 >
-Approfondimento funzioni / trigger:
-> [dbops.fn_apply_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
+> * [dbops.vw_lock_columns_vivi](/dbzero/dbops/views/vw_lock_columns_vivi) — i trigger di lock vivi, da cui la vista legge
 >
-Sistema lock condizionali (estensione, 2026-05-22):
-> [dbops.lock_columns_conditional](/dbzero/dbops/manual/lock_columns_conditional) — registro condizionale complementare
-> [dbops.fn_non_editable_fields](/dbzero/dbops/manual/fn_non_editable_fields) — funzione che unisce statici + condizionali per una riga specifica
+> Approfondimento tabelle:
+>
+> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns) — il registro da cui il runner monta i trigger
+> * [dbops.lock_columns_conditional](/dbzero/dbops/tabelle/lock_columns_conditional) — i blocchi che dipendono dallo stato della riga, che qui non ci sono
+> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore) — il testo dei codici errore del blocco
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_non_editable_fields](/dbzero/dbops/funzioni/fn_non_editable_fields) — i blocchi di una riga precisa, incondizionati e condizionali insieme
+> * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — il confronto fra il lock vivo e il registro
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — il trigger che rifiuta l'UPDATE
+
+---
 
 ### 🎯 Scopo Principale
 
-(latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
-
-`dbops.vw_non_editable_fields` e' un **alias semantico** sopra
-[`dbops.automation_lock_columns`](/dbzero/dbops/tabelle/automation_lock_columns):
-elenca i campi **non editabili** (lock incondizionato a livello DB) per
-ciascuna entita' coperta dal pattern `automation_lock_columns`, filtrati
-su `enabled = true`.
-
-E' pensata come **endpoint di lookup per il backend** (Python services /
-DTO builder) quando serve sapere "quali campi della tabella X non possono
-essere modificati post INSERT". Il nome semantico e' piu' diretto del
-nome tecnico `automation_lock_columns` (storico, riflette l'origine
-"automation" del meccanismo) e quindi piu' facile da consumare in codice
-applicativo.
-
-### Perche' un alias e non una nuova tabella
-
-Brief BE Fase 5 (28-04-2026) chiedeva una nuova tabella `dbops.lock_columns_registry (schema, table, column)`.
-La tabella esisteva gia' come `dbops.automation_lock_columns` con uno schema
-**piu' ricco** (oltre a `target_schema, target_table, column_name`: `error_code`,
-`exec_mode`, `enabled`, `note`, audit). Creare una nuova tabella avrebbe
-duplicato dati e introdotto due fonti di verita'. La vista alias preserva
-single source of truth.
+Le colonne **non modificabili dopo l'inserimento**, per ogni tabella: una riga per ogni colonna che
+un trigger di lock vivo e abilitato blocca, con il codice errore che l'UPDATE solleverebbe e il
+nome del trigger. È il punto da cui il backend legge quali campi presentare in sola lettura.
 
 ---
 
-### Schema esposto
+### ⭐ Dice ciò che il database rifiuta
 
-| Colonna | Tipo | Significato |
-|---|---|---|
-| `target_schema` | `text` | schema della tabella che contiene la colonna lockata |
-| `target_table` | `text` | nome della tabella |
-| `column_name` | `text` | colonna lockata |
-| `error_code` | `text` | codice errore sollevato dal trigger di lock (default `'E_CODICE_NON_MODIFICABILE'`); il backend puo' usarlo per messaggio user-friendly mappato in `config.messaggi_errore` |
-| `exec_mode` | `text` | modalita' di applicazione del lock (es. `'AUTO'`); riservato all'orchestrator dei trigger automation |
-| `note` | `text` | descrizione testuale (tipicamente nome del trigger che applica il lock) |
+La vista legge i **trigger**, non il registro. Il form deve spegnere un campo esattamente quando
+il salvataggio verrebbe rifiutato, e chi lo rifiuta è il trigger su `script.trgfn_lock_columns`:
+la vista legge i suoi argomenti (le coppie colonna, codice) da `dbops.vw_lock_columns_vivi`.
 
-### Filtro applicato
+Ne seguono tre cose:
 
-```sql
-WHERE enabled = true
-```
+* `codice_interno` compare su ogni tabella dove il runner lo blocca, anche se il registro non lo
+  nomina: è la colonna implicita del framework;
+* una riga del registro che nessun trigger applica (spenta, di un'altra modalità che non l'ha
+  ancora montata, o su una tabella fuori dall'ambito delle automazioni) **non** compare: l'UPDATE
+  passerebbe;
+* un trigger disabilitato non blocca niente, e le sue colonne non compaiono.
 
-Le righe con `enabled = false` rappresentano lock **registrati ma temporaneamente
-disabilitati** (es. durante una migrazione di dati supervisionata) e non
-devono apparire come lock attivi al consumo BE.
+Se il lock vivo e il registro non coincidono, non è la vista a ripararlo: diventa rosso il
+presidio `dbops/test-lock-columns-convergenza`, e il runner li riallinea.
 
 ---
 
-### Cosa NON copre
+### Che cosa elenca
 
-`vw_non_editable_fields` restituisce solo i lock **incondizionati**: la colonna
-non e' mai modificabile dopo l'INSERT, indipendentemente da stato/contesto.
-Questo pattern e' applicato ai codici stabili (`codice`, `codice_interno`),
-identificatori esterni (numero documento, codici SDI), ecc.
-
-**Casi NON coperti da questa vista** (logica condizionale, non riducibile a "lista colonne fissa"):
-
-| Tabella | Pattern non coperto | Soluzione |
-| --- | --- | --- |
-| `catalogo.articoli` | `is_composito`, `requires_serial`, `is_solo_componente` bloccati se BoM attiva | ✅ **Risolto** via `dbops.lock_columns_conditional` + `fn_non_editable_fields` (2026-05-22) |
-| `vendite.promo_articoli` | whitelist campi modificabili dipendente da stato derivato (FUTURA / INIZIATA / SCADUTA) | trigger [`vendite.trgfn_promo_articoli_guard_data_driven`](/dbzero/vendite/funzioni/trgfn_promo_articoli_guard_data_driven) + logica service Python |
-| `catalogo.articoli_componenti` | struttura BoM immutabile (tutti i campi struttura lockati, ma `valido_al` modificabile per "Chiudi riga") | trigger [`catalogo.trgfn_articoli_componenti_block_modifica_struttura`](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_block_modifica_struttura) |
-| `vendite.listini_versioni` | regole transizione stato BOZZA → ATTIVA → CHIUSA con campi modificabili condizionati | logica in `apps/vendite/services/listini_service.py` |
-
-I casi non ancora migrati al sistema condizionale richiedono logica nel service Python.
-Quando la regola e' esprimibile come query SQL booleana su `$1` (id riga), si puo'
-registrare in `dbops.lock_columns_conditional` e consumare via `fn_non_editable_fields`.
+* `column_name` e `error_code`: la coppia di argomenti del trigger. Il codice più comune è
+  `E_CODICE_NON_MODIFICABILE`, ma molte colonne portano un codice del loro dominio, che dice quale
+  identità della riga è immutabile. Il backend lo usa per il messaggio da mostrare;
+* `trigger_name`: il trigger che blocca la colonna. Una colonna bloccata da due trigger compare due
+  volte (è già una divergenza, che il presidio vede).
 
 ---
 
-### Esempi
+### ⛔ Che cosa non elenca
 
-**1) Lookup tutti i campi non editabili di una tabella:**
-
-```sql
-SELECT column_name, error_code, note
-  FROM dbops.vw_non_editable_fields
- WHERE target_schema = 'anagrafiche'
-   AND target_table  = 'fornitori';
--- column_name | error_code               | note
--- ------------+--------------------------+--------------------------------------
--- codice      | E_CODICE_NON_MODIFICABILE | da trigger trg_fornitori_a10_protect_account_code_upd ...
-```
-
-**2) Tutti i lock per uno schema (es. mappa UI di un dominio):**
-
-```sql
-SELECT target_table, array_agg(column_name ORDER BY column_name) AS locked_columns
-  FROM dbops.vw_non_editable_fields
- WHERE target_schema = 'anagrafiche'
- GROUP BY target_table
- ORDER BY target_table;
-```
-
-**3) Uso BE: costruzione DTO hint per il frontend.**
-
-```python
-# apps/<dominio>/services/<entita>_service.py
-
-def _readonly_fields(schema: str, table: str) -> list[str]:
-    with connection.cursor() as cur:
-        cur.execute(
-            "SELECT column_name FROM dbops.vw_non_editable_fields "
-            "WHERE target_schema = %s AND target_table = %s",
-            [schema, table],
-        )
-        return [row[0] for row in cur.fetchall()]
-```
-
-Il FE riceve la lista `readonly_fields` e disabilita i form input
-corrispondenti, mostrando il messaggio mappato da `error_code` (via
-`config.messaggi_errore` o tabella i18n FE dedicata).
+* **i blocchi condizionali**, che dipendono dallo stato della riga (i flag di struttura di un
+  articolo padre di una distinta in vigore, i campi di un documento in uno stato chiuso): per
+  quelli, data una riga, c'è `dbops.fn_non_editable_fields`. Le regole di modifica più complesse
+  restano nei guard di dominio e nei service.
 
 ---
 
-### Note operative
+### Test
 
-* **Single source of truth**: la vista non ha contenuto proprio. Ogni
-  modifica al pattern di lock (aggiunta colonna, disabilitazione, cambio
-  `error_code`) si fa **solo su `dbops.automation_lock_columns`** -- la
-  vista riflette automaticamente. Niente cache, niente refresh.
-* **Performance**: la tabella sottostante ha PK su
-  `(target_schema, target_table, column_name)` che soddisfa il pattern
-  di lookup tipico (filtro su schema+table). Le query del backend
-  saranno index-only scans.
-* **`enabled = false` = disabilitazione temporanea**: usata in scenari
-  di manutenzione (es. patch di dati con autorizzazione esplicita). In
-  produzione tutti i lock dovrebbero essere `enabled = true`. La vista
-  filtra di proposito le righe disabilitate per **non esporre falsi
-  positivi** al backend.
-* **Quando il backend espone questa lista al FE**: e' una lista "view-only";
-  non e' la fonte di verita' delle regole di editabilita' complete (vedi
-  sezione "Cosa NON copre"). Per coperture totali bisogna combinare la
-  vista con la logica stato-dipendente nei service.
-* **Sistema condizionale implementato (2026-05-22)**: i casi lock condizionali
-  sono ora gestibili via `dbops.lock_columns_conditional` +
-  `dbops.fn_non_editable_fields`. Per i detail endpoint che hanno l'id riga,
-  usare `fn_non_editable_fields` al posto di questa vista — restituisce
-  statici + condizionali in un unico array ordinato.
-  Vedi [lock_columns_conditional](/dbzero/dbops/manual/lock_columns_conditional)
-  e [fn_non_editable_fields](/dbzero/dbops/manual/fn_non_editable_fields).
+* `db/pgtap/dbops/test-non-editable-fields-dal-lock-vivo-v1.sql` — su uno schema di prova:
+  `codice_interno` bloccato e assente dal registro è elencato, una riga del registro senza trigger
+  no, un trigger disabilitato no, e l'UPDATE conferma la vista.
 
 ---
 
-### Riferimenti
+### Note di migrazione
 
-- Migration: `db/changelog/migrations_v2/20_code/dbops/20260428-05-create-vw-non-editable-fields-mctit.yaml`
-- Tabella sorgente: [`dbops.automation_lock_columns`](/dbzero/dbops/tabelle/automation_lock_columns) (21 righe seedate al 28-04-2026)
-- Brief BE origine: Fase 5 28-04-2026 (proposta originale `lock_columns_registry`, ridotta a vista alias dato che la tabella esisteva gia')
+* 2026-04-28 — nasce come nome semantico sopra il registro, al posto di una tabella nuova chiesta dal
+  backend.
+* 2026-05-22 — i blocchi condizionali prendono il loro registro e la loro funzione; questa vista
+  resta per i blocchi incondizionati.
+* 2026-11-08 — legge il lock vivo invece del registro (`20261109-61`, brief-db-revisione-dbops
+  D25): prima mancava `codice_interno`, che il backend aggiungeva a mano, ed erano elencate righe
+  del registro che nessun trigger applicava. Escono le colonne `exec_mode` e `note`, entra
+  `trigger_name`.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

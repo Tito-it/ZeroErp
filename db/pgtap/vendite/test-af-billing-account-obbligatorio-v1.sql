@@ -147,7 +147,7 @@ CREATE TEMP TABLE _attivita AS
 SELECT r.attivita_id AS commessa_attivita_id
   FROM vendite.fn_upsert_commessa_attivita(
     p_commessa_id                   => (SELECT commessa_id FROM _commessa),
-    p_segment_key                   => ('SEG-AFBA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+    p_segment_key                   => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM _commessa)) x) || ':' || ('SEG-AFBA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar)::varchar,
     p_articolo_id                   => (SELECT articolo_id FROM _articolo),
     p_istanza_utility_id            => (SELECT istanza_utility_id FROM _cliente),
     p_data_attivita                 => script.fn_data_operativa(),
@@ -167,9 +167,8 @@ SELECT r.attivita_id AS commessa_attivita_id
     p_classe_utenza_id_snapshot     => NULL,
     p_stato_approvazione            => 'APPROVATA',
     p_stato_emissione               => 'NON_EMESSA',
-    p_sorgente_tipo_id              => (SELECT s.id FROM config.sorgenti s
-                                         WHERE s.codice_interno = 'COMMESSA' AND s.attivo LIMIT 1),
-    p_sorgente_uid                  => (SELECT commessa_id FROM _commessa)::text,
+    p_sorgente_tipo_id              => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM _commessa)) x),
+    p_sorgente_chiave               => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM _commessa)) x),
     p_tipo_movimento                => 'NORMALE',
     p_meta                          => jsonb_build_object('case', 'AF_BA_NOTNULL')
   ) r;
@@ -178,7 +177,7 @@ SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id      => (SELECT commessa_id FROM _commessa),
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo LIMIT 1),
-    p_sorgente_uid     => (SELECT commessa_id FROM _commessa)::text
+    p_sorgente_chiave  => (SELECT commessa_id FROM _commessa)::text
 );
 
 -- Lo stato si cambia dal verbo (la porta, giro 10): la fixture cammina la

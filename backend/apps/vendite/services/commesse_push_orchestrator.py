@@ -14,7 +14,7 @@ CommessaPushOrchestrator:
     del giro) e lo CHIUDE col suo esito, dry_run incluso. ⭐ Un push che muore
     a meta' lascia cosi' la riga IN_ESECUZIONE, che e' l'unica prova che
     qualcosa e' partito e non e' tornato (BE-3b / D-3).
-  - Il perimetro del giro (source_types/sorgente_uid/righe_ids) sta sotto
+  - Il perimetro del giro (source_types/sorgente_id/righe_ids) sta sotto
     `risultato.perimetro`.
   - ⛔ NON scrive su vendite.event_log: un giro non e' un'entita' e non ha un
     emittente da cui derivare il perimetro del giornale (BE-3a / D-3).
@@ -142,7 +142,7 @@ class CommessaPushOrchestrator:
         *,
         source_types: list[str] | None = None,
         dry_run: bool = False,
-        sorgente_uid: int | None = None,
+        sorgente_id: int | None = None,
         righe_ids: list[int] | None = None,
     ) -> PushReport:
         """Esegue il push per tutti gli handler (o per i source_types selezionati).
@@ -151,11 +151,12 @@ class CommessaPushOrchestrator:
             source_types — None = tutti; lista di nomi = sottoinsieme
             dry_run      — True: gli handler non scrivono, ma il log viene comunque
                            scritto con dry_run=True per audit
-            sorgente_uid — None = batch standard; valorizzato = push singolo
-                           filtrato sulla riga sorgente del documento. Tipicamente
-                           usato con `source_types=[<codice unico>]`.
+            sorgente_id  — None = batch standard; valorizzato = push singolo
+                           filtrato sull'id del documento (il 4° parametro
+                           `p_<sorgente>_id` del lister). Tipicamente usato con
+                           `source_types=[<codice unico>]`.
             righe_ids    — sottoinsieme righe del documento (smistamento selettivo);
-                           ha senso solo con sorgente_uid valorizzato e sorgenti
+                           ha senso solo con sorgente_id valorizzato e sorgenti
                            che lo supportano (oggi PREVENTIVO).
 
         Restituisce PushReport con stato, risultati per handler e push_log_id.
@@ -167,7 +168,7 @@ class CommessaPushOrchestrator:
         try:
             return self._run_locked(
                 source_types=source_types, dry_run=dry_run,
-                sorgente_uid=sorgente_uid, righe_ids=righe_ids,
+                sorgente_id=sorgente_id, righe_ids=righe_ids,
             )
         finally:
             self._release_lock()
@@ -177,7 +178,7 @@ class CommessaPushOrchestrator:
         *,
         source_types: list[str] | None,
         dry_run: bool,
-        sorgente_uid: int | None = None,
+        sorgente_id: int | None = None,
         righe_ids: list[int] | None = None,
     ) -> PushReport:
         """Logica di run effettiva, eseguita sotto advisory lock."""
@@ -226,7 +227,7 @@ class CommessaPushOrchestrator:
         for handler in self._resolve_handlers(source_types):
             try:
                 result = handler.run(
-                    dry_run=dry_run, sorgente_uid=sorgente_uid, righe_ids=righe_ids,
+                    dry_run=dry_run, sorgente_id=sorgente_id, righe_ids=righe_ids,
                 )
             except Exception as exc:
                 result = HandlerResult(
@@ -248,7 +249,7 @@ class CommessaPushOrchestrator:
         )
 
         # ⭐ IL `risultato` PORTA ANCHE IL PERIMETRO DEL GIRO (BE-3a).
-        #    `sorgente_uid` e `righe_ids` vivevano SOLO nel payload di
+        #    `sorgente_id` e `righe_ids` vivevano SOLO nel payload di
         #    `PUSH_STARTED`: togliendo l'evento senza questa riga si sarebbe
         #    perso «su quale documento, e su quali sue righe» era stato chiesto
         #    il push — cioe' l'unica cosa che distingue un push singolo da un
@@ -266,7 +267,7 @@ class CommessaPushOrchestrator:
                 "handlers": report.as_risultato(),
                 "perimetro": {
                     "source_types": source_types,
-                    "sorgente_uid": sorgente_uid,
+                    "sorgente_id": sorgente_id,
                     "righe_ids": righe_ids,
                 },
             },

@@ -42,7 +42,8 @@
 --   La sorgente (D-6, nullable):
 --    7) sorgente_riga senza tipo -> 23514 sorgente_chiave
 --    8) con documento e data_prevista -> 23514 data_solo_senza_documento
---    9) con documento, senza data -> passa (e il guard tipizzato ha verificato il record)
+--    9) con documento, senza data -> passa (e il guard unico ha verificato documento e riga;
+--       rev 2026-11-09, lotto M: la provenienza nella grammatica del modello, INVENTARIO + riga)
 --   Il ciclo (D-L1-b):
 --   10) CHIUSA senza data_chiusura -> 23514 chiusura
 --   11) APERTA con data_chiusura -> 23514 chiusura
@@ -106,7 +107,8 @@ DO $ctx$ BEGIN
 END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-CREATE TEMP TABLE _fix (mag bigint, art uuid, sr bigint, inv_riga bigint, cau_out bigint, cau_inv bigint, src_inv bigint);
+CREATE TEMP TABLE _fix (mag bigint, art uuid, sr bigint, inv_riga bigint, cau_out bigint, cau_inv bigint, src_inv bigint,
+                        inv bigint);
 
 DO $fix$
 DECLARE
@@ -137,7 +139,9 @@ BEGIN
            v_ir,
            (SELECT id FROM magazzino.causali WHERE codice_interno = 'SCARICO_VEN'),
            (SELECT id FROM magazzino.causali WHERE codice_interno = 'INV_INIZIALE'),
-           (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA');
+           -- rev 2026-11-09 (lotto M): il tipo e' il documento, la riga sta sotto.
+           (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'),
+           v_inv;
 END $fix$;
 
 -- ============================================================
@@ -185,15 +189,15 @@ SELECT throws_ok(
     '7) una chiave senza tipo: chk_mag_movimenti_attesi_sorgente_chiave');
 
 SELECT throws_ok(
-    $$ INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga, data_prevista)
-       SELECT art, mag, cau_inv, 5, src_inv, inv_riga, now() FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga, data_prevista)
+       SELECT art, mag, cau_inv, 5, src_inv, inv, inv_riga, now() FROM _fix $$,
     '23514', NULL,
     '8) con un documento la data e'' la sua: chk_mag_movimenti_attesi_data_solo_senza_documento');
 
 SELECT lives_ok(
-    $$ INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga)
-       SELECT art, mag, cau_inv, 5, src_inv, inv_riga FROM _fix $$,
-    '9) con documento e senza data passa (il guard tipizzato ha trovato la riga di inventario)');
+    $$ INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga)
+       SELECT art, mag, cau_inv, 5, src_inv, inv, inv_riga FROM _fix $$,
+    '9) con documento e senza data passa (il guard unico ha trovato l''inventario e la sua riga)');
 
 -- ============================================================
 -- 10..13 Il ciclo

@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.processi_bersagli: via il CHECK chk_processi_bersagli_via. Al suo posto,
+#   in 90_end, la FK verso il registro dei modi (20261107-40).
+#   Brief: brief-db-revisione-dbops, D21 (blocco 4b).
+#
+# ⚠️ IL DIFETTO (D21). Il CHECK elencava cinque vie scritte a mano (fiscale,
+#   soggetto_ruolo, fattura, contabile, padre) contro i modi del risolutore:
+#   listino, magazzino e i modi nati dopo non si potevano dichiarare, «padre»,
+#   che il risolutore non conosce, si'. La via e' un modo: la chiude la FK verso
+#   dbops.emittente_modi, che e' la sede dei modi.
+#
+# ⭐ PERCHE' LA FK E' IN 90_end E NON QUI. Il registro e i bersagli si caricano
+#   in 80_data; la riga dei bersagli che diceva «padre» la riscrive il CSV
+#   (listino). Fra questo changeSet e la FK la colonna resta senza vincolo: dura
+#   un migrate, e lo chiude 20261107-40 con un controllo che nomina la riga fuori
+#   vocabolario.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261107-32-alter-processi-bersagli-drop-check-via-mctit.yaml
+
+  - changeSet:
+      id: 20261107-32-alter-processi-bersagli-drop-check-via
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Via chk_processi_bersagli_via: la via di un bersaglio la chiude la FK verso
+        dbops.emittente_modi, in 90_end dopo il seed (D21, blocco 4b).
+      preConditions:
+        - onFail: HALT
+        - columnExists: { schemaName: dbops, tableName: processi_bersagli, columnName: emittente_via }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi_bersagli
+                  DROP CONSTRAINT IF EXISTS chk_processi_bersagli_via;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.processi_bersagli
+                  ADD CONSTRAINT chk_processi_bersagli_via
+                      CHECK (emittente_via IS NULL
+                             OR emittente_via IN ('fiscale', 'soggetto_ruolo', 'fattura', 'contabile', 'padre'));

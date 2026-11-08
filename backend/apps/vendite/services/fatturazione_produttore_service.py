@@ -22,7 +22,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Mapping
 from datetime import date
 from typing import Any
@@ -34,13 +33,12 @@ from apps.core.services.coda_lavori.repository import (
     CodaLavoriRepository,
 )
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
+from apps.core.services.giro_per_azienda import giro_per_azienda
 from apps.core.services.processi import PROCESSO_RUN_FATTURAZIONE_BATCH
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     chiave_idempotenza_giro,
 )
-
-logger = logging.getLogger(__name__)
 
 
 # Scopo: Accoda un giro di fatturazione per OGNI azienda servita dal processo
@@ -68,16 +66,15 @@ def accoda_giri_fatturazione(
     coda_repo: CodaLavoriRepository | None = None,
     on_emittente: Callable[[Mapping[str, Any], int | None, Exception | None], None] | None = None,
 ) -> dict[str, Any]:
-    processi_repo = processi_repo or ProcessiRepository()
     coda_repo = coda_repo or CodaLavoriRepository()
 
-    roster = processi_repo.roster_processo(PROCESSO_RUN_FATTURAZIONE_BATCH)
-    scoperti = processi_repo.emittenti_non_serviti(PROCESSO_RUN_FATTURAZIONE_BATCH)
-
-    accodati: list[dict[str, Any]] = []
-    falliti: list[dict[str, Any]] = []
-
-    for badge in roster:
+    # Scopo: accoda il giro di UN badge, gia' dentro la sua identita'.
+    # ⛔ DENTRO l'identita' del badge, ed e' la correzione di BE10 (c): dal giro
+    #    5a la porta `fn_accoda_lavoro`, da una sessione dell'applicazione,
+    #    accoda un lavoro OPERATORE solo a nome di chi e' in sessione. Fuori da
+    #    un'identita' ogni azienda tornava `E_CODA_SCOPE_ALTRUI`, e il giro
+    #    notturno non accodava niente.
+    def _accoda(badge: Mapping[str, Any]) -> int:
         payload: dict[str, Any] = {
             "competenza_mese": competenza.isoformat(),
             # ⭐ La corsia viaggia nel payload E nella chiave: l'handler la legge
@@ -99,57 +96,55 @@ def accoda_giri_fatturazione(
         #    ownership del polling) e nella chiave di dedup. Due chiamate
         #    sarebbero due occasioni di divergere.
         scope_key = scope_key_da_emittenti(emittente_ids)
-        try:
-            job_id = coda_repo.accoda(
+        return coda_repo.accoda(
+            job_type=JOB_TYPE_FATTURAZIONE_GIRO,
+            payload=payload,
+            run_as=RUN_AS_OPERATORE,
+            scope={
+                "auth_user_id": badge["auth_user_id"],
+                "username": badge["username"],
+                "identita_id": badge["identita_id"],
+                # Congelato: il worker esegue minuti dopo, e senza questo
+                # valore girerebbe in modalita' globale.
+                "emittente_attivo_id": badge["emittente_fiscale_id"],
+                "emittente_ids": emittente_ids,
+                "scope_key": scope_key,
+            },
+            idempotency_key=chiave_idempotenza_giro(
                 job_type=JOB_TYPE_FATTURAZIONE_GIRO,
-                payload=payload,
-                run_as=RUN_AS_OPERATORE,
-                scope={
-                    "auth_user_id": badge["auth_user_id"],
-                    "username": badge["username"],
-                    "identita_id": badge["identita_id"],
-                    # Congelato: il worker esegue minuti dopo, e senza questo
-                    # valore girerebbe in modalita' globale.
-                    "emittente_attivo_id": badge["emittente_fiscale_id"],
-                    "emittente_ids": emittente_ids,
-                    "scope_key": scope_key,
-                },
-                idempotency_key=chiave_idempotenza_giro(
-                    job_type=JOB_TYPE_FATTURAZIONE_GIRO,
-                    competenza=competenza,
-                    scope_key=scope_key,
-                    corsia=modalita,
-                ),
-                origine=ORIGINE_CRON,
-            )
-        except Exception as exc:  # isolamento per azienda voluto
-            logger.warning(
-                "fatturazione.accodamento_fallito emittente=%s badge=%s errore=%s",
-                badge["emittente_codice"], badge["username"], exc, exc_info=True,
-            )
-            falliti.append({
-                "emittente_codice": badge["emittente_codice"], "errore": str(exc),
-            })
-            if on_emittente is not None:
-                on_emittente(badge, None, exc)
-            continue
+                competenza=competenza,
+                scope_key=scope_key,
+                corsia=modalita,
+            ),
+            origine=ORIGINE_CRON,
+        )
 
-        accodati.append({
+    # ⭐ Il giro (roster, identita', isolamento, non serviti) e' il BB
+    #    `giro_per_azienda` (regola del 2, 2026-11-07).
+    giro = giro_per_azienda(
+        PROCESSO_RUN_FATTURAZIONE_BATCH,
+        _accoda,
+        evento="fatturazione.accodamento",
+        on_badge=on_emittente,
+        processi_repo=processi_repo,
+    )
+    accodati = [
+        {
             "emittente_codice": badge["emittente_codice"],
             "emittente_fiscale_id": badge["emittente_fiscale_id"],
             "job_id": job_id,
-        })
-        if on_emittente is not None:
-            on_emittente(badge, job_id, None)
+        }
+        for badge, job_id in giro.serviti
+    ]
 
     return {
         "modalita": modalita,
         "competenza": competenza.isoformat(),
         "accodati": len(accodati),
         "giri": accodati,
-        "falliti": falliti,
+        "falliti": giro.falliti,
         # ⭐ Il numero che rompe il silenzio: aziende attive che nessun badge
         #    copre. Il loro mese NON viene fatturato, e senza questa riga il run
         #    chiuderebbe «FATTO» sembrando completo.
-        "emittenti_non_serviti": [e["emittente_codice"] for e in scoperti],
+        "emittenti_non_serviti": giro.non_serviti,
     }

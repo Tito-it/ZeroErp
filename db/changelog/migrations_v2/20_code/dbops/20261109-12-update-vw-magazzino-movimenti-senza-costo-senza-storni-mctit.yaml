@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE ENTRATE SENZA COSTO, SENZA GLI STORNI: dbops.vw_magazzino_movimenti_senza_costo
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, «Riverifica fatta» (Tid, 2026-11-08);
+#   brief-db-revisione-dbops Q14 ⑧ (+ M23).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Q14 ⑧ (Tid, 2026-11-06): lo storno e' lo specchio dell'originale e ne prende
+#   il costo (la primitiva rifiuta un costo passato). Lo storno di un'uscita
+#   senza costo e' un'entrata senza costo, conseguenza di una conseguenza; la
+#   causa (il carico senza valore) la vista la mostra gia'. E sul valore e'
+#   neutro: rende allo stesso magazzino una quantita' uscita a valore zero, e
+#   la media torna com'era. Gli storni escono (storno_di_movimento_id IS NULL).
+#   ⚠️ L'entrata gemella di un trasferimento (TRASF_IN) senza costo RESTA: porta
+#   quantita' senza valore in un ALTRO magazzino e li' diluisce la media (Tid,
+#   2026-11-08). Il filtro e' «non uno storno», non «non a costo copiato».
+#   In coda le due colonne nuove della provenienza (sorgente_id,
+#   sorgente_dettaglio).
+#   M23: il COMMENT elenca tutti gli scrittori e il carico da reso senza costo.
+#   security_invoker ri-specificata; CREATE OR REPLACE con le colonne di prima
+#   e le nuove IN CODA (ACL, catalogo dei presidi e digest restano).
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-12-update-vw-magazzino-movimenti-senza-costo-senza-storni-mctit.yaml
+
+  - changeSet:
+      id: 20261109-12-update-vw-magazzino-movimenti-senza-costo-senza-storni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_magazzino_movimenti_senza_costo: gli storni escono (Q14 ⑧), la gemella del trasferimento
+        resta; sorgente_id e sorgente_dettaglio in coda; COMMENT con gli scrittori (M23).
+        brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_magazzino_movimenti_senza_costo
+              WITH (security_invoker = true) AS
+              SELECT m.id,
+                     m.articolo_id,
+                     m.magazzino_id,
+                     m.data_mov,
+                     m.qta,
+                     m.causale_id,
+                     m.sorgente_tipo_id,
+                     m.sorgente_riga,
+                     m.sorgente_uid,
+                     m.lotto_id,
+                     m.asset_id,
+                     m.ubicazione_id,
+                     m.sorgente_id,
+                     m.sorgente_dettaglio
+                FROM magazzino.movimenti m
+               WHERE m.qta > 0
+                 AND m.costo_unitario IS NULL
+                 AND m.storno_di_movimento_id IS NULL;
+
+              COMMENT ON VIEW dbops.vw_magazzino_movimenti_senza_costo IS
+                  'Le ENTRATE (qta > 0) scritte SENZA costo unitario, esclusi gli storni. Chi le scrive, tutti attraverso la primitiva magazzino.fn_scrivi_movimento: il primo carico senza valore (magazzino.fn_posta_inventario, riga senza costo_unitario e nessuna media), una rettifica positiva senza media (magazzino.fn_posta_rettifica), il carico da reso di una merce uscita senza costo e senza media al rientro (vendite.fn_posta_reso), l''entrata gemella di un trasferimento la cui uscita era senza costo (magazzino.fn_posta_trasferimento, vendite.fn_posta_ddt all''arrivo). Un''entrata senza costo non e'' un errore: e'' un fatto dichiarato (D-L2-c) — il movimento nasce con costo NULL, il valore resta com''e'' e la media si diluisce. Le uscite a NULL sono la CONSEGUENZA (nessuna media), non la causa, e non entrano. Gli STORNI non entrano (magazzino.fn_storna_movimenti_sorgente): lo storno di un''uscita senza costo e'' un''entrata senza costo che rende allo stesso magazzino la quantita'' uscita a valore zero, e la media torna com''era; la causa e'' gia'' qui (Q14 ⑧). L''entrata gemella di un trasferimento invece resta: diluisce la media del magazzino d''arrivo. Natura LAVORAZIONE (una tendenza da guardare, non un guasto): compare nel digest invece di sparire nella media. security_invoker, perimetro DEFINER, cadenza SETTIMANALE. Brief: brief-db-magazzino-lotto-2-motore 4.4; rev 2026-11-09 (brief-db-sorgente-documento-e-riga lotto M; Q14 ⑧ e M23 di brief-db-revisione-dbops).';

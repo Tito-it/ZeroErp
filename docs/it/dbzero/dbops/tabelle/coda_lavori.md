@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Coda di lavori generica DB-native (senza broker). Una riga = un job async (job_type + payload). Enqueue atomico via dbops.fn_accoda_lavoro (callable da trigger). Claim FOR UPDATE SKIP LOCKED, reaper e marca esito li fa il worker BE in SQL diretto. Brief: brief-db-coda-lavori-generica §1.
+> Coda dei lavori asincroni sul database, senza broker: una riga e' un lavoro (job_type e payload). Si accoda solo da dbops.fn_accoda_lavoro, che controlla tipo, classe e scope ed e' idempotente sui lavori vivi; il drenatore del backend prende, recupera e chiude i lavori. Un lavoro OPERATORE appartiene a un'azienda (emittente_fiscale_id) e gira con l'identita' catturata nello scope; un lavoro SISTEMA non ha azienda ne' scope. Chi vede quali righe lo dice la policy rls_coda_lavori_ef_perimetro.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -35,18 +35,22 @@
 | archiviato | boolean | NO | false |
 | archiviato_il | timestamp with time zone | YES |  |
 | archiviato_da | text | YES |  |
+| emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_coda_lavori_archiviato_coerente |  |
 | CHECK | chk_coda_lavori_archiviato_non_vivo |  |
+| CHECK | chk_coda_lavori_emittente_dallo_scope |  |
 | CHECK | chk_coda_lavori_max_tentativi |  |
 | CHECK | chk_coda_lavori_origine |  |
 | CHECK | chk_coda_lavori_run_as |  |
+| CHECK | chk_coda_lavori_run_as_emittente |  |
 | CHECK | chk_coda_lavori_run_as_scope |  |
 | CHECK | chk_coda_lavori_stato |  |
 | CHECK | chk_coda_lavori_tentativi |  |
+| FOREIGN KEY | fk_coda_lavori_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_coda_lavori_tipo | job_type |
 | PRIMARY KEY | pk_coda_lavori | id |
 | UNIQUE | uq_coda_lavori_uid | uid |

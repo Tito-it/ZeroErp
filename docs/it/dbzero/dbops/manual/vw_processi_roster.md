@@ -1,110 +1,117 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_processi_roster`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_roster`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[dbops.processi](/dbzero/dbops/manual/processi)
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — il processo
+> * [dbops.processi_identita](/dbzero/dbops/tabelle/processi_identita) — il legame processo-utente tecnico
+> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — l'identità applicativa dell'utente tecnico
+> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — l'emittente servito dall'utente
 >
-Approfondimenti funzioni:
+> Approfondimento viste:
 >
-[dbops.fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze) ·
-[script.fn_riattiva_utente_tecnico](/dbzero/script/manual/fn_riattiva_utente_tecnico) ·
-[script.fn_get_auth_user_stato](/dbzero/script/manual/fn_get_auth_user_stato)
+> * [dbops.vw_emittenti_non_serviti](/dbzero/dbops/views/vw_emittenti_non_serviti) — l'altra domanda: chi manca
+> * [dbops.vw_coda_lavori_da_guardare](/dbzero/dbops/views/vw_coda_lavori_da_guardare) — com'è andato il lavoro accodato
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_accoda_chiusura_scadenze](/dbzero/dbops/funzioni/fn_accoda_chiusura_scadenze) — il produttore del database che accoda una riga per coppia
+> * [script.fn_riattiva_utente_tecnico](/dbzero/script/funzioni/fn_riattiva_utente_tecnico) — riaccende insieme gli anelli che il roster pretende
+> * [script.fn_get_auth_user_stato](/dbzero/script/funzioni/fn_get_auth_user_stato) — lo stato dell'utente Django, letto senza nominare le tabelle di Django
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 05-09-2026)
 
-Risponde a una domanda sola: **con quale identità un processo automatico lavora
-ciascuna azienda?**
-
-Ogni riga è una coppia *(processo, azienda)* con il nome dell'utente tecnico che
-la serve.
+Per ogni processo automatico, con quale identità lavora ciascuna azienda: una riga per coppia
+processo-emittente, con l'utente tecnico (id, username, identità) e l'emittente che serve.
 
 ---
 
-### ⭐ Perché è nata come vista, e non come l'ennesima query
+### ⭐ Una sede sola, letta dai due lati
 
-Questo fatto **esisteva già**, ma viveva dentro una stringa SQL nel codice
-Python del backend (`processi_repository.roster_processo`): serviva solo a chi
-lancia la fatturazione, che è backend.
+Il fatto viveva in una query dentro il codice Python del backend, finché serviva solo a chi lancia
+la fatturazione. Quando anche il database ha dovuto accodare da solo (il job della chiusura per
+scadenze), riscriverlo in una funzione sarebbe stata una seconda scrittura della stessa regola, e
+due scritture prima o poi dissentono: basta una condizione aggiunta a una sola delle due.
 
-Dal momento in cui anche il database deve accodare da solo — il lavoro notturno
-della chiusura scadenze — la stessa domanda serve dai due lati.
-
-⛔ Riscriverla in una funzione sarebbe stata una **seconda scrittura dello stesso
-fatto**. Due scritture prima o poi dissentono: basta il giorno in cui qualcuno
-aggiunge una condizione a una sola delle due.
-
-⇒ Il fatto diventa una vista, e i due lati la leggono.
-
-> ⚠️ **Al backend**: `roster_processo` può diventare un `SELECT` su questa vista.
-> Non è urgente. Ma finché restano due copie, sono due copie.
+⇒ Il fatto è questa vista, e la leggono tutti e due i lati: il produttore del database e il
+repository del backend, che filtra per processo e non ripete le condizioni.
 
 ---
 
-### Le cinque condizioni, e perché sono tutte necessarie
+### ⛔ Cinque condizioni, tutte necessarie
 
-Un'identità compare qui solo se **tutte e cinque** valgono:
+Una coppia compare solo se valgono tutte:
 
 | Condizione | Che cosa vuol dire |
 | --- | --- |
 | il legame è attivo | quel processo è ancora affidato a quell'utente |
-| l'identità è attiva | l'utente applicativo non è stato spento |
-| il ruolo è `OPERATORE` | è la veste che le regole di sicurezza riconoscono |
+| l'identità è attiva, con ruolo `OPERATORE` | è la veste che le regole di sicurezza riconoscono |
 | l'utente Django è attivo | l'accesso non è stato revocato |
-| l'azienda è attiva | c'è ancora qualcuno da servire |
+| l'emittente è attivo | c'è ancora un'azienda da servire |
+| il processo è vivo: ritiro non raggiunto (`script.fn_e_obsoleto`) | il lavoro esiste ancora; un ritiro programmato lavora fino al suo giorno |
 
-⛔ Toglierne una lascerebbe passare un'identità **spenta a un livello solo**: il
-lavoro partirebbe per fermarsi subito dopo — o, peggio, girerebbe a vuoto.
+⛔ Spegnere un anello basta a fermare il processo, quindi guardarne uno solo basta a sbagliare:
+un'identità spenta a un livello solo farebbe partire un lavoro che si ferma a metà, o che gira a
+vuoto. È la stessa catena che `script.fn_riattiva_utente_tecnico` riaccende tutta insieme.
 
-⭐ È la stessa terna che `script.fn_riattiva_utente_tecnico` riaccende tutta
-insieme: **spegnerne uno basta a fermare, quindi guardarne uno solo basta a
-sbagliare.**
-
----
-
-### ⚠️ La condizione su Django arriva da un'altra strada
-
-La quarta condizione — *l'utente Django è attivo* — non viene letta collegando
-direttamente la tabella di Django, ma chiedendola a
-[script.fn_get_auth_user_stato](/dbzero/script/manual/fn_get_auth_user_stato).
-
-Il motivo non ha nulla a che vedere con il significato della condizione, che
-resta identica: le tabelle di Django le crea Django, **dopo** le migrazioni del
-database, quindi una vista che le nomini non si riesce a creare su una macchina
-ricostruita da zero. È successo il 5 settembre 2026, e ha fermato la build.
-
-⛔ La condizione **non è stata sacrificata** per aggirare il problema, e sarebbe
-stata la scorciatoia ovvia: *«tanto lo dice già l'identità applicativa»*. Non lo
-dice: l'allineamento fra le due va in una direzione sola, quindi un utente
-disattivato **dentro Django** risulterebbe ancora attivo per il database.
+La vista non pretende il flag `tecnica` sull'identità: lo controlla il presidio
+[vw_processi_dominio_senza_identita](/dbzero/dbops/views/vw_processi_dominio_senza_identita).
 
 ---
 
-### ⚠️ L'ordine non è un dettaglio estetico
+### ⚠️ L'utente Django si chiede a una funzione
 
-Chi accoda accoda **nell'ordine in cui legge**. Senza un ordine stabile due
-notti diverse produrrebbero la stessa cosa in sequenze diverse, e confrontarle
-diventerebbe illeggibile.
+La condizione sull'utente Django passa da
+[script.fn_get_auth_user_stato](/dbzero/script/funzioni/fn_get_auth_user_stato) e non da un
+collegamento diretto: le tabelle di Django le crea Django dopo le migrazioni del database, e una
+vista che le nominasse non si potrebbe creare su un database ricostruito da zero.
 
----
-
-### Che cosa NON dice
-
-* Non dice se il processo è **andato bene**: quello sta nel giornale delle
-  esecuzioni e, per i lavori di coda, in
-  [vw_coda_lavori_da_guardare](/dbzero/dbops/manual/vw_coda_lavori_da_guardare).
-* Non dice quali aziende sono **scoperte**: quella è
-  `dbops.vw_emittenti_non_serviti`, che nomina la coppia senza identità.
-
-⚠️ Sono domande diverse: qui si legge *chi c'è*, là *chi manca*.
+⛔ La condizione non è stata sacrificata per aggirare il problema («tanto lo dice già l'identità
+applicativa»): l'allineamento fra le due va in un verso solo, e un utente disattivato dentro Django
+risulterebbe ancora attivo per il database.
 
 ---
 
-### Verifica
+### L'ordine
 
-`db/pgtap/dbops/test-vw-processi-roster.sql` — spegne, uno alla volta, i quattro
-livelli costruibili e verifica che ognuno **basti da solo** a far sparire la
-coppia.
+La vista ordina per processo, emittente e utente: chi accoda accoda nell'ordine in cui legge, e due
+notti diverse producono le stesse code nella stessa sequenza. ⚠️ L'ordine di una vista non è un
+contratto per chi la filtra da fuori: chi ne ha bisogno lo ripete.
+
+---
+
+### Che cosa non dice
+
+* Se il lavoro è **andato bene**: quello sta nel giornale delle corse e, per i lavori di coda, in
+  [vw_coda_lavori_da_guardare](/dbzero/dbops/views/vw_coda_lavori_da_guardare).
+* Quali aziende sono **scoperte**: lo dice [vw_emittenti_non_serviti](/dbzero/dbops/views/vw_emittenti_non_serviti).
+  Qui si legge chi c'è, là chi manca.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-vw-processi-roster.sql` — le colonne che il produttore legge; la coppia
+  costruita compare una volta sola; spenti uno alla volta il legame, l'identità, l'utente Django e
+  il ruolo, la coppia sparisce. ⚠️ L'emittente spento non è isolabile su un emittente che ha un
+  utente tecnico, e il file lo dichiara invece di fingerlo.
+* `db/pgtap/dbops/test-fn-accoda-chiusura-scadenze.sql` — il produttore accoda un lavoro per ogni
+  azienda del roster, e il lavoro è dell'operatore tecnico, non di sistema.
+
+---
+
+### Note di migrazione
+
+* 2026-09-05 — nasce come sede unica del roster (`brief-db-processi-automatici-identita-e-perimetro`,
+  §12.12), insieme al produttore della chiusura per scadenze; lo stesso giorno la condizione su
+  Django passa alla funzione, dopo che il collegamento diretto aveva fermato la build da zero.
+  Poi il repository del backend smette di ripetere la regola e legge la vista.
+
+---
+
+{% include-markdown "signature-core.md" %}

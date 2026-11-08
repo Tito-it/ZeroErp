@@ -19,7 +19,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock
 
 from django.test import SimpleTestCase
@@ -31,13 +30,6 @@ from apps.ui.services.lista_colonna_permesso_admin_service import (
     E_PERMESSO_VALIDATION,
     ListaColonnaPermessoAdminService,
 )
-
-
-def _make_user(username: str = "tester") -> Any:
-    user = MagicMock()
-    user.username = username
-    user.is_authenticated = True
-    return user
 
 
 def _repo_lista_attiva() -> MagicMock:
@@ -100,7 +92,7 @@ class ListaColonnaPermessoUpsertTests(SimpleTestCase):
         repo = MagicMock()
         repo.upsert_permesso.return_value = 42
         svc = ListaColonnaPermessoAdminService(repo=repo)
-        result = svc.upsert_permesso(_make_user(), {
+        result = svc.upsert_permesso({
             "colonna_id": 10,
             "profilo_accesso_id": 9001,
             "livello_accesso": "LETTURA",
@@ -113,7 +105,7 @@ class ListaColonnaPermessoUpsertTests(SimpleTestCase):
         repo = MagicMock()
         svc = ListaColonnaPermessoAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.upsert_permesso(_make_user(), {
+            svc.upsert_permesso({
                 "colonna_id": 10,
                 "profilo_accesso_id": 9001,
                 "livello_accesso": "TUTTO",
@@ -125,7 +117,7 @@ class ListaColonnaPermessoUpsertTests(SimpleTestCase):
         repo = MagicMock()
         svc = ListaColonnaPermessoAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.upsert_permesso(_make_user(), {
+            svc.upsert_permesso({
                 "colonna_id": 10,
                 "profilo_accesso_id": 9001,
                 "livello_accesso": "QUALCOSALTRO",
@@ -136,7 +128,7 @@ class ListaColonnaPermessoUpsertTests(SimpleTestCase):
         repo = MagicMock()
         svc = ListaColonnaPermessoAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.upsert_permesso(_make_user(), {
+            svc.upsert_permesso({
                 "profilo_accesso_id": 9001,
                 "livello_accesso": "LETTURA",
             })

@@ -93,15 +93,16 @@ BEGIN
      WHERE c.id = v_commessa;
 
     -- 2-bis. La sorgente ROOT: la commessa e' la radice di se'
-    --    stessa. Sorgente COMMESSA, chiave = l'id (key_selector
-    --    `id` della sorgente): la riga esiste per costruzione.
+    --    stessa. Sorgente COMMESSA, chiave = l'id in sorgente_id
+    --    (key_selector `id` della sorgente): la riga esiste per
+    --    costruzione.
     IF p_con_sorgente_root THEN
         INSERT INTO vendite.commesse_sorgenti
-            (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+            (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
         VALUES (v_commessa,
                 (SELECT s.id FROM config.sorgenti s
                   WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE),
-                v_commessa::text, 'ROOT');
+                v_commessa, 'ROOT');
     END IF;
 
     -- 3. Il lavoro, PRIMA del passaggio: l'uscita dalla bozza lo
@@ -133,7 +134,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_con_attivita boolean, p_con_sorgente_root boolean)
-IS 'Fixture pgTAP: una COMMESSA del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la commessa aperta dalla madre vendite.fn_get_or_create_commessa (p_force_new), con competenza nel mese corrente. Codice, emittente e stato iniziale li decide la madre, come in produzione. ⭐ Secondo parametro: lo stato da raggiungere (NULL o l''iniziale: resta li''), per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri. ⚠️ Terzo parametro: il billing account di un cliente gia'' costruito, verificato da dbops.fn_pgtap_cliente_ba_del_mondo (un BA di un''altra azienda solleva). Quarto parametro: scrive UN''attivita'' APPROVATA e NON_EMESSA (dbops.fn_pgtap_crea_commessa_attivita) prima del passaggio; NULL = solo se lo stato chiesto non e'' l''iniziale, perche'' l''uscita dalla bozza la pretende. Quinto parametro: scrive la sorgente ROOT (sorgente COMMESSA, chiave l''id della commessa), quella che il pull della fatturazione pretende. ⛔ Le altre attivita'' e le altre sorgenti sono il caso del test. Ritorna le chiavi, l''attivita'' scritta (o NULL) e lo stato raggiunto. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. Rev 2026-10-24 (20261024-26, brief-modello-documento-vendita Q-2): stato, billing account e attivita'', DROP + CREATE; 20261024-32 (R-3): la sorgente ROOT. Rev 2026-10-24 (20261024-40, §4-octies): col billing account del test non costruisce piu'' un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder). Rev 2026-10-27 (20261027-37, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.commesse) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
+IS 'Fixture pgTAP: una COMMESSA del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la commessa aperta dalla madre vendite.fn_get_or_create_commessa (p_force_new), con competenza nel mese corrente. Codice, emittente e stato iniziale li decide la madre, come in produzione; lo stato iniziale si legge dalla testata (vendite.commesse) con script.fn_doc_stato_iniziale_id. Secondo parametro: lo stato da raggiungere (NULL o l''iniziale: resta li''), per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri. ⚠️ Terzo parametro: il billing account di un cliente gia'' costruito, verificato da dbops.fn_pgtap_cliente_ba_del_mondo (un BA di un''altra azienda solleva); con lui non si costruisce un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder). Quarto parametro: scrive UN''attivita'' APPROVATA e NON_EMESSA (dbops.fn_pgtap_crea_commessa_attivita) prima del passaggio; NULL = solo se lo stato chiesto non e'' l''iniziale, perche'' l''uscita dalla bozza la pretende. Quinto parametro: scrive la sorgente ROOT (sorgente COMMESSA, l''id della commessa in sorgente_id), quella che il pull della fatturazione pretende. ⛔ Le altre attivita'' e le altre sorgenti sono il caso del test. Ritorna le chiavi, l''attivita'' scritta (o NULL) e lo stato raggiunto. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE.';
 ```
 
 </div>

@@ -269,7 +269,7 @@ class LottoGruppiServiceTests(SimpleTestCase):
     # Il cancello di perimetro (`_lotto_perimetro`) legge la testata prima della
     # lista: qui il lotto e' visibile, il caso contrario ha il suo test.
     def setUp(self) -> None:
-        patcher = patch.object(VenditeRepository, "get_lotto", return_value={"id": 1})
+        patcher = patch.object(VenditeRepository, "get_lotto", autospec=True, return_value={"id": 1})
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -292,7 +292,7 @@ class LottoGruppiServiceTests(SimpleTestCase):
     # ⛔ Il test guarda che il campo NON ci sia: un campo che non discrimina più
     #     niente, lasciato «per compatibilità», è peggio di un campo assente —
     #     chi lo legge crede che discrimini.
-    @patch.object(VenditeRepository, "list_lotto_gruppi", return_value=([], 0))
+    @patch.object(VenditeRepository, "list_lotto_gruppi", autospec=True, return_value=([], 0))
     def test_nessun_flag_sul_perimetro_nella_risposta(self, mock_lista):
         out = fn_list_lotto_gruppi(lotto_id=10452)
         self.assertEqual(out["count"], 0)
@@ -302,7 +302,7 @@ class LottoGruppiServiceTests(SimpleTestCase):
 
     # 11) L'export si ferma all'envelope minimo, come tutte le liste
     #     esportabili: chi costruisce il file legge `results` e `count`.
-    @patch.object(VenditeRepository, "list_lotto_gruppi", return_value=([_riga()], 1))
+    @patch.object(VenditeRepository, "list_lotto_gruppi", autospec=True, return_value=([_riga()], 1))
     def test_export_non_pagina(self, mock_lista):
         fn_list_lotto_gruppi(lotto_id=10657, max_rows=10_001)
         self.assertEqual(mock_lista.call_args.kwargs["max_rows"], 10_001)

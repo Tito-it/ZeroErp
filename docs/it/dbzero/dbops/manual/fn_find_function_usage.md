@@ -1,84 +1,80 @@
-## 📘 Documentazione Concettuale – Function `dbops.fn_find_function_usage(p_function_name TEXT)`
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_find_function_usage`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Altre view di catalogazione:  
+> Approfondimento viste:
 >
-[dbops.vw_function_list](/dbzero/dbops/manual/vw_function_list)  
-> [dbops.vw_trigger_functions](/dbzero/dbops/manual/vw_trigger_functions)  
-
-
-La funzione **`dbops.fn_find_function_usage`** restituisce l’elenco delle entità del database (funzioni, trigger, event trigger) che fanno riferimento a una specifica funzione indicata dal nome, facilitando l’analisi delle dipendenze e degli impatti di modifiche o refactoring.
+> * [dbops.vw_function_list](/dbzero/dbops/views/vw_function_list) — l'elenco delle funzioni di `dbops` e `script`
+> * [dbops.vw_trigger_functions](/dbzero/dbops/views/vw_trigger_functions) — ogni trigger con la sua funzione
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_search_column_usage](/dbzero/dbops/funzioni/fn_search_column_usage) — la stessa ricerca, per il nome di una colonna
+> * [dbops.fn_find_file_usage](/dbzero/dbops/funzioni/fn_find_file_usage) — chi punta una tabella con una chiave esterna
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti in cui si cercano le chiamate
+>
+> Guide:
+>
+> * [Linee guida SQL — funzioni `BEGIN ATOMIC`](/linee-guida-sql#5c-funzioni-sql-begin-atomic-perche-come-si-cambiano-come-si-cercano) — come si cerca davvero nei corpi
 
 ---
+
 ### 🎯 Scopo Principale
-* **Discovery delle dipendenze**: individuare tutte le occorrenze di una funzione all’interno del codice PL/pgSQL, dei trigger e degli event trigger.
-* **Supporto al refactoring**: identificare facilmente i punti di utilizzo prima di rinominare o modificare una funzione.
+
+Dato il nome di una funzione, elenca chi la usa: le funzioni nel cui corpo il nome compare, i
+trigger che la eseguono e gli event trigger che la eseguono, con lo schema di ognuno (vuoto per gli
+event trigger, che non ne hanno). È un attrezzo da lanciare a mano prima di rinominare o cambiare una
+funzione; nessun oggetto del database la chiama.
 
 ---
 
-### Firma e Restituzione
+### Il corpo dei chiamanti, senza commenti
 
-```sql
-fn_find_function_usage(
-  p_function_name TEXT
-) RETURNS TABLE(
-  object_type TEXT,   -- 'function', 'trigger' o 'event_trigger'
-  schema_name TEXT,   -- schema di appartenenza (NULL per event trigger)
-  object_name TEXT    -- nome dell’oggetto o firma della funzione
-);
-```
+Per le funzioni chiamanti la ricerca è sul corpo letto da
+[fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione): senza commenti, con i letterali
+intatti, e anche per le funzioni SQL scritte con `BEGIN ATOMIC`, il cui sorgente testuale è vuoto.
+Una chiamata dentro una `BEGIN ATOMIC` esce; un nome rimasto in un commento non conta come chiamata.
 
-* **`p_function_name`**: nome della funzione da ricercare.
-* **object\_type**: tipo di oggetto che invoca la funzione.
-* **schema\_name**: schema in cui risiede l’oggetto (event trigger non ha schema).
-* **object\_name**: per le funzioni, include firma e argomenti; per trigger/event trigger, nome dell’oggetto.
+Il parametro è un nome di funzione del catalogo, senza schema e senza argomenti.
 
 ---
 
-### Logica di Esecuzione
+### ⚠️ Una ricerca testuale, con i suoi punti ciechi
 
-1. **Funzioni**: cerca all’interno di `pg_proc.prosrc` le dichiarazioni che contengono il nome `p_function_name`, escludendo la funzione stessa.
-2. **Trigger**: individua i trigger definiti in `pg_trigger` che richiamano la funzione `p_function_name`.
-3. **Event Trigger**: include gli event trigger di `pg_event_trigger` associati a `p_function_name`.
+Il nome si cerca nel corpo come **frammento**:
 
-I risultati di ciascuna ricerca vengono uniti con `UNION ALL` e restituiti in un unico set.
+* **un nome contenuto in un altro dà falsi positivi**: cercando una funzione escono anche quelle che
+  ne chiamano una con un nome più lungo che la contiene. E il trattino basso, che nei nomi del
+  progetto c'è sempre, nella ricerca vale come carattere qualsiasi;
+* **una chiamata composta con SQL dinamico**, dove il nome si costruisce a pezzi, non si vede;
+* **le viste che la chiamano non compaiono**: la ricerca guarda solo funzioni e trigger.
 
----
+Per i trigger e gli event trigger il confronto è sul solo nome, **senza schema**: una funzione
+omonima in un altro schema dà le stesse righe. Per lo stesso motivo, dall'elenco dei chiamanti sono
+escluse tutte le funzioni con quel nome, in qualunque schema, non solo la funzione cercata.
 
-### Esempi di Utilizzo
-
-1. **Ricerca generale di dipendenze**
-
-   ```sql
-   SELECT *
-     FROM dbops.fn_find_function_usage('process_order');
-   ```
-
-2. **Filtrare solo i trigger**
-
-   ```sql
-   SELECT schema_name, object_name
-     FROM dbops.fn_find_function_usage('audit_update')
-    WHERE object_type = 'trigger';
-   ```
-
-3. **Contare le dipendenze per schema**
-
-   ```sql
-   SELECT object_type, schema_name, COUNT(*) AS usage_count
-     FROM dbops.fn_find_function_usage('compute_tax')
-    GROUP BY object_type, schema_name;
-   ```
+Una risposta vuota, quindi, non prova che la funzione non sia usata.
 
 ---
 
-### Vantaggi Operativi
+### Test
 
-* **Chiarezza delle dipendenze**: evita ricerche manuali tra cataloghi multipli.
-* **Riduzione degli errori**: garantisce che nessun utilizzo venga trascurato in fase di modifica.
-* **Automazione**: integrabile in script di migrazione o refactoring per validare l’assenza di riferimenti obsoleti.
+* `db/pgtap/dbops/test-corpo-funzione-senza-commenti-v1.sql`, test 14-15 — trova un chiamante
+  scritto con `BEGIN ATOMIC`; non conta una chiamata rimasta in un commento.
 
 ---
 
-> **“Con `fn_find_function_usage`, refactoring e manutenzione del codice PL/pgSQL diventano operazioni sicure e documentate, grazie all’individuazione automatica delle dipendenze.”**
+### Note di migrazione
+
+* 2026-11-04 — il ramo delle funzioni chiamanti cerca nel corpo di `fn_corpo_funzione` (D15 di
+  `brief-db-revisione-dbops`): prima cercava nel sorgente testuale, cieco sulle `BEGIN ATOMIC`, e un
+  nome rimasto in un commento contava come chiamata. Il parametro diventa un nome di funzione del
+  catalogo, e lo schema restituito prende il tipo dei nomi di schema del catalogo.
+* 2026-11-04 — il commento nel database è riscritto (M33 di `brief-db-revisione-dbops`): prima era
+  copiato da `fn_find_file_usage` e descriveva le chiavi esterne verso una tabella.
+
+---
+
+{% include-markdown "signature-core.md" %}

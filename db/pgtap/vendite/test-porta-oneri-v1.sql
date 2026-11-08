@@ -76,9 +76,15 @@ SELECT ok(
   (SELECT count(*) >= 1 FROM config.causali_onere WHERE attivo),
   '2) config.causali_onere con almeno una voce attiva');
 
+-- rev 2026-11-03 (brief-db-addebito-trasporto-ordine, giro 2): + ONERE_TRASPORTO.
+--   Si contano i codici del SEED, per nome: il conteggio di tutti gli
+--   articoli-onere attivi diventava rosso al primo onere creato dall'utente.
 SELECT ok(
-  (SELECT count(*) = 5 FROM catalogo.articoli WHERE causale_onere_id IS NOT NULL AND attivo),
-  '3) 5 articoli-onere seedati e attivi (con causale)');
+  (SELECT count(*) = 6 FROM catalogo.articoli
+    WHERE causale_onere_id IS NOT NULL AND attivo
+      AND codice IN ('ONERE_SENZA_CONTRATTO', 'ONERE_TRASFERTA', 'ONERE_MAGG_URGENZA',
+                     'ONERE_SPESE_AMM', 'ONERE_PENALE', 'ONERE_TRASPORTO')),
+  '3) i 6 articoli-onere del seed, attivi e con causale');
 
 SELECT ok(
   (SELECT (SELECT iva_id FROM catalogo.articoli WHERE codice = 'ONERE_PENALE')

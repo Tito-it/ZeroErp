@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -107,18 +107,18 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | **una fattura** del mondo (registro coerente; nasce in bozza e arriva allo stato chiesto per la matrice, con indirizzi e intestazione scritti come fa la fatturazione) — col quarto e quinto parametro fuori bozza **senza indirizzi** e/o **senza intestazione** | `dbops.fn_pgtap_crea_fattura('<etichetta>'[, '<stato>'[, <ba_id>[, <senza_indirizzi>[, <senza_intestazione>[, <minimo>, <totale_a_pagare>, <termine_pagamento_id>[, <senza_utility>]]]]]])` |
 | **un contratto** del mondo, nato dalla madre del dominio (`DRAFT`; `ATTIVO` con un listino del mondo; `ANNULLATO` dal verbo) — col terzo parametro sul cliente di un'altra fixture, per esempio quello di una commessa; col quarto il **figlio di un'offerta** accettata, nato dalla push; dal quinto all'ottavo **periodo, data e listino** del test | `dbops.fn_pgtap_crea_contratto('<etichetta>'[, '<stato>'[, <ba_id>[, <offerta_id>[, <valido_dal>, <valido_al>, <data>, <listino_id>]]]])` |
 | **un ordine** di vendita del mondo (emittente del cliente, numero dal dominio; nasce in bozza e arriva allo stato chiesto per la matrice); col quarto parametro la **data dell'ordine**, scritta alla nascita | `dbops.fn_pgtap_crea_ordine('<etichetta>'[, '<stato>'[, <ba_id>[, <data>]]])` |
-| **una bolla nata da un ordine** confermato, dalla madre del dominio (con causale e indirizzi che l'emissione pretende), nello stato chiesto — default **consegnata**; `DRAFT` per scriverle qualcosa in bozza e poi portarla avanti; due spedizioni dalla stessa riga con `p_qta_da_evadere` e poi `p_ordine_id`; da un ordine speciale costruito dal test con `p_ordine_id` | `dbops.fn_pgtap_crea_ddt_da_ordine('<etichetta>'[, '<stato>'[, <ba_id>]], p_quantita => …, p_prezzo => …, p_articolo_id => …, p_fatturazione_trigger => …, p_ordine_id => …, p_qta_da_evadere => …, p_righe => …, p_data => …, p_causale_codice => …, p_data_ordine => …, p_righe_ordine => …)` (per nome) |
-| **un reso** su una bolla (del test, di un reso in bozza a cui aggiungere una riga, o una bolla consegnata costruita), con la riga legata alla riga della bolla e alla riga d'ordine del legame, confermato dal verbo (l'azione `conferma_reso` la concede il builder); `DRAFT` per lasciarlo in bozza; l'annullo resta del test | `dbops.fn_pgtap_crea_reso('<etichetta>'[, <ddt_id>[, <qta>[, '<tipo>'[, '<stato>']]]], p_ddt_riga_id => …, p_ordine_riga_id => …, p_reso_id => …, p_data => …)` |
+| **una bolla nata da un ordine** confermato, dalla madre del dominio (con causale e indirizzi che l'emissione pretende), nello stato chiesto — default **consegnata**; `DRAFT` per scriverle qualcosa in bozza e poi portarla avanti; due spedizioni dalla stessa riga con `p_qta_da_evadere` e poi `p_ordine_id`; da un ordine speciale costruito dal test con `p_ordine_id` | `dbops.fn_pgtap_crea_ddt_da_ordine('<etichetta>'[, '<stato>'[, <ba_id>]], p_quantita => …, p_prezzo => …, p_articolo_id => …, p_fatturazione_trigger => …, p_ordine_id => …, p_qta_da_evadere => …, p_righe => …, p_data => …, p_causale_codice => …, p_data_ordine => …, p_righe_ordine => …)` (per nome). ⚠️ La riga restituita è la **prima per numero**: con un onere nell'ordine (trasporto, spese), che passa intero nella bolla, può essere l'onere |
+| **un reso** su una bolla (del test, di un reso in bozza a cui aggiungere una riga, o una bolla consegnata costruita), con la riga legata alla riga della bolla e alla riga d'ordine del legame, confermato dal verbo (l'azione `conferma_reso` la concede `dbops.fn_pgtap_porta_a_stato`, che il builder usa per lo stato); `DRAFT` per lasciarlo in bozza; l'annullo resta del test | `dbops.fn_pgtap_crea_reso('<etichetta>'[, <ddt_id>[, <qta>[, '<tipo>'[, '<stato>']]]], p_ddt_riga_id => …, p_ordine_riga_id => …, p_reso_id => …, p_data => …)` |
 | **la bolla di ri-consegna** di un reso per ri-consegna confermato, dalla madre del dominio, completata di ciò che l'emissione pretende e portata allo stato chiesto (default consegnata); tutto il reso o una parte di una riga | `dbops.fn_pgtap_crea_ddt_riconsegna(<reso_id>[, '<stato>'], p_resi_riga_id => …, p_quantita => …, p_data => …)` |
 | **un ordine con le sue righe**, nello stato chiesto (default confermato): una riga dai parametri o più righe (sconto, date di consegna); data alla nascita e momento di fatturazione in bozza; a richiesta righe e stato su una testata in bozza del test. Il builder dell'ordine resta senza righe | `dbops.fn_pgtap_crea_ordine_con_righe('<etichetta>'[, '<stato>'[, <ba_id>]], p_quantita => …, p_prezzo => …, p_articolo_id => …, p_fatturazione_trigger => …, p_data_ordine => …, p_righe => …, p_ordine_id => …)` |
 | **una bolla senza ordine** con una riga prezzata, nello stato chiesto (default consegnata); causale, data e magazzino a scelta; la merce gestita si rifiuta (righe e prelievi di magazzino li scrive il test su `fn_pgtap_crea_ddt`, che ha la data alla nascita come sesto parametro) | `dbops.fn_pgtap_crea_ddt_senza_ordine('<etichetta>'[, '<stato>'[, <ba_id>]], p_quantita => …, p_prezzo => …, p_articolo_id => …, p_causale_codice => …, p_data => …, p_magazzino_id => …)` |
 | **attività di commessa fatturate**: emesse dalla madre e agganciate a una fattura vera in bozza, una riga per attività (attività del test, stesso cliente); a richiesta dentro un lotto | `dbops.fn_pgtap_fattura_attivita('<etichetta>', ARRAY[<attivita_id>, …][, <lotto_id>])` |
 | **un preventivo** del mondo (emittente del cliente, numero dal dominio, validità da oggi; nasce in bozza e arriva allo stato chiesto per la matrice). Senza righe: oltre la bozza si ferma sull'emissione, che chiede una riga | `dbops.fn_pgtap_crea_preventivo('<etichetta>'[, '<stato>'])` |
 | **un preventivo con una riga** valida per l'emissione (merce, aliquota, prezzo 10), nello stato chiesto (default emesso), dal verbo; a richiesta la riga e lo stato su una testata in bozza del test | `dbops.fn_pgtap_crea_preventivo_con_righe('<etichetta>'[, '<stato>'], p_preventivo_id => …, p_prezzo => …, p_articolo_id => …)` |
-| **una testata che cambia stato dopo aver preso le righe** (ogni testata di vendita con una matrice dei passaggi: nasce nello stato iniziale, il test scrive le righe, poi lo stato per le transizioni vere — fuori bozza le righe non si scrivono) | `dbops.fn_pgtap_porta_a_stato('vendite.<testata>', <id>, '<stato>')` (anche `vendite.fatturazione_lotti`, se vuoto). ⚠️ Su bolla e reso lo stato si cambia solo dal verbo (la porta): la fixture fa ogni passo col verbo e **concede** all'operatore in sessione l'azione del passaggio (`emetti_ddt`, `conferma_reso`). Un `UPDATE … SET stato_doc_ddt_id` diretto è rifiutato (`E_DOC_STATO_SOLO_DAL_VERBO`); una bolla `RESO` si costruisce confermando un reso totale |
+| **una testata che cambia stato dopo aver preso le righe** (ogni testata di vendita con una matrice dei passaggi: nasce nello stato iniziale, il test scrive le righe, poi lo stato per le transizioni vere — fuori bozza le righe non si scrivono) | `dbops.fn_pgtap_porta_a_stato('vendite.<testata>', <id>, '<stato>')` (anche `vendite.fatturazione_lotti`, se vuoto). ⚠️ Su **tutte** le testate che conosce (preventivo, offerta, contratto, ordine, bolla, reso, commessa, fattura, lotto, versione di listino) lo stato si cambia solo dal verbo (la porta): la fixture fa ogni passo col verbo e **concede** all'operatore in sessione l'azione del passaggio (per esempio `emetti_ddt`, `conferma_reso`). Un `UPDATE` diretto della colonna di stato è rifiutato (`E_DOC_STATO_SOLO_DAL_VERBO`); una bolla `RESO` si costruisce confermando un reso totale |
 | **una commessa** del mondo, aperta dalla madre del dominio (codice ed emittente dal dominio, competenza nel mese corrente) — nello stato chiesto, sul cliente di un'altra fixture; fuori bozza con l'attività approvata che l'uscita pretende; a richiesta con la **sorgente ROOT** | `dbops.fn_pgtap_crea_commessa('<etichetta>'[, '<stato>'[, <ba_id>[, <con_attivita>[, <con_sorgente_root>]]]])` |
 | **un lotto di fatturazione** dell'azienda, nato dalla madre e portato allo stato chiesto (vuoto); a richiesta l'esito che trattiene un gruppo | `dbops.fn_pgtap_crea_lotto('<etichetta>'[, '<stato>'[, <ba_id>[, <tipo_doc_id>[, <mese>[, '<gruppo_key>'[, <del_cliente>]]]]]])` |
-| **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione; articolo e listino del chiamante se li dà); con la **sorgente** l'attività che la push di una riga avrebbe scritto — la chiave la compone `script.fn_segment_key`, mai a mano — con quantità, stati e periodo dichiarati | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, …], p_sorgente_codice => …, p_sorgente_uid => …, p_sorgente_riga_id => …, p_stato_emissione => …)` (per nome) |
+| **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione; articolo e listino del chiamante se li dà); con la **sorgente** l'attività che la push di una riga avrebbe scritto — la chiave la compone `script.fn_segment_key`, mai a mano — con quantità, stati e periodo dichiarati | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, …], p_sorgente_codice => …, p_sorgente_chiave => …, p_sorgente_riga_id => …, p_stato_emissione => …)` (per nome) |
 | una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
 | il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
@@ -131,9 +131,10 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | un **super admin** (senza azienda, come in produzione) | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>', p_super_admin := true)` — sotto, §«Un super admin non ha un'azienda» |
 
 ⛔ **Ordine obbligato: prima il mondo, poi `fn_pgtap_set_contesto_operatore(<auth_user_id>)`.**
-Con un operatore già in sessione il legame BA → emittente lo scrive **anche**
-il trigger `z90` del billing account, e i due si scontrano su
-`uq_emittenti_fiscali_ba`. Da owner si costruisce tutto prima e si lega il BA
+Con un operatore già in sessione il legame BA → emittente lo scrive già il
+trigger del billing account, verso l'azienda di chi agisce: chiedere col terzo
+parametro la stessa azienda non cambia niente, chiederne un'altra è rifiutato
+dal building block. Da owner si costruisce tutto prima e si lega il BA
 con il terzo parametro; come `zeroerp_app` si apre il contesto e si chiama
 `fn_pgtap_crea_cliente_ba` **senza** terzo parametro (dalla rev `20260912-38` il
 legame lo lascia al trigger, verso l'emittente di chi agisce).
@@ -156,13 +157,15 @@ a quella vecchia, invisibile sotto RLS. ⛔ Non comprende registro, articolo né
 cataloghi di `80_data`: entra ciò che ha una **trappola d'ordine**, non ciò che
 serve spesso.
 
-⭐ **Una FATTURA e' una catena, non un INSERT** (rev `20260923-04`): il cliente
-va legato all'azienda di chi agisce, la coppia (emittente, utility) va
-configurata, il registro dipende da quell'azienda e la valuta si risolve lungo
-la catena «cliente → azienda → gestore». `dbops.fn_pgtap_crea_fattura()` li mette
-tutti e quattro; lo **stato si sceglie alla nascita** (la testata ha un guard di
-transizione), e il **terzo parametro** e' il billing account di una fattura gia'
-costruita, per la seconda dello stesso cliente. ⛔ Righe, scadenze, contabili e
+⭐ **Una FATTURA e' una catena, non un INSERT**: il cliente va legato
+all'azienda di chi agisce, il registro dipende da quell'azienda e la valuta si
+risolve lungo la catena «cliente → azienda → gestore».
+`dbops.fn_pgtap_crea_fattura()` mette tutti e tre gli anelli. La coppia
+(emittente, utility) **non** la scrive: senza la sua riga valgono i parametri di
+sistema dell'utility, e scriverla nasconderebbe ai test il caso dell'emittente
+nuovo. La fattura **nasce nello stato iniziale** e la fixture la porta allo stato
+chiesto per la matrice dei passaggi; il **terzo parametro** e' il billing account
+di una fattura gia' costruita, per la seconda dello stesso cliente. ⛔ Righe, scadenze, contabili e
 movimenti restano al test: sono il suo caso.
 
 ⚠️ **Un super admin non ha un'azienda.** È multi-emittente per modello, e non è

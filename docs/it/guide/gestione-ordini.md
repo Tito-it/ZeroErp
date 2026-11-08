@@ -1,6 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -24,7 +24,7 @@
 > * [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare) — righe eleggibili al push a commessa
 > * [vendite.fn_ricalcola_totali_ordine](/dbzero/vendite/funzioni/fn_ricalcola_totali_ordine) — totali di testata e riepilogo IVA per aliquota
 > * [vendite.trgfn_ordini_gen_numero](/dbzero/vendite/funzioni/trgfn_ordini_gen_numero) — numero ordine auto-generato e immutabile
-> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15) e coerenza con il cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15) e coerenza con il cliente
 >
 > **Vedi anche** — API e service backend:
 >
@@ -153,7 +153,7 @@ di **mutua esclusività** offerta → (contratto XOR ordine): la prima conversio
 La conversione la fa il database in un passo solo
 ([vendite.fn_genera_ordine_da_offerta](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta)),
 e prima di scrivere controlla che ogni riga dell'offerta possa stare in un ordine: un
-ordine contiene **solo merce**, quindi un'offerta di servizi non si converte
+ordine contiene **solo merce** (più gli oneri che l'operatore aggiunge sull'ordine, §3.6), quindi un'offerta di servizi non si converte
 (`E_DOC_RIGA_NON_AMMESSA`, che nomina l'articolo; il pulsante è spento con lo stesso motivo).
 
 ### 2.3 Creazione manuale
@@ -183,9 +183,11 @@ Contiene il contesto del documento:
 - **da dove arriva** (`canale_origine`: `ADMIN` | `PORTALE` | `SHOP`) — in
   back-office è sempre `ADMIN` e non si cambia.
 - **chi ha venduto** (`agente_soggetto_ruolo_id`) — agente/venditore, opzionale.
-- **origine documentale** (`documento_origine_tipo` ∈ {`PREVENTIVO`, `OFFERTA_COMMERCIALE`},
-  codici di `config.sorgenti`, + `documento_origine_id`) — valorizzata in automatico dalla conversione; NULL se
-  l'ordine è creato a mano.
+- **origine documentale** — la provenienza del modello comune
+  ([sorgente polimorfa](/guide/sorgente-polimorfa)): il tipo (`sorgente_tipo_id`, `PREVENTIVO` o
+  `OFFERTA_COMMERCIALE`) e la chiave del documento (`sorgente_uid`, perché entrambi si riconoscono
+  per uid). La scrive la conversione; vuota se l'ordine è creato a mano. La lista degli ordini la
+  mostra come documento d'origine (tipo e numero).
 - **identità e stato** (`numero`/`serie`/`anno`, `uid`, `stato_doc_ordine_id`) e i
   **totali** (`imponibile_tot`, `iva_tot`, `totale_doc`), tenuti aggiornati dai
   trigger.
@@ -220,12 +222,13 @@ Ogni riga è una voce da consegnare/fatturare:
 Vincoli per l'operatore: **quantità > 0** e **prezzo ≥ 0** (un omaggio è quantità
 positiva con prezzo zero).
 
-**Quali articoli ammette** (dal 2026-10-13): solo **merce**, e mai un articolo **«solo
-componente»**, che si vende soltanto dentro il kit che lo contiene. Un servizio una tantum va
-in commessa, un servizio ricorrente in contratto (tramite un'offerta). La merce è giudicata
+**Quali articoli ammette**: la **merce** e gli **articoli-onere** (trasporto, urgenza, spese…:
+gli addebiti che accompagnano la merce, §3.6), mai un articolo **«solo componente»**, che si vende
+soltanto dentro il kit che lo contiene. Un altro servizio non entra: uno una tantum va in commessa,
+uno ricorrente in contratto (tramite un'offerta). La merce è giudicata
 dalla **natura con cui la riga è stata venduta**: una riga nata da un preventivo porta la natura di lì, anche
 se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
-documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
+documenti ([`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga)), e
 il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti** (dal 2026-10-14) non si mette in nessuna riga: va prima completata la sua distinta.
 
 **Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
@@ -347,6 +350,32 @@ il gesto per intero, e nessuna riga cambia.
 > Il 15 il cliente chiede di spostare al 22, e quattro righe sono già partite
 > con un DDT: si ripete col 22, *tutte*. Otto righe passano al 22, e le quattro
 > spedite restano al 20.
+
+### 3.6 Gli oneri: trasporto, urgenza, spese
+
+Un **onere** è un addebito che accompagna la merce: il trasporto, una maggiorazione per urgenza, le
+spese amministrative. In anagrafica è un articolo come gli altri, con una **causale onere** (Trasporto,
+Trasferta, Urgenza…) che lo dice onere; la causale nuova si aggiunge al catalogo, senza toccare il
+database. Sull'ordine lo aggiunge **l'operatore**, come una riga qualsiasi: ha prezzo e IVA, entra nei
+totali e nella stampa, dove compare **dopo** gli articoli.
+
+Un onere però **non si spedisce**, e l'ordine lo tratta di conseguenza:
+
+| | La merce | L'onere |
+| --- | --- | --- |
+| evasione e residuo da spedire | sì | no: non tiene aperto l'ordine, non lo porta a «evaso» |
+| nella bolla | la quantità che si sceglie | passa **intero**, nella **prima** bolla, anche se non lo si sceglie; non si ricopia nelle bolle successive; se la bolla si annulla torna sull'ordine |
+| date di consegna | sì (§3.5) | no: la riga di un onere non le porta |
+| un ordine fatto **solo** di oneri | — | non si conferma: un addebito senza merce si fa in commessa |
+
+**Dove va messo dipende da come si fattura l'ordine.** Se l'ordine fattura **alla conferma**, l'onere
+sta sull'ordine e va in commessa con lui (§10). Se fattura **alla consegna**, si può mettere sull'ordine
+(passa nella bolla, che lo porta in commessa) o direttamente sulla bolla. Un addebito che non riguarda
+nessun documento si fa dalla commessa, con la porta degli oneri
+([Gestione Commesse](/guide/gestione-commesse)).
+
+Un onere su un preventivo o su un'offerta **non** passa all'ordine: lì va in commessa da sé, e
+sull'ordine lo aggiunge l'operatore.
 
 ---
 
@@ -515,7 +544,8 @@ Vincoli:
 
 > **Bozza "usa e getta".** La creazione salva subito una bozza per poter aggiungere
 > le righe. Se l'operatore esce senza inserirne nessuna, quella bozza vuota può
-> essere eliminata. Un ordine **con righe**, invece, non si cancella: si **annulla**.
+> essere eliminata. Un ordine **con righe**, invece, non si cancella: si **annulla**. La regola
+> la fa valere il database, per ogni strada che cancella.
 
 ---
 
@@ -617,7 +647,8 @@ Quando l'ordine è `CONFERMATO` (e `fatturazione_trigger = CONFERMATO`), l'azion
 fatturazione.
 
 Sono eleggibili le righe attive, con quantità positiva, non ancora inviate a una
-commessa. Se non c'è alcuna riga eleggibile, l'azione non è disponibile e
+commessa. Gli **oneri** dell'ordine (§3.6) ci vanno insieme alla merce, come oneri con la loro causale
+e col riferimento all'ordine: fatturando l'ordine, si fattura anche il suo trasporto. Se non c'è alcuna riga eleggibile, l'azione non è disponibile e
 l'interfaccia ne spiega il motivo.
 
 **L'invio a commessa è unico per riga, e non cambia lo stato dell'ordine.** Una riga
@@ -696,7 +727,9 @@ generati.
 ### 12.5 Bozza creata per errore
 
 1. Ordine ancora in `DRAFT` **senza righe** → eliminabile.
-2. Ordine in `DRAFT` **con righe** → non si elimina: usa "Annulla" (→ `ANNULLATO`).
+2. Ordine in `DRAFT` **con righe** → non si elimina (`E_DELETE_DOC_CON_RIGHE`): togli le righe,
+   oppure usa "Annulla" (→ `ANNULLATO`).
+3. Ordine **fuori bozza** → non si elimina (`E_DELETE_DOC_NON_BOZZA`): si annulla.
 
 ---
 
@@ -710,13 +743,18 @@ Codici sollevati dal dominio ordini (registrati in `config.messaggi_errore` /
 | `E_ORD_NOT_FOUND` | Ordine (o riga/componente) inesistente o fuori dal proprio scope emittente |
 | `E_ORD_VALIDAZIONE` | Payload non valido (cliente mancante, campi vuoti, valori non numerici…) |
 | `E_ORD_CLIENTE_IMMUTABILE` | Tentativo di cambiare il cliente di un ordine già creato |
-| `E_ORD_STATO_TRANSIZIONE` | Operazione non ammessa nello stato (es. modifica fuori da `DRAFT`, oppure delete di una bozza con righe → va annullata) |
+| `E_ORD_STATO_TRANSIZIONE` | Operazione non ammessa nello stato (es. modifica fuori da `DRAFT`) |
+| `E_DELETE_DOC_NON_BOZZA` | Eliminazione di un ordine uscito dalla bozza: si annulla (guard DB) |
+| `E_DELETE_DOC_CON_RIGHE` | Eliminazione di una bozza che ha ancora righe attive: si tolgono le righe o si annulla (guard DB) |
 | `E_ORD_NESSUNA_RIGA` | Conferma/push senza righe eleggibili (controllo applicativo) |
 | `E_ORD_OFFERTA_GIA_CONVERTITA` | Conversione offerta → ordine già avvenuta (univocità 1:1) |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO` | L'offerta ha già generato un contratto: non può generare anche un ordine (mutua esclusività XOR) |
 | `E_ORD_ORIGINE_NON_CONVERTIBILE` | Conversione da un'offerta non in stato convertibile (non ACCETTATA) |
 | `E_ORDINE_TRANSIZIONE_NON_AMMESSA` | Cambio di stato non previsto/attivo nella matrice transizioni (guard DB) |
 | `E_ORDINE_CONFERMA_SENZA_RIGHE` | Conferma di un ordine senza righe (guard DB, gemello di `E_ORD_NESSUNA_RIGA`) |
+| `E_ORDINE_CONFERMA_SOLO_ONERI` | Conferma di un ordine che ha solo oneri e nessuna merce (§3.6) |
+| `E_RIGA_ONERE_DATA_CONSEGNA` | Una data di consegna sulla riga di un onere (§3.6) |
+| `E_RIGA_NATURA_NON_AMMESSA` | Un servizio che non è un onere su una riga d'ordine (§3.2) |
 | `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | Smistamento da un preventivo non accettato |
 | `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE` | Smistamento senza righe merce residue (tutte già allocate o nessuna di natura merce) |
 | `E_DOCUMENTI_*` | Stampa: template/versione non risolti, input invalido o render fallito |

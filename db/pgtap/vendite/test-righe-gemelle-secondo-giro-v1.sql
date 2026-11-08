@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-97): contratti.offerta_id e'
+--   ritirata; il contratto nato dall'offerta si riconosce dalla provenienza (sorgente_uid = l'uid
+--   dell'offerta, col tipo OFFERTA_COMMERCIALE). Attese invariate.
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta (pg_temp.stato_offerta, prima dell'1 e del 19) dal verbo con dbops.fn_pgtap_porta_a_stato, non con un UPDATE diretto: la porta dell'offerta lo rifiuta. Le attese non cambiano.
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto (prima del 24) passa
 --   da dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
@@ -465,7 +468,7 @@ SELECT pg_temp.stato_offerta(pg_temp.doc('rev2'), 'ACCETTATA');
 CREATE TEMP TABLE tmp_rg2_push AS
 SELECT vendite.fn_push_offerta_a_contratto(pg_temp.doc('rev2'), NULL::bigint, false) AS esito;
 INSERT INTO tmp_rg2_doc
-SELECT 'contratto', c.id FROM vendite.contratti c WHERE c.offerta_id = pg_temp.doc('rev2');
+SELECT 'contratto', c.id FROM vendite.contratti c WHERE c.sorgente_uid = (SELECT f.uid FROM vendite.offerte_commerciali f WHERE f.id = pg_temp.doc('rev2'));
 
 SELECT is(
     pg_temp.componenti_contratto(pg_temp.riga_contratto(pg_temp.doc('contratto'), 'P')),

@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION script.fn_check_annullo_movimento_titolo_iva(p_movime
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'anagrafiche', 'config', 'script'
+ SET search_path TO 'pg_catalog', 'anagrafiche', 'config', 'script', 'pg_temp'
 AS $function$
 -- Scopo: elencare i motivi che impediscono di ANNULLARE un
 --   movimento del registro plafond IVA. Funzione PURA

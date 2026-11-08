@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I SEI TIPI *_RIGA DI VENDITA ESCONO DALLE SORGENTI
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R, giro R.2 (S-2 di Tid: i tipi *_RIGA si ritirano, una riga si scrive col
+#   tipo del suo documento + sorgente_riga).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   PREVENTIVO_RIGA, CONTRATTO_RIGA, ORDINE_VENDITA_RIGA, DDT_VENDITA_RIGA,
+#   FATTURA_RIGA, RESO_VENDITA_RIGA erano la grammatica del modello A (la riga
+#   come documento). Dal giro R.1 i verbi scrivono il tipo del documento e la
+#   riga in sorgente_riga: nessuna funzione, ne' BE ne' FE, li scrive o li
+#   legge come sorgente; nessuna riga li porta (verificato col perimetro di
+#   ogni FK verso config.sorgenti, dbdev 2026-11-06).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Il ritiro e' in tre posti, nell'ordine in cui girano:
+#   1. tipi_entita.csv: is_sorgente = f sulle sei righe (mirror 20260822-55):
+#      l'ENTITA' resta (bersagli degli errori, note, giornale: ORDINE_VENDITA_RIGA
+#      e' il bersaglio di trgfn_ordini_righe_guard_onere_senza_data_consegna) e
+#      sorgente_codice_interno, generata, torna NULL: la FK verso
+#      config.sorgenti non la tiene piu'.
+#   2. sorgenti.csv: le sei righe tolte (mirror 20251002-21): da zero non nascono.
+#   3. questo changeSet: le cancella dove esistono (dbdev). In 80_data viene
+#      dopo i due mirror (includeAll per nome), quindi dopo il punto 1.
+#   Le chiavi di traduzione config.tipi_entita.<x>_riga restano: sono
+#   l'etichetta dell'entita', che resta. La convergenza del lato «in uscita»
+#   (90_end, runAlways) non smonta niente: ogni tabella delle sei e' ancora
+#   la tabella delle righe di un altro tipo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261106-60-delete-sorgenti-tipi-riga-di-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20261106-60-delete-sorgenti-tipi-riga-di-vendita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Cancella da config.sorgenti i sei tipi *_RIGA di vendita (le entita' restano in config.tipi_entita). brief-db-sorgente-documento-e-riga §7.2 lotto R, giro R.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM (SELECT 1) x
+               WHERE NOT EXISTS (SELECT 1 FROM config.tipi_entita e
+                                  WHERE e.codice IN ('PREVENTIVO_RIGA', 'CONTRATTO_RIGA', 'ORDINE_VENDITA_RIGA', 'DDT_VENDITA_RIGA', 'FATTURA_RIGA', 'RESO_VENDITA_RIGA') AND e.is_sorgente);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Sul codice, non sull'id: e' la chiave naturale.
+              DELETE FROM config.sorgenti s
+               WHERE s.codice_interno IN ('PREVENTIVO_RIGA', 'CONTRATTO_RIGA', 'ORDINE_VENDITA_RIGA', 'DDT_VENDITA_RIGA', 'FATTURA_RIGA', 'RESO_VENDITA_RIGA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le righe tornano dal CSV di prima (sorgenti.csv) con un migrate di quel file.
+              SELECT 1;

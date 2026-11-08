@@ -276,14 +276,20 @@ class PrezzoRigaCommessaDbTests(TestCase):
             cur.execute(
                 "SELECT segment_key, quantita, competenza_mese, articolo_id, prezzo_snapshot,"
                 " uom_id, istanza_utility_id, data_attivita, competenza_dal, competenza_al,"
-                " tipo_doc_fiscale_id, valuta_id, sorgente_tipo_id, sorgente_uid"
+                " tipo_doc_fiscale_id, valuta_id, sorgente_tipo_id,"
+                # ⭐ La chiave del documento nella colonna del SUO tipo (giro
+                #    C.3, BE-C.3-b): `sorgente_id` per i tipi a id (il consumo
+                #    della fixture), `sorgente_uid` per quelli a uid. La porta
+                #    la riceve in testo, qualunque sia.
+                " COALESCE(sorgente_id::text, sorgente_uid::text), sorgente_riga"
                 " FROM vendite.commesse_attivita WHERE id = %s",
                 [self.attivita],
             )
             (
                 segment_key, quantita, competenza_mese, articolo_id, prezzo, uom_id,
                 istanza_utility_id, data_attivita, competenza_dal, competenza_al,
-                tipo_doc_fiscale_id, valuta_id, sorgente_tipo_id, sorgente_uid,
+                tipo_doc_fiscale_id, valuta_id, sorgente_tipo_id, sorgente_chiave,
+                sorgente_riga,
             ) = cur.fetchone()
 
         # Il re-push della stessa riga (stesso segmento: ramo ON CONFLICT).
@@ -308,7 +314,8 @@ class PrezzoRigaCommessaDbTests(TestCase):
             listino_versione_id=self.v2,
             listino_riga_id=self.riga_v2,
             sorgente_tipo_id=sorgente_tipo_id,
-            sorgente_uid=sorgente_uid,
+            sorgente_chiave=sorgente_chiave,
+            sorgente_riga=sorgente_riga,
         )])
         self.assertEqual(esito.errors, [])
         self.assertEqual(self._listino_riga_della_commessa(), self.riga_v2)

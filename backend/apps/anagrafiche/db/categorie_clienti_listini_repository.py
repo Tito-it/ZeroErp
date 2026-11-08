@@ -66,7 +66,7 @@ _SELECT_COLS = """
     u.codice AS utility_codice,
     u.descrizione AS utility_descrizione,
     m.emittente_soggetto_ruolo_id,
-    COALESCE(tr.codice_interno, tr.codice) AS emittente_codice_ruolo,
+    tr.codice_interno AS emittente_codice_ruolo,
     -- ⚠️ `ragione_sociale_completa`, NON `ragione_sociale`: la seconda e'
     -- NULL su ogni persona fisica (11 soggetti su 26 alla misura del brief
     -- `brief-emittente-ragione-sociale-dal-soggetto.md`), dove il nome sta in

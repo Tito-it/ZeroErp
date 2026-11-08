@@ -34,6 +34,7 @@ Indice test eseguiti:
 16) SmokeBashTests.test_nessuno_username_cablato_negli_smoke
 17) SmokeBashTests.test_smoke_login_riusa_smoke_token_valido_e_suo
 18) SmokeBashTests.test_smoke_login_fallito_lo_dice_ed_esce
+19) SmokeBashTests.test_ogni_query_diretta_degli_smoke_passa_da_smoke_db_query — regola del 2 (2026-11-08)
 """
 
 import os
@@ -424,3 +425,26 @@ curl() {
         self.assertEqual(esito.returncode, 3)
         self.assertIn("utente degli smoke non impostato (SMOKE_USER)", esito.stdout)
         self.assertEqual(chiamati, [])
+
+    # Scopo: la query diretta al DB degli smoke bash ha UNA sede,
+    #        `_smoke_db.sh` (`smoke_db_query`). Le copie locali (`db_query()`)
+    #        si comportavano in due modi diversi: un errore del DB diventava
+    #        «nessuna riga» (`2>/dev/null ... || true`), oppure zero righe
+    #        chiudevano lo smoke in silenzio (senza `|| true`, sotto
+    #        `pipefail`). Una lettura `dbshell -- -t` fuori dal BB e' una copia.
+    # ⚠️ Le scritture di pulizia con `dbshell -- -q` (es. -listini-v5) non sono
+    #    letture e restano dello smoke.
+    def test_ogni_query_diretta_degli_smoke_passa_da_smoke_db_query(self):
+        cartella = Path(settings.BASE_DIR) / "scripts" / "tests"
+        copia = re.compile(r"^\s*(function\s+)?db_query\s*\(\)", re.M)
+        # Fra le opzioni anche la riga spezzata (`\` a capo).
+        lettura = re.compile(r"dbshell[\s\\]+--[\s\\]+(-X[\s\\]+)?(-q[\s\\]+)?-t\b")
+        bb = cartella / "_smoke_db.sh"
+        self.assertRegex(bb.read_text(encoding="utf-8"), lettura)
+        for script in sorted(cartella.glob("*.sh")):
+            if script == bb:
+                continue
+            testo = script.read_text(encoding="utf-8")
+            with self.subTest(script=script.name):
+                self.assertNotRegex(testo, copia)
+                self.assertNotRegex(testo, lettura)

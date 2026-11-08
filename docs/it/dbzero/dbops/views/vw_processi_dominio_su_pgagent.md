@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Processi di classe DOMINIO che ESEGUONO dentro pgAgent. DEVE arrivare a VUOTA. ⛔ Li' un processo non ha identita' — quindi nessun perimetro emittente — e un fallimento non arriva a nessuno: la traccia sta in pgagent.pga_joblog, che nessuno guarda e che l'applicazione non vede. ⭐ L'argomento e' sperimentale: apply_storicizza_weekly e' morto ogni settimana per SEI MESI e lo si e' scoperto per caso (R-12). ⚠️ Che un job pgAgent SVEGLI un processo di dominio resta lecito e non e' una scappatoia: un job che chiama dbops.fn_accoda_lavoro non tocca nessun documento — se muore non ha fatto danni, e il lavoro vero resta tracciato nella coda. Il registro descrive il PROCESSO, non chi suona la sveglia: percio' il canale diventa CODA_AUTOMATICA. ⛔ Non e' un CHECK su dbops.processi, e per due ragioni: oggi fallirebbe il migrate (la riga c'e' ancora), e il registro e' catalogo — un CHECK trasformerebbe un errore di configurazione in un migrate rotto, cioe' in un problema di tutti invece che di quella riga. Decisione: brief-db-processi-automatici-identita-e-perimetro, sezione 12.12.
+> Processi DOMINIO vivi (ritiro non raggiunto, script.fn_e_obsoleto) che ESEGUONO dentro pgAgent. DEVE restare VUOTA. Li' un processo non ha identita', quindi nessun perimetro emittente, e un fallimento non arriva a nessuno: la traccia sta in pgagent.pga_joblog, che l'applicazione non vede. Che un job pgAgent SVEGLI un processo di dominio resta lecito: un job che chiama dbops.fn_accoda_lavoro non tocca nessun documento, e il lavoro vero resta tracciato nella coda; il canale di quel processo e' CODA_AUTOMATICA. Non e' un CHECK su dbops.processi: il registro e' catalogo, e un CHECK trasformerebbe un errore di configurazione di una riga in un migrate rotto.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -16,7 +16,7 @@ SELECT codice AS processo_codice,
     canale,
     'esegue dentro pgAgent: senza identita'', e un fallimento non arriva a nessuno. Va spostato su CODA_AUTOMATICA, con il job pgAgent che lo ACCODA invece di eseguirlo'::text AS motivo
    FROM dbops.processi p
-  WHERE ((classe = 'DOMINIO'::text) AND attivo AND (obsoleto_dal IS NULL) AND (canale = 'PGAGENT'::text));
+  WHERE ((classe = 'DOMINIO'::text) AND (NOT script.fn_e_obsoleto(obsoleto_dal)) AND (canale = 'PGAGENT'::text));
 ```
 
 </div>

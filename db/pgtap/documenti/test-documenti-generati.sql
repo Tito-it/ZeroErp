@@ -13,7 +13,7 @@
 --  2) Insert documento generato coerente passa
 --  3) A6: tipo_documento_output_id incoerente bloccato
 --  4) A6: emittente_fiscale_id incoerente bloccato
---  5) NULLS NOT DISTINCT: due righe con stesso (sorgente_tipo, sorgente_uid,
+--  5) NULLS NOT DISTINCT: due righe con stesso (sorgente_tipo, chiave del documento,
 --     sorgente_riga=NULL, progressivo) bloccate
 --  6) A5: DELETE fisico documenti_generati bloccato
 --  7) A7: UPDATE context_json bloccato
@@ -43,6 +43,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+-- ⭐ La stampa e' di un preventivo VERO, del mondo dell'operatore in sessione: dal
+--   lotto D di brief-db-sorgente-documento-e-riga il guard unico verifica che il
+--   documento stampato esista, e la chiave di un preventivo e' il suo uid.
+CREATE TEMP TABLE _dg_src AS
+SELECT p.preventivo_uid FROM dbops.fn_pgtap_crea_preventivo('dg generati', 'DRAFT') p;
+
 
 SELECT plan(10);
 
@@ -107,7 +114,7 @@ SELECT
   (SELECT id FROM tmp_dg_template),
   (SELECT id FROM tmp_dg_versione),
   (SELECT sorgente_id FROM tmp_dg_ctx),
-  'PGTAP-SOURCE-001', NULL, 1,
+  (SELECT preventivo_uid FROM _dg_src), NULL, 1,
   'Doc 1', 'doc1.pdf',
   '{"tot": 100, "_meta": {"context_version": 1}}'::jsonb,
   repeat('1', 64), repeat('2', 64), repeat('3', 64),
@@ -135,7 +142,7 @@ SELECT throws_ok(
       (SELECT id FROM tmp_dg_template),
       (SELECT id FROM tmp_dg_versione),
       (SELECT sorgente_id FROM tmp_dg_ctx),
-      'PGTAP-SOURCE-002', NULL, 2,
+      (SELECT preventivo_uid FROM _dg_src), NULL, 2,
       'Doc bad tipo', 'doc-bad.pdf',
       '{"x": 1, "_meta": {"context_version": 1}}'::jsonb,
       repeat('a', 64), repeat('b', 64), repeat('c', 64),
@@ -177,7 +184,7 @@ SELECT throws_ok(
       (SELECT id FROM tmp_dg_template),
       (SELECT id FROM tmp_dg_versione),
       (SELECT sorgente_id FROM tmp_dg_ctx),
-      'PGTAP-SOURCE-003', NULL, 3,
+      (SELECT preventivo_uid FROM _dg_src), NULL, 3,
       'Doc bad em', 'doc-bad-em.pdf',
       '{"x": 2, "_meta": {"context_version": 1}}'::jsonb,
       repeat('a', 64), repeat('b', 64), repeat('c', 64),
@@ -203,7 +210,7 @@ SELECT throws_ok(
       (SELECT id FROM tmp_dg_template),
       (SELECT id FROM tmp_dg_versione),
       (SELECT sorgente_id FROM tmp_dg_ctx),
-      'PGTAP-SOURCE-001', NULL, 1,
+      (SELECT preventivo_uid FROM _dg_src), NULL, 1,
       'Doc dup', 'doc-dup.pdf',
       '{"x": 9, "_meta": {"context_version": 1}}'::jsonb,
       repeat('a', 64), repeat('b', 64), repeat('c', 64),

@@ -181,7 +181,7 @@ BEGIN
       p_stato_approvazione          => 'APPROVATA',
       p_stato_emissione             => 'NON_EMESSA',
       p_sorgente_tipo_id            => NULL,
-      p_sorgente_uid                => NULL,
+      p_sorgente_chiave             => NULL,
       p_tipo_movimento              => 'ONERE',
       p_meta                        => jsonb_strip_nulls(jsonb_build_object('motivo_onere', p_motivo)),
       p_causale_onere_id            => v_causale_id

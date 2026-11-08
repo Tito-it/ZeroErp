@@ -83,6 +83,8 @@ class ListDocumentiPerSorgenteTests(TestCase):
     def _default_args(self, **overrides: Any) -> dict[str, Any]:
         defaults: dict[str, Any] = {
             "sorgente_tipo_id": 10,
+            # Un tipo a chiave uid (preventivo): l'altra colonna è NULL.
+            "sorgente_id": None,
             "sorgente_uid": "uid-100",
             "sorgente_riga": None,
             "emittente_ids_scope": None,
@@ -104,7 +106,7 @@ class ListDocumentiPerSorgenteTests(TestCase):
 
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("d.sorgente_tipo_id = %s", sql)
-        self.assertIn("d.sorgente_uid = %s", sql)
+        self.assertIn("d.sorgente_uid = %s::uuid", sql)
         self.assertIn("d.sorgente_riga IS NULL", sql)
         self.assertIn("COUNT(*) OVER () AS total_count", sql)
         self.assertEqual(params, [10, "uid-100", 50, 0])

@@ -51,7 +51,6 @@ from apps.core.services.payload_helpers import (
     translate_db_errors,
 )
 from apps.core.services.testata_guard import testata_o_not_found
-from apps.anagrafiche.services.anagrafiche_service import AnagraficheService
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.vendite.db.commesse_repository import (
     TESTATA_COMMESSE,
@@ -317,7 +316,7 @@ def pr_run_commesse_push(
 
 
 # Scopo: Variante puntuale del push commesse — esegue UN solo handler con
-# filtro sulla riga sorgente identificata da `sorgente_uid`. Riusa
+# filtro sulla riga sorgente identificata da `sorgente_id`. Riusa
 # orchestrator (lock + log su commesse_push_log): differisce
 # dal batch sia per perimetro (1 documento invece di N) sia per
 # semantica transazionale: all-or-nothing. Un documento sorgente
@@ -334,7 +333,7 @@ def pr_run_commesse_push(
 def pr_run_commesse_push_one(
     *,
     sorgente_codice: str,
-    sorgente_uid: int,
+    sorgente_id: int,
     righe_ids: list[int] | None = None,
     dry_run: bool = False,
     user: str | None = None,
@@ -359,11 +358,11 @@ def pr_run_commesse_push_one(
         function_name="vendite.commesse_service.pr_run_commesse_push_one",
     )
     ErrorManager.require(
-        bool(sorgente_uid and sorgente_uid > 0),
+        bool(sorgente_id and sorgente_id > 0),
         code="E_COMMESSA_VALIDATION",
         message="Identificativo sorgente non valido.",
-        detail=f"sorgente_uid={sorgente_uid} deve essere intero positivo",
-        context={"sorgente_uid": sorgente_uid},
+        detail=f"sorgente_id={sorgente_id} deve essere intero positivo",
+        context={"sorgente_id": sorgente_id},
         function_name="vendite.commesse_service.pr_run_commesse_push_one",
     )
 
@@ -380,7 +379,7 @@ def pr_run_commesse_push_one(
         report = orch.run(
             source_types=[sorgente_codice],
             dry_run=dry_run,
-            sorgente_uid=sorgente_uid,
+            sorgente_id=sorgente_id,
             righe_ids=righe_ids,
         )
         if not dry_run and report.stato in _STATI_PUSH_FALLIMENTO:
@@ -398,7 +397,7 @@ def pr_run_commesse_push_one(
                 hint="Risolvi la causa indicata e ri-prova il push.",
                 context={
                     "sorgente_codice": sorgente_codice,
-                    "sorgente_uid": sorgente_uid,
+                    "sorgente_id": sorgente_id,
                     "stato_report": report.stato,
                     "errors_count": sum(len(h.errors) for h in report.handlers),
                 },
@@ -546,12 +545,13 @@ _TESTATA_FK_CONSTRAINTS: dict[str, tuple] = {
 #        esplicito AZZERA (togliere il responsabile e' un gesto legittimo).
 #        Nessun guard di STATO: il DB non ne mette, di proposito — la
 #        descrizione di una commessa chiusa si puo' correggere.
-# ⭐ Il responsabile deve essere una persona ATTIVA, e lo si dice QUI con un
-#        400 che nomina il campo: a DB lo rifiuterebbe comunque il require sul
-#        figlio (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`), ma
-#        con `E_ATTIVO_REQUIRE`, che e' di classe TECNICO (500) e parla di
-#        trigger — non e' una frase per l'operatore. Il guard DB resta
-#        l'autorita'; questo e' il messaggio.
+# ⭐ Il responsabile deve essere una persona ATTIVA, e lo dice il DB: il
+#        require sul figlio (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`)
+#        risponde `E_ATTIVO_PADRE_NON_ATTIVO` (CONFLITTO_STATO, 409) con la
+#        colonna nel campo, e una persona inesistente e' la FK qui sotto.
+#        Fino al 2026-11-07 il require diceva `E_ATTIVO_REQUIRE` (TECNICO, 500)
+#        e il service lo anticipava con una lettura sua: ritirata con
+#        brief-db-revisione-dbops BE3 (D46), la regola ha una sede sola.
 def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict:
     function_name = "vendite.commesse_service.aggiorna_commessa_testata"
     _guard_commessa_id(commessa_id, function_name=function_name)
@@ -566,25 +566,6 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
         context_vuoto={"commessa_id": commessa_id, "allowed_keys": sorted(_TESTATA_KEYS)},
         function_name=function_name,
     )
-
-    responsabile_id = dati.get("responsabile_risorsa_umana_id")
-    if responsabile_id is not None:
-        persona = AnagraficheService().get_risorsa_umana_lookup(responsabile_id)
-        ErrorManager.require(
-            persona is not None and bool(persona.get("attivo")),
-            code="E_COMMESSA_VALIDATION",
-            message=(
-                "Il responsabile deve essere una risorsa umana attiva."
-                if persona is not None else "Responsabile non trovato."
-            ),
-            context={
-                "field": "responsabile_risorsa_umana_id",
-                "commessa_id": commessa_id,
-                "responsabile_risorsa_umana_id": responsabile_id,
-            },
-            function_name=function_name,
-            log_to_db=True,
-        )
 
     repo = CommesseRepository()
     with translate_db_errors(

@@ -13,44 +13,49 @@ CREATE FUNCTION fn_sorgenti_orfane_perimetro()
 
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane_perimetro()
- RETURNS TABLE(tabella regclass, col_tipo name, col_riga name, col_uid name)
+ RETURNS TABLE(tabella regclass, schema_tabella name, nome_tabella name, grammatica text, ha_sorgente_id boolean, ha_sorgente_uid boolean, ha_sorgente_riga boolean, ha_sorgente_dettaglio boolean, orfani_esclusi_perche text, guard_esente_perche text)
  LANGUAGE sql
  STABLE
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
-AS $function$
-    -- Scopo: il gemello «esiste» di fn_sorgenti_orfane — le tabelle con una FK
-    --   verso config.sorgenti sulla colonna del tipo E le due colonne di chiave
-    --   (modello A tipizzato). Derivato dal catalogo, non da un elenco.
-    SELECT c.conrelid::regclass      AS tabella,
-           a.attname                 AS col_tipo,
-           'sorgente_riga'::name     AS col_riga,
-           'sorgente_uid'::name      AS col_uid
-      FROM pg_constraint c
-      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
-     WHERE c.contype = 'f'
-       AND c.confrelid = 'config.sorgenti'::regclass
-       AND array_length(c.conkey, 1) = 1
-       AND EXISTS (SELECT 1 FROM pg_attribute r
-                    WHERE r.attrelid = c.conrelid AND r.attname = 'sorgente_riga' AND NOT r.attisdropped)
-       AND EXISTS (SELECT 1 FROM pg_attribute u
-                    WHERE u.attrelid = c.conrelid AND u.attname = 'sorgente_uid' AND NOT u.attisdropped)
-       -- ⭐ E il guard TIPIZZATO montato: e' lui il contratto del modello A
-       --   («tipo => esattamente una chiave, che punta al bersaglio di
-       --   key_selector»). Le tabelle di vendite con la stessa FK e le stesse
-       --   colonne (attivita_fatturabili, fatture_righe, ...) hanno un'altra
-       --   semantica — riga = la riga del documento, uid = il documento — e
-       --   senza questo filtro davano 112 falsi orfani su dev (18-09). Entrano
-       --   quando prendono il guard (roll-out D-3, cantiere dbops).
-       AND EXISTS (SELECT 1 FROM pg_trigger tg
-                    JOIN pg_proc tp ON tp.oid = tg.tgfoid
-                   WHERE tg.tgrelid = c.conrelid
-                     AND NOT tg.tgisinternal
-                     AND tp.proname = 'trgfn_guard_sorgente_polimorfa_tipizzata')
-     ORDER BY 1;
-$function$
+BEGIN ATOMIC
+ WITH col AS (
+          SELECT a.attrelid,
+             bool_or((a.attname = 'sorgente_tipo_id'::name)) AS ha_tipo,
+             bool_or((a.attname = 'sorgente_id'::name)) AS ha_id,
+             bool_or((a.attname = 'sorgente_uid'::name)) AS ha_uid,
+             bool_or((a.attname = 'sorgente_riga'::name)) AS ha_riga,
+             bool_or((a.attname = 'sorgente_dettaglio'::name)) AS ha_dett
+            FROM pg_attribute a
+           WHERE ((a.attnum > 0) AND (NOT a.attisdropped) AND (a.attname = ANY (ARRAY['sorgente_tipo_id'::name, 'sorgente_id'::name, 'sorgente_uid'::name, 'sorgente_riga'::name, 'sorgente_dettaglio'::name])))
+           GROUP BY a.attrelid
+         ), esenzioni(tabella, orfani_perche, guard_perche) AS (
+          VALUES (to_regclass('pratiche.reconcile_errori'::text),'e'' un log: rimanda per costruzione anche a documenti che non ci sono piu'''::text,'e'' un log scritto dentro un EXCEPTION: un guard d''esistenza lo farebbe tacere'::text), (to_regclass('vendite.fatture_stampa_coda'::text),NULL::text,('sorgente_id e'' una FK vera verso vendite.fatture (ON DELETE CASCADE): esistenza '::text || 'e cancellazione le tiene la FK, e la cleanup delle fatture trova la coda da pg_constraint'::text))
+         )
+  SELECT (c.oid)::regclass AS oid,
+     n.nspname,
+     c.relname,
+         CASE
+             WHEN (EXISTS ( SELECT 1
+                FROM script.fn_sorgente_guard_montaggi() m(tabella, schema_tabella, nome_tabella, livello_minimo, azione_cancellazione, argomenti_validi, ha_sorgente_riga, ha_sorgente_dettaglio)
+               WHERE ((m.tabella)::oid = ((c.oid)::regclass)::oid))) THEN 'UNICO'::text
+             ELSE 'TESTUALE'::text
+         END AS "case",
+     col.ha_id,
+     col.ha_uid,
+     col.ha_riga,
+     col.ha_dett,
+     e.orfani_perche,
+     e.guard_perche
+    FROM (((col
+      JOIN pg_class c ON ((c.oid = col.attrelid)))
+      JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
+      LEFT JOIN esenzioni e ON (((e.tabella)::oid = ((c.oid)::regclass)::oid)))
+   WHERE ((c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])) AND (n.nspname <> 'storico'::name) AND col.ha_tipo AND (col.ha_id OR col.ha_uid) AND ((c.relpersistence <> 't'::"char") OR ((n.oid = pg_my_temp_schema()) AND has_table_privilege(c.oid, 'SELECT'::text))))
+   ORDER BY n.nspname, c.relname;
+END
 
 COMMENT ON FUNCTION dbops.fn_sorgenti_orfane_perimetro()
-IS 'Il PERIMETRO di dbops.fn_sorgenti_orfane, reso visibile: le tabelle con una FK verso config.sorgenti su una colonna sola (sorgente_tipo_id), le due colonne sorgente_riga / sorgente_uid E il guard trgfn_guard_sorgente_polimorfa_tipizzata montato — e'' il guard il contratto del modello A (tipo => una chiave verso il bersaglio di key_selector). Le tabelle di vendite con FK e colonne ma senza guard hanno un''altra semantica e restano fuori finche'' non lo prendono (D-3). Derivato dal catalogo (pg_constraint + pg_trigger), non da un elenco: una tabella nuova con quella forma entra da sola. Il pgTAP asserisce che le sei di magazzino ci sono: un presidio che esamina zero tabelle e'' verde e muto. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.7.';
+IS 'Il perimetro della provenienza polimorfa: ogni tabella (fuori lo storico) con sorgente_tipo_id e almeno una fra sorgente_id e sorgente_uid, con le colonne che ha e la sua GRAMMATICA, dal guard che monta: UNICO (script.trgfn_guard_sorgente: tipo + sorgente_id | sorgente_uid + riga + dettaglio), TESTUALE (nessun guard: la chiave in sorgente_uid, come id o uid, in testo o uuid). Le esenzioni sono dichiarate con il motivo, in due colonne: orfani_esclusi_perche (fuori dal presidio degli orfani) e guard_esente_perche (fuori dal guard unico); il log dei reconcile (pratiche.reconcile_errori), fuori da tutte e due, e la coda di stampa (vendite.fatture_stampa_coda), fuori dal solo guard unico perche'' la sua chiave e'' una FK vera verso la fattura. Delle tabelle temporanee, solo quelle della sessione leggibili da chi chiede. Derivato dal catalogo di PostgreSQL, non da un elenco: una tabella nuova con la provenienza entra da sola. Lo leggono dbops.fn_sorgenti_orfane e il presidio di struttura (dbops/test-sorgenti-struttura-v1).';
 ```
 
 </div>

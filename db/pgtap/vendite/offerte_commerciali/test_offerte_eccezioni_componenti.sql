@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-97): contratti.offerta_id e'
+--   ritirata; il contratto nato dall'offerta si riconosce dalla provenienza (sorgente_uid = l'uid
+--   dell'offerta, col tipo OFFERTA_COMMERCIALE). Attese invariate.
 -- pgTAP test per Zero ERP
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
 --   cambia solo dal verbo; l'offerta COMPOSITA del test 20 arriva ad ACCETTATA con
@@ -607,8 +610,8 @@ SELECT CASE
            FROM vendite.contratti_righe_componenti crc
            JOIN vendite.contratti_righe cr ON cr.id = crc.riga_contratto_id
            JOIN vendite.contratti c ON c.id = cr.contratto_id
-          WHERE c.offerta_id =
-                (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA')
+          WHERE c.sorgente_uid =
+                (SELECT f.uid FROM vendite.offerte_commerciali f WHERE f.id = (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA'))
         ) > 0,
         '20) fn_push rev3: contratti_righe_componenti copiati dal push offerta→contratto'
     )

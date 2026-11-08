@@ -13,9 +13,13 @@ CREATE FUNCTION fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_acco
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_ordine_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
+ RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer, causale_onere_id bigint)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-03 (20261103-38, brief-db-addebito-trasporto-ordine §8.1, K-1):
+--   la riga-onere (script.fn_natura_e_merce = false sulla natura congelata)
+--   esce tipo_movimento ONERE con la causale dell'articolo, nella colonna
+--   nuova causale_onere_id (DROP + CREATE). Sorgente: l'ordine, come le altre.
 -- rev 2026-10-20 (20261020-92, brief-db-grammatica-unica-documenti, 2e G-8):
 --   la chiave e' ORDINE_VENDITA:<uid>:R:<riga>, composta da
 --   script.fn_segment_key (era ORD:...). Firma e RETURNS ancorati.
@@ -86,7 +90,12 @@ BEGIN
     -- flag di corsia (l'accoppiamento esiste solo sui preventivi).
     TRUE,
     'FIXED'::varchar,
-    'NORMALE'::varchar,
+    -- rev 2026-11-03 (K-1): la riga-onere va in commessa come ONERE, con la
+    -- causale dell'articolo e la sorgente dell'ordine (il CHECK
+    -- chk_commesse_attivita_senza_sorgente_onere_rettifica lo ammette).
+    -- IS FALSE: una natura sconosciuta resta NORMALE.
+    CASE WHEN script.fn_natura_e_merce(or_r.natura_vendita_id) IS FALSE
+         THEN 'ONERE' ELSE 'NORMALE' END::varchar,
     o.valuta_id,
     jsonb_build_object(
       'ordine_numero',       o.numero,
@@ -97,7 +106,14 @@ BEGIN
     ),
     v_tipo_doc_fiscale_id,
     o.termine_pagamento_id,
-    o.modalita_pagamento_id
+    o.modalita_pagamento_id,
+    -- La causale si legge dall'articolo solo qui, dove serve il valore
+    -- (decisione 2 di Tid). ONERE <=> causale: lo pretende la madre
+    -- vendite.fn_upsert_commessa_attivita. ⚠️ Un articolo-onere a cui fosse
+    -- stata tolta la causale dopo la vendita esce ONERE senza causale, e la
+    -- madre lo rifiuta (E_PARAMETRO_INVALIDO): rumoroso, non NORMALE in silenzio.
+    CASE WHEN script.fn_natura_e_merce(or_r.natura_vendita_id) IS FALSE
+         THEN a.causale_onere_id END
   FROM vendite.ordini o
   JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
   -- rev 2026-07-10: join stato solo per ESCLUDERE i non eleggibili
@@ -127,7 +143,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
-IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato). rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.ordini.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta la costante TRUE: l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine (rev 2026-08-03, T.1). rev 2026-10-10 (20261010-56): via il filtro billing_account_id IS NOT NULL (colonna NOT NULL). Brief: brief-db-istanza-nasce-col-ba-residui (D-1). rev 2026-10-13 (20261013-22): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Colonna tipo_consumo tolta dal RETURNS TABLE (DROP + CREATE). Rev 2026-10-20 (20261020-92, brief-db-grammatica-unica-documenti 2e, G-8): la chiave e'' ORDINE_VENDITA:<uid>:R:<riga>, composta da script.fn_segment_key (era ORD:...).';
+IS 'Le righe degli ordini di vendita da mandare in commessa: ordini con fatturazione_trigger CONFERMATO, in qualunque stato di spedizione tranne DRAFT, ANNULLATO e FATTURATO; righe attive con quantita'' > 0 e prezzo >= 0. Una riga gia'' instradata resta fuori: e'' eleggibile solo se script.fn_get_stato_push_segment dice LIBERA, lo stesso classificatore della capability dell''ordine, che vede anche i componenti #CMP. p_ordine_id: un ordine solo (NULL = tutti; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente ORDINE_VENDITA assente dal catalogo solleva E_CODICE. Filtri in AND, ordine per ordine e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid dell''ordine in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push ORDINE_VENDITA:<uid>:R:<riga> la compone script.fn_segment_key. uom_id viene dall''articolo (catalogo.articoli). fatturazione_immediata e'' quella dell''ordine; prezzo_bloccato e'' sempre TRUE, perche'' l''accoppiamento col flag di corsia esiste solo sui preventivi. Una riga-onere (script.fn_natura_e_merce falso sulla natura della riga) esce con tipo_movimento ONERE e la causale dell''articolo in causale_onere_id; la merce esce NORMALE, con causale_onere_id NULL. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine. Il backend legge le colonne per nome.';
 ```
 
 </div>

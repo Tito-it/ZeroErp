@@ -1,70 +1,84 @@
-## 📘 Documentazione Funzione – `pratiche.fn_pubblica_definizione`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_pubblica_definizione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.fn_copia_definizione](fn_copia_definizione.md)
-> [pratiche.fn_fork_definizione](fn_fork_definizione.md)
-> [pratiche.fn_nuova_versione_definizione](fn_nuova_versione_definizione.md)
-> [pratiche.trgfn_workflow_definizioni_guard](trgfn_workflow_definizioni_guard.md)
-> [pratiche.workflow_definizioni](workflow_definizioni.md)
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — la definizione che si pubblica
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — gli step della definizione
+> * [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti) — il grafo che non deve avere cicli
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_copia_definizione](/dbzero/pratiche/funzioni/fn_copia_definizione) · [pratiche.fn_fork_definizione](/dbzero/pratiche/funzioni/fn_fork_definizione) · [pratiche.fn_nuova_versione_definizione](/dbzero/pratiche/funzioni/fn_nuova_versione_definizione) — le strade che producono una bozza
+> * [pratiche.trgfn_workflow_definizioni_guard](/dbzero/pratiche/funzioni/trgfn_workflow_definizioni_guard) — il guard delle transizioni di stato della definizione
 
 ---
+
 ### 🎯 Scopo Principale
 
-Valida una **BOZZA** e la promuove a **PUBBLICATA**, **ritirando in transazione** la
-precedente PUBBLICATA dello stesso scope (una sola PUBBLICATA per scope,
-`uq_workflow_definizioni_pubblicata`). Ordine: RITIRA la vecchia **prima** di pubblicare
-la nuova, per non collidere sull'indice parziale.
+`pratiche.fn_pubblica_definizione` valida una definizione in `BOZZA` e la porta a `PUBBLICATA`, ritirando
+nella stessa transazione la precedente pubblicata dello stesso perimetro. Restituisce l'id della
+definizione pubblicata.
 
 ---
 
-### Firma
+### Le validazioni
 
-```sql
-CREATE FUNCTION pratiche.fn_pubblica_definizione(
-    p_definizione_id pratiche.workflow_definizioni.id%TYPE
-)
-RETURNS pratiche.workflow_definizioni.id%TYPE
-LANGUAGE plpgsql VOLATILE
-```
+La pubblicazione si rifiuta, con `E_DEFINIZIONE_NON_PUBBLICABILE` e il motivo, se:
 
-**Ritorna**: l'id della definizione pubblicata.
+1. la definizione non è in `BOZZA`;
+2. non ha nessuno step attivo;
+3. il grafo dei prerequisiti dei suoi step ha un ciclo, anche lungo più passaggi. Il prerequisito di sé
+   stesso lo esclude già un `CHECK` della tabella dei prerequisiti.
 
----
-
-### Validazioni (fail-fast `DEFINIZIONE_NON_PUBBLICABILE`, 511)
-
-1. la definizione deve essere in **BOZZA**;
-2. almeno uno **step (template) attivo**;
-3. nessun **ciclo** nel grafo dei prerequisiti — chiusura transitiva: uno step che
-   richiede sé stesso (il no-self è già garantito da `chk_template_flussi_prereq_no_self`;
-   qui si coprono i cicli multi-nodo, via CTE ricorsiva).
-
-Il vincolo "max un `chiude_pratica` per definizione" è già garantito dall'indice
-`uq_template_flussi_chiusura_definizione`.
+Che una definizione abbia al massimo uno step che chiude la pratica lo garantisce già un indice unico.
 
 ---
 
-### Note operative
+### ⭐ Una sola pubblicata per perimetro
 
-- Le transizioni `BOZZA → PUBBLICATA` (sulla nuova) e `PUBBLICATA → RITIRATA` (sulla
-  precedente) passano per il guard
-  [trgfn_workflow_definizioni_guard](trgfn_workflow_definizioni_guard.md), che le ammette.
-- Idempotenza/scope: opera solo sullo scope `(tipo_prestazione_id, emittente_fiscale_id)`
-  della definizione; il preset (emittente NULL) e i fork (emittente valorizzato) sono
-  scope distinti e non si interferiscono.
-- Errori parlanti: `E_PARAMETRO_INVALIDO` (id NULL/≤0), `E_VALORE_MANCANTE` (id inesistente),
-  `DEFINIZIONE_NON_PUBBLICABILE` (511) con il motivo (non-BOZZA / nessuno step attivo / ciclo).
-- **Accesso** (`20260703-17`, P1 strada B): `SECURITY DEFINER` + `search_path` fisso — gli
-  `UPDATE` di ritiro/pubblicazione girano come owner, il ruolo app li esegue senza grant DML
-  diretto su `workflow_definizioni`; `EXECUTE` ristretto al solo ruolo app (`20260703-18`),
-  gate applicativo AdminAPIView super-admin. `search_path` sulle schema fidate coinvolte dai
-  trigger (il guard header/transizioni gira sotto lo stesso path).
-- Introdotta con `20260703-08` (Parte 2 / Fase 2, D2-13); resa SECURITY DEFINER con `20260703-17`.
-- Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2.sql` (pubblica atomica con
-  ritiro; ciclo → 511; non-BOZZA → 511).
+Il perimetro è la coppia tipo di prestazione ed emittente fiscale: il preset (senza emittente) e i fork
+di un emittente sono perimetri distinti, e non si toccano. Un indice unico parziale ammette una sola
+`PUBBLICATA` per perimetro, e per questo la funzione **ritira prima** la vecchia e **poi** pubblica la
+nuova: nell'ordine inverso le due righe colliderebbero sull'indice.
+
+Le due transizioni, `PUBBLICATA → RITIRATA` sulla precedente e `BOZZA → PUBBLICATA` sulla nuova, passano
+dal guard della definizione, che le ammette.
 
 ---
+
+### Accesso
+
+La funzione è `SECURITY DEFINER` con `search_path` fisso: gli aggiornamenti di stato girano come
+proprietario, e il ruolo applicativo li esegue senza permessi di scrittura diretti sulla tabella delle
+definizioni. L'esecuzione è concessa al solo ruolo applicativo; chi può pubblicare lo decide il backend,
+che riserva l'operazione al super admin.
+
+---
+
+### Codici errore
+
+* `E_PARAMETRO_INVALIDO` — id assente o non positivo.
+* `E_VALORE_MANCANTE` — la definizione non esiste.
+* `E_DEFINIZIONE_NON_PUBBLICABILE` — non in `BOZZA`, nessuno step attivo, oppure ciclo nei prerequisiti.
+
+---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase2` — pubblicazione atomica col ritiro della precedente; ciclo e
+  definizione non in bozza rifiutati.
+
+---
+
+### Note di migrazione
+
+* 2026-07-03 — nasce con le definizioni versionate, e lo stesso giorno diventa `SECURITY DEFINER` con
+  l'esecuzione ristretta al ruolo applicativo.
+
+---
+
 {% include-markdown "signature-core.md" %}

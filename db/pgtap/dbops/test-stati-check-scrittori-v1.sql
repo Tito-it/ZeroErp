@@ -18,10 +18,11 @@
 -- modello (nel CHECK di una colonna di stato) e mai scritto.
 --
 -- ChangeSet di riferimento: 20260921-15 (registro), 20260921-16 (misura),
---                           20260921-17 (lista di lavoro), 20260921-19 (seed)
+--                           20260921-17 (lista di lavoro), 20260921-19 (seed),
+--                           20261104-28 (il corpo da dbops.fn_corpo_funzione)
 -- Brief: brief-db-presidio-stati-mai-scritti §2, §3-bis, §4
 --
--- Indice test (plan 14):
+-- Indice test (plan 17):
 --   1) ⭐ il perimetro vede ancora le TRENTADUE colonne misurate il 21-09 — o
 --      il loro CHECK non e' piu' di quella forma
 --   2) ⛔ IL PRESIDIO: nessuna riga NON_DICHIARATO in vw_stati_check_da_sanare
@@ -54,6 +55,11 @@
 --  15) ⛔ una FIXTURE pgTAP (prefisso fn_pgtap_) che scrive il valore — per
 --      via diretta e per via indiretta — non lo rende SCRITTO: il presidio
 --      misura il sistema, non chi lo collauda (COSTRUITO, rev 20260923-51)
+--  16) ⭐ uno scrittore SQL `BEGIN ATOMIC` rende SCRITTO il suo valore: il
+--      corpo non sta in prosrc (COSTRUITO, rev 20261104-28 — D15)
+--  17) ⭐ un letterale '--' sulla riga dello scrittore non gli taglia il
+--      valore: i commenti si tolgono rispettando i letterali (COSTRUITO, rev
+--      20261104-28 — D14)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⛔ IL PROBLEMA, E PERCHE' NON SI VEDE.
@@ -100,7 +106,7 @@ BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(15);
+SELECT plan(17);
 
 -- ============================================================
 -- ⭐ LA MISURA SI PRENDE UNA VOLTA, NON QUATTORDICI
@@ -218,13 +224,15 @@ SELECT is(
 -- ⛔ I test 1..3 girano PRIMA: dopo queste righe il database contiene apposta
 --   valori non dichiarati, e l'ordine non e' un dettaglio.
 
--- La tabella di prova: nove valori, un default, e nessun OTTO (serve al
+-- La tabella di prova: dieci valori, un default, e nessun OTTO (serve al
 -- test 11: una riga di registro su un valore che nel CHECK non c'e').
+-- DIECI e UNDICI (rev 20261104-28) hanno uno scrittore ciascuno, quindi non
+-- entrano nella lista di lavoro del test 14.
 CREATE TABLE dbops.pgtap_stati_prova (
     id    int  PRIMARY KEY,
     stato text NOT NULL DEFAULT 'UNO'
           CONSTRAINT chk_pgtap_stati_prova_stato
-          CHECK (stato = ANY (ARRAY['UNO','DUE','TRE','QUATTRO','CINQUE','SEI','SETTE','NOVE']))
+          CHECK (stato = ANY (ARRAY['UNO','DUE','TRE','QUATTRO','CINQUE','SEI','SETTE','NOVE','DIECI','UNDICI']))
 );
 
 -- La forma VARCHAR: PostgreSQL la scrive `((stato)::text = ANY ((ARRAY[…
@@ -305,6 +313,25 @@ CREATE FUNCTION dbops.fn_prova_stati_sette()
 RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
     UPDATE dbops.pgtap_stati_prova SET stato = 'SETTE' WHERE id = 1;
+END
+$f$;
+
+-- 16. Lo scrittore SQL BEGIN ATOMIC: prosrc e' VUOTO, il corpo sta in
+--     prosqlbody. Prima di 20261104-28 la vista non lo vedeva, e DIECI usciva
+--     NON_DICHIARATO.
+CREATE FUNCTION dbops.fn_prova_stati_dieci()
+RETURNS void LANGUAGE sql
+BEGIN ATOMIC
+    UPDATE dbops.pgtap_stati_prova SET stato = 'DIECI' WHERE id = 1;
+END;
+
+-- 17. Un letterale '--' PRIMA del valore, sulla stessa riga. La copia di
+--     prima toglieva da '--' a fine riga e UNDICI spariva; il building block
+--     sa che quel '--' sta dentro un letterale.
+CREATE FUNCTION dbops.fn_prova_stati_undici(p_nota text)
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    UPDATE dbops.pgtap_stati_prova SET stato = CASE WHEN p_nota = '--' THEN 'UNDICI' END WHERE id = 1;
 END
 $f$;
 
@@ -451,10 +478,28 @@ SELECT is(
     '15. una FIXTURE pgTAP (fn_pgtap_*) che scrive il valore, diretta o indiretta, non lo rende SCRITTO: il presidio misura il sistema, non chi lo collauda'
 );
 
+SELECT is(
+    (SELECT w.esito || ' / fn=' || w.scrittori_fn || ' / ' || w.scrittori_nomi
+       FROM _misura_1 w
+      WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova' AND w.valore = 'DIECI'),
+    'SCRITTO / fn=1 / dbops.fn_prova_stati_dieci',
+    '16. uno scrittore SQL BEGIN ATOMIC rende SCRITTO il suo valore: il corpo si legge da dbops.fn_corpo_funzione, non da prosrc (vuoto)'
+);
+
+SELECT is(
+    (SELECT w.esito || ' / fn=' || w.scrittori_fn || ' / ' || w.scrittori_nomi
+       FROM _misura_1 w
+      WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova' AND w.valore = 'UNDICI'),
+    'SCRITTO / fn=1 / dbops.fn_prova_stati_undici',
+    '17. un letterale ''--'' sulla riga dello scrittore non gli taglia il valore: i commenti si tolgono rispettando i letterali'
+);
+
 DELETE FROM dbops.stati_check_dichiarazioni
  WHERE schema_tabella = 'dbops' AND nome_tabella = 'pgtap_stati_prova';
 DROP FUNCTION dbops.fn_pgtap_crea_stati_nove();
 DROP FUNCTION dbops.fn_prova_stati_sette();
+DROP FUNCTION dbops.fn_prova_stati_undici(text);
+DROP FUNCTION dbops.fn_prova_stati_dieci();
 DROP FUNCTION dbops.fn_prova_stati_terzo();
 DROP FUNCTION dbops.fn_prova_stati_chiama_param(text);
 DROP FUNCTION dbops.fn_prova_stati_chiama();

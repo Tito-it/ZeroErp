@@ -1,142 +1,127 @@
-# lock_columns_conditional
+## 📘 Documentazione Concettuale – Tabella `dbops.lock_columns_conditional`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-> - [dbops.fn_non_editable_fields](/dbzero/dbops/manual/fn_non_editable_fields) — funzione che unisce lock statici e condizionali per una riga specifica
-> - [dbops.vw_non_editable_fields](/dbzero/dbops/manual/vw_non_editable_fields) — lock statici (incondizionati)
-> - [dbops.automation_lock_columns](/dbzero/dbops/manual/automation_lock_columns) — tabella sorgente dei lock statici
-> - [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva) — prima applicazione: guard trigger simmetrico
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns) — i lock che valgono sempre, per ogni riga
+>
+> Approfondimento viste:
+>
+> * [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields) — i lock statici, che il form riceve insieme a quelli di qui
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_non_editable_fields](/dbzero/dbops/funzioni/fn_non_editable_fields) — valuta le regole su una riga e dice al form quali campi spegnere
+> * [catalogo.fn_articolo_colonne_struttura](/dbzero/catalogo/funzioni/fn_articolo_colonne_struttura) — legge da qui le colonne strutturali di un articolo
+> * [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — il predicato condiviso dalla regola del form e dal guard
+> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi) — i predicati della distinta, condivisi con il guard
+> * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che rifiuta, gemello delle regole sulla distinta
+> * [catalogo.trgfn_articoli_guard_struttura_se_usato](/dbzero/catalogo/funzioni/trgfn_articoli_guard_struttura_se_usato) — il guard che rifiuta, gemello delle regole sull'uso
 
-## Scopo
+---
 
-(latest review 2026-05-22)
+### 🎯 Scopo Principale
 
-`dbops.lock_columns_conditional` e' il registro dei **lock condizionali** sulle
-colonne di entita' applicative: colonne che diventano non editabili solo quando
-una condizione legata allo stato della riga specifica e' vera.
+Il registro dei **lock condizionali**: colonne che non si possono modificare solo quando una
+condizione sulla riga è vera — per esempio un flag di struttura di un articolo che è padre di una
+distinta in vigore, o una colonna strutturale di un articolo già usato. Serve al **form**: dice
+quali campi spegnere per quella riga.
 
-Complementare a `dbops.automation_lock_columns` (lock statici, sempre attivi):
+È il complemento dei lock statici di `dbops.automation_lock_columns`, che valgono sempre. Le due
+fonti arrivano insieme al form attraverso `dbops.fn_non_editable_fields`.
 
-| Tipo lock | Registro | Quando si attiva |
+---
+
+### ⭐ Segnala, non rifiuta
+
+Una regola di qui non ferma nessuna scrittura: a rifiutare il salvataggio è un guard trigger
+sulla tabella, che ha la regola scritta per conto suo. La riga di qui è il suo **gemello per il
+form**: spegne il campo prima che l'operatore provi a cambiarlo.
+
+Per questo togliere o disattivare una regola non apre la colonna: il guard continua a rifiutare,
+e la colonna smette solo di apparire spenta. È la direzione sicura.
+
+⭐ Due copie della stessa regola prima o poi divergono (è successo col giorno di riferimento,
+passato da quello del server a quello aziendale in una sola delle due). Per questo una regola
+**chiama lo stesso predicato** del guard, e non ne ricopia la condizione:
+
+| Regole su `catalogo.articoli` | Predicato | Guard |
 | --- | --- | --- |
-| **Statico** | `automation_lock_columns` → `vw_non_editable_fields` | Sempre, per qualsiasi riga |
-| **Condizionale** | `lock_columns_conditional` → `fn_non_editable_fields` | Solo se `condition_expr` e' TRUE per la riga specifica |
+| `is_composito`, `requires_serial`: padre di una distinta in vigore | `catalogo.fn_articolo_padre_di_distinta_in_vigore` | check 1 di `trgfn_articoli_guard_flags_struttura_bom_attiva` |
+| `is_solo_componente`: componente di una distinta in vigore | `catalogo.fn_articolo_componente_di_distinta_in_vigore` | check 2 dello stesso |
+| `is_composito`: componente di una distinta in vigore o futura | `catalogo.fn_articolo_primo_padre_da_oggi` (non NULL) | check 3 dello stesso |
+| le otto colonne strutturali: articolo usato | `catalogo.fn_articolo_usato` | `trgfn_articoli_guard_struttura_se_usato` |
+
+La regola del check 3 aggiunge la sua metà di stato, «l'articolo non è già composito»: nel guard
+la stessa condizione è la transizione da falso a vero. Il presidio è
+`catalogo/test-distinta-predicati-guard-e-form-v1`: nessuna regola legge la distinta da sé, e form
+e guard rispondono uguale.
 
 ---
 
-## Schema DB
+### La condizione
 
-`dbops`
+`condition_expr` è un'espressione booleana che si valuta sulla riga: `$1` è l'id della riga,
+passato come testo, e il cast al tipo giusto lo fa l'espressione. Vero spegne il campo; falso o
+vuoto no. L'id entra come parametro, quindi non può iniettare codice; l'espressione invece si
+esegue così com'è scritta, e non deve avere effetti.
 
-## Struttura tabella
-
-| Colonna | Tipo | Descrizione |
-| --- | --- | --- |
-| `id` | `INTEGER IDENTITY` | PK surrogata |
-| `schema_name` | `text NOT NULL` | Schema della tabella target (es. `catalogo`) |
-| `table_name` | `text NOT NULL` | Tabella target (es. `articoli`) |
-| `column_name` | `text NOT NULL` | Colonna che diventa non editabile se la condizione e' vera |
-| `condition_expr` | `text NOT NULL` | Snippet SQL booleano. `$1` = id riga come `text` |
-| `descrizione` | `text` | Spiegazione in linguaggio naturale (per audit e revisione) |
-| `enabled` | `boolean NOT NULL DEFAULT true` | Abilita/disabilita senza eliminare la riga |
-| Audit | `data_insert`, `user_insert`, `data_update`, `user_update` | Tracciabilita' standard |
-
-**UNIQUE**: `(schema_name, table_name, column_name, condition_expr)` — previene duplicati
-testuali della stessa regola. Per duplicati semantici (whitespace) il code review e'
-sufficiente data la policy "solo-migration".
+La valutazione gira con i diritti e la row level security di chi chiede: le tabelle che
+l'espressione legge devono essere leggibili da chi usa il form. Un predicato che deve vedere oltre
+la RLS — l'uso di un articolo nei documenti di altre aziende — è una funzione `SECURITY DEFINER`
+che la condizione chiama.
 
 ---
 
-## condition_expr — sintassi e vincoli
+### Chi scrive e chi legge
 
-`condition_expr` e' un frammento SQL che:
-
-1. Deve restituire un **boolean** (TRUE/FALSE/NULL). NULL viene trattato come FALSE.
-2. Usa `$1` come placeholder parametrico per l'id della riga target (`text`).
-   Il cast al tipo della colonna FK e' a carico dell'espressione.
-3. E' concatenato direttamente nel corpo della query dinamica:
-   ```sql
-   EXECUTE 'SELECT (' || condition_expr || ')' USING p_record_id INTO v_match
-   ```
-4. Non deve contenere DDL, side effects, o transazioni nidificate.
-
-**Regola di accesso**: la tabella e' scrivibile **solo via migration Liquibase**.
-Nessuna API espone questa tabella. Il code review e' la protezione principale.
-Non e' previsto un trigger di validazione sintattica (aggiungerebbe complessita' per
-una sicurezza marginale su un dato accessibile solo a migration author).
-
-**Esempio condition_expr per articolo padre di BoM attiva:**
-
-```sql
-EXISTS (
-    SELECT 1 FROM catalogo.articoli_componenti
-     WHERE prodotto_id = $1::uuid
-       AND attivo IS TRUE
-       AND validita @> CURRENT_DATE
-)
-```
-
-`$1::uuid`: l'id di `catalogo.articoli` e' UUID; il cast e' necessario perche'
-`fn_non_editable_fields` passa `p_record_id` come `text`.
+* Si scrive **solo da migrazione**: nessuna API espone il registro, e la revisione del codice è
+  la protezione dell'espressione. Non c'è una validazione della sintassi.
+* `enabled` falso spegne la regola senza cancellarla.
+* La chiave unica è (`schema_name`, `table_name`, `column_name`, `condition_expr`): più regole
+  sulla stessa colonna sono ammesse, e il campo si spegne se una qualsiasi vale.
+* ⚠️ C'è un secondo lettore: `catalogo.fn_articolo_colonne_struttura` ricava le colonne
+  strutturali di un articolo dalle regole accese di `catalogo.articoli` la cui condizione è,
+  testualmente, la chiamata a `catalogo.fn_articolo_usato`. Una regola riscritta con un testo
+  diverso esce da quell'elenco.
 
 ---
 
-## Come aggiungere una nuova regola
+### Test
 
-1. Identificare la colonna, la tabella, e la condizione SQL che attiva il lock.
-2. Verificare che la stessa logica sia enforced a DB da un guard trigger
-   (defense-in-depth: il lock condizionale segnala al FE, il trigger rifiuta al save).
-3. Creare una migration in `80_data/` con INSERT in `lock_columns_conditional`.
-4. Aggiornare la doc manuale della tabella target (sezione `non_editable_fields`).
-
-```sql
-INSERT INTO dbops.lock_columns_conditional
-    (schema_name, table_name, column_name, condition_expr, descrizione)
-VALUES
-    (
-        'schema',
-        'tabella',
-        'colonna',
-        'EXISTS (SELECT 1 FROM ... WHERE fk = $1::tipo AND attivo IS TRUE)',
-        'Spiegazione human-readable del perche'' la colonna e'' bloccata'
-    )
-ON CONFLICT ON CONSTRAINT uq_lock_columns_conditional DO UPDATE
-    SET descrizione = EXCLUDED.descrizione,
-        data_update = now(),
-        user_update = CURRENT_USER;
-```
+* `db/pgtap/dbops/test-fn-non-editable-fields-conditional.sql` — le regole sulla distinta: i flag
+  spenti per il padre di una distinta in vigore, per il figlio in vigore e per il figlio di una
+  distinta futura.
+* `db/pgtap/catalogo/test-distinta-predicati-guard-e-form-v1.sql` — le regole sulla distinta chiamano i
+  predicati del guard, e per i tre flag form e guard rispondono uguale.
+* `db/pgtap/catalogo/test-articolo-usato-struttura-v1.sql` — un articolo usato ha le colonne
+  strutturali spente nel form.
+* `db/pgtap/catalogo/test-articolo-colonne-struttura-v1.sql` — l'elenco delle colonne strutturali
+  letto da qui coincide con quello scritto nel guard.
+* `db/pgtap/catalogo/test-distinta-un-livello-e-onere-natura-v1.sql`,
+  `db/pgtap/vendite/test-righe-articolo-ammesso-v1.sql` — le regole gemelle dei guard sulla
+  distinta a un livello e sul solo componente.
 
 ---
 
-## Casi registrati (al 2026-05-22)
+### Note di migrazione
 
-| Schema | Tabella | Colonna | Condizione (sintesi) | Guard trigger simmetrico |
-| --- | --- | --- | --- | --- |
-| `catalogo` | `articoli` | `is_composito` | Articolo padre di BoM attiva (`prodotto_id = $1::uuid`) | `trg_articoli_a10_guard_flags_struttura_bom_attiva_upd` |
-| `catalogo` | `articoli` | `requires_serial` | Articolo padre di BoM attiva (`prodotto_id = $1::uuid`) | `trg_articoli_a10_guard_flags_struttura_bom_attiva_upd` |
-| `catalogo` | `articoli` | `is_solo_componente` | Articolo figlio in BoM attiva (`componente_id = $1::uuid`) | `trg_articoli_a10_guard_flags_struttura_bom_attiva_upd` |
-
----
-
-## Dipendenze
-
-| Oggetto | Tipo | Motivo |
-| --- | --- | --- |
-| `dbops.fn_non_editable_fields` | Funzione | Consumer principale: valuta `condition_expr` e unisce i risultati con i lock statici |
-| `dbops.vw_non_editable_fields` | Vista | Complementare: lock statici che `fn_non_editable_fields` include nel risultato |
+* 2026-05-22 — nasce, con le regole sui flag di struttura di un articolo padre o figlio di una
+  distinta attiva.
+* 2026-10-10 — le regole sulla distinta confrontano col giorno aziendale invece della data del
+  server, come il guard.
+* 2026-10-13 — entrano la regola del componente che non diventa composito e quelle
+  sull'articolo usato (`brief-db-articoli-ammessi-per-documento`); esce la regola del solo
+  componente in bozza, assorbita dall'uso.
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
+* 2026-11-08 — le quattro regole sulla distinta chiamano i predicati del guard invece di
+  ricopiarne la condizione (`20261109-64`, brief-db-revisione-dbops D28).
 
 ---
 
-## Note operative
-
-- **SECURITY INVOKER**: `fn_non_editable_fields` esegue `condition_expr` con i permessi
-  del chiamante. Le tabelle referenziate in `condition_expr` devono avere `SELECT` concesso
-  al ruolo applicativo (`zeroerp_app`). Se RLS e' attiva, filtra le righe visibili —
-  comportamento corretto per il principio di minimo privilegio.
-- **Guard trigger disaccoppiato**: il trigger DB che rifiuta la modifica e' self-contained
-  (hardcoded). Se una riga viene rimossa da `lock_columns_conditional`, il trigger continua
-  a rifiutare il save — la colonna smette solo di apparire come non editabile nel segnale API.
-  Questo e' il comportamento voluto (defense-in-depth nella direzione corretta).
-- **enabled = false**: disabilita temporaneamente una regola senza cancellarla. Utile
-  durante patch di dati autorizzati. Reimpostare `enabled = true` a fine intervento.
-- Migration di riferimento: `20260522-02` (tabella), `20260522-03` (funzione), `20260522-04` (seed articoli).
+{% include-markdown "signature-core.md" %}

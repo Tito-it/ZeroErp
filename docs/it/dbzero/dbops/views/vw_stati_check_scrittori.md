@@ -39,7 +39,7 @@ WITH colonne AS (
          SELECT p.oid,
             (p.proname)::text AS proname,
             (((pn.nspname)::text || '.'::text) || (p.proname)::text) AS funzione,
-            regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/'::text, ''::text, 'g'::text), '--[^\n]*'::text, ''::text, 'g'::text) AS sorgente
+            (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS sorgente
            FROM ((pg_proc p
              JOIN pg_namespace pn ON ((pn.oid = p.pronamespace)))
              JOIN pg_language l ON ((l.oid = p.prolang)))

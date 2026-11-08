@@ -1,58 +1,80 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_articoli_ammessi`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — la regola, documento per documento
-> [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/manual/trgfn_righe_guard_articolo_ammesso) — il guard che rifiuta con lo stesso motivo
-> [vendite.fn_listini_selezionabili](/dbzero/vendite/funzioni/fn_listini_selezionabili) — il precedente, per il listino del documento
-
-### 🎯 Scopo Principale
-
-(nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: R-2, R-4, R-5; A-1, A-2, A-7)
-
-È la **sede unica del picker** degli articoli di una riga. Dato il documento e il testo cercato,
-restituisce gli articoli che la ricerca trova, ciascuno col **primo motivo** per cui il documento
-non lo ammette. `motivo` vuoto (`NULL`) vuol dire ammesso. Prima vengono gli ammessi, poi gli
-esclusi, ciascun gruppo per codice.
-
-Il motivo è quello che il guard di tabella solleverebbe scrivendo la riga, perché viene dalla
-**stessa regola** ([script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga)).
-Il picker non propone un articolo che poi viene rifiutato, e non nasconde un articolo che il
-database accetterebbe.
-
-Un articolo escluso **resta nell'elenco**, col suo motivo: chi cerca un codice preciso e non lo
-vede fra gli ammessi sa perché. Come mostrarlo (grigio con la spiegazione, oppure solo quando la
-ricerca non trova ammessi) lo decide l'interfaccia.
+> Approfondimento tabelle:
+>
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — gli articoli fra cui si cerca
+>
+> Approfondimento viste:
+>
+> * [catalogo.vw_articoli_dettaglio](/dbzero/catalogo/views/vw_articoli_dettaglio) — le colonne dell'articolo che il chiamante unisce al risultato
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_articolo_riga_contesto](/dbzero/script/funzioni/fn_articolo_riga_contesto) — il lato documento della regola, letto una volta
+> * [script.fn_check_articolo_riga_su_contesto](/dbzero/script/funzioni/fn_check_articolo_riga_su_contesto) — il giudizio di ogni articolo su quel contesto
+> * [script.fn_check_articolo_riga](/dbzero/script/funzioni/fn_check_articolo_riga) — la stessa regola, come la chiama il guard
+> * [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/funzioni/trgfn_righe_guard_articolo_ammesso) — il guard che rifiuta con lo stesso motivo
+> * [vendite.fn_listini_selezionabili](/dbzero/vendite/funzioni/fn_listini_selezionabili) — il picker gemello, per il listino del documento
+>
+> Guide:
+>
+> * [Uso di obsoleto](/guide/uso-di-obsoleto) — l'articolo ritirato fra gli esclusi
 
 ---
 
-### Documenti
+### 🎯 Scopo Principale
 
-| `p_documento` | Il documento | Che cosa serve |
+Il picker degli articoli di una riga: dato il documento e il testo cercato, restituisce gli
+articoli trovati, ciascuno col primo motivo per cui il documento non lo ammette. Un motivo vuoto
+vuol dire ammesso; prima vengono gli ammessi, poi gli esclusi, ciascun gruppo per codice.
+
+⭐ Il motivo viene dalla stessa regola che il guard di riga applica quando la riga si salva.
+Il picker non propone un articolo che poi viene rifiutato, e non nasconde un articolo che il
+database accetterebbe.
+
+---
+
+### Un articolo escluso resta nell'elenco
+
+Un articolo escluso esce col suo motivo: chi cerca un codice preciso e non lo vede fra gli
+ammessi sa perché. Come mostrarlo (grigio con la spiegazione, oppure solo quando non ci sono
+ammessi) lo decide l'interfaccia.
+
+Il picker propone una scelta nuova: un articolo ritirato (`obsoleto_dal` di oggi o passato) esce fra gli
+esclusi col motivo `E_ARTICOLO_OBSOLETO`, lo stesso che il guard solleva su una riga nuova.
+
+---
+
+### I documenti
+
+| Documento | Le righe | Che cosa serve |
 | --- | --- | --- |
 | `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA` | le righe del documento | l'id della testata |
-| `OFFERTA_COMMERCIALE`, `CONTRATTO` | le righe d'eccezione al listino | l'id e il tipo d'eccezione (`AGGIUNTA`, `OVERRIDE`, `ESCLUSIONE`) |
+| `OFFERTA_COMMERCIALE`, `CONTRATTO` | le eccezioni al listino | l'id e il tipo d'eccezione (`AGGIUNTA`, `OVERRIDE`, `ESCLUSIONE`) |
 | `LISTINO_VERSIONE` | le righe di una versione di listino | l'id della versione |
-| `ARTICOLO` | i componenti di una distinta | il padre (`p_articolo_padre_id`) |
+| `ARTICOLO` | i componenti di una distinta | l'articolo padre |
 | `PROMO_ARTICOLO` | l'articolo di una promo | niente: la regola dipende solo dall'articolo |
 
-Le righe ricevono **l'id del documento salvato**, non i valori del form (A-1): il guard giudica
-la riga contro la testata salvata, e il picker deve fare la stessa domanda. La testata nasce
-sempre prima delle righe, quindi l'id c'è sempre.
+Le righe ricevono l'id del documento salvato, non i valori del form: il guard giudica la riga
+contro la testata salvata, e il picker deve fare la stessa domanda. La testata nasce sempre
+prima delle righe, quindi l'id c'è.
 
 ---
 
 ### Che cosa propone
 
-* Solo gli articoli **attivi**: ogni riga pretende un articolo attivo, e uno spento non si
-  propone.
-* La ricerca è un «contiene», senza distinzione fra maiuscole e minuscole, sul codice o sulla
-  descrizione. Il testo è letterale: `%` o `_` non fanno da jolly. Testo vuoto: tutti.
-* Il tetto (`p_limit`) lo sceglie il chiamante; si applica **dopo** aver giudicato tutti gli
-  articoli trovati, perché «prima gli ammessi» non si può decidere sui soli primi.
-* `ordine` è la posizione nell'elenco: chi unisce altre colonne dell'articolo (per esempio da
-  `catalogo.vw_articoli_dettaglio`) ordina su questa.
-* Nella **versione di listino** un composito esce col motivo `COMPOSITO_COME_BUNDLE`: come riga
+* Solo articoli attivi: ogni riga pretende un articolo attivo.
+* La ricerca è un «contiene» sul codice o sulla descrizione, senza distinzione fra maiuscole e
+  minuscole. Il testo è letterale: `%` e `_` non fanno da jolly. Un testo vuoto trova tutti.
+* Il tetto lo sceglie il chiamante, e vuoto vuol dire nessun tetto. Si applica dopo aver
+  giudicato tutti gli articoli trovati, perché «prima gli ammessi» non si decide sui soli
+  primi.
+* `ordine` è la posizione nell'elenco: chi unisce altre colonne dell'articolo ordina su questa.
+* Nella versione di listino un composito esce col motivo `COMPOSITO_COME_BUNDLE`: come riga
   semplice è rifiutato, ma nella versione entra come bundle, coi prezzi dei componenti.
   L'interfaccia lo propone per quella strada.
 
@@ -62,36 +84,48 @@ sempre prima delle righe, quindi l'id c'è sempre.
 
 La regola è divisa in due metà:
 
-1. [script.fn_articolo_riga_contesto](/dbzero/script/manual/fn_articolo_riga_contesto) legge
-   **una volta** il lato documento (il listino operativo e la sua versione espansa, la tipologia
-   del listino, il padre della distinta) e valida i parametri;
-2. [script.fn_check_articolo_riga_su_contesto](/dbzero/script/manual/fn_check_articolo_riga_su_contesto)
-   giudica **ogni articolo** trovato su quel contesto.
+1. `script.fn_articolo_riga_contesto` legge una volta il lato documento (il listino in vigore e
+   la sua versione espansa, la tipologia del listino, il padre della distinta) e valida i
+   parametri;
+2. `script.fn_check_articolo_riga_su_contesto` giudica ogni articolo trovato su quel contesto.
 
-Il guard usa le stesse due metà attraverso la firma di sempre. Leggere il documento una volta
-sola è ciò che rende il picker abbastanza veloce da girare a ogni tasto premuto.
+Il guard usa le stesse due metà attraverso `script.fn_check_articolo_riga`. Leggere il documento
+una volta sola rende il picker abbastanza veloce da girare a ogni tasto premuto.
+
+Il picker giudica l'articolo. I motivi che dipendono da altri valori della riga, come
+l'erogazione e la fonte della quantità di un'offerta, si giudicano quando la riga si salva.
+
+La funzione è SECURITY INVOKER: il documento si legge con i permessi dell'operatore, come lo
+legge il guard.
+
+---
+
+### Codici errore
+
+* `E_PARAMETRO_INVALIDO` — manca l'id per un documento con testata; il tetto è minore di uno;
+  manca il tipo d'eccezione per offerta e contratto; manca il padre per la distinta.
+* `E_DOC_TIPO_NON_GESTITO` — il documento non è fra quelli della tabella sopra.
+
+Il motivo di un articolo escluso non è un errore: è un oggetto con il codice, la ragione, la
+chiave di traduzione, il dettaglio e i valori del messaggio.
 
 ---
 
-### Firma
+### Test
 
-```sql
-catalogo.fn_articoli_ammessi(
-    p_documento         text,     -- codice di config.tipi_entita
-    p_documento_id      bigint,   -- la testata (o la versione di listino)
-    p_search            text    DEFAULT NULL,
-    p_limit             integer DEFAULT 50,
-    p_tipo_eccezione    vendite.tipo_eccezione_contratto DEFAULT NULL,
-    p_articolo_padre_id uuid    DEFAULT NULL)
-RETURNS TABLE(articolo_id uuid, codice varchar, descrizione varchar, motivo jsonb, ordine integer)
-```
-
-* `motivo`: `{codice, reason, reason_key, dettaglio, valori}`, il primo dell'array della check.
-* Errori: id mancante per un documento con testata, o `p_limit` minore di 1:
-  `E_PARAMETRO_INVALIDO`; documento sconosciuto: `E_DOC_TIPO_NON_GESTITO`; tipo d'eccezione
-  mancante per offerta e contratto, o padre mancante per la distinta: `E_PARAMETRO_INVALIDO`.
-* Sotto RLS (`SECURITY INVOKER`): il documento si legge con i permessi dell'operatore, come lo
-  legge il guard.
+* `db/pgtap/catalogo/test-articoli-ammessi-picker-v1.sql` — su documenti e articoli costruiti, il
+  picker e il guard danno lo stesso motivo; gli ammessi vengono prima; il composito nella
+  versione di listino, il kit senza componenti, il solo componente, l'articolo spento e la promo.
+* `db/pgtap/script/test-ammissione-articoli-onere-righe-v1.sql` — sull'ordine il picker ammette
+  la merce e l'onere, non il servizio.
 
 ---
+
+### Note di migrazione
+
+* 2026-10-14 — nasce (brief-db-articoli-ammessi-per-documento).
+* 2026-11-06 — l'articolo ritirato esce fra gli esclusi (brief-db-articoli-obsoleto-dal).
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -217,6 +217,11 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.modo_approvvigionamento_descrizione",
     "a.gestito_a_magazzino",
     "a.lead_time_giorni",
+    # Onere (20261103-53, brief-db-addebito-trasporto-ordine §9.9): l'articolo
+    # e' un addebito, non un bene. Il form articolo spegne magazzino, composito,
+    # lotto e seriale, che il guard DB rifiuta su un onere.
+    "a.e_onere",
+    "a.causale_onere_id",
 )
 
 
@@ -253,6 +258,8 @@ LOOKUP_ARTICOLI_MAX = 50
 # I flag di MAGAZZINO (Lotto 2, 2026-09-18): il form di riga dell'inventario
 # mostra lotto e seriale SOLO se l'articolo li pretende, e li legge dalla riga
 # scelta nel picker — mai ricalcolati (piano-be-fe-magazzino-lotto-2-motore §5.3).
+# L'ONERE (2026-11-03): sulla riga d'ordine nuova il form spegne le date di
+# consegna se l'articolo scelto e' un onere (brief-db-addebito-trasporto-ordine §9.9).
 _LOOKUP_ARTICOLI_COLONNE = """a.id,
                 a.codice,
                 a.descrizione,
@@ -266,7 +273,9 @@ _LOOKUP_ARTICOLI_COLONNE = """a.id,
                 a.iva_aliquota_iva,
                 a.gestito_a_magazzino,
                 a.requires_lotto,
-                a.requires_serial"""
+                a.requires_serial,
+                a.e_onere,
+                a.causale_onere_id"""
 
 
 class CatalogoRepository:
@@ -465,9 +474,6 @@ class CatalogoRepository:
         safe_limit = max(1, min(int(limit), LOOKUP_ARTICOLI_MAX))
         conditions: list[str] = []
         params: list[Any] = []
-        # Il JOIN sulla base `catalogo.articoli` (oggi lo chiede il filtro
-        # degli oneri): si aggiunge UNA volta sola, con lo stesso alias.
-        needs_articoli_join = False
         join_clause = ""
 
         # ⚠️ La lookup NON e' una lista: non ha un catalogo da leggere e non passa
@@ -510,22 +516,18 @@ class CatalogoRepository:
         #    check: attivi/inattivi, `is_composito`, `gestito_a_magazzino`, oneri.
         # Porta oneri: un articolo E' un onere se ha una causale collegata
         # (`causale_onere_id` NOT NULL, legame 1:1 — brief porta-oneri §4c.8).
-        # La vista dettaglio non espone la causale: JOIN sulla base + vocabolario
-        # per portare a video la causale accanto all'articolo (display fields lato
-        # BE, il FE non fa lookup client-side).
+        # `e_onere` e `causale_onere_id` li espone la vista dal 20261103-53 (e
+        # sono gia' fra le colonne del picker): qui si aggiunge solo il
+        # vocabolario, per portare a video la causale accanto all'articolo
+        # (display fields lato BE, il FE non fa lookup client-side).
         extra_cols = ""
         if solo_oneri:
-            needs_articoli_join = True
-            join_clause += " JOIN config.causali_onere co ON co.id = art.causale_onere_id"
-            conditions.append("art.causale_onere_id IS NOT NULL")
+            join_clause += " JOIN config.causali_onere co ON co.id = a.causale_onere_id"
+            conditions.append("a.e_onere")
             extra_cols = (
-                ",\n                    art.causale_onere_id,"
-                "\n                    co.codice AS causale_onere_codice,"
+                ",\n                    co.codice AS causale_onere_codice,"
                 "\n                    co.descrizione AS causale_onere_descrizione"
             )
-
-        if needs_articoli_join:
-            join_clause = " LEFT JOIN catalogo.articoli art ON art.id = a.id" + join_clause
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -534,10 +536,10 @@ class CatalogoRepository:
         #    due sedi che divergono al primo cambio. Il `+1`, il taglio e il
         #    flag stanno insieme dentro `fetch_con_sonda` — sono una cosa sola.
         #    Vedi migliorie-generali-BE-FE-da-test-valutazione.md §D6.
-        # ⚠️ La sonda regge perche' i due JOIN qui sopra sono 1:1 (`art` sulla
-        #    PK, `co` su una FK): un JOIN che moltiplicasse le righe le
-        #    farebbe contare due volte, e l'elenco direbbe «troncato» quando e'
-        #    intero. Chi aggiunge un JOIN a questa query deve guardare qui.
+        # ⚠️ La sonda regge perche' il JOIN qui sopra e' 1:1 (`co` su una
+        #    FK): un JOIN che moltiplicasse le righe le farebbe contare due
+        #    volte, e l'elenco direbbe «troncato» quando e' intero. Chi
+        #    aggiunge un JOIN a questa query deve guardare qui.
         return fetch_con_sonda(
             f"""
             SELECT

@@ -14,7 +14,7 @@
 #         2. anteprima_render_solleva_propaga_no_persist
 #         3. anteprima_input_guard_su_id
 #         4. list_per_sorgente_happy_path_paginato
-#         5. list_per_sorgente_input_guard_su_uid_vuoto
+#         5. list_per_sorgente_input_guard_su_id_non_positivo
 #         6. list_per_sorgente_anon_user_raises_validation
 #         7. download_happy_path_legge_storage_emit_scaricato
 #         8. download_documento_inesistente_raises_not_found
@@ -31,6 +31,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_error_fakes import make_db_error
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
@@ -196,7 +197,7 @@ class ListPerSorgenteTests(SimpleTestCase):
             result = svc.list_documenti_per_sorgente(
                 make_user(),
                 sorgente_tipo_id=10,
-                sorgente_uid="uid-100",
+                sorgente_id=100,
                 limit=20,
                 offset=0,
             )
@@ -205,23 +206,45 @@ class ListPerSorgenteTests(SimpleTestCase):
         repo.list_documenti_per_sorgente.assert_called_once()
         kwargs = repo.list_documenti_per_sorgente.call_args.kwargs
         self.assertEqual(kwargs["emittente_ids_scope"], [11, 22])
-        self.assertEqual(kwargs["sorgente_uid"], "uid-100")
+        # La chiave con cui la stampa è scritta (giro D.1): la coppia del DB
+        # per l'id dell'entità, la stessa di `genera_documento`.
+        repo.chiave_sorgente.assert_called_once_with(sorgente_tipo_id=10, chiave="100")
+        self.assertEqual(kwargs["sorgente_id"], 100)
+        self.assertIsNone(kwargs["sorgente_uid"])
         self.assertEqual(kwargs["limit"], 20)
         self.assertEqual(kwargs["offset"], 0)
 
-    # 5. sorgente_uid vuoto -> VALIDATION pre-DB.
-    def test_list_per_sorgente_input_guard_su_uid_vuoto(self) -> None:
+    # 5. id dell'entità non positivo -> VALIDATION pre-DB.
+    def test_list_per_sorgente_input_guard_su_id_non_positivo(self) -> None:
         svc, repo, _, _ = service_with_mocks()
-        for bad in ("", "   "):
-            with self.subTest(uid=bad):
+        for bad in (0, -1):
+            with self.subTest(sorgente_id=bad):
                 with patch_scope(None):
                     with self.assertRaises(ServiceError) as ctx:
                         svc.list_documenti_per_sorgente(
                             make_user(),
                             sorgente_tipo_id=10,
-                            sorgente_uid=bad,
+                            sorgente_id=bad,
                         )
                 self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.chiave_sorgente.assert_not_called()
+        repo.list_documenti_per_sorgente.assert_not_called()
+
+    # 5-bis. documento che il DB non trova o non mostra: il codice di
+    #        `script.fn_sorgente_chiave` arriva come ServiceError (la view lo
+    #        rende 404, il tool AI lo riceve come errore di dominio), mai un
+    #        DatabaseError grezzo.
+    def test_list_per_sorgente_chiave_rifiutata_dal_db_e_service_error(self) -> None:
+        svc, repo, _, _ = service_with_mocks()
+        repo.chiave_sorgente.side_effect = make_db_error(
+            "Riferimento sorgente non trovato", codice="E_SORG_NOT_FOUND",
+        )
+        with patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.list_documenti_per_sorgente(
+                    make_user(), sorgente_tipo_id=10, sorgente_id=100,
+                )
+        self.assertEqual(ctx.exception.code, "E_SORG_NOT_FOUND")
         repo.list_documenti_per_sorgente.assert_not_called()
 
     # 6. user anon -> VALIDATION pre-DB.
@@ -231,7 +254,7 @@ class ListPerSorgenteTests(SimpleTestCase):
             svc.list_documenti_per_sorgente(
                 make_user(is_authenticated=False),
                 sorgente_tipo_id=10,
-                sorgente_uid="uid-100",
+                sorgente_id=100,
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.list_documenti_per_sorgente.assert_not_called()

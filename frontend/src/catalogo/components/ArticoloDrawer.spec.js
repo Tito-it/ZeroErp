@@ -20,6 +20,11 @@
 //   2) in correzione, il Salva fa UN PATCH con `correzione_struttura` delle
 //      sole colonne cambiate
 //   3) senza correzione, il PATCH non porta `correzione_struttura`
+//   4) un articolo-ONERE (`e_onere` del dettaglio) spegne magazzino, composito,
+//      lotto e seriale, anche nella correzione di struttura (il guard del DB
+//      non ha porta amministratore); il solo componente resta libero
+//   5) la merce non usata ha i quattro interruttori accesi: lo spegnimento
+//      viene da `e_onere`, non da un lucchetto qualunque
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -163,5 +168,45 @@ describe('ArticoloDrawer — correzione di struttura', () => {
     await flushPromises()
     expect(updateArticolo).toHaveBeenCalledTimes(1)
     expect(updateArticolo.mock.calls[0][1]).not.toHaveProperty('correzione_struttura')
+  })
+})
+
+describe('ArticoloDrawer — articolo-onere', () => {
+  const ONERE_SENZA = [
+    'catalogo.field_gestito_a_magazzino', 'catalogo.field_composito',
+    'catalogo.field_requires_lotto', 'catalogo.field_requires_serial',
+  ]
+  // Un articolo NON usato: nessun lucchetto del DB, cosi' a spegnere puo'
+  // essere solo l'onere.
+  const libero = { non_editable_fields: [], struttura_correggibile: [], gestito_a_magazzino: false }
+
+  beforeEach(() => {
+    getArticolo.mockReset()
+    updateArticolo.mockReset()
+  })
+
+  it('4) un onere spegne i quattro interruttori, anche in correzione', async () => {
+    const w = await apri(articolo({
+      e_onere: true, causale_onere_id: 6,
+      non_editable_fields: ['requires_lotto'], struttura_correggibile: ['requires_lotto'],
+    }))
+    for (const etichetta of ONERE_SENZA) {
+      expect(toggle(w, etichetta).props('disabled'), etichetta).toBe(true)
+    }
+    expect(toggle(w, 'catalogo.field_solo_componente').props('disabled')).toBe(false)
+    expect(w.text()).toContain('catalogo.hint_onere_struttura')
+    // Anche nella sezione magazzino il perche' prende il posto del suggerimento.
+    expect(w.text()).not.toContain('catalogo.hint_gestito_a_magazzino')
+    await correggi(w)
+    expect(toggle(w, 'catalogo.field_requires_lotto').props('disabled')).toBe(true)
+  })
+
+  it('5) la merce non usata ha i quattro interruttori accesi', async () => {
+    const w = await apri(articolo({ ...libero, e_onere: false, causale_onere_id: null }))
+    for (const etichetta of ONERE_SENZA) {
+      expect(toggle(w, etichetta).props('disabled'), etichetta).toBe(false)
+    }
+    expect(w.text()).not.toContain('catalogo.hint_onere_struttura')
+    expect(w.text()).toContain('catalogo.hint_gestito_a_magazzino')
   })
 })

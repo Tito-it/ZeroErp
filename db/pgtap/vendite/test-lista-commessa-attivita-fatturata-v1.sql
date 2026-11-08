@@ -120,9 +120,9 @@ RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
     FROM vendite.fn_upsert_commessa_attivita(
       p_commessa_id                   => (SELECT commessa_id FROM tmp_commessa_lcf),
       -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-      p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-      p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_lcf))::text,
-      p_segment_key                   => p_seg,
+      p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_lcf)) x),
+      p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_lcf)) x),
+      p_segment_key                   => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_lcf)) x) || ':' || p_seg)::varchar,
       p_articolo_id                   => (SELECT articolo_id FROM tmp_refs_lcf),
       p_istanza_utility_id            => (SELECT istanza_utility_id FROM tmp_refs_lcf),
       p_data_attivita                 => DATE '2026-10-15',

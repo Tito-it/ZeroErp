@@ -33,7 +33,7 @@ from unittest import TestCase
 from django.db import connection, transaction
 
 from apps.core.services.coda_lavori.repository import CodaLavoriRepository
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 
 # Un tipo a catalogo (FK dura): quello del giro di fatturazione dall'app.
 _JOB_TYPE = "FATTURAZIONE_GIRO"
@@ -53,6 +53,10 @@ class SummaryPerJobTypeSulDatabaseTests(TestCase):
     #        test; torna id e `started_at` (ISO), che e' la data che le sedi
     #        devono restituire per una conclusa.
     def _scrivi(self, cur, stato: str, *, started: str, ended: str | None) -> tuple[int, str]:
+        # ⛔ Come SUPER ADMIN (dal blocco 5b la coda e' sotto RLS: una riga
+        #    SISTEMA la scrive e la legge solo lui o il drenatore). `SET LOCAL`:
+        #    vale per la transazione del test, e ripeterlo e' innocuo.
+        apri_contesto_operatore(cur, super_admin=True)
         cur.execute(
             """
             INSERT INTO dbops.coda_lavori

@@ -61,7 +61,7 @@ def _make_request() -> MagicMock:
 
 class TestPermessiEreditatiView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_get_permessi_ereditati(self, mock_repo_cls):
         """GET ritorna aree e azioni, ognuna col profilo che le fornisce.
 
@@ -83,7 +83,7 @@ class TestPermessiEreditatiView(TestCase):
         self.assertTrue(data["azioni"][0]["abilitata"])
         mock_repo.get_permessi_ereditati.assert_called_once_with(7)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_get_permessi_ereditati_senza_profili(self, mock_repo_cls):
         """Nessun profilo applicabile -> due liste VUOTE.
 
@@ -104,7 +104,7 @@ class TestPermessiEreditatiView(TestCase):
         self.assertEqual(data["aree"], [])
         self.assertEqual(data["azioni"], [])
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_operatore_inesistente_solleva(self, mock_repo_cls):
         """⛔ L'esistenza si verifica PRIMA della lettura, e non e' cerimonia.
 

@@ -212,7 +212,8 @@ BEGIN
         -- (rev 20261011-96), la stessa che leggono le viste di lista.
         SELECT s.t AS tipo, s.u AS uid, pd.n_pratiche, pd.pratica_id, pd.pratica_numero
           FROM seme s
-          CROSS JOIN LATERAL pratiche.fn_pratica_del_documento(s.t, s.u) pd
+          CROSS JOIN LATERAL pratiche.fn_pratica_del_documento(
+                   s.t, script.fn_sorgente_chiave_id(s.u), script.fn_sorgente_chiave_uuid(s.u)) pd
     )
     SELECT n.tipo_id, n.uid, n.codice::varchar,
            n.stato_codice_interno::varchar, n.stato_codice::varchar, n.stato_descrizione::varchar,

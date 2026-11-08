@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_resi_default_magazzino: LA BOLLA SORGENTE NELLE DUE GRAMMATICHE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La sorgente di una testata (bolla -> ordine, reso -> bolla) oggi porta l'uid
+#   del documento in sorgente_uid; il lotto T la converte all'id, in sorgente_id
+#   (S-5). Un lettore che confronta solo l'uid, dopo il lotto T, torna zero righe
+#   in silenzio. Qui legge con la regola d'incontro del modello:
+#     (doc.id = x.sorgente_id OR doc.uid = x.sorgente_uid)
+#   vera nelle due grammatiche e anche nel modello finale (una sola delle due
+#   chiavi e' valorizzata, il guard unico lo garantisce): il lettore non si
+#   ritocca nei lotti di famiglia. E' il join della chiave polimorfa, come il
+#   join di una FK: si scrive in linea, non dietro una funzione, perche' il
+#   planner deve poterla usare sugli indici (id, uid, (tipo, sorgente_*)).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Il default scatta con una delle due chiavi. Sui dati di oggi (solo sorgente_uid valorizzata) il risultato e' lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-34-update-trgfn-resi-default-magazzino-sorgente-due-grammatiche-mctit.yaml
+
+  - changeSet:
+      id: 20261106-34-update-trgfn-resi-default-magazzino-sorgente-due-grammatiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_resi_default_magazzino: la sorgente di testata nelle due grammatiche. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_default_magazzino';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_default_magazzino()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: un reso nato senza magazzino prende quello da cui era partita la
+              --   bolla d'origine (D-3b-a). Solo se manca: chi lo sceglie vince.
+              -- ⚠️ Non il predefinito dell'emittente (D-L3-h): la domanda del reso e'
+              --   «da dove era partita?», e la risposta sta sulla bolla.
+              DECLARE
+                  v_magazzino_id vendite.ddt.magazzino_id%TYPE;
+              BEGIN
+                  IF NEW.magazzino_id IS NULL
+                     AND (NEW.sorgente_id IS NOT NULL OR NEW.sorgente_uid IS NOT NULL) THEN
+                      SELECT d.magazzino_id INTO v_magazzino_id
+                        FROM vendite.ddt d
+                        JOIN config.sorgenti s ON s.id = NEW.sorgente_tipo_id
+                                              AND s.codice_interno = 'DDT_VENDITA'
+                       WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
+                      NEW.magazzino_id := v_magazzino_id;   -- NULL se la bolla non ne ha uno
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_default_magazzino() IS
+                '⭐ rev 2026-11-06 (20261106-34, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): il magazzino di default del reso si legge dalla bolla sorgente cercata nelle due grammatiche, (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid): dal lotto T il reso porta l''id della bolla. BEFORE INSERT su vendite.resi: se magazzino_id manca, prende il magazzino della bolla d''origine (sorgente DDT_VENDITA, per uid) — D-3b-a: la merce rientra, di norma, da dove era partita. Non il predefinito dell''emittente. Bolla senza magazzino: resta NULL, e se il reso muove merce lo chiede la check della conferma. Gira dopo trgfn_resi_normalize e prima del guard (ordine alfabetico dei trigger, fascia z10). Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20260928-89:
+              -- un rollback lo riprende da li'.
+              SELECT 1;

@@ -35,7 +35,7 @@ _URL = "/api/v1/core/lookup/utilities-per-emittente/"
 
 
 @patch(_AUTH, return_value=(Mock(id=42, is_superuser=True, is_authenticated=True), None))
-@patch(_REPO)
+@patch(_REPO, autospec=True)
 class LookupUtilitiesPerEmittenteApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
@@ -51,12 +51,14 @@ class LookupUtilitiesPerEmittenteApiTests(JwtMockedApiTest):
         self.assertEqual(len(resp.json()["data"]["results"]), 1)
         repo_cls.return_value.list_utilities_per_emittente.assert_called_once_with(None)
 
-    # 2. Il ruolo arriva maiuscolo.
-    def test_ruolo_normalizzato(self, repo_cls, _auth) -> None:
+    # 2. Il ruolo e' il `codice_interno`: arriva al repository com'e' (solo
+    #    lo spazio ai bordi si toglie), senza maiuscolo. Fino al 2026-11-04 la
+    #    view faceva `.upper()` (brief-be-codice-maiuscolo §7.2).
+    def test_ruolo_chiave_esatta(self, repo_cls, _auth) -> None:
         repo_cls.return_value.list_utilities_per_emittente.return_value = []
-        resp = self.client.get(_URL, {"ruolo": "cl"})
+        resp = self.client.get(_URL, {"ruolo": " cl "})
         self.assertEqual(resp.status_code, 200, resp.content)
-        repo_cls.return_value.list_utilities_per_emittente.assert_called_once_with("CL")
+        repo_cls.return_value.list_utilities_per_emittente.assert_called_once_with("cl")
 
 
 class LookupUtilitiesPerEmittenteDbTests(TestCase):

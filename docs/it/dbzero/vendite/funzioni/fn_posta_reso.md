@@ -25,6 +25,8 @@ DECLARE
     v_reso        vendite.resi%ROWTYPE;
     v_sorgente_id config.sorgenti.id%TYPE;
     v_prel_src_id config.sorgenti.id%TYPE;
+    v_prov_id     magazzino.movimenti.sorgente_id%TYPE;
+    v_prov_uid    magazzino.movimenti.sorgente_uid%TYPE;
     v_costo       magazzino.movimenti.costo_unitario%TYPE;
     v_rientro     record;
 BEGIN
@@ -42,22 +44,27 @@ BEGIN
             p_reso_id::text);
     END IF;
 
-    SELECT s.id INTO v_sorgente_id
-      FROM config.sorgenti s
-     WHERE s.codice_interno = 'RESO_VENDITA_RIENTRO' AND s.attivo;
+    -- La provenienza e' il RESO (S-3), dal BB che la scrive; sotto, riga e
+    -- rientro. Un tipo assente o spento e' E_SORG_CONF dal BB.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_sorgente_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('RESO_VENDITA', p_reso_id::text) p;
+    -- Il tipo della bolla, per rileggere il costo dell'uscita d'origine: una
+    -- lettura, non una scrittura (attivo o no, l'uscita e' gia' a registro).
     SELECT s.id INTO v_prel_src_id
       FROM config.sorgenti s
-     WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO';
-    IF v_sorgente_id IS NULL OR v_prel_src_id IS NULL THEN
+     WHERE s.codice_interno = 'DDT_VENDITA';
+    IF v_prel_src_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
             'E_CONFIG_MANCANTE',
-            jsonb_build_object('config', 'config.sorgenti.RESO_VENDITA_RIENTRO / DDT_VENDITA_PRELIEVO'),
-            NULL::uuid, VARIADIC ARRAY['sorgenti RESO_VENDITA_RIENTRO (attiva) e DDT_VENDITA_PRELIEVO (config.sorgenti)']);
+            jsonb_build_object('config', 'config.sorgenti.DDT_VENDITA'),
+            NULL::uuid, VARIADIC ARRAY['sorgente DDT_VENDITA (config.sorgenti)']);
     END IF;
 
     FOR v_rientro IN
-        SELECT x.id, x.qta AS x_qta, x.ubicazione_id,
-               p.id AS prelievo_id, p.lotto_id, p.asset_id,
+        SELECT x.id, rr.id AS resi_riga_id, x.qta AS x_qta, x.ubicazione_id,
+               p.id AS prelievo_id, dr.id AS ddt_riga_id, dr.ddt_id,
+               p.lotto_id, p.asset_id,
                COALESCE(drc.componente_id, dr.articolo_id) AS articolo_id
           FROM vendite.resi_righe_rientri x
           JOIN vendite.resi_righe rr          ON rr.id = x.resi_riga_id
@@ -73,8 +80,10 @@ BEGIN
         -- Uscita senza costo (NULL) -> NULL, e vale la media: regola della primitiva.
         SELECT m.costo_unitario INTO v_costo
           FROM magazzino.movimenti m
-         WHERE m.sorgente_tipo_id = v_prel_src_id
-           AND m.sorgente_riga = v_rientro.prelievo_id
+         WHERE m.sorgente_tipo_id   = v_prel_src_id
+           AND m.sorgente_id        = v_rientro.ddt_id
+           AND m.sorgente_riga      = v_rientro.ddt_riga_id
+           AND m.sorgente_dettaglio = v_rientro.prelievo_id
            AND m.qta < 0
            AND m.storno_di_movimento_id IS NULL
          ORDER BY m.id
@@ -86,7 +95,10 @@ BEGIN
             p_causale          => 'CARICO_RESO_VEN',
             p_qta              => v_rientro.x_qta,
             p_sorgente_tipo_id => v_sorgente_id,
-            p_sorgente_riga    => v_rientro.id,
+            p_sorgente_id      => v_prov_id,
+            p_sorgente_uid     => v_prov_uid,
+            p_sorgente_riga    => v_rientro.resi_riga_id,
+            p_sorgente_dettaglio => v_rientro.id,
             p_costo_unitario   => v_costo,
             p_lotto_id         => v_rientro.lotto_id,
             p_asset_id         => v_rientro.asset_id,
@@ -101,7 +113,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_posta_reso(p_reso_id bigint)
-IS 'Il posting di un reso: un carico per rientro (sorgente RESO_VENDITA_RIENTRO, D-3b-d), righe attive, in ordine di riga e di rientro. Nel magazzino del reso, causale CARICO_RESO_VEN, quantita'' positiva, articolo, lotto e seriale dal prelievo d''origine, ubicazione del rientro, data del reso. Il costo e'' quello dell''USCITA del prelievo d''origine (sorgente DDT_VENDITA_PRELIEVO, non uno storno: D-3b-e), passato alla primitiva come p_costo_unitario: la merce rientra al valore al quale era uscita; uscita senza costo -> NULL, e vale la media. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea rientri, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_conferma_reso. Ritorna (movimento_id, rientro_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-7), brief-db-magazzino-registro-anello-interno (P-2).';
+IS 'Il posting di un reso: un carico per rientro (provenienza: il reso RESO_VENDITA, la riga, il rientro come dettaglio; dal BB script.fn_sorgente_provenienza, brief-db-sorgente-documento-e-riga lotto M; D-3b-d), righe attive, in ordine di riga e di rientro. Nel magazzino del reso, causale CARICO_RESO_VEN, quantita'' positiva, articolo, lotto e seriale dal prelievo d''origine, ubicazione del rientro, data del reso. Il costo e'' quello dell''USCITA del prelievo d''origine (il movimento della bolla d''origine con quel prelievo come dettaglio, non uno storno: D-3b-e), passato alla primitiva come p_costo_unitario: la merce rientra al valore al quale era uscita; uscita senza costo -> NULL, e vale la media. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea rientri, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_conferma_reso. Ritorna (movimento_id, rientro_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-7), brief-db-magazzino-registro-anello-interno (P-2).';
 ```
 
 </div>

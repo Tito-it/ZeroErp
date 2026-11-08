@@ -249,7 +249,7 @@ class ExportApiTests(_Base):
     # Scopo: l'export chiede il DATASET (`EXPORT_MAX_ROWS + 1`), non la pagina.
     @_AUTH
     @patch("apps.ui.api.export_helpers.ListaExportService")
-    @patch("apps.ui.api.export_helpers.UiRepository")
+    @patch("apps.ui.api.export_helpers.UiRepository", autospec=True)
     @patch("apps.ui.api.export_helpers.UiService")
     @patch(f"{_CONS}.list_movimenti")
     def test_export_chiede_il_dataset_non_la_pagina(self, mock_list, mock_ui_svc, mock_ui_repo, mock_render, _auth):
@@ -308,11 +308,11 @@ class ConsultazioneApiTests(_Base):
     def test_movimenti_filtri_tradotti(self, mocked, _auth):
         mocked.return_value = {"count": 0, "results": []}
         self.client.get(
-            "/api/v1/magazzino/movimenti/?inventario_id=7&sorgente_tipo=inventario_riga&data_a=2026-09-30&causale_id=2"
+            "/api/v1/magazzino/movimenti/?inventario_id=7&sorgente_tipo=inventario&data_a=2026-09-30&causale_id=2"
         )
         kwargs = mocked.call_args.kwargs
         self.assertEqual(kwargs["inventario_id"], 7)
         self.assertIsNone(kwargs["rettifica_id"])
-        self.assertEqual(kwargs["sorgente_codice_interno"], "INVENTARIO_RIGA")
+        self.assertEqual(kwargs["sorgente_codice_interno"], "INVENTARIO")
         self.assertEqual(kwargs["data_a"], date(2026, 9, 30))
         self.assertEqual(kwargs["causale_id"], 2)

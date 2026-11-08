@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_trigger_exists_block_by_args`
 
 ```sql
-CREATE FUNCTION fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_schema text, p_child_table text, p_fk_col text, p_parent_ref_col text, p_parent_attivo_col text)
+CREATE FUNCTION fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_schema name, p_child_table name, p_fk_col name, p_parent_ref_col name, p_parent_attivo_col name)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,31 +12,33 @@ CREATE FUNCTION fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_s
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_schema text, p_child_table text, p_fk_col text, p_parent_ref_col text, p_parent_attivo_col text)
+CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_schema name, p_child_table name, p_fk_col name, p_parent_ref_col name, p_parent_attivo_col name)
  RETURNS boolean
  LANGUAGE sql
  STABLE
 AS $function$
-  -- Scopo: rileva l'esistenza di un trigger BLOCK sul padre
-  -- con la signature a 5 args della trgfn. Confronta tutti gli
-  -- argomenti via pattern ILIKE su pg_get_triggerdef.
+  -- Scopo: c'e' sul padre un block montato con questi argomenti?
+  --   La funzione per OID, gli argomenti per nome dalla grammatica.
   SELECT EXISTS (
-    SELECT 1
-    FROM pg_trigger t
-    JOIN pg_proc p ON p.oid = t.tgfoid
-    WHERE t.tgrelid = p_parent_rel
-      AND NOT t.tgisinternal
-      AND p.proname = 'trgfn_prevent_deactivate_if_children'
-      AND pg_get_triggerdef(t.oid) ILIKE
-          format(
-            '%%EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(''%s'',''%s'',''%s'',''%s'',''%s'')%%',
-            p_child_schema, p_child_table, p_fk_col, p_parent_ref_col, p_parent_attivo_col
-          )
+      SELECT 1
+        FROM pg_catalog.pg_trigger t
+       CROSS JOIN LATERAL dbops.fn_trigger_attivo_argomenti(
+               'trgfn_prevent_deactivate_if_children',
+               dbops.fn_trigger_argomenti(t.tgargs)) g
+       WHERE t.tgrelid = p_parent_rel
+         AND NOT t.tgisinternal
+         AND t.tgfoid = 'dbops.trgfn_prevent_deactivate_if_children()'::pg_catalog.regprocedure
+         AND g.valido
+         AND g.figlia_schema  = p_child_schema
+         AND g.figlia_tabella = p_child_table
+         AND g.fk_col         = p_fk_col
+         AND g.ref_col        = p_parent_ref_col
+         AND g.stato_col      = p_parent_attivo_col
   );
 $function$
 
-COMMENT ON FUNCTION dbops.fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_schema text, p_child_table text, p_fk_col text, p_parent_ref_col text, p_parent_attivo_col text)
-IS 'Verifica esistenza trigger BLOCK (trgfn_prevent_deactivate_if_children) su tabella padre matchando la signature a 5 args.';
+COMMENT ON FUNCTION dbops.fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_schema name, p_child_table name, p_fk_col name, p_parent_ref_col name, p_parent_attivo_col name)
+IS 'Dice se sulla tabella padre c''e'' un block ATTIVO (dbops.trgfn_prevent_deactivate_if_children) montato con questi argomenti: figlia (schema e tabella), colonna FK della figlia, colonna referenziata del padre, colonna attivo del padre. Riconosce la funzione del trigger per OID, quindi con qualunque search_path, e legge gli argomenti per nome con la grammatica dei trigger ATTIVO (dbops.fn_trigger_attivo_argomenti su dbops.fn_trigger_argomenti): un montaggio fuori grammatica non e'' riconosciuto. Confronto esatto degli identificatori. La chiama dbops.fn_run_automations_attivo per le strategie di esistenza BY_FUNCTION e BOTH.';
 ```
 
 </div>

@@ -276,7 +276,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_emissione     => 'NON_EMESSA',
   -- ⭐ Sorgente ASSENTE: e' il soggetto del test.
   p_sorgente_tipo_id    => NULL,
-  p_sorgente_uid        => NULL,
+  p_sorgente_chiave     => NULL,
   p_tipo_movimento      => 'RETTIFICA',
   p_meta                => jsonb_build_object('case', 'LCP_SOURCELESS')
 ) r;

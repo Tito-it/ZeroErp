@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-97): contratti.offerta_id e'
+--   ritirata; il contratto nato dall'offerta si riconosce dalla provenienza (sorgente_uid = l'uid
+--   dell'offerta, col tipo OFFERTA_COMMERCIALE). Attese invariate.
 -- pgTAP test per Zero ERP
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
 --   cambia solo dal verbo vendite.fn_cambia_stato_offerta; i flussi A, B, C lo chiamano al
@@ -139,17 +142,17 @@ SELECT ok(
 );
 
 -- ============================================================
--- 3) Flusso A: offerta_id e sorgente_uid corretti sul contratto
+-- 3) Flusso A: la provenienza corretta sul contratto (l'uid dell'offerta)
 -- ============================================================
 SELECT ok(
     EXISTS (
         SELECT 1 FROM vendite.contratti c
           JOIN tmp_e2e_contratto_a ca ON c.id = ca.contratto_id
           JOIN tmp_e2e_ofc_a oa ON TRUE
-         WHERE c.offerta_id   = oa.id
-           AND c.sorgente_uid = oa.uid
+         WHERE c.sorgente_uid = oa.uid
+           AND c.sorgente_id IS NULL
     ),
-    '3) Flusso A: contratto.offerta_id e sorgente_uid valorizzati correttamente'
+    '3) Flusso A: la provenienza del contratto e'' l''uid dell''offerta'
 );
 
 -- ============================================================

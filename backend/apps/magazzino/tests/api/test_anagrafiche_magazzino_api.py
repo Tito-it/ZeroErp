@@ -146,7 +146,7 @@ class ExportApiTests(_Base):
     # 8.
     @_AUTH
     @patch("apps.ui.api.export_helpers.ListaExportService")
-    @patch("apps.ui.api.export_helpers.UiRepository")
+    @patch("apps.ui.api.export_helpers.UiRepository", autospec=True)
     @patch("apps.ui.api.export_helpers.UiService")
     @patch(f"{_SVC}.list_magazzini")
     # La soglia della ricerca e' del catalogo (DB): qui e' un contorno finto.

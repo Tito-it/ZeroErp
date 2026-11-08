@@ -87,7 +87,7 @@ class DashboardPreferenzaUpsertTests(SimpleTestCase):
         self.assertEqual(kwargs["auth_user_id"], 42)
         self.assertEqual(kwargs["dashboard_id"], 1)
         self.assertEqual(kwargs["preset_base_id"], 5)
-        self.assertEqual(kwargs["preset_base_data_update"], "2026-07-01T00:00")
+        self.assertEqual(kwargs["preset_base_contenuto_aggiornato_il"], "2026-07-01T00:00")
         cfg = kwargs["configurazione"]
         self.assertEqual(cfg["dimensione_max"], 8)
         self.assertEqual(len(cfg["widget"]), 2)

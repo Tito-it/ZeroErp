@@ -259,11 +259,13 @@ SELECT lives_ok(
 -- rev 2026-10-14 (Lotto 4, 20261014-02): i motivi della check stanno in
 --   script.fn_check_articolo_riga_su_contesto (la firma di sempre la compone
 --   col contesto del documento): la sede e' quella.
+-- rev 2026-11-05 (20261105-09, brief-db-articoli-obsoleto-dal): la check ha il
+--   quarto parametro p_scelta_nuova, la firma letta qui lo segue.
 SELECT ok(
     (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
         AND regexp_replace(prosrc, '--[^\n]*', '', 'g') !~ 'listini_righe_componenti'
        FROM pg_proc
-      WHERE oid = 'script.fn_check_articolo_riga_su_contesto(jsonb,uuid,bigint)'::regprocedure),
+      WHERE oid = 'script.fn_check_articolo_riga_su_contesto(jsonb,uuid,bigint,boolean)'::regprocedure),
     '12) la check di riga chiama la check dell''esclusione e non contiene il predicato');
 
 SELECT * FROM finish();

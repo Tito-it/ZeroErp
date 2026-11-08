@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automation_lock_columns.error_code: niente piu' DEFAULT.
+#   Brief: brief-db-revisione-dbops, D48 (classe C).
+#
+# Il default era 'CODICE_NON_MODIFICABILE', un codice ritirato il 2026-08-05
+# (config.codici_errore, obsoleto_dal). Una riga che non dichiarava il codice
+# riceveva quello ritirato, e la fermava solo il guardrail a valle.
+#   ⇒ Il codice del rifiuto si DICHIARA su ogni riga: la colonna resta NOT NULL,
+#     senza default, e un INSERT che lo dimentica fallisce subito (23502).
+#
+# Censimento di chi si appoggiava al default (2026-11-04): nessuno. Le 65 righe
+# del seed (80_data/sql/dbops/automation_lock_columns.csv) e i tre INSERT di
+# db/pgtap/dbops/test-lock-columns-convergenza.sql dichiarano tutti error_code.
+#
+# ⚠️ Il COALESCE(l.error_code, 'E_CODICE_NON_MODIFICABILE') dentro
+#   dbops.fn_lock_columns_divergenze resta: con la colonna NOT NULL non scatta
+#   mai, e riscrivere la funzione per toglierlo non vale il rischio. Si toglie
+#   quando la funzione si riapre (D32).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261104-09-alter-automation-lock-columns-error-code-senza-default-mctit.yaml
+
+  - changeSet:
+      id: 20261104-09-alter-automation-lock-columns-error-code-senza-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.automation_lock_columns.error_code senza DEFAULT: il default era un codice
+        ritirato (CODICE_NON_MODIFICABILE). Il codice del rifiuto si dichiara su ogni riga.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: dbops
+            tableName: automation_lock_columns
+            columnName: error_code
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automation_lock_columns
+                  ALTER COLUMN error_code DROP DEFAULT;
+
+              COMMENT ON COLUMN dbops.automation_lock_columns.error_code IS
+                'Codice errore che il lucchetto solleva quando si tenta di cambiare la colonna (config.codici_errore). Obbligatorio e senza default: ogni riga dichiara il proprio rifiuto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il default di prima era un codice ritirato: non si ripristina.
+              SELECT 1;

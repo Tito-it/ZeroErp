@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.indirizzi_dettaglio: un indirizzo non nasce su una via soppressa,
+# ne' vi si sposta.
+#   Brief: brief-db-revisione-dbops, Q16 (giro 2, blocco 2b).
+#
+# ⭐ PERCHE'. Una via fusa resta in config.stradario, marcata con obsoleto_dal
+#   (00_schema/config/20261107-09). Le ricerche non la propongono piu', ma un
+#   indirizzo poteva ancora nascervi passando l'id della via. Il rifiuto lo da'
+#   il guard generico del ritiro, dbops.trgfn_child_requires_non_obsolete_parent
+#   (un CREATE TRIGGER per relazione, la forma di 20_code/vendite/20261106-02):
+#   nessun guard nuovo. AFTER INSERT OR UPDATE OF stradario_id: la via e' gia'
+#   quella finale; sull'UPDATE il guard guarda solo il cambio di via, quindi un
+#   indirizzo esistente si modifica sempre. Senza esenzione: un indirizzo
+#   sceglie sempre la sua via.
+#
+# ℹ️ La fusione delle vie sposta gli indirizzi sulla via di DESTINAZIONE, che
+#   e' viva (la fusione rifiuta una destinazione soppressa), e segna soppressa
+#   l'origine solo dopo: il guard non la ferma.
+#   Il nome breve (la forma di convenzione supererebbe i 63 caratteri).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261107-16-create-trigger-indirizzi-dettaglio-via-non-soppressa-mctit.yaml
+
+  - changeSet:
+      id: 20261107-16-create-trigger-indirizzi-dettaglio-via-non-soppressa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.indirizzi_dettaglio: il guard generico del ritiro sulla via (config.stradario.
+        obsoleto_dal): un indirizzo non nasce su una via soppressa ne' vi si sposta (Q16).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = 'config.stradario'::regclass
+                 AND attname = 'obsoleto_dal' AND NOT attisdropped;
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger
+               WHERE tgrelid = 'anagrafiche.indirizzi_dettaglio'::regclass
+                 AND tgname = 'trg_indirizzi_dettaglio_a10_via_non_soppressa_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_indirizzi_dettaglio_a10_via_non_soppressa_ins_upd
+                AFTER INSERT OR UPDATE OF stradario_id
+                ON anagrafiche.indirizzi_dettaglio
+                FOR EACH ROW
+                EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
+                  'config', 'stradario', 'obsoleto_dal', 'stradario_id', 'id'
+                );
+
+              COMMENT ON TRIGGER trg_indirizzi_dettaglio_a10_via_non_soppressa_ins_upd
+                ON anagrafiche.indirizzi_dettaglio
+                IS 'Guard del ritiro sulla via: un indirizzo non nasce su una via soppressa (config.stradario.obsoleto_dal, scritta dalla fusione delle vie), ne'' vi si sposta. Un indirizzo esistente si modifica sempre: conta solo il cambio di via. Rifiuta con E_CATALOGO_OBSOLETO_NUOVA_ISTANZA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_a10_via_non_soppressa_ins_upd
+                  ON anagrafiche.indirizzi_dettaglio;

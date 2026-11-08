@@ -1,92 +1,103 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_conta_presidio_per_variante`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [dbops.presidi](/dbzero/dbops/manual/presidi) — *il catalogo da cui questa funzione legge tutto*
-> • [dbops.presidi_cause](/dbzero/dbops/manual/presidi_cause) — *le cause, e a chi tocca ciascuna*
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo: perimetro, stato atteso e colonna della causa
+> * [dbops.presidi_cause](/dbzero/dbops/tabelle/presidi_cause) — le cause, e a chi tocca ciascuna
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [dbops.fn_conta_presidio](/dbzero/dbops/manual/fn_conta_presidio) — *il conteggio intero, che è la somma di questo*
+> * [dbops.fn_conta_presidio](/dbzero/dbops/funzioni/fn_conta_presidio) — il conteggio intero, che è la somma di questo
 >
-**Approfondimento guide:**
+> Guide:
 >
-• [Presidi e registri del debito](/guide/presidi-e-registri-del-debito)
->
-
-### 🎯 Scopo Principale
-(latest review 10-10-2026)
-
-Dice **quante righe di una vista di controllo chiedono un intervento, per
-ciascuna causa**.
-
-Alcuni controlli raccolgono guasti **diversi** nella stessa vista: il presidio
-dei processi automatici, per esempio, mette insieme un timer fermo, un servizio
-scollegato e un lavoro del database mai partito. Ogni causa ha il suo rimedio e
-spesso una persona diversa che deve intervenire. Il catalogo dice da quale
-colonna della vista si legge la causa (`colonna_variante` di
-[`dbops.presidi`](/dbzero/dbops/manual/presidi)), e questa funzione conta le
-righe di ciascuna.
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — il meccanismo dei presidi
 
 ---
 
-### Perché serve un conteggio per causa
+### 🎯 Scopo Principale
 
-Il pannello e il messaggio di posta mostrano **un campione** delle righe, non
-tutte. Contare le cause sul campione darebbe numeri sbagliati appena le righe
-sono più del campione, e una causa che tocca allo sviluppo, finita oltre la
-quinta riga, non arriverebbe mai a chi deve intervenire.
+Conta le righe che chiedono un intervento su una vista di presidio dichiarata in `dbops.presidi`,
+raggruppate per causa. È la sede unica del conteggio dei presidi: perimetro, rifiuto e filtro di
+stato stanno qui, e `dbops.fn_conta_presidio` ne è la somma.
 
-Il conteggio quindi lo fa il database, sulla vista intera.
+Alcuni presidi raccolgono guasti diversi nella stessa vista: un timer fermo, un servizio
+scollegato, un lavoro del database mai partito. Il catalogo dice da quale colonna della vista si
+legge la causa (`colonna_variante`), e questa funzione conta le righe di ciascuna.
+
+---
+
+### Perché un conteggio per causa
+
+Il pannello e il digest mostrano un **campione** delle righe, non tutte. Contare le cause sul
+campione darebbe numeri sbagliati appena le righe sono più del campione, e una causa che tocca
+allo sviluppo, finita oltre il campione, non arriverebbe mai a chi deve intervenire. Il conteggio
+lo fa quindi il database, sulla vista intera.
 
 ---
 
 ### Che cosa restituisce
 
-Una riga per ciascuna causa **presente**, con quante righe la portano:
+* per un presidio con la colonna della causa, una riga per ciascuna causa **presente**: le cause
+  senza righe non compaiono, e le righe senza causa formano un gruppo a sé, vuoto, che non sparisce
+  e non si confonde con un'altra causa;
+* per un presidio **senza** colonna della causa, una riga sola con la causa vuota e il totale,
+  **anche a zero**: chi legge ha un modo solo di chiedere, per qualunque presidio.
 
-* le cause che in questo momento non hanno righe **non compaiono**;
-* le righe senza causa formano un gruppo a sé, con la causa vuota: non spariscono
-  dal conteggio e non si confondono con un'altra causa;
-* per un controllo che **non** distingue le cause esce una riga sola, con la causa
-  vuota e il totale — anche quando il totale è zero. Così chi legge ha un modo
-  solo di chiedere, per qualunque controllo.
-
-Le righe che contano sono le stesse di sempre: tutta la vista, oppure, se il
-catalogo dichiara uno stato atteso, quelle **diverse** da quello stato (vedi
-[`dbops.fn_conta_presidio`](/dbzero/dbops/manual/fn_conta_presidio), *Che cosa
-conta, esattamente*).
+Le righe che contano sono tutta la vista oppure, se il catalogo dichiara uno stato atteso, quelle
+con uno stato **diverso** da quello (un valore assente conta come «non atteso»). La risposta è
+ordinata per causa, con il gruppo vuoto in coda.
 
 ---
 
-### ⭐ È l'unico posto in cui si conta
+### ⭐ Perimetro e sicurezza
 
-Il perimetro (solo le viste a catalogo, attive e non ritirate; le altre si
-rifiutano, non si contano a zero) e il filtro sullo stato atteso sono scritti
-**qui e solo qui**. Il conteggio intero,
-[`dbops.fn_conta_presidio`](/dbzero/dbops/manual/fn_conta_presidio), è la somma
-dei gruppi di questa funzione.
+La funzione è `SECURITY DEFINER` del **proprietario** delle tabelle, non di un superuser: alcune
+viste di presidio, lette da un programma senza un utente in sessione, risponderebbero zero per
+cecità (il difetto è raccontato in
+[dbops.fn_conta_presidio](/dbzero/dbops/funzioni/fn_conta_presidio)).
 
-Così le due risposte non possono mai essere diverse: non perché qualcuno si
-ricordi di tenerle allineate, ma perché la regola è scritta una volta sola.
+Due limiti la rendono sicura:
 
----
+* **torna numeri, mai le righe**. Il valore del gruppo è un codice del catalogo delle cause, non un
+  dato di un cliente o di un documento;
+* **conta solo ciò che è a catalogo**, attivo e non ritirato. Un nome sconosciuto, spento,
+  ritirato o vuoto si rifiuta, non si conta a zero: è ciò che impedisce alla funzione di diventare
+  una porta per contare qualunque relazione aggirando la row level security.
 
-### Sicurezza
-
-Come il conteggio intero, la funzione gira con i permessi del **proprietario**
-delle tabelle, perché alcune viste di controllo, lette da un programma senza un
-utente in sessione, risponderebbero zero per cecità (il difetto è spiegato in
-[`dbops.fn_conta_presidio`](/dbzero/dbops/manual/fn_conta_presidio)).
-
-E gli stessi due limiti la rendono sicura:
-
-* **torna numeri, mai le righe.** Il nome della causa che esce è un codice del
-  catalogo delle cause, non un dato di un cliente o di un documento;
-* **conta solo ciò che è a catalogo**, e rifiuta tutto il resto.
+I nomi di vista e colonne vengono da una tabella, quindi entrano nella query come identificatori
+quotati, mai per concatenazione.
 
 ---
 
-*Brief: `docs/it/dev/work-done/brief-db-presidio-processi-testo-per-causa.md` §6.2 (R-2).*
+### Codici errore
+
+* `E_PRESIDIO_NON_A_CATALOGO` — la vista chiesta non è in `dbops.presidi`, oppure è spenta o
+  ritirata, oppure il nome è vuoto.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-conta-presidio-per-variante-v1.sql` — rifiuto di una vista non a catalogo e
+  del nome vuoto; una riga sola anche a zero per un presidio senza causa; un caso costruito con due
+  cause, il filtro di stato che esclude e il gruppo vuoto; nessun gruppo quando non c'è niente da
+  guardare; `SECURITY DEFINER`, `search_path` pinnato, `EXECUTE` dell'applicazione; sui presidi
+  veri la somma dei gruppi è il conteggio.
+* `db/pgtap/dbops/test-catalogo-presidi-v1.sql` — il proprietario delle tabelle protette lette
+  dalle viste `DEFINER` è quello di questa funzione.
+
+---
+
+### Note di migrazione
+
+* 2026-10-10 — nasce con `brief-db-presidio-processi-testo-per-causa` §6.2 (R-2) e prende da
+  `fn_conta_presidio` il perimetro, il filtro e il `SECURITY DEFINER`.
+
+---
+
+{% include-markdown "signature-core.md" %}

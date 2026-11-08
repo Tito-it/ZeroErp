@@ -98,15 +98,18 @@ SELECT
 -- I prefissi di segmento del test, calcolati UNA volta sola: se si generassero
 -- a ogni uso, ogni chiamata produrrebbe un uid diverso e i componenti di uno
 -- stesso kit finirebbero in istanze diverse.
+-- ⚠️ Documenti VERI (la provenienza della riga di commessa deve nominare un
+--   documento che esiste); i numeri di riga della chiave restano sintetici: la
+--   provenienza e' il documento intero.
 CREATE TEMP TABLE tmp_seg AS
-SELECT gen_random_uuid() AS u_ddt,
-       gen_random_uuid() AS u_ord,
-       gen_random_uuid() AS u_onere,
-       gen_random_uuid() AS u_kit_ok,
-       gen_random_uuid() AS u_kit_senza_coeff,
-       gen_random_uuid() AS u_kit_incoerente,
-       gen_random_uuid() AS u_collisione_ord,
-       gen_random_uuid() AS u_collisione_ddt;
+SELECT (SELECT d.ddt_uid FROM dbops.fn_pgtap_crea_ddt_senza_ordine('vaf ddt', 'DRAFT', (SELECT billing_account_id FROM tmp_refs)) d) AS u_ddt,
+       (SELECT o.ordine_uid FROM dbops.fn_pgtap_crea_ordine('vaf ord', 'DRAFT', (SELECT billing_account_id FROM tmp_refs)) o) AS u_ord,
+       (SELECT o.ordine_uid FROM dbops.fn_pgtap_crea_ordine('vaf onere', 'DRAFT', (SELECT billing_account_id FROM tmp_refs)) o) AS u_onere,
+       (SELECT o.ordine_uid FROM dbops.fn_pgtap_crea_ordine('vaf kit ok', 'DRAFT', (SELECT billing_account_id FROM tmp_refs)) o) AS u_kit_ok,
+       (SELECT o.ordine_uid FROM dbops.fn_pgtap_crea_ordine('vaf kit senza coeff', 'DRAFT', (SELECT billing_account_id FROM tmp_refs)) o) AS u_kit_senza_coeff,
+       (SELECT o.ordine_uid FROM dbops.fn_pgtap_crea_ordine('vaf kit incoerente', 'DRAFT', (SELECT billing_account_id FROM tmp_refs)) o) AS u_kit_incoerente,
+       (SELECT o.ordine_uid FROM dbops.fn_pgtap_crea_ordine('vaf collisione ord', 'DRAFT', (SELECT billing_account_id FROM tmp_refs)) o) AS u_collisione_ord,
+       (SELECT d.ddt_uid FROM dbops.fn_pgtap_crea_ddt_senza_ordine('vaf collisione ddt', 'DRAFT', (SELECT billing_account_id FROM tmp_refs)) d) AS u_collisione_ddt;
 
 CREATE TEMP TABLE tmp_com AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -124,8 +127,8 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
-  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_com)::text,
+  p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 
 -- Helper: una CA con segment_key esplicito, tipo_movimento e meta.
 -- La causale onere e' obbligatoria se e solo se tipo_movimento='ONERE'
@@ -144,8 +147,11 @@ BEGIN
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com),
     -- La riga NORMALE ha la sua sorgente; ONERE e RETTIFICA no (vincolo 20261012-27).
-    p_sorgente_tipo_id => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA') END,
-    p_sorgente_uid => CASE WHEN p_tipo_mov = 'NORMALE' THEN ((SELECT commessa_id FROM tmp_com))::text END,
+    -- La provenienza e' il documento che la chiave nomina (come nel push).
+    p_sorgente_tipo_id => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT k.sorgente_tipo_id FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k) END,
+    p_sorgente_chiave => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k) END,
+    -- La riga della chiave e' sintetica: la provenienza e' il documento intero.
+    p_sorgente_riga => NULL,
     p_segment_key => p_segment,
     p_articolo_id => r.articolo_id,
     p_istanza_utility_id => r.istanza_utility_id,

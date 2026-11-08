@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI INDICI «CHI DERIVA DA X» DI vendite.commesse_attivita
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Al posto di ix_commesse_attivita_sorgente_competenza (sorgente_uid, competenza_mese),
+#   tolto da 20261107-70: era senza il tipo, sull'uid testuale di ogni tipo. I lettori
+#   cercano per tipo e chiave del documento (ritiro all'annullo, legami, lineage,
+#   chiudibilita', addebiti del contratto), e il lato in uscita della provenienza per
+#   tipo e riga. Tre indici parziali, come quelli di fatture_righe e commesse_sorgenti.
+#   competenza_mese non entra: nessun lettore cerca per documento e mese insieme
+#   (gli addebiti del contratto restringono per segment_base, che ha un indice suo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261107-71-create-indici-commesse-attivita-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261107-71-create-indici-commesse-attivita-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_attivita: tre indici parziali per tipo e chiave del documento e per tipo
+        e riga. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_commesse_attivita_sorgente_id ON vendite.commesse_attivita USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_commesse_attivita_sorgente_id IS
+                'Chi deriva da X: le righe di commessa nate da un documento a chiave id (ordine, contratto, DDT, consumi), per tipo e chiave del documento. Lo usano il ritiro all''annullo (vendite.fn_ritira_commessa_attivita_da_sorgente), la chiudibilita'' (script.fn_check_sorgente_chiudibile), i legami e la lineage, gli addebiti del contratto, e il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione del documento). Non unico.';
+
+              CREATE INDEX ix_commesse_attivita_sorgente_uid ON vendite.commesse_attivita USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_commesse_attivita_sorgente_uid IS
+                'Chi deriva da X: le righe di commessa nate da un documento a chiave uid (preventivo), per tipo e chiave del documento. Gli stessi lettori di ix_commesse_attivita_sorgente_id, e la proiezione dello stato sul preventivo. Non unico.';
+
+              CREATE INDEX ix_commesse_attivita_sorgente_riga ON vendite.commesse_attivita USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_commesse_attivita_sorgente_riga IS
+                'Chi deriva da X: le righe di commessa nate da una riga di un documento, per tipo e riga. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione della riga). Non unico: una riga di contratto ne produce una per mese.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX vendite.ix_commesse_attivita_sorgente_id;
+              DROP INDEX vendite.ix_commesse_attivita_sorgente_uid;
+              DROP INDEX vendite.ix_commesse_attivita_sorgente_riga;

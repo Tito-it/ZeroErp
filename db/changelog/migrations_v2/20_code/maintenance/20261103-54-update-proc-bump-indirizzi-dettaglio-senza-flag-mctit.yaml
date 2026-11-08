@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# proc_bump_indirizzi_dettaglio non apre piu' una porta che non attraversa.
+#   Brief: brief-db-revisione-maintenance D8 (decisione di Tid, 2026-11-03).
+#
+# ⚠️ IL DIFETTO. La procedura accendeva il flag
+#   `zeroerp.maintenance_indirizzi_dettaglio`, con cui
+#   anagrafiche.trgfn_indirizzi_dettaglio_protect_update lascia cambiare
+#   stradario_id. Ma la sua UPDATE e' neutra (`SET stradario_id =
+#   stradario_id`): il guard blocca solo se NEW.stradario_id IS DISTINCT FROM
+#   OLD.stradario_id, quindi non scatterebbe comunque. Il flag apriva per la
+#   durata della procedura una porta che nessuno attraversava.
+#
+# ⭐ LA DECISIONE. Si toglie il flag dalla procedura; il verbo che sposta gli
+#   indirizzi su un'altra via non si costruisce ora. Il guard continua a
+#   riconoscere il flag: e' la porta pronta per quel verbo, il giorno in cui
+#   servira'.
+#
+# ℹ️ Il resto non cambia: l'aggiornamento neutro fa girare, su ogni riga della
+#   via, il trigger di normalizzazione (via_norm, civico_norm,
+#   indirizzo_normalizzato), la guardia della chiave e lo storico.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261103-54-update-proc-bump-indirizzi-dettaglio-senza-flag-mctit.yaml
+
+  - changeSet:
+      id: 20261103-54-update-proc-bump-indirizzi-dettaglio-senza-flag
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_bump_indirizzi_dettaglio: tolto il flag di manutenzione, che apriva
+        il guard su stradario_id per un aggiornamento che non lo cambia. Firma invariata.
+        Brief: brief-db-revisione-maintenance D8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'proc_bump_indirizzi_dettaglio'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
+               LANGUAGE plpgsql
+              AS $procedure$
+              -- Scopo: rinormalizzare anagrafiche.indirizzi_dettaglio di una via
+              --   (via_norm, civico_norm, indirizzo_normalizzato) dopo che e'
+              --   cambiato qualcosa da cui dipendono: il nome della via, il
+              --   toponimo, il comune.
+              --
+              -- ⭐ L'aggiornamento e' NEUTRO: riscrive lo stesso stradario_id.
+              --   Basta a far girare su ogni riga il trigger di normalizzazione,
+              --   che rilegge la via da script.vw_indirizzo_completo.
+              --
+              -- ℹ️ Niente flag di manutenzione: il guard
+              --   trgfn_indirizzi_dettaglio_protect_update blocca solo un
+              --   CAMBIO di stradario_id, e qui non ce n'e'. Il flag resta la
+              --   porta del verbo che spostera' gli indirizzi su un'altra via,
+              --   quando nascera'. Brief: brief-db-revisione-maintenance D8.
+              BEGIN
+                UPDATE anagrafiche.indirizzi_dettaglio
+                   SET stradario_id = stradario_id
+                 WHERE stradario_id = p_stradario_id;
+              END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
+              IS 'Rinormalizza anagrafiche.indirizzi_dettaglio di una via con un aggiornamento neutro (stesso stradario_id): il trigger di normalizzazione ricalcola via_norm, civico_norm e indirizzo_normalizzato da script.vw_indirizzo_completo. Non accende il flag zeroerp.maintenance_indirizzi_dettaglio: il guard su stradario_id blocca solo un cambio di via, e qui la via non cambia. La chiama anche maintenance.proc_bump_toponomastica, per ogni via del toponimo corretto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20260806-20).
+              SELECT 1;

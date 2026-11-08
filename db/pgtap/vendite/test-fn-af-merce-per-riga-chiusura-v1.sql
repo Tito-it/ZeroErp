@@ -113,11 +113,14 @@ FROM tmp_cli_afk c;
 
 -- I prefissi di segmento, calcolati UNA volta: i componenti di uno stesso
 -- kit devono condividere l'istanza.
+-- ⚠️ Documenti VERI (la provenienza della riga di commessa deve nominare un
+--   documento che esiste); i numeri di riga della chiave restano sintetici, per
+--   provare la lettura al confine numerico: la provenienza e' il documento intero.
 CREATE TEMP TABLE tmp_seg_afk AS
-SELECT gen_random_uuid() AS u_ddt,      -- 5, 6, 8, 11
-       gen_random_uuid() AS u_kit,      -- 7
-       gen_random_uuid() AS u_coll,     -- 8: ORD con lo stesso numero di riga
-       gen_random_uuid() AS u_foo;      -- 9
+SELECT (SELECT d.ddt_uid FROM dbops.fn_pgtap_crea_ddt_senza_ordine('afk ddt', 'DRAFT', (SELECT billing_account_id FROM tmp_cli_afk)) d) AS u_ddt,      -- 5, 6, 8, 11
+       (SELECT o.ordine_uid FROM dbops.fn_pgtap_crea_ordine('afk kit', 'DRAFT', (SELECT billing_account_id FROM tmp_cli_afk)) o) AS u_kit,      -- 7
+       (SELECT o.ordine_uid FROM dbops.fn_pgtap_crea_ordine('afk coll', 'DRAFT', (SELECT billing_account_id FROM tmp_cli_afk)) o) AS u_coll,     -- 8: ORD con lo stesso numero di riga
+       (SELECT d.ddt_uid FROM dbops.fn_pgtap_crea_ddt_senza_ordine('afk foo', 'DRAFT', (SELECT billing_account_id FROM tmp_cli_afk)) d) AS u_foo;      -- 9
 
 CREATE TEMP TABLE tmp_com_afk AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -136,8 +139,8 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_id FROM tmp_com_afk),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_afk),
-  p_sorgente_uid     => (SELECT commessa_id FROM tmp_com_afk)::text,
-  p_sorgente_riga    => 1,
+  p_sorgente_chiave  => (SELECT commessa_id FROM tmp_com_afk)::text,
+  p_sorgente_riga    => NULL,
   p_meta             => '{}'::jsonb);
 
 -- Helper: un'attivita' con segment_key esplicita, tipo_movimento e meta.
@@ -150,8 +153,11 @@ BEGIN
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com_afk),
     -- La riga NORMALE ha la sua sorgente; ONERE e RETTIFICA no (vincolo 20261012-27).
-    p_sorgente_tipo_id => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA') END,
-    p_sorgente_uid => CASE WHEN p_tipo_mov = 'NORMALE' THEN ((SELECT commessa_id FROM tmp_com_afk))::text END,
+    -- La provenienza e' il documento che la chiave nomina.
+    p_sorgente_tipo_id => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT k.sorgente_tipo_id FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k) END,
+    p_sorgente_chiave => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k) END,
+    -- La riga della chiave e' sintetica: la provenienza e' il documento intero.
+    p_sorgente_riga => NULL,
     p_segment_key => p_segment,
     p_articolo_id => r.articolo_id,
     p_istanza_utility_id => r.istanza_utility_id,

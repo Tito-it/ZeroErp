@@ -277,7 +277,7 @@ class TestLimitiUtente(_BaseApiTest):
 
     # Scopo: con billing_account_id la view recupera la categoria del BA
     # via BillingAccountRepository e la propaga a ParameterService.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(_AUTH, return_value=(Mock(id=1), None))
     @patch(_LIMITI_PS)
     def test_limiti_utente_con_ba_propaga_categoria(self, ps_cls, _auth, ba_cls):
@@ -297,7 +297,7 @@ class TestLimitiUtente(_BaseApiTest):
     # Scopo: billing_account_id malformato (non numerico) → 400
     # E_VALIDATION_INPUT, niente lookup BA (F-6, 2026-10-08: prima veniva
     # ignorato in silenzio e il drawer mostrava la soglia generica).
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(_AUTH, return_value=(Mock(id=1), None))
     @patch(_LIMITI_PS)
     def test_limiti_utente_ba_malformato_400(self, ps_cls, _auth, ba_cls):
@@ -310,7 +310,7 @@ class TestLimitiUtente(_BaseApiTest):
 
     # Scopo: BA che non risulta (inesistente o fuori scope RLS) → 404
     # E_ANAG_NOT_FOUND, non la soglia senza livello categoria (F-6).
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(_AUTH, return_value=(Mock(id=1), None))
     @patch(_LIMITI_PS)
     def test_limiti_utente_ba_non_risulta_404(self, ps_cls, _auth, ba_cls):

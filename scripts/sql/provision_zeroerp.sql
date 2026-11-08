@@ -371,6 +371,9 @@ INSERT INTO _app_schemas (nspname) VALUES
     ('pratiche'),
     ('public'),
     ('script'),
+    -- Dal 2026-11-08 (brief-db-revisione-dbops §22): shop.ricevute ha le policy
+    -- dell'app; anche nel loop ci_apply 20260205-41.
+    ('shop'),
     ('storico'),
     ('ui'),
     ('vendite');
@@ -426,9 +429,8 @@ FROM _app_schemas s
 -- larga: danno all'applicazione anche ciò che il modello le NEGA. Due registri
 -- — `dbops.audit_log`, `dbops.error_log` — raccontano ciò che l'applicazione fa
 -- e sbaglia: il ruolo raccontato li legge e li aggiunge, non li riscrive né li
--- cancella. E la modalità sessione dell'audit (`fn_audit_begin` → `fn_audit_end`)
--- è un UPDATE del registro: riservata a chi possiede la tabella. L'app scrive
--- con la sola `fn_audit_log_once`.
+-- cancella: scrive con la sola `fn_audit_log_once` (la modalità sessione
+-- `fn_audit_begin` → `fn_audit_end` è ritirata).
 --
 -- 🔴 PERCHÉ STA QUI, e non basta che stia nel changeSet e nel loop ci_apply.
 --   Questo script è l'ULTIMA parola: in `ci-validate.yaml` e in `ci-local.sh`
@@ -457,17 +459,6 @@ WHERE to_regclass(t.nome) IS NOT NULL
 --   dello stesso elenco `v_schemi_senza_delete` nel loop 20260205-41.
 SELECT format('REVOKE DELETE ON ALL TABLES IN SCHEMA %I FROM %I', 'storico', :'app_role')
 WHERE EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'storico')
-\gexec
-
--- La chiusura va anche a PUBLIC, che sulle funzioni ha EXECUTE per default
--- (`=X`): revocare al solo ruolo applicativo non toglierebbe niente.
-SELECT format('REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM PUBLIC, %I',
-              n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), :'app_role')
-FROM pg_proc p
-JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'dbops'
-  AND p.proname IN ('fn_audit_begin', 'fn_audit_end')
-  AND p.prokind = 'f'
 \gexec
 
 -- ⭐ LA PORTA DEL LEDGER DI MAGAZZINO (dal 2026-09-18): brief
@@ -626,7 +617,11 @@ WHERE (n.nspname, p.proname) IN (
         --   (erano magazzino.fn_posta_ddt / fn_posta_reso dal 28-09): il registro
         --   non legge le tabelle dei documenti. Forward 90_end/20261001-24; brief
         --   brief-db-magazzino-registro-anello-interno (P-5).
-        ('vendite', 'fn_posta_ddt'), ('vendite', 'fn_posta_reso'))
+        ('vendite', 'fn_posta_ddt'), ('vendite', 'fn_posta_reso'),
+        -- ⭐ Dal 2026-11-08 la copia di un'edizione di workflow: ci si arriva solo da
+        --   fn_fork_definizione e fn_nuova_versione_definizione (DEFINER). Forward
+        --   90_end/20261110-14; presidio pratiche/test-copia-definizione-riservata-v1.
+        ('pratiche', 'fn_copia_definizione'))
   AND p.prokind = 'f'
 \gexec
 

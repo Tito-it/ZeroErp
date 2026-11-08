@@ -187,7 +187,9 @@ CREATE OR REPLACE FUNCTION pg_temp.invia(v jsonb) RETURNS bigint LANGUAGE sql AS
       p_prezzo_bloccato => (v ->> 'prezzo_bloccato')::boolean,
       p_pricing_mode => (v ->> 'pricing_mode')::varchar,
       p_sorgente_tipo_id => (v ->> 'sorgente_tipo_id')::bigint,
-      p_sorgente_uid => v ->> 'sorgente_uid',
+      p_sorgente_chiave => v ->> 'sorgente_chiave',
+      -- La riga del documento, dal lister (come la passa il backend).
+      p_sorgente_riga => (v ->> 'riga_id')::bigint,
       p_tipo_movimento => (v ->> 'tipo_movimento')::varchar,
       p_meta => COALESCE(v -> 'meta', '{}'::jsonb)) u
 $fx$;
@@ -324,7 +326,9 @@ SELECT a.s, to_jsonb(l) AS v
 SELECT ok(
   (SELECT count(*) FILTER (WHERE t.s = 'O') = 1
           AND bool_and((t.v ->> 'quantita')::numeric < 0
-                       AND t.v ->> 'riga_id' IS NULL
+                       -- lo storno porta la riga del pezzo che storna: quella che la sua
+                       -- chiave nomina (NULL per una quota fissa del listino)
+                       AND (t.v ->> 'riga_id')::bigint IS NOT DISTINCT FROM script.fn_segment_key_riga(t.v ->> 'segment_key')
                        AND t.v ->> 'segment_key' LIKE '%#STO'
                        AND (t.v ->> 'prezzo_bloccato')::boolean
                        AND (t.v ->> 'competenza_dal')::date = b.fine + 1
@@ -332,7 +336,7 @@ SELECT ok(
           AND bool_and((t.v ->> 'quantita')::numeric = round(2 * round(10 / b.giorni_m1, 6), 6) - 2
                        AND (t.v ->> 'prezzo_snapshot')::numeric = 80) FILTER (WHERE t.s = 'O')
      FROM tmp_can_sto t, tmp_can_b b),
-  '10) cessazione dopo l''addebito anticipato: una riga negativa per pezzo oltre valido_al, al prezzo addebitato, chiave #STO');
+  '10) cessazione dopo l''addebito anticipato: una riga negativa per pezzo oltre valido_al, al prezzo addebitato, chiave #STO, con la riga del pezzo');
 
 CREATE TEMP TABLE tmp_can_sto_inviati AS
 SELECT pg_temp.invia(t.v) AS id FROM tmp_can_sto t;
@@ -343,7 +347,7 @@ SELECT ok(
             p_competenza_mese => (SELECT m1 FROM tmp_can_b), p_contratto_id => pg_temp.ctr('C3')))
   AND (SELECT sum(ca.quantita) = 2 + round(2 * round(10 / b.giorni_m1, 6), 6)
          FROM vendite.commesse_attivita ca, tmp_can_b b
-        WHERE ca.sorgente_uid = (SELECT k.uid::text FROM vendite.contratti k WHERE k.id = pg_temp.ctr('C3'))
+        WHERE vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = (SELECT k.uid::text FROM vendite.contratti k WHERE k.id = pg_temp.ctr('C3'))
           AND ca.articolo_id = pg_temp.art('O')
         GROUP BY b.giorni_m1),
   '11) inviati gli storni non c''e'' altro, e resta il dovuto fino a valido_al (2 + 2 x 10/giorni del mese)');
@@ -370,7 +374,7 @@ $fx$;
 CREATE OR REPLACE FUNCTION pg_temp.o_c3() RETURNS numeric LANGUAGE sql STABLE AS $fx$
   SELECT sum(ca.quantita)
     FROM vendite.commesse_attivita ca
-   WHERE ca.sorgente_uid = (SELECT k.uid::text FROM vendite.contratti k WHERE k.id = pg_temp.ctr('C3'))
+   WHERE vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = (SELECT k.uid::text FROM vendite.contratti k WHERE k.id = pg_temp.ctr('C3'))
      AND ca.articolo_id = pg_temp.art('O');
 $fx$;
 

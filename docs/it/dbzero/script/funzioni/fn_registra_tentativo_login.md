@@ -30,7 +30,7 @@ DECLARE
     v_tentativi       config.credenziali_provenienze.tentativi_falliti%TYPE;
     v_bloccato_fino_a config.credenziali_provenienze.bloccato_fino_a%TYPE;
     -- Espliciti: parametri da script.fn_login_parametri (testo in
-    -- config.parameters), ttl letti dal jsonb della regola CLEANUP_AT, e
+    -- config.parameters), ttl della regola CLEANUP_AT (dbops.fn_cleanup_at_regola), e
     -- un flag calcolato.
     v_max_tentativi   integer;
     v_blocco_minuti   integer;
@@ -88,8 +88,12 @@ BEGIN
              INTO v_chiave_id, v_fallimenti;
 
         -- 2. La coppia credenziale + provenienza: il freno.
-        v_ttl_coppia := (dbops.fn_cleanup_at_params('config', 'credenziali_provenienze')
-                         ->> 'ttl_days')::integer;
+        -- La scadenza e' ultimo_fallimento_at + ttl, la base della regola:
+        -- ultimo_fallimento_at si scrive now() qui sotto. Nessuna regola che
+        -- si applica → NULL, la riga non scade.
+        SELECT r.ttl_days INTO v_ttl_coppia
+          FROM dbops.fn_cleanup_at_regola('config', 'credenziali_provenienze') r
+         WHERE r.motivo_salto IS NULL;
 
         INSERT INTO config.credenziali_provenienze AS p
                (credenziale_id, provenienza, tentativi_falliti,
@@ -110,8 +114,12 @@ BEGIN
              INTO v_tentativi, v_bloccato_fino_a;
     ELSE
         -- 1. Il nome tentato: base dell'attesa crescente. Scade.
-        v_ttl_nome := (dbops.fn_cleanup_at_params('config', 'nomi_tentati')
-                       ->> 'ttl_days')::integer;
+        -- La scadenza e' ultimo_fallimento_at + ttl, la base della regola:
+        -- ultimo_fallimento_at si scrive now() qui sotto. Nessuna regola che
+        -- si applica → NULL, la riga non scade.
+        SELECT r.ttl_days INTO v_ttl_nome
+          FROM dbops.fn_cleanup_at_regola('config', 'nomi_tentati') r
+         WHERE r.motivo_salto IS NULL;
 
         INSERT INTO config.nomi_tentati AS nt
                (nome_digest, fallimenti_consecutivi, ultimo_fallimento_at)
@@ -125,8 +133,12 @@ BEGIN
              INTO v_chiave_id, v_fallimenti;
 
         -- 2. La coppia nome tentato + provenienza: il freno, stessa regola.
-        v_ttl_coppia := (dbops.fn_cleanup_at_params('config', 'nomi_tentati_provenienze')
-                         ->> 'ttl_days')::integer;
+        -- La scadenza e' ultimo_fallimento_at + ttl, la base della regola:
+        -- ultimo_fallimento_at si scrive now() qui sotto. Nessuna regola che
+        -- si applica → NULL, la riga non scade.
+        SELECT r.ttl_days INTO v_ttl_coppia
+          FROM dbops.fn_cleanup_at_regola('config', 'nomi_tentati_provenienze') r
+         WHERE r.motivo_salto IS NULL;
 
         INSERT INTO config.nomi_tentati_provenienze AS p
                (nome_tentato_id, provenienza, tentativi_falliti,
@@ -159,7 +171,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_registra_tentativo_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet, p_successo boolean)
-IS 'Registra l''esito di un tentativo di login per NOME TENTATO e PROVENIENZA (R-7). La chiave e'' la credenziale quando p_auth_user_id e'' valorizzato (M-4: ogni credenziale conta, nessun filtro su veste), il nome tentato (config.nomi_tentati, per digest) quando e'' NULL: stessa regola e stesso ritorno per le due, cosi'' la risposta non dice se il nome esiste. Successo (solo con la credenziale) -> script.fn_azzera_tentativi_credenziale(uid, provenienza). Fallimento, in upsert e in ordine fisso: (1) fallimenti consecutivi della chiave + ultimo_fallimento_at, base dell''attesa crescente; (2) la coppia chiave + provenienza col passo di script.fn_login_freno_passo (regola del 2): freno fino a now() + login_blocco_minuti alla soglia login_max_tentativi_falliti, un freno scaduto riparte da 1. cleanup_at delle righe che scadono ricalcolato dalle regole CLEANUP_AT (dbops.fn_cleanup_at_params). Ritorna jsonb {bloccato, minuti_rimanenti, tentativi (della coppia), attesa_secondi (del prossimo tentativo)}. Credenziale data e inesistente -> E_CREDENZIALE_NON_TROVATA; provenienza, esito o digest (32 byte) mancanti, credenziale <= 0, successo senza credenziale -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER del PROPRIETARIO, search_path bloccato; nessun guard di permesso, dichiarato. Brief: brief-db-blocco-login-per-credenziale §2.4-2.5, §3.1, §13.';
+IS 'Registra l''esito di un tentativo di login per NOME TENTATO e PROVENIENZA. La chiave e'' la credenziale quando p_auth_user_id e'' valorizzato, ogni credenziale conta senza filtro sulla veste, il nome tentato (config.nomi_tentati, per digest) quando e'' NULL: stessa regola e stesso ritorno per le due, cosi'' la risposta non dice se il nome esiste. Successo (solo con la credenziale) -> script.fn_azzera_tentativi_credenziale(uid, provenienza). Fallimento, in upsert e in ordine fisso: (1) fallimenti consecutivi della chiave + ultimo_fallimento_at, base dell''attesa crescente; (2) la coppia chiave + provenienza col passo di script.fn_login_freno_passo (regola del 2): freno fino a now() + login_blocco_minuti alla soglia login_max_tentativi_falliti, un freno scaduto riparte da 1. cleanup_at delle righe che scadono ricalcolato a ogni fallimento come ultimo_fallimento_at + ttl_days, con la regola di dbops.fn_cleanup_at_regola (nessuna regola che si applica: NULL, non scade). Ritorna jsonb {bloccato, minuti_rimanenti, tentativi (della coppia), attesa_secondi (del prossimo tentativo)}. Credenziale data e inesistente -> E_CREDENZIALE_NON_TROVATA; provenienza, esito o digest (32 byte) mancanti, credenziale <= 0, successo senza credenziale -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER del PROPRIETARIO, search_path bloccato; nessun guard di permesso, dichiarato.';
 ```
 
 </div>

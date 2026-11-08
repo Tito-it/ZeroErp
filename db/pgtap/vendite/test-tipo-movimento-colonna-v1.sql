@@ -107,8 +107,8 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- stessa: esiste per costruzione, quindi passa il guard sorgente polimorfa
   -- (formato id::text + esistenza nel target). fn_emit pretende solo che una
   -- ROOT esista, non ne dereferenzia il tipo. rev 2026-07-27 (bonifica).
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_tm)::text,
-  p_sorgente_riga => 1,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa_tm)::text,
+  p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('test_scope', 'pgtap_tipo_movimento')
 ) AS link_id;
 
@@ -121,9 +121,9 @@ SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_tm),
   -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-  p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-  p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_tm))::text,
-  p_segment_key => ('ORDINE_VENDITA:TM:R:' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_tm)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_tm)) x),
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_tm)) x) || ':' || ('ORDINE_VENDITA:TM:R:' || substr(md5(clock_timestamp()::text), 1, 12))::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_tm),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_tm),
   p_data_attivita => DATE '2026-07-15',

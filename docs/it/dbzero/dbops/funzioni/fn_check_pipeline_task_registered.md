@@ -16,62 +16,51 @@ CREATE OR REPLACE FUNCTION dbops.fn_check_pipeline_task_registered(p_dominio_id 
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: verificare che il task sia registrato e attivo, nel suo
+--   dominio attivo. Risponde TRUE o solleva.
 DECLARE
-  v_exists boolean;
+    v_chi dbops.error_log.function_name%TYPE := 'dbops.fn_check_pipeline_task_registered';
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Verifica esistenza task attivo nel registry per dominio.
-  --
-  -- Regole:
-  --   - p_dominio_id obbligatorio (>0)
-  --   - p_task_code obbligatorio (non vuoto)
-  -- =========================================================
+    IF p_dominio_id IS NULL OR p_dominio_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('campo', 'p_dominio_id', 'dominio_id', p_dominio_id),
+            NULL::uuid,
+            v_chi, 'manca il dominio del task');
+    END IF;
 
-  IF p_dominio_id IS NULL OR p_dominio_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'dbops.fn_check_pipeline_task_registered', 'E_GENERICO',
-      jsonb_build_object('detail', 'p_dominio_id obbligatorio'),
-      NULL::uuid,
-      'p_dominio_id obbligatorio'
-    );
-  END IF;
+    IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('campo', 'p_task_code'),
+            NULL::uuid,
+            v_chi, 'manca il codice del task');
+    END IF;
 
-  IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'dbops.fn_check_pipeline_task_registered', 'E_GENERICO',
-      jsonb_build_object('detail', 'p_task_code obbligatorio'),
-      NULL::uuid,
-      'p_task_code obbligatorio'
-    );
-  END IF;
+    IF NOT EXISTS (
+        SELECT 1
+          FROM dbops.pipeline_task_registry r
+          JOIN dbops.domini_task d ON d.id = r.dominio_id
+         WHERE r.dominio_id = p_dominio_id
+           AND r.task_code  = p_task_code
+           AND r.attivo IS TRUE
+           AND d.attivo IS TRUE)
+    THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', v_chi, 'E_PIPELINE_TASK_HANDLER_NOT_FOUND',
+            jsonb_build_object('detail', 'task non registrato o non attivo',
+                               'dominio_id', p_dominio_id,
+                               'task_code', p_task_code),
+            NULL::uuid,
+            VARIADIC ARRAY[]::text[]);
+    END IF;
 
-  SELECT TRUE
-    INTO v_exists
-    FROM dbops.pipeline_task_registry r
-    JOIN dbops.domini_task d
-      ON d.id = r.dominio_id
-   WHERE r.dominio_id = p_dominio_id
-     AND r.task_code = p_task_code
-     AND r.attivo IS TRUE
-     AND d.attivo IS TRUE
-   LIMIT 1;
-
-  IF v_exists IS NOT TRUE THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'dbops.fn_check_pipeline_task_registered', 'E_GENERICO',
-      jsonb_build_object('detail', 'Task non registrato', 'dominio_id', p_dominio_id, 'task_code', p_task_code),
-      NULL::uuid,
-      concat('Task non registrato: ', p_task_code)
-    );
-  END IF;
-
-  RETURN TRUE;
+    RETURN TRUE;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_check_pipeline_task_registered(p_dominio_id bigint, p_task_code text)
-IS 'Verifica che un task sia registrato e attivo nel registry per dominio.';
+IS 'Verifica che il task p_task_code sia registrato e attivo in dbops.pipeline_task_registry, nel dominio p_dominio_id attivo. Risponde TRUE; altrimenti solleva E_PIPELINE_TASK_HANDLER_NOT_FOUND, con dominio e task nel contesto: un task non registrato e'' un difetto di configurazione. Dominio o codice mancanti escono con E_DBOPS_CHIAMATA_NON_VALIDA.';
 ```
 
 </div>

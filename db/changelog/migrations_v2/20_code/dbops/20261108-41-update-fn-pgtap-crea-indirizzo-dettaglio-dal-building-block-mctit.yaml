@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_crea_indirizzo_dettaglio: l'indirizzo dal building block del dominio.
+#   Brief: brief-db-revisione-dbops, D64 (giro 8, blocco 8a).
+#
+# Base: doc auto-generata del 2026-11-07 (= 20_code/dbops/20261107-15).
+#
+# ⚠️ PERCHE'. La fixture scriveva con un INSERT ... ON CONFLICT DO UPDATE
+#   accanto ad anagrafiche.fn_get_or_create_indirizzo_dettaglio: su una riga
+#   disattivata restituiva un indirizzo spento, e saltava i controlli del
+#   building block sulla via. Ora lo chiama. Firma e risultato invariati.
+#   COMMENT al presente (§5d). Presidio: test 29 di
+#   anagrafiche/test-indirizzi-dettaglio-unicita-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-41-update-fn-pgtap-crea-indirizzo-dettaglio-dal-building-block-mctit.yaml
+
+  - changeSet:
+      id: 20261108-41-update-fn-pgtap-crea-indirizzo-dettaglio-dal-building-block
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_indirizzo_dettaglio: l'indirizzo da anagrafiche.fn_get_or_create_indirizzo_dettaglio (D64).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_crea_indirizzo_dettaglio';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_get_or_create_indirizzo_dettaglio';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_indirizzo_dettaglio(
+                  p_etichetta text DEFAULT 'pgTAP'   -- etichetta libera: nessuna colonna di cui sia il riflesso
+              )
+               RETURNS anagrafiche.indirizzi_dettaglio.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un indirizzo (anagrafiche.indirizzi_dettaglio)
+              --   FABBRICANDOLO, non cercandolo: e' dato di macchina, e su un database
+              --   ricostruito da zero non ce n'e' nessuno; config.stradario invece e' seed.
+              --   Etichette diverse -> indirizzi diversi; la stessa etichetta -> lo stesso id.
+              --   L'indirizzo lo trova o lo crea il building block del dominio, con le
+              --   sue regole: la via risolta, la chiave normalizzata, la riga spenta
+              --   che torna in uso.
+              -- Uso:
+              --   v_ind := dbops.fn_pgtap_crea_indirizzo_dettaglio('magazzino A');
+              DECLARE
+                  v_stradario_id config.stradario.id%TYPE;
+                  v_id           anagrafiche.indirizzi_dettaglio.id%TYPE;
+              BEGIN
+                  -- Il primo stradario di seed: uno vale l'altro, serve solo come ancora.
+                  SELECT s.id INTO v_stradario_id
+                    FROM config.stradario s
+                   WHERE s.obsoleto_dal IS NULL          -- una via viva: sulla soppressa l'indirizzo non nasce
+                   ORDER BY s.id
+                   LIMIT 1;
+                  IF v_stradario_id IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_crea_indirizzo_dettaglio: config.stradario e'' vuoto — e'' un seed di 80_data, non un dato di macchina';
+                  END IF;
+
+                  -- Trova o crea dal building block del dominio: la stessa strada di
+                  -- chi scrive un indirizzo vero.
+                  v_id := anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+                              p_stradario_id => v_stradario_id,
+                              p_civico       => 99999,
+                              p_interno      => left(p_etichetta, 10)::varchar);
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_indirizzo_dettaglio(text) IS
+                  'Fixture pgTAP: fabbrica un indirizzo (anagrafiche.indirizzi_dettaglio) e ne restituisce l''id: civico 99999 sulla prima via viva di seed, interno uguale all''etichetta (i primi dieci caratteri). L''indirizzo lo trova o lo crea anagrafiche.fn_get_or_create_indirizzo_dettaglio, con le sue regole: via risolta, chiave normalizzata, riga disattivata che torna attiva. Etichette diverse danno indirizzi diversi, la stessa etichetta lo stesso id. Esiste perche'' gli indirizzi sono dati di macchina: su un database ricostruito da zero non ce n''e'' nessuno, mentre le vie sono seed. ⚠️ Non e'' un indirizzo vero: un test sulla normalizzazione o sulla geolocalizzazione si costruisce il suo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della doc auto-generata
+              -- del 2026-11-07.
+              SELECT 1;

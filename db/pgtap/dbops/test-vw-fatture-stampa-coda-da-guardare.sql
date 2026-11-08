@@ -118,28 +118,29 @@ BEGIN
     IF coalesce(array_length(v_ids, 1), 0) < 4 OR v_tipo IS NULL THEN
         RETURN;  -- i test sotto lo dichiarano con skip()
     END IF;
-    -- ⭐ Ogni riga porta il proprio nome in sorgente_uid: le asserzioni
+    -- ⭐ Ogni riga porta il proprio nome in ultimo_errore (jsonb, chiave pgtap):
+    --   le asserzioni
     --   interrogano il presidio per NOME, cosi' le righe vere gia' presenti
     --   non falsano niente.
     INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, stato, tentativi, data_update)
+        (sorgente_tipo_id, sorgente_id, ultimo_errore, stato, tentativi, data_update)
     VALUES
         -- 1) si e' arresa (non viva: puo' condividere la fattura con la 2)
-        (v_tipo, v_ids[1], 'pgtap:errore',           'ERRORE',   5, now()),
+        (v_tipo, v_ids[1], '{"pgtap": "errore"}',           'ERRORE',   5, now()),
         -- 2) presa e mai chiusa: il worker e' morto a meta'
-        (v_tipo, v_ids[1], 'pgtap:in_corso_stantio', 'IN_CORSO', 1, now() - interval '3 hours'),
+        (v_tipo, v_ids[1], '{"pgtap": "in_corso_stantio"}', 'IN_CORSO', 1, now() - interval '3 hours'),
         -- 3) ⛔ mai presa: nessuno sta drenando la coda
-        (v_tipo, v_ids[2], 'pgtap:pending_vecchio',  'PENDING',  0, now() - interval '3 hours'),
+        (v_tipo, v_ids[2], '{"pgtap": "pending_vecchio"}',  'PENDING',  0, now() - interval '3 hours'),
         -- 4) appena accodata: e' normale
-        (v_tipo, v_ids[3], 'pgtap:pending_fresco',   'PENDING',  0, now()),
+        (v_tipo, v_ids[3], '{"pgtap": "pending_fresco"}',   'PENDING',  0, now()),
         -- 5) appena presa: sta lavorando
-        (v_tipo, v_ids[4], 'pgtap:in_corso_fresco',  'IN_CORSO', 1, now());
+        (v_tipo, v_ids[4], '{"pgtap": "in_corso_fresco"}',  'IN_CORSO', 1, now());
     -- 6) fallita, ma gia' guardata e messa via
     INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, stato, tentativi, data_update,
+        (sorgente_tipo_id, sorgente_id, ultimo_errore, stato, tentativi, data_update,
          archiviato, archiviato_il, archiviato_da)
     VALUES
-        (v_tipo, v_ids[1], 'pgtap:archiviato', 'ERRORE', 5, now(), true, now(), 'pgtap');
+        (v_tipo, v_ids[1], '{"pgtap": "archiviato"}', 'ERRORE', 5, now(), true, now(), 'pgtap');
 END
 $fixture$;
 
@@ -164,7 +165,7 @@ SELECT CASE WHEN NOT (SELECT ok FROM _costruita)
     THEN skip('1. coda stampa: servono 4 fatture libere dell''operatore, non ci sono', 1)
     ELSE is(
         (SELECT motivo FROM dbops.vw_fatture_stampa_coda_da_guardare
-          WHERE sorgente_uid = 'pgtap:errore'),
+          WHERE ultimo_errore ->> 'pgtap' = 'errore'),
         'fallito: tentativi esauriti',
         '1. la stampa fallita compare, e il motivo lo dice')
     END;
@@ -173,7 +174,7 @@ SELECT CASE WHEN NOT (SELECT ok FROM _costruita)
     THEN skip('2. coda stampa: servono 4 fatture libere dell''operatore, non ci sono', 1)
     ELSE is(
         (SELECT motivo FROM dbops.vw_fatture_stampa_coda_da_guardare
-          WHERE sorgente_uid = 'pgtap:in_corso_stantio'),
+          WHERE ultimo_errore ->> 'pgtap' = 'in_corso_stantio'),
         'preso e mai chiuso: il worker e'' morto a meta''',
         '2. IN_CORSO da oltre un''ora compare: il worker e'' morto a meta'' (e il reaper non e'' passato)')
     END;
@@ -183,7 +184,7 @@ SELECT CASE WHEN NOT (SELECT ok FROM _costruita)
     THEN skip('3. coda stampa: servono 4 fatture libere dell''operatore, non ci sono', 1)
     ELSE is(
         (SELECT motivo FROM dbops.vw_fatture_stampa_coda_da_guardare
-          WHERE sorgente_uid = 'pgtap:pending_vecchio'),
+          WHERE ultimo_errore ->> 'pgtap' = 'pending_vecchio'),
         'mai preso: il drenatore della stampa non sta girando',
         '3. PENDING da oltre un''ora compare: il drenatore della stampa non sta girando')
     END;
@@ -195,7 +196,7 @@ SELECT CASE WHEN NOT (SELECT ok FROM _costruita)
     THEN skip('4. coda stampa: servono 4 fatture libere dell''operatore, non ci sono', 1)
     ELSE is_empty(
         $$SELECT id FROM dbops.vw_fatture_stampa_coda_da_guardare
-           WHERE sorgente_uid = 'pgtap:pending_fresco'$$,
+           WHERE ultimo_errore ->> 'pgtap' = 'pending_fresco'$$,
         '4. una stampa appena accodata non compare: la soglia esiste davvero')
     END;
 
@@ -203,7 +204,7 @@ SELECT CASE WHEN NOT (SELECT ok FROM _costruita)
     THEN skip('5. coda stampa: servono 4 fatture libere dell''operatore, non ci sono', 1)
     ELSE is_empty(
         $$SELECT id FROM dbops.vw_fatture_stampa_coda_da_guardare
-           WHERE sorgente_uid = 'pgtap:in_corso_fresco'$$,
+           WHERE ultimo_errore ->> 'pgtap' = 'in_corso_fresco'$$,
         '5. una stampa appena presa non compare: sta lavorando')
     END;
 
@@ -211,7 +212,7 @@ SELECT CASE WHEN NOT (SELECT ok FROM _costruita)
     THEN skip('6. coda stampa: servono 4 fatture libere dell''operatore, non ci sono', 1)
     ELSE is_empty(
         $$SELECT id FROM dbops.vw_fatture_stampa_coda_da_guardare
-           WHERE sorgente_uid = 'pgtap:archiviato'$$,
+           WHERE ultimo_errore ->> 'pgtap' = 'archiviato'$$,
         '6. una stampa archiviata non compare: qualcuno l''ha gia'' guardata')
     END;
 

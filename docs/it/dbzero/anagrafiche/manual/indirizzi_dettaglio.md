@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi_dettaglio`
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -48,7 +48,9 @@ La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli ind
 
 ### Regola sul cambio di via
 
-Il cambio di via (`stradario_id`) è bloccato dal guard `trgfn_indirizzi_dettaglio_protect_update` (`E_COLONNA_NON_MODIFICABILE`): un civico non si sposta su un'altra via.
+Il cambio di via (`stradario_id`) è bloccato dal guard `trgfn_indirizzi_dettaglio_protect_update` (`E_COLONNA_NON_MODIFICABILE`): un civico non si sposta su un'altra via. Lo sposta solo la fusione delle vie (`dbops.fn_admin_merge_stradario`), che apre la porta per il solo tempo del ripuntamento.
+
+⭐ Un indirizzo non nasce su una via **soppressa** (fusa in un'altra, `config.stradario.obsoleto_dal`), né vi si sposta: lo rifiuta il guard del ritiro `trg_indirizzi_dettaglio_a10_via_non_soppressa_ins_upd` (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`). Un indirizzo esistente si modifica sempre: conta solo il cambio di via.
 
 Quando cambia la via stessa (per esempio il toponimo), i civici si rinormalizzano con la procedura `maintenance.proc_bump_indirizzi_dettaglio(p_stradario_id)`: apre la manutenzione solo per la durata della procedura, riscrive le righe di quella via (il trigger ricalcola i campi normalizzati, lo storico registra la versione precedente) e richiude la manutenzione anche se l'aggiornamento fallisce.
 

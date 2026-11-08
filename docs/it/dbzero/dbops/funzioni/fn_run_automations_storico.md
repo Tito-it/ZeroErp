@@ -29,7 +29,6 @@ DECLARE
   fk_col   text;
   tmpl     text;
   trg_name text;
-  exist_strat text;
 BEGIN
 
       /*
@@ -49,16 +48,13 @@ BEGIN
           - match su tabella: '*ALL' oppure pattern ILIKE su r.target_table
         4) se esiste la tabella storico corrispondente (storico.<table_name>),
           assicura la presenza del trigger UPDATE+DELETE sulla tabella base usando:
-          - nome trigger derivato da template (rrule.name_template, default 'trg_z90_{table}_storico_upd_dlt')
+          - nome trigger derivato da template (rrule.name_template, obbligatorio per STORICO)
           - funzione trigger generica script.trgfn_storico_generic(fk_col)
 
-        Esistenza trigger / strategie
-        -----------------------------
-        La creazione del trigger è condizionata da rrule.existence_strategy (default 'BY_NAME'):
-        - BY_NAME     : verifica esistenza per nome trigger
-        - BY_FUNCTION : verifica esistenza per funzione trigger
-        - BOTH        : considera presente se esiste per nome OR per funzione
-        Questo evita duplicazioni e permette migrazioni graduali da trigger legacy a trigger generici.
+        Esistenza del trigger
+        ---------------------
+        Il trigger si riconosce dalla FUNZIONE (script.trgfn_storico_generic),
+        qualunque nome abbia: il nome serve solo a crearlo.
 
         Colonna FK logica (fk_col)
         --------------------------
@@ -96,7 +92,7 @@ FOR rtab IN
   JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE c.relkind='r'
     AND n.nspname = ANY(v_schemas)
-    AND n.nspname <> 'storico'                  
+    AND n.nspname <> 'storico'
     AND dbops.fn_table_in_scope(n.nspname, c.relname)
 LOOP
   FOR rrule IN
@@ -110,7 +106,6 @@ LOOP
 
       ORDER BY r.priority, r.id
     LOOP
-      exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 
       SELECT EXISTS(
         SELECT 1 FROM pg_class c2
@@ -123,14 +118,10 @@ LOOP
       IF has_sto THEN
         fk_col := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'STORICO_FK', rtab.table_name||'_id');
 
-        tmpl     := COALESCE(rrule.name_template, 'trg_z90_{table}_storico_upd_dlt');
+        tmpl     := rrule.name_template;
         trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL, 'upd_dlt');
-        exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 
-        IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rtab.rel, trg_name))
-        OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rtab.rel,'script','trgfn_upd_dlt_storico_generic'))
-        OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rtab.rel, trg_name)
-                                          OR dbops.fn_trigger_exists_by_function(rtab.rel,'script','trgfn_upd_dlt_storico_generic')))
+        IF NOT dbops.fn_trigger_exists_by_function(rtab.rel, 'script', 'trgfn_storico_generic')
         THEN
           -- rev 2026-09-25 ⛔ Il rubinetto: l'argomento del trigger deve essere
           --   una colonna della gemella. Il trigger lo scoprirebbe solo alla
@@ -160,7 +151,7 @@ LOOP
 
           IF p_dry_run THEN
             PERFORM dbops.fn_audit_log_once(
-              p_function_name => 'fn_run_automations_storico',
+              p_function_name => 'dbops.fn_run_automations_storico',
               p_status => 'DRYRUN', p_rule_type => 'STORICO', p_dry_run => true,
               p_params => jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'trigger', trg_name,'action','DRYRUN_CREATE_TRIGGER_UD'),
               p_message => 'Storico UPDATE+DELETE trigger would be created'
@@ -179,10 +170,15 @@ LOOP
               --   p_params jsonb, e il jsonb al posto di p_message). Resa a
               --   nomi, come la sorella in DRYRUN qui sopra.
               PERFORM dbops.fn_audit_log_once(
-                p_function_name => 'fn_run_automations_storico',
-                p_status        => 'SKIP_EXISTS',
+                p_function_name => 'dbops.fn_run_automations_storico',
+                -- ⛔ Rev 2026-11-03 (brief-db-revisione-maintenance R4): lo status
+                --   e' un ESITO del vocabolario di chk_audit_status. SKIP_EXISTS
+                --   veniva rifiutato (23514) e il ramo che doveva saltare un
+                --   trigger gia' presente fermava il runner. Il salto e' un
+                --   fatto da vedere: WARN, con l'azione nei params.
+                p_status        => 'WARN',
                 p_rule_type     => 'STORICO',
-                p_params        => jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'trigger', trg_name::text),
+                p_params        => jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'trigger', trg_name::text,'action','SKIP_EXISTS'),
                 p_message       => 'Trigger already present');
             WHEN OTHERS THEN
               -- ⭐ Rev 2026-10-16 (brief-db-presidio-job-run-a-chi-tocca D8, D10, D11):
@@ -213,7 +209,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione STORICO: monta il trigger generico di storicizzazione sulle tabelle che hanno la gemella in schema storico, passandogli la colonna FK della gemella (override STORICO_FK, altrimenti <tabella>_id). rev 2026-09-25: prima di montare il trigger verifica che quella colonna esista nella gemella, e se no solleva E_STORICO_FK_COL_ASSENTE: un trigger con una colonna che non c''e'' muore alla prima chiusura di uno snapshot, cioe'' su ogni UPDATE/DELETE di una riga storicizzata. Cinque gemelle del 2025 (parameters, comuni, indirizzi, indirizzi_dettaglio, catasto_unita_immobiliari) erano nate col nome al singolare e senza eccezione; rinominate da 20260925-26. Brief: brief-db-storico-colonna-fk-dei-trigger. rev 2026-09-01: rimosso il ramo drop_legacy_ud, una pulizia puntata su nomi di trigger che non sono mai esistiti (brief-db-richieste-aperte-dal-backend-2, coda C). ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
+IS 'Automazione STORICO: monta il trigger generico di storicizzazione (script.trgfn_storico_generic) sulle tabelle che hanno la gemella nello schema storico, passandogli la colonna FK della gemella (override STORICO_FK, altrimenti <tabella>_id). Prima di montarlo verifica che quella colonna esista nella gemella, e se no solleva E_STORICO_FK_COL_ASSENTE: un trigger con una colonna che non c''e'' morirebbe alla prima chiusura di uno snapshot. Il trigger si riconosce dalla funzione, qualunque nome abbia; il nome di uno nuovo viene dal name_template della regola. Nel gestore WHEN others un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente) si rilancia col suo SQLSTATE dopo averlo scritto nel registro errori; i difetti di struttura escono col codice dell''automazione.';
 ```
 
 </div>

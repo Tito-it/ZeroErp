@@ -1,0 +1,176 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CINQUE CATALOGHI E IL REGISTRO DEI MARCATORI PERDONO tx_id, data_update,
+# user_update E I DUE TRIGGER A MANO CHE LI SCRIVEVANO
+#   dbops.coda_lavori_tipi, dbops.marcatori_automazione_debito, dbops.processi,
+#   dbops.processi_bersagli, dbops.rls_perimetro_debito,
+#   dbops.stati_check_dichiarazioni
+#   Brief: brief-db-revisione-dbops, giro 7-bis, blocco a (§23).
+#
+# ── ⭐ IL CRITERIO: LO SCRITTORE (Tid, 2026-11-07, §20.8.1 e §20.8.2) ──
+#   In dbops tx_id, data_update e user_update restano dove la riga la scrive una
+#   transazione di dominio o di sessione: li' tx_id lega la riga a cio' che la
+#   stessa transazione ha scritto altrove (audit, storico, error_log), e le due
+#   colonne di aggiornamento dicono chi l'ha cambiata e quando. Si tolgono dove
+#   la riga la scrive solo il migratore, dai CSV di 80_data: li' direbbero
+#   sempre «il migratore, al migrate», e chi e quando lo dicono gia'
+#   databasechangelog e git. data_insert e user_insert restano: li riempie il
+#   DEFAULT alla nascita, e sono veri.
+#   Restano le tre colonne su coda_lavori e processi_identita (trigger a mano)
+#   e sui cinque registri nell'ambito per nome (trigger del framework).
+#
+# ── ⚠️ CHI LE NOMINAVA (censito sullo scratch, 2026-11-08, §23.1) ────
+#   Nessuna vista, regola, vincolo o funzione BEGIN ATOMIC (pg_depend); nessun
+#   corpo di funzione; nessun loader o CSV di 80_data/90_end (da zero girano
+#   DOPO questo DROP: nessuno elenca le tre colonne); nessuna query del
+#   backend. Nessuna tabella di storico.* ricopia queste madri.
+#
+#   Su queste sei tabelle i due trigger (dbops.trgfn_tx_id_managed e
+#   script.trgfn_audit_data_user_generic) erano montati a mano, sempre in
+#   coppia, alla creazione: scrivevano davvero, ma solo dentro il migrate. Si
+#   tolgono i trigger PRIMA delle colonne. Le due funzioni trigger restano: le
+#   montano coda_lavori, processi_identita e i runner.
+#   Due pgTAP le usavano: dbops/test-coda-lavori (8 e 9, i trigger di
+#   coda_lavori_tipi) e dbops/test-tx-id-coerenza-non-registrato (che usava
+#   coda_lavori_tipi come veicolo del trigger): riscritti nello stesso giro.
+#
+# IF EXISTS: idempotente. I COMMENT delle tabelle non nominano le colonne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261108-90-alter-dbops-cataloghi-drop-marcatori-coi-trigger-a-mano-mctit.yaml
+
+  - changeSet:
+      id: 20261108-90-alter-dbops-cataloghi-drop-marcatori-coi-trigger-a-mano
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Sei tabelle di dbops scritte solo dal migratore (cinque cataloghi e il registro dei marcatori)
+        perdono tx_id, data_update, user_update e i due trigger a mano: il criterio dello scrittore.
+        Brief: brief-db-revisione-dbops, giro 7-bis.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: coda_lavori_tipi }
+        - tableExists:
+            { schemaName: dbops, tableName: marcatori_automazione_debito }
+        - tableExists:
+            { schemaName: dbops, tableName: processi }
+        - tableExists:
+            { schemaName: dbops, tableName: processi_bersagli }
+        - tableExists:
+            { schemaName: dbops, tableName: rls_perimetro_debito }
+        - tableExists:
+            { schemaName: dbops, tableName: stati_check_dichiarazioni }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_coda_lavori_tipi_gen_tx_id_ins_upd ON dbops.coda_lavori_tipi;
+              DROP TRIGGER IF EXISTS trg_coda_lavori_tipi_audit_data_user_ins_upd ON dbops.coda_lavori_tipi;
+              ALTER TABLE dbops.coda_lavori_tipi
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              DROP TRIGGER IF EXISTS trg_marcatori_automazione_debito_gen_tx_id_ins_upd ON dbops.marcatori_automazione_debito;
+              DROP TRIGGER IF EXISTS trg_marcatori_automazione_debito_audit_data_user_ins_upd ON dbops.marcatori_automazione_debito;
+              ALTER TABLE dbops.marcatori_automazione_debito
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              DROP TRIGGER IF EXISTS trg_processi_gen_tx_id_ins_upd ON dbops.processi;
+              DROP TRIGGER IF EXISTS trg_processi_audit_data_user_ins_upd ON dbops.processi;
+              ALTER TABLE dbops.processi
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              DROP TRIGGER IF EXISTS trg_processi_bersagli_gen_tx_id_ins_upd ON dbops.processi_bersagli;
+              DROP TRIGGER IF EXISTS trg_processi_bersagli_audit_data_user_ins_upd ON dbops.processi_bersagli;
+              ALTER TABLE dbops.processi_bersagli
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              DROP TRIGGER IF EXISTS trg_rls_perimetro_debito_gen_tx_id_ins_upd ON dbops.rls_perimetro_debito;
+              DROP TRIGGER IF EXISTS trg_rls_perimetro_debito_audit_data_user_ins_upd ON dbops.rls_perimetro_debito;
+              ALTER TABLE dbops.rls_perimetro_debito
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              DROP TRIGGER IF EXISTS trg_stati_check_dichiarazioni_gen_tx_id_ins_upd ON dbops.stati_check_dichiarazioni;
+              DROP TRIGGER IF EXISTS trg_stati_check_dichiarazioni_audit_data_user_ins_upd ON dbops.stati_check_dichiarazioni;
+              ALTER TABLE dbops.stati_check_dichiarazioni
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.coda_lavori_tipi
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+              CREATE TRIGGER trg_coda_lavori_tipi_audit_data_user_ins_upd BEFORE INSERT OR UPDATE ON dbops.coda_lavori_tipi
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+              CREATE TRIGGER trg_coda_lavori_tipi_gen_tx_id_ins_upd BEFORE INSERT OR UPDATE ON dbops.coda_lavori_tipi
+                  FOR EACH ROW EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+
+              ALTER TABLE dbops.marcatori_automazione_debito
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+              CREATE TRIGGER trg_marcatori_automazione_debito_audit_data_user_ins_upd BEFORE INSERT OR UPDATE ON dbops.marcatori_automazione_debito
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+              CREATE TRIGGER trg_marcatori_automazione_debito_gen_tx_id_ins_upd BEFORE INSERT OR UPDATE ON dbops.marcatori_automazione_debito
+                  FOR EACH ROW EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+
+              ALTER TABLE dbops.processi
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+              CREATE TRIGGER trg_processi_audit_data_user_ins_upd BEFORE INSERT OR UPDATE ON dbops.processi
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+              CREATE TRIGGER trg_processi_gen_tx_id_ins_upd BEFORE INSERT OR UPDATE ON dbops.processi
+                  FOR EACH ROW EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+
+              ALTER TABLE dbops.processi_bersagli
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+              CREATE TRIGGER trg_processi_bersagli_audit_data_user_ins_upd BEFORE INSERT OR UPDATE ON dbops.processi_bersagli
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+              CREATE TRIGGER trg_processi_bersagli_gen_tx_id_ins_upd BEFORE INSERT OR UPDATE ON dbops.processi_bersagli
+                  FOR EACH ROW EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+
+              ALTER TABLE dbops.rls_perimetro_debito
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+              CREATE TRIGGER trg_rls_perimetro_debito_audit_data_user_ins_upd BEFORE INSERT OR UPDATE ON dbops.rls_perimetro_debito
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+              CREATE TRIGGER trg_rls_perimetro_debito_gen_tx_id_ins_upd BEFORE INSERT OR UPDATE ON dbops.rls_perimetro_debito
+                  FOR EACH ROW EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+
+              ALTER TABLE dbops.stati_check_dichiarazioni
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+              CREATE TRIGGER trg_stati_check_dichiarazioni_audit_data_user_ins_upd BEFORE INSERT OR UPDATE ON dbops.stati_check_dichiarazioni
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+              CREATE TRIGGER trg_stati_check_dichiarazioni_gen_tx_id_ins_upd BEFORE INSERT OR UPDATE ON dbops.stati_check_dichiarazioni
+                  FOR EACH ROW EXECUTE FUNCTION dbops.trgfn_tx_id_managed();

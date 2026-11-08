@@ -1,85 +1,114 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_ddt_lista`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> [vendite.ddt](/dbzero/vendite/tabelle/ddt)
-> [config.stati_doc_ddt](/dbzero/config/tabelle/stati_doc_ddt)
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
-> [config.causali_trasporto](/dbzero/config/tabelle/causali_trasporto)
-> [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)
-> [config.modalita_addebito_trasporto](/dbzero/config/tabelle/modalita_addebito_trasporto)
+> * [vendite.ddt](/dbzero/vendite/tabelle/ddt) — la tabella base
+> * [config.stati_doc_ddt](/dbzero/config/tabelle/stati_doc_ddt) — stato e fase
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — destinatario, mittente, vettore
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — l'emittente
+> * [config.causali_trasporto](/dbzero/config/tabelle/causali_trasporto) · [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni) · [config.modalita_addebito_trasporto](/dbzero/config/tabelle/modalita_addebito_trasporto) — il trasporto
 >
-> Correlati:
-> [vendite.vw_ordini_lista](/dbzero/vendite/views/vw_ordini_lista) (mirror)
-> [script.fn_available_actions_ddt](/dbzero/script/funzioni/fn_available_actions_ddt)
-> [Configurazione, personalizzazione e responsività delle liste](/guide/configurazione-liste)
+> Approfondimento viste:
+>
+> * [vendite.vw_ordini_lista](/dbzero/vendite/views/vw_ordini_lista) — la gemella degli ordini
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_available_actions_ddt](/dbzero/script/funzioni/fn_available_actions_ddt) — le azioni della riga
+> * [script.fn_sorgente_documento](/dbzero/script/funzioni/fn_sorgente_documento) — il BB che risolve un documento d'origine qualunque
+> * [pratiche.fn_pratica_del_documento](/dbzero/pratiche/funzioni/fn_pratica_del_documento) — la pratica della bolla
+> * [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) — frontiera e transito, per le righe della pagina
+>
+> Guide:
+>
+> * [Configurazione, personalizzazione e responsività delle liste](/guide/configurazione-liste)
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-28)
+La vista sorgente della lista configurabile delle bolle di vendita (`<ListaConfigurabile>`): pura **denormalizzazione** (join e campi di display), **nessun** filtro, scope o paginazione, che restano nel repository del backend.
 
-Vista sorgente **canonica e self-contained** per la lista configurabile del DDT
-(`<ListaConfigurabile>`). Mirror di `vw_ordini_lista`: pura **denormalizzazione** (JOIN + campi
-display), **nessun** filtro/scope/paginazione (restano nel repository BE).
+---
 
-* **`security_invoker = on`**: la vista gira col contesto del chiamante → le policy RLS di
-  `vendite.ddt` si applicano (no RLS cosmetica).
-* Espone: identificazione (numero/anno/serie/data), stato (`stato_codice_interno`/`stato_descrizione`),
-  **destinatario** (soggetto_ruolo NOT NULL) + **mittente**/**vettore** (nullable),
-  billing/utility/valuta, **`emittente_fiscale_id` + `emittente_fiscale_codice`** (scope, §15),
-  campi **trasporto** (causale, aspetto, modalità addebito, colli/pesi/volume,
-  targa, autista, date, tracking) per il PDF, e la **provenienza**: `sorgente_codice_interno` +
-  `ordine_origine_numero`.
+### Che cosa espone
 
-> ### ⚠️ La provenienza ha due popolazioni, dal 2026-08-28
->
-> `sorgente_codice_interno` non è più solo `ORDINE_VENDITA`: un **DDT di ri-consegna
-> standalone** dichiara `RESO_VENDITA`, con l'`uid` del reso in `sorgente_uid`
-> ([`fn_genera_ddt_riconsegna`](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna)).
-> Su quelle righe la lista dice **da dove viene il documento** e lascia
-> `ordine_origine_numero` vuoto, perché un ordine non c'è.
->
-> ⭐ **Per questo il join a `vendite.ordini` è ora qualificato sul tipo sorgente.**
-> Prima traduceva `sorgente_uid` in un ordine **senza guardare che tipo di sorgente
-> fosse**: con una sorgente RESO il join non trovava nulla — l'esito giusto — ma ci
-> arrivava per **assenza di collisioni fra spazi di uuid**, non per decisione.
->
-> > *Un join che risponde bene per una proprietà che nessuno ha dichiarato è un
-> > presidio che non c'è.* Costa una condizione, e toglie una domanda a chi legge
-> > la vista fra sei mesi.
->
-> ⚠️ Per **risolvere** una sorgente qualunque in «id del documento + numero
-> leggibile» esiste già
-> [`vendite.fn_get_sorgente_documento_ref`](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref),
-> che gestisce la chiave polimorfa (`key_selector`) e l'etichetta
-> (`label_selector`). Questa vista **non** la chiama — è una lista, e una funzione
-> per riga sarebbe N chiamate — ma chi avesse bisogno del numero della sorgente
-> generica usi quella, non un secondo join scritto a mano.
+* identificazione (numero, anno, serie, data, registro), stato (`stato_codice_interno`,
+  `stato_descrizione`) e la `fase`;
+* **destinatario** (obbligatorio), **mittente** e **vettore** (facoltativi), cliente, utility,
+  valuta;
+* **`emittente_fiscale_id`** con codice e ragione sociale, per il perimetro;
+* i campi del **trasporto** (causale, aspetto, modalità di addebito, colli, pesi, volume, targa,
+  autista, date, tracciamento) per il PDF;
+* la **provenienza** e la **pratica** (sotto).
 
-* **Scope emittente**: `emittente_fiscale_id` alimenta il **filtro applicativo** del repository BE
-  (`= ANY(script.fn_get_emittenti_scope_pk_ids(auth_user_id))`, defense-in-depth) e la policy RLS
-  `rls_ddt_ef_whitelist` su `vendite.ddt` (§15).
-* Nomi canonici: `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`, `ba_codice`,
-  `stato_codice_interno`. `numero` è NULL in DRAFT, valorizzato a EMESSO.
+`security_invoker = on`: la vista gira col contesto del chiamante, e le policy RLS di `vendite.ddt`
+si applicano. Nomi canonici: `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`, `ba_codice`,
+`stato_codice_interno`. `numero` è vuoto in bozza, valorizzato all'emissione.
 
-La definizione lista + colonne è in `ui.lista_definizione` / `ui.lista_colonna`
+---
+
+### La provenienza: due popolazioni
+
+Una bolla dichiara il documento da cui nasce con la provenienza del modello: la vista espone
+`sorgente_tipo_id`, `sorgente_codice_interno`, `sorgente_id` e `sorgente_uid` così come stanno sulla
+testata. Due popolazioni:
+
+* la bolla **da ordine** dichiara `ORDINE_VENDITA`, a chiave `id`: l'id dell'ordine sta in
+  `sorgente_id`, e la vista ne espone anche `ordine_origine_id` e `ordine_origine_numero`;
+* la bolla **di riconsegna** dichiara `RESO_VENDITA`, il reso da cui nasce
+  ([`fn_genera_ddt_riconsegna`](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna)), anche lui a
+  chiave `id`. Lì la lista dice **da dove viene il documento** e lascia vuoto `ordine_origine_*`,
+  perché un ordine non c'è.
+
+⭐ **Il join all'ordine è qualificato sul tipo**: trova l'ordine solo se la bolla dichiara
+`ORDINE_VENDITA`, con la regola d'incontro (id o uid). Senza la condizione sul tipo, l'id di un reso
+potrebbe coincidere con l'id di un ordine qualsiasi e la lista nominerebbe un ordine che non c'entra.
+
+⚠️ Per **risolvere** una provenienza qualunque in «id, uid e numero del documento» c'è il BB che
+risolve, [`script.fn_sorgente_documento`](/dbzero/script/funzioni/fn_sorgente_documento), che sa
+quale chiave usa il tipo e dove sta il numero. Questa vista **non** lo chiama — è una lista, e una
+funzione per riga sarebbe N chiamate — ma chi avesse bisogno del numero di un documento d'origine
+generico usi quello, non un secondo join scritto a mano.
+
+---
+
+### La pratica, e il grafo che non sta qui
+
+`pratica_id`, `pratica_numero` e `n_pratiche` arrivano da
+[`pratiche.fn_pratica_del_documento`](/dbzero/pratiche/funzioni/fn_pratica_del_documento), con il
+tipo `DDT_VENDITA` e le due chiavi della bolla: restano filtrabili e ordinabili. Le colonne della
+frontiera e del transito le chiede il backend a
+[`fn_documento_lineage_sintesi`](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) per le sole
+bolle della pagina.
+
+---
+
+### Il perimetro dell'emittente
+
+`emittente_fiscale_id` alimenta il **filtro applicativo** del repository
+(`script.fn_get_emittenti_scope_pk_ids`, difesa in profondità) e la policy RLS
+`rls_ddt_ef_whitelist` su `vendite.ddt`.
+
+La definizione della lista e le sue colonne sono in `ui.lista_definizione` / `ui.lista_colonna`
 (`codice = vendite.ddt`).
 
 ---
 
-### 🔄 rev 2026-10-11 — la lista non calcola più il grafo
+### Note di migrazione
 
-Changeset `20261011-97`. La vista non legge più la sintesi della lineage di tutti
-i documenti. Le colonne della frontiera e del transito (`frontiera_*`,
-`n_discendenti_attivi`, `is_transitato`) le chiede il backend a
-[`fn_documento_lineage_sintesi`](fn_documento_lineage_sintesi.md) per i soli
-documenti della pagina. La pratica (`pratica_id`, `pratica_numero`,
-`n_pratiche`) resta qui, filtrabile e ordinabile, e la legge
-`pratiche.fn_pratica_del_documento`. Una pagina da 25 righe costava ~320-390 ms,
-ora ~8-70 ms più la sintesi delle 25 chiavi (~58 ms) — dbdev, 2026-10-11.
+* 2026-08-28 — arriva la bolla di riconsegna, e il join all'ordine si qualifica sul tipo.
+* 2026-10-11 — la vista non calcola più il grafo: frontiera e transito passano a
+  `fn_documento_lineage_sintesi` (brief-db-lineage-seminata-per-chiave).
+* 2026-11-06 — `sorgente_id` in coda, e l'ordine d'origine con la regola d'incontro: la provenienza
+  delle bolle passa alla chiave del modello, e la riconsegna dichiara il reso in `sorgente_id`
+  (brief-db-sorgente-documento-e-riga).
 
+---
+
+{% include-markdown "signature-core.md" %}

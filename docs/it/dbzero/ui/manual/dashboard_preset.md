@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preset`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -54,4 +54,10 @@ La tabella **`ui.dashboard_preset`** contiene i **default per ambito** di una da
 * I widget di un preset devono appartenere al pool della dashboard del preset (`ui.dashboard_widget`) — vincolo di seed, non strutturale: `dashboard_preset_widget.widget_id` è FK al catalogo globale, non al pool.
 * Un preset senza widget attivi produce un candidato NULL → la risoluzione scende al livello successivo della cascata (stesso comportamento delle liste).
 * La cascata è **per chiave** (dal 1-11-2026): il preset di base dà `widget` e `dimensione_max` alle chiavi che la preferenza non ha (vedi [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config)).
-* ⭐ **`data_update` è la data dell'ultimo cambio del contenuto**, quella che il flag `preset_aggiornato` confronta con lo snapshot della preferenza. La scrivono `trg_ui_dashboard_preset_a20_data_update_contenuto_upd` (quando cambia `dimensione_max`) e `trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt` (quando un widget del preset si aggiunge, si toglie o cambia), sulle due funzioni condivise con i preset di lista ([`ui.trgfn_preset_data_update_contenuto`](/dbzero/ui/funzioni/trgfn_preset_data_update_contenuto), [`ui.trgfn_preset_riga_tocca_preset`](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)). Una riscrittura uguale (il seed `loadUpdateData`) non sposta la data. Il perché, per esteso, in [ui.lista_preset](/dbzero/ui/tabelle/lista_preset).
+* ⭐ **`contenuto_aggiornato_il` è la data dell'ultimo cambio del contenuto** (`data_update` è l'audit), quella che il flag `preset_aggiornato` confronta con lo snapshot della preferenza. La scrivono `trg_ui_dashboard_preset_a20_contenuto_aggiornato_upd` (quando cambia `dimensione_max`) e `trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt` (quando un widget del preset si aggiunge, si toglie o cambia), sulle due funzioni condivise con i preset di lista ([`ui.trgfn_preset_contenuto_aggiornato`](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato), [`ui.trgfn_preset_riga_tocca_preset`](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)). Una riscrittura uguale (il seed `loadUpdateData`) non sposta la data. Il perché, per esteso, in [ui.lista_preset](/dbzero/ui/tabelle/lista_preset).
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — la data del contenuto passa da `data_update` a `contenuto_aggiornato_il`; `data_update` e `user_update` diventano l'audit del framework, NOT NULL col default (`brief-db-revisione-dbops`, giro 7-bis blocco c). Il guard ATTIVO resta sulla FK verso la definizione; quelle verso emittente e profilo sono in eccezione.

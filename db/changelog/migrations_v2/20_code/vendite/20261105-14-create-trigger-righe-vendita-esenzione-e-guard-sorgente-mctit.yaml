@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DERIVABILI NOMINANO LA LORO ESENZIONE, E LA SORGENTE SI VALIDA
+#   Brief: brief-db-articoli-obsoleto-dal §4, §5.1 (O-8, O-10, D di Tid).
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   1. Il guard di riga si rimonta col terzo argomento 'sorgente_tipo_id'
+#      (20261105-11) sulle quattro righe che un verbo puo' generare:
+#      preventivi (revisione, O-8), ordini (dal preventivo, dall'offerta),
+#      bolle (dall'ordine, riconsegna), contratti (dall'offerta). Stesso nome,
+#      stessi eventi (BEFORE INSERT OR UPDATE OF articolo_id): cambiano solo
+#      gli argomenti. Offerte, listini e promo restano a due argomenti: la
+#      loro riga e' sempre una scelta.
+#   2. Il guard polimorfo script.trgfn_guard_sorgente_polimorfa_tipizzata si
+#      monta sulle stesse quattro tabelle: ora che la sorgente esenta la riga,
+#      deve essere vera (tipo attivo, chiave nella colonna del key_selector,
+#      riga di partenza che esiste). Nome e forma come sul magazzino
+#      (trg_<tabella>_a10_guard_sorgente_ins_upd). Ordine fra i BEFORE ROW:
+#      su preventivi, ordini e bolle _guard_sorgente < _regole_articolo, la
+#      sorgente si valida prima di esentare; sui contratti parla prima
+#      _guard_articolo_ammesso, ma l'istruzione fallisce comunque sulla
+#      sorgente falsa.
+#
+# ── ⚠️ FUORI DA QUI ─────────────────────────────────────────────────
+#   I verbi che scrivono la sorgente nello stesso INSERT sono changeSet loro
+#   (brief §7, lotto B). Nessun trigger generato da ci_apply e' toccato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261105-14-create-trigger-righe-vendita-esenzione-e-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261105-14-create-trigger-righe-vendita-esenzione-e-guard-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard di riga rimontato con l'esenzione 'sorgente_tipo_id' su preventivi, ordini, bolle e contratti di
+        vendita; guard della sorgente polimorfa montato sulle stesse quattro tabelle.
+        brief-db-articoli-obsoleto-dal §4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "4"
+            sql: >
+              SELECT count(*) FROM pg_attribute a
+               WHERE a.attrelid IN ('vendite.preventivi_righe'::regclass, 'vendite.ordini_righe'::regclass,
+                                    'vendite.ddt_righe'::regclass, 'vendite.contratti_righe'::regclass)
+                 AND a.attname = 'sorgente_tipo_id' AND NOT a.attisdropped;
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+               WHERE t.tgrelid IN ('vendite.preventivi_righe'::regclass, 'vendite.ordini_righe'::regclass,
+                                   'vendite.ddt_righe'::regclass, 'vendite.contratti_righe'::regclass)
+                 AND t.tgname LIKE '%_a10_guard_sorgente_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Guard di riga con l'esenzione della riga derivata.
+              DROP TRIGGER trg_preventivi_righe_a10_regole_articolo_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('PREVENTIVO', 'preventivo_id', 'sorgente_tipo_id');
+
+              DROP TRIGGER trg_ordini_righe_a10_regole_articolo_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.ordini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('ORDINE_VENDITA', 'ordine_id', 'sorgente_tipo_id');
+
+              DROP TRIGGER trg_ddt_righe_a10_regole_articolo_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.ddt_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('DDT_VENDITA', 'ddt_id', 'sorgente_tipo_id');
+
+              DROP TRIGGER trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('CONTRATTO', 'contratto_id', 'sorgente_tipo_id');
+
+              -- 2. La sorgente che esenta deve essere vera.
+              CREATE TRIGGER trg_preventivi_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              CREATE TRIGGER trg_ordini_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON vendite.ordini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              CREATE TRIGGER trg_ddt_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON vendite.ddt_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              CREATE TRIGGER trg_contratti_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_contratti_righe_a10_guard_sorgente_ins_upd ON vendite.contratti_righe;
+              DROP TRIGGER trg_ddt_righe_a10_guard_sorgente_ins_upd ON vendite.ddt_righe;
+              DROP TRIGGER trg_ordini_righe_a10_guard_sorgente_ins_upd ON vendite.ordini_righe;
+              DROP TRIGGER trg_preventivi_righe_a10_guard_sorgente_ins_upd ON vendite.preventivi_righe;
+
+              DROP TRIGGER trg_preventivi_righe_a10_regole_articolo_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id ON vendite.preventivi_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('PREVENTIVO', 'preventivo_id');
+              DROP TRIGGER trg_ordini_righe_a10_regole_articolo_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id ON vendite.ordini_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('ORDINE_VENDITA', 'ordine_id');
+              DROP TRIGGER trg_ddt_righe_a10_regole_articolo_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id ON vendite.ddt_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('DDT_VENDITA', 'ddt_id');
+              DROP TRIGGER trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id ON vendite.contratti_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('CONTRATTO', 'contratto_id');

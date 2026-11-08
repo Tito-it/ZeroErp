@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_trigger_exists_require_by_args: il require si riconosce dalla
+#   funzione (tgfoid) e dagli argomenti letti con la grammatica, non dal testo
+#   del CREATE TRIGGER.
+#   Brief: brief-db-revisione-dbops, D6 (giro 4).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE (D6): lo stesso del gemello del block
+#   (20261107-28). Un ILIKE su pg_get_triggerdef con gli argomenti separati da
+#   «','» (PostgreSQL scrive «', '») e lo schema «dbops.» davanti alla
+#   funzione (PostgreSQL lo omette se dbops e' nel search_path): risposta
+#   sempre falsa, e «_» come jolly.
+#
+# ⭐ LA FORMA NUOVA: la funzione per OID, gli argomenti per nome da
+#   dbops.fn_trigger_attivo_argomenti (la grammatica che il trigger stesso
+#   legge), confronto esatto. Il require dell'obsoleto non c'entra: questa
+#   riconosce solo trgfn_child_requires_active_parent, che e' quella che il
+#   runner monta.
+#
+# ⚠️ LA FIRMA CAMBIA (text -> name, i tipi del catalogo): DROP e CREATE. Il
+#   runner dbops.fn_run_automations_attivo la chiama con name e text, e text ->
+#   name e' implicito. Privilegi dai default privileges dello schema.
+#
+# Corpo di partenza: la scheda auto-generata del 2026-11-07 (riscritto).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-29-update-fn-trigger-exists-require-by-args-riconosce-per-oid-mctit.yaml
+
+  - changeSet:
+      id: 20261107-29-update-fn-trigger-exists-require-by-args-riconosce-per-oid
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_trigger_exists_require_by_args riconosce il require dalla funzione (tgfoid) e
+        dagli argomenti letti con dbops.fn_trigger_attivo_argomenti, non da un ILIKE su
+        pg_get_triggerdef che non trovava mai niente (D6). Firma ancorata al catalogo.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_trigger_attivo_argomenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION dbops.fn_trigger_exists_require_by_args(regclass, text, text, text, text, text);
+
+              CREATE FUNCTION dbops.fn_trigger_exists_require_by_args(
+                  -- regclass: la tabella figlia, su cui il require e' montato (pg_trigger.tgrelid e' un oid)
+                  p_child_rel         regclass,
+                  p_parent_schema     pg_catalog.pg_namespace.nspname%TYPE,
+                  p_parent_table      pg_catalog.pg_class.relname%TYPE,
+                  p_parent_attivo_col pg_catalog.pg_attribute.attname%TYPE,
+                  p_fk_col            pg_catalog.pg_attribute.attname%TYPE,
+                  p_parent_ref_col    pg_catalog.pg_attribute.attname%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                -- Scopo: c'e' sulla figlia un require montato con questi argomenti?
+                --   La funzione per OID, gli argomenti per nome dalla grammatica.
+                SELECT EXISTS (
+                    SELECT 1
+                      FROM pg_catalog.pg_trigger t
+                     CROSS JOIN LATERAL dbops.fn_trigger_attivo_argomenti(
+                             'trgfn_child_requires_active_parent',
+                             dbops.fn_trigger_argomenti(t.tgargs)) g
+                     WHERE t.tgrelid = p_child_rel
+                       AND NOT t.tgisinternal
+                       AND t.tgfoid = 'dbops.trgfn_child_requires_active_parent()'::pg_catalog.regprocedure
+                       AND g.valido
+                       AND g.padre_schema  = p_parent_schema
+                       AND g.padre_tabella = p_parent_table
+                       AND g.stato_col     = p_parent_attivo_col
+                       AND g.fk_col        = p_fk_col
+                       AND g.ref_col       = p_parent_ref_col
+                );
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_trigger_exists_require_by_args(regclass, name, name, name, name, name) IS
+                'Dice se sulla tabella figlia c''e'' un require ATTIVO (dbops.trgfn_child_requires_active_parent) montato con questi argomenti: padre (schema e tabella), colonna attivo del padre, colonna FK della figlia, colonna referenziata del padre. Riconosce la funzione del trigger per OID, quindi con qualunque search_path, e legge gli argomenti per nome con la grammatica dei trigger ATTIVO (dbops.fn_trigger_attivo_argomenti su dbops.fn_trigger_argomenti): un montaggio fuori grammatica non e'' riconosciuto. Confronto esatto degli identificatori. La chiama dbops.fn_run_automations_attivo per le strategie di esistenza BY_FUNCTION e BOTH.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della scheda auto-generata del 2026-11-07.
+              SELECT 1;

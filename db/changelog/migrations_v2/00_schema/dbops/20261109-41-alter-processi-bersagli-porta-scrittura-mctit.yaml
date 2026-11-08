@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.processi_bersagli.porta_scrittura: la porta DEFINER che difende la
+#   scrittura del bersaglio, al posto del guard (Q14 ⑤, scelta 3 di §18.4, N3).
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9a (§24).
+#
+#   La legge dbops.vw_processi_dominio_senza_difesa (20261109-46): la porta
+#   conta come difesa se esiste, e' SECURITY DEFINER e la tabella ha la RLS
+#   accesa con policy che coprono INSERT e UPDATE. Il valore lo scrive il CSV
+#   di 80_data (riga di dbops.coda_lavori).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261109-41-alter-processi-bersagli-porta-scrittura-mctit.yaml
+
+  - changeSet:
+      id: 20261109-41-alter-processi-bersagli-porta-scrittura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi_bersagli.porta_scrittura: la porta DEFINER dichiarata come difesa di
+        scrittura del bersaglio. Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: processi_bersagli }
+            - not:
+                - columnExists: { schemaName: dbops, tableName: processi_bersagli, columnName: porta_scrittura }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi_bersagli
+                  ADD COLUMN porta_scrittura text;
+
+              ALTER TABLE dbops.processi_bersagli
+                  ADD CONSTRAINT chk_processi_bersagli_porta_qualificata
+                      CHECK (porta_scrittura IS NULL
+                             OR porta_scrittura ~ '^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$');
+
+              COMMENT ON COLUMN dbops.processi_bersagli.porta_scrittura IS
+                  'La funzione (schema.nome) da cui passa ogni scrittura del processo sul bersaglio, quando la difesa di scrittura non e'' il guard script.trgfn_guard_emittente_scope. Conta come difesa (dbops.vw_processi_dominio_senza_difesa) se esiste, e'' SECURITY DEFINER e la tabella ha la ROW LEVEL SECURITY accesa con policy che coprono INSERT e UPDATE: la policy difende le scritture dell''applicazione, la porta quelle del proprietario. NULL = la difesa attesa e'' il guard.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE dbops.processi_bersagli
+                  DROP COLUMN IF EXISTS porta_scrittura;

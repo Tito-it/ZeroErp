@@ -1,0 +1,192 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE ESENZIONI DEL PRESIDIO DEGLI ORFANI PERDONO LE DUE TABELLE G5: dbops.fn_sorgenti_orfane_perimetro
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1.
+#
+#   attivita_fatturabili non ha piu' le colonne della provenienza ed esce dal
+#   perimetro da sola; fatture_righe e' nella grammatica del modello, col guard
+#   unico: le due esenzioni dagli orfani non hanno piu' motivo. Resta quella del
+#   log dei reconcile. CREATE OR REPLACE con la stessa firma: dbops.fn_sorgenti_orfane
+#   e la vista non cambiano. Corpo dal 20261106-20, uguale al vivo (dbdev e
+#   scratch, 2026-11-07). COMMENT riscritto al presente. Rollback: il corpo del
+#   20261106-20.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-49-update-fn-sorgenti-orfane-perimetro-esenzioni-lotto-c-mctit.yaml
+
+  - changeSet:
+      id: 20261107-49-update-fn-sorgenti-orfane-perimetro-esenzioni-lotto-c
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_sorgenti_orfane_perimetro: via le esenzioni di attivita_fatturabili e
+        fatture_righe. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane_perimetro()
+              RETURNS TABLE(
+                  tabella                regclass,
+                  schema_tabella         pg_catalog.pg_namespace.nspname%TYPE,
+                  nome_tabella           pg_catalog.pg_class.relname%TYPE,
+                  grammatica             text,
+                  ha_sorgente_id         boolean,
+                  ha_sorgente_uid        boolean,
+                  ha_sorgente_riga       boolean,
+                  ha_sorgente_dettaglio  boolean,
+                  orfani_esclusi_perche  text,
+                  guard_esente_perche    text)
+              LANGUAGE sql
+              STABLE
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              BEGIN ATOMIC
+                  WITH col AS (
+                      SELECT a.attrelid,
+                             bool_or(a.attname = 'sorgente_tipo_id')   AS ha_tipo,
+                             bool_or(a.attname = 'sorgente_id')        AS ha_id,
+                             bool_or(a.attname = 'sorgente_uid')       AS ha_uid,
+                             bool_or(a.attname = 'sorgente_riga')      AS ha_riga,
+                             bool_or(a.attname = 'sorgente_dettaglio') AS ha_dett
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attnum > 0 AND NOT a.attisdropped
+                         AND a.attname IN ('sorgente_tipo_id', 'sorgente_id', 'sorgente_uid',
+                                           'sorgente_riga', 'sorgente_dettaglio')
+                       GROUP BY a.attrelid
+                  ),
+                  esenzioni(tabella, orfani_perche, guard_perche) AS (
+                      VALUES
+                        (pg_catalog.to_regclass('pratiche.reconcile_errori'),
+                         'e'' un log: rimanda per costruzione anche a documenti che non ci sono piu''',
+                         'e'' un log scritto dentro un EXCEPTION: un guard d''esistenza lo farebbe tacere')
+                  )
+                  SELECT c.oid::regclass,
+                         n.nspname,
+                         c.relname,
+                         CASE
+                             WHEN EXISTS (SELECT 1 FROM script.fn_sorgente_guard_montaggi() m
+                                           WHERE m.tabella = c.oid::regclass) THEN 'UNICO'
+                             WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_trigger tg
+                                           WHERE tg.tgrelid = c.oid AND NOT tg.tgisinternal
+                                             AND tg.tgfoid = 'script.trgfn_guard_sorgente_polimorfa_tipizzata()'::regprocedure)
+                                 THEN 'MODELLO_A'
+                             ELSE 'TESTUALE'
+                         END,
+                         col.ha_id,
+                         col.ha_uid,
+                         col.ha_riga,
+                         col.ha_dett,
+                         e.orfani_perche,
+                         e.guard_perche
+                    FROM col
+                    JOIN pg_catalog.pg_class c     ON c.oid = col.attrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    LEFT JOIN esenzioni e          ON e.tabella = c.oid::regclass
+                   WHERE c.relkind IN ('r', 'p')
+                     AND n.nspname <> 'storico'
+                     AND col.ha_tipo
+                     AND (col.ha_id OR col.ha_uid)
+                     AND (c.relpersistence <> 't'
+                          OR (n.oid = pg_catalog.pg_my_temp_schema()
+                              AND pg_catalog.has_table_privilege(c.oid, 'SELECT')))
+                   ORDER BY n.nspname, c.relname;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_sorgenti_orfane_perimetro() IS
+                'Il perimetro della provenienza polimorfa: ogni tabella (fuori lo storico) con sorgente_tipo_id e almeno una fra sorgente_id e sorgente_uid, con le colonne che ha e la sua GRAMMATICA, dal guard che monta: UNICO (script.trgfn_guard_sorgente: tipo + sorgente_id | sorgente_uid + riga + dettaglio), MODELLO_A (script.trgfn_guard_sorgente_polimorfa_tipizzata: la chiave in sorgente_riga per id, in sorgente_uid per uid), TESTUALE (nessun guard: la chiave in sorgente_uid, come id o uid, in testo o uuid). Le esenzioni sono dichiarate con il motivo, in due colonne: orfani_esclusi_perche (fuori dal presidio degli orfani) e guard_esente_perche (fuori dal guard unico); oggi una tabella sola, il log dei reconcile (pratiche.reconcile_errori), fuori da tutte e due. Delle tabelle temporanee, solo quelle della sessione leggibili da chi chiede. Derivato dal catalogo di PostgreSQL, non da un elenco: una tabella nuova con la provenienza entra da sola. Lo leggono dbops.fn_sorgenti_orfane e il presidio di struttura (dbops/test-sorgenti-struttura-v1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane_perimetro()
+              RETURNS TABLE(
+                  tabella                regclass,
+                  schema_tabella         pg_catalog.pg_namespace.nspname%TYPE,
+                  nome_tabella           pg_catalog.pg_class.relname%TYPE,
+                  grammatica             text,
+                  ha_sorgente_id         boolean,
+                  ha_sorgente_uid        boolean,
+                  ha_sorgente_riga       boolean,
+                  ha_sorgente_dettaglio  boolean,
+                  orfani_esclusi_perche  text,
+                  guard_esente_perche    text)
+              LANGUAGE sql
+              STABLE
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              BEGIN ATOMIC
+                  WITH col AS (
+                      SELECT a.attrelid,
+                             bool_or(a.attname = 'sorgente_tipo_id')   AS ha_tipo,
+                             bool_or(a.attname = 'sorgente_id')        AS ha_id,
+                             bool_or(a.attname = 'sorgente_uid')       AS ha_uid,
+                             bool_or(a.attname = 'sorgente_riga')      AS ha_riga,
+                             bool_or(a.attname = 'sorgente_dettaglio') AS ha_dett
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attnum > 0 AND NOT a.attisdropped
+                         AND a.attname IN ('sorgente_tipo_id', 'sorgente_id', 'sorgente_uid',
+                                           'sorgente_riga', 'sorgente_dettaglio')
+                       GROUP BY a.attrelid
+                  ),
+                  esenzioni(tabella, orfani_perche, guard_perche) AS (
+                      VALUES
+                        (pg_catalog.to_regclass('vendite.attivita_fatturabili'),
+                         'sorgente_uid porta un''impronta d''idempotenza, non la chiave del documento; '
+                         || 'la provenienza e'' commessa_attivita_id (FK). Le sue sorgente_* si ritirano nel lotto C',
+                         NULL::text),
+                        (pg_catalog.to_regclass('vendite.fatture_righe'),
+                         'la provenienza e'' la riga di commessa in sorgente_riga; sorgente_uid non e'' la '
+                         || 'chiave del documento. Passa al modello nel lotto R',
+                         NULL::text),
+                        (pg_catalog.to_regclass('pratiche.reconcile_errori'),
+                         'e'' un log: rimanda per costruzione anche a documenti che non ci sono piu''',
+                         'e'' un log scritto dentro un EXCEPTION: un guard d''esistenza lo farebbe tacere')
+                  )
+                  SELECT c.oid::regclass,
+                         n.nspname,
+                         c.relname,
+                         CASE
+                             WHEN EXISTS (SELECT 1 FROM script.fn_sorgente_guard_montaggi() m
+                                           WHERE m.tabella = c.oid::regclass) THEN 'UNICO'
+                             WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_trigger tg
+                                           WHERE tg.tgrelid = c.oid AND NOT tg.tgisinternal
+                                             AND tg.tgfoid = 'script.trgfn_guard_sorgente_polimorfa_tipizzata()'::regprocedure)
+                                 THEN 'MODELLO_A'
+                             ELSE 'TESTUALE'
+                         END,
+                         col.ha_id,
+                         col.ha_uid,
+                         col.ha_riga,
+                         col.ha_dett,
+                         e.orfani_perche,
+                         e.guard_perche
+                    FROM col
+                    JOIN pg_catalog.pg_class c     ON c.oid = col.attrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    LEFT JOIN esenzioni e          ON e.tabella = c.oid::regclass
+                   WHERE c.relkind IN ('r', 'p')
+                     AND n.nspname <> 'storico'
+                     AND col.ha_tipo
+                     AND (col.ha_id OR col.ha_uid)
+                     AND (c.relpersistence <> 't'
+                          OR (n.oid = pg_catalog.pg_my_temp_schema()
+                              AND pg_catalog.has_table_privilege(c.oid, 'SELECT')))
+                   ORDER BY n.nspname, c.relname;
+              END;
+
+              COMMENT ON FUNCTION dbops.fn_sorgenti_orfane_perimetro() IS
+                'Il perimetro della provenienza polimorfa: ogni tabella (fuori lo storico) con sorgente_tipo_id e almeno una fra sorgente_id e sorgente_uid, con le colonne che ha e la sua GRAMMATICA, dal guard che monta: UNICO (script.trgfn_guard_sorgente: tipo + sorgente_id | sorgente_uid + riga + dettaglio), MODELLO_A (script.trgfn_guard_sorgente_polimorfa_tipizzata: la chiave in sorgente_riga per id, in sorgente_uid per uid), TESTUALE (nessun guard: la chiave in sorgente_uid, come id o uid, in testo o uuid). Due esenzioni dichiarate con il motivo: orfani_esclusi_perche (le tabelle dove sorgente_uid non e'' la chiave del documento, e il log dei reconcile) e guard_esente_perche (il log dei reconcile). Delle tabelle temporanee, solo quelle della sessione leggibili da chi chiede. Derivato dal catalogo di PostgreSQL, non da un elenco: una tabella nuova con la provenienza entra da sola. Lo leggono dbops.fn_sorgenti_orfane e il presidio di struttura (dbops/test-sorgenti-struttura-v1).';

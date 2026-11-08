@@ -165,16 +165,12 @@ SELECT is(
 -- ============================================================
 -- 7. ⛔ Senza il digest a catalogo, il guardiano non dorme: solleva
 -- ============================================================
--- ⚠️ obsoleto_dal e non attivo = false: il panorama filtra su entrambi, e il
---   primo non sveglia nessun guard di disattivazione con figlie.
--- ⚠️ 20261016-20: un processo ritirato non ha sveglia, e chk_processi_accensione
---   vuole le colonne dell'accensione a NULL (quattro dal 20261018-10).
+-- ⚠️ Il ritiro si scrive con la data (raggiunta ieri): e' l'unica sede del
+--   ritiro, la legge script.fn_e_obsoleto. Le colonne dell'accensione restano:
+--   chk_processi_accensione le vuole su ogni processo con una sveglia, anche
+--   ritirato (giro 9 di brief-db-revisione-dbops).
 UPDATE dbops.processi
-   SET obsoleto_dal         = script.fn_data_operativa() - 1,
-       acceso_in_sviluppo   = NULL,
-       acceso_in_produzione = NULL,
-       spegnibile           = NULL,
-       accendibile_in_produzione = NULL
+   SET obsoleto_dal         = script.fn_data_operativa() - 1
  WHERE codice = 'digest_presidi';
 
 SELECT throws_like(

@@ -1,69 +1,79 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_get_uom_factor`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento Tabelle**   
-> • [`catalogo.articoli_uom_operativa`](/dbzero/catalogo/tabelle/articoli_uom_operativa)     
-> • [`catalogo.unita_misura_conversioni`](/dbzero/catalogo/tabelle/unita_misura_conversioni)     
+> Approfondimento tabelle:
 >
-**Approfondimento Funzioni**   
-> • [`catalogo.fn_get_uom_base`](/dbzero/catalogo/funzioni/fn_get_uom_base)  
+> * [catalogo.articoli_uom_operativa](/dbzero/catalogo/tabelle/articoli_uom_operativa) — il fattore dell'articolo, la prima fonte
+> * [catalogo.unita_misura_conversioni](/dbzero/catalogo/tabelle/unita_misura_conversioni) — le conversioni globali, il ripiego
+>
+> Approfondimento funzioni:
+>
+> * [catalogo.fn_get_uom_base](/dbzero/catalogo/funzioni/fn_get_uom_base) — l'unità base dell'articolo, il primo passo
+> * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — il calcolo reale della quantità sulle righe di vendita, che non chiama questa funzione
+> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — la data a cui si cercano mappature e conversioni in vigore
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 13-01-26)
-La funzione **`catalogo.fn_get_uom_factor(p_articolo_id, p_uom_id)`** ritorna il **fattore di conversione** dalla UoM richiesta alla **UoM base** dell’articolo.
 
-Supporta un **fallback globale**: se la conversione articolo-specifica non e' presente, usa le conversioni definite in `catalogo.unita_misura_conversioni`.
-
----
-
-### Logica di calcolo
-
-1. **UoM base articolo**  
-   Legge `catalogo.articoli.uom_id` (tramite `catalogo.fn_get_uom_base`).
-2. **UoM uguale alla base**  
-   Se `p_uom_id = uom_base` → ritorna `1`.
-3. **Conversione articolo-specifica**  
-   Cerca in `catalogo.articoli_uom_operativa` una riga attiva e valida.
-4. **Fallback globale diretto**  
-   Cerca in `catalogo.unita_misura_conversioni` `uom_from = p_uom_id` e `uom_to = uom_base`.
-5. **Fallback globale inverso**  
-   Se trova solo `uom_from = uom_base` e `uom_to = p_uom_id`, ritorna `1/fattore`.
-6. **Se non trovato**  
-   Ritorna `NULL`.
-
-Le conversioni globali candidate sono gia' filtrate a monte dal DB: la tabella
-`catalogo.unita_misura_conversioni` ammette solo coppie della stessa
-`catalogo.uom_tipi`.
+Restituisce il fattore che porta una quantità espressa in un'unità di misura all'unità base
+di un articolo: quante unità base vale una unità richiesta. Se non trova un fattore
+restituisce NULL.
 
 ---
 
-### Esempi d’uso
+### I gradini
 
-**1) Caso articolo-specifico**
+1. **L'unità base.** La legge con `fn_get_uom_base`; se l'articolo non esiste, restituisce
+   NULL.
+2. **La base stessa.** Se l'unità richiesta è la base, il fattore è 1, senza guardare la
+   mappatura.
+3. **La mappatura dell'articolo.** La riga di `articoli_uom_operativa` attiva per l'articolo e
+   l'unità, in vigore oggi.
+4. **La conversione globale diretta**, dall'unità richiesta alla base, attiva e in vigore.
+5. **La conversione globale inversa**, dalla base all'unità richiesta: il fattore è il suo
+   reciproco.
+6. **Niente**: NULL.
 
-```sql
-SELECT catalogo.fn_get_uom_factor(:articolo_id, :uom_scatola_id);
-```
+«In vigore oggi» vuol dire alla data operativa dell'azienda (`script.fn_data_operativa`),
+non alla data di un documento: la funzione non prende una data.
 
-Se l’articolo ha una UoM operativa “scatola” con `factor_to_base = 6`, ritorna `6`.
-
-**2) Caso fallback globale**
-
-```sql
-SELECT catalogo.fn_get_uom_factor(:articolo_id, :uom_mj_id);
-```
-
-Se l’articolo non ha una conversione specifica per `MJ`, la funzione usa la conversione globale (es. `SMC -> MJ`).
+Le conversioni globali sono già limitate a unità della stessa famiglia dalla tabella stessa:
+la funzione non lo ricontrolla.
 
 ---
 
-### Best practice
+### ⚠️ Che cosa oggi non copre
 
-* Definisci conversioni **globali** solo per UoM standard della stessa tipologia, non per confezioni specifiche.
-* Usa `articoli_uom_operativa` per conversioni **legate al prodotto** (es. pezzi per scatola).
-* Gestisci il caso `NULL` a livello applicativo/trigger quando la conversione non e' disponibile.
+* **Nessuna funzione del database la chiama.** Il calcolo della quantità sulle righe di
+  vendita lo fa `script.trgfn_qta_from_operativa`, che ripete solo il gradino della mappatura
+  e, se non la trova, usa il fattore 1 senza errore. Le due regole sono già in disaccordo: qui
+  un'unità senza mappatura trova la conversione globale o restituisce NULL, là vale 1.
+  Fuori dal database la chiama solo un metodo del repository del backend, che a sua volta
+  non ha chiamanti.
+* **Fra due conversioni che si contraddicono sceglie la diretta in silenzio.** Per la stessa
+  coppia possono essere attive insieme A → B e B → A con fattori incoerenti: vince la diretta.
+* Un NULL non dice perché manca il fattore (articolo inesistente o nessuna conversione).
+
+---
+
+### Test
+
+* `db/pgtap/catalogo/test-fn-get-uom.sql` — i rami uno per uno, su un mondo costruito dal
+  test: fattore 1 sulla base, fattore dalla mappatura, conversione diretta, conversione
+  inversa, NULL senza conversioni; con la mappatura spenta, la funzione ricade sulla
+  conversione globale.
+
+---
+
+### Note di migrazione
+
+* 2025-11-03 — nasce, con la sola mappatura dell'articolo.
+* 2026-01-13 — aggiunge il ripiego sulle conversioni globali, diretta e inversa.
+* 2026-10-09 — «oggi» diventa la data nel fuso dell'azienda invece della data della sessione.
 
 ---
 

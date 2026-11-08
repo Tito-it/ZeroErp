@@ -6,20 +6,21 @@
 --
 -- Elenco test (1..36):
 --  1-9)  Riferimenti minimi presenti (articoli, istanze utilities, sorgenti,
---        unita di misura, note_stili, sorgente id=1 con target valido,
+--        unita di misura, note_stili, l'entita' ATTIVITA delle note (non una
+--        sorgente),
 --        billing account, tipi doc fiscale, valute)
 -- 10)    Fixture: 13 attivita di commessa distinte create
 -- 11-12) Quantita negativa: consentita e mantenuta
 -- 13-22) Default di colonna: approvato, fatturato, sospesa,
 --        lock_in_fatturazione, storicizza, uid, tipo_doc_fiscale_id,
---        valuta_id, factor_to_base, sorgente_riga
+--        valuta_id, factor_to_base; 22) nessuna colonna sorgente_*
 -- 23-24) Nota su vendite.note (ATTIVITA, era ATTIVITAFT fino al 2026-10-25) e presenza nella sua partizione
 -- 25)    Riga da commessa: competenza_mese non al primo del mese e RESPINTA
 -- 26)    CHECK competenza_dal <= competenza_al
 -- 27)    Riga da commessa: competenza_mese NON derivata da posticipa_al
 -- 28)    NOT NULL quantita
 -- 29)    FK su articolo_id
--- 30)    Riga con sorgente_tipo_id e sorgente_uid validi
+-- 30)    Riga con la sola provenienza della riga di commessa (commessa_attivita_id)
 -- 31)    Unicita 1:1 su commessa_attivita_id (una AF per attivita di commessa)
 -- 32-33) attivita_consumi e attivita_fatturabile che la referenzia
 -- 34-36) FK inesistenti: tipo_doc_fiscale_id, valuta_id, attivita_consumi_id
@@ -86,8 +87,7 @@ SELECT plan(36);
 -- ============================================================
 CREATE TEMP TABLE tmp_costanti_af AS
 SELECT
-    'pgtap_attivita_fatturabili'::text AS test_scope,
-    uuidv7() AS sorgente_uid_unica;
+    'pgtap_attivita_fatturabili'::text AS test_scope;
 
 -- rev 2026-10-27 (lotto 4 di D7): commessa, cliente e articolo si
 --   COSTRUISCONO (dbops.fn_pgtap_crea_commessa, che costruisce il cliente
@@ -134,13 +134,6 @@ WHERE attivo IS TRUE
 ORDER BY id
 LIMIT 1;
 
-CREATE TEMP TABLE tmp_sorgente_cfg (
-    sorgente_tipo_id bigint,
-    key_selector text,
-    sorgente_riga bigint,
-    sorgente_uid uuid
-);
-
 SELECT ok(
     (SELECT articolo_id FROM tmp_refs_af) IS NOT NULL,
     'Riferimento catalogo.articoli presente'
@@ -166,14 +159,19 @@ SELECT ok(
     'Riferimento config.note_stili presente'
 );
 
-SELECT ok(
-    (SELECT count(*)
-       FROM config.sorgenti
-      WHERE id = 1
-        AND attivo IS TRUE
-        AND target_table IS NOT NULL
-        AND key_selector IN ('id', 'uid')) = 1,
-    'Sorgente id=1 configurata con target valido'
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, lotto C, giro C.4,
+--   20261108-06): il test chiedeva la sorgente id = 1, cioe' ATTIVITA, che esce
+--   dal catalogo delle sorgenti (niente nasce da un'attivita' fatturabile, la sua
+--   provenienza e' la riga di commessa). Il riferimento che serve a questo file e'
+--   l'ENTITA' delle note (23-24), che resta; per codice, non per id.
+SELECT is(
+    (SELECT format('%s|%s', e.is_sorgente::text,
+                   (NOT EXISTS (SELECT 1 FROM config.sorgenti s
+                                 WHERE s.codice_interno = 'ATTIVITA'))::text)
+       FROM config.tipi_entita e
+      WHERE e.codice = 'ATTIVITA'),
+    'false|true',
+    'Entita'' ATTIVITA presente per le note, e non e'' una sorgente'
 );
 
 SELECT ok(
@@ -296,22 +294,9 @@ WITH ins AS (
         uid,
         tipo_doc_fiscale_id,
         valuta_id,
-        factor_to_base,
-        sorgente_riga
+        factor_to_base
 )
 SELECT * FROM ins;
-
-INSERT INTO tmp_sorgente_cfg (sorgente_tipo_id, key_selector, sorgente_riga, sorgente_uid)
-SELECT
-    s.id,
-    s.key_selector,
-    CASE WHEN s.key_selector = 'id' THEN a.id ELSE NULL END,
-    CASE WHEN s.key_selector = 'uid' THEN a.uid ELSE NULL END
-FROM config.sorgenti s,
-     tmp_attivita_base a
-WHERE s.id = 1
-  AND s.attivo IS TRUE
-  AND s.key_selector IN ('id', 'uid');
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_attivita_base),
@@ -382,10 +367,15 @@ SELECT is(
     'Default factor_to_base = 1'
 );
 
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, lotto C, giro C.1): il
+--   DEFAULT 0 di sorgente_riga se n'e' andato con le colonne della provenienza.
+--   La provenienza dell'attivita' e' la riga di commessa (FK NOT NULL).
 SELECT is(
-    (SELECT sorgente_riga::bigint FROM tmp_attivita_base),
-    0::bigint,
-    'Default sorgente_riga = 0'
+    (SELECT count(*)::int FROM pg_attribute a
+      WHERE a.attrelid = 'vendite.attivita_fatturabili'::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped AND a.attname LIKE 'sorgente%'),
+    0,
+    'Nessuna colonna sorgente_*: la provenienza e'' la riga di commessa'
 );
 
 -- ============================================================
@@ -460,8 +450,8 @@ SELECT is(
 -- arrivare con competenza_mese GIA' al primo del mese, e se non lo e'
 -- chk_attivita_competenza_mese_primo la respinge. Il normalizzatore non
 -- copre piu' per chi scrive.
--- 🔴 Il ramo standard di quella funzione e' codice morto: segnalato, non
--- rimosso qui (e' una funzione condivisa, non perimetro di questo file).
+-- Il ramo standard di quella funzione era codice morto: e' ritirato dal
+-- 2026-11-08 (20261110-13), e la funzione completa solo tipo documento e valuta.
 SELECT throws_ok(
     $$
     INSERT INTO vendite.attivita_fatturabili (
@@ -544,9 +534,9 @@ SELECT throws_ok(
 -- 3.1) Competenza_mese derivata da posticipa_al
 -- ============================================================
 -- ⚠️ rev 2026-08-18 (bonifica baseline) — stessa sorte del test qui sopra, e
--- stessa causa: la derivazione di competenza_mese da posticipa_al vive nel
--- ramo standard di trgfn_attivita_fatturabili_normalize, che su una riga da
--- commessa non viene mai eseguito. Su una riga da commessa competenza_mese
+-- stessa causa: la derivazione di competenza_mese da posticipa_al viveva nel
+-- ramo standard di trgfn_attivita_fatturabili_normalize, irraggiungibile su una
+-- riga da commessa e ritirato il 2026-11-08. Su una riga da commessa competenza_mese
 -- resta NULL e la colonna e' NOT NULL: e' quello che si verifica.
 SELECT throws_ok(
     $$
@@ -666,7 +656,7 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 6) Unicita parziale sorgente_tipo_id + sorgente_uid
+-- 6) La provenienza e' la riga di commessa; unicita' 1:1 su commessa_attivita_id
 -- ============================================================
 CREATE TEMP TABLE tmp_attivita_sorgente AS
 WITH ins AS (
@@ -678,9 +668,6 @@ WITH ins AS (
         commessa_attivita_id,
         data_attivita,
         quantita,
-        sorgente_tipo_id,
-        sorgente_riga,
-        sorgente_uid,
         competenza_mese,
         competenza_dal,
         competenza_al,
@@ -696,9 +683,6 @@ WITH ins AS (
         (SELECT attivita_id FROM tmp_ca_af WHERE slot = 7),
         script.fn_data_operativa(),
         1,
-        s.sorgente_tipo_id,
-        CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
-        CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
         date_trunc('month', script.fn_data_operativa())::date,
         date_trunc('month', script.fn_data_operativa())::date,
         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
@@ -706,7 +690,6 @@ WITH ins AS (
         r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope, 'case', 'unique_sorgente')
     FROM tmp_refs_af r,
-         tmp_sorgente_cfg s,
          tmp_costanti_af k
     RETURNING id
 )
@@ -715,7 +698,7 @@ SELECT * FROM ins;
 SELECT is(
     (SELECT count(*)::int FROM tmp_attivita_sorgente),
     1,
-    'Inserita riga con sorgente_tipo_id e sorgente_uid'
+    'Inserita riga con la sola provenienza della riga di commessa'
 );
 
 -- ⚠️ rev 2026-08-18 (bonifica baseline) — ASSERZIONE RIMPIAZZATA, non riparata.
@@ -736,9 +719,6 @@ SELECT throws_ok(
         commessa_attivita_id,
         data_attivita,
         quantita,
-        sorgente_tipo_id,
-        sorgente_riga,
-        sorgente_uid,
         competenza_mese,
         competenza_dal,
         competenza_al,
@@ -755,17 +735,12 @@ SELECT throws_ok(
         (SELECT attivita_id FROM tmp_ca_af WHERE slot = 7),
         script.fn_data_operativa(),
         2,
-        s.sorgente_tipo_id,
-        CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
-        CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
         date_trunc('month', script.fn_data_operativa())::date,
         date_trunc('month', script.fn_data_operativa())::date,
         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id
-    FROM tmp_refs_af r,
-         tmp_sorgente_cfg s,
-         tmp_costanti_af k;
+    FROM tmp_refs_af r;
     $$,
     '23505',
     NULL,

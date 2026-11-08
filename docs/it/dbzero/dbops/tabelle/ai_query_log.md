@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Log interazioni assistente AI: registra input utente, strumenti invocati, risposta LLM, metriche token/durata e provider. Append-only con retention via cleanup_at.
+> Registro delle interazioni con l'assistente AI: il testo inviato dall'utente, gli strumenti invocati, la risposta, token, durata e provider. Il backend la scrive solo in INSERT. Scade: cleanup_at nasce con la riga (data_insert + il termine della regola CLEANUP_AT della tabella in dbops.automation_rules_tbl, 90 giorni) e il purge delle automazioni cancella le righe scadute; la tabella e' nell'ambito di dbops.automation_scope.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -37,6 +37,11 @@
 | ix_ai_query_log_request_id | `CREATE INDEX ix_ai_query_log_request_id ON dbops.ai_query_log USING btree (request_id)` |
 | ix_ai_query_log_user_id | `CREATE INDEX ix_ai_query_log_user_id ON dbops.ai_query_log USING btree (user_id)` |
 | pk_ai_query_log | `CREATE UNIQUE INDEX pk_ai_query_log ON dbops.ai_query_log USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ai_query_log_m50_cleanup_at_ins | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita()` |
 
 ---
 {% include-markdown "signature-core.md" %}

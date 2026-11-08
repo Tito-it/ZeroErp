@@ -1,6 +1,6 @@
 # Tutorial — Portare una tabella nuova nel framework di automazione DB
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database che creano una tabella nuova e vogliono che il framework la governi
 >
@@ -119,7 +119,7 @@ storico: una riga in `storico_scope_policy.csv`, con `id` esplicito e uno dei mo
 solito `PADRE` sulla FK verso la testata.
 
 Il significato dei modi è nella scheda
-[dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy). Se la riga manca, il
+[dbops.storico_scope_policy](/dbzero/dbops/tabelle/storico_scope_policy). Se la riga manca, il
 presidio `db/pgtap/dbops/test-storico-scope-policy-v1.sql` diventa rosso.
 
 ### 3.2 Facoltativi
@@ -144,15 +144,17 @@ spiegato in [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle#la-co
 ## Passo 4 — (Facoltativo) Guardare che cosa farebbe
 
 Il dry-run non crea nulla e scrive in `dbops.audit_log` le righe con `status = 'DRYRUN'`. Si può
-lanciare sullo schema della tabella, anche con tutte le regole insieme:
+lanciare sullo schema della tabella, un runner per regola:
 
 ```sql
--- Tutte le regole tabellari, in simulazione, sul solo schema catalogo
-SELECT dbops.fn_run_automations('AUTO', ARRAY['catalogo'], true,
-       ARRAY['TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO','DATE_VALIDITA']);
-
--- La gemella in storico: l'orchestratore non la prevede, si chiede al suo runner
-SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['catalogo'], true);
+-- Le regole tabellari, in simulazione, sul solo schema catalogo
+SELECT dbops.fn_run_automations_audit_update('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['catalogo'], true);  -- la gemella in storico
+SELECT dbops.fn_run_automations_storico('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_tx_id('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_attivo('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_date_validita('AUTO', ARRAY['catalogo'], true);
 
 -- Cosa ha registrato
 SELECT executed_at, rule_type, status,
@@ -163,9 +165,10 @@ SELECT executed_at, rule_type, status,
  LIMIT 50;
 ```
 
-⚠️ `fn_run_automations` **non** conosce la parte `STORICO_PROVISION`: passargliela non fa niente.
-Inoltre, finché la gemella non esiste, il dry-run di STORICO non mostra il trigger: arriva al giro
-successivo alla creazione della gemella.
+⚠️ Non esiste una funzione che lanci tutte le regole insieme: il giro vero lo fanno le procedure
+dei processi, nell'ordine di `dbops.processi.ci_ordine` (Passo 5). Finché la gemella non esiste,
+il dry-run di STORICO non mostra il trigger: la simulazione di STORICO_PROVISION non la crea, e il
+trigger arriva al giro successivo alla creazione della gemella.
 
 Per il lucchetto, la vista giusta è la convergenza, che dice anche le colonne che la fermerebbero:
 
@@ -186,7 +189,7 @@ Non li monti tu: li monta il **giro delle automazioni**, che esiste in tre forme
 La pipeline invoca Liquibase due volte. Nella seconda passata (`--contexts=ci_apply`) il changeSet
 `90_end/ci_apply/20260926-10-run-processi-strutturali-in-ordine` chiama, nell'ordine dichiarato da
 `dbops.processi.ci_ordine`, tutte le procedure dei processi strutturali: audit, provisioning dello
-storico, storico, `tx_id`, attivo, lucchetti, blocco delete, overlap, pulizia, storicizzazione,
+storico, storico, `tx_id`, attivo, lucchetti, blocco delete, guard utility/tipo ruolo, overlap, pulizia, storicizzazione,
 statistiche. Dopo ogni chiamata pretende una riga riuscita in `maintenance.job_run_log`, altrimenti
 la migrazione si ferma nominando il processo.
 
@@ -217,7 +220,7 @@ Se nessuno lancia la convergenza, la tabella viene coperta dal giro notturno. I 
 | Quando              | Job                                                                                                               |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | ogni giorno, 21:00  | `automations_audit_update`, `automations_storico_provision`, `automations_storico`, `automations_tx_id`, `automations_attivo`, `automations_overlap` |
-| ogni giorno, 21:10  | `automations_lock_columns` (anche DATE_VALIDITA), `automations_delete_block`                                       |
+| ogni giorno, 21:10  | `automations_lock_columns` (anche DATE_VALIDITA), `automations_delete_block`, `automations_guard_utility`          |
 | sabato, 07:00       | `apply_storicizza_weekly`, `sync_storico_set_storicizza`                                                           |
 | domenica, 23:00     | `automations_cleanup_weekly`, `automations_apply_fk_indexes_policy`                                               |
 
@@ -295,7 +298,7 @@ rifiuto della modifica di `codice_interno`. Come si scrive e dove va:
 1. Colonne    → tx_id, data_update/user_update, storicizza, attivo, codice_interno, valido_dal/al
 2. Ambito     → schema di dominio: già dentro; schema nuovo: riga in automation_scope.csv
 3. Registri   → storico_scope_policy.csv (obbligatorio se storicizzata), gli altri se servono
-4. Dry-run    → facoltativo: fn_run_automations(..., true) + storico_provision a parte
+4. Dry-run    → facoltativo: fn_run_automations_<regola>(..., true), un runner per regola
 5. Convergenza→ CI: ci_apply in ordine · dev: l'update, che la comprende (con l'ok di Tid) · notte: pgAgent
 6. Verifica   → pg_trigger, storico.<tabella>, job_run_log, audit_log; il comportamento in pgTAP;
                 su un'installazione: Strumenti → Diagnostica → Processi automatici
@@ -315,7 +318,7 @@ rifiuto della modifica di `codice_interno`. Come si scrive e dove va:
 | Il flag `storicizza` si azzera dopo il primo UPDATE           | tabella non ancora in `config.storico_set_storicizza`               | `DEFAULT true` sulla colonna; la registra `sync_storico_set_storicizza`   |
 | Il giro dei lucchetti si ferma nominando una colonna          | un trigger vivo blocca una colonna che il registro non dichiara     | dichiararla in `automation_lock_columns.csv`, non scrivere il lock a mano |
 | Migrazione ferma su `PROCESSI_CI: …`                          | una procedura strutturale non ha lasciato una corsa riuscita        | leggere `maintenance.job_run_log` e `dbops.audit_log` del processo nominato |
-| Il trigger esiste ma in `audit_log` c'è `SKIP_EXISTS`         | il framework è idempotente: l'aveva già montato                     | nessuna azione                                                            |
+| In `audit_log` c'è `WARN` con azione `SKIP_EXISTS`            | il nome del trigger era già preso da un altro trigger sulla tabella | guardare quel trigger: se esegue un'altra funzione, è lui da sistemare    |
 | Nome troppo lungo (oltre 63 caratteri)                        | nome di tabella lungo                                               | il framework abbrevia con un hash; verificare il nome in `pg_trigger`     |
 
 ---

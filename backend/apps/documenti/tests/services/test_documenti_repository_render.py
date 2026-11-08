@@ -208,12 +208,15 @@ class NextProgressivoSorgenteTests(TestCase):
 
         result = DocumentiRepository().next_progressivo_sorgente(
             sorgente_tipo_id=10,
+            sorgente_id=None,
             sorgente_uid="abc-123",
             sorgente_riga=None,
         )
         self.assertEqual(result, 7)
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("COALESCE(MAX(progressivo_sorgente), 0) + 1", sql)
+        self.assertIn("sorgente_uid = %s::uuid", sql)
+        self.assertNotIn("sorgente_id = %s", sql)
         self.assertIn("sorgente_riga IS NULL", sql)
         self.assertEqual(params, [10, "abc-123"])
 
@@ -227,13 +230,28 @@ class NextProgressivoSorgenteTests(TestCase):
 
         result = DocumentiRepository().next_progressivo_sorgente(
             sorgente_tipo_id=10,
-            sorgente_uid="abc-123",
+            sorgente_id=42,
+            sorgente_uid=None,
             sorgente_riga=5,
         )
         self.assertEqual(result, 2)
         sql, params = cursor.execute.call_args_list[0].args
-        self.assertIn("sorgente_riga    = %s", sql)
-        self.assertEqual(params, [10, "abc-123", 5])
+        # Un tipo a chiave id (giro D.1): si conta sulla colonna del tipo.
+        self.assertIn("sorgente_id = %s", sql)
+        self.assertNotIn("sorgente_uid", sql)
+        self.assertIn("sorgente_riga = %s", sql)
+        self.assertEqual(params, [10, 42, 5])
+
+    # 7-bis. ⛔ Due chiavi o nessuna: errore del chiamante, mai un filtro
+    #        che conta un insieme vuoto (e ridà 1 a ogni stampa).
+    def test_next_progressivo_sorgente_una_chiave_sola(self) -> None:
+        for sorgente_id, sorgente_uid in ((None, None), (42, "abc-123")):
+            with self.subTest(sorgente_id=sorgente_id, sorgente_uid=sorgente_uid):
+                with self.assertRaises(ValueError):
+                    DocumentiRepository().next_progressivo_sorgente(
+                        sorgente_tipo_id=10, sorgente_id=sorgente_id,
+                        sorgente_uid=sorgente_uid, sorgente_riga=None,
+                    )
 
 
 class CreateDocumentoGeneratoTests(TestCase):
@@ -255,6 +273,7 @@ class CreateDocumentoGeneratoTests(TestCase):
             "template_documento_id": 7,
             "template_versione_id": 12,
             "sorgente_tipo_id": 10,
+            "sorgente_id": None,
             "sorgente_uid": "uid-1",
             "sorgente_riga": None,
             "progressivo_sorgente": 1,
@@ -276,7 +295,7 @@ class CreateDocumentoGeneratoTests(TestCase):
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("INSERT INTO documenti.documenti_generati", sql)
         self.assertIn("RETURNING id, uid", sql)
-        # 17 chiavi whitelisted nel data, tutte presenti.
+        # Le chiavi whitelisted nel data, tutte presenti (18 dal giro D.1).
         self.assertEqual(len(params), len(DOCUMENTO_GENERATO_CREATE_COLUMNS))
         self.assertIn("%s::jsonb", sql)
         self.assertIn(json.dumps({"k": "v"}), params)

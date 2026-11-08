@@ -1,53 +1,79 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_argomenti`
 
+> **Ultimo aggiornamento**: 7 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento funzioni:    
-> [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze)    
-> [dbops.fn_ritira_attivo_eccezioni](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni)    
+> Approfondimento viste:
+>
+> * [dbops.vw_codici_errore_argomenti_trigger](/dbzero/dbops/views/vw_codici_errore_argomenti_trigger) — i codici errore che un trigger passa alla sua funzione
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — legge i lucchetti di colonna montati
+> * [dbops.fn_ritira_attivo_eccezioni](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni) — riconosce i trigger ATTIVO di una FK eccezione
+> * [dbops.fn_trigger_attivo_orfani](/dbzero/dbops/funzioni/fn_trigger_attivo_orfani) — riconosce i trigger ATTIVO orfani
+> * [dbops.fn_trigger_attivo_argomenti](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti) — interpreta per nome gli argomenti dei trigger ATTIVO
+> * [script.fn_doc_lock_regola](/dbzero/script/funzioni/fn_doc_lock_regola) — legge i lucchetti dei documenti
+> * [script.fn_doc_lock_montaggi](/dbzero/script/funzioni/fn_doc_lock_montaggi) — elenca i montaggi dei lucchetti dei documenti
+>
+> Guide:
+>
+> * [Linee guida trigger](/linee-guida-trigger#il-nome-della-funzione-trigger) — chi legge gli argomenti da fuori passa da una funzione condivisa
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 26-09-26)
 
-Restituisce gli **argomenti di un trigger** (`pg_trigger.tgargs`) come `text[]`,
-nell'ordine in cui li scrive il `CREATE TRIGGER`. Array vuoto se il trigger non
-ne ha.
+Restituisce gli argomenti di un trigger (`pg_trigger.tgargs`) come elenco di testi, nell'ordine in
+cui li scrive il `CREATE TRIGGER`; un elenco vuoto se il trigger non ne ha.
 
-Serve a chi riconosce un trigger **generico** (una funzione, tanti trigger)
-da quello che gli viene passato, e non dal nome: il nome può essere hashato
-oltre i 63 caratteri o scritto a mano, gli argomenti no.
+È il building block di chi riconosce un trigger **generico** — una funzione, tanti trigger — da
+quello che gli viene passato e non dal nome: il nome può essere troncato con un hash oltre i 63
+caratteri o scritto a mano, gli argomenti no. Chi deve leggere `tgargs` passa da qui.
 
-**Building block** (regola del 2), dal 2026-09-26. Lo usano
-`dbops.fn_lock_columns_divergenze`, `dbops.fn_ritira_attivo_eccezioni`,
-`dbops.fn_trigger_attivo_orfani`, il pgTAP
-`catalogo/test-articoli-seed-uom-base-lock` e il guardrail
-`scripts/sql/guardrail_codice_errore_strutturato.sql`. Chi deve leggere
-`tgargs` passa da qui.
+⚠️ L'elenco parte da 1, mentre dentro la funzione trigger `TG_ARGV` parte da 0: il primo argomento
+è `[1]` qui e `[0]` lì.
 
 ---
 
-### ⛔ Perché non `encode(tgargs, 'escape')`
+### ⛔ Perché non la decodifica testuale di `tgargs`
 
-Era la forma usata prima, e ha due difetti:
+La forma usata prima — convertire `tgargs` in testo con l'escape e togliere in coda i separatori —
+aveva due difetti:
 
-| Forma | Problema | Esempio |
-| --- | --- | --- |
-| `rtrim(encode(tgargs,'escape'), '\000')` | `rtrim` toglie l'**insieme** di caratteri `\` e `0`, non la sequenza: un ultimo argomento che finisce con uno zero lo perde | `'col', 'E_X10'` → `{col,E_X1}` |
-| `encode(…, 'escape')` in generale | ogni byte con il bit alto diventa `\nnn` | `città` → `citt\303\240` |
+* togliere in coda i caratteri «barra rovesciata» e «zero» toglie un **insieme** di caratteri, non
+  una sequenza: un ultimo argomento che finisce con uno zero lo perdeva (un codice `E_X10`
+  diventava `E_X1`);
+* ogni carattere non ASCII usciva come sequenza di escape (`città` diventava illeggibile).
 
-Questa funzione taglia i **byte** su ogni `NUL` (ogni argomento in `tgargs` ne è
-chiuso) e riconverte i pezzi con la codifica del server.
+Questa funzione taglia i **byte** su ogni separatore nullo (ogni argomento in `tgargs` ne è chiuso)
+e riconverte i pezzi con la codifica del server.
 
 ---
 
-### Esempi di utilizzo
+### Chi la usa
 
-```sql
-SELECT t.tgname, dbops.fn_trigger_argomenti(t.tgargs)
-  FROM pg_trigger t
- WHERE t.tgrelid = 'catalogo.articoli'::regclass
-   AND NOT t.tgisinternal;
-```
+Oltre alle funzioni del «Vedi anche», la usano il guardrail
+`scripts/sql/guardrail_codice_errore_strutturato.sql` e vari pgTAP che riconoscono un trigger
+generico dai suoi argomenti.
 
-Brief: `brief-db-lock-di-colonna-fuori-registro`.
+---
+
+### Test
+
+* `db/pgtap/dbops/test-lock-columns-convergenza.sql` e `db/pgtap/catalogo/test-articoli-seed-uom-base-lock.sql`
+  — riconoscono i lucchetti di colonna dagli argomenti letti qui.
+* `db/pgtap/script/test-doc-lock-montaggio-v1.sql` — i montaggi dei lucchetti dei documenti.
+
+---
+
+### Note di migrazione
+
+* 2026-09-26 — nasce come sede unica della lettura di `tgargs`
+  (`brief-db-lock-di-colonna-fuori-registro` §7); i lettori che decodificavano `tgargs` da sé
+  passano da qui.
+
+---
+
+{% include-markdown "signature-core.md" %}

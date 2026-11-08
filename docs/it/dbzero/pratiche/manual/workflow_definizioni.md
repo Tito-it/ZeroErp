@@ -1,125 +1,129 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.workflow_definizioni`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
-> [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+> * [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione) — l'identità di cui l'edizione è una variante
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — i passi dell'edizione
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — le pratiche legate all'edizione
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — l'emittente di un'edizione propria
 >
-Funzioni collegate:
+> Approfondimento viste:
 >
-[pratiche.fn_risolvi_definizione](fn_risolvi_definizione.md)
-> [pratiche.fn_fork_definizione](fn_fork_definizione.md)
-> [pratiche.fn_nuova_versione_definizione](fn_nuova_versione_definizione.md)
-> [pratiche.fn_pubblica_definizione](fn_pubblica_definizione.md)
-> [pratiche.fn_copia_definizione](fn_copia_definizione.md)
-> [pratiche.vw_definizioni_drift](vw_definizioni_drift.md)
-> [pratiche.trgfn_tipi_prestazione_bootstrap_definizione](trgfn_tipi_prestazione_bootstrap_definizione.md)
-> [pratiche.trgfn_template_flussi_default_definizione](trgfn_template_flussi_default_definizione.md)
-> [pratiche.trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md)
-> [pratiche.fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
-> [pratiche.fn_check_definizione_congelata](fn_check_definizione_congelata.md)
-> [pratiche.trgfn_template_flussi_guard_immutabile](trgfn_template_flussi_guard_immutabile.md)
-> [pratiche.trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md)
+> * [pratiche.vw_definizioni_drift](/dbzero/pratiche/views/vw_definizioni_drift) — le edizioni il cui preset d'origine è andato avanti
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_risolvi_definizione](/dbzero/pratiche/funzioni/fn_risolvi_definizione) — quale edizione vale per un tipo e un emittente
+> * [pratiche.fn_fork_definizione](/dbzero/pratiche/funzioni/fn_fork_definizione) · [pratiche.fn_nuova_versione_definizione](/dbzero/pratiche/funzioni/fn_nuova_versione_definizione) · [pratiche.fn_pubblica_definizione](/dbzero/pratiche/funzioni/fn_pubblica_definizione) — i verbi del ciclo di vita
+> * [pratiche.fn_copia_definizione](/dbzero/pratiche/funzioni/fn_copia_definizione) — il motore di copia dei verbi
+> * [pratiche.trgfn_workflow_definizioni_guard](/dbzero/pratiche/funzioni/trgfn_workflow_definizioni_guard) — transizioni e testata immutabile
+> * [pratiche.trgfn_tipi_prestazione_bootstrap_definizione](/dbzero/pratiche/funzioni/trgfn_tipi_prestazione_bootstrap_definizione) — il preset che nasce col tipo
+> * [pratiche.trgfn_pratiche_default_definizione](/dbzero/pratiche/funzioni/trgfn_pratiche_default_definizione) · [pratiche.trgfn_template_flussi_default_definizione](/dbzero/pratiche/funzioni/trgfn_template_flussi_default_definizione) — l'edizione risolta alla nascita di pratica e passo
+> * [pratiche.fn_check_definizione_struttura_bloccata](/dbzero/pratiche/funzioni/fn_check_definizione_struttura_bloccata) · [pratiche.fn_check_definizione_congelata](/dbzero/pratiche/funzioni/fn_check_definizione_congelata) — i due predicati dell'immutabilità
 
 ---
+
 ### 🎯 Scopo Principale
 
-La tabella `pratiche.workflow_definizioni` contiene le **edizioni versionate delle
-definizioni di workflow** (modello C «edizioni + fork»). Una riga = **una edizione** del
-workflow di un `tipo_prestazione` per uno **scope**:
+La tabella `pratiche.workflow_definizioni` contiene le edizioni versionate delle definizioni di
+workflow: una riga è un'edizione del workflow di un tipo di prestazione per uno scope.
 
-* `emittente_fiscale_id NULL` → **preset**: vale per ogni emittente che non ha
-  un'edizione propria;
-* `emittente_fiscale_id` valorizzato → edizione della singola società (**fork**, Fase 2).
+* `emittente_fiscale_id` vuoto: il **preset**, che vale per ogni emittente senza un'edizione propria;
+* `emittente_fiscale_id` valorizzato: l'edizione propria di una società, il **fork**.
 
-Risolve i due buchi storici del motore: le definizioni erano **globali** (due società
-non potevano avere workflow diversi senza clonare il tipo) e le pratiche **non
-pinnavano nulla** (modificare un template cambiava retroattivamente la roadmap delle
-pratiche aperte).
+Il tipo di prestazione resta l'identità di reporting; le edizioni sono varianti e versioni del suo
+workflow. Due società possono avere workflow diversi senza clonare il tipo, e una pratica aperta non
+vede cambiare la sua roadmap quando cambia la definizione.
 
 ---
 
-### Ruolo nel processo
+### Il ciclo di vita
 
-* **Identità condivisa**: il `tipo_prestazione` resta l'identità di reporting; le
-  edizioni sono varianti/versioni del suo workflow.
-* **Ciclo di vita**: `BOZZA` (editabile) → `PUBBLICATA` (istanziabile, **unica per
-  scope**; header immutabile dal guard di Fase 1 e — per i soli **fork** — struttura dei
-  template congelata da Fase 2b, non modificabile né cancellabile) → `RITIRATA` (non
-  istanziabile; le pratiche in volo continuano sul pin. Struttura ancora **non
-  modificabile** — ha pratiche pinnate — ma **cancellabile** per smantellamento, strategia C).
-* **Pin alla creazione**: ogni pratica risolve e pinna la propria edizione alla nascita
-  (`pratiche.definizione_id`, [auto-pin](trgfn_pratiche_default_definizione.md)) e la
-  tiene per sempre.
-* **Bootstrap**: ogni nuovo tipo prestazione nasce con il suo **preset v1 PUBBLICATA**
-  ([trigger di bootstrap](trgfn_tipi_prestazione_bootstrap_definizione.md)) —
-  invariante: `fn_risolvi_definizione` risolve sempre per un tipo appena creato.
-* **Fase 0**: una definizione preset v1 per tipo ≡ comportamento odierno (bootstrap +
-  auto-pin/auto-default). **Fase 1**: guard (flusso↔definizione 508, immutabilità header
-  509/transizioni 510, immutabilità del pin 513, generazione definizione-aware).
-  **Fase 2** (attuale): **fork/nuova versione/pubblica** ([fn_fork_definizione](fn_fork_definizione.md),
-  [fn_nuova_versione_definizione](fn_nuova_versione_definizione.md),
-  [fn_pubblica_definizione](fn_pubblica_definizione.md), motore
-  [fn_copia_definizione](fn_copia_definizione.md)) + **drift** (Fase 2a)
-  ([vw_definizioni_drift](vw_definizioni_drift.md)); rimossi i vincoli per-tipo su
-  `template_flussi` (più definizioni per tipo con gli stessi codici). **Fase 2b** (immutabilità strutturale «Leggera», **strategia C**):
-  i **fork emessi** (PUBBLICATA o RITIRATA) hanno la struttura dei template bloccata a
-  INSERT/UPDATE; il DELETE è bloccato solo su PUBBLICATA (una RITIRATA resta cancellabile).
-  Preset e BOZZA editabili — guard
-  [trgfn_template_flussi_guard_immutabile](trgfn_template_flussi_guard_immutabile.md) +
-  [trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md),
-  predicati [fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
-  (INSERT/UPDATE) e [fn_check_definizione_congelata](fn_check_definizione_congelata.md) (DELETE),
-  errore `TEMPLATE_DEFINIZIONE_CONGELATA` (514).
+* `BOZZA` — modificabile. Al più una bozza per scope: una sola edizione in lavorazione alla volta.
+* `PUBBLICATA` — istanziabile, una sola per scope. La testata (tipo, emittente, versione, origine) non
+  cambia più.
+* `RITIRATA` — non più istanziabile; le pratiche già legate continuano sulla loro edizione.
+
+Le transizioni ammesse sono solo `BOZZA` → `PUBBLICATA` e `PUBBLICATA` → `RITIRATA`.
 
 ---
 
-### Colonne specifiche
+### ⭐ La pratica fissa la sua edizione alla nascita
 
-| Colonna | Note |
-|---------|------|
-| `emittente_fiscale_id` | BIGINT nullable, FK → `anagrafiche.emittenti_fiscali`. NULL = preset; valorizzato = edizione della società (fork, Fase 2). |
-| `versione` | INTEGER NOT NULL DEFAULT 1, CHECK > 0. Progressivo **per scope** (tipo, emittente). |
-| `stato` | VARCHAR(20) CHECK (BOZZA, PUBBLICATA, RITIRATA) DEFAULT 'BOZZA'. Transizioni ammesse (guard Fase 1): BOZZA→PUBBLICATA, PUBBLICATA→RITIRATA. |
-| `preset_origine_id` | INTEGER nullable, FK self (ON DELETE SET NULL). **Provenance del fork**: da quale definizione è nata questa edizione. |
-| `versione_origine` | INTEGER nullable. Versione del preset d'origine al momento del fork — con `preset_origine_id` alimenta il rilevamento **drift** ("preset aggiornato", pattern DEF-2). |
+Ogni pratica risolve la propria edizione quando nasce (`pratiche.definizione_id`) e la tiene per
+sempre. Ogni nuovo tipo di prestazione nasce col suo preset in versione 1 già pubblicato: la
+risoluzione trova sempre un'edizione per un tipo appena creato.
 
 ---
 
-### Vincoli
+### L'immutabilità della struttura
 
-* **`uq_workflow_definizioni_scope_versione`** `(tipo_prestazione_id,
-  emittente_fiscale_id, versione)` **NULLS NOT DISTINCT** — il preset (emittente NULL)
-  è uno scope come gli altri.
-* **`uq_workflow_definizioni_bozza`** (`20260704-05`) — indice unico **parziale**
-  `(tipo_prestazione_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE stato = 'BOZZA'`:
-  **al più una BOZZA per scope** (una sola edizione in lavorazione alla volta). Rete di
-  sicurezza dei guard `DEFINIZIONE_BOZZA_ESISTENTE` (515) in
-  [fn_fork_definizione](fn_fork_definizione.md) / [fn_nuova_versione_definizione](fn_nuova_versione_definizione.md).
-* **`uq_workflow_definizioni_pubblicata`** — indice unico **parziale**
-  `(tipo_prestazione_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE stato =
-  'PUBBLICATA'`: una sola pubblicata per scope. È anche l'arbitro dell'`ON CONFLICT`
-  del trigger di bootstrap.
-* **`uq_workflow_definizioni_id_tipo`** `(id, tipo_prestazione_id)` — target delle
-  **FK composite** dei figli (`template_flussi`, `pratiche`): un figlio non può mai
-  puntare a una definizione di un altro tipo, per costruzione e senza trigger.
-* **FK tipo → ON DELETE CASCADE** (deliberata): la definizione è metadato del tipo e
-  senza tipo non ha senso; inoltre i cleanup pgTAP cancellano tipi sintetici. La
-  protezione reale resta **transitiva**: template e pratiche referenziano la
-  definizione con NO ACTION, quindi un tipo con figli vivi non è comunque cancellabile.
+Per i fork emessi la struttura dei passi è protetta, con due assi:
+
+* un fork pubblicato o ritirato non si modifica: ha pratiche legate alla sua versione;
+* solo un fork pubblicato non si cancella: un ritirato resta cancellabile, per smantellare le edizioni
+  storiche col percorso «ritira, poi cancella».
+
+Il preset e le bozze restano modificabili. I guard dei passi e dei loro figli leggono i due predicati
+`fn_check_definizione_struttura_bloccata` e `fn_check_definizione_congelata`.
 
 ---
 
-### Convenzioni
+### Le colonne che non si capiscono dal nome
 
-* Trigger standard (audit, tx_id, lock) applicati automaticamente da
-  `dbops.fn_run_automations()`.
-* Brief: `brief-db-step-dominio-e-definizioni-versionate.md` (Parte 2) — design:
-  `brief-design-workflow-definizioni-versionate.md` (modello C, decisione 2026-07-02).
-* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase0.sql`.
+* `versione` — progressivo per scope (tipo, emittente), positivo.
+* `preset_origine_id` — da quale edizione è nato il fork; se quell'edizione viene cancellata, il
+  riferimento si svuota.
+* `versione_origine` — la versione del preset d'origine al momento del fork: con `preset_origine_id`
+  dice se il preset è andato avanti dopo il fork (`pratiche.vw_definizioni_drift`).
+
+---
+
+### I vincoli
+
+* Una versione è unica per (tipo, emittente), e il preset è uno scope come gli altri: due valori vuoti
+  di emittente valgono come uguali. Lo stesso vale per i due indici parziali che ammettono al più una
+  bozza e al più una pubblicata per scope; quello delle pubblicate è anche l'arbitro del conflitto con
+  cui il trigger di nascita del tipo crea il preset.
+* La coppia (id, tipo) è unica perché passi e pratiche la referenziano insieme: un figlio non può
+  puntare a un'edizione di un altro tipo, per costruzione e senza trigger.
+* ⭐ La cancellazione del tipo cancella le sue edizioni: l'edizione è un metadato del tipo e senza tipo
+  non ha senso. La protezione vera è transitiva: passi e pratiche referenziano l'edizione senza
+  cascata, quindi un tipo con figli vivi non si cancella comunque.
+* Tipo ed emittente devono essere attivi.
+
+---
+
+### Codici errore
+
+* `E_DEFINIZIONE_TRANSIZIONE_NON_AMMESSA` — un cambio di stato fuori dalle due transizioni ammesse.
+* `E_DEFINIZIONE_PUBBLICATA_IMMUTABILE` — una modifica della testata fuori dalla bozza.
+
+---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase0` — preset alla nascita del tipo, risoluzione alla nascita
+  di passo e pratica, una sola pubblicata per scope, il vincolo composito (id, tipo).
+* `pratiche/test-workflow-definizioni-fase1` — flusso coerente con l'edizione, edizione della pratica
+  immutabile, generazione verso un'edizione senza il passo.
+* `pratiche/test-workflow-definizioni-fase2` e `-fase2b` — fork, nuova versione, pubblicazione e
+  immutabilità della struttura.
+* `pratiche/test-definizione-bozza-unica` e `pratiche/test-definizione-ritirata-edit-freeze` — la bozza
+  unica per scope e la ritirata bloccata ma cancellabile.
+
+---
+
+### Note di migrazione
+
+* 2026-07-02 — nasce col modello «edizioni + fork»: prima le definizioni erano globali e le pratiche non
+  fissavano nessuna edizione (brief-db-step-dominio-e-definizioni-versionate).
+* 2026-07-04 — al più una bozza per scope, e la ritirata bloccata alla modifica ma cancellabile
+  (brief-db-accesso-write-editing-bozza).
 
 ---
 

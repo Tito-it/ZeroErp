@@ -1,0 +1,228 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'EMITTENTE DEL LINK, SULLE COLONNE DEL MODELLO
+#   vendite.fn_check_commessa_sorgente_emittente_omogeneo(commessa, tipo, sorgente_id, sorgente_uid)
+#   vendite.fn_guard_commessa_sorgente_emittente(commessa, tipo, sorgente_id, sorgente_uid)
+#   vendite.trgfn_commesse_sorgenti_guard_emittente() e il suo trigger
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.2 (S-4).
+#
+# ── ⭐ CHE COSA CAMBIA ───────────────────────────────────────────────
+#   Il check e il guard prendevano la chiave testuale del link e la passavano al
+#   ponte testuale di script.fn_get_sorgente_emittente_sr_id. Dal 20261107-59 il
+#   link tiene sorgente_id o sorgente_uid: il check e il guard prendono le due
+#   colonne e chiamano il risolutore sulle colonne del modello (tipo, sorgente_id,
+#   sorgente_uid), che c'e' dal giro 0.3. Il ponte resta senza chiamanti e si
+#   ritira in 20261107-65.
+#   La firma cambia tipo al terzo parametro e ne prende un quarto: CREATE delle
+#   nuove + DROP delle vecchie (non un overload). Unico chiamante del guard il
+#   trigger sottile, del check il guard. Clausole come sul vivo: SECURITY DEFINER,
+#   search_path pg_catalog, public, pg_temp (dbops 20261103-04).
+#   Il trigger torna con sorgente_id nell'UPDATE OF (tolto da 20261107-59) e con
+#   lo stesso nome: scatta dopo il guard unico (20261107-69, nome
+#   ...a10_guard_sorgente_ins_upd), che verifica prima che il documento esista.
+#   Regola, codice e frase invariati; il documento nella frase e nel contesto
+#   e' la chiave del modello.
+#   Corpi dal vivo (= 20260826-51, 20260826-45). Rollback: forward-only, come 20261107-59.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-64-update-guard-commessa-sorgente-emittente-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261107-64-update-guard-commessa-sorgente-emittente-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il check e il guard dell'emittente del link documento -> commessa sulle colonne del modello
+        (sorgente_id, sorgente_uid), col risolutore tipizzato; trigger rimontato con sorgente_id.
+        brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo(
+                  p_commessa_id      vendite.commesse.id%TYPE,
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_id      vendite.commesse_sorgenti.sorgente_id%TYPE,
+                  p_sorgente_uid     vendite.commesse_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_ef_commessa vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+                  v_ef_sorgente anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   «Una commessa non puo' aggregare diversi emittenti
+                  --   insieme» (Tid). Qui si risponde SI/NO per una singola
+                  --   sorgente che si sta per collegare.
+                  --
+                  -- ⭐ Il confronto e' fra DUE COLONNE, senza intermediari: la
+                  --   commessa l'emittente ce l'ha addosso (NOT NULL dal
+                  --   20260826-41) e il documento lo dice da se'
+                  --   (script.fn_get_sorgente_emittente_sr_id).
+                  --   La versione precedente passava dal billing account su
+                  --   entrambi i lati, e su quattro tabelle sorgente su sei
+                  --   quella colonna e' NULLABLE: si fermava su documenti
+                  --   validi.
+                  --
+                  -- Convenzione fn_check_*: boolean, nessun raise proprio.
+                  -- ⚠️ Puo' pero' PROPAGARE i fail-closed del risolutore
+                  --   (E_SORG_*): non sono verdetti di dominio, sono difetti
+                  --   di configurazione o riferimenti rotti, e mascherarli qui
+                  --   li renderebbe invisibili.
+                  -- =========================================================
+                  IF p_commessa_id IS NULL OR p_sorgente_tipo_id IS NULL
+                     OR (p_sorgente_id IS NULL AND p_sorgente_uid IS NULL) THEN
+                      -- ⛔ Fail-closed: «non so dirlo» non e' «va bene».
+                      RETURN false;
+                  END IF;
+
+                  -- ⚠️ SECURITY DEFINER: senza, una commessa fuori perimetro
+                  --   sarebbe invisibile e questo NOT FOUND direbbe il falso.
+                  SELECT c.emittente_soggetto_ruolo_id
+                    INTO v_ef_commessa
+                    FROM vendite.commesse c
+                   WHERE c.id = p_commessa_id;
+
+                  IF NOT FOUND OR v_ef_commessa IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  v_ef_sorgente := script.fn_get_sorgente_emittente_sr_id(
+                                       p_sorgente_tipo_id, p_sorgente_id, p_sorgente_uid);
+
+                  -- ⛔ NULL = fail-closed, e NON `IS NOT DISTINCT FROM`: con
+                  --   quello due emittenti irrisolti direbbero «omogeneo»,
+                  --   cioe' la trappola del NULL nella chiave riaperta qui.
+                  IF v_ef_sorgente IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  RETURN v_ef_commessa = v_ef_sorgente;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo(vendite.commesse.id%TYPE, config.sorgenti.id%TYPE, vendite.commesse_sorgenti.sorgente_id%TYPE, vendite.commesse_sorgenti.sorgente_uid%TYPE) IS
+                  'Pure check (boolean, nessun raise proprio): il documento che si sta collegando appartiene allo STESSO emittente fiscale della commessa? E'' l''invariante «una commessa non puo'' aggregare diversi emittenti insieme», sull''asse dei documenti. Il documento si passa con le colonne del modello (tipo, sorgente_id, sorgente_uid). Il confronto e'' fra DUE COLONNE, senza intermediari: la commessa porta l''emittente addosso (NOT NULL) e il documento lo dice da se'' via script.fn_get_sorgente_emittente_sr_id, sulle stesse colonne. Non passa dal billing account: su piu'' tabelle sorgente quella colonna e'' NULLABLE, e il criterio e'' l''EMITTENTE e non l''identita'' del billing account (un documento di un BA figlio contribuisce alla commessa del padre). ⚠️ SECURITY DEFINER: legge vendite.commesse, che ha la RLS. ⛔ NULL -> false (fail-closed) e NON IS NOT DISTINCT FROM. ⚠️ Puo'' PROPAGARE i fail-closed del risolutore (E_SORG_*): difetti di configurazione o riferimenti rotti, non verdetti di dominio.';
+
+              CREATE FUNCTION vendite.fn_guard_commessa_sorgente_emittente(
+                  p_commessa_id      vendite.commesse.id%TYPE,
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_id      vendite.commesse_sorgenti.sorgente_id%TYPE,
+                  p_sorgente_uid     vendite.commesse_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_codice_commessa vendite.commesse.codice%TYPE;
+                  v_ef_commessa     vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+                  v_codice_sorgente config.sorgenti.codice_interno%TYPE;
+                  v_ef_sorgente     anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fail-fast sull'invariante «una commessa non aggrega due
+                  --   emittenti». La DECISIONE sta nel check: qui si compone
+                  --   soltanto la frase che una persona legge.
+                  -- =========================================================
+                  IF vendite.fn_check_commessa_sorgente_emittente_omogeneo(
+                         p_commessa_id, p_sorgente_tipo_id, p_sorgente_id, p_sorgente_uid) THEN
+                      RETURN;
+                  END IF;
+
+                  SELECT c.codice, c.emittente_soggetto_ruolo_id
+                    INTO v_codice_commessa, v_ef_commessa
+                    FROM vendite.commesse c
+                   WHERE c.id = p_commessa_id;
+
+                  SELECT s.codice_interno INTO v_codice_sorgente
+                    FROM config.sorgenti s WHERE s.id = p_sorgente_tipo_id;
+
+                  BEGIN
+                      v_ef_sorgente := script.fn_get_sorgente_emittente_sr_id(
+                                           p_sorgente_tipo_id, p_sorgente_id, p_sorgente_uid);
+                  EXCEPTION WHEN OTHERS THEN
+                      -- ⚠️ Il messaggio non deve MAI mangiarsi il verdetto: se
+                      --   la risoluzione fallisce qui, l'errore di dominio esce
+                      --   lo stesso con un «?» al posto dell'emittente.
+                      v_ef_sorgente := NULL;
+                  END;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'fn_guard_commessa_sorgente_emittente',
+                      'E_COMMESSA_SORGENTE_EMITTENTE_MISTO',
+                      jsonb_build_object(
+                          'commessa_id',           p_commessa_id,
+                          'codice',                v_codice_commessa,
+                          'sorgente_tipo_id',      p_sorgente_tipo_id,
+                          'sorgente_codice',       v_codice_sorgente,
+                          'sorgente_id',           p_sorgente_id,
+                          'sorgente_uid',          p_sorgente_uid,
+                          'emittente_sr_commessa', v_ef_commessa,
+                          'emittente_sr_sorgente', v_ef_sorgente),
+                      NULL::uuid,
+                      COALESCE(v_codice_commessa, p_commessa_id::text),
+                      concat(COALESCE(v_codice_sorgente, p_sorgente_tipo_id::text), ' ',
+                             COALESCE(p_sorgente_id::text, p_sorgente_uid::text)),
+                      COALESCE(v_ef_commessa::text, '?'),
+                      COALESCE(v_ef_sorgente::text, '?'));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_guard_commessa_sorgente_emittente(vendite.commesse.id%TYPE, config.sorgenti.id%TYPE, vendite.commesse_sorgenti.sorgente_id%TYPE, vendite.commesse_sorgenti.sorgente_uid%TYPE) IS
+                  'Guard fail-fast sull''invariante «una commessa non puo'' aggregare diversi emittenti insieme»: il documento che si sta collegando, passato con le colonne del modello (tipo, sorgente_id, sorgente_uid), deve stare sullo stesso emittente fiscale della commessa. Solleva E_COMMESSA_SORGENTE_EMITTENTE_MISTO nominando la commessa, il documento (tipo e chiave) e i due emittenti. La DECISIONE non e'' qui: sta in vendite.fn_check_commessa_sorgente_emittente_omogeneo, e questa funzione compone soltanto la frase. L''emittente della commessa si legge dalla sua colonna (NOT NULL), quello del documento da script.fn_get_sorgente_emittente_sr_id. ⚠️ SECURITY DEFINER: per comporre il messaggio rilegge vendite.commesse, che ha la RLS. ⚠️ La risoluzione del messaggio e'' avvolta in un blocco EXCEPTION: se fallisce, l''errore di dominio esce lo stesso con un «?» al posto dell''emittente. ⛔ Nessuna GUC di override e nessuna eccezione per il pregresso.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_sorgenti_guard_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Trigger sottile: delega e basta. Il DEFINER sta nel guard,
+                  -- perche' e' li' che si legge sotto RLS.
+                  PERFORM vendite.fn_guard_commessa_sorgente_emittente(
+                      NEW.commessa_id, NEW.sorgente_tipo_id, NEW.sorgente_id, NEW.sorgente_uid);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_sorgenti_guard_emittente() IS
+                  'Trigger BEFORE INSERT / UPDATE OF (commessa_id, sorgente_tipo_id, sorgente_id, sorgente_uid) su vendite.commesse_sorgenti: delega a vendite.fn_guard_commessa_sorgente_emittente con le colonne del modello. SECURITY INVOKER, sottile per scelta: il DEFINER sta nel guard, che e'' dove si legge sotto RLS. ⛔ Il nome del TRIGGER e'' scelto per l''ORDINE: sulla tabella c''e'' trg_commesse_sorgenti_a10_guard_sorgente_ins_upd (il guard unico della provenienza, script.trgfn_guard_sorgente, che verifica che il documento ESISTA), i BEFORE ROW scattano in ordine alfabetico e «...guard_sorgente_omogeneita_...» viene dopo «...guard_sorgente_ins_upd». Al contrario, questo girerebbe per primo e proverebbe a risolvere l''emittente di un documento fantasma, restituendo il proprio errore al posto di uno piu'' preciso. ⛔ Il guard sta sul trigger e non dentro vendite.fn_link_commessa_sorgente: la funzione e'' UNO scrittore, il trigger e'' il vincolo.';
+
+              CREATE TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_omogeneita_ins_upd
+                  BEFORE INSERT OR UPDATE OF commessa_id, sorgente_tipo_id, sorgente_id, sorgente_uid
+                  ON vendite.commesse_sorgenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_sorgenti_guard_emittente();
+
+              -- Le firme vecchie, senza piu' chiamanti: il guard chiama il check nuovo,
+              -- il trigger il guard nuovo.
+              DROP FUNCTION vendite.fn_guard_commessa_sorgente_emittente(bigint, bigint, text);
+              DROP FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo(bigint, bigint, text);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only, come 20261107-59: la chiave testuale non c'e' piu'.
+              DROP TRIGGER IF EXISTS trg_commesse_sorgenti_a10_guard_sorgente_omogeneita_ins_upd ON vendite.commesse_sorgenti;
+              DROP FUNCTION IF EXISTS vendite.fn_guard_commessa_sorgente_emittente(bigint, bigint, bigint, uuid);
+              DROP FUNCTION IF EXISTS vendite.fn_check_commessa_sorgente_emittente_omogeneo(bigint, bigint, bigint, uuid);

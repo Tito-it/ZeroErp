@@ -1,64 +1,91 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.sospensioni`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> [pratiche.giornale](/dbzero/pratiche/manual/giornale)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica sospesa
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — il flusso sospeso, o quelli che la sospensione di pratica ferma
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove si registrano apertura e chiusura, e da dove la riattivazione rilegge lo stato precedente
 >
-Funzioni:
+> Approfondimento funzioni:
 >
-[trgfn_sospensioni_guard_coerenza_flusso](/dbzero/pratiche/manual/trgfn_sospensioni_guard_coerenza_flusso)
-> [trgfn_sospensioni_propaga](/dbzero/pratiche/manual/trgfn_sospensioni_propaga)
-> [trgfn_sospensioni_riattiva](/dbzero/pratiche/manual/trgfn_sospensioni_riattiva)
+> * [pratiche.trgfn_sospensioni_guard_coerenza_flusso](/dbzero/pratiche/funzioni/trgfn_sospensioni_guard_coerenza_flusso) — il flusso deve appartenere alla pratica
+> * [pratiche.trgfn_sospensioni_guard_data_non_futura](/dbzero/pratiche/funzioni/trgfn_sospensioni_guard_data_non_futura) — niente date nel futuro
+> * [pratiche.trgfn_sospensioni_set_periodo](/dbzero/pratiche/funzioni/trgfn_sospensioni_set_periodo) — calcola il periodo
+> * [pratiche.trgfn_sospensioni_propaga](/dbzero/pratiche/funzioni/trgfn_sospensioni_propaga) · [pratiche.trgfn_sospensioni_riattiva](/dbzero/pratiche/funzioni/trgfn_sospensioni_riattiva) — sospendono e riattivano i flussi
+> * [pratiche.fn_calcola_tempo_netto_da_a](/dbzero/pratiche/funzioni/fn_calcola_tempo_netto_da_a) — il tempo netto, che sottrae le sospensioni di pratica
 
 ---
+
 ### 🎯 Scopo Principale
-Registra i periodi di fermo di una pratica o di un singolo flusso. Ogni riga e' un intervallo aperto (`data_fine NULL` = sospensione ancora attiva).
+
+La tabella `pratiche.sospensioni` registra i periodi di fermo di una pratica intera o di un suo singolo
+flusso. Una riga senza `data_fine` è una sospensione ancora aperta.
 
 ---
 
-### Campi chiave (semantica)
+### Pratica o flusso
 
-| Colonna                      | Note                                                                 |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `pratica_id`                 | FK a `pratiche.pratiche` — sempre valorizzata.                       |
-| `flusso_id`                  | FK a `pratiche.flussi`. NULL = sospensione intera pratica.           |
-| `data_inizio`                | Inizio sospensione (default `now()`).                                |
-| `data_fine`                  | Fine sospensione. NULL = ancora attiva.                              |
-| `periodo_sospensione`        | `tstzrange` calcolato dal trigger da `data_inizio`/`data_fine`. Bounds `[)`. Query: `@> ts`. |
-| `data_riattivazione_prevista`| DATE per riattivazione automatica via job pgAgent.                   |
-| `motivo`                     | Motivazione obbligatoria (TEXT NOT NULL).                            |
+* `flusso_id` vuoto: la sospensione è dell'intera pratica. All'inserimento, tutti i flussi da eseguire o
+  in corso della pratica passano a `SOSPESO`.
+* `flusso_id` valorizzato: la sospensione riguarda solo quel flusso, che deve appartenere alla pratica
+  della riga.
+* Chiudere la sospensione, cioè valorizzare `data_fine`, riattiva i flussi: ciascuno torna allo stato che
+  aveva prima, riletto dal giornale.
 
----
-
-### Vincoli
-
-* **CHECK** `data_fine IS NULL OR data_fine > data_inizio`
-* **UNIQUE parziale** su `pratica_id` WHERE `data_fine IS NULL AND flusso_id IS NULL` — un solo record attivo a livello pratica.
-* **UNIQUE parziale** su `(pratica_id, flusso_id)` WHERE `data_fine IS NULL AND flusso_id IS NOT NULL` — un solo record attivo per flusso.
+Apertura e chiusura si registrano nel giornale della pratica.
 
 ---
 
-### 🚨 Trigger
+### Le regole del periodo
 
-| Nome                                               | Fase   | Evento                | Scopo                                           |
-| -------------------------------------------------- | ------ | --------------------- | ----------------------------------------------- |
-| `trg_sospensioni_a10_guard_coerenza_flusso_ins_upd` | BEFORE | INSERT, UPDATE OF flusso_id | Coerenza flusso_id/pratica_id                |
-| `trg_sospensioni_z90_propaga_sospensione_ins`       | AFTER  | INSERT                | Propaga sospensione ai flussi attivi             |
-| `trg_sospensioni_z90_propaga_riattivazione_upd`     | AFTER  | UPDATE OF data_fine   | Ripristina stati precedenti alla riattivazione   |
-| `trg_sospensioni_z90_giornale_ins`                  | AFTER  | INSERT                | SOSPENSIONE_REGISTRATA nel giornale              |
-| `trg_sospensioni_z90_giornale_riattivazione_upd`    | AFTER  | UPDATE OF data_fine   | SOSPENSIONE_CHIUSA nel giornale                  |
+* `data_fine`, se c'è, è successiva a `data_inizio`.
+* Nessuna delle due date può stare nel futuro (con una tolleranza di due minuti per gli orologi).
+* `periodo_sospensione` è l'intervallo, chiuso a sinistra e aperto a destra, calcolato dal trigger dalle
+  due date: non si scrive a mano.
+* Per la stessa pratica, e per lo stesso flusso, i periodi non si sovrappongono: la sospensione di
+  pratica e quelle di ogni flusso sono assi separati.
+* Una sola sospensione aperta per pratica a livello pratica, e una sola per ciascun flusso.
+* `motivo` è obbligatorio.
 
 ---
 
-### Note operative
+### ⚠️ La riattivazione prevista non fa scattare niente
 
-* Sospensione a livello pratica (`flusso_id IS NULL`): propaga SOSPESO a tutti i flussi attivi (DA_ESEGUIRE, IN_CORSO).
-* Riattivazione: ripristina lo stato precedente dei flussi leggendolo dal giornale.
-* Job pgAgent giornaliero: cerca sospensioni con `data_riattivazione_prevista <= CURRENT_DATE` e `data_fine IS NULL`, imposta `data_fine = NOW()`.
+`data_riattivazione_prevista` è una data che l'operatore dichiara all'apertura. Il database non la
+legge: oggi non esiste un processo che chiuda da sé le sospensioni arrivate a quella data. La
+riattivazione avviene solo valorizzando `data_fine`.
+
+---
+
+### Perimetro
+
+La tabella ha la RLS: chi legge vede le sospensioni delle pratiche del proprio perimetro. Le modifiche
+sono storicizzate.
+
+---
+
+### Codici errore
+
+* `E_SOSPENSIONE_DATA_FUTURA` — una delle due date è nel futuro.
+* `E_SOSPENSIONI_FLUSSO_NON_COERENTE` — il flusso non appartiene alla pratica, o non esiste.
+
+---
+
+### Test
+
+* `pratiche/test-sospensioni-anti-overlap-data-futura` — niente sovrapposizioni, niente date future.
+* `pratiche/test-sospensioni-tempi` — il periodo calcolato e il tempo netto.
+* `rls/test-rls-pratiche-satelliti` — il perimetro.
+
+---
+
+### Note di migrazione
+
+* 2026-06-26 — arriva il divieto di date future.
 
 ---
 

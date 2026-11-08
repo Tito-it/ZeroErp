@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.fatture_fondi_fattura_source`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -36,8 +38,9 @@ precisamente l'errore corretto su `pagamenti.enti_incasso`.
 > che muove denaro. L'altra metà la chiude `fn_check_fondo_cancellabile`.
 
 ℹ️ Niente `FORCE ROW LEVEL SECURITY`, come tutta la famiglia: l'owner non è un
-ruolo applicativo. Il giro notturno attraversa perché
-`zeroerp_batch_fatturazione` ha `BYPASSRLS` — **verificato, non dedotto**.
+ruolo applicativo. Il giro notturno non attraversa la RLS: dal 2026-10-15 gira come
+l'applicazione, con un utente tecnico per azienda, e vede le righe della sua azienda.
+Il ruolo `zeroerp_batch_fatturazione`, che aveva `BYPASSRLS`, è ritirato.
 
 ---
 

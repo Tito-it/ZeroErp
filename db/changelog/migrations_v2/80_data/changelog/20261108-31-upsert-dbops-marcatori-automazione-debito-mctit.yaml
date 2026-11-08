@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D35/D37 — il contenuto iniziale del registro dei marcatori senza esecutore
+#   Brief: brief-db-revisione-dbops, giro 7 (§20).
+#
+# ── ⭐ SEED DI CATALOGO, non di macchina ────────────────────────────
+#   Nomina tabelle del software, nessuna FK verso anagrafiche.* (linee-guida-sql
+#   §11.7): vale identico su ogni installazione, niente context dati_macchina.
+#
+# ── IL CONTENUTO, letto sul catalogo dello scratch il 2026-11-07 ────
+#   Dieci cataloghi e registri di dbops con la colonna tx_id e senza il trigger
+#   di dbops.trgfn_tx_id_managed: dbops e' nell'ambito delle automazioni solo
+#   per i suoi registri (automation_scope.csv), e su queste tabelle nessuno ha
+#   montato i trigger a mano come su dbops.processi o dbops.coda_lavori. Nessuna
+#   tabella con storicizza o cleanup_at resta scoperta dopo il giro 7:
+#   shop.ricevute e dbops.ai_query_log entrano nell'ambito, dbops.audit_sources
+#   perde le colonne.
+#   ⚠️ Il numero e' un fatto datato, non un argomento: il registro lo decide il
+#   criterio della vista, e una tabella nuova senza esecutore compare da sola
+#   come NON_DICHIARATO.
+#
+# ⚠️ loadUpdateData non cancella: pagare un debito vuol dire togliere la riga
+#   dal CSV E cancellarla con un DELETE forward-only. Una riga rimasta esce dalla
+#   vista come DEBITO_ESTINTO e fa rosso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261108-31-upsert-dbops-marcatori-automazione-debito-mctit.yaml
+
+  - changeSet:
+      id: 20261108-31-upsert-dbops-marcatori-automazione-debito
+      author: mctit
+      runOnChange: true
+      validCheckSums: ANY
+      failOnError: true
+      comment: >
+        Seed di catalogo di dbops.marcatori_automazione_debito dal CSV (mirror loadUpdateData): le
+        tabelle con un marcatore di automazione senza esecutore lasciate tali per una decisione, con
+        la ragione. Brief: brief-db-revisione-dbops, giro 7.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: marcatori_automazione_debito
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/marcatori_automazione_debito.csv
+            tableName: marcatori_automazione_debito
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: marcatore, type: STRING }
+              - column: { name: schema_tabella, type: STRING }
+              - column: { name: nome_tabella, type: STRING }
+              - column: { name: ragione, type: STRING }
+              # ⚠️ La data sta nel CSV e non si lascia al DEFAULT: da zero il
+              #   DEFAULT direbbe «oggi», e l'orologio del debito ripartirebbe.
+              - column: { name: data_registrazione, type: DATE }
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.marcatori_automazione_debito;

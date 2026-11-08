@@ -47,8 +47,7 @@ SELECT plan(6);
 CREATE TEMP TABLE tmp_costanti_fd AS
 SELECT
   'pgtap_fatturazione_draft'::text AS test_scope,
-  uuidv7() AS lock_batch_id,
-  uuidv7() AS sorgente_uid;
+  uuidv7() AS lock_batch_id;
 
 -- rev 2026-10-27 (lotto 4 di D7): commessa e riga di commessa si
 --   COSTRUISCONO (dbops.fn_pgtap_crea_commessa: cliente, BA dell'azienda di
@@ -123,9 +122,6 @@ WITH ins AS (
     sospesa,
     tipo_doc_fiscale_id,
     valuta_id,
-    sorgente_tipo_id,
-    sorgente_uid,
-    sorgente_riga,
     commessa_id,
     commessa_attivita_id,
     emit_batch_id,
@@ -144,9 +140,8 @@ WITH ins AS (
     false,
     r.tipo_doc_fiscale_id,
     r.valuta_id,
-    NULL,
-    NULL,
-    NULL,
+    -- rev 2026-11-07 (lotto C, giro C.1 di brief-db-sorgente-documento-e-riga):
+    --   le colonne sorgente_* non ci sono piu'; la provenienza e' la riga di commessa.
     (SELECT id FROM tmp_commessa_fd),
     (SELECT id FROM tmp_ca_fd),
     -- ⛔ 2026-09-04 (changeSet 20260904-50). Da qui in poi

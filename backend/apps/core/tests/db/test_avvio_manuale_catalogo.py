@@ -41,10 +41,10 @@ from apps.core.services.avvio_manuale import (
 from apps.core.services.coda_lavori.handler_registry import get_handler
 from apps.core.services.coda_lavori.repository import (
     ORIGINE_API,
-    RUN_AS_OPERATORE,
+    RUN_AS_SISTEMA,
     CodaLavoriRepository,
 )
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 
 # Le tre righe del brief, come chiavi di catalogo (non id: gli id sono un fatto
 # del CSV, i codici sono il contratto).
@@ -85,7 +85,10 @@ class AvvioManualeCatalogoTests(TestCase):
         handler_code, run_as, max_tentativi, processo = riga
         self.assertEqual(handler_code, HANDLER_CODE)
         get_handler(handler_code)  # solleva se il boot non l'ha registrato
-        self.assertEqual(run_as, RUN_AS_OPERATORE)
+        # ⭐ SISTEMA dal blocco 5b (S-BE-2 di brief-db-revisione-dbops §5,
+        #    applicato il 2026-11-07): il catalogo dice ora quello che il
+        #    backend passa esplicito da BE10.
+        self.assertEqual(run_as, RUN_AS_SISTEMA)
         self.assertEqual(max_tentativi, 1)
         self.assertEqual(processo, _PROCESSO)
 
@@ -123,15 +126,21 @@ class AvvioManualeCatalogoTests(TestCase):
         )
         assert attivo is not None
         repo = CodaLavoriRepository()
-        scope = {"auth_user_id": 1, "username": "test", "identita_id": 1, "scope_key": "ALL"}
         chiave = chiave_idempotenza(_UNIT_DI_PROVA)
 
+        # ⭐ La forma di `ProcessiService.esegui_ora` dal 2026-11-07 (BE10 di
+        #    brief-db-revisione-dbops): un lavoro SISTEMA, senza scope, con
+        #    l'attore nel payload. Nella forma OPERATORE senza azienda la porta
+        #    del giro 5a lo rifiuta (`E_CODA_LAVORO_SENZA_EMITTENTE`).
         def _accoda() -> int:
             return repo.accoda(
                 job_type=JOB_TYPE_ESEGUI_PROCESSO,
-                payload={"processo_codice": _PROCESSO, "unit": _UNIT_DI_PROVA},
-                run_as=RUN_AS_OPERATORE,
-                scope=scope,
+                payload={
+                    "processo_codice": _PROCESSO, "unit": _UNIT_DI_PROVA,
+                    "richiesto_da": 1,
+                },
+                run_as=RUN_AS_SISTEMA,
+                scope=None,
                 idempotency_key=chiave,
                 origine=ORIGINE_API,
             )
@@ -150,7 +159,13 @@ class AvvioManualeCatalogoTests(TestCase):
             )
 
         # Tipo ACCESO: l'id, e la stessa chiave assorbita dalla dedup.
+        # ⛔ Come SUPER ADMIN, che e' chi preme «Esegui ora» (`AdminAPIView`):
+        #    dal blocco 5b la coda lavori e' sotto RLS, e un lavoro SISTEMA lo
+        #    vedono solo il super admin e il drenatore. Senza identita' la
+        #    rilettura qui sotto tornava `{}` — lo zero che sembra un dato.
         with transaction.atomic():
+            with connection.cursor() as cur:
+                apri_contesto_operatore(cur, super_admin=True)
             primo = _accoda()
             secondo = _accoda()
             self.assertGreater(primo, 0)

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_crea_ddt.md" %}
 # ⚙️ Funzione `fn_pgtap_crea_ddt`
 
 ```sql
@@ -34,13 +35,20 @@ BEGIN
     IF v_ef IS NULL THEN
         RAISE EXCEPTION 'fn_pgtap_crea_ddt: nessun emittente per l''operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
     END IF;
-    SELECT s.id INTO v_draft FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT' AND s.attivo;
-    SELECT c.id INTO v_causale FROM config.causali_trasporto c WHERE c.codice = p_causale_codice AND c.attivo;
+    -- La bolla nasce nello stato iniziale della testata, dalla sede
+    -- (script.fn_doc_stato_iniziale_id), non da un codice scritto qui.
+    v_draft := script.fn_doc_stato_iniziale_id('vendite.ddt'::regclass);
+    SELECT c.id INTO v_causale FROM config.causali_trasporto c WHERE c.codice = script.fn_codice_normalizzato(p_causale_codice) AND c.attivo;
     IF v_draft IS NULL OR v_causale IS NULL THEN
-        RAISE EXCEPTION 'fn_pgtap_crea_ddt: stato DRAFT o causale di trasporto % assenti — sono seed di 80_data', p_causale_codice;
+        RAISE EXCEPTION 'fn_pgtap_crea_ddt: stato iniziale della bolla o causale di trasporto % assenti — sono seed di 80_data', p_causale_codice;
     END IF;
     SELECT ba.utility_id INTO v_utility FROM anagrafiche.billing_account ba WHERE ba.id = p_billing_account_id;
-    SELECT v.id INTO v_valuta FROM config.valute v ORDER BY v.id LIMIT 1;
+    -- La valuta dalla catena del dominio (vendite.fn_get_valuta_id:
+    -- billing account, poi emittente, poi gestore), come la risolvono i
+    -- trigger di default dei documenti: non la prima del catalogo.
+    v_valuta := vendite.fn_get_valuta_id(
+                    p_billing_account_id,
+                    (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef));
 
     INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
                              billing_account_id, utility_id, valuta_id, emittente_fiscale_id,
@@ -65,7 +73,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint, p_magazzino_arrivo_id bigint, p_data date)
-IS 'Fixture pgTAP: una bolla in DRAFT dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), per il cliente passato dal test (dal suo fn_pgtap_crea_mondo_cliente: costruito, non pescato), con la causale di trasporto per CODICE, i magazzini scelti (NULL = il default del predefinito, D-L3-h) e gli indirizzi obbligatori dell''ambito DDT. Le righe restano al test. Esce con i vincoli IMMEDIATE. Solo per i pgTAP (brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 5). Rev 2026-10-20 (20261020-62, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente. Sesto parametro (rev 2026-10-25, 20261025-33, brief-db-pgtap-reso-costruito E-5): la data della bolla, alla nascita (NULL = data operativa); DROP + CREATE.';
+IS 'Fixture pgTAP: una bolla nello stato iniziale della testata (script.fn_doc_stato_iniziale_id) dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), per il cliente passato dal test (costruito dal suo mondo, non pescato), con la causale di trasporto per codice (normalizzato con script.fn_codice_normalizzato), la data (NULL = data operativa), i magazzini scelti (NULL = il default del predefinito) e gli indirizzi obbligatori dell''ambito DDT_VENDITA. La valuta dalla catena del dominio, vendite.fn_get_valuta_id (billing account, poi emittente, poi gestore), come la risolvono i trigger di default. Le righe restano al test. Esce con i vincoli IMMEDIATE.';
 ```
 
 </div>

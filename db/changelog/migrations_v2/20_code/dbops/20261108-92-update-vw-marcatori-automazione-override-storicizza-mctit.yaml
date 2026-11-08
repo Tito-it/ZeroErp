@@ -1,0 +1,294 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO DEI MARCATORI LEGGE LA COLONNA DI STORICIZZAZIONE COME LA
+# LEGGONO I RUNNER
+#   dbops.vw_marcatori_automazione_senza_esecutore
+#   Brief: brief-db-revisione-dbops, giro 7-bis, blocco a (§23); decisione di
+#   Tid sul residuo del giro 7 (2026-11-07, §20.8.1 punto 3).
+#
+# ── ⭐ CHE COSA CAMBIA ───────────────────────────────────────────────
+#   La vista riconosceva il marcatore storicizza per NOME. La provision dello
+#   storico (dbops.fn_run_automations_storico_provision) lo cerca invece con
+#   dbops.fn_get_override_col(schema, tabella, 'STORICIZZA_COL', 'storicizza'):
+#   una tabella che rinomina la colonna con un override sfuggiva al presidio,
+#   e una che ha l'override verso un'altra colonna veniva giudicata sulla
+#   colonna sbagliata. Ora la vista chiama la stessa funzione: una regola, una
+#   sede (regola del 2). tx_id resta per nome: fn_run_automations_tx_id cerca
+#   proprio la colonna tx_id di tipo uuid, senza override.
+#
+# ⚠️ cleanup_at resta per nome: la colonna del purge la sceglie il parametro
+#   cleanup_column della regola CLEANUP_AT, non un override di colonna. Un
+#   registro che lo usa con un nome diverso sfugge ancora: e' scritto nel
+#   residuo del giro (§23).
+#
+# Il resto identico: colonne, filtri, stati, ordine. CREATE OR REPLACE: i grant
+#   restano; security_invoker ripetuto. Il COMMENT della vista dice la lettura.
+#   Rollback: il corpo di 20261108-27.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-92-update-vw-marcatori-automazione-override-storicizza-mctit.yaml
+
+  - changeSet:
+      id: 20261108-92-update-vw-marcatori-automazione-override-storicizza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_marcatori_automazione_senza_esecutore legge la colonna di storicizzazione con
+        dbops.fn_get_override_col (STORICIZZA_COL), come la provision dello storico.
+        Brief: brief-db-revisione-dbops, giro 7-bis.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            { schemaName: dbops, viewName: vw_marcatori_automazione_senza_esecutore }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_marcatori_automazione_senza_esecutore
+              WITH (security_invoker = on) AS
+              WITH ambito AS (
+                  -- Una volta sola: e' la stessa risposta per ogni tabella.
+                  SELECT dbops.fn_resolve_scope(NULL::text[]) AS schemi
+              ), tabelle AS (
+                  SELECT c.oid,
+                         n.nspname::text AS schema_tabella,
+                         c.relname::text AS nome_tabella,
+                         (n.nspname::text = ANY (a.schemi)
+                          AND dbops.fn_table_in_scope(n.nspname::text, c.relname::text)) AS servita_dai_runner
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   CROSS JOIN ambito a
+                   WHERE c.relkind = 'r'
+                     AND n.nspname <> ALL (ARRAY['information_schema'::name, 'storico'::name])
+                     AND n.nspname !~ '^pg_'
+              ), marcatori AS (
+                  -- La colonna di ogni marcatore si legge come la leggono i runner: tx_id e
+                  -- cleanup_at col loro nome, storicizza con l'override STORICIZZA_COL di
+                  -- dbops.automation_overrides_cols (la provision dello storico chiama la
+                  -- stessa funzione). Una colonna rinominata con l'override e' il marcatore;
+                  -- una colonna «storicizza» su una tabella con l'override verso un'altra no.
+                  SELECT t.oid, t.schema_tabella, t.nome_tabella, t.servita_dai_runner, m.marcatore
+                    FROM tabelle t
+                   CROSS JOIN LATERAL (VALUES
+                             ('TX_ID'::text,      'tx_id'::text),
+                             ('STORICIZZA'::text, dbops.fn_get_override_col(t.schema_tabella, t.nome_tabella,
+                                                                            'STORICIZZA_COL', 'storicizza')),
+                             ('CLEANUP_AT'::text, 'cleanup_at'::text)) m(marcatore, colonna)
+                    JOIN pg_attribute att
+                      ON att.attrelid = t.oid
+                     AND att.attnum > 0
+                     AND NOT att.attisdropped
+                     AND att.attname = m.colonna::name
+              ), esecutori AS (
+                  SELECT m.*,
+                         EXISTS (
+                             SELECT 1
+                               FROM pg_trigger tg
+                               JOIN pg_proc p ON p.oid = tg.tgfoid
+                               JOIN pg_namespace pn ON pn.oid = p.pronamespace
+                              WHERE tg.tgrelid = m.oid
+                                AND NOT tg.tgisinternal
+                                AND tg.tgenabled <> 'D'
+                                AND (pn.nspname, p.proname) = (CASE m.marcatore
+                                                                   WHEN 'TX_ID'      THEN 'dbops'::name
+                                                                   WHEN 'STORICIZZA' THEN 'script'::name
+                                                               END,
+                                                               CASE m.marcatore
+                                                                   WHEN 'TX_ID'      THEN 'trgfn_tx_id_managed'::name
+                                                                   WHEN 'STORICIZZA' THEN 'trgfn_storico_generic'::name
+                                                               END)
+                         ) AS trigger_a_mano,
+                         EXISTS (
+                             SELECT 1
+                               FROM dbops.automation_cleanup_exclusions e
+                              WHERE e.enabled
+                                AND e.schema_name = m.schema_tabella
+                                AND e.table_name  = m.nome_tabella
+                         ) AS esclusa_dalla_pulizia
+                    FROM marcatori m
+              ), scoperti AS (
+                  SELECT e.marcatore,
+                         e.schema_tabella,
+                         e.nome_tabella,
+                         CASE
+                             WHEN e.marcatore = 'TX_ID' THEN
+                                 'il trigger di dbops.trgfn_tx_id_managed: la tabella non e'' nell''ambito delle automazioni e nessuno lo ha montato a mano, quindi tx_id resta vuoto'
+                             WHEN e.marcatore = 'STORICIZZA' THEN
+                                 'il trigger di script.trgfn_storico_generic: la tabella non e'' nell''ambito delle automazioni e nessuno lo ha montato a mano, quindi storicizza non produce nessuna versione'
+                             WHEN e.esclusa_dalla_pulizia THEN
+                                 'il purge: la tabella e'' esclusa da dbops.automation_cleanup_exclusions, quindi cleanup_at non fa scadere niente'
+                             ELSE
+                                 'il purge: la tabella non e'' nell''ambito delle automazioni, quindi cleanup_at non fa scadere niente'
+                         END AS manca
+                    FROM esecutori e
+                   WHERE CASE e.marcatore
+                             WHEN 'CLEANUP_AT' THEN NOT (e.servita_dai_runner AND NOT e.esclusa_dalla_pulizia)
+                             ELSE NOT (e.servita_dai_runner OR e.trigger_a_mano)
+                         END
+              )
+              SELECT s.marcatore,
+                     s.schema_tabella,
+                     s.nome_tabella,
+                     s.manca,
+                     CASE WHEN d.id IS NULL THEN 'NON_DICHIARATO'::text
+                          ELSE 'DEBITO_DICHIARATO'::text
+                     END AS stato,
+                     d.ragione,
+                     d.data_registrazione
+                FROM scoperti s
+                LEFT JOIN dbops.marcatori_automazione_debito d
+                  ON d.marcatore      = s.marcatore
+                 AND d.schema_tabella = s.schema_tabella
+                 AND d.nome_tabella   = s.nome_tabella
+              UNION ALL
+              SELECT d.marcatore,
+                     d.schema_tabella,
+                     d.nome_tabella,
+                     'niente: il marcatore ha un esecutore, la colonna non c''e'' piu'' o la tabella non esiste. La riga va tolta dal CSV del registro'::text AS manca,
+                     'DEBITO_ESTINTO'::text AS stato,
+                     d.ragione,
+                     d.data_registrazione
+                FROM dbops.marcatori_automazione_debito d
+               WHERE NOT EXISTS (
+                         SELECT 1
+                           FROM scoperti s
+                          WHERE s.marcatore      = d.marcatore
+                            AND s.schema_tabella = d.schema_tabella
+                            AND s.nome_tabella   = d.nome_tabella);
+
+              COMMENT ON VIEW dbops.vw_marcatori_automazione_senza_esecutore IS
+                  'Le tabelle con una colonna che promette un''automazione che nessuno esegue: tx_id senza il trigger di dbops.trgfn_tx_id_managed, storicizza senza quello di script.trgfn_storico_generic, cleanup_at senza il purge. Una tabella e'' servita dai runner se e'' ordinaria (partizioni comprese), il suo schema e'' in dbops.fn_resolve_scope e dbops.fn_table_in_scope la ammette; per tx_id e storicizza basta anche il trigger montato a mano e abilitato; per cleanup_at no, e una tabella esclusa in dbops.automation_cleanup_exclusions resta scoperta. La colonna di storicizzazione si legge con dbops.fn_get_override_col (ruolo STORICIZZA_COL, default storicizza), come la provision dello storico; tx_id e cleanup_at col loro nome. Lo schema storico e gli schemi di sistema sono fuori: le shadow ricopiano le colonne della madre. Tre stati: NON_DICHIARATO e'' un allarme, DEBITO_DICHIARATO e'' il debito noto di dbops.marcatori_automazione_debito, DEBITO_ESTINTO e'' una riga di registro da togliere. A catalogo in dbops.presidi; lo prova dbops/test-marcatori-automazione-senza-esecutore-v1.';
+              COMMENT ON COLUMN dbops.vw_marcatori_automazione_senza_esecutore.marcatore IS
+                  'TX_ID, STORICIZZA o CLEANUP_AT: la colonna che promette, nel vocabolario del CHECK di dbops.marcatori_automazione_debito.';
+              COMMENT ON COLUMN dbops.vw_marcatori_automazione_senza_esecutore.manca IS
+                  'Che cosa manca perche'' la promessa sia mantenuta, in una frase: l''esecutore e il perche'' non c''e''.';
+              COMMENT ON COLUMN dbops.vw_marcatori_automazione_senza_esecutore.stato IS
+                  'NON_DICHIARATO (allarme), DEBITO_DICHIARATO (riga nel registro), DEBITO_ESTINTO (riga del registro senza piu'' il suo caso). Lo stato atteso per il catalogo dei presidi e'' DEBITO_DICHIARATO.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_marcatori_automazione_senza_esecutore
+              WITH (security_invoker = on) AS
+              WITH ambito AS (
+                  -- Una volta sola: e' la stessa risposta per ogni tabella.
+                  SELECT dbops.fn_resolve_scope(NULL::text[]) AS schemi
+              ), tabelle AS (
+                  SELECT c.oid,
+                         n.nspname::text AS schema_tabella,
+                         c.relname::text AS nome_tabella,
+                         (n.nspname::text = ANY (a.schemi)
+                          AND dbops.fn_table_in_scope(n.nspname::text, c.relname::text)) AS servita_dai_runner
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   CROSS JOIN ambito a
+                   WHERE c.relkind = 'r'
+                     AND n.nspname <> ALL (ARRAY['information_schema'::name, 'storico'::name])
+                     AND n.nspname !~ '^pg_'
+              ), marcatori AS (
+                  SELECT t.oid, t.schema_tabella, t.nome_tabella, t.servita_dai_runner, m.marcatore
+                    FROM tabelle t
+                    JOIN pg_attribute att
+                      ON att.attrelid = t.oid
+                     AND att.attnum > 0
+                     AND NOT att.attisdropped
+                    JOIN (VALUES ('tx_id'::name,      'TX_ID'::text),
+                                 ('storicizza'::name, 'STORICIZZA'::text),
+                                 ('cleanup_at'::name, 'CLEANUP_AT'::text)) m(colonna, marcatore)
+                      ON m.colonna = att.attname
+              ), esecutori AS (
+                  SELECT m.*,
+                         EXISTS (
+                             SELECT 1
+                               FROM pg_trigger tg
+                               JOIN pg_proc p ON p.oid = tg.tgfoid
+                               JOIN pg_namespace pn ON pn.oid = p.pronamespace
+                              WHERE tg.tgrelid = m.oid
+                                AND NOT tg.tgisinternal
+                                AND tg.tgenabled <> 'D'
+                                AND (pn.nspname, p.proname) = (CASE m.marcatore
+                                                                   WHEN 'TX_ID'      THEN 'dbops'::name
+                                                                   WHEN 'STORICIZZA' THEN 'script'::name
+                                                               END,
+                                                               CASE m.marcatore
+                                                                   WHEN 'TX_ID'      THEN 'trgfn_tx_id_managed'::name
+                                                                   WHEN 'STORICIZZA' THEN 'trgfn_storico_generic'::name
+                                                               END)
+                         ) AS trigger_a_mano,
+                         EXISTS (
+                             SELECT 1
+                               FROM dbops.automation_cleanup_exclusions e
+                              WHERE e.enabled
+                                AND e.schema_name = m.schema_tabella
+                                AND e.table_name  = m.nome_tabella
+                         ) AS esclusa_dalla_pulizia
+                    FROM marcatori m
+              ), scoperti AS (
+                  SELECT e.marcatore,
+                         e.schema_tabella,
+                         e.nome_tabella,
+                         CASE
+                             WHEN e.marcatore = 'TX_ID' THEN
+                                 'il trigger di dbops.trgfn_tx_id_managed: la tabella non e'' nell''ambito delle automazioni e nessuno lo ha montato a mano, quindi tx_id resta vuoto'
+                             WHEN e.marcatore = 'STORICIZZA' THEN
+                                 'il trigger di script.trgfn_storico_generic: la tabella non e'' nell''ambito delle automazioni e nessuno lo ha montato a mano, quindi storicizza non produce nessuna versione'
+                             WHEN e.esclusa_dalla_pulizia THEN
+                                 'il purge: la tabella e'' esclusa da dbops.automation_cleanup_exclusions, quindi cleanup_at non fa scadere niente'
+                             ELSE
+                                 'il purge: la tabella non e'' nell''ambito delle automazioni, quindi cleanup_at non fa scadere niente'
+                         END AS manca
+                    FROM esecutori e
+                   WHERE CASE e.marcatore
+                             WHEN 'CLEANUP_AT' THEN NOT (e.servita_dai_runner AND NOT e.esclusa_dalla_pulizia)
+                             ELSE NOT (e.servita_dai_runner OR e.trigger_a_mano)
+                         END
+              )
+              SELECT s.marcatore,
+                     s.schema_tabella,
+                     s.nome_tabella,
+                     s.manca,
+                     CASE WHEN d.id IS NULL THEN 'NON_DICHIARATO'::text
+                          ELSE 'DEBITO_DICHIARATO'::text
+                     END AS stato,
+                     d.ragione,
+                     d.data_registrazione
+                FROM scoperti s
+                LEFT JOIN dbops.marcatori_automazione_debito d
+                  ON d.marcatore      = s.marcatore
+                 AND d.schema_tabella = s.schema_tabella
+                 AND d.nome_tabella   = s.nome_tabella
+              UNION ALL
+              SELECT d.marcatore,
+                     d.schema_tabella,
+                     d.nome_tabella,
+                     'niente: il marcatore ha un esecutore, la colonna non c''e'' piu'' o la tabella non esiste. La riga va tolta dal CSV del registro'::text AS manca,
+                     'DEBITO_ESTINTO'::text AS stato,
+                     d.ragione,
+                     d.data_registrazione
+                FROM dbops.marcatori_automazione_debito d
+               WHERE NOT EXISTS (
+                         SELECT 1
+                           FROM scoperti s
+                          WHERE s.marcatore      = d.marcatore
+                            AND s.schema_tabella = d.schema_tabella
+                            AND s.nome_tabella   = d.nome_tabella);
+
+              COMMENT ON VIEW dbops.vw_marcatori_automazione_senza_esecutore IS
+                  'Le tabelle con una colonna che promette un''automazione che nessuno esegue: tx_id senza il trigger di dbops.trgfn_tx_id_managed, storicizza senza quello di script.trgfn_storico_generic, cleanup_at senza il purge. Una tabella e'' servita dai runner se e'' ordinaria (partizioni comprese), il suo schema e'' in dbops.fn_resolve_scope e dbops.fn_table_in_scope la ammette; per tx_id e storicizza basta anche il trigger montato a mano e abilitato; per cleanup_at no, e una tabella esclusa in dbops.automation_cleanup_exclusions resta scoperta. Lo schema storico e gli schemi di sistema sono fuori: le shadow ricopiano le colonne della madre. Tre stati: NON_DICHIARATO e'' un allarme, DEBITO_DICHIARATO e'' il debito noto di dbops.marcatori_automazione_debito, DEBITO_ESTINTO e'' una riga di registro da togliere. A catalogo in dbops.presidi; lo prova dbops/test-marcatori-automazione-senza-esecutore-v1.';
+              COMMENT ON COLUMN dbops.vw_marcatori_automazione_senza_esecutore.marcatore IS
+                  'TX_ID, STORICIZZA o CLEANUP_AT: la colonna che promette, nel vocabolario del CHECK di dbops.marcatori_automazione_debito.';
+              COMMENT ON COLUMN dbops.vw_marcatori_automazione_senza_esecutore.manca IS
+                  'Che cosa manca perche'' la promessa sia mantenuta, in una frase: l''esecutore e il perche'' non c''e''.';
+              COMMENT ON COLUMN dbops.vw_marcatori_automazione_senza_esecutore.stato IS
+                  'NON_DICHIARATO (allarme), DEBITO_DICHIARATO (riga nel registro), DEBITO_ESTINTO (riga del registro senza piu'' il suo caso). Lo stato atteso per il catalogo dei presidi e'' DEBITO_DICHIARATO.';

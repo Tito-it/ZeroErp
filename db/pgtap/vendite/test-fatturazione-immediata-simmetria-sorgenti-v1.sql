@@ -37,11 +37,11 @@
 -- ------------------------------------------------------------
 -- NOTA sui test 18-20 (copertura delle DUE convenzioni di chiave):
 --   i test 14-17 provano il guard sugli ORDINI, che hanno
---   config.sorgenti.key_selector = 'id' -> commesse_sorgenti.sorgente_uid
---   contiene id::text (normalizzato da fn_link_commessa_sorgente).
---   I PREVENTIVI hanno key_selector = 'uid' -> la chiave e' l'uuid, senza
---   traduzione. Sono i due rami del CASE dentro il guard: provarne uno solo
---   lascerebbe l'altro scoperto, ed e' esattamente il ramo su cui e' facile
+--   config.sorgenti.key_selector = 'id' -> commesse_sorgenti.sorgente_id
+--   contiene l'id (normalizzato da fn_link_commessa_sorgente).
+--   I PREVENTIVI hanno key_selector = 'uid' -> la chiave e' l'uuid, in
+--   sorgente_uid, senza traduzione. Sono le due colonne della regola d'incontro dentro il guard: provarne una sola
+--   lascerebbe l'altra scoperta, ed e' esattamente quella su cui e' facile
 --   sbagliare (vedi guida sorgente-polimorfa §4a).
 -- ------------------------------------------------------------
 -- NOTA COPERTURA (onesta'): i test 9 e 10 sono **data-dependent** e usano
@@ -424,7 +424,7 @@ CREATE TEMP TABLE tmp_link_fi AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_imm FROM tmp_comm_fi),
   p_sorgente_tipo_id => (SELECT sorgente_ordine_id FROM tmp_refs_fi),
-  p_sorgente_uid     => (SELECT uid::text FROM tmp_ord_imm),
+  p_sorgente_chiave  => (SELECT uid::text FROM tmp_ord_imm),
   p_meta             => jsonb_build_object('test_scope', 'pgtap_fi_simmetria')
 ) AS link_id;
 
@@ -474,7 +474,7 @@ SELECT lives_ok(
 -- FIXTURE + TEST 18-20: lo stesso presidio sull'ALTRA convenzione di chiave.
 --   PREVENTIVO ha key_selector='uid': commesse_sorgenti.sorgente_uid contiene
 --   l'uuid, senza la traduzione che fn_link_commessa_sorgente applica agli
---   ordini. E' il secondo ramo del CASE dentro il guard.
+--   ordini. E' l'altra colonna della regola d'incontro dentro il guard.
 -- ============================================================
 CREATE TEMP TABLE tmp_prev_fi AS
 WITH ins AS (
@@ -522,7 +522,7 @@ CREATE TEMP TABLE tmp_link_prev_fi AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_dif FROM tmp_comm_fi),
   p_sorgente_tipo_id => (SELECT sorgente_preventivo_id FROM tmp_refs_fi),
-  p_sorgente_uid     => (SELECT uid::text FROM tmp_prev_fi),
+  p_sorgente_chiave  => (SELECT uid::text FROM tmp_prev_fi),
   p_meta             => jsonb_build_object('test_scope', 'pgtap_fi_simmetria_prev')
 ) AS link_id;
 

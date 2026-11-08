@@ -1,6 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -19,6 +19,7 @@
 > * [vendite.fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — crea una nuova revisione da EMESSA
 > * [vendite.trgfn_offerte_commerciali_guard_transizione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione) — guard sulle transizioni di stato
 > * [vendite.trgfn_offerte_commerciali_revisione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_revisione) — porta la rev padre a SUPERATA
+> * [vendite.trgfn_offerte_commerciali_rientro_padre](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_rientro_padre) — la riporta emessa quando la revisione si annulla o si cancella
 > * [vendite.fn_offerta_eccezione_componenti_init](/dbzero/vendite/funzioni/fn_offerta_eccezione_componenti_init) — popola i componenti BoM su un'eccezione composita
 > * [vendite.fn_offerta_eccezione_componenti_preview](/dbzero/vendite/funzioni/fn_offerta_eccezione_componenti_preview) — anteprima prezzi componenti, read-only
 > * [vendite.trgfn_offerte_commerciali_default_valuta](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_default_valuta) — valuta di default da resolver
@@ -65,8 +66,9 @@ Il numero documento è auto-generato (prefisso `OFC`, trigger
 L'offerta commerciale è il **documento che mancava** all'inizio del ciclo di vita
 del contratto: formalizza la proposta di condizioni prima che il contratto esista.
 Il legame è **1:1**: un'offerta accettata genera **un solo** contratto. Il legame
-è registrato sul contratto (colonna `contratti.offerta_id`, con vincolo di unicità),
-non sull'offerta — così la generazione è idempotente (vedi §8).
+è registrato sul contratto come sua **provenienza** (il tipo `OFFERTA_COMMERCIALE` e l'uid
+dell'offerta, [sorgente polimorfa](/guide/sorgente-polimorfa)), non sull'offerta, con un vincolo
+di unicità sui contratti vivi — così la generazione è idempotente (vedi §8).
 
 > **Contratto OPPURE ordine — mai entrambi (XOR).** Da un'offerta ACCETTATA si può
 > generare *o* un contratto (fornitura ricorrente) *o* un ordine di vendita
@@ -155,7 +157,7 @@ Constraint principali:
 * non si esclude il componente di un kit: si esclude il kit.
 
 Lo dice il database, in una regola sola per tutte le righe di documento
-([script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga)).
+([script.fn_check_articolo_riga](/dbzero/script/funzioni/fn_check_articolo_riga)).
 
 **Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
 
@@ -234,7 +236,7 @@ BOZZA     → ANNULLATA  (annulla)   richiede la motivazione
 EMESSA    → ACCETTATA  (accetta)
 EMESSA    → RIFIUTATA  (rifiuta)   richiede la motivazione
 EMESSA    → SUPERATA   (automatica) quando nasce la revisione successiva
-SUPERATA  → EMESSA     (automatica) quando si annulla l'ultima revisione viva (§4.4)
+SUPERATA  → EMESSA     (automatica) quando si annulla, o si cancella, l'ultima revisione viva (§4.4)
 ACCETTATA → ANNULLATA  (annulla)   azione emetti_offerta; richiede la motivazione; solo senza contratto o ordine vivo
 ```
 
@@ -356,6 +358,19 @@ revisione è un passaggio del lineage (madre → figlia), e il pannello «Passag
 mostra. Non conta invece come passaggio di un documento a un altro: un'offerta superata non risulta
 «transitata» nei cruscotti, e una fattura non cita le revisioni superate.
 
+### 4.5 Cancellare una revisione, o una bozza
+
+Un'offerta si **cancella** solo se è una **bozza vuota**: in `BOZZA` e senza **eccezioni attive**
+(le eccezioni sono le righe dell'offerta; il resto del contenuto viene dal listino). È la regola
+di tutti i documenti di vendita, e la fa valere il database
+([vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza)):
+un'offerta emessa non si cancella (`E_DELETE_DOC_NON_BOZZA`), una bozza con eccezioni attive
+nemmeno (`E_DELETE_DOC_CON_RIGHE`) — si disattivano prima le eccezioni, o si annulla.
+
+Una revisione nasce in bozza, e se resta vuota si può cancellare. Cancellarla fa quello che fa
+annullarla: la madre torna **emessa**, se non le resta un'altra revisione viva. Non serve una
+conferma, perché una bozza vuota non ha legami.
+
 ---
 
 ## 5. Articoli compositi e BoM
@@ -466,7 +481,7 @@ che opera in transazione atomica.
 
 1. l'offerta deve essere in **ACCETTATA**, altrimenti `E_OFFERTA_PUSH_STATO_NON_AMMESSO`
 2. il push è **idempotente**: se un contratto è già stato generato per quell'offerta
-   (vincolo di unicità su `contratti.offerta_id`), solleva
+   (vincolo di unicità sulla provenienza dei contratti vivi, `uq_contratti_sorgente_offerta`), solleva
    `E_OFFERTA_CONTRATTO_GIA_GENERATO`
 3. stato target e sorgente sono **letti dalla configurazione** (contratto in DRAFT,
    sorgente OFFERTA_COMMERCIALE), senza valori hardcoded
@@ -475,7 +490,7 @@ che opera in transazione atomica.
 
 * **Testata** → contratto DRAFT: billing account, istanza/utility, listino e
   versione fissata, variazione globale, date di validità, emittente fiscale, valuta,
-  metadati. Il nuovo contratto registra `offerta_id` come riferimento alla sorgente.
+  metadati. Il nuovo contratto registra l'offerta come sua provenienza.
 * **Eccezioni** → `contratti_righe`: articolo, tipo eccezione, prezzo, quantità,
   parametri di fornitura, e — per ogni eccezione composita — i **componenti BoM**,
   con lo stato di approvazione prezzo trasportato (§6).
@@ -502,7 +517,7 @@ l'offerta in un **ordine di vendita** one-shot (vendita puntuale).
    ordine) disabilita l'altra, finché quel documento non viene annullato;
 3. la generazione ordine è **idempotente 1:1**: un secondo tentativo sulla stessa
    offerta è rifiutato con `E_ORD_OFFERTA_GIA_CONVERTITA` (rete di sicurezza:
-   vincolo di unicità `uq_ordini_v_documento_origine_offerta`);
+   vincolo di unicità sulla provenienza degli ordini vivi, `uq_ordini_v_sorgente_offerta`);
 4. se l'offerta ha già generato un contratto, la generazione ordine è bloccata con
    `E_OFFERTA_CONTRATTO_GIA_GENERATO` (e, specularmente, il push a contratto su
    un'offerta che ha già un ordine è bloccato con `E_OFFERTA_ORDINE_GIA_GENERATO`);
@@ -520,7 +535,7 @@ di default del cliente e le righe.
 L'ordine nasce in **DRAFT** ereditando le **righe espanse** dell'offerta (listino +
 variazione globale + eccezioni, con i componenti BoM), preservando i **prezzi
 negoziati/override**. Sull'ordine viene registrata l'origine
-(`documento_origine = ('OFFERTA_COMMERCIALE', id)`). L'offerta resta **ACCETTATA**.
+come provenienza (il tipo `OFFERTA_COMMERCIALE` e l'uid dell'offerta). L'offerta resta **ACCETTATA**.
 
 Da lì l'ordine segue il proprio ciclo di vita (conferma, push a commessa); vedi
 [Gestione Ordini di vendita](/guide/gestione-ordini).
@@ -612,6 +627,7 @@ gestore → valuta predefinita del gestore*. Se nessuna valuta è risolvibile, s
 
 1. Offerta ancora in BOZZA → "Annulla" con motivazione
 2. Stato → ANNULLATA (terminale). Per ripartire si crea una nuova offerta
+3. Se la bozza è vuota (nessuna eccezione attiva) si può anche cancellare (§4.5)
 
 ### 11.6 Offerta accettata che non si può trasformare
 
@@ -633,6 +649,8 @@ Codici sollevati dal dominio offerte (registrati in `config.messaggi_errore`):
 | `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` | Emissione con versione listino non in stato ATTIVA                                                                                                  |
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`               | Transizione di stato non prevista in configurazione                                                                                                 |
 | `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`           | "Crea revisione" da uno stato diverso da EMESSA                                                                                                     |
+| `E_DELETE_DOC_NON_BOZZA` | Eliminazione di un'offerta uscita dalla bozza: si annulla (guard DB) |
+| `E_DELETE_DOC_CON_RIGHE` | Eliminazione di una bozza con eccezioni attive: si disattivano o si annulla (guard DB) |
 | `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                | Push a contratto da uno stato diverso da ACCETTATA                                                                                                  |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`                | Push a contratto già generato (idempotenza) **oppure** tentativo di generare un ordine quando l'offerta ha già un contratto (mutua esclusività XOR) |
 | `E_OFFERTA_ORDINE_GIA_GENERATO`                   | Push a contratto quando l'offerta ha già generato un ordine (mutua esclusività XOR)                                                                 |
@@ -672,8 +690,9 @@ niente rischio che il flag e i dati divergano.
 
 ### 13.4 Idempotenza del push
 
-Il vincolo di unicità su `contratti.offerta_id` rende impossibile generare due
-contratti dalla stessa offerta: un secondo tentativo fallisce in modo pulito. La
+Il vincolo di unicità sulla provenienza dei contratti vivi rende impossibile generare due
+contratti dalla stessa offerta: un secondo tentativo fallisce in modo pulito. Un contratto
+annullato non conta: l'offerta torna trasformabile. La
 generazione è quindi sicura anche se l'operatore clicca due volte o l'API viene
 richiamata di nuovo.
 

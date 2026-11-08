@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_resi_normalize: LA BOLLA SORGENTE NELLE DUE GRAMMATICHE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La sorgente di una testata (bolla -> ordine, reso -> bolla) oggi porta l'uid
+#   del documento in sorgente_uid; il lotto T la converte all'id, in sorgente_id
+#   (S-5). Un lettore che confronta solo l'uid, dopo il lotto T, torna zero righe
+#   in silenzio. Qui legge con la regola d'incontro del modello:
+#     (doc.id = x.sorgente_id OR doc.uid = x.sorgente_uid)
+#   vera nelle due grammatiche e anche nel modello finale (una sola delle due
+#   chiavi e' valorizzata, il guard unico lo garantisce): il lettore non si
+#   ritocca nei lotti di famiglia. E' il join della chiave polimorfa, come il
+#   join di una FK: si scrive in linea, non dietro una funzione, perche' il
+#   planner deve poterla usare sugli indici (id, uid, (tipo, sorgente_*)).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   L'eredita' dalla bolla scatta con una delle due chiavi. Sui dati di oggi (solo sorgente_uid valorizzata) il risultato e' lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-33-update-trgfn-resi-normalize-sorgente-due-grammatiche-mctit.yaml
+
+  - changeSet:
+      id: 20261106-33-update-trgfn-resi-normalize-sorgente-due-grammatiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_resi_normalize: la sorgente di testata nelle due grammatiche. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_normalize';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo: normalizzazione reso su INSERT/UPDATE.
+                --   1. anno/data se numero presente (INSERT).
+                --   2. eredita billing/destinatario/utility/valuta/emittente
+                --      dal DDT sorgente (DDT_VENDITA, lookup per codice_interno
+                --      via uid) su INSERT se non gia' valorizzati.
+                --   3. fallback emittente da billing_account (standalone,
+                --      predisposizione: sorgente NOT NULL in questa slice).
+                -- =========================================================
+
+                -- 1. anno/data
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+                  IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                    NEW.anno := EXTRACT(YEAR FROM script.fn_data_operativa())::smallint;
+                  END IF;
+                  IF NEW.data IS NULL THEN
+                    NEW.data := script.fn_data_operativa();
+                  END IF;
+                END IF;
+
+                -- 2. eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente
+                IF TG_OP = 'INSERT'
+                   AND NEW.sorgente_tipo_id IS NOT NULL
+                   AND (NEW.sorgente_id IS NOT NULL OR NEW.sorgente_uid IS NOT NULL)
+                   AND (NEW.billing_account_id IS NULL
+                        OR NEW.destinatario_soggetto_ruolo_id IS NULL
+                        OR NEW.utility_id IS NULL
+                        OR NEW.valuta_id IS NULL
+                        OR NEW.emittente_fiscale_id IS NULL)
+                THEN
+                  IF EXISTS (
+                    SELECT 1 FROM config.sorgenti
+                    WHERE id = NEW.sorgente_tipo_id AND codice_interno = 'DDT_VENDITA'
+                  ) THEN
+                    SELECT
+                      COALESCE(NEW.billing_account_id, d.billing_account_id),
+                      COALESCE(NEW.destinatario_soggetto_ruolo_id, d.destinatario_soggetto_ruolo_id),
+                      COALESCE(NEW.utility_id, d.utility_id),
+                      COALESCE(NEW.valuta_id, d.valuta_id),
+                      COALESCE(NEW.emittente_fiscale_id, d.emittente_fiscale_id)
+                    INTO
+                      NEW.billing_account_id,
+                      NEW.destinatario_soggetto_ruolo_id,
+                      NEW.utility_id,
+                      NEW.valuta_id,
+                      NEW.emittente_fiscale_id
+                    FROM vendite.ddt d
+                    WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid)
+                    LIMIT 1;
+                  END IF;
+                END IF;
+
+                -- 3. fallback standalone: emittente da billing_account (convenzione PK).
+                IF TG_OP = 'INSERT'
+                   AND NEW.emittente_fiscale_id IS NULL
+                   AND NEW.billing_account_id IS NOT NULL
+                THEN
+                  NEW.emittente_fiscale_id :=
+                    anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_normalize() IS
+                '⭐ rev 2026-11-06 (20261106-33, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): la bolla sorgente da cui il reso eredita cliente, destinatario, utility, valuta ed emittente si cerca nelle due grammatiche, (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid): dal lotto T il reso porta l''id della bolla. Normalize reso: anno/data; eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente (DDT_VENDITA, per codice_interno, JOIN vendite.ddt su uid) su INSERT; fallback emittente da billing_account. Mirror trgfn_ddt_normalize (fonte = DDT). rev 2026-07-13.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20261009-50:
+              -- un rollback lo riprende da li'.
+              SELECT 1;

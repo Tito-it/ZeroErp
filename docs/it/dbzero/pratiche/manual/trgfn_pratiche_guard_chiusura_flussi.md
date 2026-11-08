@@ -1,69 +1,69 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_pratiche_guard_chiusura_flussi`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_guard_chiusura_flussi`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.fn_check_chiusura_pratica](fn_check_chiusura_pratica.md)
-> [pratiche.fn_pratica_flussi_aperti](fn_pratica_flussi_aperti.md)
-> [pratiche.trgfn_pratiche_guard_transizione](trgfn_pratiche_guard_transizione.md)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la tabella sorvegliata
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — il lavoro che deve essere finito
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_check_chiusura_pratica](/dbzero/pratiche/funzioni/fn_check_chiusura_pratica) — gli obbligatori non completati e ancora percorribili
+> * [pratiche.fn_pratica_flussi_aperti](/dbzero/pratiche/funzioni/fn_pratica_flussi_aperti) — i flussi istanziati non terminali
+> * [pratiche.fn_check_pratica_chiudibile](/dbzero/pratiche/funzioni/fn_check_pratica_chiudibile) — lo stesso predicato, usato dall'auto-chiusura
+> * [pratiche.trgfn_pratiche_guard_transizione](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_transizione) — la legalità della transizione
 
 ---
+
 ### 🎯 Scopo Principale
-Guard di **chiusura pratica**: blocca la transizione a `CHIUSA` quando la pratica ha
-**ancora lavoro da fare**. Due condizioni, entrambe verificate:
 
-* **(a)** template `obbligatorio = true` non completati e **ancora percorribili**
-  (`fn_check_chiusura_pratica`, decisione D4). Il **ramo morto** di un bivio
-  (prerequisito esito-aware non piu' soddisfacibile) **non blocca**.
-* **(b)** flussi **istanziati** in stato **non terminale**
-  ([fn_pratica_flussi_aperti](fn_pratica_flussi_aperti.md), clausola **D1**): anche uno
-  step **opzionale** avviato e lasciato aperto impedisce la chiusura.
+La trigger function `pratiche.trgfn_pratiche_guard_chiusura_flussi` impedisce di portare una pratica a
+`CHIUSA` quando ha ancora lavoro da fare.
 
-E' lo **stesso predicato** dell'auto-chiusura (`fn_check_pratica_chiudibile`): chiusura
-manuale e automatica non divergono.
+Le condizioni sono due, verificate in quest'ordine:
 
----
+* **obbligatori mancanti** — template obbligatori non completati e ancora percorribili
+  (`pratiche.fn_check_chiusura_pratica`). Il ramo morto di un bivio, il cui prerequisito non è più
+  soddisfacibile, non blocca;
+* **flussi aperti** — flussi istanziati in uno stato non terminale (`pratiche.fn_pratica_flussi_aperti`):
+  anche uno step opzionale avviato e lasciato aperto impedisce la chiusura.
 
-### Trigger associato
-
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_pratiche_a10_guard_chiusura_flussi_upd` | BEFORE | UPDATE OF `stato_id` | `pratiche.pratiche` |
-
-Fase `_a10_`. Convive con `trg_pratiche_a10_guard_transizione_upd` (matrice transizioni):
-questo guard valida il *contenuto* della pratica, quello la *legalita'* della transizione.
-Fra i due `_a10_` scatta **prima** (ordine alfabetico) → l'errore di contenuto prevale.
+È lo stesso predicato dell'auto-chiusura: chiusura manuale e automatica non possono divergere.
 
 ---
 
-### Regole
+### Le regole
 
-1. Scatta solo alla **transizione** di stato verso `CHIUSA` (`ANNULLATA` resta libera —
-   si annulla anche una pratica a meta').
-2. Clausola (a): `fn_check_chiusura_pratica(NEW.id)` con righe `bloccante = true` →
-   errore con l'elenco dei codici template.
-3. Clausola (b): `fn_pratica_flussi_aperti(NEW.id)` non vuota → errore con l'elenco dei
-   flussi aperti (codice + stato).
+* Scatta `BEFORE UPDATE OF stato_id`, riga per riga, su `pratiche.pratiche`, nella fase dei guard, e
+  solo quando lo stato cambia davvero e il nuovo stato è `CHIUSA`. `ANNULLATA` resta libera: si annulla
+  anche una pratica a metà.
+* L'errore elenca ciò che blocca: i codici dei template obbligatori mancanti, oppure i flussi aperti
+  con il loro stato.
+* Questo guard valida il contenuto della pratica; `pratiche.trgfn_pratiche_guard_transizione` la
+  legalità del passaggio. Nella fase dei guard scatta prima, per ordine alfabetico: l'errore di
+  contenuto prevale.
+* Una pratica senza obbligatori e senza flussi aperti non è toccata.
 
----
-
-### ⚠️ Errori sollevati
-
-| Codice errore | Condizione |
-|---------------|------------|
-| `PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI` (485) | Transizione a CHIUSA con obbligatori non completati ancora percorribili. Placeholder: codici template bloccanti |
-| `PRATICHE_CHIUSURA_FLUSSI_APERTI` (501) | Transizione a CHIUSA con flussi istanziati non terminali. Placeholder: elenco flussi aperti (codice/stato) |
+**La via d'uscita** per i flussi aperti: portarli ad `ANNULLATO`, poi ripetere la chiusura.
 
 ---
 
-### Note operative
+### Codici errore
 
-* I tipi prestazione **senza** obbligatori e **senza** flussi aperti non sono
-  interessati (guard no-op).
-* **Via d'uscita** per la clausola (b): portare i flussi opzionali rimasti aperti ad
-  `ANNULLATO` (transizione `DA_ESEGUIRE/IN_CORSO → ANNULLATO`), poi ripetere la chiusura.
-* La catena PREVENTIVI (bivio: step obbligatori-su-ramo) chiude solo a giro completo del
-  ramo attivo; il ramo morto non vincola — comportamento voluto.
-* Test: `db/pgtap/pratiche/test-chiusura-nessun-lavoro-pendente.sql` (chiusura manuale
-  bloccata con flusso opzionale aperto; sbloccata dopo annullamento).
+* `E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI` — chiusura con obbligatori non completati e ancora
+  percorribili.
+* `E_PRATICHE_CHIUSURA_FLUSSI_APERTI` — chiusura con flussi istanziati non terminali.
+
+---
+
+### Test
+
+* `pratiche/test-chiusura-nessun-lavoro-pendente` — chiusura manuale bloccata con un flusso opzionale
+  aperto, sbloccata dopo averlo annullato.
+
+---
+
+{% include-markdown "signature-core.md" %}

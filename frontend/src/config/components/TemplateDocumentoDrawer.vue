@@ -393,7 +393,7 @@ async function confermaPersonalizza() {
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.field_codice') }} *</label>
-          <InputText v-model="form.codice" :disabled="isReadOnlyEffective" maxlength="120" fluid
+          <InputText v-model="form.codice" class="app-codice-input" :disabled="isReadOnlyEffective" maxlength="120" fluid
             :invalid="campiErrati.includes('codice')"
           />
         </div>
@@ -547,7 +547,7 @@ async function confermaPersonalizza() {
         </div>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.field_codice') }}</label>
-          <InputText v-model="personalizzaForm.codice" maxlength="120" fluid
+          <InputText v-model="personalizzaForm.codice" class="app-codice-input" maxlength="120" fluid
             :placeholder="form.codice" :invalid="campiErrati.includes('codice')" />
         </div>
         <div class="form-field">

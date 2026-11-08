@@ -1,40 +1,59 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_genera_ddt_riconsegna`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [vendite.resi_righe_riconsegne](/dbzero/vendite/tabelle/resi_righe_riconsegne) (ponte) ·
-> [vendite.vw_resi_da_riconsegnare](/dbzero/vendite/views/vw_resi_da_riconsegnare) (coda) ·
-> [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) (pattern) ·
-> [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso)
+> Approfondimento tabelle:
+>
+> * [vendite.resi_righe_riconsegne](/dbzero/vendite/tabelle/resi_righe_riconsegne) — il ponte che chiude la voce di coda
+> * [vendite.resi](/dbzero/vendite/tabelle/resi) — il reso, da cui la bolla nasce
+>
+> Approfondimento viste:
+>
+> * [vendite.vw_resi_da_riconsegnare](/dbzero/vendite/views/vw_resi_da_riconsegnare) — la coda di ri-consegna
+> * [vendite.vw_partite_merce](/dbzero/vendite/views/vw_partite_merce) — perché la ri-consegna non si rifattura
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) — il gemello, sullo stesso stile
+> * [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso) — la conferma del reso
+> * [vendite.fn_ddt_trigger_ordine_testata](/dbzero/vendite/funzioni/fn_ddt_trigger_ordine_testata) — l'ordine e la sua corsia, ritrovati dal fulfillment
+> * [script.fn_sorgente_provenienza](/dbzero/script/funzioni/fn_sorgente_provenienza) — la provenienza da scrivere, dal reso
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-28)
-
 **Funzione madre atomica** (`SECURITY INVOKER`) che genera il **DDT di ri-spedizione** per un reso
 CONFERMATO e chiude l'aggancio duro con la coda di ri-consegna.
 
-Firma: `fn_genera_ddt_riconsegna(p_reso_id, p_righe jsonb DEFAULT NULL, p_data date)`.
-`p_righe = [{resi_riga_id, qta}]` per ri-spedizione **parziale**; `NULL` = tutta la copertura residua.
+Restituisce l'id della bolla. `p_righe` dice, per riga di reso, la quantità per una ri-spedizione
+**parziale**; vuoto = tutta la copertura residua. `p_data` vuota = la data operativa.
+
+---
 
 ### Logica
 
 1. Guard: reso in stato CONFERMATO (`E_RESO_NON_CONFERMATO`).
-2. Nuovo **DDT DRAFT** che **eredita la testata** del DDT d'origine (rev 2026-08-28,
-   sezione «L'eredità» qui sotto): destinatario, billing/utility/valuta/emittente, e il blocco
+2. Nuovo **DDT DRAFT** che **eredita la testata** del DDT d'origine (sezione «L'eredità» qui
+   sotto): destinatario, billing/utility/valuta/emittente, e il blocco
    **relazione** — causale di trasporto, aspetto dei beni, modalità di addebito, mittente,
    vettore, `fatturazione_immediata`.
-   La **sorgente** si dichiara sempre: `ORDINE_VENDITA` (+ `uid` ordine) se il reso è
-   **order-backed** (righe con `ordine_riga_id`), `RESO_VENDITA` (+ `uid` del reso) se è
-   **standalone**.
+   ⭐ **La bolla nasce dal reso**, sempre: la provenienza è `RESO_VENDITA` con la chiave del reso
+   (calcolata una volta da `script.fn_sorgente_provenienza`), e ogni riga porta il reso e la sua
+   riga (`sorgente_riga`). Vale anche per il reso **order-backed** (righe con `ordine_riga_id`):
+   il legame con l'ordine da cui la merce era partita resta nel fulfillment, e la sua corsia di
+   fatturazione la ritrova `vendite.fn_ddt_trigger_ordine_testata`.
 3. **Cascata indirizzi**: copia 1:1 gli snapshot di ambito `DDT` dal documento d'origine, con
    gli `origine_*` propagati — modellata sul passo 4-bis del gemello
-   [`fn_genera_ddt_da_ordine`](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine). È il pezzo che
-   prima **bloccava l'emissione**: senza indirizzi, il guard alza
-   `E_INDIRIZZO_DOC_OBBLIGATORIO` su un documento che il database ha generato da sé.
-4. Per ogni riga *ri-consegna* con copertura residua — dal 2026-07-26 letta dall'helper unico
+   [`fn_genera_ddt_da_ordine`](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine). Senza indirizzi
+   il guard alzerebbe `E_INDIRIZZO_DOC_OBBLIGATORIO` su un documento che il database ha generato da sé.
+4. Per ogni riga *ri-consegna* con copertura residua — letta dall'helper unico
    [`fn_resi_riga_residuo_riconsegna`](/dbzero/vendite/funzioni/fn_resi_riga_residuo_riconsegna),
    cioè `quantità resa − Σ ri-spedito − Σ rinunciato`: crea la `ddt_righe` (articolo, descrizione,
    UoM, quantità — e nel **solo ramo standalone** anche prezzo, sconto e aliquota, vedi sotto) e
@@ -48,15 +67,17 @@ Idempotenza per copertura (righe già coperte saltate); niente ri-consegna pende
 `E_RESO_NESSUNA_RICONSEGNA_PENDENTE` (rollback della testata DDT orfana). Funziona anche per lo
 standalone: la coda è agganciata al DDT, non all'ordine.
 
-### Non ri-spedisce la quota dichiarata definitiva (rev 2026-07-26)
+---
 
-Da quando esiste la chiusura ri-consegna
+### Non ri-spedisce la quota dichiarata definitiva
+
+Con la chiusura ri-consegna
 ([`fn_chiudi_riconsegna_reso`](/dbzero/vendite/funzioni/fn_chiudi_riconsegna_reso)), il
 residuo che questa funzione legge è **al netto delle rinunce**. Su una riga da 10 con 7
 dichiarati definitivi, una richiesta di 10 viene troncata a 3; se tutto è rinunciato la riga
 viene saltata fino a `E_RESO_NESSUNA_RICONSEGNA_PENDENTE`.
 
-Il guard del ponte avrebbe comunque bloccato l'INSERT: la differenza è che ora la
+Il guard del ponte bloccherebbe comunque l'INSERT: la differenza è che la
 **quantità è corretta in partenza**, invece di essere una proposta che il guard rifiuta a
 valle di un DDT già creato. Difesa in profondità che resta, più correttezza a monte.
 
@@ -65,24 +86,18 @@ oppure no.
 
 ---
 
-## ⭐ L'eredità: cosa il documento porta con sé, e cosa no (rev 2026-08-28)
+### ⭐ L'eredità: cosa il documento porta con sé, e cosa no
 
-**Il difetto che chiude.** Il generatore che parte dalla sorgente **più ricca** — un DDT —
-copiava **meno** di quello che parte dalla più povera: da un ordine. La ri-consegna nasceva
-senza causale, senza indirizzi, senza blocco trasporto, e la riga senza prezzo, sconto e
-aliquota. L'operatore ridigitava a mano su un documento che il database aveva generato da sé
-(trovato in collaudo, prova 9 del 2026-08-27).
+La regola — *«il documento figlio eredita la testata del padre»* — è la stessa del gemello che
+parte da un ordine: il generatore che parte dalla sorgente **più ricca**, un DDT, non copia meno
+di quello che parte dalla più povera.
 
-Non era «una dimenticanza in un caso di nicchia»: la stessa cosa — *«il documento figlio
-eredita la testata del padre»* — era scritta in un posto e non nell'altro, e il modello la
-ammette in entrambi.
-
-### Il criterio, in una riga
+#### Il criterio, in una riga
 
 > **Eredita ciò che è una SCELTA; non ereditare ciò che è una MISURA.**
 > Una scelta vale finché non la si cambia; una misura vale per il viaggio in cui è stata presa.
 
-### ✅ Eredita — «la relazione»
+#### ✅ Eredita — «la relazione»
 
 Descrivono **con chi e perché** la merce si muove, e sono le stesse per il viaggio di andata e
 per la ri-consegna: è la stessa relazione commerciale eseguita una seconda volta.
@@ -93,11 +108,11 @@ per la ri-consegna: è la stessa relazione commerciale eseguita una seconda volt
 | `aspetto_bene_id` | la merce è **la stessa merce**, tornata indietro |
 | `modalita_addebito_trasporto_id` | patto sulle spese, non fatto del viaggio |
 | `mittente_soggetto_ruolo_id` | spedisce lo stesso soggetto |
-| `vettore_soggetto_ruolo_id` | ⭐ decisione di Tid, 2026-08-28 — vedi il riquadro qui sotto |
+| `vettore_soggetto_ruolo_id` | ⭐ vedi il riquadro qui sotto |
 | `fatturazione_immediata` | **corsia di instradamento**, non un cancello: la doppia fatturazione è impedita altrove (`vw_partite_merce` / `fn_list_ddt_da_pushare`), quindi è un patto commerciale come gli altri |
 | **indirizzi** (ambito `DDT`) | cascata 1:1 dal documento d'origine |
 
-> ### ⭐ Il vettore: un campo vuoto che il documento AFFERMA
+> **⭐ Il vettore: un campo vuoto che il documento AFFERMA**
 >
 > Sembrava il caso di confine — il vettore è insieme una scelta (l'accordo con quel corriere) e
 > un fatto del viaggio — finché non si è guardato **come la stampa rende il vuoto**:
@@ -114,7 +129,7 @@ per la ri-consegna: è la stessa relazione commerciale eseguita una seconda volt
 > causale, sul vettore non c'è nessun guard di immutabilità: un corriere ereditato e sbagliato
 > si corregge.
 
-### ⛔ NON eredita — «il viaggio»
+#### ⛔ NON eredita — «il viaggio»
 
 Copiarle scriverebbe **fatti falsi** su un documento fiscale di trasporto.
 
@@ -132,7 +147,7 @@ si accenda.
 
 ---
 
-## ⭐ Il valore della riga: standalone sì, order-backed no
+### ⭐ Il valore della riga: standalone sì, order-backed no
 
 La domanda — *«il prezzo della riga dovrebbe essere ereditato?»* — ha **due risposte diverse**,
 e la differenza è dove sta la sorgente del numero.
@@ -160,7 +175,7 @@ IVA del documento con **imponibile pieno e imposta zero**
 
 ---
 
-## ⚠️ Due trappole da conoscere prima di toccare questa funzione
+### ⚠️ Due trappole da conoscere prima di toccare questa funzione
 
 **1. L'eredità di catalogo è filtrata su `attivo`, e non è prudenza generica.**
 `vendite.ddt` ha tre trigger `require_active_parent` (causale, aspetto, modalità addebito) e
@@ -176,11 +191,12 @@ ridondante — le righe d'origine sono già passate dallo stesso controllo — e
 tipo ritirato dopo resterebbe sulle righe vecchie e farebbe fallire la copia.
 
 **2. La testata d'origine può mancare, e non si solleva.**
-Il documento di partenza si legge con un `LEFT JOIN` su `resi.sorgente_uid`:
-`resi.sorgente_tipo_id`/`sorgente_uid` sono `NOT NULL`, ma **nulla impone che il tipo sia
-`DDT_VENDITA`**. Se il join non trova niente, le colonne di testata restano `NULL` — cioè lo
-stato di prima di questa revisione — e i guard dell'emissione fanno il loro mestiere. Sollevare
-lì romperebbe un percorso che funziona.
+Il documento di partenza si legge con un `LEFT JOIN` sulla provenienza del reso: la bolla ha
+chiave `id`, e il reso la porta in `sorgente_id` (`chk_resi_sorgente_forma` vuole `sorgente_uid`
+vuota; il tipo `DDT_VENDITA` lo fa valere
+[vendite.trgfn_resi_guard_cliente_ddt](/dbzero/vendite/funzioni/trgfn_resi_guard_cliente_ddt)).
+Il join resta `LEFT`: una bolla invisibile a chi genera lascia le colonne di testata `NULL`, e i
+guard dell'emissione fanno il loro mestiere. Sollevare lì romperebbe un percorso che funziona.
 
 ⭐ L'eredità di **riga** invece non ne è toccata: passa da `resi_righe.ddt_riga_id`, che è
 `NOT NULL`. ⚠️ E le due possono puntare a **DDT diversi**: nessun guard impone che la riga di
@@ -190,7 +206,7 @@ caso che il modello permette.
 
 ---
 
-## Il freno della fatturazione non si è allentato
+### Il freno della fatturazione non si è allentato
 
 ⚠️ Ora che la riga standalone **un prezzo ce l'ha**, vale la pena dirlo esplicitamente: una
 ri-consegna **non** viene rifatturata. La riga risulta `stato = 'RICONSEGNA'` con
@@ -202,7 +218,24 @@ L'unico caso in cui una ri-consegna **si** fattura è quello giusto: quando una 
 credito** ha accreditato la quantità sulla partita d'origine (`riconsegna_quota_nuova > 0`), cioè
 quando la merce è uscita dal fatturato e ri-consegnarla è una vendita nuova.
 
-> ⭐ Prima il prezzo assente **nascondeva** l'esito: un test verde di ieri non provava niente su
-> oggi. Per questo la non-regressione è presidiata (asserzioni 11 e 12 del pgTAP).
+> ⭐ La non-regressione è presidiata (asserzioni 11 e 12 del pgTAP): un prezzo assente
+> nasconderebbe l'esito.
 
-Piano completo, decisioni e misure: `brief-db-ddt-riconsegna-eredita-testata`.
+---
+
+### Note di migrazione
+
+* 2026-07-26 — il residuo si legge da `fn_resi_riga_residuo_riconsegna`, al netto delle rinunce.
+* 2026-08-28 — la bolla eredita la testata del DDT d'origine (relazione, indirizzi) e, nel ramo
+  standalone, il valore della riga: prima nasceva senza causale, indirizzi e blocco trasporto, e
+  non si emetteva (brief-db-ddt-riconsegna-eredita-testata).
+* 2026-11-06 — la bolla nasce sempre dal reso (`RESO_VENDITA`, con la riga del reso in
+  `sorgente_riga`); prima il reso order-backed dichiarava come origine l'ordine, con il suo `uid`
+  in testo. La testata d'origine si legge con la regola d'incontro sulla provenienza tipizzata del
+  reso (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — la bolla d'origine si legge per `sorgente_id` soltanto: la provenienza del reso è
+  solo la bolla (brief-db-sorgente-documento-e-riga, G-3).
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,117 +1,50 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_function_list`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_function_list`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Catalogo funzioni PostgreSQL (`pg_proc`, `pg_namespace`, `pg_description`)   
+> Approfondimento tabelle:
 >
-Altre view di catalogazione:
->  
-[dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti)  
-
-La view **`dbops.vw_function_list`** fornisce un inventario completo delle funzioni definite negli schemi **`dbops`** e **`script`**, mostrando firma, tipo di ritorno, numero di parametri e commenti associati.
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo dei presidi, dove la vista è un inventario
+>
+> Approfondimento viste:
+>
+> * [dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti) — le relazioni degli stessi due schemi
+> * [dbops.vw_trigger_functions](/dbzero/dbops/views/vw_trigger_functions) — le funzioni montate come trigger, in tutto il database
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_find_function_usage](/dbzero/dbops/funzioni/fn_find_function_usage) — chi usa una funzione
 
 ---
+
 ### 🎯 Scopo Principale
-* Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione.
-* Rendere immediatamente disponibili:
 
-  * OID (per gestire overload)
-  * Lista degli argomenti
-  * Tipo di ritorno
-  * Numero di parametri
-  * Commenti descrittivi
+L'elenco delle funzioni e delle procedure degli schemi `dbops` e `script`, una riga per firma: con
+l'identificativo che distingue gli overload, gli argomenti, il tipo di ritorno e il commento. È un
+attrezzo di consultazione; nel catalogo dei presidi è un inventario che non entra in nessun digest.
 
 ---
 
-### Definizione (DDL)
+### Le colonne vengono dal catalogo
 
-```sql
-CREATE OR REPLACE VIEW dbops.vw_function_list AS
-SELECT
-  n.nspname                             AS schema,
-  p.oid                                 AS function_oid,
-  p.proname                             AS function_name,
-  pg_get_function_arguments(p.oid)     AS arguments,
-  pg_get_function_result(p.oid)        AS return_type,
-  array_length(
-    string_to_array(
-      pg_get_function_arguments(p.oid), ','
-    ), 1
-  )                                      AS num_args,
-  d.description                        AS comment
-FROM pg_proc p
-JOIN pg_namespace n ON n.oid = p.pronamespace
-LEFT JOIN pg_description d ON p.oid = d.objoid
-WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
-```
+**`num_args`** è il numero di argomenti dichiarati della funzione, come lo tiene il catalogo: zero
+per una funzione senza argomenti. Conta anche gli argomenti con un valore predefinito.
 
-**Owner**: `postgres`
-
-**Commento**: "Elenco completo delle funzioni negli schemi dbops e script. Include:
-
-* OID per identificare overload
-* Argomenti e tipo di ritorno
-* Numero di argomenti
-* Commenti/documentazione (se presenti)"
+**`comment`** è il commento della funzione: lo si legge come commento di una funzione, e un oggetto
+d'altro tipo non può prestarle il suo né raddoppiare la riga. È vuoto se la funzione non ne ha.
 
 ---
 
-### Colonne e Significato
+### Note di migrazione
 
-| Colonna         | Descrizione                                                                       |
-| --------------- | --------------------------------------------------------------------------------- |
-| `schema`        | Schema di appartenenza della funzione                                             |
-| `function_oid`  | OID univoco della funzione (utilizzato internamente da PostgreSQL)                |
-| `function_name` | Nome della funzione                                                               |
-| `arguments`     | Lista degli argomenti con tipo e nome (ad esempio: `arg1 integer, arg2 text`)     |
-| `return_type`   | Tipo di ritorno dichiarato dalla funzione (ad esempio: `integer`, `SETOF record`) |
-| `num_args`      | Numero di argomenti (calcolato in base alle virgole nella lista degli argomenti)  |
-| `comment`       | Testo del commento associato tramite `COMMENT ON FUNCTION` (se presente)          |
+* 2026-11-04 — `num_args` e `comment` si leggono dal catalogo. Prima `num_args` contava le
+  virgole dell'elenco degli argomenti, e sbagliava con un numerico con precisione e scala o un
+  valore predefinito con una virgola, e a zero argomenti era vuoto; `comment` si agganciava al
+  catalogo dei commenti per il solo identificativo, e poteva prendere il commento di un altro
+  oggetto o raddoppiare la riga (`brief-db-revisione-dbops`).
 
 ---
 
-### Esempi di Utilizzo
-
-1. **Elencare tutte le funzioni senza commento**:
-
-   ```sql
-   SELECT schema, function_name
-     FROM dbops.vw_function_list
-    WHERE comment IS NULL;
-   ```
-
-2. **Contare le funzioni per schema**:
-
-   ```sql
-   SELECT schema, COUNT(*) AS total_functions
-     FROM dbops.vw_function_list
-    GROUP BY schema;
-   ```
-
-3. **Trovare funzioni con più di 3 parametri**:
-
-   ```sql
-   SELECT schema, function_name, num_args
-     FROM dbops.vw_function_list
-    WHERE num_args > 3;
-   ```
-
-4. **Ricerca per nome e visualizzazione firma completa**:
-
-   ```sql
-   SELECT function_name, arguments, return_type
-     FROM dbops.vw_function_list
-    WHERE function_name ILIKE '%iva%';
-   ```
-
----
-
-### Vantaggi Operativi
-
-* **Manutenzione semplificata**: individua rapidamente funzioni non documentate.
-* **Analisi delle API interne**: mappa le signature disponibili per integrazioni o refactoring.
-* **Supporto al refactoring**: OID e overload chiaramente identificati consentono modifiche mirate.
-
----
-
-> **“Una panoramica centralizzata delle funzioni del database accelera il lavoro di sviluppo, auditing e documentazione del codice SQL.”**
+{% include-markdown "signature-core.md" %}

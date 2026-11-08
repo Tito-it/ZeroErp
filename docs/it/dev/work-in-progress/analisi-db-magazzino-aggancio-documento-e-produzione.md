@@ -15,6 +15,15 @@
 > **zero righe in tutte le tabelle operative**, quindi nessuna bonifica dati e
 > nessun vincolo storico da rispettare. Ciò che si decide qui si decide libero.
 >
+> ⚠️ **Superata per D-1, D-2, D-3, D-7 e D-9 (2026-11-08).** La provenienza del magazzino è passata al modello
+> unico in `brief-db-sorgente-documento-e-riga` (lotto M): il registro e le testate dicono il documento con
+> `sorgente_id` o `sorgente_uid` e la riga in `sorgente_riga`, col `CHECK` di forma `…_sorgente_forma` e il guard
+> unico `script.trgfn_guard_sorgente`; il «modello A», il guard tipizzato e i tipi di foglia (`INVENTARIO_RIGA`,
+> `RETTIFICA_RIGA`, `TRASFERIMENTO_RIGA`, `RESO_VENDITA_RIGA` e le righe di vendita) sono ritirati; gli UNIQUE
+> parziali vecchi delle quattro testate sono sostituiti. Il meccanismo è nella guida
+> [Sorgente polimorfa](../../guide/sorgente-polimorfa.md). Resta viva la sola **D-5** (l'ODL), che quando si apre
+> segue il modello unico.
+>
 > **Stato al 2026-09-26:** 🟡 **otto decisioni su nove PRESE e REALIZZATE; resta
 > aperta la sola D-5** (l'ODL sorgente o anello), che serve solo alla produzione.
 > ⚠️ Le §0 → §7 sono la **fotografia del 2026-09-01** e descrivono una struttura
@@ -295,6 +304,8 @@ si fa quando il dominio ha un ciclo di vita che il magazzino non deve conoscere.
 | **D-9** | **I due presidi che compensano il polimorfismo** (§8-bis): il tipo di sorgente vincolato al catalogo, e una **vista dei riferimenti orfani che deve restare vuota**. ⚠️ Sul ledger **non sono aggiungibili da soli**: presuppongono D-1 | il pattern è già di casa e si riusa; ma la parte sul ledger *è* la decisione D-1, non un'aggiunta sopra | ✅ **SÌ**, discende da D-1: FK + guard tipizzato sul ledger (Lotto 1); la vista degli orfani, generica su `config.sorgenti`, nel Lotto 2 con i suoi pgTAP |
 
 ### ✅ Realizzato — stato al 2026-09-26
+
+> ⚠️ Fotografia del 2026-09-26: per D-1, D-2, D-3, D-7 e D-9 lo stato di oggi è quello dell'avviso in testa.
 
 > Verificato sulla doc auto-generata (`docs/it/dbzero/magazzino/`, `dbzero/dbops/`),
 > sul CSV di `config.sorgenti` e sui brief chiusi. Sono letture di **struttura**.

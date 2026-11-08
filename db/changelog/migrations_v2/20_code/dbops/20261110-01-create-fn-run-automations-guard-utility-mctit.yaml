@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_run_automations_guard_utility: il runner del guard utility/tipo ruolo, che converge col registro
+#   (Q14 ⑬, D34, N1, N5): CREA, RIGENERA, TOGLIE, WARN COLUMN_MISSING, audit OK e DRYRUN; un guard che il
+#   registro non nomina ferma il giro con E_GUARD_UTILITY. Prima la famiglia non aveva un runner: la
+#   montava fn_apply_automazione_guard_utility_tipo_ruolo, solo dal primo giro di ci_apply. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-2 (§28).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-01-create-fn-run-automations-guard-utility-mctit.yaml
+
+  - changeSet:
+      id: 20261110-01-create-fn-run-automations-guard-utility
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_run_automations_guard_utility: il runner del guard utility. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-2 (§28).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_run_automations_guard_utility'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_guard_utility_divergenze(text,text[])')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_run_automations_guard_utility(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              /*
+                Scopo
+                Porta i trigger del guard utility/tipo ruolo (script.trgfn_guard_utility_tipo_ruolo_by_cols)
+                delle tabelle in scope allo stato che dichiara dbops.automazione_guard_utility_tipo_ruolo.
+                Il confronto fra atteso e vivo lo fa dbops.fn_guard_utility_divergenze: qui si esegue
+                l'azione.
+
+                Azioni
+                CREA              il trigger atteso
+                RIGENERA          toglie tutti i trigger vivi della funzione sulla tabella, qualunque nome
+                                  abbiano, e crea quello atteso
+                TOGLIE            toglie tutti i trigger vivi (la riga e' spenta)
+                COLONNA_MANCANTE  un salto dichiarato (WARN COLUMN_MISSING): toglie un eventuale vivo, non
+                                  monta niente
+
+                Trigger fuori dal registro
+                Un trigger della funzione su una tabella che il registro non nomina (SCONOSCIUTO) ferma il
+                giro con E_GUARD_UTILITY, prima di qualunque DDL: convergere lo cancellerebbe in silenzio.
+                Si aggiunge la riga (enabled = false se il guard va tolto).
+
+                DRY RUN
+                p_dry_run = true: nessuna DDL, l'azione nell'audit (dbops.fn_audit_log_once).
+              */
+              DECLARE
+                -- Il contesto dell'errore, costruito una volta e usato dalle due
+                -- chiamate del gestore (registro e involucro).
+                v_ctx_errore dbops.error_log.context%TYPE;
+                r record;
+                v_trg text;
+                v_sconosciuti text;
+              BEGIN
+                IF NOT p_dry_run THEN
+                  SELECT string_agg(d.schema_name||'.'||d.table_name||' ('||array_to_string(d.trigger_vivi, ', ')||')',
+                                    '; ' ORDER BY d.schema_name, d.table_name)
+                    INTO v_sconosciuti
+                    FROM dbops.fn_guard_utility_divergenze(p_exec_mode, p_schemas) AS d
+                   WHERE d.azione = 'SCONOSCIUTO';
+
+                  IF v_sconosciuti IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                        'database',
+                        'dbops.fn_run_automations_guard_utility',
+                        'E_GUARD_UTILITY',
+                        jsonb_build_object('where', 'GUARD_UTILITY_FUORI_REGISTRO', 'tabelle', v_sconosciuti),
+                        NULL::uuid,
+                        format('guard utility/tipo ruolo su tabelle che dbops.automazione_guard_utility_tipo_ruolo '
+                               'non nomina: %s. Aggiungere la riga (enabled = false se il guard va tolto) '
+                               'prima di convergere', v_sconosciuti));
+                  END IF;
+                END IF;
+
+                FOR r IN
+                  SELECT d.*
+                    FROM dbops.fn_guard_utility_divergenze(p_exec_mode, p_schemas) AS d
+                   ORDER BY d.schema_name, d.table_name
+                LOOP
+                  IF r.azione = 'COLONNA_MANCANTE' THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_guard_utility',
+                      p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'WARN' END,
+                      p_rule_type     => 'GUARD_UTILITY',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['GUARD_UTILITY'],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'table',                 r.schema_name||'.'||r.table_name,
+                                          'utility_column',        r.utility_column,
+                                          'soggetto_ruolo_column', r.soggetto_ruolo_column,
+                                          'trigger_vivi',          r.trigger_vivi,
+                                          'reason',                'COLUMN_MISSING'
+                                        ),
+                      p_message       => 'Skip: una colonna del guard non esiste'
+                    );
+                    IF p_dry_run OR cardinality(r.trigger_vivi) = 0 THEN
+                      CONTINUE;
+                    END IF;
+                  ELSIF p_dry_run THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_guard_utility',
+                      p_status        => 'DRYRUN',
+                      p_rule_type     => 'GUARD_UTILITY',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['GUARD_UTILITY'],
+                      p_dry_run       => true,
+                      p_params        => jsonb_build_object(
+                                          'table',                 r.schema_name||'.'||r.table_name,
+                                          'trigger',               r.trigger_atteso,
+                                          'utility_column',        r.utility_column,
+                                          'soggetto_ruolo_column', r.soggetto_ruolo_column,
+                                          'trigger_vivi',          r.trigger_vivi,
+                                          'action',                'DRYRUN_'||r.azione
+                                        ),
+                      p_message       => 'Guard utility: '||r.azione
+                    );
+                    CONTINUE;
+                  END IF;
+
+                  BEGIN
+                    FOREACH v_trg IN ARRAY r.trigger_vivi LOOP
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', v_trg, r.schema_name, r.table_name);
+                    END LOOP;
+
+                    IF r.azione IN ('CREA', 'RIGENERA') THEN
+                      EXECUTE format(
+                        'CREATE TRIGGER %I
+                         BEFORE INSERT OR UPDATE OF %I, %I ON %I.%I
+                         FOR EACH ROW
+                         EXECUTE FUNCTION script.trgfn_guard_utility_tipo_ruolo_by_cols(%L, %L)',
+                        r.trigger_atteso,
+                        r.utility_column, r.soggetto_ruolo_column,
+                        r.schema_name, r.table_name,
+                        r.utility_column, r.soggetto_ruolo_column);
+                    END IF;
+                  EXCEPTION WHEN others THEN
+                    -- ⭐ Un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente) si rilancia COM'E',
+                    --   col suo SQLSTATE, dopo averlo scritto nel registro errori; gli altri escono
+                    --   con E_GUARD_UTILITY.
+                    v_ctx_errore := jsonb_build_object(
+                        'where', 'GUARD_UTILITY',
+                        'table', r.schema_name||'.'||r.table_name,
+                        'azione', r.azione,
+                        'error', SQLERRM);
+                    IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+                      PERFORM script.fn_log_error_only(
+                          'database', 'dbops.fn_run_automations_guard_utility', 'E_GUARD_UTILITY',
+                          v_ctx_errore, NULL::uuid, SQLERRM);
+                      RAISE;
+                    END IF;
+                    PERFORM script.fn_log_and_raise_error(
+                        'database', 'dbops.fn_run_automations_guard_utility', 'E_GUARD_UTILITY',
+                        v_ctx_errore, NULL::uuid, SQLERRM);
+                  END;
+
+                  IF r.azione <> 'COLONNA_MANCANTE' THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_guard_utility',
+                      p_status        => 'OK',
+                      p_rule_type     => 'GUARD_UTILITY',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['GUARD_UTILITY'],
+                      p_dry_run       => false,
+                      p_params        => jsonb_build_object(
+                                          'table',                 r.schema_name||'.'||r.table_name,
+                                          'trigger',               r.trigger_atteso,
+                                          'utility_column',        r.utility_column,
+                                          'soggetto_ruolo_column', r.soggetto_ruolo_column,
+                                          'trigger_vivi',          r.trigger_vivi,
+                                          'action',                r.azione
+                                        ),
+                      p_message       => 'Guard utility: '||r.azione
+                    );
+                  END IF;
+                END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_guard_utility(text, text[], boolean) IS
+              'Porta i trigger del guard utility/tipo ruolo (script.trgfn_guard_utility_tipo_ruolo_by_cols) delle tabelle in scope allo stato di dbops.automazione_guard_utility_tipo_ruolo, con il confronto di dbops.fn_guard_utility_divergenze: CREA il trigger atteso (BEFORE INSERT OR UPDATE OF le due colonne, FOR EACH ROW), RIGENERA (toglie tutti i vivi della funzione sulla tabella e crea l''atteso), TOGLIE (riga spenta); una riga con una colonna che non esiste lascia WARN COLUMN_MISSING e toglie un eventuale vivo. Un trigger della funzione su una tabella che il registro non nomina ferma il giro con E_GUARD_UTILITY prima di qualunque DDL; si aggiunge la riga, con enabled = false se il guard va tolto. Ogni azione lascia una riga in dbops.audit_log: OK nel giro vero, DRYRUN nel dry run (nessuna DDL). p_exec_mode come gli altri runner (le righe di un altro modo non si toccano); p_schemas NULL = dbops.fn_resolve_scope. La chiama il job automations_guard_utility (maintenance.proc_automations_guard_utility_job), nella catena dei processi strutturali. Nel gestore un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente) si rilancia com''e'', col suo SQLSTATE; gli altri errori escono con E_GUARD_UTILITY.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_run_automations_guard_utility(text, text[], boolean);

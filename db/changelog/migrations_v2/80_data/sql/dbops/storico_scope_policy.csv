@@ -97,7 +97,6 @@ id,schema_tabella,nome_tabella,modo,colonna,padre_schema,padre_tabella,ragione,d
 98,vendite,commesse_sorgenti,PADRE,commessa_id,vendite,commesse,NULL,2026-09-11
 99,vendite,ddt,EF,emittente_fiscale_id,NULL,NULL,NULL,2026-09-11
 100,vendite,ddt_righe,PADRE,ddt_id,vendite,ddt,NULL,2026-09-11
-101,vendite,documenti_fatturazione_canali,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
 102,vendite,fatturazione_lotti,SR,emittente_soggetto_ruolo_id,NULL,NULL,NULL,2026-09-11
 103,vendite,fatturazione_lotti_esiti,PADRE,lotto_id,vendite,fatturazione_lotti,NULL,2026-09-11
 104,vendite,fatturazione_lotti_fatture,PADRE,lotto_id,vendite,fatturazione_lotti,NULL,2026-09-11
@@ -122,3 +121,4 @@ id,schema_tabella,nome_tabella,modo,colonna,padre_schema,padre_tabella,ragione,d
 123,vendite,ddt_righe_prelievi,PADRE,ddt_riga_id,vendite,ddt_righe,NULL,2026-09-29
 124,vendite,resi_righe_rientri,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-29
 125,dbops,processi_accensione,NESSUNO,NULL,NULL,NULL,"La scelta a mano di un'installazione sulla sveglia di un processo: dato di macchina senza emittente e senza row level security (letto il 2026-10-17). La storia dei gesti e' la stessa per tutti, come la riga (brief-db-processi-accensione-per-ambiente, S-1).",2026-10-17
+126,shop,ricevute,BA,billing_account_id,NULL,NULL,NULL,2026-11-07

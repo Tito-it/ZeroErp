@@ -54,7 +54,8 @@ SELECT plan(9);
 --   ⇒ Ogni caso chiede la sua partita DOPO aver costruito il mondo. Il
 --   suffisso random invece resta qui: non tocca il database.
 CREATE TEMP TABLE tmp_run_sfx AS
-SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx;
+-- rev 2026-11-04: upper() sul suffisso: il codice si salva in maiuscolo (automazione CODICE_MAIUSCOLO), e la ricerca per valore deve ricomporlo uguale.
+SELECT upper(substr(md5(clock_timestamp()::text), 1, 8)) AS sfx;
 
 -- =========================================================
 -- Precondizioni base: stato, tipo_contatto, tipi

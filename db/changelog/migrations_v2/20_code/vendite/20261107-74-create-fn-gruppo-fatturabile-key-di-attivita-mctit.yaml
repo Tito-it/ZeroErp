@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'UID DEL DOCUMENTO E LA CHIAVE DEL GRUPPO DI UNA RIGA DI COMMESSA:
+#   vendite.fn_documento_uid_di_attivita, vendite.fn_gruppo_fatturabile_key_di_attivita
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3 (D-6 precisata da Tid
+#   il 2026-11-07).
+#
+#   Dieci lettori costruivano la chiave del gruppo con la stessa espressione,
+#   fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id), e
+#   le viste di competenza esponevano ca.sorgente_uid come uid del documento. Dal 20261107-70
+#   sorgente_uid non porta piu' l'uid per i tipi a chiave id: la regola nuova («l'uid dalla
+#   chiave del push, solo con il tipo») serve a tutti e due, e si scrive una volta (regola
+#   del 2). I lettori la chiamano dal 20261107-89 in poi.
+#   La prima e' SQL in stringa, IMMUTABLE, per espandersi in linea nelle viste; la seconda
+#   BEGIN ATOMIC, da sola nel suo sql: (pgjdbc), con COMMENT e GRANT nel terzo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-74-create-fn-gruppo-fatturabile-key-di-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20261107-74-create-fn-gruppo-fatturabile-key-di-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_uid_di_attivita e vendite.fn_gruppo_fatturabile_key_di_attivita: l'uid
+        del documento e la chiave del gruppo fatturabile di una riga di commessa, dalla segment_key.
+        brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_documento_uid_di_attivita(
+                  p_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                  p_segment_key      vendite.commesse_attivita.segment_key%TYPE
+              )
+               -- l'uid in testo, come lo porta la chiave del push: per i tipi a chiave id nessuna
+               -- colonna della riga lo rispecchia
+               RETURNS text
+               LANGUAGE sql
+               IMMUTABLE
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: l'uid del documento da cui nasce una riga di commessa,
+              --   per qualunque tipo, dalla chiave del push (D-6). Senza tipo
+              --   NULL: una rettifica porta nella chiave l'uid del documento che
+              --   rettifica, ma non ne nasce.
+              -- Nessun SET: si espande in linea.
+              -- =========================================================
+              SELECT CASE WHEN p_sorgente_tipo_id IS NOT NULL
+                          THEN script.fn_segment_key_uid(p_segment_key) END;
+              $function$;
+              
+              COMMENT ON FUNCTION vendite.fn_documento_uid_di_attivita(vendite.commesse_attivita.sorgente_tipo_id%TYPE, vendite.commesse_attivita.segment_key%TYPE) IS
+                'L''uid del documento da cui nasce una riga di commessa (vendite.commesse_attivita), in testo, per qualunque tipo: dalla chiave del push (script.fn_segment_key_uid), che lo porta anche per i tipi a chiave id, dove la riga tiene l''id in sorgente_id. NULL per una riga senza tipo (ONERE manuale, RETTIFICA: la rettifica porta nella chiave l''uid del documento che rettifica, ma non ne nasce). E'' l''uid della chiave del gruppo fatturabile (vendite.fn_gruppo_fatturabile_key_di_attivita) e della colonna sorgente_uid di vendite.vw_dash_competenza_attivita. Che la chiave nomini proprio il documento della provenienza lo verifica trg_commesse_attivita_a10_guard_sorgente_segment_ins_upd. LANGUAGE sql IMMUTABLE senza SET: si espande in linea.';
+              
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_uid_di_attivita(vendite.commesse_attivita.sorgente_tipo_id%TYPE, vendite.commesse_attivita.segment_key%TYPE) TO zeroerp_app;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_gruppo_fatturabile_key_di_attivita(
+                  p_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                  p_segment_key      vendite.commesse_attivita.segment_key%TYPE,
+                  p_commessa_id      vendite.commesse_attivita.commessa_id%TYPE
+              )
+               RETURNS text
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  -- La chiave del gruppo di una riga di commessa: il tipo della provenienza, l'uid del
+                  -- documento dalla chiave del push (D-6), la commessa per le righe senza documento.
+                  SELECT vendite.fn_build_gruppo_fatturabile_key(
+                             p_sorgente_tipo_id,
+                             vendite.fn_documento_uid_di_attivita(p_sorgente_tipo_id, p_segment_key),
+                             p_commessa_id);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_gruppo_fatturabile_key_di_attivita(vendite.commesse_attivita.sorgente_tipo_id%TYPE, vendite.commesse_attivita.segment_key%TYPE, vendite.commesse_attivita.commessa_id%TYPE) IS
+                'La chiave del gruppo fatturabile di una riga di commessa (vendite.commesse_attivita), dai suoi tipo, segment_key e commessa: ''<codice_interno del tipo>:<uid del documento>'' per una riga con documento, ''MAN:<commessa_id>'' per una senza (oneri, rettifiche). L''uid lo da'' vendite.fn_documento_uid_di_attivita, dalla chiave del push; la forma la decide vendite.fn_build_gruppo_fatturabile_key, l''unico costruttore. La usano le viste di emissione e di competenza, i lotti e i filtri p_gruppi: ognuna passa ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id, e cosi'' la chiave e'' la stessa ovunque. Solleva quello che solleva il costruttore: una riga con tipo e una chiave senza uid e'' E_PARAMETRO_INVALIDO. BEGIN ATOMIC: le dipendenze stanno in pg_depend.';
+              
+              GRANT EXECUTE ON FUNCTION vendite.fn_gruppo_fatturabile_key_di_attivita(vendite.commesse_attivita.sorgente_tipo_id%TYPE, vendite.commesse_attivita.segment_key%TYPE, vendite.commesse_attivita.commessa_id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION vendite.fn_gruppo_fatturabile_key_di_attivita(vendite.commesse_attivita.sorgente_tipo_id%TYPE, vendite.commesse_attivita.segment_key%TYPE, vendite.commesse_attivita.commessa_id%TYPE);
+              DROP FUNCTION vendite.fn_documento_uid_di_attivita(vendite.commesse_attivita.sorgente_tipo_id%TYPE, vendite.commesse_attivita.segment_key%TYPE);

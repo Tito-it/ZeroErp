@@ -77,7 +77,8 @@ BEGIN
                  WITH ORDINALITY AS r(articolo_id, articolo_codice, descrizione, is_composito,
                                       quantita, uom_operativa_id, qta_operativa, factor_to_base,
                                       prezzo_unitario, sconto_percentuale, iva_id,
-                                      tipo_eccezione, origine, componenti, riga_nr)
+                                      tipo_eccezione, origine, componenti, eccezione_id,
+                                      riga_nr)
       ) g
      WHERE g.motivo IS NOT NULL;
 
@@ -86,7 +87,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_righe_offerta_in_ordine(p_offerta_id bigint)
-IS 'Check (fn_check_*): le righe di un''offerta che non possono diventare righe d''ordine. Ogni riga di vendite.fn_offerta_righe_espanse (quelle che vendite.fn_genera_ordine_da_offerta copia) giudicata come riga di ORDINE_VENDITA da script.fn_check_riga_documento_su_contesto (contesto senza id: l''ordine non esiste ancora; natura dell''articolo). Un motivo per riga, nell''ordine delle righe espanse; ''[]'' = l''ordine si puo'' generare. Motivo: codice E_DOC_RIGA_NON_AMMESSA, reason RIGA_NON_AMMESSA, reason_key common.azione_reason.riga_non_ammessa, valori [''Ordine dall''''offerta <codice>'', codice dell''articolo], dettaglio {campo articolo_id, documento ORDINE_VENDITA, offerta_id, riga_nr (posizione, 1 = la prima), origine, tipo_eccezione, articolo_id, motivo_riga}. Lettori: script.fn_available_actions_offerta (can_genera_ordine) e vendite.fn_genera_ordine_da_offerta (rifiuta col primo motivo prima di scrivere); il guard delle righe d''ordine (script.trgfn_righe_guard_articolo_ammesso) resta la rete. STABLE, SECURITY INVOKER. Nasce il 2026-10-21 (20261021-54), brief-db-offerta-emissione-ed-erogazione §I.2, I-D2 di Tid.';
+IS 'Check (fn_check_*): le righe di un''offerta che non possono diventare righe d''ordine. Ogni riga di vendite.fn_offerta_righe_espanse e'' giudicata come riga di ORDINE_VENDITA da script.fn_check_riga_documento_su_contesto (contesto senza id, perche'' l''ordine non esiste ancora; natura dell''articolo). Un motivo per riga, nell''ordine delle righe espanse; ''[]'' = l''ordine si puo'' generare. Motivo: codice E_DOC_RIGA_NON_AMMESSA, reason RIGA_NON_AMMESSA, reason_key common.azione_reason.riga_non_ammessa, valori [''Ordine dall''offerta <codice>'', codice dell''articolo], dettaglio {campo articolo_id, documento ORDINE_VENDITA, offerta_id, riga_nr (posizione, 1 = la prima), origine, tipo_eccezione, articolo_id, motivo_riga}. Lettori: script.fn_available_actions_offerta (can_genera_ordine) e vendite.fn_genera_ordine_da_offerta, che rifiuta col primo motivo prima di scrivere; il guard delle righe d''ordine (script.trgfn_righe_guard_articolo_ammesso) resta la rete. STABLE, SECURITY INVOKER.';
 ```
 
 </div>

@@ -1,143 +1,122 @@
-## 📘 Documentazione Concettuale – Trigger Function `dbops.trgfn_tx_id_managed()`
+## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_tx_id_managed`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento Tabelle:   
+> Approfondimento tabelle:
 >
-[dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
+> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids) — il registro in cui si verifica l'id della sessione
+> * [config.parameters](/dbzero/config/tabelle/parameters) — il parametro `tx_id_bypass_enabled`
 >
-Approfondimento funzioni :    
+> Approfondimento funzioni:
 >
-[dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
-> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) — dà l'id quando la sessione non ne ha
+> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) — monta questo trigger sulle tabelle
+> * [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) — registra gli avvisi senza sollevare
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva gli errori veri
+> * [script.uuid_nil](/dbzero/script/funzioni/uuid_nil) — la sentinella
+>
+> Guide:
+>
+> * [Transaction ID](/guide/tx_id_implementation_guide) — il disegno completo del `tx_id`
+> * [Messaggi di errore e generazione log](/guide/Messaggi-di-Errore-e-Generazione-Log) — la convenzione `E_` / `W_`
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 01-01-26)
-La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su ogni tabella che contiene la colonna `tx_id` e centralizza la **logica di validazione**, **generazione** e **assegnazione** dell’**UUID di transazione** per la riga in corso di inserimento/aggiornamento.
+
+Il trigger `BEFORE INSERT OR UPDATE` che dà a ogni riga di una tabella tracciata il **`tx_id`
+della transazione**: se la riga ne porta già uno lo lascia com'è, altrimenti prende quello della
+sessione, verificato nel registro, o ne fa generare uno.
+
+Lo monta l'automazione dei transaction id su ogni tabella con una colonna `tx_id` di tipo UUID; il
+nome del trigger viene dal modello della regola.
 
 ---
 
-### 🎯 Obiettivi e Ruolo
+### ⭐ Una riga che porta il suo `tx_id` esce subito
 
-1. **Bypass configurabile**: permette di saltare la generazione e verifica del `tx_id` in contesti speciali (es. test, migrazioni, debug).
-2. **Validazione integrità**: garantisce che un `tx_id` presente in sessione esista già in `dbops.transaction_ids`, altrimenti segnala un warning e resetta a `nil`.
-3. **Generazione on-demand**: se non è presente alcun `tx_id` in sessione e il bypass è disabilitato, invoca `dbops.fn_get_or_create_session_tx_id()` per creare un nuovo identificativo.
-4. **Assegnazione uniforme**: popola la colonna `NEW.tx_id` con il valore deciso dal flusso, assicurando coerenza transazionale.
+Se `NEW.tx_id` è valorizzato, la funzione esce senza leggere il parametro del bypass né toccare le
+funzioni di `script`: tutto il resto serve solo a calcolare il valore quando manca. È anche ciò che
+permette al canale di log, che scrive sempre il proprio `tx_id` e ha diritti sul solo schema
+`dbops`, di scrivere senza fallire per permessi.
 
----
-
-### Variabili di Contesto e Configurazione
-
-| Variabile                              | Scopo                                                                                                                         |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `tx_id_bypass_enabled`                 | Parametro (`config.parameters`) che abilita il bypass completo: se `TRUE`, non viene generato né verificato un nuovo `tx_id`. |
-| `app.bypass_tx_id_check`               | GUC di sessione: può essere usata per override temporanei del bypass senza cambiare il parametro globale.                     |
-| `current_setting('dbops.tx_id', TRUE)` | Legge il valore di `tx_id` salvato in sessione, se presente; altrimenti solleva eccezione interna.                            |
-| `script.uuid_nil()`                    | Funzione helper che restituisce l’UUID nil (`00000000-0000-0000-0000-000000000000`).                                          |
+La normalizzazione della stringa vuota sta prima dell'uscita, ed è un ordine vincolante.
 
 ---
 
-### Flusso di Esecuzione Dettagliato
+### Quando la riga non ha `tx_id`
 
-1. **Verifica bypass globale**
+1. **Il bypass.** Si legge `tx_id_bypass_enabled` in `config.parameters`; se non accende il
+   bypass, si legge sempre l'override di sessione `myapp.bypass_tx_id_check`. Con il bypass attivo nessun id si
+   genera né si verifica: vale quello della sessione, o la sentinella nulla.
+2. **L'id della sessione.** Se il GUC `dbops.tx_id` è pubblicato, deve esistere in
+   `dbops.transaction_ids`: se c'è si usa.
+3. **Nessun id in sessione.** Lo chiede a `dbops.fn_get_or_create_session_tx_id`, che lo genera e
+   lo registra fuori transazione, o restituisce la sentinella se il canale non c'è.
 
-   * Legge `config.parameters` per il parametro `tx_id_bypass_enabled`.
-   * In caso di mancanza o di errore, logga via `fn_log_and_raise_error` e prosegue con bypass disabilitato.
-
-2. **Override bypass a sessione**
-
-   * Se il bypass non è già abilitato, prova a leggere `app.bypass_tx_id_check` dalla GUC di sessione.
-   * Eventuali errori di lettura vengono ignorati (assume bypass disabilitato).
-
-3. **Recupero `tx_id` di sessione**
-
-   * Tenta `current_setting('dbops.tx_id', TRUE)` per ottenere un `tx_id` già presente in sessione.
-   * In caso di errore o non esistenza, `v_session_tx_id` = `NULL`.
-
-4. **Determinazione del nuovo `tx_id`**
-
-   * **Bypass attivo**: usa `v_session_tx_id` se esistente, altrimenti `uuid_nil()`.
-   * **Bypass disabilitato**:
-
-     * **Se `v_session_tx_id` non è NULL**: verifica in `dbops.transaction_ids`.
-
-       * Se esiste, lo riutilizza.
-       * Se non esiste, logga warning (`W_TXID_NOT_REGISTERED`) e assegna `uuid_nil()`.
-     * **Se `v_session_tx_id` è NULL**: genera uno nuovo con `dbops.fn_get_or_create_session_tx_id()`.
-
-       * In caso di errori di generazione, logga errore (`E_TXID_GENERATION`) e usa `uuid_nil()`.
-
-5. **Assegnazione a NEW\.tx\_id**
-
-   ```plpgsql
-   NEW.tx_id := v_new_tx_id;
-   ```
-
-   Garantisce che ogni riga inserita o aggiornata abbia sempre un `tx_id` valido secondo la logica centralizzata.
+⚠️ Se la riga `tx_id_bypass_enabled` manca dalla tabella dei parametri, il bypass vale **spento**:
+la funzione scrive l'avviso `W_TXID_BYPASS_PARAMETRO_ASSENTE` nel log, non ferma la scrittura, e
+l'override di sessione si legge comunque.
 
 ---
 
-### 🔖 Esempio di Trigger DDL
+### ⚠️ L'id non registrato avverte, e non blocca
 
-```sql
-DROP TRIGGER IF EXISTS trg_managed_tx_id ON my_schema.my_table;
-CREATE TRIGGER trg_managed_tx_id
-  BEFORE INSERT OR UPDATE
-  ON my_schema.my_table
-  FOR EACH ROW
-  EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
-```
+Se il GUC contiene un id che il registro non conosce, la funzione registra `W_TXID_NOT_REGISTERED`
+e prosegue: è un avviso, come dice il prefisso. Il caso non dovrebbe presentarsi, perché
+`dbops.fn_get_or_create_session_tx_id` pubblica solo id registrati: succede se qualcuno imposta il
+GUC a mano.
 
----
-
-### Vantaggi Operativi
-
-* **Centralizzazione logica**: nessuna duplicazione di codice di generazione/validazione del `tx_id` across tabelle.
-* **Flessibilità**: gestisce bypass globali e di sessione per scenari di test, migrazione o debug.
-* **Affidabilità**: verifica sempre l’esistenza del `tx_id` e assicura fallback pulito a `uuid_nil()`.
-* **Tracciabilità avanzata**: associa ogni record al giusto `tx_id`, mantenendo coerenza con il registro centrale `transaction_ids`.
+La riga riceve la **sentinella** `script.uuid_nil()`, non l'id non registrato: il valore assegnato
+è sempre quello calcolato dai rami, e il GUC non si rilegge alla fine. Un GUC che non è un uuid vale
+assente, e l'id si genera come senza GUC. Col bypass, invece, il GUC pubblicato si usa così com'è:
+il bypass è la deroga che salta la verifica.
 
 ---
 
-### 🛠️ Nota di manutenzione — 22-07-2026
+### Codici errore
 
-**Cosa è stato fatto.** Il ramo «`tx_id` di sessione presente ma assente dal
-registro» ora **avverte e prosegue**, come questo manuale ha sempre descritto
-(«logga warning `W_TXID_NOT_REGISTERED` e assegna `uuid_nil()`»). Prima
-**sollevava**. Migration `20260722-11`.
-
-**Perché era un difetto e non una scelta.** Il ramo usava
-`script.fn_log_and_raise_error`, che logga *e solleva*, dove serviva
-`script.fn_log_error_only`, che logga soltanto. La prova sta nel codice: subito
-dopo la chiamata c’era già `v_new_tx_id := script.uuid_nil();` — **una riga
-irraggiungibile**, perché la funzione precedente non tornava mai. Tre fonti
-indipendenti descrivevano il comportamento non bloccante — il commento nel
-codice, questo manuale, e la guida `tx_id_implementation_guide.md` — contro
-un’unica riga di codice che faceva il contrario.
-
-**Non era stato allentato da nessuno.** Verificato sulle quattro versioni
-storiche del trigger (`20250707-21`, `20250814-01`, `20251031-11`,
-`20251114-04`): il ramo è identico in tutte, riga morta compresa. La discrepanza
-è nata con la prima versione ed è stata ricopiata fedelmente.
-
-**Convenzione applicata.** `E_` = errore bloccante (`fn_log_and_raise_error`),
-`W_` = avvertimento (`fn_log_error_only`). Dopo la modifica il trigger la
-rispetta: `E_SQL_READ_TABLE` ed `E_TXID_GENERATION` restano bloccanti — sono
-errori veri — mentre `W_TXID_NOT_REGISTERED` avverte davvero. Il codice **non**
-è stato rinominato in `E_`: il nome era già giusto, era il comportamento a non
-rispettarlo. Regola completa in
-[Messaggi di errore e generazione log](/it/guide/Messaggi-di-Errore-e-Generazione-Log).
-
-**Dettaglio residuo, innocuo.** L’assegnazione finale è
-`COALESCE(GUC dbops.tx_id, v_new_tx_id, uuidv7())`: la GUC ha la precedenza su
-`v_new_tx_id`, quindi in questo ramo il valore scritto è l’id della GUC, non
-`uuid_nil`. Dopo la correzione di
-[dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/manual/fn_get_or_create_session_tx_id)
-la GUC può contenere **solo** id registrati, quindi il caso non si presenta se
-non impostandola a mano.
-
-Verifiche: `db/pgtap/dbops/test-tx-id-coerenza-non-registrato.sql` (7 test).
-Approfondimento: `brief-db-coerenza-tx-id-non-registrato.md`.
+* `E_SQL_READ_TABLE` — la lettura di `config.parameters` fallisce (per esempio per permessi): è
+  bloccante, e la scrittura della riga si ferma.
+* `W_TXID_BYPASS_PARAMETRO_ASSENTE` — il parametro del bypass non c'è: il bypass vale spento;
+  registrato, non sollevato.
+* `W_TXID_NOT_REGISTERED` — l'id pubblicato nella sessione non è nel registro: registrato, non
+  sollevato.
+* `E_TXID_GENERATION` — la generazione dell'id fallisce con un errore: è bloccante.
 
 ---
 
-> **“`trgfn_tx_id_managed` è il cuore della gestione transazionale in Zero ERP: garantisce consistenza, controlli configurabili e fallback sicuri, mantenendo la logica di correlazione centralizzata.”**
+### Test
+
+* `db/pgtap/dbops/test-tx-id-coerenza-non-registrato.sql` — senza canale una scrittura tracciata
+  riesce con la sentinella; un GUC forzato a un id non registrato non blocca la scrittura, e la
+  riga porta la sentinella; con il
+  bypass la scrittura riesce; un `tx_id` esplicito si conserva tale e quale, anche con il GUC
+  avvelenato; l'uscita anticipata sta prima della lettura dei parametri.
+* `db/pgtap/dbops/test-tx-id-bypass-parametro-assente-v1.sql` — senza la riga del parametro il
+  corpo scrive `W_TXID_BYPASS_PARAMETRO_ASSENTE` (non più un codice `E_`), porta il bypass a
+  spento, e una scrittura tracciata passa col bypass di sessione; il codice è registrato come
+  avviso.
+
+---
+
+### Note di migrazione
+
+* 2026-07-22 — il ramo dell'id non registrato avverte e prosegue: prima sollevava, perché usava la
+  funzione che registra e solleva al posto di quella che registra soltanto, e la riga che assegnava
+  la sentinella era irraggiungibile. La discrepanza c'era fin dalla prima versione
+  (`brief-db-coerenza-tx-id-non-registrato`).
+* 2026-07-24 — l'uscita anticipata sale in testa: prima la funzione faceva tutto il giro anche per
+  le righe che portavano il proprio `tx_id` (`brief-db-tx-id-uscita-anticipata`).
+* 2026-11-08 — l'assegnazione finale non rilegge più il GUC: prima l'id non registrato vinceva
+  sulla sentinella, e un GUC malformato faceva fallire la scrittura (`20261109-58`,
+  brief-db-revisione-dbops D12-bis).
+* 2026-11-08 — senza la riga del parametro il bypass vale spento e l'override di sessione si
+  legge: prima il bypass restava indefinito, l'override si ignorava, e si scriveva
+  `E_ERRORE_PARAMETRI_TABELLA`, un codice `E_` che non fermava niente.
+
+---
+
+{% include-markdown "signature-core.md" %}

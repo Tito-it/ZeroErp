@@ -371,6 +371,7 @@ async function save() {
             <label>{{ t('amministrazione.emittenti_fiscali.field_codice') }} *</label>
             <InputText
               v-model="form.codice"
+              class="app-codice-input"
               :disabled="isEdit"
               :maxlength="FIELD_LENGTH.EMITTENTE_CODICE_MAX"
               :invalid="campiErrati.includes('codice')"

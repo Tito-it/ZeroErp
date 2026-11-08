@@ -4,3 +4,4 @@ id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,
 3,MAGGIORAZIONE_URGENZA,MAGGIORAZIONE_URGENZA,Maggiorazione per urgenza,true,30,{},2026-07-21 00:00:00+02,SEED,2026-07-21 00:00:00+02,SEED
 4,SPESE_AMMINISTRATIVE,SPESE_AMMINISTRATIVE,Spese amministrative / diritti fissi,true,40,{},2026-07-21 00:00:00+02,SEED,2026-07-21 00:00:00+02,SEED
 5,PENALE,PENALE,Penale contrattuale,true,50,{},2026-07-21 00:00:00+02,SEED,2026-07-21 00:00:00+02,SEED
+6,TRASPORTO,TRASPORTO,Spese di trasporto,true,60,{},2026-11-03 00:00:00+01,SEED,2026-11-03 00:00:00+01,SEED
