@@ -348,7 +348,7 @@ search:
 - [trgfn_dlt_block_ordrig_ddtrig](manual/trgfn_dlt_block_ordrig_ddtrig.md) — **Traduce in una frase il rifiuto di togliere una riga di documento — di un DDT o di un ordine — che ha legami a valle.**
 - [trgfn_doc_guard_annullo_con_legami](manual/trgfn_doc_guard_annullo_con_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-1/D-4/D-5)
 - [trgfn_doc_guard_chiusura_sorgente](manual/trgfn_doc_guard_chiusura_sorgente.md) — (latest review 26-08-2026)
-- [trgfn_doc_guard_delete_solo_bozza](manual/trgfn_doc_guard_delete_solo_bozza.md) — **Un documento si elimina solo se è una bozza vuota**: in bozza, e senza righe attive.
+- [trgfn_doc_guard_delete_solo_bozza](manual/trgfn_doc_guard_delete_solo_bozza.md) — **Un documento si elimina solo se è una bozza vuota**: nello stato in cui nasce, e senza contenuto.
 - [trgfn_doc_righe_lock_fuori_bozza](manual/trgfn_doc_righe_lock_fuori_bozza.md) — **Le righe di un documento si aggiungono, modificano e tolgono solo finché il documento è in bozza.**
 - [trgfn_doc_snapshot_da_stato](manual/trgfn_doc_snapshot_da_stato.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-6)
 - [trgfn_doc_testata_lock_fuori_bozza](manual/trgfn_doc_testata_lock_fuori_bozza.md) — **Alcune colonne della testata di un documento si scelgono solo finché il documento è in bozza.**

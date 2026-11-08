@@ -5211,6 +5211,8 @@
       "col_asset_seriale": "Serial",
       "col_sorgente_codice_interno": "Source",
       "col_sorgente_riga": "Source line",
+      "col_sorgente_id": "Source document",
+      "col_sorgente_dettaglio": "Source detail",
       "col_magazzino_descrizione": "Warehouse description",
       "col_storno_di_movimento_id": "Reversal of",
       "col_user_insert": "Created by",

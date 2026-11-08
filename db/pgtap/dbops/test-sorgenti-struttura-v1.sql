@@ -10,9 +10,15 @@
 --   dbops.fn_sorgenti_orfane_perimetro (20261106-20).
 --
 -- ⭐ IL DEBITO DELLA TRANSIZIONE E' UN ELENCO CHIUSO (test 2). Ogni lotto di famiglia
---   monta il guard sulle sue tabelle e le TOGLIE da qui nello stesso giro; il lotto Z
---   lo trova vuoto. Una tabella nuova con la provenienza e senza il guard fa rosso:
---   non entra nel debito, entra col guard. ⛔ L'elenco non si allunga.
+--   monta il guard sulle sue tabelle e le TOGLIE da qui nello stesso giro. Una tabella
+--   nuova con la provenienza e senza il guard fa rosso: non entra nel debito, entra col
+--   guard. ⛔ L'elenco non si allunga.
+--   ⭐ L'ELENCO FINALE del cantiere (lotto Z, giro Z.4, 2026-11-08): le quattro tabelle
+--   degli acquisti, passate al cantiere degli acquisti (analisi-simmetria-ordini-acquisto
+--   §4.6-bis), che le toglie da qui nel giro che porta la loro provenienza al modello.
+--   Sono le sole lette dal ramo TESTUALE di dbops.fn_sorgenti_orfane (la chiave in
+--   sorgente_uid, con la regola del ponte): il ramo si ritira con loro. Le due esenzioni
+--   del test 1 restano fuori dal guard per ragioni proprie, non per debito.
 --   rev 2026-11-06: il lotto R (20261106-57) toglie le quattro righe di vendita
 --   (preventivi, ordini, bolle, contratti); fatture_righe passa al lotto C.
 --   rev 2026-11-06: il lotto T, giro T.1 (20261106-61), toglie il registro dei
@@ -34,6 +40,10 @@
 --   rev 2026-11-09: il lotto M, giro M.2 (20261109-16), monta il guard unico sulle testate di
 --     magazzino e sull'evento, che escono dal debito; il guard tipizzato, rimasto senza
 --     montaggi, si ritira (20261109-19): il test 4 verifica che non esista piu'.
+--   rev 2026-11-08: il lotto Z, giro Z.4: l'elenco finale (sopra); il test 2 dice anche la
+--     grammatica, TESTUALE, che quelle quattro tabelle tengono in vita; il test 1 legge
+--     schema e nome dal perimetro, non regclass::text (rosso con lo schema nel search_path
+--     di chi lancia, la trappola gia' tolta al test 2).
 --
 -- Elenco test (plan 5):
 --   1) dal guard sono esenti il log dei reconcile (D-9) e la coda di stampa (D-3), col motivo
@@ -52,7 +62,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(5);
 
 SELECT results_eq(
-    $$SELECT tabella::text COLLATE "default", length(guard_esente_perche) >= 40
+    $$SELECT (schema_tabella || '.' || nome_tabella)::text COLLATE "default", length(guard_esente_perche) >= 40
         FROM dbops.fn_sorgenti_orfane_perimetro()
        WHERE guard_esente_perche IS NOT NULL
        ORDER BY 1$$,
@@ -61,7 +71,7 @@ SELECT results_eq(
 
 -- Il debito, per lotto. Si toglie, non si aggiunge.
 SELECT results_eq(
-    $$SELECT (schema_tabella || '.' || nome_tabella)::text COLLATE "default"
+    $$SELECT (schema_tabella || '.' || nome_tabella)::text COLLATE "default", grammatica
         FROM dbops.fn_sorgenti_orfane_perimetro()
        WHERE grammatica <> 'UNICO'
          AND guard_esente_perche IS NULL
@@ -70,7 +80,8 @@ SELECT results_eq(
     $$VALUES
         -- acquisti: passati al cantiere degli acquisti (analisi-simmetria-ordini-acquisto §4.6-bis),
         -- che li toglie da qui nel giro che porta la provenienza al modello
-        ('acquisti.ddt'), ('acquisti.ddt_righe'), ('acquisti.ordini'), ('acquisti.ordini_righe')$$,
+        ('acquisti.ddt', 'TESTUALE'), ('acquisti.ddt_righe', 'TESTUALE'),
+        ('acquisti.ordini', 'TESTUALE'), ('acquisti.ordini_righe', 'TESTUALE')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
 SELECT is_empty(

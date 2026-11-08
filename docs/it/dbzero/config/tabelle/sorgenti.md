@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | codice_interno | character varying(50) | NO |  |
 | codice | character varying(50) | NO |  |
-| categoria | character varying(24) | YES |  |
+| categoria | character varying(24) | NO |  |
 | descrizione | character varying(160) | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -35,6 +35,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_sorgenti_categoria |  |
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
 | CHECK | chk_sorgenti_dettaglio_coppia |  |
 | CHECK | chk_sorgenti_dettaglio_fk_column_identificatore |  |

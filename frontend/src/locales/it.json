@@ -5211,6 +5211,8 @@
       "col_asset_seriale": "Seriale",
       "col_sorgente_codice_interno": "Sorgente",
       "col_sorgente_riga": "Riga sorgente",
+      "col_sorgente_id": "Documento sorgente",
+      "col_sorgente_dettaglio": "Dettaglio sorgente",
       "col_magazzino_descrizione": "Descrizione magazzino",
       "col_storno_di_movimento_id": "Storno di",
       "col_user_insert": "Registrato da",

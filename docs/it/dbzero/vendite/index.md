@@ -398,7 +398,7 @@ search:
 - [trgfn_doc_fornitura_segue_cliente](funzioni/trgfn_doc_fornitura_segue_cliente.md)
 - [trgfn_doc_guard_annullo_con_legami](funzioni/trgfn_doc_guard_annullo_con_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-1/D-4/D-5)
 - [trgfn_doc_guard_chiusura_sorgente](funzioni/trgfn_doc_guard_chiusura_sorgente.md) — (latest review 26-08-2026)
-- [trgfn_doc_guard_delete_solo_bozza](funzioni/trgfn_doc_guard_delete_solo_bozza.md) — **Un documento si elimina solo se è una bozza vuota**: in bozza, e senza righe attive.
+- [trgfn_doc_guard_delete_solo_bozza](funzioni/trgfn_doc_guard_delete_solo_bozza.md) — **Un documento si elimina solo se è una bozza vuota**: nello stato in cui nasce, e senza contenuto.
 - [trgfn_doc_indirizzi_guard_cliente](funzioni/trgfn_doc_indirizzi_guard_cliente.md)
 - [trgfn_doc_indirizzi_seguono_cliente](funzioni/trgfn_doc_indirizzi_seguono_cliente.md)
 - [trgfn_doc_righe_lock_fuori_bozza](funzioni/trgfn_doc_righe_lock_fuori_bozza.md) — **Le righe di un documento si aggiungono, modificano e tolgono solo finché il documento è in bozza.**
