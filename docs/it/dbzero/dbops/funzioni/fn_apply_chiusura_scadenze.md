@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_apply_chiusura_scadenze`
 
 ```sql
-CREATE FUNCTION fn_apply_chiusura_scadenze(p_classe text)
+CREATE FUNCTION fn_apply_chiusura_scadenze()
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_apply_chiusura_scadenze(p_classe text)
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_apply_chiusura_scadenze(p_classe text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION dbops.fn_apply_chiusura_scadenze()
  RETURNS jsonb
  LANGUAGE plpgsql
 AS $function$
@@ -30,16 +30,19 @@ AS $function$
           --   3. Aggregazione conteggio in JSONB.
           --   4. Audit log dell'esito.
           --
-          -- Le testate sotto la porta del modello del documento (rev
-          --   2026-10-26, 20261026-08, brief-modello-documento-vendita §11,
-          --   Y-2): lo stato lo scrive solo un verbo, e l'UPDATE dinamico
-          --   sarebbe rifiutato (E_DOC_STATO_SOLO_DAL_VERBO). Per loro il
-          --   framework chiama il verbo di chiusura della testata, dichiarato
-          --   in verbo_chiusura del registro (rev 2026-10-28); una testata
-          --   sotto la porta senza verbo di chiusura e' una configurazione
-          --   non valida. La GUC app.cessazione_automatica e' ritirata: la
-          --   accendeva qui per il guard del contratto, e la poteva accendere
-          --   chiunque.
+          -- Classe: il registro ammette solo bersagli DOMINIO
+          --   (chk_automazione_chiusura_scadenze_classe), che il chiamante
+          --   lavora con l'identita' e la RLS di ogni azienda. Un bersaglio di
+          --   un'altra classe chiede un esecutore che non c'e': il motore lo
+          --   rifiuta (motivo classe_senza_esecutore).
+          --
+          -- Porta e verbo, valutati PRIMA del dispatch e per ogni tipo_stato:
+          --   - un verbo di chiusura dichiarato si usa sempre: e' la porta del
+          --     dominio, e lo stato lo scrive lui;
+          --   - una testata sotto la porta (script.trgfn_doc_stato_solo_dal_verbo)
+          --     senza verbo e' una configurazione non valida: l'UPDATE dinamico
+          --     sarebbe rifiutato (E_DOC_STATO_SOLO_DAL_VERBO);
+          --   - senza porta e senza verbo: UPDATE dinamico.
           --
           -- Sicurezza SQL dinamico:
           --   - format(%I) per identificatori (quote_ident implicito)
@@ -58,23 +61,33 @@ AS $function$
               v_id_attivo        bigint;
               v_col_count        smallint;
               v_verbo            regprocedure;  -- il verbo di chiusura, risolto dal catalogo
+              v_porta            boolean;       -- la testata e' sotto la porta degli stati
           BEGIN
               FOR v_row IN
                   SELECT *
                     FROM dbops.automazione_chiusura_scadenze
                    WHERE attivo = TRUE
-                     -- ⭐ Filtro di CLASSE (2026-09-04). p_classe NULL = tutte, che e'
-                     --   il comportamento storico: il job pgAgent chiama senza argomenti
-                     --   e continua a lavorare tutto. Quando i bersagli di DOMINIO
-                     --   migreranno sulla coda, il chiamante passera' la propria classe
-                     --   e i due mondi smetteranno di mescolarsi.
-                     -- ⛔ Il vero cancello NON e' questo filtro: e' il NOT NULL su
-                     --   `classe` (changeSet -45). Una riga nuova nel CSV deve
-                     --   dichiarare di che natura e', o non entra nemmeno in tabella.
-                     AND (p_classe IS NULL OR classe = p_classe)
                    ORDER BY id
               LOOP
                   v_target_key := v_row.schema_tabella || '.' || v_row.nome_tabella;
+
+                  -- 0) Classe: solo DOMINIO ha un esecutore.
+                  IF v_row.classe IS DISTINCT FROM 'DOMINIO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_apply_chiusura_scadenze',
+                          'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                          jsonb_build_object(
+                              'config_id', v_row.id,
+                              'target',    v_target_key,
+                              'classe',    v_row.classe,
+                              'motivo',    'classe_senza_esecutore'
+                          ),
+                          NULL::uuid,
+                          v_target_key,
+                          'il bersaglio non e'' di classe DOMINIO, e per le altre classi non c''e'' un esecutore'
+                      );
+                  END IF;
 
                   -- =====================================================
                   -- 1) Pre-check: tabella e colonne target
@@ -128,9 +141,58 @@ AS $function$
                   END IF;
 
                   -- =====================================================
+                  -- 1-bis) Porta e verbo, per ogni tipo_stato
+                  -- =====================================================
+                  v_porta := EXISTS (
+                      SELECT 1 FROM pg_catalog.pg_trigger tg
+                       WHERE tg.tgrelid = to_regclass(format('%I.%I', v_row.schema_tabella, v_row.nome_tabella))
+                         AND tg.tgfoid  = 'script.trgfn_doc_stato_solo_dal_verbo()'::regprocedure
+                         AND NOT tg.tgisinternal);
+
+                  v_verbo := NULL;
+                  IF v_row.verbo_chiusura IS NOT NULL THEN
+                      -- Una funzione viva, senza argomenti: l'identificatore lo
+                      -- da' il catalogo, non il testo del registro.
+                      v_verbo := to_regprocedure(v_row.verbo_chiusura || '()');
+                      IF v_verbo IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_apply_chiusura_scadenze',
+                              'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                              jsonb_build_object(
+                                  'config_id',      v_row.id,
+                                  'target',         v_target_key,
+                                  'verbo_chiusura', v_row.verbo_chiusura,
+                                  'motivo',         'verbo_di_chiusura_inesistente'
+                              ),
+                              NULL::uuid,
+                              v_target_key,
+                              'il verbo di chiusura dichiarato non e'' una funzione senza argomenti'
+                          );
+                      END IF;
+                  ELSIF v_porta THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_apply_chiusura_scadenze',
+                          'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                          jsonb_build_object(
+                              'config_id', v_row.id,
+                              'target',    v_target_key,
+                              'motivo',    'porta_senza_verbo_di_chiusura'
+                          ),
+                          NULL::uuid,
+                          v_target_key,
+                          'lo stato si scrive solo da un verbo, e la testata non ha il verbo di chiusura'
+                      );
+                  END IF;
+
+                  -- =====================================================
                   -- 2) Esecuzione: dispatch su tipo_stato
                   -- =====================================================
-                  IF v_row.tipo_stato = 'VARCHAR' THEN
+                  IF v_row.tipo_stato = 'VARCHAR' AND v_verbo IS NOT NULL THEN
+                      EXECUTE format('SELECT %s()', v_verbo::regproc) INTO v_count;
+
+                  ELSIF v_row.tipo_stato = 'VARCHAR' THEN
                       -- UPDATE diretto con valori varchar.
                       v_sql := format(
                           $f$
@@ -219,50 +281,7 @@ AS $function$
                           );
                       END IF;
 
-                      -- Una testata sotto la porta: il suo verbo di chiusura
-                      -- (rev 2026-10-26, 20261026-08). La porta si legge dal
-                      -- catalogo, come fa la fixture degli stati.
-                      IF EXISTS (SELECT 1 FROM pg_catalog.pg_trigger tg
-                                  WHERE tg.tgrelid = to_regclass(format('%I.%I', v_row.schema_tabella, v_row.nome_tabella))
-                                    AND tg.tgfoid  = 'script.trgfn_doc_stato_solo_dal_verbo()'::regprocedure
-                                    AND NOT tg.tgisinternal) THEN
-                          IF v_row.verbo_chiusura IS NULL THEN
-                              PERFORM script.fn_log_and_raise_error(
-                                  'database',
-                                  'fn_apply_chiusura_scadenze',
-                                  'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
-                                  jsonb_build_object(
-                                      'config_id', v_row.id,
-                                      'target',    v_target_key,
-                                      'motivo',    'porta_senza_verbo_di_chiusura'
-                                  ),
-                                  NULL::uuid,
-                                  v_target_key,
-                                  'lo stato si scrive solo da un verbo, e la testata non ha il verbo di chiusura'
-                              );
-                          END IF;
-
-                          -- Il verbo dichiarato (rev 2026-10-28, 20261028-14): una
-                          -- funzione viva, senza argomenti. L'identificatore lo da' il
-                          -- catalogo, non il testo del registro.
-                          v_verbo := to_regprocedure(v_row.verbo_chiusura || '()');
-                          IF v_verbo IS NULL THEN
-                              PERFORM script.fn_log_and_raise_error(
-                                  'database',
-                                  'fn_apply_chiusura_scadenze',
-                                  'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
-                                  jsonb_build_object(
-                                      'config_id',      v_row.id,
-                                      'target',         v_target_key,
-                                      'verbo_chiusura', v_row.verbo_chiusura,
-                                      'motivo',         'verbo_di_chiusura_inesistente'
-                                  ),
-                                  NULL::uuid,
-                                  v_target_key,
-                                  'il verbo di chiusura dichiarato non e'' una funzione senza argomenti'
-                              );
-                          END IF;
-
+                      IF v_verbo IS NOT NULL THEN
                           EXECUTE format('SELECT %s()', v_verbo::regproc) INTO v_count;
                       ELSE
                       -- UPDATE con id risolti.
@@ -326,10 +345,8 @@ AS $function$
               BEGIN
                   PERFORM dbops.fn_audit_log_once(
                       p_function_name => 'dbops.fn_apply_chiusura_scadenze',
-                      -- ⛔ Rev 2026-11-03 (brief-db-revisione-maintenance R5):
-                      --   INFO non e' nel vocabolario di chk_audit_status, e il
-                      --   WHEN OTHERS qui sotto inghiottiva il 23514: l'audit
-                      --   non si scriveva mai. Un giro arrivato fin qui e' OK.
+                      -- Un giro arrivato fin qui e' OK (INFO non e' nel
+                      -- vocabolario di chk_audit_status).
                       p_status        => 'OK',
                       p_params        => v_result
                   );
@@ -341,8 +358,8 @@ AS $function$
           END;
           $function$
 
-COMMENT ON FUNCTION dbops.fn_apply_chiusura_scadenze(p_classe text)
-IS 'Framework di chiusura per scadenza: chiude lo stato gestionale (CHIUSA/CESSATO) sulle tabelle configurate in dbops.automazione_chiusura_scadenze quando valido_al < CURRENT_DATE. ⭐ Rev 2026-09-04: prende p_classe e lavora SOLO i bersagli di quella classe. p_classe NULL = tutte, che e'' il comportamento storico — il job pgAgent chiama senza argomenti e non e'' stato toccato. ⛔ Il filtro NON e'' il cancello: il cancello e'' il NOT NULL su automazione_chiusura_scadenze.classe, che obbliga ogni riga nuova a dichiarare la propria natura. Il filtro serve quando i bersagli di DOMINIO migreranno sulla coda (lavoro di backend): da li'' il worker chiamera'' con DOMINIO e pgAgent con AMMINISTRAZIONE, e i due mondi smetteranno di mescolarsi. Brief: brief-db-processi-automatici-identita-e-perimetro §6. ⭐ rev 2026-10-26 (20261026-08, brief-modello-documento-vendita §11, Y-2): una testata sotto la porta del modello del documento (script.trgfn_doc_stato_solo_dal_verbo) non si chiude con l''UPDATE dinamico ma col suo verbo di chiusura, oggi il contratto (vendite.fn_cessa_contratti_scaduti); sotto la porta senza verbo: E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA. La GUC app.cessazione_automatica e'' ritirata. ⭐ rev 2026-10-28 (20261028-14, brief-modello-documento-vendita §16, L-2): il verbo di chiusura si legge da dbops.automazione_chiusura_scadenze.verbo_chiusura (il contratto e la versione di listino), non piu'' da un IF sul contratto; verbo assente o non una funzione viva senza argomenti: E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA.';
+COMMENT ON FUNCTION dbops.fn_apply_chiusura_scadenze()
+IS 'Framework di chiusura per scadenza: chiude lo stato gestionale sulle tabelle attive di dbops.automazione_chiusura_scadenze quando valido_al e'' passato (data operativa, script.fn_data_operativa). Lo chiama l''handler della coda dei lavori, una volta per azienda, con l''identita'' e la RLS di quell''azienda: per questo il registro ammette solo bersagli DOMINIO, e un bersaglio di un''altra classe e'' rifiutato. Per ogni bersaglio: pre-check di tabella, colonne e (tipo_stato FK) codici del vocabolario; poi porta e verbo, in tutti e due i rami: un verbo di chiusura dichiarato (verbo_chiusura, funzione viva senza argomenti) si usa sempre e il conteggio e'' il suo; una testata sotto la porta degli stati (script.trgfn_doc_stato_solo_dal_verbo) senza verbo e'' una configurazione non valida; senza porta e senza verbo, UPDATE dinamico. Ogni configurazione non valida solleva E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA col motivo nel contesto (classe_senza_esecutore, tabella_inesistente, colonna_mancante, fk_lookup_inesistente, codice_chiuso_non_trovato, codice_attivo_non_trovato, verbo_di_chiusura_inesistente, porta_senza_verbo_di_chiusura, tipo_stato_non_gestito). Ritorna un jsonb con il conteggio per bersaglio, _total ed _executed_at, e scrive l''esito in dbops.audit_log. INVOKER: vede e chiude cio'' che vede chi la chiama.';
 ```
 
 </div>

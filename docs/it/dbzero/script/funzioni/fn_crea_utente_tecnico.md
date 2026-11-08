@@ -48,8 +48,7 @@ BEGIN
             NULL::uuid, p_processo_codice);
     END IF;
 
-    IF NOT v_processo.attivo
-       OR v_processo.obsoleto_dal IS NOT NULL
+    IF script.fn_e_obsoleto(v_processo.obsoleto_dal)
        OR v_processo.classe <> 'DOMINIO'
        OR v_processo.canale NOT IN ('PGAGENT', 'COMMAND', 'CODA_AUTOMATICA') THEN
         PERFORM script.fn_log_and_raise_error(

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Indici DUPLICATI ESATTI negli schemi in dbops.automation_scope. Raggruppa per firma normalizzata (pg_get_indexdef senza nome, senza WITH(...) e senza TABLESPACE): due indici nello stesso gruppo sono intercambiabili, quindi tutti tranne uno sono eliminabili. Prima del 2026-07-27 raggruppava per sole colonne e produceva 16 falsi positivi su 19 (GIN trgm contro btree, UNIQUE parziali disgiunte, colonne-espressione scartate). Il flag UNIQUE NON e' nella chiave di raggruppamento ma nel criterio di ordinamento: un btree non-unique identico a un UNIQUE e' ridondante e deve restare visibile. Usare indice_da_tenere / indici_da_droppare. NON copre la ridondanza per prefisso: per quella vedere dbops.vw_indici_ridondanti_prefisso.
+> Indici DUPLICATI ESATTI negli schemi in dbops.automation_scope. Raggruppa per firma normalizzata (pg_get_indexdef senza nome, senza WITH(...) e senza TABLESPACE): due indici nello stesso gruppo sono intercambiabili (la chiave primaria non entra nel confronto). Il primo dell'ordinamento si tiene (indice_da_tenere), gli altri sono proposti in indici_da_droppare. L'ordinamento mette prima gli indici che reggono un vincolo (UNIQUE, EXCLUDE, o il riferito di una FK: pg_constraint.conindid) o la replica identity, poi gli UNIQUE: un indice di vincolo non e' mai proposto per il DROP, anche quando nel gruppo ce n'e' piu' d'uno. Il flag UNIQUE non e' nella chiave di raggruppamento: un btree non-unique identico a un UNIQUE e' ridondante e deve restare visibile. Non copre la ridondanza per prefisso: per quella c'e' dbops.vw_indici_ridondanti_prefisso.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -17,6 +17,9 @@ WITH idx AS (
             t.relname AS table_name,
             (i.relname)::text AS index_name,
             ix.indisunique,
+            (ix.indisreplident OR (EXISTS ( SELECT 1
+                   FROM pg_constraint co
+                  WHERE (co.conindid = ix.indexrelid)))) AS regge_vincolo,
             (am.amname)::text AS metodo,
             pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
             ( SELECT array_agg(pg_get_indexdef(ix.indexrelid, k.k, false) ORDER BY k.k) AS array_agg
@@ -36,10 +39,13 @@ WITH idx AS (
     index_columns,
     metodo,
     predicato,
-    array_agg(index_name ORDER BY indisunique DESC, indexrelid) AS duplicate_index_names,
+    array_agg(index_name ORDER BY regge_vincolo DESC, indisunique DESC, indexrelid) AS duplicate_index_names,
     count(*) AS count_of_indexes,
-    (array_agg(index_name ORDER BY indisunique DESC, indexrelid))[1] AS indice_da_tenere,
-    (array_agg(index_name ORDER BY indisunique DESC, indexrelid))[2:] AS indici_da_droppare
+    (array_agg(index_name ORDER BY regge_vincolo DESC, indisunique DESC, indexrelid))[1] AS indice_da_tenere,
+        CASE
+            WHEN bool_or(regge_vincolo) THEN COALESCE(array_agg(index_name ORDER BY indisunique DESC, indexrelid) FILTER (WHERE (NOT regge_vincolo)), ARRAY[]::text[])
+            ELSE (array_agg(index_name ORDER BY indisunique DESC, indexrelid))[2:]
+        END AS indici_da_droppare
    FROM idx
   GROUP BY schema_name, table_name, index_columns, metodo, predicato, firma
  HAVING (count(*) > 1)

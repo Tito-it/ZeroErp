@@ -55,21 +55,23 @@ BEGIN
           FROM config.parameters
         WHERE code = 'tx_id_bypass_enabled';
 
-        IF NOT FOUND THEN
+        -- Riga assente o valore NULL: SELECT INTO senza riga assegna NULL,
+        -- non lascia il FALSE iniziale. Si avvisa e si prosegue col bypass
+        -- spento: l'override di sessione (sotto) resta leggibile.
+        IF v_bypass_enabled IS NULL THEN
 
             PERFORM script.fn_log_error_only(
                 'database',
                 'dbops.trgfn_tx_id_managed',
-                'E_ERRORE_PARAMETRI_TABELLA',
+                'W_TXID_BYPASS_PARAMETRO_ASSENTE',
                 jsonb_build_object(
                     'codice_parametro', 'tx_id_bypass_enabled',
-                    'nome_tabella',      'config.parameters',
                     'action', 'default bypass=false'
                 ),
                   NULL::uuid,
-                  'tx_id_bypass_enabled',
-                  'config.parameters'
+                  'tx_id_bypass_enabled'
               );
+            v_bypass_enabled := false;
         END IF;
 
     EXCEPTION WHEN OTHERS THEN
@@ -86,8 +88,6 @@ BEGIN
             TG_TABLE_NAME::text,
             SQLERRM::text
         );
-
-        RAISE;
     END;
 
     IF NOT v_bypass_enabled THEN
@@ -177,7 +177,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_tx_id_managed()
-IS 'Trigger function di audit: valorizza NEW.tx_id. USCITA ANTICIPATA (rev 2026-07-24, brief-db-tx-id-uscita-anticipata): se NEW.tx_id e'' gia'' valorizzato la funzione normalizza la stringa vuota e ritorna subito, senza leggere config.parameters ne'' toccare script.* -- tutto il corpo sottostante serve solo a calcolare il valore da assegnare quando manca. Conseguenze: niente lavoro inutile sulle 280 tabelle tracciate, e il canale di log dblink (che fornisce sempre il proprio tx_id e ha grant sul solo schema dbops) smette di fallire per permessi. Sulle righe che portano il proprio tx_id non viene piu'' emesso W_TXID_NOT_REGISTERED: e'' una diagnosi di SESSIONE, che qualunque altra scrittura senza tx_id fa scattare comunque. Percorso completo invariato quando NEW.tx_id IS NULL: bypass a due livelli (config.parameters.tx_id_bypass_enabled e GUC myapp.bypass_tx_id_check); se la GUC dbops.tx_id e'' impostata, l''id deve esistere in dbops.transaction_ids -- altrimenti AVVERTE (W_TXID_NOT_REGISTERED, non bloccante) e assegna script.uuid_nil(); se la GUC e'' assente chiama dbops.fn_get_or_create_session_tx_id(). Convenzione: E_ = errore bloccante, W_ = avvertimento. Vedi brief-db-coerenza-tx-id-non-registrato.md.';
+IS 'Trigger function di audit: valorizza NEW.tx_id. Se NEW.tx_id e'' gia'' valorizzato normalizza la stringa vuota e ritorna subito, senza leggere config.parameters ne'' script.*: il resto del corpo serve solo a calcolare il valore quando manca. Quando NEW.tx_id IS NULL: bypass a due livelli, il parametro config.parameters.tx_id_bypass_enabled e poi la GUC myapp.bypass_tx_id_check, che si legge sempre quando il parametro non accende il bypass; parametro assente o NULL vale spento e lascia W_TXID_BYPASS_PARAMETRO_ASSENTE nel log, senza fermare la scrittura. Col bypass: il tx_id di sessione (GUC dbops.tx_id) o script.uuid_nil(). Senza bypass: se la GUC dbops.tx_id e'' impostata, l''id deve esistere in dbops.transaction_ids, altrimenti avverte (W_TXID_NOT_REGISTERED) e assegna script.uuid_nil(); se la GUC e'' assente chiama dbops.fn_get_or_create_session_tx_id(). Una lettura del parametro che fallisce solleva E_SQL_READ_TABLE. Convenzione: E_ = errore bloccante, W_ = avviso scritto solo nel log.';
 ```
 
 </div>

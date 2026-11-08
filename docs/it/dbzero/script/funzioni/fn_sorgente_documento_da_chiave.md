@@ -23,7 +23,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION script.fn_sorgente_documento_da_chiave(p_sorgente_tipo_id bigint, p_chiave text)
-IS 'Il ponte del BB che risolve la provenienza, per le tabelle che scrivono ancora la chiave del documento come testo (id::text o uuid::text) o l''uid dove il tipo dice id. Riconosce la forma CANONICA con script.fn_sorgente_chiave_id / _uuid e risolve con script.fn_sorgente_documento: stesso risultato, una riga sempre, mai un errore. Una chiave che non e'' in forma canonica (zeri davanti, spazi, maiuscole) non si risolve. Si svuota lotto per lotto, man mano che le tabelle passano alle colonne sorgente_id / sorgente_uid.';
+IS 'Il ponte del BB che risolve la provenienza, per le chiavi che sono testo per costruzione: i nodi della lineage, la chiave del gruppo fatturabile (costruita con l''uid del documento), il riferimento al documento di origine di un gruppo. Riconosce la forma CANONICA con script.fn_sorgente_chiave_id / _uuid (id::text o uuid::text) e risolve con script.fn_sorgente_documento: stesso risultato, una riga sempre, mai un errore. Una chiave che non e'' in forma canonica (zeri davanti, spazi, maiuscole) non si risolve. Le tabelle non lo usano: scrivono la chiave nelle colonne sorgente_id / sorgente_uid.';
 ```
 
 </div>

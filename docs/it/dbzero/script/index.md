@@ -233,6 +233,7 @@ search:
 - [fn_norm_testo](funzioni/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](funzioni/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_notify_permessi_catalogo](funzioni/fn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
+- [fn_parameter_fk_surrogate_regola](funzioni/fn_parameter_fk_surrogate_regola.md) — Dice quale regola di `config.parameter_fk_surrogate` governa un codice di parametro, e ne restituisce l'id: al massimo una. Vuoto (`NULL`) vuol dire che nessuna regola lo governa, e il parametro non è soggetto alla verifica.
 - [fn_pgtap_emittente_operatore](funzioni/fn_pgtap_emittente_operatore.md) — Restituisce l'**emittente fiscale su cui l'operatore del contesto può scrivere**.
 - [fn_pgtap_emittente_sr_operatore](funzioni/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
@@ -395,6 +396,7 @@ search:
 
 ## 🔍 Views
 - [vw_audit_sources](views/vw_audit_sources.md)
+- [vw_flusso_doc_sorgente](views/vw_flusso_doc_sorgente.md)
 - [vw_giornale_entita](views/vw_giornale_entita.md)
 - [vw_indirizzo_completo](views/vw_indirizzo_completo.md) — * **Denormalizzazione per letture rapide**: aggregare in un’unica view i dati di stradario, comune, provincia, codice postale e via, semplificando le query di selezione degli indirizzi. * **Pulizia e consistenza**: fornire campi già formattati e pronti per essere utilizzati nelle normalizzazioni e nelle funzionalità GIS. * **Riutilizzabilità**: rendere disponibile un’unica sorgente per join di indirizzi completi, evitando duplicazione di codice SQL.
 - [vw_ita_province_regioni](views/vw_ita_province_regioni.md) — La vista `script.vw_ita_province_regioni` fornisce una **mappatura completa** tra province italiane, eventuali province accisa associate, regioni e stato di appartenenza, includendo i codici ISTAT e altre informazioni estratte dal campo JSON `extra_country`.

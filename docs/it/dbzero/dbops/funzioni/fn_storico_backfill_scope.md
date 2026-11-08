@@ -108,11 +108,12 @@ BEGIN
     EXECUTE format('SELECT count(*) FROM %s WHERE origine_schema IS NULL', v_full_sto)
        INTO v_residue;
 
-    -- NOT NULL quando e' vero, e solo se siamo proprietari.
+    -- NOT NULL quando e' vero, e solo se abbiamo i privilegi del proprietario
+    -- (membership con INHERIT o superuser, non il nome).
     SELECT NOT a.attnotnull INTO v_nullable
       FROM pg_catalog.pg_attribute a
      WHERE a.attrelid = v_sto_oid AND a.attname = 'origine_schema';
-    IF v_residue = 0 AND v_nullable AND v_owner = current_user THEN
+    IF v_residue = 0 AND v_nullable AND pg_has_role(current_user, v_owner, 'USAGE') THEN
         EXECUTE format('ALTER TABLE %s ALTER COLUMN origine_schema SET NOT NULL', v_full_sto);
         v_not_null := true;
     END IF;
@@ -138,7 +139,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_storico_backfill_scope(p_schema_base text, p_table_base text)
-IS 'Backfill dello scope congelato sulle versioni gia'' scritte della shadow storico.<tabella> di una madre: alle righe con origine_schema NULL assegna lo schema della madre e scope_emittente_fiscale_id risolto da dbops.fn_storico_risolvi_scope sullo SNAPSHOT (per i modi PADRE risale al padre com''e'' oggi: e'' il limite dichiarato del backfill). Nelle shadow condivise fra due madri omonime attribuisce la versione alla madre di cui lo snapshot porta almeno una chiave ESCLUSIVA (jsonb_exists_any); le versioni senza chiavi esclusive restano NULL e il pgTAP le conta come debito. Porta origine_schema a NOT NULL quando nessuna riga resta NULL e il chiamante e'' proprietario. Idempotente. Brief: brief-db-rls-storico-scope-congelato §4b.';
+IS 'Backfill dello scope congelato sulle versioni gia'' scritte della shadow storico.<tabella> di una madre: alle righe con origine_schema NULL assegna lo schema della madre e scope_emittente_fiscale_id risolto da dbops.fn_storico_risolvi_scope sullo SNAPSHOT (per i modi PADRE risale al padre com''e'' oggi: e'' il limite dichiarato del backfill). Nelle shadow condivise fra due madri omonime attribuisce la versione alla madre di cui lo snapshot porta almeno una chiave ESCLUSIVA (jsonb_exists_any); le versioni senza chiavi esclusive restano NULL e il pgTAP le conta come debito. Porta origine_schema a NOT NULL quando nessuna riga resta NULL e il chiamante ha i privilegi del proprietario della shadow (pg_has_role USAGE: il proprietario, un suo membro con INHERIT, un superuser). Idempotente.';
 ```
 
 </div>
