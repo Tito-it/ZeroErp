@@ -1,14 +1,15 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 0 committato, decisioni in corso)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 0 committato, decisioni prese)
 
-**Riparte: Tid**, con le decisioni di §6, che la sessione DB gli spiega una alla volta. Poi la **sessione DB**
-riprende dal giro 1, un giro alla volta, nell'ordine di §7.
+**Riparte: la sessione DB** col giro 1 (la distinta), quando **Tid** dà il via e i numeri dei changeSet. Il giro 1
+va coordinato con D28 del brief `dbops`. Tutte le decisioni di §6 sono prese (Tid, 2026-11-08).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Censimento in sola lettura dei 37 oggetti: doc, codice, metadati, doppioni, pgTAP | §1-§5 | — |
-| 2 | **Tid** ⏭️ | Le decisioni Q1-Q13 | §6 | 1 |
+| 2 | ✅ Tid | Le decisioni Q1-Q14, tutte come da proposta (2026-11-08) | §6 | 1 |
+| 2-bis | **Tid** ⏭️ | Il via al giro 1, con i numeri dei changeSet | §7 | 2 |
 | 3 | ✅ Tid | Il via al giro 0 (2026-11-08) | §7 | 1 |
 | 4 | ✅ sessione DB | Giro 0: le 35 pagine `manual/` allo standard, il blocco comune delle note, la doc fuori schema | §9 | 3 |
 | 4-bis | ✅ sessione DB, su richiesta di Tid | Commit del giro 0 (2026-11-08) | §9.5 | 4 |
@@ -16,7 +17,8 @@ riprende dal giro 1, un giro alla volta, nell'ordine di §7.
 | 6 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato | §5 | 5 |
 | 7 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 5 |
 
-**Decisioni aperte di Tid:** Q1-Q13 (§6). **Da committare:** nulla del giro 0 (§9.5).
+**Decisioni aperte di Tid:** nessuna; manca il via al giro 1. **Da committare:** le decisioni registrate in §6 (questo
+brief) e il rimando di D-C in `brief-db-articoli-obsoleto-dal`.
 ⚠️ **Numerazione:** nessun changeSet scritto. I numeri si concordano con Tid al via di ogni giro (sono aperte
 altre sessioni DB).
 
@@ -507,19 +509,20 @@ Da girare al team quando il giro DB corrispondente è applicato.
 
 | # | Domanda | Proposta |
 | --- | --- | --- |
-| Q1 | D10: un legame di distinta si può chiudere nel passato, o riaprire? | No a tutte e due, per i legami già in vigore: si chiude da oggi in poi, e una riapertura è una riga nuova |
-| Q2 | D11: CHECK `NOT (is_composito AND is_solo_componente)`? | Sì, e `guard_solo_componente` si ritira |
-| Q3 | D13: la mappatura dell'unità operativa si versiona? | Sì, `UNIQUE … WITHOUT OVERLAPS` come la distinta; altrimenti si ritirano le date |
-| Q4 | D3: `max_decimals`, `rounding_mode`, `require_lot` | `max_decimals` si applica (codice nuovo); `rounding_mode` e `require_lot` si ritirano (il lotto è `articoli.requires_lotto`) |
-| Q5 | R3, R4, D5: si ritirano `guard_listino_se_composito`, `guard_is_composito`, `guard_solo_componente`, e i motivi sul padre vanno nella check `ARTICOLO`? | Sì |
-| Q6 | D4: cambio d'IVA di un kit con un constraint trigger differito, o con un verbo? | Constraint trigger differito: non cambia il contratto del BE |
-| Q7 | D2: senza mappatura né conversione, la riga si rifiuta? | Sì, `E_UOM_MISSING` |
-| Q8 | R2: il BB «distinta alla data» tocca le funzioni di tutti i documenti di vendita. Si fa qui, in un giro a parte, o in un brief di vendite? | Qui, giro 1-bis, dopo il giro 1 e insieme a D28 di `dbops` |
-| Q9 | `uom_tipi`: `codice` o `codice_interno`? | Resta `codice_interno` (bloccato); `codice` si ritira, se il BE non lo espone come etichetta |
-| Q10 | D20: la porta amministratore deve dipendere dalle regole del form? | No: le colonne strutturali si dichiarano in un posto, che leggono guard, form e porta (con D28) |
-| Q11 | M3 e D-C di `brief-db-articoli-obsoleto-dal`: chi riscrive i COMMENT? | Tutti qui, nel giro 5; D-C si chiude rimandando qui |
-| Q12 | D16: le note di catalogo prendono `tx_id` e `user_* text` come le altre? E un articolo con una nota si deve poter disattivare? | Sì alla forma comune; sì alla disattivazione (la nota non è un figlio vivo: va esclusa dal `block_deact`) |
-| Q13 | D22: il fattore della mappatura si legge alla data del documento? | Sì, se Q3 versiona la mappatura; altrimenti la domanda cade |
+| Q1 ✅ | D10: un legame di distinta si può chiudere nel passato, o riaprire? | No a tutte e due, per i legami già in vigore: si chiude da oggi in poi, e una riapertura è una riga nuova — **✅ Tid, 2026-11-08: come da proposta** |
+| Q2 ✅ | D11: CHECK `NOT (is_composito AND is_solo_componente)`? | Sì, e `guard_solo_componente` si ritira — **✅ Tid, 2026-11-08: come da proposta** |
+| Q3 ✅ | D13: la mappatura dell'unità operativa si versiona? | Sì, `UNIQUE … WITHOUT OVERLAPS` come la distinta; altrimenti si ritirano le date — **✅ Tid, 2026-11-08: versionata, UNIQUE WITHOUT OVERLAPS** |
+| Q4 ✅ | D3: `max_decimals`, `rounding_mode`, `require_lot` | `max_decimals` si applica (codice nuovo); `rounding_mode` e `require_lot` si ritirano (il lotto è `articoli.requires_lotto`) — **✅ Tid, 2026-11-08: come da proposta** |
+| Q5 ✅ | R3, R4, D5: si ritirano `guard_listino_se_composito`, `guard_is_composito`, `guard_solo_componente`, e i motivi sul padre vanno nella check `ARTICOLO`? | Sì — **✅ Tid, 2026-11-08: come da proposta** |
+| Q6 ✅ | D4: cambio d'IVA di un kit con un constraint trigger differito, o con un verbo? | Constraint trigger differito: non cambia il contratto del BE — **✅ Tid, 2026-11-08: come da proposta** |
+| Q7 ✅ | D2: senza mappatura né conversione, la riga si rifiuta? | Sì, `E_UOM_MISSING` — **✅ Tid, 2026-11-08: come da proposta** |
+| Q8 ✅ | R2: il BB «distinta alla data» tocca le funzioni di tutti i documenti di vendita. Si fa qui, in un giro a parte, o in un brief di vendite? | Qui, giro 1-bis, dopo il giro 1 e insieme a D28 di `dbops` — **✅ Tid, 2026-11-08: come da proposta, ok alla famiglia dei documenti di vendita** |
+| Q9 ✅ | `uom_tipi`: `codice` o `codice_interno`? | Resta `codice_interno` (bloccato); `codice` si ritira, se il BE non lo espone come etichetta — **✅ Tid, 2026-11-08: come da proposta** |
+| Q10 ✅ | D20: la porta amministratore deve dipendere dalle regole del form? | No: le colonne strutturali si dichiarano in un posto, che leggono guard, form e porta (con D28) — **✅ Tid, 2026-11-08: come da proposta** |
+| Q11 ✅ | M3 e D-C di `brief-db-articoli-obsoleto-dal`: chi riscrive i COMMENT? | Tutti qui, nel giro 5; D-C si chiude rimandando qui — **✅ Tid, 2026-11-08: tutti qui; D-C di brief-db-articoli-obsoleto-dal si chiude rimandando qui** |
+| Q12 ✅ | D16: le note di catalogo prendono `tx_id` e `user_* text` come le altre? E un articolo con una nota si deve poter disattivare? | Sì alla forma comune; sì alla disattivazione (la nota non è un figlio vivo: va esclusa dal `block_deact`) — **✅ Tid, 2026-11-08: come da proposta** |
+| Q13 ✅ | D22: il fattore della mappatura si legge alla data del documento? | Sì, se Q3 versiona la mappatura; altrimenti la domanda cade — **✅ Tid, 2026-11-08: il fattore si legge alla data del documento** |
+| Q14 ✅ | §2.4: si ritirano gli indici che ripetono un vincolo? | `uq_articoli_componenti_prodotto_componente_from` sì; `ix_uom_tipi_codice_interno_upper` e `ix_artuomop_art_isbase` solo dopo la verifica dei lettori e dei piani — **✅ Tid, 2026-11-08: come da proposta** |
 
 ## 7. I giri, nell'ordine in cui si fanno
 

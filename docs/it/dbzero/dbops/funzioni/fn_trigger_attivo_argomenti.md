@@ -14,58 +14,65 @@ CREATE FUNCTION fn_trigger_attivo_argomenti(p_funzione name, p_argomenti text[])
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_trigger_attivo_argomenti(p_funzione name, p_argomenti text[])
  RETURNS TABLE(valido boolean, dettaglio text, figlia_schema name, figlia_tabella name, padre_schema name, padre_tabella name, fk_col name, ref_col name, stato_col name, esenzione_col name)
- LANGUAGE sql
+ LANGUAGE plpgsql
  IMMUTABLE PARALLEL SAFE
 AS $function$
-  -- Scopo: gli argomenti di un trigger ATTIVO letti per nome.
-  --   Una riga sola; valido = false con il motivo in dettaglio e
-  --   i campi a NULL se il montaggio non rispetta la grammatica.
-  -- Uso: SELECT * FROM dbops.fn_trigger_attivo_argomenti(
-  --        'trgfn_child_requires_active_parent', TG_ARGV);
-  WITH g AS (
-      SELECT
-          -- la base dell'array non e' sempre 1 (TG_ARGV parte da 0)
-          ARRAY(SELECT u.x
-                  FROM unnest(p_argomenti) WITH ORDINALITY AS u(x, n)
-                 ORDER BY u.n) AS a,
-          p_funzione = 'trgfn_prevent_deactivate_if_children' AS is_block,
-          CASE p_funzione
-              WHEN 'trgfn_prevent_deactivate_if_children'     THEN 5
-              WHEN 'trgfn_child_requires_active_parent'       THEN 5
-              WHEN 'trgfn_child_requires_non_obsolete_parent' THEN 5
-          END AS minimo,
-          CASE p_funzione
-              WHEN 'trgfn_prevent_deactivate_if_children'     THEN 5
-              WHEN 'trgfn_child_requires_active_parent'       THEN 5
-              WHEN 'trgfn_child_requires_non_obsolete_parent' THEN 6
-          END AS massimo
-  ),
-  v AS (
-      SELECT g.*,
-             CASE
-               WHEN g.minimo IS NULL THEN
-                 format('%s non e'' una funzione trigger ATTIVO', p_funzione)
-               WHEN cardinality(g.a) NOT BETWEEN g.minimo AND g.massimo THEN
-                 format('%s argomenti, attesi %s', cardinality(g.a),
-                        CASE WHEN g.minimo = g.massimo THEN g.minimo::text
-                             ELSE format('%s o %s', g.minimo, g.massimo) END)
-               WHEN EXISTS (SELECT 1 FROM unnest(g.a) AS x
-                             WHERE NULLIF(btrim(x), '') IS NULL) THEN
-                 'un argomento e'' vuoto'
-             END AS errore
-        FROM g
-  )
-  SELECT v.errore IS NULL,
-         v.errore,
-         CASE WHEN v.errore IS NULL AND v.is_block     THEN v.a[1] END,
-         CASE WHEN v.errore IS NULL AND v.is_block     THEN v.a[2] END,
-         CASE WHEN v.errore IS NULL AND NOT v.is_block THEN v.a[1] END,
-         CASE WHEN v.errore IS NULL AND NOT v.is_block THEN v.a[2] END,
-         CASE WHEN v.errore IS NULL THEN CASE WHEN v.is_block THEN v.a[3] ELSE v.a[4] END END,
-         CASE WHEN v.errore IS NULL THEN CASE WHEN v.is_block THEN v.a[4] ELSE v.a[5] END END,
-         CASE WHEN v.errore IS NULL THEN CASE WHEN v.is_block THEN v.a[5] ELSE v.a[3] END END,
-         CASE WHEN v.errore IS NULL AND NOT v.is_block THEN v.a[6] END
-    FROM v;
+-- Scopo: gli argomenti di un trigger ATTIVO letti per nome.
+--   Una riga sola; valido = false con il motivo in dettaglio e
+--   i campi a NULL se il montaggio non rispetta la grammatica.
+-- Uso: SELECT * FROM dbops.fn_trigger_attivo_argomenti(
+--        'trgfn_child_requires_active_parent', TG_ARGV);
+-- ⚠️ PL/pgSQL e non SQL: una funzione SQL si espande dentro chi la chiama, e
+--   la rinumerazione dell'array si ripeteva per ogni colonna letta (circa 2 ms
+--   a trigger). Qui si calcola una volta per chiamata.
+DECLARE
+    -- la base dell'array non e' sempre 1 (TG_ARGV parte da 0): una fetta
+    -- dell'array riparte da 1
+    a        text[] := p_argomenti[array_lower(p_argomenti, 1):array_upper(p_argomenti, 1)];
+    is_block boolean := p_funzione = 'trgfn_prevent_deactivate_if_children';
+    minimo   integer;
+    massimo  integer;
+    errore   text;
+BEGIN
+    minimo := CASE p_funzione
+                  WHEN 'trgfn_prevent_deactivate_if_children'     THEN 5
+                  WHEN 'trgfn_child_requires_active_parent'       THEN 5
+                  WHEN 'trgfn_child_requires_non_obsolete_parent' THEN 5
+              END;
+    massimo := CASE p_funzione
+                  WHEN 'trgfn_prevent_deactivate_if_children'     THEN 5
+                  WHEN 'trgfn_child_requires_active_parent'       THEN 5
+                  WHEN 'trgfn_child_requires_non_obsolete_parent' THEN 6
+               END;
+
+    IF a IS NULL THEN
+        a := ARRAY[]::text[];
+    END IF;
+
+    errore := CASE
+                WHEN minimo IS NULL THEN
+                  format('%s non e'' una funzione trigger ATTIVO', p_funzione)
+                WHEN cardinality(a) NOT BETWEEN minimo AND massimo THEN
+                  format('%s argomenti, attesi %s', cardinality(a),
+                         CASE WHEN minimo = massimo THEN minimo::text
+                              ELSE format('%s o %s', minimo, massimo) END)
+                WHEN EXISTS (SELECT 1 FROM unnest(a) AS x
+                              WHERE NULLIF(btrim(x), '') IS NULL) THEN
+                  'un argomento e'' vuoto'
+              END;
+
+    valido        := errore IS NULL;
+    dettaglio     := errore;
+    figlia_schema := CASE WHEN errore IS NULL AND is_block     THEN a[1] END;
+    figlia_tabella:= CASE WHEN errore IS NULL AND is_block     THEN a[2] END;
+    padre_schema  := CASE WHEN errore IS NULL AND NOT is_block THEN a[1] END;
+    padre_tabella := CASE WHEN errore IS NULL AND NOT is_block THEN a[2] END;
+    fk_col        := CASE WHEN errore IS NULL THEN CASE WHEN is_block THEN a[3] ELSE a[4] END END;
+    ref_col       := CASE WHEN errore IS NULL THEN CASE WHEN is_block THEN a[4] ELSE a[5] END END;
+    stato_col     := CASE WHEN errore IS NULL THEN CASE WHEN is_block THEN a[5] ELSE a[3] END END;
+    esenzione_col := CASE WHEN errore IS NULL AND NOT is_block THEN a[6] END;
+    RETURN NEXT;
+END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_trigger_attivo_argomenti(p_funzione name, p_argomenti text[])

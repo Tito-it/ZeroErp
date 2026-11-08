@@ -14,7 +14,7 @@
 | 5 | ✅ DB + Tid | lotto A (`20261105-01…-14`, CSV dei codici): scritto, applicato su dbdev e scratch, pgTAP verdi (2026-11-05) | §7.1 | — |
 | 6 | ✅ DB + Tid | lotti C e D senza sorgente (`20261106-01…-03`, pgTAP, guida, manuali): applicati, pgTAP verdi (2026-11-06) | §7.2-bis | — |
 | 7 | Tid | **confermare O-9 affinata**: l'`ONERE` con sorgente (dal push di ordine e bolla) passa | §7.2-bis | — |
-| 8 | DB | **D-C**: riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d | sotto | — |
+| 8 | ➡️ DB, in `brief-db-revisione-catalogo` | **D-C**: riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11) | sotto | — |
 | 9 | ✅ DB + Tid | lotto B (verbi): riscritto sul modello nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`), applicato da Tid, pgTAP verdi (2026-11-06). Righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D): ancora fermi (le righe d'acquisto aspettano il cantiere `acquisti`, che porta le loro tabelle al modello; le righe di fattura non hanno un verbo che ne scriva la provenienza) | §7.2, §7.3 | — |
 | 10 | BE / FE | `obsoleto_dal` ed `e_obsoleto` nel form e nella lista, `righe_saltate` del «Clona», policy, chiave i18n | §8 | — |
 

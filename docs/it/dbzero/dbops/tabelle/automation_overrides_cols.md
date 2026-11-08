@@ -16,6 +16,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_automation_overrides_cols_col_role |  |
 | PRIMARY KEY | pk_automation_overrides_cols | schema_name, table_name, col_role |
 
 ## 📑 Indici

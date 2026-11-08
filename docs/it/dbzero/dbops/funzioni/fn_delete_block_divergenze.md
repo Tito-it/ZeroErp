@@ -1,0 +1,108 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_delete_block_divergenze.md" %}
+# ⚙️ Funzione `fn_delete_block_divergenze`
+
+```sql
+CREATE FUNCTION fn_delete_block_divergenze(p_schemas text[])
+```
+
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
+**Definizione completa:**
+
+<div data-search-exclude markdown>
+
+```sql
+CREATE OR REPLACE FUNCTION dbops.fn_delete_block_divergenze(p_schemas text[])
+ RETURNS TABLE(schema_name text, table_name text, azione text, trigger_atteso text, guc_atteso text, trigger_vivi text[])
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+-- Scopo: il trigger DELETE_BLOCK ATTESO confrontato con quello VIVO, una riga per
+--   tabella dell'ambito che diverge. Criterio unico del runner
+--   (dbops.fn_run_automations_delete_block) e del presidio pgTAP.
+-- Parametri: p_schemas NULL = ambito risolto da dbops.fn_resolve_scope.
+-- Regole:
+--   - il vivo e' ogni trigger su script.trgfn_delete_block_by_guc, qualunque nome abbia;
+--   - riga abilitata: l'atteso e' un trigger solo, BEFORE DELETE FOR EACH ROW, abilitato,
+--     col nome di dbops.fn_nome_oggetto_dichiarato (template trg_{table}_a10_delete_block_dlt) e l'argomento guc_key. Manca → CREA; diverso
+--     in qualcosa (nome, momento, argomento, abilitazione, piu' d'uno) → RIGENERA;
+--   - riga spenta (enabled = false) e un vivo → TOGLIE: spegnere la riga e' la decisione
+--     di togliere il blocco;
+--   - un vivo senza nessuna riga del registro → SCONOSCIUTO: il runner si ferma e lo
+--     nomina, invece di cancellare un blocco che nessuno ha dichiarato.
+-- Le tabelle fuori dall'ambito non si confrontano (il runner non ci arriva).
+DECLARE
+    -- text[]: %TYPE non fa array
+    v_schemas text[] := dbops.fn_resolve_scope(p_schemas);
+BEGIN
+    RETURN QUERY
+    WITH tab AS MATERIALIZED (
+        SELECT n.nspname::text AS sch, c.relname::text AS tbl, c.oid AS rel
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relkind = 'r'
+           AND n.nspname = ANY (v_schemas)
+           AND dbops.fn_table_in_scope(n.nspname, c.relname)
+    ),
+    riga AS (
+        SELECT t.rel, d.enabled, d.guc_key,
+               dbops.fn_nome_oggetto_dichiarato(d.trigger_name, 'trg_{table}_a10_delete_block_dlt', d.schema_name, d.table_name) AS trg
+          FROM tab t
+          JOIN dbops.automation_delete_block d
+            ON d.schema_name = t.sch AND d.table_name = t.tbl
+    ),
+    vivo AS (
+        SELECT tg.tgrelid AS rel,
+               tg.tgname::text AS trg,
+               tg.tgtype::integer AS tgtype,
+               tg.tgenabled IN ('O', 'A') AS abilitato,
+               dbops.fn_trigger_argomenti(tg.tgargs) AS args
+          FROM pg_trigger tg
+          JOIN tab t ON t.rel = tg.tgrelid
+         WHERE NOT tg.tgisinternal
+           AND tg.tgfoid = 'script.trgfn_delete_block_by_guc()'::regprocedure
+    ),
+    vivo_tab AS (
+        SELECT v.rel, array_agg(v.trg ORDER BY v.trg) AS trgs, count(*) AS n, min(v.trg) AS trg1
+          FROM vivo v
+         GROUP BY v.rel
+    ),
+    confronto AS (
+        SELECT t.sch, t.tbl, r.trg, r.guc_key, vt.trgs,
+               CASE
+                 WHEN r.rel IS NULL AND vt.rel IS NULL THEN NULL
+                 WHEN r.rel IS NULL THEN 'SCONOSCIUTO'
+                 WHEN NOT r.enabled AND vt.rel IS NULL THEN NULL
+                 WHEN NOT r.enabled THEN 'TOGLIE'
+                 WHEN vt.rel IS NULL THEN 'CREA'
+                 WHEN vt.n = 1
+                  AND v1.trg = r.trg
+                  AND v1.abilitato
+                  AND v1.args = ARRAY[r.guc_key::text]
+                  AND v1.tgtype = 11            -- ROW | BEFORE | DELETE
+                 THEN NULL
+                 ELSE 'RIGENERA'
+               END AS azione
+          FROM tab t
+          LEFT JOIN riga r      ON r.rel = t.rel
+          LEFT JOIN vivo_tab vt ON vt.rel = t.rel
+          LEFT JOIN vivo v1     ON v1.rel = t.rel AND v1.trg = vt.trg1
+    )
+    SELECT cf.sch, cf.tbl, cf.azione,
+           CASE WHEN cf.azione IN ('CREA', 'RIGENERA') THEN cf.trg END,
+           CASE WHEN cf.azione IN ('CREA', 'RIGENERA') THEN cf.guc_key END,
+           COALESCE(cf.trgs, ARRAY[]::text[])
+      FROM confronto cf
+     WHERE cf.azione IS NOT NULL
+     ORDER BY cf.sch, cf.tbl;
+END;
+$function$
+
+COMMENT ON FUNCTION dbops.fn_delete_block_divergenze(p_schemas text[])
+IS 'Il trigger DELETE_BLOCK ATTESO confrontato con quello VIVO, una riga per tabella dell''ambito che diverge (p_schemas NULL = dbops.fn_resolve_scope). Il vivo e'' ogni trigger su script.trgfn_delete_block_by_guc, qualunque nome abbia. Riga abilitata di dbops.automation_delete_block: l''atteso e'' un trigger solo, BEFORE DELETE FOR EACH ROW, abilitato, col nome di dbops.fn_nome_oggetto_dichiarato (template trg_{table}_a10_delete_block_dlt) e l''argomento guc_key; manca → CREA, diverso in qualcosa (nome, momento, argomento, abilitazione, piu'' d''uno) → RIGENERA. Riga spenta con un vivo → TOGLIE. Un vivo senza nessuna riga del registro → SCONOSCIUTO: il runner si ferma e lo nomina. Colonne: schema_name, table_name, azione, trigger_atteso e guc_atteso (per CREA e RIGENERA), trigger_vivi. Criterio unico di dbops.fn_run_automations_delete_block e del presidio dbops/test-delete-block-convergenza-v1.';
+```
+
+</div>
+
+---
+{% include-markdown "signature-core.md" %}

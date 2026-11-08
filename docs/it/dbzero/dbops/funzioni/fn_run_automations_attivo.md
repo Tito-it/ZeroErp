@@ -24,8 +24,6 @@ DECLARE
   rrule record;
   rfk   record;
 
-  -- strategia esistenza trigger: BY_NAME / BY_FUNCTION / BOTH (default BY_NAME)
-  exist_strat text;
 
   -- template nome trigger BLOCK/REQUIRE
   nm_block text;
@@ -97,11 +95,10 @@ BEGIN
       AND dbops.fn_schema_in_scope(r.target_schema, v_schemas)
     ORDER BY r.priority, r.id
   LOOP
-    exist_strat := COALESCE(rrule.existence_strategy, 'BY_NAME');
-    nm_block    := COALESCE((rrule.name_template::jsonb)->>'block',
-                            'trg_{parent}_a10_{child}_block_deact_upd');
-    nm_require  := COALESCE((rrule.name_template::jsonb)->>'require',
-                            'trg_{child}_a10_{parent}_require_attivo_ins_upd');
+    -- I due nomi stanno nel registro (CHECK chk_automation_rules_tbl_regola_valida:
+    -- block e require, ognuno col segnaposto dell'hash della FK).
+    nm_block    := (rrule.name_template::jsonb)->>'block';
+    nm_require  := (rrule.name_template::jsonb)->>'require';
     v_reconcile := COALESCE((rrule.params->>'reconcile_on_change')::boolean, true);
 
     -- Cursor FK: per ogni vincolo FK monocolonna in scope, ricava
@@ -120,7 +117,13 @@ BEGIN
         c.confrelid::regclass AS parent_rel,
         c.conname,
         a_p.attname           AS parent_ref_col,  -- colonna del padre referenziata
-        a_c.attname           AS child_fk_col     -- colonna FK del figlio
+        a_c.attname           AS child_fk_col,    -- colonna FK del figlio
+        -- I nomi dei trigger nominano le tabelle senza schema: due FK danno lo
+        -- stesso nome se sulla stessa figlia puntano a padri omonimi (anche lo
+        -- stesso padre due volte), o se sullo stesso padre arrivano da figlie
+        -- omonime di due schemi. Allora l'hash della FK entra sempre nel nome.
+        count(*) OVER (PARTITION BY c.conrelid, cp.relname)  AS fk_omonime_require,
+        count(*) OVER (PARTITION BY c.confrelid, cc.relname) AS fk_omonime_block
       FROM pg_constraint c
       JOIN pg_class cc        ON cc.oid = c.conrelid
       JOIN pg_namespace nc    ON nc.oid = cc.relnamespace
@@ -163,7 +166,7 @@ BEGIN
       IF NOT parent_has_attivo THEN
         IF p_dry_run THEN
           PERFORM dbops.fn_audit_log_once(
-            p_function_name => 'fn_run_automations_attivo',
+            p_function_name => 'dbops.fn_run_automations_attivo',
             p_status        => 'DRYRUN',
             p_rule_type     => 'ATTIVO_SKIP_PARENT_NO_ATTIVO',
             p_exec_mode     => p_exec_mode,
@@ -192,7 +195,7 @@ BEGIN
                     AND e.colonna_fk     = fk_col) THEN
         IF p_dry_run THEN
           PERFORM dbops.fn_audit_log_once(
-            p_function_name => 'fn_run_automations_attivo',
+            p_function_name => 'dbops.fn_run_automations_attivo',
             p_status        => 'DRYRUN',
             p_rule_type     => 'ATTIVO_SKIP_ECCEZIONE',
             p_exec_mode     => p_exec_mode,
@@ -215,7 +218,7 @@ BEGIN
       IF lower(fk_col) NOT LIKE '%_id' THEN
         IF p_dry_run THEN
           PERFORM dbops.fn_audit_log_once(
-            p_function_name => 'fn_run_automations_attivo',
+            p_function_name => 'dbops.fn_run_automations_attivo',
             p_status        => 'DRYRUN',
             p_rule_type     => 'ATTIVO_SKIP_FK_NO_ID',
             p_exec_mode     => p_exec_mode,
@@ -241,10 +244,13 @@ BEGIN
       col_attivo_child := dbops.fn_get_override_col(rfk.child_schema, rfk.child_table, 'ATTIVO_COL', 'attivo');
       child_has_attivo := dbops.fn_col_exists(rfk.child_schema, rfk.child_table, col_attivo_child);
 
-      -- 5) Nome trigger REQUIRE (figlio)
+      -- 5) Nome trigger REQUIRE (figlio). Se un'altra FK darebbe lo stesso
+      --    nome sulla figlia, {fkhash6_if_long} vale {fkhash6}.
       tname_child_require :=
         dbops.fn_name_from_template(
-          nm_require,
+          CASE WHEN rfk.fk_omonime_require > 1
+               THEN replace(nm_require, '{fkhash6_if_long}', '{fkhash6}')
+               ELSE nm_require END,
           rfk.child_schema, rfk.child_table,
           rfk.parent_table, rfk.child_table, rfk.conname, NULL
         );
@@ -257,13 +263,15 @@ BEGIN
                           col_attivo_parent, fk_col, v_parent_ref_col
                         );
 
-      IF (exist_strat='BY_NAME'      AND NOT exists_by_name)
-      OR (exist_strat='BY_FUNCTION'  AND NOT exists_by_args)
-      OR (exist_strat='BOTH'         AND NOT (exists_by_name OR exists_by_args))
+      -- Il trigger si riconosce dagli ARGOMENTI (la FK che difende): il nome
+      -- serve a crearlo. Uno vivo col nome che non e' quello atteso si
+      -- rigenera (con reconcile_on_change): e' il caso di due FK della stessa
+      -- coppia nate quando il nome non le distingueva.
+      IF NOT exists_by_args OR (NOT exists_by_name AND v_reconcile)
       THEN
         IF p_dry_run THEN
           PERFORM dbops.fn_audit_log_once(
-            p_function_name => 'fn_run_automations_attivo',
+            p_function_name => 'dbops.fn_run_automations_attivo',
             p_status        => 'DRYRUN',
             p_rule_type     => 'ATTIVO_REQUIRE',
             p_exec_mode     => p_exec_mode,
@@ -276,8 +284,7 @@ BEGIN
                                 'child',      rfk.child_schema||'.'||rfk.child_table,
                                 'attivo_col', col_attivo_parent,
                                 'fk',         fk_col,
-                                'ref_col',    v_parent_ref_col,
-                                'exist_strategy', exist_strat
+                                'ref_col',    v_parent_ref_col
                               ),
             p_message       => 'REQUIRE trigger would be created'
           );
@@ -344,7 +351,7 @@ BEGIN
       ELSE
         IF p_dry_run THEN
           PERFORM dbops.fn_audit_log_once(
-            p_function_name => 'fn_run_automations_attivo',
+            p_function_name => 'dbops.fn_run_automations_attivo',
             p_status        => 'DRYRUN',
             p_rule_type     => 'ATTIVO_REQUIRE_OK_EXISTS',
             p_exec_mode     => p_exec_mode,
@@ -358,7 +365,6 @@ BEGIN
                                 'child',   rfk.child_schema||'.'||rfk.child_table,
                                 'fk',      fk_col,
                                 'ref_col', v_parent_ref_col,
-                                'exist_strategy', exist_strat,
                                 'exists_by_name', exists_by_name,
                                 'exists_by_args', exists_by_args
                               ),
@@ -367,10 +373,13 @@ BEGIN
         END IF;
       END IF;
 
-      -- 7) Nome trigger BLOCK (padre)
+      -- 7) Nome trigger BLOCK (padre): hash se un'altra FK darebbe lo stesso
+      --    nome sul padre (figlie omonime di due schemi, o due FK della coppia)
       tname_parent_block :=
         dbops.fn_name_from_template(
-          nm_block,
+          CASE WHEN rfk.fk_omonime_block > 1
+               THEN replace(nm_block, '{fkhash6_if_long}', '{fkhash6}')
+               ELSE nm_block END,
           rfk.parent_schema, rfk.parent_table,
           rfk.parent_table, rfk.child_table, rfk.conname, NULL
         );
@@ -383,13 +392,11 @@ BEGIN
                           fk_col, v_parent_ref_col, col_attivo_parent
                         );
 
-      IF (exist_strat='BY_NAME'      AND NOT exists_by_name)
-      OR (exist_strat='BY_FUNCTION'  AND NOT exists_by_args)
-      OR (exist_strat='BOTH'         AND NOT (exists_by_name OR exists_by_args))
+      IF NOT exists_by_args OR (NOT exists_by_name AND v_reconcile)
       THEN
         IF p_dry_run THEN
           PERFORM dbops.fn_audit_log_once(
-            p_function_name => 'fn_run_automations_attivo',
+            p_function_name => 'dbops.fn_run_automations_attivo',
             p_status        => 'DRYRUN',
             p_rule_type     => 'ATTIVO_BLOCK',
             p_exec_mode     => p_exec_mode,
@@ -402,8 +409,7 @@ BEGIN
                                 'child',      rfk.child_schema||'.'||rfk.child_table,
                                 'attivo_col', col_attivo_parent,
                                 'fk',         fk_col,
-                                'ref_col',    v_parent_ref_col,
-                                'exist_strategy', exist_strat
+                                'ref_col',    v_parent_ref_col
                               ),
             p_message       => 'BLOCK trigger would be created'
           );
@@ -466,7 +472,7 @@ BEGIN
       ELSE
         IF p_dry_run THEN
           PERFORM dbops.fn_audit_log_once(
-            p_function_name => 'fn_run_automations_attivo',
+            p_function_name => 'dbops.fn_run_automations_attivo',
             p_status        => 'DRYRUN',
             p_rule_type     => 'ATTIVO_OK_EXISTS',
             p_exec_mode     => p_exec_mode,
@@ -480,7 +486,6 @@ BEGIN
                                 'child',   rfk.child_schema||'.'||rfk.child_table,
                                 'fk',      fk_col,
                                 'ref_col', v_parent_ref_col,
-                                'exist_strategy', exist_strat,
                                 'exists_by_name', exists_by_name,
                                 'exists_by_args', exists_by_args
                               ),
@@ -495,7 +500,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_attivo(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione ATTIVO (BLOCK + REQUIRE): crea trigger BLOCK sul padre e REQUIRE sul figlio quando il padre ha colonna attivo. Usa la colonna del padre realmente referenziata dalla FK (confkey[1]), non la PK, per supportare FK su colonne UNIQUE non-PK. ⭐ Rev 20260925-48: salta le FK dichiarate in dbops.automazione_attivo_eccezioni (ognuna col suo motivo) e, fuori dal dry run, in testa a ogni giro chiama dbops.fn_ritira_attivo_eccezioni, che toglie i trigger gia'' generati per quelle coppie: chi genera ritira. Prima eccezione: config.profili_accesso_bindings.identita_digitale_id (porta e profili si sganciano, brief-db-blocco-login-per-credenziale §12.3). ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11. ⭐ Rev 20261021-23: nello stesso punto chiama anche dbops.fn_ritira_attivo_orfani, che toglie i trigger ATTIVO che nominano una tabella o una colonna che non esiste piu'' (lettore unico dbops.fn_trigger_attivo_orfani): un DROP TABLE della figlia lasciava il block sul padre, e ogni disattivazione del padre rispondeva E_ATTIVO_BLOCK_FKCOL_NOT_FOUND (vendite.listini dopo listini_associazioni). Brief: brief-be-utenti-di-sviluppo §9.5.';
+IS 'Automazione ATTIVO (BLOCK + REQUIRE): per ogni FK monocolonna dell''ambito verso un padre con la colonna attivo monta il BLOCK sul padre (dbops.trgfn_prevent_deactivate_if_children) e il REQUIRE sulla figlia (dbops.trgfn_child_requires_active_parent), con la colonna del padre realmente referenziata dalla FK (confkey[1]). Un trigger si riconosce dagli argomenti, cioe'' dalla FK che difende; il nome viene dai template block e require della regola; quando due FK darebbero lo stesso nome sulla stessa tabella (piu'' FK della figlia verso padri omonimi, o figlie omonime di due schemi verso lo stesso padre) l''hash della FK entra sempre nel nome. Un trigger vivo con un nome diverso da quello atteso si rigenera (params.reconcile_on_change). Salta le FK dichiarate in dbops.automazione_attivo_eccezioni e, fuori dal dry run, in testa a ogni giro chiama dbops.fn_ritira_attivo_eccezioni e dbops.fn_ritira_attivo_orfani (i trigger di una coppia diventata eccezione, o che nominano una tabella o una colonna che non c''e'' piu''): chi genera ritira. Un guasto dell''ambiente (script.fn_sqlstate_di_ambiente) si scrive nel registro errori e si rilancia col suo SQLSTATE; i difetti di struttura escono con E_ATTIVO_REQUIRE o E_ATTIVO_BLOCK.';
 ```
 
 </div>

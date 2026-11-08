@@ -51,7 +51,6 @@ BEGIN
        AND c.relname = rtab.table_name
        AND nref.nspname = 'anagrafiche'
        AND cref.relname = 'soggetti_ruoli'
-       AND att.attname LIKE '%_soggetto_ruolo_id'
      ORDER BY
        att.attname
      LIMIT 1;
@@ -66,7 +65,9 @@ BEGIN
          AND c.relname = rtab.table_name
          AND a.attnum > 0
          AND NOT a.attisdropped
-         AND a.attname LIKE '%_soggetto_ruolo_id'
+         -- la forma senza prefisso e' ammessa: il guard e' generico, la colonna la
+         --   dichiara il registro
+         AND (a.attname = 'soggetto_ruolo_id' OR a.attname LIKE '%\_soggetto_ruolo_id')
        ORDER BY a.attname
        LIMIT 1;
     END IF;
@@ -126,7 +127,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas text[])
-IS 'Popola dbops.automazione_guard_utility_tipo_ruolo autodetectando tabelle con utility_id + colonna ruolo (FK diretta o naming *_soggetto_ruolo_id). Post 18-08-2026: NON SCRIVE PIU''. La configurazione e'' un mirror del CSV 80_data/sql/dbops/automazione_guard_utility_tipo_ruolo.csv, come le altre automazione_* di dbops; questa funzione rileva soltanto e segnala con un NOTICE le tabelle che qualificano ma non sono a catalogo. Scriveva con ON CONFLICT DO NOTHING, quindi una riga scritta una volta non si raddrizzava piu'' e la configurazione e'' rimasta ferma al 2026-02-16 mentre lo schema andava avanti: al 2026-08-18, 4 righe su 7 descrivevano tabelle che avevano perso utility_id o erano state rinominate.';
+IS 'Diagnosi, non scrive: segnala con un NOTICE le tabelle dell''ambito (p_schemas NULL = dbops.fn_resolve_scope, schema storico escluso) che hanno utility_id e una colonna verso anagrafiche.soggetti_ruoli (una FK, o in mancanza il nome soggetto_ruolo_id o *_soggetto_ruolo_id) ma non sono in dbops.automazione_guard_utility_tipo_ruolo. Il registro e'' il mirror del CSV 80_data/sql/dbops/automazione_guard_utility_tipo_ruolo.csv: chi legge la diagnosi decide se aggiungere la riga. La chiama il primo giro di ci_apply.';
 ```
 
 </div>

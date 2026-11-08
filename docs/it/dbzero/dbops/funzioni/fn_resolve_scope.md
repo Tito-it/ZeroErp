@@ -21,7 +21,7 @@ AS $function$
    BEGIN
      -- 1) Se è stato passato p_schemas, pulisci:
      IF p_schemas IS NOT NULL THEN
-       SELECT array_agg(DISTINCT s)
+       SELECT array_agg(DISTINCT btrim(s))
          INTO v_schemas
        FROM unnest(p_schemas) AS t(s)
        WHERE nullif(btrim(s),'') IS NOT NULL       -- elimina ''/spazi
@@ -38,7 +38,7 @@ AS $function$
        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='dbops' AND c.relname='automation_scope' AND c.relkind='r'
      ) THEN
-       SELECT array_agg(schema_name)
+       SELECT array_agg(DISTINCT btrim(schema_name))
          INTO v_schemas
        FROM dbops.automation_scope;
      END IF;
@@ -54,6 +54,9 @@ AS $function$
 
      RETURN v_schemas;
    END; $function$
+
+COMMENT ON FUNCTION dbops.fn_resolve_scope(p_schemas text[])
+IS 'Gli schemi su cui gira una corsa delle automazioni, senza doppi e senza spazi. Con p_schemas la lista del chiamante pulita (voci vuote e *all escluse); se resta vuota, o p_schemas e'' NULL, gli schemi di dbops.automation_scope (uno schema con piu'' righe compare una volta); se il registro e'' vuoto, tutti gli schemi utente tranne storico. Il filtro per tabella dentro uno schema e'' dbops.fn_table_in_scope. Sede unica dell''ambito per i runner: nessuno legge automation_scope da se''.';
 ```
 
 </div>

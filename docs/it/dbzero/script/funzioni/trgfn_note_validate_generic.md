@@ -97,7 +97,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.trgfn_note_validate_generic()
-IS 'Validazione generica per note ancorate a RIGA: verifica appartenenza target_riga_id→target_id via tabella righe (schema.qualificata) e FK passate in TG_ARGV[0] e TG_ARGV[1]. Rev 2026-10-25 (20261025-66, brief-db-grammatica-unica-documenti lotto 3, L3-4): il dominio dell''errore E_NOTE_RIGA_MISMATCH e'' NEW.target_tipo nel payload e l''etichetta della sorgente nella frase per l''operatore; il terzo argomento del trigger, che ripeteva il confine della partizione, non si legge piu''.';
+IS 'Validazione delle note ancorate a una RIGA, BEFORE INSERT OR UPDATE sulle partizioni di note: la riga target_riga_id appartiene alla testata target_id. Una nota con anchor_tipo diverso da RIGA passa senza controlli. TG_ARGV[0] = la tabella delle righe, qualificata con lo schema; TG_ARGV[1] = la colonna della riga che punta alla testata. target_riga_id mancante -> E_NOTE_TARGET_ID; tabella delle righe inesistente -> E_NOTE_CONFIG (un errore del montaggio, non dei dati); riga inesistente o di un''altra testata -> E_NOTE_RIGA_MISMATCH, con NEW.target_tipo come dominio nel payload e, nella frase per l''operatore, l''etichetta della sorgente (config.sorgenti.etichetta, o il codice se il tipo non e'' una sorgente). Gli errori si sollevano nell''area dello schema della tabella su cui scatta. Montata sulle note di preventivi, offerte commerciali (le righe di un''offerta sono le sue eccezioni), contratti, ordini, DDT e fatture di vendita, e sulle note di ordini e DDT d''acquisto. SECURITY INVOKER.';
 ```
 
 </div>

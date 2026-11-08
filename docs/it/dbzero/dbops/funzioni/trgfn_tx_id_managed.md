@@ -166,18 +166,17 @@ BEGIN
     END IF;
 
     -- Qui si arriva solo con NEW.tx_id NULL (vedi uscita in testa).
-    NEW.tx_id := COALESCE(
-        NULLIF(current_setting('dbops.tx_id', true), '')::uuid,
-        v_new_tx_id,
-        uuidv7()
-    );
+    -- Il valore e' quello calcolato dai rami sopra, che hanno gia' letto la
+    -- GUC dbops.tx_id (e l'hanno scartata se malformata o non registrata):
+    -- rileggerla qui faceva vincere un id non registrato sulla sentinella.
+    NEW.tx_id := COALESCE(v_new_tx_id, uuidv7());
   RETURN NEW;
 
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_tx_id_managed()
-IS 'Trigger function di audit: valorizza NEW.tx_id. Se NEW.tx_id e'' gia'' valorizzato normalizza la stringa vuota e ritorna subito, senza leggere config.parameters ne'' script.*: il resto del corpo serve solo a calcolare il valore quando manca. Quando NEW.tx_id IS NULL: bypass a due livelli, il parametro config.parameters.tx_id_bypass_enabled e poi la GUC myapp.bypass_tx_id_check, che si legge sempre quando il parametro non accende il bypass; parametro assente o NULL vale spento e lascia W_TXID_BYPASS_PARAMETRO_ASSENTE nel log, senza fermare la scrittura. Col bypass: il tx_id di sessione (GUC dbops.tx_id) o script.uuid_nil(). Senza bypass: se la GUC dbops.tx_id e'' impostata, l''id deve esistere in dbops.transaction_ids, altrimenti avverte (W_TXID_NOT_REGISTERED) e assegna script.uuid_nil(); se la GUC e'' assente chiama dbops.fn_get_or_create_session_tx_id(). Una lettura del parametro che fallisce solleva E_SQL_READ_TABLE. Convenzione: E_ = errore bloccante, W_ = avviso scritto solo nel log.';
+IS 'Trigger function di audit: valorizza NEW.tx_id. Se NEW.tx_id e'' gia'' valorizzato normalizza la stringa vuota e ritorna subito, senza leggere config.parameters ne'' script.*: il resto del corpo serve solo a calcolare il valore quando manca. Quando NEW.tx_id IS NULL: bypass a due livelli, il parametro config.parameters.tx_id_bypass_enabled e poi la GUC myapp.bypass_tx_id_check, che si legge sempre quando il parametro non accende il bypass; parametro assente o NULL vale spento e lascia W_TXID_BYPASS_PARAMETRO_ASSENTE nel log, senza fermare la scrittura. Col bypass: il tx_id di sessione (GUC dbops.tx_id) o script.uuid_nil(). Senza bypass: se la GUC dbops.tx_id e'' impostata, l''id deve esistere in dbops.transaction_ids, altrimenti avverte (W_TXID_NOT_REGISTERED) e assegna script.uuid_nil(); una GUC che non e'' un uuid vale assente; se la GUC e'' assente chiama dbops.fn_get_or_create_session_tx_id(). Il valore assegnato e'' sempre quello di questi rami: la GUC non si rilegge alla fine. Una lettura del parametro che fallisce solleva E_SQL_READ_TABLE. Convenzione: E_ = errore bloccante, W_ = avviso scritto solo nel log.';
 ```
 
 </div>

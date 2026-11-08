@@ -37,7 +37,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_sorgente_chiave_id(p_sorgente_uid text)
-IS 'Building block della sorgente polimorfa (20261005-24), gemella di script.fn_sorgente_chiave_uuid per i tipi a key_selector = id: la chiave testuale nel suo tipo bigint, per cercarla su script.vw_stato_sorgente.sorgente_chiave_id. NULL se il testo non e'' un intero in forma CANONICA (identica a bigint::text: niente zeri davanti, spazi, segno). Mai un errore. Stesse ragioni della gemella. Consumatori: pratiche.fn_stato_sorgente, script.vw_pratica_doc_sorgente.';
+IS 'La chiave di un documento scritta in testo, nel suo tipo bigint: il lettore della forma canonica per i tipi a key_selector = id, gemella di script.fn_sorgente_chiave_uuid. NULL se il testo non e'' un intero in forma CANONICA (identica a bigint::text: niente zeri davanti, spazi, segno). Mai un errore; NULL in ingresso, NULL in uscita. Stesse ragioni e stesse cautele della gemella (forma canonica, conversione del parametro e non della colonna, plpgsql e non sql). La leggono script.fn_sorgente_documento_da_chiave, script.fn_sorgente_chiave, dbops.fn_sorgenti_orfane, vendite.fn_documento_lineage_legami e vendite.fn_documento_lineage_sintesi.';
 ```
 
 </div>

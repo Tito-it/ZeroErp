@@ -44,7 +44,7 @@ WITH ambito AS (
                    FROM ((pg_trigger tg
                      JOIN pg_proc p ON ((p.oid = tg.tgfoid)))
                      JOIN pg_namespace pn ON ((pn.oid = p.pronamespace)))
-                  WHERE ((tg.tgrelid = m.oid) AND (NOT tg.tgisinternal) AND (tg.tgenabled <> 'D'::"char") AND ((pn.nspname =
+                  WHERE ((tg.tgrelid = m.oid) AND (NOT tg.tgisinternal) AND (tg.tgenabled <> 'D'::"char") AND (pn.nspname =
                         CASE m.marcatore
                             WHEN 'TX_ID'::text THEN 'dbops'::name
                             WHEN 'STORICIZZA'::text THEN 'script'::name
@@ -54,10 +54,8 @@ WITH ambito AS (
                             WHEN 'TX_ID'::text THEN 'trgfn_tx_id_managed'::name
                             WHEN 'STORICIZZA'::text THEN 'trgfn_storico_generic'::name
                             ELSE NULL::name
-                        END))))) AS trigger_a_mano,
-            (EXISTS ( SELECT 1
-                   FROM dbops.automation_cleanup_exclusions e
-                  WHERE (e.enabled AND (e.schema_name = m.schema_tabella) AND (e.table_name = m.nome_tabella)))) AS esclusa_dalla_pulizia
+                        END)))) AS trigger_a_mano,
+            dbops.fn_cleanup_esclusa(m.schema_tabella, m.nome_tabella) AS esclusa_dalla_pulizia
            FROM marcatori m
         ), scoperti AS (
          SELECT e.marcatore,

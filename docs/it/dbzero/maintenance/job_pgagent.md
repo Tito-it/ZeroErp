@@ -13,6 +13,7 @@
 | `automations_audit_update` | si | alle 21:00, ogni giorno | `automations_audit_update` |
 | `automations_cleanup_weekly` | si | alle 23:00, di domenica | `automations_cleanup` |
 | `automations_delete_block` | si | alle 21:10, ogni giorno | `automations_delete_block` |
+| `automations_guard_utility` | si | alle 21:10, ogni giorno | `automations_guard_utility` |
 | `automations_lock_columns` | si | alle 21:10, ogni giorno | `automations_lock_columns` |
 | `automations_overlap` | si | alle 21:00, ogni giorno | `automations_overlap` |
 | `automations_storico` | si | alle 21:00, ogni giorno | `automations_storico` |
@@ -176,6 +177,14 @@ BEGIN
 END
 $sveglia$;
 ```
+
+## `automations_guard_utility`
+
+Porta il guard utility/tipo ruolo allo stato di dbops.automazione_guard_utility_tipo_ruolo
+
+| Step | Acceso | Tipo | Database | Chiama |
+| --- | --- | --- | --- | --- |
+| `run_automations_guard_utility` | si | SQL | zeroerp | [`CALL maintenance.proc_automations_guard_utility_job();`](funzioni/proc_automations_guard_utility_job.md) |
 
 ## `automations_lock_columns`
 
