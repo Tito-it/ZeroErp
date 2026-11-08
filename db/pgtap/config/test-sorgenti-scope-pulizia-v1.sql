@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: Pulizia config.sorgenti — scope + trigger polimorfo + RIGA
 -- ------------------------------------------------------------
--- Indice test (1..9):
+-- Indice test (1..11):
 --  1) Colonna scope presente su config.sorgenti
 --  2) Constraint chk_sorgenti_scope attivo
 --  3) scope NOT NULL su tutti i record
@@ -13,6 +13,8 @@
 --  7) Sorgente POST_INVOICE: FATTURA attiva
 --  8) Trigger polimorfo rimosso da attivita_fatturabili
 --  9) Nessuna sorgente porta piu' il marchio meta.archived
+-- 10) chk_sorgenti_scope non ammette piu' ROW_VALIDATOR (lotto Z, giro Z.1)
+-- 11) categoria e' la natura del tipo: NOT NULL, DOCUMENTO o EVENTO; EVENTO_ASSET e' un EVENTO (Z-b)
 --
 -- ⚠️ Rev 2026-09-15 (brief-db-magazzino-lotto-1-terreno-vuoto, D-L1-f). I test
 --   6 e 9 pinnavano lo stato OPPOSTO: cinque *_RIGA «archiviate», attivo=false
@@ -49,7 +51,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(11);
 
 -- ============================================================
 -- 1) Colonna scope presente su config.sorgenti
@@ -158,5 +160,26 @@ SELECT is(
 );
 
 -- ============================================================
+-- 10-11) lotto Z, giro Z.1 di brief-db-sorgente-documento-e-riga (20261109-21, 90_end/20261109-22).
+SELECT throws_ok(
+    $$INSERT INTO config.sorgenti (id, codice_interno, codice, categoria, descrizione, attivo, meta,
+                                   target_table, key_selector, scope, apribile, etichetta)
+      VALUES ((SELECT max(id) + 1 FROM config.sorgenti), 'PGT_SCOPE_RV', 'PGT_SCOPE_RV', 'DOCUMENTO',
+              'prova', true, '{}', 'vendite.ordini', 'id', 'ROW_VALIDATOR', false, 'prova')$$,
+    '23514', NULL,
+    '10) lo scope ROW_VALIDATOR non e'' piu'' ammesso (chk_sorgenti_scope)');
+
+SELECT is(
+    (SELECT (a.attnotnull,
+             pg_get_constraintdef(c.oid) ~ 'DOCUMENTO' AND pg_get_constraintdef(c.oid) ~ 'EVENTO'
+               AND pg_get_constraintdef(c.oid) !~ 'RIGA',
+             (SELECT s.categoria FROM config.sorgenti s WHERE s.codice_interno = 'EVENTO_ASSET'),
+             (SELECT count(*) FROM config.sorgenti s WHERE s.categoria NOT IN ('DOCUMENTO', 'EVENTO')))::text
+       FROM pg_catalog.pg_attribute a
+       JOIN pg_catalog.pg_constraint c ON c.conrelid = a.attrelid AND c.conname = 'chk_sorgenti_categoria'
+      WHERE a.attrelid = 'config.sorgenti'::regclass AND a.attname = 'categoria'),
+    '(t,t,EVENTO,0)',
+    '11) categoria e'' la natura: NOT NULL, solo DOCUMENTO o EVENTO, EVENTO_ASSET e'' un EVENTO');
+
 SELECT * FROM finish();
 ROLLBACK;

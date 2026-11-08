@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-08
 
-**Riparte: la sessione DB** col lotto Z, al via di Tid (riga 8; il giro M.4 è passato all'analisi degli acquisti). Il giro M.1 è applicato da Tid, pgTAP verdi, committato su `dev/db-tid` (2026-11-08). Il BE ha chiuso il §8.15 e il §8.16 (committato, `03fe67e2ac`, merge #57): restano a Tid la decisione BE-P.1-e e gli smoke via API del percorso pratica (riga 9-quinquies); il §8.17 aspetta il lotto BE/FE (dall'apply di M.1 la consultazione dei movimenti per documento è vuota fino a BE-M.1-a). Il lotto P è chiuso: un giro solo, P.1 (`20261108-64` … `-87`), applicato su dbdev e scratch, pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). Il rimedio alla CI da zero è applicato su dbdev e scratch e committato (riga 7-quadragies-septies). Il lotto D (un giro, D.1) e il giro K.1 (il nome della chiave, richiesta BE) sono applicati su dbdev e scratch, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
+**Riparte: la sessione DB** col giro Z.2 (riga 8; il giro M.4 è passato all'analisi degli acquisti). Il giro M.1 è applicato da Tid, pgTAP verdi, committato su `dev/db-tid` (2026-11-08). Il BE ha chiuso il §8.15 e il §8.16 (committato, `03fe67e2ac`, merge #57): restano a Tid la decisione BE-P.1-e e gli smoke via API del percorso pratica (riga 9-quinquies); il §8.17 aspetta il lotto BE/FE (dall'apply di M.1 la consultazione dei movimenti per documento è vuota fino a BE-M.1-a). Il lotto P è chiuso: un giro solo, P.1 (`20261108-64` … `-87`), applicato su dbdev e scratch, pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). Il rimedio alla CI da zero è applicato su dbdev e scratch e committato (riga 7-quadragies-septies). Il lotto D (un giro, D.1) e il giro K.1 (il nome della chiave, richiesta BE) sono applicati su dbdev e scratch, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -87,7 +87,10 @@
 | 7-sexagies-novies | ✅ DB | giro M.3: i cinque tipi di foglia escono da `config.sorgenti`, restano entità; tre pgTAP allineati; provato in transazione (2026-11-08) | §7.2 «Il giro M.3, le scelte», §8.19 | — |
 | 7-septuagies | ✅ Tid | apply del giro M.3 (`80_data/changelog/20261109-20`, `tipi_entita.csv`, `sorgenti.csv`) su dbdev (12:37) e scratch (12:38): i due mirror RERAN, il DELETE EXECUTED, pgTAP verdi (Tid, 2026-11-08); committato su `dev/db-tid` | §7.2 «Il giro M.3, le scelte» | 7-sexagies-novies |
 | 7-septuagies-bis | ✅ Tid | il giro M.4 (acquisti) passa all'analisi degli acquisti, col riallineamento delle tabelle d'acquisto alla vendita (2026-11-08) | `analisi-simmetria-ordini-acquisto.md` §4.6-bis | — |
-| 8 | DB | lotto Z, col suo via; il §8 si chiude lì | §7.2, §8 | 7-septuagies, via di Tid al lotto Z |
+| 7-septuagies-ter | ✅ Tid | via al lotto Z («procedi»); Z-a, Z-b, Z-c e R-P.1-1 come proposti (2026-11-08) | §7.2 «Lotto Z, il censimento e i giri» | — |
+| 7-septuagies-quater | ✅ DB | giro Z.1: scope senza `ROW_VALIDATOR`, natura in `categoria` (con l'una tantum), codice ritirato, vista per flusso, COMMENT; un pgTAP nuovo, uno allineato; provato in transazione (2026-11-08) | §7.2 «Il giro Z.1, le scelte», §8.20 | — |
+| 7-septuagies-quinquies | ✅ Tid | apply del giro Z.1 completato su dbdev e scratch (l'una tantum, poi il migrate), pgTAP verdi; committato su `dev/db-tid` (2026-11-08) | §7.2 «L'apply del giro Z.1» | — |
+| 8 | DB | lotto Z: giri Z.2, Z.4; il §8 si chiude lì | §7.2 «Lotto Z, il censimento e i giri», §8 | — |
 | 9-bis | ✅ BE | il §8 fino al lotto T: codici, reso, ordine dal preventivo, contratto dall'offerta (2026-11-07, da committare su `dev/backend-tid`). I due percorsi rotti dal giro T.5 sono ripristinati | §8 «Stato al 2026-11-07, dopo il giro BE» | — |
 | 9-ter | ✅ BE | il §8.13 (D.1: stampa e drenatore della coda) e il §8.14 (K.1: il nome della chiave del push), i due percorsi rotti dall'apply (2026-11-07, da committare su `dev/backend-tid`) | §8.14 «Stato al 2026-11-07, dopo il giro BE di D.1 e K.1» | — |
 | 9-quater | ✅ BE | il §8.16 (P.1: il link documento → pratica, scrittore e lettori), il presidio `pratiche/tests/db/test_link_pratica_sorgente_db`; richieste al DB R-P.1-1, R-P.1-2 (2026-11-08, committato `03fe67e2ac`, merge #57); R-P.1-1 e R-P.1-2 vanno al giro DB di fine cantiere | §8.16 «Stato al 2026-11-08, dopo il giro BE di P.1» | — |
@@ -96,7 +99,7 @@
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
 **Decisioni aperte di Tid:** nessuna. Decise il 2026-11-08: BE-P.1-e, il pre-check «pratiche collegate» di `elimina_preventivo` si ritira (A); la regola «si cancella solo la bozza vuota» va a DB su preventivi, offerte e commesse nel lotto Z; la bozza vuota che si porta via il suo aggancio alla pratica (C) è una proposta scritta in `gestione-pratiche-come-procedere.md` §3, da decidere dopo (§8.16). Decisa il 2026-11-08: UI-M.1-a, la lista dei movimenti mostra anche documento e dettaglio (§8.17, nel lotto BE/FE). Da guardare (giro M.1, §7.2 «Tre fatti trovati in prova»): il pgTAP di ⑧ è costruito con un'uscita a giacenza zero, perché un carico senza valore porta la media a zero e non a NULL. Decise il 2026-11-08, giro P.1 (§7.2 «Il giro P.1, le scelte»): l'unicità del link alla pratica senza `sorgente_riga` (Tid: «sì»); il guard testuale si ritira nel giro P.1 (Tid: «da fare»). Il nome del file `script/test-guard-sorgente-polimorfa-testuale-v1` è una scelta del team DB, non una decisione di Tid (Tid, 2026-11-08). Decise il 2026-11-07: l'esenzione della coda di stampa dal guard unico, confermata (la FK resta, §7.2 «Il giro D.1, le scelte»); la chiave `sorgente_chiave` anche nei cinque lister del push e nel builder pgTAP (§7.2 «Il giro K.1»). ⏭️ Da applicare del giro K.2: niente (`20_code/vendite/20261108-36` … `-40`, `20_code/dbops/20261108-61` … `-63` applicati da Tid, pgTAP verdi, 2026-11-08). `20_code/dbops/20261108-09` (i COMMENT di quattro builder pgTAP) risulta applicato su dbdev e scratch (2026-11-07, 22:30), col suo presidio verde. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
-**Lavoro da committare:** niente del cantiere. Il giro M.3 (`80_data/changelog/20261109-20`, `tipi_entita.csv`, `sorgenti.csv`, i tre pgTAP allineati, il commento del debito in `dbops/test-sorgenti-struttura-v1`, `analisi-simmetria-ordini-acquisto.md` §4.6-bis, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, lasciati fuori: i file dell'altra sessione (`ui/20261109-32` … `-39`, i CSV e i pgTAP di `dbops`/`ui`, `config/tabelle/aree_funzionali.md`, `azioni_processo.md`, `guide/automazione-db.md`, `brief-db-revisione-dbops.md`). Il giro M.2 è committato (`ad13694ffb`, 2026-11-08). Non del cantiere, da lasciare fuori: `brief-db-revisione-dbops.md`. Prima: il giro M.1 (i venti changeSet `20261108-94` … `-99`, `20261109-01` … `-14`, i tre CSV, i due pgTAP nuovi `dbops/test-presidi-magazzino-grana-v1` e `magazzino/test-sorgente-registro-v1`, i quindici allineati, le pagine auto-generate dei suoi oggetti e i due indici, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, lasciati fuori: il blocco 7-bis-b di `brief-db-revisione-dbops` (`20261109-31`, i cinque loader e i CSV di `dbops`, le pagine di `dbops/tabelle` e `dbops/manual`, due pgTAP, le due guide) e quel brief. Prima: Il giro P.1 (i ventiquattro changeSet `20261108-64` … `-87`, il pgTAP nuovo `pratiche/test-sorgente-pratiche-sorgenti-v1`, i dodici pgTAP allineati, le pagine auto-generate rigenerate, le due pagine del guard testuale cancellate, questo brief) è committato su `dev/db-tid` (2026-11-08), insieme al seguito del giro 7 di `brief-db-revisione-dbops` su `shop` (`20261108-88`, `-89`, il loop `ci_apply`, il provisioning, `dbops/test-storico-scope-policy-v1`; il §22 di quel brief resta fuori dal commit, per scelta di Tid). Il rimedio alla CI da zero (`00_schema/vendite/20261107-05`, `90_end/20261108-35`) è committato (`8bbae0df7b`). Il giro K.2 (gli otto changeSet, i 40 pgTAP allineati, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, da lasciare fuori: i changeSet `20261108-41` … `-46` coi loro pgTAP, e `brief-db-revisione-dbops.md`. Il giro D.1 (gli otto changeSet, il pgTAP nuovo `documenti/test-sorgente-documenti-generati-v1`, i quindici pgTAP allineati), il giro K.1 (sei changeSet, 54 pgTAP allineati), `20_code/dbops/20261108-09` col presidio `dbops/test-builder-pgtap-vincoli-immediate-v1`, le pagine auto-generate dei loro oggetti e questo brief sono committati su `dev/db-tid` (2026-11-07). Non del cantiere, lasciati fuori: i changeSet `20261108-25` … `-31` coi loro CSV, pgTAP e pagine, i due indici auto-generati, le tre guide e `brief-db-revisione-dbops.md`. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
+**Lavoro da committare:** niente del cantiere. Il giro Z.1 è committato su `dev/db-tid` (2026-11-08): `00_schema/config/20261109-21`, `20_code/script/20261109-23`, `-24`, `90_end/20261109-22`, `config/sorgenti.csv`, `config/codici_errore.csv`, `sql-una-tantum-sorgenti-categoria-evento.sql`, i pgTAP `pratiche/test-vw-flusso-doc-sorgente-v1` (nuovo) e `config/test-sorgenti-scope-pulizia-v1`, questo brief. Prima: niente del cantiere. Il giro M.3 (`80_data/changelog/20261109-20`, `tipi_entita.csv`, `sorgenti.csv`, i tre pgTAP allineati, il commento del debito in `dbops/test-sorgenti-struttura-v1`, `analisi-simmetria-ordini-acquisto.md` §4.6-bis, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, lasciati fuori: i file dell'altra sessione (`ui/20261109-32` … `-39`, i CSV e i pgTAP di `dbops`/`ui`, `config/tabelle/aree_funzionali.md`, `azioni_processo.md`, `guide/automazione-db.md`, `brief-db-revisione-dbops.md`). Il giro M.2 è committato (`ad13694ffb`, 2026-11-08). Non del cantiere, da lasciare fuori: `brief-db-revisione-dbops.md`. Prima: il giro M.1 (i venti changeSet `20261108-94` … `-99`, `20261109-01` … `-14`, i tre CSV, i due pgTAP nuovi `dbops/test-presidi-magazzino-grana-v1` e `magazzino/test-sorgente-registro-v1`, i quindici allineati, le pagine auto-generate dei suoi oggetti e i due indici, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, lasciati fuori: il blocco 7-bis-b di `brief-db-revisione-dbops` (`20261109-31`, i cinque loader e i CSV di `dbops`, le pagine di `dbops/tabelle` e `dbops/manual`, due pgTAP, le due guide) e quel brief. Prima: Il giro P.1 (i ventiquattro changeSet `20261108-64` … `-87`, il pgTAP nuovo `pratiche/test-sorgente-pratiche-sorgenti-v1`, i dodici pgTAP allineati, le pagine auto-generate rigenerate, le due pagine del guard testuale cancellate, questo brief) è committato su `dev/db-tid` (2026-11-08), insieme al seguito del giro 7 di `brief-db-revisione-dbops` su `shop` (`20261108-88`, `-89`, il loop `ci_apply`, il provisioning, `dbops/test-storico-scope-policy-v1`; il §22 di quel brief resta fuori dal commit, per scelta di Tid). Il rimedio alla CI da zero (`00_schema/vendite/20261107-05`, `90_end/20261108-35`) è committato (`8bbae0df7b`). Il giro K.2 (gli otto changeSet, i 40 pgTAP allineati, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, da lasciare fuori: i changeSet `20261108-41` … `-46` coi loro pgTAP, e `brief-db-revisione-dbops.md`. Il giro D.1 (gli otto changeSet, il pgTAP nuovo `documenti/test-sorgente-documenti-generati-v1`, i quindici pgTAP allineati), il giro K.1 (sei changeSet, 54 pgTAP allineati), `20_code/dbops/20261108-09` col presidio `dbops/test-builder-pgtap-vincoli-immediate-v1`, le pagine auto-generate dei loro oggetti e questo brief sono committati su `dev/db-tid` (2026-11-07). Non del cantiere, lasciati fuori: i changeSet `20261108-25` … `-31` coi loro CSV, pgTAP e pagine, i due indici auto-generati, le tre guide e `brief-db-revisione-dbops.md`. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
 pagine `manual/` cancellate, questo brief) sono committati su `dev/db-tid` il 2026-11-06. Il lotto 0 intero e il lotto R (giri R.1 e R.2: changeSet `20261106-46` …
 `-60`, i due CSV, i pgTAP, i due brief) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
@@ -2652,6 +2655,102 @@ prova l'apply. ✅ **Provato dall'apply di Tid** (2026-11-08, dbdev 12:37, scrat
   §8.16). È la regola della tabella padre che S-9 chiede prima di ogni azione sui figli polimorfi. Prima si censiscono
   gli stati iniziali e le righe di ciascuno (le commesse hanno attività, non righe) e i chiamanti che cancellano.
 
+##### Lotto Z, il censimento e i giri (team DB, 2026-11-08)
+
+Via di Tid il 2026-11-08 («procedi»). Il censimento (dbdev, 2026-11-08: corpi da `pg_get_functiondef`, viste,
+policy, BE, pgTAP) smentisce **tre** punti del piano, scritto il 2026-11-06 prima dei giri che li hanno cambiati.
+Sul modello, non sui dati: ognuno è una proposta per Tid (Z-a, Z-b, Z-c sotto).
+
+* **Il ponte del BB che risolve non ha più rami per tabella.** `script.fn_sorgente_documento_da_chiave` è ormai solo
+  «chiave in testo → `script.fn_sorgente_documento`». Lo leggono chiavi che sono testo **per costruzione**, non tabelle
+  in una grammatica vecchia: i nodi della lineage (`fn_documento_lineage_legami`), la chiave del gruppo fatturabile
+  costruita con l'uid (D-6: `fn_split_gruppo_fatturabile_key`, `fn_riferimento_gruppo_fatturabile`,
+  `fn_list_lotto_segnalazioni`, `vw_dash_competenza_gruppi`), `vendite.fn_get_sorgente_documento_ref`, un builder
+  pgTAP. «Il ponte è vuoto» vale come **nessuna tabella scrive più la chiave in testo**: lo presidia già
+  `dbops/test-sorgenti-struttura-v1` (test 2: fuori dal guard unico solo il debito degli acquisti e le due esenzioni).
+  Il COMMENT del ponte («si svuota lotto per lotto») va riscritto al presente.
+* **Z-a — `script.fn_sorgente_chiave_id/_uuid` non si possono ritirare.** Sono il lettore della forma canonica di una
+  chiave in testo, e chiavi in testo ce ne sono per decisione: la `sorgente_chiave` del BE e della madre (K.1, K.2), i
+  nodi della lineage, le chiavi D-6. Li usano il BB che scrive (`script.fn_sorgente_chiave`), il guard unico (l'uid in
+  forma canonica), il ponte, la lineage, il presidio degli orfani (ramo TESTUALE). **Proposta: restano**, e il punto
+  esce dal lotto Z. ✅ **Tid, 2026-11-08: restano.**
+* **Z-b — `config.sorgenti.categoria` non è ricavabile dai livelli.** Il censimento di aprile (scheda magazzino §7.3)
+  lo dava per ridondante con `righe_table`: non lo è, perché `EMAIL` e `ATTIVITA_CONSUMI` sono documenti senza righe.
+  Dopo il giro M.3 l'unico tipo che non è un documento è `EVENTO_ASSET`, ancora con categoria `RIGA`. La legge il BE per
+  elencare i tipi documento numerabili (`vendite/db/famiglie_repository.py:335`, `CATEGORIA_SORGENTE_DOCUMENTO`), la
+  scrive il builder `dbops.fn_pgtap_crea_sorgente`. **Proposta: la colonna resta, col vocabolario della natura**
+  (`DOCUMENTO` / `EVENTO`, `EVENTO_ASSET` da `RIGA` a `EVENTO`, un CHECK sui due valori): dice che cosa è il tipo,
+  come proponeva la scheda §7.3. Il BE non cambia. ✅ **Tid, 2026-11-08: resta, `DOCUMENTO` / `EVENTO`.**
+* **Z-c — il controllo d'esistenza nei guard di dominio di bolla e reso non è un doppione puro.** Il guard unico
+  verifica la sorgente quando la si **scrive**. `vendite.trgfn_ddt_guard_cliente_sorgente` (e
+  `trgfn_resi_guard_cliente_ddt`) scattano anche quando cambia **solo il billing account**, e se il documento
+  d'origine non si vede (per esempio sotto RLS) rifiutano con `E_DOC_SORGENTE_NON_TROVATA` invece di lasciar passare:
+  è il fail-closed del 2026-10-10 («una bolla poteva nascere dall'ordine di un altro emittente col BA del proprio»).
+  Toglierlo lo riaprirebbe. **Proposta: resta**, e il COMMENT dice che cosa copre che il guard unico non copre. ✅ **Tid, 2026-11-08: resta.**
+* **R-P.1-1 — la regola d'ancora per flusso** (richiesta BE, §8.16). La vista per pratica (`script.vw_pratica_doc_sorgente`)
+  ordina: documento risolto, non terminale, ROOT, il più recente. La copia BE per flusso (`_doc_sorgente_lateral`):
+  ROOT, il più recente. Un flusso ha un solo ROOT (`uq_pratiche_sorgenti_flusso_root`): la differenza conta solo per
+  un flusso senza ROOT con più collegati. **Proposta: una vista `script.vw_flusso_doc_sorgente`**, una riga per
+  `flusso_id`: prima il ROOT (è il documento del passo, per definizione), poi lo stesso spareggio della pratica
+  (risolto, non terminale, il più recente). La copia BE si ritira. ✅ **Tid, 2026-11-08: ROOT, poi lo spareggio della
+  pratica.**
+
+**I giri** (decisioni prese il 2026-11-08; Z.3 confluisce in Z.1):
+
+| Giro | Che cosa | Stato |
+| --- | --- | --- |
+| **Z.1** | lo scope `ROW_VALIDATOR` esce da `chk_sorgenti_scope` (nessuna sorgente lo usa dal giro R.2); `E_PRATICA_SORGENTE_TIPO_INVALIDO` esce dai CSV dei codici e dei messaggi (R-P.1-2); la natura in `categoria` (Z-b); la vista per flusso (R-P.1-1); i COMMENT del ponte, di Z-a e di Z-c al presente | ✅ applicato da Tid su dbdev e scratch, pgTAP verdi, committato (2026-11-08) |
+| **Z.2** | la regola «si cancella solo la bozza vuota» su `vendite.preventivi`, `offerte_commerciali`, `commesse` (Tid, 2026-11-08), come il giro T.4: prima il censimento degli stati iniziali, delle righe (le commesse hanno attività) e di chi cancella | da fare |
+| **Z.4** | chiusura: il §8 completo e chiuso, il debito degli acquisti dichiarato (sopra), il presidio di struttura col suo elenco finale | ultimo |
+
+**Il giro Z.1, le scelte** (team DB, 2026-11-08):
+
+* **Lo scope** (`00_schema/config/20261109-21`): `chk_sorgenti_scope` senza `ROW_VALIDATOR`, stesso nome. Nessun seed lo
+  scrive (`sorgenti.csv` è l'unico scrittore del catalogo), quindi da zero il CHECK non incontra righe che lo violano.
+* **La natura** (Z-b): il COMMENT di `categoria` in `-21`; `sorgenti.csv` porta `EVENTO_ASSET` a `EVENTO`; NOT NULL e
+  `chk_sorgenti_categoria` (`DOCUMENTO` / `EVENTO`) in `90_end/20261109-22`, dopo il mirror: in `00_schema`
+  fermerebbero dbdev, che ha ancora `RIGA`. ⛔ Il mirror su dbdev e scratch **non può** scrivere il valore nuovo:
+  `categoria` è sotto lucchetto (`trg_sorgenti_a10_lock_columns_upd`), e un mirror di `80_data` gira prima di ogni
+  changeSet datato oggi. Il dato si corregge a mano prima del migrate (D-12):
+  [`sql-una-tantum-sorgenti-categoria-evento.sql`](sql-una-tantum-sorgenti-categoria-evento.sql), in una transazione,
+  con la porta del lucchetto aperta solo lì. Da zero non serve: la riga nasce con un INSERT, già `EVENTO`.
+* **Il codice ritirato** (R-P.1-2): `E_PRATICA_SORGENTE_TIPO_INVALIDO` prende `obsoleto_dal = 2026-11-08` in
+  `codici_errore.csv`, con la nota del perché. Non si cancella: è la regola della guida dei messaggi d'errore («ritirare
+  un codice, non cancellarlo»: `dbops.error_log` ci punta).
+* **La vista per flusso** (`20_code/script/20261109-23`, R-P.1-1): `script.vw_flusso_doc_sorgente`, una riga per
+  `flusso_id`, stesse colonne della gemella per pratica più `flusso_id`; prima il ROOT, poi risolto, vivo, il più
+  recente. `security_invoker=on`; i privilegi li dà il loop di `ci_apply`.
+* **I COMMENT** (`20_code/script/20261109-24`): il ponte al presente (le chiavi testo per costruzione, Z-a); i due guard
+  del cliente dicono che cosa coprono che il guard unico non copre (Z-c). Nessun corpo cambia.
+
+**I changeSet del giro Z.1:** `00_schema/config/20261109-21`, `20_code/script/-23`, `-24`, `90_end/20261109-22`; CSV
+`config/sorgenti.csv`, `config/codici_errore.csv`; SQL una tantum `sql-una-tantum-sorgenti-categoria-evento.sql`.
+pgTAP nuovo: `pratiche/test-vw-flusso-doc-sorgente-v1` (7). Allineato: `config/test-sorgenti-scope-pulizia-v1` (+10:
+`ROW_VALIDATOR` rifiutato; +11: la natura). Restano liberi `-25` … `-30`.
+
+**La prova del giro Z.1** (2026-11-08, in transazione annullata, come owner, su scratch e dbdev, nell'ordine del
+migrate: l'una tantum, `-21`, `-23`, `-24`, i due mirror simulati, `-22`):
+
+* l'estratto gira su tutti e due; senza l'una tantum il lucchetto rifiuta l'UPDATE di `categoria`: il migrate si
+  ferma sul mirror, non scrive niente in silenzio;
+* **la vista su dbdev** (fatto datato, 2026-11-08): 14 flussi, lo stesso documento della copia BE per ognuno (tutti
+  hanno solo il ROOT); il caso che le distingue (un flusso senza ROOT, un ROOT con un collegato più recente) lo
+  costruisce il pgTAP;
+* il pgTAP nuovo 7/7 su scratch e dbdev, rosso senza l'estratto; una mutazione (l'ordine della gemella, il ROOT dopo
+  lo spareggio) accende il solo test 3. ⚠️ Trovato in prova: la commessa non è proiettata da
+  `script.vw_stato_sorgente` (risolto false anche nella vista per pratica), quindi il test 6 prova il ramo NULL-safe;
+* **regressione prima/dopo su 325 pgTAP** sullo scratch (chi legge il catalogo delle sorgenti, i codici e i messaggi,
+  le viste della pratica, i link, il ponte, i due guard, i COMMENT, i riferimenti morti): 4496 → 4504 ok; cambiano
+  solo i due file del giro; i 31 rossi sono gli stessi nelle due corse;
+* guardrail statici verdi.
+
+**L'apply del giro Z.1** (dbdev, 2026-11-08, 13:15): il migrate ha applicato `-21`, `-23`, `-24` e si è fermato,
+come previsto, sul mirror di `sorgenti.csv` (lucchetto di `categoria`): l'una tantum non era stata eseguita. Niente è
+scritto a metà (`EVENTO_ASSET` è ancora `RIGA`, `-22` non c'è). ⏭️ **Per completare:** su dbdev l'una tantum, poi il
+migrate; sullo scratch l'una tantum **prima** del migrate. ✅ **Fatto da Tid** (2026-11-08): l'una tantum e il migrate
+su dbdev (`-22` alle 13:19) e scratch (13:20); `EVENTO_ASSET` è `EVENTO`, `chk_sorgenti_categoria` c'è,
+`E_PRATICA_SORGENTE_TIPO_INVALIDO` ha `obsoleto_dal`; pgTAP verdi (verifica DB dello stesso giorno).
+
 #### Lotto BE/FE — una volta sola
 
 * Il team BE/FE riceve il §8 intero e porta backend, frontend, test Django e smoke allo stato del DB.
@@ -3212,6 +3311,14 @@ Nessuna voce obbligatoria: le testate di magazzino e l'evento la provenienza non
 | --- | --- | --- | --- |
 | BE-M.3-a | `config.sorgenti` non ha più `INVENTARIO_RIGA`, `RETTIFICA_RIGA`, `TRASFERIMENTO_RIGA`, `DDT_VENDITA_PRELIEVO`, `RESO_VENDITA_RIENTRO`; restano entità di `config.tipi_entita` (`is_sorgente = false`), per note ed errori | `config/sorgenti.py:60-62` (le costanti `SORGENTE_INVENTARIO_RIGA`, `SORGENTE_RETTIFICA_RIGA`); `config/tests/test_sorgenti_seed.py`; i lettori delle costanti (`magazzino/db/famiglie.py:34,84,103`, già in BE-M.1-a) | le due costanti si ritirano; servono `SORGENTE_INVENTARIO`, `SORGENTE_RETTIFICA` (e `SORGENTE_TRASFERIMENTO` se la famiglia nasce), che la famiglia usa al posto delle vecchie. Con BE-M.1-a, nello stesso giro |
 | FE-M.3-a | i codici di foglia non arrivano più come sorgente di un movimento | `frontend/src/magazzino/vocabolari.js` (`SORGENTE_MOVIMENTO`), i locales `magazzino.movimenti.sorgente.<codice>` | i codici dei documenti, con FE-M.1-a. Le chiavi `config.tipi_entita.<x>_riga` restano: sono l'etichetta dell'entità |
+
+### 8.20 Dal lotto Z, giro Z.1 (2026-11-08)
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-Z.1-a | la regola d'ancora per flusso ha la sua sede DB: `script.vw_flusso_doc_sorgente` (una riga per `flusso_id`; colonne di `script.vw_pratica_doc_sorgente` più `flusso_id`: `pratica_id`, `sorgente_tipo_id`, `sorgente_id`, `sorgente_uid`, `ruolo_link`, `sorgente_descrizione`, `risolto`, `stato_codice_interno`, `stato_codice`, `stato_descrizione`, `fase`, `esito`, `terminale`). Ordine: prima il ROOT, poi risolto, non terminale, il più recente (R-P.1-1, Tid 2026-11-08) | `pratiche/db/pratiche_repository.py:102` (`_doc_sorgente_lateral`) e i due chiamanti `:806` (percorso della pratica, `ps.pratica_id = p.id AND ps.flusso_id = f.id`), `:1518` (coda di lavoro) | il JOIN alla vista per `flusso_id` al posto della LATERAL; la copia BE si ritira (regola del 2). ⚠️ Lo spareggio cambia solo per un flusso senza ROOT: prima vinceva il collegato più recente, ora il più vivo |
+| BE-Z.1-b | `E_PRATICA_SORGENTE_TIPO_INVALIDO` ha `obsoleto_dal = 2026-11-08` (R-P.1-2): nessuno lo solleva | `core/services/error_policies_generated.py`, `error_messages_fallback.py` | rigenerare il file delle policy dal CSV; il ripiego BE lo perde se il generatore esclude i codici obsoleti, altrimenti resta (la frase si legge ancora per lo storico) |
+| — | `config.sorgenti.categoria` ha due valori, `DOCUMENTO` ed `EVENTO` (`EVENTO_ASSET` passa da `RIGA` a `EVENTO`), NOT NULL | `vendite/db/famiglie_repository.py:335` (filtro `categoria = 'DOCUMENTO'`), `config/sorgenti.py:45-47` | nessuna: il filtro resta giusto. Il commento di `config/sorgenti.py:60` («categoria RIGA») si aggiorna con BE-M.3-a |
 
 ---
 

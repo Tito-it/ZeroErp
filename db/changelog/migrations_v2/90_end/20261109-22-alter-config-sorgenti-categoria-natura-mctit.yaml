@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA NATURA DEL TIPO DI SORGENTE: config.sorgenti.categoria in DOCUMENTO / EVENTO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.1 (Z-b di Tid, 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Dopo i giri R.2 e M.3 i tipi di sorgente sono documenti, con o senza righe,
+#   piu' un fatto senza righe (EVENTO_ASSET). categoria dice la natura e non si
+#   ricava dai livelli (EMAIL, ATTIVITA_CONSUMI: documenti senza righe). Il
+#   valore RIGA non descrive piu' nessun tipo: EVENTO_ASSET passa a EVENTO. Il
+#   CHECK fissa il vocabolario, NOT NULL perche' ogni tipo ha una natura (il
+#   CHECK da solo lascerebbe passare il NULL).
+#
+# ── ⚠️ PERCHE' STA IN 90_end ────────────────────────────────────────
+#   Il valore EVENTO arriva da sorgenti.csv (mirror 20251002-21, in 80_data).
+#   In 00_schema il CHECK fermerebbe dbdev, che ha ancora RIGA; da zero la riga
+#   nasce dal mirror gia' con EVENTO. Stessa sede di 20261020-23.
+#   ⛔ Su dbdev e scratch il mirror NON puo' portare RIGA -> EVENTO: categoria e'
+#   sotto lucchetto (trg_sorgenti_a10_lock_columns_upd). Il dato si corregge a
+#   mano PRIMA del migrate (D-12):
+#   docs/it/dev/work-in-progress/sql-una-tantum-sorgenti-categoria-evento.sql.
+#   Senza, il migrate si ferma sul mirror col codice del lucchetto: voluto.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261109-22-alter-config-sorgenti-categoria-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261109-22-alter-config-sorgenti-categoria-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.sorgenti.categoria: NOT NULL e CHECK sui due valori DOCUMENTO / EVENTO.
+        brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti ALTER COLUMN categoria SET NOT NULL;
+              ALTER TABLE config.sorgenti
+                ADD CONSTRAINT chk_sorgenti_categoria CHECK (categoria::text IN ('DOCUMENTO', 'EVENTO'));
+              COMMENT ON CONSTRAINT chk_sorgenti_categoria ON config.sorgenti IS
+                'La natura di un tipo di sorgente: DOCUMENTO (con o senza righe) o EVENTO (un fatto con identita'' propria e senza righe).';
