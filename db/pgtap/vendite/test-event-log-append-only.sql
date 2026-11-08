@@ -68,7 +68,7 @@ WITH ins AS (
     INSERT INTO vendite.event_log (event_time, entity_type, entity_id, event_code)
     -- ⏱️ 2026-09-18 (Passo D): il TTL si legge dal BB generico, non piu' da
     --   vendite.fn_event_log_ttl_days, ritirata (20260918-31).
-    SELECT now() - make_interval(days => COALESCE((dbops.fn_cleanup_at_params('vendite', 'event_log') ->> 'ttl_days')::integer, 750) + 50),
+    SELECT now() - make_interval(days => COALESCE((SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('vendite', 'event_log') r WHERE r.motivo_salto IS NULL), 750) + 50),
            'COMMESSA', r.commessa_id, 'PGTAP_SCADUTA'
       FROM _rif r
      WHERE r.commessa_id IS NOT NULL

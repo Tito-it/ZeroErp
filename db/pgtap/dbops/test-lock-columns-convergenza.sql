@@ -9,7 +9,7 @@
 -- un lock che il registro non conosce.
 -- Brief: brief-db-lock-di-colonna-fuori-registro, sezioni 4 (D2, D3) e 7
 --
--- Elenco test (plan 29):
+-- Elenco test (plan 30):
 --  1-3)  gli oggetti: le due funzioni nuove ci sono, drop_lock_trg e' ritirata
 --  4)    ⭐ PRESIDIO: su tutto il database nessun lock diverge dal registro
 --  5-7)  fn_trigger_argomenti: zero finale, accento, nessun argomento
@@ -26,8 +26,9 @@
 --  20)   nessuna divergenza residua nello schema di prova
 --  21)   una riga di un ALTRO exec_mode non si toglie se la colonna e' gia' bloccata
 --  22)   ...e non si crea se non lo e'
---  23)   ⭐ PRESIDIO: nessun lock di colonna su una tabella FUORI dall'ambito
---        (il runner non ci arriva: un lock li' e' montato a mano)
+--  23)   ⭐ PRESIDIO: fuori dall'ambito un lock c'e' solo se il registro lo dichiara:
+--        ogni sua colonna ha una riga attiva con lo stesso codice (il runner non
+--        ci arriva, il lock lo monta una migrazione; giro 10b, blocco 10b-4)
 --  24)   una tabella che solo una regola di un ALTRO modo copre non si confronta
 --  25-26) un lock disabilitato non e' allineato: RIGENERA, e torna abilitato
 --  27)   regola LOCK_COLUMNS spenta: TOGLIE, e codice_interno non e' «persa»
@@ -35,6 +36,10 @@
 --  29)   regola spenta e lock a mano su una colonna ignota al registro: si FERMA
 --        (D32 e Q3 di brief-db-revisione-dbops, giro 10a: prima una tabella
 --        senza regola usciva dal confronto con i suoi lock)
+--  30)   ⭐ PRESIDIO: ...e ogni riga attiva del registro su una tabella fuori
+--        dall'ambito ha il suo lock vivo, abilitato e con la colonna nell'UPDATE OF
+--        (la meta' che mancava: una riga senza lock e' una promessa senza
+--        esecutore, il caso di dbops.domini_task.codice)
 --
 -- Scopo:
 --  - il criterio sta in dbops.fn_lock_columns_divergenze, e il test 4 lo
@@ -51,7 +56,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(29);
+SELECT plan(30);
 
 -- ============================================================
 -- Gli oggetti
@@ -75,16 +80,51 @@ SELECT is(
     '4) nessun trigger di lock diverge dal registro (codice_interno + dbops.automation_lock_columns)'
 );
 
--- Fuori dall'ambito il runner non agisce: un lock li' non lo governa nessuno.
+-- Fuori dall'ambito il runner non agisce: li' un lock lo monta una migrazione, e il
+--   registro lo dichiara comunque. Le due meta': ogni coppia (colonna, codice) del lock
+--   vivo ha la sua riga attiva (23), ogni riga attiva ha il suo lock (30).
+CREATE TEMP TABLE _fuori_ambito_vivi AS
+SELECT v.schema_name, v.table_name, v.trigger_name, v.abilitato, v.colonne_update_of,
+       v.argomenti[i] AS colonna, v.argomenti[i + 1] AS codice
+  FROM dbops.vw_lock_columns_vivi v
+  CROSS JOIN LATERAL generate_series(1, cardinality(v.argomenti), 2) AS i
+ WHERE NOT (    v.tipo_tabella = 'r'
+            AND v.schema_name = ANY (dbops.fn_resolve_scope(NULL))
+            AND dbops.fn_table_in_scope(v.schema_name, v.table_name));
+
 SELECT is(
-    (SELECT COALESCE(array_agg(v.schema_name||'.'||v.table_name||' '||v.trigger_name
-                               ORDER BY v.schema_name, v.table_name, v.trigger_name), ARRAY[]::text[])
-       FROM dbops.vw_lock_columns_vivi v
-      WHERE NOT (    v.tipo_tabella = 'r'
-                 AND v.schema_name = ANY (dbops.fn_resolve_scope(NULL))
-                 AND dbops.fn_table_in_scope(v.schema_name, v.table_name))),
+    (SELECT COALESCE(array_agg(f.schema_name||'.'||f.table_name||' '||f.trigger_name||' '||f.colonna
+                               ORDER BY f.schema_name, f.table_name, f.trigger_name, f.colonna), ARRAY[]::text[])
+       FROM _fuori_ambito_vivi f
+      WHERE NOT EXISTS (SELECT 1 FROM dbops.automation_lock_columns r
+                         WHERE r.enabled
+                           AND r.target_schema = f.schema_name
+                           AND r.target_table  = f.table_name
+                           AND r.column_name   = f.colonna
+                           AND r.error_code    = f.codice)),
     ARRAY[]::text[],
-    '23) nessun trigger di lock su una tabella fuori dall''ambito delle automazioni'
+    '23) fuori dall''ambito ogni colonna di un lock ha la sua riga attiva nel registro, con lo stesso codice'
+);
+
+SELECT is(
+    (SELECT COALESCE(array_agg(r.target_schema||'.'||r.target_table||' '||r.column_name
+                               ORDER BY r.target_schema, r.target_table, r.column_name), ARRAY[]::text[])
+       FROM dbops.automation_lock_columns r
+       JOIN pg_class c     ON c.relname = r.target_table
+       JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = r.target_schema
+      WHERE r.enabled
+        AND NOT (    c.relkind = 'r'
+                 AND r.target_schema = ANY (dbops.fn_resolve_scope(NULL))
+                 AND dbops.fn_table_in_scope(r.target_schema, r.target_table))
+        AND NOT EXISTS (SELECT 1 FROM _fuori_ambito_vivi f
+                         WHERE f.schema_name = r.target_schema
+                           AND f.table_name  = r.target_table
+                           AND f.colonna     = r.column_name
+                           AND f.codice      = r.error_code
+                           AND f.abilitato
+                           AND r.column_name = ANY (f.colonne_update_of))),
+    ARRAY[]::text[],
+    '30) fuori dall''ambito ogni riga attiva del registro ha il suo lock vivo, abilitato, con la colonna nell''UPDATE OF'
 );
 
 -- ============================================================

@@ -9,6 +9,10 @@
 > * [dbops.marcatori_automazione_debito](/dbzero/dbops/tabelle/marcatori_automazione_debito) — il registro del debito dichiarato, che decide lo stato di ogni riga
 > * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — l'ambito delle automazioni, da cui la vista ricava chi è servito
 > * [dbops.automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions) — le tabelle escluse dalla pulizia
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_cleanup_esclusa](/dbzero/dbops/funzioni/fn_cleanup_esclusa) — la tabella è esclusa dalla pulizia? La stessa risposta del runner
 > * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo che porta la vista nel digest
 >
 > Approfondimento viste:
@@ -43,7 +47,9 @@ scrive resta vuoto su ogni riga; un `cleanup_at` che nessuno legge lascia le rig
 
 Una tabella è **servita dai runner** se è una tabella ordinaria (le partizioni comprese: i runner le
 scorrono una a una), il suo schema è fra quelli dell'ambito e il filtro per tabella la ammette. È lo
-stesso filtro che usano i runner.
+stesso filtro che usano i runner. Per `cleanup_at` la tabella deve anche non essere esclusa dalla
+pulizia, e l'esclusione si legge con [dbops.fn_cleanup_esclusa](/dbzero/dbops/funzioni/fn_cleanup_esclusa),
+la stessa domanda che fa il runner.
 
 La colonna si cerca come la cercano i runner: `tx_id` e `cleanup_at` col loro nome; quella di
 storicizzazione con `dbops.fn_get_override_col` (ruolo `STORICIZZA_COL`, default `storicizza`), la
@@ -85,9 +91,8 @@ nell'ambito, il trigger si monta a mano, o la colonna si toglie.
   armi, che le righe scadano lo provano i pgTAP di ciascun runner.
 * Lo schema `storico` è fuori: le shadow ricopiano le colonne della madre, e i loro marcatori sono
   una copia, non una promessa. Fuori anche gli schemi di sistema.
-* `cleanup_at` si riconosce per **nome**: la colonna del purge la sceglie il parametro
-  `cleanup_column` della regola di pulizia, non un override di colonna, e una tabella che la chiama
-  in un altro modo la vista non la vede.
+* `cleanup_at` si riconosce per **nome**: è il nome fisso della scadenza nel framework, e nessun
+  parametro né override lo cambia.
 
 La vista è `security_invoker`: legge il catalogo di PostgreSQL e tabelle di `dbops` senza row level
 security, e la risposta non dipende da chi interroga.
@@ -117,6 +122,9 @@ security, e la risposta non dipende da chi interroga.
   giorno i cataloghi di `dbops` scritti solo dalla migrazione perdono `tx_id`, `data_update` e
   `user_update` (regola in `automazione-db.md` §1.1): il debito dichiarato si estingue e il registro
   resta vuoto.
+* 2026-11-08 — l'esclusione dalla pulizia si legge da `dbops.fn_cleanup_esclusa`, la stessa
+  funzione del runner, invece che da una copia della sua domanda (`20261109-90`,
+  brief-db-revisione-dbops, giro 10b).
 
 ---
 

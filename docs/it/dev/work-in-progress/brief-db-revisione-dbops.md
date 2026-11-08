@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (blocchi 10b-1 e 10b-2 applicati, `-76` compreso)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 10b chiuso: blocchi 10b-3 e 10b-4 applicati, da committare)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -54,9 +54,13 @@ dbdev (§25.6-25.9): `20261109-58` … `-64`, `presidi.csv`, due pgTAP nuovi e d
 **Via** (Tid, 2026-11-08: N1-N6 come da proposta). **Blocchi 10b-1 e 10b-2 scritti e provati** su scratch e dbdev (§26.5-26.7):
 `20261109-66` … `-75`, il CSV e il mirror del registro; 28 BLOCK e 7 REQUIRE ATTIVO mancanti nascono al giro delle automazioni.
 **Applicati** da Tid (2026-11-08). Il pgTAP `test-attivo-due-fk-stessa-coppia-v1` era lento: curato da `20261109-76` (§26.10).
-**`-76` applicato** (Tid, 2026-11-08): migrazione su dbdev e scratch, pgTAP verdi. **Blocchi 10b-1 e 10b-2 chiusi**, da committare.
-**Riparte: la sessione DB** coi blocchi 10b-3 (la scadenza) e 10b-4 (il lock fuori ambito), dopo aver concordato i progressivi
-oltre il `-79` con l'altra sessione DB; **Tid** per il commit di 10b-1 e 10b-2 e per le scelte di §26.6. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+**`-76` applicato** (Tid, 2026-11-08): migrazione su dbdev e scratch, pgTAP verdi. **Blocchi 10b-1 e 10b-2 chiusi**, committati e pushati (`cdc563dedb`).
+**Via ai blocchi 10b-3 e 10b-4** (Tid, 2026-11-08, §27.1), con due nodi nuovi decisi nel giro (§27.2: la colonna della
+scadenza è `cleanup_at`, nome fisso; base vuota = nessuna scadenza). **Scritti e provati** su scratch e dbdev
+(§27.3-27.5): `20261109-84` … `-94` e il CSV del registro.
+**Applicati** da Tid (2026-11-08): migrazione su dbdev e scratch, pgTAP di §27.6 verdi; scelte di §26.6 ok (il via era su
+tutto). **Il giro 10b è chiuso** (§27.9).
+**Riparte: la sessione DB** col commit dei blocchi 10b-3 e 10b-4 quando Tid lo chiede, poi il giro successivo di §8 col suo via. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -153,8 +157,11 @@ ancora le tabelle).
 | 9-sexagies-sexies | ✅ Tid | Apply di `-66` … `-75`, pgTAP come app verdi (2026-11-08); le scelte di §26.6 da guardare | §26.8 | 9-sexagies-quinquies |
 | 9-sexagies-octies | ✅ sessione DB | `20261109-76`: la grammatica ATTIVO in PL/pgSQL; il test 7,2 s → 0,7 s | §26.10 | 9-sexagies-sexies |
 | 9-sexagies-nonies | ✅ Tid | Apply di `-76` su dbdev e scratch, pgTAP di §26.10 verdi (2026-11-08) | §26.10 | 9-sexagies-octies |
-| 9-sexagies-decies | **Tid** ⏭️ | Commit dei blocchi 10b-1 e 10b-2 (`-66` … `-76`, CSV, mirror, pgTAP, doc, brief) | §26 | 9-sexagies-nonies |
-| 9-sexagies-septies | sessione DB | Blocchi 10b-3 e 10b-4 (servono progressivi oltre il `-79`) | §26.3 | 9-sexagies-nonies |
+| 9-sexagies-decies | ✅ sessione DB, su richiesta di Tid | Commit e push dei blocchi 10b-1 e 10b-2 (`cdc563dedb`, 2026-11-08) | §26 | 9-sexagies-nonies |
+| 9-sexagies-septies | ✅ Tid | Via ai blocchi 10b-3 e 10b-4, numeri dal primo libero (2026-11-08); N7 e N8 decisi nel giro | §27.1, §27.2 | 9-sexagies-decies |
+| 9-sexagies-undecies | ✅ sessione DB | Blocchi 10b-3 e 10b-4 scritti e provati (`20261109-84` … `-94`, il CSV del registro) | §27.3-27.5 | 9-sexagies-septies |
+| 9-sexagies-duodecies | ✅ Tid | Apply di `-84` … `-94` e del CSV su dbdev e scratch; pgTAP come app di §27.6 verdi; scelte di §26.6 ok (2026-11-08). Il giro 10b è chiuso | §27.9 | 9-sexagies-undecies |
+| 9-sexagies-terdecies | sessione DB, su richiesta di Tid | Commit dei blocchi 10b-3 e 10b-4 | §27 | 9-sexagies-duodecies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
@@ -165,8 +172,9 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** le scelte di §26.6, da guardare. **Da committare:** i blocchi 10b-1 e 10b-2 (`20261109-66` … `-76`,
-`automation_rules_tbl.csv`, il mirror `20250918-02`, i pgTAP, la doc di §26.9 e §26.10, il brief). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
+**Decisioni aperte di Tid:** le scelte di §27.4, da guardare (§26.6 ok, 2026-11-08). **Da committare:** i blocchi 10b-3 e
+10b-4 (changeSet, CSV, pgTAP, doc, questo brief): applicati, pgTAP verdi. Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
+(`cdc563dedb`, 2026-11-08). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
 è committato (`d8492eeb77`, 2026-11-08), `-65` compreso, che è ancora da applicare. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
 `messaggi_errore.csv`): non sono entrati nel commit. Nessuna sul giro 7-bis: il criterio dello scrittore (§20.8.2, punto 2) è confermato
@@ -3844,6 +3852,8 @@ pgTAP nuovi: `dbops/test-registro-regole-vincoli-v1` (17), `dbops/test-attivo-du
    innocuo; si toglie quando ognuno si riapre. Il COMMENT del CHECK di `rule_type` e il testata di `-75` lo dicono.
 4. **`fn_seed_fk_index_policy` resta al giro 10d** (§26.2, D13).
 
+✅ **Ok di Tid** (2026-11-08): «il via era su tutto, non escludeva la 26.6».
+
 ### 26.7 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase: i `20_code`, poi il mirror del CSV rifatto su tutte le righe, poi `-74`, poi `-75`; `BEGIN … ROLLBACK`)
 
 * L'SQL passa su scratch e dbdev; andata e ritorno (rollback all'indietro) passa sullo scratch; ogni change passa dal
@@ -3912,3 +3922,131 @@ committare. Restano del giro 10b: il blocco **10b-3** (D16 con N3, la scadenza: 
 runner) e il blocco **10b-4** (il lock di `dbops.domini_task` montato da un changeSet, il test 23 di
 `test-lock-columns-convergenza` riscritto, l'eccezione nella guida). Dei progressivi concordati restano `-77` … `-79`:
 per i due blocchi se ne concordano altri con l'altra sessione DB prima di scrivere.
+
+## 27. Giro 10b, blocchi 10b-3 e 10b-4 — la scadenza e il lock fuori ambito (2026-11-08)
+
+### 27.1 Il via (Tid, 2026-11-08)
+
+«puoi ripartire. ora l'altro cantiere non ha bisogno di changeset»: via ai blocchi 10b-3 (D16 con N3) e 10b-4 (N5 del
+10a). Numeri dal primo libero dopo il massimo sull'albero e sui due `databasechangelog` (letti subito prima di scrivere,
+2026-11-08: il massimo era `20261109-83`, dell'altro cantiere): `20261109-84` … `-94`. `-77` … `-79` restano liberi.
+
+### 27.2 Due nodi trovati scrivendo (decisioni di Tid, 2026-11-08)
+
+* **N7 — la colonna della scadenza.** N3 diceva «il trigger scrive la colonna dichiarata» (`cleanup_column`). Scrivendo:
+  tre lettori la ignorano e usano `cleanup_at` per nome (il trigger alla nascita, `script.fn_registra_tentativo_login`,
+  `dbops.vw_marcatori_automazione_senza_esecutore`; anche `vendite.trgfn_logs_guard_delete` e
+  `vendite.trgfn_event_log_append_only` leggono `OLD.cleanup_at`), e CLEANUP_AT e CLEANUP_PURGE hanno ognuna la sua
+  `cleanup_column`: possono dire due colonne diverse, e il purge non troverebbe le scadenze. **Deciso: nome fisso
+  `cleanup_at`**, come le colonne di audit (N5 del 10b): la chiave esce dai params, e il validatore chiude l'elenco delle
+  chiavi del cleanup. Rivede la parte di N3 sulla colonna.
+  **L'analisi chiesta da Tid** (2026-11-08, «non vorrei che l'altra colonna sia stata aggiunta per qualche motivo»):
+  la chiave nasce il 2026-02-07 (`7550d18ede`, «aggiunto su framework attività di pulizia per tabelle che hanno la
+  colonna cleanup_at») insieme a tutto il framework, come parametro generico con default `cleanup_at`; in tutta la
+  storia del repo (`git log -S`) non ha mai avuto un valore diverso da `cleanup_at`, e nessun documento le dà un
+  motivo. Sulla struttura dello scratch (2026-11-08) nessuna tabella ha una colonna di scadenza con un altro nome
+  pensata per il framework: `config.token_monouso.scadenza` è la validità del token, con la sua pulizia
+  (`fn_cleanup_token_scaduti`), e le tabelle di Django sono dell'applicazione. Nessun motivo trovato.
+* **N8 — la base vuota.** Con la base NULL sulla riga il trigger partiva da `now()`, il runner saltava la riga.
+  **Deciso: base vuota = nessuna scadenza** (la regola del runner, «in dubbio non si cancella»): la scadenza la scrive il
+  job quando la base c'è. Vale anche per la tabella senza nessuna colonna base (prima il trigger usava `now()`).
+
+### 27.3 Che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261109-84` | `dbops.fn_cleanup_esclusa(schema, tabella)`: la domanda dell'esclusione in una sede (regola del 2: la facevano da sé runner e vista, il risolutore era la terza copia) |
+| `20_code/dbops/20261109-85` | `dbops.fn_cleanup_at_regola(schema, tabella)` (N3): la CLEANUP_AT più specifica; nessuna riga = non scade; `motivo_salto` EXCLUDED, NO_CLEANUP_COLUMN, MISSING_BASE_TS_COLUMN; base dichiarata o dalla catena |
+| `20_code/dbops/20261109-86` | `trgfn_cleanup_at_alla_nascita` dal risolutore: esclusa, senza regola o senza base → NULL (N8) |
+| `20_code/script/20261109-87` | `fn_registra_tentativo_login`: il ttl dal risolutore; COMMENT senza sigle di brief (§5d) |
+| `20_code/dbops/20261109-88` | `fn_apply_cleanup_at` e `fn_purge_cleanup_expired`: colonna fissa; `p_cleanup_column` resta in firma e può solo confermare `cleanup_at` (E_PARAMETRO_INVALIDO); la base di `fn_apply_cleanup_at` è obbligatoria (ripiegava su `data_insert`, una terza regola) |
+| `20_code/dbops/20261109-89` | `fn_run_automations_cleanup`: CLEANUP_AT dal risolutore, una regola per tabella; esclusione dal BB; via MISSING_TTL_DAYS (impossibile col CHECK, D2) |
+| `20_code/dbops/20261109-90` | `vw_marcatori_automazione_senza_esecutore`: l'esclusione dal BB |
+| `20_code/dbops/20261109-91` | DROP di `dbops.fn_cleanup_at_params` |
+| `20_code/dbops/20261109-92` | `fn_regola_automazione_valida`: chiavi chiuse (CLEANUP_AT: `ttl_days`, `apply_on_update`, `base_ts_column`; CLEANUP_PURGE: `batch_limit`) (N7) |
+| `90_end/20261109-93` | il CHECK `chk_automation_rules_tbl_regola_valida` si ricrea: le righe si ricontrollano col validatore nuovo |
+| `20_code/dbops/20261109-94` | **10b-4**: `trg_domini_task_a10_lock_columns_upd` montato dal changeSet (nome dal template, argomenti del runner), col COMMENT che dice perché |
+| `80_data` | `automation_rules_tbl.csv`: via `cleanup_column` dai params delle sedici regole CLEANUP_* (fine riga conservati); il mirror `20250918-02` (runOnChange) ricarica |
+
+pgTAP nuovo: `dbops/test-cleanup-at-regola-unica-v1` (14: due regole sulla stessa tabella, una tabella con solo
+`executed_at`, una esclusa, una senza base, una riga con base NULL; trigger e runner danno la stessa data; le tre tabelle
+del login). Riscritti: `dbops/test-cleanup-framework` (13-16: il veto passa sull'UPDATE, vedi §27.4 punto 5; via
+`cleanup_column` dalle regole di prova), `dbops/test-registro-regole-vincoli-v1` (19: l'11 senza `cleanup_column`, 18-19
+nuovi), `dbops/test-lock-columns-convergenza` (30: il 23 con la regola nuova, il 30 nuovo); `dbops/test-registri-dbops-scadenza-v1`,
+`dbops/test-idempotency-prenota-v1`, `vendite/test-registri-fatturazione-scadenza-alla-nascita`,
+`vendite/test-event-log-append-only`, `vendite/test-event-log-deriva-scope`, `config/test-credenziale-login-v1`,
+`config/test-credenziale-login-tempo-v1`: leggono il risolutore invece della funzione ritirata.
+
+### 27.4 Le scelte dentro i blocchi (da guardare, Tid)
+
+1. **Una regola CLEANUP_AT per tabella anche nel runner.** Prima il runner applicava in ordine tutte quelle che coprivano
+   la tabella, la `*all` compresa; il trigger ne prendeva una. Fatto datato (dry run prima/dopo, scratch e dbdev,
+   2026-11-08): 42 applicazioni → 28, le 14 in meno sono la `*all` ripetuta sulle tabelle con una regola loro; le righe che
+   ricevono una scadenza sono le stesse.
+2. **Il trigger scrive NULL anche sopra un valore del chiamante** quando non c'è regola che si applichi (prima, senza
+   regola, lo lasciava): «un diario non lascia scegliere quando scade» vale in tutti i rami.
+3. **`p_cleanup_column` resta in firma** (i parametri non si tolgono) con un ruolo di controllo; il ritiro vero, se
+   serve, lo decide Tid.
+4. **Il login scrive `now() + ttl`**, non «base + ttl»: è la stessa cosa perché scrive `ultimo_fallimento_at = now()` nella
+   stessa istruzione. Lo tiene fermo il test 11 del pgTAP nuovo (la base delle tre tabelle è `ultimo_fallimento_at`): se
+   la regola cambiasse base, il test diventa rosso invece di lasciar passare una scadenza sbagliata.
+5. **Il runner fa su ogni tabella prima la scadenza, poi il purge** (prima seguiva le priorità delle regole, che col seed
+   davano lo stesso ordine). Per questo in `test-cleanup-framework` il veto di prova è sull'UPDATE: la scadenza rifiuta, e
+   il purge che viene dopo prova che il giro prosegue.
+6. **10b-4: il presidio è diviso in due test** (23: ogni colonna di un lock fuori ambito ha la sua riga attiva con lo
+   stesso codice; 30: ogni riga attiva fuori ambito ha il suo lock vivo, abilitato, con la colonna nell'UPDATE OF). Il 30
+   è rosso senza il `-94` (trova `dbops.domini_task codice`) e verde con.
+
+### 27.5 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase: `-84` … `-92`, `-94`, poi il mirror del CSV rifatto su tutte le righe, poi `-93`; `BEGIN … ROLLBACK`)
+
+* Andata e ritorno (i rollback all'indietro) passano su scratch e dbdev. Le preCondition passano.
+* Il lock: un UPDATE del codice di un dominio è rifiutato con `E_CODICE_NON_MODIFICABILE`, uno della descrizione passa.
+* pgTAP con l'SQL dei blocchi dopo la riga `BEGIN;`: verdi sullo scratch i dodici di §27.6; su dbdev i sette principali.
+  Tutta la cartella `dbops/` sullo scratch: sei rossi, uguali senza i blocchi (si lanciano come app;
+  `test-guard-attivo-occhi-del-proprietario-v1` era già in §26.7).
+* Guardrail verdi (`ddl_su_trigger_automazione`, `precondition_seed`, `run_on_change`, `sql_letterali`,
+  `grant_ruolo_batch`, `timestamp_senza_fuso`, `v1_congelato`, `pgtap_preambolo`). Il driver di Liquibase non è stato
+  provato a parte: nessun corpo è `BEGIN ATOMIC`.
+
+### 27.6 Per Tid
+
+1. **Apply** di `20261109-84` … `-94` e del CSV del registro, su dbdev e scratch (il mirror `20250918-02` riparte da sé:
+   è runOnChange). Nessun giro delle automazioni necessario.
+2. **pgTAP come app:** `dbops/test-cleanup-at-regola-unica-v1`, `dbops/test-cleanup-framework`,
+   `dbops/test-registro-regole-vincoli-v1`, `dbops/test-lock-columns-convergenza`, `dbops/test-registri-dbops-scadenza-v1`,
+   `dbops/test-idempotency-prenota-v1`, `dbops/test-marcatori-automazione-senza-esecutore-v1`,
+   `vendite/test-registri-fatturazione-scadenza-alla-nascita`, `vendite/test-event-log-append-only`,
+   `vendite/test-event-log-deriva-scope`, `config/test-credenziale-login-v1`, `config/test-credenziale-login-tempo-v1`.
+3. Le scelte di §27.4 (e quelle di §26.6, ancora da guardare).
+
+Ricadute BE: nessuna. `backend/` non nomina `fn_cleanup_at_params`, `cleanup_column` né `CLEANUP_AT` (grep, 2026-11-08).
+
+### 27.7 Doc (2026-11-08)
+
+Scritte da un agente su brief della sessione DB, rilette dalla sessione. Nuove: `dbops/manual/fn_cleanup_at_regola.md`
+(con la nota di migrazione: riassorbe `fn_cleanup_at_params`), `dbops/manual/fn_cleanup_esclusa.md`. Cancellata:
+`dbops/manual/fn_cleanup_at_params.md` (oggetto ritirato). Riscritte: `dbops/manual/trgfn_cleanup_at_alla_nascita.md`,
+`fn_run_automations_cleanup.md`, `fn_apply_cleanup_at.md`, `fn_purge_cleanup_expired.md`,
+`automation_cleanup_exclusions.md` (l'esclusione ora ferma anche la scadenza alla nascita), `automation_rules_tbl.md`,
+`fn_regola_automazione_valida.md`, `vw_marcatori_automazione_senza_esecutore.md`, `domini_task.md` (il lock del codice),
+`automation_lock_columns.md`, `fn_lock_columns_divergenze.md`, `vw_lock_columns_vivi.md` (fuori ambito: lock e registro
+coincidono); `script/manual/fn_registra_tentativo_login.md`; `maintenance/manual/proc_automations_cleanup_job.md` (fuori
+elenco, falsa: regole «a strati»); `guide/automazione-db.md` (§1.2, §1.3, §4.1 l'eccezione del lock fuori ambito, §4.5,
+§5.1, §8), `guide/audit-e-tracciabilita.md`, `linee-guida-trigger.md` (§«I trigger generati»: l'eccezione, col rimando).
+Le schede auto-generate e gli indici si rigenerano dopo l'apply: fino ad allora i link a `fn_cleanup_at_regola` e
+`fn_cleanup_esclusa` puntano a pagine che non ci sono ancora.
+
+### 27.8 Residuo
+
+* **`ILIKE r.target_table`**: nel risolutore e nel ciclo del purge il nome della tabella della regola è un pattern di
+  LIKE, e `_` è un jolly (`event_log` copre anche una `eventXlog`). Preesistente, uguale nei due; non toccato perché
+  cambia il significato di ogni regola del registro. Va annotato con D17-bis in `framework-automazione-db-migliorie` §2.4.
+
+### 27.9 Chiusura dei blocchi 10b-3 e 10b-4 (2026-11-08)
+
+Tid ha applicato `20261109-84` … `-94` e il CSV del registro su dbdev e scratch e ha lanciato i pgTAP di §27.6: verdi.
+Letto sui due database (sessione DB, sola lettura, 2026-11-08): gli undici changeSet sono nel `databasechangelog`,
+`dbops.fn_cleanup_at_params` non c'è più, nessuna regola porta `cleanup_column`, `trg_domini_task_a10_lock_columns_upd` è
+montato. Le scelte di §26.6 sono ok (Tid: il via era su tutto). **Il giro 10b è chiuso**, da committare; restano da
+guardare le scelte di §27.4. Le schede auto-generate e gli indici di `dbops` e `script` si rigenerano col prossimo giro
+della doc.

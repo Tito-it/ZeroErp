@@ -1,6 +1,6 @@
 # Linee guida Trigger (PostgreSQL + Liquibase)
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: chi scrive o modifica un trigger o una funzione trigger
 >
@@ -214,6 +214,9 @@ seguono i template del framework, non la regola delle fasi qui sopra
 
 * ⛔ **Non si scrivono a mano**, nemmeno con la stessa funzione e lo stesso stile di nome: un trigger
   che sembra generato e non è registrato non lo ricrea nessuno, se sparisce.
+  L'unica eccezione è il lucchetto di colonna su una tabella fuori dall'ambito delle automazioni,
+  dove il runner non arriva: lì lo monta una migrazione e il registro lo dichiara comunque (vedi
+  [Automazione DB §4.1](/guide/automazione-db)).
 * ⛔ **Un changeSet non fa DDL né `preCondition` su di loro**: su un database ricostruito da zero
   nascono dopo, nella passata `ci_apply`. Regola e presidio in
   [linee-guida-sql §11.5](linee-guida-sql.md).

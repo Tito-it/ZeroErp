@@ -118,7 +118,7 @@ Le **regole** (`dbops.automation_rules_tbl`, seminata dal CSV `80_data/sql/dbops
 
 **Il trigger si riconosce dalla funzione, non dal nome.** Ogni runner sa che un trigger del framework c'è già perché sulla tabella un trigger esegue la sua funzione, qualunque nome abbia; per ATTIVO, perché esiste un trigger con gli argomenti della FK che difende. Il nome serve solo a **creare** un trigger nuovo, e sta solo nel registro: `name_template` è obbligatorio per ogni regola che monta un trigger, e i runner non hanno nomi di ripiego.
 
-**Una regola malformata non entra.** `rule_type` ed `exec_mode` sono vocabolari chiusi, nella forma canonica (maiuscolo); un vincolo del registro, [`dbops.fn_regola_automazione_valida`](/dbzero/dbops/funzioni/fn_regola_automazione_valida), pretende in più che `params` sia un oggetto JSON, che il template ci sia dove serve (per ATTIVO un JSON con `block` e `require`, ognuno con l'hash della FK), che le regole di scadenza siano `AUTO` e che i loro parametri abbiano il tipo giusto (`ttl_days` e `batch_limit` interi ≥ 1, `apply_on_update` booleano).
+**Una regola malformata non entra.** `rule_type` ed `exec_mode` sono vocabolari chiusi, nella forma canonica (maiuscolo); un vincolo del registro, [`dbops.fn_regola_automazione_valida`](/dbzero/dbops/funzioni/fn_regola_automazione_valida), pretende in più che `params` sia un oggetto JSON, che il template ci sia dove serve (per ATTIVO un JSON con `block` e `require`, ognuno con l'hash della FK), che le regole di scadenza siano `AUTO` e che i loro parametri abbiano il tipo giusto (`ttl_days` e `batch_limit` interi ≥ 1, `apply_on_update` booleano) e siano solo quelli che il motore legge (§4.5).
 
 **Precedenza ambito/rules**: una regola con `target_schema='*all'` si applica **solo** alle tabelle che rientrano nell'ambito risolto. Se l'ambito include solo `anagrafiche` e `vendite`, la regola `*all` toccherà solo quei due schemi. L'ambito delimita dove, le rules definiscono cosa.
 
@@ -129,7 +129,7 @@ Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override per
 * `automation_overrides_cols` — nomi colonna non standard (es. `attivo_flag` invece di `attivo`, FK storico diverse)
 * `automazione_attivo_eccezioni` — le **FK** che la regola ATTIVO non lega: per una riga (schema, tabella **figlia**, colonna FK) il motore non genera né il block sul padre né il require sul figlio, e ritira quelli già generati. Ogni riga porta il suo **motivo**, obbligatorio: un'eccezione senza perché è un buco nel framework. È **per FK, non per tabella**: le altre coppie della stessa figlia restano legate. Dettaglio in §4.2, «Le eccezioni».
   ⚠️ Per ritirare configurazione senza toccare il guard, invece, resta `obsoleto_dal` (vedi [Mandare in pensione una voce di catalogo](/guide/uso-di-obsoleto)).
-* `automation_cleanup_exclusions` — tabelle da escludere dal cleanup automatico
+* `automation_cleanup_exclusions` — tabelle da escludere dal cleanup: per una tabella esclusa nessuno scrive la scadenza (né il giro né il trigger alla nascita) e nessuno cancella righe
 * `automation_lock_columns` — colonne extra da bloccare per singola tabella
 * `storico_scope_policy` — per ogni tabella storicizzata, da dove si prende l'azienda emittente da congelare nella sua storia (vedi §3.4)
 
@@ -289,6 +289,7 @@ Alcune colonne non devono essere modificate dopo la creazione del record (es. `c
 * La regola `LOCK_COLUMNS` governa la tabella: spenta o cancellata, i lock della tabella si tolgono; se la copre solo una regola di un altro `exec_mode`, il giro non la tocca
 * Il form legge il lock **vivo**, non il registro: [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields) elenca le colonne che un trigger di lock blocca davvero, `codice_interno` compreso
 * ⛔ Un lock di colonna **non si scrive a mano**: si dichiara nel registro. Se un trigger vivo blocca una colonna che il registro non nomina, il runner si ferma e la nomina
+* ⚠️ **L'eccezione: una tabella fuori dall'ambito.** Lì il runner non arriva, e se la tabella non deve entrare nell'ambito (porterebbe con sé tutte le altre automazioni) il lock lo monta una migrazione, con il nome del template della regola `LOCK_COLUMNS` e gli argomenti che monterebbe il runner. Il registro lo dichiara comunque: una riga attiva per ogni colonna, con il codice errore. Un presidio pretende che le due metà coincidano — nessun lock fuori dall'ambito senza la sua riga, nessuna riga attiva fuori dall'ambito senza il suo lock. Il caso di oggi è il `codice` di [dbops.domini_task](/dbzero/dbops/tabelle/domini_task); la regola completa sta nella pagina di [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
 
 Il comportamento completo, con le azioni e il caso in cui si ferma, sta nella pagina di
 [fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns).
@@ -392,21 +393,33 @@ Per tabelle con dati temporanei che devono essere rimossi dopo un certo periodo 
 * `CLEANUP_AT` — calcola `cleanup_at` con un TTL fisso a partire da un timestamp base
 * `CLEANUP_PURGE` — elimina i record scaduti (in batch)
 
-**Parametri JSON tipici:**
+**Parametri JSON, un elenco chiuso:**
 
-* `CLEANUP_AT`: `ttl_days`, `cleanup_column`, `base_ts_column`, `apply_on_update`
-* `CLEANUP_PURGE`: `cleanup_column`, `batch_limit`
+* `CLEANUP_AT`: `ttl_days` (obbligatorio), `base_ts_column`, `apply_on_update`
+* `CLEANUP_PURGE`: `batch_limit`
+
+Il vincolo del registro rifiuta qualunque altra chiave. La colonna della scadenza non è un
+parametro: si chiama sempre `cleanup_at`, come le colonne di audit hanno sempre lo stesso nome.
+
+**Una regola sola per tabella.** Delle regole `CLEANUP_AT` che coprono una tabella ne vale una,
+la più specifica: la regola dichiarata sulla tabella vince sulla generica, che vale solo dove non
+c'è altro. La sceglie [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola), e
+la leggono tutti quelli che scrivono la scadenza: il giro di pulizia sul pregresso, il trigger alla
+nascita sui registri, il login sulle tabelle dei tentativi. Una riga riceve la stessa scadenza
+chiunque la scriva.
 
 ⚠️ **`base_ts_column` si dichiara solo dove serve.** È una proprietà **per
 tabella**, mentre `params` è **per riga di regola**: sulla riga `*all`/`*all` un
 valore unico sarebbe sbagliato per costruzione. Se manca, il motore la deduce a
 catena (`data_insert` → `executed_at` → `occurred_at` → `created_at`) e, se non
-trova nulla, **salta la tabella** con un audit `WARN`
-(`skip_reason = MISSING_BASE_TS_COLUMN`).
+trova nulla, la tabella **non scade** (il giro lo segnala con un audit `WARN`,
+`skip_reason = MISSING_BASE_TS_COLUMN`).
 ⭐ L'eccezione oggi è **`vendite.event_log`** (`base_ts_column: "event_time"`):
-quella tabella ha sia `data_insert` sia `event_time`, il
-fallback prenderebbe la prima, ma il trigger che scrive `cleanup_at` calcola
-dalla seconda — due modi di derivare la stessa grandezza che non concordavano.
+quella tabella ha sia `data_insert` sia `event_time`, e la scadenza si conta dal
+secondo; la catena prenderebbe il primo.
+
+**Base vuota, nessuna scadenza.** Una riga con la colonna base vuota non riceve
+scadenza, né alla nascita né dal giro: la riceve quando la base c'è.
 
 ⭐ **E le altre regole dichiarano poco o niente, di proposito**:
 
@@ -426,7 +439,9 @@ gira. Una letta e non dichiarata è peggio — non si scopre affatto.
 ⇒ La misura si fa sulla **lettura**, non sulla parola:
 `regexp_matches(prosrc, 'params\s*->>?\s*''([a-z_]+)''','g')`.
 
-**Esclusioni:** `dbops.automation_cleanup_exclusions`
+**Esclusioni:** `dbops.automation_cleanup_exclusions`. Una tabella esclusa non riceve scadenze —
+né dal giro né dal trigger alla nascita — e non perde righe. Il dettaglio sta nella pagina della
+tabella.
 
 ### 4.6 GUARD utility/tipo_ruolo
 
@@ -541,7 +556,7 @@ quelli di sempre.
 
 ### 5.1 Configurare le rules
 
-Le regole si dichiarano nel CSV `80_data/sql/dbops/automation_rules_tbl.csv`, caricato in `dbops.automation_rules_tbl` dal suo changeSet di `80_data` (con `id` esplicito, la chiave del caricamento). Usa `target_schema='*all'` per applicare globalmente, altrimenti specifica lo schema. Le regole globali di ogni tipo ci sono già: una regola nuova serve solo per un'eccezione (per esempio un TTL di CLEANUP diverso per una tabella).
+Le regole si dichiarano nel CSV `80_data/sql/dbops/automation_rules_tbl.csv`, caricato in `dbops.automation_rules_tbl` dal suo changeSet di `80_data` (con `id` esplicito, la chiave del caricamento). Usa `target_schema='*all'` per applicare globalmente, altrimenti specifica lo schema. Le regole globali di ogni tipo ci sono già: una regola nuova serve solo per un'eccezione (per esempio un TTL di CLEANUP diverso per una tabella: la regola della tabella sostituisce la generica, non si somma a lei).
 
 **Consigli:**
 
@@ -752,6 +767,8 @@ non si scrive il trigger a mano.
 
 L'eccezione è `dbops` fuori dall'ambito (§1.1): lì il trigger a mano è la
 regola, perché il framework non passa, e lo controlla il presidio dei marcatori.
+Per un lock di colonna fuori dall'ambito il trigger lo monta una migrazione e il
+registro lo dichiara comunque (§4.1).
 
 ### Il dry-run non mostra modifiche attese
 

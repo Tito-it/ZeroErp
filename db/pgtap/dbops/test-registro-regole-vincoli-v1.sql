@@ -8,7 +8,7 @@
 -- lasciare ai runner il compito di difendersi; e l'ambito non ha doppi.
 -- Brief: brief-db-revisione-dbops, giro 10b (D2, D13, D17, D17-bis, D20, D27, R1)
 --
--- Elenco test (plan 17):
+-- Elenco test (plan 19):
 --  1)    la strategia d'esistenza non c'e' piu' (N1)
 --  2-10) ⭐ il CHECK rifiuta: tipo sconosciuto, modo non canonico, ttl_days
 --        testuale, ttl_days zero, scadenza in un modo diverso da AUTO,
@@ -20,6 +20,9 @@
 --  15)   la regola AUDIT_UPDATE non porta piu' i nomi delle colonne di audit
 --  16)   nessuna funzione nomina existence_strategy
 --  17)   nessun dry run firma col nome della funzione ritirata
+--  18-19) le chiavi del cleanup sono un elenco chiuso: cleanup_column e'
+--        rifiutata nella scadenza e nel purge (la colonna e' cleanup_at,
+--        nome fisso; blocco 10b-3)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -28,7 +31,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(17);
+SELECT plan(19);
 
 SELECT hasnt_column('dbops', 'automation_rules_tbl', 'existence_strategy',
     '1) la regola non ha una strategia d''esistenza: il trigger si riconosce dalla funzione');
@@ -63,7 +66,7 @@ SELECT throws_ok($$ SELECT pg_temp.regola('ATTIVO', 'AUTO', '{"block": "trg_{par
     '23514', NULL, '10) ATTIVO senza l''hash della FK nei nomi e'' rifiutato: due FK della stessa coppia avrebbero un nome solo');
 
 SELECT lives_ok($$ SELECT pg_temp.regola('CLEANUP_AT', 'AUTO', NULL,
-                    '{"ttl_days": 30, "cleanup_column": "cleanup_at", "base_ts_column": "data_insert", "apply_on_update": false}') $$,
+                    '{"ttl_days": 30, "base_ts_column": "data_insert", "apply_on_update": false}') $$,
     '11) una regola di scadenza ben formata entra');
 
 SELECT throws_ok($$ INSERT INTO dbops.automation_overrides_cols (schema_name, table_name, col_role, col_name)
@@ -109,6 +112,13 @@ SELECT is(
         AND pg_get_functiondef(p.oid) LIKE '%p\_function\_name => ''dbops.fn\_run\_automations''%'),
     ARRAY[]::text[],
     '17) nessun dry run firma col nome di dbops.fn_run_automations, che non esiste piu''');
+
+SELECT throws_ok($$ SELECT pg_temp.regola('CLEANUP_AT', 'AUTO', NULL,
+                    '{"ttl_days": 30, "cleanup_column": "cleanup_at"}') $$,
+    '23514', NULL, '18) una scadenza con cleanup_column e'' rifiutata: la colonna e'' cleanup_at, nome fisso');
+SELECT throws_ok($$ SELECT pg_temp.regola('CLEANUP_PURGE', 'AUTO', NULL,
+                    '{"batch_limit": 100, "cleanup_column": "scade_il"}') $$,
+    '23514', NULL, '19) un purge con cleanup_column e'' rifiutato: una chiave che nessuno legge non entra');
 
 SELECT * FROM finish();
 ROLLBACK;
