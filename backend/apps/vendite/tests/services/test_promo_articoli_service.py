@@ -137,7 +137,7 @@ def _current_promo(*, dal: date, al: date, **overrides):
 
 
 class TestList(TestCase):
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_list_default_params(self, mock_repo):
         mock_repo.return_value.list_promo.return_value = ([], 0)
         svc = PromoArticoliService()
@@ -146,7 +146,7 @@ class TestList(TestCase):
         self.assertEqual(kwargs["order_by"], "valido_dal")
         self.assertEqual(kwargs["order_dir"], "desc")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_list_invalid_order_by(self, mock_repo):
         del mock_repo
         svc = PromoArticoliService()
@@ -154,7 +154,7 @@ class TestList(TestCase):
             svc.list_promo(order_by="bad")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_list_tipo_variazione_invalido(self, mock_repo):
         del mock_repo
         svc = PromoArticoliService()
@@ -162,7 +162,7 @@ class TestList(TestCase):
             svc.list_promo(tipo_variazione="SCONTO")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_list_uuid_invalido(self, mock_repo):
         del mock_repo
         svc = PromoArticoliService()
@@ -170,7 +170,7 @@ class TestList(TestCase):
             svc.list_promo(articolo_id="not-a-uuid")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_list_propaga_filtri(self, mock_repo):
         mock_repo.return_value.list_promo.return_value = ([], 0)
         svc = PromoArticoliService()
@@ -182,20 +182,20 @@ class TestList(TestCase):
 
 
 class TestGet(TestCase):
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_ok(self, mock_repo):
         mock_repo.return_value.get_promo.return_value = {"id": 1}
         mock_repo.return_value.get_capabilities.return_value = {}
         self.assertEqual(PromoArticoliService().get_promo(1), {"id": 1, "capabilities": {}})
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_not_found(self, mock_repo):
         mock_repo.return_value.get_promo.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().get_promo(999)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_id_non_positivo(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
@@ -206,7 +206,7 @@ class TestGet(TestCase):
     #        frontend vendite) — stato_temporale, can_update,
     #        min_valido_*, non_editable_fields — SOTTO `capabilities`, intatto
     #        (api.md §«Il blob sta SOTTO `capabilities`»).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_include_capabilities(self, mock_repo):
         mock_repo.return_value.get_promo.return_value = {"id": 1, "codice": "PR-1"}
         mock_repo.return_value.get_capabilities.return_value = {
@@ -231,7 +231,7 @@ class TestGet(TestCase):
 
 
 class TestCreate(TestCase):
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_percentuale_ok(self, mock_repo):
         mock_repo.return_value.create_promo.return_value = 1
         mock_repo.return_value.get_promo.return_value = {"id": 1}
@@ -240,7 +240,7 @@ class TestCreate(TestCase):
         self.assertEqual(data["tipo_variazione"], "PERCENTUALE")
         self.assertEqual(data["valore_variazione"], Decimal("10.0"))
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_prezzo_fisso_ok(self, mock_repo):
         mock_repo.return_value.create_promo.return_value = 1
         mock_repo.return_value.get_promo.return_value = {"id": 1}
@@ -251,7 +251,7 @@ class TestCreate(TestCase):
         self.assertEqual(data["tipo_variazione"], "PREZZO_FISSO")
         self.assertEqual(data["valore_variazione"], Decimal("0"))
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_prezzo_fisso_negativo_ko(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
@@ -260,7 +260,7 @@ class TestCreate(TestCase):
             ))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_percentuale_zero_ko(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
@@ -272,7 +272,7 @@ class TestCreate(TestCase):
     # REGRESSIONE fix v5 2026-04-15: PERCENTUALE negativa = sconto, ammessa.
     # Il vincolo pre-v5 `> 0` bloccava gli sconti promo, incoerente col
     # resolver DB che applica `base * (1 + valore/100)`.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_percentuale_negativo_ok(self, mock_repo):
         mock_repo.return_value.create_promo.return_value = 1
         mock_repo.return_value.get_promo.return_value = {"id": 1}
@@ -286,7 +286,7 @@ class TestCreate(TestCase):
     #        all'envelope resta scritto qui. `NaN` e' il valore che la copia
     #        locale lasciava passare: `Decimal("NaN") != 0` e' vero, quindi
     #        superava anche il guard di dominio e arrivava alla colonna.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_valore_non_numerico_ko(self, mock_repo):
         for raw in (None, "", "dieci", True, "NaN", "Infinity"):
             with self.subTest(raw=raw):
@@ -298,7 +298,7 @@ class TestCreate(TestCase):
                 self.assertEqual(ctx.exception.context["field"], "valore_variazione")
         mock_repo.return_value.create_promo.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_tipo_invalido(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
@@ -314,7 +314,7 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(_base_payload(tipo_variazione=True))
         self.assertEqual(ctx.exception.context["field"], "tipo_variazione")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_missing_codice(self, mock_repo):
         del mock_repo
         payload = _base_payload()
@@ -323,7 +323,7 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(payload)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_missing_articolo(self, mock_repo):
         del mock_repo
         payload = _base_payload()
@@ -332,14 +332,14 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(payload)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_uuid_formato_invalido(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().create_promo(_base_payload(articolo_id="xxx"))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_missing_uom(self, mock_repo):
         del mock_repo
         payload = _base_payload()
@@ -348,7 +348,7 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(payload)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_unknown_key(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
@@ -358,7 +358,7 @@ class TestCreate(TestCase):
     # L'ordine delle date NON lo giudica il service: il guard comune del DB
     # risponde E_DATA_AL_MINORE_DAL col campo (provato sul DB vero in
     # apps/core/tests/db/test_date_validita_guard_comune_db).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_delega_ordine_date_al_db(self, mock_repo):
         mock_repo.return_value.create_promo.return_value = 1
         mock_repo.return_value.get_promo.return_value = {"id": 1}
@@ -370,7 +370,7 @@ class TestCreate(TestCase):
         data = mock_repo.return_value.create_promo.call_args.args[0]
         self.assertEqual((data["valido_dal"], data["valido_al"]), (dal_late, al_early))
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_valido_al_required(self, mock_repo):
         del mock_repo
         payload = _base_payload()
@@ -379,7 +379,7 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(payload)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_duplicate_codice(self, mock_repo):
         mock_repo.return_value.create_promo.side_effect = IntegrityError(
             'duplicate key value violates unique constraint "uq_promo_articoli_codice"'
@@ -388,7 +388,7 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(_base_payload())
         self.assertEqual(ctx.exception.code, "E_VENDITE_DUPLICATO")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_overlap(self, mock_repo):
         mock_repo.return_value.create_promo.side_effect = IntegrityError(
             'conflicting key value violates exclusion constraint '
@@ -398,7 +398,7 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(_base_payload())
         self.assertEqual(ctx.exception.code, "E_VENDITE_PROMO_OVERLAP")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_fk_articolo(self, mock_repo):
         mock_repo.return_value.create_promo.side_effect = IntegrityError(
             'foreign key constraint "fk_promo_articoli_articolo"'
@@ -407,7 +407,7 @@ class TestCreate(TestCase):
             PromoArticoliService().create_promo(_base_payload())
         self.assertEqual(ctx.exception.code, "E_VENDITE_FK")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_fk_uom(self, mock_repo):
         mock_repo.return_value.create_promo.side_effect = IntegrityError(
             'foreign key constraint "fk_promo_articoli_uom"'
@@ -434,7 +434,7 @@ class TestUpdate(TestCase):
             after_update or current,
         ]
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_descrizione_ok(self, mock_repo):
         self._mock_promo_futura(mock_repo)
         mock_repo.return_value.update_promo.return_value = True
@@ -442,35 +442,35 @@ class TestUpdate(TestCase):
         data = mock_repo.return_value.update_promo.call_args.args[1]
         self.assertEqual(data["descrizione"], "Nuova descr")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_codice_rifiutato(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().update_promo(1, {"codice": "X"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_articolo_rifiutato(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().update_promo(1, {"articolo_id": _UUID})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_uom_rifiutato(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().update_promo(1, {"uom_id": 5})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_variazione_solo_tipo_ko(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().update_promo(1, {"tipo_variazione": "PERCENTUALE"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_variazione_coppia_ok(self, mock_repo):
         self._mock_promo_futura(mock_repo)
         mock_repo.return_value.update_promo.return_value = True
@@ -482,14 +482,14 @@ class TestUpdate(TestCase):
         self.assertEqual(data["tipo_variazione"], "VALORE_FISSO")
         self.assertEqual(data["valore_variazione"], Decimal("2.5"))
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_payload_vuoto(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().update_promo(1, {})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_not_found(self, mock_repo):
         # NOT_FOUND ora viene dal pre-check get_promo (prima del guard
         # data-driven) - non dall'update_promo.
@@ -504,7 +504,7 @@ class TestUpdate(TestCase):
 class TestCreateRetroattiva(TestCase):
     """Guard create no-retroattiva: valido_dal > oggi, valido_al >= oggi."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_valido_dal_oggi_ko(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
@@ -514,7 +514,7 @@ class TestCreateRetroattiva(TestCase):
             ))
         self.assertEqual(ctx.exception.code, "E_PROMO_RETROATTIVA")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_valido_dal_passato_ko(self, mock_repo):
         del mock_repo
         passato = (_TODAY - timedelta(days=10)).isoformat()
@@ -525,7 +525,7 @@ class TestCreateRetroattiva(TestCase):
             ))
         self.assertEqual(ctx.exception.code, "E_PROMO_RETROATTIVA")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_create_valido_al_passato_ko(self, mock_repo):
         del mock_repo
         # Combinazione fully-retroattiva (entrambe le date passate, range
@@ -545,7 +545,7 @@ class TestUpdateDataDriven(TestCase):
     """Guard data-driven Profilo A in update (SCADUTA / INIZIATA / FUTURA)."""
 
     # ──── SCADUTA ────
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_scaduta_immutabile(self, mock_repo):
         scaduta = _current_promo(
             dal=_TODAY - timedelta(days=60),
@@ -558,7 +558,7 @@ class TestUpdateDataDriven(TestCase):
         mock_repo.return_value.update_promo.assert_not_called()
 
     # ──── INIZIATA ────
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_iniziata_descrizione_ok(self, mock_repo):
         iniziata = _current_promo(
             dal=_TODAY - timedelta(days=10),
@@ -570,7 +570,7 @@ class TestUpdateDataDriven(TestCase):
         data = mock_repo.return_value.update_promo.call_args.args[1]
         self.assertEqual(data, {"descrizione": "Nuova"})
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_iniziata_valido_al_ok(self, mock_repo):
         iniziata = _current_promo(
             dal=_TODAY - timedelta(days=10),
@@ -583,7 +583,7 @@ class TestUpdateDataDriven(TestCase):
         data = mock_repo.return_value.update_promo.call_args.args[1]
         self.assertEqual(data["valido_al"], _TODAY + timedelta(days=40))
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_iniziata_valido_al_passato_ko(self, mock_repo):
         iniziata = _current_promo(
             dal=_TODAY - timedelta(days=10),
@@ -597,7 +597,7 @@ class TestUpdateDataDriven(TestCase):
         self.assertEqual(ctx.exception.code, "E_PROMO_RETROATTIVA")
         mock_repo.return_value.update_promo.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_iniziata_tipo_ristretto_ko(self, mock_repo):
         iniziata = _current_promo(
             dal=_TODAY - timedelta(days=10),
@@ -613,7 +613,7 @@ class TestUpdateDataDriven(TestCase):
         self.assertEqual(ctx.exception.code, "E_PROMO_INIZIATA_CAMPI_RISTRETTI")
         mock_repo.return_value.update_promo.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_iniziata_attivo_ristretto_ko(self, mock_repo):
         iniziata = _current_promo(
             dal=_TODAY - timedelta(days=10),
@@ -626,7 +626,7 @@ class TestUpdateDataDriven(TestCase):
         self.assertEqual(ctx.exception.code, "E_PROMO_INIZIATA_CAMPI_RISTRETTI")
         mock_repo.return_value.update_promo.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_iniziata_valido_dal_ristretto_ko(self, mock_repo):
         iniziata = _current_promo(
             dal=_TODAY - timedelta(days=10),
@@ -640,7 +640,7 @@ class TestUpdateDataDriven(TestCase):
         mock_repo.return_value.update_promo.assert_not_called()
 
     # ──── FUTURA ────
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_futura_valido_dal_oggi_ko(self, mock_repo):
         futura = _current_promo(
             dal=_TODAY + timedelta(days=10),
@@ -655,7 +655,7 @@ class TestUpdateDataDriven(TestCase):
         mock_repo.return_value.update_promo.assert_not_called()
 
     # ──── No-op idempotenza ────
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_no_op_idempotente(self, mock_repo):
         # FE invia tutti i campi del form anche se l'utente non ha cambiato
         # nulla. Risultato atteso: ritorna current senza chiamare update_promo
@@ -678,7 +678,7 @@ class TestUpdateDataDriven(TestCase):
         })
         mock_repo.return_value.update_promo.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_promo_iniziata_no_op_su_tipo_ammesso(self, mock_repo):
         # In iniziata, anche se l'utente invia tipo_variazione (campo
         # non whitelist), se uguale al corrente e' no-op droppato prima

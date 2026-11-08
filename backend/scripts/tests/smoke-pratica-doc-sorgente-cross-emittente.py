@@ -198,8 +198,9 @@ def ancora(cur, pratica_id: int):
 # Scopo: appende a una pratica due link dello stesso tipo sorgente, uno `ROOT` e
 #        uno `COLLEGATO`. Il caso si costruisce due volte a ruoli invertiti, e
 #        una seconda `INSERT` scritta a mano sarebbe la copia che diverge.
-# ⚠️ Va chiamata dal perimetro LARGO: il guard
-#    `script.trgfn_guard_sorgente_polimorfa_testuale` verifica che l'uid esista e
+# ⚠️ Va chiamata dal perimetro LARGO: il guard unico
+#    `script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` (dal giro P.1 di
+#    brief-db-sorgente-documento-e-riga) verifica che il documento esista e
 #    gira come l'utente — da un perimetro ristretto rifiuterebbe il documento
 #    che quel perimetro non vede, cioe' proprio il caso da provare.
 def collega(cur, pratica_id: int, tipo_id: int, uid_root: str, uid_collegato: str) -> None:

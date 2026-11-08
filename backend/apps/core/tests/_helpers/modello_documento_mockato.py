@@ -43,7 +43,7 @@ class ModelloDocumentoMockatoMixin:
     # Scopo: per la durata del test il BB legge un repository finto.
     def setUp(self) -> None:
         super().setUp()  # type: ignore[misc]
-        patcher = patch("apps.core.services.documento_modello.DocumentoModelloRepository")
+        patcher = patch("apps.core.services.documento_modello.DocumentoModelloRepository", autospec=True)
         self.modello_documento = patcher.start().return_value
         self.addCleanup(patcher.stop)  # type: ignore[attr-defined]
         self.modello_documento.e_stato_di_emissione.return_value = False

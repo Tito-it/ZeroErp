@@ -48,16 +48,8 @@ except Exception:
 " 2>/dev/null
 }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# backend/scripts/tests -> backend: DUE livelli (come jwt-audit-guc e listini-v5).
-# Con uno solo cercava backend/scripts/manage-env.sh, la query tornava vuota e
-# `set -e` chiudeva lo smoke al passo 0 senza una parola.
-BACKEND_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-
-db_query() {
-    local sql="$1"
-    "${BACKEND_DIR}/manage-env.sh" dbshell -- -t -A -c "$sql" 2>/dev/null | grep -v '^$'
-}
+# La query diretta al DB: il BB `smoke_db_query` (_smoke_db.sh, regola del 2).
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_db.sh"
 
 # ================================================================
 echo ""
@@ -71,7 +63,7 @@ echo ""
 echo "-- 0. Login JWT → sessione audit --"
 
 # Conta sessioni prima
-SESS_BEFORE=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='LOGIN'" | tail -1)
+SESS_BEFORE=$(smoke_db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='LOGIN'" | tail -1)
 
 # Login vero (-D lo implica): il passo conta il record LOGIN che apre.
 smoke_login -D "${TMPFILE}.hdr"
@@ -81,7 +73,7 @@ log_ok "JWT ottenuto (HTTP 200)"
 
 # Verifica sessione inserita
 sleep 0.5
-SESS_AFTER=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='LOGIN'" | tail -1)
+SESS_AFTER=$(smoke_db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='LOGIN'" | tail -1)
 if [[ "$SESS_AFTER" -gt "$SESS_BEFORE" ]]; then
     log_ok "Record LOGIN inserito in sessioni_utente ($SESS_BEFORE → $SESS_AFTER)"
 else
@@ -89,7 +81,7 @@ else
 fi
 
 # Verifica jti popolato nell'ultimo record
-LAST_JTI=$(db_query "SELECT jti FROM dbops.sessioni_utente WHERE evento='LOGIN' ORDER BY data_insert DESC LIMIT 1" | tail -1)
+LAST_JTI=$(smoke_db_query "SELECT jti FROM dbops.sessioni_utente WHERE evento='LOGIN' ORDER BY data_insert DESC LIMIT 1" | tail -1)
 if [[ -n "$LAST_JTI" && "$LAST_JTI" != "None" ]]; then
     log_ok "jti popolato nell'ultimo record LOGIN: ${LAST_JTI:0:20}..."
 else
@@ -100,7 +92,7 @@ fi
 echo ""
 echo "-- 1. Token refresh → sessione audit --"
 
-SESS_BEFORE_R=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='REFRESH'" | tail -1)
+SESS_BEFORE_R=$(smoke_db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='REFRESH'" | tail -1)
 
 curl_refresh "$REFRESH" -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" -X POST \
     "${BASE_URL}/api/v1/admin/token/refresh/" > "$TMPFILE" 2>/dev/null
@@ -117,7 +109,7 @@ else
 fi
 
 sleep 0.5
-SESS_AFTER_R=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='REFRESH'" | tail -1)
+SESS_AFTER_R=$(smoke_db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento='REFRESH'" | tail -1)
 if [[ "$SESS_AFTER_R" -gt "$SESS_BEFORE_R" ]]; then
     log_ok "Record REFRESH inserito in sessioni_utente ($SESS_BEFORE_R → $SESS_AFTER_R)"
 else
@@ -128,7 +120,7 @@ fi
 echo ""
 echo "-- 2. Request log → verifica record --"
 
-RL_BEFORE=$(db_query "SELECT count(*) FROM dbops.request_log" | tail -1)
+RL_BEFORE=$(smoke_db_query "SELECT count(*) FROM dbops.request_log" | tail -1)
 
 # Facciamo una API call autenticata
 curl -s -w '\n%{http_code}' \
@@ -143,7 +135,7 @@ else
 fi
 
 sleep 0.5
-RL_AFTER=$(db_query "SELECT count(*) FROM dbops.request_log" | tail -1)
+RL_AFTER=$(smoke_db_query "SELECT count(*) FROM dbops.request_log" | tail -1)
 if [[ "$RL_AFTER" -gt "$RL_BEFORE" ]]; then
     log_ok "Record inserito in request_log ($RL_BEFORE → $RL_AFTER)"
 else
@@ -151,7 +143,7 @@ else
 fi
 
 # Verifica contenuto ultimo record
-LAST_RL=$(db_query "SELECT method, path, status_code, auth_user_id FROM dbops.request_log ORDER BY data_insert DESC LIMIT 1" | tail -1)
+LAST_RL=$(smoke_db_query "SELECT method, path, status_code, auth_user_id FROM dbops.request_log ORDER BY data_insert DESC LIMIT 1" | tail -1)
 log_info "Ultimo request_log: $LAST_RL"
 
 # --- 3. Token blacklist → vecchio refresh blacklistato ---
@@ -178,7 +170,7 @@ fi
 echo ""
 echo "-- 4. Login fallito → nessun record --"
 
-SESS_BEFORE_F=$(db_query "SELECT count(*) FROM dbops.sessioni_utente" | tail -1)
+SESS_BEFORE_F=$(smoke_db_query "SELECT count(*) FROM dbops.sessioni_utente" | tail -1)
 
 # login esplicito: il passo prova proprio il RIFIUTO del login (401) e che non
 # apra sessioni; smoke_login uscirebbe al primo errore.
@@ -195,7 +187,7 @@ else
 fi
 
 sleep 0.5
-SESS_AFTER_F=$(db_query "SELECT count(*) FROM dbops.sessioni_utente" | tail -1)
+SESS_AFTER_F=$(smoke_db_query "SELECT count(*) FROM dbops.sessioni_utente" | tail -1)
 if [[ "$SESS_AFTER_F" == "$SESS_BEFORE_F" ]]; then
     log_ok "Nessun record sessione per login fallito ($SESS_BEFORE_F = $SESS_AFTER_F)"
 else
@@ -206,7 +198,7 @@ fi
 echo ""
 echo "-- 5. Request log → error_code su errore --"
 
-RL_BEFORE_E=$(db_query "SELECT count(*) FROM dbops.request_log WHERE error_code IS NOT NULL" | tail -1)
+RL_BEFORE_E=$(smoke_db_query "SELECT count(*) FROM dbops.request_log WHERE error_code IS NOT NULL" | tail -1)
 
 # Facciamo una chiamata che genera errore con error_code
 curl -s -w '\n%{http_code}' \
@@ -221,10 +213,10 @@ else
 fi
 
 sleep 0.5
-RL_AFTER_E=$(db_query "SELECT count(*) FROM dbops.request_log WHERE error_code IS NOT NULL" | tail -1)
+RL_AFTER_E=$(smoke_db_query "SELECT count(*) FROM dbops.request_log WHERE error_code IS NOT NULL" | tail -1)
 if [[ "$RL_AFTER_E" -gt "$RL_BEFORE_E" ]]; then
     log_ok "Record con error_code inserito in request_log ($RL_BEFORE_E → $RL_AFTER_E)"
-    LAST_EC=$(db_query "SELECT error_code FROM dbops.request_log WHERE error_code IS NOT NULL ORDER BY data_insert DESC LIMIT 1" | tail -1)
+    LAST_EC=$(smoke_db_query "SELECT error_code FROM dbops.request_log WHERE error_code IS NOT NULL ORDER BY data_insert DESC LIMIT 1" | tail -1)
     log_info "Ultimo error_code: $LAST_EC"
 else
     log_fail "Nessun record con error_code ($RL_BEFORE_E → $RL_AFTER_E)"

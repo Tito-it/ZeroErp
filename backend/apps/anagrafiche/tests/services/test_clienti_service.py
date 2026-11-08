@@ -95,7 +95,7 @@ def _base_payload(**overrides):
 
 class TestClientiListDetail(TestCase):
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_list_clienti_ok(self, mock_repo):
         """Happy path: lista paginata clienti."""
         mock_repo.return_value.list_clienti.return_value = (
@@ -106,7 +106,7 @@ class TestClientiListDetail(TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(results[0]["codice"], "BA-001")
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_list_clienti_propaga_scope_emittente(self, mock_repo):
         """Refactor operatore-emittenti BE-3.5: il param emittente_ids
         passato al service deve raggiungere il repository senza
@@ -117,7 +117,7 @@ class TestClientiListDetail(TestCase):
         kwargs = mock_repo.return_value.list_clienti.call_args.kwargs
         self.assertEqual(kwargs["emittente_ids"], [10, 20])
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_list_clienti_scope_none_bypass(self, mock_repo):
         """Superuser/admin globale: emittente_ids=None passa intatto
         e il repository non applica filtro scope."""
@@ -127,7 +127,7 @@ class TestClientiListDetail(TestCase):
         kwargs = mock_repo.return_value.list_clienti.call_args.kwargs
         self.assertIsNone(kwargs["emittente_ids"])
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_get_cliente_ok(self, mock_repo):
         """Dettaglio cliente completo."""
         mock_repo.return_value.get_cliente.return_value = {
@@ -138,7 +138,7 @@ class TestClientiListDetail(TestCase):
         result = ClientiService().get_cliente(1)
         self.assertEqual(result["ba_codice"], "BA-001")
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_get_cliente_not_found(self, mock_repo):
         """Cliente inesistente → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_cliente.return_value = None
@@ -147,7 +147,7 @@ class TestClientiListDetail(TestCase):
             ClientiService().get_cliente(999)
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_get_cliente_propagates_evento_stato_corrente(self, mock_repo):
         """Fase 4: i campi data_evento_stato/tipo_evento_stato risolti dalla
         fn DB anagrafiche.fn_get_evento_stato_corrente_cliente devono
@@ -166,7 +166,7 @@ class TestClientiListDetail(TestCase):
         self.assertEqual(result["data_evento_stato"], "2026-04-05")
         self.assertEqual(result["tipo_evento_stato"], "RIATTIVAZIONE")
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_get_cliente_evento_stato_null_when_no_dates(self, mock_repo):
         """Cliente senza sosp/riatt → fn DB ritorna (NULL, NULL)."""
         mock_repo.return_value.get_cliente.return_value = {
@@ -194,7 +194,7 @@ class TestCreaClienteManuale(TestCase):
         repo.crea_cliente.return_value = (1, 200, 100, 50)
         return repo
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_manuale_ok(self, mock_repo):
         """Creazione manuale: genera istanza fittizia + BA + cliente."""
         repo = self._setup_repo(mock_repo)
@@ -212,7 +212,7 @@ class TestCreaClienteManuale(TestCase):
         self.assertIsNone(kwargs["contatto"])
         self.assertEqual(kwargs["indirizzi"], [])
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_manuale_con_indirizzo(self, mock_repo):
         """Creazione manuale con indirizzo facoltativo."""
         repo = self._setup_repo(mock_repo)
@@ -221,7 +221,7 @@ class TestCreaClienteManuale(TestCase):
         # L'indirizzo va all'istanza fittizia NUOVA, l'unica che lo porta.
         self.assertEqual(repo.crea_cliente.call_args.kwargs["istanza"], {"indirizzo_dettaglio_id": 42})
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_senza_iva_id_non_inietta_default(self, mock_repo):
         """I0/D7-bis: il payload senza `iva_id` crea il cliente, e nessuno
         inietta piu' il parametro DEFAULT_IVA_ID.
@@ -245,11 +245,13 @@ class TestCreaClienteManuale(TestCase):
             self.assertNotIn(chiave, kwargs)
         # Il lettore del parametro non esiste piu': se qualcuno lo reintroduce
         # senza la colonna, l'INSERT torna a fallire.
-        # ⚠️ `assert_not_called` e non un `hasattr`: su un MagicMock `hasattr` e'
-        #    sempre vero, quindi la clausola sarebbe stata logica morta.
-        repo.get_default_iva_id.assert_not_called()
+        # ⭐ Col mock `autospec` `hasattr` legge la classe VERA: il lettore non
+        #    c'e', quindi il servizio non lo puo' chiamare. (Su un MagicMock
+        #    libero `hasattr` era sempre vero, e `assert_not_called` su un
+        #    metodo inesistente passava a vuoto.)
+        self.assertFalse(hasattr(repo, "get_default_iva_id"))
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_scarta_le_sei_chiavi_migrate(self, mock_repo):
         """Le sei chiavi di I0/I8 nel payload sono rifiutate (400), non arrivano alla madre.
 
@@ -269,7 +271,7 @@ class TestCreaClienteManuale(TestCase):
             self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         repo.crea_cliente.assert_not_called()
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_manuale_utility_pdp_bloccata(self, mock_repo):
         """Utility con richiede_pdp=true → creazione manuale bloccata."""
         mock_repo.return_value.get_utility.return_value = _utility_gas()
@@ -286,7 +288,7 @@ class TestCreaClienteManuale(TestCase):
 
 class TestCreaClientePreesistenti(TestCase):
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_con_istanza_preesistente(self, mock_repo):
         """Riusa istanza da pratiche, genera solo BA + cliente."""
         repo = mock_repo.return_value
@@ -303,7 +305,7 @@ class TestCreaClientePreesistenti(TestCase):
         self.assertEqual(kwargs["istanza"], {})
         self.assertIsNone(kwargs["billing_account_id"])
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_con_istanza_e_ba_preesistenti(self, mock_repo):
         """Riusa istanza + BA da pratiche, genera solo cliente."""
         repo = mock_repo.return_value
@@ -320,7 +322,7 @@ class TestCreaClientePreesistenti(TestCase):
         self.assertEqual((kwargs["billing_account"], kwargs["istanza"]), ({}, {}))
         self.assertEqual(result["id"], 1)
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_con_ba_preesistente_senza_istanza(self, mock_repo):
         """BA indicato senza istanza: l'istanza e' quella del BA (la legge la madre).
 
@@ -348,7 +350,7 @@ class TestCreaClientePreesistenti(TestCase):
 
 class TestCreaClienteValidazione(TestCase):
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_istanza_soggetto_mismatch(self, mock_repo):
         """Istanza di altro soggetto → errore."""
         repo = mock_repo.return_value
@@ -361,7 +363,7 @@ class TestCreaClienteValidazione(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         self.assertIn("soggetto", ctx.exception.message)
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_ba_istanza_mismatch(self, mock_repo):
         """BA di altra istanza → errore."""
         repo = mock_repo.return_value
@@ -376,7 +378,7 @@ class TestCreaClienteValidazione(TestCase):
         self.assertIn("billing account", ctx.exception.message)
 
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_ba_altra_utility(self, mock_repo):
         """BA della stessa istanza ma di un'altra utility → errore: la coppia
         (istanza, utility) e' l'identita' del BA."""
@@ -392,7 +394,7 @@ class TestCreaClienteValidazione(TestCase):
         self.assertIn("utility", ctx.exception.message)
         repo.crea_cliente.assert_not_called()
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_coppia_con_ba_esistente(self, mock_repo):
         """Istanza esistente la cui utility ha gia' il suo BA, senza indicarlo:
         uq_billing_instance_utility → E_ANAG_DUPLICATO, non un 500."""
@@ -413,7 +415,7 @@ class TestCreaClienteValidazione(TestCase):
 
 class TestCreaClienteInputMancanti(TestCase):
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_missing_soggetto(self, mock_repo):
         """soggetto_id mancante → errore."""
         from apps.anagrafiche.services.clienti_service import ClientiService
@@ -421,7 +423,7 @@ class TestCreaClienteInputMancanti(TestCase):
             ClientiService().crea_cliente({"utility_id": 10})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_missing_utility(self, mock_repo):
         """utility_id mancante → errore."""
         from apps.anagrafiche.services.clienti_service import ClientiService
@@ -429,7 +431,7 @@ class TestCreaClienteInputMancanti(TestCase):
             ClientiService().crea_cliente({"soggetto_id": FAKE_UUID})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_utility_non_trovata(self, mock_repo):
         """Utility inesistente → errore."""
         mock_repo.return_value.get_utility.return_value = None
@@ -446,7 +448,7 @@ class TestCreaClienteInputMancanti(TestCase):
 
 class TestCreaClienteDuplicato(TestCase):
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_duplicato_billing_account(self, mock_repo):
         """UNIQUE billing account violato (un cliente per BA, R-8) → E_ANAG_DUPLICATO."""
         repo = mock_repo.return_value
@@ -464,7 +466,7 @@ class TestCreaClienteDuplicato(TestCase):
 
 class TestUpdateCliente(TestCase):
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_update_cliente_ok(self, mock_repo):
         """Aggiorna campi editabili — happy path (una sola fn madre atomica)."""
         repo = mock_repo.return_value
@@ -486,7 +488,7 @@ class TestUpdateCliente(TestCase):
             },
         )
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_update_cliente_not_found(self, mock_repo):
         """Cliente inesistente → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_cliente.return_value = None
@@ -495,7 +497,7 @@ class TestUpdateCliente(TestCase):
             ClientiService().update_cliente(999, {"modalita_pagamento_id": 5})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_update_cliente_no_fields(self, mock_repo):
         """Nessun campo valido → E_ANAG_VALIDAZIONE (400): il cliente esiste (guard
         get_cliente), quindi 'niente da aggiornare' e' validazione, non not-found."""
@@ -514,7 +516,7 @@ class TestUpdateCliente(TestCase):
     #    silenzio. `stato_cliente_id` e' il caso vero: `ClienteDrawer.vue` lo
     #    spedisce in ogni PATCH, ma non e' un campo editabile (non e' nella
     #    whitelist della fn madre `fn_update_cliente`).
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_update_cliente_chiave_estranea_400(self, mock_repo):
         """Chiave fuori contratto → E_ANAG_VALIDAZIONE con le chiavi ignote nel contesto."""
         repo = mock_repo.return_value
@@ -544,7 +546,7 @@ class TestBaCategoriaF2BE04(TestCase):
         repo.crea_cliente.return_value = (1, 200, 100, 50)
         return repo
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_con_ba_categoria(self, mock_repo):
         """F2-BE-04: ba_categoria_cliente_id del payload passato al repo."""
         repo = self._setup_crea(mock_repo)
@@ -554,7 +556,7 @@ class TestBaCategoriaF2BE04(TestCase):
             repo.crea_cliente.call_args.kwargs["billing_account"], {"categoria_cliente_id": 7},
         )
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_senza_ba_categoria_errore(self, mock_repo):
         """F3-FE-04: ba_categoria_cliente_id omesso -> E_ANAG_VALIDAZIONE.
         Nessun default implicito: la categoria cliente e' dimensione
@@ -567,7 +569,7 @@ class TestBaCategoriaF2BE04(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         self.assertIn("ba_categoria_cliente_id", ctx.exception.message)
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_update_cliente_solo_categoria(self, mock_repo):
         """PATCH con solo ba_categoria_cliente_id -> fn madre con categoria, campi vuoti."""
         repo = mock_repo.return_value
@@ -582,7 +584,7 @@ class TestBaCategoriaF2BE04(TestCase):
             1, ba_categoria_cliente_id=9, cliente_fields={},
         )
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_update_cliente_categoria_e_campi(self, mock_repo):
         """PATCH misto: categoria BA + campi cliente in un'unica fn madre atomica."""
         repo = mock_repo.return_value
@@ -602,7 +604,7 @@ class TestBaCategoriaF2BE04(TestCase):
         self.assertNotIn("ba_categoria_cliente_id", kwargs["cliente_fields"])
         self.assertEqual(kwargs["cliente_fields"]["modalita_pagamento_id"], 5)
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_update_cliente_categoria_invalida_zero(self, mock_repo):
         """ba_categoria_cliente_id=0 -> E_ANAG_VALIDAZIONE."""
         repo = mock_repo.return_value
@@ -612,7 +614,7 @@ class TestBaCategoriaF2BE04(TestCase):
             ClientiService().update_cliente(1, {"ba_categoria_cliente_id": 0})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_update_cliente_categoria_invalida_bool(self, mock_repo):
         """ba_categoria_cliente_id=True rifiutato (bool trap)."""
         repo = mock_repo.return_value
@@ -638,7 +640,7 @@ class TestCreaClienteGuardEmittente(TestCase):
         repo.check_user_can_create_ba.return_value = can_create_ba
         return repo
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_guard_admin_globale_blocca_creazione_ba(self, mock_repo):
         """Admin globale + emittenti presenti → E_BA_ADMIN_GLOBALE_VIETATO,
         nessuna chiamata alla madre del DB."""
@@ -651,7 +653,7 @@ class TestCreaClienteGuardEmittente(TestCase):
         # Early reject: nessuna scrittura DB
         repo.crea_cliente.assert_not_called()
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_guard_skip_quando_auth_user_id_none(self, mock_repo):
         """Contesto di sistema (auth_user_id=None) → guard skippato,
         creazione procede (defense-in-depth via trigger DB)."""
@@ -662,7 +664,7 @@ class TestCreaClienteGuardEmittente(TestCase):
         repo.check_user_can_create_ba.assert_not_called()
         repo.crea_cliente.assert_called_once()
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_guard_skip_quando_ba_preesistente(self, mock_repo):
         """Se billing_account_id e' fornito (riuso da pratiche),
         non si crea un nuovo BA → niente guard."""
@@ -679,7 +681,7 @@ class TestCreaClienteGuardEmittente(TestCase):
         # E nessun BA nuovo perche' si riusa quello fornito
         self.assertEqual(repo.crea_cliente.call_args.kwargs["billing_account"], {})
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_guard_passa_per_operatore_di_emittente(self, mock_repo):
         """Operatore con riga in user_emittenti_fiscali → check_user_can_create_ba
         ritorna True → creazione BA procede."""
@@ -690,7 +692,7 @@ class TestCreaClienteGuardEmittente(TestCase):
         repo.check_user_can_create_ba.assert_called_once_with(99)
         repo.crea_cliente.assert_called_once()
 
-    @patch(CLI_REPO)
+    @patch(CLI_REPO, autospec=True)
     def test_db_trigger_error_propaga_codice(self, mock_repo):
         """Se il trigger DB solleva un'eccezione (defense-in-depth oltre
         il guard applicativo), la repository la propaga e il service

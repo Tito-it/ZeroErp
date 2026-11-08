@@ -48,8 +48,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     # 0. Scopre i lotti EMESSA del mese (competenza normalizzata al 1° + id
     #    EMESSA risolto) e numera ciascuno con l'auth_user_id dello scope.
     @patch(_NUMERA)
-    @patch(_VEND_REPO)
-    @patch(_PIPE_REPO)
+    @patch(_VEND_REPO, autospec=True)
+    @patch(_PIPE_REPO, autospec=True)
     def test_happy_path_numera_tutti_i_lotti(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
@@ -91,8 +91,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     #    dell'atto (decisione 5 del brief numerazione: una data per l'atto, non
     #    una per lotto), e torna nell'esito.
     @patch(_NUMERA)
-    @patch(_VEND_REPO)
-    @patch(_PIPE_REPO)
+    @patch(_VEND_REPO, autospec=True)
+    @patch(_PIPE_REPO, autospec=True)
     def test_data_documento_dichiarata_arriva_al_core(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
@@ -126,8 +126,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     #    documenti una data che nessuno ha deciso. Nel cantiere che nasce
     #    proprio per togliere le date che nessuno ha deciso.
     @patch(_NUMERA)
-    @patch(_VEND_REPO)
-    @patch(_PIPE_REPO)
+    @patch(_VEND_REPO, autospec=True)
+    @patch(_PIPE_REPO, autospec=True)
     def test_data_documento_non_e_normalizzata_al_primo_del_mese(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
@@ -153,8 +153,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     # 1. Best-effort: un lotto in errore NON blocca gli altri; falliti_dett
     #    riporta lotto+codice+code.
     @patch(_NUMERA)
-    @patch(_VEND_REPO)
-    @patch(_PIPE_REPO)
+    @patch(_VEND_REPO, autospec=True)
+    @patch(_PIPE_REPO, autospec=True)
     def test_best_effort_un_lotto_fallito_non_blocca(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
@@ -186,8 +186,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     #        motivo_stop, MAI «numerato» (smoke C-9: fatture senza numero
     #        nascoste da un contatore ottimista).
     @patch(_NUMERA)
-    @patch(_VEND_REPO)
-    @patch(_PIPE_REPO)
+    @patch(_VEND_REPO, autospec=True)
+    @patch(_PIPE_REPO, autospec=True)
     def test_lotto_non_transitato_conta_saltato(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
@@ -216,8 +216,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
 
     # 2. Nessun lotto EMESSA nel mese → job no-op (lotti=0), numera mai chiamato.
     @patch(_NUMERA)
-    @patch(_VEND_REPO)
-    @patch(_PIPE_REPO)
+    @patch(_VEND_REPO, autospec=True)
+    @patch(_PIPE_REPO, autospec=True)
     def test_nessun_lotto_numerabile_noop(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
@@ -235,8 +235,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     # 3. EMESSA non configurato → fail-loud (niente discovery, niente 0-lotti
     #    silenzioso che maschererebbe una config rotta).
     @patch(_NUMERA)
-    @patch(_VEND_REPO)
-    @patch(_PIPE_REPO)
+    @patch(_VEND_REPO, autospec=True)
+    @patch(_PIPE_REPO, autospec=True)
     def test_emessa_non_configurato_raises_fail_loud(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
@@ -285,8 +285,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
 
     # 9. La selezione arriva alla discovery, e come `lotti_ids`.
     @patch("apps.vendite.services.pipeline_service.numera_lotto")
-    @patch("apps.vendite.db.vendite_repository.VenditeRepository")
-    @patch("apps.vendite.db.pipeline_repository.VenditePipelineRepository")
+    @patch("apps.vendite.db.vendite_repository.VenditeRepository", autospec=True)
+    @patch("apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True)
     def test_selezione_lotti_restringe_il_perimetro(
         self, pipe_repo, vend_repo, mock_numera,
     ):
@@ -304,8 +304,8 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     #     alternativi, e passarli entrambi e' un errore che il costruttore
     #     rifiuta. Se questo test si spegne, il perimetro torna a essere il mese.
     @patch("apps.vendite.services.pipeline_service.numera_lotto")
-    @patch("apps.vendite.db.vendite_repository.VenditeRepository")
-    @patch("apps.vendite.db.pipeline_repository.VenditePipelineRepository")
+    @patch("apps.vendite.db.vendite_repository.VenditeRepository", autospec=True)
+    @patch("apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True)
     def test_selezione_lotti_non_passa_anche_la_competenza(
         self, pipe_repo, vend_repo, mock_numera,
     ):

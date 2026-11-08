@@ -249,7 +249,7 @@ class ExportApiTests(_Base):
     # Scopo: l'export chiede il DATASET (`EXPORT_MAX_ROWS + 1`), non la pagina.
     @_AUTH
     @patch("apps.ui.api.export_helpers.ListaExportService")
-    @patch("apps.ui.api.export_helpers.UiRepository")
+    @patch("apps.ui.api.export_helpers.UiRepository", autospec=True)
     @patch("apps.ui.api.export_helpers.UiService")
     @patch(f"{_CONS}.list_movimenti")
     def test_export_chiede_il_dataset_non_la_pagina(self, mock_list, mock_ui_svc, mock_ui_repo, mock_render, _auth):

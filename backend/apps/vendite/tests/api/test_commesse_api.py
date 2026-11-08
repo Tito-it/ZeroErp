@@ -351,7 +351,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     #        l'azione chiesta e' quella che la riga dice.
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.DocumentoModelloRepository", autospec=True)
     @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=True)
     @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
     @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
@@ -381,7 +381,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     #        service NON viene invocato.
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.DocumentoModelloRepository", autospec=True)
     @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
     @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
     @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
@@ -408,7 +408,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     #        non si chiede (prima il `post_permission` la chiedeva sempre).
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.DocumentoModelloRepository", autospec=True)
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.cambia_stato_commessa")

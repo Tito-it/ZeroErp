@@ -26,6 +26,7 @@ from apps.core.db._helpers import (
     sql_order_clause,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.pratiche.types import RUOLO_LINK_ROOT
 
 # coerce_jsonb_dict: promosso in apps.core.db._helpers (regola del 2,
 # 2026-07-12) — qui resta il re-export storico per i caller esistenti
@@ -88,12 +89,16 @@ _DOC_SORGENTE_SELECT = """
 # Riferimento semantico del fallback: pratiche.fn_stato_sorgente (sentinella
 # UNKNOWN); il join diretto alla vista e' la via sancita per le liste
 # (doc fn_stato_sorgente: "niente N+1").
-# ⚠️ Il resolver si cerca sulla chiave NATIVA (sorgente_chiave_uuid/_id), mai
-#    sulla forma testuale sorgente_uid: sotto RLS il confronto sul testo non
-#    arriva all'indice e rilegge i documenti per ogni riga. Si converte il
-#    PARAMETRO (script.fn_sorgente_chiave_uuid/_id, NULL se la chiave non e'
-#    di quella specie), un ramo per specie: stessa forma di
-#    script.vw_pratica_doc_sorgente.
+# ⚠️ Il resolver si cerca sulla chiave NATIVA del link, un ramo per chiave
+#    (`sorgente_chiave_uuid = ps.sorgente_uid`, `sorgente_chiave_id =
+#    ps.sorgente_id`): sotto RLS l'uguaglianza fra colonne native arriva
+#    all'indice di ogni ramo della union, un OR sulle due chiavi no (legge
+#    tutte le tabelle-documento). Stessa forma di script.vw_pratica_doc_sorgente
+#    dal giro P.1 di brief-db-sorgente-documento-e-riga (2026-11-08), quando
+#    `pratiche_sorgenti` e' passata alle colonne del modello e i BB
+#    `script.fn_sorgente_chiave_uuid/_id` non servono piu'.
+# ⏭️ E' la seconda copia della regola «link → stato del documento» (la prima
+#    e' la vista): la sede per-flusso e' una richiesta al team DB (brief, §8.16).
 def _doc_sorgente_lateral(anchor_cond: str) -> str:
     return f"""
         LEFT JOIN LATERAL (
@@ -108,19 +113,19 @@ def _doc_sorgente_lateral(anchor_cond: str) -> str:
                        v.fase, v.esito, v.terminale
                 FROM script.vw_stato_sorgente v
                 WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
-                  AND v.sorgente_chiave_uuid = script.fn_sorgente_chiave_uuid(ps.sorgente_uid)
+                  AND v.sorgente_chiave_uuid = ps.sorgente_uid
                 UNION ALL
                 SELECT v.risolto, v.stato_codice_interno, v.stato_descrizione,
                        v.fase, v.esito, v.terminale
                 FROM script.vw_stato_sorgente v
                 WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
-                  AND v.sorgente_chiave_id = script.fn_sorgente_chiave_id(ps.sorgente_uid)
+                  AND v.sorgente_chiave_id = ps.sorgente_id
             ) ss ON true
             WHERE {anchor_cond}
-            ORDER BY (ps.ruolo_link = 'ROOT') DESC, ps.id DESC
+            ORDER BY (ps.ruolo_link = '{RUOLO_LINK_ROOT}') DESC, ps.id DESC
             LIMIT 1
         ) ds ON true
-    """  # noqa: S608 — anchor_cond letterale dei chiamanti, mai da input
+    """  # noqa: S608 — anchor_cond letterale dei chiamanti e costante Final, mai da input
 
 
 # Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
@@ -962,17 +967,27 @@ class PraticheRepository:
 
     # -- SORGENTI --------------------------------------------------------
 
-    # Scopo: Aggancia (idempotente) una sorgente alla pratica. Risolve il
-    # sorgente_tipo_id da config.sorgenti per codice_interno (no id hardcoded).
-    # ON CONFLICT sulla UNIQUE (pratica_id, sorgente_tipo_id, sorgente_uid,
-    # ruolo_link): la ri-chiamata NON e' piu' un no-op totale — aggiorna
-    # flusso_id (se fornito) per ri-ancorare il link all'istanza corrente.
+    # Scopo: Aggancia (idempotente) una sorgente alla pratica.
+    # ⭐ La PROVENIENZA la sceglie il BB del DB, non questo metodo:
+    #    `script.fn_sorgente_provenienza(codice, chiave)` da' il tipo e la sola
+    #    chiave che il `key_selector` del tipo vuole (`sorgente_id` per ordine e
+    #    commessa, `sorgente_uid` per il preventivo), da una chiave QUALSIASI del
+    #    documento in testo, e solleva su un codice che non e' un tipo
+    #    (`E_SORG_CONF`) o su un documento che non c'e' o non si vede. E' lo
+    #    stesso BB dei verbi DB che scrivono il link (giro P.1 di
+    #    brief-db-sorgente-documento-e-riga, 2026-11-08): scegliere la colonna a
+    #    mano sarebbe una seconda copia del catalogo delle sorgenti.
+    # ON CONFLICT sull'unicita' del modello, `uq_pratiche_sorgenti_pratica_
+    # sorgente_ruolo` (pratica, tipo, le due chiavi, ruolo; NULLS NOT DISTINCT):
+    # in una pratica, con lo stesso ruolo, un documento compare una volta sola.
+    # La ri-chiamata NON e' un no-op totale — aggiorna flusso_id (se fornito)
+    # per ri-ancorare il link all'istanza corrente.
     # Caso reale: step ripetuto ("Ripeti") → nuova istanza flusso; con DO
     # NOTHING il ROOT restava ancorato al flusso vecchio e la proiezione
     # doc_* (LATERAL su ps.flusso_id = f.id, f = ultima istanza) spariva.
     def upsert_pratica_sorgente(
-        self, *, pratica_id: int, sorgente_codice: str, sorgente_uid: str,
-        ruolo_link: str = "ROOT", sorgente_riga: int | None = None,
+        self, *, pratica_id: int, sorgente_codice: str, sorgente_chiave: str,
+        ruolo_link: str = RUOLO_LINK_ROOT, sorgente_riga: int | None = None,
         flusso_id: int | None = None, meta: dict[str, Any] | None = None,
     ) -> None:
         # flusso_id ancora il ROOT documento->flusso d'origine (aggancio per-flusso,
@@ -982,66 +997,59 @@ class PraticheRepository:
         # flusso; il trigger guard verifica che il flusso sia DI questa pratica.
         sql = """
             INSERT INTO pratiche.pratiche_sorgenti (
-                pratica_id, sorgente_tipo_id, sorgente_uid,
+                pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid,
                 sorgente_riga, ruolo_link, flusso_id, meta
             )
-            SELECT %s, s.id, %s, %s, %s, %s, %s::jsonb
-            FROM config.sorgenti s
-            WHERE s.codice_interno = %s
-            ON CONFLICT (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+            SELECT %s, p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid,
+                   %s, %s, %s, %s::jsonb
+              FROM script.fn_sorgente_provenienza(%s, %s::text) p
+            ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
             DO UPDATE SET flusso_id = COALESCE(
                 EXCLUDED.flusso_id, pratiche_sorgenti.flusso_id
             )
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
-                pratica_id, sorgente_uid, sorgente_riga, ruolo_link,
-                flusso_id, json.dumps(meta or {}), sorgente_codice,
+                pratica_id, sorgente_riga, ruolo_link, flusso_id,
+                json.dumps(meta or {}), sorgente_codice, sorgente_chiave,
             ])
-            ErrorManager.require(
-                cursor.rowcount > 0 or self._sorgente_link_exists(
-                    pratica_id, sorgente_codice, sorgente_uid, ruolo_link,
-                ),
-                code="E_PRATICA_SORGENTE_TIPO_INVALIDO",
-                message=f"Codice sorgente '{sorgente_codice}' non in config.sorgenti",
-            )
+            # ROWS 1: il BB solleva, non torna vuoto; e l'ON CONFLICT DO UPDATE
+            # conta la riga anche quando il link c'era. Zero righe e' il patto
+            # del DB rotto: RuntimeError e non `assert`, resta acceso con `-O`.
+            if cursor.rowcount != 1:
+                raise RuntimeError(
+                    "fn_sorgente_provenienza senza riga e senza errore",
+                )
 
     # Scopo: Reverse di upsert_pratica_sorgente — risolve la pratica cui una
-    # sorgente e' agganciata (sorgente_codice + uid, opzionalmente per ruolo).
-    # None se non agganciata. Usato dagli step ordine del percorso pratica
-    # (CONFERMA_ORDINE/INVIO_COMMESSA) per risalire alla pratica dall'ordine
-    # COLLEGATO e auto-completare il flusso all'azione standalone. Cross-schema
-    # read consentito. ruolo_link=None = qualunque ruolo.
+    # sorgente e' agganciata (codice del tipo + una chiave qualsiasi del
+    # documento in testo, opzionalmente per ruolo). None se non agganciata.
+    # Usato dagli step ordine del percorso pratica (CONFERMA_ORDINE/
+    # INVIO_COMMESSA) per risalire alla pratica dall'ordine COLLEGATO e
+    # auto-completare il flusso all'azione standalone. Cross-schema read
+    # consentito. ruolo_link=None = qualunque ruolo.
+    # ⭐ La coppia da cercare la da' il BB che la scrive (stessa sede dello
+    #    scrittore qui sopra), e il link si incontra con la regola del modello,
+    #    una delle due chiavi: come `OrdiniRepository.get_ordine_by_documento_origine`.
+    #    ⚠️ Il BB solleva se il documento non e' visibile: un documento fuori
+    #    perimetro non ha pratiche da cercare.
     def get_pratica_id_by_sorgente(
-        self, *, sorgente_codice: str, sorgente_uid: str, ruolo_link: str | None = None,
+        self, *, sorgente_codice: str, sorgente_chiave: str, ruolo_link: str | None = None,
     ) -> int | None:
         sql = """
             SELECT ps.pratica_id
-            FROM pratiche.pratiche_sorgenti ps
-            JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-            WHERE s.codice_interno = %s AND ps.sorgente_uid = %s
-              AND (%s::text IS NULL OR ps.ruolo_link = %s)
-            ORDER BY ps.id DESC
-            LIMIT 1
+              FROM script.fn_sorgente_provenienza(%s, %s::text) p
+              JOIN pratiche.pratiche_sorgenti ps
+                ON ps.sorgente_tipo_id = p.sorgente_tipo_id
+               AND (ps.sorgente_id = p.sorgente_id OR ps.sorgente_uid = p.sorgente_uid)
+             WHERE (%s::text IS NULL OR ps.ruolo_link = %s)
+             ORDER BY ps.id DESC
+             LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [sorgente_codice, sorgente_uid, ruolo_link, ruolo_link])
+            cursor.execute(sql, [sorgente_codice, sorgente_chiave, ruolo_link, ruolo_link])
             row = cursor.fetchone()
         return int(row[0]) if row else None
-
-    def _sorgente_link_exists(
-        self, pratica_id: int, sorgente_codice: str, sorgente_uid: str, ruolo_link: str,
-    ) -> bool:
-        sql = """
-            SELECT 1
-            FROM pratiche.pratiche_sorgenti ps
-            JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-            WHERE ps.pratica_id = %s AND s.codice_interno = %s
-              AND ps.sorgente_uid = %s AND ps.ruolo_link = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [pratica_id, sorgente_codice, sorgente_uid, ruolo_link])
-            return cursor.fetchone() is not None
 
     # -- CANALI ----------------------------------------------------------
 

@@ -54,7 +54,7 @@ class TestBillingAccountToolScope(unittest.TestCase):
 
     # Scopo: lo scope che arriva al repository passando da `chiama`.
     def _scope_al_repository(self, chiama) -> list[int] | None:
-        with patch(_REPO) as repo_cls:
+        with patch(_REPO, autospec=True) as repo_cls:
             repo_cls.return_value.search_lookup.return_value = ([], 0)
             chiama()
         return repo_cls.return_value.search_lookup.call_args.kwargs["emittente_ids"]

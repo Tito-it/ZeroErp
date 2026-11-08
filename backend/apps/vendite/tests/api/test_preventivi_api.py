@@ -262,8 +262,8 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_PREV_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_PREV_REPO, autospec=True)
     @patch(_PREV_SVC)
     def test_emetti_integration_atomic_state_genera_allegati(
         self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
@@ -311,8 +311,8 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
     # esistente. Verifica route e delega a list_documento_files.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_PREV_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_PREV_REPO, autospec=True)
     def test_get_documento_allegati_list_ok(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
@@ -344,8 +344,8 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
     # aggiungi_allegati.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_PREV_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_PREV_REPO, autospec=True)
     def test_post_documento_allegati_upload_ok(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):

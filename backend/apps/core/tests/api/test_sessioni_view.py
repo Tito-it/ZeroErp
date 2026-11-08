@@ -234,7 +234,7 @@ class SessioniAttiveListViewTests(TestCase):
 
     # Scopo: Verifica GET → 200 con envelope paginato; la sessione corrente la
     #        esclude la SQL (`escludi_jti`), non la view dopo la pagina.
-    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository", autospec=True)
     @patch(f"{_SESSIONI_VIEW}.success_response")
     def test_list_sessioni_success(self, mock_resp, MockRepo):
         from apps.core.api.sessioni_view import SessioniAttiveListView
@@ -271,7 +271,7 @@ class SessioniAttiveListViewTests(TestCase):
         mock_repo.conta_sessioni_attive.assert_not_called()
 
     # Scopo: Verifica GET con nessuna sessione → 200 con lista vuota.
-    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository", autospec=True)
     @patch(f"{_SESSIONI_VIEW}.success_response")
     def test_list_sessioni_empty(self, mock_resp, MockRepo):
         from apps.core.api.sessioni_view import SessioniAttiveListView
@@ -293,7 +293,7 @@ class SessioniAttiveListViewTests(TestCase):
 
     # Scopo: ⭐ Con una ricerca `count` conta le TROVATE e `totale_attive` le
     #        sessioni che esistono: il badge e «revoca tutte» parlano del secondo.
-    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository", autospec=True)
     @patch(f"{_SESSIONI_VIEW}.success_response")
     def test_list_sessioni_con_ricerca_totale_attive(self, mock_resp, MockRepo):
         from apps.core.api.sessioni_view import SessioniAttiveListView
@@ -440,7 +440,7 @@ class SessioniRevocaTutteViewTests(TestCase):
     # ⚠️ La blacklist resta LARGA di proposito: il diario racconta, la blacklist
     #    presidia, e i due perimetri non devono coincidere.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
-    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository", autospec=True)
     @patch(f"{_REVOCA_TOKEN}.BlacklistedToken")
     @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
     @patch(f"{_REVOCA_TOKEN}.jwt")
@@ -493,7 +493,7 @@ class SessioniRevocaTutteViewTests(TestCase):
     # Scopo: Verifica POST bulk senza sessioni remote → 200 con revoked=0 e
     #        nessuna riga di diario.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
-    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository", autospec=True)
     @patch(f"{_REVOCA_TOKEN}.BlacklistedToken")
     @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
     @patch(f"{_REVOCA_TOKEN}.jwt")
@@ -523,7 +523,7 @@ class SessioniRevocaTutteViewTests(TestCase):
     #        preme «revoca tutte», niente si blocca, e la riga resterebbe li' a
     #        dire che la sessione e' viva.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
-    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository", autospec=True)
     @patch(f"{_REVOCA_TOKEN}.BlacklistedToken")
     @patch(f"{_REVOCA_TOKEN}.OutstandingToken")
     @patch(f"{_REVOCA_TOKEN}.jwt")

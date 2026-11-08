@@ -44,7 +44,7 @@ class TestNonEditableFields(TestCase):
 class TestComputeFallbackOptions(TestCase):
     """`_compute_fallback_options` — DFS no self-ref + no cicli (Fase 4 — A10)."""
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_compute_fallback_options_ok(self, mock_repo_cls):
         # Sotto-matrice ruolo: 3 tipi (A, B, C) con catena C->A->NULL, B->NULL.
         # Per A: candidati = {B, C}. C ha fallback A, ciclo -> escluso. B OK.
@@ -63,7 +63,7 @@ class TestComputeFallbackOptions(TestCase):
         ids = sorted(o["tipo_indirizzo_id"] for o in opts)
         self.assertEqual(ids, [2])  # solo B (C escluso per ciclo)
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_compute_fallback_options_excludes_self_reference(self, mock_repo_cls):
         # Per A: A non puo' essere fallback di se stesso.
         from apps.config.services.tipi_ruolo_tipi_indirizzo_service import (
@@ -81,7 +81,7 @@ class TestComputeFallbackOptions(TestCase):
         self.assertNotIn(1, ids)
         self.assertEqual(ids, [2])
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_compute_fallback_options_excludes_cycle_direct(self, mock_repo_cls):
         # A->B + B->A: per A i candidati sono {B}. B ha fb=A, scegliere B
         # creerebbe il loop A->B->A. Escluso.
@@ -98,7 +98,7 @@ class TestComputeFallbackOptions(TestCase):
 
         self.assertEqual(opts, [])  # nessun candidato valido
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_compute_fallback_options_excludes_cycle_indirect(self, mock_repo_cls):
         # A->B->C->A (catena 3 livelli, ciclo). Per A che vuole nuovo fallback:
         # C creerebbe loop, escluso. B ha fb=C->A, escluso. Nessun candidato.
@@ -116,7 +116,7 @@ class TestComputeFallbackOptions(TestCase):
 
         self.assertEqual(opts, [])
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_compute_fallback_options_handles_self_loop(self, mock_repo_cls):
         # Edge case: una riga ha fb=se stesso (corruzione DB pre-esistente).
         # Il DFS con `visited` set deve fermarsi senza loop infinito.
@@ -140,7 +140,7 @@ class TestComputeFallbackOptions(TestCase):
 class TestGetMatriceArricchito(TestCase):
     """get_matrice include non_editable_fields + fallback_options (Fase 4)."""
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable")
     def test_get_matrice_arricchito(self, mock_list_locks, mock_repo_cls):
         from apps.config.services.tipi_ruolo_tipi_indirizzo_service import (

@@ -27,6 +27,7 @@ from typing import Any
 
 from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA, SORGENTE_PREVENTIVO
 from apps.core.services.error_manager import ErrorManager
+from apps.pratiche.types import RUOLO_LINK_COLLEGATO
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 
@@ -86,7 +87,7 @@ class PostSmistamentoHandler:
         # 3. Aggancio dell'ordine alla pratica (COLLEGATO, idempotente).
         prat_repo.upsert_pratica_sorgente(
             pratica_id=pratica_id, sorgente_codice=SORGENTE_ORDINE_VENDITA,
-            sorgente_uid=str(ordine_id), ruolo_link="COLLEGATO",
+            sorgente_chiave=str(ordine_id), ruolo_link=RUOLO_LINK_COLLEGATO,
         )
 
         return {"ordine_id": ordine_id}

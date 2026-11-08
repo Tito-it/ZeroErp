@@ -91,8 +91,8 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     @patch(_EXTRACT_EMITTENTE, return_value=3)
     @patch(_EXTRACT_IDENTITA, return_value=5)
     @patch(_RESOLVER_SCOPE)
-    @patch(_AZIENDE)
-    @patch(_REPO_ACCODA)
+    @patch(_AZIENDE, autospec=True)
+    @patch(_REPO_ACCODA, autospec=True)
     def test_run_ok_accoda_operatore_scope_business_key(
         self, repo_cls, aziende_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
@@ -146,8 +146,8 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     @patch(_EXTRACT_EMITTENTE, return_value=None)
     @patch(_EXTRACT_IDENTITA, return_value=5)
     @patch(_RESOLVER_SCOPE)
-    @patch(_AZIENDE)
-    @patch(_REPO_ACCODA)
+    @patch(_AZIENDE, autospec=True)
+    @patch(_REPO_ACCODA, autospec=True)
     def test_run_modalita_globale_un_lavoro_per_azienda(
         self, repo_cls, aziende_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
@@ -187,7 +187,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     @patch(_AUTH, return_value=(_mock_user(), None))
     @patch(_EXTRACT_IDENTITA, return_value=None)
     @patch(_RESOLVER_SCOPE)
-    @patch(_REPO_ACCODA)
+    @patch(_REPO_ACCODA, autospec=True)
     def test_run_senza_identita_400(
         self, repo_cls, _resolver, _extract, _auth,
     ) -> None:
@@ -208,7 +208,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     #    d'azienda lo fa la RLS della coda: la view non passa nessun filtro, e
     #    non legge la whitelist.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_stato_ok_ritorna_job(self, repo_cls, _auth) -> None:
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "FATTO",
@@ -224,7 +224,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
 
     # 6. Job inesistente o di un'altra azienda (la RLS non lo mostra) → 404.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_stato_non_trovato_404(self, repo_cls, _auth) -> None:
         repo_cls.return_value.get_stato.return_value = None
         resp = self.client.get(f"{_RUN}999/")
@@ -236,7 +236,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     #    gli ha restituito. «Miei» è un filtro della lista code, non del
     #    polling.
     @patch(_AUTH, return_value=(_mock_user(user_id=99, username="altro_op"), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_stato_non_restringe_ai_miei(self, repo_cls, _auth) -> None:
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "IN_CORSO",

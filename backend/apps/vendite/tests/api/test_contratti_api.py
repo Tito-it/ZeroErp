@@ -137,8 +137,8 @@ class TestDetailGet(_BaseApiTest):
 class TestDocumentiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     def test_post_documento_anteprima_ok(self, repo_cls, sorgenti_repo_cls, svc_cls, _auth):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
@@ -171,8 +171,8 @@ class TestDocumentiContratto(_BaseApiTest):
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     def test_get_documenti_list_ok(self, repo_cls, sorgenti_repo_cls, svc_cls, _auth):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
@@ -416,8 +416,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     @patch(_SVC_VIEW_DOC)
     def test_emetti_integration_atomic_state_genera_allegati(
         self, svc_cls, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
@@ -464,8 +464,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     # esistente. Verifica route e delega a list_documento_files.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     def test_get_documento_allegati_list_ok(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
@@ -497,8 +497,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     # aggiungi_allegati.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_CONTRATTI_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_CONTRATTI_REPO, autospec=True)
     def test_post_documento_allegati_upload_ok(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):

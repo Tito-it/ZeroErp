@@ -322,7 +322,7 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
     #    il lookup dell'emittente aprirebbe una connessione, e in CI fallirebbe
     #    per un motivo che col grouping non c'entra.
     @patch("apps.vendite.services.iva_resolver_service.IvaResolverService")
-    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository", autospec=True)
     def test_group_attivita_returns_group_key(self, mock_ba_cls, mock_resolver_cls):
         mock_ba_cls.return_value.get_emittente_fiscale_id.return_value = 77
         mock_resolver_cls.return_value = _ResolverMock({})

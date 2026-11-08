@@ -108,7 +108,7 @@ class PraticheServiceTests(SimpleTestCase):
     # Scopo: ⭐ «Dove vive questo flusso», dal solo id. Serve al deep-link della
     #        dashboard quando il flusso e' nominato DA FUORI — il bersaglio di
     #        un errore (`E_FLUSSI_*`) porta l'id del flusso e nient'altro.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_pratica_di_flusso_ok(self, MockRepo):
         MockRepo.return_value.get_pratica_di_flusso.return_value = 185
         self.assertEqual(pratiche_service.pratica_di_flusso(166), 185)
@@ -119,7 +119,7 @@ class PraticheServiceTests(SimpleTestCase):
     #        ce l'ha): un flusso fuori perimetro torna None ed e'
     #        indistinguibile da uno che non esiste — che per chi opera e' la
     #        stessa cosa, e per chi non deve vederlo anche.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_pratica_di_flusso_non_visibile_o_inesistente(self, MockRepo):
         MockRepo.return_value.get_pratica_di_flusso.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -127,7 +127,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSO_NOT_FOUND")
 
     # Scopo: Guard sull'id, come ogni altro punto d'ingresso del service.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_pratica_di_flusso_id_non_valido(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.pratica_di_flusso(0)
@@ -135,7 +135,7 @@ class PraticheServiceTests(SimpleTestCase):
         MockRepo.return_value.get_pratica_di_flusso.assert_not_called()
 
     # Scopo: Verifica creazione pratica base con tutti i campi obbligatori.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
@@ -183,7 +183,7 @@ class PraticheServiceTests(SimpleTestCase):
 
     # Scopo: priorita_id assente → default NORMALE risolto per codice_interno
     #        (mai id hardcodato).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_priorita_default_normale(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
@@ -201,7 +201,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(call_data["priorita_id"], 2)
 
     # Scopo: Verifica creazione con contesto anagrafico completo (soggetto + ruolo + istanza).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_con_contesto_anagrafico(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
@@ -226,7 +226,7 @@ class PraticheServiceTests(SimpleTestCase):
     #        accanto all'istanza, e il service non aggiunge regole sue. ⚠️ Non e'
     #        piu' il «prospect puro»: l'istanza nasce col BA e il ruolo CLIENTE
     #        con lei (brief-db-istanza-nasce-col-ba, D-3).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_istanza_senza_ruolo_ammessa(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
@@ -248,8 +248,8 @@ class PraticheServiceTests(SimpleTestCase):
     # Scopo: con il solo BA (il cliente a grana fine, D-9 di
     #        brief-db-istanza-nasce-col-ba) l'istanza della pratica e' la sua, e
     #        il BA arriva all'INSERT.
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_ba_porta_la_sua_istanza(self, MockRepo, MockBa):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
@@ -272,8 +272,8 @@ class PraticheServiceTests(SimpleTestCase):
 
     # Scopo: BA e istanza che non stanno insieme → 400 sul campo del BA, prima
     #        della FK composta fk_pratiche_billing_account_istanza (un 23503).
-    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_errore_ba_di_altra_istanza(self, MockRepo, MockBa):
         MockBa.return_value.get_istanza_utility_id.return_value = 200
         with self.assertRaises(ServiceError) as ctx:
@@ -314,7 +314,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
 
     # Scopo: Verifica aggiornamento pratica con campi validi.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_aggiorna_pratica_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_pratica.return_value = _mock_pratica_row(1)
@@ -325,7 +325,7 @@ class PraticheServiceTests(SimpleTestCase):
         repo.update_pratica.assert_called_once_with(1, {"descrizione": "Nuova desc"})
 
     # Scopo: Verifica errore quando la pratica non esiste.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_aggiorna_pratica_non_trovata(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_pratica.return_value = None
@@ -342,7 +342,7 @@ class PraticheServiceTests(SimpleTestCase):
 
     # Scopo: i VALORI della PATCH passano dal BB: illeggibile -> 400 sul campo
     #        senza scrivere, `""` -> NULL, `meta` solo oggetto.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_aggiorna_pratica_valori_dal_bb(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_pratica.return_value = _mock_pratica_row(1)
@@ -367,7 +367,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(set(pratiche_service._LETTURE_PATCH_PRATICA), set(PRATICA_UPDATE_SET))
 
     # Scopo: Verifica cambio stato pratica con esito positivo.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cambia_stato_pratica_ok(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -396,7 +396,7 @@ class PraticheServiceTests(SimpleTestCase):
 
     # Scopo: D1 — la lente ruolo viene inoltrata al repository (la verita' del
     # filtro vive nella fn DB fn_lista_pratiche_per_contesto, composta dal repo).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cerca_pratiche_lente_ruolo_passata_al_repo(self, MockRepo):
         repo = MockRepo.return_value
         repo.list_pratiche.return_value = ([], 0)
@@ -410,7 +410,7 @@ class PraticheServiceTests(SimpleTestCase):
 
     # Scopo: Fix 2026-06-12 — priorita_id e risorsa_umana_id inoltrati al repo
     # (prima la dashboard li inviava ma view/repo li ignoravano in silenzio).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cerca_pratiche_filtri_priorita_risorsa(self, MockRepo):
         repo = MockRepo.return_value
         repo.list_pratiche.return_value = ([], 0)
@@ -425,7 +425,7 @@ class PraticheServiceTests(SimpleTestCase):
 
     # Scopo: D4 — guard DB chiusura (messaggio 485) tradotto in ServiceError
     # parlante via marker, non E_DATABASE generico.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cambia_stato_pratica_chiusura_bloccata_485(self, MockRepo):
 
         repo = MockRepo.return_value
@@ -453,7 +453,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
 
     # Scopo: Verifica assegnazione pratica con risorsa e UO.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_assegna_pratica_ok(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -465,7 +465,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(call_data["unita_organizzativa_id"], 20)
 
     # Scopo: Verifica che senza dati di assegnazione non viene chiamato update.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_assegna_pratica_nessun_dato(self, MockRepo):
         repo = MockRepo.return_value
 
@@ -474,7 +474,7 @@ class PraticheServiceTests(SimpleTestCase):
         repo.update_pratica.assert_not_called()
 
     # Scopo: Verifica delega a repository per ricerca pratiche.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cerca_pratiche_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.list_pratiche.return_value = ([_mock_pratica_row()], 1)
@@ -486,7 +486,7 @@ class PraticheServiceTests(SimpleTestCase):
         repo.list_pratiche.assert_called_once()
 
     # Scopo: Verifica che il parametro search venga passato al repository.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_cerca_pratiche_con_search(self, MockRepo):
         repo = MockRepo.return_value
         repo.list_pratiche.return_value = ([_mock_pratica_row()], 1)
@@ -497,7 +497,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(call_kwargs["search"], "PRA-000")
 
     # Scopo: Verifica delega a repository per giornale pratica.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_giornale_ok(self, MockRepo):
         repo = MockRepo.return_value
         giornale_row = {
@@ -519,7 +519,7 @@ class PraticheServiceTests(SimpleTestCase):
     #        indipendentemente dallo stato BA (anello3 §11.1.3): il guard
     #        viene SALTATO (ha_ba_attivo mai chiamato). Bug 2026-06-11: la
     #        vecchia condizione trattava false/false come "mai ammessa".
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_guard_saltato_se_flag_uguali_false(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {
@@ -539,7 +539,7 @@ class PraticheServiceTests(SimpleTestCase):
         repo.ha_ba_attivo.assert_not_called()
 
     # Scopo: Tipo post-attivazione + soggetto con BA attivo → OK.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_guard_post_attivazione_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {
@@ -558,7 +558,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(result, 60)
 
     # Scopo: Tipo post-attivazione + soggetto SENZA BA attivo → errore.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_guard_post_attivazione_rifiuto(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {
@@ -577,7 +577,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertIn("post-attivazione", ctx.exception.message)
 
     # Scopo: Tipo pre-attivazione + soggetto CON BA attivo → errore.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_guard_pre_attivazione_rifiuto(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {
@@ -596,7 +596,7 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertIn("pre-attivazione", ctx.exception.message)
 
     # Scopo: Tipo universale (pre=true, post=true) → bypass check BA (niente query).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_crea_pratica_guard_universale_bypass(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {

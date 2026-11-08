@@ -85,8 +85,8 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
     @patch(_EXTRACT_EMITTENTE, return_value=3)
     @patch(_EXTRACT_IDENTITA, return_value=5)
     @patch(_RESOLVER)
-    @patch(_AZIENDE)
-    @patch(_REPO)
+    @patch(_AZIENDE, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_numera_ok_accoda_operatore_scope_business_key(
         self, repo_cls, aziende_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
@@ -135,9 +135,9 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
     @patch(_EXTRACT_EMITTENTE, return_value=None)
     @patch(_EXTRACT_IDENTITA, return_value=5)
     @patch(_RESOLVER)
-    @patch(_VENDITE)
-    @patch(_AZIENDE)
-    @patch(_REPO)
+    @patch(_VENDITE, autospec=True)
+    @patch(_AZIENDE, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_numera_selezione_divisa_per_azienda(
         self, repo_cls, aziende_cls, vendite_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
@@ -176,9 +176,9 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
     @patch(_EXTRACT_EMITTENTE, return_value=None)
     @patch(_EXTRACT_IDENTITA, return_value=5)
     @patch(_RESOLVER)
-    @patch(_VENDITE)
-    @patch(_AZIENDE)
-    @patch(_REPO)
+    @patch(_VENDITE, autospec=True)
+    @patch(_AZIENDE, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_numera_lotto_senza_azienda_400(
         self, repo_cls, aziende_cls, vendite_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
@@ -203,7 +203,7 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
     @patch(_AUTH, return_value=(_mock_user(), None))
     @patch(_EXTRACT_IDENTITA, return_value=None)
     @patch(_RESOLVER)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_numera_senza_identita_400(
         self, repo_cls, _resolver, _extract, _auth,
     ) -> None:

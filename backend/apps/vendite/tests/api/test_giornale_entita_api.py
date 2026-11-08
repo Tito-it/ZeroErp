@@ -58,7 +58,7 @@ class GiornaleEntitaApiTests(JwtMockedApiTest):
 
     # 2.
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_fattura_contratto_di_lista_fino_al_repository(self, repo_cls, _auth) -> None:
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = {"id": 7}
@@ -79,7 +79,7 @@ class GiornaleEntitaApiTests(JwtMockedApiTest):
 
     # 3.
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_fattura_senza_ordinamento_arriva_il_default_della_lista(self, repo_cls, _auth) -> None:
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = {"id": 7}
@@ -90,7 +90,7 @@ class GiornaleEntitaApiTests(JwtMockedApiTest):
 
     # 4.
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_fattura_ordinamento_fuori_whitelist_400(self, repo_cls, _auth) -> None:
         resp = self.client.get(_URL_FATTURA, {"order_by": "cosa"})
         self.assertEqual(resp.status_code, 400, resp.content)
@@ -98,7 +98,7 @@ class GiornaleEntitaApiTests(JwtMockedApiTest):
 
     # 5.
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_lotto_filtro_info(self, repo_cls, _auth) -> None:
         repo = repo_cls.return_value
         repo.get_lotto.return_value = {"id": 6260}
@@ -115,7 +115,7 @@ class GiornaleEntitaApiTests(JwtMockedApiTest):
 
     # 6. ⛔ Strict: un valore che non e' un booleano non diventa `True` per caso.
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_lotto_booleani_strict_400(self, repo_cls, _auth) -> None:
         repo_cls.return_value.get_lotto.return_value = {"id": 6260}
         for nome in ("info", "ritirate"):
@@ -126,7 +126,7 @@ class GiornaleEntitaApiTests(JwtMockedApiTest):
     # 7. ⚠️ Il vecchio contratto non ha piu' effetto: la lista manda `order_by`
     #    e `limit`; `sort_by` si ignora, `page_size` e' un 400 (§A3).
     @_AUTH
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_vecchio_contratto_non_letto(self, repo_cls, _auth) -> None:
         repo = repo_cls.return_value
         repo.get_lotto.return_value = {"id": 6260}
@@ -146,12 +146,15 @@ class GiornaleEntitaApiTests(JwtMockedApiTest):
     #    che il valore arrivi.
     @_AUTH
     @patch("apps.core.services.perimetro_emittente.guard_lista_per_codice")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_il_cancello_riceve_l_emittente_della_query(self, repo_cls, guard, _auth) -> None:
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = {"id": 7}
         repo.list_giornale_entita.return_value = ([], 0, 0, 0)
-        repo.get_lotto_by_id.return_value = {"id": 6260}
+        # Il cancello del lotto legge `get_lotto` (`lotto_visibile`): con
+        # `get_lotto_by_id`, che non esiste, il lotto risultava visibile solo
+        # perche' un MagicMock non configurato e' «vero».
+        repo.get_lotto.return_value = {"id": 6260}
         repo.list_giornale_lotto.return_value = ([], 0, 0, 0)
         for url in (_URL_FATTURA, _URL_LOTTO):
             with self.subTest(url=url):

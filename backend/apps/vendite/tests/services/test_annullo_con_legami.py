@@ -54,7 +54,7 @@ def _legame(**k):
 
 class AnnulloConLegamiBBTests(SimpleTestCase):
     @patch(_PASSAGGI, return_value={"indietro": [], "avanti": []})
-    @patch(_REPO_V)
+    @patch(_REPO_V, autospec=True)
     def test_legami_conta_le_righe_del_lettore(self, repo_cls, _pass) -> None:
         # Una riga di ri-consegna da un reso nato da un ordine porta DUE legami:
         # la conferma dichiara il count(*) del lettore, come il verbo.
@@ -68,7 +68,7 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
         repo_cls.return_value.list_documento_legami.assert_called_once_with("DDT_VENDITA", 7)
 
     @patch(_PASSAGGI)
-    @patch(_REPO_V)
+    @patch(_REPO_V, autospec=True)
     def test_nomi_dal_lineage_nelle_due_direzioni(self, repo_cls, passaggi) -> None:
         repo_cls.return_value.list_documento_legami.return_value = [
             _legame(riga_id=40, riga_nr=1, origine="PREVENTIVO", origine_id=3),
@@ -94,7 +94,7 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
         )
 
     @patch(_PASSAGGI)
-    @patch(_REPO_V)
+    @patch(_REPO_V, autospec=True)
     def test_nessun_legame_non_legge_il_lineage(self, repo_cls, passaggi) -> None:
         repo_cls.return_value.list_documento_legami.return_value = []
         out = bb.legami_del_documento("CONTRATTO", 5)
@@ -107,7 +107,7 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
     #    oneri non hanno niente a monte. ATTIVITA_CONSUMI e ONERE restano senza tipo:
     #    la finestra li nomina senza link.
     @patch(_PASSAGGI)
-    @patch(_REPO_V)
+    @patch(_REPO_V, autospec=True)
     def test_commessa_nomi_dal_lineage(self, repo_cls, passaggi) -> None:
         repo_cls.return_value.list_documento_legami.return_value = [
             _legame(riga_id=1, origine="CONTRATTO", origine_id=21, origine_riga_id=None),
@@ -136,7 +136,7 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
     #    sorgente che il lettore imparasse a dare resta senza tipo (la finestra
     #    la nomina, senza link) e senza nome, anche se il lineage la vede.
     @patch(_PASSAGGI)
-    @patch(_REPO_V)
+    @patch(_REPO_V, autospec=True)
     def test_origine_fuori_elenco_senza_tipo(self, repo_cls, passaggi) -> None:
         repo_cls.return_value.list_documento_legami.return_value = [
             _legame(riga_id=1, origine="FATTURA", origine_id=61, origine_riga_id=None),
@@ -163,7 +163,7 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
 
 
 class PreventivoAnnulloTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
-    @patch(_PREV_REPO)
+    @patch(_PREV_REPO, autospec=True)
     def test_annullo_passa_dal_verbo(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSO"
@@ -175,7 +175,7 @@ class PreventivoAnnulloTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         })
 
     @patch("apps.vendite.services.preventivi_service.legami_del_documento")
-    @patch(_PREV_REPO)
+    @patch(_PREV_REPO, autospec=True)
     def test_get_legami_dopo_la_testata(self, repo_cls, bb_legami) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = None

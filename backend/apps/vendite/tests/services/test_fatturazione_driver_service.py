@@ -41,7 +41,7 @@ _ESITO_OK = {"lotto_id": 100, "motivo_stop": "FERMATO_A_STATO", "step_eseguiti":
 class FatturazioneDriverServiceTests(TestCase):
     # 1) differita → fermata di corsia EMESSA.
     def test_differita_ferma_a_emessa_default_corsia(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1)]
             mock_run.return_value = _ESITO_OK
@@ -59,7 +59,7 @@ class FatturazioneDriverServiceTests(TestCase):
 
     # 2) immediata → nessuna fermata (completa la catena, D-1).
     def test_immediata_nessuna_fermata(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1)]
             mock_run.return_value = {"lotto_id": 1, "motivo_stop": "COMPLETATO", "step_eseguiti": 4}
@@ -75,7 +75,7 @@ class FatturazioneDriverServiceTests(TestCase):
 
     # 3) override esplicito prevale sul default di corsia.
     def test_override_fino_a_stato_esplicito(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1)]
             mock_run.return_value = {"lotto_id": 1, "motivo_stop": "COMPLETATO", "step_eseguiti": 4}
@@ -88,7 +88,7 @@ class FatturazioneDriverServiceTests(TestCase):
 
     # 4) dry-run: discovery e conteggio, nessuna pipeline.
     def test_dry_run_solo_discovery(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1, tot=5)]
             summary = esegui_giro_fatturazione(
@@ -101,7 +101,7 @@ class FatturazioneDriverServiceTests(TestCase):
 
     # 5) best-effort: errore su una terna non blocca le altre.
     def test_best_effort_terna_in_errore(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1), _lane(2)]
             mock_run.side_effect = [
@@ -120,7 +120,7 @@ class FatturazioneDriverServiceTests(TestCase):
 
     # 6) terne senza emittente: saltate e contate.
     def test_terne_senza_emittente_saltate(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [
                 _lane(None), _lane(2),
@@ -143,7 +143,7 @@ class FatturazioneDriverServiceTests(TestCase):
     #    esecuzioni — a quel punto nessuna pipeline e' ancora partita.
     def test_callback_on_discovery_prima_delle_esecuzioni(self):
         stati = []
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(None), _lane(2)]
             mock_run.return_value = _ESITO_OK
@@ -159,7 +159,7 @@ class FatturazioneDriverServiceTests(TestCase):
     # 8) callback per-terna invocata con esito o errore.
     def test_callback_on_lane_esito(self):
         eventi = []
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1), _lane(2)]
             mock_run.side_effect = [

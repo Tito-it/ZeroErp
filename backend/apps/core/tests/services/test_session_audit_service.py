@@ -51,7 +51,7 @@ class SessionAuditServiceTests(SimpleTestCase):
 
     # Scopo: Verifica che record_login chiami il repository con i parametri corretti.
     @patch(_GET_REQ_ID, return_value="abc-123")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_record_login_calls_repository(self, MockRepo, _mock_req_id):
         repo = MockRepo.return_value
         request = _mock_request()
@@ -70,7 +70,7 @@ class SessionAuditServiceTests(SimpleTestCase):
 
     # Scopo: Verifica che record_refresh chiami il repository con evento REFRESH.
     @patch(_GET_REQ_ID, return_value=None)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_record_refresh_calls_repository(self, MockRepo, _mock_req_id):
         repo = MockRepo.return_value
         request = _mock_request()
@@ -89,7 +89,7 @@ class SessionAuditServiceTests(SimpleTestCase):
 
     # Scopo: Verifica che record_login passi jti al repository.
     @patch(_GET_REQ_ID, return_value=None)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_record_login_with_jti(self, MockRepo, _mock_req_id):
         repo = MockRepo.return_value
         request = _mock_request()
@@ -110,7 +110,7 @@ class SessionAuditServiceTests(SimpleTestCase):
 
     # Scopo: Verifica che errori DB vengano gestiti silenziosamente (no eccezione).
     @patch(_GET_REQ_ID, return_value=None)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_record_login_db_error_silent(self, MockRepo, _mock_req_id):
         repo = MockRepo.return_value
         repo.log_session_event.side_effect = RuntimeError("DB down")
@@ -121,7 +121,7 @@ class SessionAuditServiceTests(SimpleTestCase):
 
     # Scopo: Verifica che record_logout chiami il repository con evento LOGOUT.
     @patch(_GET_REQ_ID, return_value=None)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_record_logout_calls_repository(self, MockRepo, _mock_req_id):
         repo = MockRepo.return_value
         request = _mock_request()
@@ -140,7 +140,7 @@ class SessionAuditServiceTests(SimpleTestCase):
 
     # Scopo: Verifica che record_revoca chiami il repository con evento REVOCA.
     @patch(_GET_REQ_ID, return_value=None)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_record_revoca_calls_repository(self, MockRepo, _mock_req_id):
         repo = MockRepo.return_value
         request = _mock_request()

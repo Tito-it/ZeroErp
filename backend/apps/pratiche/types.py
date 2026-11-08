@@ -6,7 +6,15 @@
 #        e firme duplicate. Basati sulle colonne effettive dello schema DB.
 # ------------------------------------------------------------
 
-from typing import Any, TypedDict
+from typing import Any, Final, TypedDict
+
+
+# -- Ruoli del link documento → pratica (`pratiche.pratiche_sorgenti.ruolo_link`) --
+# Il vocabolario lo chiude il CHECK `chk_pratiche_sorgenti_ruolo`: ROOT e' il
+# documento da cui la pratica nasce (o che la apre), COLLEGATO uno a valle
+# (ordine, commessa). Una costante sola per tutti i lettori e scrittori BE.
+RUOLO_LINK_ROOT: Final = "ROOT"
+RUOLO_LINK_COLLEGATO: Final = "COLLEGATO"
 
 
 # -- Tabella pratiche.pratiche --

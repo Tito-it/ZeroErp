@@ -21,6 +21,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
 from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
+from apps.pratiche.types import RUOLO_LINK_COLLEGATO, RUOLO_LINK_ROOT
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
@@ -900,7 +901,7 @@ def collega_pratica(
     # sia DI questa pratica. flusso_id None = retrocompat / link non da flusso.
     PraticheRepository().upsert_pratica_sorgente(
         pratica_id=pratica_id, sorgente_codice=SORGENTE_PREVENTIVO,
-        sorgente_uid=prev["uid"], ruolo_link="ROOT", flusso_id=flusso_id,
+        sorgente_chiave=prev["uid"], ruolo_link=RUOLO_LINK_ROOT, flusso_id=flusso_id,
     )
     return {
         "preventivo_id": preventivo_id, "pratica_id": pratica_id,
@@ -2055,7 +2056,6 @@ def smistamento(preventivo_id: int) -> dict[str, Any]:
 _ESITO_SMISTAMENTO_MERCE = "MERCE_PRESENTE"
 _ESITO_SMISTAMENTO_SERVIZI = "SOLO_SERVIZI"
 _CODICE_FLUSSO_SMISTAMENTO = "SMISTAMENTO"
-_RUOLO_COLLEGATO = "COLLEGATO"
 
 
 # Scopo: Risolve la pratica di appartenenza di un preventivo dal suo link ROOT
@@ -2086,7 +2086,7 @@ def _aggancia_commessa_servizi_a_pratica(preventivo_id: int, preventivo_uid: str
         return
     PraticheRepository().upsert_pratica_sorgente(
         pratica_id=pratica_id, sorgente_codice=SORGENTE_COMMESSA,
-        sorgente_uid=str(commessa_id), ruolo_link=_RUOLO_COLLEGATO,
+        sorgente_chiave=str(commessa_id), ruolo_link=RUOLO_LINK_COLLEGATO,
     )
 
 

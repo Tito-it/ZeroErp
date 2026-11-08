@@ -93,7 +93,7 @@ class CancelloObblighiBearerTests(JwtMockedApiTest):
         gucs = patch(_SET_GUCS, return_value=True)
         gucs.start()
         self.addCleanup(gucs.stop)
-        repo = patch(_REPO_QUALUNQUE)
+        repo = patch(_REPO_QUALUNQUE, autospec=True)
         repo.start().return_value.list_utilities_per_ruolo.return_value = []
         self.addCleanup(repo.stop)
         permesso = patch(_PERMISSION, return_value=True)

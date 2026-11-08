@@ -53,8 +53,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    parametri estratti dalla fattura a genera_documento.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_VEN_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_VEN_REPO, autospec=True)
     def test_genera_ok_passa_parametri(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
@@ -90,8 +90,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     # 2. Lista documenti generati per la sorgente: 200 envelope paginato.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_VEN_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_VEN_REPO, autospec=True)
     def test_lista_ok_envelope(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
@@ -137,8 +137,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    e riemetterlo non è un'opzione.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_VEN_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_VEN_REPO, autospec=True)
     def test_ristampa_ok_stream_pdf_inline(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
@@ -177,8 +177,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    esce 200 e l'header lo DICHIARA, così la UI può avvisare.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_VEN_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_VEN_REPO, autospec=True)
     def test_ristampa_pdf_hash_diverso_header_a_zero(
         self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:

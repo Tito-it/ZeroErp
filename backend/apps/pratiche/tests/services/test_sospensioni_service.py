@@ -95,7 +95,7 @@ class SospensioniServiceTests(SimpleTestCase):
     # -- SOSPENDI PRATICA ------------------------------------------------
 
     # Scopo: Verifica sospensione pratica con esito positivo.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_sospendi_pratica_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = None
@@ -112,7 +112,7 @@ class SospensioniServiceTests(SimpleTestCase):
         )
 
     # Scopo: data_inizio manuale (ISO) passa al repository invariata.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_sospendi_pratica_data_inizio_passthrough(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = None
@@ -131,7 +131,7 @@ class SospensioniServiceTests(SimpleTestCase):
         )
 
     # Scopo: overlap EXCLUDE (23P01) -> ServiceError E_SOSPENSIONE_OVERLAP (409).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_sospendi_pratica_overlap(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = None
@@ -147,7 +147,7 @@ class SospensioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_SOSPENSIONE_OVERLAP")
 
     # Scopo: guard data futura (trg a10) -> ServiceError E_SOSPENSIONE_DATA_FUTURA (422).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_sospendi_pratica_data_futura(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = None
@@ -175,7 +175,7 @@ class SospensioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
 
     # Scopo: Verifica errore se pratica ha gia' sospensione attiva.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_sospendi_pratica_errore_gia_sospesa(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = _mock_sospensione_row()
@@ -187,7 +187,7 @@ class SospensioniServiceTests(SimpleTestCase):
     # -- RIATTIVA PRATICA ------------------------------------------------
 
     # Scopo: Verifica riattivazione pratica con esito positivo.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_riattiva_pratica_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = _mock_sospensione_row(100)
@@ -198,7 +198,7 @@ class SospensioniServiceTests(SimpleTestCase):
         repo.chiudi_sospensione.assert_called_once_with(100, data_fine=None)
 
     # Scopo: data_fine manuale (ISO) passa al repository invariata.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_riattiva_pratica_data_fine_passthrough(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = _mock_sospensione_row(100)
@@ -210,7 +210,7 @@ class SospensioniServiceTests(SimpleTestCase):
         )
 
     # Scopo: riattivazione con data futura -> E_SOSPENSIONE_DATA_FUTURA (422).
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_riattiva_pratica_data_futura(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = _mock_sospensione_row(100)
@@ -225,7 +225,7 @@ class SospensioniServiceTests(SimpleTestCase):
 
     # Scopo: data_fine anteriore all'inizio (CHECK chk_sospensioni_data_fine,
     # IntegrityError 23514) -> E_SOSPENSIONE_DATA_FINE (422), non 500 generico.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_riattiva_pratica_data_fine_anteriore(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = _mock_sospensione_row(100)
@@ -245,7 +245,7 @@ class SospensioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
 
     # Scopo: Verifica errore se pratica non ha sospensione attiva.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_riattiva_pratica_errore_nessuna_sospensione(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_sospensione_attiva_pratica.return_value = None
@@ -257,7 +257,7 @@ class SospensioniServiceTests(SimpleTestCase):
     # -- SOSPENDI FLUSSO -------------------------------------------------
 
     # Scopo: Verifica sospensione flusso con esito positivo.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_sospendi_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(10, 1)
@@ -287,7 +287,7 @@ class SospensioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSO_VALIDATION")
 
     # Scopo: Verifica errore se flusso non appartiene alla pratica.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_sospendi_flusso_errore_ownership(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(10, 99)
@@ -297,7 +297,7 @@ class SospensioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSO_OWNERSHIP")
 
     # Scopo: Verifica errore se flusso ha gia' sospensione attiva.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_sospendi_flusso_errore_gia_sospeso(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(10, 1)
@@ -312,7 +312,7 @@ class SospensioniServiceTests(SimpleTestCase):
     # -- RIATTIVA FLUSSO -------------------------------------------------
 
     # Scopo: Verifica riattivazione flusso con esito positivo.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_riattiva_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(10, 1)
@@ -326,7 +326,7 @@ class SospensioniServiceTests(SimpleTestCase):
         repo.chiudi_sospensione.assert_called_once_with(200)
 
     # Scopo: Verifica errore se flusso non ha sospensione attiva.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_riattiva_flusso_errore_nessuna_sospensione(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(10, 1)
@@ -339,7 +339,7 @@ class SospensioniServiceTests(SimpleTestCase):
     # -- LETTURA SOSPENSIONI / CALCOLI TEMPO -----------------------------
 
     # Scopo: Verifica delega a repository per lista sospensioni.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_sospensioni_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.list_sospensioni.return_value = [_mock_sospensione_row()]
@@ -350,7 +350,7 @@ class SospensioniServiceTests(SimpleTestCase):
         repo.list_sospensioni.assert_called_once_with(1)
 
     # Scopo: Verifica delega a repository per lista calcoli tempo.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_calcoli_tempo_ok(self, MockRepo):
         repo = MockRepo.return_value
         calcolo = {
@@ -373,7 +373,7 @@ class SospensioniServiceTests(SimpleTestCase):
     # -- FORMULE TEMPO LETTURA ---------------------------------------------
 
     # Scopo: Verifica delega a repository per lista formule tempo.
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_formule_tempo_ok(self, MockRepo):
         repo = MockRepo.return_value
         formula = {

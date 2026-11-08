@@ -104,7 +104,7 @@ class UserProfileViewTests(TestCase):
 
     # Scopo: T-4. Il profilo porta gli obblighi che il cancello fa
     # rispettare, nell'ordine: il guard del frontend li legge da qui.
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_profilo_porta_gli_obblighi_del_cancello(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
@@ -122,7 +122,7 @@ class UserProfileViewTests(TestCase):
     # Scopo: B-1. Il profilo porta il NOME del fuso dell'azienda, lo stesso che
     # usa il backend (BB `fuso_aziendale`): il frontend lo legge da qui. Tokyo
     # apposta, per non coincidere col fuso del parametro di sviluppo.
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_profilo_porta_il_fuso_dell_azienda(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
@@ -136,7 +136,7 @@ class UserProfileViewTests(TestCase):
 
     # Scopo: Verifica che GET /me/ restituisca il profilo completo con envelope data
     # e arricchito con is_admin_globale.
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_profile_success(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
@@ -163,7 +163,7 @@ class UserProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
     # Scopo: Verifica che il profilo senza emittente (null) funziona correttamente.
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_profile_includes_emittente_null(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
@@ -188,7 +188,7 @@ class UserProfileViewTests(TestCase):
     # Scopo: super admin senza riga in user_emittenti_fiscali →
     # is_admin_globale=True. Caso "admin globale" del refactor
     # operatore-emittenti (Q1).
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_is_admin_globale_admin_senza_emittente(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
@@ -209,7 +209,7 @@ class UserProfileViewTests(TestCase):
 
     # Scopo: super admin con riga in user_emittenti_fiscali →
     # is_admin_globale=False. Caso "admin di emittente" del refactor.
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_is_admin_globale_admin_con_emittente(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
@@ -228,7 +228,7 @@ class UserProfileViewTests(TestCase):
 
     # Scopo: non super admin non e' mai admin globale (anche senza riga
     # in user_emittenti_fiscali).
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_is_admin_globale_operativo(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
@@ -251,7 +251,7 @@ class UserProfileViewTests(TestCase):
     # resolver»): un ramo che serviva funzioni DB pre-cutover che non esistono
     # piu' (analisi-software-per-dati-morti §2.3). Il verso da presidiare e'
     # questo: cio' che dice il DB arriva intatto — anche quando e' «no».
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_profile_trasporta_is_super_admin_e_ruolo_applicativo_dal_db(
         self, MockRepo
     ):
@@ -292,7 +292,7 @@ class UserProfileViewTests(TestCase):
         self.assertFalse(profile_arg["is_admin_globale"])
 
     # Scopo: Verifica che un errore dal repository si propaga correttamente.
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_profile_repository_error_propagates(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
@@ -337,7 +337,7 @@ class IdentitaDelJwtTests(TestCase):
         request.auth = token
         self.assertIsNone(UserProfileView._identita_del_jwt(request))
 
-    @patch("apps.core.api.me_view.AuthRepository")
+    @patch("apps.core.api.me_view.AuthRepository", autospec=True)
     def test_claim_presente_delega_al_repo(self, MockRepo):
         """Claim presente -> chiama get_identita_dettaglio con le
         credenziali del JWT (guard anti-tampering: filtra anche
@@ -363,8 +363,8 @@ class IdentitaDelJwtTests(TestCase):
         )
 
     @patch("apps.core.api.me_view.obblighi_in_vigore", return_value=())
-    @patch(_REPO_PATH)
-    @patch("apps.core.api.me_view.AuthRepository")
+    @patch(_REPO_PATH, autospec=True)
+    @patch("apps.core.api.me_view.AuthRepository", autospec=True)
     def test_profile_contiene_blocco_identita(self, MockAuth, MockRepo, _obblighi):
         """End-to-end della view: il profilo ritornato contiene la chiave
         `identita` popolata dal repo auth."""

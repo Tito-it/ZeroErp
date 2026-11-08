@@ -90,7 +90,7 @@ class ListiniServiceTests(TestCase):
 
     # Scopo: Verifica che il dettaglio listino includa versioni nidificate.
     #        F2-BE-13: rimosso il campo `associazioni` (tabella eliminata).
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_get_listino_dettaglio_nests_children(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_get_listino_dettaglio
 
@@ -106,7 +106,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: Verifica traduzione duplicate code su create listino.
     #        UNIQUE constraint → E_VENDITE_DUPLICATO (HTTP 409) via
     #        map_integrity_error.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_create_listino_duplicate_code(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_listino
 
@@ -148,7 +148,7 @@ class ListiniServiceTests(TestCase):
 
     # Scopo: Verifica traduzione FK tipologia non valida dal DB.
     #        FK constraint → E_VENDITE_FK (HTTP 400) via map_integrity_error.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_create_listino_invalid_tipologia_fk(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_listino
 
@@ -170,7 +170,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_FK")
 
     # Scopo: Verifica update listino accetta tipologia_id (passaggio al repository).
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_update_listino_accepts_tipologia_id(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_update_listino
 
@@ -178,7 +178,6 @@ class ListiniServiceTests(TestCase):
         repo.update_listino.return_value = True
         repo.get_listino.return_value = {"id": 10, "codice": "L", "tipologia_id": 2}
         repo.list_versioni.return_value = []
-        repo.list_associazioni.return_value = []
 
         fn_update_listino(10, {"tipologia_id": 2})
 
@@ -195,7 +194,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: Verifica che list_listini propaghi tipologia_id al repository.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_list_listini_propaga_tipologia_id(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_list_listini
 
@@ -217,7 +216,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: Verifica che fn_list_tipologie_per_utility chiami il repository.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_list_tipologie_per_utility_ok(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_list_tipologie_per_utility
 
@@ -288,7 +287,7 @@ class ListiniServiceTests(TestCase):
 
     # Scopo: Verifica update con payload vuoto solleva E_VENDITE_VALIDATION
     #        invece di bubble-up generico.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_update_listino_empty_payload(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_update_listino
 
@@ -299,7 +298,7 @@ class ListiniServiceTests(TestCase):
 
     # Scopo: Verifica traduzione FK tipologia in messaggio applicativo.
     #        FK constraint → E_VENDITE_FK (HTTP 400) via map_integrity_error.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_translate_integrity_fk_tipologia(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_listino
 
@@ -322,7 +321,7 @@ class ListiniServiceTests(TestCase):
         self.assertIn("tipologia", (ctx.exception.message or "").lower())
 
     # Scopo: Verifica not found su dettaglio versione.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_get_versione_not_found(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_get_versione
 
@@ -335,7 +334,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: Da qui si chiede solo l'attivazione, l'unico passaggio manuale
     #        della matrice (giro 12): la chiusura si programma con «Chiudi»
     #        (rotta `chiusura/`, §16.16) e la scrive il job. Il 400 e' sul campo, e il verbo non si chiama.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_change_versione_state_solo_attivazione(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_change_versione_state
 
@@ -353,7 +352,7 @@ class ListiniServiceTests(TestCase):
     #        campo, non un `false` muto che eseguiva davvero il cambio stato a
     #        chi chiedeva l'anteprima (2026-10-21, §B4 del brief-be-verifica-
     #        documentazione-api).
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_change_versione_state_dry_run_stringa_400(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_change_versione_state
 
@@ -367,7 +366,7 @@ class ListiniServiceTests(TestCase):
         repo.attiva_versione.assert_not_called()
 
     # Scopo: Verifica blocco riga con articolo/UoM non coerenti.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_create_riga_invalid_articolo_uom(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_riga
 
@@ -392,7 +391,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: F1 - create_riga deve fallire se la versione non e' BOZZA.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_create_riga_blocked_on_versione_attiva(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_riga
 
@@ -417,7 +416,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: la periodicita' del canone (G-0-bis) arriva al repository, col
     #        codice del vocabolario in maiuscolo. ⛔ Una chiave ammessa e non
     #        mappata si perderebbe in silenzio: il mapper copia campo per campo.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_create_riga_porta_la_periodicita(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_riga
 
@@ -438,7 +437,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(data["periodicita"], "TRIMESTRALE")
 
     # Scopo: simmetrico — vuota o null toglie la periodicita' (NULL, non '').
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_update_riga_periodicita_vuota_e_null(self, mock_repo_cls):
         from apps.vendite.services.listini_service import _extract_riga_payload
 
@@ -450,7 +449,7 @@ class ListiniServiceTests(TestCase):
                 self.assertIsNone(data["periodicita"])
 
     # Scopo: F1 - update_riga deve fallire se la versione e' CHIUSA.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_update_riga_blocked_on_versione_chiusa(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_update_riga
 
@@ -464,7 +463,7 @@ class ListiniServiceTests(TestCase):
         repo.update_riga.assert_not_called()
 
     # Scopo: F1 - delete_riga deve fallire se la versione e' ATTIVA.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_delete_riga_blocked_on_versione_attiva(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_delete_riga
 
@@ -480,7 +479,7 @@ class ListiniServiceTests(TestCase):
     #        §16.15: E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO, si passa da
     #        «Chiudi»): il service non aggiunge una regola di stato, trasporta
     #        il rifiuto col suo codice.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_update_versione_attiva_fine_rifiutata_dal_db(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_update_versione
 
@@ -499,7 +498,7 @@ class ListiniServiceTests(TestCase):
     #        giro 12, E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE): il service non
     #        filtra per stato, passa la scrittura. Presidio contro il ritorno
     #        della copia (`_VERSIONE_PATCH_ALLOWED_BY_STATE`, ritirata).
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_update_versione_regole_per_stato_del_db(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_update_versione
 
@@ -516,7 +515,7 @@ class ListiniServiceTests(TestCase):
     #        service non confronta le decorrenze. Presidio contro il ritorno
     #        della copia (era `E_VENDITE_VALIDATION`).
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_clone_versione_d2_dal_db(self, mock_repo_cls, mock_atomic):
         del mock_atomic
         from apps.vendite.services.listini_service import fn_clone_versione
@@ -539,7 +538,7 @@ class ListiniServiceTests(TestCase):
     #        BOZZA), in una transazione; la risposta e' il dettaglio della
     #        versione nuova con i conteggi della copia.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_clone_versione_dal_verbo(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.listini_service import fn_clone_versione
 
@@ -571,7 +570,7 @@ class ListiniServiceTests(TestCase):
     #        chiuse, dal lettore del DB (lo stesso del verbo), nella forma che il
     #        dialogo legge. L'attivazione vera non si chiama.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_change_state_dry_run_no_db_writes(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.listini_service import fn_change_versione_state
 
@@ -606,7 +605,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: L'anteprima rifiuta come il gesto: il rifiuto del verbo (qui la
     #        versione senza prezzi) arriva col codice del DB, non un elenco di
     #        versioni da chiudere per un'attivazione che non si farebbe.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_change_state_dry_run_rifiuta_come_il_verbo(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_change_versione_state
 
@@ -622,7 +621,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: ⛔ Un errore del DB SENZA codice del catalogo (deadlock, timeout)
     #        non diventa un 400 «dato errato»: torna com'e' al middleware.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_change_state_errore_db_senza_codice_resta_tecnico(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.listini_service import fn_change_versione_state
 
@@ -638,7 +637,7 @@ class ListiniServiceTests(TestCase):
     #        (chiusura delle precedenti e stato li fa lui), e la risposta e' il
     #        dettaglio riletto.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_change_state_attiva_dal_verbo(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.listini_service import fn_change_versione_state
 
@@ -656,7 +655,7 @@ class ListiniServiceTests(TestCase):
 
     # Scopo: O1 - meta e attivo non si clonano: nel payload sono un 400, non
     #        valori ignorati in silenzio; il verbo non si chiama.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_clone_versione_rifiuta_meta_attivo(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_clone_versione
 
@@ -672,7 +671,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: O2 - l'eliminazione e' il verbo del DB (§16.13, BE-E1), in una
     #        transazione: la risposta porta quante righe e componenti ha tolto.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_delete_versione_bozza_ok(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.listini_service import fn_delete_versione
 
@@ -695,7 +694,7 @@ class ListiniServiceTests(TestCase):
     #        service non filtra per stato e trasporta il codice. Presidio
     #        contro il ritorno della copia.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_delete_versione_regola_del_db(self, mock_repo_cls, mock_atomic):
         del mock_atomic
         from apps.vendite.services.listini_service import fn_delete_versione
@@ -715,7 +714,7 @@ class ListiniServiceTests(TestCase):
     #        con la data del corpo; null toglie la chiusura. Nessuna regola di
     #        stato nel service.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_programma_chiusura_dal_verbo(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.listini_service import fn_programma_chiusura_versione
 
@@ -733,7 +732,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: ⚠️ `valido_al` e' obbligatorio anche se null: un corpo vuoto e'
     #        un 400 sul campo, non una rimozione muta della chiusura. Chiavi
     #        estranee: 400.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_programma_chiusura_corpo(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_programma_chiusura_versione
 
@@ -748,7 +747,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: Il rifiuto del verbo (fine nel passato, non attiva) arriva col
     #        codice del DB.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_programma_chiusura_rifiuto_del_db(self, mock_repo_cls, mock_atomic):
         del mock_atomic
         from apps.vendite.services.listini_service import fn_programma_chiusura_versione
@@ -763,7 +762,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_LISTINO_VERSIONE_FINE_NEL_PASSATO")
 
     # Scopo: O3 - DELETE listino senza versioni e associazioni passa il guard.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_delete_listino_orphan_ok(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_delete_listino
 
@@ -781,7 +780,7 @@ class ListiniServiceTests(TestCase):
         repo.delete_listino.assert_called_once_with(10)
 
     # Scopo: O3 - DELETE listino con almeno una versione viene rifiutato.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_delete_listino_with_versioni_rejected(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_delete_listino
 
@@ -806,7 +805,7 @@ class ListiniServiceTests(TestCase):
     # --- N8a: Variazione percentuale massa ---
 
     # Scopo: N8a - variazione su versione ATTIVA rifiutata (guard BOZZA).
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_su_attiva_rifiutata(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -824,7 +823,7 @@ class ListiniServiceTests(TestCase):
         repo.applica_variazione_percentuale.assert_not_called()
 
     # Scopo: N8a - variazione su versione CHIUSA rifiutata.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_su_chiusa_rifiutata(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -840,7 +839,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: N8a - percentuale fuori range (+1500) rifiutata.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_fuori_range_alto_rifiutata(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -857,7 +856,7 @@ class ListiniServiceTests(TestCase):
         self.assertIn("1000", ctx.exception.detail or "")
 
     # Scopo: N8a - percentuale -100% rifiutata (produrrebbe prezzo zero).
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_meno_100_rifiutata(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -873,7 +872,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: N8a - dry_run restituisce preview senza modifiche.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_dry_run_preview(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -905,7 +904,7 @@ class ListiniServiceTests(TestCase):
 
     # Scopo: N8a - applicazione reale +3% su BOZZA eseguita con transaction.atomic.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_applica_ok(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -928,7 +927,7 @@ class ListiniServiceTests(TestCase):
 
     # Scopo: N8a - variazione con filtro articoli passa array al repository.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_con_filtro_articoli(self, mock_repo_cls, mock_atomic):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -956,7 +955,7 @@ class ListiniServiceTests(TestCase):
         self.assertIsNotNone(call_kwargs.kwargs.get("filtro_articoli", call_kwargs[1].get("filtro_articoli")))
 
     # Scopo: N8a - variazione_percentuale mancante rifiutata.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_campo_obbligatorio_mancante(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -972,7 +971,7 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: N8a - arrotondamento fuori range (15) rifiutato.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_variazione_pct_arrotondamento_fuori_range(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
 
@@ -992,7 +991,7 @@ class ListiniServiceTests(TestCase):
     # --- N6: Rettifica controllata ---
 
     # Scopo: N6 - rettifica su versione BOZZA rifiutata (guard applicativo).
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_rettifica_controllata_su_bozza_rifiutata(self, mock_repo_cls):
         from datetime import timedelta
 
@@ -1017,7 +1016,7 @@ class ListiniServiceTests(TestCase):
     #        2026-10-09 senza copia in Python): qui il rifiuto arriva come
     #        DatabaseError dall'UPDATE e il service ne porta il codice.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_rettifica_controllata_riga_propagata_rifiutata(self, mock_repo_cls, mock_atomic):
         from datetime import timedelta
 
@@ -1047,7 +1046,7 @@ class ListiniServiceTests(TestCase):
 
     # Scopo: N6 - rettifica ammessa se riga non propagata.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_rettifica_controllata_ok_non_propagata(self, mock_repo_cls, mock_atomic):
         from datetime import timedelta
 
@@ -1080,7 +1079,7 @@ class ListiniServiceTests(TestCase):
         repo.update_riga_prezzo_rettifica.assert_called_once()
 
     # Scopo: N6 - rettifica senza motivo rifiutata.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_rettifica_controllata_senza_motivo_rifiutata(self, mock_repo_cls):
         from datetime import timedelta
 
@@ -1109,7 +1108,7 @@ class ListiniServiceTests(TestCase):
     #        Verifica che il guard operativo (valido_al < oggi) scatti indipendente
     #        dallo stato persistito: anche se stato='ATTIVA' stantio, la versione
     #        scaduta non puo` essere rettificata (principio fail-safe).
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_rettifica_controllata_su_versione_scaduta_rifiutata(self, mock_repo_cls):
         from datetime import timedelta
 
@@ -1174,7 +1173,7 @@ class FnSaveBundleRowsTests(TestCase):
     @patch("apps.vendite.services.listini_service._assert_versione_bozza_for_riga_op")
     @patch("apps.vendite.services.listini_service._get_versione_or_raise")
     @patch("apps.vendite.services.listini_service._get_listino_or_raise")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_rows_assente_o_non_lista_e_400(self, repo_cls, _listino, versione, _bozza):
         from apps.core.services.error_policies import ErrorPolicyRegistry
         from apps.vendite.services.listini_service import fn_save_bundle
@@ -1197,7 +1196,7 @@ class FnDeleteBundleTests(TestCase):
     # Scopo: fn_delete_bundle delega i prezzi a fn_save_bundle(rows=[]) e
     # toglie il kit dalla versione (`vendite.listini_kit`, D-2-bis (B)): senza
     # prezzi, un kit con la sua periodicita' resterebbe sul listino.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     @patch("apps.vendite.services.listini_service.fn_save_bundle")
     def test_fn_delete_bundle_delega_a_save_bundle_con_rows_vuota(self, mock_save, repo_cls):
         from apps.vendite.services.listini_service import fn_delete_bundle
@@ -1214,7 +1213,7 @@ class FnDeleteBundleTests(TestCase):
 
     # Scopo: idempotenza — composito senza prezzi bundle ritorna 0 disattivati,
     # nessuna eccezione. Pattern DELETE coerente.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     @patch("apps.vendite.services.listini_service.fn_save_bundle")
     def test_fn_delete_bundle_idempotente_zero_disattivati(self, mock_save, _repo_cls):
         from apps.vendite.services.listini_service import fn_delete_bundle

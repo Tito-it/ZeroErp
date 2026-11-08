@@ -287,7 +287,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
     def test_processo_inesistente_e_non_trovato(self) -> None:
         # Qui si prova `_acceso` VERO, col solo repository finto.
         self._patch_acceso.stop()
-        with patch(f"{mod.__name__}.ProcessiRepository") as repo_cls, \
+        with patch(f"{mod.__name__}.ProcessiRepository", autospec=True) as repo_cls, \
                 _popen(_ProcessoFinto()) as popen:
             repo_cls.return_value.acceso_processo.side_effect = LookupError("x")
             with self.assertRaises(ServiceError) as cm:

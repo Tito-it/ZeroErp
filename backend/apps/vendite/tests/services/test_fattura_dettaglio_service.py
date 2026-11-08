@@ -75,7 +75,7 @@ class FatturaDettaglioServiceTests(TestCase):
         # ⭐ Le righe vengono dalla vista di LISTA (`FattureRepository.
         #    list_righe`, lotto C del brief-db-liste-righe-documento), non piu'
         #    dalla query del `VenditeRepository`.
-        patcher = patch("apps.vendite.services.vendite_service.FattureRepository")
+        patcher = patch("apps.vendite.services.vendite_service.FattureRepository", autospec=True)
         self.righe_repo = patcher.start().return_value
         self.addCleanup(patcher.stop)
         self.righe_repo.list_righe.return_value = list(_RIGHE)
@@ -90,7 +90,7 @@ class FatturaDettaglioServiceTests(TestCase):
         return repo
 
     # Scopo: id non positivo → 400 prima di qualunque round-trip.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_id_non_valido(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
         for bad in (0, -1, None):
@@ -101,7 +101,7 @@ class FatturaDettaglioServiceTests(TestCase):
         repo.get_fattura_testata.assert_not_called()
 
     # Scopo: fattura inesistente → 404 col codice di dominio.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_fattura_non_trovata_404(self, mock_repo_cls):
         self._repo(mock_repo_cls, testata=None)
 
@@ -113,7 +113,7 @@ class FatturaDettaglioServiceTests(TestCase):
     #        applicativo) e la risposta è IDENTICA a quella di un id
     #        inesistente. Un errore che distinguesse i due casi confermerebbe
     #        l'esistenza di una fattura di un altro emittente.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_fuori_scope_404_identico_a_inesistente(self, mock_repo_cls):
         self._repo(mock_repo_cls, testata=None)
 
@@ -134,7 +134,7 @@ class FatturaDettaglioServiceTests(TestCase):
     #        e perche' gli altri satelliti della fattura (note, indirizzi,
     #        fondi, SDI) restano senza policy. Regressione silenziosa se
     #        qualcuno riordina le chiamate.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_satelliti_non_letti_se_testata_none(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls, testata=None)
 
@@ -158,7 +158,7 @@ class FatturaDettaglioServiceTests(TestCase):
 
     # Scopo: lo scope dell'utente arriva al cancello (difesa applicativa che si
     #        somma alla RLS), non si ferma nel service.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_scope_propagato_alla_testata(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
 
@@ -168,7 +168,7 @@ class FatturaDettaglioServiceTests(TestCase):
 
     # Scopo: shape della risposta — quattro chiavi stabili, quelle che il
     #        drawer si aspetta.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_shape_risposta(self, mock_repo_cls):
         self._repo(mock_repo_cls)
 
@@ -189,7 +189,7 @@ class FatturaDettaglioServiceTests(TestCase):
     # Scopo: una fattura senza righe/rate NON è un errore — è lo stato di una
     #        DRAFT appena creata dalla pipeline. Il drawer deve poterla aprire
     #        e mostrarla vuota, non ricevere un 404.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_documento_vuoto_non_e_un_errore(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
         self.righe_repo.list_righe.return_value = []
@@ -204,7 +204,7 @@ class FatturaDettaglioServiceTests(TestCase):
 
     # Scopo: il contatore note arriva nel payload — è quello che alimenta il
     #        badge della barra azioni senza un secondo round-trip.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_contatore_note_nel_payload(self, mock_repo_cls):
         self._repo(mock_repo_cls)
         self.note_svc.count_per_target.return_value = 3
@@ -216,7 +216,7 @@ class FatturaDettaglioServiceTests(TestCase):
 
     # Scopo: zero note è un NUMERO, non None e non chiave assente: il FE
     #        distingue "nessuna nota" (nessun badge) da "non lo so".
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_contatore_note_zero_e_un_numero(self, mock_repo_cls):
         self._repo(mock_repo_cls)
         self.note_svc.count_per_target.return_value = 0
@@ -231,7 +231,7 @@ class FatturaDettaglioServiceTests(TestCase):
     #        ha N note"). L'unica difesa è l'ordine: il cancello di testata
     #        chiude con 404 PRIMA. Regressione silenziosa se qualcuno sposta il
     #        conteggio sopra il guard.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_note_non_contate_se_testata_none(self, mock_repo_cls):
         self._repo(mock_repo_cls, testata=None)
 
@@ -245,7 +245,7 @@ class FatturaDettaglioServiceTests(TestCase):
     #    preset o dall'operatore, e «il primo ERROR della pagina» avrebbe taciuto
     #    appena l'errore fosse uscito dalla pagina. Qui si presidia che la
     #    domanda si faccia sull'entita' giusta e che la risposta arrivi intera.
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_errore_vivo_dal_giornale_della_fattura(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
         riga = {"riga_key": "FATTURA_LOG:5", "gravita": "ERROR", "cosa": "Non numerabile"}

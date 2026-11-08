@@ -46,7 +46,7 @@ def _titolo(**over):
 
 class TitoliIvaMovimentiTests(TestCase):
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_movimento_fattura_rifiutato(self, repo_cls):
         """⭐ Il test piu' importante di questa voce.
 
@@ -70,7 +70,7 @@ class TitoliIvaMovimentiTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         repo_cls.return_value.create_forzatura.assert_not_called()
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_forzatura_senza_motivo_rifiutata(self, repo_cls):
         """Il motivo e' la traccia del perche' (D5): senza, resta un numero che
         qualcuno ha messo li'. Lo pretende anche un CHECK, ma qui si nomina il
@@ -84,7 +84,7 @@ class TitoliIvaMovimentiTests(TestCase):
             })
         repo_cls.return_value.create_forzatura.assert_not_called()
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_forzatura_zero_rifiutata(self, repo_cls):
         """Un movimento che non muove niente non e' una correzione: e' rumore
         nel registro. Lo rifiuta anche `chk_stiva_movimenti_segno`."""
@@ -95,7 +95,7 @@ class TitoliIvaMovimentiTests(TestCase):
                 "imponibile": "0", "data_movimento": "2026-08-29", "motivo": "x",
             })
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_forzatura_negativa_ammessa(self, repo_cls):
         """⭐ Il lato che nessuno prova: una forzatura corregge in ENTRAMBE le
         direzioni. Un guard scritto largo sul segno bloccherebbe la correzione
@@ -113,7 +113,7 @@ class TitoliIvaMovimentiTests(TestCase):
         self.assertEqual(kwargs["imponibile"], Decimal("-50.00"))
         self.assertIsInstance(kwargs["imponibile"], Decimal)
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_forzatura_imponibile_non_numerico_e_un_400_col_campo(self, repo_cls):
         """⭐ Il punto che traduce (2026-09-18): la coercizione e' del BB
         `PayloadValidator`, ma che il codice del dominio e il CAMPO arrivino
@@ -139,7 +139,7 @@ class TitoliIvaMovimentiTests(TestCase):
 
 class TitoliIvaDeleteTests(TestCase):
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_delete_con_movimenti_rifiutato(self, repo_cls):
         """Un registro e' la traccia di cio' che e' stato consumato, e un DELETE
         che se la porta via cancella la prova. Il DB lo regge gia' (la FK dei
@@ -155,7 +155,7 @@ class TitoliIvaDeleteTests(TestCase):
         self.assertIn("disattiva", ctx.exception.message)
         repo.delete_titolo.assert_not_called()
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_delete_senza_movimenti_ok(self, repo_cls):
         """Il verso gemello: senza movimenti si cancella davvero. Senza questo,
         il guard sopra passerebbe anche se rifiutasse SEMPRE."""
@@ -173,7 +173,7 @@ class TitoliIvaDeleteTests(TestCase):
 
 class TitoliIvaEmittenteTests(TestCase):
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_patch_emittente_rifiutata(self, repo_cls):
         """Spostare il destinatario sposterebbe sotto un altro fornitore anche
         il plafond gia' consumato: i movimenti sono attaccati al TITOLO, non
@@ -192,7 +192,7 @@ class TitoliIvaEmittenteTests(TestCase):
 
 class TitoliIvaOwnershipTests(TestCase):
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_titolo_di_altro_soggetto_non_trovato(self, repo_cls):
         """⛔ Senza questo controllo, l'id di un titolo di un ALTRO soggetto —
         dentro lo stesso perimetro emittente, quindi visibile alla RLS — sarebbe
@@ -211,7 +211,7 @@ class TitoliIvaOwnershipTests(TestCase):
 
 class TitoliIvaAmbitoTests(TestCase):
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_ristretto_senza_righe_e_dichiarato(self, repo_cls):
         """Il DB ammette quello stato apposta (si costruisce in due istruzioni).
         L'API lo DICHIARA, cosi' il frontend avvisa senza ri-derivare la regola
@@ -235,7 +235,7 @@ class TitoliIvaAmbitoTests(TestCase):
         # ⭐ E nessun giro extra: il conteggio arriva dalla stessa query.
         repo.list_ambiti.assert_not_called()
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_ambito_livello_senza_oggetto_rifiutato(self, repo_cls):
         """Livello dichiarato e oggetto mancante: senza il guard sarebbe un
         23514 che nomina un vincolo invece del campo lasciato vuoto."""
@@ -244,7 +244,7 @@ class TitoliIvaAmbitoTests(TestCase):
         with self.assertRaises(ServiceError):
             TitoliIvaService().create_ambito(SOGG, 7, {"livello": "ARTICOLO"})
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_ambito_azzera_gli_altri_livelli(self, repo_cls):
         """⭐ Il payload puo' portarsi dietro i residui di una scelta precedente
         (il form cambia livello e non ripulisce). `chk_..._ambiti_livello`
@@ -272,7 +272,7 @@ class TitoliIvaAmbitoTests(TestCase):
 
 class TitoliIvaResiduoTests(TestCase):
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_residuo_non_risommato_dal_registro(self, repo_cls):
         """⭐ `imponibile_utilizzato` lo tiene il trigger dell'accumulatore come
         SOMMA del registro (D5): ri-sommare le righe qui creerebbe una seconda
@@ -306,7 +306,7 @@ class TitoliIvaCampiRichiestiTests(TestCase):
         "iva_id": 18, "valido_dal": "2026-01-01",
     }
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_create_senza_obbligatori_rifiutata(self, repo_cls):
         from apps.anagrafiche.services.titoli_iva_service import (
             _CREATE_OBBLIGATORI, TitoliIvaService,
@@ -319,7 +319,7 @@ class TitoliIvaCampiRichiestiTests(TestCase):
                 self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
                 repo_cls.return_value.create_titolo.assert_not_called()
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_non_puo_svuotare_i_not_null(self, repo_cls):
         """L'altro verso dello stesso guard: la create pretende che ci siano,
         l'update che restino (`feedback_normalize_guard_simmetrico`)."""
@@ -333,7 +333,7 @@ class TitoliIvaCampiRichiestiTests(TestCase):
                     TitoliIvaService().update_titolo(SOGG, 7, {campo: ""})
                 repo_cls.return_value.update_titolo.assert_not_called()
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_update_puo_svuotare_la_fine_validita(self, repo_cls):
         """⭐ Il lato che nessuno prova: un guard scritto largo bloccherebbe
         anche `valido_al`, che e' nullable e il cui svuotamento significa «senza
@@ -390,7 +390,7 @@ class TitoliIvaCatenaUpdateTests(TestCase):
             f"uno valido e verificare che _normalizza_titolo le legga davvero.",
         )
 
-    @patch(REPO)
+    @patch(REPO, autospec=True)
     def test_ogni_chiave_attraversa_il_mapper(self, repo_cls) -> None:
         from apps.anagrafiche.services.titoli_iva_service import (
             _UPDATE_KEYS, TitoliIvaService,

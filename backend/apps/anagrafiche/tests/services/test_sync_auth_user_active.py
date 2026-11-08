@@ -46,7 +46,7 @@ class SyncAuthUserActiveTests(TestCase):
     # Scopo: Verifica che il command chiami fn_sync_auth_user_expired
     # e riporti il conteggio degli utenti riallineati.
     @patch(_INVALIDATE)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_command_calls_fn_sync_and_reports_count(
         self, mock_repo_cls, mock_invalidate
     ):
@@ -65,7 +65,7 @@ class SyncAuthUserActiveTests(TestCase):
     # Scopo: Verifica che invalidate_user venga chiamata per ogni
     # auth_user_id coinvolto nella sync.
     @patch(_INVALIDATE)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_command_invalidates_cache_for_affected_users(
         self, mock_repo_cls, mock_invalidate
     ):
@@ -84,7 +84,7 @@ class SyncAuthUserActiveTests(TestCase):
     # (`dry_run=True`: stessa funzione, transazione annullata) e non invalida
     # nessuna cache — non e' cambiato niente.
     @patch(_INVALIDATE)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_command_dry_run_chiede_la_corsa_ritirata(
         self, mock_repo_cls, mock_invalidate
     ):
@@ -101,7 +101,7 @@ class SyncAuthUserActiveTests(TestCase):
     # Scopo: In dry-run, il command deve stampare il numero di utenti
     # che sarebbero coinvolti.
     @patch(_INVALIDATE)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_command_dry_run_reports_affected_count(
         self, mock_repo_cls, mock_invalidate
     ):
@@ -119,7 +119,7 @@ class SyncAuthUserActiveTests(TestCase):
     # Scopo: Se la funzione non ha toccato nessuno, nessuna cache da
     # invalidare e il messaggio lo dice.
     @patch(_INVALIDATE)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_command_zero_affected_no_invalidation(
         self, mock_repo_cls, mock_invalidate
     ):
@@ -136,7 +136,7 @@ class SyncAuthUserActiveTests(TestCase):
     # Scopo: Se il repository solleva un'eccezione, il command deve
     # emetterne una CommandError senza crash incontrollato.
     @patch(_INVALIDATE)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_command_handles_db_error_gracefully(
         self, mock_repo_cls, mock_invalidate
     ):
@@ -167,7 +167,7 @@ class SyncAuthUserActiveTests(TestCase):
     # ⚠️ Regge perche' repository e cache sono mockati: in questo test nessun
     #    percorso legittimo parla col database.
     @patch(_INVALIDATE)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_il_command_non_registra_un_run(self, mock_repo_cls, mock_invalidate):
         repo = MagicMock()
         repo.sync_auth_user_expired.return_value = (1, [10])

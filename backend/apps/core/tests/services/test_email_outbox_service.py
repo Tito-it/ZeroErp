@@ -76,7 +76,7 @@ class PrepareDraftTests(TestCase):
 
     # Scopo: Verifica che prepare_draft crei una bozza con corpo renderizzato.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_prepare_draft_creates_outbox(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         dispatch = MockDispatch.return_value
@@ -127,7 +127,7 @@ class PrepareDraftTests(TestCase):
 
     # Scopo: Verifica che template non trovato lanci ServiceError.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_prepare_draft_template_not_found(self, MockRepo, MockDispatch):
         dispatch = MockDispatch.return_value
         # resolve_and_render lancia ServiceError se template non trovato
@@ -150,7 +150,7 @@ class UpdateDraftTests(TestCase):
 
     # Scopo: Verifica modifica campi di una bozza DRAFT.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_draft_modifies_fields(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -166,7 +166,7 @@ class UpdateDraftTests(TestCase):
     # Scopo: ⛔ Una chiave estranea e' un 400 `E_OUTBOX`, non uno scarto
     #        silenzioso (2026-09-26): il repository non viene toccato.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_draft_chiave_estranea_rifiutata(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -186,7 +186,7 @@ class UpdateDraftTests(TestCase):
     # Scopo: `destinatari_cc` non lista di stringhe: 400, non il 500 del cast
     #        `text[]` sul DB.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_draft_cc_non_lista_rifiutato(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -198,7 +198,7 @@ class UpdateDraftTests(TestCase):
 
     # Scopo: Verifica che modificare una bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_update_non_draft_raises(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "stato": "SENT"}
@@ -212,7 +212,7 @@ class ConfirmAndSendTests(TestCase):
 
     # Scopo: Verifica il flusso completo DRAFT → READY → SENT con log creato.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_confirm_and_send_happy_path(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         dispatch = MockDispatch.return_value
@@ -245,7 +245,7 @@ class ConfirmAndSendTests(TestCase):
     #    la stessa bugia dell'`email_log`, una tabella piu' in la', e le due
     #    righe sono legate da `email_log_id` (brief §7.1).
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_in_console_mode_la_bozza_e_simulata(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         dispatch = MockDispatch.return_value
@@ -268,7 +268,7 @@ class ConfirmAndSendTests(TestCase):
     # ⛔ L'autore e' `creato_da_user_id` della bozza, non chi conferma: un
     #    super admin che spedisce la bozza di un altro non ne diventa l'autore.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_la_mail_resta_dell_autore_e_dell_azienda_della_bozza(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         dispatch = MockDispatch.return_value
@@ -294,8 +294,8 @@ class ConfirmAndSendTests(TestCase):
     #    ne' annullabile. Il rifiuto deve arrivare prima di toccare lo stato.
     # ⭐ Il dispatcher qui e' VERO (finto solo il suo repository): si prova la
     #    regola di `account_di_invio`, non un rifiuto fabbricato dal mock.
-    @patch("apps.core.services.email_service.EmailRepository")
-    @patch(_REPO)
+    @patch("apps.core.services.email_service.EmailRepository", autospec=True)
+    @patch(_REPO, autospec=True)
     def test_senza_account_la_bozza_resta_draft(self, MockRepo, MockDispatchRepo):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -312,7 +312,7 @@ class ConfirmAndSendTests(TestCase):
 
     # Scopo: Verifica che conferma di bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_confirm_non_draft_raises(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "stato": "CANCELLED"}
@@ -326,7 +326,7 @@ class CancelDraftTests(TestCase):
 
     # Scopo: Verifica annullamento bozza DRAFT → CANCELLED.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_cancel_draft_happy_path(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -343,7 +343,7 @@ class CancelDraftTests(TestCase):
     @patch("apps.core.services.email_outbox_service._delete_file")
     @patch("apps.core.services.email_outbox_service.transaction")
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_gli_allegati_si_tolgono_prima_di_annullare(self, MockRepo, MockDispatch, mock_tx, mock_delete):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -376,7 +376,7 @@ class AttachmentTests(TestCase):
     @patch("apps.core.services.email_outbox_service.os.makedirs")
     @patch("builtins.open", create=True)
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_add_attachment_valid(self, MockRepo, MockDispatch, mock_open, mock_makedirs, mock_root, mock_size, mock_count):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -398,7 +398,7 @@ class AttachmentTests(TestCase):
 
     # Scopo: Verifica che MIME non consentito lanci errore.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_add_attachment_invalid_mime(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -415,7 +415,7 @@ class AttachmentTests(TestCase):
     # Scopo: «Solo in bozza» e' una regola del database: il pre-check che la
     #        dice prima di scrivere il file usa il SUO codice, non `E_OUTBOX`.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_su_una_mail_non_in_bozza_risponde_col_codice_del_db(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "stato": "SENT"}
@@ -429,7 +429,7 @@ class AttachmentTests(TestCase):
 
     # Scopo: Verifica rimozione allegato.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_remove_attachment(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.delete_allegato.return_value = "/some/path.pdf"
@@ -462,7 +462,7 @@ class DeleteFileTests(TestCase):
     @patch("apps.core.services.email_outbox_service._get_max_count", return_value=10)
     @patch("apps.core.services.email_outbox_service._get_max_size_bytes", return_value=10 * 1024 * 1024)
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riga_rifiutata_toglie_il_file_scritto(self, MockRepo, MockDispatch, _size, _count, mock_delete):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
@@ -485,7 +485,7 @@ class CodiciNonTrovatoEStatoTests(TestCase):
     #        None uguale) → 404 `E_EMAIL_BOZZA_NOT_FOUND` da ogni verbo e dalla
     #        lettura: la sede e' una sola, `get_bozza`.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_bozza_inesistente_e_404_per_ogni_verbo(self, MockRepo, MockDispatch):
         MockRepo.return_value.get_outbox.return_value = None
         service = EmailOutboxService()
@@ -511,7 +511,7 @@ class CodiciNonTrovatoEStatoTests(TestCase):
     # Scopo: Mail che non e' piu' in bozza → 409 `E_EMAIL_NON_BOZZA` da
     #        modifica, invio e annullo, prima di scrivere qualunque cosa.
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_mail_non_in_bozza_e_409_per_i_tre_verbi(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "stato": "SENT"}
@@ -545,7 +545,7 @@ class CodiciR7Tests(TestCase):
     @patch("apps.core.services.email_outbox_service._get_max_size_bytes", return_value=10 * 1024 * 1024)
     @patch("apps.core.services.email_outbox_service.os.makedirs")
     @patch(_DISPATCH)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_mail_piena_e_409_e_non_scrive_il_file(self, MockRepo, MockDispatch, mock_makedirs, _size, _count):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "allegati": [{"id": 1}]}
@@ -574,7 +574,7 @@ class CodiciR7Tests(TestCase):
     # Scopo: Nessun template per l'invio, dopo il ripiego → 500
     #        `E_EMAIL_TEMPLATE_NON_CONFIGURATO`, sia dalla preparazione della
     #        bozza sia da una mail di sistema: e' la stessa risoluzione.
-    @patch("apps.core.services.email_service.EmailRepository")
+    @patch("apps.core.services.email_service.EmailRepository", autospec=True)
     def test_template_non_configurato_e_500(self, MockDispatchRepo):
         from apps.core.services.email_service import EmailDispatchService
 

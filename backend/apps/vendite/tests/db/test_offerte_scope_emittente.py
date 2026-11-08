@@ -85,7 +85,7 @@ class OfferteScopeRepositoryTests(unittest.TestCase):
 class OfferteScopeServiceTests(SimpleTestCase):
     # Scopo: il service passa `auth_user_id` SIA alle righe SIA al conteggio:
     #        un `count` fuori perimetro direbbe «12» mostrandone 3.
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_service_passa_lo_scope_a_righe_e_conteggio(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 

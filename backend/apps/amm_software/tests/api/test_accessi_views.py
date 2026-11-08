@@ -58,7 +58,7 @@ class _Base(JwtMockedApiTest):
             p = patch(target, return_value=valore)
             p.start()
             self.addCleanup(p.stop)
-        repo = patch(f"{_SERVIZIO}.AccessiRepository")
+        repo = patch(f"{_SERVIZIO}.AccessiRepository", autospec=True)
         self.repo = repo.start().return_value
         self.addCleanup(repo.stop)
         self.repo.get_credenziale.side_effect = lambda _uid: dict(_CRED)

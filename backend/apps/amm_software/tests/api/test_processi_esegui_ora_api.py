@@ -83,8 +83,8 @@ class ProcessiEseguiOraApiTests(JwtMockedApiTest):
     # 5. Il caso buono: 200 con l'handle, e `accoda` con tutto quello che il
     #    drenatore e la UI code si aspettano.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_PROCESSI_REPO)
-    @patch(_CODA_REPO)
+    @patch(_PROCESSI_REPO, autospec=True)
+    @patch(_CODA_REPO, autospec=True)
     def test_ok_accoda(self, coda_cls, repo_cls, _auth) -> None:
         repo_cls.return_value.get_processo.return_value = {"codice": PROCESSO_DIGEST_PRESIDI}
         # Acceso, detto: un MagicMock al posto della lettura passerebbe per caso.
@@ -111,8 +111,8 @@ class ProcessiEseguiOraApiTests(JwtMockedApiTest):
 
     # 6. `unit` assente: 400 parlante col campo da accendere, niente accoda.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_PROCESSI_REPO)
-    @patch(_CODA_REPO)
+    @patch(_PROCESSI_REPO, autospec=True)
+    @patch(_CODA_REPO, autospec=True)
     def test_unit_assente_400_con_campo(self, coda_cls, repo_cls, _auth) -> None:
         repo_cls.return_value.get_processo.return_value = {"codice": PROCESSO_DIGEST_PRESIDI}
         resp = self._post({})

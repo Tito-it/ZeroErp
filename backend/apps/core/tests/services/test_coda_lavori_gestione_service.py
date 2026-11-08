@@ -70,9 +70,9 @@ def _patch_all(
     code_manage=False,
 ):
     p_resolver = patch(f"{_SVC}.PermissionResolver")
-    p_repo = patch(f"{_SVC}.CodaLavoriRepository")
-    p_maint = patch(f"{_SVC}.MaintenanceRepository")
-    p_proc = patch(f"{_SVC}.ProcessiRepository")
+    p_repo = patch(f"{_SVC}.CodaLavoriRepository", autospec=True)
+    p_maint = patch(f"{_SVC}.MaintenanceRepository", autospec=True)
+    p_proc = patch(f"{_SVC}.ProcessiRepository", autospec=True)
     resolver = p_resolver.start()
     repo_cls = p_repo.start()
     maint_cls = p_maint.start()
@@ -109,8 +109,7 @@ class ConteggiCodeTests(SimpleTestCase):
                 },
             }
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.count_coda_stampa_per_stato.return_value = {
                     "PENDING": 5,
                 }
@@ -134,8 +133,7 @@ class ConteggiCodeTests(SimpleTestCase):
             repo_cls.return_value.count_per_stato.return_value = {}
             maint_cls.return_value.job_liveness.return_value = {}
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.count_coda_stampa_per_stato.return_value = {}
                 esito = svc.conteggi_code(MagicMock(), auth_user_id=None)
         finally:
@@ -262,8 +260,7 @@ class ElencaCodaStampaTests(SimpleTestCase):
         user.username = "pochi"
         try:
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.elenca_coda_stampa.return_value = {
                     "items": [], "total": 0, "archiviate": 0,
                 }
@@ -492,8 +489,7 @@ class ArchiviazioneCodeTests(SimpleTestCase):
         user.username = "pochi"
         try:
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.elenca_coda_stampa.return_value = {
                     "items": [], "total": 0, "archiviate": 2,
                 }
@@ -616,8 +612,7 @@ class ArchiviazioneCodeTests(SimpleTestCase):
         )
         try:
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.imposta_archiviato_stampa.return_value = True
                 esito = svc.imposta_archiviazione_stampa(
                     MagicMock(), [5], archiviato=True, auth_user_id=42,
@@ -644,8 +639,7 @@ class ArchiviazioneCodeTests(SimpleTestCase):
         )
         try:
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.imposta_archiviato_stampa.return_value = True
                 svc.imposta_archiviazione_stampa(
                     MagicMock(), [1, 2, 3, 4, 5], archiviato=True, auth_user_id=42,
@@ -667,8 +661,7 @@ class ArchiviazioneCodeTests(SimpleTestCase):
         )
         try:
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.imposta_archiviato_stampa.return_value = True
                 svc.imposta_archiviazione_stampa(
                     MagicMock(), [1], archiviato=True, auth_user_id=None,
@@ -691,8 +684,7 @@ class ArchiviazioneCodeTests(SimpleTestCase):
         )
         try:
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.imposta_archiviato_stampa.return_value = False
                 esito = svc.imposta_archiviazione_stampa(
                     MagicMock(), [5], archiviato=True, auth_user_id=42,
@@ -719,8 +711,7 @@ class ArchiviazioneCodeTests(SimpleTestCase):
         )
         try:
             with patch(
-                "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
-            ) as pipe_cls:
+                "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 with self.assertRaises(ServiceError) as ctx_job:
                     svc.imposta_archiviazione_job(
                         MagicMock(), [12], archiviato=True,

@@ -135,8 +135,8 @@ class TestOffertaRigheListaApi(_RigheListaApiBase, JwtMockedApiTest):
 
 class ContrattoRighePaginaServiceTests(TestCase):
 
-    @patch("apps.vendite.services.contratti_service.ContrattoRigheListaRepository")
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattoRigheListaRepository", autospec=True)
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_service_fuori_perimetro_404_senza_leggere_le_righe(self, contratti, righe) -> None:
         contratti.return_value.get_stato_codice.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -145,8 +145,8 @@ class ContrattoRighePaginaServiceTests(TestCase):
         contratti.return_value.get_stato_codice.assert_called_once_with(42)
         righe.return_value.list_righe_pagina.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattoRigheListaRepository")
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattoRigheListaRepository", autospec=True)
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_service_legge_la_pagina_dopo_la_testata(self, contratti, righe) -> None:
         contratti.return_value.get_stato_codice.return_value = "DRAFT"
         righe.return_value.list_righe_pagina.return_value = ([], 0)

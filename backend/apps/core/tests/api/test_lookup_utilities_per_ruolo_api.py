@@ -28,7 +28,7 @@ class LookupUtilitiesPerRuoloApiTests(JwtMockedApiTest):
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_lookup_utilities_per_ruolo_ef(self, mock_repo_cls, _auth):
         """GET /lookup/tipi-ruolo/EF/utilities/ → utility ammesse per emittente fiscale."""
         mock_repo_cls.return_value.list_utilities_per_ruolo.return_value = [
@@ -42,7 +42,7 @@ class LookupUtilitiesPerRuoloApiTests(JwtMockedApiTest):
         mock_repo_cls.return_value.list_utilities_per_ruolo.assert_called_once_with("EF")
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_lookup_utilities_per_ruolo_fo(self, mock_repo_cls, _auth):
         """Stesso endpoint riusato per ruolo FORNITORE."""
         mock_repo_cls.return_value.list_utilities_per_ruolo.return_value = [
@@ -53,7 +53,7 @@ class LookupUtilitiesPerRuoloApiTests(JwtMockedApiTest):
         mock_repo_cls.return_value.list_utilities_per_ruolo.assert_called_once_with("FO")
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_lookup_utilities_per_ruolo_lista_vuota(self, mock_repo_cls, _auth):
         """Nessuna utility configurata per il ruolo → lista vuota (200)."""
         mock_repo_cls.return_value.list_utilities_per_ruolo.return_value = []

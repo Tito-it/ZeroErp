@@ -82,7 +82,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica GET lista flussi per pratica: envelope paginato col
     #        totale del repository (non `len(results)`), default `sequenza`.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_lista_flussi_ok(self, MockRepo, _auth):
         repo = MockRepo.return_value
         repo.list_flussi_pagina.return_value = ([_mock_flusso_row()], 7)
@@ -100,7 +100,7 @@ class FlussiApiTests(JwtMockedApiTest):
     #        arrivano; `emittente_fiscale_id` NON e' un filtro (lo legge il
     #        cancello di perimetro), quindi al repository non arriva.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_lista_flussi_parametri_lista(self, MockRepo, _auth):
         repo = MockRepo.return_value
         repo.list_flussi_pagina.return_value = ([], 0)
@@ -162,7 +162,7 @@ class FlussiApiTests(JwtMockedApiTest):
 
     # Scopo: Verifica GET dettaglio flusso con ownership corretta.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_dettaglio_flusso_ok(self, MockRepo, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
@@ -178,7 +178,7 @@ class FlussiApiTests(JwtMockedApiTest):
     #        ⚠️ Si mocka il repository del SERVICE, non quello delle views: e'
     #        di la' che la rotta passa.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_pratica_di_flusso_ok(self, MockRepo, _auth):
         MockRepo.return_value.get_pratica_di_flusso.return_value = 185
 
@@ -190,7 +190,7 @@ class FlussiApiTests(JwtMockedApiTest):
     #        ha la RLS) e non al solo `flussi` (che non ce l'ha): un flusso fuori
     #        perimetro torna None ed e' indistinguibile da uno inesistente.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_SVC}.PraticheRepository")
+    @patch(f"{_SVC}.PraticheRepository", autospec=True)
     def test_get_pratica_di_flusso_non_visibile(self, MockRepo, _auth):
         MockRepo.return_value.get_pratica_di_flusso.return_value = None
 
@@ -199,7 +199,7 @@ class FlussiApiTests(JwtMockedApiTest):
 
     # Scopo: Verifica errore ownership quando flusso non appartiene alla pratica.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_dettaglio_flusso_ownership_mismatch(self, MockRepo, _auth):
         repo = MockRepo.return_value
         # Flusso con pratica_id=999, ma URL chiede pratica 1.
@@ -212,7 +212,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica POST completamento flusso con esito.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.completa_flusso")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_stato_flusso_completamento_ok(self, MockRepo, mock_completa, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
@@ -237,7 +237,7 @@ class FlussiApiTests(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.avvia_e_completa_flusso")
     @patch(f"{_VIEWS}.pratiche_service.completa_flusso")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_stato_flusso_completamento_contestuale(self, MockRepo, mock_completa, mock_avvia_e_completa, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(
@@ -264,7 +264,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # dall'azione di dominio dedicata, non qui. completa_flusso mai chiamato.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.completa_flusso")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_stato_flusso_dominio_respinto(self, MockRepo, mock_completa, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
@@ -285,7 +285,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica POST avvio flusso (IN_CORSO).
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.avvia_flusso")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_stato_flusso_avvio_ok(self, MockRepo, mock_avvia, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
@@ -302,7 +302,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica POST transizione generica via service.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.cambia_stato_flusso")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_stato_flusso_generico_ok(self, MockRepo, mock_cambia, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
@@ -318,7 +318,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica GET prerequisiti flusso con template.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.verifica_prerequisiti")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_prerequisiti_ok(self, MockRepo, mock_prereq, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1, template_flusso_id=10)
@@ -336,7 +336,7 @@ class FlussiApiTests(JwtMockedApiTest):
 
     # Scopo: Verifica GET prerequisiti senza template → lista vuota.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_prerequisiti_senza_template(self, MockRepo, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1, template_flusso_id=None)
@@ -349,7 +349,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica GET canali flusso con template.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.get_canali_disponibili")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_canali_ok(self, MockRepo, mock_canali, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1, template_flusso_id=10)
@@ -364,7 +364,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica GET regole generazione per flusso.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.generazione_service.get_regole_applicabili")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_regole_generazione_ok(self, MockRepo, mock_regole, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
@@ -378,7 +378,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica POST generazione manuale pratica.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.generazione_service.genera_pratica_manuale")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_genera_pratica_ok(self, MockRepo, mock_genera, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
@@ -397,7 +397,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Verifica GET pratiche generate dal flusso.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.generazione_service.get_pratiche_generate")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_pratiche_generate_ok(self, MockRepo, mock_generate, _auth):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
@@ -411,7 +411,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: POST assegnazione flusso a operatore → service con flag set_*.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.assegna_flusso")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_assegnazione_flusso_ok(self, MockRepo, mock_assegna, _auth):
         MockRepo.return_value.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
 
@@ -430,7 +430,7 @@ class FlussiApiTests(JwtMockedApiTest):
 
     # Scopo: POST assegnazione su flusso di altra pratica → 400 ownership.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_assegnazione_flusso_ownership_mismatch(self, MockRepo, _auth):
         MockRepo.return_value.get_flusso.return_value = _mock_flusso_row(5, pratica_id=99)
 
@@ -445,7 +445,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # (il reparto non viene toccato).
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.assegna_flusso")
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_post_assegnazione_flusso_parziale(self, MockRepo, mock_assegna, _auth):
         MockRepo.return_value.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
 

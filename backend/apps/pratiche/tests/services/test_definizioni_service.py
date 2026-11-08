@@ -21,7 +21,7 @@ class DefinizioniServiceTests(SimpleTestCase):
     # 2026-10-31): filtri, ricerca, pagina e ordinamento arrivano al repository,
     # e il drift resta PIATTO (`versioni_indietro` e' il `campo_sorgente` del
     # catalogo). Senza `order_by` decide il default del repository.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_list_definizioni_pagina_e_drift_piatto(self, MockRepo):
         riga = {"id": 12, "tipo_prestazione_id": 9004, "versioni_indietro": 2}
         MockRepo.return_value.list_definizioni.return_value = ([riga], 1)
@@ -36,7 +36,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         )
 
     # Scopo: un `order_by` fuori whitelist e' un 400, prima del repository.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_list_definizioni_ordine_fuori_whitelist(self, MockRepo):
         with self.assertRaises(ServiceError):
             definizioni_service.list_definizioni(order_by="id", limit=10, offset=0)
@@ -64,7 +64,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: il dettaglio annida il drift nell'header e affianca gli steps; passa
     # l'id al repository per tutte le letture.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_get_dettaglio_ok(self, MockRepo):
         repo = MockRepo.return_value
         self._mock_dettaglio_repo(repo)
@@ -81,7 +81,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: i figli per-nodo si annidano sotto lo step giusto (per template_flusso_id)
     # e la chiave di raggruppamento non resta nell'oggetto annidato.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_get_dettaglio_annida_figli(self, MockRepo):
         repo = MockRepo.return_value
         self._mock_dettaglio_repo(repo)
@@ -100,7 +100,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(out["archi"]["prerequisiti"][0]["prerequisito_id"], 100)
 
     # Scopo: id inesistente → 404 parlante, senza interrogare gli steps.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_get_dettaglio_non_trovata(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = None
@@ -117,7 +117,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # --- Azioni ciclo di vita (Slice 1b) ---
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_fork_definizione_ok(self, MockRepo):
         MockRepo.return_value.fork_definizione.return_value = 12
         out = definizioni_service.fork_definizione(7, 155)
@@ -129,14 +129,14 @@ class DefinizioniServiceTests(SimpleTestCase):
             definizioni_service.fork_definizione(7, 0)
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_pubblica_definizione_ok(self, MockRepo):
         MockRepo.return_value.pubblica_definizione.return_value = 7
         out = definizioni_service.pubblica_definizione(7)
         self.assertEqual(out, {"definizione_id": 7})
 
     # Scopo: marker DB (id 511) → ServiceError parlante su pubblica non ammessa.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_pubblica_definizione_non_pubblicabile(self, MockRepo):
 
         MockRepo.return_value.pubblica_definizione.side_effect = make_db_error(
@@ -147,14 +147,14 @@ class DefinizioniServiceTests(SimpleTestCase):
             definizioni_service.pubblica_definizione(9)
         self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NON_PUBBLICABILE")
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_nuova_versione_ok(self, MockRepo):
         MockRepo.return_value.nuova_versione_definizione.return_value = 20
         out = definizioni_service.nuova_versione_definizione(7)
         self.assertEqual(out, {"definizione_id": 20})
 
     # Scopo: guard invariante «≤1 BOZZA per scope» (fork) → marker parlante.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_fork_bozza_esistente(self, MockRepo):
 
         MockRepo.return_value.fork_definizione.side_effect = make_db_error(
@@ -167,7 +167,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_BOZZA_ESISTENTE")
 
     # Scopo: nuova-versione da sorgente non PUBBLICATA → marker parlante.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_nuova_versione_no_pubblicata(self, MockRepo):
 
         MockRepo.return_value.nuova_versione_definizione.side_effect = make_db_error(
@@ -182,7 +182,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: create risolve tipo dalla definizione, normalizza il payload e passa
     # definizione_id + tipo_prestazione_id espliciti al repository.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_step_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004, "stato": "BOZZA"}
@@ -200,7 +200,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertIsNone(data["esito_default"])     # vuoto → None
 
     # Scopo: definizione inesistente → 404, senza toccare il repository di scrittura.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_step_definizione_non_trovata(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = None
@@ -210,7 +210,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo.create_step.assert_not_called()
 
     # Scopo: codice/descrizione obbligatori → E_VALIDATION_INPUT prima dell'INSERT.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_step_manca_core(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004, "stato": "BOZZA"}
@@ -220,7 +220,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo.create_step.assert_not_called()
 
     # Scopo: guard immutabilità (edizione emessa) → marker TEMPLATE_DEFINIZIONE_CONGELATA.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_step_congelata_marker(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 418, "tipo_prestazione_id": 9004, "stato": "PUBBLICATA"}
@@ -234,7 +234,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_TEMPLATE_DEFINIZIONE_CONGELATA")
 
     # Scopo: update tocca solo lo scope (id, definizione_id); rowcount 0 → 404.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_step_non_trovato(self, MockRepo):
         MockRepo.return_value.update_step.return_value = 0
         with self.assertRaises(ServiceError) as ctx:
@@ -242,7 +242,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
 
     # Scopo: update senza campi core → E_VALIDATION_INPUT (no UPDATE vuoto).
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_step_payload_vuoto(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.update_step(419, 100, {})
@@ -251,7 +251,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: ⛔ una chiave fuori STEP_CORE_FIELDS (es. un campo display) è un 400
     # col nome della chiave, non uno scarto silenzioso (2026-09-26).
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_step_chiave_estranea_rifiutata(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.update_step(419, 100, {"descrizione": "x", "campo_sconosciuto": 1})
@@ -259,19 +259,19 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertIn("campo_sconosciuto", ctx.exception.detail)
         MockRepo.return_value.update_step.assert_not_called()
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_step_ok(self, MockRepo):
         MockRepo.return_value.update_step.return_value = 1
         out = definizioni_service.update_step(419, 100, {"descrizione": "aggiornato"})
         self.assertEqual(out, {"step_id": 100})
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_delete_step_ok(self, MockRepo):
         MockRepo.return_value.delete_step.return_value = 1
         out = definizioni_service.delete_step(419, 100)
         self.assertEqual(out, {"deleted": True})
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_delete_step_non_trovato(self, MockRepo):
         MockRepo.return_value.delete_step.return_value = 0
         with self.assertRaises(ServiceError) as ctx:
@@ -282,7 +282,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: create verifica ownership step→definizione, pulisce il payload sui soli
     # campi scrivibili del kind e passa (kind, step_id, data) al repository.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_figlio_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.step_in_definizione.return_value = True
@@ -298,7 +298,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: ⛔ una chiave fuori dai campi scrivibili del kind è un 400, non uno
     # scarto silenzioso (2026-09-26): nessun INSERT.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_figlio_chiave_estranea_rifiutata(self, MockRepo):
         repo = MockRepo.return_value
         repo.step_in_definizione.return_value = True
@@ -311,7 +311,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo.create_child.assert_not_called()
 
     # Scopo: step fuori dalla definizione → 404, senza INSERT.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_figlio_step_fuori_scope(self, MockRepo):
         repo = MockRepo.return_value
         repo.step_in_definizione.return_value = False
@@ -321,7 +321,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo.create_child.assert_not_called()
 
     # Scopo: campo required del kind mancante → 400 parlante (prima del NOT NULL DB).
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_figlio_required_mancante(self, MockRepo):
         repo = MockRepo.return_value
         repo.step_in_definizione.return_value = True
@@ -331,7 +331,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo.create_child.assert_not_called()
 
     # Scopo: guard immutabilità sul figlio (edizione emessa) → marker parlante.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_figlio_congelata_marker(self, MockRepo):
         repo = MockRepo.return_value
         repo.step_in_definizione.return_value = True
@@ -344,7 +344,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_TEMPLATE_DEFINIZIONE_CONGELATA")
 
     # Scopo: update fuori scope (riga/step/definizione) → rowcount 0 → 404.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_figlio_non_trovato(self, MockRepo):
         MockRepo.return_value.update_child.return_value = 0
         with self.assertRaises(ServiceError) as ctx:
@@ -352,21 +352,21 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
 
     # Scopo: update senza campi scrivibili → 400 (no UPDATE vuoto).
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_figlio_payload_vuoto(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.update_step_figlio(419, 100, "canali", 5, {})
         self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
         MockRepo.return_value.update_child.assert_not_called()
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_delete_figlio_ok(self, MockRepo):
         MockRepo.return_value.delete_child.return_value = 1
         out = definizioni_service.delete_step_figlio(419, 100, "competenze", 9)
         self.assertEqual(out, {"deleted": True})
         MockRepo.return_value.delete_child.assert_called_once_with("competenze", 419, 100, 9)
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_delete_figlio_non_trovato(self, MockRepo):
         MockRepo.return_value.delete_child.return_value = 0
         with self.assertRaises(ServiceError) as ctx:
@@ -377,7 +377,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: create prerequisito valida entrambi gli endpoint step in-definizione
     # e inserisce i soli campi writable.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_arco_prerequisito_ok(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004}
@@ -394,7 +394,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(data["prerequisito_id"], 101)
 
     # Scopo: uno step-endpoint non nella definizione → 404, senza INSERT.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_arco_endpoint_fuori_scope(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004}
@@ -406,7 +406,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo.create_edge.assert_not_called()
 
     # Scopo: formule_tempo → il BE auto-imposta tipo_prestazione_id dal tipo della definizione.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_arco_formule_autoset_tipo(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004}
@@ -420,7 +420,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(data["tipo_prestazione_id"], 9004)  # auto-set dal BE
 
     # Scopo: campo required mancante → 400 prima dell'INSERT.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_arco_required_mancante(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004}
@@ -431,7 +431,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo.create_edge.assert_not_called()
 
     # Scopo: guard immutabilità sull'arco (edizione emessa) → marker parlante.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_create_arco_congelata_marker(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 418, "tipo_prestazione_id": 9004}
@@ -445,14 +445,14 @@ class DefinizioniServiceTests(SimpleTestCase):
                 "template_flusso_id": 1, "prerequisito_id": 2})
         self.assertEqual(ctx.exception.code, "E_TEMPLATE_DEFINIZIONE_CONGELATA")
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_delete_arco_ok(self, MockRepo):
         MockRepo.return_value.delete_edge.return_value = 1
         out = definizioni_service.delete_arco(419, "prerequisiti", 88)
         self.assertEqual(out, {"deleted": True})
         MockRepo.return_value.delete_edge.assert_called_once_with("prerequisiti", 419, 88)
 
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_delete_arco_non_trovato(self, MockRepo):
         MockRepo.return_value.delete_edge.return_value = 0
         with self.assertRaises(ServiceError) as ctx:
@@ -460,7 +460,7 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
 
     # Scopo: update senza campi writable → 400 (no UPDATE vuoto).
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_arco_payload_vuoto(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.update_arco(419, "formule_tempo", 5, {})
@@ -469,7 +469,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: ⛔ `attivo` non è scrivibile sui prerequisiti: 400, non scarto
     # silenzioso (2026-09-26).
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_arco_chiave_estranea_rifiutata(self, MockRepo):
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.update_arco(419, "prerequisiti", 5, {"attivo": False})
@@ -478,7 +478,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo (regressione): un PATCH che ri-punta un endpoint dell'arco a uno step
     # fuori dalla definizione → 404, SENZA UPDATE (il guard DB non lo intercetta).
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_arco_endpoint_fuori_scope(self, MockRepo):
         repo = MockRepo.return_value
         repo.step_in_definizione.return_value = False
@@ -489,7 +489,7 @@ class DefinizioniServiceTests(SimpleTestCase):
 
     # Scopo: update di soli attributi (nessun endpoint nel payload) → nessuna
     # rivalidazione step, procede.
-    @patch(f"{_SVC}.DefinizioniRepository")
+    @patch(f"{_SVC}.DefinizioniRepository", autospec=True)
     def test_update_arco_solo_attributo(self, MockRepo):
         repo = MockRepo.return_value
         repo.update_edge.return_value = 1

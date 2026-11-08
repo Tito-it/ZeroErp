@@ -62,9 +62,8 @@ BACKEND_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 # Query DB su tabelle NON-RLS (auth_user, user_emittenti_fiscali,
 # emittenti_fiscali). Gira come ruolo applicativo via dbshell: va bene
 # perché queste tabelle non hanno RLS attiva.
-db_query() {
-    "${BACKEND_DIR}/manage-env.sh" dbshell -- -t -A -c "$1" 2>/dev/null | grep -v '^$' || true
-}
+# La query diretta al DB: il BB `smoke_db_query` (_smoke_db.sh, regola del 2).
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_db.sh"
 
 # Parser UNICO della risposta lista (stdin → stdout). Gestisce envelope
 # comuni ({data:{items:[]}}, {data:[]}, {results:[]}, ...) ed emette:
@@ -191,7 +190,7 @@ echo ""; echo "-- 0. Login JWT --"
 # SMOKE_TOKEN di un altro utente non entra: il BB lo riusa solo se e' di USERNAME.
 smoke_login
 log_ok "JWT ottenuto"
-USER_ID=$(db_query "SELECT id FROM auth_user WHERE username='$USERNAME' LIMIT 1" | tail -1)
+USER_ID=$(smoke_db_query "SELECT id FROM auth_user WHERE username='$USERNAME' LIMIT 1" | tail -1)
 if ! [[ "$USER_ID" =~ ^[0-9]+$ ]]; then
     log_fail "auth_user.id non risolto per '$USERNAME': DB non raggiungibile via dbshell o utente inesistente. Le query di setup non funzionano → smoke inattendibile."
     exit 1
@@ -200,7 +199,7 @@ log_info "auth_user.id = $USER_ID"
 
 # ---- 1. Whitelist EF dell'operatore (tabella NON-RLS) ---------------
 echo ""; echo "-- 1. Whitelist emittente dell'operatore --"
-OP_EF=$(db_query "SELECT emittente_fiscale_id FROM config.user_emittenti_fiscali WHERE auth_user_id=$USER_ID ORDER BY emittente_fiscale_id LIMIT 1" | tail -1)
+OP_EF=$(smoke_db_query "SELECT emittente_fiscale_id FROM config.user_emittenti_fiscali WHERE auth_user_id=$USER_ID ORDER BY emittente_fiscale_id LIMIT 1" | tail -1)
 if [[ -z "$OP_EF" ]]; then
     log_warn "L'utente '$USERNAME' NON ha whitelist (operatore globale): non si può testare l'isolamento. Usare un operatore con riga in config.user_emittenti_fiscali."
     echo ""; echo "============================================================"

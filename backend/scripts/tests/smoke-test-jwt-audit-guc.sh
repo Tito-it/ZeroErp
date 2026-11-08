@@ -65,10 +65,8 @@ except Exception:
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-db_query() {
-    local sql="$1"
-    "${BACKEND_DIR}/manage-env.sh" dbshell -- -t -A -c "$sql" 2>/dev/null | grep -v '^$' || true
-}
+# La query diretta al DB: il BB `smoke_db_query` (_smoke_db.sh, regola del 2).
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_db.sh"
 
 echo ""
 echo "============================================================"
@@ -88,7 +86,7 @@ smoke_login -D "${TMPFILE}.hdr"
 log_ok "JWT ottenuto (HTTP 200)"
 
 # Recupera l'ID Django dell'utente per i confronti successivi
-USER_ID=$(db_query "SELECT id FROM auth_user WHERE username = '$USERNAME' LIMIT 1" | tail -1)
+USER_ID=$(smoke_db_query "SELECT id FROM auth_user WHERE username = '$USERNAME' LIMIT 1" | tail -1)
 if [[ -n "$USER_ID" ]]; then
     log_info "auth_user.id per '$USERNAME': $USER_ID"
 else
@@ -125,9 +123,9 @@ echo ""
 echo "-- 2. Storico audit user_insert (anagrafiche.soggetti) --"
 
 echo "    Distribuzione user_insert (top 5, ultimi 90 giorni):"
-db_query "SELECT user_insert, COUNT(*) AS cnt
+smoke_db_query "SELECT user_insert, COUNT(*) AS cnt
             FROM anagrafiche.soggetti
-           WHERE date_insert >= CURRENT_DATE - INTERVAL '90 days'
+           WHERE data_insert >= CURRENT_DATE - INTERVAL '90 days'
         GROUP BY user_insert
         ORDER BY cnt DESC
            LIMIT 5" | sed 's/|/  →  /' | sed 's/^/      /'
@@ -140,7 +138,7 @@ echo "-- 3. Scrittura via API: user_insert popolato con JWT username --"
 
 # Cerca un soggetto persona fisica esistente per evitare di creare
 # anagrafica nuova solo per il test.
-SOGG_TEST=$(db_query "SELECT id FROM anagrafiche.soggetti
+SOGG_TEST=$(smoke_db_query "SELECT id FROM anagrafiche.soggetti
                        WHERE attivo = true LIMIT 1" | tail -1)
 
 if [[ -z "$SOGG_TEST" ]]; then
@@ -150,7 +148,7 @@ else
 
     # Conta eventi sessione PRIMA della call API (smoke veloce, non
     # crea cliente reale per non sporcare dati)
-    PRE_AUDIT=$(db_query "SELECT user_insert FROM dbops.sessioni_utente
+    PRE_AUDIT=$(smoke_db_query "SELECT user_insert FROM dbops.sessioni_utente
                           WHERE auth_user_id = $USER_ID
                           ORDER BY data_insert DESC LIMIT 1" | tail -1)
     log_info "Ultimo user_insert su sessioni_utente per user $USER_ID: '$PRE_AUDIT'"
@@ -175,7 +173,7 @@ curl_refresh "$REFRESH" -s -o /dev/null -X POST \
 sleep 0.3
 
 # Verifica user_insert dell'ultimo REFRESH
-LAST_REFRESH_USER=$(db_query "SELECT user_insert FROM dbops.sessioni_utente
+LAST_REFRESH_USER=$(smoke_db_query "SELECT user_insert FROM dbops.sessioni_utente
                               WHERE auth_user_id = $USER_ID AND evento = 'REFRESH'
                               ORDER BY data_insert DESC LIMIT 1" | tail -1)
 
@@ -194,14 +192,14 @@ echo ""
 echo "-- 4. Trigger refactor operatore-emittenti --"
 
 # Verifica che l'utente abbia (o no) un'associazione 1-a-1
-USER_EMITTENTE_ID=$(db_query "SELECT script.fn_resolve_emittente_for_user($USER_ID)" | tail -1)
+USER_EMITTENTE_ID=$(smoke_db_query "SELECT script.fn_resolve_emittente_for_user($USER_ID)" | tail -1)
 
 if [[ "$USER_EMITTENTE_ID" == "" || "$USER_EMITTENTE_ID" == "NULL" ]]; then
     log_info "User $USER_ID: admin globale (no riga in user_emittenti_fiscali)"
     log_info "  → trigger billing_account_link_ef farebbe skip (admin globale)"
     log_info "  → trigger billing_account_guard_admin_globale: bloccherebbe se ci sono EF"
 
-    EF_COUNT=$(db_query "SELECT COUNT(*) FROM anagrafiche.emittenti_fiscali WHERE attivo=true" | tail -1)
+    EF_COUNT=$(smoke_db_query "SELECT COUNT(*) FROM anagrafiche.emittenti_fiscali WHERE attivo=true" | tail -1)
     log_info "  Emittenti fiscali attivi nel sistema: $EF_COUNT"
 
     if [[ "$EF_COUNT" -gt "0" ]]; then
@@ -220,9 +218,9 @@ fi
 echo ""
 echo "-- 5. Audit ratio storico vs post-fix --"
 
-OLD_RUOLO_DB=$(db_query "SELECT COUNT(*) FROM dbops.sessioni_utente
+OLD_RUOLO_DB=$(smoke_db_query "SELECT COUNT(*) FROM dbops.sessioni_utente
                           WHERE user_insert IN ('zeroerp_app', 'titodb')" | tail -1)
-NEW_JWT_USER=$(db_query "SELECT COUNT(*) FROM dbops.sessioni_utente
+NEW_JWT_USER=$(smoke_db_query "SELECT COUNT(*) FROM dbops.sessioni_utente
                           WHERE user_insert NOT IN ('zeroerp_app', 'titodb')" | tail -1)
 
 log_info "Sessioni_utente con user_insert = ruolo DB:    $OLD_RUOLO_DB (storico pre-fix)"
@@ -231,7 +229,7 @@ log_info "Sessioni_utente con user_insert = JWT user:    $NEW_JWT_USER (post-fix
 # Ultime 5 righe per visual check
 echo ""
 echo "    Ultime 5 righe sessioni_utente.user_insert (cronologico):"
-db_query "SELECT data_insert::text, evento, user_insert, auth_user_id
+smoke_db_query "SELECT data_insert::text, evento, user_insert, auth_user_id
             FROM dbops.sessioni_utente
         ORDER BY data_insert DESC LIMIT 5" | sed 's/|/  /g' | sed 's/^/      /'
 

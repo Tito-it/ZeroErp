@@ -164,8 +164,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         # Scopo: Prepara mock del repository per tutti i test.
         super().setUp()
         self.repo_patcher = patch(
-            "apps.vendite.services.preventivi_service.PreventiviRepository"
-        )
+            "apps.vendite.services.preventivi_service.PreventiviRepository", autospec=True)
         self.MockRepoClass = self.repo_patcher.start()
         self.mock_repo = MagicMock()
         self.MockRepoClass.return_value = self.mock_repo
@@ -195,8 +194,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         # (brief-db-istanza-nasce-col-ba, R-2). Default: BA → istanza id=100,
         # la coppia ha il BA id=42.
         self.ba_repo_patcher = patch(
-            "apps.vendite.services._cliente_coppia_documento.BillingAccountRepository"
-        )
+            "apps.vendite.services._cliente_coppia_documento.BillingAccountRepository", autospec=True)
         self.MockBaRepoClass = self.ba_repo_patcher.start()
         self.mock_ba_repo = MagicMock()
         self.MockBaRepoClass.return_value = self.mock_ba_repo
@@ -681,7 +679,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Scopo: emettendo un preventivo agganciato a un flusso IN_CORSO, quel flusso
     # (aggancio per-flusso, reverse diretto) viene auto-completato POSITIVO.
     @patch("apps.pratiche.services.pratiche_service.completa_flusso")
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     def test_emetti_autocompleta_flusso_preventivazione(self, MockPratRepo, mock_completa):
         from apps.vendite.services.preventivi_service import emetti
 
@@ -702,7 +700,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Scopo: emettendo un preventivo il cui flusso NON e' IN_CORSO (gia'
     # completato o non avviato) → nessun completamento, idempotente.
     @patch("apps.pratiche.services.pratiche_service.completa_flusso")
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     def test_emetti_flusso_non_in_corso_no_completa(self, MockPratRepo, mock_completa):
         from apps.vendite.services.preventivi_service import emetti
 
@@ -742,9 +740,9 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         )
 
     # Scopo: ramo MERCE — e' nato un ordine → esito MERCE_PRESENTE (9013/9014 dovuti).
-    @patch("apps.vendite.db.ordini_repository.OrdiniRepository")
+    @patch("apps.vendite.db.ordini_repository.OrdiniRepository", autospec=True)
     @patch(_STEP)
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     def test_completa_smistamento_merce(self, MockPratRepo, mock_step, MockOrd):
         from apps.vendite.services.preventivi_service import completa_smistamento
 
@@ -762,9 +760,9 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         )
 
     # Scopo: ramo SERVIZI — nessun ordine → esito SOLO_SERVIZI (ramo ordine morto).
-    @patch("apps.vendite.db.ordini_repository.OrdiniRepository")
+    @patch("apps.vendite.db.ordini_repository.OrdiniRepository", autospec=True)
     @patch(_STEP)
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     def test_completa_smistamento_servizi(self, MockPratRepo, mock_step, MockOrd):
         from apps.vendite.services.preventivi_service import completa_smistamento
 
@@ -781,9 +779,9 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         )
 
     # Scopo: step gia' terminale (BB completato=False) → gia_completato=True.
-    @patch("apps.vendite.db.ordini_repository.OrdiniRepository")
+    @patch("apps.vendite.db.ordini_repository.OrdiniRepository", autospec=True)
     @patch(_STEP)
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     def test_completa_smistamento_idempotente(self, MockPratRepo, mock_step, MockOrd):
         from apps.vendite.services.preventivi_service import completa_smistamento
 
@@ -797,9 +795,9 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         self.assertTrue(out["gia_completato"])
 
     # Scopo: SMISTAMENTO non istanziato (BB flusso_id=None) → E_PREV_VALIDAZIONE.
-    @patch("apps.vendite.db.ordini_repository.OrdiniRepository")
+    @patch("apps.vendite.db.ordini_repository.OrdiniRepository", autospec=True)
     @patch(_STEP)
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     def test_completa_smistamento_step_non_istanziato(self, MockPratRepo, mock_step, MockOrd):
         from apps.vendite.services.preventivi_service import completa_smistamento
 
@@ -813,7 +811,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     # Scopo: preventivo non in una pratica → E_VENDITA_PREVENTIVO_NON_COLLEGATO.
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     def test_completa_smistamento_no_pratica(self, MockPratRepo):
         from apps.vendite.services.preventivi_service import completa_smistamento
 
@@ -826,7 +824,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Scopo: residuo merce non smistato → E_VENDITA_SMISTAMENTO_NON_ESEGUITO
     # (guard PRIMA del BB: il BB non viene chiamato).
     @patch(_STEP)
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     def test_completa_smistamento_residuo_blocca(self, MockPratRepo, mock_step):
         from apps.vendite.services.preventivi_service import completa_smistamento
 
@@ -840,8 +838,8 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
     # Scopo: push_a_commessa in contesto pratica → aggancia la commessa-servizi
     # come COLLEGATO (ramo servizi dello split, rev.3).
-    @patch("apps.vendite.db.commesse_repository.CommesseRepository")
-    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.vendite.db.commesse_repository.CommesseRepository", autospec=True)
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository", autospec=True)
     @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
     def test_push_a_commessa_aggancia_a_pratica(self, mock_push_one, MockPratRepo, MockCommRepo):
         from apps.vendite.services.preventivi_service import push_a_commessa
@@ -862,7 +860,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         MockPratRepo.return_value.upsert_pratica_sorgente.assert_called_once_with(
             pratica_id=290, sorgente_codice="COMMESSA",
-            sorgente_uid="77", ruolo_link="COLLEGATO",
+            sorgente_chiave="77", ruolo_link="COLLEGATO",
         )
         # La commessa si cerca APERTA, con l'uid del preventivo come chiave.
         MockCommRepo.return_value.get_commessa_viva_by_sorgente.assert_called_once_with(
@@ -2331,7 +2329,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Verifica anche che il lookup BA (categoria_cliente) NON venga eseguito
     # in caso di superuser bypass: ottimizzazione 2026-05-15, evita
     # round-trip DB inutile.
-    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository")
+    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository", autospec=True)
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
     @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
@@ -2371,7 +2369,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Verifica che _check_limite_variazione_prezzo (post early-return) chiami
     # BillingAccountRepository.get_categoria_cliente_id sull'id della testata
     # e passi il risultato come kwarg `categoria_cliente_id` al risolutore.
-    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository")
+    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository", autospec=True)
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
     @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
@@ -3108,8 +3106,7 @@ class TestPreventiviRepository(unittest.TestCase):
 class TestPreventiviRigaDataConsegna(unittest.TestCase):
     def setUp(self):
         self.repo_patcher = patch(
-            "apps.vendite.services.preventivi_service.PreventiviRepository"
-        )
+            "apps.vendite.services.preventivi_service.PreventiviRepository", autospec=True)
         self.mock_repo = self.repo_patcher.start().return_value
         self.addCleanup(self.repo_patcher.stop)
         self.iva_patcher = patch(
@@ -3183,8 +3180,7 @@ class TestPreventiviRigaDataConsegna(unittest.TestCase):
 class PreventiviSatellitiTestataTests(SimpleTestCase):
     def setUp(self):
         self.repo_patcher = patch(
-            "apps.vendite.services.preventivi_service.PreventiviRepository"
-        )
+            "apps.vendite.services.preventivi_service.PreventiviRepository", autospec=True)
         self.mock_repo = self.repo_patcher.start().return_value
         self.addCleanup(self.repo_patcher.stop)
 

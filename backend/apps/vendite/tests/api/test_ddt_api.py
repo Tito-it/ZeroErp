@@ -119,8 +119,8 @@ class TestDdtApi(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_DDT_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_DDT_REPO, autospec=True)
     @patch(_DOC_VIEW_SVC)
     def test_emetti_ok(
         self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
@@ -383,7 +383,7 @@ class DdtCambiaStatoPermessoDelPassaggioTests(JwtMockedApiTest):
 
     # Senza l'azione della riga: 403, e il service non parte.
     @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
-    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.DocumentoModelloRepository", autospec=True)
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch(f"{_SVC}.cambia_stato")
     def test_azione_negata_e_403_prima_del_service(self, mock_cs, resolver, repo_cls, _auth) -> None:
@@ -404,7 +404,7 @@ class DdtCambiaStatoPermessoDelPassaggioTests(JwtMockedApiTest):
 
     # Con l'azione: passa, e il livello d'area non si guarda.
     @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
-    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.DocumentoModelloRepository", autospec=True)
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch(f"{_SVC}.cambia_stato")
     def test_azione_concessa_arriva_al_service(self, mock_cs, resolver, repo_cls, _auth) -> None:
@@ -425,7 +425,7 @@ class DdtCambiaStatoPermessoDelPassaggioTests(JwtMockedApiTest):
     # Il corpo illeggibile lo legge la catena per prima: deve restare il 400
     # di sempre (`invalid_json`), non diventare un 403 o un 500.
     @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
-    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.DocumentoModelloRepository", autospec=True)
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch(f"{_SVC}.cambia_stato")
     def test_corpo_illeggibile_resta_400(self, mock_cs, resolver, repo_cls, _auth) -> None:
