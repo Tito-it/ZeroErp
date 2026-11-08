@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_non_editable_fields`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,11 +11,12 @@
 >
 > Approfondimento viste:
 >
-> * [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields) — i blocchi incondizionati, che la funzione legge da lì
+> * [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields) — i blocchi incondizionati, letti dai trigger di lock vivi
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — il lock che i trigger applicano davvero, con il blocco implicito di `codice_interno`
+> * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — il confronto fra il lock vivo e il registro
+> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi), [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — i predicati che le regole dell'articolo condividono coi guard
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — un guard che rifiuta il salvataggio che la funzione annuncia
 
 ---
@@ -35,7 +36,7 @@ lettura.
 
 | Blocco | Da dove | Quando vale |
 | --- | --- | --- |
-| incondizionato | `dbops.vw_non_editable_fields` (le righe abilitate di `dbops.automation_lock_columns`) | sempre |
+| incondizionato | `dbops.vw_non_editable_fields` (le colonne che un trigger di lock vivo blocca, `codice_interno` compreso) | sempre |
 | condizionale | le regole abilitate di `dbops.lock_columns_conditional` per quella tabella | quando la condizione, valutata sull'identificativo della riga, è vera |
 
 Ogni regola condizionale è un'espressione booleana che riceve l'identificativo della riga come
@@ -54,11 +55,12 @@ La funzione dice al frontend che cosa è bloccato; a rifiutare il salvataggio so
 database. Sono due difese indipendenti di proposito: se l'annuncio manca, il database rifiuta lo
 stesso.
 
-⛔ **L'annuncio è incompleto per `codice_interno`.** I trigger di lock bloccano `codice_interno` su
-ogni tabella che ce l'ha, anche senza una riga nel registro (lo dice `dbops.fn_lock_columns_divergenze`).
-Questa funzione legge solo il registro: per una tabella che non registra `codice_interno`
-esplicitamente, la colonna non compare fra le non modificabili, e il frontend la presenta come
-modificabile finché il salvataggio non viene rifiutato.
+⭐ **Perché l'annuncio sia vero, legge le stesse regole di chi difende.** I blocchi incondizionati
+vengono dai trigger stessi (`dbops.vw_non_editable_fields`), quindi coincidono con ciò che l'UPDATE
+rifiuta. Un blocco condizionale chiama lo **stesso predicato** del guard che rifiuterebbe la
+modifica: per l'articolo, i predicati della distinta (`catalogo.fn_articolo_padre_di_distinta_in_vigore`,
+`…_componente_di_distinta_in_vigore`, `…_primo_padre_da_oggi`) e `catalogo.fn_articolo_usato`.
+Una regola che ricopiasse la condizione del guard prima o poi risponderebbe in un altro modo.
 
 ---
 
@@ -75,6 +77,10 @@ chiamate nella stessa transazione possono rispondere diversamente se i dati camb
 
 * `db/pgtap/dbops/test-fn-non-editable-fields-conditional.sql` — blocchi incondizionati e
   condizionali insieme, sulla stessa riga.
+* `db/pgtap/dbops/test-non-editable-fields-dal-lock-vivo-v1.sql` — i blocchi incondizionati vengono
+  dal trigger vivo, `codice_interno` compreso.
+* `db/pgtap/catalogo/test-distinta-predicati-guard-e-form-v1.sql` — per i flag di struttura
+  dell'articolo il form e il guard rispondono uguale.
 * `db/pgtap/catalogo/test-articolo-usato-struttura-v1.sql`,
   `test-distinta-un-livello-e-onere-natura-v1.sql` e `db/pgtap/vendite/test-righe-articolo-ammesso-v1.sql`
   — le regole condizionali dell'articolo e delle righe, lette come le legge il backend.
@@ -85,6 +91,9 @@ chiamate nella stessa transazione possono rispondere diversamente se i dati camb
 
 * 2026-05-22 — nasce con il registro dei blocchi condizionali, per i flag di struttura dell'articolo
   bloccati quando l'articolo è padre di una distinta attiva.
+* 2026-11-08 — i blocchi incondizionati vengono dai trigger vivi, `codice_interno` compreso, e le
+  regole della distinta chiamano i predicati del guard (`20261109-61`, `-64`,
+  brief-db-revisione-dbops D25 e D28).
 
 ---
 

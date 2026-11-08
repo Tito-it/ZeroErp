@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_lock_columns_vivi: i trigger di lock di colonna vivi, una riga per trigger
+#   (D25, N1). Brief: brief-db-revisione-dbops, giro 10a (§25).
+#
+#   Sede unica della lettura del lock vivo da pg_trigger: oggi la fa il CTE `vivo`
+#   di dbops.fn_lock_columns_divergenze; con D25 la fa anche il form
+#   (dbops.vw_non_editable_fields, -61), che deve dire cio' che l'UPDATE rifiuta.
+#   Tutti gli schemi e tutti i tipi di tabella: l'ambito lo applica chi legge.
+#   La riga di catalogo e' in 80_data/sql/dbops/presidi.csv (INVENTARIO).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-59-create-vw-lock-columns-vivi-mctit.yaml
+
+  - changeSet:
+      id: 20261109-59-create-vw-lock-columns-vivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_lock_columns_vivi: i trigger di lock di colonna vivi, sede unica letta dal confronto col registro e dal form. Brief: brief-db-revisione-dbops, giro 10a.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_class
+               WHERE oid = to_regclass('dbops.vw_lock_columns_vivi')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_trigger_argomenti(bytea)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_lock_columns_vivi
+              WITH (security_invoker = true) AS
+              SELECT tg.tgrelid                              AS tabella_oid,
+                     n.nspname::text                         AS schema_name,
+                     c.relname::text                         AS table_name,
+                     c.relkind::text                         AS tipo_tabella,
+                     tg.oid                                  AS trigger_oid,
+                     tg.tgname::text                         AS trigger_name,
+                     tg.tgtype::integer                      AS trigger_tipo,
+                     tg.tgenabled IN ('O', 'A')              AS abilitato,
+                     dbops.fn_trigger_argomenti(tg.tgargs)   AS argomenti,
+                     ARRAY(SELECT a.attname::text
+                             FROM unnest(tg.tgattr::int2[]) AS k(attnum)
+                             JOIN pg_catalog.pg_attribute a
+                               ON a.attrelid = tg.tgrelid AND a.attnum = k.attnum
+                            ORDER BY 1)                      AS colonne_update_of
+                FROM pg_catalog.pg_trigger tg
+                JOIN pg_catalog.pg_class c     ON c.oid = tg.tgrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE NOT tg.tgisinternal
+                 AND tg.tgfoid = 'script.trgfn_lock_columns()'::regprocedure;
+
+              COMMENT ON VIEW dbops.vw_lock_columns_vivi IS
+                  'I trigger di lock di colonna VIVI: una riga per ogni trigger su script.trgfn_lock_columns, in qualunque schema e con qualunque nome, montato dal runner o a mano. argomenti = le coppie (colonna, codice d''errore) che il trigger controlla, lette da pg_trigger.tgargs con dbops.fn_trigger_argomenti; colonne_update_of = le colonne di UPDATE OF, che restringono quando il trigger scatta ma non che cosa blocca; abilitato = il trigger scatta nelle sessioni normali (tgenabled O o A). Sede unica della lettura del lock vivo: la leggono dbops.fn_lock_columns_divergenze (il confronto col registro) e dbops.vw_non_editable_fields (il form). Inventario, non allarme.';
+
+              COMMENT ON COLUMN dbops.vw_lock_columns_vivi.tabella_oid IS 'OID della tabella che porta il trigger.';
+              COMMENT ON COLUMN dbops.vw_lock_columns_vivi.tipo_tabella IS 'pg_class.relkind della tabella: r tabella, p tabella partizionata.';
+              COMMENT ON COLUMN dbops.vw_lock_columns_vivi.trigger_tipo IS 'pg_trigger.tgtype: 19 = BEFORE, ROW, UPDATE, la forma che il runner monta.';
+              COMMENT ON COLUMN dbops.vw_lock_columns_vivi.abilitato IS 'true se il trigger scatta nelle sessioni normali (tgenabled O o A); un lock disabilitato non blocca niente.';
+              COMMENT ON COLUMN dbops.vw_lock_columns_vivi.argomenti IS 'Gli argomenti del trigger, a coppie: colonna bloccata, codice d''errore che l''UPDATE solleva.';
+              COMMENT ON COLUMN dbops.vw_lock_columns_vivi.colonne_update_of IS 'Le colonne di UPDATE OF del trigger, in ordine alfabetico; vuoto = il trigger scatta su ogni UPDATE.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_lock_columns_vivi TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_lock_columns_vivi;

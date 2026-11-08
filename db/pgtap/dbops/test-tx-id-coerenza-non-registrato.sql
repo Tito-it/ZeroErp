@@ -17,6 +17,8 @@
 --  9) tx_id esplicito: il valore fornito e' conservato tale e quale
 -- 10) tx_id esplicito + GUC avvelenata: il valore fornito non viene contaminato
 -- 11) [strutturale] l'uscita anticipata precede la lettura di config.parameters
+-- 12) GUC forzata a un id NON registrato: il tx_id scritto e' la sentinella uuid_nil
+--     (D12-bis, brief-db-revisione-dbops giro 10a: prima vinceva l'id della GUC)
 -- ------------------------------------------------------------
 -- COSA PRESIDIA QUESTO FILE
 -- Il difetto originale: fn_get_or_create_session_tx_id, senza canale dblink,
@@ -46,7 +48,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ⭐ IL VEICOLO: una tabella temporanea col trigger montato (rev 2026-11-08).
 --   Fino al giro 7-bis di brief-db-revisione-dbops (§23) il veicolo era
@@ -111,10 +113,8 @@ SELECT is(
 -- correzione questo INSERT sollevava W_TXID_NOT_REGISTERED e da li' in poi
 -- falliva tutto; ora deve solo avvertire e proseguire.
 --
--- NB: il tx_id scritto sara' l'id della GUC, non uuid_nil: la COALESCE finale
--- del trigger preferisce current_setting('dbops.tx_id') a v_new_tx_id. E' una
--- residua discrepanza con la guida ("assegna nil"), innocua dopo lo step 1
--- perche' la GUC puo' contenere solo id registrati. Vedi §4.2 del brief.
+-- Il tx_id scritto e' la sentinella uuid_nil, come promettono W_TXID_NOT_REGISTERED
+-- e la guida ("assegna nil"): lo prova il test 12, subito sotto.
 -- ------------------------------------------------------------
 SET LOCAL dbops.tx_id = '11111111-1111-4111-8111-111111111111';
 
@@ -124,6 +124,13 @@ SELECT lives_ok(
     (SELECT scope || '_B' FROM tmp_costanti_txid)
   ),
   '5) GUC con id NON registrato: l''INSERT non solleva (prima era il blocco)'
+);
+
+SELECT is(
+  (SELECT t.tx_id FROM pg_temp.tmp_veicolo_txid t
+    WHERE t.codice = (SELECT scope || '_B' FROM tmp_costanti_txid)),
+  script.uuid_nil(),
+  '12) GUC con id NON registrato: il tx_id scritto e'' la sentinella uuid_nil, non l''id della GUC'
 );
 
 -- ------------------------------------------------------------

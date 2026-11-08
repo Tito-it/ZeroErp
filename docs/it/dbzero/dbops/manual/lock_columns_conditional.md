@@ -17,6 +17,7 @@
 > * [dbops.fn_non_editable_fields](/dbzero/dbops/funzioni/fn_non_editable_fields) — valuta le regole su una riga e dice al form quali campi spegnere
 > * [catalogo.fn_articolo_colonne_struttura](/dbzero/catalogo/funzioni/fn_articolo_colonne_struttura) — legge da qui le colonne strutturali di un articolo
 > * [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — il predicato condiviso dalla regola del form e dal guard
+> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi) — i predicati della distinta, condivisi con il guard
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che rifiuta, gemello delle regole sulla distinta
 > * [catalogo.trgfn_articoli_guard_struttura_se_usato](/dbzero/catalogo/funzioni/trgfn_articoli_guard_struttura_se_usato) — il guard che rifiuta, gemello delle regole sull'uso
 
@@ -43,11 +44,21 @@ form**: spegne il campo prima che l'operatore provi a cambiarlo.
 Per questo togliere o disattivare una regola non apre la colonna: il guard continua a rifiutare,
 e la colonna smette solo di apparire spenta. È la direzione sicura.
 
-⚠️ Due copie della stessa regola possono divergere. La forma che non diverge è una condizione che
-chiama **lo stesso predicato** del guard (le regole sull'uso dell'articolo chiamano
-`catalogo.fn_articolo_usato`, come il guard). Le regole sulla distinta ripetono invece nel
-testo la condizione del guard, e vanno cambiate insieme a lui: è successo col giorno di
-riferimento, passato da quello del server a quello aziendale.
+⭐ Due copie della stessa regola prima o poi divergono (è successo col giorno di riferimento,
+passato da quello del server a quello aziendale in una sola delle due). Per questo una regola
+**chiama lo stesso predicato** del guard, e non ne ricopia la condizione:
+
+| Regole su `catalogo.articoli` | Predicato | Guard |
+| --- | --- | --- |
+| `is_composito`, `requires_serial`: padre di una distinta in vigore | `catalogo.fn_articolo_padre_di_distinta_in_vigore` | check 1 di `trgfn_articoli_guard_flags_struttura_bom_attiva` |
+| `is_solo_componente`: componente di una distinta in vigore | `catalogo.fn_articolo_componente_di_distinta_in_vigore` | check 2 dello stesso |
+| `is_composito`: componente di una distinta in vigore o futura | `catalogo.fn_articolo_primo_padre_da_oggi` (non NULL) | check 3 dello stesso |
+| le otto colonne strutturali: articolo usato | `catalogo.fn_articolo_usato` | `trgfn_articoli_guard_struttura_se_usato` |
+
+La regola del check 3 aggiunge la sua metà di stato, «l'articolo non è già composito»: nel guard
+la stessa condizione è la transizione da falso a vero. Il presidio è
+`catalogo/test-distinta-predicati-guard-e-form-v1`: nessuna regola legge la distinta da sé, e form
+e guard rispondono uguale.
 
 ---
 
@@ -84,6 +95,8 @@ che la condizione chiama.
 * `db/pgtap/dbops/test-fn-non-editable-fields-conditional.sql` — le regole sulla distinta: i flag
   spenti per il padre di una distinta in vigore, per il figlio in vigore e per il figlio di una
   distinta futura.
+* `db/pgtap/catalogo/test-distinta-predicati-guard-e-form-v1.sql` — le regole sulla distinta chiamano i
+  predicati del guard, e per i tre flag form e guard rispondono uguale.
 * `db/pgtap/catalogo/test-articolo-usato-struttura-v1.sql` — un articolo usato ha le colonne
   strutturali spente nel form.
 * `db/pgtap/catalogo/test-articolo-colonne-struttura-v1.sql` — l'elenco delle colonne strutturali
@@ -106,6 +119,8 @@ che la condizione chiama.
 * 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
   scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
   `brief-db-revisione-dbops`, giro 7-bis).
+* 2026-11-08 — le quattro regole sulla distinta chiamano i predicati del guard invece di
+  ricopiarne la condizione (`20261109-64`, brief-db-revisione-dbops D28).
 
 ---
 

@@ -69,9 +69,10 @@ e prosegue: è un avviso, come dice il prefisso. Il caso non dovrebbe presentars
 `dbops.fn_get_or_create_session_tx_id` pubblica solo id registrati: succede se qualcuno imposta il
 GUC a mano.
 
-⚠️ Il valore che la riga riceve, alla fine, è comunque quello del GUC: l'assegnazione dà la
-precedenza al GUC sul valore calcolato, quindi in questo ramo la riga porta l'id non registrato,
-non la sentinella. Lo stesso vale con il bypass: se il GUC è pubblicato, vince lui.
+La riga riceve la **sentinella** `script.uuid_nil()`, non l'id non registrato: il valore assegnato
+è sempre quello calcolato dai rami, e il GUC non si rilegge alla fine. Un GUC che non è un uuid vale
+assente, e l'id si genera come senza GUC. Col bypass, invece, il GUC pubblicato si usa così com'è:
+il bypass è la deroga che salta la verifica.
 
 ---
 
@@ -90,7 +91,8 @@ non la sentinella. Lo stesso vale con il bypass: se il GUC è pubblicato, vince 
 ### Test
 
 * `db/pgtap/dbops/test-tx-id-coerenza-non-registrato.sql` — senza canale una scrittura tracciata
-  riesce con la sentinella; un GUC forzato a un id non registrato non blocca la scrittura; con il
+  riesce con la sentinella; un GUC forzato a un id non registrato non blocca la scrittura, e la
+  riga porta la sentinella; con il
   bypass la scrittura riesce; un `tx_id` esplicito si conserva tale e quale, anche con il GUC
   avvelenato; l'uscita anticipata sta prima della lettura dei parametri.
 * `db/pgtap/dbops/test-tx-id-bypass-parametro-assente-v1.sql` — senza la riga del parametro il
@@ -108,6 +110,9 @@ non la sentinella. Lo stesso vale con il bypass: se il GUC è pubblicato, vince 
   (`brief-db-coerenza-tx-id-non-registrato`).
 * 2026-07-24 — l'uscita anticipata sale in testa: prima la funzione faceva tutto il giro anche per
   le righe che portavano il proprio `tx_id` (`brief-db-tx-id-uscita-anticipata`).
+* 2026-11-08 — l'assegnazione finale non rilegge più il GUC: prima l'id non registrato vinceva
+  sulla sentinella, e un GUC malformato faceva fallire la scrittura (`20261109-58`,
+  brief-db-revisione-dbops D12-bis).
 * 2026-11-08 — senza la riga del parametro il bypass vale spento e l'override di sessione si
   legge: prima il bypass restava indefinito, l'override si ignorava, e si scriveva
   `E_ERRORE_PARAMETRI_TABELLA`, un codice `E_` che non fermava niente.

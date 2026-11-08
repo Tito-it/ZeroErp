@@ -4,13 +4,15 @@
 >
 > - [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — tabella su cui il trigger opera
 > - [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — lookup BoM attive
+> - [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/manual/fn_articolo_padre_di_distinta_in_vigore), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/manual/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/manual/fn_articolo_primo_padre_da_oggi) — i tre predicati dei check, condivisi col form
+> - [dbops.lock_columns_conditional](/dbzero/dbops/manual/lock_columns_conditional) — le regole gemelle per il form
 > - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — gestione errori strutturata
 > - [catalogo.trgfn_articoli_guard_iva_bom_attiva](/dbzero/catalogo/manual/trgfn_articoli_guard_iva_bom_attiva) — guard simmetrico su UPDATE OF iva_id
 > - [catalogo.trgfn_articoli_guard_listino_se_composito](/dbzero/catalogo/manual/trgfn_articoli_guard_listino_se_composito) — guard correlato su is_composito (direzione FALSE→TRUE)
 
 ## Scopo
 
-(latest review 2026-10-13: check 3, un componente non diventa composito)
+(latest review 2026-11-08: i tre check chiamano i predicati condivisi col form)
 
 Blocca le modifiche ai flag di struttura `is_composito`, `is_solo_componente` e
 `requires_serial` su `catalogo.articoli` quando esiste una BoM attiva che renderebbe
@@ -60,25 +62,20 @@ LANGUAGE plpgsql
 
 Tre controlli distinti in sequenza: i primi due con semantiche opposte (`prodotto_id` vs
 `componente_id`), il terzo sul passaggio a composito.
-Ogni controllo esegue la query EXISTS solo se il flag corrispondente cambia effettivamente
+Ogni controllo chiama il suo predicato solo se il flag corrispondente cambia effettivamente
 (`IS DISTINCT FROM`).
+
+⭐ Ogni check chiama un **predicato** `catalogo.fn_*`, e la regola gemella per il form in
+`dbops.lock_columns_conditional` chiama lo stesso: guard e form rispondono uguale per costruzione
+(presidio `catalogo/test-distinta-predicati-guard-e-form-v1`).
 
 ### Check 1 — `is_composito` / `requires_serial` (l'articolo e' padre)
 
 Attivo se `OLD.is_composito IS DISTINCT FROM NEW.is_composito`
 **oppure** `OLD.requires_serial IS DISTINCT FROM NEW.requires_serial`.
 
-Cerca in `articoli_componenti` almeno un figlio attivo valido oggi (il giorno aziendale,
-`script.fn_data_operativa()`, dal 2026-10-09):
-
-```sql
-SELECT EXISTS (
-    SELECT 1 FROM catalogo.articoli_componenti
-     WHERE prodotto_id = NEW.id
-       AND attivo IS TRUE
-       AND validita @> (SELECT script.fn_data_operativa())
-)
-```
+Chiede a `catalogo.fn_articolo_padre_di_distinta_in_vigore(NEW.id)` se l'articolo ha almeno un
+figlio attivo valido oggi (il giorno aziendale, `script.fn_data_operativa()`).
 
 Se trovato → raise `E_BOM_MODIFICA_VIETATA` (387).
 
@@ -86,16 +83,8 @@ Se trovato → raise `E_BOM_MODIFICA_VIETATA` (387).
 
 Attivo se `OLD.is_solo_componente IS DISTINCT FROM NEW.is_solo_componente`.
 
-Cerca in `articoli_componenti` almeno una BoM attiva che usa l'articolo come figlio:
-
-```sql
-SELECT EXISTS (
-    SELECT 1 FROM catalogo.articoli_componenti
-     WHERE componente_id = NEW.id
-       AND attivo IS TRUE
-       AND validita @> (SELECT script.fn_data_operativa())
-)
-```
+Chiede a `catalogo.fn_articolo_componente_di_distinta_in_vigore(NEW.id)` se almeno una BoM attiva
+e valida oggi usa l'articolo come figlio.
 
 Se trovato → raise `E_BOM_MODIFICA_VIETATA` (387).
 
@@ -105,16 +94,17 @@ Dal 2026-10-13 (`20261013-03`, brief-db-articoli-ammessi-per-documento D-4). La 
 un livello solo ([modello componenti BoM §9.2](/dev/manual/modello-componenti-bom)): un
 articolo che e' componente di una distinta **in vigore o futura** non diventa composito.
 
-Attivo solo se `NEW.is_composito` e' vero e `OLD.is_composito` non lo era. Cerca il primo
-padre (per codice) di un legame attivo con `validita && [oggi, inf)`: a differenza dei check 1
+Attivo solo se `NEW.is_composito` e' vero e `OLD.is_composito` non lo era. Chiede a
+`catalogo.fn_articolo_primo_padre_da_oggi(NEW.id)` il primo padre (per codice) di un legame
+attivo con `validita && [oggi, inf)`: a differenza dei check 1
 e 2 guarda anche i legami che entrano in vigore piu' avanti, perche' da quel giorno la distinta
 avrebbe due livelli. Un legame scaduto e' storia e non conta.
 
 Se trovato → raise `E_BOM_COMPONENTE_DIVENTA_COMPOSITO` (1294), campo `is_composito`, con il
 codice dell'articolo e quello del padre nel messaggio. Il lato legame e'
 [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (motivo `E_BOM_COMPONENTE_COMPOSITO` di `script.fn_check_articolo_riga`).
-Il gemello per il form e' la regola su `is_composito` in `dbops.lock_columns_conditional`
-(`20261013-04`), che spegne il campo solo su un articolo ancora semplice.
+Il gemello per il form e' la regola su `is_composito` in `dbops.lock_columns_conditional`,
+che chiama lo stesso predicato e spegne il campo solo su un articolo ancora semplice.
 
 ---
 
@@ -122,9 +112,9 @@ Il gemello per il form e' la regola su `is_composito` in `dbops.lock_columns_con
 
 | Check | Flag coinvolti | Ruolo articolo | Query EXISTS su | Errore |
 | --- | --- | --- | --- | --- |
-| 1 | `is_composito`, `requires_serial` | Padre composito | `prodotto_id = NEW.id` | `E_BOM_MODIFICA_VIETATA` (387) |
-| 2 | `is_solo_componente` | Figlio in BoM | `componente_id = NEW.id` | `E_BOM_MODIFICA_VIETATA` (387) |
-| 3 | `is_composito` FALSE→TRUE | Figlio in BoM in vigore o futura | `componente_id = NEW.id` | `E_BOM_COMPONENTE_DIVENTA_COMPOSITO` (1294) |
+| 1 | `is_composito`, `requires_serial` | Padre composito | `fn_articolo_padre_di_distinta_in_vigore` | `E_BOM_MODIFICA_VIETATA` (387) |
+| 2 | `is_solo_componente` | Figlio in BoM | `fn_articolo_componente_di_distinta_in_vigore` | `E_BOM_MODIFICA_VIETATA` (387) |
+| 3 | `is_composito` FALSE→TRUE | Figlio in BoM in vigore o futura | `fn_articolo_primo_padre_da_oggi` | `E_BOM_COMPONENTE_DIVENTA_COMPOSITO` (1294) |
 
 Condizione BoM attiva (check 1 e 2): `attivo IS TRUE AND validita @> script.fn_data_operativa()`; check 3: `attivo IS TRUE AND validita && [oggi, inf)`
 (colonna `validita` GENERATED ALWAYS STORED su `articoli_componenti`).
@@ -147,8 +137,9 @@ Contesto JSON (Check 2): `articolo_id`, `hint` (indica is_solo_componente blocca
 
 | Oggetto | Tipo | Motivo |
 | --- | --- | --- |
-| `catalogo.articoli_componenti` | Tabella | Lookup BoM attive come padre (`prodotto_id`) e come figlio (`componente_id`) |
-| `catalogo.articoli_componenti.validita` | Colonna GENERATED | Range temporale calcolato da `valido_dal`/`valido_al`; usato per `@> CURRENT_DATE` |
+| `catalogo.fn_articolo_padre_di_distinta_in_vigore` | Funzione | Check 1 |
+| `catalogo.fn_articolo_componente_di_distinta_in_vigore` | Funzione | Check 2 |
+| `catalogo.fn_articolo_primo_padre_da_oggi` | Funzione | Check 3, e il padre nel messaggio |
 | `script.fn_log_and_raise_error` | Funzione | Registrazione e raise strutturato dell'errore |
 
 ---
@@ -158,16 +149,15 @@ Contesto JSON (Check 2): `articolo_id`, `hint` (indica is_solo_componente blocca
 - I due check usano colonne diverse (`prodotto_id` vs `componente_id`): un articolo che
   e' contemporaneamente padre e figlio in BoM diverse puo' scatenare entrambi i check
   in sequenza; il primo che trova una BoM attiva interrompe l'esecuzione con raise.
-- La condizione `IS DISTINCT FROM` evita che il trigger esegua la query EXISTS quando
+- La condizione `IS DISTINCT FROM` evita che il trigger chiami il predicato quando
   il valore del flag non cambia effettivamente (es. SET is_composito = TRUE su un
   articolo gia' TRUE). Con `UPDATE OF`, il trigger scatta appena il campo e' nel SET,
   non solo quando il valore varia.
-- `attivo IS TRUE` (non `= TRUE`) per robustezza su nullable; `validita @> CURRENT_DATE`
-  per coerenza con il pattern daterange del progetto (linee-guida-sql §7b).
 - Per modificare i flag su un articolo con BoM attive: chiudere prima le righe BoM
-  incompatibili (impostare `valido_al < CURRENT_DATE`), poi eseguire il cambio di flag.
+  incompatibili (impostare `valido_al` prima del giorno aziendale), poi eseguire il cambio di flag.
 - Questo trigger risolve la nota "ottimistica" in
   [`trgfn_articoli_guard_listino_se_composito`](/dbzero/catalogo/manual/trgfn_articoli_guard_listino_se_composito)
   ("TRUE→FALSE gia' bloccato da altri guard se la BoM e' attiva"): il blocco e' ora
   effettivo e DB-enforced.
-- Migration di riferimento: `20260522-01`.
+- Migration di riferimento: `20260522-01`; i predicati condivisi col form dal `20261109-63`
+  (brief-db-revisione-dbops D28).

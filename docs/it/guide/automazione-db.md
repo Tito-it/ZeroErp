@@ -283,6 +283,8 @@ Alcune colonne non devono essere modificate dopo la creazione del record (es. `c
 * Colonne extra si configurano in `dbops.automation_lock_columns`
 * Se una colonna configurata non esiste fisicamente sulla tabella, il runner la ignora
 * Il runner **converge**: a ogni giro porta il lock vivo a quello che il registro dichiara (crea, rigenera, toglie). Una colonna disattivata nel registro (`enabled = false`) si toglie da sola
+* La regola `LOCK_COLUMNS` governa la tabella: spenta o cancellata, i lock della tabella si tolgono; se la copre solo una regola di un altro `exec_mode`, il giro non la tocca
+* Il form legge il lock **vivo**, non il registro: [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields) elenca le colonne che un trigger di lock blocca davvero, `codice_interno` compreso
 * ⛔ Un lock di colonna **non si scrive a mano**: si dichiara nel registro. Se un trigger vivo blocca una colonna che il registro non nomina, il runner si ferma e la nomina
 
 Il comportamento completo, con le azioni e il caso in cui si ferma, sta nella pagina di
