@@ -22,7 +22,7 @@
 #   2  riga 10 pezzi a 7 €: il piano la dichiara INV_INIZIALE (anteprima in DRAFT)
 #   3  CONFIRM: righe congelate (E_MAG_DOCUMENTO_RIGHE_CONGELATE)
 #   4  registra: 1 movimento, POSTED, qta_sistema = 0
-#   5  registro: INV_INIZIALE a 7 € con sorgente INVENTARIO_RIGA; disponibilita' a 10
+#   5  registro: INV_INIZIALE a 7 € con sorgente INVENTARIO (la testata); disponibilita' a 10
 #   6  riga su articolo NON gestito: piano NON_POSTABILE col motivo della check
 #   7  registra rifiuta TUTTO (E_MAG_ARTICOLO_NON_GESTITO): stato ancora CONFIRM
 #   8  CONFIRM -> DRAFT riapre; riga senza lotto su requires_lotto: passa, i motivi la dicono
@@ -113,9 +113,10 @@ with transaction.atomic():
     # 5
     mov = cs.list_movimenti(auth_user_id=uid, inventario_id=d["id"], limit=10)["results"]
     disp = cs.list_disponibilita(auth_user_id=uid, magazzino_id=mag_a, limit=10)["results"]
-    check("5) registro INV_INIZIALE a 7 € da INVENTARIO_RIGA; disponibilita' 10",
+    check("5) registro INV_INIZIALE a 7 € da INVENTARIO (la testata); disponibilita' 10",
           len(mov) == 1 and mov[0]["causale_codice"] == "INV_INIZIALE"
-          and mov[0]["costo_unitario"] == Decimal("7") and mov[0]["sorgente_codice_interno"] == "INVENTARIO_RIGA"
+          and mov[0]["costo_unitario"] == Decimal("7") and mov[0]["sorgente_codice_interno"] == "INVENTARIO"
+          and mov[0]["sorgente_id"] == d["id"]
           and disp and disp[0]["disponibile"] == Decimal("10"))
     # 6
     d3 = ms.crea_documento("inventari", {"magazzino_id": mag_a})

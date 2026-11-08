@@ -12,7 +12,7 @@
 #       stessa matrice `DRAFT → CONFIRM → POSTED | CANCEL`. Le differenze sono
 #       TRE, tutte di dato: la riga porta `qta_contata >= 0` (inventario) o
 #       `qta_delta <> 0` + `motivo` (rettifica); l'inventario ha il PIANO; la
-#       sorgente si chiama `INVENTARIO_RIGA` / `RETTIFICA_RIGA`. Sono i campi di
+#       sorgente si chiama `INVENTARIO` / `RETTIFICA`. Sono i campi di
 #       questo dataclass, e null'altro.
 #
 #       ⛔ Vive in `db/` e non in `services/`: i nomi di tabella e di colonna
@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from apps.config.sorgenti import SORGENTE_INVENTARIO_RIGA, SORGENTE_RETTIFICA_RIGA
+from apps.config.sorgenti import SORGENTE_INVENTARIO, SORGENTE_RETTIFICA
 
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$")
 
@@ -53,7 +53,11 @@ class FamigliaDocumentoInterno:
     # sbagliare. L'involucro lo sa gia' (doc: «i due involucri, che sono
     # cio' che il backend chiama»).
     fn_capability: str             # "script.fn_available_actions_inventario"
-    sorgente_codice_interno: str   # "INVENTARIO_RIGA" — `config.sorgenti`
+    # Il tipo del DOCUMENTO in `config.sorgenti` ("INVENTARIO"): e' il
+    # `sorgente_tipo_id` dei movimenti che la famiglia registra, con la chiave
+    # della testata in `sorgente_id` (giro M.1 di brief-db-sorgente-documento-
+    # e-riga, 2026-11-08; fino ad allora il tipo della riga, `INVENTARIO_RIGA`).
+    sorgente_codice_interno: str
     lista_codice: str              # "magazzino.inventari" — `ui.lista_definizione`
     lista_righe_codice: str        # "magazzino.inventario_righe"
     col_qta: str                   # "qta_contata" | "qta_delta"
@@ -81,7 +85,7 @@ INVENTARI = FamigliaDocumentoInterno(
     col_stato="stato_mag_inventario",
     fn_posta="magazzino.fn_posta_inventario",
     fn_capability="script.fn_available_actions_inventario",
-    sorgente_codice_interno=SORGENTE_INVENTARIO_RIGA,
+    sorgente_codice_interno=SORGENTE_INVENTARIO,
     lista_codice="magazzino.inventari",
     lista_righe_codice="magazzino.inventario_righe",
     col_qta="qta_contata",
@@ -100,7 +104,7 @@ RETTIFICHE = FamigliaDocumentoInterno(
     col_stato="stato_mag_rettifiche",
     fn_posta="magazzino.fn_posta_rettifica",
     fn_capability="script.fn_available_actions_rettifica",
-    sorgente_codice_interno=SORGENTE_RETTIFICA_RIGA,
+    sorgente_codice_interno=SORGENTE_RETTIFICA,
     lista_codice="magazzino.rettifiche",
     lista_righe_codice="magazzino.rettifica_righe",
     col_qta="qta_delta",

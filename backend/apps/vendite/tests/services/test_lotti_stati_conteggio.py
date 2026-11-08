@@ -94,11 +94,11 @@ class LottiStatiEnvelopeTests(TestCase):
     def _patch(self, conteggi):
         return (
             patch.object(
-                vendite_service.VenditeRepository, "list_lotti",
+                vendite_service.VenditeRepository, "list_lotti", autospec=True,
                 return_value=([], 0),
             ),
             patch.object(
-                vendite_service.VenditeRepository, "count_lotti_per_stato",
+                vendite_service.VenditeRepository, "count_lotti_per_stato", autospec=True,
                 return_value=conteggi,
             ),
         )
@@ -156,7 +156,7 @@ class LottiExportRecuperiTests(TestCase):
     #    scheda usciva l'elenco ORDINARIO del mese: un insieme DISGIUNTO da
     #    quello a video, senza che niente fallisse.
     @patch.object(
-        vendite_service.VenditeRepository, "list_lotti", return_value=([], 0),
+        vendite_service.VenditeRepository, "list_lotti", autospec=True, return_value=([], 0),
     )
     def test_export_inoltra_il_perimetro_recuperi(self, mock_list):
         fn_export_lotti(
@@ -167,7 +167,7 @@ class LottiExportRecuperiTests(TestCase):
     # ⛔ Senza mese il predicato diventa `competenza_mese < NULL`, cioe' ZERO
     #    righe: un file vuoto consegnato come se fosse la risposta. Si rifiuta.
     @patch.object(
-        vendite_service.VenditeRepository, "list_lotti", return_value=([], 0),
+        vendite_service.VenditeRepository, "list_lotti", autospec=True, return_value=([], 0),
     )
     def test_export_recuperi_senza_mese_rifiutato(self, mock_list):
         with self.assertRaises(ServiceError):

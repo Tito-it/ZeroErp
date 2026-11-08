@@ -457,7 +457,7 @@ class ServizioDbTests(_TransazioneAnnullata):
         self._agisce(admin_id)
         with patch(
             "apps.core.services.secondo_fattore_service.SessionAuditRepository.log_session_event",
-            side_effect=DatabaseError("traccia non scritta"),
+            side_effect=DatabaseError("traccia non scritta"), autospec=True,
         ), self.assertRaises(DatabaseError):
             self.servizio.disattiva_da_admin(
                 self.user.id, motivo="telefono perso", chi_agisce=admin_id, request=self.request,

@@ -80,7 +80,7 @@ class SituazioneMerceServiceTests(TestCase):
     def test_ordine_quattro_sezioni_e_filtro_per_ordine(self):
         repo = _repo_finto()
         with patch(
-            "apps.vendite.services.vendite_service.VenditeRepository",
+            "apps.vendite.services.vendite_service.VenditeRepository", autospec=True,
             return_value=repo,
         ):
             out = get_situazione_merce(ordine_id=42)
@@ -113,7 +113,7 @@ class SituazioneMerceServiceTests(TestCase):
     def test_ddt_livello_uno_filtrato_sulla_spedizione(self):
         repo = _repo_finto()
         with patch(
-            "apps.vendite.services.vendite_service.VenditeRepository",
+            "apps.vendite.services.vendite_service.VenditeRepository", autospec=True,
             return_value=repo,
         ):
             out = get_situazione_merce(ddt_id=7)
@@ -134,7 +134,7 @@ class SituazioneMerceServiceTests(TestCase):
     def test_differenza_null_non_diventa_zero(self):
         repo = _repo_finto()
         with patch(
-            "apps.vendite.services.vendite_service.VenditeRepository",
+            "apps.vendite.services.vendite_service.VenditeRepository", autospec=True,
             return_value=repo,
         ):
             out = get_situazione_merce(ordine_id=42)
@@ -150,7 +150,7 @@ class SituazioneMerceServiceTests(TestCase):
     def test_stato_non_viene_ri_tradotto(self):
         repo = _repo_finto()
         with patch(
-            "apps.vendite.services.vendite_service.VenditeRepository",
+            "apps.vendite.services.vendite_service.VenditeRepository", autospec=True,
             return_value=repo,
         ):
             out = get_situazione_merce(ordine_id=42)
@@ -166,7 +166,7 @@ class SituazioneMerceServiceTests(TestCase):
     def test_ordine_fuori_scope_o_inesistente_not_found(self):
         repo = _repo_finto(exists_ordine=False)
         with patch(
-            "apps.vendite.services.vendite_service.VenditeRepository",
+            "apps.vendite.services.vendite_service.VenditeRepository", autospec=True,
             return_value=repo,
         ):
             with self.assertRaises(ServiceError) as ctx:
@@ -177,7 +177,7 @@ class SituazioneMerceServiceTests(TestCase):
     def test_ddt_fuori_scope_o_inesistente_not_found(self):
         repo = _repo_finto(exists_ddt=False)
         with patch(
-            "apps.vendite.services.vendite_service.VenditeRepository",
+            "apps.vendite.services.vendite_service.VenditeRepository", autospec=True,
             return_value=repo,
         ):
             with self.assertRaises(ServiceError) as ctx:
@@ -204,7 +204,7 @@ class SituazioneMerceServiceTests(TestCase):
     def test_perimetro_verificato_prima_delle_letture(self):
         repo = _repo_finto(exists_ordine=False)
         with patch(
-            "apps.vendite.services.vendite_service.VenditeRepository",
+            "apps.vendite.services.vendite_service.VenditeRepository", autospec=True,
             return_value=repo,
         ):
             with self.assertRaises(ServiceError):

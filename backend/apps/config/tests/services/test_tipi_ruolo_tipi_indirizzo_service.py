@@ -28,7 +28,7 @@ REPO_PATH = f"{SVC_MOD}.TipiRuoloTipiIndirizzoRepository"
 class TestNonEditableFields(TestCase):
     """non_editable_fields gap dominio (Fase 4 — A9)."""
 
-    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable")
+    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable", autospec=True)
     def test_get_non_editable_fields_include_dimensions(self, mock_list):
         from apps.config.services.tipi_ruolo_tipi_indirizzo_service import (
             TipiRuoloTipiIndirizzoService,
@@ -141,7 +141,7 @@ class TestGetMatriceArricchito(TestCase):
     """get_matrice include non_editable_fields + fallback_options (Fase 4)."""
 
     @patch(REPO_PATH, autospec=True)
-    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable")
+    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable", autospec=True)
     def test_get_matrice_arricchito(self, mock_list_locks, mock_repo_cls):
         from apps.config.services.tipi_ruolo_tipi_indirizzo_service import (
             TipiRuoloTipiIndirizzoService,

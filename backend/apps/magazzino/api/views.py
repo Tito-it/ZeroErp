@@ -860,11 +860,14 @@ _PARAMS_MOVIMENTI = [
     OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False),
     OpenApiParameter(
         name="sorgente_tipo", type=str, location=OpenApiParameter.QUERY, required=False,
-        description="`config.sorgenti.codice_interno` (INVENTARIO_RIGA, RETTIFICA_RIGA, …).",
+        description=(
+            "`config.sorgenti.codice_interno` del DOCUMENTO che ha mosso la merce "
+            "(INVENTARIO, RETTIFICA, TRASFERIMENTO, DDT_VENDITA, RESO_VENDITA, EVENTO_ASSET)."
+        ),
     ),
     OpenApiParameter(
         name="inventario_id", type=int, location=OpenApiParameter.QUERY, required=False,
-        description="I movimenti nati dalle righe di QUESTO inventario (deep-link dal documento POSTED).",
+        description="I movimenti di QUESTO inventario (deep-link dal documento POSTED).",
     ),
     OpenApiParameter(name="rettifica_id", type=int, location=OpenApiParameter.QUERY, required=False),
     _PARAM_SEARCH,

@@ -50,7 +50,7 @@ _REPO_PATH = (
 class TestList(TestCase):
     """Test metodo list_categorie."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_default_params(self, mock_repo_cls):
         mock_repo_cls.return_value.list_categorie.return_value = ([], 0)
         svc = CategorieClientiService()
@@ -59,7 +59,7 @@ class TestList(TestCase):
         self.assertEqual(total, 0)
         mock_repo_cls.return_value.list_categorie.assert_called_once()
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_invalid_order_by(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -67,7 +67,7 @@ class TestList(TestCase):
             svc.list_categorie(order_by="not_a_column")
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_propaga_filtri(self, mock_repo_cls):
         mock_repo_cls.return_value.list_categorie.return_value = ([], 0)
         svc = CategorieClientiService()
@@ -81,7 +81,7 @@ class TestList(TestCase):
 class TestGet(TestCase):
     """Test metodo get_categoria."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_ok(self, mock_repo_cls):
         mock_repo_cls.return_value.get_categoria.return_value = {
             "id": 3, "codice": "SILVER", "descrizione": "Cliente silver",
@@ -90,7 +90,7 @@ class TestGet(TestCase):
         result = svc.get_categoria(3)
         self.assertEqual(result["codice"], "SILVER")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_not_found(self, mock_repo_cls):
         mock_repo_cls.return_value.get_categoria.return_value = None
         svc = CategorieClientiService()
@@ -98,7 +98,7 @@ class TestGet(TestCase):
             svc.get_categoria(999)
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_id_non_positivo(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -110,7 +110,7 @@ class TestGet(TestCase):
 class TestCreate(TestCase):
     """Test metodo create_categoria."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_ok(self, mock_repo_cls):
         mock_repo_cls.return_value.create_categoria.return_value = 10
         mock_repo_cls.return_value.get_categoria.return_value = {
@@ -130,7 +130,7 @@ class TestCreate(TestCase):
         args = mock_repo_cls.return_value.create_categoria.call_args.args
         self.assertEqual(args[0]["codice"], "SILVER")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_missing_codice(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -138,7 +138,7 @@ class TestCreate(TestCase):
             svc.create_categoria({"descrizione": "X"})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_missing_descrizione(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -146,7 +146,7 @@ class TestCreate(TestCase):
             svc.create_categoria({"codice": "X"})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_unknown_key(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -156,7 +156,7 @@ class TestCreate(TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_codice_troppo_lungo(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -164,7 +164,7 @@ class TestCreate(TestCase):
             svc.create_categoria({"codice": "X" * 33, "descrizione": "X"})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_partecipa_promo_non_bool(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -174,7 +174,7 @@ class TestCreate(TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_ordinamento_fuori_range(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -184,7 +184,7 @@ class TestCreate(TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_meta_json_invalido(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -194,7 +194,7 @@ class TestCreate(TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_duplicate_unique(self, mock_repo_cls):
         mock_repo_cls.return_value.create_categoria.side_effect = IntegrityError(
             'duplicate key value violates unique constraint "uq_categorie_clienti_codice"'
@@ -208,7 +208,7 @@ class TestCreate(TestCase):
 class TestUpdate(TestCase):
     """Test metodo update_categoria."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_ok(self, mock_repo_cls):
         mock_repo_cls.return_value.update_categoria.return_value = True
         mock_repo_cls.return_value.get_categoria.return_value = {
@@ -219,7 +219,7 @@ class TestUpdate(TestCase):
         self.assertEqual(result["descrizione"], "Cliente SILVER v2")
         mock_repo_cls.return_value.update_categoria.assert_called_once()
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_codice_rifiutato(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -227,7 +227,7 @@ class TestUpdate(TestCase):
             svc.update_categoria(3, {"codice": "NUOVO"})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_payload_vuoto(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -235,7 +235,7 @@ class TestUpdate(TestCase):
             svc.update_categoria(3, {})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_partecipa_promo_null(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -243,7 +243,7 @@ class TestUpdate(TestCase):
             svc.update_categoria(3, {"partecipa_promo": None})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_not_found(self, mock_repo_cls):
         mock_repo_cls.return_value.update_categoria.return_value = False
         svc = CategorieClientiService()
@@ -265,7 +265,7 @@ class TestMetaSemantics(TestCase):
     - meta = lista/non-dict -> E_ANAG_VALIDAZIONE
     """
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_meta_assente_non_passa_al_repo(self, mock_repo_cls):
         mock_repo_cls.return_value.create_categoria.return_value = 1
         mock_repo_cls.return_value.get_categoria.return_value = {"id": 1}
@@ -274,7 +274,7 @@ class TestMetaSemantics(TestCase):
         data = mock_repo_cls.return_value.create_categoria.call_args.args[0]
         self.assertNotIn("meta", data)
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_meta_null_esplicito_resetta_a_vuoto(self, mock_repo_cls):
         mock_repo_cls.return_value.create_categoria.return_value = 1
         mock_repo_cls.return_value.get_categoria.return_value = {"id": 1}
@@ -283,7 +283,7 @@ class TestMetaSemantics(TestCase):
         data = mock_repo_cls.return_value.create_categoria.call_args.args[0]
         self.assertEqual(data.get("meta"), {})
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_meta_dict_preservato(self, mock_repo_cls):
         mock_repo_cls.return_value.create_categoria.return_value = 1
         mock_repo_cls.return_value.get_categoria.return_value = {"id": 1}
@@ -293,7 +293,7 @@ class TestMetaSemantics(TestCase):
         data = mock_repo_cls.return_value.create_categoria.call_args.args[0]
         self.assertEqual(data["meta"], {"nota": "test"})
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_meta_str_json_valida_parsed(self, mock_repo_cls):
         mock_repo_cls.return_value.create_categoria.return_value = 1
         mock_repo_cls.return_value.get_categoria.return_value = {"id": 1}
@@ -303,7 +303,7 @@ class TestMetaSemantics(TestCase):
         data = mock_repo_cls.return_value.create_categoria.call_args.args[0]
         self.assertEqual(data["meta"], {"foo": 1})
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_meta_lista_rifiutata(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -312,7 +312,7 @@ class TestMetaSemantics(TestCase):
                                    "meta": [1, 2]})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_meta_str_json_non_dict_rifiutata(self, mock_repo_cls):
         # JSON valido ma non dict (es. array serializzato) deve essere rifiutato.
         del mock_repo_cls
@@ -326,7 +326,7 @@ class TestMetaSemantics(TestCase):
 class TestOrdinamentoBoundary(TestCase):
     """Test dei boundary di ordinamento (smallint 0..32767, niente negativi)."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_ordinamento_zero_ammesso(self, mock_repo_cls):
         mock_repo_cls.return_value.create_categoria.return_value = 1
         mock_repo_cls.return_value.get_categoria.return_value = {"id": 1}
@@ -336,7 +336,7 @@ class TestOrdinamentoBoundary(TestCase):
         data = mock_repo_cls.return_value.create_categoria.call_args.args[0]
         self.assertEqual(data["ordinamento"], 0)
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_ordinamento_negativo_rifiutato(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiService()
@@ -345,7 +345,7 @@ class TestOrdinamentoBoundary(TestCase):
                                    "ordinamento": -1})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_ordinamento_max_ammesso(self, mock_repo_cls):
         mock_repo_cls.return_value.create_categoria.return_value = 1
         mock_repo_cls.return_value.get_categoria.return_value = {"id": 1}

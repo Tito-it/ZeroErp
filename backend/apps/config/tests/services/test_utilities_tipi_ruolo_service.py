@@ -44,7 +44,7 @@ _REPO_PATH = (
 class TestListMatrice(TestCase):
     """Test metodo list_matrice."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_matrice_default(self, mock_repo_cls):
         """list_matrice delega al repo con parametri default."""
         mock_repo_cls.return_value.list_matrice.return_value = ([], 0)
@@ -54,7 +54,7 @@ class TestListMatrice(TestCase):
         self.assertEqual(total, 0)
         mock_repo_cls.return_value.list_matrice.assert_called_once()
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_matrice_invalid_order_by(self, mock_repo_cls):
         """order_by non valido -> ServiceError E_CONFIG_VALIDATION."""
         del mock_repo_cls
@@ -67,7 +67,7 @@ class TestListMatrice(TestCase):
 class TestGetMatrice(TestCase):
     """Test metodo get_matrice."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_matrice_ok(self, mock_repo_cls):
         """get_matrice ritorna dict dal repo."""
         mock_repo_cls.return_value.get_matrice.return_value = {
@@ -77,7 +77,7 @@ class TestGetMatrice(TestCase):
         result = svc.get_matrice(1)
         self.assertEqual(result["id"], 1)
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_matrice_not_found(self, mock_repo_cls):
         """repo None -> ServiceError E_CONFIG_MATRICE_NOT_FOUND."""
         mock_repo_cls.return_value.get_matrice.return_value = None
@@ -90,7 +90,7 @@ class TestGetMatrice(TestCase):
 class TestCreateMatrice(TestCase):
     """Test metodo create_matrice."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_matrice_ok(self, mock_repo_cls):
         """Payload valido -> repo.create + repo.get_matrice."""
         mock_repo_cls.return_value.create_matrice.return_value = 42
@@ -104,7 +104,7 @@ class TestCreateMatrice(TestCase):
             utility_id=10, tipo_ruolo_id=5, attivo=None,
         )
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_matrice_missing_utility_id(self, mock_repo_cls):
         """Payload senza utility_id -> ServiceError VALIDATION."""
         del mock_repo_cls
@@ -113,7 +113,7 @@ class TestCreateMatrice(TestCase):
             svc.create_matrice({"tipo_ruolo_id": 5})
         self.assertEqual(ctx.exception.code, "E_CONFIG_VALIDATION")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_matrice_unknown_key(self, mock_repo_cls):
         """Chiave non in whitelist -> ServiceError VALIDATION."""
         del mock_repo_cls
@@ -124,7 +124,7 @@ class TestCreateMatrice(TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_CONFIG_VALIDATION")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_matrice_duplicate_unique(self, mock_repo_cls):
         """IntegrityError UNIQUE -> ServiceError DUPLICATA."""
         mock_repo_cls.return_value.create_matrice.side_effect = IntegrityError(
@@ -136,7 +136,7 @@ class TestCreateMatrice(TestCase):
             svc.create_matrice({"utility_id": 10, "tipo_ruolo_id": 5})
         self.assertEqual(ctx.exception.code, "E_CONFIG_MATRICE_DUPLICATA")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_matrice_fk_violation(self, mock_repo_cls):
         """IntegrityError FK -> ServiceError FK."""
         mock_repo_cls.return_value.create_matrice.side_effect = IntegrityError(
@@ -152,7 +152,7 @@ class TestCreateMatrice(TestCase):
 class TestUpdateMatrice(TestCase):
     """Test metodo update_matrice."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_matrice_attivo_ok(self, mock_repo_cls):
         """update con solo attivo -> repo.update_matrice_attivo."""
         mock_repo_cls.return_value.update_matrice_attivo.return_value = True
@@ -164,7 +164,7 @@ class TestUpdateMatrice(TestCase):
         self.assertFalse(result["attivo"])
         mock_repo_cls.return_value.update_matrice_attivo.assert_called_once_with(1, False)
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_matrice_fk_forbidden(self, mock_repo_cls):
         """Tentativo modifica utility_id -> ServiceError VALIDATION."""
         del mock_repo_cls
@@ -173,7 +173,7 @@ class TestUpdateMatrice(TestCase):
             svc.update_matrice(1, {"utility_id": 99})
         self.assertEqual(ctx.exception.code, "E_CONFIG_VALIDATION")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_matrice_no_attivo(self, mock_repo_cls):
         """Payload senza attivo -> ServiceError VALIDATION."""
         del mock_repo_cls
@@ -182,7 +182,7 @@ class TestUpdateMatrice(TestCase):
             svc.update_matrice(1, {})
         self.assertEqual(ctx.exception.code, "E_CONFIG_VALIDATION")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_matrice_not_found(self, mock_repo_cls):
         """repo update_matrice_attivo False -> ServiceError NOT_FOUND."""
         mock_repo_cls.return_value.update_matrice_attivo.return_value = False
@@ -195,7 +195,7 @@ class TestUpdateMatrice(TestCase):
 class TestListUsage(TestCase):
     """Test metodo list_usage."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_usage_ok(self, mock_repo_cls):
         """list_usage verifica esistenza riga e delega al repo."""
         mock_repo_cls.return_value.get_matrice.return_value = {

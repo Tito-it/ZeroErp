@@ -45,12 +45,13 @@ Indice test eseguiti:
 
 import inspect
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
 from apps.pagamenti.services import pagamenti_service
+from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
 
 _FATTI = {"importo": "400.00", "data_pagamento": "2026-09-14", "riferimento_ente": "CRO 1"}
 _DESTINAZIONE = {"fattura_id": 2263, "billing_account_id": 41, "scadenza_id": 900}
@@ -72,7 +73,7 @@ def _distinta(**over):
 
 
 def _repo() -> MagicMock:
-    repo = MagicMock()
+    repo = create_autospec(PagamentiRepository, instance=True)
     repo.get_distinta.return_value = _distinta()
     repo.get_riga.return_value = {"id": 11, "contabile_id": 7, "attivo": True}
     repo.create_riga.return_value = 11
@@ -90,7 +91,7 @@ class _Base(SimpleTestCase):
     def setUp(self) -> None:
         self.repo = _repo()
         patcher = patch.object(
-            pagamenti_service, "PagamentiRepository", return_value=self.repo
+            pagamenti_service, "PagamentiRepository", autospec=True, return_value=self.repo
         )
         patcher.start()
         self.addCleanup(patcher.stop)

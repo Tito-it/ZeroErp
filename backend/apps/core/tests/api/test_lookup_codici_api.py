@@ -70,7 +70,7 @@ class CoreLookupCodiciApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 401)
 
     # Scopo: Verifica il caso `test_lookup_rel_non_consentita`: rel fuori whitelist → 400.
-    @patch("apps.core.db.dbops_repository.TabelleGestibiliRepository.voce", return_value=None)
+    @patch("apps.core.db.dbops_repository.TabelleGestibiliRepository.voce", return_value=None, autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_lookup_rel_non_consentita(self, _mock_auth, _voce):
         response = self.client.get(_URL + "?rel=public.users")

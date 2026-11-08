@@ -105,7 +105,7 @@ class RegistriVincoliTests(TestCase):
     #        riga che blocca puo' essere SPENTA, cioe' invisibile nella lista.
     #        E' il difetto del §0: senza quella frase l'operatore cerca una riga
     #        che non vede.
-    @patch.object(RegistriRepository, "create_registro")
+    @patch.object(RegistriRepository, "create_registro", autospec=True)
     def test_terna_occupata_dice_che_puo_essere_spento(self, mock_create):
         mock_create.side_effect = _integrity(
             "uq_registri_fatturazione_famiglia_emittente_utility")
@@ -118,7 +118,7 @@ class RegistriVincoliTests(TestCase):
     # Scopo: (1b) la terna NON dichiara un campo. E' composta su tre colonne che
     #        l'operatore sceglie tutte: accenderne una manderebbe a correggere
     #        un campo che non e' piu' sbagliato degli altri due.
-    @patch.object(RegistriRepository, "create_registro")
+    @patch.object(RegistriRepository, "create_registro", autospec=True)
     def test_terna_non_dichiara_un_campo(self, mock_create):
         mock_create.side_effect = _integrity(
             "uq_registri_fatturazione_famiglia_emittente_utility")
@@ -128,9 +128,9 @@ class RegistriVincoliTests(TestCase):
 
     # Scopo: (2) IL GEMELLO POSITIVO. Senza, il test non distingue «respinge il
     #        caso giusto» da «respinge tutto».
-    @patch.object(RegistriRepository, "list_progressivi", return_value=[])
-    @patch.object(RegistriRepository, "get_registro", return_value=_registro())
-    @patch.object(RegistriRepository, "create_registro", return_value=7)
+    @patch.object(RegistriRepository, "list_progressivi", autospec=True, return_value=[])
+    @patch.object(RegistriRepository, "get_registro", autospec=True, return_value=_registro())
+    @patch.object(RegistriRepository, "create_registro", autospec=True, return_value=7)
     def test_create_su_terna_libera_passa(self, mock_create, _get, _prog):
         out = self.svc.create_registro(99, {"codice": "DDT-01", "descrizione": "DDT"})
         self.assertEqual(out["id"], 7)
@@ -138,7 +138,7 @@ class RegistriVincoliTests(TestCase):
 
     # Scopo: (3) il SECONDO unique parziale, sull'altro asse — e anche lui non
     #        filtra su `attivo`.
-    @patch.object(RegistriRepository, "create_registro")
+    @patch.object(RegistriRepository, "create_registro", autospec=True)
     def test_coppia_prefisso_suffisso_dice_che_puo_essere_spento(self, mock_create):
         mock_create.side_effect = _integrity(
             "uq_registri_fatturazione_prefisso_suffisso")
@@ -153,7 +153,7 @@ class RegistriVincoliTests(TestCase):
     #        reale: le colonne in gioco sono due, l'emittente non e' un campo
     #        del form (lo da' il tab), e la coppia e' cio' che l'operatore ha
     #        appena scritto.
-    @patch.object(RegistriRepository, "create_registro")
+    @patch.object(RegistriRepository, "create_registro", autospec=True)
     def test_coppia_dichiara_il_campo_prefisso(self, mock_create):
         mock_create.side_effect = _integrity(
             "uq_registri_fatturazione_prefisso_suffisso")
@@ -165,7 +165,7 @@ class RegistriVincoliTests(TestCase):
     #        il punto che un test scritto sulla sola create mancherebbe. E' la
     #        ragione per cui la lista deve mostrare anche gli spenti su TUTTA
     #        la maschera, non solo nel form di inserimento (§2-bis).
-    @patch.object(RegistriRepository, "update_registro")
+    @patch.object(RegistriRepository, "update_registro", autospec=True)
     def test_coppia_si_prende_anche_in_MODIFICA(self, mock_update):
         mock_update.side_effect = _integrity(
             "uq_registri_fatturazione_prefisso_suffisso")
@@ -175,9 +175,9 @@ class RegistriVincoliTests(TestCase):
         self.assertIn("disattivato", ctx.exception.message)
 
     # Scopo: (4) gemello positivo della modifica.
-    @patch.object(RegistriRepository, "list_progressivi", return_value=[])
-    @patch.object(RegistriRepository, "get_registro", return_value=_registro())
-    @patch.object(RegistriRepository, "update_registro", return_value=1)
+    @patch.object(RegistriRepository, "list_progressivi", autospec=True, return_value=[])
+    @patch.object(RegistriRepository, "get_registro", autospec=True, return_value=_registro())
+    @patch.object(RegistriRepository, "update_registro", autospec=True, return_value=1)
     def test_update_senza_conflitto_passa(self, mock_update, _get, _prog):
         out = self.svc.update_registro(7, [99], {"descrizione": "Nuova"})
         self.assertEqual(out["id"], 7)
@@ -185,7 +185,7 @@ class RegistriVincoliTests(TestCase):
 
     # Scopo: (5) il CHECK della famiglia diventa una frase che nomina la regola,
     #        non il fallback generico.
-    @patch.object(RegistriRepository, "create_registro")
+    @patch.object(RegistriRepository, "create_registro", autospec=True)
     def test_check_famiglia_tradotto(self, mock_create):
         mock_create.side_effect = _integrity(
             "chk_registri_fatturazione_famiglia_regole_fattura")
@@ -196,7 +196,7 @@ class RegistriVincoliTests(TestCase):
 
     # Scopo: (5b) il codice duplicato SI', un campo ce l'ha — ed e' il caso in
     #        cui accenderlo aiuta davvero.
-    @patch.object(RegistriRepository, "create_registro")
+    @patch.object(RegistriRepository, "create_registro", autospec=True)
     def test_codice_duplicato_dichiara_il_campo(self, mock_create):
         mock_create.side_effect = _integrity("uq_registri_fatturazione_codice")
         with self.assertRaises(ServiceError) as ctx:
@@ -238,7 +238,7 @@ class RegistriScopeTests(TestCase):
         self.assertEqual(params[0], [11, 22])
 
     # Scopo: (6d) un id fuori perimetro e' un 404, non una riga altrui.
-    @patch.object(RegistriRepository, "get_registro", return_value=None)
+    @patch.object(RegistriRepository, "get_registro", autospec=True, return_value=None)
     def test_get_fuori_scope_e_404(self, _get):
         with self.assertRaises(ServiceError) as ctx:
             RegistriService().get_registro(7, [11])
@@ -251,7 +251,7 @@ class RegistriFormaTests(TestCase):
     # Scopo: (7) il rifiuto del guard DB arriva al client come il SUO codice,
     #        non come un 500. ⛔ Il divieto non si ricalcola in Python: il
     #        criterio vive dove sta il rifiuto, e qui si traduce e basta.
-    @patch.object(RegistriRepository, "update_registro")
+    @patch.object(RegistriRepository, "update_registro", autospec=True)
     def test_update_forma_su_registro_che_ha_numerato_propaga_il_codice(self, mock_upd):
         mock_upd.side_effect = IntegrityError(
             "Registro ZZ: la forma del numero non si puo' piu' cambiare "
@@ -285,7 +285,7 @@ class RegistriFormaTests(TestCase):
     #        database (2026-09-26). Fino a quel giorno il repository la
     #        scartava in silenzio: la PATCH rispondeva 200 senza aver scritto
     #        il campo.
-    @patch.object(RegistriRepository, "update_registro")
+    @patch.object(RegistriRepository, "update_registro", autospec=True)
     def test_serie_default_in_modifica_e_400(self, mock_update):
         with self.assertRaises(ServiceError) as ctx:
             RegistriService().update_registro(7, [99], {"serie_default": "B"})
@@ -295,7 +295,7 @@ class RegistriFormaTests(TestCase):
 
     # Scopo: (8b-ter) stessa regola in creazione, su una chiave che nessun
     #        verbo scrive.
-    @patch.object(RegistriRepository, "create_registro")
+    @patch.object(RegistriRepository, "create_registro", autospec=True)
     def test_chiave_estranea_in_creazione_e_400(self, mock_create):
         with self.assertRaises(ServiceError) as ctx:
             RegistriService().create_registro(
@@ -379,8 +379,8 @@ class RegistriProgressiviTests(TestCase):
     # Scopo: (10) i progressivi si leggono DOPO che lo scope ha risolto il
     #        registro. Leggerli per id prima del controllo risponderebbe coi
     #        contatori di un sezionale altrui dentro un 404.
-    @patch.object(RegistriRepository, "list_progressivi")
-    @patch.object(RegistriRepository, "get_registro", return_value=None)
+    @patch.object(RegistriRepository, "list_progressivi", autospec=True)
+    @patch.object(RegistriRepository, "get_registro", autospec=True, return_value=None)
     def test_progressivi_letti_solo_dopo_lo_scope(self, _get, mock_prog):
         with self.assertRaises(ServiceError):
             RegistriService().get_registro(7, [11])
@@ -490,7 +490,7 @@ class RegistriRevisioneTests(TestCase):
     #    andare al database trasformerebbe due test di contratto — che questo
     #    file dichiara di fare coi mock — in due test che senza database
     #    falliscono, e il difetto si vedrebbe in CI e non qui.
-    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=False)
+    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", autospec=True, return_value=False)
     def test_politica_data_neutralizzata_fuori_fattura(self, _ammette):
         dati = RegistriService()._normalizza({
             "famiglia_documento": "DDT_VENDITA",
@@ -503,7 +503,7 @@ class RegistriRevisioneTests(TestCase):
     # Scopo: (12b) il gemello positivo — su FATTURA la politica passa intatta.
     #        Senza, il test non distingue «normalizza il caso giusto» da
     #        «schiaccia tutto su OGGI».
-    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=True)
+    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", autospec=True, return_value=True)
     def test_politica_data_intatta_su_fattura(self, _ammette):
         dati = RegistriService()._normalizza({
             "famiglia_documento": "FATTURA",
@@ -519,7 +519,7 @@ class RegistriRevisioneTests(TestCase):
     #        — tolto il 2026-09-02, §11.10 BE-F2 — questo test sarebbe rosso, e
     #        i campi di quella famiglia sarebbero spariti dalla maschera senza
     #        che niente fallisse.
-    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=True)
+    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", autospec=True, return_value=True)
     def test_i_campi_fiscali_seguono_il_catalogo_non_il_nome(self, _ammette):
         dati = RegistriService()._normalizza({
             "famiglia_documento": "PARCELLA",
@@ -535,7 +535,7 @@ class RegistriRevisioneTests(TestCase):
     #        suo messaggio, un attimo dopo. Ripiegare su «presidia» manderebbe
     #        al database valori che il CHECK respinge, con un errore che parla
     #        di un campo invece che della famiglia.
-    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=None)
+    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", autospec=True, return_value=None)
     def test_famiglia_sconosciuta_azzera_i_campi_fiscali(self, _ammette):
         dati = RegistriService()._normalizza({
             "famiglia_documento": "NON_ESISTE",
@@ -549,9 +549,9 @@ class RegistriRevisioneTests(TestCase):
     #        anche prima della scrittura per distinguere il 404, e ogni lettura
     #        fa girare le DUE check in LATERAL piu' la query dei contatori: due
     #        letture per un'informazione che la rilettura da' comunque.
-    @patch.object(RegistriRepository, "list_progressivi", return_value=[])
-    @patch.object(RegistriRepository, "set_attivo", return_value=1)
-    @patch.object(RegistriRepository, "get_registro", return_value=_registro())
+    @patch.object(RegistriRepository, "list_progressivi", autospec=True, return_value=[])
+    @patch.object(RegistriRepository, "set_attivo", autospec=True, return_value=1)
+    @patch.object(RegistriRepository, "get_registro", autospec=True, return_value=_registro())
     def test_set_attivo_legge_una_volta_sola(self, mock_get, mock_set, _prog):
         RegistriService().set_attivo(7, [99], attivo=False)
         self.assertEqual(mock_get.call_count, 1)
@@ -561,8 +561,8 @@ class RegistriRevisioneTests(TestCase):
     # Scopo: (13b) e togliendo la pre-lettura il 404 deve reggere lo stesso —
     #        e' la rilettura a produrlo. Senza questo test la semplificazione
     #        avrebbe trasformato un id fuori perimetro in un 200 silenzioso.
-    @patch.object(RegistriRepository, "set_attivo", return_value=0)
-    @patch.object(RegistriRepository, "get_registro", return_value=None)
+    @patch.object(RegistriRepository, "set_attivo", autospec=True, return_value=0)
+    @patch.object(RegistriRepository, "get_registro", autospec=True, return_value=None)
     def test_set_attivo_fuori_scope_e_404(self, _get, _set):
         with self.assertRaises(ServiceError) as ctx:
             RegistriService().set_attivo(7, [11], attivo=False)

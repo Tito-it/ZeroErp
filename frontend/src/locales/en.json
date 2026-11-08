@@ -5224,8 +5224,12 @@
       "filtro_documento_rettifica": "Movements of adjustment #{id}",
       "filtro_documento_rimuovi": "Remove filter",
       "sorgente": {
-        "INVENTARIO_RIGA": "Stock count",
-        "RETTIFICA_RIGA": "Adjustment"
+        "INVENTARIO": "Stock count",
+        "RETTIFICA": "Adjustment",
+        "TRASFERIMENTO": "Transfer",
+        "DDT_VENDITA": "Delivery note",
+        "RESO_VENDITA": "Sales return",
+        "EVENTO_ASSET": "Asset event"
       }
     },
     "documenti_interni": {
