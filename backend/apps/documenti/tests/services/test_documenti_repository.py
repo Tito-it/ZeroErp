@@ -558,5 +558,5 @@ class DocumentiRepositoryVersioneMutationsTests(TestCase):
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("documenti.fn_pubblica_template_documento_versione", sql)
         # Firma a quattro dal 20260930-21: la forma del builder e' obbligatoria.
-        self.assertIn("p_versione_contesto => %s", sql)
+        self.assertRegex(sql, r"\bp_versione_contesto\s*=>\s*%s")
         self.assertEqual(params, [11, _date(2026, 6, 1), 2, None])

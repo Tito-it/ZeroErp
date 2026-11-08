@@ -34,6 +34,7 @@
 # Indice test:
 #   1. test_il_ramo_tutte_fallite_non_solleva
 #   2. test_la_riga_dell_esito_resta_scritta
+#   3. test_la_segnalazione_dichiara_la_commessa (V-7-bis)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -219,4 +220,49 @@ class PullTutteFalliteScritturaReale(TestCase):
                 # ⛔ Un errore muto non si scrive: il vincolo di tabella pretende
                 #    almeno una fra causa e frase, e qui ci sono entrambe.
                 self.assertIn("ROOT source mancante", messaggio or "")
+            transaction.set_rollback(True)
+
+    # 3) ⭐ LA SEGNALAZIONE DICHIARA LA COMMESSA, sulla colonna e non solo nel
+    #    `context` (V-7-bis, brief-db-sorgente-documento-e-riga §8.23). E' anche
+    #    la prova del BINDING: il nono parametro di `vendite.fn_log_pipeline_fase`
+    #    passato per nome — un nome sbagliato qui e' un errore di Postgres, che
+    #    nessun mock del cursore vedrebbe.
+    # ⚠️ Si leggono solo le righe scritte da QUESTO giro (id oltre il massimo di
+    #    prima): il lotto puo' portare segnalazioni della sua storia.
+    def test_la_segnalazione_dichiara_la_commessa(self) -> None:
+        with transaction.atomic():
+            lotto_id, commesse = self._prepara()
+            with connection.cursor() as cur:
+                cur.execute(
+                    "SELECT COALESCE(max(id), 0) FROM vendite.fatturazione_lotti_log "
+                    "WHERE lotto_id = %s",
+                    [lotto_id],
+                )
+                (id_prima,) = cur.fetchone()
+            _esito, eccezione = self._esegui(lotto_id, commesse)
+            self.assertIsNone(eccezione)
+            with connection.cursor() as cur:
+                # ⚠️ La commessa attesa si legge dalla STESSA riga (il `context`
+                #    che `item_failed` scrive), non dalla posizione nella
+                #    fixture: con piu' commesse che cadono, ogni riga parla della
+                #    sua, e un confronto con `commesse[0]` sarebbe rosso a torto.
+                cur.execute(
+                    """
+                    SELECT commessa_id, (meta->'context'->>'commessa_id')::bigint
+                    FROM vendite.fatturazione_lotti_log
+                    WHERE lotto_id = %s AND id > %s
+                      AND meta->>'error_code' = 'E_PULL_COMMESSA'
+                    """,
+                    [lotto_id, id_prima],
+                )
+                righe = cur.fetchall()
+            self.assertTrue(righe, "nessuna segnalazione E_PULL_COMMESSA scritta dal giro")
+            for commessa_id, commessa_del_contesto in righe:
+                self.assertEqual(
+                    commessa_id, commessa_del_contesto,
+                    "la segnalazione non porta la commessa da cui nasce: la scheda "
+                    "Critiche ripiega sulla commessa aperta del documento (V-7-bis)",
+                )
+            # ⭐ E ogni commessa caduta ha la sua segnalazione: nessuna si perde.
+            self.assertEqual({c for c, _ in righe}, set(commesse))
             transaction.set_rollback(True)

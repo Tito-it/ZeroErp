@@ -37,6 +37,7 @@ Indice test eseguiti:
 26) VenditePipelineRepositoryUnitTests.test_gruppi_di_commessa_decodifica_il_jsonb_stringa
 27) VenditePipelineRepositoryUnitTests.test_gruppi_di_commessa_forma_inattesa_ripiega_a_vuoto
 28) VenditePipelineRepositoryUnitTests.test_log_pipeline_fase_passa_la_gruppo_key_per_nome
+28b) VenditePipelineRepositoryUnitTests.test_log_pipeline_fase_passa_la_commessa_per_nome
 29) VenditePipelineRepositoryUnitTests.test_list_lotto_segnalazioni_motivo_dalla_vista_non_si_compone
 """
 
@@ -856,7 +857,31 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         )
 
         sql, params = cursor.execute.call_args.args[0], cursor.execute.call_args.args[1]
-        self.assertIn("p_gruppo_key           => %s", sql)
+        self.assertRegex(sql, r"\bp_gruppo_key\s*=>\s*%s")
         # ⛔ `p_error_code` NON si passa: deve restare al suo default.
         self.assertNotIn("p_error_code", sql)
-        self.assertEqual(params[-1], "ORDINE_VENDITA:aaa")
+        # ⚠️ Penultimo e non ultimo: in coda c'e' `p_commessa_id` (V-7-bis).
+        self.assertEqual(params[-2], "ORDINE_VENDITA:aaa")
+        self.assertIsNone(params[-1])
+
+    # 28b) ⭐ LA COMMESSA DELLA SEGNALAZIONE, per nome (V-7-bis,
+    #      brief-db-sorgente-documento-e-riga §8.23): il nono parametro e' in
+    #      coda, e si passa accanto alla `gruppo_key`. Senza, la scheda
+    #      Critiche ripiega sulla commessa APERTA del documento, che a commessa
+    #      chiusa non c'e' piu' e su un lotto vecchio e' un'altra.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_log_pipeline_fase_passa_la_commessa_per_nome(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        mocked_cursor_factory.return_value = cursor
+
+        VenditePipelineRepository().log_pipeline_fase(
+            lotto_id=1, stato_doc_fiscale_id=2, fase="Errore pipeline",
+            status="C", messaggio="ko", meta=None,
+            gruppo_key="ORDINE_VENDITA:aaa", commessa_id=77,
+        )
+
+        sql, params = cursor.execute.call_args.args[0], cursor.execute.call_args.args[1]
+        self.assertRegex(sql, r"\bp_commessa_id\s*=>\s*%s")
+        self.assertEqual(params[-1], 77)
+        self.assertEqual(params[-2], "ORDINE_VENDITA:aaa")

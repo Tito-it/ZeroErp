@@ -30,7 +30,6 @@ import {
   createOfferta,
   creaRevisioneOfferta,
   deleteEccezione,
-  deleteOfferta,
   emettiOfferta,
   generaOrdineFromOfferta,
   getContrattoSovrapposto,
@@ -112,13 +111,6 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
   // Scopo: Aggiorna testata offerta (solo se in BOZZA).
   async function update(id, payload) {
     const res = await updateOfferta(id, payload)
-    emitDataChanged(TAB_ENTITIES.OFFERTA_COMMERCIALE, id)
-    return res.data.data
-  }
-
-  // Scopo: Hard-delete offerta BOZZA orfana (flusso abbandono drawer create).
-  async function elimina(id) {
-    const res = await deleteOfferta(id)
     emitDataChanged(TAB_ENTITIES.OFFERTA_COMMERCIALE, id)
     return res.data.data
   }
@@ -220,7 +212,7 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
     ...lista,
     // testata (utility 1:1 atomica via payload.utility inline)
-    fetchDetail, create, update, elimina,
+    fetchDetail, create, update,
     // transizioni
     emetti, registraEsito, annulla, creaRevisione, pushAContratto,
     generaOrdine,
