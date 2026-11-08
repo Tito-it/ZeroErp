@@ -12,12 +12,16 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: una colonna che promette un'automazione ha chi la esegue
---   Vista: dbops.vw_marcatori_automazione_senza_esecutore (20261108-27)
+--   Vista: dbops.vw_marcatori_automazione_senza_esecutore (20261108-27; la
+--   colonna di storicizzazione dall'override, 20261108-92)
 --   Registro: dbops.marcatori_automazione_debito (20261108-26, seed 20261108-31)
 --   Brief: brief-db-revisione-dbops, giro 7 (D35, D36, D37; perimetro di Tid del
---   2026-11-07: tx_id, storicizza, cleanup_at).
+--   2026-11-07: tx_id, storicizza, cleanup_at); giro 7-bis (§23, 2026-11-08):
+--   i cataloghi di dbops scritti dal solo seed perdono i marcatori, la vista
+--   legge l'override STORICIZZA_COL; blocco b (§23.11, 20261109-31): la classe B
+--   perde data_update e user_update.
 --
--- Elenco test (plan 13):
+-- Elenco test (plan 16):
 --   1) ⭐ IL PRESIDIO: sul database nessuna riga NON_DICHIARATO ne' DEBITO_ESTINTO
 --   2) le chiusure del giro 7: dbops.audit_sources non ha piu' le quattro colonne
 --   3) le chiusure del giro 7: shop.ricevute e dbops.ai_query_log sono nell'ambito
@@ -32,6 +36,11 @@
 --  11) ⛔ il registro rifiuta una ragione corta
 --  12) ⛔ e un marcatore fuori vocabolario
 --  13) lo schema storico e' fuori: una shadow ricopia le colonne della madre
+--  14) le chiusure del giro 7-bis: i ventotto cataloghi di dbops scritti dal solo
+--      seed non hanno piu' tx_id, data_update, user_update (blocchi a e b)
+--  15) ⭐ storicizza rinominata con l'override STORICIZZA_COL e' ancora il marcatore
+--  16) ⛔ una colonna «storicizza» su una tabella con l'override verso un'altra
+--      colonna non lo e' (si legge come la provision dello storico)
 --
 -- ⭐ I test 4 e 7 vanno letti insieme: il primo prova che il presidio vede, il
 --   secondo che non vede troppo. Provare solo il 4 lascerebbe passare una vista
@@ -47,7 +56,7 @@ BEGIN;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(13);
+SELECT plan(16);
 
 -- ============================================================
 -- 1) Il presidio sul database com'e' (prima di costruire i casi)
@@ -191,6 +200,58 @@ SELECT is_empty(
     $q$SELECT 1 FROM dbops.vw_marcatori_automazione_senza_esecutore
         WHERE schema_tabella = 'storico'$q$,
     '13) Lo schema storico e'' fuori dal criterio: le shadow ricopiano le colonne della madre');
+
+-- ============================================================
+-- 14) Le chiusure del giro 7-bis (20261108-90, -91; 20261109-31)
+-- ============================================================
+SELECT is_empty(
+    $q$SELECT c.relname::text, a.attname::text
+         FROM pg_attribute a
+         JOIN pg_class c ON c.oid = a.attrelid
+        WHERE c.relnamespace = 'dbops'::regnamespace
+          AND c.relname IN ('coda_lavori_tipi', 'marcatori_automazione_debito', 'processi',
+                            'processi_bersagli', 'rls_perimetro_debito', 'stati_check_dichiarazioni',
+                            'automazione_chiusura_scadenze', 'cause_fallimento',
+                            'codici_errore_senza_policy', 'emittente_modi',
+                            'messaggi_errore_codici_legacy', 'presidi', 'presidi_cause',
+                            'presidi_testi', 'riferimenti_morti_esenzioni', 'storico_scope_policy')
+          AND a.attname IN ('tx_id', 'data_update', 'user_update')
+          AND a.attnum > 0 AND NOT a.attisdropped
+       UNION ALL
+       -- blocco b (20261109-31): la classe B non aveva tx_id, perde le due di aggiornamento
+       SELECT c.relname::text, a.attname::text
+         FROM pg_attribute a
+         JOIN pg_class c ON c.oid = a.attrelid
+        WHERE c.relnamespace = 'dbops'::regnamespace
+          AND c.relname IN ('automation_cleanup_exclusions', 'automation_delete_block',
+                            'automation_lock_columns', 'automazione_attivo_eccezioni',
+                            'automazione_codice_eccezioni', 'automazione_guard_utility_tipo_ruolo',
+                            'automazione_overlap', 'domini_task', 'fk_index_policy',
+                            'lock_columns_conditional', 'pipeline_task_registry',
+                            'pipeline_task_registry_impl')
+          AND a.attname IN ('tx_id', 'data_update', 'user_update')
+          AND a.attnum > 0 AND NOT a.attisdropped$q$,
+    '14) I ventotto cataloghi di dbops scritti dal solo seed non hanno piu'' tx_id, data_update, user_update');
+
+-- ============================================================
+-- 15-16) L'override della colonna di storicizzazione (20261108-92)
+--   Due tabelle nuove dello schema di prova, fuori dall'ambito (il test 7 vi
+--   ammette solo t_cl e t_sto per nome).
+-- ============================================================
+CREATE TABLE pgtap_marcatori.t_sto_ovr     (id int PRIMARY KEY, da_storicizzare boolean NOT NULL DEFAULT true);
+CREATE TABLE pgtap_marcatori.t_sto_altrove (id int PRIMARY KEY, storicizza boolean NOT NULL DEFAULT true);
+INSERT INTO dbops.automation_overrides_cols (schema_name, table_name, col_role, col_name)
+VALUES ('pgtap_marcatori', 't_sto_ovr',     'STORICIZZA_COL', 'da_storicizzare'),
+       ('pgtap_marcatori', 't_sto_altrove', 'STORICIZZA_COL', 'flag_storico_inesistente');
+
+SELECT results_eq(
+    $q$SELECT marcatore, stato FROM tmp_casi WHERE nome_tabella = 't_sto_ovr'$q$,
+    $q$VALUES ('STORICIZZA'::text, 'NON_DICHIARATO'::text)$q$,
+    '15) La colonna di storicizzazione rinominata con l''override STORICIZZA_COL e'' il marcatore');
+
+SELECT is_empty(
+    $q$SELECT 1 FROM tmp_casi WHERE nome_tabella = 't_sto_altrove'$q$,
+    '16) Con l''override verso un''altra colonna, la colonna «storicizza» non e'' il marcatore (come la provision)');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le tabelle con una colonna che promette un'automazione che nessuno esegue: tx_id senza il trigger di dbops.trgfn_tx_id_managed, storicizza senza quello di script.trgfn_storico_generic, cleanup_at senza il purge. Una tabella e' servita dai runner se e' ordinaria (partizioni comprese), il suo schema e' in dbops.fn_resolve_scope e dbops.fn_table_in_scope la ammette; per tx_id e storicizza basta anche il trigger montato a mano e abilitato; per cleanup_at no, e una tabella esclusa in dbops.automation_cleanup_exclusions resta scoperta. Lo schema storico e gli schemi di sistema sono fuori: le shadow ricopiano le colonne della madre. Tre stati: NON_DICHIARATO e' un allarme, DEBITO_DICHIARATO e' il debito noto di dbops.marcatori_automazione_debito, DEBITO_ESTINTO e' una riga di registro da togliere. A catalogo in dbops.presidi; lo prova dbops/test-marcatori-automazione-senza-esecutore-v1.
+> Le tabelle con una colonna che promette un'automazione che nessuno esegue: tx_id senza il trigger di dbops.trgfn_tx_id_managed, storicizza senza quello di script.trgfn_storico_generic, cleanup_at senza il purge. Una tabella e' servita dai runner se e' ordinaria (partizioni comprese), il suo schema e' in dbops.fn_resolve_scope e dbops.fn_table_in_scope la ammette; per tx_id e storicizza basta anche il trigger montato a mano e abilitato; per cleanup_at no, e una tabella esclusa in dbops.automation_cleanup_exclusions resta scoperta. La colonna di storicizzazione si legge con dbops.fn_get_override_col (ruolo STORICIZZA_COL, default storicizza), come la provision dello storico; tx_id e cleanup_at col loro nome. Lo schema storico e gli schemi di sistema sono fuori: le shadow ricopiano le colonne della madre. Tre stati: NON_DICHIARATO e' un allarme, DEBITO_DICHIARATO e' il debito noto di dbops.marcatori_automazione_debito, DEBITO_ESTINTO e' una riga di registro da togliere. A catalogo in dbops.presidi; lo prova dbops/test-marcatori-automazione-senza-esecutore-v1.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -32,8 +32,8 @@ WITH ambito AS (
             t.servita_dai_runner,
             m.marcatore
            FROM ((tabelle t
-             JOIN pg_attribute att ON (((att.attrelid = t.oid) AND (att.attnum > 0) AND (NOT att.attisdropped))))
-             JOIN ( VALUES ('tx_id'::name,'TX_ID'::text), ('storicizza'::name,'STORICIZZA'::text), ('cleanup_at'::name,'CLEANUP_AT'::text)) m(colonna, marcatore) ON ((m.colonna = att.attname)))
+             CROSS JOIN LATERAL ( VALUES ('TX_ID'::text,'tx_id'::text), ('STORICIZZA'::text,dbops.fn_get_override_col(t.schema_tabella, t.nome_tabella, 'STORICIZZA_COL'::text, 'storicizza'::text)), ('CLEANUP_AT'::text,'cleanup_at'::text)) m(marcatore, colonna))
+             JOIN pg_attribute att ON (((att.attrelid = t.oid) AND (att.attnum > 0) AND (NOT att.attisdropped) AND (att.attname = (m.colonna)::name))))
         ), esecutori AS (
          SELECT m.oid,
             m.schema_tabella,

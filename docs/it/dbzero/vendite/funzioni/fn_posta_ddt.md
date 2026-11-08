@@ -27,6 +27,8 @@ DECLARE
     v_ddt         vendite.ddt%ROWTYPE;
     v_causale     config.causali_trasporto.causale_magazzino%TYPE;
     v_sorgente_id config.sorgenti.id%TYPE;
+    v_prov_id     magazzino.movimenti.sorgente_id%TYPE;
+    v_prov_uid    magazzino.movimenti.sorgente_uid%TYPE;
     v_prel        record;
 BEGIN
     IF p_ddt_id IS NULL OR p_ddt_id <= 0
@@ -58,18 +60,14 @@ BEGIN
             'una bolla che muove merce (ARRIVO: solo la bolla di trasferimento)');
     END IF;
 
-    SELECT s.id INTO v_sorgente_id
-      FROM config.sorgenti s
-     WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO' AND s.attivo;
-    IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('config', 'config.sorgenti.DDT_VENDITA_PRELIEVO'),
-            NULL::uuid, VARIADIC ARRAY['sorgente DDT_VENDITA_PRELIEVO (config.sorgenti, attiva)']);
-    END IF;
+    -- La provenienza e' la BOLLA (S-3), dal BB che la scrive; sotto, riga e
+    -- prelievo. Un tipo assente o spento e' E_SORG_CONF dal BB.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_sorgente_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('DDT_VENDITA', p_ddt_id::text) p;
 
     FOR v_prel IN
-        SELECT p.id, p.qta AS p_qta, p.lotto_id, p.asset_id,
+        SELECT p.id, dr.id AS ddt_riga_id, p.qta AS p_qta, p.lotto_id, p.asset_id,
                p.ubicazione_id, p.ubicazione_arrivo_id,
                COALESCE(drc.componente_id, dr.articolo_id) AS articolo_id
           FROM vendite.ddt_righe_prelievi p
@@ -86,7 +84,10 @@ BEGIN
                 p_causale          => v_causale,
                 p_qta              => -v_prel.p_qta,
                 p_sorgente_tipo_id => v_sorgente_id,
-                p_sorgente_riga    => v_prel.id,
+                p_sorgente_id      => v_prov_id,
+                p_sorgente_uid     => v_prov_uid,
+                p_sorgente_riga    => v_prel.ddt_riga_id,
+                p_sorgente_dettaglio => v_prel.id,
                 p_lotto_id         => v_prel.lotto_id,
                 p_asset_id         => v_prel.asset_id,
                 p_ubicazione_id    => v_prel.ubicazione_id,
@@ -100,7 +101,10 @@ BEGIN
                 p_causale          => 'TRASF_IN',
                 p_qta              => v_prel.p_qta,
                 p_sorgente_tipo_id => v_sorgente_id,
-                p_sorgente_riga    => v_prel.id,
+                p_sorgente_id      => v_prov_id,
+                p_sorgente_uid     => v_prov_uid,
+                p_sorgente_riga    => v_prel.ddt_riga_id,
+                p_sorgente_dettaglio => v_prel.id,
                 p_lotto_id         => v_prel.lotto_id,
                 p_asset_id         => v_prel.asset_id,
                 p_ubicazione_id    => v_prel.ubicazione_arrivo_id,
@@ -116,7 +120,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_posta_ddt(p_ddt_id bigint, p_fase text)
-IS 'Il posting di una bolla: un movimento per prelievo (sorgente DDT_VENDITA_PRELIEVO, D-L3-d), righe attive, in ordine di riga e di prelievo. p_fase = USCITA (all''EMESSO): dal magazzino della bolla, con la causale di magazzino della sua causale di trasporto (vendite.fn_ddt_causale_magazzino), quantita'' negativa, ubicazione di partenza, data della bolla; per la bolla di trasferimento transfer_uid = uid della bolla. p_fase = ARRIVO (al CONSEGNATO, solo trasferimento): nel magazzino di arrivo, TRASF_IN, ubicazione di arrivo, stesso transfer_uid — il costo e'' quello dell''uscita, lo trova la primitiva. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea prelievi, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_cambia_stato_ddt. Ritorna (movimento_id, prelievo_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_ddt. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-7), brief-db-magazzino-registro-anello-interno (P-1).';
+IS 'Il posting di una bolla: un movimento per prelievo (provenienza: la bolla DDT_VENDITA, la riga, il prelievo come dettaglio; dal BB script.fn_sorgente_provenienza, brief-db-sorgente-documento-e-riga lotto M; D-L3-d), righe attive, in ordine di riga e di prelievo. p_fase = USCITA (all''EMESSO): dal magazzino della bolla, con la causale di magazzino della sua causale di trasporto (vendite.fn_ddt_causale_magazzino), quantita'' negativa, ubicazione di partenza, data della bolla; per la bolla di trasferimento transfer_uid = uid della bolla. p_fase = ARRIVO (al CONSEGNATO, solo trasferimento): nel magazzino di arrivo, TRASF_IN, ubicazione di arrivo, stesso transfer_uid — il costo e'' quello dell''uscita, lo trova la primitiva. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea prelievi, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_cambia_stato_ddt. Ritorna (movimento_id, prelievo_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_ddt. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-7), brief-db-magazzino-registro-anello-interno (P-1).';
 ```
 
 </div>

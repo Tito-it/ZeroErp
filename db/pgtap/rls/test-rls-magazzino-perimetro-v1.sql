@@ -120,7 +120,9 @@ BEGIN
     END IF;
     SELECT id INTO v_cinv FROM magazzino.causali WHERE codice_interno = 'INV_INIZIALE';
     SELECT id INTO v_cout FROM magazzino.causali WHERE codice_interno = 'SCARICO_VEN';
-    SELECT id INTO v_sinv FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA';
+    -- rev 2026-11-09 (lotto M): la provenienza del movimento e' il documento (INVENTARIO) con la riga.
+    -- ⚠️ Le note sotto restano sui codici di config.tipi_entita (INVENTARIO_RIGA…): sono entita', non sorgenti.
+    SELECT id INTO v_sinv FROM config.sorgenti WHERE codice_interno = 'INVENTARIO';
 
     FOR m IN SELECT * FROM _mondi ORDER BY lato LOOP
         r.lato := m.lato;
@@ -133,8 +135,8 @@ BEGIN
         INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta) VALUES (r.ret, v_art, -1) RETURNING id INTO r.ret_riga;
         INSERT INTO magazzino.trasferimenti (magazzino_id_from, magazzino_id_to) VALUES (r.mag, v_mag2) RETURNING id INTO r.tra;
         INSERT INTO magazzino.trasferimenti_righe (trasferimento_id, articolo_id, qta) VALUES (r.tra, v_art, 1) RETURNING id INTO r.tra_riga;
-        INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga, ubicazione_id)
-        VALUES (v_art, r.mag, v_cinv, 5, v_sinv, r.inv_riga, r.ubi) RETURNING id INTO r.mov;
+        INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga, ubicazione_id)
+        VALUES (v_art, r.mag, v_cinv, 5, v_sinv, r.inv, r.inv_riga, r.ubi) RETURNING id INTO r.mov;
         INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, causale_id, qta, soggetto_ruolo_id)
         VALUES (v_art, r.mag, v_cout, -1, m.soggetto_ruolo_id) RETURNING id INTO r.att;
         INSERT INTO magazzino.valore_giacenza (articolo_id, magazzino_id, valore) VALUES (v_art, r.mag, 50);

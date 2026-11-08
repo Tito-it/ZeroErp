@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.fk_index_policy`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -103,9 +103,8 @@ le due guardie, una copia artigianale no.
 
 * `db/pgtap/dbops/test-indici-letture-trasversali-v1.sql` — una riga di policy a `true` col
   comando che nomina l'indice canonico, e l'indice che ne è uscito.
-* `db/pgtap/dbops/test-user-update-not-null-v1.sql` — la tabella è un debito dichiarato della
-  regola «`user_update` obbligatoria»: non ha trigger di audit, e `user_update` / `data_update`
-  non li scrive nessuno. Il test diventa rosso se la voce si chiude o se la tabella prende l'audit.
+* `db/pgtap/dbops/test-marcatori-automazione-senza-esecutore-v1.sql` (test 14) — la tabella non
+  ha `tx_id`, `data_update` né `user_update`: un catalogo che scrive solo la migrazione non li porta.
 
 ---
 
@@ -117,6 +116,10 @@ le due guardie, una copia artigianale no.
   documentazione di allora mostrava un esempio con una descrizione in italiano nel comando, e chi
   l'avesse seguito avrebbe rotto il deploy. Lo stesso giorno la procedura prende le due guardie e
   la copertura delle viste passa al prefisso.
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno scriveva: la scrivono la
+  migrazione e il popolamento a runtime, che però inserisce soltanto e non aggiorna mai (regola
+  dello scrittore, `automazione-db.md` §1.1; `brief-db-revisione-dbops`, giro 7-bis). Esce dal
+  registro del debito di `test-user-update-not-null-v1`.
 
 ---
 

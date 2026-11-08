@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_overlap`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -91,6 +91,9 @@ nello stesso changeSet che cambia la riga, e il giro successivo lo ricrea nella 
 * 2026-11-04 — ritirata `fn_seed_automazione_overlap`, la rilevazione automatica nata col
   registro. Non la chiamava nessuno, ed era una seconda sorgente: lanciata, riscriveva le righe
   curate dai changeSet (`brief-db-revisione-dbops`).
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -82,6 +82,9 @@ Una riga nuova ha effetto al giro successivo del motore: è lì che i trigger es
   §12.3). Non è la vecchia `automation_fk_exclusions`, ritirata con le funzioni trigger legacy:
   quella era un elenco senza motivo e senza ritiro.
 * 2026-10-20 — seconda riga, la coda di stampa (`brief-db-modelli-documento-standard` §9).
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

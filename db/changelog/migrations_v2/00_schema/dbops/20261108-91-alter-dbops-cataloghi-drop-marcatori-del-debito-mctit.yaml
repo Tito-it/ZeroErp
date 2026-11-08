@@ -1,0 +1,186 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DIECI CATALOGHI DI dbops PERDONO tx_id, data_update E user_update: IL
+# DEBITO DEI MARCATORI SI CHIUDE TOGLIENDO LA COLONNA
+#   dbops.automazione_chiusura_scadenze, cause_fallimento,
+#   codici_errore_senza_policy, emittente_modi, messaggi_errore_codici_legacy,
+#   presidi, presidi_cause, presidi_testi, riferimenti_morti_esenzioni,
+#   storico_scope_policy
+#   Brief: brief-db-revisione-dbops, giro 7-bis, blocco a (§23).
+#
+# ── ⭐ IL CRITERIO: LO SCRITTORE (Tid, 2026-11-07, §20.8.1 e §20.8.2) ──
+#   In dbops tx_id, data_update e user_update restano dove la riga la scrive una
+#   transazione di dominio o di sessione: li' tx_id lega la riga a cio' che la
+#   stessa transazione ha scritto altrove (audit, storico, error_log), e le due
+#   colonne di aggiornamento dicono chi l'ha cambiata e quando. Si tolgono dove
+#   la riga la scrive solo il migratore, dai CSV di 80_data: li' direbbero
+#   sempre «il migratore, al migrate», e chi e quando lo dicono gia'
+#   databasechangelog e git. data_insert e user_insert restano: li riempie il
+#   DEFAULT alla nascita, e sono veri.
+#   Restano le tre colonne su coda_lavori e processi_identita (trigger a mano)
+#   e sui cinque registri nell'ambito per nome (trigger del framework).
+#
+# ── ⚠️ CHI LE NOMINAVA (censito sullo scratch, 2026-11-08, §23.1) ────
+#   Nessuna vista, regola, vincolo o funzione BEGIN ATOMIC (pg_depend); nessun
+#   corpo di funzione; nessun loader o CSV di 80_data/90_end (da zero girano
+#   DOPO questo DROP: nessuno elenca le tre colonne); nessuna query del
+#   backend. Nessuna tabella di storico.* ricopia queste madri.
+#
+#   Sono le dieci righe TX_ID di dbops.marcatori_automazione_debito (§20.8):
+#   tx_id senza nessun trigger, quindi sempre vuoto. Il criterio decide per la
+#   colonna tolta, non per i trigger montati: le righe del registro le cancella
+#   80_data/changelog/20261108-93, e il CSV del registro resta col solo header.
+#   emittente_modi ha il suo guard «solo migrazione»
+#   (trgfn_emittente_modi_solo_migrazione), che lo dice gia' nel catalogo.
+#
+# IF EXISTS: idempotente. I COMMENT delle tabelle non nominano le colonne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261108-91-alter-dbops-cataloghi-drop-marcatori-del-debito-mctit.yaml
+
+  - changeSet:
+      id: 20261108-91-alter-dbops-cataloghi-drop-marcatori-del-debito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dieci cataloghi di dbops scritti solo dal migratore perdono tx_id, data_update e user_update:
+        nessuno li scriveva (il debito TX_ID dei marcatori). Brief: brief-db-revisione-dbops, giro 7-bis.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: automazione_chiusura_scadenze }
+        - tableExists:
+            { schemaName: dbops, tableName: cause_fallimento }
+        - tableExists:
+            { schemaName: dbops, tableName: codici_errore_senza_policy }
+        - tableExists:
+            { schemaName: dbops, tableName: emittente_modi }
+        - tableExists:
+            { schemaName: dbops, tableName: messaggi_errore_codici_legacy }
+        - tableExists:
+            { schemaName: dbops, tableName: presidi }
+        - tableExists:
+            { schemaName: dbops, tableName: presidi_cause }
+        - tableExists:
+            { schemaName: dbops, tableName: presidi_testi }
+        - tableExists:
+            { schemaName: dbops, tableName: riferimenti_morti_esenzioni }
+        - tableExists:
+            { schemaName: dbops, tableName: storico_scope_policy }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.cause_fallimento
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.codici_errore_senza_policy
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.emittente_modi
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.presidi
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.presidi_cause
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.presidi_testi
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.riferimenti_morti_esenzioni
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              ALTER TABLE dbops.storico_scope_policy
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.cause_fallimento
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.codici_errore_senza_policy
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.emittente_modi
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.presidi
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.presidi_cause
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.presidi_testi
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.riferimenti_morti_esenzioni
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;
+
+              ALTER TABLE dbops.storico_scope_policy
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL;

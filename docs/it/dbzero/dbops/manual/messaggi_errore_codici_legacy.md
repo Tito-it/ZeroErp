@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.messaggi_errore_codici_legacy`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -70,6 +70,9 @@ legge.
 * 2026-08-07 — arriva a zero, l'ultima voce col rinomino di `MESSAGGIO_NON_DEFINITO` in
   `E_MESSAGGIO_NON_DEFINITO`.
 * 2026-08-08 — Tid decide di non toglierla.
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
 
 ---
 

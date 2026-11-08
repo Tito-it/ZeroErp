@@ -18,9 +18,6 @@
 | data_registrazione | date | NO | script.fn_data_operativa() |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | CURRENT_USER |
-| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -36,14 +33,6 @@
 |------|-------------|
 | pk_stati_check_dichiarazioni | `CREATE UNIQUE INDEX pk_stati_check_dichiarazioni ON dbops.stati_check_dichiarazioni USING btree (id)` |
 | uq_stati_check_dichiarazioni_valore | `CREATE UNIQUE INDEX uq_stati_check_dichiarazioni_valore ON dbops.stati_check_dichiarazioni USING btree (schema_tabella, nome_tabella, colonna, valore)` |
-
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_stati_check_dichiarazioni_audit_data_user_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_stati_check_dichiarazioni_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_stati_check_dichiarazioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_stati_check_dichiarazioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

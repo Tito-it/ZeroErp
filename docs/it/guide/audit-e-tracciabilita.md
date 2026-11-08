@@ -1,6 +1,6 @@
 # Guida — Audit e Tracciabilità
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, analisti funzionali
 >
@@ -114,6 +114,14 @@ due record modificati nella stessa transazione condividono lo stesso `tx_id`.
 Questo permette di raggruppare tutte le scritture avvenute in un'unica operazione
 atomica — ad esempio, la creazione di una pratica che genera contestualmente
 il primo flusso e la prima voce di giornale.
+
+⚠️ **Le tabelle che scrive solo la migrazione non hanno `tx_id`.** Nello schema `dbops` i
+cataloghi seminati dai CSV (processi, presidi, tipi di lavoro, i registri del debito) non portano
+né `tx_id` né `data_update`/`user_update`: legherebbero la riga alla sola migrazione, e direbbero
+«il migratore» a chi cerca chi l'ha cambiata. Lo dicono già lo storico delle migrazioni e git.
+Le tabelle di `dbops` che si scrivono a runtime (la coda lavori, le identità tecniche, i registri)
+tengono il `tx_id` col trigger, montato a mano o dal framework: la regola sta in
+[automazione-db.md](automazione-db.md) §1.1.
 
 ### 2.4 Storicizzazione
 

@@ -18,9 +18,6 @@
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | CURRENT_USER |
-| tx_id | uuid | YES |  |
 | jobname_pgagent | text | YES |  |
 | tolleranza_minuti | integer | YES |  |
 | segno_di_vita | text | NO | 'GIORNALE'::text |
@@ -58,14 +55,6 @@
 | uq_processi_ci_ordine | `CREATE UNIQUE INDEX uq_processi_ci_ordine ON dbops.processi USING btree (ci_ordine)` |
 | uq_processi_codice | `CREATE UNIQUE INDEX uq_processi_codice ON dbops.processi USING btree (codice)` |
 | uq_processi_jobname_pgagent | `CREATE UNIQUE INDEX uq_processi_jobname_pgagent ON dbops.processi USING btree (jobname_pgagent) WHERE (jobname_pgagent IS NOT NULL)` |
-
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_processi_audit_data_user_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_processi_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_processi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_processi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

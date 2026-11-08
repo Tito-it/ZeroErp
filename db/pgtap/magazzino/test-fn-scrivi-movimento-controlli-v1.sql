@@ -122,29 +122,29 @@ BEGIN
     INSERT INTO _fix VALUES (v_mag, v_mag_ubi, v_mag_b, v_art, v_art_lotto, v_art_serial, v_art_no,
                              v_lotto, v_lotto_altro, v_asset, v_asset_altro, v_asset_b, v_ubi, v_ubi_b,
                              v_inv, v_r[1], v_r[2], v_r[3], v_r[4], v_r[5], v_r[6],
-                             (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA'));
+                             (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'));
 END $fix$;
 
 -- ============================================================
 -- 1-4 Parametri, causale, verso, magazzino
 -- ============================================================
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 0, src, r1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 0, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%Chiamata non valida a magazzino.fn_scrivi_movimento%',
     '1) qta = 0: E_MAG_CHIAMATA_NON_VALIDA, la frase nomina la funzione');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'BOH', 1, src, r1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'BOH', 1, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%Configurazione mancante: causale di magazzino BOH%',
     '2) causale sconosciuta: E_CONFIG_MANCANTE col codice nella frase');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', 1, src, r1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', 1, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%Verso incoerente: la causale SCARICO_VEN ha segno -1, ma la quantità vale 1.%',
     '3) verso incoerente: la frase della madre, non del trigger');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(999999999, art, 'INV_INIZIALE', 1, src, r1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(999999999, art, 'INV_INIZIALE', 1, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%Magazzino 999999999 inesistente o non attivo.%',
     '4) magazzino inesistente: E_MAG_MAGAZZINO_NON_VALIDO');
 
@@ -152,7 +152,7 @@ SELECT throws_like(
 -- 5-15 La riga (fn_check_riga_magazzino, letta dalla primitiva)
 -- ============================================================
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_no, 'INV_INIZIALE', 1, src, r1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_no, 'INV_INIZIALE', 1, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%non è gestito a magazzino%',
     '5a) articolo non gestito: E_MAG_ARTICOLO_NON_GESTITO');
 SELECT is(
@@ -161,45 +161,45 @@ SELECT is(
     '5b) ...e la check porta campo = articolo_id nel dettaglio');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_lotto, 'INV_INIZIALE', 1, src, r1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_lotto, 'INV_INIZIALE', 1, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%si movimenta per lotti: indica il lotto.%',
     '6) requires_lotto senza lotto: E_MAG_LOTTO_OBBLIGATORIO');
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 1, src, r1, NULL, NULL, lotto_altro) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 1, src, r1, NULL, NULL, lotto_altro, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%non si movimenta per lotti: il lotto PGT-L2C-L2 non va indicato.%',
     '7) articolo senza lotti con un lotto: E_MAG_LOTTO_NON_AMMESSO');
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_lotto, 'INV_INIZIALE', 1, src, r1, NULL, NULL, lotto_altro) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_lotto, 'INV_INIZIALE', 1, src, r1, NULL, NULL, lotto_altro, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%Il lotto PGT-L2C-L2 non è dell''articolo PGT-L2C-LOT%',
     '8) lotto di un altro articolo: E_MAG_LOTTO_DI_ALTRO_ARTICOLO');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_serial, 'INV_INIZIALE', 1, src, r1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_serial, 'INV_INIZIALE', 1, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%si movimenta per seriale: indica il seriale.%',
     '9) requires_serial senza asset: E_MAG_SERIALE_OBBLIGATORIO');
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, asset_altro_art) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, asset_altro_art, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%non si movimenta per seriale: il seriale PGT-L2C-SN2 non va indicato.%',
     '10) articolo senza seriale con un asset: E_MAG_SERIALE_NON_AMMESSO');
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_serial, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, asset_altro_art) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_serial, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, asset_altro_art, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%Il seriale PGT-L2C-SN2 non è dell''articolo PGT-L2C-SER%',
     '11) asset di un altro articolo: E_MAG_ASSET_DI_ALTRO_ARTICOLO');
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_serial, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, asset_b) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_serial, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, asset_b, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%non appartiene all''emittente del magazzino PGT-L2C-A.%',
     '12) asset di un altro emittente: E_MAG_ASSET_DI_ALTRO_EMITTENTE (la DEFINER lo vede, la regola lo ferma)');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag_ubi, art, 'INV_INIZIALE', 1, src, r1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag_ubi, art, 'INV_INIZIALE', 1, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%Il magazzino PGT-L2C-U usa le ubicazioni: indica in quale ubicazione.%',
     '13) magazzino a ubicazioni senza ubicazione: E_MAG_UBICAZIONE_OBBLIGATORIA (D-L2-m)');
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, NULL, ubi) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, NULL, ubi, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%Il magazzino PGT-L2C-A non usa le ubicazioni: l''ubicazione PGT-L2C-U1 non va indicata.%',
     '14) magazzino senza ubicazioni con un''ubicazione: E_MAG_UBICAZIONE_NON_AMMESSA (D-L2-m)');
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag_ubi, art, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, NULL, ubi_b) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag_ubi, art, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, NULL, ubi_b, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%non è del magazzino PGT-L2C-U%',
     '15) ubicazione di un altro magazzino: E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO');
 
@@ -208,7 +208,7 @@ SELECT throws_like(
 -- ============================================================
 -- Un movimento buono nel magazzino A (lo stesso del 22, riga r6: qui r5).
 SELECT lives_ok(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 5, src, r5, NULL, 10) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 5, src, r5, NULL, 10, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r5)) FROM _fix $$,
     '16a) un movimento nel magazzino A (per il 16b)');
 SELECT throws_like(
     $$ UPDATE magazzino.magazzini SET usa_ubicazioni = true WHERE id = (SELECT mag FROM _fix) $$,
@@ -222,24 +222,24 @@ SELECT lives_ok(
 -- 18-21 Identita', costo, gemella, storno
 -- ============================================================
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 5, src, r5, NULL, 10) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'INV_INIZIALE', 5, src, r5, NULL, 10, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r5)) FROM _fix $$,
     '%Questa operazione ha già registrato il movimento ' ||
         (SELECT m.id::text FROM magazzino.movimenti m JOIN _fix f ON m.sorgente_riga = f.r5) || '.%',
     '18) stessa identita'': E_MAG_MOVIMENTO_GIA_REGISTRATO, la frase nomina l''id esistente');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'RETT_NEG', -1, src, r2, NULL, 9) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'RETT_NEG', -1, src, r2, NULL, 9, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r2)) FROM _fix $$,
     '%Costo unitario non ammesso su questo movimento (uscita)%',
     '19) costo passato su un''uscita: E_MAG_COSTO_NON_AMMESSO');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'TRASF_IN', 1, src, r3, NULL, NULL, NULL, NULL, NULL, now(), '11111111-1111-1111-1111-111111111111') FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'TRASF_IN', 1, src, r3, NULL, NULL, NULL, NULL, NULL, now(), '11111111-1111-1111-1111-111111111111', p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r3)) FROM _fix $$,
     '%Nessuna uscita con transfer_uid 11111111-1111-1111-1111-111111111111%',
     '20) entrata gemella senza la OUT: E_MAG_GEMELLA_NON_TROVATA');
 
 SELECT throws_like(
     $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'STORNO_NEG', -4, src, r5, NULL, NULL, NULL, NULL, NULL, now(), NULL,
-              (SELECT m.id FROM magazzino.movimenti m JOIN _fix f ON m.sorgente_riga = f.r5)) FROM _fix $$,
+              (SELECT m.id FROM magazzino.movimenti m JOIN _fix f ON m.sorgente_riga = f.r5), p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r5)) FROM _fix $$,
     '%Storno incoerente del movimento%',
     '21) storno con quantita'' non opposta: E_MAG_STORNO_INCOERENTE');
 
@@ -247,7 +247,7 @@ SELECT throws_like(
 -- 22-23 Il caso buono
 -- ============================================================
 SELECT ok(
-    (SELECT magazzino.fn_scrivi_movimento(mag, art, 'RETT_POS', 3, src, r6, NULL, 12.5) FROM _fix) > 0,
+    (SELECT magazzino.fn_scrivi_movimento(mag, art, 'RETT_POS', 3, src, r6, NULL, 12.5, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r6)) FROM _fix) > 0,
     '22) il caso buono ritorna un id');
 SELECT is(
     (SELECT (m.qta, m.costo_unitario, m.causale_id, m.sorgente_tipo_id, m.sorgente_riga, m.lotto_id)::text

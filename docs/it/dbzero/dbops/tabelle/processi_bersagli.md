@@ -17,9 +17,6 @@
 | note | text | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | CURRENT_USER |
-| tx_id | uuid | YES |  |
 | debito_dichiarato | boolean | NO | false |
 
 ## 🔒 Vincoli
@@ -38,14 +35,6 @@
 | ix_processi_bersagli_processo_id | `CREATE INDEX ix_processi_bersagli_processo_id ON dbops.processi_bersagli USING btree (processo_id)` |
 | pk_processi_bersagli | `CREATE UNIQUE INDEX pk_processi_bersagli ON dbops.processi_bersagli USING btree (id)` |
 | uq_processi_bersagli_target | `CREATE UNIQUE INDEX uq_processi_bersagli_target ON dbops.processi_bersagli USING btree (processo_id, schema_tabella, nome_tabella)` |
-
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_processi_bersagli_audit_data_user_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_processi_bersagli_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_processi_bersagli_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_processi_bersagli_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

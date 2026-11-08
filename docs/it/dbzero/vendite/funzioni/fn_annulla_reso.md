@@ -45,7 +45,6 @@ DECLARE
     v_tutto_reso       boolean;
     v_ord              RECORD;
     v_sorgente_id      config.sorgenti.id%TYPE;
-    v_rientri          bigint[];   -- array di resi_righe_rientri.id: %TYPE non vale per un array
 BEGIN
     v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
     IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
@@ -214,23 +213,28 @@ BEGIN
         -- uscita di nuovo, la primitiva rifiuta l'uscita dello storno: il
         -- registro non va sotto zero per un annullo.
         IF v_muove THEN
+            -- Lo storno per DOCUMENTO: i carichi del reso, tutti (righe NULL).
+            -- ⛔ Il tipo che manca non e' «niente da stornare»: e' una
+            --    configurazione rotta, e un annullo che non storna lascerebbe
+            --    in giacenza merce che non c'e'.
             SELECT s.id INTO v_sorgente_id
               FROM config.sorgenti s
-             WHERE s.codice_interno = 'RESO_VENDITA_RIENTRO';
-            SELECT COALESCE(array_agg(x.id), '{}'::bigint[]) INTO v_rientri
-              FROM vendite.resi_righe_rientri x
-              JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
-             WHERE rr.reso_id = p_reso_id;
-            IF v_sorgente_id IS NOT NULL THEN
-                PERFORM 1 FROM magazzino.fn_storna_movimenti_sorgente(v_sorgente_id, v_rientri);
+             WHERE s.codice_interno = 'RESO_VENDITA';
+            IF v_sorgente_id IS NULL THEN
+                PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_annulla_reso',
+                    'E_CONFIG_MANCANTE',
+                    jsonb_build_object('config', 'config.sorgenti.RESO_VENDITA'),
+                    NULL::uuid, VARIADIC ARRAY['sorgente RESO_VENDITA (config.sorgenti)']);
             END IF;
+            PERFORM 1 FROM magazzino.fn_storna_movimenti_sorgente(
+                               v_sorgente_id, NULL::bigint[], p_sorgente_id => p_reso_id);
         END IF;
     END IF;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
-IS 'Il verbo dell''annullo di un reso, con storno: -> ANNULLATO, gemello di vendite.fn_conferma_reso. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio (script.fn_guard_passaggio): CONFERMATO -> ANNULLATO chiede conferma_reso, DRAFT -> ANNULLATO il solo permesso sul documento. Due rifiuti prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) ed E_RESO_ANNULLO_CON_ACCREDITO (esiste una riga in vendite.resi_righe_accrediti: senza, le rettifiche negative resterebbero vive e la fatturazione emetterebbe una nota di credito per un reso annullato). Si rifiuta e non si cascata: l''annullo dell''accredito (vendite.fn_annulla_accredito_riga_reso) chiede un motivo, e un accredito non piu'' disfacibile lo dice lui (E_ACCREDITO_ANNULLO_NON_AMMESSO). Vincolo reciproco con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: l''annullo dell''accredito cancella le righe di ponte, e i tre posti cambiano insieme. Annullando un reso confermato che aveva fatto rientrare merce, i carichi si stornano (magazzino.fn_storna_movimenti_sorgente sui rientri) al costo del carico; se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Lo stato del reso e il ritorno della bolla RESO -> CONSEGNATO, se il reso non copre piu'' tutta la merce (le sole righe di merce; contano i resi confermati), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. RETURNS void.';
+IS 'Il verbo dell''annullo di un reso, con storno: -> ANNULLATO, gemello di vendite.fn_conferma_reso. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio (script.fn_guard_passaggio): CONFERMATO -> ANNULLATO chiede conferma_reso, DRAFT -> ANNULLATO il solo permesso sul documento. Due rifiuti prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) ed E_RESO_ANNULLO_CON_ACCREDITO (esiste una riga in vendite.resi_righe_accrediti: senza, le rettifiche negative resterebbero vive e la fatturazione emetterebbe una nota di credito per un reso annullato). Si rifiuta e non si cascata: l''annullo dell''accredito (vendite.fn_annulla_accredito_riga_reso) chiede un motivo, e un accredito non piu'' disfacibile lo dice lui (E_ACCREDITO_ANNULLO_NON_AMMESSO). Vincolo reciproco con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: l''annullo dell''accredito cancella le righe di ponte, e i tre posti cambiano insieme. Annullando un reso confermato che aveva fatto rientrare merce, i carichi si stornano per documento (magazzino.fn_storna_movimenti_sorgente sul reso; un tipo RESO_VENDITA assente e'' E_CONFIG_MANCANTE, non uno storno saltato) al costo del carico; se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Lo stato del reso e il ritorno della bolla RESO -> CONSEGNATO, se il reso non copre piu'' tutta la merce (le sole righe di merce; contano i resi confermati), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. RETURNS void.';
 ```
 
 </div>

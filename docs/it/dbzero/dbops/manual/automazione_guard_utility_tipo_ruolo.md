@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_guard_utility_tipo_ruolo`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -69,6 +69,9 @@ falso. La riga spenta dice che la tabella è stata valutata, cosa che l'assenza 
 * 2026-08-18 — il catalogo diventa un mirror del CSV, e la rilevazione smette di scrivere. Le
   righe di tabelle che avevano perso `utility_id` o erano state rinominate restano nel CSV,
   spente (`brief-db-automazione-guard-utility-righe-sfuggite`).
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

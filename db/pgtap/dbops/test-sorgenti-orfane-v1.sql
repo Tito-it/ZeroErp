@@ -18,7 +18,7 @@
 --   col nome dello schema nel search_path perde lo schema).
 --
 -- Elenco test (plan 12):
---   1) il PERIMETRO contiene le sei tabelle di magazzino, con grammatica MODELLO_A
+--   1) il PERIMETRO contiene le sei tabelle di magazzino: il registro UNICO, le altre MODELLO_A
 --   2) le testate di vendita sono nel perimetro, tutte col guard unico (UNICO): bolla e reso
 --      dal giro T.2, ordine, contratto e fattura dal giro T.3 di brief-db-sorgente-documento-e-riga
 --   3) le esenzioni dichiarate sono due, col loro motivo: il log dei reconcile, da
@@ -26,7 +26,7 @@
 --      toglie attivita_fatturabili e fatture_righe; il lotto D, giro D.1, aggiunge
 --      la coda: la sua chiave e' una FK vera)
 --   4) zero orfani di magazzino sul mondo costruito
---   5) MODELLO_A: cancellato il bersaglio di un movimento -> UNA riga, livello DOCUMENTO
+--   5) il registro: cancellata la riga di un movimento -> UNA riga, livello RIGA (rev 2026-11-09, lotto M)
 --   6) TESTUALE: una tabella senza guard che nomina un ordine che non c'e' -> UNA riga
 --   7) UNICO: una tabella col guard unico entra nel perimetro con la sua grammatica
 --   8) UNICO, livello DOCUMENTO: la bolla che non c'e'
@@ -103,9 +103,9 @@ SELECT (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA')    
 SELECT is(
     (SELECT string_agg(pg_temp.qn(tabella) || ':' || grammatica, ',' ORDER BY pg_temp.qn(tabella))
        FROM dbops.fn_sorgenti_orfane_perimetro() WHERE schema_tabella = 'magazzino'),
-    'magazzino.eventi_assets:MODELLO_A,magazzino.inventari:MODELLO_A,magazzino.movimenti:MODELLO_A,'
-    'magazzino.movimenti_attesi:MODELLO_A,magazzino.rettifiche:MODELLO_A,magazzino.trasferimenti:MODELLO_A',
-    '1) il perimetro contiene le sei tabelle di magazzino, col guard tipizzato (MODELLO_A)');
+    'magazzino.eventi_assets:MODELLO_A,magazzino.inventari:MODELLO_A,magazzino.movimenti:UNICO,'
+    'magazzino.movimenti_attesi:UNICO,magazzino.rettifiche:MODELLO_A,magazzino.trasferimenti:MODELLO_A',
+    '1) il perimetro contiene le sei tabelle di magazzino: il registro col guard unico (UNICO, giro M.1), le testate e l''evento ancora col tipizzato (MODELLO_A)');
 
 SELECT is(
     (SELECT string_agg(nome_tabella::text || ':' || grammatica, ',' ORDER BY nome_tabella)
@@ -129,7 +129,12 @@ SELECT is(
     0::bigint,
     '4) zero orfani di magazzino sul mondo costruito');
 
--- ===== MODELLO_A: il bersaglio sparisce =====
+-- ===== il registro (UNICO, livello RIGA): il bersaglio sparisce =====
+-- rev 2026-11-09 (brief-db-sorgente-documento-e-riga, lotto M, giro M.1): il movimento
+--   del mondo e' nella grammatica del modello (INVENTARIO + l'inventario + la riga), e la
+--   riga cancellata e' un orfano di livello RIGA. ⚠️ Il ramo MODELLO_A resta senza un
+--   caso costruito: le tabelle che lo montano ancora (testate di magazzino, evento) non le
+--   scrive nessuno, e il giro M.2 le porta al guard unico. Debito dichiarato nel brief.
 -- Come owner, coi trigger utente spenti: le righe di una POSTED sono congelate, e
 -- il lato «in uscita» e' fra i trigger spenti (e' proprio cio' che lascia l'orfano).
 ALTER TABLE magazzino.inventari_righe DISABLE TRIGGER USER;
@@ -140,9 +145,9 @@ SELECT is(
     (SELECT (pg_temp.qn(o.tabella), o.riga_id, o.grammatica, o.livello, o.sorgente_codice_interno,
              o.sorgente_riga, pg_temp.qn(o.target_table))::text
        FROM dbops.vw_sorgenti_orfane o WHERE o.riga_id = (SELECT mov FROM _fix) AND o.tabella = 'magazzino.movimenti'::regclass),
-    (SELECT ('magazzino.movimenti', mov, 'MODELLO_A', 'DOCUMENTO', 'INVENTARIO_RIGA', riga,
+    (SELECT ('magazzino.movimenti', mov, 'UNICO', 'RIGA', 'INVENTARIO', riga,
              'magazzino.inventari_righe')::text FROM _fix),
-    '5) MODELLO_A: cancellato il bersaglio, UNA riga con tabella, id, sorgente e bersaglio');
+    '5) il registro: cancellata la riga del documento, UNA riga di livello RIGA con tabella, id, sorgente e bersaglio');
 
 -- ===== TESTUALE: una tabella senza guard nomina un ordine che non c'e' =====
 -- Il caso si costruisce su una tabella del test: le testate vere passano al

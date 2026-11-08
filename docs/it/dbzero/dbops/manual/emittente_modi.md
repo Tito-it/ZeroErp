@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.emittente_modi`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -85,6 +85,14 @@ nome del modo è fatto di minuscole, cifre e trattini bassi.
   registro.
 * `dbops/test-emittente-modi-solo-migrazione-v1` (come applicazione): scrivere, cambiare, togliere
   e svuotare il registro sono respinti.
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
 
 ---
 

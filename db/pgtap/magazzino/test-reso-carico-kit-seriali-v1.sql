@@ -176,8 +176,8 @@ SELECT vendite.fn_conferma_reso((SELECT reso FROM _r1));
 CREATE TEMP TABLE _car AS
 SELECT m.*
   FROM magazzino.movimenti m
-  JOIN config.sorgenti so ON so.id = m.sorgente_tipo_id AND so.codice_interno = 'RESO_VENDITA_RIENTRO'
-  JOIN vendite.resi_righe_rientri x ON x.id = m.sorgente_riga
+  JOIN config.sorgenti so ON so.id = m.sorgente_tipo_id AND so.codice_interno = 'RESO_VENDITA'
+  JOIN vendite.resi_righe_rientri x ON x.id = m.sorgente_dettaglio  -- rev 2026-11-09 (lotto M): il rientro e' il dettaglio
   JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
  WHERE rr.reso_id = (SELECT reso FROM _r1);
 SELECT is(
@@ -221,8 +221,8 @@ SELECT vendite.fn_conferma_reso((SELECT reso FROM _r2));
 SELECT is(
     (SELECT string_agg(a.codice || ':' || trim_scale(m.qta)::text, ' ')
        FROM magazzino.movimenti m
-       JOIN config.sorgenti so ON so.id = m.sorgente_tipo_id AND so.codice_interno = 'RESO_VENDITA_RIENTRO'
-       JOIN vendite.resi_righe_rientri x ON x.id = m.sorgente_riga
+       JOIN config.sorgenti so ON so.id = m.sorgente_tipo_id AND so.codice_interno = 'RESO_VENDITA'
+       JOIN vendite.resi_righe_rientri x ON x.id = m.sorgente_dettaglio  -- rev 2026-11-09 (lotto M): il rientro e' il dettaglio
        JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
        JOIN catalogo.articoli a ON a.id = m.articolo_id
       WHERE rr.reso_id = (SELECT reso FROM _r2)),

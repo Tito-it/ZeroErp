@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO DELL'ARRIVO DEL TRASFERIMENTO: dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, «Riverifica fatta», decisione C di Tid
+#   (2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Alla consegna di una bolla di trasferimento il verbo vendite.fn_cambia_stato_ddt
+#   scrive gli ARRIVI (vendite.fn_posta_ddt ARRIVO): un'entrata TRASF_IN per
+#   prelievo delle righe attive, nel magazzino d'arrivo. Nessun presidio vedeva
+#   una bolla di trasferimento consegnata con un prelievo senza il suo arrivo:
+#   merce uscita dalla partenza e mai entrata a destinazione. E' la gemella di
+#   dbops.vw_ddt_emessi_senza_scarico sull'altro capo, alla stessa grana.
+#
+# ── LA DOMANDA ───────────────────────────────────────────────────────
+#   Una bolla di trasferimento (la causale di magazzino della sua causale di
+#   trasporto e' TRASF_OUT) che muove merce, con un magazzino, in uno stato
+#   dalla consegna in poi (ordine >= quello di CONSEGNATO, non abortito, dal
+#   catalogo), con almeno un prelievo di una riga attiva senza l'entrata (tipo
+#   DDT_VENDITA, la bolla, la riga, il prelievo; qta > 0, non uno storno: un
+#   movimento positivo della bolla che non e' uno storno e' l'arrivo).
+#   ⚠️ Il letterale CONSEGNATO sta anche nel verbo (p_stato = 'CONSEGNATO'), ma
+#   con un altro significato: li' e' l'EVENTO del passaggio che scrive l'arrivo,
+#   qui l'insieme degli stati in cui l'arrivo deve esserci. Non e' una copia
+#   della stessa regola (regola del 2: conta il significato).
+#   Registrata in dbops.presidi (natura ZERO, GIORNALIERA, DEFINER) e
+#   presidi_testi dai loro CSV.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-13-create-vw-ddt-trasferimenti-consegnati-senza-arrivo-mctit.yaml
+
+  - changeSet:
+      id: 20261109-13-create-vw-ddt-trasferimenti-consegnati-senza-arrivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo: il presidio della bolla di trasferimento
+        consegnata con un prelievo senza l'entrata a destinazione (decisione C). brief-db-sorgente-documento-e-riga
+        §7.2 lotto M, giro M.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo
+              WITH (security_invoker = true) AS
+              SELECT d.id AS ddt_id,
+                     d.numero,
+                     d.data,
+                     d.emittente_fiscale_id,
+                     d.magazzino_id,
+                     d.magazzino_arrivo_id,
+                     s.codice_interno AS stato_codice_interno,
+                     n.prelievi_senza_arrivo
+                FROM vendite.ddt d
+                JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+                -- codice_interno e' unico nel vocabolario: al piu' una riga.
+                JOIN config.stati_doc_ddt c ON c.codice_interno = 'CONSEGNATO'
+                CROSS JOIN LATERAL (
+                      SELECT count(*) AS prelievi_senza_arrivo
+                        FROM vendite.ddt_righe dr
+                        JOIN vendite.ddt_righe_prelievi p ON p.ddt_riga_id = dr.id
+                       WHERE dr.ddt_id = d.id
+                         AND dr.attivo
+                         AND NOT EXISTS (
+                               SELECT 1
+                                 FROM magazzino.movimenti m
+                                 JOIN config.sorgenti so ON so.id = m.sorgente_tipo_id
+                                                        AND so.codice_interno = 'DDT_VENDITA'
+                                WHERE m.sorgente_id        = d.id
+                                  AND m.sorgente_riga      = dr.id
+                                  AND m.sorgente_dettaglio = p.id
+                                  AND m.qta > 0
+                                  AND m.storno_di_movimento_id IS NULL)) n
+               WHERE NOT s.is_abortito
+                 AND s.ordine >= c.ordine
+                 AND d.magazzino_id IS NOT NULL
+                 AND n.prelievi_senza_arrivo > 0
+                 AND vendite.fn_ddt_causale_magazzino(d.*) = 'TRASF_OUT'
+                 AND vendite.fn_ddt_muove_merce(d.*);
+
+              COMMENT ON VIEW dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo IS
+                  'Presidio, DEVE restare vuota. Una riga e'' una bolla di TRASFERIMENTO (vendite.fn_ddt_causale_magazzino = TRASF_OUT) che muove merce (vendite.fn_ddt_muove_merce), con un magazzino, in uno stato dalla consegna in poi (ordine >= quello di CONSEGNATO e non abortito, dal catalogo config.stati_doc_ddt), con almeno un prelievo di una riga attiva senza la sua ENTRATA nel magazzino d''arrivo (provenienza DDT_VENDITA: la bolla, la riga, il prelievo come dettaglio; quantita'' positiva, non uno storno). Alla consegna il verbo vendite.fn_cambia_stato_ddt scrive un arrivo per prelievo (vendite.fn_posta_ddt ARRIVO, TRASF_IN): una riga qui e'' merce uscita dalla partenza e mai entrata a destinazione, cioe'' due giacenze che mentono. prelievi_senza_arrivo dice quanti. Il rimedio non e'' scrivere il movimento a mano: e'' capire da dove e'' passata la consegna. Gemella di dbops.vw_ddt_emessi_senza_scarico sull''altro capo del trasferimento. security_invoker; il digest conta da proprietario (fn_conta_presidio, perimetro DEFINER). Brief: brief-db-sorgente-documento-e-riga lotto M (decisione C di Tid, 2026-11-08).';
+
+              COMMENT ON COLUMN dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo.prelievi_senza_arrivo IS
+                  'Quanti prelievi delle righe attive della bolla di trasferimento non hanno la loro entrata nel magazzino d''arrivo. Sempre maggiore di zero in una riga della vista.';
+
+              GRANT SELECT ON dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo TO zeroerp_app;

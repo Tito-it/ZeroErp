@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_marcatori_automazione_senza_esecutore`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -38,12 +38,17 @@ scrive resta vuoto su ogni riga; un `cleanup_at` che nessuno legge lascia le rig
 | `marcatore` | La colonna | Chi la esegue |
 | --- | --- | --- |
 | `TX_ID` | `tx_id` | il trigger di `dbops.trgfn_tx_id_managed`, che il runner dei transaction id monta sulle tabelle dell'ambito |
-| `STORICIZZA` | `storicizza` | il trigger di `script.trgfn_storico_generic`, che i runner dello storico montano dopo aver creato la shadow |
+| `STORICIZZA` | `storicizza`, o quella indicata dall'override `STORICIZZA_COL` | il trigger di `script.trgfn_storico_generic`, che i runner dello storico montano dopo aver creato la shadow |
 | `CLEANUP_AT` | `cleanup_at` | il purge del runner della pulizia, che scade e cancella le righe |
 
 Una tabella è **servita dai runner** se è una tabella ordinaria (le partizioni comprese: i runner le
 scorrono una a una), il suo schema è fra quelli dell'ambito e il filtro per tabella la ammette. È lo
 stesso filtro che usano i runner.
+
+La colonna si cerca come la cercano i runner: `tx_id` e `cleanup_at` col loro nome; quella di
+storicizzazione con `dbops.fn_get_override_col` (ruolo `STORICIZZA_COL`, default `storicizza`), la
+stessa chiamata della provision dello storico. Una colonna rinominata con l'override è il marcatore;
+una colonna `storicizza` su una tabella che ha l'override verso un'altra colonna non lo è.
 
 Per `tx_id` e `storicizza` basta anche il trigger **montato a mano**, se è abilitato: è così che
 `dbops` copre i suoi registri fuori dall'ambito. Per `cleanup_at` no: il purge lo fa solo il runner, e
@@ -80,8 +85,9 @@ nell'ambito, il trigger si monta a mano, o la colonna si toglie.
   armi, che le righe scadano lo provano i pgTAP di ciascun runner.
 * Lo schema `storico` è fuori: le shadow ricopiano le colonne della madre, e i loro marcatori sono
   una copia, non una promessa. Fuori anche gli schemi di sistema.
-* Il marcatore è il **nome** della colonna, quello di default dei runner: una colonna di
-  storicizzazione rinominata con un override non la vede.
+* `cleanup_at` si riconosce per **nome**: la colonna del purge la sceglie il parametro
+  `cleanup_column` della regola di pulizia, non un override di colonna, e una tabella che la chiama
+  in un altro modo la vista non la vede.
 
 La vista è `security_invoker`: legge il catalogo di PostgreSQL e tabelle di `dbops` senza row level
 security, e la risposta non dipende da chi interroga.
@@ -96,7 +102,9 @@ security, e la risposta non dipende da chi interroga.
   entra nell'ambito esce dal presidio, l'esclusione dalla pulizia lascia scoperto `cleanup_at`, il
   registro rende una riga dichiarata o estinta e rifiuta una ragione corta o un marcatore fuori
   vocabolario; il vocabolario del vincolo del registro è quello che la vista riconosce; lo schema
-  `storico` è fuori.
+  `storico` è fuori; i cataloghi di `dbops` scritti dal solo seed non hanno più i marcatori; la
+  colonna rinominata con l'override `STORICIZZA_COL` è il marcatore, e la colonna `storicizza` con
+  l'override verso un'altra no.
 
 ---
 
@@ -105,6 +113,10 @@ security, e la risposta non dipende da chi interroga.
 * 2026-11-07 — nasce. Lo stesso giorno `shop.ricevute` e `dbops.ai_query_log` entrano nell'ambito e
   `dbops.audit_sources` perde le colonne che nessuno eseguiva; il debito dichiarato sono i cataloghi
   di `dbops` con `tx_id` e senza trigger.
+* 2026-11-08 — la colonna di storicizzazione si legge con l'override, come la provision. Lo stesso
+  giorno i cataloghi di `dbops` scritti solo dalla migrazione perdono `tx_id`, `data_update` e
+  `user_update` (regola in `automazione-db.md` §1.1): il debito dichiarato si estingue e il registro
+  resta vuoto.
 
 ---
 

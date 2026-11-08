@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.codici_errore_senza_policy`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -87,6 +87,9 @@ registro.
 * 2026-08-05 — nasce con `brief-db-be-terzo-lato-presidio-codici`, con una decisione unica: non è
   una regressione, è debito preesistente reso visibile.
 * 2026-08-07 — il registro arriva a zero voci.
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
 
 ---
 

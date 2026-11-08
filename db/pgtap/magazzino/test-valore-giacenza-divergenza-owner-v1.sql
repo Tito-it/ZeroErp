@@ -39,9 +39,9 @@ BEGIN
     INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (v_inv, v_art, 5) RETURNING id INTO v_r1;
     INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
     INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (v_inv, v_art, 5) RETURNING id INTO v_r2;
-    INSERT INTO _fix VALUES (v_mag, v_art, (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA'), v_r1, v_r2);
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'INV_INIZIALE', 5, (SELECT src FROM _fix), v_r1, NULL, 10);
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'RETT_POS',     5, (SELECT src FROM _fix), v_r2, NULL, 20);
+    INSERT INTO _fix VALUES (v_mag, v_art, (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'), v_r1, v_r2);
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'INV_INIZIALE', 5, (SELECT src FROM _fix), v_r1, NULL, 10, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = v_r1));
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'RETT_POS',     5, (SELECT src FROM _fix), v_r2, NULL, 20, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = v_r2));
 END $fix$;
 
 SELECT is((SELECT count(*) FROM dbops.vw_magazzino_valore_giacenza_divergente d WHERE d.magazzino_id = (SELECT mag FROM _fix)), 0::bigint,

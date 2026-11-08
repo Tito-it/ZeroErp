@@ -38,7 +38,6 @@ DECLARE
     v_annullo      boolean;
     v_consegna_tr  boolean;
     v_sorgente_id  config.sorgenti.id%TYPE;
-    v_prelievi     bigint[];
 BEGIN
     v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
 
@@ -131,18 +130,22 @@ BEGIN
             SELECT pd.movimento_id, pd.prelievo_id, pd.qta
               FROM vendite.fn_posta_ddt(p_ddt_id, 'ARRIVO') pd;
     ELSIF v_annullo AND v_muove THEN
+        -- Lo storno per DOCUMENTO: i movimenti della bolla, tutti (righe NULL).
+        -- ⛔ Il tipo che manca non e' «niente da stornare»: e' una configurazione
+        --    rotta, e un annullo che non storna lascerebbe la giacenza falsa.
         SELECT s.id INTO v_sorgente_id
           FROM config.sorgenti s
-         WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO';
-        SELECT COALESCE(array_agg(p.id), '{}'::bigint[]) INTO v_prelievi
-          FROM vendite.ddt_righe_prelievi p
-          JOIN vendite.ddt_righe dr ON dr.id = p.ddt_riga_id
-         WHERE dr.ddt_id = p_ddt_id;
-        IF v_sorgente_id IS NOT NULL THEN
-            RETURN QUERY
-                SELECT st.movimento_id, NULL::bigint, st.qta
-                  FROM magazzino.fn_storna_movimenti_sorgente(v_sorgente_id, v_prelievi) st;
+         WHERE s.codice_interno = 'DDT_VENDITA';
+        IF v_sorgente_id IS NULL THEN
+            PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_cambia_stato_ddt',
+                'E_CONFIG_MANCANTE',
+                jsonb_build_object('config', 'config.sorgenti.DDT_VENDITA'),
+                NULL::uuid, VARIADIC ARRAY['sorgente DDT_VENDITA (config.sorgenti)']);
         END IF;
+        RETURN QUERY
+            SELECT st.movimento_id, NULL::bigint, st.qta
+              FROM magazzino.fn_storna_movimenti_sorgente(
+                       v_sorgente_id, NULL::bigint[], p_sorgente_id => p_ddt_id) st;
     END IF;
 
     RETURN;
@@ -150,7 +153,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cambia_stato_ddt(p_ddt_id bigint, p_stato character varying)
-IS 'VERBO di ogni cambio di stato manuale di una bolla (modello «una scrittura = un verbo»; modello del documento, brief-modello-documento-vendita §7). Permesso: dalla riga del passaggio (config.transizioni_stati_ddt.azione_processo_codename: emetti_ddt su DRAFT -> EMESSO e EMESSO -> ANNULLATO) con script.fn_guard_passaggio, prima di ogni scrittura; un passaggio di processo (CONSEGNATO <-> RESO, dei verbi del reso) chiesto qui: E_DOC_PASSAGGIO_DI_PROCESSO; gli altri passaggi al permesso sul documento, che controlla il backend. In piu'' registra_magazzino alla consegna di una bolla di trasferimento che muove merce: il permesso dell''operazione di magazzino dentro il passaggio (T-4 di Tid). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro E_DDT_NOT_FOUND, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id: uno stato che il vocabolario non ha o ha spento -> E_STATO_WORKFLOW_NON_TROVATO, come i gemelli), lo stato di emissione dal vocabolario (script.fn_stato_emissione_id). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), con la matrice e tutti i guard di sempre. Su una bolla che muove merce: all''emissione solleva il primo motivo di script.fn_check_ddt_merce, crea i prelievi automatici e scrive le uscite (vendite.fn_posta_ddt USCITA); alla consegna di un trasferimento scrive le entrate (ARRIVO); all''annullo di una bolla emessa storna i movimenti dei suoi prelievi (magazzino.fn_storna_movimenti_sorgente). UNA transazione. Ritorna (movimento_id, prelievo_id, qta). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt; il posting in vendite dal 2026-10-01 (brief-db-magazzino-registro-anello-interno); rev 2026-10-25 (20261025-16) il verbo comune; rev 2026-10-25 (20261025-44) i lettori comuni di codice -> id e dello stato di emissione; rev 2026-10-25 (20261025-78, §9, Z-3) l''annullo dell''emessa riconosciuto dallo stato d''annullo del vocabolario (script.fn_stato_abortito_id), non dal letterale ''ANNULLATO''; rev 2026-10-26 (20261026-02, §9.9) lo stato sconosciuto risponde E_STATO_WORKFLOW_NON_TROVATO (era E_VENDITE_CHIAMATA_NON_VALIDA), e lo stato che la bolla ha gia'' lo rifiuta la prima riga (E_DOC_GIA_NELLO_STATO, 20261026-01).';
+IS 'VERBO di ogni cambio di stato manuale di una bolla (modello «una scrittura = un verbo»; modello del documento, brief-modello-documento-vendita §7). Permesso: dalla riga del passaggio (config.transizioni_stati_ddt.azione_processo_codename: emetti_ddt su DRAFT -> EMESSO e EMESSO -> ANNULLATO) con script.fn_guard_passaggio, prima di ogni scrittura; un passaggio di processo (CONSEGNATO <-> RESO, dei verbi del reso) chiesto qui: E_DOC_PASSAGGIO_DI_PROCESSO; gli altri passaggi al permesso sul documento, che controlla il backend. In piu'' registra_magazzino alla consegna di una bolla di trasferimento che muove merce: il permesso dell''operazione di magazzino dentro il passaggio (T-4 di Tid). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro E_DDT_NOT_FOUND, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id: uno stato che il vocabolario non ha o ha spento -> E_STATO_WORKFLOW_NON_TROVATO, come i gemelli), lo stato di emissione dal vocabolario (script.fn_stato_emissione_id). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), con la matrice e tutti i guard di sempre. Su una bolla che muove merce: all''emissione solleva il primo motivo di script.fn_check_ddt_merce, crea i prelievi automatici e scrive le uscite (vendite.fn_posta_ddt USCITA); alla consegna di un trasferimento scrive le entrate (ARRIVO); all''annullo di una bolla emessa storna i movimenti della bolla, per documento (magazzino.fn_storna_movimenti_sorgente; un tipo DDT_VENDITA assente e'' E_CONFIG_MANCANTE, non uno storno saltato). rev 2026-11-09 (brief-db-sorgente-documento-e-riga lotto M): lo storno per documento. UNA transazione. Ritorna (movimento_id, prelievo_id, qta). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt; il posting in vendite dal 2026-10-01 (brief-db-magazzino-registro-anello-interno); rev 2026-10-25 (20261025-16) il verbo comune; rev 2026-10-25 (20261025-44) i lettori comuni di codice -> id e dello stato di emissione; rev 2026-10-25 (20261025-78, §9, Z-3) l''annullo dell''emessa riconosciuto dallo stato d''annullo del vocabolario (script.fn_stato_abortito_id), non dal letterale ''ANNULLATO''; rev 2026-10-26 (20261026-02, §9.9) lo stato sconosciuto risponde E_STATO_WORKFLOW_NON_TROVATO (era E_VENDITE_CHIAMATA_NON_VALIDA), e lo stato che la bolla ha gia'' lo rifiuta la prima riga (E_DOC_GIA_NELLO_STATO, 20261026-01).';
 ```
 
 </div>

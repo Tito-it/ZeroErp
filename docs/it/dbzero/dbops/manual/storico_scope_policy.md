@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.storico_scope_policy`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -118,6 +118,9 @@ la shadow armata quelle versioni non le vede nessun operatore.
   padre dalla FK reale.
 * 2026-10-09 — arriva il modo `COPPIA` (`brief-db-istanza-nasce-col-ba`), con la sua forma nel
   vincolo: primo adottante `anagrafiche.istanze_dati_precontrattuali`.
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
 
 ---
 
