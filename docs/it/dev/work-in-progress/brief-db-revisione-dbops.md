@@ -4152,7 +4152,7 @@ automazioni), che il BE legge dal catalogo; nessun codice nuovo previsto oltre a
 | `20_code/dbops/20261110-02` | `fn_apply_automazione_guard_utility_tipo_ruolo`: la porta storica chiama il runner (la chiama ancora `ci_apply/20250627-31`) |
 | `20_code/dbops/20261110-03` | `fn_seed_automazione_guard_utility_tipo_ruolo`: la diagnosi senza filtro sul nome (D30); COMMENT senza storia |
 | `20_code/maintenance/20261110-04` | `maintenance.proc_automations_guard_utility_job()`: DEFINER, search_path fissato, niente EXECUTE a PUBLIC |
-| `85_pgagent/20261110-05` | il job pgAgent `automations_guard_utility`, ogni notte alle 21:10 |
+| `85_pgagent/20261110-05` | il job pgAgent `automations_guard_utility`, ogni notte alle 21:10; il passo nasce già avvolto nel cancello `maintenance.fn_sveglia_accesa` (correzione del 2026-11-08: la prima forma era nuda, l'hanno preso i test 20-21 di `dbops/test-installazione-ambiente-v1` su dbdev) |
 | `20_code/dbops/20261110-06` | `fn_apply_automazione_overlap` (D59, ⑫, N6): KEY_COLUMN_MISSING, DATI_SOVRAPPOSTI (23P01, col dettaglio e lo SQLSTATE), NOME_OCCUPATO; il suo vincolo per nome; via `v_any_exclusion` e la variante `_c` |
 | `80_data` | `processi.csv`: riga 49 `automations_guard_utility` (ci_ordine 75); `codici_errore.csv` e `messaggi_errore.csv`: `E_GUARD_UTILITY` (TECNICO, id 1460) |
 | `90_end/ci_apply/20260205-41` (runOnChange) e `scripts/sql/provision_zeroerp.sql` | R3: via `fn_audit_begin`/`fn_audit_end` dalle porte riservate, e i commenti che le nominavano |

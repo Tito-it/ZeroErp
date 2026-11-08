@@ -243,7 +243,20 @@ ALTER TABLE vendite.resi ENABLE TRIGGER trg_resi_a10_guard_delete_solo_bozza_dlt
 ALTER TABLE vendite.ddt_righe DISABLE TRIGGER trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt;
 ALTER TABLE vendite.ddt_righe DISABLE TRIGGER trg_ddt_righe_a10_block_ddt_dlt;
 ALTER TABLE vendite.ddt_righe_prelievi DISABLE TRIGGER USER;
-ALTER TABLE vendite.ddt_righe_prelievi ENABLE TRIGGER trg_vendite_ddt_righe_prelievi_a10_sorgente_in_uscita_dlt;
+-- ⚠️ Il trigger del lato «in uscita» e' GENERATO (dbops.fn_sorgente_converge_uscita): si
+--   cerca per funzione, non per nome. Il nome prende lo schema solo se un'omonima esiste
+--   quando lo si monta (storico.ddt_righe_prelievi), quindi cambia da un database all'altro.
+DO $riaccendi$
+DECLARE
+    v_trigger pg_catalog.pg_trigger.tgname%TYPE;
+BEGIN
+    SELECT tg.tgname INTO STRICT v_trigger
+      FROM pg_catalog.pg_trigger tg
+     WHERE tg.tgrelid = 'vendite.ddt_righe_prelievi'::regclass
+       AND tg.tgfoid = 'script.trgfn_sorgente_in_uscita()'::regprocedure;
+    EXECUTE format('ALTER TABLE vendite.ddt_righe_prelievi ENABLE TRIGGER %I', v_trigger);
+END
+$riaccendi$;
 SELECT throws_like(
     format('DELETE FROM vendite.ddt_righe WHERE id = %s', (SELECT r_l FROM _d)),
     '%dichiarano di nascere da qui%',

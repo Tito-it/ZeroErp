@@ -184,7 +184,21 @@ Porta il guard utility/tipo ruolo allo stato di dbops.automazione_guard_utility_
 
 | Step | Acceso | Tipo | Database | Chiama |
 | --- | --- | --- | --- | --- |
-| `run_automations_guard_utility` | si | SQL | zeroerp | [`CALL maintenance.proc_automations_guard_utility_job();`](funzioni/proc_automations_guard_utility_job.md) |
+| `run_automations_guard_utility` | si | SQL | zeroerp | vedi sotto |
+
+Step `run_automations_guard_utility`:
+
+```sql
+DO $sveglia$
+BEGIN
+    -- Cancello della sveglia (85_pgagent/20261016-30): da spento
+    -- il lavoro non parte e il giornale non scrive niente.
+    IF maintenance.fn_sveglia_accesa('automations_guard_utility') THEN
+        CALL maintenance.proc_automations_guard_utility_job();
+    END IF;
+END
+$sveglia$;
+```
 
 ## `automations_lock_columns`
 

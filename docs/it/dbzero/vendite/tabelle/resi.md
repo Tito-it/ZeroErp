@@ -53,7 +53,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_resi_sorgente | `CREATE INDEX ix_resi_sorgente ON vendite.resi USING btree (sorgente_tipo_id, sorgente_uid)` |
 | ix_resi_sorgente_id | `CREATE INDEX ix_resi_sorgente_id ON vendite.resi USING btree (sorgente_tipo_id, sorgente_id) WHERE (sorgente_id IS NOT NULL)` |
 | ix_resi_stato | `CREATE INDEX ix_resi_stato ON vendite.resi USING btree (stato_doc_reso_id)` |
 | pk_resi | `CREATE UNIQUE INDEX pk_resi ON vendite.resi USING btree (id)` |

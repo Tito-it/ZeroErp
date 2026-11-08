@@ -82,11 +82,19 @@ databaseChangeLog:
                      now()
                    );
 
+                   -- ⚠️ Il passo nasce GIA' avvolto nel cancello della sveglia, nella
+                   --   stessa forma che scrive 85_pgagent/20261016-30: quel changeSet
+                   --   avvolge solo i job che c'erano. Lo presidia
+                   --   db/pgtap/dbops/test-installazione-ambiente-v1 (test 20-22).
                    INSERT INTO pgagent.pga_jobstep(
                      jstjobid, jstname, jstkind, jstcode, jstdbname
                    ) VALUES (
                      v_jobid, 'run_automations_guard_utility', 's',
-                     'CALL maintenance.proc_automations_guard_utility_job();', current_database()
+                     format(
+                       E'DO $sveglia$\nBEGIN\n    -- Cancello della sveglia (85_pgagent/20261016-30): da spento\n    -- il lavoro non parte e il giornale non scrive niente.\n    IF maintenance.fn_sveglia_accesa(%L) THEN\n        %s\n    END IF;\nEND\n$sveglia$;',
+                       'automations_guard_utility',
+                       'CALL maintenance.proc_automations_guard_utility_job();'),
+                     current_database()
                    );
                  END;
                  $$;
