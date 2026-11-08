@@ -397,6 +397,8 @@ SELECT ok(
 -- rev 2026-11-07 (giro T.4): la testata si cancella solo da bozza vuota. La
 -- bolla con la riga evasa e' rifiutata; la strada e' D-3, togliere la riga (il
 -- legame si ritira con lei), poi la bozza vuota.
+-- rev 2026-11-08 (giro Z.2): la frase dice «contenuto», non piu' «righe»: un
+-- codice solo per tutti i documenti (Tid, 2026-11-08).
 SELECT pg_temp.re_mk_ddt('c1', 'c', 10, p_qta_ordine => 10);
 SELECT pg_temp.re_prova('27a_dlt_ddt_con_righe',
   format('DELETE FROM vendite.ddt WHERE id = %s', pg_temp.re_fix('c1_ddt')));
@@ -404,7 +406,7 @@ DELETE FROM vendite.ddt_righe WHERE id = pg_temp.re_fix('c1_dr');
 SELECT pg_temp.re_prova('27_dlt_ddt',
   format('DELETE FROM vendite.ddt WHERE id = %s', pg_temp.re_fix('c1_ddt')));
 SELECT ok(
-  (SELECT sqlstate = 'P0001' AND messaggio LIKE '%ha ancora delle righe%'
+  (SELECT sqlstate = 'P0001' AND messaggio LIKE '%ha ancora del contenuto%'
      FROM tmp_esito WHERE caso = '27a_dlt_ddt_con_righe')
   AND (SELECT righe = 1 FROM tmp_esito WHERE caso = '27_dlt_ddt')
   AND pg_temp.re_stato_ordine('c') = 'CONFERMATO',

@@ -1,0 +1,204 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REVISIONE D'OFFERTA CANCELLATA RIPORTA LA MADRE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.2
+#   (Z2-d, Tid 2026-11-08: «chiudere il difetto»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La nascita di una revisione porta la madre a SUPERATA
+#   (trg_offerte_commerciali_z90_revisione_ins → la proiezione); l'annullo
+#   della revisione la riporta allo stato d'emissione
+#   (trg_offerte_commerciali_z90_rientro_padre_upd). La revisione nasce in
+#   bozza, e una bozza vuota si cancella (-25, -26): il DELETE non lo guardava
+#   nessuno, e la madre restava SUPERATA senza una figlia che la superasse.
+#   Le azioni conseguenti alla cancellazione stanno dentro le regole DB (S-9).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   * la stessa funzione del rientro prende il ramo DELETE: la causa e' una
+#     revisione che smette di esistere, e la proiezione decide dalle revisioni
+#     vive che restano (vendite.fn_offerta_proietta_stato_revisione, invariata):
+#     senza una figlia viva, la madre torna allo stato d'emissione, attraverso
+#     la porta. Una funzione nuova accanto sarebbe una seconda copia della
+#     stessa causa;
+#   * montata AFTER DELETE FOR EACH ROW, fascia _z90_, come il ramo UPDATE;
+#   * la madre non e' mai una bozza (la revisione nasce solo da uno stato
+#     d'emissione, vendite.fn_crea_revisione_offerta): la sua cancellazione la
+#     ferma gia' il guard della bozza, e la FK fk_offerte_commerciali_revisione_padre
+#     (NO ACTION) resta dietro.
+#
+#   Il rollback rimette la definizione viva (il blocco changes di
+#   20261026-19, uguale al vivo su dbdev il 2026-11-08) e toglie il trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261109-27-update-trgfn-offerte-rientro-padre-alla-cancellazione-mctit.yaml
+
+  - changeSet:
+      id: 20261109-27-update-trgfn-offerte-rientro-padre-alla-cancellazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_offerte_commerciali_rientro_padre anche al DELETE: la
+        revisione d'offerta cancellata riporta la madre fuori dal superamento.
+        brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.2 (Z2-d).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: quando una revisione di offerta viene ANNULLATA o
+              --   CANCELLATA, il padre torna nello stato che le sue revisioni
+              --   vive dicono: fuori dal superamento se non ne resta nessuna. Lo
+              --   decide e lo scrive la proiezione
+              --   vendite.fn_offerta_proietta_stato_revisione.
+              -- E' l'inverso di trgfn_offerte_commerciali_revisione: la regola di
+              --   dominio e' «una revisione abortita, o che non c'e' piu', non
+              --   rimpiazza nessuno».
+              -- rev 2026-10-26 (20261026-19, brief-modello-documento-vendita §13,
+              --   O-2): le condizioni sul padre, l'UPDATE e il letterale dello stato
+              --   passano alla proiezione, che scrive attraverso la porta. Qui
+              --   resta la causa: una revisione che entra in uno stato d'annullo.
+              -- rev 2026-11-08 (20261109-27, brief-db-sorgente-documento-e-riga
+              --   giro Z.2, Z2-d): anche la revisione cancellata (una bozza vuota)
+              --   e' una causa. Prima la madre restava SUPERATA.
+              BEGIN
+                  -- (0) La revisione cancellata: il padre, dalle revisioni vive che
+                  --     restano. AFTER DELETE: la riga non c'e' piu', e la
+                  --     proiezione non la conta.
+                  IF TG_OP = 'DELETE' THEN
+                      IF OLD.revisione_padre_id IS NOT NULL THEN
+                          PERFORM vendite.fn_offerta_proietta_stato_revisione(OLD.revisione_padre_id);
+                      END IF;
+                      RETURN NULL;
+                  END IF;
+
+                  -- (1) Interessa solo il momento in cui lo stato DIVENTA di annullamento.
+                  --     Un UPDATE che lascia lo stato invariato, o che si muove fra due
+                  --     stati non abortiti, non ha niente a che vedere col rientro.
+                  IF NEW.stato_doc_offerta_id IS NOT DISTINCT FROM OLD.stato_doc_offerta_id THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.stati_doc_offerte s
+                       WHERE s.id = NEW.stato_doc_offerta_id
+                         AND s.is_abortito IS TRUE
+                  ) OR EXISTS (
+                      SELECT 1 FROM config.stati_doc_offerte s
+                       WHERE s.id = OLD.stato_doc_offerta_id
+                         AND s.is_abortito IS TRUE
+                  ) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (2) Deve essere una revisione: senza padre non c'e' niente da riportare.
+                  IF NEW.revisione_padre_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (3) Il padre, dalle sue revisioni vive. ⚠️ Ricorsione: la
+                  --     proiezione riaccende questo trigger sul padre, che entra in
+                  --     uno stato non abortito e si ferma alla condizione (1).
+                  PERFORM vendite.fn_offerta_proietta_stato_revisione(NEW.revisione_padre_id);
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_offerte_commerciali_z90_rientro_padre_dlt
+                  AFTER DELETE ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre();
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
+              IS 'AFTER UPDATE OF stato_doc_offerta_id e AFTER DELETE su vendite.offerte_commerciali (_z90_): quando una revisione ENTRA in uno stato d''annullo (is_abortito), o viene CANCELLATA (una bozza vuota, dal 2026-11-08), chiama la proiezione vendite.fn_offerta_proietta_stato_revisione sul padre, che lo riporta dal superamento allo stato d''emissione (vocabolario) se non gli resta nessuna revisione viva, attraverso la porta. La regola «nessun rientro con una figlia viva» resta nel guard di transizione. Chi annulla la revisione lo conferma prima: il padre che torna emesso e'' un legame dell''annullo (vendite.fn_documento_legami, vendite.fn_annulla_offerta; O-4); la cancellazione non chiede conferma, perche'' una bozza vuota non ha legami da confermare. rev 2026-10-26 (20261026-19, brief-modello-documento-vendita §13, O-2): prima scriveva il padre con un UPDATE suo e il letterale ''EMESSA'', e decideva qui le condizioni sul padre. rev 2026-11-08 (20261109-27, brief-db-sorgente-documento-e-riga giro Z.2, Z2-d): il ramo DELETE; prima la madre di una revisione cancellata restava SUPERATA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_z90_rientro_padre_dlt ON vendite.offerte_commerciali;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: quando una revisione di offerta viene ANNULLATA, il padre
+              --   torna nello stato che le sue revisioni vive dicono: fuori dal
+              --   superamento se non ne resta nessuna. Lo decide e lo scrive la
+              --   proiezione vendite.fn_offerta_proietta_stato_revisione.
+              -- E' l'inverso di trgfn_offerte_commerciali_revisione: la regola di
+              --   dominio e' «una revisione abortita non rimpiazza nessuno».
+              -- rev 2026-10-26 (20261026-19, brief-modello-documento-vendita §13,
+              --   O-2): le condizioni sul padre, l'UPDATE e il letterale dello stato
+              --   passano alla proiezione, che scrive attraverso la porta. Qui
+              --   resta la causa: una revisione che entra in uno stato d'annullo.
+              BEGIN
+                  -- (1) Interessa solo il momento in cui lo stato DIVENTA di annullamento.
+                  --     Un UPDATE che lascia lo stato invariato, o che si muove fra due
+                  --     stati non abortiti, non ha niente a che vedere col rientro.
+                  IF NEW.stato_doc_offerta_id IS NOT DISTINCT FROM OLD.stato_doc_offerta_id THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.stati_doc_offerte s
+                       WHERE s.id = NEW.stato_doc_offerta_id
+                         AND s.is_abortito IS TRUE
+                  ) OR EXISTS (
+                      SELECT 1 FROM config.stati_doc_offerte s
+                       WHERE s.id = OLD.stato_doc_offerta_id
+                         AND s.is_abortito IS TRUE
+                  ) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (2) Deve essere una revisione: senza padre non c'e' niente da riportare.
+                  IF NEW.revisione_padre_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (3) Il padre, dalle sue revisioni vive. ⚠️ Ricorsione: la
+                  --     proiezione riaccende questo trigger sul padre, che entra in
+                  --     uno stato non abortito e si ferma alla condizione (1).
+                  PERFORM vendite.fn_offerta_proietta_stato_revisione(NEW.revisione_padre_id);
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
+              IS 'AFTER UPDATE OF stato_doc_offerta_id su vendite.offerte_commerciali (_z90_): quando una revisione ENTRA in uno stato d''annullo (is_abortito), chiama la proiezione vendite.fn_offerta_proietta_stato_revisione sul padre, che lo riporta dal superamento allo stato d''emissione (vocabolario) se non gli resta nessuna revisione viva, attraverso la porta. La regola «nessun rientro con una figlia viva» resta nel guard di transizione. Chi annulla la revisione lo conferma prima: il padre che torna emesso e'' un legame dell''annullo (vendite.fn_documento_legami, vendite.fn_annulla_offerta; O-4). rev 2026-10-26 (20261026-19, brief-modello-documento-vendita §13, O-2): prima scriveva il padre con un UPDATE suo e il letterale ''EMESSA'', e decideva qui le condizioni sul padre.';

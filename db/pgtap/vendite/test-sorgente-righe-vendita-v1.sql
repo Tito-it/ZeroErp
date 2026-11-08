@@ -95,8 +95,11 @@ SELECT is(
   4,
   '3) le quattro righe di vendita hanno il CHECK di forma della provenienza');
 
+-- rev 2026-11-08 (giro Z.2): schema e nome dalle colonne del lettore, non da
+-- regclass::text, che omette lo schema quando sta nel search_path di chi lancia
+-- (la trappola del test 1 del giro T.4).
 SELECT results_eq(
-  $$SELECT tabella::text COLLATE "default", livello_minimo, azione_cancellazione
+  $$SELECT format('%I.%I', schema_tabella, nome_tabella) COLLATE "default", livello_minimo, azione_cancellazione
       FROM script.fn_sorgente_guard_montaggi()
      WHERE tabella IN ('vendite.preventivi_righe'::regclass, 'vendite.ordini_righe'::regclass,
                        'vendite.ddt_righe'::regclass, 'vendite.contratti_righe'::regclass)
@@ -359,6 +362,12 @@ SELECT is(
   pg_temp.esito(format('DELETE FROM vendite.preventivi_righe WHERE id = %s', pg_temp.fix('bozza_riga'))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '20) la riga d''origine citata da una riga d''ordine non si cancella (BLOCCA)');
+
+-- rev 2026-11-08 (giro Z.2 di brief-db-sorgente-documento-e-riga): il
+-- preventivo si cancella solo da bozza vuota, e il guard della testata parla
+-- prima del lato «in uscita». Le righe si disattivano (in bozza si puo'), la
+-- bozza e' vuota, e il rifiuto che il test prova resta quello del figlio.
+UPDATE vendite.preventivi_righe SET attivo = false WHERE preventivo_id = pg_temp.fix('bozza');
 
 SELECT is(
   pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', pg_temp.fix('bozza'))),
