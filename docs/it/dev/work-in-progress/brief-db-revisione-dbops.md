@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 7-bis chiuso)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 7-bis chiuso, BE11 fatta)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -40,7 +40,7 @@ su `shop.ricevute` letta sul catalogo dei due database (§20.9), **committato** 
 Blocco a **committato** (`f7ce9855c5`). **Via al blocco 7-bis-b** (Tid, 2026-11-08, §23.11): dal `20261109-31`,
 test 14 esteso; il `fk_index_policy.csv` orfano passa al blocco 10d. **Blocco 7-bis-b applicato** (Tid, 2026-11-08,
 §23.11.4): `20261109-31` su dbdev e scratch, pgTAP verdi, committato (`286117c2f6`). **Blocco 7-bis-c censito**
-(2026-11-08, §23.12), decisioni di Tid prese, **scritto e provato** sullo scratch e su dbdev (§23.12.2-23.12.3). **Blocco c applicato** (Tid, 2026-11-08, §23.12.5): migrazione, convergenza, pgTAP verdi. **Il giro 7-bis è chiuso** e committato. **Riparte: team BE** con BE11 (§5); poi la sessione DB col giro successivo di §8, al via di Tid. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+(2026-11-08, §23.12), decisioni di Tid prese, **scritto e provato** sullo scratch e su dbdev (§23.12.2-23.12.3). **Blocco c applicato** (Tid, 2026-11-08, §23.12.5): migrazione, convergenza, pgTAP verdi. **Il giro 7-bis è chiuso** e committato. **BE11 fatta** dal team BE (2026-11-08, da committare su `dev/backend-tid`, §5 «Stato al 2026-11-08, BE11»): il salvataggio delle preferenze è ripristinato. **Riparte: Tid** col commit del BE e il via alla sessione DB per il giro successivo di §8. BE4, BE9 e il test di S-BE-2 sono fatti e committati (§5).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -116,9 +116,9 @@ ancora le tabelle).
 | 9-quadragies-ter | ✅ Tid | Le quattro decisioni del 7-bis-c: tutte come da proposta (2026-11-08) | §23.12 | 9-quadragies-bis |
 | 9-quadragies-quater | ✅ sessione DB | Blocco 7-bis-c scritto e provato (`20261109-32` … `-39`, due CSV, quattro pgTAP); N2 precisato sulle righe di composizione | §23.12.1-23.12.3 | 9-quadragies-ter |
 | 9-quadragies-quinquies | ✅ Tid | Apply del blocco 7-bis-c, convergenza, pgTAP come app verdi (2026-11-08); commit e push dalla sessione DB. Il giro 7-bis è chiuso | §23.12.5 | 9-quadragies-quater |
-| 9-quadragies-sexies | **team BE** ⏭️ | BE11: lo snapshot rinominato, la data del contenuto, l'audit a mano che si ritira, i rifiuti nuovi del guard | §5 | 9-quadragies-quinquies |
+| 9-quadragies-sexies | ✅ team BE | BE11: lo snapshot rinominato, la data del contenuto, l'audit a mano che si ritira, i rifiuti nuovi del guard (2026-11-08, da committare su `dev/backend-tid`) | §5 «Stato al 2026-11-08, BE11» | 9-quadragies-quinquies |
 | 9-quadragies-septies | Tid → sessione DB | Via al giro successivo di §8 | §8 | 9-quadragies-quinquies |
-| 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
+| 9-tricies-decies | ✅ team BE | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
@@ -573,7 +573,7 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 ✅ (2026-11-07) | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
-| BE11 ⏭️ (2026-11-08) | **Insieme all'apply del blocco 7-bis-c (§23.12); prima si rompe il salvataggio delle preferenze.** (a) Lo snapshot della preferenza si rinomina: `preset_base_data_update` → `preset_base_contenuto_aggiornato_il` in `ui.lista_preferenza_utente` e `ui.dashboard_preferenza_utente` (le SELECT e gli upsert dei due repository, i kwargs dei due service e dei test). (b) `get_preset_base_snapshot` legge `contenuto_aggiornato_il` del preset, non `data_update`: oggi `data_update` è l'audit. (c) ⛔ Gli UPDATE di `ui_admin_repository.py` (`update_definizione`, `update_colonna`, `update_preset` e gli upsert dei permessi) non scrivono più `user_update` né `data_update = now()` (`extra_set`): lo fa il trigger di audit dal JWT (`app.jwt_user`). È la stessa regola su due livelli; sui preset l'`extra_set` spostava anche la data del contenuto quando l'admin cambiava solo `attivo`. (d) Rifiuti nuovi dal guard ATTIVO, da mappare se il BE li fa scattare: non si spegne una lista che ha colonne o preset attivi, né una dashboard che ha preset attivi (BLOCK); non nasce né si riattiva una colonna o un preset su una lista spenta, né un widget su un'area o un'azione spenta (REQUIRE). I codici sono `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (BLOCK) ed `E_ATTIVO_PADRE_NON_ATTIVO` (REQUIRE), già in policy. Il commento di `ListaConfigurabile.vue:743` («`preset.data_update` corrente») va riscritto | `backend/apps/ui/db/ui_repository.py:285-360`, `backend/apps/ui/db/dashboard_repository.py:85-150`, `backend/apps/ui/services/lista_preferenza_service.py`, `dashboard_preferenza_service.py`, `backend/apps/ui/db/ui_admin_repository.py:232-260, 469-510, 662-700, 843-880`, i test in `backend/apps/ui/tests/` | §23.12 |
+| BE11 ✅ (2026-11-08) | **Insieme all'apply del blocco 7-bis-c (§23.12); prima si rompe il salvataggio delle preferenze.** (a) Lo snapshot della preferenza si rinomina: `preset_base_data_update` → `preset_base_contenuto_aggiornato_il` in `ui.lista_preferenza_utente` e `ui.dashboard_preferenza_utente` (le SELECT e gli upsert dei due repository, i kwargs dei due service e dei test). (b) `get_preset_base_snapshot` legge `contenuto_aggiornato_il` del preset, non `data_update`: oggi `data_update` è l'audit. (c) ⛔ Gli UPDATE di `ui_admin_repository.py` (`update_definizione`, `update_colonna`, `update_preset` e gli upsert dei permessi) non scrivono più `user_update` né `data_update = now()` (`extra_set`): lo fa il trigger di audit dal JWT (`app.jwt_user`). È la stessa regola su due livelli; sui preset l'`extra_set` spostava anche la data del contenuto quando l'admin cambiava solo `attivo`. (d) Rifiuti nuovi dal guard ATTIVO, da mappare se il BE li fa scattare: non si spegne una lista che ha colonne o preset attivi, né una dashboard che ha preset attivi (BLOCK); non nasce né si riattiva una colonna o un preset su una lista spenta, né un widget su un'area o un'azione spenta (REQUIRE). I codici sono `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (BLOCK) ed `E_ATTIVO_PADRE_NON_ATTIVO` (REQUIRE), già in policy. Il commento di `ListaConfigurabile.vue:743` («`preset.data_update` corrente») va riscritto | `backend/apps/ui/db/ui_repository.py:285-360`, `backend/apps/ui/db/dashboard_repository.py:85-150`, `backend/apps/ui/services/lista_preferenza_service.py`, `dashboard_preferenza_service.py`, `backend/apps/ui/db/ui_admin_repository.py:232-260, 469-510, 662-700, 843-880`, i test in `backend/apps/ui/tests/` | §23.12 |
 | BE10 ✅ (2026-11-07) | **Prima della RLS (blocco 5b), dal 5a.** (a) ⛔ Un lavoro OPERATORE nasce dentro un'azienda: in modalità globale si accoda un lavoro per azienda, o si chiede di sceglierla. Dall'apply del 5a la porta rifiuta un lavoro senza emittente attivo nello scope (`E_CODA_LAVORO_SENZA_EMITTENTE`): oggi lo accodano il giro di fatturazione dal cockpit in modalità globale (FATTURAZIONE_GIRO/NUMERA, dbdev, ultimo 2026-10-26) e chiunque catturi uno scope senza emittente attivo. (b) Il drenatore della coda lavori prende, recupera e chiude i lavori **un'azienda alla volta**, con l'utente tecnico di `draina_coda_lavori` di quell'azienda (`dbops.vw_processi_roster`), come `draina_coda_stampa`; i lavori SISTEMA li vede ogni utente tecnico del drenatore (`claim` con `SKIP LOCKED`). Claim, reaper, `mark_done`/`mark_error` sotto quell'identità; l'esecuzione del lavoro resta con l'identità dello scope. Un'azienda senza utente tecnico non viene drenata, e lo dice `vw_processi_dominio_senza_identita`. (c) La porta, da una sessione dell'applicazione, accoda un lavoro OPERATORE solo a nome di chi è in sessione e nel suo perimetro (`E_CODA_SCOPE_ALTRUI`), e la chiave di un lavoro OPERATORE deve contenere la sua azienda (`E_CODA_CHIAVE_ALTRUI`): da censire i punti che accodano a nome d'altri | `backend/apps/core/services/coda_lavori/drainer_service.py`, `repository.py` (`claim`, `reap_stale`, `mark_*`), `scope.py`, i chiamanti di `CodaLavoriRepository.accoda` | Q14.3, §18 |
 
 Nessuna ricaduta FE diretta: D25 si vede nel form quando BE2 è fatto.
@@ -740,6 +740,48 @@ suggerimento che chiunque altro accodi leggerebbe, e la pagina `manual/coda_lavo
 portarli a `SISTEMA`, con la ragione. ⚠️ Nello stesso giro il backend gira una riga di
 `core/tests/db/test_avvio_manuale_catalogo.py` (`test_tipo_esegui_processo`, che oggi pretende OPERATORE): va detto al
 team BE all'apply.
+
+**Stato al 2026-11-08, BE11 (team BE, da committare su `dev/backend-tid`): (a), (b), (c) e (d) fatte.**
+
+* **(a) Lo snapshot rinominato.** `preset_base_contenuto_aggiornato_il` nelle SELECT e negli upsert di
+  `UiRepository` e `DashboardRepository`, nei kwargs dei due service delle preferenze e nei loro test. Prima del giro
+  il salvataggio di una preferenza dava `E_DATABASE` sul DB vero (`ui/tests/db/test_misure_pagina_db`, rosso con la
+  suite unitaria verde: i mock non vedono il nome di una colonna).
+* **(b) La data del contenuto.** Il BB `fetch_preset_base_snapshot` legge `contenuto_aggiornato_il` sui tre livelli
+  della cascata; il ripiego `COALESCE(data_update, data_insert)` (DEF-2, 2026-05-11) si ritira, perché la colonna è
+  `NOT NULL`.
+* **(c) L'audit a mano si ritira, per intero.** Gli UPDATE di `UiAdminRepository` (`update_definizione`,
+  `update_colonna`, `update_preset`) non nominano più `user_update` né `data_update` (via l'`extra_set` e la voce
+  nelle whitelist); l'upsert dei permessi non scrive più `data_update`/`user_update` nel ramo `DO UPDATE`. Nello
+  stesso giro, sullo stesso argomento, anche **gli INSERT** (`create_definizione`, `create_colonna`, `create_preset`,
+  `upsert_permesso`) non passano più `user_insert`: il trigger generico lo scrive sull'INSERT dal JWT e sovrascriveva
+  quello del BE, quindi era la stessa regola su due livelli. I quattro service admin non chiamano più `user_label`; la
+  testata della classe `UiAdminRepository` dice perché. `apps/ui/services/_audit.py` (`user_label`), rimasto senza
+  consumatori, è ritirato (ok di Tid, 2026-11-08).
+* **(d) I rifiuti del guard.** Nessun service admin li anticipa con un controllo preventivo: spegnere una lista con
+  colonne attive arriva all'operatore come `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, 409, non come il fallback di validazione
+  del service. Nessun mapping da aggiungere.
+* **Il presidio** è `ui/tests/db/test_audit_ui_dal_trigger_db` (DB vero, sei test, i soggetti costruiti nel test):
+  INSERT e UPDATE admin con l'audit dal trigger (`app.jwt_user`), la data del contenuto ferma su `descrizione` e
+  `attivo` e mossa su `filtri_default`, lo snapshot e l'upsert della preferenza col nome nuovo, i due rami dell'upsert
+  dei permessi, il 409 del BLOCK. Allineati `test_update_colonna_repository` e i test SQL di
+  `test_lista_preset_admin_service` / `test_lista_definizione_admin_service` (l'SQL senza audit); il commento di
+  `ListaConfigurabile.vue` (lo snapshot è la data del contenuto).
+* **Esteso a tutto il backend** (decisione di Tid, 2026-11-08: «correggi dove data update/insert vengono aggiornate
+  ed esiste il trigger»). Censite le scritture a mano di `data_update`/`user_update`/`user_insert` e incrociate con la
+  scheda auto-generata di ogni tabella: **24 punti** su tabelle col trigger, tutti ritirati — `core/db/email_repository`
+  (5: account, test dell'account, template, bozza e stato dell'outbox), `core/db/auth_repository` (invito),
+  `core/db/parameter_repository` (upsert dell'override), `core/services/idempotency_store` (2), `portale/db/
+  portale_repository` (disattivazione dell'identità), `vendite/db/commesse_repository` (2), `vendite/db/
+  listini_repository` (2), `vendite/db/pipeline_repository` (10: lotti, log, coda di stampa, attività fatturabili).
+  Il commento della coda di stampa diceva «la tabella non ha trigger audit»: falso, il trigger c'è e scrive anche il
+  `data_update` che il reaper legge come istante del claim (stesso valore, `CURRENT_TIMESTAMP` della transazione). Il
+  comportamento non cambia in nessun punto: il trigger sovrascriveva già. **Restano**, giusti, i quattro `data_update`
+  delle due `*_preferenza_utente`, che il trigger non ce l'hanno. La regola è scritta in [api.md](../api.md)
+  §«Propagazione identita' al DB (GUC)», e la doc del BB `execute_dynamic_update` (codice e catalogo) non porta più
+  l'audit come esempio di `extra_set`. Un test era verde a vuoto e dichiarava una prova che non poteva fare:
+  `core/tests/db/test_scritture_email_note_db` portava indietro `data_update` con un UPDATE (che il trigger rimetteva
+  a `now()`) e poi lo trovava «aggiornato»; il controllo esce, col motivo nel commento.
 
 ## 6. Difetti fuori schema trovati leggendo i chiamanti
 

@@ -56,13 +56,6 @@ from apps.ui.services.lista_colonna_admin_service import (
 )
 
 
-def _make_user(username: str = "tester") -> Any:
-    user = MagicMock()
-    user.username = username
-    user.is_authenticated = True
-    return user
-
-
 def _row_colonna(**overrides: Any) -> dict[str, Any]:
     base = {
         "id": 100,
@@ -179,7 +172,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo.get_definizione_admin.return_value = None
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_colonna(_make_user(), 999, _payload_create_min())
+            svc.create_colonna(999, _payload_create_min())
         self.assertEqual(ctx.exception.code, E_DEFINIZIONE_NOT_FOUND)
         repo.create_colonna.assert_not_called()
 
@@ -187,7 +180,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo = _repo_with_lista()
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_colonna(_make_user(), 1, {
+            svc.create_colonna(1, {
                 **_payload_create_min(),
                 "campo_inventato": True,
             })
@@ -198,7 +191,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo.create_colonna.return_value = 100
         repo.get_colonna_admin.return_value = _row_colonna(id=100)
         svc = ListaColonnaAdminService(repo=repo)
-        svc.create_colonna(_make_user(), 1, _payload_create_min())
+        svc.create_colonna(1, _payload_create_min())
         data = repo.create_colonna.call_args.args[0]
         self.assertEqual(data["allineamento"], "left")
         self.assertTrue(data["filtrabile"])
@@ -210,7 +203,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo = _repo_with_lista()
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_colonna(_make_user(), 1, {
+            svc.create_colonna(1, {
                 **_payload_create_min(),
                 "tipo_colonna": "boh",
             })
@@ -220,7 +213,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo = _repo_with_lista()
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_colonna(_make_user(), 1, {
+            svc.create_colonna(1, {
                 **_payload_create_min(),
                 "tipo_dato": "varchar",
             })
@@ -230,7 +223,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo = _repo_with_lista()
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_colonna(_make_user(), 1, {
+            svc.create_colonna(1, {
                 **_payload_create_min(),
                 "allineamento": "justify",
             })
@@ -244,7 +237,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         )
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_colonna(_make_user(), 1, _payload_create_min())
+            svc.create_colonna(1, _payload_create_min())
         self.assertEqual(ctx.exception.code, E_COLONNA_VALIDATION)
 
     def test_create_colonna_azione_forza_esportabile_false(self) -> None:
@@ -254,7 +247,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         svc = ListaColonnaAdminService(repo=repo)
         # Anche se l'utente passa esportabile=True esplicitamente, la
         # normalize lato BE forza False per coerenza con CHECK DB.
-        svc.create_colonna(_make_user(), 1, {
+        svc.create_colonna(1, {
             "codice": "edit_btn",
             "etichetta": "Modifica",
             "tipo_colonna": "azione",
@@ -272,7 +265,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo.get_colonna_admin.return_value = _row_colonna(id=100)
         svc = ListaColonnaAdminService(repo=repo)
         # Colonna composta FE-only (vedi DEF-10): campo_sorgente NULL ok.
-        svc.create_colonna(_make_user(), 1, {
+        svc.create_colonna(1, {
             **_payload_create_min(),
             "codice": "sosp_riatt",
             "campo_sorgente": None,
@@ -285,7 +278,7 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo.create_colonna.return_value = 100
         repo.get_colonna_admin.return_value = _row_colonna(id=100)
         svc = ListaColonnaAdminService(repo=repo)
-        svc.create_colonna(_make_user(), 1, {
+        svc.create_colonna(1, {
             **_payload_create_min(),
             "etichetta_i18n_key": "  ",
         })
@@ -303,7 +296,7 @@ class ListaColonnaUpdateTests(SimpleTestCase):
         repo.get_colonna_admin.return_value = None
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_colonna(_make_user(), 999, {"etichetta": "X"})
+            svc.update_colonna(999, {"etichetta": "X"})
         self.assertEqual(ctx.exception.code, E_COLONNA_NOT_FOUND)
 
     def test_update_colonna_lista_id_immutabile_raises(self) -> None:
@@ -311,7 +304,7 @@ class ListaColonnaUpdateTests(SimpleTestCase):
         repo.get_colonna_admin.return_value = _row_colonna()
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_colonna(_make_user(), 100, {"lista_id": 2})
+            svc.update_colonna(100, {"lista_id": 2})
         self.assertEqual(ctx.exception.code, E_COLONNA_VALIDATION)
 
     def test_update_colonna_payload_vuoto_raises(self) -> None:
@@ -319,7 +312,7 @@ class ListaColonnaUpdateTests(SimpleTestCase):
         repo.get_colonna_admin.return_value = _row_colonna()
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_colonna(_make_user(), 100, {})
+            svc.update_colonna(100, {})
         self.assertEqual(ctx.exception.code, E_COLONNA_VALIDATION)
 
     def test_update_colonna_happy_path(self) -> None:
@@ -327,7 +320,7 @@ class ListaColonnaUpdateTests(SimpleTestCase):
         repo.get_colonna_admin.return_value = _row_colonna()
         repo.update_colonna.return_value = True
         svc = ListaColonnaAdminService(repo=repo)
-        svc.update_colonna(_make_user(), 100, {
+        svc.update_colonna(100, {
             "etichetta": "Nuova etichetta",
             "ordine_default": 50,
         })
@@ -345,7 +338,7 @@ class ListaColonnaUpdateTests(SimpleTestCase):
         svc = ListaColonnaAdminService(repo=repo)
         # Cambio a azione: esportabile diventa False anche senza essere
         # passato nel payload.
-        svc.update_colonna(_make_user(), 100, {
+        svc.update_colonna(100, {
             "tipo_colonna": "azione",
         })
         data = repo.update_colonna.call_args.args[1]
@@ -363,7 +356,7 @@ class ListaColonnaUpdateTests(SimpleTestCase):
         )
         repo.update_colonna.return_value = True
         svc = ListaColonnaAdminService(repo=repo)
-        svc.update_colonna(_make_user(), 100, {"esportabile": True})
+        svc.update_colonna(100, {"esportabile": True})
         data = repo.update_colonna.call_args.args[1]
         self.assertFalse(data["esportabile"])
 
@@ -372,7 +365,7 @@ class ListaColonnaUpdateTests(SimpleTestCase):
         repo.get_colonna_admin.return_value = _row_colonna()
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_colonna(_make_user(), 100, {"attivo": None})
+            svc.update_colonna(100, {"attivo": None})
         self.assertEqual(ctx.exception.code, E_COLONNA_VALIDATION)
 
 

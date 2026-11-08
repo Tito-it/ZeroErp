@@ -180,12 +180,12 @@ class ExecuteDynamicUpdateTests(unittest.TestCase):
     def test_update_compone_set_e_where(self) -> None:
         esito, sql, params = self._esegui(
             "s.t", 5, {"a": " v ", "meta": {"k": 1}}, allowed={"a", "meta"},
-            extra_set="data_update = now()",
+            extra_set="valido_al = NULL",
         )
         self.assertTrue(esito)
         self.assertEqual(
             sql,
-            "UPDATE s.t SET a = %s, meta = %s::jsonb, data_update = now() WHERE id = %s",
+            "UPDATE s.t SET a = %s, meta = %s::jsonb, valido_al = NULL WHERE id = %s",
         )
         self.assertEqual(params, ["v", json.dumps({"k": 1}), 5])
 

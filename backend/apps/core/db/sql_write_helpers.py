@@ -243,8 +243,10 @@ def execute_dynamic_insert(
 #        d'identificatore). ⚠️ Il default `None` sopravvive per il solo
 #        delegatore `_helpers.dynamic_update` (kwargs letterali dei metodi
 #        geo/indirizzi): ogni chiamante diretto lo DICHIARA.
-#        `extra_set` = clausola SET aggiuntiva literal (es. "data_update =
-#        now()"); `skip_none` = True per i CRUD "kwargs espliciti" dove None
+#        `extra_set` = clausola SET aggiuntiva literal (es. "valido_al =
+#        NULL"). ⛔ Mai l'audit (`data_update`, `user_update`): sulle tabelle
+#        col trigger `script.trgfn_audit_data_user_generic` lo scrive il DB
+#        (2026-11-08); `skip_none` = True per i CRUD "kwargs espliciti" dove None
 #        significa "non toccare" (default False: nei PATCH whitelisted None
 #        AZZERA il campo nullable). `jsonb`/`casts`/`letterali` come nei
 #        fratelli.

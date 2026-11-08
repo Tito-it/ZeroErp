@@ -28,7 +28,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -41,13 +40,6 @@ from apps.ui.services.lista_preset_admin_service import (
     E_PRESET_VALIDATION,
     ListaPresetAdminService,
 )
-
-
-def _make_user(username: str = "tester") -> Any:
-    user = MagicMock()
-    user.username = username
-    user.is_authenticated = True
-    return user
 
 
 def _repo_with_lista_attiva() -> MagicMock:
@@ -116,7 +108,7 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
         repo.get_preset.return_value = {"id": 7, "ambito": "sistema"}
         svc = ListaPresetAdminService(repo=repo)
 
-        result = svc.create_preset(_make_user(), {
+        result = svc.create_preset({
             "lista_id": 1,
             "codice": "default",
             "descrizione": "Default sistema",
@@ -139,7 +131,7 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
         repo = _repo_with_lista_attiva()
         svc = ListaPresetAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_preset(_make_user(), {
+            svc.create_preset({
                 "lista_id": 1,
                 "codice": "p_ruolo",
                 "descrizione": "Ruolo",
@@ -153,7 +145,7 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
         repo = _repo_with_lista_attiva()
         svc = ListaPresetAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_preset(_make_user(), {
+            svc.create_preset({
                 "lista_id": 1,
                 "codice": "p_em",
                 "descrizione": "Emittente",
@@ -166,7 +158,7 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
         repo = _repo_with_lista_attiva()
         svc = ListaPresetAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_preset(_make_user(), {
+            svc.create_preset({
                 "lista_id": 1,
                 "codice": "x",
                 "descrizione": "X",
@@ -179,7 +171,7 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
         repo = _repo_with_lista_attiva()
         svc = ListaPresetAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_preset(_make_user(), {
+            svc.create_preset({
                 "lista_id": 1,
                 "codice": "x",
                 "descrizione": "X",
@@ -192,7 +184,7 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
         repo.get_definizione.return_value = None
         svc = ListaPresetAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_preset(_make_user(), {
+            svc.create_preset({
                 "lista_id": 999,
                 "codice": "x",
                 "descrizione": "X",
@@ -207,7 +199,7 @@ class ListaPresetAdminUpdateTests(SimpleTestCase):
         repo.get_preset.return_value = {"id": 5, "ambito": "sistema"}
         svc = ListaPresetAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_preset(_make_user(), 5, {
+            svc.update_preset(5, {
                 "lista_id": 99,  # immutabile
                 "codice": "rename",
             })
@@ -219,7 +211,7 @@ class ListaPresetAdminUpdateTests(SimpleTestCase):
         repo.get_preset.return_value = {"id": 5, "ambito": "sistema"}
         svc = ListaPresetAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_preset(_make_user(), 5, {})
+            svc.update_preset(5, {})
         self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
 
     def test_update_preset_happy_path(self) -> None:
@@ -228,7 +220,7 @@ class ListaPresetAdminUpdateTests(SimpleTestCase):
         repo.update_preset.return_value = True
         svc = ListaPresetAdminService(repo=repo)
 
-        svc.update_preset(_make_user(), 5, {
+        svc.update_preset(5, {
             "descrizione": "Nuova",
             "is_default": False,
             "pagina_dimensione": 100,
@@ -309,8 +301,9 @@ class ListaPresetAdminColonneTests(SimpleTestCase):
 
 
 # Scopo: presidia l'SQL di `update_preset` / `update_definizione` dopo il
-#        passaggio al BB `execute_dynamic_update` (2026-09-26): audit
-#        `user_update` come parametro + `data_update = now()`, JSONB a
+#        passaggio al BB `execute_dynamic_update` (2026-09-26): NESSUNA
+#        colonna di audit (dal 2026-11-08 la scrive il trigger del DB, BE11
+#        di brief-db-revisione-dbops), JSONB a
 #        `::jsonb` con json.dumps, None che azzera, chiavi fuori whitelist
 #        RIFIUTATE (RuntimeError, dal 2026-09-26: prima scartate in silenzio),
 #        payload vuoto senza query.
@@ -332,19 +325,18 @@ class UiAdminRepositoryUpdateSqlTests(SimpleTestCase):
                 "ordinamento_default": [{"campo": "codice", "dir": "asc"}],
                 "filtri_default": None,
             },
-            user_update="tester",
         ))
         self.assertTrue(esito)
         sql, params = cursor.execute.call_args.args
         self.assertTrue(sql.startswith("UPDATE ui.lista_preset SET "))
         self.assertIn("ordinamento_default = %s::jsonb", sql)
         self.assertIn("filtri_default = %s", sql)
-        self.assertIn("user_update = %s", sql)
-        self.assertIn("data_update = now()", sql)
+        self.assertNotIn("user_update", sql)
+        self.assertNotIn("data_update", sql)
         self.assertTrue(sql.endswith("WHERE id = %s"))
         self.assertEqual(
             params,
-            ["Base", '[{"campo": "codice", "dir": "asc"}]', None, "tester", 5],
+            ["Base", '[{"campo": "codice", "dir": "asc"}]', None, 5],
         )
 
     # ⛔ Un immutabile (`ambito`) che arrivasse fin qui e' un errore di
@@ -353,26 +345,25 @@ class UiAdminRepositoryUpdateSqlTests(SimpleTestCase):
     def test_update_preset_chiave_fuori_whitelist_rifiutata(self) -> None:
         with self.assertRaises(RuntimeError) as ctx:
             self._esegui(lambda r: r.update_preset(
-                5, {"descrizione": "Base", "ambito": "globale"}, user_update="tester",
+                5, {"descrizione": "Base", "ambito": "globale"},
             ))
         self.assertIn("ambito", str(ctx.exception))
 
     def test_update_preset_payload_vuoto_nessuna_query(self) -> None:
         esito, cursor = self._esegui(
-            lambda r: r.update_preset(5, {}, user_update="tester")
+            lambda r: r.update_preset(5, {})
         )
         self.assertFalse(esito)
         cursor.execute.assert_not_called()
 
     def test_update_definizione_audit(self) -> None:
         esito, cursor = self._esegui(lambda r: r.update_definizione(
-            7, {"note": None, "attivo": False}, user_update="tester",
+            7, {"note": None, "attivo": False},
         ))
         self.assertTrue(esito)
         sql, params = cursor.execute.call_args.args
         self.assertEqual(
             sql,
-            "UPDATE ui.lista_definizione SET note = %s, attivo = %s, "
-            "user_update = %s, data_update = now() WHERE id = %s",
+            "UPDATE ui.lista_definizione SET note = %s, attivo = %s WHERE id = %s",
         )
-        self.assertEqual(params, [None, False, "tester", 7])
+        self.assertEqual(params, [None, False, 7])

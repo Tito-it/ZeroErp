@@ -1566,6 +1566,29 @@ cross-request sulle connessioni persistenti (`CONN_MAX_AGE > 0` / pooling),
 critico ora che la RLS filtra in base ai GUC. Vedi
 `docs/it/dev/work-done/analisi-attivazione-rls-operatori-be-fe.md` §1.
 
+**L'audit lo scrive il DB, non il repository.** Sulle tabelle che montano
+`script.trgfn_audit_data_user_generic` (lo dice la scheda auto-generata
+della tabella, sezione trigger) il trigger scrive, dal GUC `app.jwt_user`,
+`user_insert` sull'INSERT e `data_update`/`user_update` a ogni INSERT e
+UPDATE, e **sovrascrive** quello che passa il BE.
+
+* ⛔ Un INSERT non nomina `user_insert`; un UPDATE (o il ramo `DO UPDATE`
+  di un upsert) non nomina `data_update` né `user_update` — nemmeno come
+  `extra_set` di `execute_dynamic_update`, né come `user_update =
+  CURRENT_USER`. Riscriverli è la stessa regola su due livelli: oggi
+  innocua perché il trigger vince, domani falsa per chi la legge.
+* Le colonne dell'audit **si leggono** (SELECT, tipi, liste), non si
+  scrivono.
+* ⚠️ La regola vale **solo** dove il trigger c'è. Le preferenze utente
+  (`ui.lista_preferenza_utente`, `ui.dashboard_preferenza_utente`) hanno
+  `data_update` senza `user_update` e senza trigger: lì il repository la
+  scrive, ed è giusto.
+* ⚠️ Una data con un **significato di dominio** non è l'audit e ha una
+  colonna sua (per esempio `contenuto_aggiornato_il` dei preset, scritta
+  dai trigger a mano del DB): non si ricava da `data_update`.
+
+Censimento e ritiro: BE11 di `brief-db-revisione-dbops` (2026-11-08).
+
 ### Scope emittente
 
 Due pattern disponibili in base al dominio:

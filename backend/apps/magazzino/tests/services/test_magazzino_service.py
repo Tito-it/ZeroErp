@@ -54,7 +54,7 @@ _DOC = {
     "id": 7, "uid": "u", "data": "2026-09-18", "stato": "DRAFT", "magazzino_id": 3,
     "magazzino_codice": "MAG-A", "magazzino_descrizione": "Centrale",
     "magazzino_usa_ubicazioni": False, "descrizione": None, "righe_count": 0,
-    "sorgente_tipo_id": None, "sorgente_riga": None, "sorgente_uid": None, "meta": {},
+    "sorgente_tipo_id": None, "sorgente_id": None, "sorgente_riga": None, "sorgente_uid": None, "meta": {},
     "data_insert": "x", "user_insert": "u", "data_update": "x", "user_update": None,
 }
 _RIGA = {"id": 11, "inventario_id": 7, "articolo_id": _ART, "qta_contata": Decimal("10")}

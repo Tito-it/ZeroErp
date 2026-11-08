@@ -79,7 +79,7 @@ class MisurePaginaDbTests(unittest.TestCase):
         misura = self._fuori_catalogo()
         self._rifiuto(
             lambda: ListaPresetAdminService().update_preset(
-                None, preset_id, {"pagina_dimensione": misura},
+                preset_id, {"pagina_dimensione": misura},
             )
         )
 
@@ -100,7 +100,7 @@ class MisurePaginaDbTests(unittest.TestCase):
                 lista_id=int(lista[0]),
                 configurazione={"pagina_dimensione": misura},
                 preset_base_id=None,
-                preset_base_data_update=None,
+                preset_base_contenuto_aggiornato_il=None,
             )
 
         self._rifiuto(esegui)

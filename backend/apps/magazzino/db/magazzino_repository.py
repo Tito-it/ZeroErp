@@ -235,7 +235,7 @@ def _documento_select(f: FamigliaDocumentoInterno) -> str:
             {descrizione}       AS descrizione,
             (SELECT count(*)::int FROM {f.tabella_righe} r
               WHERE r.{f.fk_riga} = t.id) AS righe_count,
-            t.sorgente_tipo_id, t.sorgente_riga, t.sorgente_uid,
+            t.sorgente_tipo_id, t.sorgente_id, t.sorgente_riga, t.sorgente_uid,
             t.meta, t.data_insert, t.user_insert, t.data_update, t.user_update
           FROM {f.tabella} t
           {_MAGAZZINO_JOIN.format(alias='t')}
