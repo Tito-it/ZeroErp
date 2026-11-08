@@ -7,7 +7,6 @@ Indice test eseguiti:
 5) FattureRigheServiceAggregazioneTests.test_stessa_chiave_produce_una_riga_sommata
 6) FattureRigheServiceAggregazioneTests.test_prezzo_diverso_produce_due_righe
 7) FattureRigheServiceAggregazioneTests.test_quantita_aggregata_non_arrotondata
-8) FattureRigheServiceAggregazioneTests.test_sorgente_non_scritta_su_riga_aggregata
 9) FattureRigheServiceAggregazioneTests.test_riga_nr_ordina_per_codice_articolo
 9b) FattureRigheServiceAggregazioneTests.test_riga_nr_stabile_al_variare_dell_ordine_di_arrivo
 9c) FattureRigheServiceAggregazioneTests.test_riga_senza_codice_resta_in_testa
@@ -401,14 +400,6 @@ class FattureRigheServiceAggregazioneTests(SimpleTestCase):
         # 0.666666 e NON 0.667: arrotondamento_quantita_dec=3 non si applica
         # all'aggregato.
         self.assertEqual(repo.last_kwargs["righe_qtas"], [Decimal("0.666666")])
-
-    # Scopo: Con n sorgenti non ne esiste una singola da dichiarare.
-    def test_sorgente_non_scritta_su_riga_aggregata(self):
-        repo = _RepoMock(attivita=[_attivita_base(11), _attivita_base(12)])
-        _genera(repo)
-        # Il repository non riceve affatto le sorgenti: le scrive NULL in SQL.
-        for chiave in ("sorgente_tipo_ids", "sorgente_uids", "sorgente_righe"):
-            self.assertNotIn(chiave, repo.last_kwargs)
 
     # Scopo: L'ordine dei gruppi non segue l'ordine di arrivo delle attività.
     # ⛔ E ORDINA PER CODICE, NON PER UUID (decisione di Tid, 2026-08-31): qui

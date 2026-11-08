@@ -18,7 +18,7 @@ Indice test eseguiti (classe :: metodo):
 DdtServiceGuardsTests
  1) test_get_ddt_not_found                 — E_DDT_NOT_FOUND se testata None
  2) test_cambia_stato_ddt_not_found        — E_DDT_NOT_FOUND se stato None (guard leggero)
- 3) test_aggiorna_ddt_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
+ 3) test_aggiorna_ddt_fuori_bozza_decide_il_db — fuori bozza il service passa: decide il lock di testata del DB
  4) test_gestisci_riga_stato_non_draft     — E_RIGA_DOC_NON_BOZZA se != DRAFT (il codice del DB, frase a catalogo)
  4b) test_gestisci_riga_chiave_ignota_rifiutata — fuori whitelist: 400 prima di leggere (2026-10-19)
  4c) test_gestisci_riga_ammette_componenti_overrides — la mappa degli override non e' una colonna, ma e' ammessa
@@ -44,8 +44,9 @@ DdtAggiornaTests
 11) test_aggiorna_ddt_ba_non_numerico       — E_DDT_VALIDAZIONE (no 500)
 
 DdtEliminaTests
-12) test_elimina_ddt_con_righe_rifiutato    — E_DDT_STATO_TRANSIZIONE
-13) test_elimina_ddt_bozza_orfana_ok        — hard-delete ammesso (0 righe)
+12) test_elimina_rifiuto_del_db_passa_col_suo_codice — il rifiuto del DB (E_DELETE_DOC_CON_RIGHE) col suo codice, nessuna lettura prima
+12b) test_elimina_inesistente_e_404         — DELETE che non tocca niente: E_DDT_NOT_FOUND
+13) test_elimina_bozza_orfana_ok            — hard-delete ammesso (0 righe)
 
 DdtCambiaStatoTests
 14) test_cambia_stato_ok                    — valida il codice, poi il verbo col codice
@@ -112,7 +113,7 @@ _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
 
 
 class DdtServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
-    """Guard di stato (E_DDT_STATO_TRANSIZIONE sulla testata, E_RIGA_DOC_NON_BOZZA
+    """Guard di stato (sulla testata decide il lock del DB; E_RIGA_DOC_NON_BOZZA
     sulle righe — lo stesso codice del BB a DB, decisione B del 2026-09-22) e
     not-found (E_DDT_NOT_FOUND)."""
 

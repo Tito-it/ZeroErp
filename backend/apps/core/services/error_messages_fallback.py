@@ -635,6 +635,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_GROUP_ATTIVITA_INVALID_DATA": "Dati gruppo attivita non validi.",
     "E_GROUP_ATTIVITA_NOT_FOUND": "Gruppo attivita non trovato.",
     "E_GROUP_ATTIVITA_VALIDATION": "Parametri gruppo attivita non validi.",
+    "E_GUARD_UTILITY": "Automazione dei guard di utility e tipo ruolo non riuscita.",
     "E_GUC_RESET_FAILED": "Errore interno di sicurezza sessione.",
     "E_HANDLER_NON_REGISTRATO": "Handler di flusso non registrato: configurazione incompleta.",
     "E_IDEMPOTENCY_IN_PROGRESS": "L'operazione e' ancora in corso.",
@@ -1226,6 +1227,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_RINUNCIA_ACCREDITO_ESEGUITO": "Rinuncia non piu' riapribile: l'accredito della quota e' gia' stato eseguito. Per riaprirla si deve prima annullare l'accredito.",
     "E_RESO_RINUNCIA_SUPERA_RESO": "La quantita' dichiarata definitiva supera la quantita' resa ancora da ri-consegnare.",
     "E_RESO_SENZA_RIGHE": "Il reso non ha righe: aggiungere almeno una riga prima della conferma.",
+    "E_RESO_SORGENTE_NON_DDT": "Un reso nasce da una bolla di vendita: creare il reso dalla bolla da cui torna la merce.",
     "E_RESO_STATO_NON_ANNULLABILE": "Il reso non e' in uno stato che ammette l'annullo.",
     "E_RESO_STATO_NON_CONFERMABILE": "Il reso non e' in bozza: non e' confermabile.",
     # Ritirato il 2026-10-25 (porta comune, E_DOC_STATO_SOLO_DAL_VERBO): resta per il diario.

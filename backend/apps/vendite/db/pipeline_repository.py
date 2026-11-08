@@ -1960,8 +1960,6 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 SELECT r.id, r.riga_nr, r.articolo_id, r.descrizione, r.uom_id,
                        r.qta, r.prezzo_unitario, r.sconto_percentuale, r.iva_id,
                        r.imponibile_riga, r.dest_billing_account_id,
-                       r.sorgente_tipo_id, r.sorgente_id, r.sorgente_uid,
-                       r.sorgente_riga,
                        r.kit_key, r.kit_esposizione, r.kit_articolo_padre_id,
                        r.kit_descrizione_padre, r.kit_qta, r.kit_uom_id,
                        r.meta
@@ -1986,8 +1984,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #    parte. La FK e' COMPOSITA `(riga_capofila_id, fattura_id)`: una parte
     #    che puntasse a una riga di un altro documento non viene scritta — non
     #    per sorveglianza, per vincolo.
-    # ⭐ La parte COPIA la provenienza intera della capofila — tipo, id, uid e
-    #    riga — come la vuole la forma della sorgente.
+    # ⭐ La riga di fattura non dichiara una provenienza (G-4, brief-db-
+    #    sorgente-documento-e-riga): la tracciabilita' e'
+    #    `attivita_fatturabili.fattura_riga_id`, quindi non c'e' niente da
+    #    copiare dalla capofila.
     # ⭐ La parte di un componente di kit COPIA le colonne kit dalla capofila
     #    (R-BE-P5): senza, usciva dal kit come riga sciolta. Solo `kit_qta` si
     #    passa, perche' e' la sua quota di kit (D-5). Su una riga sciolta le
@@ -2009,21 +2009,14 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 INSERT INTO vendite.fatture_righe (
                     fattura_id, riga_nr, articolo_id, descrizione, uom_id,
                     qta, prezzo_unitario, sconto_percentuale, iva_id,
-                    dest_billing_account_id, sorgente_tipo_id, sorgente_id,
-                    sorgente_uid, sorgente_riga, riga_capofila_id, competenza_dal,
+                    dest_billing_account_id, riga_capofila_id, competenza_dal,
                     competenza_al, kit_key, kit_esposizione,
                     kit_articolo_padre_id, kit_descrizione_padre, kit_uom_id,
                     kit_qta, meta
                 )
                 SELECT c.fattura_id, %s, c.articolo_id, c.descrizione, c.uom_id,
                        %s, c.prezzo_unitario, c.sconto_percentuale, %s,
-                       -- ⛔ La provenienza si copia INTERA: dal giro C.1
-                       --    (brief-db-sorgente-documento-e-riga, BE-C.1-c) un
-                       --    tipo a chiave id vuole `sorgente_id`, e senza la
-                       --    parte di una riga di commessa veniva rifiutata dal
-                       --    CHECK `chk_fatture_righe_sorgente_forma`.
-                       c.dest_billing_account_id, c.sorgente_tipo_id,
-                       c.sorgente_id, c.sorgente_uid, c.sorgente_riga, c.id,
+                       c.dest_billing_account_id, c.id,
                        -- La parte e' la stessa riga spezzata per IVA: stesso
                        -- periodo della capofila.
                        c.competenza_dal, c.competenza_al,
@@ -3485,7 +3478,6 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         fattura_id, riga_nr, articolo_id, descrizione,
                         uom_id, qta, prezzo_unitario, iva_id,
                         dest_billing_account_id,
-                        sorgente_tipo_id, sorgente_uid, sorgente_riga,
                         kit_key, kit_esposizione,
                         kit_articolo_padre_id, kit_descrizione_padre,
                         sconto_percentuale, riga_rettificata_id,
@@ -3496,10 +3488,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         d.fattura_id, d.riga_nr, d.articolo_id, d.descrizione,
                         d.uom_id, d.qta, d.prezzo_unitario, d.iva_id,
                         d.dest_billing_account_id,
-                        -- La riga aggrega n attivita' con n sorgenti: nessuna
-                        -- singola da dichiarare. La tracciabilita' passa dal
-                        -- puntatore attivita_fatturabili.fattura_riga_id (D4).
-                        NULL, NULL, NULL,
+                        -- La riga di fattura non ha una provenienza (G-4,
+                        -- brief-db-sorgente-documento-e-riga): la
+                        -- tracciabilita' passa dal puntatore
+                        -- attivita_fatturabili.fattura_riga_id (D4).
                         d.kit_key, d.kit_esposizione,
                         d.kit_articolo_padre_id,
                         CASE WHEN d.kit_articolo_padre_id IS NULL THEN NULL
