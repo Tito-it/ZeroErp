@@ -2094,8 +2094,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                        classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
                        listino_riga_id = %(listino_riga_id)s,
                        listino_versione_id = %(listino_versione_id)s,
-                       meta = %(meta)s::jsonb,
-                       data_update = now()
+                       meta = %(meta)s::jsonb
                  WHERE id = %(att_id)s
                 """,
                 parametri,
@@ -2114,8 +2113,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                        contratto_id = %(contratto_id)s,
                        categoria_cliente_id_snapshot = %(categoria_cliente_id_snapshot)s,
                        classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
-                       listino_riga_id = %(listino_riga_id)s,
-                       data_update = now()
+                       listino_riga_id = %(listino_riga_id)s
                  WHERE commessa_attivita_id = %(att_id)s
                    AND fattura_riga_id IS NULL
                 """,

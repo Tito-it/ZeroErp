@@ -35,6 +35,7 @@ Indice test eseguiti:
 11) DocumentoInternoDbTests.test_registra_spento_col_motivo_nei_tre_casi — R-1, 2026-09-23
 12) DocumentoInternoDbTests.test_il_duplicato_di_posizione_ha_il_suo_codice — R-2, 2026-09-23
 13) DocumentoInternoDbTests.test_la_ricerca_trova_ogni_colonna_accesa — 2026-09-23
+14) DocumentoInternoDbTests.test_la_testata_proietta_la_provenienza_del_modello — BE-M.2-a, 2026-11-08
 """
 from __future__ import annotations
 
@@ -615,4 +616,44 @@ class DocumentoInternoDbTests(unittest.TestCase):
                 lambda t: consultazione_service.list_disponibilita_articoli(search=t, limit=100)["results"],
                 chiave="chiave_riga",
             )
+        self._nel_mondo(_prova)
+
+    # 14. La provenienza di testata nella grammatica del modello (BE-M.2-a di
+    #     brief-db-sorgente-documento-e-riga, giro M.2, 2026-11-08): la
+    #     testata proietta il TIPO del documento d'origine, la sua CHIAVE in
+    #     `sorgente_id` e la RIGA di quel documento in `sorgente_riga`. Il
+    #     documento d'origine si COSTRUISCE: un altro inventario, un tipo
+    #     delle sorgenti come la bolla del pgTAP (`magazzino/test-sorgente-
+    #     testate-v1`), senza il mondo della vendita. La provenienza la scrive
+    #     l'SQL perche' nessun verbo del BE la scrive; il guard unico la
+    #     accetta solo se documento e riga stanno insieme.
+    def test_la_testata_proietta_la_provenienza_del_modello(self):
+        def _prova(cur, m):
+            origine = self._inventario_confermato(m)
+            cur.execute(
+                "SELECT id FROM magazzino.inventari_righe WHERE inventario_id = %s",
+                [origine["id"]],
+            )
+            riga_origine = int(cur.fetchone()[0])
+            cur.execute("SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'")
+            tipo_inventario = int(cur.fetchone()[0])
+            derivato = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
+            cur.execute(
+                "UPDATE magazzino.inventari "
+                "SET sorgente_tipo_id = %s, sorgente_id = %s, sorgente_riga = %s WHERE id = %s",
+                [tipo_inventario, origine["id"], riga_origine, derivato["id"]],
+            )
+            letto = magazzino_service.get_documento("inventari", derivato["id"])
+            self.assertEqual(
+                (letto["sorgente_tipo_id"], letto["sorgente_id"], letto["sorgente_riga"],
+                 letto["sorgente_uid"]),
+                (tipo_inventario, origine["id"], riga_origine, None),
+            )
+            # Il documento intero: `sorgente_riga` NULL, la chiave resta.
+            cur.execute(
+                "UPDATE magazzino.inventari SET sorgente_riga = NULL WHERE id = %s",
+                [derivato["id"]],
+            )
+            letto = magazzino_service.get_documento("inventari", derivato["id"])
+            self.assertEqual((letto["sorgente_id"], letto["sorgente_riga"]), (origine["id"], None))
         self._nel_mondo(_prova)

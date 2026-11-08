@@ -164,7 +164,7 @@ class PortaleRepository:
     def disattiva_identita(self, identita_id: int) -> bool:
         sql = """
             UPDATE anagrafiche.identita_digitali
-               SET attivo = false, data_update = now()
+               SET attivo = false
              WHERE id = %s
         """
         with connection.cursor() as cursor:

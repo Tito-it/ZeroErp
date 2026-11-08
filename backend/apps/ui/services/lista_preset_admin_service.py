@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
@@ -41,7 +40,6 @@ from apps.core.services.payload_helpers import (
     map_integrity_error,
 )
 from apps.ui.db.ui_admin_repository import UiAdminRepository
-from apps.ui.services._audit import user_label
 
 E_PRESET_VALIDATION = "E_UI_PRESET_VALIDAZIONE"
 E_PRESET_NOT_FOUND = "E_UI_PRESET_NON_TROVATO"
@@ -172,7 +170,6 @@ class ListaPresetAdminService:
     #        violazioni unique/FK/CHECK su codici applicativi parlanti.
     def create_preset(
         self,
-        user: AbstractBaseUser | AnonymousUser | None,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         self._v.validate_allowed_keys(
@@ -185,9 +182,7 @@ class ListaPresetAdminService:
         self._guard_lista_exists(data["lista_id"])
 
         try:
-            new_id = self._repo.create_preset(
-                data, user_insert=user_label(user)
-            )
+            new_id = self._repo.create_preset(data)
         except IntegrityError as exc:
             map_integrity_error(
                 exc,
@@ -209,7 +204,6 @@ class ListaPresetAdminService:
     #        messaggio parlante.
     def update_preset(
         self,
-        user: AbstractBaseUser | AnonymousUser | None,
         preset_id: int,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
@@ -240,9 +234,7 @@ class ListaPresetAdminService:
         )
 
         try:
-            updated = self._repo.update_preset(
-                preset_id, data, user_update=user_label(user)
-            )
+            updated = self._repo.update_preset(preset_id, data)
         except IntegrityError as exc:
             map_integrity_error(
                 exc,

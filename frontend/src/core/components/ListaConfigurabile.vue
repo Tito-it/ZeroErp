@@ -740,7 +740,8 @@ async function openModal() {
 // DEF-2: CTA "Vedi novita'" del banner preset aggiornato → apre la
 // modale di personalizzazione. Niente reset del flag qui: il riallineo
 // avviene naturalmente al successivo save (lo snapshot si aggiorna a
-// `preset.data_update` corrente in `ListaPreferenzaService.upsert`).
+// `preset.contenuto_aggiornato_il` corrente in `ListaPreferenzaService.upsert`:
+// la data del CONTENUTO del preset, non l'audit `data_update`).
 async function onSeePresetUpdate() {
   await openModal()
 }

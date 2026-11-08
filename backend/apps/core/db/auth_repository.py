@@ -202,7 +202,7 @@ class AuthRepository:
     ) -> bool:
         sql = """
             UPDATE anagrafiche.identita_digitali
-               SET invito_inviato_at = now(), data_update = now()
+               SET invito_inviato_at = now()
              WHERE id = %s
                AND auth_user_id = %s
         """

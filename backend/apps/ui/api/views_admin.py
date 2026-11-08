@@ -218,7 +218,7 @@ class ApiAdminPresetListView(DomainAPIView):
             data = dict(payload)
             data["lista_id"] = lista_id
             return ListaPresetAdminService().create_preset(
-                request.user, data
+                data
             )
 
         return handle_post_json(
@@ -242,7 +242,7 @@ class ApiAdminPresetDetailView(DomainAPIView):
     # Scopo: Aggiorna campi mutabili di un preset.
     def patch(self, request: Request, preset_id: int) -> JsonResponse:
         result = ListaPresetAdminService().update_preset(
-            request.user, preset_id, corpo_oggetto(request),
+            preset_id, corpo_oggetto(request),
         )
         return success_response(result)
 
@@ -339,7 +339,7 @@ class ApiAdminPermessoCreateView(DomainAPIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return ListaColonnaPermessoAdminService().upsert_permesso(
-                request.user, dict(payload),
+                dict(payload),
             )
 
         return handle_post_json(
@@ -398,7 +398,7 @@ class ApiAdminListaDefinizioneAdminView(AdminAPIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return ListaDefinizioneAdminService().create_definizione(
-                request.user, dict(payload),
+                dict(payload),
             )
 
         return handle_post_json(
@@ -427,7 +427,7 @@ class ApiAdminListaDefinizioneAdminDetailView(AdminAPIView):
     #        sono mutabili: codice cambia con UNIQUE check DB.
     def patch(self, request: Request, lista_id: int) -> JsonResponse:
         result = ListaDefinizioneAdminService().update_definizione(
-            request.user, lista_id, corpo_oggetto(request),
+            lista_id, corpo_oggetto(request),
         )
         return success_response(result)
 
@@ -471,7 +471,7 @@ class ApiAdminListaColonnaListView(AdminAPIView):
     def post(self, request: Request, lista_id: int) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return ListaColonnaAdminService().create_colonna(
-                request.user, lista_id, dict(payload),
+                lista_id, dict(payload),
             )
 
         return handle_post_json(
@@ -500,7 +500,7 @@ class ApiAdminListaColonnaDetailView(AdminAPIView):
     #        (per spostare una colonna fra liste, cancellarla e ricrearla).
     def patch(self, request: Request, colonna_id: int) -> JsonResponse:
         result = ListaColonnaAdminService().update_colonna(
-            request.user, colonna_id, corpo_oggetto(request),
+            colonna_id, corpo_oggetto(request),
         )
         return success_response(result)
 

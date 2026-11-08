@@ -88,7 +88,7 @@ class DashboardRepository:
                 SELECT id,
                        configurazione,
                        preset_base_id,
-                       preset_base_data_update,
+                       preset_base_contenuto_aggiornato_il,
                        data_insert,
                        data_update
                   FROM ui.dashboard_preferenza_utente
@@ -105,7 +105,7 @@ class DashboardRepository:
             # Lettura per posizione: il jsonb arriva come testo.
             "configurazione": jsonb_out(row[1]),
             "preset_base_id": row[2],
-            "preset_base_data_update": row[3],
+            "preset_base_contenuto_aggiornato_il": row[3],
             "data_insert": row[4],
             "data_update": row[5],
         }
@@ -119,7 +119,7 @@ class DashboardRepository:
         dashboard_id: int,
         configurazione: dict[str, Any],
         preset_base_id: int | None,
-        preset_base_data_update: Any | None,
+        preset_base_contenuto_aggiornato_il: Any | None,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -128,7 +128,7 @@ class DashboardRepository:
                     auth_user_id,
                     dashboard_id,
                     preset_base_id,
-                    preset_base_data_update,
+                    preset_base_contenuto_aggiornato_il,
                     configurazione,
                     data_insert
                 )
@@ -136,7 +136,7 @@ class DashboardRepository:
                 ON CONFLICT (auth_user_id, dashboard_id) DO UPDATE
                    SET configurazione          = EXCLUDED.configurazione,
                        preset_base_id          = EXCLUDED.preset_base_id,
-                       preset_base_data_update = EXCLUDED.preset_base_data_update,
+                       preset_base_contenuto_aggiornato_il = EXCLUDED.preset_base_contenuto_aggiornato_il,
                        data_update             = now()
                 RETURNING id
                 """,
@@ -144,7 +144,7 @@ class DashboardRepository:
                     auth_user_id,
                     dashboard_id,
                     preset_base_id,
-                    preset_base_data_update,
+                    preset_base_contenuto_aggiornato_il,
                     json.dumps(configurazione),
                 ],
             )

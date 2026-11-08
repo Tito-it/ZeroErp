@@ -99,6 +99,12 @@ _EMAIL_LOG_COLONNE_DATA: frozenset[str] = frozenset({"data_insert"})
 class EmailRepository:
     """Accesso DB per config.email_account, config.email_template, config.email_log."""
 
+    # ⭐ L'audit lo scrive il DB: `email_account`, `email_template` ed
+    #    `email_outbox` montano `script.trgfn_audit_data_user_generic` (BEFORE
+    #    INSERT/UPDATE, utente da `app.jwt_user`). Nessun UPDATE qui nomina
+    #    `data_update` o `user_update`: riscriverli sarebbe la stessa regola su
+    #    due livelli (2026-11-08, censimento di BE11 di brief-db-revisione-dbops).
+
     # -------------------------------------------------------
     # Email Account — CRUD + risoluzione
     # -------------------------------------------------------
@@ -251,7 +257,6 @@ class EmailRepository:
         return execute_dynamic_update(
             "config.email_account", account_id, values,
             allowed=allowed,
-            extra_set="data_update = now()",
         )
 
     # Scopo: Elimina un account email per ID.
@@ -279,8 +284,7 @@ class EmailRepository:
                               'last_test_outcome', %s::text,
                               'last_test_at', %s::text,
                               'last_test_message', %s::text
-                          ),
-                   data_update = now()
+                          )
              WHERE id = %s
         """
         with connection.cursor() as cursor:
@@ -415,7 +419,6 @@ class EmailRepository:
         return execute_dynamic_update(
             "config.email_template", template_id, kwargs,
             allowed=self._TEMPLATE_UPDATE_COLS,
-            extra_set="data_update = now()",
         )
 
     # Scopo: Elimina un template email per ID.
@@ -833,7 +836,7 @@ class EmailRepository:
         )
         params.append(outbox_id)
         sql = (
-            f"UPDATE config.email_outbox SET {clausola}, data_update = now() "  # noqa: S608 — clausola composta da sql_set_clause (colonne whitelisted, valori come parametri)
+            f"UPDATE config.email_outbox SET {clausola} "  # noqa: S608 — clausola composta da sql_set_clause (colonne whitelisted, valori come parametri)
             "WHERE id = %s AND stato = 'DRAFT'"
         )
         with connection.cursor() as cursor:
@@ -847,7 +850,7 @@ class EmailRepository:
     ) -> bool:
         sql = """
             UPDATE config.email_outbox
-               SET stato = %s, data_update = now(),
+               SET stato = %s,
                    email_log_id = COALESCE(%s, email_log_id),
                    inviato_at = COALESCE(%s::timestamptz, inviato_at)
              WHERE id = %s

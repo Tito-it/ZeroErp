@@ -1105,9 +1105,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                                 to_jsonb(%s::text),
                                 true
                               )
-                           END,
-                    data_update = now(),
-                    user_update = current_user
+                           END
                 WHERE id = %s
                 """,
                 [stato_input, messaggio, messaggio, lotto_id],
@@ -1329,9 +1327,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 UPDATE vendite.fatturazione_lotti
-                SET stato_operativo = 'CHIUSO',
-                    data_update = now(),
-                    user_update = current_user
+                SET stato_operativo = 'CHIUSO'
                 WHERE id = %s
                 """,
                 [lotto_id],
@@ -2298,9 +2294,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 UPDATE vendite.fatturazione_lotti_log
-                   SET disabilitato = TRUE,
-                       data_update = now(),
-                       user_update = current_user
+                   SET disabilitato = TRUE
                  WHERE lotto_id = %s
                    AND disabilitato IS FALSE
                    AND status = 'C'
@@ -2348,9 +2342,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 UPDATE vendite.fatture_log fl
-                   SET disabilitato = TRUE,
-                       data_update = now(),
-                       user_update = current_user
+                   SET disabilitato = TRUE
                   FROM vendite.fatturazione_lotti_fatture lf
                  WHERE lf.lotto_id = %s
                    AND fl.fattura_id = lf.fattura_id
@@ -2657,9 +2649,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                        stato = CASE
                                  WHEN tentativi + 1 >= %s THEN %s
                                  ELSE %s
-                               END,
-                       data_update = now(),
-                       user_update = CURRENT_USER
+                               END
                  WHERE stato = %s
                    AND data_update < now() - make_interval(mins => %s)
                 """,
@@ -2678,8 +2668,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        drainer. `FOR UPDATE SKIP LOCKED` → più worker in parallelo non si
     #        pestano (ognuno prende righe diverse); il flip a IN_CORSO nella
     #        stessa istruzione le sottrae ai claim successivi (e al
-    #        ri-accodamento, ex_fatture_stampa_coda_vivo). `data_update = now()`
-    #        = claimed_at per il reaper (la tabella non ha trigger audit).
+    #        ri-accodamento, ex_fatture_stampa_coda_vivo). `data_update` = claimed_at per il
+    #        reaper: la scrive il trigger di audit (`trgfn_audit_data_user_generic`)
+    #        a ogni UPDATE, il flip compreso; qui non si nomina (2026-11-08).
     #        Ordine per id (indice parziale ix_fatture_stampa_coda_da_lavorare).
     #        Il render avviene FUORI da qui: la connessione non tiene il lock
     #        durante l'I/O (I-4b). Ritorna i work-item claimati (lista dict),
@@ -2697,9 +2688,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                  LIMIT %s
             )
             UPDATE vendite.fatture_stampa_coda c
-               SET stato = %s,
-                   data_update = now(),
-                   user_update = CURRENT_USER
+               SET stato = %s
               FROM claimed
              WHERE c.id = claimed.id
             RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id,
@@ -2736,9 +2725,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 UPDATE vendite.fatture_stampa_coda
                    SET stato = %s,
                        documento_id = %s,
-                       ultimo_errore = NULL,
-                       data_update = now(),
-                       user_update = CURRENT_USER
+                       ultimo_errore = NULL
                  WHERE id = %s
                 """,
                 [self.STAMPA_STATO_FATTO, int(documento_id), int(coda_id)],
@@ -2763,9 +2750,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                        stato = CASE
                                  WHEN tentativi + 1 >= %s THEN %s
                                  ELSE %s
-                               END,
-                       data_update = now(),
-                       user_update = CURRENT_USER
+                               END
                  WHERE id = %s
                 RETURNING stato
                 """,
@@ -3332,9 +3317,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 UPDATE vendite.attivita_fatturabili a
-                   SET stato_esecuzione = 'RUNNING',
-                       data_update = now(),
-                       user_update = current_user
+                   SET stato_esecuzione = 'RUNNING'
                  WHERE a.lock_batch_id = (
                            SELECT fl.lock_batch_id
                            FROM vendite.fatturazione_lotti fl
@@ -3557,9 +3540,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 --    Piano: brief-db-lavoro-che-non-torna-indietro, L3b.
                 UPDATE vendite.attivita_fatturabili a
                 SET fattura_riga_id = c.fattura_riga_id,
-                    stato_esecuzione = 'COMPLETED',
-                    data_update = now(),
-                    user_update = current_user
+                    stato_esecuzione = 'COMPLETED'
                 FROM correlated c
                 WHERE a.id = c.attivita_id
                 """,
