@@ -4,9 +4,8 @@
 --
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il test fa DDL (una madre in config, la sua gemella in
---   storico, un trigger montato a mano) e cambia la strategia della regola
---   STORICO: e' il percorso delle migrazioni e di ci_apply, non
---   dell'applicazione.
+--   storico, un trigger montato a mano): e' il percorso delle migrazioni e di
+--   ci_apply, non dell'applicazione.
 --
 -- Test: il runner storico riconosce il trigger generico per FUNZIONE
 --   dbops.fn_run_automations_storico · script.trgfn_storico_generic
@@ -16,17 +15,17 @@
 --  1) la funzione generica di storicizzazione esiste col nome vivo
 --  2) ⛔ nessuna funzione PL/pgSQL nomina script.trgfn_upd_dlt_storico_generic,
 --     il nome che aveva prima: chi lo cerca non trova mai il trigger
---  3) ⭐ BY_FUNCTION: una madre che ha gia' il trigger generico con un altro
---     nome non ne riceve un secondo
---  4) ⭐ BOTH (la strategia del seed): idem
---  5) ✅ BY_FUNCTION su una madre senza trigger: il trigger nasce (i test 3-4
---     non sono veri perche' la regola non scatta)
+--  3) ⭐ una madre che ha gia' il trigger generico con un altro nome non ne
+--     riceve un secondo: il trigger si riconosce dalla funzione
+--  4) ⭐ la regola non ha piu' una strategia d'esistenza: la colonna
+--     existence_strategy non c'e' (brief-db-revisione-dbops giro 10b, N1)
+--  5) ✅ su una madre senza trigger il trigger nasce (il 3 non e' vero perche'
+--     la regola non scatta)
 --
 -- ⭐ IL CASO DI D3. Col nome ritirato il controllo per funzione non trovava
---   mai niente: con BY_FUNCTION, e con BOTH quando il nome non coincide col
---   template, il runner montava un secondo trigger di storico accanto a
---   quello che c'era, e ogni UPDATE scriveva due snapshot. I test 3-4 contano
---   i trigger generici sulla madre: due e' il difetto.
+--   mai niente: il runner montava un secondo trigger di storico accanto a
+--   quello che c'era, e ogni UPDATE scriveva due snapshot. Il test 3 conta i
+--   trigger generici sulla madre: due e' il difetto.
 --
 -- ⚠️ La gemella e' una copia della FORMA di storico.parameters (LIKE, la sua
 --   FK si chiama parameters_id), come in test-storico-automazione-colonna-fk-v1:
@@ -81,12 +80,8 @@ FOR EACH ROW
 EXECUTE FUNCTION script.trgfn_storico_generic('pgtap_sto_byfn_id');
 
 -- ============================================================
--- 3. BY_FUNCTION
+-- 3. Il trigger si riconosce dalla funzione
 -- ============================================================
-UPDATE dbops.automation_rules_tbl
-   SET existence_strategy = 'BY_FUNCTION'
- WHERE enabled AND upper(btrim(rule_type)) = 'STORICO';
-
 SELECT dbops.fn_run_automations_storico('SCHEDULED', ARRAY['config'], false);
 
 SELECT is(
@@ -97,38 +92,20 @@ SELECT is(
         AND NOT t.tgisinternal
         AND p.proname = 'trgfn_storico_generic'),
     1,
-    'BY_FUNCTION: la madre col trigger generico non ne riceve un secondo'
+    'la madre col trigger generico (con un altro nome) non ne riceve un secondo'
 );
 
 -- ============================================================
--- 4. BOTH
+-- 4. Non c'e' piu' una strategia da scegliere
 -- ============================================================
-UPDATE dbops.automation_rules_tbl
-   SET existence_strategy = 'BOTH'
- WHERE enabled AND upper(btrim(rule_type)) = 'STORICO';
-
-SELECT dbops.fn_run_automations_storico('SCHEDULED', ARRAY['config'], false);
-
-SELECT is(
-    (SELECT count(*)::integer
-       FROM pg_trigger t
-       JOIN pg_proc p ON p.oid = t.tgfoid
-      WHERE t.tgrelid = 'config.pgtap_sto_byfn'::regclass
-        AND NOT t.tgisinternal
-        AND p.proname = 'trgfn_storico_generic'),
-    1,
-    'BOTH: la madre col trigger generico non ne riceve un secondo'
-);
+SELECT hasnt_column('dbops', 'automation_rules_tbl', 'existence_strategy',
+    'la regola non ha una strategia d''esistenza: il trigger si riconosce sempre dalla funzione');
 
 -- ============================================================
 -- 5. Il controllo: senza trigger, la regola BY_FUNCTION lo monta
 -- ============================================================
 DROP TRIGGER trg_pgtap_sto_byfn_a_mano ON config.pgtap_sto_byfn;
 
-UPDATE dbops.automation_rules_tbl
-   SET existence_strategy = 'BY_FUNCTION'
- WHERE enabled AND upper(btrim(rule_type)) = 'STORICO';
-
 SELECT dbops.fn_run_automations_storico('SCHEDULED', ARRAY['config'], false);
 
 SELECT is(
@@ -139,7 +116,7 @@ SELECT is(
         AND NOT t.tgisinternal
         AND p.proname = 'trgfn_storico_generic'),
     1,
-    'BY_FUNCTION su una madre senza trigger: il trigger nasce'
+    'su una madre senza trigger il trigger nasce'
 );
 
 SELECT * FROM finish();

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_overrides_cols`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,6 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col) — la lettura: il nome di qui, o il default del chiamante
-> * [dbops.fn_run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update) — legge `AUDIT_TS` e `AUDIT_USER`
 > * [dbops.fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) — legge `STORICO_FK` e `STORICIZZA_COL`
 > * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) — legge `STORICO_FK`
 > * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — legge `ATTIVO_COL` del padre e del figlio
@@ -41,8 +40,7 @@ Chi ha bisogno di una colonna chiede a `dbops.fn_get_override_col` il nome per i
 passando il proprio default. Vince:
 
 1. la riga di questa tabella, se c'è;
-2. altrimenti il default del chiamante, che per `AUDIT_TS` e `AUDIT_USER` è il parametro della
-   regola `AUDIT_UPDATE` (`audit_ts`, `audit_user`) e, se manca, il nome standard.
+2. altrimenti il default del chiamante, cioè il nome standard.
 
 La lettura non controlla che la colonna esista: lo fa, dove serve, chi la usa.
 
@@ -52,8 +50,6 @@ La lettura non controlla che la colonna esista: lo fa, dove serve, chi la usa.
 
 * `ATTIVO_COL` — la colonna booleana dello stato attivo, sul padre e sul figlio dei guard ATTIVO.
   Default `attivo`.
-* `AUDIT_TS`, `AUDIT_USER` — le colonne dell'ultima modifica scritte dal trigger di audit.
-  Default `data_update` e `user_update`.
 * `STORICO_FK` — la colonna della tabella di storico che punta alla riga di origine. Default
   `<tabella>_id`, che non va bene quando il nome della tabella è al plurale: il seed la dichiara
   per esempio per `anagrafiche.clienti` (`cliente_id`).
@@ -63,8 +59,12 @@ La lettura non controlla che la colonna esista: lo fa, dove serve, chi la usa.
   esempio `codice_iso` su `config.lingue`). Senza riga, la funzione guarda la struttura della
   tabella, e senza `codice_interno` restituisce un valore vuoto.
 
-⚠️ `col_role` è testo libero, senza vincolo: un ruolo scritto male non solleva niente, e la riga
-resta inerte. Un ruolo nuovo serve solo se un automatismo lo legge.
+`col_role` è un vocabolario chiuso (CHECK `chk_automation_overrides_cols_col_role`): `ATTIVO_COL`,
+`STORICIZZA_COL`, `STORICO_FK`, `CODICE_COL`, `CODICE_INTERNO_COL`. Un ruolo scritto male non
+entra. Un ruolo nuovo serve solo se un automatismo lo legge, e allarga il CHECK.
+
+Le colonne di audit (`data_update`, `user_update`) non hanno un ruolo qui: hanno nome fisso per
+contratto, e il trigger di audit le scrive per nome.
 
 ---
 
@@ -72,8 +72,6 @@ resta inerte. Un ruolo nuovo serve solo se un automatismo lo legge.
 
 Non tutti i lettori lo leggono nello stesso momento:
 
-* il runner dell'audit lo legge al giro, per decidere se montare il trigger: senza le due colonne
-  la tabella non riceve l'audit;
 * la preparazione dello storico lo legge quando crea la tabella di storico: un `STORICO_FK`
   aggiunto dopo non rinomina una colonna già creata;
 * i guard ATTIVO leggono `ATTIVO_COL` del figlio a ogni esecuzione, e il runner passa quella del

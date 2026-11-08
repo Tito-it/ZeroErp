@@ -1,6 +1,6 @@
 # Guida — Storicizzazione delle Tabelle
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -421,9 +421,9 @@ Crea il trigger `BEFORE UPDATE OR DELETE` su tutte le tabelle operative che hann
 1. Risolve l'ambito (esclude `storico`)
 2. Per ogni tabella: verifica che `storico.<tabella>` esista
 3. Risolve la colonna FK (default `<tabella>_id`, override via `STORICO_FK`)
-4. Genera il nome trigger dal template (default: `trg_{table}_z90_storico_upd_dlt`)
-5. Verifica esistenza per strategia (`BY_NAME`, `BY_FUNCTION`, `BOTH`)
-6. Se non esiste: crea il trigger
+4. Genera il nome trigger dal template della regola, obbligatorio (nel seed: `trg_{table}_z90_storico_upd_dlt`)
+5. Verifica se sulla tabella c'è già un trigger su `script.trgfn_storico_generic`, con qualunque nome: il trigger si riconosce dalla funzione
+6. Se non esiste: crea il trigger col nome del passo 4
 ⛔ **Il motore non rimuove i trigger legacy.** Quel ramo esisteva e non ha mai
 funzionato: puntava a `trg_{table}_upd_storico` / `trg_{table}_dlt_storico`, mentre i
 trigger legacy davvero creati si chiamavano `trg_<tab>_upd_dlt_storico_<tab>` (e quelli
@@ -586,7 +586,6 @@ erDiagram
         text target_schema
         text target_table
         text name_template
-        text existence_strategy
         jsonb params
     }
 

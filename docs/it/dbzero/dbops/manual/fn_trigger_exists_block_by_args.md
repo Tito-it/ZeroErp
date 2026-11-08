@@ -1,15 +1,15 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_exists_block_by_args`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — l'unico chiamante, per la strategia di esistenza della regola
+> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — l'unico chiamante: riconosce così i trigger ATTIVO
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — la funzione del trigger che cerca
 > * [dbops.fn_trigger_exists_require_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_require_by_args) — la gemella per il require sul figlio
-> * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — il controllo per nome, l'altra metà della strategia
+> * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — il controllo per nome, che il runner usa solo per sapere se il trigger riconosciuto ha già il nome atteso
 > * [dbops.fn_trigger_attivo_argomenti](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti) — la grammatica degli argomenti, la stessa che legge il trigger
 > * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — gli argomenti salvati di un trigger
 >
@@ -25,8 +25,9 @@ Dice se sulla tabella padre c'è già un trigger *block* della regola ATTIVO
 (`dbops.trgfn_prevent_deactivate_if_children`) con **esattamente** gli argomenti attesi: schema e
 tabella della figlia, colonna FK, colonna referenziata, colonna attivo del padre.
 
-Serve a `dbops.fn_run_automations_attivo` quando la regola riconosce i trigger per funzione
-(`BY_FUNCTION`, o `BOTH` insieme al nome).
+È il modo in cui `dbops.fn_run_automations_attivo` riconosce un trigger ATTIVO: dagli argomenti,
+cioè dalla FK che il trigger difende, qualunque nome abbia. Il nome serve al runner solo per creare
+il trigger, o per rigenerarlo quando quello riconosciuto qui ha un nome diverso da quello atteso.
 
 ---
 

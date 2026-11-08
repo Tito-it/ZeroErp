@@ -1,19 +1,18 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_date_validita`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `DATE_VALIDITA`: template del nome, strategia d'esistenza, contesto
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `DATE_VALIDITA`: template del nome, contesto
 > * [dbops.error_log](/dbzero/dbops/tabelle/error_log) — dove resta il fallimento del montaggio
 >
 > Approfondimento funzioni:
 >
 > * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — il guard che monta: `valido_al` non precede `valido_dal`
 > * [maintenance.proc_automations_lock_columns_job](/dbzero/maintenance/funzioni/proc_automations_lock_columns_job) — il giro a orario che la chiama
-> * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — il riconoscimento per nome
 > * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — il riconoscimento per funzione
 > * [script.fn_sqlstate_di_ambiente](/dbzero/script/funzioni/fn_sqlstate_di_ambiente) — che cosa è un guasto dell'ambiente
 >
@@ -42,8 +41,8 @@ schema `storico` — le tabelle ombra ricordano, non si giudicano — e le tabel
 dall'ambito.
 
 Serve comunque una regola `DATE_VALIDITA` accesa in `dbops.automation_rules_tbl` che copra lo
-schema e la tabella, per il contesto della chiamata: da lì vengono il template del nome e la
-strategia con cui si riconosce un trigger già montato. Senza regola la tabella non si tocca. Fra
+schema e la tabella, per il contesto della chiamata: da lì viene il template del nome,
+obbligatorio (non c'è un nome di ripiego). Senza regola la tabella non si tocca. Fra
 più regole che la coprono vale la prima per priorità, e basta quella.
 
 ⚠️ Su ogni migrate la convergenza, dopo il giro, controlla che ogni tabella con la coppia di date
@@ -54,14 +53,13 @@ dal CSV non lascia tabelle scoperte in silenzio.
 
 ### Idempotente: un guard già montato si riconosce
 
-La strategia d'esistenza della regola dice come: per nome, per funzione, o con entrambi
-(`BOTH`, il default) — e allora basta una delle due. Con `BOTH` un nome troncato oltre i 63
-caratteri si riconosce comunque dalla funzione. A regime il giro non fa DDL.
+Il guard si riconosce dalla funzione (`script.trgfn_guard_date_validita`), qualunque nome abbia:
+anche un nome troncato oltre i 63 caratteri, o un guard con un nome di un'altra epoca, non riceve
+un secondo trigger. Il nome serve solo a crearne uno nuovo. A regime il giro non fa DDL.
 
 Con `p_dry_run` vero non crea niente e scrive in `dbops.audit_log` una riga per ogni tabella su cui
-monterebbe il guard. Il montaggio vero non lascia una riga d'audit. ⚠️ La riga della simulazione è
-firmata `dbops.fn_run_automations`, non col nome di questa funzione: un nome che non esiste più,
-perché l'orchestratore è stato ritirato. È un difetto aperto.
+monterebbe il guard, firmata col nome di questa funzione,
+`dbops.fn_run_automations_date_validita`. Il montaggio vero non lascia una riga d'audit.
 
 ---
 
@@ -106,6 +104,9 @@ tabella, e poi esce. Due casi:
   dominio, e il presidio dei job lo mandava allo sviluppo (`brief-db-presidio-job-run-a-chi-tocca`).
 * 2026-11-04 — ritirato l'orchestratore `dbops.fn_run_automations`, di cui era la parte
   `DATE_VALIDITA`; la firma della simulazione ne porta ancora il nome (`brief-db-revisione-dbops`).
+* 2026-11-08 — il guard si riconosce dalla funzione: la strategia d'esistenza della regola esce; il
+  nome viene solo dal registro; la simulazione firma col proprio nome (`20261109-71`,
+  brief-db-revisione-dbops D17, D20, R1).
 
 ---
 

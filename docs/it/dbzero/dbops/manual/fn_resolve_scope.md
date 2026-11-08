@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_resolve_scope`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -23,7 +23,8 @@
 
 Restituisce l'elenco degli schemi su cui una corsa di automazione deve lavorare: l'elenco
 passato dal chiamante, se ce n'è uno valido, altrimenti gli schemi di
-`dbops.automation_scope`, altrimenti tutti gli schemi utente tranne `storico`.
+`dbops.automation_scope`, altrimenti tutti gli schemi utente tranne `storico`. La risposta è
+senza doppi e senza spazi attorno ai nomi.
 
 È il primo passo di quasi tutti i runner `fn_run_automations_*`, della pulizia e dei seed
 delle automazioni: chi la chiama con un ambito vuoto chiede «l'ambito di default».
@@ -32,10 +33,11 @@ delle automazioni: chi la chiama con un ambito vuoto chiede «l'ambito di defaul
 
 ### I tre gradini
 
-1. **L'elenco del chiamante.** Si tolgono i valori vuoti o fatti di soli spazi e la parola
-   `*all`, e si eliminano i doppioni. Se resta almeno uno schema, è la risposta.
+1. **L'elenco del chiamante.** Si tolgono gli spazi attorno ai nomi, i valori vuoti e la
+   parola `*all`, e si eliminano i doppioni. Se resta almeno uno schema, è la risposta.
 2. **La tabella dell'ambito.** Se `dbops.automation_scope` esiste ed è popolata, la risposta
-   sono i suoi schemi.
+   sono i suoi schemi, ognuno una volta sola anche se ha più righe (più filtri di tabella), e
+   senza spazi attorno.
 3. **Il fallback.** Tutti gli schemi che non sono di sistema (`pg_*`, `information_schema`) e
    non sono `storico`.
 
@@ -52,10 +54,8 @@ significato di `*all` nel bersaglio di una regola, dove vuol dire «qualunque sc
 
 ### ⚠️ Che cosa la risposta non garantisce
 
-* **Gli schemi non si normalizzano.** Un valore con spazi attorno passa il filtro così
-  com'è e poi non coincide con nessuno schema reale: la corsa lo ignora in silenzio.
-* **Dal gradino 2 uno schema compare più volte**, una per riga della tabella (uno schema con
-  più filtri di tabella). I runner lo usano come insieme e il doppione non cambia l'esito.
+* **Il confronto non abbassa le maiuscole**: lo spazio attorno si toglie, ma un nome scritto
+  con una maiuscola diversa non coincide con lo schema reale, e la corsa lo ignora in silenzio.
 * **Non dice che lo schema esista**: un nome elencato e non presente nel database non dà
   errore, semplicemente non porta tabelle.
 * Il gradino 2 contiene `storico` (è nel seed): sono i runner della storicizzazione a
@@ -71,6 +71,15 @@ significato di `*all` nel bersaglio di una regola, dove vuol dire «qualunque sc
 * `db/pgtap/script/test-trgfn-guard-date-validita-v1.sql` — prende l'ambito risolto (con il
   filtro per tabella) come perimetro: ogni tabella che vi sta e ha la coppia di date porta il
   guard della regola del periodo.
+* `db/pgtap/dbops/test-registro-regole-vincoli-v1.sql` — l'ambito risolto non ha doppi né spazi.
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — la risposta è senza doppi e senza spazi: prima `dbops`, che ha sette righe in
+  `automation_scope`, compariva sette volte, e un nome con spazi attorno passava così com'era
+  (`20261109-67`, brief-db-revisione-dbops D13).
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_name_from_template`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -38,6 +38,10 @@ di PostgreSQL. Lo stesso modello con gli stessi valori dà sempre lo stesso nome
 | `{op}` | l'operazione (inserimento, modifica, cancellazione…) |
 | `{fkhash6}` | sei caratteri esadecimali ricavati dal nome della chiave esterna, sempre |
 | `{fkhash6_if_long}` | gli stessi sei caratteri, ma **solo se** senza di loro il nome supererebbe i 63 caratteri; altrimenti sparisce |
+
+La funzione non sa se due chiavi esterne darebbero lo stesso nome: è il chiamante a deciderlo. Il
+runner ATTIVO, quando due FK darebbero lo stesso nome sulla stessa tabella, le passa il modello con
+`{fkhash6}` al posto di `{fkhash6_if_long}`, così l'impronta entra sempre.
 
 Un valore mancante sostituisce il segnaposto con niente; un modello mancante vale come «la sola
 tabella». Senza nome di chiave esterna, i due segnaposto dell'impronta restano vuoti.

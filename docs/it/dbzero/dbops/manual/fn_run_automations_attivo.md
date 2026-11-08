@@ -1,12 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_attivo`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `ATTIVO`: ambito, template dei nomi, strategia, parametri
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `ATTIVO`: ambito, template dei nomi, parametri
 > * [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni) — le FK che il motore non lega
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — il nome della colonna attivo, quando non è `attivo`
 >
@@ -19,6 +19,7 @@
 > * [dbops.fn_trigger_exists_require_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_require_by_args) — il controllo di esistenza per argomenti del require
 > * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args) — il controllo di esistenza per argomenti del block
 > * [dbops.fn_drop_triggers_by_function_args](/dbzero/dbops/funzioni/fn_drop_triggers_by_function_args) — la riconciliazione prima di creare
+> * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — dice se il trigger riconosciuto ha già il nome atteso
 > * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger dal template
 > * [maintenance.proc_automations_attivo_job](/dbzero/maintenance/funzioni/proc_automations_attivo_job) — il wrapper del job che la fa girare
 >
@@ -70,32 +71,39 @@ chiave primaria: una FK può puntare a una colonna `UNIQUE` diversa dall'`id`.
 | Che cosa vieta | spegnere un padre con figli attivi, o con figli qualunque se la figlia non ha la colonna attivo | un figlio attivo sotto un padre spento |
 | Argomenti | figlia, colonna FK, colonna referenziata, colonna attivo del padre | padre, colonna attivo del padre, colonna FK, colonna referenziata |
 
-I nomi vengono dal template della regola (chiavi `block` e `require`), risolto da
-`dbops.fn_name_from_template` con il nome del vincolo FK come base dell'hash: l'hash si aggiunge
-solo quando il nome supererebbe i 63 caratteri.
+I nomi vengono dal template della regola (chiavi `block` e `require`, obbligatorie, ognuna con un
+segnaposto `{fkhash6...}`), risolto da `dbops.fn_name_from_template` con il nome del vincolo FK
+come base dell'hash. Di norma `{fkhash6_if_long}` aggiunge l'hash solo quando il nome supererebbe
+i 63 caratteri.
 
-⚠️ Due FK dalla stessa figlia allo stesso padre danno lo **stesso nome**, se è corto: il template
-distingue padre e figlia, non la colonna. La seconda FK trova il nome già preso, risulta «già
-presente» e resta senza trigger.
+⭐ Il template nomina le tabelle senza schema e non nomina la colonna: due FK possono dare lo
+**stesso nome** sulla stessa tabella. Succede per il require quando la stessa figlia ha più FK
+verso padri con lo stesso nome di tabella (anche lo stesso padre due volte); per il block quando
+figlie con lo stesso nome di tabella in due schemi puntano allo stesso padre (per esempio
+`vendite.ordini` e `acquisti.ordini` verso `config.sorgenti`). In questi casi il motore passa il
+template con `{fkhash6}` al posto di `{fkhash6_if_long}`: l'hash della FK entra sempre, e ogni FK
+ha il suo trigger.
 
 ---
 
 ### Quando un trigger si considera già presente
 
-La regola dichiara una strategia (`existence_strategy`): `BY_NAME` guarda il nome del trigger,
-`BY_FUNCTION` guarda funzione e argomenti, `BOTH` si accontenta di uno dei due. Senza strategia
-vale `BY_NAME`; la regola del seed dichiara `BOTH`.
-
-Il controllo per argomenti riconosce la funzione del trigger per identità e legge gli argomenti
+Un trigger si riconosce dagli **argomenti**, cioè dalla FK che difende, qualunque nome abbia: il
+nome serve solo a crearlo. Il controllo per argomenti riconosce la funzione del trigger per identità e legge gli argomenti
 con la grammatica dei trigger ATTIVO (`dbops.fn_trigger_exists_block_by_args`,
 `dbops.fn_trigger_exists_require_by_args`): la risposta non dipende dal `search_path` di chi lancia
 il motore, e un trigger già montato con gli stessi argomenti non si ricrea.
 
-Se il trigger manca, prima di crearlo il motore **riconcilia**: toglie i trigger della stessa
-funzione con gli stessi argomenti (`dbops.fn_drop_triggers_by_function_args`, che li riconosce allo
-stesso modo), così un trigger rinominato non resta doppio. La riconciliazione
-la governa la chiave `reconcile_on_change` dei parametri della regola, vera se manca; è l'**unica**
-chiave dei parametri che il motore legge.
+Il nome conta solo come seconda domanda: il trigger riconosciuto dagli argomenti ha già il nome
+atteso (`dbops.fn_trigger_exists_by_name`)? Se no — per esempio una delle due FK della stessa
+coppia, nata quando il nome non le distingueva — il trigger si **rigenera**.
+
+Prima di creare (un trigger che manca, o uno da rigenerare) il motore **riconcilia**: toglie i
+trigger della stessa funzione con gli stessi argomenti (`dbops.fn_drop_triggers_by_function_args`,
+che li riconosce allo stesso modo), poi crea quello col nome atteso; così un trigger rinominato non
+resta doppio. La riconciliazione la governa la chiave `reconcile_on_change` dei parametri della
+regola, vera se manca; è l'**unica** chiave dei parametri che il motore legge. Con
+`reconcile_on_change` falso un trigger vivo col nome diverso resta com'è, e conta come presente.
 
 ---
 
@@ -133,6 +141,9 @@ presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
   ramo fuori dal dry run.
 * `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql` — la FK dichiarata eccezione non ha
   trigger, e il motore continua a legare le altre FK della stessa figlia.
+* `db/pgtap/dbops/test-attivo-due-fk-stessa-coppia-v1.sql` — due FK della stessa coppia hanno due
+  require e due block con nomi diversi; un secondo giro non ricrea niente; il trigger col nome di
+  prima si rigenera.
 
 ---
 
@@ -147,6 +158,10 @@ presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
 * 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE invece di diventare `P0001`
   (`brief-db-presidio-job-run-a-chi-tocca`).
 * 2026-10-21 — il ritiro degli orfani in testa al giro (`brief-be-utenti-di-sviluppo` §9.5).
+* 2026-11-08 — il trigger si riconosce dagli argomenti: la strategia d'esistenza della regola esce;
+  quando due FK darebbero lo stesso nome sulla stessa tabella l'hash della FK entra sempre, e il
+  trigger vivo col nome di prima si rigenera; i template vengono solo dal registro (`20261109-72`,
+  brief-db-revisione-dbops D17, D10, D20).
 
 ---
 

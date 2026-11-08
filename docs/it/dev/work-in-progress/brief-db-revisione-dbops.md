@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 10a applicato; `-65` per il presidio lento)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (blocchi 10b-1 e 10b-2 applicati, `-76` compreso)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -49,7 +49,14 @@ sono concordati con le altre sessioni DB. **Giro 10a preparato** (§25): difetti
 **Via sui nodi** (Tid, 2026-11-08: «ok inizia», N1-N4 come da proposta). **Giro 10a scritto e provato** sullo scratch e su
 dbdev (§25.6-25.9): `20261109-58` … `-64`, `presidi.csv`, due pgTAP nuovi e due estesi; un nodo nuovo, **N5** (§25.8).
 **Giro 10a applicato** (Tid, 2026-11-08): pgTAP verdi; il presidio su tutto il database era lento, curato da `-65` (§25.12).
-**Riparte: Tid** con l'apply di `20261109-65` e il pgTAP di §25.12, e con N5. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+**`-65` applicato** (Tid, 2026-11-08). **N5 deciso**: A, trigger a mano, nella forma di §25.8, nel giro 10b. Scelte di §25.7 ok.
+**Il giro 10a è chiuso.** **Giro 10b preparato** (§26): difetti riverificati, sei nodi, quattro blocchi.
+**Via** (Tid, 2026-11-08: N1-N6 come da proposta). **Blocchi 10b-1 e 10b-2 scritti e provati** su scratch e dbdev (§26.5-26.7):
+`20261109-66` … `-75`, il CSV e il mirror del registro; 28 BLOCK e 7 REQUIRE ATTIVO mancanti nascono al giro delle automazioni.
+**Applicati** da Tid (2026-11-08). Il pgTAP `test-attivo-due-fk-stessa-coppia-v1` era lento: curato da `20261109-76` (§26.10).
+**`-76` applicato** (Tid, 2026-11-08): migrazione su dbdev e scratch, pgTAP verdi. **Blocchi 10b-1 e 10b-2 chiusi**, da committare.
+**Riparte: la sessione DB** coi blocchi 10b-3 (la scadenza) e 10b-4 (il lock fuori ambito), dopo aver concordato i progressivi
+oltre il `-79` con l'altra sessione DB; **Tid** per il commit di 10b-1 e 10b-2 e per le scelte di §26.6. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -137,7 +144,17 @@ ancora le tabelle).
 | 9-quinquagies-sexies | ✅ sessione DB | Giro 10a scritto e provato su scratch e dbdev (`20261109-58` … `-64`) | §25.6-25.9 | 9-quinquagies-quinquies |
 | 9-quinquagies-septies | ✅ Tid | Apply del giro 10a (`-58` … `-64`, `presidi.csv`) e pgTAP come app verdi (2026-11-08); il test 4 della convergenza lento | §25.11, §25.12 | 9-quinquagies-sexies |
 | 9-quinquagies-nonies | ✅ sessione DB | `20261109-65`: il controllo di `codice_interno` una volta per tabella; 9,2 s → 0,36 s | §25.12 | 9-quinquagies-septies |
-| 9-sexagies | **Tid** ⏭️ | Apply di `-65` e pgTAP della convergenza; N5; le scelte di §25.7; poi il commit del giro | §25.12, §25.8 | 9-quinquagies-nonies |
+| 9-sexagies | ✅ Tid | Apply di `-65` e pgTAP della convergenza (2026-11-08); commit del giro dalla sessione DB (`d8492eeb77`) | §25.12 | 9-quinquagies-nonies |
+| 9-sexagies-semel | ✅ Tid | N5: A, il codice di `domini_task` è bloccato, col trigger montato a mano; la forma in quattro punti confermata; le scelte di §25.7 ok (2026-11-08) | §25.7, §25.8 | 9-sexagies |
+| 9-sexagies-bis | ✅ Tid → sessione DB | Via alla preparazione del giro 10b (2026-11-08) | §8, §26 | 9-sexagies-semel |
+| 9-sexagies-ter | ✅ sessione DB | Giro 10b preparato: riverifica, sei nodi, quattro blocchi | §26 | 9-sexagies-bis |
+| 9-sexagies-quater | ✅ Tid | Nodi N1-N6 come da proposta, via ai blocchi 10b-1 e 10b-2 (2026-11-08) | §26.2, §26.4 | 9-sexagies-ter |
+| 9-sexagies-quinquies | ✅ sessione DB | Blocchi 10b-1 e 10b-2 scritti e provati (`20261109-66` … `-75`) | §26.5-26.7 | 9-sexagies-quater |
+| 9-sexagies-sexies | ✅ Tid | Apply di `-66` … `-75`, pgTAP come app verdi (2026-11-08); le scelte di §26.6 da guardare | §26.8 | 9-sexagies-quinquies |
+| 9-sexagies-octies | ✅ sessione DB | `20261109-76`: la grammatica ATTIVO in PL/pgSQL; il test 7,2 s → 0,7 s | §26.10 | 9-sexagies-sexies |
+| 9-sexagies-nonies | ✅ Tid | Apply di `-76` su dbdev e scratch, pgTAP di §26.10 verdi (2026-11-08) | §26.10 | 9-sexagies-octies |
+| 9-sexagies-decies | **Tid** ⏭️ | Commit dei blocchi 10b-1 e 10b-2 (`-66` … `-76`, CSV, mirror, pgTAP, doc, brief) | §26 | 9-sexagies-nonies |
+| 9-sexagies-septies | sessione DB | Blocchi 10b-3 e 10b-4 (servono progressivi oltre il `-79`) | §26.3 | 9-sexagies-nonies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
@@ -148,8 +165,9 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** N5 del giro 10a (§25.8); le scelte di §25.7, da guardare. **Da committare:** il giro 10a
-intero (changeSet, `presidi.csv`, pgTAP, doc, brief), dopo l'apply. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
+**Decisioni aperte di Tid:** le scelte di §26.6, da guardare. **Da committare:** i blocchi 10b-1 e 10b-2 (`20261109-66` … `-76`,
+`automation_rules_tbl.csv`, il mirror `20250918-02`, i pgTAP, la doc di §26.9 e §26.10, il brief). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
+è committato (`d8492eeb77`, 2026-11-08), `-65` compreso, che è ancora da applicare. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
 `messaggi_errore.csv`): non sono entrati nel commit. Nessuna sul giro 7-bis: il criterio dello scrittore (§20.8.2, punto 2) è confermato
 (Tid, 2026-11-07); le scelte del blocco a sono in §23.5, da guardare. **Da committare:** nulla del giro 7-bis: i blocchi a, b e c sono
@@ -3614,7 +3632,7 @@ pgTAP: `dbops/test-tx-id-coerenza-non-registrato` (11 → 12: il 12 vuole la sen
 (22 → 29: il 23 è il presidio fuori ambito; 24 regola di un altro modo; 25-26 lock disabilitato; 27-29 regola spenta);
 nuovi `dbops/test-non-editable-fields-dal-lock-vivo-v1` (9) e `catalogo/test-distinta-predicati-guard-e-form-v1` (7).
 
-### 25.7 Le scelte dentro il giro (da guardare, Tid)
+### 25.7 Le scelte dentro il giro (✅ ok di Tid, 2026-11-08)
 
 1. **Il predicato del check 3 restituisce il codice del primo padre, non un booleano** (`fn_articolo_primo_padre_da_oggi`,
    NULL se non ce n'è). Il guard il codice lo mette nel messaggio: con un booleano, come in N3, il filtro sarebbe
@@ -3639,6 +3657,16 @@ o l'esclusione che la toglie si restringe); (b) la riga esce dal registro, e il 
 presidio nuovo rende rossa ogni riga attiva di `automation_lock_columns` su una tabella fuori ambito, e poi (a) o (b).
 **Proposta: (c) con (a)**: la riga dice una decisione (il codice è una chiave di sistema), e il presidio impedisce che
 il caso si ripeta in silenzio. Non è nel giro scritto: lo apre la decisione.
+
+**✅ Deciso (Tid, 2026-11-08): A, il codice è bloccato, ma col trigger montato a mano**: `domini_task` **non** entra
+nell'ambito (che porterebbe anche le altre automazioni). Forma proposta dalla sessione DB, **confermata da Tid** (2026-11-08):
+① la riga di `automation_lock_columns.csv` resta, ed è la **dichiarazione** del lock; ② il trigger lo monta un
+changeSet di `20_code` (stesso nome da template, stessi argomenti che monterebbe il runner), non il runner, che fuori
+dall'ambito non arriva; ③ il presidio fuori ambito (test 23 di `test-lock-columns-convergenza`) cambia regola: fuori
+dall'ambito un lock è ammesso **solo** se ogni sua colonna ha una riga attiva nel registro con lo stesso codice, e
+ogni riga attiva del registro su una tabella fuori ambito ha il suo lock vivo e abilitato (è la metà (c) di N5);
+④ la guida (`automazione-db.md` §4.1, «un lock non si scrive a mano») dice l'eccezione: fuori dall'ambito il lock lo
+monta una migrazione, e il registro lo dichiara comunque. Va nel giro 10b, che rifà l'ambito (D13).
 
 ### 25.9 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase, `BEGIN … ROLLBACK`)
 
@@ -3691,3 +3719,196 @@ dbdev, corpo estratto in transazione): la funzione torna a 75-135 ms, andata e r
 da 9,2 s a 0,36 s, 29 su 29 verdi su tutti e due. Anche il runner ne beneficia: chiama la funzione due volte per giro.
 
 **Per Tid:** apply di `-65`, poi `dbops/test-lock-columns-convergenza` come app.
+
+## 26. Giro 10b — il runner e il registro delle regole: preparazione (2026-11-08)
+
+Difetti del giro (§8): D2, D10, D13, D16, D17, D17-bis, D20, D27, R1; in più N5 del giro 10a (§25.8: il lock di
+`dbops.domini_task` montato a mano). Via di Tid alla preparazione: «ok procedi» (2026-11-08). Corpi letti dal catalogo
+dello scratch (2026-11-08, uguali alle schede auto-generate dopo l'apply del 10a).
+
+### 26.1 La riverifica
+
+| # | Esito | Sul corpo di oggi |
+| --- | --- | --- |
+| D2 | ✅ confermato | In `fn_run_automations_cleanup` le conversioni di `ttl_days`, `apply_on_update` e `batch_limit` stanno **fuori** dai blocchi `BEGIN … EXCEPTION`; `trgfn_cleanup_at_alla_nascita` converte `ttl_days` all'INSERT. `automation_rules_tbl` non ha nessun CHECK: un `ttl_days` testuale ferma il giro e ogni INSERT dei registri coperti |
+| D10 | ✅ confermato, con controesempi | `{fkhash6_if_long}` mette l'hash solo oltre 63 caratteri: due FK corte della stessa figlia verso lo stesso padre danno lo stesso nome, e con `BOTH` (nome **o** argomenti) il runner salta la seconda. Letto sul catalogo dello scratch (2026-11-08): sette coppie hanno due FK e un solo REQUIRE (`catalogo.articoli_componenti → articoli`, `vendite.fatture_righe → articoli` e `→ unita_misura`, `vendite.ddt → magazzino.magazzini`, `vendite.ddt_righe_prelievi → ubicazioni`, `vendite.commesse_attivita → unita_misura`, `pratiche.formule_tempo → template_flussi`). Il template del BLOCK ha la stessa forma |
+| D13 | ✅ confermato, ⚠️ precisato | `fn_run_automations` non c'è più (ritirata). `fn_resolve_scope` restituisce `array_agg(schema_name)` **senza DISTINCT** (oggi `dbops` compare sette volte) e, sulla lista del chiamante, filtra con `btrim` ma restituisce il valore non pulito. `fn_seed_fk_index_policy` legge `automation_scope` da sé, solo per schema |
+| D16 | ✅ confermato | `fn_cleanup_at_params` (letto dal trigger alla nascita) sceglie la regola senza `exec_mode` e senza `automation_cleanup_exclusions`; il runner le applica tutte e due. Senza `base_ts_column` il trigger usa `now()`, il runner la catena `data_insert` → `executed_at` → `occurred_at` → `created_at`. Il trigger scrive sempre `cleanup_at`, il runner la colonna di `cleanup_column` |
+| D17 | ✅ confermato | La strategia d'esistenza è ricopiata in `_tx_id`, `_audit_update`, `_storico`, `_date_validita` e `_attivo`, con due default diversi (`BY_NAME`, e `BOTH` in `_date_validita`); un valore sconosciuto vale «c'è già», in silenzio. `_lock_columns` e `_codice_maiuscolo` già non la leggono: riconoscono il trigger dalla funzione |
+| D17-bis | ✅ confermato | `rule_type`, `exec_mode`, `existence_strategy` (`automation_rules_tbl`) e `col_role` (`automation_overrides_cols`) sono `text` senza CHECK. I ruoli letti dal codice sono sette: `ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICIZZA_COL`, `STORICO_FK`, `CODICE_COL`, `CODICE_INTERNO_COL` |
+| D20 | ✅ confermato | `_storico` ripiega su `trg_z90_{table}_storico_upd_dlt`, il seed dice `trg_{table}_z90_storico_upd_dlt` |
+| D27 | ✅ confermato | `_audit_update` usa gli override `AUDIT_TS`/`AUDIT_USER` (e `params.audit_ts`/`audit_user`) solo per decidere se montare; il trigger nasce senza argomenti e `script.trgfn_audit_data_user_generic` scrive `data_update`/`user_update` per nome. Oggi nessun override li usa (`automation_overrides_cols.csv`, 2026-11-08) |
+| R1 | ✅ confermato, ⚠️ precisato | I dry run firmano ancora `dbops.fn_run_automations` (ritirata) in `_audit_update`, `_date_validita` **e** `_lock_columns` |
+
+### 26.2 I nodi (decisioni di Tid)
+
+* **N1 — D17: la strategia d'esistenza si ritira.** Q3 (Tid, 2026-11-05) ha già deciso per i tre registri che il
+  trigger si riconosce dalla funzione; `_lock_columns` e `_codice_maiuscolo` lo fanno già. Il nome di un trigger è
+  un'etichetta che il runner sceglie, non la sua identità: due trigger con lo stesso nome possono fare cose diverse
+  (D10), e lo stesso trigger può avere un altro nome. **Proposta:** un trigger del framework si riconosce **dalla
+  funzione**, e dove la funzione ha argomenti (ATTIVO) **dagli argomenti**; il nome serve solo a crearlo.
+  `existence_strategy` esce dal registro (colonna, CSV, mirror) e dai cinque runner. Alternativa: un BB
+  `fn_trigger_esiste(rel, strategia, …)` che rifiuta una strategia sconosciuta, più un CHECK. ℹ️ Fatto datato, non
+  motivo: sullo scratch nessun trigger porta il nome del framework con una funzione diversa (2026-11-08).
+* **N2 — D10: il nome del trigger ATTIVO.** Con N1 il secondo REQUIRE (o BLOCK) si riconosce mancante, ma nasce col
+  nome del primo e il `CREATE` fallisce. Strade: (a) l'hash dell'FK entra nel nome **quando serve** — nome oltre 63
+  caratteri **o** un'altra FK della stessa figlia verso lo stesso padre — e il runner rinomina il trigger vivo delle
+  coppie che oggi ne hanno uno solo; (b) l'hash sempre, e il runner rinomina tutti i trigger ATTIVO vivi. **Proposta:
+  (a)**: il nome cambia solo dove il vecchio non distingue. Nessun file del repo nomina i sette trigger da rinominare.
+* **N3 — D16: una sede per la scadenza.** **Proposta:** un risolutore `dbops.fn_cleanup_at_regola(schema, tabella)`
+  letto da trigger e runner: la stessa regola (priorità, poi id), le esclusioni di `automation_cleanup_exclusions`
+  (tabella esclusa = nessuna scadenza), la stessa catena della colonna base, la colonna di `cleanup_column`. Il
+  trigger scrive la colonna dichiarata. Sull'`exec_mode`: il trigger alla nascita non è una corsa e non ha un modo,
+  quindi una regola `CLEANUP_AT` vale sempre: CHECK `exec_mode = 'AUTO'` per `CLEANUP_AT` e `CLEANUP_PURGE`.
+* **N4 — D2: i parametri si validano quando la regola entra.** **Proposta:** `dbops.fn_regola_params_validi(rule_type,
+  params)` IMMUTABLE, chiamata da un CHECK su `automation_rules_tbl` (in `90_end`, dopo il CSV): per `CLEANUP_AT`
+  `ttl_days` intero ≥ 1, `apply_on_update` booleano, `cleanup_column` e `base_ts_column` testo; per `CLEANUP_PURGE`
+  `batch_limit` intero ≥ 1. Il runner non cambia: un parametro che entra è già valido.
+* **N5 — D27: la manopola delle colonne di audit si ritira.** Le colonne di audit hanno nome fisso per contratto
+  (`linee-guida-sql.md` §7), e il trigger le scrive per nome su ~ogni tabella: passargli gli argomenti vorrebbe dire
+  un'assegnazione dinamica per riga. **Proposta:** `AUDIT_TS`/`AUDIT_USER` escono dal vocabolario di `col_role`,
+  `audit_ts`/`audit_user` dai `params` della regola 2, e il runner legge `data_update`/`user_update`. Alternativa:
+  argomenti al trigger.
+* **N6 — D20: il nome del trigger sta nel registro, e solo lì.** **Proposta:** `name_template` obbligatorio (CHECK,
+  non vuoto) per le regole che montano un trigger (`TX_ID`, `AUDIT_UPDATE`, `ATTIVO`, `STORICO`, `LOCK_COLUMNS`,
+  `DATE_VALIDITA`, `CODICE_MAIUSCOLO`), e i runner perdono i loro `COALESCE` di ripiego (oggi sono sei, e uno
+  diverge). Alternativa: allineare il solo ripiego di `_storico`.
+
+Senza nodo:
+
+* **D17-bis:** CHECK sui vocabolari — `rule_type` (i dieci di oggi), `exec_mode` (`AUTO`, `CI`, `SCHEDULED`),
+  `col_role` (i sette ruoli letti, meno i due di N5) — con la forma canonica (maiuscolo, senza spazi): i runner
+  smettono di normalizzare con `upper(btrim(…))`. Va annotato in `framework-automazione-db-migliorie` §2.4.
+* **D13:** `fn_resolve_scope` con `DISTINCT` sul registro e il valore pulito sulla lista del chiamante.
+  `fn_seed_fk_index_policy` passa al giro **10d**, che riapre `fk_index_policy` (stesso oggetto; §8, regola degli
+  oggetti insieme).
+* **R1:** ogni dry run firma col nome del suo runner.
+* **N5 del 10a** (§25.8, forma confermata): il lock di `domini_task` da un changeSet, il test 23 riscritto,
+  l'eccezione nella guida.
+
+### 26.3 I blocchi
+
+* **10b-1 — il registro:** D17-bis, N1 (via `existence_strategy`), N4, N5, N6: CHECK, colonna, CSV e mirror di
+  `automation_rules_tbl` e `automation_overrides_cols`.
+* **10b-2 — i runner:** D17 con N1, D10 con N2, D20, D27, R1 in `_tx_id`, `_audit_update`, `_storico`,
+  `_date_validita`, `_attivo`, `_lock_columns`/`fn_lock_columns_divergenze` (il ripiego del nome); D13.
+* **10b-3 — la scadenza:** D16 con N3: risolutore, trigger alla nascita, runner.
+* **10b-4 — il lock fuori ambito:** N5 del 10a.
+
+Ogni blocco si prova prima del successivo; l'1 e il 2 si applicano insieme (il 2 smette di leggere ciò che l'1 toglie).
+
+**Numeri:** restano `20261109-66` … `-79` (quattordici). Il giro 10b ne chiederà probabilmente di più: l'intervallo
+in più si concorda con l'altra sessione DB al via.
+
+Ricadute BE: nessuna. Il registro delle regole non ha API, e `backend/` non nomina `existence_strategy`, `AUDIT_TS` né
+`audit_ts` (grep, 2026-11-08).
+
+### 26.4 Il via (Tid, 2026-11-08)
+
+«si ok procedi»: N1-N6 come da proposta, via ai blocchi 10b-1 e 10b-2 (si applicano insieme). Numeri `20261109-66` …
+`-75`, riletti liberi sull'albero e nei due `databasechangelog` subito prima di scrivere.
+
+### 26.5 Che cosa è scritto (blocchi 10b-1 e 10b-2)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261109-66` | `dbops.fn_regola_automazione_valida(rule_type, exec_mode, name_template, params)` IMMUTABLE (N4, N6, N3): params oggetto; nome obbligatorio per le regole che montano un trigger; ATTIVO con `block` e `require`, ognuno col segnaposto dell'hash; `CLEANUP_*` in AUTO; `ttl_days` e `batch_limit` interi ≥ 1, `apply_on_update` booleano |
+| `20_code/dbops/20261109-67` | `fn_resolve_scope` senza doppi e senza spazi (D13); COMMENT nuovo |
+| `20_code/dbops/20261109-68` | `_tx_id`: riconoscimento per funzione (N1), nome dal registro (N6) |
+| `20_code/dbops/20261109-69` | `_audit_update`: per funzione, nome dal registro, colonne di audit col nome fisso (N5: via `AUDIT_TS`/`AUDIT_USER` e `params.audit_*`), dry run col proprio nome (R1) |
+| `20_code/dbops/20261109-70` | `_storico`: per funzione, nome dal registro (D20: via il ripiego divergente); l'audit firma `dbops.fn_run_automations_storico` (era senza schema) |
+| `20_code/dbops/20261109-71` | `_date_validita`: per funzione, nome dal registro, dry run col proprio nome (R1) |
+| `20_code/dbops/20261109-72` | `_attivo`: riconoscimento per argomenti (N1); l'hash della FK nel nome quando due FK darebbero lo stesso nome sulla stessa tabella (N2, §26.6 punto 1); un vivo col nome non atteso si rigenera (ramo reconcile); template dal registro; l'audit firma `dbops.fn_run_automations_attivo` (era senza schema) |
+| `20_code/dbops/20261109-73` | `fn_lock_columns_divergenze`: nome dal registro (N6); `_lock_columns`: dry run col proprio nome (R1) |
+| `80_data/changelog/20261109-74` | DROP di `automation_rules_tbl.existence_strategy` (N1), dopo il mirror |
+| `90_end/20261109-75` | CHECK `rule_type`, `exec_mode`, `regola_valida` su `automation_rules_tbl`; `col_role` su `automation_overrides_cols` (D17-bis), coi COMMENT |
+| `80_data` | `automation_rules_tbl.csv`: via la colonna `existence_strategy`, `params` della regola 2 a `{}`, la nota della regola 27 non nomina più la strategia (modifica sul testo, virgolette invariate); il mirror `20250918-02` perde la voce della colonna (CRLF conservati) |
+
+pgTAP nuovi: `dbops/test-registro-regole-vincoli-v1` (17), `dbops/test-attivo-due-fk-stessa-coppia-v1` (7). Riscritti:
+`dbops/test-storico-nome-funzione-ritirato-v1` (5: il 3 riconosce per funzione, il 4 vuole la colonna assente),
+`dbops/test-storico-salto-trigger-presente-v1` (3, e la firma qualificata dell'audit), `dbops/test-cleanup-framework` (19): niente più
+`existence_strategy`.
+
+### 26.6 Le scelte dentro il giro (da guardare, Tid)
+
+1. **N2 è più largo di come l'avevo scritto.** La prima prova sullo scratch (runner su tutto il database) si è fermata:
+   `config.sorgenti` ha due figlie **omonime** in due schemi, `vendite.ordini` e `acquisti.ordini`, e il nome del BLOCK
+   nomina le tabelle senza schema: i due nomi coincidono. Con `BOTH` il secondo BLOCK si saltava in silenzio: è D10 in
+   un'altra forma. La regola dell'hash è quindi «quando due FK darebbero lo stesso nome **sulla stessa tabella**»: per il
+   REQUIRE, più FK della figlia verso padri omonimi (anche lo stesso padre due volte); per il BLOCK, figlie omonime
+   verso lo stesso padre. Effetto sullo scratch e su dbdev (2026-11-08, transazione annullata, fatto datato):
+   **28 BLOCK e 7 REQUIRE mancavano**; il giro dei runner toglie i 35 vivi col nome che non distingue e ne crea 70.
+2. **Il trigger ATTIVO col nome vecchio si rigenera, non si rinomina**: il ramo `reconcile_on_change` che c'era già
+   toglie per argomenti e ricrea. Nessun file del repo nomina i 35 trigger.
+3. **I runner continuano a confrontare con `upper(btrim(…))`**: con la forma canonica del CHECK è codice morto ma
+   innocuo; si toglie quando ognuno si riapre. Il COMMENT del CHECK di `rule_type` e il testata di `-75` lo dicono.
+4. **`fn_seed_fk_index_policy` resta al giro 10d** (§26.2, D13).
+
+### 26.7 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase: i `20_code`, poi il mirror del CSV rifatto su tutte le righe, poi `-74`, poi `-75`; `BEGIN … ROLLBACK`)
+
+* L'SQL passa su scratch e dbdev; andata e ritorno (rollback all'indietro) passa sullo scratch; ogni change passa dal
+  driver di Liquibase (`postgresql-42.7.10.jar`).
+* **I runner sul database intero dopo il giro** (`_tx_id`, `_audit_update`, `_storico`, `_date_validita`, `_attivo`,
+  `_lock_columns`, modo `CI`): solo ATTIVO cambia qualcosa (punto 1 di §26.6), uguale su scratch e dbdev; gli altri non
+  creano né tolgono niente. Il runner ATTIVO vecchio e nuovo durano uguale (circa 5,3 s sullo scratch, giro allineato).
+* pgTAP con l'SQL del giro dopo `BEGIN;`, sullo scratch: verdi i venticinque che nominano runner, regole o override
+  (fra cui i due nuovi e i tre riscritti). Con i runner **già girati** nella stessa transazione, i trentanove che toccano i
+  trigger ATTIVO: verdi tranne tre, rossi uguali senza il giro e da owner (si lanciano come app):
+  `dbops/test-guard-attivo-occhi-del-proprietario-v1` (4), `rls/test-rls-listini-ef-whitelist-write` (2),
+  `pagamenti/test-distinta-numerazione-registro-v1` (2). Su dbdev verdi gli otto del giro e dei runner.
+* Guardrail Liquibase verdi.
+
+### 26.8 Per Tid
+
+1. **Apply** di `20261109-66` … `-75`, del CSV e del mirror, su dbdev e scratch; poi `make db-ci-apply` (o il giro
+   delle automazioni) perché il runner ATTIVO crei i 35 trigger mancanti e rigeneri i 35 col nome vecchio.
+2. **pgTAP come app**: `dbops/test-registro-regole-vincoli-v1`, `dbops/test-attivo-due-fk-stessa-coppia-v1`,
+   `dbops/test-storico-nome-funzione-ritirato-v1`, `dbops/test-storico-salto-trigger-presente-v1`,
+   `dbops/test-cleanup-framework`, `dbops/test-lock-columns-convergenza`,
+   `dbops/test-trigger-attivo-riconoscimento-per-funzione-v1`, `dbops/test-trigger-attivo-orfani-v1`,
+   `dbops/test-catalogo-presidi-v1`, `magazzino/test-movimenti-attesi-forma-v1`, e dopo il giro delle automazioni la
+   corsa completa (i trigger ATTIVO nuovi scattano su tabelle di dominio).
+3. Le scelte di §26.6.
+
+### 26.9 Doc (2026-11-08)
+
+Riscritte (scritte da un agente su brief della sessione DB, rilette dalla sessione): `dbops/manual/automation_rules_tbl.md`,
+`automation_overrides_cols.md`, `fn_get_override_col.md`, `fn_name_from_template.md`, `fn_resolve_scope.md` (con una sezione
+«Note di migrazione» nuova), `fn_run_automations_attivo.md`, `_audit_update.md`, `_codice_maiuscolo.md`, `_date_validita.md`,
+`_lock_columns.md`, `_storico.md`, `_tx_id.md`, `fn_lock_columns_divergenze.md`, `fn_trigger_exists_by_function.md`,
+`_by_name.md`, `_block_by_args.md`, `_require_by_args.md`; `maintenance/manual/proc_automations_storico_job.md`;
+`guide/automazione-db.md` (§1.2, §3.2, §4.2, §5.1, §5.3, §5.4 e gli esempi del CSV), `guide/storicizzazione-tabelle.md`,
+`guide/tx_id_implementation_guide.md` (anche gli esempi di `rule_type` ed `exec_mode`, che il vocabolario chiuso rendeva
+falsi). Nuova: `dbops/manual/fn_regola_automazione_valida.md`. Fuori perimetro, corretta perché falsa:
+`anagrafiche/manual/catasto_unita_immobiliari.md` nominava il trigger di storico con la forma del ripiego ritirato
+(`trg_z90_…`); il vivo è `trg_catasto_unita_immobiliari_z90_storico_upd_dlt` (catalogo dello scratch). Le schede
+auto-generate e gli indici (`dbops/index.md`, `index.ci.md`) si rigenerano dopo l'apply.
+
+### 26.10 Dopo l'apply: il pgTAP delle due FK è lento (Tid, 2026-11-08)
+
+`dbops/test-attivo-due-fk-stessa-coppia-v1` impiegava 7,2 s sullo scratch. Il runner ATTIVO, anche limitato a uno
+schema di prova, paga in testa a ogni giro `fn_ritira_attivo_eccezioni` (0,65 s) e `fn_ritira_attivo_orfani` (1,7 s)
+**su tutto il database**, e il test lo chiama tre volte. Le due pulizie c'erano già prima del giro; la causa è comune:
+`dbops.fn_trigger_attivo_argomenti`, SQL `IMMUTABLE`, si espandeva dentro chi la chiama e la rinumerazione dell'array
+(`ARRAY(SELECT … unnest …)`) si ripeteva per ogni colonna letta, circa 2 ms a trigger su ~900. La pagano anche i
+controlli per argomenti del runner e le tre funzioni trigger ATTIVO a ogni INSERT/UPDATE di una figlia.
+
+Cura, `20_code/dbops/20261109-76`: la stessa grammatica in PL/pgSQL (`IMMUTABLE PARALLEL SAFE`, firma, colonne e COMMENT
+invariati), l'array si calcola una volta per chiamata. Prova sullo scratch, in transazione: **risposte uguali** sui 890
+casi (tutti i trigger ATTIVO vivi e i casi limite: base 0, argomento vuoto, numero sbagliato, funzione sconosciuta,
+array vuoto e NULL); `fn_trigger_attivo_orfani` 1,77 s → 0,15 s, `fn_ritira_attivo_eccezioni` 0,65 → 0,08 s, il runner
+ATTIVO su tutto il database 5,3 → 0,79 s; il pgTAP 7,2 → 0,7 s. Andata e ritorno passano. I pgTAP che nominano le
+funzioni trigger ATTIVO o la grammatica verdi, tranne i due già rossi da owner (§26.7). Doc:
+`dbops/manual/fn_trigger_attivo_argomenti.md` (il perché di PL/pgSQL, nota di migrazione).
+
+**Per Tid:** apply di `-76`, poi come app `dbops/test-attivo-due-fk-stessa-coppia-v1`,
+`dbops/test-guard-attivo-grammatica-e-codici-v1`, `dbops/test-trigger-attivo-orfani-v1`.
+
+### 26.11 Chiusura dei blocchi 10b-1 e 10b-2 (2026-11-08)
+
+Tid ha applicato `20261109-66` … `-76` su dbdev e scratch e ha lanciato i pgTAP di §26.8 e §26.10: verdi. Letto sui due
+`databasechangelog` (sessione DB, sola lettura): gli undici changeSet ci sono. **I blocchi 10b-1 e 10b-2 sono chiusi**, da
+committare. Restano del giro 10b: il blocco **10b-3** (D16 con N3, la scadenza: risolutore unico per trigger alla nascita e
+runner) e il blocco **10b-4** (il lock di `dbops.domini_task` montato da un changeSet, il test 23 di
+`test-lock-columns-convergenza` riscritto, l'eccezione nella guida). Dei progressivi concordati restano `-77` … `-79`:
+per i due blocchi se ne concordano altri con l'altra sessione DB prima di scrivere.

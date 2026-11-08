@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_attivo_argomenti`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -67,11 +67,29 @@ forme danno la stessa risposta e nessuno dei chiamanti conta posizioni.
 
 ---
 
+### ⚠️ Perché PL/pgSQL e non SQL
+
+La funzione si chiama per ogni trigger ATTIVO del database (il presidio degli orfani, la pulizia
+delle eccezioni, i controlli del runner) e a ogni scrittura di una figlia. Una funzione SQL si
+espande dentro la query che la chiama, e la rinumerazione dell'elenco si rifaceva per ogni campo
+letto: circa due millesimi di secondo a trigger. In PL/pgSQL l'elenco si calcola una volta per
+chiamata. La risposta è la stessa.
+
+---
+
 ### Test
 
 * `db/pgtap/dbops/test-guard-attivo-grammatica-e-codici-v1.sql` — la grammatica dei tre, le due
   basi, i montaggi rifiutati col loro motivo, il presidio che ogni trigger montato la rispetta e
   quello che nessuno dei cinque chiamanti legge gli argomenti per posizione.
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — da SQL a PL/pgSQL, con la stessa grammatica e le stesse risposte: il runner ATTIVO
+  su tutto il database passa da circa 5 s a meno di 1 s (`20261109-76`, brief-db-revisione-dbops,
+  giro 10b).
 
 ---
 

@@ -40,7 +40,8 @@ databaseChangeLog:
               - column: { name: target_table,  type: STRING }
               - column: { name: exec_mode,  type: STRING }
               - column: { name: name_template,  type: STRING }
-              - column: { name: existence_strategy,  type: STRING }
+              # existence_strategy ritirata il 2026-11-08 (80_data/changelog/20261109-74,
+              #   brief-db-revisione-dbops giro 10b): il trigger si riconosce dalla funzione.
               - column:
                   name: params
                   type: JSON

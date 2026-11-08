@@ -1,23 +1,23 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_exists_by_name`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola che sceglie la strategia di esistenza (`existence_strategy`)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole, con il template del nome
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — l'altra metà della strategia, per funzione
+> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — il controllo con cui i runner riconoscono i trigger generati
 > * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — compone il nome che i runner cercano qui
-> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) — uno dei runner che la usano
+> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — la usa per sapere se il trigger riconosciuto ha già il nome atteso
 > * [dbops.fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block) — il runner che riconosce i trigger solo per nome
 >
 > Guide:
 >
-> * [Framework di automazione DB](/guide/automazione-db) — le strategie di esistenza delle regole
+> * [Framework di automazione DB](/guide/automazione-db) — come i runner riconoscono i trigger generati
 
 ---
 
@@ -27,9 +27,10 @@ Dice se su una tabella esiste un trigger utente con un nome **esatto**. È il co
 esistenza «per nome» dei runner delle automazioni: prima di creare un trigger generato, il
 runner chiede se il nome del template c'è già.
 
-La usano i runner di audit, `tx_id`, storico, ATTIVO, regola del periodo e blocco delle
-cancellazioni. Con la strategia `BY_NAME` decide da sola; con `BOTH` basta che risponda vero lei
-o il controllo per funzione perché il runner non crei niente.
+I runner di audit, `tx_id`, storico e regola del periodo non la usano: riconoscono il trigger dalla
+funzione. La usano il runner ATTIVO, che riconosce il trigger dagli argomenti e chiede qui solo se
+quello trovato ha già il nome atteso (se no lo rigenera), e il runner del blocco delle
+cancellazioni, che riconosce i trigger solo per nome.
 
 ---
 
@@ -60,9 +61,9 @@ runner che crea trigger mentre controlla.
 
 ### Test
 
-Nessun pgTAP la chiama per nome. La presidiano in modo indiretto i test dei runner che passano
-dalla strategia `BOTH`, per esempio `db/pgtap/dbops/test-storico-nome-funzione-ritirato-v1.sql`
-(una madre con il trigger di storico non ne riceve un secondo).
+Nessun pgTAP la chiama per nome. La presidia in modo indiretto
+`db/pgtap/dbops/test-attivo-due-fk-stessa-coppia-v1.sql`: un trigger ATTIVO col nome di prima si
+rigenera col nome atteso, e un secondo giro non ricrea niente.
 
 ---
 
@@ -70,6 +71,9 @@ dalla strategia `BOTH`, per esempio `db/pgtap/dbops/test-storico-nome-funzione-r
 
 * 2025-08-21 — nasce con la gemella `fn_trigger_exists_by_function`, nel primo albero dei
   changeSet (`db/changelog/migrations/50_dbops`).
+* 2026-11-08 — i runner di `tx_id`, audit, storico e regola del periodo non la usano più per
+  decidere; ATTIVO la usa solo per il nome atteso: la strategia d'esistenza della regola esce
+  (`20261109-68` … `-72`, brief-db-revisione-dbops D17).
 
 ---
 

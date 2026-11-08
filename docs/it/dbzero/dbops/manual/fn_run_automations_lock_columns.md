@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_lock_columns`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -43,9 +43,9 @@ l'azione di ogni tabella che diverge.
   atteso. Un lock scritto a mano con un altro nome viene così riassorbito.
 * `TOGLIE` — toglie tutti i lock vivi della tabella.
 
-Una tabella già allineata non si tocca: un secondo giro non ricrea niente. `existence_strategy`
-della regola qui non conta: un lock vivo si riconosce sempre dalla funzione, altrimenti uno
-scritto a mano resterebbe invisibile.
+Una tabella già allineata non si tocca: un secondo giro non ricrea niente. Un lock vivo si
+riconosce sempre dalla funzione, altrimenti uno scritto a mano resterebbe invisibile. Il nome
+atteso viene dal template della regola `LOCK_COLUMNS`, obbligatorio: non c'è un nome di ripiego.
 
 ---
 
@@ -67,10 +67,8 @@ fermarsi.
 
 Con `p_dry_run` vero la funzione non fa DDL e non si ferma sulle colonne perse: scrive in
 `dbops.audit_log`, per ogni tabella che diverge, l'azione che farebbe, le colonne attese, i
-trigger vivi e le colonne perse. ⚠️ Quelle righe di audit portano come funzione
-`dbops.fn_run_automations`, non il nome di questa: un nome che non esiste più, perché
-l'orchestratore è stato ritirato. È un difetto aperto: chi filtra l'audit per funzione non trova
-le simulazioni di questo runner sotto il suo nome.
+trigger vivi e le colonne perse. Quelle righe di audit sono firmate col nome di questa funzione,
+`dbops.fn_run_automations_lock_columns`.
 
 ---
 
@@ -125,6 +123,8 @@ job lo mandi a chi gestisce l'ambiente e non allo sviluppo.
   di dominio (`brief-db-presidio-job-run-a-chi-tocca`).
 * 2026-11-04 — ritirato l'orchestratore `dbops.fn_run_automations`, che la chiamava per la parte
   `LOCK_COLUMNS`; la firma del dry run ne porta ancora il nome (`brief-db-revisione-dbops`).
+* 2026-11-08 — il dry run firma col proprio nome; il nome atteso del lock viene solo dal template
+  della regola, senza ripiego (`20261109-73`, brief-db-revisione-dbops R1, D20).
 
 ---
 

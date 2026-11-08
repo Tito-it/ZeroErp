@@ -58,8 +58,8 @@ spenta.
   con `E_CODICE_NON_MODIFICABILE`; poi le righe attive di `dbops.automation_lock_columns` su colonne
   che esistono, con il loro codice. Una riga di un altro `exec_mode` è attesa solo se la colonna è
   **già** bloccata: il modo dice quando un lock nasce, non quando esiste. Il nome atteso viene dal
-  `name_template` della prima regola che copre la tabella (in ordine di priorità), e in mancanza
-  dal template standard `trg_{table}_a10_lock_columns_upd`.
+  `name_template` della prima regola che copre la tabella (in ordine di priorità), obbligatorio
+  per `LOCK_COLUMNS`: non c'è un template di ripiego.
 * **Vivo**: **ogni** trigger su `script.trgfn_lock_columns` della tabella, qualunque nome abbia,
   letto da `dbops.vw_lock_columns_vivi`. Le colonne che blocca sono quelle nominate negli argomenti
   (le coppie colonna, codice) più quelle del suo `UPDATE OF`. ⭐ Il riconoscimento è per funzione,
@@ -119,6 +119,8 @@ segnala il presidio `dbops/test-lock-columns-convergenza`, che legge `dbops.vw_l
   `dbops.vw_lock_columns_vivi`, un trigger disabilitato non è allineato, e il ripiego morto sul
   codice vuoto esce (`20261109-60`, brief-db-revisione-dbops D32 e R2). Prima una tabella che
   nessuna regola copriva usciva dal confronto con i suoi lock.
+* 2026-11-08 — il nome atteso viene solo dal template della regola: esce il ripiego
+  `trg_{table}_a10_lock_columns_upd` (`20261109-73`, brief-db-revisione-dbops D20).
 
 ---
 
