@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI config.sorgenti.scope E apribile, AL PRESENTE
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 (giro finale).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   linee-guida-sql §5d: il COMMENT descrive l'oggetto al presente.
+#   - scope descriveva ROW_VALIDATOR, uscito da chk_sorgenti_scope
+#     (20261109-21), e per MAGAZZINO le righe di inventario, rettifica e
+#     trasferimento, uscite dal catalogo; citava brief e changeSet. Riscritto
+#     sui valori del CHECK, con il significato che hanno nel CSV di seed.
+#   - apribile diceva «falso per le righe»: i tipi di riga non sono piu' nel
+#     catalogo. Citava rev, changeSet e brief.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   Solo COMMENT ON COLUMN. La preCondition guarda lo schema (il CHECK senza
+#   ROW_VALIDATOR), non il contenuto di 80_data.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261110-11-comment-sorgenti-scope-e-apribile-mctit.yaml
+
+  - changeSet:
+      id: 20261110-11-comment-sorgenti-scope-e-apribile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente (linee-guida-sql §5d) di config.sorgenti.scope e config.sorgenti.apribile. brief-db-sorgente-documento-e-riga §7.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'config.sorgenti'::regclass AND conname = 'chk_sorgenti_scope'
+                 AND pg_get_constraintdef(oid) NOT LIKE '%ROW_VALIDATOR%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.sorgenti.scope IS
+                'Il ruolo del tipo nei processi; i valori ammessi li dice chk_sorgenti_scope. PUSH_COMMESSA: un documento che si spinge in commessa (preventivo, contratto, ordine, bolla, consumi); una riga di commessa che viene da un tipo di questo scope aggancia il documento alla commessa (vendite.fn_upsert_commessa_attivita, con vendite.fn_link_commessa_sorgente), ed e'' lo scope con cui il backend elenca i tipi che si mandano in commessa. PIPELINE_MARKER: la commessa, la radice della pipeline delle attivita'' fatturabili. POST_INVOICE: la fattura, a valle della pipeline. DIRECT_ENTRY: l''inserimento diretto, ammesso dal vincolo e senza un meccanismo che lo legga. PUSH_CONTRATTO: un documento che genera un contratto in bozza con un push uno a uno (l''offerta commerciale). REVERSE_FLOW: il flusso inverso, merce o valore che torna indietro (il reso di vendita). MAGAZZINO: un fatto di magazzino con identita'' propria che genera movimenti (l''evento d''asset). CATALOGO: un tipo che sta a catalogo per il suo nome (note, stato, lock, indirizzi, numerazione) e che nessun meccanismo legge per scope (ordine e DDT d''acquisto, inventario, rettifica, trasferimento, distinta d''incasso, email). Un tipo cambia scope quando entra in un meccanismo. Il valore di ogni tipo sta nel CSV 80_data/sql/config/sorgenti.csv.';
+
+              COMMENT ON COLUMN config.sorgenti.apribile IS
+                'Vero quando il tipo e'' un documento con una sua PAGINA: chi mostra una riga che viene da questa sorgente (la lista delle attivita'' di commessa, vendite.fn_list_commessa_attivita; i gruppi della competenza in dashboard, vendite.vw_dash_competenza_gruppi) la apre col codice della sorgente e ne risolve il numero (label_selector). Falso per un tipo che una pagina non ce l''ha: i consumi, l''evento d''asset, i tipi a catalogo per il solo nome. Il valore sta nel CSV 80_data/sql/config/sorgenti.csv.';

@@ -246,8 +246,11 @@ l'ordine (H) sul reso (T). La revisione dell'offerta (V) ha un rango proprio e n
 > perimetro.**
 
 `commesse_sorgenti`, `attivita_fatturabili`, `resi_righe`, `resi_righe_accrediti`,
-`resi_righe_riconsegne` e `ddt_righe` non hanno RLS: un ramo che si ferma lì eredita **zero**
-perimetro, e produce un arco verso un documento che il chiamante **non può vedere**.
+`resi_righe_riconsegne` e `ddt_righe` oggi hanno la RLS, per legame col loro documento. La regola
+resta: l'arco nasce dal documento che il chiamante vede, non da una riga di collegamento. Un ramo
+che si fermasse su una tabella senza perimetro produrrebbe un arco verso un documento che il
+chiamante **non può vedere**. I rami N e S arrivano alla fattura dalle sue righe
+(`fatture_righe`), che portano lo stesso perimetro della testata.
 
 ⚠️ **E la decorazione del nodo non salva**: `vw_documento_lineage_nodi` è in `LEFT JOIN`, quindi
 la riga dell'arco resterebbe con `from_codice` / `to_codice` vuoti invece di sparire.

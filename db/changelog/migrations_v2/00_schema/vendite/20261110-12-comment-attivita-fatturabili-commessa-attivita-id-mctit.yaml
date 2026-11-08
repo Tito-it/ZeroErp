@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DEL LEGAME attivita_fatturabili -> commessa, AL PRESENTE
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 (giro finale).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il COMMENT e' quello scritto con la colonna (20260224-09): «FK riga
+#   commessa (nullable in fase transitoria)». La colonna e' NOT NULL da
+#   20260224-42, e da quando le colonne di provenienza di attivita_fatturabili
+#   sono ritirate (20261107-45) e' l'unica provenienza dell'attivita'. Il
+#   COMMENT la descrive al presente (linee-guida-sql §5d): che cosa punta,
+#   che e' obbligatoria, l'unicita' (uq_attivita_fatturabili_commessa_attivita)
+#   che fa da idempotenza all'emissione da commessa.
+#   Lo stesso per la gemella commessa_id («FK testata commessa (nullable in
+#   fase transitoria)», NOT NULL anche lei) e per l'indice unico, il cui
+#   COMMENT dice «(post-backfill)».
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Solo COMMENT ON: due colonne e un indice. Nessun vincolo, nessun indice nuovo.
+#
+#   ⚠️ Applicato prima delle ultime aggiunte: commessa_id e l'indice uq_attivita_fatturabili_commessa_attivita sono nel 20261110-15 (un changeSet
+#   applicato non si tocca). Le righe della testata che le nominano valgono per quello.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261110-12-comment-attivita-fatturabili-commessa-attivita-id-mctit.yaml
+
+  - changeSet:
+      id: 20261110-12-comment-attivita-fatturabili-commessa-attivita-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di vendite.attivita_fatturabili.commessa_attivita_id (NOT NULL, unica, la provenienza dell'attivita'), di commessa_id (NOT NULL) e dell'indice uq_attivita_fatturabili_commessa_attivita riscritti al presente, linee-guida-sql §5d. brief-db-sorgente-documento-e-riga §7.3 (giro finale).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM (
+                SELECT 1 FROM pg_attribute a
+                 WHERE a.attrelid = 'vendite.attivita_fatturabili'::regclass
+                   AND a.attname IN ('commessa_id', 'commessa_attivita_id') AND NOT a.attisdropped
+                HAVING count(*) = 2) x;
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite' AND c.relkind = 'i'
+                 AND c.relname = 'uq_attivita_fatturabili_commessa_attivita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.attivita_fatturabili.commessa_attivita_id IS
+                'La riga di commessa da cui nasce l''attivita'' fatturabile: FK verso vendite.commesse_attivita (fk_attivita_fatturabili_commessa_attivita), obbligatoria. E'' la provenienza dell''attivita'': attivita_fatturabili non porta colonne sorgente_*, e il documento d''origine e la sua riga li dice la riga di commessa, con la sua provenienza tipizzata; chi ne ha bisogno li legge da li'', con un join su questa colonna. Unica (uq_attivita_fatturabili_commessa_attivita): una riga di commessa genera al piu'' un''attivita'', ed e'' la chiave con cui vendite.fn_emit_attivita_fatturabili_da_commessa ritrova l''attivita'' gia'' emessa. La riga di commessa appartiene alla commessa di commessa_id: lo controlla vendite.trgfn_attivita_fatturabili_guard_commessa (E_COMMESSA_ATTIVITA_NON_COERENTE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I COMMENT di prima sono nei changeSet che hanno creato colonne e indice: un rollback li riprende da li'.
+              SELECT 1;

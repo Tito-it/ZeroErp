@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI script SULLA SORGENTE E SU TRE VISTE, AL PRESENTE
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 (giro finale).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   linee-guida-sql §5d: il COMMENT descrive l'oggetto al presente. Questi
+#   erano stantii o cronaca:
+#   - fn_get_sorgente_emittente_sr_id(bigint,bigint,uuid) rimandava a una
+#     «porta testuale» ritirata (20261107-65): c'e' solo la firma sulle colonne;
+#     le strade nominavano lotti e attivita_fatturabili, che non sono tipi del
+#     catalogo.
+#   - fn_sorgente_chiave_id / _uuid nominavano come consumatori
+#     pratiche.fn_stato_sorgente e script.vw_pratica_doc_sorgente, che oggi
+#     cercano con le chiavi tipizzate; i lettori veri si sono letti da prosrc e
+#     da pg_depend (BEGIN ATOMIC: script.fn_sorgente_documento_da_chiave).
+#   - vw_stato_sorgente, vw_stati_doc_reso_merce_rientrata, vw_giornale_entita:
+#     date, rev, brief; il giornale escludeva vendite.attivita_fatturabili_log,
+#     tabella ritirata.
+#   - trgfn_componenti_guard_coerenza_bom diceva «su *_righe_componenti», ma
+#     vendite.listini_righe_componenti ha il suo guard e l'offerta e' montata
+#     sulle eccezioni.
+#   - trgfn_note_validate_generic: marcatore di revisione e brief.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   Solo COMMENT ON: cinque funzioni e tre viste. Nessun corpo, nessuna firma.
+#   Presidio dei marcatori sugli oggetti della provenienza:
+#   vendite/test-sorgente-commenti-al-presente-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261110-09-update-comment-script-sorgente-e-viste-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261110-09-update-comment-script-sorgente-e-viste-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente (linee-guida-sql §5d) di script.fn_get_sorgente_emittente_sr_id, fn_sorgente_chiave_id/_uuid, vw_stato_sorgente, vw_stati_doc_reso_merce_rientrata, vw_giornale_entita, trgfn_componenti_guard_coerenza_bom, trgfn_note_validate_generic. brief-db-sorgente-documento-e-riga §7.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'script' AND c.relname = 'vw_stati_doc_reso_merce_rientrata' AND c.relkind = 'v';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_sorgente_emittente_sr_id(bigint, bigint, uuid) IS
+                '«Chi emette questo documento», per la sorgente polimorfa, sulle colonne del modello: dato il tipo (config.sorgenti) e la chiave del documento (sorgente_id o sorgente_uid) restituisce il soggetto_ruolo dell''emittente. Il documento lo risolve script.fn_sorgente_documento, con la chiave che riceve; qui si legge solo l''emittente, per id, per tre strade in ordine di direttezza: (1) emittente_soggetto_ruolo_id se la tabella del tipo ce l''ha (commessa, fattura, distinta d''incasso); (2) emittente_fiscale_id tradotto in soggetto_ruolo (i documenti di vendita: e'' NOT NULL, mentre il billing account e'' facoltativo su ordini, preventivi, bolle e resi); (3) billing_account_id con anagrafiche.fn_get_emittente_fiscale_id (i consumi). La strada la sceglie la tabella del tipo prima del documento. Fail-closed, mai un NULL silenzioso: tipo mancante, assente, spento o senza target_table -> E_SORG_CONF; nessuna chiave -> E_SORG_KEY_MISSING; tabella senza nessuna delle tre colonne -> E_SORG_CONF; documento inesistente o senza emittente -> E_SORG_EMITTENTE_NON_RISOLTO. SECURITY DEFINER: da INVOKER la sorgente di un altro emittente sarebbe invisibile sotto RLS, e il chiamante concluderebbe «non esiste» invece di «e'' di un altro». La leggono vendite.fn_check_commessa_sorgente_emittente_omogeneo e vendite.fn_guard_commessa_sorgente_emittente.';
+
+              COMMENT ON FUNCTION script.fn_sorgente_chiave_uuid(text) IS
+                'La chiave di un documento scritta in testo, nel suo tipo uuid: il lettore della forma canonica per i tipi a key_selector = uid. NULL se il testo non e'' un uuid in forma CANONICA (identica a uuid::text): maiuscole, graffe o trattini mancanti danno NULL, perche'' il confronto sulla forma testuale non li troverebbe e le due strade per cercare la stessa chiave devono rispondere uguale. Mai un errore (pg_input_is_valid prima del cast); NULL in ingresso, NULL in uscita: decide il chiamante. Serve alle chiavi che sono testo per costruzione (i nodi della lineage, la chiave di un gruppo fatturabile, la chiave che riceve il BB che scrive, la riga letta come JSON dal guard unico, le tabelle che hanno la chiave solo in testo): con la gemella script.fn_sorgente_chiave_id e'' il solo posto che decide se quel testo e'' una chiave, e di quale specie. Chi cerca converte il parametro, non la colonna: sotto RLS il confronto sul testo non arriva all''indice (uuid_out non e'' leakproof), quello sull''uuid si''. plpgsql e non sql: una sql si inlinea, e con un argomento costante il cast verrebbe piegato prima del controllo. La leggono script.fn_sorgente_documento_da_chiave, script.fn_sorgente_chiave, script.trgfn_guard_sorgente, dbops.fn_sorgenti_orfane, vendite.fn_documento_lineage_legami, vendite.fn_documento_lineage_sintesi e vendite.fn_riferimento_gruppo_fatturabile.';
+
+              COMMENT ON FUNCTION script.fn_sorgente_chiave_id(text) IS
+                'La chiave di un documento scritta in testo, nel suo tipo bigint: il lettore della forma canonica per i tipi a key_selector = id, gemella di script.fn_sorgente_chiave_uuid. NULL se il testo non e'' un intero in forma CANONICA (identica a bigint::text: niente zeri davanti, spazi, segno). Mai un errore; NULL in ingresso, NULL in uscita. Stesse ragioni e stesse cautele della gemella (forma canonica, conversione del parametro e non della colonna, plpgsql e non sql). La leggono script.fn_sorgente_documento_da_chiave, script.fn_sorgente_chiave, dbops.fn_sorgenti_orfane, vendite.fn_documento_lineage_legami e vendite.fn_documento_lineage_sintesi.';
+
+              COMMENT ON VIEW script.vw_stato_sorgente IS
+                'Lo stato di un documento nel vocabolario comune (fase, esito, terminale): la union dei resolver di dominio, al piu'' una riga per documento. Sei rami, uno per tipo: vendite.vw_stato_sorgente_preventivo, _offerta, _ordine, _contratto, _ddt e _reso; ogni ramo trova il suo tipo per codice in config.sorgenti. Un tipo senza ramo non ha righe: l''assenza della riga e'' il «non risolto», e risolto e'' sempre true. La chiave del documento sta in tre colonne: sorgente_chiave_uuid, valorizzata nei rami a key_selector uid; sorgente_chiave_id, nei rami a key_selector id; sorgente_uid, la stessa chiave in testo nella forma canonica (uid::text o id::text). Si cerca sulle chiavi native, un ramo per chiave e non con un OR (l''OR non scende nei rami della union): uuid_eq e int8eq sono leakproof, quindi sotto RLS la chiave arriva all''Index Cond di ogni ramo, e il ramo dell''altra specie, con la colonna NULL costante, il planner lo scarta. Il confronto su sorgente_uid invece non arriva mai all''indice (uuid_out e int8out non sono leakproof) e legge per intero tutte le tabelle dei documenti. Cosi'' la leggono pratiche.fn_stato_sorgente, script.vw_pratica_doc_sorgente e script.vw_flusso_doc_sorgente. Un ramo nuovo ha le stesse colonne e valorizza la colonna nativa della sua specie, o nessun lettore lo trova (pgTAP vendite/test-vw-stato-sorgente-ddt-reso-v1). security_invoker.';
+
+              COMMENT ON VIEW script.vw_stati_doc_reso_merce_rientrata IS
+                'In questo stato del reso la merce e'' rientrata? Una riga per ogni stato di config.stati_doc_reso; merce_rientrata = uscito dalla bozza (ordine >= quello di CONFERMATO) e non abortito (is_abortito false). La regola si legge dal catalogo, non da un elenco di codici: uno stato nuovo dopo la conferma entra da solo. Mai NULL: uno stato con ordine NULL, o un catalogo senza CONFERMATO, risponde false. Gemella di script.vw_stati_doc_ddt_merce_partita. Sede unica della regola: la leggono dbops.vw_resi_confermati_senza_carico, vendite.vw_resi_righe_effettive e vendite.vw_resi_da_riconsegnare. Chi filtra mette merce_rientrata in WHERE, chi distingue la proietta. security_invoker.';
+
+              COMMENT ON VIEW script.vw_giornale_entita IS
+                'Il giornale di un''entita'': «che cosa e'' successo a questa entita''», cucito da quattro registri che ne raccontano un pezzo ciascuno, con le stesse colonne: vendite.event_log (EVENT_LOG), vendite.fatturazione_lotti_log (LOTTO_LOG), vendite.fatturazione_lotti_task_runs (TASK_RUN), vendite.fatture_log (FATTURA_LOG). Vive in script e non in vendite: i registri di eventi del progetto sono anche altri (pratiche.giornale, documenti.documenti_generati_eventi, magazzino.eventi_assets, vendite.fatture_sdi_eventi), e la domanda vale per ogni entita''. Un registro nuovo entra con un ramo UNION ALL e con la sua riga in config.registri_giornale: la forma delle colonne non si rinegozia, e un registro che non sa riempire una colonna la lascia NULL. riga_key (REGISTRO:id) e'' la chiave stabile: i registri hanno spazi di id separati e sovrapposti. security_invoker: ogni ramo si protegge con la policy della propria tabella (event_log sulla colonna di perimetro, gli altri tre attraverso il lotto o la fattura), e il JOIN sulla testata resta come ancora all''entita'' e seconda difesa. Nel ramo TASK_RUN quando e'' started_at: la riga e'' la corsa, e la corsa nasce li''; ended_at lo puo'' scrivere la corsa successiva (vendite.fn_start_lotto_task_run chiude ANNULLATO il tentativo rimasto aperto), e una riga datata cosi'' cambierebbe posto dopo essere nata. La vista non filtra le segnalazioni ritirate, le espone sulla colonna disabilitato: un diario dice che cosa e'' successo, non che cosa e'' ancora aperto, e a filtrare e'' il consumatore. disabilitato e'' NULL su event_log (append-only) e sui task_runs, dove il ritiro passa da un altro asse (attivo spegne il record, non il segnale). gravita e'' l''unico posto dove i vocabolari C/W/I e task_stato si mappano su INFO/WARN/ERROR, senza un ramo per il resto: se esce NULL, un vocabolario si e'' allargato e la mappa e'' rimasta indietro.';
+
+              COMMENT ON FUNCTION script.trgfn_componenti_guard_coerenza_bom() IS
+                'Guard BEFORE INSERT OR UPDATE, riga per riga, fascia _a10_, sui componenti delle righe di documento: la riga componente corrisponde a una voce valida della distinta base dell''articolo della riga padre. Quattro controlli: (1) l''articolo della riga padre e'' composito (is_composito; una riga padre che non si trova vale come non composita) -> E_DOC_RIGA_NON_COMPOSITO; (2) articolo_componente_id e'' una voce di catalogo.articoli_componenti dell''articolo padre -> E_DOC_COMPONENTE_NON_BOM; (3) componente_id e'' il componente di quella voce -> E_DOC_COMPONENTE_ID_INCOERENTE; (4) la validita della voce contiene la data di riferimento della testata -> E_DOC_COMPONENTE_BOM_NON_VALIDA, saltato se la data e'' NULL. Non guarda l''esposizione in fattura. TG_ARGV[0..5]: schema, tabella della riga padre, colonna FK componente -> riga padre, tabella della testata, colonna FK riga padre -> testata, colonna data della testata; articolo_componente_id e componente_id hanno lo stesso nome su ogni tabella e si leggono diretti. Montata su vendite.preventivi_righe_componenti, vendite.ordini_righe_componenti, vendite.ddt_righe_componenti e vendite.contratti_righe_componenti (data della testata) e su vendite.offerte_commerciali_eccezioni_componenti (validita_dal dell''offerta). vendite.listini_righe_componenti ha il suo guard, script.trgfn_listini_righe_comp_guard_coerenza_bom. SECURITY INVOKER.';
+
+              COMMENT ON FUNCTION script.trgfn_note_validate_generic() IS
+                'Validazione delle note ancorate a una RIGA, BEFORE INSERT OR UPDATE sulle partizioni di note: la riga target_riga_id appartiene alla testata target_id. Una nota con anchor_tipo diverso da RIGA passa senza controlli. TG_ARGV[0] = la tabella delle righe, qualificata con lo schema; TG_ARGV[1] = la colonna della riga che punta alla testata. target_riga_id mancante -> E_NOTE_TARGET_ID; tabella delle righe inesistente -> E_NOTE_CONFIG (un errore del montaggio, non dei dati); riga inesistente o di un''altra testata -> E_NOTE_RIGA_MISMATCH, con NEW.target_tipo come dominio nel payload e, nella frase per l''operatore, l''etichetta della sorgente (config.sorgenti.etichetta, o il codice se il tipo non e'' una sorgente). Gli errori si sollevano nell''area dello schema della tabella su cui scatta. Montata sulle note di preventivi, offerte commerciali (le righe di un''offerta sono le sue eccezioni), contratti, ordini, DDT e fatture di vendita, e sulle note di ordini e DDT d''acquisto. SECURITY INVOKER.';

@@ -241,7 +241,13 @@ databaseChangeLog:
                   --   arriva solo da vendite.fn_cambia_stato_ddt e vendite.fn_conferma_reso.
                   --   Brief: brief-db-magazzino-registro-anello-interno (P-5).
                   'vendite.fn_posta_ddt',
-                  'vendite.fn_posta_reso'
+                  'vendite.fn_posta_reso',
+                  -- ⭐ Dal 2026-11-08 la copia di un'edizione di workflow: INVOKER, la
+                  --   chiamano solo fn_fork_definizione e fn_nuova_versione_definizione,
+                  --   DEFINER e riservate all'app; da sola scriverebbe un'edizione
+                  --   intera senza i loro controlli. Era eseguibile da PUBLIC.
+                  --   Brief: brief-db-sorgente-documento-e-riga §7.3 (giro finale).
+                  'pratiche.fn_copia_definizione'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la

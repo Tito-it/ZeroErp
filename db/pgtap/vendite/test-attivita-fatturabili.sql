@@ -450,8 +450,8 @@ SELECT is(
 -- arrivare con competenza_mese GIA' al primo del mese, e se non lo e'
 -- chk_attivita_competenza_mese_primo la respinge. Il normalizzatore non
 -- copre piu' per chi scrive.
--- 🔴 Il ramo standard di quella funzione e' codice morto: segnalato, non
--- rimosso qui (e' una funzione condivisa, non perimetro di questo file).
+-- Il ramo standard di quella funzione era codice morto: e' ritirato dal
+-- 2026-11-08 (20261110-13), e la funzione completa solo tipo documento e valuta.
 SELECT throws_ok(
     $$
     INSERT INTO vendite.attivita_fatturabili (
@@ -534,9 +534,9 @@ SELECT throws_ok(
 -- 3.1) Competenza_mese derivata da posticipa_al
 -- ============================================================
 -- ⚠️ rev 2026-08-18 (bonifica baseline) — stessa sorte del test qui sopra, e
--- stessa causa: la derivazione di competenza_mese da posticipa_al vive nel
--- ramo standard di trgfn_attivita_fatturabili_normalize, che su una riga da
--- commessa non viene mai eseguito. Su una riga da commessa competenza_mese
+-- stessa causa: la derivazione di competenza_mese da posticipa_al viveva nel
+-- ramo standard di trgfn_attivita_fatturabili_normalize, irraggiungibile su una
+-- riga da commessa e ritirato il 2026-11-08. Su una riga da commessa competenza_mese
 -- resta NULL e la colonna e' NOT NULL: e' quello che si verifica.
 SELECT throws_ok(
     $$

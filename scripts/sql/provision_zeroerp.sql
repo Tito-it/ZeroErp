@@ -629,7 +629,11 @@ WHERE (n.nspname, p.proname) IN (
         --   (erano magazzino.fn_posta_ddt / fn_posta_reso dal 28-09): il registro
         --   non legge le tabelle dei documenti. Forward 90_end/20261001-24; brief
         --   brief-db-magazzino-registro-anello-interno (P-5).
-        ('vendite', 'fn_posta_ddt'), ('vendite', 'fn_posta_reso'))
+        ('vendite', 'fn_posta_ddt'), ('vendite', 'fn_posta_reso'),
+        -- ⭐ Dal 2026-11-08 la copia di un'edizione di workflow: ci si arriva solo da
+        --   fn_fork_definizione e fn_nuova_versione_definizione (DEFINER). Forward
+        --   90_end/20261110-14; presidio pratiche/test-copia-definizione-riservata-v1.
+        ('pratiche', 'fn_copia_definizione'))
   AND p.prokind = 'f'
 \gexec
 

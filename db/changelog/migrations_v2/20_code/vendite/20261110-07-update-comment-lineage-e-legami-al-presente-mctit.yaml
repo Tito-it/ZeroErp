@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DELLA LINEAGE E DEI LEGAMI, AL PRESENTE
+#   Brief: brief-db-sorgente-documento-e-riga §7.3, giro finale.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   I COMMENT di due viste e quattro funzioni della lineage erano stantii o
+#   cronache (linee-guida-sql §5d: il COMMENT descrive l'oggetto al presente):
+#   - vw_documento_lineage_archi: cronaca di rev, brief, misure; descriveva
+#     commesse_sorgenti.sorgente_uid come chiave «polimorfa» con id::text,
+#     mentre i rami B, E, F, U leggono la colonna del tipo (sorgente_uid per
+#     il preventivo, sorgente_id per gli altri); «tredici lettere», sono
+#     quattordici (V).
+#   - vw_documento_lineage_nodi: «base di vw_documento_lineage», vista
+#     ritirata; cronaca di rev.
+#   - fn_documento_lineage_archi: il seme «(tipo_id, uid::text)»; il corpo
+#     legge la chiave del nodo, uid per preventivo e offerta e id per gli
+#     altri; «gli stessi DISTINCT della vista»: la vista non ne ha, i DISTINCT
+#     sono del modo senza seme (G, N, S, T).
+#   - fn_documento_lineage_nodi: cominciava con un marcatore di rev e
+#     changeSet e finiva col nome del brief.
+#   - fn_documento_lineage: cronaca di rev; «sorgente unica:
+#     vw_documento_lineage_archi», oggi legge fn_documento_lineage_archi,
+#     _nodi e _legami.
+#   - fn_documento_legami: origine_id della commessa «da
+#     vendite.fn_get_sorgente_documento_ref»; il corpo usa
+#     script.fn_sorgente_documento.
+#   - fn_fattura_origini: la chiave «tradotta con un join alla tabella del
+#     documento»; oggi la riga di commessa porta la chiave del modello, che e'
+#     gia' la chiave del nodo, e il BB che risolve dice se il documento si vede.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Solo COMMENT ON: 2 viste e 5 funzioni, riscritti interi. Nessun corpo,
+#   nessuna firma. Le firme sono quelle del vivo (oid::regprocedure).
+#   Il presidio e' vendite/test-sorgente-commenti-al-presente-v1 (archi e
+#   legami sono nel suo elenco).
+#
+#   ⚠️ Applicato prima delle ultime aggiunte: fn_documento_lineage_nodi e' nel 20261110-16 (un changeSet
+#   applicato non si tocca). Le righe della testata che le nominano valgono per quello.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261110-07-update-comment-lineage-e-legami-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261110-07-update-comment-lineage-e-legami-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT della lineage (viste archi e nodi, fn_documento_lineage_archi, fn_documento_lineage_nodi, fn_documento_lineage), di fn_documento_legami e di fn_fattura_origini riscritti al presente, linee-guida-sql §5d. brief-db-sorgente-documento-e-riga §7.3, giro finale.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_lineage_archi' AND p.pronargs = 2;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_documento_lineage_archi IS
+                'Il grafo di genealogia e transito dei documenti di vendita, una riga per arco (padre -> figlio), con i due estremi decorati. E'' la proiezione di vendite.fn_documento_lineage_archi(NULL, NULL), cioe'' di tutti gli archi: chi vuole una parte del grafo chiama la funzione col seme, e un arco nuovo si aggiunge li''. Le colonne dell''arco (from_tipo_id, from_uid, to_tipo_id, to_uid, ruolo, arco, is_ramo_inverso, rango_origine) vengono dalla funzione; la decorazione da vendite.vw_documento_lineage_nodi, letta una volta (CTE MATERIALIZED) e in LEFT JOIN sui due estremi: from_codice e from_natura_doc_codice_interno; to_codice, to_stato_codice_interno, to_fase, to_is_abortito e to_natura_doc_codice_interno. Un nodo che chi legge non vede lascia l''arco con la decorazione NULL. La chiave del nodo e'' il tipo (config.sorgenti.id) e la chiave del documento in testo secondo il key_selector: l''uid per preventivo e offerta, l''id per ordine, contratto, DDT, fattura, commessa e reso. Le lettere sono quattordici: A preventivo -> ordine, B preventivo -> commessa, C offerta -> contratto, D offerta -> ordine, E ordine -> commessa, F contratto -> commessa, G commessa -> fattura, H ordine -> DDT, N fattura rettificata -> nota di credito, R DDT -> reso, S reso -> nota di credito, T reso -> DDT di ri-consegna, U DDT -> commessa, V offerta -> sua revisione; il vocabolario e'' chiuso e lo enumera il pgTAP vendite/test-documento-lineage-v1. is_ramo_inverso e'' vero per i rami di ritorno, R e N. rango_origine dice quale sorgente e'' l''origine quando piu'' archi in avanti entrano nello stesso nodo: 10 trattativa, 20 impegno, 30 esecuzione, 40 consegna, 50 ritorno, piu'' basso = piu'' origine; sulla fattura vince G su S, sulla bolla H su T; V ha 60 e non e'' un''origine. ruolo e'' il ruolo_link di vendite.commesse_sorgenti sui rami B, E, F, U, NULL sugli altri. security_invoker=on: la RLS di chi legge vale su ogni tabella letta.';
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_nodi IS
+                'La dimensione nodo del grafo di genealogia dei documenti di vendita: una riga per documento delle otto testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), anche senza archi. E'' la proiezione di vendite.fn_documento_lineage_nodi(NULL, NULL): stesse colonne, stessi tipi; chi vuole solo alcuni documenti chiama la funzione col seme. La chiave del nodo e'' tipo_id (config.sorgenti.id, risolto per codice_interno) e uid, la chiave del documento in testo nella forma canonica del key_selector: l''uid per preventivo e offerta, l''id per gli altri (il nome della colonna non dice la chiave: per un ordine vale il suo id); tipo_codice_interno e'' il codice del tipo. codice e'' il numero leggibile del documento (per la fattura il numero composto da vendite.fn_numero_documento_fattura); stato_codice_interno, stato_codice e stato_descrizione lo stato nativo; fase e is_abortito la proiezione normalizzata; pipeline_rank la posizione del tipo nel flusso verso la fattura, lo spareggio della frontiera; natura_doc_codice_interno e natura_doc_descrizione la natura fiscale (config.nature_doc_fiscale, in LEFT JOIN), valorizzata solo sulla fattura: distingue la fattura dalla nota di credito. La legge vendite.vw_documento_lineage_archi per decorare gli estremi degli archi. security_invoker=on: la RLS di chi legge.';
+
+              COMMENT ON FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[]) IS
+                'Gli ARCHI della lineage dei documenti, grezzi (chiavi, ruolo, lettera A…V, is_ramo_inverso, rango_origine), per chiave del nodo. Il seme e'' quello di vendite.fn_documento_lineage_nodi: il tipo (config.sorgenti.id) e la chiave del documento in testo secondo il key_selector, l''uid per preventivo e offerta e l''id per ordine, contratto, DDT, fattura, commessa e reso, in due array paralleli; entrambi NULL = tutti gli archi (vendite.vw_documento_lineage_archi ne e'' la proiezione decorata); array vuoti, tipo ignoto o chiave inesistente non seminano niente; una chiave fuori forma per il suo tipo fa fallire il cast del seme. Col seme: gli archi uscenti da un nodo del seme e quelli entranti il cui from non sta nel seme, ciascuno una volta, con gli stessi DISTINCT del modo senza seme (G, N, S, T). Il seme scende come array (= ANY) sulla prima tabella di ogni ramo. Gli archi A (preventivo -> ordine), C (offerta -> contratto), D (offerta -> ordine), H (ordine -> bolla) e R (bolla -> reso) leggono la provenienza di testata del documento a valle (sorgente_*) con la regola d''incontro (doc.id = sorgente_id OR doc.uid = sorgente_uid), in tutti e due i modi, con gli indici ix_ordini_v_sorgente_uid / _id, ix_contratti_sorgente_uid / _id, ix_ddt_v_sorgente / ix_ddt_v_sorgente_id e ix_resi_sorgente / ix_resi_sorgente_id. Nei rami B, E, F, U (le sorgenti delle commesse) la chiave del link sta nella colonna del suo tipo, vendite.commesse_sorgenti.sorgente_uid per il preventivo e sorgente_id per ordine, contratto e DDT (indici ix_commesse_sorgenti_sorgente_uid e uq_commesse_sorgenti_sorgente_commessa): il join verso il documento confronta colonne dello stesso tipo, senza cast, ed e'' leakproof anche sotto RLS. V e'' la revisione dell''offerta (madre -> figlia, revisione_padre_id), rango 60, non un''origine. Il vocabolario delle lettere e'' quello di vendite.vw_documento_lineage_archi: un arco nuovo si aggiunge qui, nei due modi. SET jit = off e plan_cache_mode = force_generic_plan: la funzione si pianifica una volta per sessione. BEGIN ATOMIC, SECURITY INVOKER.';
+
+              COMMENT ON FUNCTION vendite.fn_documento_lineage(bigint, text, text) IS
+                'La catena di un documento per il pannello «Passaggi»: dal nodo di partenza (p_tipo_id = config.sorgenti.id; p_uid = la chiave del documento in testo secondo il key_selector, l''uid per preventivo e offerta, l''id per gli altri) gli archi attraversati nella direzione p_direzione: ''avanti'' (il default, verso le destinazioni) o ''indietro'' (verso le sorgenti). Si risale un livello alla volta: a ogni livello una chiamata a vendite.fn_documento_lineage_archi col seme dei nodi correnti di tutti i percorsi aperti; alla fine, una volta, la decorazione dei soli nodi toccati da vendite.fn_documento_lineage_nodi (codice, stato, fase, abortito, natura fiscale) e il legame di ogni arco da vendite.fn_documento_lineage_legami. Il costo segue la catena, non il grafo intero. Il traversal e'' un insieme di percorsi: un nodo raggiunto per due strade compare due volte, ciascuna col suo livello; la guardia dei cicli e'' sul percorso, dal livello 2; al massimo 10 livelli. livello e'' la distanza dal nodo di partenza (1 = adiacente); ordine una sequenza stabile per livello e chiavi degli estremi. is_ramo_inverso arriva dalla grammatica degli archi e non si ricalcola qui. is_legame_ritirato e'' dell''arco e vale nei due versi: true se il legame e'' ritirato con i due nodi vivi, NULL su un arco che il decoratore non censisce. Un nodo che chi legge non vede esce con la decorazione NULL, e l''arco resta. Parametri non validi (tipo assente o non positivo, chiave assente o vuota, direzione diversa da avanti e indietro): E_ERRORE_PARAMETRI. STABLE, SECURITY INVOKER: la RLS di chi chiama vale a ogni passo.';
+
+              COMMENT ON FUNCTION vendite.fn_documento_legami(character varying, bigint) IS
+                'I legami di un documento, una riga per legame: che cosa si riapre se lo annullo, e dove. p_documento e'' il codice della sorgente: DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO, COMMESSA, OFFERTA_COMMERCIALE; uno sconosciuto, o un id mancante o non positivo, e'' E_VENDITE_CHIAMATA_NON_VALIDA. origine e'' il codice della sorgente dall''altra parte, natura che cosa succede: ORDINE_VENDITA e RESO_VENDITA (consumi della bolla: fulfillment e ponte di riconsegna); PREVENTIVO (consumo dell''ordine, ordini_righe.preventivo_riga_id); OFFERTA_COMMERCIALE come PROVENIENZA di ordine e contratto (la provenienza sorgente_* del documento; resta sul documento annullato: l''offerta torna trasformabile perche'' l''unicita'' vale sui vivi) e, per l''offerta, la revisione precedente che torna emessa (vendite.fn_offerta_proietta_stato_revisione); COMMESSA (righe NON_EMESSA spinte dal documento, cercate con la chiave del documento data dal BB script.fn_sorgente_documento). Della commessa: un legame per riga NON_EMESSA, con sorgente il documento o il consumo che l''ha spinta (origine il codice della sorgente, natura CONSUMO, torna da mandare; origine_id dal BB script.fn_sorgente_documento sulle colonne del modello della riga), RETTIFICA il reso del suo accredito (CONSUMO, il reso torna da accreditare), ONERE natura ANNULLO. Le righe EMESSA non sono legami: bloccano (script.fn_check_sorgente_chiudibile, script.fn_check_commessa_annullabile). riga_id/riga_nr: la riga del documento, NULL per la testata; per la commessa come documento riga_id e'' la riga di commessa; origine_id: la testata dall''altra parte; origine_riga_id: la sua riga. Niente etichette: il nome lo da'' la lineage. Lettore unico del guard vendite.trgfn_doc_guard_annullo_con_legami (avviso), di vendite.fn_documento_ritira_legami (conferma e ritiro) e della finestra di conferma del backend. SECURITY DEFINER con search_path bloccato: avviso, conferma e finestra contano la stessa cosa anche dove la RLS dei legami ne nasconderebbe una parte. EXECUTE solo all''app.';
+
+              COMMENT ON FUNCTION vendite.fn_fattura_origini(bigint) IS
+                'Le ORIGINI di una fattura: i documenti a monte che la fattura cita, di qualunque tipo (DDT, ordine, contratto, offerta, preventivo; per la nota di credito la fattura rettificata e il reso), non la commessa, che per il cliente e'' un contenitore interno. Livello 1 = i genitori diretti della fattura nella lineage, con un''eccezione: l''arco G (commessa -> fattura), a grana di commessa, e'' sostituito dai documenti delle righe FATTURATE. La riga di commessa di ogni attivita'' fatturabile porta il suo documento con la chiave del modello (sorgente_id o sorgente_uid, secondo il key_selector), che e'' gia'' la chiave del nodo della lineage; il BB script.fn_sorgente_documento dice se il documento c''e'' e se chi legge lo vede. Poi, da ogni documento di livello 1, la risalita all''indietro della lineage (vendite.fn_documento_lineage), solo per legami vivi (is_legame_ritirato non vero) e mai attraverso G ne'' V: dalla fattura rettificata si tornerebbe alla commessa intera, una fattura citata porta gia'' i suoi riferimenti, e la revisione superata dell''offerta non si cita. Livello = 1 + la distanza. Tiene i soli tipi con config.sorgenti.citato_in_fattura: quali tipi si citano e'' un dato del registro. Ogni documento una volta, col livello piu'' vicino; fuori gli annullati (is_abortito, da vendite.fn_documento_lineage_nodi) e i documenti che chi legge non vede. Ordine: livello, tipo, codice. Una fattura senza documenti a monte risponde zero righe. p_fattura_id mancante o non positivo: E_VENDITE_CHIAMATA_NON_VALIDA. STABLE, SECURITY INVOKER, come la lineage. La leggono la stampa e il dettaglio della fattura.';

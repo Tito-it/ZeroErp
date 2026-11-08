@@ -120,7 +120,7 @@ Oltre alle urgenze §2, item minori tracciati negli handoff (tutti su funzionali
     uno spazio dopo il punto;
   - **`script.trgfn_lock_columns` è montato su `pratiche.tipi_prestazione`**, ma `dbops.automation_lock_columns`
     non ha righe per `pratiche`: il lucchetto non blocca niente. Il tema dei lucchetti è della sessione di
-    `brief-db-revisione-dbops`, che ne è avvisata;
+    `brief-db-revisione-dbops`, segnalato da Tid il 2026-11-08: lo decide quella sessione;
   - **convenzioni che nessun vincolo regge:** `allegati_pratiche` e `allegati_flussi` si dicono «immutabili»
     (nessun guard; l'app ha UPDATE e DELETE); `sospensioni.data_riattivazione_prevista` la scrive il BE e non la
     legge nessuno (la riattivazione automatica via pgAgent non esiste). Da decidere se diventano regole o se le
