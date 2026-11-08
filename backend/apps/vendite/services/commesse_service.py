@@ -316,7 +316,7 @@ def pr_run_commesse_push(
 
 
 # Scopo: Variante puntuale del push commesse — esegue UN solo handler con
-# filtro sulla riga sorgente identificata da `sorgente_uid`. Riusa
+# filtro sulla riga sorgente identificata da `sorgente_id`. Riusa
 # orchestrator (lock + log su commesse_push_log): differisce
 # dal batch sia per perimetro (1 documento invece di N) sia per
 # semantica transazionale: all-or-nothing. Un documento sorgente
@@ -333,7 +333,7 @@ def pr_run_commesse_push(
 def pr_run_commesse_push_one(
     *,
     sorgente_codice: str,
-    sorgente_uid: int,
+    sorgente_id: int,
     righe_ids: list[int] | None = None,
     dry_run: bool = False,
     user: str | None = None,
@@ -358,11 +358,11 @@ def pr_run_commesse_push_one(
         function_name="vendite.commesse_service.pr_run_commesse_push_one",
     )
     ErrorManager.require(
-        bool(sorgente_uid and sorgente_uid > 0),
+        bool(sorgente_id and sorgente_id > 0),
         code="E_COMMESSA_VALIDATION",
         message="Identificativo sorgente non valido.",
-        detail=f"sorgente_uid={sorgente_uid} deve essere intero positivo",
-        context={"sorgente_uid": sorgente_uid},
+        detail=f"sorgente_id={sorgente_id} deve essere intero positivo",
+        context={"sorgente_id": sorgente_id},
         function_name="vendite.commesse_service.pr_run_commesse_push_one",
     )
 
@@ -379,7 +379,7 @@ def pr_run_commesse_push_one(
         report = orch.run(
             source_types=[sorgente_codice],
             dry_run=dry_run,
-            sorgente_uid=sorgente_uid,
+            sorgente_id=sorgente_id,
             righe_ids=righe_ids,
         )
         if not dry_run and report.stato in _STATI_PUSH_FALLIMENTO:
@@ -397,7 +397,7 @@ def pr_run_commesse_push_one(
                 hint="Risolvi la causa indicata e ri-prova il push.",
                 context={
                     "sorgente_codice": sorgente_codice,
-                    "sorgente_uid": sorgente_uid,
+                    "sorgente_id": sorgente_id,
                     "stato_report": report.stato,
                     "errors_count": sum(len(h.errors) for h in report.handlers),
                 },

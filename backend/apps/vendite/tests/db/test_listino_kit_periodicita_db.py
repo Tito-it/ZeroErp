@@ -33,8 +33,9 @@ from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
+from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.db._helpers import row_to_dict
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
@@ -163,11 +164,45 @@ class ListinoKitPeriodicitaDbTests(unittest.TestCase):
         ))
         self.assertEqual(errore.code, "E_RIGA_LISTINO_VERSIONE_CHIUSA")
 
-    # 7. Il lettore dell'espansore dei kit (D-2 (c)) chiama la funzione del DB
-    #    con la sua firma: un contratto che non c'e' non da' componenti, senza
-    #    errori. Il contenuto lo prova il pgTAP (componenti e prezzo del kit).
+    # 7. Il lettore dell'espansore dei kit (D-2 (c)) si lega alle due funzioni
+    #    del DB con la loro firma: il contratto si risolve dalla CHIAVE del
+    #    lister, id o uid, con lo stesso risultato. Il contenuto lo prova il
+    #    pgTAP (componenti e prezzo del kit).
     def test_il_lettore_dell_espansore_si_lega_alla_funzione(self) -> None:
-        righe = ContrattiRepository().list_componenti_kit_dal_listino(
-            contratto_uid=str(uuid4()), articolo_padre_id=self.kit, data=self.v2_dal,
+        with connection.cursor() as cur:
+            # Due istruzioni: la riga che la fixture scrive non la vede lo
+            # snapshot della stessa istruzione che la chiama.
+            cur.execute(
+                "SELECT contratto_id FROM dbops.fn_pgtap_crea_contratto('kit listino lettore')"
+            )
+            contratto_id = cur.fetchone()[0]
+            cur.execute(
+                "SELECT c.uid::text, s.id FROM vendite.contratti c, config.sorgenti s"
+                " WHERE c.id = %s AND s.codice_interno = %s",
+                [contratto_id, SORGENTE_CONTRATTO],
+            )
+            contratto_uid, tipo_id = cur.fetchone()
+        repo = ContrattiRepository()
+        dall_uid = repo.list_componenti_kit_dal_listino(
+            sorgente_tipo_id=tipo_id, contratto_chiave=contratto_uid,
+            articolo_padre_id=self.kit, data=self.v2_dal,
         )
-        self.assertEqual(righe, [])
+        dall_id = repo.list_componenti_kit_dal_listino(
+            sorgente_tipo_id=tipo_id, contratto_chiave=str(contratto_id),
+            articolo_padre_id=self.kit, data=self.v2_dal,
+        )
+        self.assertEqual(dall_uid, dall_id)
+
+    # 7-bis. ⛔ Un contratto che non c'è SOLLEVA: fino al 2026-11-08 dava zero
+    #        componenti, cioè un kit spinto in commessa senza i suoi pezzi.
+    def test_il_lettore_dell_espansore_rifiuta_un_contratto_che_non_c_e(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM config.sorgenti WHERE codice_interno = %s", [SORGENTE_CONTRATTO],
+            )
+            tipo_id = cur.fetchone()[0]
+        with self.assertRaises(DatabaseError), transaction.atomic():
+            ContrattiRepository().list_componenti_kit_dal_listino(
+                sorgente_tipo_id=tipo_id, contratto_chiave=str(uuid4()),
+                articolo_padre_id=self.kit, data=self.v2_dal,
+            )

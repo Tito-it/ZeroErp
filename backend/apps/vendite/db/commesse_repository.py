@@ -134,7 +134,7 @@ _PUSHABLE_SHARED_COLS = (
     "competenza_al",
     "fatturazione_immediata",
     "sorgente_tipo_id",
-    "sorgente_uid",
+    "sorgente_chiave",
     "segment_key",
     "articolo_id",
     "istanza_utility_id",
@@ -170,6 +170,17 @@ _PUSHABLE_SHARED_COLS = (
     # resta None, ed e' giusto: le loro righe non sono ONERE.
     "causale_onere_id",
 )
+
+# Le colonne della whitelist che non ogni lister espone: `_map_pushable_row`
+# le legge con tolleranza (assenti -> None) e SOLO loro; tutte le altre sono
+# obbligatorie (`_col`, KeyError se mancano). Una sede per il binding e per il
+# presidio sul catalogo (`test_commesse_porta_nomi_db`), che ne prova la forma
+# contro le RETURNS TABLE dei cinque lister.
+_PUSHABLE_OPTIONAL_COLS: frozenset[str] = frozenset({
+    "termine_pagamento_id",
+    "modalita_pagamento_id",
+    "causale_onere_id",
+})
 
 
 # --- Risultati upsert ---
@@ -323,7 +334,12 @@ class PushableRow:
     competenza_al: date | None
     fatturazione_immediata: bool
     sorgente_tipo_id: int
-    sorgente_uid: str
+    # La chiave del documento d'origine come la restituisce il lister (l'uid
+    # del documento in testo, per ogni tipo), con lo stesso nome della colonna
+    # (giro K.2 di brief-db-sorgente-documento-e-riga, BE-K.2-a), del campo di
+    # `CommessaAttivitaInput` e della chiave del batch: un nome solo, nessun
+    # punto che traduce.
+    sorgente_chiave: str
     segment_key: str
     articolo_id: Any  # UUID o None (consumi)
     istanza_utility_id: int | None
@@ -371,13 +387,13 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
 
     meta_raw = jsonb_out(_col("meta")) or {}
 
-    # Guard: sorgente_uid e segment_key devono essere non-null dal DB.
-    raw_sorgente_uid = _col("sorgente_uid")
+    # Guard: sorgente_chiave e segment_key devono essere non-null dal DB.
+    raw_sorgente_chiave = _col("sorgente_chiave")
     raw_segment_key = _col("segment_key")
-    if raw_sorgente_uid is None or raw_segment_key is None:
+    if raw_sorgente_chiave is None or raw_segment_key is None:
         raise ValueError(
-            f"sorgente_uid o segment_key NULL dal DB: "
-            f"sorgente_uid={raw_sorgente_uid!r}, segment_key={raw_segment_key!r}"
+            f"sorgente_chiave o segment_key NULL dal DB: "
+            f"sorgente_chiave={raw_sorgente_chiave!r}, segment_key={raw_segment_key!r}"
         )
 
     # Guard: factor_to_base=None → default Decimal(1); Decimal(0) preservato.
@@ -398,6 +414,10 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
     # aggiunta ANCHE alla whitelist o il binding resta muto (lezione del
     # 2026-08-03: la prima stesura si fermo' qui e lo smoke la scopri').
     def _opt_int(nome: str) -> int | None:
+        # Una lettura tollerante fuori dall'elenco renderebbe muta una colonna
+        # obbligatoria: il presidio sul catalogo non la vedrebbe.
+        if nome not in _PUSHABLE_OPTIONAL_COLS:
+            raise RuntimeError(f"colonna {nome!r} letta come opzionale ma non dichiarata tale")
         if nome not in col_map:
             return None
         valore = row[col_map[nome]]
@@ -411,7 +431,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         competenza_al=_col("competenza_al"),
         fatturazione_immediata=bool(_col("fatturazione_immediata")),
         sorgente_tipo_id=_col("sorgente_tipo_id"),
-        sorgente_uid=str(raw_sorgente_uid),
+        sorgente_chiave=str(raw_sorgente_chiave),
         riga_sorgente_id=(
             int(riga_sorgente_id_raw) if riga_sorgente_id_raw is not None else None
         ),
@@ -495,7 +515,7 @@ class CommesseRepository(EventLogRepositoryMixin):
 
     # Scopo: invoca la fn_list_<sorgente>_da_pushare parametrizzata e restituisce
     # le righe normalizzate come PushableRow. Unico punto di accesso per tutti gli handler.
-    # `sorgente_uid` (opzionale) restringe la query alla riga sorgente del documento
+    # `sorgente_id` (opzionale) restringe la query alla riga sorgente del documento
     # specifico (es. preventivo_id per sorgente PREVENTIVO): None = lista globale del
     # batch orchestrator, valorizzato = push singolo UI-driven. Allinea col 4o param
     # `p_<sorgente>_id DEFAULT NULL` aggiunto alle fn DB lato `dev/db-tid` (vedi
@@ -507,7 +527,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         competenza_mese: date | None = None,
         billing_account_id: int | None = None,
         limit: int | None = None,
-        sorgente_uid: int | None = None,
+        sorgente_id: int | None = None,
         righe_ids: list[int] | None = None,
     ) -> list[PushableRow]:
         """Chiama fn_list_<sorgente>_da_pushare e restituisce PushableRow normalizzati."""
@@ -535,7 +555,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         # `p_righe_ids` SOLO quando valorizzato: le fn delle altre sorgenti
         # hanno 4 parametri e il 5o le romperebbe.
         placeholders = "%s, %s, %s, %s"
-        params: list = [competenza_mese, billing_account_id, limit, sorgente_uid]
+        params: list = [competenza_mese, billing_account_id, limit, sorgente_id]
         if righe_ids is not None:
             placeholders += ", %s::bigint[]"
             params.append(righe_ids)

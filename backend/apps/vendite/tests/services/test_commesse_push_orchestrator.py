@@ -20,8 +20,8 @@ Indice test eseguiti:
 10) CommessePushOrchestratorTests.test_run_skipped_quando_lock_non_acquisito
 11) CommessePushOrchestratorTests.test_run_rilascia_lock_dopo_esecuzione
 12) CommessePushOrchestratorTests.test_run_non_scrive_su_event_log
-13) CommessePushOrchestratorTests.test_run_with_sorgente_uid_propagated_to_handlers_and_perimetro
-14) CommessePushOrchestratorTests.test_run_without_sorgente_uid_passes_none_to_handlers
+13) CommessePushOrchestratorTests.test_run_with_sorgente_id_propagated_to_handlers_and_perimetro
+14) CommessePushOrchestratorTests.test_run_without_sorgente_id_passes_none_to_handlers
 15) CommessePushOrchestratorTests.test_run_with_righe_ids_propagated_to_handlers_and_perimetro
 16) CommessePushOrchestratorTests.test_run_apre_il_giro_prima_di_eseguire_gli_handler
 17) CommessePushOrchestratorTests.test_run_chiude_il_giro_che_ha_aperto
@@ -162,10 +162,10 @@ class CommessePushOrchestratorTests(TestCase):
         repo.start_push_run.assert_called_once()
         self.assertTrue(repo.start_push_run.call_args.kwargs["dry_run"])
         repo.close_push_run.assert_called_once()
-        # `sorgente_uid=None` aggiunto alla signature handler.run dopo
+        # `sorgente_id=None` aggiunto alla signature handler.run dopo
         # introduzione del push singolo (PR1 sviluppo-push-singolo-preventivo);
         # `righe_ids=None` dopo lo smistamento selettivo (Pannello Smistamento).
-        h.run.assert_called_once_with(dry_run=True, sorgente_uid=None, righe_ids=None)
+        h.run.assert_called_once_with(dry_run=True, sorgente_id=None, righe_ids=None)
 
     # Scopo: push_log_id nel report corrisponde all'id restituito dall'APERTURA
     # del giro — che ora esiste fin dal primo istante, non a fine corsa.
@@ -346,37 +346,37 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(report.push_log_id, 42)
         self.assertEqual(report.stato, "COMPLETATO")
 
-    # Scopo: sorgente_uid valorizzato → propagato agli handler.run e nel
+    # Scopo: sorgente_id valorizzato → propagato agli handler.run e nel
     # `risultato.perimetro` di commesse_push_log, per tracciabilita' del push
     # singolo. ⭐ Prima viveva nel payload di `PUSH_STARTED`: uscito l'evento
     # dal giornale (BE-3a), «su quale documento era stato chiesto il push»
     # sarebbe sparito senza questa sede.
-    def test_run_with_sorgente_uid_propagated_to_handlers_and_perimetro(self):
+    def test_run_with_sorgente_id_propagated_to_handlers_and_perimetro(self):
         repo = _mock_repo(push_log_id=99)
         h = _mock_handler("HandlerPreventivi", _ok_result("HandlerPreventivi", sorgente_codice="PREVENTIVO"), sorgente_codice="PREVENTIVO")
         orch = CommessaPushOrchestrator(repo, [h])
 
-        orch.run(source_types=["PREVENTIVO"], sorgente_uid=42)
+        orch.run(source_types=["PREVENTIVO"], sorgente_id=42)
 
-        # Handler.run riceve dry_run=False + sorgente_uid=42 (+righe_ids=None:
+        # Handler.run riceve dry_run=False + sorgente_id=42 (+righe_ids=None:
         # nessun filtro sottoinsieme righe in questo run).
-        h.run.assert_called_once_with(dry_run=False, sorgente_uid=42, righe_ids=None)
+        h.run.assert_called_once_with(dry_run=False, sorgente_id=42, righe_ids=None)
 
         # Il perimetro del giro finisce in commesse_push_log.risultato.
         perimetro = repo.close_push_run.call_args.kwargs["risultato"]["perimetro"]
-        self.assertEqual(perimetro["sorgente_uid"], 42)
+        self.assertEqual(perimetro["sorgente_id"], 42)
         self.assertEqual(perimetro["source_types"], ["PREVENTIVO"])
 
-    # Scopo: sorgente_uid omesso → handler.run riceve sorgente_uid=None
+    # Scopo: sorgente_id omesso → handler.run riceve sorgente_id=None
     # (regressione: comportamento batch invariato).
-    def test_run_without_sorgente_uid_passes_none_to_handlers(self):
+    def test_run_without_sorgente_id_passes_none_to_handlers(self):
         repo = _mock_repo()
         h = _mock_handler("HandlerA", _ok_result("HandlerA"))
         orch = CommessaPushOrchestrator(repo, [h])
 
         orch.run()
 
-        h.run.assert_called_once_with(dry_run=False, sorgente_uid=None, righe_ids=None)
+        h.run.assert_called_once_with(dry_run=False, sorgente_id=None, righe_ids=None)
 
     # Scopo: righe_ids valorizzato (smistamento selettivo) → propagato a
     # handler.run e nel `risultato.perimetro` di commesse_push_log.
@@ -385,8 +385,8 @@ class CommessePushOrchestratorTests(TestCase):
         h = _mock_handler("HandlerPreventivi", _ok_result("HandlerPreventivi", sorgente_codice="PREVENTIVO"), sorgente_codice="PREVENTIVO")
         orch = CommessaPushOrchestrator(repo, [h])
 
-        orch.run(source_types=["PREVENTIVO"], sorgente_uid=42, righe_ids=[7, 9])
+        orch.run(source_types=["PREVENTIVO"], sorgente_id=42, righe_ids=[7, 9])
 
-        h.run.assert_called_once_with(dry_run=False, sorgente_uid=42, righe_ids=[7, 9])
+        h.run.assert_called_once_with(dry_run=False, sorgente_id=42, righe_ids=[7, 9])
         perimetro = repo.close_push_run.call_args.kwargs["risultato"]["perimetro"]
         self.assertEqual(perimetro["righe_ids"], [7, 9])

@@ -2659,7 +2659,29 @@ segnate ✅ di §8.13 e §8.14: i due percorsi rotti dall'apply (la stampa e il 
 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
-| BE-K.2-a | I cinque lister del push (`vendite.fn_list_{preventivi,ordini,ddt,contratti,consumi}_da_pushare`): la chiave del documento esce nella colonna `sorgente_chiave` (prima `sorgente_uid`); tipo (`text`) e valore (l'uid del documento in testo) invariati | `vendite/db/commesse_repository.py:137` (`_PUSHABLE_SHARED_COLS`, `"sorgente_uid"`), `:369` (`_col("sorgente_uid")`), `:320` (`PushableRow.sorgente_uid`); i lettori di `row.sorgente_uid`: `vendite/services/commesse_source_handlers.py:770`, `:879`, `:882` | leggere la colonna `sorgente_chiave`. Il nome del campo di `PushableRow` è del BE; con BE-K.1-b la riga del lister può andare al batch così com'è |
+| BE-K.2-a ✅ | I cinque lister del push (`vendite.fn_list_{preventivi,ordini,ddt,contratti,consumi}_da_pushare`): la chiave del documento esce nella colonna `sorgente_chiave` (prima `sorgente_uid`); tipo (`text`) e valore (l'uid del documento in testo) invariati | `vendite/db/commesse_repository.py:137` (`_PUSHABLE_SHARED_COLS`, `"sorgente_uid"`), `:369` (`_col("sorgente_uid")`), `:320` (`PushableRow.sorgente_uid`); i lettori di `row.sorgente_uid`: `vendite/services/commesse_source_handlers.py:770`, `:879`, `:882` | leggere la colonna `sorgente_chiave`. Il nome del campo di `PushableRow` è del BE; con BE-K.1-b la riga del lister può andare al batch così com'è |
+
+**Stato al 2026-11-08, dopo il giro BE di K.2** (team BE, da committare su `dev/backend-tid`). Il push è ripristinato.
+
+* Il campo di `PushableRow` si chiama `sorgente_chiave`, come la colonna dei lister, il campo di
+  `CommessaAttivitaInput` e la chiave del batch: un nome solo dal lister al DB. Cambiati la whitelist
+  `_PUSHABLE_SHARED_COLS`, il guard «chiave o segment_key NULL», il passaggio alla madre
+  (`commesse_source_handlers`, `sorgente_chiave=row.sorgente_chiave`) e il lettore dei kit del contratto
+  (`_componenti_listino_loader`); allineati i mock di `test_commesse_repository` e `test_commesse_source_handlers`.
+* ⭐ **Il presidio esteso** `vendite/tests/db/test_commesse_porta_nomi_db`, test 3 `test_colonne_dei_lister`: ogni
+  colonna che il binding legge con `_col` esce dalla RETURNS TABLE di **tutti e cinque** i lister (catalogo,
+  `proargmodes = 't'`); le tre opzionali (`termine_pagamento_id`, `modalita_pagamento_id`, `causale_onere_id`) da
+  almeno uno. Rosso per mutazione col nome vecchio nella whitelist. Prima i test della lettura erano solo coi mock,
+  che specchiano la whitelist del BE: verdi anche col nome che il DB non dà più.
+* Provato sul percorso vero: `smoke-push-termine-documento-commessa` verde su dbdev (lister → `PushableRow` →
+  madre → fattura, in rollback).
+* ✅ **Il filtro del push singolo** (decisione di Tid, 2026-11-08): si chiamava `sorgente_uid` ma portava l'**id** del
+  documento, il 4° parametro `p_<sorgente>_id` dei lister. Ora è `sorgente_id` lungo tutta la catena:
+  `fetch_pushable_rows` → `handler.run` → `CommessaPushOrchestrator.run` → `pr_run_commesse_push_one` → i chiamanti
+  di DDT, ordini e preventivi, e i due smoke del push. Cambia anche la chiave del perimetro scritto in
+  `commesse_push_log.risultato` (`perimetro.sorgente_id`): nessun lettore fuori dai test (grep su BE, FE e doc DB). I
+  `sorgente_uid` che restano nel BE sono chiavi vere o testuali di altre porte (il link della commessa, la stampa, le
+  liste), non questo filtro.
 
 ---
 

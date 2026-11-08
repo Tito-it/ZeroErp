@@ -644,7 +644,7 @@ class DdtPushCommessaTests(SimpleTestCase):
         out = ddt_service.push_a_commessa(55, user="op")
 
         mock_push_one.assert_called_once_with(
-            sorgente_codice="DDT_VENDITA", sorgente_uid=55, user="op",
+            sorgente_codice="DDT_VENDITA", sorgente_id=55, user="op",
         )
         self.assertEqual(out["ddt_id"], 55)
         self.assertEqual(out["stato"], "COMPLETATO")

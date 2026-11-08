@@ -1772,11 +1772,11 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         result = push_a_commessa(1)
 
-        # Orchestrator chiamato con codice + uid corretti (righe_ids=None:
+        # Orchestrator chiamato con codice + id corretti (righe_ids=None:
         # push completo, nessun sottoinsieme selettivo).
         mock_push_one.assert_called_once_with(
             sorgente_codice="PREVENTIVO",
-            sorgente_uid=1,
+            sorgente_id=1,
             righe_ids=None,
         )
         # Payload completo: campi orchestrator + righe_pushable diagnostico
@@ -1866,7 +1866,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         mock_push_one.assert_called_once_with(
             sorgente_codice="PREVENTIVO",
-            sorgente_uid=1,
+            sorgente_id=1,
             righe_ids=[10, 11],
         )
         self.assertEqual(result["stato"], "COMPLETATO")

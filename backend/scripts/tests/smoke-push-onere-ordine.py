@@ -138,7 +138,7 @@ with transaction.atomic():
         print(f"ordine {ordine_id} ({trigger}) · onere riga {riga_onere} · merce riga {riga_merce}\n")
 
     # 0) Il lister e la whitelist.
-    rows = CommesseRepository().fetch_pushable_rows("ORDINE_VENDITA", sorgente_uid=ordine_id)
+    rows = CommesseRepository().fetch_pushable_rows("ORDINE_VENDITA", sorgente_id=ordine_id)
     row_onere = next((x for x in rows if x.riga_sorgente_id == riga_onere), None)
     check("0) fn_list -> PushableRow: riga ONERE con la causale dell'articolo",
           row_onere is not None and row_onere.tipo_movimento == "ONERE"
@@ -149,7 +149,7 @@ with transaction.atomic():
     # 1) Il push reale, dal wrapper batch del DB.
     # ⚠️ Gli errori di riga stanno nei report dei handler, non in testa al
     #    risultato: una chiave di testata che non esiste darebbe sempre «vuoto».
-    res = pr_run_commesse_push_one(sorgente_codice="ORDINE_VENDITA", sorgente_uid=ordine_id)
+    res = pr_run_commesse_push_one(sorgente_codice="ORDINE_VENDITA", sorgente_id=ordine_id)
     errori = [e for h in res["handlers"] for e in h["errors"]]
     creati = sum(h["created"] for h in res["handlers"])
     check("1) push senza righe in errore: due righe create",
