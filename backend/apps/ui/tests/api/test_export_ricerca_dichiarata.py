@@ -99,7 +99,7 @@ class TestFiltriExportConRicerca(SimpleTestCase):
 
     @catalogo_ricerca_finto((), soglia=3)
     @patch("apps.ui.api.export_helpers.ListaExportService")
-    @patch("apps.ui.api.export_helpers.UiRepository")
+    @patch("apps.ui.api.export_helpers.UiRepository", autospec=True)
     @patch("apps.ui.api.export_helpers.UiService")
     def test_build_export_response_passa_la_ricerca_al_renderer(
         self, mock_ui_svc, _ui_repo, mock_render_cls,

@@ -70,7 +70,7 @@ class TestContrattiExportApi(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SCOPE, return_value=None)
     @patch(_RENDER)
-    @patch(_UI_REPO)
+    @patch(_UI_REPO, autospec=True)
     @patch(_UI_SVC)
     @patch(_SVC)
     def test_export_csv_envelope_ok(

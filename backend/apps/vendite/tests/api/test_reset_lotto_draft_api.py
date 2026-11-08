@@ -85,7 +85,7 @@ class VenditeResetLottoDraftApiTests(JwtMockedApiTest):
     #        vendita §15.8 punto 3).
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch(_REPO_MODELLO)
+    @patch(_REPO_MODELLO, autospec=True)
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.fn_annulla_lotto_da_draft")
@@ -117,7 +117,7 @@ class VenditeResetLottoDraftApiTests(JwtMockedApiTest):
     # Scopo: senza il livello sul documento -> 403, e nessuna azione chiesta.
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch(_REPO_MODELLO)
+    @patch(_REPO_MODELLO, autospec=True)
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.fn_annulla_lotto_da_draft")
@@ -144,7 +144,7 @@ class VenditeResetLottoDraftApiTests(JwtMockedApiTest):
     #        d'area non basta piu').
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch(_REPO_MODELLO)
+    @patch(_REPO_MODELLO, autospec=True)
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.fn_annulla_lotto_da_draft")

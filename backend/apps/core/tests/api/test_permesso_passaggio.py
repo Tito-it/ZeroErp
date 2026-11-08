@@ -60,7 +60,7 @@ class PassaggioNellaCatenaTests(TestCase):
         return ZeroERPPermission.valuta(operatore_di_prova(user_id=7), view, method="POST", cache={})
 
     @patch(_RESOLVER)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_azione_concessa_consente_senza_livello(self, repo_cls, resolver) -> None:
         resolver.is_super_admin.return_value = False
         repo_cls.return_value.azione_del_passaggio.return_value = "emetti_ddt"
@@ -77,7 +77,7 @@ class PassaggioNellaCatenaTests(TestCase):
         resolver.get_livello_oggetto.assert_not_called()
 
     @patch(_RESOLVER)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_azione_negata(self, repo_cls, resolver) -> None:
         resolver.is_super_admin.return_value = False
         repo_cls.return_value.azione_del_passaggio.return_value = "emetti_ddt"
@@ -90,7 +90,7 @@ class PassaggioNellaCatenaTests(TestCase):
         self.assertEqual(esito.azione, "emetti_ddt")
 
     @patch(_RESOLVER)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riga_senza_azione_ricade_sul_livello(self, repo_cls, resolver) -> None:
         resolver.is_super_admin.return_value = False
         repo_cls.return_value.azione_del_passaggio.return_value = None
@@ -105,7 +105,7 @@ class PassaggioNellaCatenaTests(TestCase):
         resolver.get_livello_oggetto.assert_called_once()
 
     @patch(_RESOLVER)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_sulla_classe_nega(self, repo_cls, resolver) -> None:
         resolver.is_super_admin.return_value = False
 
@@ -123,7 +123,7 @@ class PassaggioNellaCatenaTests(TestCase):
 
 class PassaggioDocumentoTests(TestCase):
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_stato_dal_corpo(self, repo_cls) -> None:
         repo_cls.return_value.azione_del_passaggio.return_value = "emetti_ddt"
 
@@ -136,14 +136,14 @@ class PassaggioDocumentoTests(TestCase):
 
     # Un numero o un vuoto non sono uno stato: decide il livello, e il 400 col
     # campo lo da' il service.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_stato_dal_corpo_non_testo(self, repo_cls) -> None:
         for corpo in ({"stato_codice": 5}, {"stato_codice": "  "}, {}):
             with self.subTest(corpo=corpo):
                 self.assertIsNone(_CAMBIO.azione(_view(_CAMBIO, corpo)))
         repo_cls.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_stato_fisso_ignora_il_corpo(self, repo_cls) -> None:
         conferma = PassaggioDocumento(
             testata="vendite.resi", documento_kwarg="documento_id", stato_chiesto="CONFERMATO",
@@ -159,7 +159,7 @@ class PassaggioDocumentoTests(TestCase):
 
     # Il preventivo porta lo stato chiesto in `nuovo_stato`: il campo lo
     # dichiara la view, `stato_codice` non si guarda.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_campo_stato_dichiarato(self, repo_cls) -> None:
         stato = PassaggioDocumento(
             testata="vendite.preventivi", documento_kwarg="documento_id", campo_stato="nuovo_stato",
@@ -175,7 +175,7 @@ class PassaggioDocumentoTests(TestCase):
 
     # La rotta porta un altro id (la pratica): il documento lo ricava la
     # funzione dichiarata, e l'azione si legge sul documento risolto.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_documento_risolto_dal_parametro(self, repo_cls) -> None:
         risolvi = MagicMock(return_value=900)
         stato = PassaggioDocumento(
@@ -192,7 +192,7 @@ class PassaggioDocumentoTests(TestCase):
 
     # Nessun documento dietro il parametro: decide il livello, e il 4xx lo da'
     # il service.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_documento_non_risolto(self, repo_cls) -> None:
         stato = PassaggioDocumento(
             testata="vendite.preventivi", documento_kwarg="documento_id", campo_stato="nuovo_stato",
@@ -205,7 +205,7 @@ class PassaggioDocumentoTests(TestCase):
     # «Emetti» (B-2, brief-modello-documento-vendita §8.11): lo stato chiesto
     # e' lo stato di emissione, chiesto al DB a OGNI richiesta, non fissato
     # alla definizione della view; il corpo multipart non porta uno stato.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_emissione_letta_a_ogni_richiesta(self, repo_cls) -> None:
         emetti = PassaggioDocumento(
             testata="vendite.ordini", documento_kwarg="documento_id", stato_del_modello="emissione",
@@ -222,7 +222,7 @@ class PassaggioDocumentoTests(TestCase):
 
     # Il documento non si emette: nessun passaggio, decide il livello (e il
     # service risponde E_CONFIG_MANCANTE).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_emissione_assente(self, repo_cls) -> None:
         emetti = PassaggioDocumento(
             testata="vendite.resi", documento_kwarg="documento_id", stato_del_modello="emissione",
@@ -234,7 +234,7 @@ class PassaggioDocumentoTests(TestCase):
 
     # «Riporta in bozza» del lotto (§15.13): l'arrivo e' lo stato iniziale,
     # chiesto al lettore dalla testata a ogni richiesta.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_iniziale_dal_lettore_della_testata(self, repo_cls) -> None:
         riporta = PassaggioDocumento(
             testata="vendite.fatturazione_lotti", documento_kwarg="documento_id",

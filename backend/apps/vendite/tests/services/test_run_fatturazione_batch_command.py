@@ -87,13 +87,13 @@ def _patch_produttore(roster, *, non_serviti=(), accoda=None):
 
     @contextmanager
     def _p_proc():
-        with patch(f"{_BB}.ProcessiRepository", return_value=processi), \
+        with patch(f"{_BB}.ProcessiRepository", autospec=True, return_value=processi), \
                 patch(f"{_BB}.operator_identity_context", _identita):
             yield
 
     return (
         _p_proc(),
-        patch(f"{_PROD}.CodaLavoriRepository", return_value=coda),
+        patch(f"{_PROD}.CodaLavoriRepository", autospec=True, return_value=coda),
         processi,
         coda,
     )

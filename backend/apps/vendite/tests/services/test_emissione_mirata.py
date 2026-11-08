@@ -182,7 +182,7 @@ class DriverCorsiaMirataTests(TestCase):
     #     commessa a fatturazione immediata — selezionabile a video — non
     #     produrrebbe alcun lotto, senza dirlo.
     def test_mirata_non_filtra_la_corsia_e_ferma_a_emessa(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane()]
             mock_run.return_value = {"lotto_id": 5, "motivo_stop": "FERMATO_A_STATO"}
@@ -204,7 +204,7 @@ class DriverCorsiaMirataTests(TestCase):
     # 13) I gruppi devono arrivare sia alla discovery (altrimenti nasce un
     #     lotto vuoto per ogni altra terna) sia alla pipeline (che li persiste).
     def test_gruppi_propagati_a_discovery_e_pipeline(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane()]
             mock_run.return_value = {"lotto_id": 5, "motivo_stop": "OK"}
@@ -222,7 +222,7 @@ class DriverCorsiaMirataTests(TestCase):
     #     diverse → lotti diversi. L'esito deve portarli TUTTI: e' il dato del
     #     «vai al lotto», e mostrarne uno solo nasconderebbe una fattura.
     def test_esito_espone_tutti_i_lotti_prodotti(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [
                 _lane(1, tipo_doc=1), _lane(1, tipo_doc=2),
@@ -239,7 +239,7 @@ class DriverCorsiaMirataTests(TestCase):
 
     # Le terne fallite non finiscono fra i lotti: non c'e' nulla da aprire.
     def test_terna_fallita_non_entra_nei_lotti(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+        with patch(f"{_SVC}.CommesseRepository", autospec=True) as RepoCls, \
              patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
             RepoCls.return_value.list_emittibili_lane.return_value = [
                 _lane(1, tipo_doc=1), _lane(1, tipo_doc=2),
@@ -266,7 +266,7 @@ class GiroHandlerMirataTests(SimpleTestCase):
     # `_REPO` mockato: con `lotti` valorizzati l'handler chiede al DB il
     # CONSUNTIVO per gruppo (fn_esito_gruppi_giro) — qui si verifica solo
     # l'instradamento della corsia, non il consuntivo.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_payload_con_gruppi_usa_corsia_mirata(self, mock_giro, mock_repo):
         mock_giro.return_value = {
@@ -291,7 +291,7 @@ class GiroHandlerMirataTests(SimpleTestCase):
 
     # 16) La compattazione del result toglie `esiti` (gonfierebbe il jsonb) ma
     #     NON `lotti`: senza, il FE non saprebbe dove mandare l'operatore.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     @patch(_GIRO)
     def test_result_compatto_conserva_i_lotti(self, mock_giro, mock_repo):
         mock_repo.return_value.esito_gruppi_giro.return_value = []

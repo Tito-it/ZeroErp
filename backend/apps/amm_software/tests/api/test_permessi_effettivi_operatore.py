@@ -61,7 +61,7 @@ def _make_request() -> MagicMock:
 
 class TestPermessiEffettiviOperatoreView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_get_permessi_effettivi(self, mock_repo_cls):
         """GET ritorna, per azione e oggetto, il valore applicato e il tetto.
 
@@ -83,7 +83,7 @@ class TestPermessiEffettiviOperatoreView(TestCase):
         self.assertTrue(data["oggetti"][0]["limitato_da_area"])
         mock_repo.get_permessi_effettivi.assert_called_once_with(7)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_operatore_inesistente_solleva(self, mock_repo_cls):
         """⛔ L'esistenza si verifica PRIMA della lettura.
 

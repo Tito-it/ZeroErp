@@ -59,8 +59,8 @@ class InvitoPortaleTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_invia_invito_cliente_happy_path(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -123,7 +123,7 @@ class InvitoPortaleTests(TestCase):
 
     # Scopo: cliente inesistente -> 404 E_CLIENTE_NON_TROVATO (E-4: prima
     # E_INVITO_PORTALE, cioe' 400), nessun side-effect.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_invia_invito_cliente_not_found(self, MockRepo):
         MockRepo.return_value.get_cliente_info.return_value = None
         from apps.portale.services.invito_portale_service import InvitoPortaleService
@@ -136,7 +136,7 @@ class InvitoPortaleTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CLIENTE_NON_TROVATO")
 
     # Scopo: fornitore inesistente -> 404 E_FORNITORE_NON_TROVATO (E-4).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_invia_invito_fornitore_not_found(self, MockRepo):
         MockRepo.return_value.get_fornitore_info.return_value = None
         from apps.portale.services.invito_portale_service import InvitoPortaleService
@@ -152,8 +152,8 @@ class InvitoPortaleTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_invia_invito_fornitore_happy_path(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -202,7 +202,7 @@ class InvitoPortaleTests(TestCase):
         self.assertNotIn("deve_cambiare_password", kwargs)
 
     # Scopo: Email vuota -> errore immediato, nessuna query.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_email_vuota_solleva(self, MockRepo):
         MockRepo.return_value.get_cliente_info.return_value = {
             "billing_account_id": 1,
@@ -222,8 +222,8 @@ class InvitoPortaleTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_reinvia_invalida_precedente(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -277,8 +277,8 @@ class InvitoPortaleTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_reinvio_a_chi_non_ha_mai_attivato_resta_invito(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -318,8 +318,10 @@ class InvitoPortaleTests(TestCase):
             MockToken.return_value.create.call_args.kwargs["tipo"], "INVITO_PORTALE"
         )
         MockAuth.return_value.auth_user_ha_password.assert_called_once_with(200)
-        # L'identita' resta disattivata: la attiva il consumo del token.
-        repo.riattiva_identita.assert_not_called()
+        # L'identita' resta disattivata: la attiva il consumo del token. Il
+        # repository non ha piu' un `riattiva_identita` (mock `autospec`:
+        # `hasattr` legge la classe vera), quindi il servizio non la riattiva.
+        self.assertFalse(hasattr(repo, "riattiva_identita"))
         repo.create_auth_user_portale.assert_not_called()
 
     # Scopo: Se email esiste gia' in auth_user (operatore o altra veste
@@ -336,8 +338,8 @@ class InvitoPortaleTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_invia_invito_riusa_auth_user_esistente_flow_cross(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -403,8 +405,8 @@ class InvitoPortaleTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_cross_non_riattiva_identita_disattivata(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -443,8 +445,8 @@ class InvitoPortaleTests(TestCase):
 
         # Verifica diretta sul repository: la riattiva_identita NON deve
         # essere chiamata per il flow CROSS (l'attivazione e' delegata al
-        # consumo del token CROSS in §8.4.2).
-        repo.riattiva_identita.assert_not_called()
+        # consumo del token CROSS in §8.4.2). Il metodo non esiste piu'.
+        self.assertFalse(hasattr(repo, "riattiva_identita"))
 
     # Scopo: Guard §8.4.1 BUG1. Se per (soggetto_ruolo, ruolo_applicativo)
     # esiste gia' un'identita ATTIVA, il primo invito (e il reinvio) devono
@@ -454,8 +456,8 @@ class InvitoPortaleTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_identita_gia_attiva_solleva(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -498,8 +500,8 @@ class InvitoPortaleTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_identita_collegata_altro_auth_user_solleva(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -561,8 +563,8 @@ class InvitoShopCustomerTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_invia_invito_shop_happy_path_invito(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -625,8 +627,8 @@ class InvitoShopCustomerTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_email_non_partita_risponde_inviato_false(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -665,8 +667,8 @@ class InvitoShopCustomerTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_invia_invito_shop_cross_path(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -721,8 +723,8 @@ class InvitoShopCustomerTests(TestCase):
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_reinvia_invito_shop_invalida_entrambi_token(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
@@ -769,7 +771,7 @@ class InvitoShopCustomerTests(TestCase):
 class GetStatoAccessiTests(TestCase):
     """Test aggregazione stato accessi per cliente + fornitore."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_cliente_include_portale_e_shop(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
@@ -794,7 +796,7 @@ class GetStatoAccessiTests(TestCase):
         self.assertEqual(calls[0].args[1], "CLIENTE_PORTALE")
         self.assertEqual(calls[1].args[1], "SHOP_CUSTOMER")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_fornitore_solo_portale(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_fornitore_info.return_value = {
@@ -812,7 +814,7 @@ class GetStatoAccessiTests(TestCase):
         self.assertEqual(result["portale"]["stato"], "PENDING")
         self.assertNotIn("shop", result)  # fornitori no shop
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_cliente_not_found_solleva(self, MockRepo):
         MockRepo.return_value.get_cliente_info.return_value = None
         from apps.portale.services.invito_portale_service import InvitoPortaleService
@@ -833,8 +835,8 @@ class DisattivaVesteTests(TestCase):
             self.addCleanup(patcher.stop)
 
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_disattiva_cliente_portale_attivo_invalida_token(
         self, MockRepo, _MockAuth, MockToken
     ):
@@ -869,7 +871,7 @@ class DisattivaVesteTests(TestCase):
         self.mock_blocca.assert_called_once_with(10, identita_id=500)
         self.mock_invalidate.assert_called_once_with(10)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_disattiva_cliente_nessuna_identita_noop(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
@@ -891,8 +893,8 @@ class DisattivaVesteTests(TestCase):
         self.mock_blocca.assert_not_called()
 
     @patch(_TOKEN_SVC)
-    @patch(_AUTH_REPO)
-    @patch(_REPO)
+    @patch(_AUTH_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_disattiva_fornitore_portale(
         self, MockRepo, _MockAuth, MockToken
     ):
@@ -917,7 +919,7 @@ class DisattivaVesteTests(TestCase):
         self.mock_blocca.assert_called_once_with(20, identita_id=600)
 
     @patch(_TOKEN_SVC)
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_disattiva_cliente_identita_gia_disattiva_idempotente(
         self, MockRepo, MockToken
     ):

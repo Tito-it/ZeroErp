@@ -67,7 +67,7 @@ def _make_request(method: str = "GET", data: dict | None = None) -> MagicMock:
 
 class TestRepartiListView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_list_reparti(self, mock_repo_cls):
         """GET lista reparti: envelope paginato standard, parametri al repository."""
         mock_repo = MagicMock()
@@ -89,7 +89,7 @@ class TestRepartiListView(TestCase):
             search=None, order_by="descrizione", order_dir=None, limit=25, offset=0,
         )
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_list_reparti_empty(self, mock_repo_cls):
         """GET lista reparti vuota."""
         mock_repo = MagicMock()
@@ -103,7 +103,7 @@ class TestRepartiListView(TestCase):
         self.assertEqual(data["data"]["results"], [])
         self.assertEqual(data["data"]["count"], 0)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_list_reparti_parametri_di_lista(self, mock_repo_cls):
         """Ricerca, ordinamento e pagina arrivano al repository come li manda la lista."""
         mock_repo = MagicMock()
@@ -159,7 +159,7 @@ class TestRepartiListRepository(TestCase):
 
 class TestRepartoProfiloView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_get_profilo_reparto(self, mock_repo_cls):
         """GET profilo reparto ritorna aree e azioni."""
         mock_repo = MagicMock()
@@ -174,7 +174,7 @@ class TestRepartoProfiloView(TestCase):
         self.assertEqual(len(data["data"]["azioni"]), 1)
         self.assertEqual(data["data"]["aree"][0]["livello"], "TUTTO")
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_get_profilo_reparto_empty(self, mock_repo_cls):
         """GET profilo vuoto per reparto senza configurazione."""
         mock_repo = MagicMock()
@@ -188,7 +188,7 @@ class TestRepartoProfiloView(TestCase):
         self.assertEqual(data["data"]["aree"], [])
         self.assertEqual(data["data"]["azioni"], [])
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.amm_software.services.amm_software_service.invalidate_department")
     def test_put_profilo_reparto(self, mock_invalidate, mock_repo_cls):
         """PUT salva profilo e ritorna aggiornato."""
@@ -210,7 +210,7 @@ class TestRepartoProfiloView(TestCase):
         data = json.loads(response.content)
         self.assertIn("aree", data["data"])
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.amm_software.services.amm_software_service.invalidate_department")
     def test_put_profilo_porta_il_segno_del_secondo_fattore(self, _invalidate, mock_repo_cls):
         """Il segno «richiede secondo fattore» arriva al repository."""
@@ -221,7 +221,7 @@ class TestRepartoProfiloView(TestCase):
         )
         mock_repo.put_profilo_reparto.assert_called_once_with(1, [], [], richiede_secondo_fattore=True)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.amm_software.services.amm_software_service.invalidate_department")
     def test_put_profilo_segno_non_booleano_rifiutato(self, _invalidate, mock_repo_cls):
         """Un segno che non e' un booleano non si scrive."""
@@ -234,7 +234,7 @@ class TestRepartoProfiloView(TestCase):
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
         mock_repo_cls.return_value.put_profilo_reparto.assert_not_called()
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.amm_software.services.amm_software_service.invalidate_department")
     def test_put_profilo_voci_validate_prima_del_repository(self, _invalidate, mock_repo_cls):
         """⛔ Le voci si validano prima di scrivere (2026-10-21, §B5): una chiave
@@ -255,7 +255,7 @@ class TestRepartoProfiloView(TestCase):
             self.assertEqual(ctx.exception.context.get("field"), campo)
         mock_repo_cls.return_value.put_profilo_reparto.assert_not_called()
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.amm_software.services.amm_software_service.invalidate_department")
     def test_put_profilo_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache reparto dopo modifica."""
@@ -271,7 +271,7 @@ class TestRepartoProfiloView(TestCase):
 
 class TestLookupViews(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_lookup_aree(self, mock_repo_cls):
         """GET lookup aree funzionali."""
         mock_repo = MagicMock()
@@ -286,7 +286,7 @@ class TestLookupViews(TestCase):
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_lookup_azioni(self, mock_repo_cls):
         """GET lookup azioni processo."""
         mock_repo = MagicMock()
@@ -305,7 +305,7 @@ class TestLookupViews(TestCase):
         # Il tetto d'area viaggia fino al client (editor profilo reparto).
         self.assertEqual(data["data"]["results"][0]["livello_minimo_area"], "TUTTO")
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_lookup_emittenti(self, mock_repo_cls):
         """GET lookup emittenti fiscali."""
         mock_repo = MagicMock()

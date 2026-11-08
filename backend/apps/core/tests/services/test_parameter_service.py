@@ -45,7 +45,7 @@ REPO_PATH = "apps.core.services.parameter_service.ParameterRepository"
 class ParameterServiceTests(TestCase):
 
     def setUp(self):
-        self._patcher = patch(REPO_PATH)
+        self._patcher = patch(REPO_PATH, autospec=True)
         self._mock_repo_cls = self._patcher.start()
         self._mock_repo = MagicMock()
         self._mock_repo_cls.return_value = self._mock_repo

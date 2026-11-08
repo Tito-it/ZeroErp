@@ -50,7 +50,7 @@ def _rifiuto(fn) -> ServiceError:
 class MagazziniServiceTests(SimpleTestCase):
     # 1.
     def test_crea_rifiuta_chiavi_ignote_e_obbligatori_mancanti(self):
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             e = _rifiuto(lambda: svc.crea_magazzino({"codice": "A", "emittente_fiscale_id": 1}))
             self.assertEqual(e.code, svc.E_VALIDAZIONE)
             e = _rifiuto(lambda: svc.crea_magazzino({"codice": "A", "descrizione": "d"}))
@@ -59,7 +59,7 @@ class MagazziniServiceTests(SimpleTestCase):
 
     # 2. `attivo` non si sceglie alla nascita; l'emittente lo mette il DB.
     def test_crea_non_manda_attivo_ne_emittente(self):
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.create_magazzino.return_value = 3
             repo.return_value.get_magazzino.return_value = _MAG
             e = _rifiuto(lambda: svc.crea_magazzino({"codice": "A", "descrizione": "d", "indirizzo_dettaglio_id": 4, "attivo": False}))
@@ -71,7 +71,7 @@ class MagazziniServiceTests(SimpleTestCase):
 
     # 3.
     def test_aggiorna_manda_solo_il_delta(self):
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.get_magazzino.return_value = _MAG
             svc.aggiorna_magazzino(3, {"descrizione": "nuova", "attivo": False})
             repo.return_value.update_magazzino.assert_called_once_with(3, {"descrizione": "nuova", "attivo": False})
@@ -85,7 +85,7 @@ class MagazziniServiceTests(SimpleTestCase):
 
     # 4.
     def test_dettaglio_assente_e_404_di_dominio(self):
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.get_magazzino.return_value = None
             self.assertEqual(_rifiuto(lambda: svc.get_magazzino(99)).code, svc.E_MAGAZZINO_NON_TROVATO)
             self.assertEqual(_rifiuto(lambda: svc.aggiorna_magazzino(99, {"descrizione": "x"})).code, svc.E_MAGAZZINO_NON_TROVATO)
@@ -94,7 +94,7 @@ class MagazziniServiceTests(SimpleTestCase):
 
     # 5.
     def test_duplicato_arriva_col_campo(self):
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.create_magazzino.side_effect = IntegrityError(
                 'duplicate key value violates unique constraint "uq_magazzini_codice"'
             )
@@ -105,7 +105,7 @@ class MagazziniServiceTests(SimpleTestCase):
 class UbicazioniServiceTests(SimpleTestCase):
     # 6.
     def test_padre_nullo_azzera_e_il_magazzino_si_legge_prima(self):
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.get_magazzino.return_value = _MAG
             repo.return_value.get_ubicazione.return_value = _UBI
             svc.aggiorna_ubicazione(3, 9, {"parent_id": None, "corsia": "", "descrizione": "x"})
@@ -123,7 +123,7 @@ class UbicazioniServiceTests(SimpleTestCase):
 class LottiServiceTests(SimpleTestCase):
     # 7.
     def test_articolo_obbligatorio_e_uuid(self):
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             e = _rifiuto(lambda: svc.list_lotti(articolo_id=None, limit=10))
             self.assertEqual((e.code, e.context.get("field")), (svc.E_VALIDAZIONE, "articolo_id"))
             e = _rifiuto(lambda: svc.list_lotti(articolo_id="abc", limit=10))
@@ -135,7 +135,7 @@ class LottiServiceTests(SimpleTestCase):
 
     # 8.
     def test_scadenza_nulla_la_toglie(self):
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.get_lotto.return_value = _LOTTO
             svc.aggiorna_lotto(5, {"data_scadenza": None, "data_arrivo": "2026-09-01"})
             repo.return_value.update_lotto.assert_called_once_with(

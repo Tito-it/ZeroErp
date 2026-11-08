@@ -92,7 +92,7 @@ class RipartisciPerAziendaTests(TestCase):
 class AccodaPerAziendaTests(TestCase):
 
     # 4. ⛔ Zero aziende: 403 subito, nessun lavoro.
-    @patch(_SCOPE)
+    @patch(_SCOPE, autospec=True)
     def test_nessuna_azienda_403(self, aziende_cls) -> None:
         aziende_cls.return_value.list_selezionabili.return_value = []
         coda = MagicMock()
@@ -107,7 +107,7 @@ class AccodaPerAziendaTests(TestCase):
 
     # 5. Il giro mirato di ciascuna azienda: corsia «mirata», i soli suoi
     #    gruppi nel payload, e la chiave con la sua azienda.
-    @patch(_SCOPE)
+    @patch(_SCOPE, autospec=True)
     def test_giro_mirato_per_azienda(self, aziende_cls) -> None:
         aziende_cls.return_value.list_selezionabili.return_value = [_ACME, _BETA]
         vendite = MagicMock()
@@ -133,7 +133,7 @@ class AccodaPerAziendaTests(TestCase):
 
     # 6. ⭐ La dedup restituisce l'id di un lavoro già vivo, che può essere
     #    IN_CORSO: la risposta dice quello, non «PENDING» per costruzione.
-    @patch(_SCOPE)
+    @patch(_SCOPE, autospec=True)
     def test_stato_vero_dalla_dedup(self, aziende_cls) -> None:
         aziende_cls.return_value.list_selezionabili.return_value = [_ACME, _BETA]
         coda = MagicMock()

@@ -56,7 +56,7 @@ class BadgeFallitiTests(TestCase):
 
         giro = {"processate": 1, "inviate": 1, "fallite": 0}
         with patch(f"{_CMD}.registered_job", cm), \
-                patch(f"{_BB}.ProcessiRepository", return_value=processi), \
+                patch(f"{_BB}.ProcessiRepository", autospec=True, return_value=processi), \
                 patch(f"{_BB}.operator_identity_context", _identita), \
                 patch(f"{_CMD}.Command._esegui_giro", return_value=giro):
             call_command("send_pending_emails", stdout=StringIO(), stderr=StringIO())

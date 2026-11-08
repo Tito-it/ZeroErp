@@ -97,7 +97,7 @@ def _operativo_request() -> MagicMock:
 
 class TestOperatoriListView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_list_operatori_success(self, MockRepo: MagicMock) -> None:
         """Scopo: GET lista con risultati ritorna count e results."""
         repo_instance = MockRepo.return_value
@@ -113,7 +113,7 @@ class TestOperatoriListView(TestCase):
         self.assertEqual(body["data"]["count"], 1)
         self.assertEqual(len(body["data"]["results"]), 1)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_list_operatori_empty(self, MockRepo: MagicMock) -> None:
         """Scopo: GET lista vuota ritorna count=0 e results=[]."""
         repo_instance = MockRepo.return_value
@@ -128,7 +128,7 @@ class TestOperatoriListView(TestCase):
         body = json.loads(response.content)
         self.assertEqual(body["data"]["count"], 0)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_list_operatori_with_filters(self, MockRepo: MagicMock) -> None:
         """Scopo: Fase 7 — i filtri multi-face arrivano al repository."""
         repo_instance = MockRepo.return_value
@@ -152,7 +152,7 @@ class TestOperatoriListView(TestCase):
         # Senza chiederli, gli utenti di prova restano fuori.
         self.assertIs(call_kwargs["includi_di_prova"], False)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_list_operatori_includi_di_prova(self, MockRepo: MagicMock) -> None:
         """Scopo: `includi_di_prova=true` arriva al repository; un valore estraneo e' un errore."""
         repo_instance = MockRepo.return_value
@@ -183,7 +183,7 @@ class TestOperatoriListView(TestCase):
 
 class TestOperatoriDetailView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_detail_operatore_success(self, MockRepo: MagicMock) -> None:
         """Scopo: GET dettaglio ritorna i dati completi dell'operatore."""
         repo_instance = MockRepo.return_value
@@ -200,7 +200,7 @@ class TestOperatoriDetailView(TestCase):
         self.assertEqual(body["data"]["username"], "operatore1")
         self.assertEqual(body["data"]["override_aree_count"], 2)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_detail_operatore_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: GET dettaglio per operatore inesistente solleva errore."""
         repo_instance = MockRepo.return_value
@@ -234,7 +234,7 @@ class TestOperatoriPatchView(TestCase):
         self.addCleanup(patcher.stop)
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_patch_operatore_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH modifica i campi e ritorna il dettaglio aggiornato."""
         repo_instance = MockRepo.return_value
@@ -250,7 +250,7 @@ class TestOperatoriPatchView(TestCase):
         repo_instance.update_operatore.assert_called_once()
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_patch_operatore_invalidates_cache(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH invalida la cache permessi dell'operatore modificato."""
         repo_instance = MockRepo.return_value
@@ -267,7 +267,7 @@ class TestOperatoriPatchView(TestCase):
 
         mock_invalidate.assert_called_once_with(1)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_patch_operatore_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: PATCH su operatore inesistente solleva errore."""
         repo_instance = MockRepo.return_value
@@ -282,7 +282,7 @@ class TestOperatoriPatchView(TestCase):
             view.patch(_admin_request(method="PATCH", data={"email": "x@y.it"}), auth_user_id=999)
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_patch_is_super_admin(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: Fase 7 — PATCH `is_super_admin: true` arriva al repo come
         bool nel contract multi-face (no traduzione legacy); `attivo: true` su
@@ -305,7 +305,7 @@ class TestOperatoriPatchView(TestCase):
         repo_instance.disabilita_operatore.assert_not_called()
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_patch_attivo(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH `attivo: false` spegne con la scrittura di «Disabilita»
         (2026-10-04), e chiude le sessioni della sola veste operatore (A-5, D-5)."""
@@ -335,7 +335,7 @@ class TestOperatoriDisabilitaView(TestCase):
         self.addCleanup(patcher.stop)
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_disabilita_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: POST disabilita imposta stato e ritorna dettaglio aggiornato."""
         repo_instance = MockRepo.return_value
@@ -350,7 +350,7 @@ class TestOperatoriDisabilitaView(TestCase):
         self.assertEqual(response.status_code, 200)
         repo_instance.disabilita_operatore.assert_called_once_with(1)
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_disabilita_invalidates_cache(self, MockRepo: MagicMock) -> None:
         """Scopo: POST disabilita chiude la veste operatore spenta col BB
         (`InvitoVeste.chiudi_veste_spenta`: inviti, sessioni e cache, provati
@@ -368,7 +368,7 @@ class TestOperatoriDisabilitaView(TestCase):
             PORTA_OPERATORE, auth_user_id=1, identita_id=7,
         )
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_disabilita_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: POST disabilita su operatore inesistente solleva errore."""
         repo_instance = MockRepo.return_value
@@ -388,7 +388,7 @@ class TestOperatoriDisabilitaView(TestCase):
 # (`core/tests/db/test_login_credenziale_db`, consenso in due tempi).
 class TestCredenzialePerEmailView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_credenziale_per_email_trovata(self, MockRepo: MagicMock) -> None:
         """Scopo: la credenziale arriva intera, e l'email passa com'e' (ripulita) al DB."""
         credenziale = {
@@ -405,7 +405,7 @@ class TestCredenzialePerEmailView(TestCase):
         self.assertEqual(json.loads(response.content)["data"], {"credenziale": credenziale})
         MockRepo.return_value.get_credenziale_per_email.assert_called_once_with("Mario.Rossi@example.com")
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_credenziale_per_email_assente(self, MockRepo: MagicMock) -> None:
         """Scopo: email senza credenziale (o vuota) -> `credenziale` null, non un errore."""
         MockRepo.return_value.get_credenziale_per_email.return_value = None

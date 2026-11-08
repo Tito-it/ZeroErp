@@ -104,7 +104,7 @@ class TestContrattoFormDefaults(TestCase):
         self.fornitura = _finge_fornitura(self)
 
     @patch(f"{_MOD}.resolve_valuta_default", return_value={})
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     @patch(_PARAM)
     def test_contratto_scheda_fornitura_dal_cliente(
         self, mock_param_cls, mock_ba_repo_cls, _mock_resolve,
@@ -141,7 +141,7 @@ class TestContrattoFormDefaults(TestCase):
         self.assertEqual(result["default_valido_dal"], oggi_aziendale().isoformat())
 
     @patch(f"{_MOD}.resolve_valuta_default", return_value={})
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     @patch(_PARAM)
     def test_contratto_con_ba_popola_categoria(
         self, mock_param_cls, mock_ba_repo_cls, _mock_resolve,
@@ -168,7 +168,7 @@ class TestContrattoFormDefaults(TestCase):
         self.assertEqual(result["utility_id"], 1)
         self.assertEqual(result["istanza_utility_id"], 100)
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     @patch(_PARAM)
     def test_contratto_ba_inesistente_404(self, mock_param_cls, mock_ba_repo_cls):
         # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
@@ -191,7 +191,7 @@ class TestContrattoFormDefaults(TestCase):
         result = fn_get_contratto_form_defaults(billing_account_id=None)
         self.assertEqual(result["default_data"], oggi_aziendale().isoformat())
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     @patch(_PARAM)
     def test_contratto_valuta_dal_ba(self, mock_param_cls, mock_ba_repo_cls):
         # Scopo: BA con valuta_id valorizzata -> il payload espone valuta_id
@@ -216,7 +216,7 @@ class TestOffertaFormDefaults(TestCase):
     def setUp(self):
         self.fornitura = _finge_fornitura(self)
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_offerta_scheda_fornitura_dal_cliente(self, mock_ba_repo_cls):
         # Scopo: stessa scheda del contratto, dalla stessa sede.
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = _ba_lookup_row(valuta_id=1)
@@ -243,7 +243,7 @@ class TestOffertaFormDefaults(TestCase):
         self.assertEqual(result["categoria_cliente_id_snapshot"], None)
         self.assertEqual(result["utility_id"], None)
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_offerta_con_ba_popola_categoria_e_valuta(self, mock_ba_repo_cls):
         # Scopo: BA con valuta_id valorizzata -> popola categoria_cliente,
         #        utility/istanza e valuta dal livello 1 resolver.
@@ -258,7 +258,7 @@ class TestOffertaFormDefaults(TestCase):
         self.assertEqual(result["valuta_id"], 1)
         self.assertEqual(result["valuta_codice"], "EUR")
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_offerta_ba_inesistente_404(self, mock_ba_repo_cls):
         # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
@@ -281,7 +281,7 @@ class TestOrdineFormDefaults(TestCase):
         self.assertEqual(result["valuta_id"], None)
         self.assertEqual(result["utility_id"], None)
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_ordine_con_ba_popola_utility_valuta_e_pagamento(self, mock_ba_repo_cls):
         # Scopo: BA con valuta -> popola utility/istanza + valuta (resolver L1) +
         #        termine/modalita pagamento dall'anagrafica cliente del BA.
@@ -306,7 +306,7 @@ class TestOrdineFormDefaults(TestCase):
         # iva non e' una chiave del payload ordine (testata senza IVA).
         self.assertNotIn("iva_id", result)
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_ordine_ba_inesistente_404(self, mock_ba_repo_cls):
         # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
@@ -334,7 +334,7 @@ class TestDdtFormDefaults(TestCase):
         self.assertEqual(result["valuta_id"], None)
         self.assertEqual(result["utility_id"], None)
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_ddt_con_ba_popola_utility_e_valuta(self, mock_ba_repo_cls):
         # Scopo: BA con valuta -> popola utility/istanza + valuta (resolver L1).
         #        Il DDT NON ha termini/modalita di pagamento in testata: non li
@@ -353,7 +353,7 @@ class TestDdtFormDefaults(TestCase):
         self.assertNotIn("modalita_pagamento_id", result)
         mock_ba_repo_cls.return_value.get_cliente_defaults.assert_not_called()
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_ddt_ba_inesistente_404(self, mock_ba_repo_cls):
         # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
@@ -389,7 +389,7 @@ class TestPreventivoFormDefaults(TestCase):
         self.assertEqual(result["valuta_id"], None)
         self.assertEqual(result["termine_pagamento_id"], None)
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     @patch(_PARAM)
     def test_preventivo_con_ba_termini_da_cliente(
         self, mock_param_cls, mock_ba_repo_cls,
@@ -425,7 +425,7 @@ class TestPreventivoFormDefaults(TestCase):
         ba_repo.get_emittente_valuta.assert_not_called()
 
     @patch(f"{_MOD}.resolve_valuta_default")
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     @patch(_PARAM)
     def test_preventivo_valuta_da_emittente_se_ba_null(
         self, mock_param_cls, mock_ba_repo_cls, mock_resolve,
@@ -481,7 +481,7 @@ class TestPreventivoFormDefaults(TestCase):
 
 class TestListinoVersioneFormDefaults(TestCase):
 
-    @patch(_LISTINI_REPO)
+    @patch(_LISTINI_REPO, autospec=True)
     @patch(_PARAM)
     def test_versione_new_defaults(self, mock_param_cls, mock_repo_cls):
         # Scopo: Payload include default_valido_dal (oggi+lead) ed esistenti BOZZE.
@@ -501,7 +501,7 @@ class TestListinoVersioneFormDefaults(TestCase):
         self.assertEqual(len(result["existing_drafts"]), 1)
         self.assertEqual(result["existing_drafts"][0]["codice_versione"], "v_draft")
 
-    @patch(_LISTINI_REPO)
+    @patch(_LISTINI_REPO, autospec=True)
     @patch(_PARAM)
     def test_versione_clone_codice_con_suffisso(self, mock_param_cls, mock_repo_cls):
         # Scopo: codice clone = source_codice + suffisso parameter.
@@ -528,7 +528,7 @@ class TestListinoVersioneFormDefaults(TestCase):
         # Lead_gg=+1 -> default in futuro -> non retroattivo.
         self.assertFalse(result["is_retroactive_default"])
 
-    @patch(_LISTINI_REPO)
+    @patch(_LISTINI_REPO, autospec=True)
     @patch(_PARAM)
     def test_versione_clone_retroactive_default_anche_se_src_senza_valido_dal(
         self, mock_param_cls, mock_repo_cls,
@@ -549,7 +549,7 @@ class TestListinoVersioneFormDefaults(TestCase):
         result = fn_get_versione_clone_defaults(listino_id=12, src_versione_id=33)
         self.assertTrue(result["is_retroactive_default"])
 
-    @patch(_LISTINI_REPO)
+    @patch(_LISTINI_REPO, autospec=True)
     @patch(_PARAM)
     def test_versione_close_default_oggi_se_no_chiusura(self, mock_param_cls, mock_repo_cls):
         # Scopo: Versione senza valido_al -> default = oggi + lead_gg.
@@ -569,7 +569,7 @@ class TestListinoVersioneFormDefaults(TestCase):
         # ⛔ La fine nel passato la rifiuta il verbo «Chiudi» (C-2 = a): niente copia.
         self.assertNotIn("min_valido_al", result)
 
-    @patch(_LISTINI_REPO)
+    @patch(_LISTINI_REPO, autospec=True)
     @patch(_PARAM)
     def test_versione_close_usa_existing_se_presente(self, mock_param_cls, mock_repo_cls):
         # Scopo: Versione con valido_al gia' programmata -> default = quello.
@@ -585,7 +585,7 @@ class TestListinoVersioneFormDefaults(TestCase):
         self.assertEqual(result["current_valido_al"], "2027-12-31")
         self.assertTrue(result["has_existing_chiusura"])
 
-    @patch(_LISTINI_REPO)
+    @patch(_LISTINI_REPO, autospec=True)
     @patch(_PARAM)
     def test_versione_close_fine_passata_non_riproposta(self, mock_param_cls, mock_repo_cls):
         # Scopo: Fine gia' passata (ATTIVA in attesa del job) -> il default e'
@@ -603,7 +603,7 @@ class TestListinoVersioneFormDefaults(TestCase):
         self.assertEqual(result["current_valido_al"], ieri.isoformat())
         self.assertTrue(result["has_existing_chiusura"])
 
-    @patch(_LISTINI_REPO)
+    @patch(_LISTINI_REPO, autospec=True)
     @patch(_PARAM)
     def test_listino_inesistente_404(self, mock_param_cls, mock_repo_cls):
         # Scopo: listino non trovato -> E_VENDITE_NOT_FOUND in new_defaults.
@@ -613,7 +613,7 @@ class TestListinoVersioneFormDefaults(TestCase):
             fn_get_versione_new_defaults(listino_id=999)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
-    @patch(_LISTINI_REPO)
+    @patch(_LISTINI_REPO, autospec=True)
     @patch(_PARAM)
     def test_versione_inesistente_404(self, mock_param_cls, mock_repo_cls):
         # Scopo: versione non trovata -> E_VENDITE_NOT_FOUND in clone/close.

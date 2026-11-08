@@ -130,7 +130,7 @@ class DateConsegnaRigheTests(SimpleTestCase):
 
 
 class OrdiniDateConsegnaTests(SimpleTestCase):
-    @patch(_REPO_ORDINI)
+    @patch(_REPO_ORDINI, autospec=True)
     def test_nessun_pre_check_di_stato(self, repo_cls) -> None:
         # Fuori bozza la data confermata si scrive: lo stato lo giudica il
         # lock nello stesso UPDATE, il service non lo guarda.
@@ -144,7 +144,7 @@ class OrdiniDateConsegnaTests(SimpleTestCase):
         self.assertEqual((out["aggiornate"], out["saltate_spedite"]), (2, 1))
         repo.get_ordine.assert_not_called()
 
-    @patch(_REPO_ORDINI)
+    @patch(_REPO_ORDINI, autospec=True)
     def test_ordine_fuori_perimetro_e_404(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = None
@@ -155,7 +155,7 @@ class OrdiniDateConsegnaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
         repo.scrivi_data_consegna.assert_not_called()
 
-    @patch(_REPO_ORDINI)
+    @patch(_REPO_ORDINI, autospec=True)
     def test_il_rifiuto_del_lock_passa_col_suo_codice(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.colonne_date_consegna.return_value = OrdiniRepository.colonne_date_consegna()
@@ -172,7 +172,7 @@ class OrdiniDateConsegnaTests(SimpleTestCase):
 
 
 class PreventiviDateConsegnaTests(SimpleTestCase):
-    @patch(_REPO_PREVENTIVI)
+    @patch(_REPO_PREVENTIVI, autospec=True)
     def test_la_data_confermata_non_e_del_preventivo(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.colonne_date_consegna.return_value = PreventiviRepository.colonne_date_consegna()
@@ -184,7 +184,7 @@ class PreventiviDateConsegnaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_PREV_VALIDAZIONE")
         repo.scrivi_data_consegna.assert_not_called()
 
-    @patch(_REPO_PREVENTIVI)
+    @patch(_REPO_PREVENTIVI, autospec=True)
     def test_preventivo_fuori_perimetro_e_404(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_preventivo.return_value = None

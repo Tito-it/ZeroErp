@@ -157,7 +157,7 @@ class ResiServiceGuardsTests(SimpleTestCase):
     sulle righe — il codice del BB a DB, anche se su resi_righe non e' ancora
     montato) e not-found (E_RESO_NOT_FOUND)."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_reso_not_found(self, repo_cls) -> None:
         repo_cls.return_value.get_reso.return_value = None
         with self.assertRaises(ServiceError) as cm:
@@ -168,7 +168,7 @@ class ResiServiceGuardsTests(SimpleTestCase):
     #        `capabilities`, e nessuna sua chiave sale nella testata (api.md
     #        §«Il blob sta SOTTO `capabilities`», 2026-09-23). Fino a quel
     #        giorno nessun test del reso guardava la forma del dettaglio.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_reso_capabilities_annidate(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_reso.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
@@ -186,7 +186,7 @@ class ResiServiceGuardsTests(SimpleTestCase):
             self.assertNotIn(chiave, out)
         self.assertEqual(out["righe_count"], 2)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_aggiorna_reso_fuori_bozza_decide_il_db(self, repo_cls) -> None:
         # Reso CONFERMATO: le note si cambiano ancora, la data no, e lo dice il
         # lock di testata del DB (brief-db-testata-dopo-emissione, D-2): il
@@ -198,7 +198,7 @@ class ResiServiceGuardsTests(SimpleTestCase):
         repo.get_reso.assert_not_called()
         self.assertEqual(repo.update_reso.call_args.kwargs, {"meta": {"nota": "x"}})
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_gestisci_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_e_ddt_origine.return_value = {
@@ -214,7 +214,7 @@ class ResiServiceGuardsTests(SimpleTestCase):
         )
         repo.create_riga.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_elimina_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_e_ddt_origine.return_value = {
@@ -238,7 +238,7 @@ class ResiCreaTests(SimpleTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_reso_ok(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_ddt_sorgente.return_value = {
@@ -261,7 +261,7 @@ class ResiCreaTests(SimpleTestCase):
         # vocabolario (brief-modello-documento-vendita P-2).
         self.assertNotIn("stato_doc_reso_id", kwargs)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_reso_ddt_mancante(self, repo_cls) -> None:
         repo = repo_cls.return_value
         with self.assertRaises(ServiceError) as cm:
@@ -269,7 +269,7 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.create_reso.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_reso_ddt_id_non_numerico(self, repo_cls) -> None:
         # ddt_id non numerico -> 4xx parlante, non 500 da int().
         repo = repo_cls.return_value
@@ -278,7 +278,7 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.create_reso.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_reso_ddt_not_found(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_ddt_sorgente.return_value = None
@@ -287,7 +287,7 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
         repo.create_reso.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_reso_ddt_non_consegnato(self, repo_cls) -> None:
         # Guard applicativo parlante col medesimo codice del trigger DB
         # (trgfn_resi_guard_ddt_consegnato): un solo errore per lo stesso
@@ -301,7 +301,7 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_DDT_NON_CONSEGNATO")
         repo.create_reso.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_reso_con_righe_atomic(self, repo_cls) -> None:
         # Pannello FE: testata + N righe in un'unica chiamata; le righe
         # ricevono lo snapshot dalla riga DDT e finiscono in righe_ids.
@@ -330,7 +330,7 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(kwargs["qta_operativa"], "3")
         self.assertEqual(kwargs["motivo"], "danneggiato")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_reso_data_non_iso(self, repo_cls) -> None:
         # `data` non ISO -> 4xx parlante, non errore DB grezzo (o peggio
         # interpretazione DateStyle-dipendente).
@@ -347,7 +347,7 @@ class ResiCreaTests(SimpleTestCase):
 class ResiRigheTests(SimpleTestCase):
     """gestisci_riga/aggiorna_riga: snapshot dalla riga DDT + guard."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_riga_snapshot_da_riga_ddt(self, repo_cls) -> None:
         # Articolo/descrizione/UoM/factor/ordine_riga_id copiati dallo
         # snapshot (il reso non inventa articoli); il payload porta solo
@@ -372,7 +372,7 @@ class ResiRigheTests(SimpleTestCase):
         self.assertEqual(kwargs["ordine_riga_id"], 90)
         self.assertEqual(kwargs["riga_nr"], 2)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_riga_ddt_riga_estranea(self, repo_cls) -> None:
         # La riga DDT appartiene a un ALTRO DDT: rifiuto parlante.
         repo = repo_cls.return_value
@@ -387,7 +387,7 @@ class ResiRigheTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.create_riga.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_riga_senza_tipo(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
@@ -399,7 +399,7 @@ class ResiRigheTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.create_riga.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_riga_senza_qta_operativa(self, repo_cls) -> None:
         # `quantita` base sola NON basta: il trigger DB qta_from_operativa
         # su INSERT calcola sempre la base da qta_operativa (E_QTA_MISSING
@@ -414,7 +414,7 @@ class ResiRigheTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.create_riga.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_riga_fulfillment_multipli(self, repo_cls) -> None:
         # Riga DDT con 2+ fulfillment (caso teorico del modello 1..n):
         # attribuire il reso a UNA sola riga ordine riaprirebbe il residuo
@@ -431,7 +431,7 @@ class ResiRigheTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.create_riga.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_aggiorna_riga_ok(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
@@ -451,7 +451,7 @@ class ResiRigheTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
         repo.update_riga.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_aggiorna_riga_estranea(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
@@ -466,7 +466,7 @@ class ResiCodaAccreditareTests(SimpleTestCase):
     """Filtro etichetta della coda accrediti (forma contatore, DL-26)."""
 
     # Scopo: etichetta valida (DOVUTA | FACOLTATIVA) passa al repository.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_etichetta_valida_passthrough(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
@@ -479,7 +479,7 @@ class ResiCodaAccreditareTests(SimpleTestCase):
 
     # Scopo: etichetta fuori whitelist -> E_RESO_VALIDAZIONE fail-fast (un
     #        valore ignoto e' un errore del chiamante, non una lista vuota).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_etichetta_invalida_400(self, repo_cls) -> None:
         with self.assertRaises(ServiceError) as ctx:
             resi_service.list_da_accreditare(
@@ -489,7 +489,7 @@ class ResiCodaAccreditareTests(SimpleTestCase):
         repo_cls.return_value.list_da_accreditare.assert_not_called()
 
     # Scopo: etichetta assente -> None al repository (tutte le righe).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_etichetta_none_default(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
@@ -502,7 +502,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
 
     # Scopo: il filtro DDT arriva al repository. E' il caso del collegamento dal
     #        pannello situazione merce del DDT.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filtro_ddt_passthrough(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
@@ -513,7 +513,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
 
     # Scopo: idem dal pannello dell'ordine, dove il legame passa dal
     #        fulfillment della riga di DDT resa e non da una colonna.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filtro_ordine_passthrough(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
@@ -526,7 +526,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
     #        domande in una, con la seconda che restringe la prima in silenzio:
     #        l'operatore vedrebbe un elenco corto senza sapere perche'.
     #        ⚠️ E il repository non deve essere chiamato affatto.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filtro_documento_mutuamente_esclusivo(self, repo_cls) -> None:
         for chiamata in (
             lambda: resi_service.list_da_accreditare(
@@ -548,7 +548,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
     #        vuota si legge «non c'e' niente da fare» — il messaggio piu'
     #        sbagliato possibile su un elenco di accrediti dovuti. Deve essere
     #        un errore parlante, non una normalizzazione silenziosa.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filtro_documento_id_non_positivo(self, repo_cls) -> None:
         for kwargs in ({"ddt_id": 0}, {"ddt_id": -1}, {"ordine_id": 0}):
             with self.subTest(**kwargs):
@@ -559,7 +559,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
 
     # Scopo: NON-regressione. La coda aperta a mano non ha nessun documento, e
     #        i due filtri devono arrivare `None` — non 0, che sarebbe un id.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filtro_documento_assente_default(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
@@ -573,7 +573,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
     # Scopo: la simmetria fra le due code. Il pannello situazione merce mostra
     #        «da accreditare» e «da ri-consegnare» una sopra l'altra: dare il
     #        collegamento filtrato a una sola sarebbe un'asimmetria visibile.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_filtro_documento_su_riconsegne(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_riconsegnare.return_value = ([], 0)
@@ -598,7 +598,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
 class ResiEliminaTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """elimina_reso: hard-delete solo per bozza orfana (0 righe)."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_elimina_reso_con_righe_rifiutato(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
@@ -608,7 +608,7 @@ class ResiEliminaTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_STATO_TRANSIZIONE")
         repo.delete_reso.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_elimina_reso_bozza_orfana_ok(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
@@ -622,7 +622,7 @@ class ResiEliminaTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
 class ResiAzioniTests(SimpleTestCase):
     """conferma/annulla/genera_ddt_riconsegna: delega alle fn madri DB."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_conferma_delega_fn_madre_light(self, repo_cls) -> None:
         # Ritorno LIGHT (parita' ddt_service.emetti): niente reload del detail
         # pesante. Lo stato di ritorno e' RILETTO dal DB dopo la fn madre
@@ -638,7 +638,7 @@ class ResiAzioniTests(SimpleTestCase):
         repo.get_capabilities.assert_not_called()
         self.assertEqual(out, {"reso_id": 7, "stato": "CONFERMATO"})
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_conferma_not_found_da_fn(self, repo_cls) -> None:
         # Il NOT_FOUND arriva dalla fn madre (RAISE con E_RESO_NOT_FOUND nel
         # testo/context) tradotto da _db_errors: nessun pre-check duplicato.
@@ -651,7 +651,7 @@ class ResiAzioniTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
 
     @patch(f"{_SVC}.transaction")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_conferma_no_atomic_extra(self, repo_cls, mock_tx) -> None:
         # L'atomicita' vive DENTRO fn_conferma_reso: il service NON apre un
         # transaction.atomic() extra (una sola SELECT fn_madre).
@@ -660,7 +660,7 @@ class ResiAzioniTests(SimpleTestCase):
         resi_service.conferma_reso(7)
         mock_tx.atomic.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_annulla_delega_fn_madre_light(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "ANNULLATO"
@@ -668,9 +668,9 @@ class ResiAzioniTests(SimpleTestCase):
         repo.annulla.assert_called_once_with(7)
         self.assertEqual(out, {"reso_id": 7, "stato": "ANNULLATO"})
 
-    @patch(_DDT_REPO)
+    @patch(_DDT_REPO, autospec=True)
     @patch(_ATOMIC, return_value=nullcontext())
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riconsegna_delega_e_ritorna(self, repo_cls, _atomic, ddt_cls) -> None:
         repo = repo_cls.return_value
         repo.genera_ddt_riconsegna.return_value = 42
@@ -689,9 +689,9 @@ class ResiAzioniTests(SimpleTestCase):
         # (il DB lo riempie solo se e' rimasto vuoto): come il DDT da ordine.
         ddt_cls.return_value.riempi_indirizzo_default.assert_called_once_with(42)
 
-    @patch(_DDT_REPO)
+    @patch(_DDT_REPO, autospec=True)
     @patch(_ATOMIC, return_value=nullcontext())
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riconsegna_errore_del_default_sale(self, repo_cls, atomic, ddt_cls) -> None:
         # Verbo e default nella stessa transazione: non e' best-effort, un
         # errore sale e annulla anche il DDT di ri-spedizione.
@@ -701,7 +701,7 @@ class ResiAzioniTests(SimpleTestCase):
             resi_service.genera_ddt_riconsegna(7)
         atomic.assert_called_once_with()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riconsegna_righe_vuote(self, repo_cls) -> None:
         # Lista vuota NON degrada a None = "ri-spedisci tutto": errore
         # parlante (mirror _parse_righe_evasione di views_ordini).
@@ -711,7 +711,7 @@ class ResiAzioniTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.genera_ddt_riconsegna.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riconsegna_righe_non_lista(self, repo_cls) -> None:
         # Body malformato (righe non-lista) -> 400, non ri-spedizione totale.
         repo = repo_cls.return_value
@@ -720,7 +720,7 @@ class ResiAzioniTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.genera_ddt_riconsegna.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riconsegna_riga_senza_qta(self, repo_cls) -> None:
         repo = repo_cls.return_value
         with self.assertRaises(ServiceError) as cm:
@@ -737,7 +737,7 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
     ri-spedizione (le due uscite condividono contratto e copertura).
     """
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_chiudi_delega_e_ritorna(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.chiudi_riconsegna.return_value = 2
@@ -751,7 +751,7 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
         )
         self.assertEqual(out, {"reso_id": 7, "righe_chiuse": 2})
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_chiudi_note_vuote_a_null(self, repo_cls) -> None:
         # Testo libero facoltativo: whitespace -> NULL, mai stringa vuota a DB
         # ([[feedback_null_vs_empty]]).
@@ -760,7 +760,7 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
         resi_service.chiudi_riconsegna(7, None, "   ")
         self.assertIsNone(repo.chiudi_riconsegna.call_args[0][2])
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_chiudi_note_trimmate(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.chiudi_riconsegna.return_value = 1
@@ -769,7 +769,7 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
             repo.chiudi_riconsegna.call_args[0][2], "merce non ripristinabile",
         )
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_chiudi_note_tipo_non_stringa_rifiutata(self, repo_cls) -> None:
         # Un `note` non testuale e' un body malformato: 400 parlante qui, non
         # un parametro varchar imprevedibile passato a psycopg.
@@ -781,14 +781,14 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
                 self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.chiudi_riconsegna.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_chiudi_righe_none_e_tutta_la_copertura(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.chiudi_riconsegna.return_value = 3
         resi_service.chiudi_riconsegna(7)
         repo.chiudi_riconsegna.assert_called_once_with(7, None, None)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_chiudi_righe_degeneri_rifiutate(self, repo_cls) -> None:
         # Il degrado silenzioso a "rendi definitiva TUTTA la copertura" e' qui
         # piu' grave che sulla gemella: rinuncerebbe a merce che l'operatore
@@ -801,7 +801,7 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
                 self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.chiudi_riconsegna.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riapri_delega_e_ritorna(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.riapri_riconsegna.return_value = 1
@@ -813,7 +813,7 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
         )
         self.assertEqual(out, {"reso_id": 7, "righe_riaperte": 1})
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_riapri_righe_degeneri_rifiutate(self, repo_cls) -> None:
         repo = repo_cls.return_value
         with self.assertRaises(ServiceError) as cm:
@@ -822,7 +822,7 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
         repo.riapri_riconsegna.assert_not_called()
 
     @patch(f"{_SVC}.transaction")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_nessun_atomic_extra(self, repo_cls, mock_tx) -> None:
         # Le madri DB sono gia' atomiche: un atomic applicativo sopra sarebbe
         # solo un lock in piu' (stessa regola della ri-spedizione).
@@ -842,7 +842,7 @@ class ResiAccreditoTests(SimpleTestCase):
     # prezzi diversi: altrettante). Il service le rilancia TUTTE: prenderne una
     # sarebbe verde su ogni caso semplice e muto sui kit, cioe' esattamente i
     # casi per cui il cantiere esiste.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_accredito_ritorna_tutte_le_rettifiche(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.accredita_riga_reso.return_value = [
@@ -868,7 +868,7 @@ class ResiAccreditoTests(SimpleTestCase):
     # DB: il service non deve leggere la coda ne' lo stato del reso prima di
     # chiamare (due copie della stessa regola divergono, e la piu' vecchia non
     # fa rumore).
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_accredito_nessun_precheck_applicativo(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.accredita_riga_reso.return_value = []
@@ -881,7 +881,7 @@ class ResiAccreditoTests(SimpleTestCase):
         repo.get_capabilities.assert_not_called()
 
     @patch(f"{_SVC}.transaction")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_accredito_no_atomic_extra(self, repo_cls, mock_tx) -> None:
         # L'atomicita' vive DENTRO fn_accredita_riga_reso: una sola
         # SELECT fn_(), nessun transaction.atomic() nel service.
@@ -893,7 +893,7 @@ class ResiAccreditoTests(SimpleTestCase):
     # Scopo: i codici di dominio dell'accredito arrivano dalla madre e passano
     # da _db_errors (routing UI del FE). Il doppio click e' il caso vivo:
     # E_ACCREDITO_GIA_ESEGUITO, non un 500.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_accredito_codice_dominio_dalla_madre(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.accredita_riga_reso.side_effect = DatabaseError(
@@ -913,7 +913,7 @@ class ResiAccreditoMassivoTests(SimpleTestCase):
     # giro di fatturazione), quindi sollevare butterebbe via anche le righe
     # riuscite; e le righe rifiutate restano semplicemente in coda.
     @patch(f"{_SVC}.run_fan_out")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_massivo_esito_parziale_non_solleva(self, repo_cls, _fan_out) -> None:
         repo = repo_cls.return_value
         repo.accredita_riga_reso.side_effect = [
@@ -935,7 +935,7 @@ class ResiAccreditoMassivoTests(SimpleTestCase):
     # frontend DUE forme da leggere per la stessa domanda (una lista di esiti
     # oppure un errore): e' lo stesso argomento per cui l'endpoint e' uno solo.
     @patch(f"{_SVC}.run_fan_out")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_massivo_tutte_fallite_non_solleva(self, repo_cls, _fan_out) -> None:
         repo = repo_cls.return_value
         repo.accredita_riga_reso.side_effect = DatabaseError(
@@ -956,7 +956,7 @@ class ResiAccreditoMassivoTests(SimpleTestCase):
     # riga porta il proprio `resi_riga_id`: senza, il chiamante non saprebbe di
     # chi e' la rettifica che sta guardando (su un kit ne arrivano N per riga).
     @patch(f"{_SVC}.run_fan_out")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_massivo_accrediti_portano_la_riga(self, repo_cls, _fan_out) -> None:
         repo = repo_cls.return_value
         repo.accredita_riga_reso.side_effect = [
@@ -977,7 +977,7 @@ class ResiAccreditoMassivoTests(SimpleTestCase):
     # sistema e invece e' il body. L'ordine si preserva: e' quello in cui
     # l'operatore ha spuntato le righe.
     @patch(f"{_SVC}.run_fan_out")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_massivo_dedup_preserva_ordine(self, repo_cls, _fan_out) -> None:
         repo = repo_cls.return_value
         repo.accredita_riga_reso.return_value = []
@@ -990,7 +990,7 @@ class ResiAccreditoMassivoTests(SimpleTestCase):
             [9, 7, 5],
         )
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_massivo_lista_vuota_rifiutata(self, repo_cls) -> None:
         # Lista vuota NON e' «tutte»: indovinare male qui significa lavorare un
         # perimetro che nessuno ha chiesto, su un documento fiscale.
@@ -999,7 +999,7 @@ class ResiAccreditoMassivoTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo_cls.return_value.accredita_riga_reso.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_massivo_lista_degenere_rifiutata(self, repo_cls) -> None:
         # ⚠️ `True` e' incluso apposta: in Python `bool` e' un `int`, quindi
         # senza il controllo di tipo esplicito passerebbe come riga 1.
@@ -1010,7 +1010,7 @@ class ResiAccreditoMassivoTests(SimpleTestCase):
                 self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo_cls.return_value.accredita_riga_reso.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_massivo_cap_rispettato(self, repo_cls) -> None:
         troppi = list(range(1, resi_service.MAX_ACCREDITI_MASSIVI + 2))
         with self.assertRaises(ServiceError) as cm:
@@ -1022,7 +1022,7 @@ class ResiAccreditoMassivoTests(SimpleTestCase):
 class ResiAnnulloAccreditoTests(SimpleTestCase):
     """L'annullo dell'accredito (D-NC-11): a monte del documento, non il reset."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_annullo_delega_alla_madre(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_riga.return_value = {"id": 24, "reso_id": 7}
@@ -1040,7 +1040,7 @@ class ResiAnnulloAccreditoTests(SimpleTestCase):
     # percorso e' l'unico guard legittimo qui — senza,
     # `/resi/999/righe/24/annulla-accredito/` annullerebbe l'accredito della
     # riga 24 di un ALTRO reso.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_annullo_riga_di_altro_reso_rifiutata(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_riga.return_value = {"id": 24, "reso_id": 8}
@@ -1053,7 +1053,7 @@ class ResiAnnulloAccreditoTests(SimpleTestCase):
     # fa la madre (E_ACCREDITO_MOTIVO_OBBLIGATORIO), che e' anche l'unica a
     # sapere perche' il motivo serve — l'annullo cancella le righe di ponte,
     # quindi la traccia del PERCHE' resta solo nel log.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_annullo_motivo_vuoto_a_null(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_riga.return_value = {"id": 24, "reso_id": 7}
@@ -1061,7 +1061,7 @@ class ResiAnnulloAccreditoTests(SimpleTestCase):
         resi_service.annulla_accredito_riga_reso(7, 24, "   ")
         repo.annulla_accredito_riga_reso.assert_called_once_with(24, None)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_annullo_codice_dominio_dalla_madre(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_riga.return_value = {"id": 24, "reso_id": 7}
@@ -1076,7 +1076,7 @@ class ResiAnnulloAccreditoTests(SimpleTestCase):
     # rifiuta i tipi non stringa invece di consegnarli al driver. E' la meta'
     # che una normalizzazione scritta al volo (`empty_to_none` se e' str, else
     # passa) dimentica sempre: un dict sarebbe arrivato a psycopg.
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_annullo_motivo_non_stringa_rifiutato(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_riga.return_value = {"id": 24, "reso_id": 7}
@@ -1088,7 +1088,7 @@ class ResiAnnulloAccreditoTests(SimpleTestCase):
         repo.annulla_accredito_riga_reso.assert_not_called()
 
     @patch(f"{_SVC}.transaction")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_annullo_no_atomic_extra(self, repo_cls, mock_tx) -> None:
         repo = repo_cls.return_value
         repo.get_riga.return_value = {"id": 24, "reso_id": 7}
@@ -1133,7 +1133,7 @@ class ResiDbErrorsTests(SimpleTestCase):
 # 51) test_list_righe_reso_non_trovato_e_404
 # 52) test_list_righe_con_testata_delega_al_repo
 class ResiSatellitiTestataTests(SimpleTestCase):
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_list_righe_reso_non_trovato_e_404(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_reso.return_value = None
@@ -1142,7 +1142,7 @@ class ResiSatellitiTestataTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
         repo.list_righe.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_list_righe_con_testata_delega_al_repo(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_reso.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
@@ -1155,7 +1155,7 @@ class ResiSatellitiTestataTests(SimpleTestCase):
 # ⚠️ Le regole (bozza, prelievo della riga di bolla, quadratura alla conferma)
 # sono del DB: lo prova `tests/db/test_ddt_cambia_stato_db` (test 7).
 class ResiRientriTests(SimpleTestCase):
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_rientri_raggruppa_per_voce(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_testata_rientri.return_value = {"reso_id": 4, "muove_merce": True}
@@ -1176,7 +1176,7 @@ class ResiRientriTests(SimpleTestCase):
             [([501], []), ([500], [900])],
         )
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_crea_rientro_vuole_il_prelievo(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
@@ -1186,7 +1186,7 @@ class ResiRientriTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.create_rientro.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_rientro_di_altra_riga_e_404(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"

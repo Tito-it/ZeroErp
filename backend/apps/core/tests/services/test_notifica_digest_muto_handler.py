@@ -61,7 +61,7 @@ class NotificaDigestMutoHandlerTests(SimpleTestCase):
     # 1. Il caso normale: una email di SISTEMA al destinatario, copie a parte.
     @override_settings(PRESIDI_DIGEST_DESTINATARIO="chi.guarda@example.test; copia@example.test")
     def test_accoda_una_email_di_sistema_al_destinatario(self) -> None:
-        with patch(_EMAIL_REPO) as repo_cls:
+        with patch(_EMAIL_REPO, autospec=True) as repo_cls:
             esito = notifica_digest_muto_handler(dict(_PAYLOAD), scope=None)
 
         repo_cls.return_value.insert_log.assert_called_once()
@@ -89,7 +89,7 @@ class NotificaDigestMutoHandlerTests(SimpleTestCase):
     #    mostra nel pannello.
     @override_settings(PRESIDI_DIGEST_DESTINATARIO="")
     def test_senza_destinatario_fallisce_terminale(self) -> None:
-        with patch(_EMAIL_REPO) as repo_cls:
+        with patch(_EMAIL_REPO, autospec=True) as repo_cls:
             with self.assertRaises(ServiceError) as ctx:
                 notifica_digest_muto_handler(dict(_PAYLOAD))
         repo_cls.return_value.insert_log.assert_not_called()
@@ -141,7 +141,7 @@ class NotificaDigestMutoHandlerTests(SimpleTestCase):
     #    trattini dove i fatti mancano. Meglio un avviso monco di nessun avviso.
     @override_settings(PRESIDI_DIGEST_DESTINATARIO="chi.guarda@example.test")
     def test_un_payload_vuoto_avvisa_comunque(self) -> None:
-        with patch(_EMAIL_REPO) as repo_cls:
+        with patch(_EMAIL_REPO, autospec=True) as repo_cls:
             esito = notifica_digest_muto_handler({})
         kw = repo_cls.return_value.insert_log.call_args.kwargs
         self.assertIn("MUTO", kw["oggetto"])

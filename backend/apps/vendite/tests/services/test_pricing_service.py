@@ -61,7 +61,7 @@ def _base_kwargs(**overrides):
 
 
 class TestResolvePrezzo(TestCase):
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_ok(self, mock_repo):
         mock_repo.return_value.resolve_prezzo_listino_v2.return_value = {
             "prezzo_finale": Decimal("12.50"),
@@ -73,49 +73,49 @@ class TestResolvePrezzo(TestCase):
         # UUID stringa normalizzata.
         self.assertEqual(kwargs["articolo_id"], _UUID)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_uuid_invalido(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PricingService().resolve_prezzo(**_base_kwargs(articolo_id="xxx"))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_uom_zero(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PricingService().resolve_prezzo(**_base_kwargs(uom_id=0))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_ba_negativo(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PricingService().resolve_prezzo(**_base_kwargs(ba_id=-1))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_data_non_date(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PricingService().resolve_prezzo(**_base_kwargs(data_riferimento="2026-01-01"))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_classe_utenza_opzionale(self, mock_repo):
         mock_repo.return_value.resolve_prezzo_listino_v2.return_value = {"origine": "CATEGORIA"}
         PricingService().resolve_prezzo(**_base_kwargs(classe_utenza_id=None))
         kwargs = mock_repo.return_value.resolve_prezzo_listino_v2.call_args.kwargs
         self.assertIsNone(kwargs["classe_utenza_id"])
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_classe_utenza_zero_ko(self, mock_repo):
         del mock_repo
         with self.assertRaises(ServiceError) as ctx:
             PricingService().resolve_prezzo(**_base_kwargs(classe_utenza_id=0))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_db_error_categoria_non_mappata(self, mock_repo):
         mock_repo.return_value.resolve_prezzo_listino_v2.side_effect = DatabaseError(
             "Nessuna mappa categoria 3 -> listino per utility 5 emittente 42 (classe NULL) al 2026-06-01."
@@ -124,7 +124,7 @@ class TestResolvePrezzo(TestCase):
             PricingService().resolve_prezzo(**_base_kwargs())
         self.assertEqual(ctx.exception.code, "E_CATEGORIA_LISTINO_NON_MAPPATA")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_db_error_non_negoziato_corto_non_matcha_generico(self, mock_repo):
         # Review B4 2026-04-15: il marker "non negoziato" e' comune.
         # Un messaggio che contiene "non negoziato" MA non il prefisso
@@ -137,7 +137,7 @@ class TestResolvePrezzo(TestCase):
             PricingService().resolve_prezzo(**_base_kwargs())
         self.assertEqual(ctx.exception.code, "E_VENDITE_PRICING_FAILED")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_db_error_non_negoziato_matcha_con_contesto_C(self, mock_repo):
         mock_repo.return_value.resolve_prezzo_listino_v2.side_effect = DatabaseError(
             "Contratto 7 modalita' C: articolo X/uom 3 non negoziato."
@@ -146,7 +146,7 @@ class TestResolvePrezzo(TestCase):
             PricingService().resolve_prezzo(**_base_kwargs())
         self.assertEqual(ctx.exception.code, "E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_resolve_db_error_generico(self, mock_repo):
         mock_repo.return_value.resolve_prezzo_listino_v2.side_effect = DatabaseError(
             "Errore sconosciuto del DB"
@@ -163,7 +163,7 @@ class TestResolvePrezzo(TestCase):
     #        a posteriori: e' l'ambiguita' che il 2026-08-19 ha fatto perdere
     #        tempo al team DB (brief-be-pricing-codice-errore-fantasma.md §6.3).
     @patch("apps.core.services.error_manager.ErrorManager.log_error_only")
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_contesto_loggato_completo(self, mock_repo, mock_log):
         mock_repo.return_value.resolve_prezzo_listino_v2.side_effect = DatabaseError(
             "Errore sconosciuto del DB"
@@ -196,7 +196,7 @@ class TestResolvePrezzo(TestCase):
 #        tornasse a sollevare, il DDT ricomincerebbe a rifiutare le righe in
 #        conto visione — e il difetto si vedrebbe in-app, non qui.
 class TestResolvePrezzoEsito(TestCase):
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_esito_risolto(self, mock_repo):
         mock_repo.return_value.resolve_prezzo_listino_v2_esito.return_value = {
             "prezzo_finale": Decimal("12.50"),
@@ -209,7 +209,7 @@ class TestResolvePrezzoEsito(TestCase):
         self.assertEqual(out["prezzo_finale"], Decimal("12.50"))
         self.assertIsNone(out["esito_codice"])
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_esito_non_risolto_non_solleva(self, mock_repo):
         # E' IL test di questa slice: prezzo assente, motivo valorizzato,
         # nessuna eccezione. Il guscio `resolve_prezzo` qui solleverebbe.
@@ -224,7 +224,7 @@ class TestResolvePrezzoEsito(TestCase):
         self.assertIsNone(out["prezzo_finale"])
         self.assertEqual(out["esito_codice"], "E_CATEGORIA_LISTINO_NON_MAPPATA")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_esito_riga_assente(self, mock_repo):
         # Il guard vive nel repository (BE-A2): qui si presidia che il service
         # non addomestichi quell'errore trasformandolo in un prezzo mancante.
@@ -236,7 +236,7 @@ class TestResolvePrezzoEsito(TestCase):
             PricingService().resolve_prezzo_esito(**_base_kwargs())
         self.assertEqual(ctx.exception.code, "E_VENDITE_PRICING_ESITO_ASSENTE")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_esito_parametro_invalido_solleva(self, mock_repo):
         # Il nucleo non solleva per «prezzo non risolto», ma solleva ancora per
         # parametri invalidi: la traduzione deve restare.
@@ -247,7 +247,7 @@ class TestResolvePrezzoEsito(TestCase):
             PricingService().resolve_prezzo_esito(**_base_kwargs())
         self.assertEqual(ctx.exception.code, "E_VENDITE_PRICING_FAILED")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_esito_valida_gli_input(self, mock_repo):
         # DEC-7: i guard sono estratti in `_valida_input_resolver`, quindi
         # valgono identici sui due metodi. Se l'estrazione si scollegasse da

@@ -44,7 +44,7 @@ class CreaRichiestaApprovazioneTests(TestCase):
     @patch("apps.vendite.services.approvazioni_prezzo_service._invia_email_richiesta_approvazione")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_pratica")
-    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository", autospec=True)
     @patch("apps.core.db._helpers.connection")
     def test_crea_richiesta_pratica_aperta_con_email_bestffort(
         self, mock_conn, mock_repo_cls, mock_crea_pratica, mock_cambia_stato, mock_email
@@ -99,7 +99,7 @@ class CreaRichiestaApprovazioneTests(TestCase):
         # Email best-effort invocata (non solleva nemmeno se fallisce).
         mock_email.assert_called_once()
 
-    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository", autospec=True)
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
     def test_crea_richiesta_contesto_mancante_solleva(
         self, mock_conn, mock_repo_cls
@@ -152,7 +152,7 @@ class ApprovaRifiutaTests(TestCase):
 
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
-    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository", autospec=True)
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
@@ -212,7 +212,7 @@ class ApprovaRifiutaTests(TestCase):
 
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
-    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository", autospec=True)
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
@@ -231,7 +231,7 @@ class ApprovaRifiutaTests(TestCase):
 
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
-    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository", autospec=True)
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
@@ -268,7 +268,7 @@ class ApprovaRifiutaTests(TestCase):
 
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
-    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository", autospec=True)
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
@@ -296,9 +296,8 @@ class ApprovaRifiutaTests(TestCase):
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
     @patch(
-        "apps.vendite.db.contratti_repository.ContrattiRepository"
-    )
-    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+        "apps.vendite.db.contratti_repository.ContrattiRepository", autospec=True)
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository", autospec=True)
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
@@ -336,8 +335,7 @@ class ApprovaRifiutaTests(TestCase):
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
     @patch(
-        "apps.vendite.db.contratti_repository.ContrattiRepository"
-    )
+        "apps.vendite.db.contratti_repository.ContrattiRepository", autospec=True)
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")

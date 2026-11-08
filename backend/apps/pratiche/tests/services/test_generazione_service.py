@@ -73,8 +73,8 @@ class GenerazioneServiceTests(SimpleTestCase):
         self.addCleanup(p_exit.stop)
 
     # Scopo: Verifica generazione manuale pratica con esito positivo.
-    @patch(f"{_GEN_SVC}.GenerazioneRepository")
-    @patch(f"{_GEN_SVC}.PraticheRepository")
+    @patch(f"{_GEN_SVC}.GenerazioneRepository", autospec=True)
+    @patch(f"{_GEN_SVC}.PraticheRepository", autospec=True)
     def test_genera_pratica_manuale_ok(self, MockPratRepo, MockGenRepo):
         prat_repo = MockPratRepo.return_value
         prat_repo.get_flusso.return_value = _mock_flusso_row(1)
@@ -88,7 +88,7 @@ class GenerazioneServiceTests(SimpleTestCase):
         gen_repo.genera_pratica_manuale.assert_called_once_with(1, 5)
 
     # Scopo: Verifica errore quando il flusso non esiste.
-    @patch(f"{_GEN_SVC}.PraticheRepository")
+    @patch(f"{_GEN_SVC}.PraticheRepository", autospec=True)
     def test_genera_pratica_manuale_flusso_non_trovato(self, MockPratRepo):
         prat_repo = MockPratRepo.return_value
         prat_repo.get_flusso.return_value = None
@@ -110,8 +110,8 @@ class GenerazioneServiceTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
 
     # Scopo: Verifica lista regole applicabili con template flusso.
-    @patch(f"{_GEN_SVC}.GenerazioneRepository")
-    @patch(f"{_GEN_SVC}.PraticheRepository")
+    @patch(f"{_GEN_SVC}.GenerazioneRepository", autospec=True)
+    @patch(f"{_GEN_SVC}.PraticheRepository", autospec=True)
     def test_get_regole_applicabili_ok(self, MockPratRepo, MockGenRepo):
         prat_repo = MockPratRepo.return_value
         prat_repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=10)
@@ -125,7 +125,7 @@ class GenerazioneServiceTests(SimpleTestCase):
         gen_repo.list_regole_generazione.assert_called_once_with(10)
 
     # Scopo: Verifica lista vuota quando flusso non ha template.
-    @patch(f"{_GEN_SVC}.PraticheRepository")
+    @patch(f"{_GEN_SVC}.PraticheRepository", autospec=True)
     def test_get_regole_applicabili_senza_template(self, MockPratRepo):
         prat_repo = MockPratRepo.return_value
         prat_repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=None)
@@ -135,7 +135,7 @@ class GenerazioneServiceTests(SimpleTestCase):
         self.assertEqual(result, [])
 
     # Scopo: Verifica lista pratiche generate delegata al repository.
-    @patch(f"{_GEN_SVC}.GenerazioneRepository")
+    @patch(f"{_GEN_SVC}.GenerazioneRepository", autospec=True)
     def test_get_pratiche_generate_ok(self, MockGenRepo):
         gen_repo = MockGenRepo.return_value
         gen_repo.get_pratiche_generate_da_flusso.return_value = []

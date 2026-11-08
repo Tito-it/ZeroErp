@@ -166,7 +166,7 @@ class PraticheApiTests(JwtMockedApiTest):
 
     # Scopo: Verifica GET dettaglio pratica con esito positivo.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_dettaglio_pratica_ok(self, MockRepo, _auth):
         repo = MockRepo.return_value
         repo.get_pratica.return_value = _mock_pratica_row(1)
@@ -178,7 +178,7 @@ class PraticheApiTests(JwtMockedApiTest):
 
     # Scopo: Verifica che il dettaglio pratica contenga i campi display.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_dettaglio_pratica_display_fields(self, MockRepo, _auth):
         repo = MockRepo.return_value
         repo.get_pratica.return_value = _mock_pratica_row(1)
@@ -195,7 +195,7 @@ class PraticheApiTests(JwtMockedApiTest):
 
     # Scopo: Verifica errore dettaglio pratica non trovata.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_VIEWS}.PraticheRepository")
+    @patch(f"{_VIEWS}.PraticheRepository", autospec=True)
     def test_get_dettaglio_pratica_non_trovata(self, MockRepo, _auth):
         repo = MockRepo.return_value
         repo.get_pratica.return_value = None

@@ -76,7 +76,7 @@ class TestBillingAccountSearchLookup(TestCase):
         self.addCleanup(patcher.stop)
         self.mock_resolver.get_emittenti_sr_ids.return_value = None
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_ok(self, mock_repo):
         """Ricerca valida con risultati."""
         repo = mock_repo.return_value
@@ -88,7 +88,7 @@ class TestBillingAccountSearchLookup(TestCase):
         self.assertEqual(result["results"][0]["id"], 123)
         self.assertEqual(result["limit"], 20)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_query_too_short(self, mock_repo):
         """q < 2 char solleva E_ANAG_VALIDAZIONE senza chiamare il repo."""
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
@@ -97,7 +97,7 @@ class TestBillingAccountSearchLookup(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.search_lookup.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_query_empty(self, mock_repo):
         """q vuota solleva E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
@@ -105,7 +105,7 @@ class TestBillingAccountSearchLookup(TestCase):
             BillingAccountService().search_lookup(user=_USER, q="")
         mock_repo.return_value.search_lookup.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_whitespace_trimmed(self, mock_repo):
         """Spazi iniziali/finali rimossi prima della validazione."""
         repo = mock_repo.return_value
@@ -116,7 +116,7 @@ class TestBillingAccountSearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["q"], "BA")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_limit_cap(self, mock_repo):
         """limit > 50 viene capped a 50."""
         repo = mock_repo.return_value
@@ -127,7 +127,7 @@ class TestBillingAccountSearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["limit"], 50)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_limit_default(self, mock_repo):
         """limit <= 0 o None usa default 20."""
         repo = mock_repo.return_value
@@ -138,7 +138,7 @@ class TestBillingAccountSearchLookup(TestCase):
         result_none = BillingAccountService().search_lookup(user=_USER, q="Rossi", limit=None)  # type: ignore[arg-type]
         self.assertEqual(result_none["limit"], 20)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_utility_filter_passed(self, mock_repo):
         """utility_id viene propagato al repository."""
         repo = mock_repo.return_value
@@ -148,7 +148,7 @@ class TestBillingAccountSearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["utility_id"], 7)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_emittente_scope_passed(self, mock_repo):
         """Lo scope emittente lo risolve il service dall'utente, coi
         soggetto_ruolo_id (non le PK: la query confronta col soggetto-ruolo
@@ -164,7 +164,7 @@ class TestBillingAccountSearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["emittente_ids"], [10, 20])
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_solo_validi_default(self, mock_repo):
         """solo_validi default True quando non specificato."""
         repo = mock_repo.return_value
@@ -174,7 +174,7 @@ class TestBillingAccountSearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertIs(kwargs["solo_validi"], True)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_no_results(self, mock_repo):
         """Zero risultati restituisce results vuoto e total_count 0."""
         repo = mock_repo.return_value
@@ -188,7 +188,7 @@ class TestBillingAccountSearchLookup(TestCase):
 class TestBillingAccountGetLookupById(TestCase):
     """Test get_lookup_by_id — restore per edit."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_ok(self, mock_repo):
         """Restore BA esistente."""
         repo = mock_repo.return_value
@@ -198,7 +198,7 @@ class TestBillingAccountGetLookupById(TestCase):
         self.assertEqual(result["id"], 123)
         self.assertEqual(result["codice"], "BA-000123")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_not_found(self, mock_repo):
         """BA inesistente solleva E_ANAG_NOT_FOUND."""
         repo = mock_repo.return_value
@@ -208,7 +208,7 @@ class TestBillingAccountGetLookupById(TestCase):
             BillingAccountService().get_lookup_by_id(9999)
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_invalid_id(self, mock_repo):
         """id <= 0 rifiutato con E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
@@ -217,7 +217,7 @@ class TestBillingAccountGetLookupById(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.get_lookup_by_id.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_bool_rejected(self, mock_repo):
         """Un bool (True/False) non e' un id valido anche se Python lo tratta come int."""
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
@@ -256,8 +256,8 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
     nessun test di id <= 0 a livello di service).
     """
 
-    @patch(_LOOKUP_REPO)
-    @patch(_REPO)
+    @patch(_LOOKUP_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_list_utilities_ok_operatore_in_scope(self, mock_repo, mock_lookup):
         """Operatore con BA del proprio emittente → utility ritornate."""
         mock_repo.return_value.exists.return_value = True
@@ -276,8 +276,8 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
             billing_account_id=200, ruolo_codice_soggetto="CL"
         )
 
-    @patch(_LOOKUP_REPO)
-    @patch(_REPO)
+    @patch(_LOOKUP_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_list_utilities_admin_globale_bypass(self, mock_repo, mock_lookup):
         """Admin globale (user_emittente_id=None) → nessun scope check."""
         mock_repo.return_value.exists.return_value = True
@@ -291,8 +291,8 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
         self.assertEqual(len(result["results"]), 2)
         mock_repo.return_value.get_emittente_fiscale_id.assert_not_called()
 
-    @patch(_LOOKUP_REPO)
-    @patch(_REPO)
+    @patch(_LOOKUP_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_list_utilities_superuser_bypass(self, mock_repo, mock_lookup):
         """is_superuser=True → bypass anche se user_emittente_id valorizzato."""
         mock_repo.return_value.exists.return_value = True
@@ -306,8 +306,8 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
         )
         mock_repo.return_value.get_emittente_fiscale_id.assert_not_called()
 
-    @patch(_LOOKUP_REPO)
-    @patch(_REPO)
+    @patch(_LOOKUP_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_list_utilities_403_ba_di_altro_emittente(self, mock_repo, mock_lookup):
         """Operatore + BA di altro EF → E_PERMESSO_NEGATO, no lookup."""
         mock_repo.return_value.exists.return_value = True
@@ -322,8 +322,8 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
         self.assertEqual(ctx.exception.code, "E_PERMESSO_NEGATO")
         mock_lookup.return_value.list_utilities_per_billing_account.assert_not_called()
 
-    @patch(_LOOKUP_REPO)
-    @patch(_REPO)
+    @patch(_LOOKUP_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_list_utilities_404_ba_inesistente(self, mock_repo, mock_lookup):
         """BA inesistente → E_ANAG_NOT_FOUND prima del check scope."""
         mock_repo.return_value.exists.return_value = False
@@ -338,8 +338,8 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
         mock_repo.return_value.get_emittente_fiscale_id.assert_not_called()
         mock_lookup.return_value.list_utilities_per_billing_account.assert_not_called()
 
-    @patch(_LOOKUP_REPO)
-    @patch(_REPO)
+    @patch(_LOOKUP_REPO, autospec=True)
+    @patch(_REPO, autospec=True)
     def test_list_utilities_ruolo_invalido(self, mock_repo, mock_lookup):
         """Ruolo non in whitelist (es. 'XX') → E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
@@ -356,7 +356,7 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
 class CategoriaClienteDaQueryTests(TestCase):
     """BB `categoria_cliente_da_query` (F-6): BA del query param → categoria."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_categoria_da_query_assente_none(self, mock_repo):
         from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
         for raw in (None, "", "   "):
@@ -364,7 +364,7 @@ class CategoriaClienteDaQueryTests(TestCase):
                 self.assertIsNone(categoria_cliente_da_query(raw))
         mock_repo.return_value.get_categoria_cliente_id.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_categoria_da_query_malformato(self, mock_repo):
         from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
         for raw in ("abc", "1.0", "0", "-3"):
@@ -373,14 +373,14 @@ class CategoriaClienteDaQueryTests(TestCase):
                     categoria_cliente_da_query(raw)
         mock_repo.return_value.get_categoria_cliente_id.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_categoria_da_query_ok(self, mock_repo):
         from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
         mock_repo.return_value.get_categoria_cliente_id.return_value = 4
         self.assertEqual(categoria_cliente_da_query(" 77 "), 4)
         mock_repo.return_value.get_categoria_cliente_id.assert_called_once_with(77)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_categoria_da_query_non_risulta(self, mock_repo):
         """Inesistente e fuori scope (RLS) sono lo stesso None: un 404 solo."""
         from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
@@ -401,18 +401,18 @@ class TestIstanzaDelBillingAccount(TestCase):
             33, istanza_utility_id, code="E_DOMINIO_VALIDATION", function_name="test",
         )
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_istanza_del_ba_deriva(self, mock_repo):
         mock_repo.return_value.get_istanza_utility_id.return_value = 200
         self.assertEqual(self._chiama(None), 200)
         mock_repo.return_value.get_istanza_utility_id.assert_called_once_with(33)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_istanza_del_ba_coincide(self, mock_repo):
         mock_repo.return_value.get_istanza_utility_id.return_value = 200
         self.assertEqual(self._chiama(200), 200)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_istanza_del_ba_altra_istanza(self, mock_repo):
         mock_repo.return_value.get_istanza_utility_id.return_value = 200
         with self.assertRaises(ServiceError) as ctx:
@@ -420,7 +420,7 @@ class TestIstanzaDelBillingAccount(TestCase):
         self.assertEqual(ctx.exception.code, "E_DOMINIO_VALIDATION")
         self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_istanza_del_ba_non_risulta(self, mock_repo):
         mock_repo.return_value.get_istanza_utility_id.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -428,7 +428,7 @@ class TestIstanzaDelBillingAccount(TestCase):
         self.assertEqual(ctx.exception.code, "E_DOMINIO_VALIDATION")
         self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_istanza_del_ba_campo_istanza(self, mock_repo):
         from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
         mock_repo.return_value.get_istanza_utility_id.return_value = 200

@@ -52,7 +52,7 @@ class TestResolveValutaDefault(TestCase):
         result = resolve_valuta_default()
         self.assertEqual(result, {})
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_ba_con_valuta_vince(self, mock_ba_repo_cls):
         # Scopo: livello 1 = ba.valuta_id direttamente.
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = {
@@ -67,7 +67,7 @@ class TestResolveValutaDefault(TestCase):
         # Livelli 2/3/4 mai chiamati.
         mock_ba_repo_cls.return_value.get_emittente_valuta.assert_not_called()
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_ba_senza_valuta_fallback_ef_del_ba(self, mock_ba_repo_cls):
         # Scopo: livello 2 = EF del BA via get_emittente_valuta(ba_id).
         ba_repo = mock_ba_repo_cls.return_value
@@ -82,7 +82,7 @@ class TestResolveValutaDefault(TestCase):
         self.assertEqual(result["valuta_codice"], "USD")
         ba_repo.get_emittente_valuta.assert_called_once_with(10)
 
-    @patch(_EF_REPO)
+    @patch(_EF_REPO, autospec=True)
     @patch(_PARAM)
     def test_no_ba_user_ef_valuta(self, mock_param_cls, mock_ef_repo_cls):
         # Scopo: livello 3 = EF dell'utente. Mappa valuta_iso -> valuta_codice
@@ -100,7 +100,7 @@ class TestResolveValutaDefault(TestCase):
         self.assertEqual(result["valuta_descrizione"], "Euro")
 
     @patch(_CONN)
-    @patch(_EF_REPO)
+    @patch(_EF_REPO, autospec=True)
     @patch(_PARAM)
     def test_no_ba_user_ef_senza_valuta_fallback_gestore(
         self, mock_param_cls, mock_ef_repo_cls, mock_conn,
@@ -121,7 +121,7 @@ class TestResolveValutaDefault(TestCase):
         })
 
     @patch(_CONN)
-    @patch(_EF_REPO)
+    @patch(_EF_REPO, autospec=True)
     @patch(_PARAM)
     def test_no_ba_admin_globale_no_ef_fallback_gestore(
         self, mock_param_cls, mock_ef_repo_cls, mock_conn,
@@ -136,7 +136,7 @@ class TestResolveValutaDefault(TestCase):
         # EF repo mai consultato perche' ef_id None.
         mock_ef_repo_cls.return_value.get_emittente.assert_not_called()
 
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_ba_obj_pre_fetched_riusa(self, mock_ba_repo_cls):
         # Scopo: caller passa ba_obj gia' fetched -> nessuna query lookup.
         ba_pre_fetched = {
@@ -150,9 +150,9 @@ class TestResolveValutaDefault(TestCase):
         # get_lookup_by_id NON deve essere chiamato (ottimizzazione).
         mock_ba_repo_cls.return_value.get_lookup_by_id.assert_not_called()
 
-    @patch(_EF_REPO)
+    @patch(_EF_REPO, autospec=True)
     @patch(_PARAM)
-    @patch(_BA_REPO)
+    @patch(_BA_REPO, autospec=True)
     def test_ba_inesistente_lookup_none_fallback_user(
         self, mock_ba_repo_cls, mock_param_cls, mock_ef_repo_cls,
     ):

@@ -36,6 +36,7 @@ from apps.core.services.documento_modello import (
     stato_di_emissione,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.pratiche.types import RUOLO_LINK_COLLEGATO
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
@@ -352,8 +353,8 @@ def _completa_flusso_ordine_pratica(
     from apps.pratiche.services import pratiche_service
 
     pratica_id = PraticheRepository().get_pratica_id_by_sorgente(
-        sorgente_codice=SORGENTE_ORDINE_VENDITA, sorgente_uid=str(ordine_id),
-        ruolo_link="COLLEGATO",
+        sorgente_codice=SORGENTE_ORDINE_VENDITA, sorgente_chiave=str(ordine_id),
+        ruolo_link=RUOLO_LINK_COLLEGATO,
     )
     if pratica_id is None:
         return  # ordine non nato da una pratica → nessuno step da completare

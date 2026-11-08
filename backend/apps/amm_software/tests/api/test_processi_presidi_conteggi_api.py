@@ -74,8 +74,8 @@ class ProcessiPresidiConteggiApiTests(JwtMockedApiTest):
 
     # 3. Il caso buono: i tre numeri, e la lettura e' quella LEGGERA.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_PROCESSI_REPO)
-    @patch(_PRESIDI_REPO)
+    @patch(_PROCESSI_REPO, autospec=True)
+    @patch(_PRESIDI_REPO, autospec=True)
     def test_ok_tre_numeri_lettura_leggera(self, presidi_cls, _repo, _auth) -> None:
         presidi_cls.return_value.stato_presidi.return_value = [
             _riga("dbops.vw_a", 0),
@@ -91,8 +91,8 @@ class ProcessiPresidiConteggiApiTests(JwtMockedApiTest):
     # 4. Un presidio non letto viaggia come `non_letti`, non come 500: la
     #    cecita' si conta, e il pallino la mostra come «chiede un occhio».
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_PROCESSI_REPO)
-    @patch(_PRESIDI_REPO)
+    @patch(_PROCESSI_REPO, autospec=True)
+    @patch(_PRESIDI_REPO, autospec=True)
     def test_non_letto_si_conta_non_si_solleva(self, presidi_cls, _repo, _auth) -> None:
         presidi_cls.return_value.stato_presidi.return_value = [
             _riga("dbops.vw_a", 0),

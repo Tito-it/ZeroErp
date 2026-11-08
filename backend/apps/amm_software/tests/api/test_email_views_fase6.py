@@ -76,7 +76,7 @@ DISPATCH_PATH = "apps.amm_software.api.email_views.EmailDispatchService"
 class TestEmailAccountDetailCapability(TestCase):
     """View GET /api/v1/amm-software/email-accounts/<id>/ — capability test (Fase 6)."""
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_detail_account_inactive_can_test_false(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: account inattivo → can_test=False + reason "amm.email_test_reason_inactive".
         mock_repo_cls.return_value.get_account.return_value = {
@@ -93,7 +93,7 @@ class TestEmailAccountDetailCapability(TestCase):
         self.assertFalse(body["data"]["can_test"])
         self.assertEqual(body["data"]["test_reason"], "amm.email_test_reason_inactive")
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_detail_account_no_password_can_test_false(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: host SMTP reale + account attivo ma senza password → reason no_password.
         mock_repo_cls.return_value.get_account.return_value = {
@@ -109,7 +109,7 @@ class TestEmailAccountDetailCapability(TestCase):
         self.assertFalse(body["data"]["can_test"])
         self.assertEqual(body["data"]["test_reason"], "amm.email_test_reason_no_password")
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_detail_account_active_with_password_can_test_true(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: happy path → can_test=True, test_reason=None.
         mock_repo_cls.return_value.get_account.return_value = {
@@ -125,7 +125,7 @@ class TestEmailAccountDetailCapability(TestCase):
         self.assertTrue(body["data"]["can_test"])
         self.assertIsNone(body["data"]["test_reason"])
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_detail_account_console_mode_can_test_true(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: host vuoto o placeholder → console mode, test sempre OK
         # anche senza password, perche' non viene aperta connessione SMTP reale.
@@ -143,7 +143,7 @@ class TestEmailAccountDetailCapability(TestCase):
                 self.assertTrue(body["data"]["can_test"])
                 self.assertIsNone(body["data"]["test_reason"])
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_detail_strips_meta_and_has_smtp_password(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: i campi grezzi `has_smtp_password` e `meta` non devono essere
         # esposti al FE; al loro posto last_test_at/_outcome/_message dal meta.
@@ -178,7 +178,7 @@ class TestEmailAccountDetailCapability(TestCase):
 class TestEmailAccountPatchChiavi(TestCase):
     """View PATCH /api/v1/amm-software/email-accounts/<id>/ — whitelist chiavi."""
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_patch_payload_del_drawer_passa(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: il payload che il drawer manda davvero (DEFAULT_FORM di
         # EmailAccountDrawer, senza password) arriva al repository.
@@ -200,7 +200,7 @@ class TestEmailAccountPatchChiavi(TestCase):
         self.assertEqual(kwargs["codice"], "main")  # il maiuscolo e' del DB
         self.assertNotIn("smtp_password", kwargs)
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_patch_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: ⛔ una chiave fuori contratto (qui `meta`, che scrive solo
         # l'endpoint di test) e' un 400 `E_EMAIL_ADMIN`, non uno scarto
@@ -221,7 +221,7 @@ class TestEmailAccountPatchChiavi(TestCase):
 class TestEmailTemplatePatchChiavi(TestCase):
     """View PATCH /api/v1/amm-software/email-templates/<id>/ — whitelist chiavi."""
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_patch_template_payload_del_drawer_passa(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: il payload di `EmailTemplateDrawer` arriva al repository.
         repo = mock_repo_cls.return_value
@@ -235,7 +235,7 @@ class TestEmailTemplatePatchChiavi(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(repo.update_template.call_args.kwargs["oggetto"], "Ciao")
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_patch_template_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: ⛔ una chiave fuori contratto e' un 400 `E_EMAIL_ADMIN`, non
         # uno scarto silenzioso: il repository non viene toccato.
@@ -261,7 +261,7 @@ class TestEmailCreateChiavi(TestCase):
         "email_reply_to": "", "unita_organizzativa_id": None, "attivo": True,
     }
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_create_account_payload_del_drawer_passa(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: il form di `EmailAccountDrawer` in creazione (con password)
         # arriva al repository.
@@ -275,7 +275,7 @@ class TestEmailCreateChiavi(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(repo.create_account.call_args.kwargs["codice"], "main")  # il maiuscolo e' del DB
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_create_account_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: ⛔ fuori contratto e' un 400 `E_EMAIL_ADMIN` che la nomina, come
         # nella PATCH: il repository non viene toccato.
@@ -291,7 +291,7 @@ class TestEmailCreateChiavi(TestCase):
         self.assertIn("meta", errore["error"]["detail"])
         repo.create_account.assert_not_called()
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_create_template_passa(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: le chiavi del contratto arrivano al repository.
         repo = mock_repo_cls.return_value
@@ -305,7 +305,7 @@ class TestEmailCreateChiavi(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(repo.create_template.call_args.kwargs["codice"], "t")  # il maiuscolo e' del DB
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_create_template_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:
         # Scopo: ⛔ fuori contratto e' un 400, non uno scarto silenzioso.
         repo = mock_repo_cls.return_value
@@ -327,7 +327,7 @@ class TestEmailAccountTestEndpoint(TestCase):
     """View POST /api/v1/amm-software/email-accounts/<id>/test/ (Fase 6)."""
 
     @patch(DISPATCH_PATH)
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_test_endpoint_persists_outcome_success(
         self, mock_repo_cls: MagicMock, mock_dispatch_cls: MagicMock
     ) -> None:
@@ -358,7 +358,7 @@ class TestEmailAccountTestEndpoint(TestCase):
         self.assertIn("tested_at", kwargs)
 
     @patch(DISPATCH_PATH)
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_test_endpoint_persists_outcome_failed(
         self, mock_repo_cls: MagicMock, mock_dispatch_cls: MagicMock
     ) -> None:
@@ -386,7 +386,7 @@ class TestEmailAccountTestEndpoint(TestCase):
         self.assertEqual(kwargs["message"], "Errore SMTP: timeout")
 
     @patch(DISPATCH_PATH)
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_test_endpoint_returns_enriched_payload(
         self, mock_repo_cls: MagicMock, mock_dispatch_cls: MagicMock
     ) -> None:
@@ -419,7 +419,7 @@ class TestEmailAccountTestEndpoint(TestCase):
         self.assertEqual(data["last_test_at"], "2026-04-29T10:00:00+00:00")
 
     @patch(DISPATCH_PATH)
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_test_endpoint_account_not_found(
         self, mock_repo_cls: MagicMock, mock_dispatch_cls: MagicMock
     ) -> None:
@@ -445,7 +445,7 @@ class TestEmailTemplatePreviewSanitize(TestCase):
     """View POST /api/v1/amm-software/email-templates/<id>/preview/ (Fase 6)."""
 
     @patch(DISPATCH_PATH)
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_preview_sanitizes_corpo_html(
         self, mock_repo_cls: MagicMock, mock_dispatch_cls: MagicMock
     ) -> None:
@@ -476,7 +476,7 @@ class TestEmailTemplatePreviewSanitize(TestCase):
         self.assertIn("Hi Tid", corpo)
 
     @patch(DISPATCH_PATH)
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_preview_oggetto_not_sanitized(
         self, mock_repo_cls: MagicMock, mock_dispatch_cls: MagicMock
     ) -> None:
@@ -524,7 +524,7 @@ class TestEmailAdminNonTrovato(TestCase):
         return request
 
     @patch(DISPATCH_PATH)
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_account_inesistente_e_404_da_ogni_verbo(self, mock_repo_cls, mock_dispatch_cls) -> None:
         # Scopo: ogni verbo sull'account passa dalla stessa sede, e nessuno
         # scrive: l'eliminazione legge prima di cancellare.
@@ -546,7 +546,7 @@ class TestEmailAdminNonTrovato(TestCase):
         repo.delete_account.assert_not_called()
 
     @patch(DISPATCH_PATH)
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_template_inesistente_e_404_da_ogni_verbo(self, mock_repo_cls, mock_dispatch_cls) -> None:
         # Scopo: come per l'account, sui quattro verbi del template.
         repo = mock_repo_cls.return_value
@@ -567,7 +567,7 @@ class TestEmailAdminNonTrovato(TestCase):
         repo.update_template.assert_not_called()
         repo.delete_template.assert_not_called()
 
-    @patch(REPO_PATH)
+    @patch(REPO_PATH, autospec=True)
     def test_log_inesistente_e_404(self, mock_repo_cls) -> None:
         # Scopo: l'id del log lo sceglie l'amministratore: 404, non il 500 di
         # `E_EMAIL_LOG_INESISTENTE` (quello e' l'id scritto dal backend).

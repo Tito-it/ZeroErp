@@ -138,7 +138,7 @@ class TestRigheListaApi(JwtMockedApiTest):
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_RENDER)
-    @patch(_UI_REPO)
+    @patch(_UI_REPO, autospec=True)
     @patch(_UI_SVC)
     # La soglia della ricerca e' del catalogo (DB): qui e' un contorno finto.
     @catalogo_ricerca_finto(())

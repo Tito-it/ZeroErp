@@ -54,7 +54,7 @@ _FAKE_ROW = {
 class TestIstanzeUtilitySearchLookup(TestCase):
     """Test search_lookup — validazioni + propagazione parametri."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_ok(self, mock_repo):
         """Ricerca valida con risultati."""
         repo = mock_repo.return_value
@@ -66,7 +66,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         self.assertEqual(result["results"][0]["id"], 900)
         self.assertEqual(result["limit"], 20)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_query_too_short(self, mock_repo):
         """q < 2 char solleva E_ANAG_VALIDAZIONE senza chiamare il repo."""
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
@@ -75,7 +75,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.search_lookup.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_query_empty(self, mock_repo):
         """q vuota solleva E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
@@ -83,7 +83,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
             IstanzeUtilityService().search_lookup(q="")
         mock_repo.return_value.search_lookup.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_whitespace_trimmed(self, mock_repo):
         """Spazi iniziali/finali rimossi prima della validazione."""
         repo = mock_repo.return_value
@@ -93,7 +93,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["q"], "IU")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_limit_cap(self, mock_repo):
         """limit > 50 viene capped a 50."""
         repo = mock_repo.return_value
@@ -104,7 +104,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["limit"], 50)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_limit_default(self, mock_repo):
         """limit <= 0 o None usa default 20."""
         repo = mock_repo.return_value
@@ -117,7 +117,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         result_none = IstanzeUtilityService().search_lookup(q="Rossi", limit=None)
         self.assertEqual(result_none["limit"], 20)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_utility_filter_passed(self, mock_repo):
         """utility_id propagato al repo (strict filter)."""
         repo = mock_repo.return_value
@@ -127,7 +127,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["utility_id"], 42)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_soggetto_filter_passed(self, mock_repo):
         """soggetto_id (UUID) propagato al repo."""
         repo = mock_repo.return_value
@@ -138,7 +138,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["soggetto_id"], soggetto_uuid)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_soggetto_ruolo_filter_passed(self, mock_repo):
         """soggetto_ruolo_id propagato al repo (forniture del cliente/BA)."""
         repo = mock_repo.return_value
@@ -148,7 +148,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["soggetto_ruolo_id"], 64)
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_q_vuota_con_perimetro_ok(self, mock_repo):
         """q vuota AMMESSA con perimetro soggetto/ruolo (tendina al click
         senza digitazione nel drawer pratiche)."""
@@ -160,7 +160,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["q"], "")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_q_vuota_senza_perimetro_bloccata(self, mock_repo):
         """q vuota SENZA perimetro resta vietata (ricerca globale unbounded)."""
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
@@ -169,7 +169,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.search_lookup.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_emittente_scope_passed(self, mock_repo):
         """scope emittente sr_ids propagato al repo."""
         repo = mock_repo.return_value
@@ -179,7 +179,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["emittente_ids"], [10, 20])
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_search_lookup_no_results(self, mock_repo):
         """Zero risultati ammesso (non e' un errore)."""
         repo = mock_repo.return_value
@@ -193,7 +193,7 @@ class TestIstanzeUtilitySearchLookup(TestCase):
 class TestIstanzeUtilityGetLookupById(TestCase):
     """Test get_lookup_by_id — restore singolo per AutoComplete in edit."""
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_ok(self, mock_repo):
         """Restore istanza esistente."""
         repo = mock_repo.return_value
@@ -205,7 +205,7 @@ class TestIstanzeUtilityGetLookupById(TestCase):
         repo.get_lookup_by_id.assert_called_once_with(900, emittente_ids=[7])
         self.assertEqual(result["codice"], "IU-000900")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_not_found(self, mock_repo):
         """Istanza inesistente o fuori scope → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_lookup_by_id.return_value = None
@@ -214,7 +214,7 @@ class TestIstanzeUtilityGetLookupById(TestCase):
             IstanzeUtilityService().get_lookup_by_id(99999, emittente_ids=[7])
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_invalid_id(self, mock_repo):
         """id 0 o negativo → E_ANAG_VALIDAZIONE senza chiamare il repo."""
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
@@ -224,7 +224,7 @@ class TestIstanzeUtilityGetLookupById(TestCase):
             self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.get_lookup_by_id.assert_not_called()
 
-    @patch(_REPO)
+    @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_bool_rejected(self, mock_repo):
         """bool e' sottoclasse di int in Python: deve essere rifiutato."""
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService

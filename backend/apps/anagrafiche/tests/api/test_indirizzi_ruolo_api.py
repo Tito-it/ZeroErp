@@ -46,7 +46,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
     # alla madre del DB `fn_crea_indirizzo_ruolo` come un oggetto, codice del
     # tipo compreso (lo risolve la madre).
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SVC_REPO)
+    @patch(_SVC_REPO, autospec=True)
     def test_create_indirizzo_ruolo_ok(self, mock_repo_cls, _auth):
         """POST /anagrafiche/ruoli/{id}/indirizzi/ — crea normalizzato."""
         mock_repo = mock_repo_cls.return_value
@@ -69,7 +69,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         )
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SVC_REPO)
+    @patch(_SVC_REPO, autospec=True)
     def test_create_indirizzo_ruolo_with_istanza(self, mock_repo_cls, _auth):
         """POST con istanza_utility_id — crea indirizzo specifico istanza."""
         mock_repo = mock_repo_cls.return_value
@@ -91,7 +91,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         self.assertEqual(mock_repo.crea_indirizzo_ruolo.call_args.args[1]["istanza_utility_id"], 5)
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SVC_REPO)
+    @patch(_SVC_REPO, autospec=True)
     def test_create_indirizzo_ruolo_libero(self, mock_repo_cls, _auth):
         """POST con indirizzo_libero — crea indirizzo in modalita' libera."""
         mock_repo = mock_repo_cls.return_value
@@ -113,7 +113,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         self.assertEqual(resp.json()["data"]["indirizzo_libero"], "123 Main St, London")
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SVC_REPO)
+    @patch(_SVC_REPO, autospec=True)
     def test_create_indirizzo_ruolo_senza_tipo_400(self, mock_repo_cls, _auth):
         """POST senza tipo → 400, la madre non si chiama."""
         resp = self.client.post(
@@ -125,7 +125,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         mock_repo_cls.return_value.crea_indirizzo_ruolo.assert_not_called()
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SVC_REPO)
+    @patch(_SVC_REPO, autospec=True)
     def test_update_indirizzo_ruolo_ok(self, mock_repo_cls, _auth):
         """PATCH /anagrafiche/ruoli/{id}/indirizzi/{indirizzo_id}/ — aggiorna."""
         mock_repo = mock_repo_cls.return_value
@@ -140,7 +140,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         self.assertTrue(body["data"]["updated"])
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SVC_REPO)
+    @patch(_SVC_REPO, autospec=True)
     def test_update_indirizzo_ruolo_not_found(self, mock_repo_cls, _auth):
         """PATCH indirizzo inesistente → errore."""
         mock_repo = mock_repo_cls.return_value
@@ -153,7 +153,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         self.assertIn(resp.status_code, (400, 404, 422))
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SVC_REPO)
+    @patch(_SVC_REPO, autospec=True)
     def test_update_indirizzo_ruolo_chiave_ignota_400(self, mock_repo_cls, _auth):
         """PATCH con una chiave fuori contratto → 400 che la nomina.
 

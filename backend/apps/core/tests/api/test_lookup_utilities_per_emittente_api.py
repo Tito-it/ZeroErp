@@ -35,7 +35,7 @@ _URL = "/api/v1/core/lookup/utilities-per-emittente/"
 
 
 @patch(_AUTH, return_value=(Mock(id=42, is_superuser=True, is_authenticated=True), None))
-@patch(_REPO)
+@patch(_REPO, autospec=True)
 class LookupUtilitiesPerEmittenteApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()

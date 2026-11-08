@@ -103,8 +103,8 @@ class TestFatturaRigheListaApi(JwtMockedApiTest):
 
 class FatturaRighePaginaServiceTests(TestCase):
 
-    @patch("apps.vendite.services.vendite_service.FattureRepository")
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.FattureRepository", autospec=True)
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_service_fuori_scope_404_senza_leggere_le_righe(self, venditore, fatture) -> None:
         venditore.return_value.get_fattura_testata.return_value = None
         with self.assertRaises(ServiceError) as ctx:
@@ -113,8 +113,8 @@ class FatturaRighePaginaServiceTests(TestCase):
         venditore.return_value.get_fattura_testata.assert_called_once_with(835, auth_user_id=42)
         fatture.return_value.list_righe_pagina.assert_not_called()
 
-    @patch("apps.vendite.services.vendite_service.FattureRepository")
-    @patch("apps.vendite.services.vendite_service.VenditeRepository")
+    @patch("apps.vendite.services.vendite_service.FattureRepository", autospec=True)
+    @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_service_legge_la_pagina_dopo_la_testata(self, venditore, fatture) -> None:
         venditore.return_value.get_fattura_testata.return_value = {"id": 835}
         fatture.return_value.list_righe_pagina.return_value = ([], 0)

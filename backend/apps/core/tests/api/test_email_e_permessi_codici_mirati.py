@@ -70,7 +70,7 @@ class EmailOperatoreNonTrovatoTests(SimpleTestCase):
     # Scopo: Le due letture senza verbo passano da `get_bozza`: 404 col codice
     #        della bozza, non il 400 di `E_EMAIL_OP`.
     @patch("apps.core.services.email_outbox_service.EmailDispatchService")
-    @patch(_REPO_SERVICE)
+    @patch(_REPO_SERVICE, autospec=True)
     def test_bozza_inesistente_e_404_dalle_letture(self, mock_repo, _dispatch):
         mock_repo.return_value.get_outbox.return_value = None
         letture = {
@@ -90,7 +90,7 @@ class EmailOperatoreNonTrovatoTests(SimpleTestCase):
     #        verbo del service (`get_bozza`), e una seconda lettura nella view
     #        sarebbe una seconda copia della regola (regola del 2, 2026-10-09).
     @patch(_SERVICE_VIEW)
-    @patch(_REPO_VIEW)
+    @patch(_REPO_VIEW, autospec=True)
     def test_le_view_dei_verbi_non_rileggono_la_bozza(self, mock_repo, mock_service):
         service = mock_service.return_value
         service.update_draft.return_value = {}
@@ -117,7 +117,7 @@ class EmailOperatoreNonTrovatoTests(SimpleTestCase):
     # Scopo: Allegato inesistente (o fuori perimetro: la stessa risposta) →
     #        404 dalla sede unica, e la rimozione non tocca niente.
     @patch(_SERVICE_VIEW)
-    @patch(_REPO_VIEW)
+    @patch(_REPO_VIEW, autospec=True)
     def test_allegato_inesistente_e_404(self, mock_repo, mock_service):
         mock_repo.return_value.get_allegato.return_value = None
         verbi = {
@@ -136,7 +136,7 @@ class EmailOperatoreNonTrovatoTests(SimpleTestCase):
 
     # Scopo: La riga c'e', il file sullo storage no: e' un guasto, 500 — un 404
     #        manderebbe l'operatore a cercare un allegato che per lui esiste.
-    @patch(_REPO_VIEW)
+    @patch(_REPO_VIEW, autospec=True)
     def test_file_dell_allegato_perso_e_500(self, mock_repo):
         with tempfile.TemporaryDirectory() as radice:
             mock_repo.return_value.get_allegato.return_value = {

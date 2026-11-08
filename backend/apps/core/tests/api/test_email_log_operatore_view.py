@@ -32,7 +32,7 @@ class EmailLogOperatoreViewTests(SimpleTestCase):
 
     # Scopo: chiama la view con la query data; torna gli argomenti di list_logs.
     def _chiama(self, query: str) -> dict:
-        with patch(_REPO) as repo:
+        with patch(_REPO, autospec=True) as repo:
             repo.return_value.list_logs.return_value = ([], 0)
             richiesta = APIRequestFactory().get(f"/api/v1/core/email/log/{query}")
             view = EmailLogOperatoreListView()

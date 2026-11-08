@@ -28,7 +28,7 @@ _SUPERUSER = (Mock(id=42, is_superuser=True, is_authenticated=True), None)
 
 
 @patch(_AUTH, return_value=_SUPERUSER)
-@patch(_REPO)
+@patch(_REPO, autospec=True)
 class LookupSistemaCodiciApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()

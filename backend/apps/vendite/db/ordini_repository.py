@@ -20,6 +20,7 @@ from typing import Any
 from django.db import connection
 
 from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA
+from apps.pratiche.types import RUOLO_LINK_COLLEGATO
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -453,20 +454,21 @@ class OrdiniRepository(
     #        PostSmistamentoHandler). Alimenta gli step pratica a valle
     #        (CONFERMA_ORDINE / INVIO_COMMESSA) che aprono l'OrdiniDrawer su
     #        quell'ordine. None se non agganciato. Cross-schema read vendite→pratiche
-    #        (direzione anelli consentita). sorgente_uid = id ordine (text).
+    #        (direzione anelli consentita). L'ordine ha key_selector id: il link lo
+    #        porta in `sorgente_id` (giro P.1 di brief-db-sorgente-documento-e-riga).
     def get_ordine_id_by_pratica(self, pratica_id: int) -> int | None:
         sql = """
-            SELECT ps.sorgente_uid::bigint
+            SELECT ps.sorgente_id
               FROM pratiche.pratiche_sorgenti ps
               JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
              WHERE s.codice_interno = %s
-               AND ps.ruolo_link    = 'COLLEGATO'
+               AND ps.ruolo_link    = %s
                AND ps.pratica_id    = %s
              ORDER BY ps.id DESC
              LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [SORGENTE_ORDINE_VENDITA, pratica_id])
+            cursor.execute(sql, [SORGENTE_ORDINE_VENDITA, RUOLO_LINK_COLLEGATO, pratica_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 

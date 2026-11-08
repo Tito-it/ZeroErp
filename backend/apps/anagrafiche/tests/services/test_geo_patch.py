@@ -39,8 +39,8 @@ _IND = "apps.anagrafiche.services.geo_service.IndirizziRepository"
 
 class GeoPatchTests(TestCase):
     def setUp(self) -> None:
-        self.geo = patch(_GEO).start().return_value
-        self.ind = patch(_IND).start().return_value
+        self.geo = patch(_GEO, autospec=True).start().return_value
+        self.ind = patch(_IND, autospec=True).start().return_value
         self.addCleanup(patch.stopall)
         self.svc = GeoService()
 

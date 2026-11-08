@@ -32,7 +32,7 @@ SVC_MOD = "apps.anagrafiche.services.emittenti_fiscali_service"
 class TestGetEmittenteNonEditable(TestCase):
     """Detail testata emittente arricchito con non_editable_fields."""
 
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
     @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable")
     def test_get_emittente_include_non_editable_fields(self, mock_list_locks, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
@@ -54,7 +54,7 @@ class TestGetEmittenteNonEditable(TestCase):
 class TestUtilitiesCapability(TestCase):
     """Capability di riga matrice utility (slot/override pattern)."""
 
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
     def test_list_records_capability_slot_vuoto_emittente_attivo(
         self, mock_parent_cls, mock_repo_cls,
@@ -81,7 +81,7 @@ class TestUtilitiesCapability(TestCase):
         self.assertFalse(row["can_update"])
         self.assertFalse(row["can_remove"])
 
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
     def test_list_records_capability_slot_vuoto_emittente_disattivo(
         self, mock_parent_cls, mock_repo_cls,
@@ -104,7 +104,7 @@ class TestUtilitiesCapability(TestCase):
 
         self.assertFalse(rows[0]["can_configure"])
 
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
     def test_list_records_capability_record_configurato(
         self, mock_parent_cls, mock_repo_cls,
@@ -130,7 +130,7 @@ class TestUtilitiesCapability(TestCase):
         self.assertTrue(row["can_update"])
         self.assertTrue(row["can_remove"])
 
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
     def test_list_records_capability_utility_disattiva_blocca_configure(
         self, mock_parent_cls, mock_repo_cls,
@@ -170,7 +170,7 @@ class TestBillingAccountMappingCapability(TestCase):
     """
 
     # Scopo: motivo assente (`NULL` dal database) => il gesto resta ammesso.
-    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
     def test_list_mapping_can_remove_senza_motivo(self, mock_parent_cls, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
@@ -200,7 +200,7 @@ class TestBillingAccountMappingCapability(TestCase):
     #        motivo con la sua chiave i18n RESTANO nel payload: senza quelli
     #        il frontend avrebbe un pulsante grigio che non dice perche',
     #        che e' la stessa cosa di un'azione sparita.
-    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
     def test_list_mapping_can_remove_con_motivo(self, mock_parent_cls, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
@@ -250,7 +250,7 @@ class TestBillingAccountMappingCapability(TestCase):
     #        compone la frase (che vive nei `locales`), non riordina, non
     #        somma. Se un giorno qualcuno ci mettesse una `join()` qui, la
     #        traduzione uscirebbe dai `locales` senza che niente fallisca.
-    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
     def test_list_mapping_storia_arriva_intatta(self, mock_parent_cls, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
@@ -287,7 +287,7 @@ class TestBillingAccountMappingCapability(TestCase):
     #        gestore globale non ha storia: `None` deve restare `None`, perche'
     #        `[]` direbbe «nessun documento» dove la risposta e' «questa
     #        domanda non si applica» (li' blocca il singleton).
-    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
     def test_list_mapping_storia_assente_resta_none(self, mock_parent_cls, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (

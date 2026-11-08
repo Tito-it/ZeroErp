@@ -33,8 +33,8 @@ _SVC_PATH = "apps.anagrafiche.services.invito_operatore_service"
 
 def _servizio(*, invitabile=True, reason=None, reason_key=None, vesti=None):
     """Scopo: Il service con repository e BB finti. `vesti` = le OPERATORE."""
-    with patch(f"{_SVC_PATH}.AuthRepository") as MockAuth, \
-         patch(f"{_SVC_PATH}.RisorseUmaneCoreRepository") as MockRu, \
+    with patch(f"{_SVC_PATH}.AuthRepository", autospec=True) as MockAuth, \
+         patch(f"{_SVC_PATH}.RisorseUmaneCoreRepository", autospec=True) as MockRu, \
          patch(f"{_SVC_PATH}.InvitoVeste") as MockInvito:
         from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
         svc = InvitoOperatoreService()

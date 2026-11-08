@@ -51,8 +51,8 @@ class CreaRecordVincoliTests(TestCase):
     #        ⚠️ E' il difetto che R-2 chiude: prima ogni IntegrityError della
     #        tabella passava da `create_with_dedup` e usciva come «esiste gia' un
     #        record per questa coppia» — un messaggio non povero ma FALSO.
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     def test_soglie_coppia_incompleta_da_codice_dedicato(self, mock_repo_cls, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
@@ -70,8 +70,8 @@ class CreaRecordVincoliTests(TestCase):
 
     # Scopo: il vincolo gemello (ordine min <= max) ha un messaggio suo e non si
     #        confonde con quello della coppia incompleta.
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     def test_soglie_fuori_ordine_da_validazione(self, mock_repo_cls, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
@@ -90,8 +90,8 @@ class CreaRecordVincoliTests(TestCase):
 
     # Scopo: il duplicato vero continua a uscire come duplicato (non-regressione
     #        del comportamento che `create_with_dedup` garantiva).
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     def test_duplicato_resta_duplicato(self, mock_repo_cls, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
@@ -114,8 +114,8 @@ class CreaRecordVincoliTests(TestCase):
     #        ⚠️ Fino al 2026-10-31 l'esempio era il CHECK dei decimali, che da
     #        quel giorno e' mappato: qui serve un vincolo che la mappa NON
     #        conosce, e un nome inventato lo resta per costruzione.
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     def test_vincolo_ignoto_non_diventa_un_duplicato(self, mock_repo_cls, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
@@ -135,8 +135,8 @@ class CreaRecordVincoliTests(TestCase):
     # Scopo: i decimali fuori dal CHECK escono col loro messaggio e nominano il
     #        CAMPO (2026-10-31: prima era il ripiego generico, che non diceva
     #        cosa correggere).
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     def test_decimali_fuori_intervallo_nominano_il_campo(self, mock_repo_cls, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
@@ -155,8 +155,8 @@ class CreaRecordVincoliTests(TestCase):
         self.assertEqual(ctx.exception.context.get("field"), "arrotondamento_importi_dec")
 
     # Scopo: stesso trattamento per il metodo di arrotondamento.
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     def test_metodo_non_ammesso_nomina_il_campo(self, mock_repo_cls, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
@@ -182,8 +182,8 @@ class AggiornaRecordVincoliTests(TestCase):
     #        dall'unione del payload con la riga gia' a database — nessuna guard
     #        Python sul solo payload potrebbe deciderlo.
     @patch(f"{SVC_MOD}._verify_record_ownership")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     def test_update_traduce_le_soglie_incomplete(self, mock_repo_cls, _parent, _own):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
@@ -200,8 +200,8 @@ class AggiornaRecordVincoliTests(TestCase):
 
     # Scopo: percorso felice invariato — il context manager non cambia l'esito.
     @patch(f"{SVC_MOD}._verify_record_ownership")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     def test_update_ok_non_tocca_la_traduzione(self, mock_repo_cls, _parent, _own):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,

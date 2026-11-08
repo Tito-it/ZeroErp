@@ -198,8 +198,8 @@ class TestOrdineEmissione(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_ORD_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_ORD_REPO, autospec=True)
     @patch(_DOC_VIEW_SVC)
     def test_emetti_route_ok(
         self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
@@ -226,8 +226,8 @@ class TestOrdineEmissione(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_SORGENTI_REPO)
-    @patch(_ORD_REPO)
+    @patch(_SORGENTI_REPO, autospec=True)
+    @patch(_ORD_REPO, autospec=True)
     @patch(_DOC_VIEW_SVC)
     def test_emetti_integration_atomic_conferma_genera_allegati(
         self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,

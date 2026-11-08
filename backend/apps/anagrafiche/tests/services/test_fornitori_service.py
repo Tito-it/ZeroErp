@@ -72,7 +72,7 @@ def _base_payload(**overrides):
 
 class TestFornitoriListDetail(TestCase):
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_list_fornitori_ok(self, mock_repo):
         """Happy path: lista paginata fornitori."""
         mock_repo.return_value.list_fornitori.return_value = (
@@ -83,7 +83,7 @@ class TestFornitoriListDetail(TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(len(results), 1)
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_get_fornitore_ok(self, mock_repo):
         """Happy path: dettaglio completo fornitore."""
         mock_repo.return_value.get_fornitore.return_value = _fornitore_detail()
@@ -91,7 +91,7 @@ class TestFornitoriListDetail(TestCase):
         result = FornitoriService().get_fornitore(1)
         self.assertEqual(result["codice"], "FO-001")
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_get_fornitore_not_found(self, mock_repo):
         """Fornitore inesistente → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_fornitore.return_value = None
@@ -107,7 +107,7 @@ class TestFornitoriListDetail(TestCase):
 
 class TestFornitoriCreazione(TestCase):
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_crea_fornitore_ok(self, mock_repo):
         """Happy path: creazione fornitore minimale."""
         mock_repo.return_value.crea_fornitore.return_value = (1, 50)
@@ -116,7 +116,7 @@ class TestFornitoriCreazione(TestCase):
         self.assertEqual(result["id"], 1)
         self.assertEqual(result["soggetto_ruolo_id"], 50)
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_crea_fornitore_con_dati_opzionali(self, mock_repo):
         """Creazione con campi opzionali pagamento/fiscale."""
         mock_repo.return_value.crea_fornitore.return_value = (2, 50)
@@ -136,7 +136,7 @@ class TestFornitoriCreazione(TestCase):
         self.assertIsNone(contatto)
         self.assertEqual(indirizzi, [])
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_crea_fornitore_contatto_inline(self, mock_repo):
         """Contatto VALIDO → alla madre ripulito; PARTIAL → E_CONTATTO_INCOMPLETO
         prima di scrivere; vuoto → nessun contatto."""
@@ -155,7 +155,7 @@ class TestFornitoriCreazione(TestCase):
         self.assertEqual(ctx.exception.code, "E_CONTATTO_INCOMPLETO")
         mock_repo.return_value.crea_fornitore.assert_not_called()
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_crea_fornitore_missing_soggetto(self, mock_repo):
         """soggetto_id mancante → E_ANAG_VALIDAZIONE."""
         from apps.anagrafiche.services.fornitori_service import FornitoriService
@@ -163,7 +163,7 @@ class TestFornitoriCreazione(TestCase):
             FornitoriService().crea_fornitore({})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_crea_fornitore_duplicato(self, mock_repo):
         """IntegrityError UNIQUE ruolo → E_ANAG_DUPLICATO."""
         mock_repo.return_value.crea_fornitore.side_effect = IntegrityError(
@@ -174,7 +174,7 @@ class TestFornitoriCreazione(TestCase):
             FornitoriService().crea_fornitore(_base_payload())
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_crea_fornitore_duplicato_codice(self, mock_repo):
         """UNIQUE codice → messaggio specifico 'codice', NON 'soggetto' (no mascheramento)."""
         mock_repo.return_value.crea_fornitore.side_effect = IntegrityError(
@@ -187,7 +187,7 @@ class TestFornitoriCreazione(TestCase):
         self.assertIn("codice", ctx.exception.message)
         self.assertNotIn("soggetto", ctx.exception.message)
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_crea_fornitore_integrity_non_mappato_rilancia(self, mock_repo):
         """IntegrityError su vincolo non mappato (es. uid) → RILANCIATO, non mascherato."""
         mock_repo.return_value.crea_fornitore.side_effect = IntegrityError(
@@ -204,7 +204,7 @@ class TestFornitoriCreazione(TestCase):
 
 class TestFornitoriUpdate(TestCase):
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_update_fornitore_ok(self, mock_repo):
         """Happy path: aggiorna campi editabili."""
         mock_repo.return_value.get_fornitore.return_value = _fornitore_detail()
@@ -213,7 +213,7 @@ class TestFornitoriUpdate(TestCase):
         result = FornitoriService().update_fornitore(1, {"rating": 90})
         self.assertTrue(result["updated"])
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_update_fornitore_not_found(self, mock_repo):
         """Fornitore inesistente → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_fornitore.return_value = None
@@ -222,7 +222,7 @@ class TestFornitoriUpdate(TestCase):
             FornitoriService().update_fornitore(999, {"rating": 90})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_update_fornitore_vuoto_e_400(self, mock_repo):
         """⛔ PATCH vuoto su un fornitore che esiste: 400 prima della scrittura.
         Fino al 2026-10-14 il rowcount zero usciva 404 «non trovato»."""
@@ -237,7 +237,7 @@ class TestFornitoriUpdate(TestCase):
 class TestResolveFiltriExportLabel(TestCase):
     """DEF-1: traduzione filtri attivi in label leggibili per header export."""
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_resolve_filtri_export_label_completo(self, mock_repo):
         """Mapping completo (la ricerca la dichiara `filtri_export_con_ricerca`): stato_fornitore_id."""
         repo = mock_repo.return_value
@@ -251,7 +251,7 @@ class TestResolveFiltriExportLabel(TestCase):
         self.assertEqual(result, {"Stato": "Attivo"})
         repo.get_stato_fornitore_descrizione.assert_called_once_with(3)
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_resolve_filtri_export_label_fallback_id(self, mock_repo):
         """Lookup descrizione mancante (id obsoleto): fallback 'id=N'."""
         repo = mock_repo.return_value
@@ -264,7 +264,7 @@ class TestResolveFiltriExportLabel(TestCase):
 
         self.assertEqual(result, {"Stato": "id=999"})
 
-    @patch(FORN_REPO)
+    @patch(FORN_REPO, autospec=True)
     def test_resolve_filtri_export_label_vuoto(self, mock_repo):
         """Nessun filtro attivo: dict vuoto."""
         from apps.anagrafiche.services.fornitori_service import FornitoriService

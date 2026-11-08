@@ -62,7 +62,7 @@ def _make_request(ids: str | None) -> MagicMock:
 
 class TestPermessiRiepilogoView(TestCase):
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_get_riepilogo_per_gli_id_dati(self, mock_repo_cls):
         """Gli id della pagina arrivano al repository interi, una volta sola, nell'ordine dato."""
         mock_repo = MagicMock()
@@ -75,7 +75,7 @@ class TestPermessiRiepilogoView(TestCase):
         self.assertEqual(data["results"], [SAMPLE_RIGA])
         mock_repo.get_permessi_riepilogo.assert_called_once_with([7, 3])
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_id_non_valido_e_un_400(self, mock_repo_cls):
         """⛔ Un pezzo che non e' un id non si scarta in silenzio.
 
@@ -90,7 +90,7 @@ class TestPermessiRiepilogoView(TestCase):
                 PermessiRiepilogoView().get(_make_request(grezzo))
         mock_repo_cls.return_value.get_permessi_riepilogo.assert_not_called()
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_senza_id_e_un_400(self, mock_repo_cls):
         """Parametro assente, vuoto o di sole virgole: un 400, non una lista vuota."""
         mock_repo_cls.return_value = MagicMock()
@@ -105,7 +105,7 @@ class TestPermessiRiepilogoView(TestCase):
             self.assertEqual(AmmSoftwareRepository().get_permessi_riepilogo([]), [])
             mock_conn.cursor.assert_not_called()
 
-    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     def test_tetto_al_numero_di_id(self, mock_repo_cls):
         """La funzione fa tre letture per operatore: piu' di una pagina si rifiuta."""
         mock_repo_cls.return_value = MagicMock()

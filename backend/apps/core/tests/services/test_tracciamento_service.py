@@ -29,7 +29,7 @@ from apps.core.services.service_errors import ServiceError
 class TestListAuditLogs(TestCase):
 
     # Scopo: Verifica che list_audit_logs restituisca risultati paginati.
-    @patch("apps.core.services.tracciamento_service.DbopsRepository")
+    @patch("apps.core.services.tracciamento_service.DbopsRepository", autospec=True)
     def test_list_audit_logs_ok(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_audit_logs
 
@@ -45,7 +45,7 @@ class TestListAuditLogs(TestCase):
         mock_repo.list_audit_logs.assert_called_once()
 
     # Scopo: Verifica lista vuota.
-    @patch("apps.core.services.tracciamento_service.DbopsRepository")
+    @patch("apps.core.services.tracciamento_service.DbopsRepository", autospec=True)
     def test_list_audit_logs_empty(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_audit_logs
 
@@ -66,7 +66,7 @@ class TestListAuditLogs(TestCase):
     # Scopo: la finestra arriva al repository come `limit`/`offset` e
     #        l'envelope ne ricava la pagina (dal 2026-10-21 un dialetto solo:
     #        la finestra la valida `pagina_da_query`, nella view).
-    @patch("apps.core.services.tracciamento_service.DbopsRepository")
+    @patch("apps.core.services.tracciamento_service.DbopsRepository", autospec=True)
     def test_list_audit_logs_finestra_limit_offset(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_audit_logs
 
@@ -80,7 +80,7 @@ class TestListAuditLogs(TestCase):
 class TestListDominiTask(TestCase):
 
     # Scopo: Verifica lista domini task paginata.
-    @patch("apps.core.services.tracciamento_service.DbopsRepository")
+    @patch("apps.core.services.tracciamento_service.DbopsRepository", autospec=True)
     def test_list_domini_task_ok(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_domini_task
 
@@ -94,7 +94,7 @@ class TestListDominiTask(TestCase):
         self.assertEqual(result["results"][0]["codice"], "FATTURAZIONE")
 
     # Scopo: Verifica lista vuota.
-    @patch("apps.core.services.tracciamento_service.DbopsRepository")
+    @patch("apps.core.services.tracciamento_service.DbopsRepository", autospec=True)
     def test_list_domini_task_empty(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_domini_task
 
@@ -107,7 +107,7 @@ class TestListDominiTask(TestCase):
 class TestListTaskRegistry(TestCase):
 
     # Scopo: Verifica lista task registry con dominio.
-    @patch("apps.core.services.tracciamento_service.DbopsRepository")
+    @patch("apps.core.services.tracciamento_service.DbopsRepository", autospec=True)
     def test_list_task_registry_ok(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_task_registry
 
@@ -125,7 +125,7 @@ class TestListTaskRegistry(TestCase):
 class TestListTaskImplementations(TestCase):
 
     # Scopo: Verifica lista implementazioni task.
-    @patch("apps.core.services.tracciamento_service.DbopsRepository")
+    @patch("apps.core.services.tracciamento_service.DbopsRepository", autospec=True)
     def test_list_task_implementations_ok(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_task_implementations
 
@@ -144,7 +144,7 @@ class TestListTaskImplementations(TestCase):
 class TestListJobRuns(TestCase):
 
     # Scopo: Verifica lista job runs paginata.
-    @patch("apps.core.services.tracciamento_service.MaintenanceRepository")
+    @patch("apps.core.services.tracciamento_service.MaintenanceRepository", autospec=True)
     def test_list_job_runs_ok(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_job_runs
 
@@ -159,7 +159,7 @@ class TestListJobRuns(TestCase):
         self.assertEqual(result["results"][0]["jobname"], "apply_storicizza_weekly")
 
     # Scopo: Verifica lista vuota.
-    @patch("apps.core.services.tracciamento_service.MaintenanceRepository")
+    @patch("apps.core.services.tracciamento_service.MaintenanceRepository", autospec=True)
     def test_list_job_runs_empty(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_job_runs
 
@@ -172,7 +172,7 @@ class TestListJobRuns(TestCase):
 class TestListJobSummary(TestCase):
 
     # Scopo: Verifica riepilogo job.
-    @patch("apps.core.services.tracciamento_service.MaintenanceRepository")
+    @patch("apps.core.services.tracciamento_service.MaintenanceRepository", autospec=True)
     def test_list_job_summary_ok(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_job_summary
 
