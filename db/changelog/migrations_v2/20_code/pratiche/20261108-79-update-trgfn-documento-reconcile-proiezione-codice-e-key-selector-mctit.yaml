@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'INNESCO DEL RECONCILE: IL TIPO PER CODICE, LA CHIAVE DAL CATALOGO
+#   pratiche.trgfn_documento_reconcile_proiezione()
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4, E-9).
+#
+# ── ⭐ CHE COSA CAMBIA ───────────────────────────────────────────────
+#   Gli argomenti del trigger erano l'ID del tipo scritto come letterale ('2')
+#   e il nome della colonna chiave ('uid'). Due fragilita': un id di seed nel
+#   tgargs (lo stesso tipo puo' avere un altro id su un altro database), e il
+#   trigger che sa quale colonna leggere, cioe' una seconda copia del
+#   key_selector. Ora l'unico argomento e' il CODICE del tipo
+#   (config.sorgenti.codice_interno), come in script.trgfn_doc_guard_chiusura_sorgente;
+#   id e key_selector si leggono dal catalogo, e la chiave del documento va
+#   nella sua colonna del modello (sorgente_id o sorgente_uid) verso
+#   pratiche.fn_reconcile_sorgente (20261108-78) e verso il log.
+#   Un codice che non e' un tipo non ferma il cambio di stato (il documento e'
+#   sovrano): si registra in pratiche.reconcile_errori come E_SORG_CONF, senza
+#   tipo e senza chiave, e il trigger esce.
+#   Il montaggio su vendite.preventivi lo rifa' 20261108-80 col codice.
+#   Rollback: forward-only (il montaggio vecchio passa un id come codice).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20261108-79-update-trgfn-documento-reconcile-proiezione-codice-e-key-selector-mctit.yaml
+
+  - changeSet:
+      id: 20261108-79-update-trgfn-documento-reconcile-proiezione-codice-e-key-selector
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.trgfn_documento_reconcile_proiezione: il tipo per codice (TG_ARGV[0]), id e
+        key_selector dal catalogo, la chiave del documento nella sua colonna del modello.
+        brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_documento_reconcile_proiezione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: innesco generico dell'avanzamento su esito proiettato.
+              --   Da agganciare AFTER UPDATE OF <colonna_stato> alle tabelle-documento.
+              --   TG_ARGV[0] = il codice del tipo del documento
+              --   (config.sorgenti.codice_interno). Id e key_selector dal catalogo:
+              --   la chiave del documento si legge dalla colonna del key_selector.
+              --   Best-effort: documento sovrano.
+              DECLARE
+                v_codice   config.sorgenti.codice_interno%TYPE := TG_ARGV[0];
+                v_tipo     config.sorgenti.id%TYPE;
+                v_selector config.sorgenti.key_selector%TYPE;
+                v_id       pratiche.pratiche_sorgenti.sorgente_id%TYPE;
+                v_uid      pratiche.pratiche_sorgenti.sorgente_uid%TYPE;
+              BEGIN
+                SELECT s.id, s.key_selector
+                  INTO v_tipo, v_selector
+                  FROM config.sorgenti s
+                 WHERE s.codice_interno = v_codice;
+
+                -- Montaggio con un codice che non e' un tipo: si registra, il cambio
+                -- di stato del documento resta.
+                IF v_tipo IS NULL THEN
+                  BEGIN
+                    INSERT INTO pratiche.reconcile_errori (errcode, messaggio, tx_id)
+                    VALUES ('E_SORG_CONF',
+                            format('trigger %I su %I.%I: il codice %L non e'' un tipo di config.sorgenti',
+                                   TG_NAME, TG_TABLE_SCHEMA, TG_TABLE_NAME, v_codice),
+                            dbops.fn_get_or_create_session_tx_id());
+                  EXCEPTION WHEN OTHERS THEN
+                    RAISE WARNING 'reconcile best-effort: log fallito per il codice %. [%] %',
+                      v_codice, SQLSTATE, SQLERRM;
+                  END;
+                  RETURN NULL;
+                END IF;
+
+                -- La chiave del documento dalla colonna del key_selector, senza SQL
+                -- dinamico: estrazione per nome dal record via jsonb.
+                IF v_selector = 'id' THEN
+                  v_id  := (to_jsonb(NEW) ->> 'id')::bigint;
+                ELSE
+                  v_uid := (to_jsonb(NEW) ->> 'uid')::uuid;
+                END IF;
+
+                IF v_id IS NULL AND v_uid IS NULL THEN
+                  RETURN NULL;
+                END IF;
+
+                -- Sovranita' del documento: un errore lato pratiche viene
+                -- inghiottito e loggato, MAI propagato (niente rollback del cambio-stato).
+                BEGIN
+                  PERFORM pratiche.fn_reconcile_sorgente(v_tipo, v_id, v_uid);
+                EXCEPTION WHEN OTHERS THEN
+                  -- Cattura l'errore ORIGINALE prima di tentare il log (dentro il
+                  -- nested handler SQLSTATE/SQLERRM cambierebbero all'errore del log).
+                  DECLARE
+                    v_err_state text := SQLSTATE;
+                    v_err_msg   text := SQLERRM;
+                  BEGIN
+                    -- Il LOG stesso non deve poter propagare (es. permission denied
+                    -- sul log): nested guard + fallback WARNING (server log).
+                    BEGIN
+                      INSERT INTO pratiche.reconcile_errori
+                             (sorgente_tipo_id, sorgente_id, sorgente_uid, errcode, messaggio, tx_id)
+                      VALUES (v_tipo, v_id, v_uid, v_err_state, v_err_msg,
+                              dbops.fn_get_or_create_session_tx_id());
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE WARNING 'reconcile best-effort: log fallito per (tipo %, chiave %). Originale [%] %; log [%] %',
+                        v_tipo, COALESCE(v_id::text, v_uid::text), v_err_state, v_err_msg, SQLSTATE, SQLERRM;
+                    END;
+                  END;
+                END;
+
+                RETURN NULL;  -- AFTER trigger: valore di ritorno ignorato.
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_documento_reconcile_proiezione() IS
+                'Trigger generico AFTER UPDATE OF <colonna di stato> su una tabella-documento: dopo un cambio di stato (anche fuori da un flusso) chiama pratiche.fn_reconcile_sorgente sul documento. L''unico argomento e'' il codice del tipo del documento (config.sorgenti.codice_interno); id e key_selector si leggono dal catalogo, e la chiave del documento passa nella sua colonna del modello (sorgente_id per key_selector id, sorgente_uid per uid). Best-effort: il documento e'' sovrano, un errore del reconcile si registra in pratiche.reconcile_errori (con tipo e chiave) senza annullare il cambio di stato; un codice che non e'' un tipo si registra come E_SORG_CONF, senza tipo e chiave. Montato per dominio, con CREATE TRIGGER e il codice esplicito.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il montaggio vecchio passa un id come codice.
+              SELECT 1;

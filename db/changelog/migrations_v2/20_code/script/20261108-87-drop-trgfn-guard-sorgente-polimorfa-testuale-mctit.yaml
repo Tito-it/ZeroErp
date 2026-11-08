@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA IL GUARD TESTUALE: script.trgfn_guard_sorgente_polimorfa_testuale()
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4).
+#
+#   Il guard della chiave testuale (sorgente_uid text) era montato su due
+#   tabelle: vendite.commesse_sorgenti l'ha lasciato col giro C.2,
+#   pratiche.pratiche_sorgenti con questo giro (20261108-64, -86). Senza
+#   montaggi e senza chiamanti, una funzione trigger resta un riferimento morto
+#   (il presidio dbops.fn_check_funzioni_riferimenti_morti la segnala «senza
+#   alcun trigger»): si ritira nel giro che toglie l'ultimo montaggio, invece di
+#   aspettare il lotto Z, che ritira il gemello _tipizzata e i BB canonici
+#   script.fn_sorgente_chiave_id / _uuid (che restano: li usano il BB che scrive,
+#   la lineage e altri lettori).
+#   I codici che sollevava restano: li sollevano anche il BB che scrive e il
+#   guard unico. DROP senza IF EXISTS e senza CASCADE.
+#   Rollback: forward-only (il corpo e' nella storia, 20260818-49).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261108-87-drop-trgfn-guard-sorgente-polimorfa-testuale-mctit.yaml
+
+  - changeSet:
+      id: 20261108-87-drop-trgfn-guard-sorgente-polimorfa-testuale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_guard_sorgente_polimorfa_testuale: si ritira, senza montaggi ne' chiamanti.
+        brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: nessuna tabella ha piu' la chiave testuale.
+              SELECT 1;

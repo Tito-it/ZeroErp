@@ -97,6 +97,9 @@ SELECT ok(
 -- bozza sul cliente costruito, scritte da dbops.fn_pgtap_crea_commessa e
 -- rimosse nel cleanup (test 12): la meccanica flusso<->sorgente sotto test
 -- e' identica qualunque sia il tipo.
+-- rev 2026-11-08 (giro P.1 di brief-db-sorgente-documento-e-riga): la commessa
+-- ha chiave id, e il link la tiene in sorgente_id (non piu' id::text in
+-- sorgente_uid).
 CREATE TEMP TABLE tmp_ps_src AS
 SELECT t.tag, c.commessa_id::text AS src_uid, c.commessa_id AS id
 FROM (VALUES ('X1'), ('X2'), ('X3'), ('X4'), ('Y1'), ('Y2')) AS t(tag)
@@ -200,11 +203,11 @@ SELECT has_index('pratiche', 'pratiche_sorgenti', 'uq_pratiche_sorgenti_flusso_r
 -- =========================================================
 SELECT lives_ok(
   format(
-    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
-     VALUES (%s, %s, %L, ''ROOT'', %s)',
+    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, ruolo_link, flusso_id)
+     VALUES (%s, %s, %s, ''ROOT'', %s)',
     (SELECT pratica_id FROM tmp_ps_pa),
     (SELECT src_commessa FROM tmp_ps_refs),
-    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X1'),
+    (SELECT id FROM tmp_ps_src WHERE tag = 'X1'),
     (SELECT flusso_id FROM tmp_ps_fa1)
   ),
   '6. ROOT (sorgente X1) agganciato al flusso A1'
@@ -215,11 +218,11 @@ SELECT lives_ok(
 -- =========================================================
 SELECT throws_like(
   format(
-    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
-     VALUES (%s, %s, %L, ''ROOT'', %s)',
+    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, ruolo_link, flusso_id)
+     VALUES (%s, %s, %s, ''ROOT'', %s)',
     (SELECT pratica_id FROM tmp_ps_pa),
     (SELECT src_commessa FROM tmp_ps_refs),
-    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X2'),
+    (SELECT id FROM tmp_ps_src WHERE tag = 'X2'),
     (SELECT flusso_id FROM tmp_ps_fa1)
   ),
   '%uq_pratiche_sorgenti_flusso_root%',
@@ -231,11 +234,11 @@ SELECT throws_like(
 -- =========================================================
 SELECT lives_ok(
   format(
-    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
-     VALUES (%s, %s, %L, ''ROOT'', %s)',
+    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, ruolo_link, flusso_id)
+     VALUES (%s, %s, %s, ''ROOT'', %s)',
     (SELECT pratica_id FROM tmp_ps_pa),
     (SELECT src_commessa FROM tmp_ps_refs),
-    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X3'),
+    (SELECT id FROM tmp_ps_src WHERE tag = 'X3'),
     (SELECT flusso_id FROM tmp_ps_fa2)
   ),
   '8. ROOT su flusso diverso della stessa pratica consentito'
@@ -246,11 +249,11 @@ SELECT lives_ok(
 -- =========================================================
 SELECT lives_ok(
   format(
-    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
-     VALUES (%s, %s, %L, ''COLLEGATO'', NULL)',
+    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, ruolo_link, flusso_id)
+     VALUES (%s, %s, %s, ''COLLEGATO'', NULL)',
     (SELECT pratica_id FROM tmp_ps_pa),
     (SELECT src_commessa FROM tmp_ps_refs),
-    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'Y1')
+    (SELECT id FROM tmp_ps_src WHERE tag = 'Y1')
   ),
   '9. COLLEGATO con flusso_id NULL consentito'
 );
@@ -260,11 +263,11 @@ SELECT lives_ok(
 -- =========================================================
 SELECT lives_ok(
   format(
-    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
-     VALUES (%s, %s, %L, ''COLLEGATO'', NULL)',
+    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, ruolo_link, flusso_id)
+     VALUES (%s, %s, %s, ''COLLEGATO'', NULL)',
     (SELECT pratica_id FROM tmp_ps_pa),
     (SELECT src_commessa FROM tmp_ps_refs),
-    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'Y2')
+    (SELECT id FROM tmp_ps_src WHERE tag = 'Y2')
   ),
   '10. Secondo COLLEGATO con flusso_id NULL consentito'
 );
@@ -274,11 +277,11 @@ SELECT lives_ok(
 -- =========================================================
 SELECT throws_like(
   format(
-    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
-     VALUES (%s, %s, %L, ''ROOT'', %s)',
+    'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, ruolo_link, flusso_id)
+     VALUES (%s, %s, %s, ''ROOT'', %s)',
     (SELECT pratica_id FROM tmp_ps_pa),
     (SELECT src_commessa FROM tmp_ps_refs),
-    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X4'),
+    (SELECT id FROM tmp_ps_src WHERE tag = 'X4'),
     (SELECT flusso_id FROM tmp_ps_fb1)
   ),
   '%flusso indicato appartiene a un''altra pratica%',

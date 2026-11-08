@@ -2,12 +2,12 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: i COMMENT degli oggetti della provenienza (lotto 0 giro 0.3, lotto R, lotto T giro T.3,
---   lotto C giri C.1, C.2 e C.3)
+--   lotto C giri C.1, C.2 e C.3, lotto P giro P.1)
 --   descrivono l'oggetto al presente, come vuole linee-guida-sql §5d: niente
 --   brief, marcatori di revisione, id di changeSet, sigle di decisione.
 --   Il giro 0.3 li aveva scritti con un prefisso di cronaca; il giro R.2 li
 --   riscrive interi, e questo file tiene il punto.
--- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04)
+-- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86)
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R, giro R.2
 -- ------------------------------------------------------------
 -- Indice test (plan 5):
@@ -101,7 +101,13 @@ INSERT INTO _fn VALUES
   ('dbops.fn_pgtap_provenienza_da_chiave(character varying)'),
   ('dbops.fn_pgtap_crea_commessa_attivita(bigint,numeric,uuid,bigint,bigint,character varying,text,bigint,numeric,character varying,character varying,date,date,text)'),
   -- lotto C, V-7
-  ('vendite.fn_riferimento_gruppo_fatturabile(text)');
+  ('vendite.fn_riferimento_gruppo_fatturabile(text)'),
+  -- lotto P, giro P.1
+  ('pratiche.fn_pratica_del_documento(bigint,bigint,uuid)'),
+  ('pratiche.fn_stato_sorgente(bigint,bigint,uuid)'),
+  ('pratiche.fn_reconcile_sorgente(bigint,bigint,uuid)'),
+  ('pratiche.trgfn_documento_reconcile_proiezione()'),
+  ('vendite.fn_genera_pratica_da_preventivo(bigint,integer,integer,text)');
 
 CREATE TEMP TABLE _tab (tabella text PRIMARY KEY);
 INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
@@ -113,7 +119,9 @@ INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
                         -- lotto C, giro C.2: il link documento -> commessa
                         ('vendite.commesse_sorgenti'),
                         -- lotto C, giro C.3: la riga di commessa
-                        ('vendite.commesse_attivita');
+                        ('vendite.commesse_attivita'),
+                        -- lotto P, giro P.1: il link documento -> pratica e il log del reconcile
+                        ('pratiche.pratiche_sorgenti'), ('pratiche.reconcile_errori');
 
 CREATE TEMP TABLE _ix (indice text PRIMARY KEY);
 INSERT INTO _ix VALUES
@@ -134,7 +142,10 @@ INSERT INTO _ix VALUES
   ('vendite.ix_commesse_sorgenti_sorgente_uid'), ('vendite.ix_commesse_sorgenti_sorgente_riga'),
   -- lotto C, giro C.3
   ('vendite.ix_commesse_attivita_sorgente_id'), ('vendite.ix_commesse_attivita_sorgente_uid'),
-  ('vendite.ix_commesse_attivita_sorgente_riga');
+  ('vendite.ix_commesse_attivita_sorgente_riga'),
+  -- lotto P, giro P.1 (l'unicita' porta il COMMENT sul vincolo, non sull'indice)
+  ('pratiche.ix_pratiche_sorgenti_sorgente_id'), ('pratiche.ix_pratiche_sorgenti_sorgente_uid'),
+  ('pratiche.ix_pratiche_sorgenti_sorgente_riga'), ('pratiche.ix_reconcile_errori_sorgente');
 
 SELECT is(
   (SELECT count(*)::int FROM _fn WHERE to_regprocedure(firma) IS NULL)

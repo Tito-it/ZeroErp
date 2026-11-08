@@ -77,7 +77,7 @@ SELECT f.id,
      LEFT JOIN config.sorgenti src ON ((src.id = f.sorgente_tipo_id)))
      LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
            FROM config.sorgenti so_pr
-          WHERE (((so_pr.codice_interno)::text = 'FATTURA'::text) AND (so_pr.attivo IS TRUE))), (f.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+          WHERE (((so_pr.codice_interno)::text = 'FATTURA'::text) AND (so_pr.attivo IS TRUE))), f.id, f.uid) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
      LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = f.registro_id)));
 ```
 

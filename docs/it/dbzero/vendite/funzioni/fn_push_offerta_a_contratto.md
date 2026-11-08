@@ -35,7 +35,6 @@ DECLARE
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
     v_accettazione          config.stati_doc_offerte.accettazione%TYPE;
-    v_sorgente_contratto_id config.sorgenti.id%TYPE;
     v_contratto_id          vendite.contratti.id%TYPE;
     v_eccezione             vendite.offerte_commerciali_eccezioni%ROWTYPE;
     v_riga_id               vendite.contratti_righe.id%TYPE;
@@ -422,34 +421,22 @@ BEGIN
 
     -- Collegamento pratica (facoltativo).
     IF p_pratica_id IS NOT NULL THEN
-        SELECT id INTO v_sorgente_contratto_id
-          FROM config.sorgenti
-         WHERE codice_interno = 'CONTRATTO';
-
-        IF v_sorgente_contratto_id IS NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'vendite', 'fn_push_offerta_a_contratto',
-                'E_CONFIG_MANCANTE',
-                jsonb_build_object('tabella', 'config.sorgenti', 'codice', 'CONTRATTO'),
-                NULL::uuid,
-                'sorgente CONTRATTO non trovata in config.sorgenti'
-            );
-        END IF;
-
+        -- Il contratto appena nato, dal BB che scrive: tipo e chiave del
+        -- key_selector (E_SORG_CONF se il tipo manca o e' spento).
         INSERT INTO pratiche.pratiche_sorgenti (
             pratica_id,
             sorgente_tipo_id,
+            sorgente_id,
             sorgente_uid,
             ruolo_link
         )
-        VALUES (
-            p_pratica_id,
-            v_sorgente_contratto_id,
-            -- la chiave testuale del contratto, che ha chiave id: l'id
-            v_contratto_id::text,
-            'COLLEGATO'
-        )
-        ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
+        SELECT p_pratica_id,
+               c.sorgente_tipo_id,
+               c.sorgente_id,
+               c.sorgente_uid,
+               'COLLEGATO'
+          FROM script.fn_sorgente_provenienza('CONTRATTO', v_contratto_id::text) c
+        ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
         DO NOTHING;
     END IF;
 

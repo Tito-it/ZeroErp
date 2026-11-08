@@ -67,6 +67,7 @@
 --   30  : ⭐ una madre costruita col trigger e senza riga → SENZA_RIGA
 --   31  : ⭐ la stessa, con RLS accesa e riga NESSUNO → PROTETTA_NESSUNO (e non più SENZA_RIGA)
 --   32  : ⭐ una riga di mappa senza madre → RIGA_SENZA_MADRE; e la vista è a catalogo (ZERO, settimanale)
+--   33  : ⭐ una riga di mappa su uno schema senza USAGE per chi legge → RIGA_SENZA_MADRE, non un errore (rev 2026-11-08)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -77,7 +78,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   puntano a un padre devono trovarlo GIÀ inserito, o la prova sbaglia bersaglio.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(36);
+SELECT plan(37);
 
 -- ============================================================
 -- MAPPA — completezza
@@ -121,7 +122,7 @@ SELECT is((SELECT count(*) FROM dbops.storico_scope_policy p
 SELECT is((SELECT count(*) FROM dbops.storico_scope_policy p
             WHERE p.modo IN ('EF', 'SR', 'BA')
               AND NOT EXISTS (SELECT 1 FROM pg_attribute a
-                               WHERE a.attrelid = to_regclass(format('%I.%I', p.schema_tabella, p.nome_tabella))
+                               WHERE a.attrelid = (SELECT rc.oid FROM pg_class rc JOIN pg_namespace rn ON rn.oid = rc.relnamespace WHERE rn.nspname = p.schema_tabella AND rc.relname = p.nome_tabella)
                                  AND a.attname  = p.colonna
                                  AND NOT a.attisdropped)),
           0::bigint,
@@ -142,7 +143,7 @@ SELECT is((SELECT count(*) FROM dbops.storico_scope_policy p
                     JOIN pg_attribute r2 ON r2.attrelid = con.confrelid AND r2.attnum = con.confkey[2]
                    WHERE con.contype = 'f'
                      AND array_length(con.conkey, 1) = 2
-                     AND con.conrelid  = to_regclass(format('%I.%I', p.schema_tabella, p.nome_tabella))
+                     AND con.conrelid  = (SELECT rc.oid FROM pg_class rc JOIN pg_namespace rn ON rn.oid = rc.relnamespace WHERE rn.nspname = p.schema_tabella AND rc.relname = p.nome_tabella)
                      AND con.confrelid = 'anagrafiche.billing_account'::regclass
                      AND a1.attname = split_part(p.colonna, ',', 1)
                      AND a2.attname = split_part(p.colonna, ',', 2)
@@ -172,7 +173,7 @@ SELECT is((SELECT count(*) FROM dbops.storico_scope_policy p
 SELECT is((SELECT count(*) FROM dbops.storico_scope_policy p
             WHERE p.modo = 'PADRE'
               AND NOT EXISTS (SELECT 1 FROM pg_attribute a
-                               WHERE a.attrelid = to_regclass(format('%I.%I', p.padre_schema, p.padre_tabella))
+                               WHERE a.attrelid = (SELECT rc.oid FROM pg_class rc JOIN pg_namespace rn ON rn.oid = rc.relnamespace WHERE rn.nspname = p.padre_schema AND rc.relname = p.padre_tabella)
                                  AND a.attname  = 'id'
                                  AND NOT a.attisdropped)),
           0::bigint,
@@ -231,7 +232,7 @@ SELECT ok((SELECT EXISTS (SELECT 1 FROM pg_proc p, unnest(p.proconfig) cfg
 SELECT is((SELECT count(*) FROM (
               SELECT DISTINCT p.padre_schema, p.padre_tabella
                 FROM dbops.storico_scope_policy p WHERE p.modo = 'PADRE') padri
-             JOIN pg_class c ON c.oid = to_regclass(format('%I.%I', padri.padre_schema, padri.padre_tabella))
+             JOIN pg_class c ON c.oid = (SELECT rc.oid FROM pg_class rc JOIN pg_namespace rn ON rn.oid = rc.relnamespace WHERE rn.nspname = padri.padre_schema AND rc.relname = padri.padre_tabella)
             WHERE c.relrowsecurity
               AND c.relowner <> (SELECT f.proowner FROM pg_proc f
                                   WHERE f.oid = 'dbops.fn_storico_risolvi_scope(text,text,jsonb,integer)'::regprocedure)),
@@ -241,7 +242,7 @@ SELECT is((SELECT count(*) FROM (
 SELECT cmp_ok((SELECT count(*) FROM (
                   SELECT DISTINCT p.padre_schema, p.padre_tabella
                     FROM dbops.storico_scope_policy p WHERE p.modo = 'PADRE') padri
-                 JOIN pg_class c ON c.oid = to_regclass(format('%I.%I', padri.padre_schema, padri.padre_tabella))
+                 JOIN pg_class c ON c.oid = (SELECT rc.oid FROM pg_class rc JOIN pg_namespace rn ON rn.oid = rc.relnamespace WHERE rn.nspname = padri.padre_schema AND rc.relname = padri.padre_tabella)
                 WHERE c.relrowsecurity),
               '>', 0::bigint,
               '14. gemello del 13: almeno un padre in RLS esiste, la lente vede davvero');
@@ -464,6 +465,19 @@ SELECT ok((SELECT count(*) FROM dbops.vw_storico_scope_da_dichiarare v
                       AND registro = 'dbops.storico_scope_policy'
                  FROM dbops.presidi WHERE vista = 'dbops.vw_storico_scope_da_dichiarare'),
           '32. una riga di mappa senza madre è RIGA_SENZA_MADRE; e la vista è a catalogo come ZERO settimanale sul registro giusto');
+
+-- ⭐ rev 2026-11-08 (brief-db-revisione-dbops §22): la vista è security_invoker, e
+--   la madre di una riga si cerca sul catalogo, non con to_regclass, che SOLLEVA
+--   su uno schema senza USAGE per chi legge (successo con shop.ricevute, riga 126).
+--   pg_toast non ha USAGE né per l'app né per il migratore: la riga di prova vale
+--   con tutti e due i runner. Con to_regclass il SELECT andrebbe in errore.
+INSERT INTO dbops.storico_scope_policy (id, schema_tabella, nome_tabella, modo, colonna) VALUES
+    (900202, 'pg_toast', 'zz_riga_schema_chiuso', 'EF', 'emittente_fiscale_id');
+
+SELECT is((SELECT string_agg(v.motivo, ',') FROM dbops.vw_storico_scope_da_dichiarare v
+            WHERE v.madre = 'pg_toast.zz_riga_schema_chiuso'),
+          'RIGA_SENZA_MADRE',
+          '33. una riga di mappa su uno schema senza USAGE per chi legge: RIGA_SENZA_MADRE, non un errore');
 
 SELECT * FROM finish();
 ROLLBACK;

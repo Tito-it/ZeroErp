@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PRATICA DI UN DOCUMENTO, SULLE COLONNE DEL MODELLO
+#   pratiche.fn_pratica_del_documento(p_sorgente_tipo_id, p_sorgente_id, p_sorgente_uid)
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4).
+#
+# ── ⭐ CHE COSA CAMBIA ───────────────────────────────────────────────
+#   Il secondo parametro era la chiave testuale del documento (uid::text o
+#   id::text secondo il key_selector). Dal 20261108-64 la chiave sta in
+#   sorgente_id o in sorgente_uid: la funzione prende le due colonne del modello
+#   e cerca con la regola d'incontro (sorgente_id = p_sorgente_id OR
+#   sorgente_uid = p_sorgente_uid), come vendite.fn_commessa_viva_di_sorgente.
+#   Chi ha il documento (le viste di lista) passa il suo id e il suo uid senza
+#   leggere il key_selector; chi ha la chiave del modello passa quella e NULL
+#   nell'altra.
+#   Firma NUOVA accanto al ponte (bigint, text) di 20261108-64: le viste di lista
+#   e la sintesi della lineage vi passano con -68 … -75, il ponte si ritira con
+#   -76. BEGIN ATOMIC, STABLE, INVOKER, incorporabile, come la funzione di prima:
+#   int8eq e uuid_eq sono leakproof, la regola d'incontro arriva agli indici
+#   parziali di 20261108-65 anche sotto RLS.
+#   %TYPE in firma, RETURNS TABLE e COMMENT; n_pratiche e' un conteggio (bigint
+#   di count(), nessuna colonna di cui e' il riflesso).
+#   ⚠️ La funzione BEGIN ATOMIC sta da sola nel suo «sql:»; il COMMENT nel
+#   secondo (pgjdbc non riprende a spezzare dopo l'END).
+#   Rollback: DROP FUNCTION.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20261108-67-create-fn-pratica-del-documento-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261108-67-create-fn-pratica-del-documento-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.fn_pratica_del_documento: la firma sulle colonne del modello (tipo, sorgente_id,
+        sorgente_uid) con la regola d'incontro, accanto al ponte testuale.
+        brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION pratiche.fn_pratica_del_documento(
+                  p_sorgente_tipo_id pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE,
+                  p_sorgente_id      pratiche.pratiche_sorgenti.sorgente_id%TYPE,
+                  p_sorgente_uid     pratiche.pratiche_sorgenti.sorgente_uid%TYPE)
+               RETURNS TABLE(n_pratiche     bigint,
+                             pratica_id     pratiche.pratiche.id%TYPE,
+                             pratica_numero pratiche.pratiche.codice%TYPE)
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT count(DISTINCT ps.pratica_id) AS count,
+                   min(p.id) AS min,
+                   (array_agg(p.codice ORDER BY p.id))[1] AS array_agg
+                  FROM (pratiche.pratiche_sorgenti ps
+                    JOIN pratiche.pratiche p ON ((p.id = ps.pratica_id)))
+                 WHERE ((ps.sorgente_tipo_id = fn_pratica_del_documento.p_sorgente_tipo_id)
+                   AND ((ps.sorgente_id = fn_pratica_del_documento.p_sorgente_id)
+                     OR (ps.sorgente_uid = fn_pratica_del_documento.p_sorgente_uid)));
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION pratiche.fn_pratica_del_documento(
+                  pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE,
+                  pratiche.pratiche_sorgenti.sorgente_id%TYPE,
+                  pratiche.pratiche_sorgenti.sorgente_uid%TYPE) IS
+                'La pratica di un documento: quante pratiche distinte lo hanno fra le sorgenti (pratiche.pratiche_sorgenti), la prima per id e il suo codice. Una riga sempre (0 e NULL senza pratiche). Il documento si passa con le colonne del modello (tipo, sorgente_id, sorgente_uid) e si cerca con la regola d''incontro (sorgente_id = p_sorgente_id OR sorgente_uid = p_sorgente_uid): chi ha il documento passa il suo id e il suo uid, chi ha la chiave del modello passa quella e NULL nell''altra. Sede unica: la leggono le viste di lista (colonne pratica_id, pratica_numero, n_pratiche, filtrabili e ordinabili) e vendite.fn_documento_lineage_sintesi. BEGIN ATOMIC, STABLE, INVOKER, incorporabile.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION pratiche.fn_pratica_del_documento(
+                  pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE,
+                  pratiche.pratiche_sorgenti.sorgente_id%TYPE,
+                  pratiche.pratiche_sorgenti.sorgente_uid%TYPE);

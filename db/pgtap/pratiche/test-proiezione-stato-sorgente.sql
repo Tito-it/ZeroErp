@@ -41,9 +41,8 @@
 --     non-risolto (fake) -> proietta EMESSO (risolto batte non-risolto)
 -- 28) Ancora D: pratica con solo link non-risolto -> risolto=false, stato NULL
 -- --- Chiave nel suo tipo (rev 2026-10-05, 20261005-23) ---
--- 29) fn_stato_sorgente: uid MAIUSCOLO del preventivo EMESSO -> UNKNOWN
---     (si accetta solo la forma canonica, come il confronto testuale di prima)
--- 30) fn_stato_sorgente: chiave malformata -> UNKNOWN senza errore (niente 22P02)
+-- 29) fn_stato_sorgente: senza chiave del documento -> E_STATO_SORGENTE_PARAM_INVALIDO
+-- 30) fn_stato_sorgente: con id e uid del preventivo (regola d'incontro) -> risolto
 -- 31) fn_stato_sorgente: uid di un preventivo col tipo ORDINE_VENDITA (chiave id)
 --     -> UNKNOWN
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-4): la commessa dei link
@@ -58,6 +57,7 @@
 --   preventivi si portano allo stato con una riga (merce, 1 x 10) da
 --   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
 --   senza righe e' rifiutata. Nessuna attesa conta righe o importi.
+-- rev 2026-11-08 (brief-db-sorgente-documento-e-riga lotto P, giro P.1): fn_stato_sorgente prende (tipo, sorgente_id, sorgente_uid); i link hanno la chiave nella colonna del modello; 29-31 riscritti.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -161,7 +161,7 @@ WITH ins AS (
 )
 SELECT
   i.id,
-  (i.uid)::text AS uid,
+  i.uid AS uid,
   CASE split_part(i.numero, '-', 3)
     WHEN 'EMESSO' THEN 'EMESSO'
     WHEN 'ACCETT' THEN 'ACCETTATO'
@@ -260,7 +260,7 @@ SELECT ok(
     SELECT 1
       FROM script.vw_stato_sorgente v
      WHERE v.sorgente_tipo_id = (SELECT sorgente_tipo_id FROM tmp_refs_pss)
-       AND v.sorgente_uid = (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO')
+       AND v.sorgente_chiave_uuid = (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO')
        AND v.risolto
        AND v.fase = 'IN_ATTESA'
   ),
@@ -271,7 +271,7 @@ SELECT is(
   (SELECT COUNT(*)::int
      FROM script.vw_stato_sorgente v
     WHERE v.sorgente_tipo_id = (SELECT sorgente_tipo_id FROM tmp_refs_pss)
-      AND v.sorgente_uid = (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO')),
+      AND v.sorgente_chiave_uuid = (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO')),
   1,
   'vw_stato_sorgente: al piu'' una riga per (sorgente_tipo_id, sorgente_uid)'
 );
@@ -283,6 +283,7 @@ SELECT results_eq(
   $$SELECT risolto, stato_codice_interno, stato_descrizione, fase, esito, terminale
       FROM pratiche.fn_stato_sorgente(
              (SELECT sorgente_tipo_id FROM tmp_refs_pss),
+             NULL,
              (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'))$$,
   $$VALUES (true, 'EMESSO'::text, 'Emesso'::text, 'IN_ATTESA'::text, NULL::text, false)$$,
   'fn_stato_sorgente EMESSO: risolto / IN_ATTESA / esito NULL / non terminale / descrizione Emesso'
@@ -292,6 +293,7 @@ SELECT results_eq(
   $$SELECT risolto, fase, esito
       FROM pratiche.fn_stato_sorgente(
              (SELECT sorgente_tipo_id FROM tmp_refs_pss),
+             NULL,
              (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'ACCETTATO'))$$,
   $$VALUES (true, 'IN_CORSO'::text, 'POSITIVO'::text)$$,
   'fn_stato_sorgente ACCETTATO: IN_CORSO / POSITIVO'
@@ -301,6 +303,7 @@ SELECT results_eq(
   $$SELECT risolto, fase, esito, terminale
       FROM pratiche.fn_stato_sorgente(
              (SELECT sorgente_tipo_id FROM tmp_refs_pss),
+             NULL,
              (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'ANNULLATO'))$$,
   $$VALUES (true, 'CHIUSO'::text, 'NEGATIVO'::text, true)$$,
   'fn_stato_sorgente ANNULLATO: CHIUSO / NEGATIVO / terminale'
@@ -318,6 +321,7 @@ SELECT CASE
                (SELECT id FROM config.sorgenti
                  WHERE codice_interno <> 'PREVENTIVO' AND attivo IS TRUE
                  ORDER BY id LIMIT 1),
+               NULL,
                (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'))$$,
     $$VALUES (false, 'UNKNOWN'::text, 'n/d'::text, 'APERTO'::text, NULL::text, false)$$,
     'fn_stato_sorgente: tipo senza resolver -> UNKNOWN (risolto=false) senza errore'
@@ -329,7 +333,8 @@ SELECT results_eq(
   $$SELECT risolto, stato_codice_interno
       FROM pratiche.fn_stato_sorgente(
              (SELECT sorgente_tipo_id FROM tmp_refs_pss),
-             (uuidv7())::text)$$,
+             NULL,
+             uuidv7())$$,
   $$VALUES (false, 'UNKNOWN'::text)$$,
   'fn_stato_sorgente: uid inesistente -> UNKNOWN (risolto=false) senza errore'
 );
@@ -338,13 +343,13 @@ SELECT results_eq(
 -- 16-17) Guard parametri
 -- ============================================================
 SELECT throws_like(
-  $$SELECT * FROM pratiche.fn_stato_sorgente(NULL::bigint, 'abc')$$,
+  $$SELECT * FROM pratiche.fn_stato_sorgente(NULL::bigint, NULL, uuidv7())$$,
   '%stato sorgente non validi%',
   'fn_stato_sorgente: sorgente_tipo_id NULL -> E_STATO_SORGENTE_PARAM_INVALIDO'
 );
 
 SELECT throws_like(
-  $$SELECT * FROM pratiche.fn_stato_sorgente(0::bigint, 'abc')$$,
+  $$SELECT * FROM pratiche.fn_stato_sorgente(0::bigint, NULL, uuidv7())$$,
   '%stato sorgente non validi%',
   'fn_stato_sorgente: sorgente_tipo_id 0 -> E_STATO_SORGENTE_PARAM_INVALIDO'
 );
@@ -476,7 +481,7 @@ SELECT
   (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA')           AS src_commessa,
   -- rev 2026-10-24 (Q-4): la commessa costruita (key_selector 'id'), non
   --   «la prima commessa del database».
-  (SELECT commessa_id::text FROM tmp_anc_commessa)                             AS commessa_uid_reale;
+  (SELECT commessa_id FROM tmp_anc_commessa)                                   AS commessa_id_reale;
 
 CREATE TEMP TABLE tmp_anc_tp AS
 WITH ins AS (
@@ -523,25 +528,28 @@ WITH ins AS (
   RETURNING id
 ) SELECT id AS pratica_id FROM ins;
 
-INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
+-- rev 2026-11-08 (giro P.1 di brief-db-sorgente-documento-e-riga): la chiave
+--   nella colonna del modello, il preventivo (uid) in sorgente_uid, la commessa
+--   (id) in sorgente_id.
+INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link, flusso_id)
 VALUES
   -- A) mono ROOT EMESSO (vivo)
-  ((SELECT pratica_id FROM tmp_anc_pa), (SELECT src_preventivo FROM tmp_anc_refs),
+  ((SELECT pratica_id FROM tmp_anc_pa), (SELECT src_preventivo FROM tmp_anc_refs), NULL,
    (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'),    'ROOT',      NULL),
   -- B) ROOT ANNULLATO (terminale) + COLLEGATO ACCETTATO (vivo)
-  ((SELECT pratica_id FROM tmp_anc_pb), (SELECT src_preventivo FROM tmp_anc_refs),
+  ((SELECT pratica_id FROM tmp_anc_pb), (SELECT src_preventivo FROM tmp_anc_refs), NULL,
    (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'ANNULLATO'), 'ROOT',      NULL),
-  ((SELECT pratica_id FROM tmp_anc_pb), (SELECT src_preventivo FROM tmp_anc_refs),
+  ((SELECT pratica_id FROM tmp_anc_pb), (SELECT src_preventivo FROM tmp_anc_refs), NULL,
    (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'ACCETTATO'), 'COLLEGATO', NULL),
   -- C) ROOT EMESSO (risolto) + COLLEGATO COMMESSA (non-risolto: chiave valida,
   --    ma vw_stato_sorgente non ha il ramo commessa)
-  ((SELECT pratica_id FROM tmp_anc_pc), (SELECT src_preventivo FROM tmp_anc_refs),
+  ((SELECT pratica_id FROM tmp_anc_pc), (SELECT src_preventivo FROM tmp_anc_refs), NULL,
    (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'),    'ROOT',      NULL),
   ((SELECT pratica_id FROM tmp_anc_pc), (SELECT src_commessa FROM tmp_anc_refs),
-   (SELECT commessa_uid_reale FROM tmp_anc_refs),                           'COLLEGATO', NULL),
+   (SELECT commessa_id_reale FROM tmp_anc_refs), NULL,                      'COLLEGATO', NULL),
   -- D) solo ROOT non-risolto (stessa tecnica)
   ((SELECT pratica_id FROM tmp_anc_pd), (SELECT src_commessa FROM tmp_anc_refs),
-   (SELECT commessa_uid_reale FROM tmp_anc_refs),                           'ROOT',      NULL);
+   (SELECT commessa_id_reale FROM tmp_anc_refs), NULL,                      'ROOT',      NULL);
 
 -- ============================================================
 -- 25-28) vw_pratica_doc_sorgente: la regola d'ancora sceglie il doc PIU' VIVO
@@ -579,35 +587,34 @@ SELECT results_eq(
 );
 
 -- ============================================================
--- 29-31) La chiave si cerca nel suo TIPO (rev 2026-10-05, 20261005-23)
---   fn_stato_sorgente non confronta piu' la colonna testuale sorgente_uid ma
---   la chiave nativa (sorgente_chiave_uuid / sorgente_chiave_id), l'unica che
---   sotto RLS arriva all'indice. Questi tre casi fissano l'EQUIVALENZA col
---   confronto testuale di prima, nei punti in cui un cast la romperebbe:
---   una forma non canonica che il cast accetterebbe, una stringa che il cast
---   rifiuterebbe con un errore, una chiave del tipo sbagliato.
+-- 29-31) La chiave si cerca nel suo TIPO, sulle colonne del modello
+--   rev 2026-11-08 (giro P.1 di brief-db-sorgente-documento-e-riga): la firma
+--   prende (tipo, sorgente_id, sorgente_uid). I tre casi di prima sulle forme
+--   testuali (maiuscolo, malformata) non hanno piu' oggetto: un uuid e un
+--   bigint non hanno forme testuali. Restano la chiave del tipo sbagliato e,
+--   nuovi, il guard senza chiave e la regola d'incontro.
 -- ============================================================
-SELECT results_eq(
-  $$SELECT risolto, stato_codice_interno
-      FROM pratiche.fn_stato_sorgente(
-             (SELECT sorgente_tipo_id FROM tmp_refs_pss),
-             upper((SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO')))$$,
-  $$VALUES (false, 'UNKNOWN'::text)$$,
-  '29) uid in forma non canonica (maiuscolo) -> UNKNOWN, come il confronto testuale'
+SELECT throws_like(
+  $$SELECT * FROM pratiche.fn_stato_sorgente((SELECT sorgente_tipo_id FROM tmp_refs_pss), NULL, NULL)$$,
+  '%stato sorgente non validi%',
+  '29) senza chiave del documento -> E_STATO_SORGENTE_PARAM_INVALIDO'
 );
 
 SELECT results_eq(
   $$SELECT risolto, stato_codice_interno
       FROM pratiche.fn_stato_sorgente(
-             (SELECT sorgente_tipo_id FROM tmp_refs_pss), 'non-un-uid')$$,
-  $$VALUES (false, 'UNKNOWN'::text)$$,
-  '30) chiave malformata -> UNKNOWN senza errore (nessun cast che esploda)'
+             (SELECT sorgente_tipo_id FROM tmp_refs_pss),
+             (SELECT id FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'),
+             (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'))$$,
+  $$VALUES (true, 'EMESSO'::text)$$,
+  '30) con id e uid del preventivo (regola d''incontro): risolto'
 );
 
 SELECT results_eq(
   $$SELECT risolto, stato_codice_interno
       FROM pratiche.fn_stato_sorgente(
              (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_VENDITA'),
+             NULL,
              (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'))$$,
   $$VALUES (false, 'UNKNOWN'::text)$$,
   '31) uid di un preventivo cercato come ORDINE_VENDITA (chiave id) -> UNKNOWN'

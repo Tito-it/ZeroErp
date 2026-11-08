@@ -23,7 +23,7 @@
 --    5) push preventivo -> ordine: PREVENTIVO + uid
 --    6) ordine dall'offerta: OFFERTA_COMMERCIALE + uid
 --    7) contratto dall'offerta: OFFERTA_COMMERCIALE + uid
---    8) ... con una pratica: il contratto entra in pratiche_sorgenti con l'id (V-1)
+--    8) ... con una pratica: il contratto entra in pratiche_sorgenti con l'id in sorgente_id (V-1)
 --   I LETTORI, su documenti che hanno SOLO la provenienza (colonne parallele ritirate, giro T.5)
 --    9) i documenti vivi dell'offerta: l'ordine
 --   10) ... e il contratto
@@ -54,6 +54,7 @@
 -- ⚠️ L'unicita' sul contratto (uq_contratti_sorgente_offerta) si prova dalla
 --   definizione (4), uguale a quella dell'ordine: un secondo contratto vivo
 --   sulla stessa istanza si ferma prima, sulla successione dei contratti.
+-- rev 2026-11-08 (brief-db-sorgente-documento-e-riga lotto P, giro P.1): il test 8 legge l'id del contratto in sorgente_id del link alla pratica.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -254,11 +255,13 @@ SELECT is(
   '7) contratto dall''offerta: la testata cita OFFERTA_COMMERCIALE con l''uid');
 
 SELECT is(
-  (SELECT string_agg(ps.sorgente_uid || '|' || ps.ruolo_link, ',')
+  -- Dal giro P.1 il link tiene la chiave nelle colonne del modello: l'id del
+  -- contratto in sorgente_id, sorgente_uid NULL.
+  (SELECT string_agg(ps.sorgente_id || '|' || (ps.sorgente_uid IS NULL) || '|' || ps.ruolo_link, ',')
      FROM pratiche.pratiche_sorgenti ps, _ref k
     WHERE ps.pratica_id = pg_temp.fix('pratica') AND ps.sorgente_tipo_id = k.t_con),
-  pg_temp.fix('ctr')::text || '|COLLEGATO',
-  '8) ... con una pratica: il contratto entra in pratiche_sorgenti con la sua chiave, l''id (V-1)');
+  pg_temp.fix('ctr')::text || '|true|COLLEGATO',
+  '8) ... con una pratica: il contratto entra in pratiche_sorgenti con la sua chiave, l''id in sorgente_id (V-1)');
 
 -- ============================================================
 -- I LETTORI, sulla sola provenienza (le colonne parallele sono ritirate dal

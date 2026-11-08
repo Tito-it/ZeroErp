@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RECONCILE DEL PREVENTIVO, MONTATO COL CODICE DEL TIPO
+#   trg_preventivi_z90_reconcile_proiezione_upd su vendite.preventivi
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (E-9).
+#
+#   Il trigger passava ('2', 'uid'): l'id del tipo PREVENTIVO come letterale e
+#   la colonna chiave. Dal 20261108-79 la funzione prende il solo codice e legge
+#   id e key_selector dal catalogo: si rimonta con ('PREVENTIVO'). Momento,
+#   colonna e WHEN invariati (dal catalogo, = 20260706-23). Trigger scritto a
+#   mano, non generato da ci_apply.
+#   Rollback: si rimonta con gli argomenti di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261108-80-update-trg-preventivi-reconcile-proiezione-codice-mctit.yaml
+
+  - changeSet:
+      id: 20261108-80-update-trg-preventivi-reconcile-proiezione-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.preventivi: trg_preventivi_z90_reconcile_proiezione_upd rimontato col codice del
+        tipo ('PREVENTIVO') al posto dell'id letterale e della colonna chiave.
+        brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_preventivi_z90_reconcile_proiezione_upd ON vendite.preventivi;
+              CREATE TRIGGER trg_preventivi_z90_reconcile_proiezione_upd
+                  AFTER UPDATE OF stato_doc_preventivo_id ON vendite.preventivi
+                  FOR EACH ROW
+                  WHEN (OLD.stato_doc_preventivo_id IS DISTINCT FROM NEW.stato_doc_preventivo_id)
+                  EXECUTE FUNCTION pratiche.trgfn_documento_reconcile_proiezione('PREVENTIVO');
+              COMMENT ON TRIGGER trg_preventivi_z90_reconcile_proiezione_upd ON vendite.preventivi IS
+                'Dopo un cambio di stato del preventivo, il reconcile delle pratiche che lo hanno fra le sorgenti (pratiche.trgfn_documento_reconcile_proiezione, tipo PREVENTIVO per codice). Best-effort: non annulla mai il cambio di stato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_preventivi_z90_reconcile_proiezione_upd ON vendite.preventivi;
+              CREATE TRIGGER trg_preventivi_z90_reconcile_proiezione_upd
+                  AFTER UPDATE OF stato_doc_preventivo_id ON vendite.preventivi
+                  FOR EACH ROW
+                  WHEN (OLD.stato_doc_preventivo_id IS DISTINCT FROM NEW.stato_doc_preventivo_id)
+                  EXECUTE FUNCTION pratiche.trgfn_documento_reconcile_proiezione('2', 'uid');

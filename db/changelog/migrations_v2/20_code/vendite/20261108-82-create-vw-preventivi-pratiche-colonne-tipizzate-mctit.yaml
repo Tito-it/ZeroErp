@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PRATICHE DI UN PREVENTIVO, SULLA CHIAVE DEL MODELLO
+#   vendite.vw_preventivi_pratiche
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4, E-10).
+#
+#   La vista e' stata tolta da 20261108-64 (legava il tipo di sorgente_uid) e
+#   rinasce qui. Due cambi:
+#   * il link si trova sulla chiave del modello: ps.sorgente_uid = p.uid, uuid
+#     contro uuid, senza il cast a testo (il preventivo ha key_selector uid);
+#   * E-10: la colonna «sorgente_id» era l'id del LINK (pratiche_sorgenti.id), e
+#     col modello il nome collide con la chiave del documento. Si chiama
+#     pratica_sorgente_id. Un consumatore nel backend
+#     (preventivi_repository): richiesta nel brief, §8.
+#   Le altre colonne identiche, nello stesso ordine. COMMENT al presente.
+#   security_invoker come prima. Nessun GRANT: lo danno le ALTER DEFAULT
+#   PRIVILEGES del proprietario.
+#   Rollback: DROP VIEW.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261108-82-create-vw-preventivi-pratiche-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261108-82-create-vw-preventivi-pratiche-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_preventivi_pratiche: rinasce sulla chiave del modello (sorgente_uid uuid); l'id
+        del link si chiama pratica_sorgente_id. brief-db-sorgente-documento-e-riga §7.2 lotto P,
+        giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_preventivi_pratiche WITH (security_invoker=on) AS
+               SELECT p.id AS preventivo_id,
+                  p.uid AS preventivo_uid,
+                  p.numero AS preventivo_numero,
+                  ps.id AS pratica_sorgente_id,
+                  ps.ruolo_link,
+                  ps.sorgente_riga,
+                  pr.id AS pratica_id,
+                  pr.codice AS pratica_codice,
+                  pr.descrizione AS pratica_descrizione,
+                  sp.codice AS stato_codice,
+                  sp.descrizione AS stato_descrizione,
+                  tp.codice AS tipo_prestazione_codice,
+                  tp.descrizione AS tipo_prestazione_descrizione,
+                  pr.data_apertura,
+                  pr.data_scadenza,
+                  ps.meta AS sorgente_meta
+                 FROM vendite.preventivi p
+                   JOIN config.sorgenti s ON s.codice_interno::text = 'PREVENTIVO'::text AND s.attivo IS TRUE
+                   JOIN pratiche.pratiche_sorgenti ps ON ps.sorgente_tipo_id = s.id AND ps.sorgente_uid = p.uid
+                   JOIN pratiche.pratiche pr ON pr.id = ps.pratica_id
+                   LEFT JOIN config.stati_pratiche sp ON sp.id = pr.stato_id
+                   LEFT JOIN pratiche.tipi_prestazione tp ON tp.id = pr.tipo_prestazione_id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_pratiche IS
+                'Le pratiche collegate ai preventivi di vendita, una riga per link in pratiche.pratiche_sorgenti: il preventivo (id, uid, numero), il link (pratica_sorgente_id, l''id della riga di pratiche_sorgenti, con ruolo, riga e meta), la pratica con stato, tipo di prestazione e date. Il link si trova sulla chiave del modello: il preventivo ha key_selector uid, quindi pratiche_sorgenti.sorgente_uid = preventivi.uid. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW vendite.vw_preventivi_pratiche;

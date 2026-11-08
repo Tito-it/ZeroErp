@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA IL PONTE: pratiche.fn_pratica_del_documento(bigint, text)
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4).
+#
+#   La firma con la chiave testuale l'aveva resa plpgsql 20261108-64, solo per
+#   tenere in piedi le sette viste di lista mentre la colonna cambiava tipo. Le
+#   viste (-68 … -74) e la sintesi della lineage (-75) chiamano la firma
+#   tipizzata (-67): il ponte resta senza chiamanti nel database e si ritira.
+#   Il backend non la chiama (grep, 2026-11-08). DROP senza IF EXISTS e senza
+#   CASCADE: un chiamante rimasto ferma il migrate.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20261108-76-drop-fn-pratica-del-documento-chiave-testuale-mctit.yaml
+
+  - changeSet:
+      id: 20261108-76-drop-fn-pratica-del-documento-chiave-testuale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.fn_pratica_del_documento(bigint, text): il ponte del giro si ritira, senza
+        chiamanti. brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il secondo argomento e' la chiave polimorfa resa a text: nessuna colonna da ancorare.
+              DROP FUNCTION pratiche.fn_pratica_del_documento(pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE, text);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la chiave testuale non c'e' piu'.
+              SELECT 1;

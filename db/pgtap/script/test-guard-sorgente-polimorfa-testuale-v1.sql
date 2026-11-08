@@ -17,36 +17,38 @@
 --  pratica costruita; i casi della porta del link (12-16, 22-24) restano e
 --  rileggono la chiave in sorgente_id.
 --
--- Indice test (1..18):
+--  ⚠️ rev 2026-11-08 (brief-db-sorgente-documento-e-riga giro P.1): anche
+--  pratiche.pratiche_sorgenti e' passata alle colonne tipizzate col guard unico,
+--  e il guard testuale, rimasto senza montaggi, si ritira (20261108-87). Escono i
+--  casi d'INSERT del guard (vecchi 7-11) e le forme canoniche della chiave
+--  testuale (vecchi 19-21): con le colonne tipizzate non hanno piu' oggetto, e la
+--  chiave sbagliata la rifiuta il guard unico (vendite/test-sorgente-commesse-sorgenti-v1,
+--  pratiche/test-sorgente-pratiche-sorgenti-v1). Restano la porta del link, che
+--  riceve ancora la chiave in testo e la normalizza, e i censimenti. Il nome del
+--  file resta: lo conoscono la baseline e la storia del cantiere.
+--
+-- Indice test (1..16):
 --   1)  riferimenti minimi disponibili (BA + tipi COMMESSA/PREVENTIVO/ORDINE)
 --   2)  esiste script.trgfn_guard_sorgente_polimorfa_tipizzata (modello A)
 --   3)  NON esiste piu' il vecchio nome trgfn_guard_sorgente_polimorfa
---   4)  esiste script.trgfn_guard_sorgente_polimorfa_testuale (modello B)
---   5)  trigger guard agganciato a pratiche.pratiche_sorgenti
---   6)  vendite.commesse_sorgenti monta il guard unico, non il testuale
---   7)  INSERT canonico id::text (COMMESSA esistente) -> passa
---   8)  INSERT uuid per tipo a chiave id -> P0001 (E_SORG_FORMATO)
---   9)  INSERT id inesistente -> P0001 (E_SORG_NOT_FOUND)
---   10) INSERT uuid inesistente per PREVENTIVO -> P0001 (E_SORG_NOT_FOUND)
---   11) INSERT testo non-uuid per PREVENTIVO -> P0001 (E_SORG_FORMATO)
---   12) fn_link canonico id::text -> l'id in sorgente_id (readback)
---   13) fn_link uuid per COMMESSA (target senza colonna uid) ->
+--   4)  NON esiste piu' script.trgfn_guard_sorgente_polimorfa_testuale (ritirato)
+--   5)  pratiche.pratiche_sorgenti monta il guard unico
+--   6)  vendite.commesse_sorgenti monta il guard unico
+--   7)  fn_link canonico id::text -> l'id in sorgente_id (readback)
+--   8)  fn_link uuid per COMMESSA (target senza colonna uid) ->
 --       P0001 (E_SORG_NORM_NON_RISOLTA)
---   14) fn_link testo non-uuid per PREVENTIVO -> P0001 (E_SORG_FORMATO)
---   15) fn_link uuid inesistente per ORDINE_VENDITA (target CON colonna uid)
+--   9)  fn_link testo non-uuid per PREVENTIVO -> P0001 (E_SORG_FORMATO)
+--   10) fn_link uuid inesistente per ORDINE_VENDITA (target CON colonna uid)
 --       -> P0001 (E_SORG_NORM_NON_RISOLTA)
---   16) fn_link uuid di un ordine COSTRUITO (libero per costruzione) ->
+--   11) fn_link uuid di un ordine COSTRUITO (libero per costruzione) ->
 --       normalizzato all'id, in sorgente_id
---   17) censimento commesse_sorgenti: 0 righe con la chiave nella colonna sbagliata
---   18) censimento pratiche_sorgenti: 0 righe non canoniche
---   --- Forma CANONICA della chiave (rev 2026-10-05, 20261005-25) ---
---   19) INSERT id con zeri davanti (documento esistente) -> E_SORG_FORMATO
---   20) INSERT id con spazi attorno (documento esistente) -> E_SORG_FORMATO
---   21) INSERT uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO (non NOT_FOUND)
---   22) fn_link id con zeri davanti -> E_SORG_FORMATO
---   23) fn_link uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO
---   24) fn_link id con spazi attorno -> il rubinetto li toglie e stocca la
---       forma canonica (normalizzazione dichiarata, il guard la accetta)
+--   12) censimento commesse_sorgenti: 0 righe con la chiave nella colonna sbagliata
+--   13) censimento pratiche_sorgenti: 0 righe con la chiave nella colonna sbagliata
+--   --- Forma CANONICA della chiave passata alla porta (rev 2026-10-05, 20261005-25) ---
+--   14) fn_link id con zeri davanti -> E_SORG_FORMATO
+--   15) fn_link uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO
+--   16) fn_link id con spazi attorno -> il rubinetto li toglie e stocca la
+--       forma canonica (normalizzazione dichiarata)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -66,7 +68,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(24);
+SELECT plan(16);
 
 -- ============================================================
 -- Fixture: riferimenti (BA con emittente fiscale) + tipi sorgente
@@ -107,7 +109,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 2..6) oggetti in posto: due funzioni sorelle + trigger agganciati
+-- 2..6) oggetti in posto: la sorella tipizzata, la testuale ritirata, il guard unico montato
 -- ============================================================
 SELECT has_function('script', 'trgfn_guard_sorgente_polimorfa_tipizzata',
   '2) esiste il guard modello A (tipizzata, ex trgfn_guard_sorgente_polimorfa)');
@@ -115,12 +117,20 @@ SELECT has_function('script', 'trgfn_guard_sorgente_polimorfa_tipizzata',
 SELECT hasnt_function('script', 'trgfn_guard_sorgente_polimorfa',
   '3) il vecchio nome generico non esiste piu'' (rinomina 20260718-16)');
 
-SELECT has_function('script', 'trgfn_guard_sorgente_polimorfa_testuale',
-  '4) esiste il guard modello B (testuale)');
+SELECT hasnt_function('script', 'trgfn_guard_sorgente_polimorfa_testuale',
+  '4) il guard modello B (testuale) non esiste piu'' (ritirato, 20261108-87)');
 
-SELECT has_trigger('pratiche', 'pratiche_sorgenti',
-  'trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd',
-  '5) guard testuale agganciato a pratiche_sorgenti');
+-- ⚠️ Schema e nome da pg_proc + pg_namespace, non da regproc::text: il testo
+--   di un regproc dipende dal search_path di chi guarda.
+SELECT is(
+  (SELECT n.nspname || '.' || p.proname
+     FROM pg_trigger t
+     JOIN pg_proc p      ON p.oid = t.tgfoid
+     JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE t.tgrelid = 'pratiche.pratiche_sorgenti'::regclass
+      AND t.tgname = 'trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd'),
+  'script.trgfn_guard_sorgente',
+  '5) pratiche_sorgenti monta il guard unico');
 
 -- ⚠️ Schema e nome da pg_proc + pg_namespace, non da regproc::text: il testo
 --   di un regproc dipende dal search_path di chi guarda.
@@ -177,110 +187,8 @@ SELECT
     p_force_new => true
   ) AS commessa_src2;
 
--- La pratica che ospita i casi d'INSERT: il guard testuale e' montato su
--- pratiche.pratiche_sorgenti. Ruolo COLLEGATO: la ROOT vuole il flusso, che qui
--- non c'entra.
-CREATE TEMP TABLE tmp_guard_tp AS
-WITH ins AS (
-  INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo)
-  VALUES ('TEST_GUARD_TESTUALE', 'TEST_GUARD_TESTUALE', 'Tipo test guard testuale', true)
-  ON CONFLICT (codice_interno) DO UPDATE SET descrizione = EXCLUDED.descrizione
-  RETURNING id
-)
-SELECT id AS tp_id FROM ins;
-
-CREATE TEMP TABLE tmp_guard_pratica AS
-WITH ins AS (
-  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
-  SELECT m.emittente_fiscale_id, (SELECT tp_id FROM tmp_guard_tp), m.cliente_soggetto_id,
-         (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA'),
-         (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE')
-    FROM tmp_guard_mondo m
-  RETURNING id
-)
-SELECT id AS pratica_host FROM ins;
-
 -- ============================================================
--- 7) INSERT canonico: tipo a chiave id + id::text di documento esistente
--- ============================================================
-SELECT lives_ok(
-  format(
-    $$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'COLLEGATO')$$,
-    (SELECT pratica_host FROM tmp_guard_pratica),
-    (SELECT src_commessa FROM tmp_guard_refs),
-    (SELECT commessa_src1::text FROM tmp_guard_commesse)
-  ),
-  '7) INSERT canonico id::text (documento esistente) -> passa il guard'
-);
-
--- ============================================================
--- 8) INSERT uuid per tipo a chiave id -> E_SORG_FORMATO
---    (bypass della fn: e' il guard a dover bloccare)
--- ============================================================
-SELECT throws_ok(
-  format(
-    $$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'COLLEGATO')$$,
-    (SELECT pratica_host FROM tmp_guard_pratica),
-    (SELECT src_commessa FROM tmp_guard_refs),
-    gen_random_uuid()::text
-  ),
-  'P0001',
-  NULL,
-  '8) INSERT uuid per tipo a chiave id -> bloccato (E_SORG_FORMATO)'
-);
-
--- ============================================================
--- 9) INSERT id inesistente -> E_SORG_NOT_FOUND
--- ============================================================
-SELECT throws_ok(
-  format(
-    $$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'COLLEGATO')$$,
-    (SELECT pratica_host FROM tmp_guard_pratica),
-    (SELECT src_commessa FROM tmp_guard_refs),
-    '999999999999'
-  ),
-  'P0001',
-  NULL,
-  '9) INSERT id inesistente -> bloccato (E_SORG_NOT_FOUND)'
-);
-
--- ============================================================
--- 10) INSERT uuid ben formato ma inesistente per PREVENTIVO -> E_SORG_NOT_FOUND
--- ============================================================
-SELECT throws_ok(
-  format(
-    $$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'COLLEGATO')$$,
-    (SELECT pratica_host FROM tmp_guard_pratica),
-    (SELECT src_preventivo FROM tmp_guard_refs),
-    gen_random_uuid()::text
-  ),
-  'P0001',
-  NULL,
-  '10) INSERT uuid inesistente per PREVENTIVO -> bloccato (E_SORG_NOT_FOUND)'
-);
-
--- ============================================================
--- 11) INSERT testo non-uuid per PREVENTIVO -> E_SORG_FORMATO
--- ============================================================
-SELECT throws_ok(
-  format(
-    $$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'COLLEGATO')$$,
-    (SELECT pratica_host FROM tmp_guard_pratica),
-    (SELECT src_preventivo FROM tmp_guard_refs),
-    'prev-fittizio-001'
-  ),
-  'P0001',
-  NULL,
-  '11) INSERT testo non-uuid per PREVENTIVO -> bloccato (E_SORG_FORMATO)'
-);
-
--- ============================================================
--- 12) fn_link canonico id::text -> stocca com'e' (readback identico)
+-- 7) fn_link canonico id::text -> stocca com'e' (readback identico)
 --     Due passi: la riga inserita dalla fn non e' visibile allo scan
 --     della STESSA statement (visibilita' per command id).
 -- ============================================================
@@ -298,11 +206,11 @@ SELECT is(
      FROM vendite.commesse_sorgenti cs
     WHERE cs.id = (SELECT link_id FROM tmp_guard_link12)),
   (SELECT commessa_src2::text || '|NULL' FROM tmp_guard_commesse),
-  '12) fn_link canonico id::text -> l''id in sorgente_id, sorgente_uid vuota'
+  '7) fn_link canonico id::text -> l''id in sorgente_id, sorgente_uid vuota'
 );
 
 -- ============================================================
--- 13) fn_link uuid per COMMESSA: target vendite.commesse NON ha colonna uid
+-- 8) fn_link uuid per COMMESSA: target vendite.commesse NON ha colonna uid
 --     -> la traduzione non e' possibile, errore parlante (no crash)
 -- ============================================================
 SELECT throws_ok(
@@ -314,11 +222,11 @@ SELECT throws_ok(
   ),
   'P0001',
   NULL,
-  '13) fn_link uuid per tipo id a target senza colonna uid -> E_SORG_NORM_NON_RISOLTA'
+  '8) fn_link uuid per tipo id a target senza colonna uid -> E_SORG_NORM_NON_RISOLTA'
 );
 
 -- ============================================================
--- 14) fn_link testo non-uuid per PREVENTIVO -> E_SORG_FORMATO (il rubinetto
+-- 9) fn_link testo non-uuid per PREVENTIVO -> E_SORG_FORMATO (il rubinetto
 --     non fa pass-through di spazzatura)
 -- ============================================================
 SELECT throws_ok(
@@ -330,11 +238,11 @@ SELECT throws_ok(
   ),
   'P0001',
   NULL,
-  '14) fn_link testo non-uuid per PREVENTIVO -> E_SORG_FORMATO'
+  '9) fn_link testo non-uuid per PREVENTIVO -> E_SORG_FORMATO'
 );
 
 -- ============================================================
--- 15) fn_link uuid inesistente per ORDINE_VENDITA (target CON colonna uid):
+-- 10) fn_link uuid inesistente per ORDINE_VENDITA (target CON colonna uid):
 --     la traduzione parte ma non risolve -> E_SORG_NORM_NON_RISOLTA
 -- ============================================================
 SELECT throws_ok(
@@ -346,11 +254,11 @@ SELECT throws_ok(
   ),
   'P0001',
   NULL,
-  '15) fn_link uuid inesistente per ORDINE_VENDITA -> E_SORG_NORM_NON_RISOLTA'
+  '10) fn_link uuid inesistente per ORDINE_VENDITA -> E_SORG_NORM_NON_RISOLTA'
 );
 
 -- ============================================================
--- 16) fn_link con uuid di un ordine COSTRUITO (quindi non ancora
+-- 11) fn_link con uuid di un ordine COSTRUITO (quindi non ancora
 --     linkato) -> normalizzato a id::text (traduzione riuscita).
 --     L'ordine e' del cliente del mondo, in DRAFT, sull'emittente di chi
 --     agisce.
@@ -386,10 +294,10 @@ SELECT is(
        FROM vendite.commesse_sorgenti cs
       WHERE cs.id = (SELECT link_id FROM tmp_guard_link16)),
     (SELECT id::text || '|NULL' FROM tmp_ordine_libero),
-    '16) fn_link uuid di un ordine costruito -> normalizzato all''id, in sorgente_id');
+    '11) fn_link uuid di un ordine costruito -> normalizzato all''id, in sorgente_id');
 
 -- ============================================================
--- 17..18) censimento: tutte le righe vive rispettano la convenzione
+-- 12..13) censimento: tutte le righe vive rispettano la convenzione
 --     (id-selector -> numerico; uid-selector -> uuid). Se questo test e'
 --     rosso, PRIMA di applicare i trigger serve la pulizia manuale
 --     (brief-db-guard-sorgente-polimorfa, Appendice A).
@@ -407,22 +315,23 @@ SELECT is(
     WHERE (s.key_selector = 'id'  AND cs.sorgente_id IS NULL)
        OR (s.key_selector = 'uid' AND cs.sorgente_uid IS NULL)),
   0,
-  '17) commesse_sorgenti: nessuna riga viva con la chiave nella colonna sbagliata'
+  '12) commesse_sorgenti: nessuna riga viva con la chiave nella colonna sbagliata'
 );
 
+-- Dal giro P.1 anche pratiche_sorgenti ha le colonne tipizzate.
 SELECT is(
   (SELECT count(*)::int
      FROM pratiche.pratiche_sorgenti ps
      JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-    WHERE (s.key_selector = 'id'  AND script.fn_sorgente_chiave_id(ps.sorgente_uid) IS NULL)
-       OR (s.key_selector = 'uid' AND script.fn_sorgente_chiave_uuid(ps.sorgente_uid) IS NULL)),
+    WHERE (s.key_selector = 'id'  AND ps.sorgente_id IS NULL)
+       OR (s.key_selector = 'uid' AND ps.sorgente_uid IS NULL)),
   0,
-  '18) pratiche_sorgenti: nessuna riga viva fuori convenzione'
+  '13) pratiche_sorgenti: nessuna riga viva con la chiave nella colonna sbagliata'
 );
 
 
 -- ============================================================
--- 19-24) La chiave si salva in FORMA CANONICA (rev 2026-10-05, 20261005-25)
+-- 14-16) La chiave passata alla porta si salva in FORMA CANONICA (rev 2026-10-05, 20261005-25)
 --   Prima il guard controllava btrim(sorgente_uid) con regex larghe e salvava
 --   il valore non ripulito: '007', ' 42 ' e un uuid maiuscolo passavano —
 --   chiavi che esistono ma che nessun lettore (fn_stato_sorgente,
@@ -445,45 +354,12 @@ END $fn$ LANGUAGE plpgsql;
 
 SELECT is(
   pg_temp.codice_errore_sorgente(format(
-    $$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'COLLEGATO')$$,
-    (SELECT pratica_host FROM tmp_guard_pratica),
-    (SELECT src_commessa FROM tmp_guard_refs),
-    '0' || (SELECT commessa_src1::text FROM tmp_guard_commesse))),
-  'E_SORG_FORMATO',
-  '19) INSERT id con zeri davanti (documento esistente) -> E_SORG_FORMATO'
-);
-
-SELECT is(
-  pg_temp.codice_errore_sorgente(format(
-    $$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'COLLEGATO')$$,
-    (SELECT pratica_host FROM tmp_guard_pratica),
-    (SELECT src_commessa FROM tmp_guard_refs),
-    ' ' || (SELECT commessa_src1::text FROM tmp_guard_commesse) || ' ')),
-  'E_SORG_FORMATO',
-  '20) INSERT id con spazi attorno (documento esistente) -> E_SORG_FORMATO'
-);
-
-SELECT is(
-  pg_temp.codice_errore_sorgente(format(
-    $$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'COLLEGATO')$$,
-    (SELECT pratica_host FROM tmp_guard_pratica),
-    (SELECT src_preventivo FROM tmp_guard_refs),
-    upper(gen_random_uuid()::text))),
-  'E_SORG_FORMATO',
-  '21) INSERT uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO (non E_SORG_NOT_FOUND)'
-);
-
-SELECT is(
-  pg_temp.codice_errore_sorgente(format(
     $$SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L, NULL, '{}'::jsonb)$$,
     (SELECT commessa_host FROM tmp_guard_commesse),
     (SELECT src_commessa FROM tmp_guard_refs),
     '0' || (SELECT commessa_src1::text FROM tmp_guard_commesse))),
   'E_SORG_FORMATO',
-  '22) fn_link id con zeri davanti -> E_SORG_FORMATO'
+  '14) fn_link id con zeri davanti -> E_SORG_FORMATO'
 );
 
 SELECT is(
@@ -493,10 +369,10 @@ SELECT is(
     (SELECT src_preventivo FROM tmp_guard_refs),
     upper(gen_random_uuid()::text))),
   'E_SORG_FORMATO',
-  '23) fn_link uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO'
+  '15) fn_link uuid MAIUSCOLO per PREVENTIVO -> E_SORG_FORMATO'
 );
 
--- 24) Una terza commessa sorgente, libera per costruzione: gli spazi attorno
+-- 16) Una terza commessa sorgente, libera per costruzione: gli spazi attorno
 --     li toglie il rubinetto (btrim in testa, normalizzazione dichiarata), e
 --     quello che arriva al guard e alla riga e' la forma canonica.
 CREATE TEMP TABLE tmp_guard_src3 AS
@@ -527,7 +403,7 @@ SELECT is(
      FROM vendite.commesse_sorgenti cs
     WHERE cs.id = (SELECT link_id FROM tmp_guard_link24)),
   (SELECT commessa_src3::text FROM tmp_guard_src3),
-  '24) fn_link id con spazi attorno -> stoccato in forma canonica (il rubinetto normalizza)'
+  '16) fn_link id con spazi attorno -> stoccato in forma canonica (il rubinetto normalizza)'
 );
 
 SELECT * FROM finish();

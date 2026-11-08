@@ -41,6 +41,7 @@
 --   dbops.fn_pgtap_*, con il contesto aperto (un'azienda, un emittente). I modelli
 --   di stampa sono del test, dell'emittente del mondo. Gira come l'applicazione
 --   (operatore in sessione, RLS attiva).
+-- rev 2026-11-08 (brief-db-sorgente-documento-e-riga lotto P, giro P.1): le sorelle vecchie si cercano per nome da pg_proc (la _testuale e' ritirata).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -96,8 +97,12 @@ SELECT is(
         WHERE m.schema_tabella = 'documenti' AND m.nome_tabella = 'documenti_generati'),
       (SELECT count(*) FROM pg_trigger t
         WHERE t.tgrelid = 'documenti.documenti_generati'::regclass
-          AND t.tgfoid IN ('script.trgfn_guard_sorgente_polimorfa_testuale'::regproc,
-                           'script.trgfn_guard_sorgente_polimorfa_tipizzata'::regproc)),
+          -- Per nome da pg_proc, non ::regproc: un cast sul nome di una funzione
+          -- ritirata (la _testuale, giro P.1) e' un errore, non uno zero.
+          AND t.tgfoid IN (SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                            WHERE n.nspname = 'script'
+                              AND p.proname IN ('trgfn_guard_sorgente_polimorfa_testuale',
+                                                'trgfn_guard_sorgente_polimorfa_tipizzata'))),
       (SELECT p.grammatica || '/' || coalesce(p.orfani_esclusi_perche, 'nessuna esenzione')
          FROM dbops.fn_sorgenti_orfane_perimetro() p
         WHERE p.schema_tabella = 'documenti' AND p.nome_tabella = 'documenti_generati'))),

@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-08
 
-**Riparte: Tid**, con l'apply del rimedio alla CI da zero (riga 7-quadragies-septies) (il giro K.2 è applicato, pgTAP verdi, committato: riga 7-quadragies-octies), poi il via al lotto P. Il lotto D (un giro, D.1) e il giro K.1 (il nome della chiave, richiesta BE) sono applicati su dbdev e scratch, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
+**Riparte: il team BE** col §8.16 (il link alla pratica, rotto dall'apply di P.1), poi **la sessione DB** coi lotti M e Z, ognuno al via di Tid (riga 8). Il lotto P è chiuso: un giro solo, P.1 (`20261108-64` … `-87`), applicato su dbdev e scratch, pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). Il rimedio alla CI da zero è applicato su dbdev e scratch e committato (riga 7-quadragies-septies). Il lotto D (un giro, D.1) e il giro K.1 (il nome della chiave, richiesta BE) sono applicati su dbdev e scratch, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -70,18 +70,20 @@
 | 7-quadragies-quater | ✅ Tid | l'esenzione della coda di stampa dal guard confermata come proposta DB: la FK resta, esente dal solo guard (2026-11-07) | §7.2 «Il giro D.1, le scelte» | — |
 | 7-quadragies-quinquies | ✅ Tid | la colonna della chiave nei cinque lister del push si chiama `sorgente_chiave`, «teniamo tutto pulito»; anche il parametro del builder `dbops.fn_pgtap_crea_commessa_attivita` diventa `p_sorgente_chiave`, coi pgTAP che lo chiamano (2026-11-07) | §7.2 «Il giro K.1» | — |
 | 7-quadragies-sexies | ✅ DB | giro K.2: i cinque lister con `sorgente_chiave` (COMMENT al presente), il builder con `p_sorgente_chiave`, due esempi d'uso superati, 40 pgTAP allineati, BE-K.2-a; provato in transazione (2026-11-07) | §7.2 «Il giro K.2», §8.15 | — |
-| 7-quadragies-septies | DB | CI da zero ferma sul `20261107-70` («index `ix_commesse_attivita_sorgente_competenza` does not exist»: nasce in `90_end/20260703-58`, che da zero gira dopo). Rimedio senza toccare il `-70`: `00_schema/vendite/20261107-05` lo crea se manca finché `sorgente_uid` è testo, `90_end/20261108-35` lo toglie se il `-58` l'ha rifatto; su dbdev tutti e due a vuoto (2026-11-07) | §7.2 «Il giro C.3» | apply e commit di Tid |
+| 7-quadragies-septies | ✅ Tid | CI da zero ferma sul `20261107-70` («index `ix_commesse_attivita_sorgente_competenza` does not exist»: nasce in `90_end/20260703-58`, che da zero gira dopo). Rimedio senza toccare il `-70`: `00_schema/vendite/20261107-05` lo crea se manca finché `sorgente_uid` è testo, `90_end/20261108-35` lo toglie se il `-58` l'ha rifatto; su dbdev tutti e due a vuoto (2026-11-07). Applicato su dbdev e scratch (2026-11-08, 00:20), committato (`8bbae0df7b`) | §7.2 «Il giro C.3» | — |
 | 7-quadragies-octies | ✅ Tid | apply del giro K.2 (`20261108-36` … `-40`, `-61` … `-63`), pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). ⚠️ Dall'apply il push del BE perde la chiave fino a BE-K.2-a (§8.15) | §7.2 «Il giro K.2» | — |
-| 8 | DB | lotti P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-quadragies-septies, 7-quadragies-octies |
+| 7-quadragies-novies | DB | CI da zero ferma su `80_data/changelog/20260224-37` («column a.sorgente_tipo_id does not exist»): il backfill del pregresso di febbraio legge `attivita_fatturabili.sorgente_tipo_id`, che da zero `00_schema/vendite/20261107-45` (giro C.1) ha già tolto, perché `00_schema` corre tutto prima di `80_data`. Rimedio: preCondition `columnExists` + `onFail: MARK_RAN` (da zero non c'è storico da riallineare; le preConditions non entrano nel checksum, su dbdev resta EXECUTED). Censiti `80_data` e `90_end` contro tutte le colonne tolte dal cantiere: nessun'altra mina (2026-11-08) | §7.2 «Il giro C.1» | commit di Tid, poi CI |
+| 7-quinquagies | ✅ Tid | via al lotto P («il via al lotto P, quando vuoi»), numerazione dal primo progressivo libero del giorno (2026-11-08) | §7.2 «Lotto P» | — |
+| 7-quinquagies-bis | ✅ DB | giro P.1: `pratiche_sorgenti` e `reconcile_errori` nelle colonne tipizzate (S-4, D-9), la pratica del documento, lo stato e il reconcile sulle colonne del modello, le sette liste e la sintesi della lineage, E-9 (il reconcile per codice), E-10, i tre verbi sul BB, il guard unico, il guard testuale ritirato; 12 pgTAP allineati, uno nuovo; provato in transazione (2026-11-08) | §7.2 «Il giro P.1, le scelte», §8.16 | — |
+| 7-quinquagies-ter | ✅ Tid | apply del giro P.1 (`20261108-64` … `-87`) su dbdev e scratch, pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). ⚠️ Dall'apply i percorsi BE del §8.16 danno errore, come accettato dal piano | §7.2 «Il giro P.1, le scelte», §8.16 | 7-quinquagies-bis |
+| 8 | DB | lotti M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-quinquagies-ter |
 | 9-bis | ✅ BE | il §8 fino al lotto T: codici, reso, ordine dal preventivo, contratto dall'offerta (2026-11-07, da committare su `dev/backend-tid`). I due percorsi rotti dal giro T.5 sono ripristinati | §8 «Stato al 2026-11-07, dopo il giro BE» | — |
 | 9-ter | ✅ BE | il §8.13 (D.1: stampa e drenatore della coda) e il §8.14 (K.1: il nome della chiave del push), i due percorsi rotti dall'apply (2026-11-07, da committare su `dev/backend-tid`) | §8.14 «Stato al 2026-11-07, dopo il giro BE di D.1 e K.1» | — |
 | 9 | BE/FE | il §8 dei lotti che restano, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
-**Decisioni aperte di Tid:** l'esenzione della coda di stampa dal guard unico (proposta DB, applicata: la FK resta; l'alternativa costa la cleanup delle fatture, §7.2 «Il giro D.1, le scelte»); il nome della colonna della chiave nei cinque lister del push (§7.2 «Il giro K.1»). ⏭️ Da applicare: niente. `20_code/dbops/20261108-09` (i COMMENT di quattro builder pgTAP) risulta applicato su dbdev e scratch (2026-11-07, 22:30), col suo presidio verde. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
-**Lavoro da committare:** lato DB nessuno; lato BE il giro di §8.13 e §8.14 (riga 9-ter), nel working tree di `dev/backend-tid` (2026-11-08). Il giro D.1 (gli otto changeSet, il pgTAP nuovo `documenti/test-sorgente-documenti-generati-v1`, i quindici pgTAP allineati), il giro K.1 (sei changeSet, 54 pgTAP allineati), `20_code/dbops/20261108-09` col presidio `dbops/test-builder-pgtap-vincoli-immediate-v1`, le pagine auto-generate dei loro oggetti e questo brief sono committati su `dev/db-tid` (2026-11-07). Non del cantiere, lasciati fuori: i changeSet `20261108-25` … `-31` coi loro CSV, pgTAP e pagine, i due indici auto-generati, le tre guide e `brief-db-revisione-dbops.md`. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-07: l'esenzione della coda di stampa dal guard unico, confermata (la FK resta, §7.2 «Il giro D.1, le scelte»); la chiave `sorgente_chiave` anche nei cinque lister del push e nel builder pgTAP (§7.2 «Il giro K.1»). ⏭️ Da applicare del giro K.2: niente (`20_code/vendite/20261108-36` … `-40`, `20_code/dbops/20261108-61` … `-63` applicati da Tid, pgTAP verdi, 2026-11-08). `20_code/dbops/20261108-09` (i COMMENT di quattro builder pgTAP) risulta applicato su dbdev e scratch (2026-11-07, 22:30), col suo presidio verde. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
-**Lavoro da committare:** il rimedio alla CI da zero (`00_schema/vendite/20261107-05`, `90_end/20261108-35`, riga 7-quadragies-septies), dell'altra sessione. Il giro K.2 (gli otto changeSet, i 40 pgTAP allineati, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, da lasciare fuori: i changeSet `20261108-41` … `-46` coi loro pgTAP, e `brief-db-revisione-dbops.md`. Il giro D.1 (gli otto changeSet, il pgTAP nuovo `documenti/test-sorgente-documenti-generati-v1`, i quindici pgTAP allineati), il giro K.1 (sei changeSet, 54 pgTAP allineati), `20_code/dbops/20261108-09` col presidio `dbops/test-builder-pgtap-vincoli-immediate-v1`, le pagine auto-generate dei loro oggetti e questo brief sono committati su `dev/db-tid` (2026-11-07). Non del cantiere, lasciati fuori: i changeSet `20261108-25` … `-31` coi loro CSV, pgTAP e pagine, i due indici auto-generati, le tre guide e `brief-db-revisione-dbops.md`. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
+**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-08, giro P.1 (§7.2 «Il giro P.1, le scelte»): l'unicità del link alla pratica senza `sorgente_riga` (Tid: «sì»); il guard testuale si ritira nel giro P.1 (Tid: «da fare»). Il nome del file `script/test-guard-sorgente-polimorfa-testuale-v1` è una scelta del team DB, non una decisione di Tid (Tid, 2026-11-08). Decise il 2026-11-07: l'esenzione della coda di stampa dal guard unico, confermata (la FK resta, §7.2 «Il giro D.1, le scelte»); la chiave `sorgente_chiave` anche nei cinque lister del push e nel builder pgTAP (§7.2 «Il giro K.1»). ⏭️ Da applicare del giro K.2: niente (`20_code/vendite/20261108-36` … `-40`, `20_code/dbops/20261108-61` … `-63` applicati da Tid, pgTAP verdi, 2026-11-08). `20_code/dbops/20261108-09` (i COMMENT di quattro builder pgTAP) risulta applicato su dbdev e scratch (2026-11-07, 22:30), col suo presidio verde. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
+**Lavoro da committare:** niente del cantiere. Il giro P.1 (i ventiquattro changeSet `20261108-64` … `-87`, il pgTAP nuovo `pratiche/test-sorgente-pratiche-sorgenti-v1`, i dodici pgTAP allineati, le pagine auto-generate rigenerate, le due pagine del guard testuale cancellate, questo brief) è committato su `dev/db-tid` (2026-11-08), insieme al seguito del giro 7 di `brief-db-revisione-dbops` su `shop` (`20261108-88`, `-89`, il loop `ci_apply`, il provisioning, `dbops/test-storico-scope-policy-v1`; il §22 di quel brief resta fuori dal commit, per scelta di Tid). Il rimedio alla CI da zero (`00_schema/vendite/20261107-05`, `90_end/20261108-35`) è committato (`8bbae0df7b`). Il giro K.2 (gli otto changeSet, i 40 pgTAP allineati, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, da lasciare fuori: i changeSet `20261108-41` … `-46` coi loro pgTAP, e `brief-db-revisione-dbops.md`. Il giro D.1 (gli otto changeSet, il pgTAP nuovo `documenti/test-sorgente-documenti-generati-v1`, i quindici pgTAP allineati), il giro K.1 (sei changeSet, 54 pgTAP allineati), `20_code/dbops/20261108-09` col presidio `dbops/test-builder-pgtap-vincoli-immediate-v1`, le pagine auto-generate dei loro oggetti e questo brief sono committati su `dev/db-tid` (2026-11-07). Non del cantiere, lasciati fuori: i changeSet `20261108-25` … `-31` coi loro CSV, pgTAP e pagine, i due indici auto-generati, le tre guide e `brief-db-revisione-dbops.md`. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
 pagine `manual/` cancellate, questo brief) sono committati su `dev/db-tid` il 2026-11-06. Il lotto 0 intero e il lotto R (giri R.1 e R.2: changeSet `20261106-46` …
 `-60`, i due CSV, i pgTAP, i due brief) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
@@ -2181,6 +2183,126 @@ Non coperto, e resta di Tid: la baseline.
 * **Le due fragilità del censimento:** il letterale `'2'` del trigger di reconcile passa al codice;
   `vw_preventivi_pratiche.sorgente_id` (l'id del legame) si rinomina, perché collide con la colonna nuova.
 
+##### Lotto P, il giro (team DB, 2026-11-08)
+
+Un giro solo, P.1: il lotto è una famiglia piccola (due tabelle, quattro lettori, tre scrittori), e le sue parti si
+tengono una con l'altra. La colonna cambia tipo, e con lei cambiano le firme che la leggono.
+
+**Il giro P.1, le scelte** (team DB, 2026-11-08; via di Tid lo stesso giorno, «il via al lotto P»; nessuna è un cambio
+di modello: è S-4 con il §4, lo stesso passo del giro C.2 su `commesse_sorgenti`):
+
+* **La forma** (`-64`). Le righe dei tipi a chiave `id` (ordine, contratto, commessa) prendono l'id in `sorgente_id`,
+  quelle del preventivo tengono l'uid in `sorgente_uid`, ora `uuid`. Conversione coi trigger spenti e riaccesi
+  com'erano, cast senza rete (il guard testuale garantiva la forma). Poi l'unicità per pratica e ruolo sulla chiave
+  nuova (`uq_pratiche_sorgenti_pratica_sorgente_ruolo`, `NULLS NOT DISTINCT`), il CHECK di forma (`num_nonnulls =
+  1`) e i COMMENT delle quattro colonne. Tre indici parziali «chi deriva da X» (`-65`): per tipo e `sorgente_id`, per
+  tipo e `sorgente_uid`, per tipo e `sorgente_riga`. L'unicità comincia con `pratica_id` e serve chi parte dalla
+  pratica, non chi parte dal documento.
+* **L'unicità senza `sorgente_riga`** (Tid, 2026-11-08: «sì»). La regola: in una pratica, con lo stesso ruolo,
+  un documento compare una volta sola. Esempio: la pratica 7 ha il preventivo P-12 come ROOT. Senza la riga
+  nell'unicità, un secondo link «pratica 7, P-12, ROOT» è rifiutato (o, dai verbi, assorbito dall'`ON CONFLICT`),
+  anche se porta una riga. Con la riga dentro, «P-12 intero», «P-12 riga 3» e «P-12 riga 5» sarebbero tre link
+  diversi, tutti accettati: lo stesso preventivo tre volte nella stessa pratica. Il link alla pratica è al documento
+  (il guard è montato a livello DOCUMENTO), quindi la riga non distingue due link. Oggi nessuno scrive la riga (sempre
+  NULL): la scelta non cambia un dato, decide che cosa dirà la regola quando qualcuno la scriverà. Il censimento
+  (scheda A.1) proponeva la riga dentro; il giro C.2 l'ha lasciata fuori su `commesse_sorgenti`.
+* **Chi lega il tipo della colonna si toglie prima** (pg_depend, dbdev): le due viste
+  (`script.vw_pratica_doc_sorgente`, `vendite.vw_preventivi_pratiche`) e il guard testuale. ⚠️ **Il ponte della pratica
+  del documento.** `pratiche.fn_pratica_del_documento(bigint, text)` è BEGIN ATOMIC e lega la colonna, ma la chiamano le
+  sette viste di lista: toglierla vorrebbe dire toglierle tutte. In `-64` diventa plpgsql (`CREATE OR REPLACE`, stessa
+  firma, stesso risultato), che non lega le colonne, e cerca già nelle colonne del modello. La firma tipizzata nasce
+  accanto (`-67`), le viste (`-68` … `-74`) e la sintesi della lineage (`-75`) vi passano, il ponte si ritira (`-76`)
+  nella stessa corsa.
+* **La pratica del documento** (`-67`): `(tipo, sorgente_id, sorgente_uid)` con la regola d'incontro, come la commessa
+  viva del giro C.2. Le liste passano l'id e l'uid del documento, senza leggere il `key_selector`. Su
+  `pratiche_sorgenti` l'`OR` arriva ai due indici parziali (`BitmapOr`, provato).
+* **La sintesi della lineage** (`-75`): il seme della lineage resta testuale (firma pubblica `(bigint[], text[])`), e la
+  chiave del nodo si traduce nelle due colonne coi BB canonici `script.fn_sorgente_chiave_id` / `_uuid`.
+* **Lo stato del documento** (`-77`): `fn_stato_sorgente(tipo, sorgente_id, sorgente_uid)`, anche il risultato nelle
+  colonne del modello. ⚠️ **Due letture e non un OR.** Provato su dbdev: un `OR` sulle due chiavi contro la union
+  `script.vw_stato_sorgente` non scende nei rami e la legge per intero (hash join su tutte le tabelle-documento, anche
+  per un documento solo). Restano due letture statiche con l'uguaglianza, come prima, ma sulle colonne native. Stessa
+  ragione per `vw_pratica_doc_sorgente` (`-81`): un ramo per chiave nella LATERAL.
+* **Il reconcile** (`-78`): firma tipizzata, link con la regola d'incontro. Il log dello skip ambiguo scrive la chiave
+  del **link**, che ha già la forma del modello.
+* **Il log** (`-66`, D-9): `reconcile_errori` prende le due colonne, la conversione ha la rete (una chiave non
+  convertibile resta nel messaggio), CHECK «al più una chiave», nessun guard. Il tipo resta facoltativo.
+* **E-9, il trigger del reconcile** (`-79`, `-80`): l'unico argomento è il codice del tipo (`'PREVENTIVO'`), id e
+  `key_selector` dal catalogo. Un codice che non è un tipo non ferma il cambio di stato: si registra come
+  `E_SORG_CONF`.
+* **E-10** (`-82`): in `vw_preventivi_pratiche` l'id del link si chiama `pratica_sorgente_id`.
+* **Gli scrittori** (`-83` … `-85`): i tre verbi scrivono il link con la provenienza di `script.fn_sorgente_provenienza`,
+  come testate e righe dal giro T.3. Un tipo assente o spento dà `E_SORG_CONF` dal BB (prima `E_CONFIG_MANCANTE`
+  scritto nel verbo, che ha altri sessanta scrittori e resta). Le firme col `%TYPE` (stessi tipi risolti, nessun
+  overload, verificato).
+* **Il guard unico** (`-86`), DOCUMENTO e BLOCCA, con lo stesso nome del testuale. Da qui un documento collegato a una
+  pratica non si cancella (`E_SORG_ORIGINE_REFERENZIATA`). Per il preventivo la regola stava solo nel BE (S-9). Il lato
+  in uscita c'è già su tutti i documenti che una pratica cita: la convergenza in transazione non monta niente di nuovo.
+* **Il guard testuale si ritira qui** (`-87`), non nel lotto Z (Tid, 2026-11-08: «da fare»). Senza montaggi il presidio `dbops.fn_check_funzioni_riferimenti_morti` lo
+  segnalerebbe «senza alcun trigger». Il lotto Z ritira ancora la `_tipizzata`. ⚠️ **Per il lotto Z:**
+  `script.fn_sorgente_chiave_id` / `_uuid` hanno un consumatore in più, la sintesi della lineage, finché il seme della
+  lineage è testuale: il ritiro dei due BB va pensato con lei.
+* **La firma dei COMMENT** si scrive col `%TYPE` anche in `COMMENT ON` e `DROP FUNCTION` (Tid, 2026-11-08: «ricorda di
+  utilizzare %type»). Il tipo esplicito resta solo dove non c'è una colonna: la chiave polimorfa resa a testo, i
+  contatori, gli array.
+
+**I changeSet del giro P.1:** `00_schema/pratiche/20261108-64` (la forma, il ponte, i DROP), `-65` (i tre indici),
+`-66` (il log), `20_code/pratiche/-67` (la pratica del documento), `20_code/vendite/-68` … `-74` (le sette viste di
+lista), `-75` (la sintesi della lineage), `20_code/pratiche/-76` (il ponte si ritira), `-77` (lo stato), `-78` (il
+reconcile), `-79` (il trigger del reconcile), `20_code/vendite/-80` (il suo montaggio), `20_code/script/-81`
+(`vw_pratica_doc_sorgente`), `20_code/vendite/-82` (`vw_preventivi_pratiche`), `-83` … `-85` (i tre verbi),
+`20_code/pratiche/-86` (il guard unico), `20_code/script/-87` (il guard testuale si ritira). Ventiquattro changeSet,
+primo progressivo libero dopo `-63` (ricontato nei file, nei rami e nei due `databasechangelog`). ⚠️ Nati come
+`20261109-01` … `-24` e rinumerati prima di ogni apply (Tid, 2026-11-08: si parte dall'ultimo libero del giorno).
+Nessun codice nuovo, nessun CSV. pgTAP nuovo: `pratiche/test-sorgente-pratiche-sorgenti-v1` (24). Pagina `manual/` del
+guard testuale cancellata.
+
+**Gli allineamenti dei pgTAP (12 file):** `dbops/test-sorgenti-struttura-v1` (il debito perde `pratiche_sorgenti`; il
+test 4 guarda la sola `_tipizzata`), `vendite/test-sorgente-commenti-al-presente-v1` (l'elenco chiuso prende cinque
+funzioni, le due tabelle e quattro indici), `documenti/test-sorgente-documenti-generati-v1` e
+`vendite/test-sorgente-commesse-sorgenti-v1` (le sorelle vecchie per nome da `pg_proc`: un `::regproc` su una funzione
+ritirata è un errore, non uno zero), `script/test-guard-sorgente-polimorfa-testuale-v1` (restano la porta del link e i
+censimenti, 16; escono i casi del guard e delle forme testuali; il nome del file resta), `pratiche/test-guida-avanza-esito-proiettato`,
+`pratiche/test-reconcile-tie-break-flusso-origine`, `pratiche/test-pratiche-sorgenti-flusso`,
+`pratiche/test-proiezione-stato-sorgente` (29-31 riscritti: le forme testuali non hanno più oggetto),
+`vendite/test-vw-stato-sorgente-ddt-reso-v1` (10-11), `vendite/test-fn-genera-pratica-da-preventivo-v1`,
+`vendite/test-sorgente-testate-ordini-contratti-v1` (8).
+
+**La prova del giro P.1** (2026-11-08, in transazione annullata, come owner di ciascun database):
+
+* **i corpi di partenza sono quelli vivi**, identici su dbdev e scratch (md5 delle dodici definizioni);
+* **l'estratto** dei ventiquattro changeSet gira intero su scratch e dbdev; `plpgsql_check` sulle sei funzioni plpgsql
+  toccate e sul trigger (sullo scratch): pulito, salvo l'avviso STABLE/VOLATILE sul `PERFORM fn_log_and_raise_error`,
+  che c'era già;
+* **il ramo nuovo si costruisce:** `pratiche/test-sorgente-pratiche-sorgenti-v1` 24/24 su scratch e dbdev; senza
+  l'estratto è rosso dal test 1 e si ferma al 6;
+* **equivalenza prima/dopo su dbdev** (fatto datato): 568 link convertiti (260 preventivi in `sorgente_uid`; 197
+  commesse e 111 ordini in `sorgente_id`), la chiave uguale a quella testuale di prima su tutti; uscite identiche
+  delle sette liste (371 righe con pratica), di `vw_pratica_doc_sorgente` (260), di `vw_preventivi_pratiche` (260) e
+  della sintesi della lineage (134 nodi con pratica, su un seme di 400); le sette viste identiche salvo la chiamata,
+  `security_invoker` e COMMENT intatti; firme dei verbi invariate; grant delle viste e funzioni ricreate uguali a
+  prima; presidio degli orfani vuoto;
+* **i tempi su dbdev** (fatto datato): `vw_pratica_doc_sorgente` intera da 23,7 a 11,7 ms, una pratica da 4,0 a
+  2,8 ms; la lista dei preventivi da 13,8 a 12,2 ms; la chiave arriva all'indice in ogni ramo della union;
+* **regressione prima/dopo su 64 pgTAP** (chi nomina le due tabelle, le tre funzioni di pratiche, le due viste, le
+  sette liste, la sintesi, i tre verbi, il guard testuale e il presidio dei riferimenti morti; sullo scratch, in
+  sequenza, ON_ERROR_STOP): 53 uguali, 11 allineati; dopo, 65 file e 1035 asserzioni eseguite su 1035 pianificate,
+  verdi su scratch e i 13 toccati anche su dbdev. Un rosso resta, lo stesso prima e dopo:
+  `vendite/test-annullo-documento-con-legami-v1` (30). Non è del giro;
+* guardrail statici (`scripts/guardrail_*.py`, preambolo pgTAP, licenze): verdi;
+* la convergenza del lato in uscita (`dbops.fn_sorgente_converge_uscita`) dopo l'estratto: nessun trigger montato o
+  tolto.
+
+Non coperto, e resta di Tid: l'apply, la convergenza `ci_apply` vera, la baseline.
+
+**Per il lotto DOC** (§7.3): restano link alla pagina `manual/` cancellata del guard testuale in
+`guide/sorgente-polimorfa.md`, `config/manual/sorgenti.md`, `script/manual/fn_sorgente_chiave_id.md`, `_uuid.md`,
+`fn_get_sorgente_emittente_sr_id.md`, `trgfn_guard_sorgente_polimorfa_tipizzata.md`, `vendite/manual/commesse_sorgenti.md`,
+`fn_link_commessa_sorgente.md`. Il messaggio di `E_SORG_FORMATO` in `messaggi_errore.csv` nomina il guard ritirato.
+Quello di `E_STATO_SORGENTE_PARAM_INVALIDO` dice `sorgente_uid=%s` per una chiave che ora è id o uid. Il perimetro
+degli orfani etichetta `reconcile_errori` come `TESTUALE`, perché non ha guard: un'etichetta stantia per una tabella
+esente, da rivedere nel lotto Z.
+
 #### Lotto M — magazzino e acquisti
 
 * **Magazzino:**
@@ -2660,6 +2782,21 @@ segnate ✅ di §8.13 e §8.14: i due percorsi rotti dall'apply (la stampa e il 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
 | BE-K.2-a | I cinque lister del push (`vendite.fn_list_{preventivi,ordini,ddt,contratti,consumi}_da_pushare`): la chiave del documento esce nella colonna `sorgente_chiave` (prima `sorgente_uid`); tipo (`text`) e valore (l'uid del documento in testo) invariati | `vendite/db/commesse_repository.py:137` (`_PUSHABLE_SHARED_COLS`, `"sorgente_uid"`), `:369` (`_col("sorgente_uid")`), `:320` (`PushableRow.sorgente_uid`); i lettori di `row.sorgente_uid`: `vendite/services/commesse_source_handlers.py:770`, `:879`, `:882` | leggere la colonna `sorgente_chiave`. Il nome del campo di `PushableRow` è del BE; con BE-K.1-b la riga del lister può andare al batch così com'è |
+
+### 8.16 Dal lotto P, giro P.1 (2026-11-08)
+
+⚠️ Dall'apply il link documento → pratica dal BE dà errore fino a BE-P.1-a, e i lettori del link fino a BE-P.1-b e -c.
+Il BE non chiama direttamente `fn_pratica_del_documento`, `fn_stato_sorgente` né `fn_reconcile_sorgente` (grep,
+2026-11-08: solo commenti).
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-P.1-a | `pratiche.pratiche_sorgenti`: la chiave del documento sta in `sorgente_id` (tipi a chiave id: ordine, contratto, commessa) **oppure** in `sorgente_uid uuid` (preventivo), mai tutte e due (`chk_pratiche_sorgenti_sorgente_forma`); il guard unico rifiuta la chiave sbagliata (`E_SORG_CHIAVE_NON_CONFORME`) e il documento che non c'è (`E_SORG_NOT_FOUND`). L'unicità è `uq_pratiche_sorgenti_pratica_sorgente_ruolo` (pratica, tipo, `sorgente_id`, `sorgente_uid`, ruolo, `NULLS NOT DISTINCT`) | `pratiche/db/pratiche_repository.py:984-1006` (`upsert_pratica_sorgente`: INSERT di `sorgente_uid` testo, `ON CONFLICT (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)`); chiamanti `vendite/services/preventivi_service.py:901` (PREVENTIVO, `prev["uid"]`), `:2087` (COMMESSA, `str(commessa_id)`), `vendite/handlers/post_smistamento_handler.py:87` (ORDINE_VENDITA, `str(ordine_id)`) | scrive la coppia del `key_selector` del tipo. La dà `script.fn_sorgente_chiave(tipo, chiave text)` da una chiave qualsiasi in testo, quindi i tre chiamanti possono restare come sono. L'`ON CONFLICT` punta al vincolo nuovo (`ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo`, come i verbi DB) |
+| BE-P.1-b | i lettori del link cercano il documento sulla colonna del suo tipo: `sorgente_uid` è `uuid`, l'id sta in `sorgente_id` | `pratiche_repository.py:1015-1028` (`get_pratica_id_by_sorgente`, `ps.sorgente_uid = %s`; chiamante `vendite/services/ordini_service.py:354`, `str(ordine_id)`), `:1032-1043` (`_sorgente_link_exists`); `vendite/db/preventivi_repository.py:132`, `:607`, `:635` (`p_link.uid::text = ps.sorgente_uid` → `p_link.uid = ps.sorgente_uid`); `vendite/db/ordini_repository.py:460` (`ps.sorgente_uid::bigint` → `ps.sorgente_id`) | la colonna del tipo, senza cast a testo. Per i due metodi che ricevono una chiave in testo: `script.fn_sorgente_chiave`, oppure la regola d'incontro (`ps.sorgente_id = %s OR ps.sorgente_uid = %s`) con id e uid del documento |
+| BE-P.1-c | `script.vw_pratica_doc_sorgente`: la chiave testuale `sorgente_uid` lascia il posto a `sorgente_id bigint` + `sorgente_uid uuid` (una sola valorizzata); le altre colonne identiche. ⭐ La vista è la sede della regola d'ancora che il BE ricopia in `_doc_sorgente_lateral` | `pratiche_repository.py:96-120` (`_doc_sorgente_lateral`: la LATERAL coi due rami `fn_sorgente_chiave_uuid/_id(ps.sorgente_uid)`, ora rotti); `:235` (JOIN alla vista, legge `sorgente_descrizione`) | la copia BE della regola si ritira, e i lettori passano dalla vista (regola del 2). Se resta, i due rami leggono `ps.sorgente_uid` e `ps.sorgente_id` senza i BB canonici |
+| BE-P.1-d | `vendite.vw_preventivi_pratiche`: l'id del link si chiama `pratica_sorgente_id` (prima `sorgente_id`, E-10) | `vendite/db/preventivi_repository.py:1407` (`list_pratiche`, `SELECT *`), il tipo `PreventivoPraticaRow` e chi serializza `sorgente_id` | il nome nuovo; se l'API espone il campo, il FE lo segue |
+| BE-P.1-e | un preventivo (o un ordine, un contratto, una commessa) collegato a una pratica non si cancella: lo blocca il DB (`E_SORG_ORIGINE_REFERENZIATA`, `CONFLITTO_STATO`, già nel registro) | `vendite/services/preventivi_service.py:555-592` (`elimina_preventivo`, il pre-check «niente pratiche collegate» su `list_pratiche`) | nessuna obbligatoria. Il pre-check del BE ora ripete una regola del DB: si può ritirare, e il messaggio diventa quello del codice |
+| — | i due verbi DB che scrivono il link sollevano `E_SORG_CONF` (non più `E_CONFIG_MANCANTE`) su un tipo assente o spento | `vendite.fn_genera_pratica_da_preventivo`, `vendite.fn_push_offerta_a_contratto` | nessuna: `E_SORG_CONF` è già nelle policy |
 
 ---
 

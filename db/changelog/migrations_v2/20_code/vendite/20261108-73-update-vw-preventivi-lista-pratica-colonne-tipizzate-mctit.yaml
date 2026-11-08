@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_preventivi_lista: LA PRATICA DEL DOCUMENTO SULLE COLONNE DEL MODELLO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4).
+#
+#   La vista chiedeva la pratica con la chiave testuale del documento
+#   (p.uid::text). Passa alla firma tipizzata di
+#   pratiche.fn_pratica_del_documento (20261108-67) con l'id e l'uid del documento:
+#   la regola d'incontro trova il link senza leggere il key_selector. L'unica
+#   riga che cambia e' la LATERAL della pratica; colonne, ordine e COMMENT
+#   restano (corpo dal catalogo, dbdev e scratch identici, 2026-11-08).
+#   security_invoker ripetuto: un CREATE OR REPLACE VIEW lo azzera.
+#   Rollback: forward-only (la firma testuale la ritira 20261108-76).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261108-73-update-vw-preventivi-lista-pratica-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261108-73-update-vw-preventivi-lista-pratica-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_preventivi_lista: la pratica del documento con la firma tipizzata di
+        pratiche.fn_pratica_del_documento (id e uid del documento). brief-db-sorgente-documento-e-riga
+        §7.2 lotto P, giro P.1.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_preventivi_lista
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete dal catalogo.
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_lista WITH (security_invoker=on) AS
+               SELECT p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.descrizione AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  p.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.data_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdp.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  p.is_superata,
+                  p.is_abortito,
+                  p.has_next_revisione
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = p.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = p.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'PREVENTIVO'::text AND so_pr.attivo IS TRUE), p.id, p.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la firma testuale della pratica del documento si ritira nello stesso giro.
+              SELECT 1;

@@ -26,12 +26,15 @@
 --   rev 2026-11-07: il lotto D, giro D.1 (20261108-17), monta il guard unico su
 --   documenti_generati; la coda di stampa perde sorgente_uid (20261108-18) ed e'
 --   esente dal guard col motivo (20261108-21): la sua chiave e' una FK vera.
+--   rev 2026-11-08: il lotto P, giro P.1 (20261108-86), monta il guard unico su
+--   pratiche_sorgenti, che esce dal debito; il guard testuale, rimasto senza
+--   montaggi, si ritira (20261108-87): il test 4 guarda la sola sorella _tipizzata.
 --
 -- Elenco test (plan 5):
 --   1) dal guard sono esenti il log dei reconcile (D-9) e la coda di stampa (D-3), col motivo
 --   2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato
 --   3) ogni montaggio del guard unico ha argomenti validi
---   4) nessuna tabella monta il guard unico insieme a una delle due sorelle vecchie
+--   4) nessuna tabella monta il guard unico insieme alla sorella vecchia _tipizzata
 --   5) il perimetro non e' vuoto (un presidio che esamina zero tabelle e' verde e muto)
 -- ------------------------------------------------------------
 
@@ -64,9 +67,7 @@ SELECT results_eq(
         ('acquisti.ddt'), ('acquisti.ddt_righe'), ('acquisti.ordini'), ('acquisti.ordini_righe'),
         -- lotto M
         ('magazzino.eventi_assets'), ('magazzino.inventari'), ('magazzino.movimenti'),
-        ('magazzino.movimenti_attesi'), ('magazzino.rettifiche'), ('magazzino.trasferimenti'),
-        -- lotto P (pratiche)
-        ('pratiche.pratiche_sorgenti')$$,
+        ('magazzino.movimenti_attesi'), ('magazzino.rettifiche'), ('magazzino.trasferimenti')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
 SELECT is_empty(
@@ -78,9 +79,8 @@ SELECT is_empty(
         FROM script.fn_sorgente_guard_montaggi() m
        WHERE EXISTS (SELECT 1 FROM pg_trigger tg
                       WHERE tg.tgrelid = m.tabella AND NOT tg.tgisinternal
-                        AND tg.tgfoid IN ('script.trgfn_guard_sorgente_polimorfa_tipizzata()'::regprocedure,
-                                          'script.trgfn_guard_sorgente_polimorfa_testuale()'::regprocedure))$$,
-    '4) nessuna tabella monta il guard unico insieme a una delle sorelle vecchie');
+                        AND tg.tgfoid = 'script.trgfn_guard_sorgente_polimorfa_tipizzata()'::regprocedure)$$,
+    '4) nessuna tabella monta il guard unico insieme alla sorella vecchia _tipizzata (la _testuale e'' ritirata)');
 
 SELECT cmp_ok(
     (SELECT count(*)::int FROM dbops.fn_sorgenti_orfane_perimetro() WHERE schema_tabella !~ '^pg_temp'),

@@ -326,6 +326,11 @@ databaseChangeLog:
                   'pagamenti',
                   'pratiche',
                   'script',
+                  -- ⭐ Dal 2026-11-08 shop: shop.ricevute ha le policy dell'app (cliente
+                  --   dello shop, operatore) e senza USAGE non avevano un lettore
+                  --   (brief-db-revisione-dbops §22). Anche nel provisioning; su dev
+                  --   agisce subito 90_end/20261108-89.
+                  'shop',
                   'storico',
                   'ui',
                   'vendite'
