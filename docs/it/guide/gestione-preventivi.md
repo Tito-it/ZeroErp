@@ -785,7 +785,9 @@ PRV-0042 è morta, ne emetti un'altra (PRV-0043).
 Va ricordato che l'annullamento manuale è disponibile **solo da DRAFT**: da EMESSO
 in poi non esiste un "Annulla", la chiusura semantica passa dal **rifiuto** o dalla
 **scadenza**. L'eliminazione fisica (hard-delete) è possibile solo su una **bozza
-priva di righe e pratiche**; una bozza con righe non si cancella, si annulla.
+priva di righe**; una bozza con righe non si cancella, si annulla. La regola la
+giudica il database (`E_DELETE_DOC_NON_BOZZA`, `E_DELETE_DOC_CON_RIGHE`), e dal
+2026-11-08 una pratica collegata non impedisce più l'eliminazione.
 
 ---
 

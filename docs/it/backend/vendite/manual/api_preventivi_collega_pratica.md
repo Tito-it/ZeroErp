@@ -34,7 +34,7 @@ Idempotente (ON CONFLICT). Direzione dipendenze `vendite→pratiche`, import laz
 
 `flusso_id` è `null` se non inviato.
 
-- `400`: `pratica_id`/`flusso_id` non validi (`E_PREV_VALIDAZIONE`); codice sorgente non in `config.sorgenti` (`E_PRATICA_SORGENTE_TIPO_INVALIDO`).
+- `400`: `pratica_id`/`flusso_id` non validi (`E_PREV_VALIDAZIONE`); codice sorgente non in `config.sorgenti`: lo rifiuta il BB DB che scrive la provenienza (`E_SORG_CONF`). `E_PRATICA_SORGENTE_TIPO_INVALIDO` è obsoleto dal 2026-11-08 (BE-Z.1-b).
 - `404`: preventivo non trovato (`E_PREV_NOT_FOUND`).
 - `401`: JWT mancante o non valido.
 

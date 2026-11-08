@@ -223,12 +223,11 @@ diventato logica morta). Override straordinario:
 
 Hard-delete **della sola bozza orfana** (supporto al pattern "abbandono bozza":
 il create auto-salva una BOZZA per abilitare le righe; se l'operatore esce senza
-inserirne, la bozza vuota va rimossa). Guard (allineato a `elimina_preventivo`,
-**niente hard-delete di dati reali**): stato `DRAFT` **e zero righe**. Un ordine
-con righe **non si cancella, si annulla** (`cambia-stato → ANNULLATO`):
-`E_ORD_STATO_TRANSIZIONE` (409) con messaggio dedicato. Risposta:
-`{"ordine_id": <id>, "deleted": true|false}`. Le righe/componenti della bozza
-vuota hanno ON DELETE CASCADE; il trigger DB blocca se collegato a DDT.
+inserirne, la bozza vuota va rimossa). **Niente hard-delete di dati reali**:
+la regola «si cancella solo la bozza vuota» la giudica **solo il DB** (`vendite.trgfn_doc_guard_delete_solo_bozza`, dal 2026-11-08: il service non la ripete, brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a): fuori bozza 409 `E_DELETE_DOC_NON_BOZZA`, bozza con contenuto 409 `E_DELETE_DOC_CON_RIGHE`, documento citato come origine da un altro 409 `E_SORG_ORIGINE_REFERENZIATA`; il service legge solo l'esito del `DELETE`. Un ordine
+con righe **non si cancella, si annulla** (`cambia-stato → ANNULLATO`). Risposta:
+`{"ordine_id": <id>, "deleted": true}`; l'ordine che non c'è è un 404
+`E_ORD_NOT_FOUND`. Le righe/componenti della bozza vuota hanno ON DELETE CASCADE.
 
 ### Emetti `POST /api/v1/vendite/ordini/<id>/emetti/` (multipart)
 
@@ -512,7 +511,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 - **Modifiche**: la testata la governa il lock di testata del DB
   (`trgfn_doc_testata_lock_fuori_bozza`, 409 `E_DOC_*` propagato); righe e
   componenti si scrivono **solo in `DRAFT`** (`E_RIGA_DOC_NON_BOZZA`, 409).
-  `E_ORD_STATO_TRANSIZIONE` resta per delete della bozza e push.
+  `E_ORD_STATO_TRANSIZIONE` resta per il push a commessa (il delete della bozza
+  lo giudica il DB, `E_DELETE_DOC_*`, dal 2026-11-08).
 - **Pricing** sempre via `PricingService.resolve_prezzo` (BB condiviso, mai query
   dirette su listini). Il gate prezzi L2/L3 stile contratti **non** è applicato:
   scelta ratificata (analisi §8.bis) — pricing **stile preventivo** (resolve +
@@ -552,7 +552,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | `E_ORD_CLIENTE_IMMUTABILE` | 409 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (lock-columns DB) |
 | `E_DOC_CLIENTE_DIVERSO_DA_BA` | 400 | ruolo o utility diversi da quelli del BA (scrittura che li passa a mano; il service non li manda) |
 | `E_DOC_EMITTENTE_FUORI_BOZZA` | 409 | cambio di emittente fuori bozza (BB `trgfn_doc_testata_lock_fuori_bozza`) |
-| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato (delete fuori DRAFT o bozza con righe → annullare; push da stato non pushabile) |
+| `E_ORD_STATO_TRANSIZIONE` | 409 | push a commessa da uno stato non pushabile |
+| `E_DELETE_DOC_NON_BOZZA` / `E_DELETE_DOC_CON_RIGHE` | 409 | delete fuori bozza o di una bozza con righe → annullare (dal DB, 2026-11-08) |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | righe e componenti si aggiungono/modificano/tolgono solo in bozza — dal 2026-09-22 è il codice del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (sugli ordini montato sul solo DELETE) e il pre-check BE lo usa uguale (`richiedi_righe_in_bozza`), con la frase a catalogo |
 | `E_ORD_NESSUNA_RIGA` | 409 | push senza righe eleggibili (la conferma senza righe la rifiuta il guard: `E_ORDINE_CONFERMA_SENZA_RIGHE`) |
 | `E_ORD_OFFERTA_GIA_CONVERTITA` | 409 | conversione offerta→ordine già avvenuta (univocità 1:1): guard BE fail-fast + rete UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (via `map_integrity_error`) |
