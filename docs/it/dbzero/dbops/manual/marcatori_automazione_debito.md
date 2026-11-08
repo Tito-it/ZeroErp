@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.marcatori_automazione_debito`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -75,8 +75,12 @@ Le righe stanno nel CSV `80_data/sql/dbops/marcatori_automazione_debito.csv`, co
 mano e la data nel CSV: è un seed di catalogo, che nomina tabelle del software e vale identico su ogni
 installazione. Nessuno lo scrive a runtime.
 
-Il registro porta lui stesso `tx_id` e le colonne di audit, con i due trigger montati a mano: un
-registro che presidia le promesse senza esecutore non può esserne la prima riga.
+Per questo il registro non porta `tx_id`, `data_update` e `user_update`: lo scrive solo la
+migrazione, e quelle colonne direbbero sempre «il migratore» (regola in `automazione-db.md` §1.1).
+Un registro che presidia le promesse senza esecutore non promette niente lui stesso.
+
+Oggi è **vuoto**: è la sede in cui una tabella nuova con un marcatore senza esecutore entra, con la
+sua ragione, finché non si decide come chiuderla.
 
 ---
 
@@ -93,6 +97,9 @@ registro che presidia le promesse senza esecutore non può esserne la prima riga
 * 2026-11-07 — nasce con il presidio. Il contenuto iniziale sono dieci cataloghi e registri di `dbops`
   con `tx_id` e senza il trigger: `dbops` espone alle automazioni solo i suoi registri, e su queste
   tabelle nessuno aveva montato i trigger a mano.
+* 2026-11-08 — le dieci righe escono: le tabelle hanno perso `tx_id`, perché le scrive solo la
+  migrazione (la colonna tolta, non i trigger montati). Il registro stesso perde `tx_id`,
+  `data_update`, `user_update` e i due trigger. Il CSV resta col solo header.
 
 ---
 

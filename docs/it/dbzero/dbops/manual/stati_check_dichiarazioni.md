@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.stati_check_dichiarazioni`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -100,6 +100,9 @@ tabella che oggi nessuno scrive, e i valori **copiati** che il criterio non vede
 * 2026-09-21 — nasce col presidio degli stati mai scritti (`brief-db-presidio-stati-mai-scritti`):
   il caso originale era un esito d'errore ammesso dal vincolo degli esiti dei lotti e mai scritto per
   mesi, mentre le corse chiudevano «completate».
+* 2026-11-08 — perde `tx_id`, `data_update`, `user_update` e i due trigger montati a mano che li
+  scrivevano: la tabella la scrive solo la migrazione, dal CSV, e le colonne direbbero sempre «il
+  migratore» (regola dello scrittore, `automazione-db.md` §1.1; `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

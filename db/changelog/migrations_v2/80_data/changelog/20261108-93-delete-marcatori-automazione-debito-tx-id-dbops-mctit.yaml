@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DEBITO TX_ID DI dbops SI CHIUDE: LE DIECI RIGHE ESCONO DAL REGISTRO
+#   dbops.marcatori_automazione_debito
+#   Brief: brief-db-revisione-dbops, giro 7-bis, blocco a (§23).
+#
+# 00_schema/dbops/20261108-91 toglie tx_id dalle dieci tabelle che il registro
+# dichiarava (§20.8): senza la colonna il caso non c'e' piu', e il presidio
+# dbops.vw_marcatori_automazione_senza_esecutore mostrerebbe le dieci righe
+# come DEBITO_ESTINTO. Si tolgono dal CSV (che resta col solo header) e, qui,
+# dal database: il loader 20261108-31 e' un mirror loadUpdateData, che fa
+# upsert e non cancella.
+#
+# Il registro resta: e' la sede del debito di tutti e tre i marcatori, e una
+# tabella nuova con un marcatore senza esecutore ci entra con la sua ragione.
+#
+# Da zero il CSV e' gia' senza righe e il DELETE non tocca niente. Il filtro
+# nomina le dieci tabelle e il marcatore: una riga dichiarata da un altro
+# cantiere nel frattempo non si cancella per errore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261108-93-delete-marcatori-automazione-debito-tx-id-dbops-mctit.yaml
+
+  - changeSet:
+      id: 20261108-93-delete-marcatori-automazione-debito-tx-id-dbops
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.marcatori_automazione_debito le dieci righe TX_ID di dbops: la colonna e'
+        ritirata (20261108-91). Brief: brief-db-revisione-dbops, giro 7-bis.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: marcatori_automazione_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.marcatori_automazione_debito d
+               WHERE d.marcatore = 'TX_ID'
+                 AND d.schema_tabella = 'dbops'
+                 AND d.nome_tabella IN ('automazione_chiusura_scadenze', 'cause_fallimento',
+                                        'codici_errore_senza_policy', 'emittente_modi',
+                                        'messaggi_errore_codici_legacy', 'presidi', 'presidi_cause',
+                                        'presidi_testi', 'riferimenti_morti_esenzioni',
+                                        'storico_scope_policy');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le righe tornano col CSV, se la colonna torna (rollback di
+              -- 20261108-91). Forward-only.
+              SELECT 1;

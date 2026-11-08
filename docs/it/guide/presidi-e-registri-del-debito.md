@@ -1,6 +1,6 @@
 # Guida — Presidi e registri del debito
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, e chi costruisce o mantiene un
 > controllo automatico (un guardrail, un pgTAP di presidio, una vista di controllo)
@@ -496,19 +496,23 @@ colonne. La misura
 ([`dbops.vw_marcatori_automazione_senza_esecutore`](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore))
 chiede se c'è un esecutore: la tabella è nell'ambito, con lo stesso filtro dei
 runner, oppure, per `tx_id` e `storicizza`, il trigger è montato a mano. Per
-`cleanup_at` il trigger a mano non basta: il purge è solo del runner.
+`cleanup_at` il trigger a mano non basta: il purge è solo del runner. La colonna di
+storicizzazione si cerca come la cerca la provision dello storico, con l'override
+di colonna (`STORICIZZA_COL`) quando c'è.
 
 **Il registro**
 ([`dbops.marcatori_automazione_debito`](/dbzero/dbops/tabelle/marcatori_automazione_debito))
 porta i casi noti, con la ragione e il modo di chiuderli: l'ambito, il trigger a
-mano o la colonna tolta. Il cancello è
+mano o la colonna tolta. Oggi è vuoto: i cataloghi di `dbops` che portavano un
+`tx_id` senza trigger l'hanno perso, perché li scrive solo la migrazione (la regola
+in [automazione-db.md](automazione-db.md) §1.1). Il cancello è
 `db/pgtap/dbops/test-marcatori-automazione-senza-esecutore-v1.sql`: rosso su una
 riga non dichiarata e su una riga di registro che non serve più.
 
 **Il limite, detto qui.** `data_update` e `user_update` restano fuori dal
-criterio, per decisione, anche dove nessuno li riscrive. E la misura riconosce i
-marcatori per **nome**: una colonna di storicizzazione rinominata con un override
-dei runner non la vede.
+criterio, per decisione, anche dove nessuno li riscrive. E `cleanup_at` si
+riconosce per **nome**: la colonna del purge la sceglie un parametro della regola
+di pulizia, e una tabella che la chiama in un altro modo la misura non la vede.
 
 ---
 

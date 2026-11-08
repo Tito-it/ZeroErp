@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.cause_fallimento`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -68,6 +68,9 @@ produrre: altrimenti nessuna riga la porterà mai. Codice e descrizione non poss
 
 * 2026-10-16 — nasce con `brief-db-presidio-job-run-a-chi-tocca` (D4): prima il presidio dei lavori
   aveva un solo destinatario per guasti di natura diversa.
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
 
 ---
 

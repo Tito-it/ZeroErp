@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.processi`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -309,6 +309,9 @@ falsa.
 * 2026-11-07 — la regola fra canale `CODA` e identità si restringe ai processi di `DOMINIO`: il
   lavoro di `avvio_manuale` è `SISTEMA`, con chi preme come attore (`brief-db-revisione-dbops`,
   giro 5). Revoca in parte la decisione del 2026-09-14 (`brief-db-avvio-manuale-di-un-processo`).
+* 2026-11-08 — perde `tx_id`, `data_update`, `user_update` e i due trigger montati a mano che li
+  scrivevano: la tabella la scrive solo la migrazione, dal CSV, e le colonne direbbero sempre «il
+  migratore» (regola dello scrittore, `automazione-db.md` §1.1; `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

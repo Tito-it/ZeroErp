@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.rls_perimetro_debito`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -110,6 +110,9 @@ Le righe dichiarate sono di due specie:
   documenti generati, anagrafiche, magazzino, pagamenti, acquisti e shop. Le famiglie di vendita,
   pratiche, documenti e magazzino sono state chiuse da allora; al 2026-11-03 il seed dichiara sei
   righe, di anagrafiche, pagamenti e acquisti.
+* 2026-11-08 — perde `tx_id`, `data_update`, `user_update` e i due trigger montati a mano che li
+  scrivevano: la tabella la scrive solo la migrazione, dal CSV, e le colonne direbbero sempre «il
+  migratore» (regola dello scrittore, `automazione-db.md` §1.1; `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

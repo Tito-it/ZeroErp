@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.riferimenti_morti_esenzioni`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -91,6 +91,9 @@ il guardrail) la segnala.
   (`brief-db-un-destinatario-per-i-presidi` §14).
 * 2026-09-15 — esce la voce della trigger function della sorgente tipizzata, rimontata su sei tabelle
   di magazzino.
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
 
 ---
 

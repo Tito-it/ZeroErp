@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -87,7 +87,14 @@ Il framework è composto da quattro livelli che collaborano tra loro. Ognuno ha 
 
 L'**ambito** definisce il perimetro: su quali schemi e tabelle il framework opera. È configurato nella tabella `dbops.automation_scope`, seminata dal CSV `80_data/sql/dbops/automation_scope.csv`.
 
-Ogni riga indica uno schema e un pattern di tabelle. Il sentinel `'*all'` significa "tutte le tabelle dello schema". Tutti gli schemi di dominio ci sono con `*all`; `dbops` è nell'ambito tabella per tabella.
+Ogni riga indica uno schema e un pattern di tabelle. Il sentinel `'*all'` significa "tutte le tabelle dello schema". Tutti gli schemi di dominio ci sono con `*all`. `dbops` no: una sua tabella entra **per nome**, e solo se è un registro con una scadenza (log delle chiamate, errori, giri delle automazioni, idempotenza, accensione dei processi, sessioni, domande all'assistente).
+
+⭐ **Le altre tabelle di `dbops` stanno fuori, e i loro marcatori li decide lo scrittore.**
+
+* Se la riga la scrive a runtime una transazione di dominio o di sessione (la coda lavori, le identità tecniche dei processi), la tabella tiene `tx_id`, `data_update` e `user_update`, e monta **a mano** i due trigger del framework, [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed) e `script.trgfn_audit_data_user_generic`, con il nome che userebbe il framework.
+* Se la riga la scrive solo la migrazione, dai CSV di `80_data` (i cataloghi dei processi, dei presidi, dei tipi di lavoro, i registri del debito), la tabella **non** porta `tx_id`, `data_update` e `user_update`: direbbero sempre «il migratore, durante la migrazione», e chi ha cambiato la riga e quando lo dicono già lo storico delle migrazioni e git. `data_insert` e `user_insert` restano: li riempie il default alla nascita.
+
+Il presidio [`dbops.vw_marcatori_automazione_senza_esecutore`](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore) controlla la metà che si vede dal catalogo: una tabella con `tx_id`, `storicizza` o `cleanup_at` fuori dall'ambito e senza il trigger a mano è un allarme. ⚠️ I cataloghi delle regole del framework (`automation_lock_columns`, `fk_index_policy`, `lock_columns_conditional`, i registri della pipeline e delle eccezioni) portano ancora `data_update`/`user_update`: è il residuo noto, e quelle colonne lì dicono solo l'ora della migrazione.
 
 Il runner usa due funzioni per risolvere l'ambito:
 
@@ -735,6 +742,9 @@ mesi dopo.
 lasciare che sia il framework a creare il trigger. Se serve subito senza
 aspettare il giro notturno, si lancia la migrazione, che la comprende (§9.2) —
 non si scrive il trigger a mano.
+
+L'eccezione è `dbops` fuori dall'ambito (§1.1): lì il trigger a mano è la
+regola, perché il framework non passa, e lo controlla il presidio dei marcatori.
 
 ### Il dry-run non mostra modifiche attese
 

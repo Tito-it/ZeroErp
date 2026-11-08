@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -583,6 +583,15 @@ nel codice (`_SOGGETTI_ORDER_COLS`), dove non da` errore: fa semplicemente
 smettere di funzionare l'ordinamento per data di creazione.
 
 I trigger o constraint di sistema possono aggiornare `data_update/user_update` su UPDATE manuale o con `trigger` dedicato.
+
+⛔ **Eccezione: nello schema `dbops` le colonne seguono lo scrittore** (Tid,
+2026-11-07). `dbops` sta fuori dall'ambito delle automazioni, salvo i registri
+con una scadenza: una sua tabella che si scrive a runtime (una funzione, il
+backend, un job) tiene `data_update`/`user_update` e `tx_id` e monta **a mano** i
+due trigger del framework; una tabella che scrive solo la migrazione, dai CSV di
+`80_data`, **non** li porta — direbbero sempre «il migratore», e chi e quando lo
+dicono già `databasechangelog` e git. `data_insert`/`user_insert` restano sempre.
+Dettaglio e presidio: [automazione-db.md](guide/automazione-db.md) §1.1.
 
 ---
 
