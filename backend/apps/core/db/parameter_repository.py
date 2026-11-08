@@ -297,8 +297,7 @@ class ParameterRepository:
              WHERE p.code = %s
             ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE
                SET overridden_value = EXCLUDED.overridden_value,
-                   attivo = true,
-                   data_update = now()
+                   attivo = true
             RETURNING id
         """  # noqa: S608
         with connection.cursor() as cursor:

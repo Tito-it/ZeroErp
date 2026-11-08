@@ -41,7 +41,15 @@ class DocumentoInternoRow(TypedDict):
     magazzino_usa_ubicazioni: bool
     descrizione: str | None
     righe_count: int
+    # ⭐ La provenienza nella grammatica del modello (giro M.2 di
+    #    brief-db-sorgente-documento-e-riga, 2026-11-08): il TIPO del documento
+    #    d'origine, la sua CHIAVE in `sorgente_id` (o `sorgente_uid`, mai tutte
+    #    e due: CHECK `…_sorgente_forma`), e `sorgente_riga` = la riga di quel
+    #    documento (NULL = il documento intero). ⛔ `sorgente_riga` non e' una
+    #    chiave: senza tipo e documento non individua niente. Le quattro
+    #    colonne le scrive (e le controlla) il DB; il BE le legge soltanto.
     sorgente_tipo_id: int | None
+    sorgente_id: int | None
     sorgente_riga: int | None
     sorgente_uid: str | None
     meta: dict[str, Any]

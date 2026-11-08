@@ -88,7 +88,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         self.assertEqual(kwargs["auth_user_id"], 42)
         self.assertEqual(kwargs["lista_id"], 1)
         self.assertEqual(kwargs["preset_base_id"], 5)
-        self.assertEqual(kwargs["preset_base_data_update"], "2026-05-06T00:00")
+        self.assertEqual(kwargs["preset_base_contenuto_aggiornato_il"], "2026-05-06T00:00")
         # Configurazione normalizzata propagata.
         cfg = kwargs["configurazione"]
         self.assertEqual(cfg["pagina_dimensione"], 50)
@@ -277,7 +277,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         self.assertIsNone(result["preset_base_id"])
         kwargs = repo.upsert_preferenza.call_args.kwargs
         self.assertIsNone(kwargs["preset_base_id"])
-        self.assertIsNone(kwargs["preset_base_data_update"])
+        self.assertIsNone(kwargs["preset_base_contenuto_aggiornato_il"])
 
 
 class ListaPreferenzaDeleteTests(SimpleTestCase):

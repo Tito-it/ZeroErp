@@ -1009,8 +1009,7 @@ class ListiniRepository:
                 """
                 UPDATE vendite.listini_righe
                    SET prezzo = %(prezzo)s::numeric,
-                       meta = %(meta)s::jsonb,
-                       data_update = now()
+                       meta = %(meta)s::jsonb
                  WHERE id = %(riga_id)s
                 """,
                 {
@@ -1066,8 +1065,7 @@ class ListiniRepository:
             cursor.execute(
                 """
                 UPDATE vendite.listini_righe
-                   SET prezzo = ROUND(prezzo * (1 + %(pct)s::numeric / 100.0), %(dec)s),
-                       data_update = now()
+                   SET prezzo = ROUND(prezzo * (1 + %(pct)s::numeric / 100.0), %(dec)s)
                  WHERE listino_versione_id = %(ver_id)s
                    AND attivo IS TRUE
                    AND (%(filtro)s::uuid[] IS NULL

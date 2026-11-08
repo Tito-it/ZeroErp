@@ -5,7 +5,7 @@
 # Scopo: Service di scrittura per `ui.lista_preferenza_utente` —
 #        valida JSONB in ingresso (whitelist chiavi anti-injection),
 #        UPSERT preferenza con snapshot del preset di base
-#        (`preset_base_id` + `preset_base_data_update` per badge DEF-2),
+#        (`preset_base_id` + `preset_base_contenuto_aggiornato_il` per badge DEF-2),
 #        delete idempotente.
 #        Nessuna logica di dominio: la cascata e il filtro permessi
 #        vivono nella fn DB.
@@ -88,7 +88,7 @@ class ListaPreferenzaService:
 
         # 3. Snapshot preset di base coerente con la cascata della fn DB
         emittente_id = PermissionResolver.get_emittente_for_user(user)
-        preset_id, preset_data_update = self._repo.get_preset_base_snapshot(
+        preset_id, preset_contenuto_aggiornato_il = self._repo.get_preset_base_snapshot(
             lista_id=lista_id,
             auth_user_id=user.id,
             emittente_fiscale_id=emittente_id,
@@ -100,7 +100,7 @@ class ListaPreferenzaService:
             lista_id=lista_id,
             configurazione=configurazione,
             preset_base_id=preset_id,
-            preset_base_data_update=preset_data_update,
+            preset_base_contenuto_aggiornato_il=preset_contenuto_aggiornato_il,
         )
 
         return {
@@ -129,7 +129,7 @@ class ListaPreferenzaService:
     #        `preset_aggiornato_ignored_at = NOW()` sulla preferenza utente.
     #        Il flag `preset_aggiornato` di `fn_resolve_lista_config` torna
     #        FALSE finche' il preset non viene modificato di nuovo
-    #        (`preset.data_update > ignored_at`).
+    #        (`preset.contenuto_aggiornato_il > ignored_at`).
     #        Solleva E_UI_LISTA_NON_TROVATA se la lista non esiste e
     #        E_UI_PREFERENZA_NON_TROVATA se l'utente non ha ancora una
     #        preferenza (caso patologico: il banner non sarebbe visibile,

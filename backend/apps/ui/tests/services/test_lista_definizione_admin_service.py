@@ -65,13 +65,6 @@ from apps.ui.services.lista_definizione_admin_service import (
 )
 
 
-def _make_user(username: str = "tester") -> Any:
-    user = MagicMock()
-    user.username = username
-    user.is_authenticated = True
-    return user
-
-
 def _row_definizione_full(**overrides: Any) -> dict[str, Any]:
     base = {
         "id": 7,
@@ -193,7 +186,7 @@ class ListaDefinizioneFase2CreateTests(SimpleTestCase):
         repo.get_definizione_admin.return_value = _row_definizione_full(id=42)
         svc = ListaDefinizioneAdminService(repo=repo)
 
-        result = svc.create_definizione(_make_user(), {
+        result = svc.create_definizione({
             "codice": "anagrafiche.fornitori",
             "descrizione": "Fornitori",
             "schema_dati": "anagrafiche",
@@ -212,7 +205,7 @@ class ListaDefinizioneFase2CreateTests(SimpleTestCase):
         repo = MagicMock()
         svc = ListaDefinizioneAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_definizione(_make_user(), {
+            svc.create_definizione({
                 "codice": "x.y",
                 "descrizione": "X",
                 "schema_dati": "x",
@@ -225,7 +218,7 @@ class ListaDefinizioneFase2CreateTests(SimpleTestCase):
         repo = MagicMock()
         svc = ListaDefinizioneAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_definizione(_make_user(), {
+            svc.create_definizione({
                 "descrizione": "X",
                 "schema_dati": "x",
             })
@@ -241,7 +234,7 @@ class ListaDefinizioneFase2CreateTests(SimpleTestCase):
         )
         svc = ListaDefinizioneAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.create_definizione(_make_user(), {
+            svc.create_definizione({
                 "codice": "duplicate.code",
                 "descrizione": "Dup",
                 "schema_dati": "x",
@@ -254,7 +247,7 @@ class ListaDefinizioneFase2CreateTests(SimpleTestCase):
         repo.get_definizione_admin.return_value = _row_definizione_full(id=1)
         svc = ListaDefinizioneAdminService(repo=repo)
         # Stringa vuota -> None (pattern null_vs_empty).
-        svc.create_definizione(_make_user(), {
+        svc.create_definizione({
             "codice": "x.y",
             "descrizione": "X",
             "schema_dati": "x",
@@ -272,7 +265,7 @@ class ListaDefinizioneFase2CreateTests(SimpleTestCase):
         svc = ListaDefinizioneAdminService(repo=repo)
         # `attivo` omesso -> True applicativo (workflow standard, non
         # draft).
-        svc.create_definizione(_make_user(), {
+        svc.create_definizione({
             "codice": "x.y",
             "descrizione": "X",
             "schema_dati": "x",
@@ -291,7 +284,7 @@ class ListaDefinizioneFase2UpdateTests(SimpleTestCase):
         repo.get_definizione_admin.return_value = None
         svc = ListaDefinizioneAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_definizione(_make_user(), 999, {"descrizione": "x"})
+            svc.update_definizione(999, {"descrizione": "x"})
         self.assertEqual(ctx.exception.code, E_DEFINIZIONE_NOT_FOUND)
         repo.update_definizione.assert_not_called()
 
@@ -300,7 +293,7 @@ class ListaDefinizioneFase2UpdateTests(SimpleTestCase):
         repo.get_definizione_admin.return_value = _row_definizione_full()
         svc = ListaDefinizioneAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_definizione(_make_user(), 7, {})
+            svc.update_definizione(7, {})
         self.assertEqual(ctx.exception.code, E_DEFINIZIONE_VALIDATION)
         repo.update_definizione.assert_not_called()
 
@@ -309,7 +302,7 @@ class ListaDefinizioneFase2UpdateTests(SimpleTestCase):
         repo.get_definizione_admin.return_value = _row_definizione_full()
         repo.update_definizione.return_value = True
         svc = ListaDefinizioneAdminService(repo=repo)
-        svc.update_definizione(_make_user(), 7, {
+        svc.update_definizione(7, {
             "descrizione": "Clienti rinominati",
             "attivo": False,
         })
@@ -323,7 +316,7 @@ class ListaDefinizioneFase2UpdateTests(SimpleTestCase):
         repo.get_definizione_admin.return_value = _row_definizione_full()
         svc = ListaDefinizioneAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_definizione(_make_user(), 7, {"attivo": None})
+            svc.update_definizione(7, {"attivo": None})
         self.assertEqual(ctx.exception.code, E_DEFINIZIONE_VALIDATION)
 
 
@@ -410,7 +403,6 @@ class ListaDefinizioneMultiEmittenteFuoriScritturaTests(SimpleTestCase):
         svc = ListaDefinizioneAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
             svc.create_definizione(
-                _make_user(),
                 {
                     "codice": "vendite.lotti",
                     "descrizione": "Lotti",
@@ -427,7 +419,7 @@ class ListaDefinizioneMultiEmittenteFuoriScritturaTests(SimpleTestCase):
         repo.get_definizione_admin.return_value = _row_definizione_full()
         svc = ListaDefinizioneAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            svc.update_definizione(_make_user(), 7, {"multi_emittente": True})
+            svc.update_definizione(7, {"multi_emittente": True})
         self.assertEqual(ctx.exception.code, E_DEFINIZIONE_VALIDATION)
         repo.update_definizione.assert_not_called()
 
@@ -462,7 +454,6 @@ class ListaDefinizioneMultiEmittenteFuoriScritturaTests(SimpleTestCase):
                     "schema_dati": "vendite",
                     "multi_emittente": True,
                 },
-                user_insert="tester",
             ),
             fetchone=[1],
         )
@@ -476,7 +467,6 @@ class ListaDefinizioneMultiEmittenteFuoriScritturaTests(SimpleTestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 UiAdminRepository().update_definizione(
                     7, {"descrizione": "Lotti", "multi_emittente": True},
-                    user_update="tester",
                 )
             mock_conn.cursor.assert_not_called()
         self.assertIn("multi_emittente", str(ctx.exception), self._MOTIVO)

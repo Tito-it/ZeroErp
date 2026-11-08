@@ -51,12 +51,15 @@ _PRESET_SNAPSHOT_TABLES: dict[str, str] = {
 #        emittente fiscale -> sistema. Ritorna `(None, None)` se nessun
 #        preset applicabile (la preferenza partira' dal catalogo grezzo).
 #
-# `snapshot_ts = COALESCE(data_update, data_insert)`: i preset seedati
-# hanno `data_update=NULL` finche' non vengono modificati. Salvare `NULL`
-# come snapshot rompe il calcolo `preset_aggiornato` nelle fn di
-# risoluzione (`NULL > qualcosa` e' sempre NULL/false). Il fallback su
-# `data_insert` garantisce uno snapshot valorizzato per ogni preset
-# esistente (DEF-2 bug latente fissato 2026-05-11).
+# `snapshot_ts = contenuto_aggiornato_il`: la data del CONTENUTO del preset,
+# `NOT NULL`, scritta solo dai due trigger a mano del DB
+# (`ui.trgfn_preset_contenuto_aggiornato` sulle colonne di contenuto,
+# `ui.trgfn_preset_riga_tocca_preset` dalle righe figlie). ⛔ Non
+# `data_update`: dal blocco 7-bis-c di brief-db-revisione-dbops (2026-11-08)
+# e' l'audit, che il trigger generico sposta a OGNI UPDATE (anche il solo
+# `attivo`, anche la riscrittura uguale di un seed) e accenderebbe il badge
+# `preset_aggiornato` a tutti. Il ripiego su `data_insert` (DEF-2,
+# 2026-05-11) non serve piu': la colonna nasce valorizzata.
 #
 # ATTENZIONE — drift risk: questa cascata duplica la logica DB. Se in
 # futuro le fn di risoluzione cambiano (nuovo livello di preset,
@@ -78,7 +81,7 @@ def fetch_preset_base_snapshot(
     with connection.cursor() as cursor:
         cursor.execute(
             f"""
-            SELECT p.id, COALESCE(p.data_update, p.data_insert)
+            SELECT p.id, p.contenuto_aggiornato_il
               FROM {preset_table} p
               JOIN script.fn_get_profili_accesso_applicabili(
                      %s,
@@ -103,7 +106,7 @@ def fetch_preset_base_snapshot(
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT id, COALESCE(data_update, data_insert)
+                SELECT id, contenuto_aggiornato_il
                   FROM {preset_table}
                  WHERE {fk_column}           = %s
                    AND ambito               = 'emittente_fiscale'
@@ -122,7 +125,7 @@ def fetch_preset_base_snapshot(
     with connection.cursor() as cursor:
         cursor.execute(
             f"""
-            SELECT id, COALESCE(data_update, data_insert)
+            SELECT id, contenuto_aggiornato_il
               FROM {preset_table}
              WHERE {fk_column} = %s
                AND ambito      = 'sistema'
@@ -282,7 +285,7 @@ class UiRepository:
         return rows
 
     # Scopo: Preferenza utente per (auth_user, lista). None se non esiste.
-    #        Inclusi metadati (`preset_base_id`, `preset_base_data_update`,
+    #        Inclusi metadati (`preset_base_id`, `preset_base_contenuto_aggiornato_il`,
     #        `data_update`) per permettere al FE/service il check del
     #        badge "preset aggiornato" (DEF-2).
     def get_preferenza(
@@ -294,7 +297,7 @@ class UiRepository:
                 SELECT id,
                        configurazione,
                        preset_base_id,
-                       preset_base_data_update,
+                       preset_base_contenuto_aggiornato_il,
                        data_insert,
                        data_update
                   FROM ui.lista_preferenza_utente
@@ -311,14 +314,14 @@ class UiRepository:
             # Lettura per posizione: il jsonb arriva come testo.
             "configurazione": jsonb_out(row[1]),
             "preset_base_id": row[2],
-            "preset_base_data_update": row[3],
+            "preset_base_contenuto_aggiornato_il": row[3],
             "data_insert": row[4],
             "data_update": row[5],
         }
 
-    # Scopo: UPSERT preferenza utente. Snapshot di `lista_preset.data_update`
-    #        catturato dal service e passato qui come parametro
-    #        `preset_base_data_update`. La PK e' (auth_user_id, lista_id)
+    # Scopo: UPSERT preferenza utente. Snapshot di
+    #        `lista_preset.contenuto_aggiornato_il` catturato dal service e passato qui come parametro
+    #        `preset_base_contenuto_aggiornato_il`. La PK e' (auth_user_id, lista_id)
     #        (UNIQUE), quindi il conflict target esegue UPDATE coerente.
     def upsert_preferenza(
         self,
@@ -326,7 +329,7 @@ class UiRepository:
         lista_id: int,
         configurazione: dict[str, Any],
         preset_base_id: int | None,
-        preset_base_data_update: Any | None,
+        preset_base_contenuto_aggiornato_il: Any | None,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -335,7 +338,7 @@ class UiRepository:
                     auth_user_id,
                     lista_id,
                     preset_base_id,
-                    preset_base_data_update,
+                    preset_base_contenuto_aggiornato_il,
                     configurazione,
                     data_insert
                 )
@@ -343,7 +346,7 @@ class UiRepository:
                 ON CONFLICT (auth_user_id, lista_id) DO UPDATE
                    SET configurazione           = EXCLUDED.configurazione,
                        preset_base_id           = EXCLUDED.preset_base_id,
-                       preset_base_data_update  = EXCLUDED.preset_base_data_update,
+                       preset_base_contenuto_aggiornato_il  = EXCLUDED.preset_base_contenuto_aggiornato_il,
                        data_update              = now()
                 RETURNING id
                 """,
@@ -351,7 +354,7 @@ class UiRepository:
                     auth_user_id,
                     lista_id,
                     preset_base_id,
-                    preset_base_data_update,
+                    preset_base_contenuto_aggiornato_il,
                     json.dumps(configurazione),
                 ],
             )

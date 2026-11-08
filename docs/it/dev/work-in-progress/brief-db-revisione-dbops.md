@@ -756,6 +756,48 @@ portarli a `SISTEMA`, con la ragione. ⚠️ Nello stesso giro il backend gira u
 `core/tests/db/test_avvio_manuale_catalogo.py` (`test_tipo_esegui_processo`, che oggi pretende OPERATORE): va detto al
 team BE all'apply.
 
+**Stato al 2026-11-08, BE11 (team BE, da committare su `dev/backend-tid`): (a), (b), (c) e (d) fatte.**
+
+* **(a) Lo snapshot rinominato.** `preset_base_contenuto_aggiornato_il` nelle SELECT e negli upsert di
+  `UiRepository` e `DashboardRepository`, nei kwargs dei due service delle preferenze e nei loro test. Prima del giro
+  il salvataggio di una preferenza dava `E_DATABASE` sul DB vero (`ui/tests/db/test_misure_pagina_db`, rosso con la
+  suite unitaria verde: i mock non vedono il nome di una colonna).
+* **(b) La data del contenuto.** Il BB `fetch_preset_base_snapshot` legge `contenuto_aggiornato_il` sui tre livelli
+  della cascata; il ripiego `COALESCE(data_update, data_insert)` (DEF-2, 2026-05-11) si ritira, perché la colonna è
+  `NOT NULL`.
+* **(c) L'audit a mano si ritira, per intero.** Gli UPDATE di `UiAdminRepository` (`update_definizione`,
+  `update_colonna`, `update_preset`) non nominano più `user_update` né `data_update` (via l'`extra_set` e la voce
+  nelle whitelist); l'upsert dei permessi non scrive più `data_update`/`user_update` nel ramo `DO UPDATE`. Nello
+  stesso giro, sullo stesso argomento, anche **gli INSERT** (`create_definizione`, `create_colonna`, `create_preset`,
+  `upsert_permesso`) non passano più `user_insert`: il trigger generico lo scrive sull'INSERT dal JWT e sovrascriveva
+  quello del BE, quindi era la stessa regola su due livelli. I quattro service admin non chiamano più `user_label`; la
+  testata della classe `UiAdminRepository` dice perché. `apps/ui/services/_audit.py` (`user_label`), rimasto senza
+  consumatori, è ritirato (ok di Tid, 2026-11-08).
+* **(d) I rifiuti del guard.** Nessun service admin li anticipa con un controllo preventivo: spegnere una lista con
+  colonne attive arriva all'operatore come `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, 409, non come il fallback di validazione
+  del service. Nessun mapping da aggiungere.
+* **Il presidio** è `ui/tests/db/test_audit_ui_dal_trigger_db` (DB vero, sei test, i soggetti costruiti nel test):
+  INSERT e UPDATE admin con l'audit dal trigger (`app.jwt_user`), la data del contenuto ferma su `descrizione` e
+  `attivo` e mossa su `filtri_default`, lo snapshot e l'upsert della preferenza col nome nuovo, i due rami dell'upsert
+  dei permessi, il 409 del BLOCK. Allineati `test_update_colonna_repository` e i test SQL di
+  `test_lista_preset_admin_service` / `test_lista_definizione_admin_service` (l'SQL senza audit); il commento di
+  `ListaConfigurabile.vue` (lo snapshot è la data del contenuto).
+* **Esteso a tutto il backend** (decisione di Tid, 2026-11-08: «correggi dove data update/insert vengono aggiornate
+  ed esiste il trigger»). Censite le scritture a mano di `data_update`/`user_update`/`user_insert` e incrociate con la
+  scheda auto-generata di ogni tabella: **24 punti** su tabelle col trigger, tutti ritirati — `core/db/email_repository`
+  (5: account, test dell'account, template, bozza e stato dell'outbox), `core/db/auth_repository` (invito),
+  `core/db/parameter_repository` (upsert dell'override), `core/services/idempotency_store` (2), `portale/db/
+  portale_repository` (disattivazione dell'identità), `vendite/db/commesse_repository` (2), `vendite/db/
+  listini_repository` (2), `vendite/db/pipeline_repository` (10: lotti, log, coda di stampa, attività fatturabili).
+  Il commento della coda di stampa diceva «la tabella non ha trigger audit»: falso, il trigger c'è e scrive anche il
+  `data_update` che il reaper legge come istante del claim (stesso valore, `CURRENT_TIMESTAMP` della transazione). Il
+  comportamento non cambia in nessun punto: il trigger sovrascriveva già. **Restano**, giusti, i quattro `data_update`
+  delle due `*_preferenza_utente`, che il trigger non ce l'hanno. La regola è scritta in [api.md](../api.md)
+  §«Propagazione identita' al DB (GUC)», e la doc del BB `execute_dynamic_update` (codice e catalogo) non porta più
+  l'audit come esempio di `extra_set`. Un test era verde a vuoto e dichiarava una prova che non poteva fare:
+  `core/tests/db/test_scritture_email_note_db` portava indietro `data_update` con un UPDATE (che il trigger rimetteva
+  a `now()`) e poi lo trovava «aggiornato»; il controllo esce, col motivo nel commento.
+
 ## 6. Difetti fuori schema trovati leggendo i chiamanti
 
 * `vendite.trgfn_listini_righe_guard_periodicita_quota_fissa` scatta solo su `UPDATE OF periodicita`:

@@ -93,7 +93,7 @@ class DashboardPreferenzaService:
 
         # 3. Snapshot preset di base coerente con la cascata della fn DB
         emittente_id = PermissionResolver.get_emittente_for_user(user)
-        preset_id, preset_data_update = self._repo.get_preset_base_snapshot(
+        preset_id, preset_contenuto_aggiornato_il = self._repo.get_preset_base_snapshot(
             dashboard_id=dashboard_id,
             auth_user_id=user.id,
             emittente_fiscale_id=emittente_id,
@@ -105,7 +105,7 @@ class DashboardPreferenzaService:
             dashboard_id=dashboard_id,
             configurazione=configurazione,
             preset_base_id=preset_id,
-            preset_base_data_update=preset_data_update,
+            preset_base_contenuto_aggiornato_il=preset_contenuto_aggiornato_il,
         )
 
         return {
