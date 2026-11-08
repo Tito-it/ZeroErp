@@ -68,7 +68,8 @@ SELECT results_eq(
          AND schema_tabella !~ '^pg_temp'
        ORDER BY 1$$,
     $$VALUES
-        -- lotto M, giro M.4 (acquisti)
+        -- acquisti: passati al cantiere degli acquisti (analisi-simmetria-ordini-acquisto §4.6-bis),
+        -- che li toglie da qui nel giro che porta la provenienza al modello
         ('acquisti.ddt'), ('acquisti.ddt_righe'), ('acquisti.ordini'), ('acquisti.ordini_righe')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
