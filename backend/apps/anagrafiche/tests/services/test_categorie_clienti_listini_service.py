@@ -79,7 +79,7 @@ def _base_payload(**overrides):
 class TestList(TestCase):
     """Test metodo list_matrice."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_default_params(self, mock_repo_cls):
         mock_repo_cls.return_value.list_matrice.return_value = ([], 0)
         svc = CategorieClientiListiniService()
@@ -90,7 +90,7 @@ class TestList(TestCase):
         self.assertEqual(kwargs["order_by"], "valido_dal")
         self.assertEqual(kwargs["order_dir"], "desc")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_invalid_order_by(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -98,7 +98,7 @@ class TestList(TestCase):
             svc.list_matrice(order_by="not_a_column")
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_list_propaga_filtri(self, mock_repo_cls):
         mock_repo_cls.return_value.list_matrice.return_value = ([], 0)
         svc = CategorieClientiListiniService()
@@ -124,7 +124,7 @@ class TestList(TestCase):
 class TestGet(TestCase):
     """Test metodo get_matrice."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_ok(self, mock_repo_cls):
         # Fase 4: get_matrice arricchisce la response con non_editable_fields.
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 3}
@@ -134,7 +134,7 @@ class TestGet(TestCase):
         self.assertIn("non_editable_fields", result)
         self.assertIn("categoria_cliente_id", result["non_editable_fields"])
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_not_found(self, mock_repo_cls):
         mock_repo_cls.return_value.get_matrice.return_value = None
         svc = CategorieClientiListiniService()
@@ -142,7 +142,7 @@ class TestGet(TestCase):
             svc.get_matrice(999)
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_get_id_non_positivo(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -154,7 +154,7 @@ class TestGet(TestCase):
 class TestCreate(TestCase):
     """Test metodo create_matrice (scenari validi e validazione)."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_minimo_ok(self, mock_repo_cls):
         mock_repo_cls.return_value.create_matrice.return_value = 10
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 10}
@@ -167,7 +167,7 @@ class TestCreate(TestCase):
         self.assertIsNone(data["classe_utenza_id"])
         self.assertNotIn("tipo_variazione", data)
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_con_variazione_percentuale_ok(self, mock_repo_cls):
         mock_repo_cls.return_value.create_matrice.return_value = 1
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 1}
@@ -180,7 +180,7 @@ class TestCreate(TestCase):
         self.assertEqual(data["tipo_variazione"], "PERCENTUALE")
         self.assertEqual(data["valore_variazione"], Decimal("5.25"))
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_con_classe_utenza_ok(self, mock_repo_cls):
         mock_repo_cls.return_value.create_matrice.return_value = 1
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 1}
@@ -189,7 +189,7 @@ class TestCreate(TestCase):
         data = mock_repo_cls.return_value.create_matrice.call_args.args[0]
         self.assertEqual(data["classe_utenza_id"], 7)
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_senza_classe_utenza_ok_null(self, mock_repo_cls):
         mock_repo_cls.return_value.create_matrice.return_value = 1
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 1}
@@ -198,7 +198,7 @@ class TestCreate(TestCase):
         data = mock_repo_cls.return_value.create_matrice.call_args.args[0]
         self.assertIsNone(data["classe_utenza_id"])
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_missing_categoria(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -208,7 +208,7 @@ class TestCreate(TestCase):
             svc.create_matrice(payload)
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_missing_valido_dal(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -218,7 +218,7 @@ class TestCreate(TestCase):
             svc.create_matrice(payload)
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_unknown_key(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -226,7 +226,7 @@ class TestCreate(TestCase):
             svc.create_matrice(_base_payload(colonna_ignota=1))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_fk_zero(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -234,7 +234,7 @@ class TestCreate(TestCase):
             svc.create_matrice(_base_payload(utility_id=0))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_tipo_variazione_invalido(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -252,7 +252,7 @@ class TestCreate(TestCase):
             svc.create_matrice(_base_payload(tipo_variazione=3, valore_variazione="1.0"))
         self.assertEqual(ctx.exception.context["field"], "tipo_variazione")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_tipo_senza_valore(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -260,7 +260,7 @@ class TestCreate(TestCase):
             svc.create_matrice(_base_payload(tipo_variazione="PERCENTUALE"))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_valore_senza_tipo(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -271,7 +271,7 @@ class TestCreate(TestCase):
     # L'ordine delle date NON lo giudica il service: il guard comune del DB
     # risponde E_DATA_AL_MINORE_DAL col campo (provato sul DB vero in
     # apps/core/tests/db/test_date_validita_guard_comune_db).
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_delega_ordine_date_al_db(self, mock_repo_cls):
         mock_repo_cls.return_value.create_matrice.return_value = 10
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 10}
@@ -286,7 +286,7 @@ class TestCreate(TestCase):
             (date(2026, 6, 1), date(2026, 1, 1)),
         )
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_valido_dal_formato_invalido(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -294,7 +294,7 @@ class TestCreate(TestCase):
             svc.create_matrice(_base_payload(valido_dal="non-valida"))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_valore_non_numerico(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -305,7 +305,7 @@ class TestCreate(TestCase):
             ))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_duplicate_overlap(self, mock_repo_cls):
         mock_repo_cls.return_value.create_matrice.side_effect = IntegrityError(
             'conflicting key value violates exclusion constraint '
@@ -316,7 +316,7 @@ class TestCreate(TestCase):
             svc.create_matrice(_base_payload())
         self.assertEqual(ctx.exception.code, "E_ANAG_MATRICE_OVERLAP")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_create_fk_inesistente(self, mock_repo_cls):
         mock_repo_cls.return_value.create_matrice.side_effect = IntegrityError(
             'insert or update on table violates foreign key constraint '
@@ -331,7 +331,7 @@ class TestCreate(TestCase):
 class TestUpdate(TestCase):
     """Test metodo update_matrice."""
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_mutabile_ok(self, mock_repo_cls):
         mock_repo_cls.return_value.update_matrice.return_value = True
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 3}
@@ -342,7 +342,7 @@ class TestUpdate(TestCase):
         self.assertEqual(data["listino_id"], 99)
         self.assertFalse(data["attivo"])
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_immutabile_categoria_rifiutato(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -350,7 +350,7 @@ class TestUpdate(TestCase):
             svc.update_matrice(3, {"categoria_cliente_id": 5})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_immutabile_utility_rifiutato(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -358,7 +358,7 @@ class TestUpdate(TestCase):
             svc.update_matrice(3, {"utility_id": 5})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_immutabile_emittente_rifiutato(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -366,7 +366,7 @@ class TestUpdate(TestCase):
             svc.update_matrice(3, {"emittente_soggetto_ruolo_id": 5})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_immutabile_classe_rifiutato(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -374,7 +374,7 @@ class TestUpdate(TestCase):
             svc.update_matrice(3, {"classe_utenza_id": 5})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_variazione_reset_coerente(self, mock_repo_cls):
         mock_repo_cls.return_value.update_matrice.return_value = True
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 3}
@@ -384,7 +384,7 @@ class TestUpdate(TestCase):
         self.assertIsNone(data["tipo_variazione"])
         self.assertIsNone(data["valore_variazione"])
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_variazione_incoerente_rifiutato(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -392,7 +392,7 @@ class TestUpdate(TestCase):
             svc.update_matrice(3, {"tipo_variazione": "PERCENTUALE"})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_payload_vuoto(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -400,7 +400,7 @@ class TestUpdate(TestCase):
             svc.update_matrice(3, {})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_not_found(self, mock_repo_cls):
         mock_repo_cls.return_value.update_matrice.return_value = False
         svc = CategorieClientiListiniService()
@@ -408,7 +408,7 @@ class TestUpdate(TestCase):
             svc.update_matrice(999, {"listino_id": 7})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
-    @patch(_REPO_PATH)
+    @patch(_REPO_PATH, autospec=True)
     def test_update_attivo_null_rifiutato(self, mock_repo_cls):
         del mock_repo_cls
         svc = CategorieClientiListiniService()
@@ -447,7 +447,7 @@ class TestListTipiVariazione(TestCase):
 class TestNonEditableFieldsCategorie(TestCase):
     """non_editable_fields per matrice categorie/listini (Fase 4 — A9)."""
 
-    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable")
+    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable", autospec=True)
     def test_get_non_editable_fields_include_dimensions(self, mock_list):
         # Le 4 dimensioni (categoria, utility, emittente, classe_utenza) sono
         # esposte come metadata immutabili anche se il registro DB non le ha

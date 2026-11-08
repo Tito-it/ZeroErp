@@ -353,7 +353,7 @@ _BLOCCHI_SELECT = """
         c.codice            AS causale_codice,
         c.descrizione       AS causale_descrizione,
         sg.codice_interno   AS sorgente_codice_interno,
-        x.sorgente_riga, x.sorgente_uid,
+        x.sorgente_id, x.sorgente_riga, x.sorgente_dettaglio, x.sorgente_uid,
         x.soggetto_ruolo_id,
         sr.ragione_sociale_completa AS soggetto_ragione_sociale,
         x.nota, x.data_insert
@@ -381,7 +381,8 @@ _MOVIMENTI_SELECT = f"""
         mv.ubicazione_id, mv.lotto_id, mv.asset_id,
         mv.sorgente_tipo_id,
         sg.codice_interno   AS sorgente_codice_interno,
-        mv.sorgente_riga, mv.sorgente_uid, mv.transfer_uid,
+        mv.sorgente_id, mv.sorgente_riga, mv.sorgente_dettaglio,
+        mv.sorgente_uid, mv.transfer_uid,
         mv.storno_di_movimento_id, mv.data_insert, mv.user_insert
       FROM magazzino.movimenti mv
       {_DECODIFICA_POSIZIONE_JOIN.format(alias='mv')}
@@ -944,9 +945,12 @@ class MagazzinoRepository:
 
     # Scopo: Il registro dei movimenti, paginato e decodificato. Sola lettura
     #        per costruzione: si scrive solo dalla porta (`fn_scrivi_movimento`).
-    # ⭐ `documento_sorgente` = (famiglia, id): i movimenti la cui sorgente e'
-    #    una riga di QUEL documento — `EXISTS` sulle righe, col tipo di
-    #    sorgente letto da `config.sorgenti` per `codice_interno` (mai l'id).
+    # ⭐ `documento_sorgente` = (famiglia, id): i movimenti di QUEL documento —
+    #    il tipo del documento (letto da `config.sorgenti` per `codice_interno`,
+    #    mai l'id) e la sua chiave in `sorgente_id`.
+    #    ⛔ Fino al giro M.1 di brief-db-sorgente-documento-e-riga (2026-11-08)
+    #    il movimento portava il tipo della RIGA e qui c'era un `EXISTS` sulle
+    #    righe del documento: dall'apply quel filtro tornava vuoto, senza errore.
     def list_movimenti(
         self,
         *,
@@ -988,12 +992,7 @@ class MagazzinoRepository:
             params.append(sorgente_codice_interno)
         if documento_sorgente is not None:
             f, doc_id = documento_sorgente
-            conditions.append(
-                f"""sg.codice_interno = %s AND EXISTS (
-                    SELECT 1 FROM {f.tabella_righe} r
-                     WHERE r.id = mv.sorgente_riga AND r.{f.fk_riga} = %s
-                )"""  # noqa: S608 — tabella righe e FK dal registro FAMIGLIE, valori come parametri
-            )
+            conditions.append("sg.codice_interno = %s AND mv.sorgente_id = %s")
             params.extend([f.sorgente_codice_interno, int(doc_id)])
         add_ricerca_full_condition(conditions, params, search, _RICERCA_MOVIMENTI)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""

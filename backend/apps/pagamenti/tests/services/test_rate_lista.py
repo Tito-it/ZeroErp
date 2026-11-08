@@ -27,7 +27,7 @@ Indice test eseguiti:
 """
 
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 
 from django.test import SimpleTestCase
 
@@ -35,6 +35,7 @@ from apps.core.services.error_manager import ServiceError
 from apps.pagamenti.db.pagamenti_repository import (
     RATE_SORT_COLONNE_DATA,
     RATE_SORT_COLUMNS,
+    PagamentiRepository,
 )
 from apps.pagamenti.services import saldi_service
 
@@ -54,9 +55,9 @@ _RIGA = {
 
 class RateListaTests(SimpleTestCase):
     def setUp(self) -> None:
-        self.repo = MagicMock()
+        self.repo = create_autospec(PagamentiRepository, instance=True)
         self.repo.list_rate_paginata.return_value = ([dict(_RIGA)], 1)
-        patcher = patch.object(saldi_service, "PagamentiRepository", return_value=self.repo)
+        patcher = patch.object(saldi_service, "PagamentiRepository", autospec=True, return_value=self.repo)
         patcher.start()
         self.addCleanup(patcher.stop)
 

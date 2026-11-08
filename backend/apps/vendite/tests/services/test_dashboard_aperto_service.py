@@ -64,7 +64,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
     #        RESI: REVERSE_FLOW, solo Backlog — DL-24), e il vocabolario `fasi`
     #        top-level (3 fasi vive) e' sempre esposto (alimenta i filtri FE
     #        senza dipendere dalla griglia di un'area).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_riepilogo", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_riepilogo", autospec=True, return_value=[])
     def test_cinque_aree_sempre_presenti_ordine_funnel(self, _mock_repo):
         data = fn_dash_aperto_riepilogo()
         ordine = [a["area"] for a in data["aree"]]
@@ -78,7 +78,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
     #        fasi nell'ordine del ciclo di vita, con zeri espliciti (aree euro
     #        a "0", aree a conteggi a None) — DL-13: il FE decide cosa rendere.
     #        DDT e' area euro (DL-21: ha importi via COALESCE riga/ordine).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_riepilogo", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_riepilogo", autospec=True, return_value=[])
     def test_contratto_simmetrico_griglia_fasi(self, _mock_repo):
         data = fn_dash_aperto_riepilogo()
         for area in data["aree"]:
@@ -95,7 +95,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
     #        celle per fase restano consultabili singolarmente.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_riepilogo",
+        "list_dash_aperto_riepilogo", autospec=True,
         return_value=_ROWS_RIEPILOGO,
     )
     def test_pivot_totali_area_e_fasi(self, _mock_repo):
@@ -113,7 +113,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
     #        valore_totale None anche quando popolate.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_riepilogo",
+        "list_dash_aperto_riepilogo", autospec=True,
         return_value=_ROWS_RIEPILOGO,
     )
     def test_area_conteggi_valori_none(self, _mock_repo):
@@ -129,7 +129,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
     #        accodata dopo le 3 note su TUTTE le aree (griglia simmetrica).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_riepilogo",
+        "list_dash_aperto_riepilogo", autospec=True,
         return_value=[
             {"area": "ORDINE_VENDITA", "fase": "NUOVA_FASE", "n_documenti": 1, "valore_totale": "10.00"}
         ],
@@ -149,7 +149,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
     #        accodata dopo le 4 note (fail-visible).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_riepilogo",
+        "list_dash_aperto_riepilogo", autospec=True,
         return_value=[
             {"area": "NUOVA_AREA", "fase": "APERTO", "n_documenti": 2, "valore_totale": None}
         ],
@@ -167,7 +167,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
     #        non la whitelist euro statica): niente euro persi in silenzio.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_riepilogo",
+        "list_dash_aperto_riepilogo", autospec=True,
         return_value=[
             {"area": "DDT_VENDITA", "fase": "APERTO", "n_documenti": 2, "valore_totale": "750.00"}
         ],
@@ -193,7 +193,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     #        Nessun auth_user_id: lo scope e' interamente DB-side.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_documenti",
+        "list_dash_aperto_documenti", autospec=True,
         return_value=([{"documento_id": 1}], 1),
     )
     def test_documenti_ok_envelope_paginato(self, mock_repo):
@@ -210,7 +210,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     # Scopo: ⛔ una fase fuori vocabolario (`FASI_DOCUMENTO`, specchio del
     #        CHECK) e' un 400 sul campo, e il repository non si interroga:
     #        prima passava e rispondeva lista vuota (2026-10-20).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti")
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti", autospec=True)
     def test_documenti_fase_fuori_vocabolario_e_400(self, mock_repo):
         with self.assertRaises(ServiceError) as ctx:
             fn_dash_aperto_documenti(fase="NUOVA_FASE")
@@ -225,7 +225,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     #        card «extra» del riepilogo, fail-visible.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_documenti",
+        "list_dash_aperto_documenti", autospec=True,
         return_value=([], 0),
     )
     def test_documenti_area_sul_vocabolario_delle_sorgenti(self, mock_repo):
@@ -239,7 +239,7 @@ class DashApertoDocumentiServiceTests(TestCase):
 
     # Scopo: ⛔ un'area che non e' una sorgente (il plurale ritirato `ORDINI`)
     #        e' il 400 del BB, prima del repository.
-    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti")
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti", autospec=True)
     def test_documenti_area_inventata_e_400(self, mock_repo):
         self.vocabolario.side_effect = ServiceError(code="E_VENDITE_VALIDATION", message="no")
         with self.assertRaises(ServiceError):
@@ -250,7 +250,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     #        inoltrato al repository (soglia del SOLO drill-down).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_documenti",
+        "list_dash_aperto_documenti", autospec=True,
         return_value=([], 0),
     )
     @patch.object(
@@ -267,7 +267,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     #        filtri area/fase il repository li riceve None.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_documenti",
+        "list_dash_aperto_documenti", autospec=True,
         return_value=([], 0),
     )
     def test_documenti_ritardo_giorni_default_none(self, mock_repo):
@@ -290,7 +290,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     #        (oggi - 30 = la data minima). Si legge il DEFAULT del parametro.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_documenti",
+        "list_dash_aperto_documenti", autospec=True,
         return_value=([], 0),
     )
     @patch.object(vendite_service, "oggi_aziendale", return_value=date(2020, 1, 31))
@@ -307,7 +307,7 @@ class DashApertoDocumentiServiceTests(TestCase):
 
     # Scopo: Un giorno oltre il pavimento -> E_VENDITE_VALIDATION, col detail
     #        che nomina la data minima; il repository non viene chiamato.
-    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti")
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti", autospec=True)
     @patch.object(vendite_service, "oggi_aziendale", return_value=date(2020, 1, 31))
     @patch.object(
         vendite_service.ParameterService, "get_default_date",
@@ -325,7 +325,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     # Scopo: Il caso che dava il 500 (DataError `timestamp too small` con
     #        N = 2000000): ora e' un 400, e senza OverflowError lato Python
     #        (il confronto e' fra interi di giorni).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti")
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti", autospec=True)
     @patch.object(
         vendite_service.ParameterService, "get_default_date",
         return_value=date(2020, 1, 1),
@@ -340,7 +340,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     #        nell'envelope senza rielaborazione lato service.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_documenti",
+        "list_dash_aperto_documenti", autospec=True,
         return_value=([{"documento_id": 1, "anzianita_giorni": 42}], 1),
     )
     def test_documenti_anzianita_giorni_passthrough(self, _mock_repo):
@@ -349,7 +349,7 @@ class DashApertoDocumentiServiceTests(TestCase):
 
     # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
     #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti", return_value=([], 0))
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti", autospec=True, return_value=([], 0))
     def test_documenti_page_invalida(self, mock_repo):
         fn_dash_aperto_documenti(limit=10, offset=30)
         kwargs = mock_repo.call_args.kwargs
@@ -360,7 +360,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     #        nell'envelope la pagina EFFETTIVA servita, che il FE adotta.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_documenti",
+        "list_dash_aperto_documenti", autospec=True,
         return_value=([{"documento_id": 1}], 10),
     )
     def test_documenti_pagina_stantia_clampata(self, _mock_repo):
@@ -373,7 +373,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     #        l'ordinamento server-side su tutte le pagine.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_aperto_documenti",
+        "list_dash_aperto_documenti", autospec=True,
         return_value=([], 0),
     )
     def test_documenti_ordinamento_inoltrato(self, mock_repo):

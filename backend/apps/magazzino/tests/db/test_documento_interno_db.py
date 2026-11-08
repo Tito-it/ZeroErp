@@ -191,7 +191,11 @@ class DocumentoInternoDbTests(unittest.TestCase):
             mov = consultazione_service.list_movimenti(auth_user_id=m.uid, inventario_id=d["id"], limit=10)
             self.assertEqual(mov["count"], 1)
             self.assertEqual(mov["results"][0]["causale_codice"], "INV_INIZIALE")
-            self.assertEqual(mov["results"][0]["sorgente_codice_interno"], "INVENTARIO_RIGA")
+            # La provenienza del modello (giro M.1): il tipo del documento, la
+            # sua chiave, la riga che ha mosso la merce.
+            self.assertEqual(mov["results"][0]["sorgente_codice_interno"], "INVENTARIO")
+            self.assertEqual(mov["results"][0]["sorgente_id"], d["id"])
+            self.assertEqual(mov["results"][0]["sorgente_riga"], righe[0]["id"])
             self.assertEqual(mov["results"][0]["costo_unitario"], Decimal("7"))
             disp = consultazione_service.list_disponibilita(auth_user_id=m.uid, magazzino_id=m.mag_a, limit=10)
             self.assertEqual([(x["articolo_codice"], x["disponibile"]) for x in disp["results"]],
@@ -277,7 +281,9 @@ class DocumentoInternoDbTests(unittest.TestCase):
             self.assertEqual(esito["n_movimenti"], 1)
             self.assertEqual(esito["movimenti"][0]["qta"], Decimal("-5"))
             mov = consultazione_service.list_movimenti(auth_user_id=m.uid, rettifica_id=rt["id"], limit=10)["results"]
+            self.assertEqual(len(mov), 1)
             self.assertEqual((mov[0]["causale_codice"], mov[0]["costo_unitario"]), ("RETT_NEG", Decimal("7")))
+            self.assertEqual((mov[0]["sorgente_codice_interno"], mov[0]["sorgente_id"]), ("RETTIFICA", rt["id"]))
             disp = consultazione_service.list_disponibilita(
                 auth_user_id=m.uid, magazzino_id=m.mag_a, articolo_id=m.art, limit=10,
             )["results"]

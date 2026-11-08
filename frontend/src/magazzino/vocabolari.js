@@ -53,15 +53,21 @@ export const ESITO_PIANO = Object.freeze({
 })
 export const ESITI_PIANO = Object.freeze(Object.values(ESITO_PIANO))
 
-// Le sorgenti di un movimento (`config.sorgenti.codice_interno`) che questo
-// cantiere PRODUCE: il filtro del registro le propone, e la riga di un
-// documento POSTED apre il registro sulla propria. ⚠️ Il vocabolario a DB e'
-// piu' largo (le sorgenti di vendita, i trasferimenti): il filtro ne propone
-// due perche' sono le due che oggi scrivono sul registro da questo dominio,
-// e una sorgente sconosciuta in colonna si vede col suo codice.
+// Le sorgenti di un movimento (`config.sorgenti.codice_interno`): il tipo del
+// DOCUMENTO che ha mosso la merce — la sua chiave e' `sorgente_id`, la riga
+// `sorgente_riga` (giro M.1 di brief-db-sorgente-documento-e-riga, 2026-11-08;
+// fino ad allora il registro portava il tipo della RIGA, `INVENTARIO_RIGA` …).
+// Sono i documenti che scrivono sul registro, di questo dominio e della
+// vendita: il filtro li propone tutti, e la riga di un documento POSTED apre il
+// registro sul proprio. ⚠️ Una sorgente fuori da qui si vede in colonna col
+// suo codice.
 export const SORGENTE_MOVIMENTO = Object.freeze({
-  INVENTARIO_RIGA: 'INVENTARIO_RIGA',
-  RETTIFICA_RIGA: 'RETTIFICA_RIGA',
+  INVENTARIO: 'INVENTARIO',
+  RETTIFICA: 'RETTIFICA',
+  TRASFERIMENTO: 'TRASFERIMENTO',
+  DDT_VENDITA: 'DDT_VENDITA',
+  RESO_VENDITA: 'RESO_VENDITA',
+  EVENTO_ASSET: 'EVENTO_ASSET',
 })
 export const SORGENTI_MOVIMENTO = Object.freeze(Object.values(SORGENTE_MOVIMENTO))
 
@@ -108,8 +114,8 @@ export const FAMIGLIE = Object.freeze({
     tabEntity: TAB_ENTITIES.INVENTARIO,
     // Il parametro del registro dei movimenti per il deep-link dal POSTED.
     filtroMovimenti: 'inventario_id',
-    // La sorgente dei movimenti che il posting scrive.
-    sorgente: SORGENTE_MOVIMENTO.INVENTARIO_RIGA,
+    // La sorgente dei movimenti che il posting scrive: il tipo del documento.
+    sorgente: SORGENTE_MOVIMENTO.INVENTARIO,
   }),
   [FAMIGLIA.RETTIFICHE]: Object.freeze({
     codice: FAMIGLIA.RETTIFICHE,
@@ -128,7 +134,7 @@ export const FAMIGLIE = Object.freeze({
     haPiano: false,
     tabEntity: TAB_ENTITIES.RETTIFICA,
     filtroMovimenti: 'rettifica_id',
-    sorgente: SORGENTE_MOVIMENTO.RETTIFICA_RIGA,
+    sorgente: SORGENTE_MOVIMENTO.RETTIFICA,
   }),
 })
 

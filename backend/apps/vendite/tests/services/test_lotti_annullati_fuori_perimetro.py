@@ -174,9 +174,9 @@ class LottiAnnullatiPerimetroTests(SimpleTestCase):
     # Scopo: test 5.
     def test_l_envelope_dichiara_i_nascosti_e_zero_se_mostrati(self):
         with (
-            patch.object(VenditeRepository, "list_lotti", return_value=([], 2)),
-            patch.object(VenditeRepository, "count_lotti_per_stato", return_value={}),
-            patch.object(VenditeRepository, "count_lotti_annullati", return_value=33) as conta,
+            patch.object(VenditeRepository, "list_lotti", autospec=True, return_value=([], 2)),
+            patch.object(VenditeRepository, "count_lotti_per_stato", autospec=True, return_value={}),
+            patch.object(VenditeRepository, "count_lotti_annullati", autospec=True, return_value=33) as conta,
         ):
             nascosti = vendite_service.fn_list_lotti(competenza_mese=date(2026, 9, 1))
             mostrati = vendite_service.fn_list_lotti(

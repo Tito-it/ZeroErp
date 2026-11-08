@@ -73,7 +73,7 @@ class OggettoDallaRottaTests(SimpleTestCase):
 
     # 1. L'oggetto si legge dalla lista, non si ricava dal nome: la chiave puo'
     #    non essere la convenzione (vendite.listini e' ('vendite', 'listino')).
-    @patch(_VOCE, return_value=_voce("vendite.listini", "vendite", "listino"))
+    @patch(_VOCE, return_value=_voce("vendite.listini", "vendite", "listino"), autospec=True)
     def test_rel_del_pannello_dichiara_l_oggetto_della_lista(self, _voce_m) -> None:
         view = _view(ConfigTableRecordsView, "vendite.listini")
         self.assertEqual(view.oggetto_permesso_da_richiesta(), ("vendite", "listino"))
@@ -82,7 +82,7 @@ class OggettoDallaRottaTests(SimpleTestCase):
     #    rifiuta poi il service con 400.
     def test_rel_fuori_pannello_non_ha_oggetto(self) -> None:
         for voce in (None, _voce("pagamenti.enti_incasso", "pagamenti", "enti_incasso", pannello=False)):
-            with self.subTest(voce=voce), patch(_VOCE, return_value=voce):
+            with self.subTest(voce=voce), patch(_VOCE, return_value=voce, autospec=True):
                 view = _view(ConfigTableRecordDetailView, "x.y")
                 self.assertIsNone(view.oggetto_permesso_da_richiesta())
 
@@ -101,7 +101,7 @@ class CatenaSullOggettoTests(SimpleTestCase):
 
     # 4. La catena chiede il livello sull'oggetto dichiarato, con l'area che
     #    ne dice il resolver (fn_area_di_oggetto) — non sull'area della classe.
-    @patch(_VOCE, return_value=_voce("magazzino.causali", "magazzino", "causali"))
+    @patch(_VOCE, return_value=_voce("magazzino.causali", "magazzino", "causali"), autospec=True)
     def test_il_livello_si_chiede_sull_oggetto_e_sulla_sua_area(self, _voce_m) -> None:
         resolver = _resolver()
         esito = ZeroERPPermission.valuta(
@@ -117,7 +117,7 @@ class CatenaSullOggettoTests(SimpleTestCase):
     # 5. Il caso del §7.1 del brief del modello: TUTTO su Configurazione e
     #    LETTURA su Magazzino. Si leggono le causali, non si scrivono — in
     #    creazione e in modifica.
-    @patch(_VOCE, return_value=_voce("magazzino.causali", "magazzino", "causali"))
+    @patch(_VOCE, return_value=_voce("magazzino.causali", "magazzino", "causali"), autospec=True)
     def test_tutto_su_config_non_scrive_le_causali(self, _voce_m) -> None:
         _resolver()
         for classe, metodo in (
@@ -134,7 +134,7 @@ class CatenaSullOggettoTests(SimpleTestCase):
 
     # 6. Una rel senza oggetto (fuori pannello) resta sull'area della classe:
     #    l'ingresso lo decide «config», il rifiuto lo da' il service.
-    @patch(_VOCE, return_value=None)
+    @patch(_VOCE, return_value=None, autospec=True)
     def test_senza_oggetto_resta_l_area_della_classe(self, _voce_m) -> None:
         resolver = _resolver()
         esito = ZeroERPPermission.valuta(
@@ -147,7 +147,7 @@ class CatenaSullOggettoTests(SimpleTestCase):
     # 7. Sulla sola classe (i tool dell'assistente) non c'e' la richiesta, e
     #    l'area della classe non e' quella dell'oggetto: si nega, senza
     #    nemmeno leggere la lista.
-    @patch(_VOCE)
+    @patch(_VOCE, autospec=True)
     def test_sulla_sola_classe_nega(self, voce_m) -> None:
         _resolver()
         for classe in (ConfigTableMetadataView, ConfigTableRecordsView, ConfigTableRecordDetailView):

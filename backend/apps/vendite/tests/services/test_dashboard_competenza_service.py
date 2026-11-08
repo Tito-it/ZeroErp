@@ -68,7 +68,7 @@ Indice test eseguiti:
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
@@ -324,15 +324,15 @@ class DashCompetenzaMensileServiceTests(TestCase):
     def setUp(self):
         patcher = patch.object(
             vendite_service.VenditeRepository,
-            "count_dash_competenza_fatture_mensile",
+            "count_dash_competenza_fatture_mensile", autospec=True,
             return_value=({}, set()),
         )
         self._mock_fatture = patcher.start()
         self.addCleanup(patcher.stop)
 
     # Scopo: La griglia ha sempre 12 mesi x 4 stadi anche a repository vuoto.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True, return_value=[])
     def test_griglia_12_mesi_4_stadi_sempre_completa(self, _mock_rows, _mock_err):
         data = fn_dash_competenza_mensile(anno=2026)
         self.assertEqual(data["anno"], 2026)
@@ -346,8 +346,8 @@ class DashCompetenzaMensileServiceTests(TestCase):
     # Scopo: Contratto simmetrico: ogni cella vuota ha tutti i campi a zero
     #        (inclusa la misura display) e stati_fattura lista vuota; i totali
     #        del mese vuoto sono zeri espliciti (concentrico DL-8).
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True, return_value=[])
     def test_contratto_simmetrico_celle_vuote(self, _mock_rows, _mock_err):
         data = fn_dash_competenza_mensile(anno=2026)
         for cella in data["mesi"][0]["stadi"]:
@@ -365,8 +365,8 @@ class DashCompetenzaMensileServiceTests(TestCase):
         self.assertEqual(totali["n_in_ritardo"], 0)
 
     # Scopo: L'ordine degli stadi e' quello del funnel commessa → fattura.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True, return_value=[])
     def test_ordine_stadi_funnel(self, _mock_rows, _mock_err):
         data = fn_dash_competenza_mensile(anno=2026)
         ordine = [s["stadio"] for s in data["mesi"][0]["stadi"]]
@@ -377,10 +377,10 @@ class DashCompetenzaMensileServiceTests(TestCase):
 
     # Scopo: Le righe FATTURATA per stato si sommano nella cella stadio e
     #        alimentano il breakdown stati_fattura (blocco 3a, ordine repo).
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=_ROWS_GENNAIO,
     )
     def test_pivot_fatturata_somma_e_breakdown(self, _mock_rows, _mock_err):
@@ -408,10 +408,10 @@ class DashCompetenzaMensileServiceTests(TestCase):
 
     # Scopo: Uno stadio non fatturato finisce nella cella giusta senza
     #        popolare il breakdown stati_fattura.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=_ROWS_GENNAIO,
     )
     def test_stadio_non_fatturato_proiettato(self, _mock_rows, _mock_err):
@@ -426,10 +426,10 @@ class DashCompetenzaMensileServiceTests(TestCase):
 
     # Scopo: I totali del mese seguono DB-6: fatturato = imponibile riga,
     #        da fatturare = teorico degli stadi non fatturati.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=_ROWS_GENNAIO,
     )
     def test_totali_mese_db6(self, _mock_rows, _mock_err):
@@ -446,10 +446,10 @@ class DashCompetenzaMensileServiceTests(TestCase):
     #        contiene movimenti di natura diversa: su agosto le rettifiche stanno
     #        in DA_EMETTERE e i normali in FATTURATA, la cardinalita' non cambia
     #        affatto e provare quel mese direbbe «non si e' rotto niente».
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=_ROWS_BUCKET_SPEZZATO,
     )
     def test_breakdown_non_duplica_lo_stato_su_bucket_spezzato(self, _mock_rows, _mock_err):
@@ -476,10 +476,10 @@ class DashCompetenzaMensileServiceTests(TestCase):
     #                                 aspetta di essere emessa.
     #        In assoluto il residuo e' 59,00 — i due documenti, contati due
     #        volte perche' sono due lavori. Correzione di Tid, 2026-08-20.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=_ROWS_COMPENSAZIONE,
     )
     def test_copertura_non_compensa_le_rettifiche(self, _mock_rows, _mock_err):
@@ -519,10 +519,10 @@ class DashCompetenzaMensileServiceTests(TestCase):
     #        formula mista (denominatore assoluto, numeratore con segno) si
     #        romperebbe: il numeratore varrebbe 970,50 su 1.029,50 = 94%, cioe'
     #        un mese senza NIENTE da fare che si dichiara incompleto per sempre.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=_ROWS_TUTTO_FATTURATO,
     )
     def test_copertura_chiude_al_100_con_nota_di_credito_emessa(self, _mock_rows, _mock_err):
@@ -542,10 +542,10 @@ class DashCompetenzaMensileServiceTests(TestCase):
 
     # Scopo: Uno stadio emesso dalla vista ma fuori whitelist NON viene perso:
     #        accodato dopo i 4 noti (fail-visible) e conteggiato nei totali.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=[
             {
                 "competenza_mese": "2026-01-01",
@@ -580,10 +580,10 @@ class DashCompetenzaMensileServiceTests(TestCase):
     # Scopo: Il conteggio errori vivi arriva nel mese giusto (blocco 4).
     @patch.object(
         vendite_service.VenditeRepository,
-        "count_dash_competenza_errori_mensile",
+        "count_dash_competenza_errori_mensile", autospec=True,
         return_value={"2026-03-01": 2},
     )
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True, return_value=[])
     def test_errori_per_mese(self, _mock_rows, _mock_err):
         data = fn_dash_competenza_mensile(anno=2026)
         self.assertEqual(data["mesi"][2]["n_errori"], 2)
@@ -607,7 +607,7 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
     #        Nessun auth_user_id: lo scope e' interamente DB-side (GUC vista).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_attivita",
+        "list_dash_competenza_attivita", autospec=True,
         return_value=([{"commessa_attivita_id": 1}], 1),
     )
     def test_attivita_ok_envelope_paginato(self, mock_repo):
@@ -633,7 +633,7 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
     # Scopo: La competenza viene normalizzata al 1° del mese.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_attivita",
+        "list_dash_competenza_attivita", autospec=True,
         return_value=([], 0),
     )
     def test_attivita_competenza_normalizzata_al_primo(self, mock_repo):
@@ -647,7 +647,7 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
     # Scopo: Il filtro recuperi tardivi viene inoltrato al repository.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_attivita",
+        "list_dash_competenza_attivita", autospec=True,
         return_value=([], 0),
     )
     def test_attivita_solo_ritardo_passthrough(self, mock_repo):
@@ -659,7 +659,7 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
 
     # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
     #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_attivita", return_value=([], 0))
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_attivita", autospec=True, return_value=([], 0))
     def test_attivita_page_invalida(self, mock_repo):
         fn_dash_competenza_attivita(competenza_mese=date(2026, 5, 1), limit=10, offset=30)
         kwargs = mock_repo.call_args.kwargs
@@ -669,7 +669,7 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
     #        l'ordinamento server-side su tutte le pagine.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_attivita",
+        "list_dash_competenza_attivita", autospec=True,
         return_value=([], 0),
     )
     def test_attivita_ordinamento_inoltrato(self, mock_repo):
@@ -706,7 +706,7 @@ class DashCompetenzaCommesseServiceTests(TestCase):
     #        stadio/solo_ritardo/ordinamento inoltrati al repository.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_commesse",
+        "list_dash_competenza_commesse", autospec=True,
         return_value=([{"commessa_id": 7, "n_attivita": 4}], 1),
     )
     def test_commesse_ok_envelope_e_passthrough(self, mock_repo):
@@ -756,7 +756,7 @@ class DashCompetenzaCommesseServiceTests(TestCase):
 
     # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
     #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_commesse", return_value=([], 0))
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_commesse", autospec=True, return_value=([], 0))
     def test_commesse_page_invalida(self, mock_repo):
         fn_dash_competenza_commesse(competenza_mese=date(2026, 5, 1), limit=10, offset=30)
         kwargs = mock_repo.call_args.kwargs
@@ -767,7 +767,7 @@ class DashCompetenzaErroriServiceTests(TestCase):
     # Scopo: Envelope paginato standard con i risultati del repository.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_errori",
+        "list_dash_competenza_errori", autospec=True,
         return_value=([{"tipo_evento": "TASK_ERRORE"}], 1),
     )
     def test_errori_ok_envelope_paginato(self, mock_repo):
@@ -780,7 +780,7 @@ class DashCompetenzaErroriServiceTests(TestCase):
     # Scopo: Senza competenza il repository riceve None (tutti i mesi).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_errori",
+        "list_dash_competenza_errori", autospec=True,
         return_value=([], 0),
     )
     def test_errori_competenza_opzionale_none(self, mock_repo):
@@ -791,7 +791,7 @@ class DashCompetenzaErroriServiceTests(TestCase):
     # Scopo: La competenza (se presente) viene normalizzata al 1° del mese.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_errori",
+        "list_dash_competenza_errori", autospec=True,
         return_value=([], 0),
     )
     def test_errori_competenza_normalizzata_al_primo(self, mock_repo):
@@ -802,7 +802,7 @@ class DashCompetenzaErroriServiceTests(TestCase):
     # Scopo: order_by in whitelist → propagato al repository (8° lotto liste).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_errori",
+        "list_dash_competenza_errori", autospec=True,
         return_value=([], 0),
     )
     def test_errori_order_by_propagato(self, mock_repo):
@@ -814,7 +814,7 @@ class DashCompetenzaErroriServiceTests(TestCase):
     # Scopo: order_by fuori whitelist → ServiceError 400, repo mai chiamato.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_errori",
+        "list_dash_competenza_errori", autospec=True,
         return_value=([], 0),
     )
     def test_errori_order_by_fuori_whitelist(self, mock_repo):
@@ -826,7 +826,7 @@ class DashCompetenzaErroriServiceTests(TestCase):
     # Scopo: order_dir non asc/desc → ServiceError 400, repo mai chiamato.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_errori",
+        "list_dash_competenza_errori", autospec=True,
         return_value=([], 0),
     )
     def test_errori_order_dir_invalido(self, mock_repo):
@@ -870,7 +870,7 @@ class DashCompetenzaGruppiServiceTests(TestCase):
 
     # 17) La risposta porta pagina + riepilogo + facet insieme: una seconda
     #     chiamata per i totali potrebbe raccontare un istante diverso.
-    @patch.object(vendite_service, "VenditeRepository")
+    @patch.object(vendite_service, "VenditeRepository", autospec=True)
     def test_gruppi_envelope_con_riepilogo_e_facet(self, mock_repo_cls):
         self._repo(mock_repo_cls)
         out = fn_dash_competenza_gruppi(competenza_mese=date(2026, 6, 1))
@@ -882,7 +882,7 @@ class DashCompetenzaGruppiServiceTests(TestCase):
     # 18) Il filtro tipo arriva SIA alla lista SIA ai totali: se arrivasse solo
     #     alla lista, la riga di totali descriverebbe un perimetro piu' largo
     #     delle righe che ha sopra — cioe' mentirebbe.
-    @patch.object(vendite_service, "VenditeRepository")
+    @patch.object(vendite_service, "VenditeRepository", autospec=True)
     def test_gruppi_filtro_tipo_inoltrato_alla_lista_e_ai_totali(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
         fn_dash_competenza_gruppi(
@@ -908,7 +908,7 @@ class DashCompetenzaGruppiServiceTests(TestCase):
     #     riconciliare le righe. Il presidio della separazione vera sta in
     #     `test_due_perimetri_dentro_la_query`, sotto — dov'e' andata a stare
     #     la proprieta'.
-    @patch.object(vendite_service, "VenditeRepository")
+    @patch.object(vendite_service, "VenditeRepository", autospec=True)
     def test_gruppi_contorno_riceve_tutti_i_filtri(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
         fn_dash_competenza_gruppi(
@@ -921,7 +921,7 @@ class DashCompetenzaGruppiServiceTests(TestCase):
         self.assertEqual(kwargs["search"], "ORD0005174")
 
     # 20) Stadio fuori vocabolario -> 400 (stessa whitelist delle altre liste).
-    @patch.object(vendite_service, "VenditeRepository")
+    @patch.object(vendite_service, "VenditeRepository", autospec=True)
     def test_gruppi_stadio_invalido(self, mock_repo_cls):
         self._repo(mock_repo_cls)
         with self.assertRaises(ServiceError):
@@ -931,7 +931,7 @@ class DashCompetenzaGruppiServiceTests(TestCase):
 
     # 21) order_by fuori whitelist -> 400, mai un ordinamento silenziosamente
     #     ignorato (che renderebbe la paginazione non deterministica).
-    @patch.object(vendite_service, "VenditeRepository")
+    @patch.object(vendite_service, "VenditeRepository", autospec=True)
     def test_gruppi_order_by_non_valido(self, mock_repo_cls):
         self._repo(mock_repo_cls)
         with self.assertRaises(ServiceError):
@@ -942,7 +942,7 @@ class DashCompetenzaGruppiServiceTests(TestCase):
     # 22) Competenza normalizzata al 1° del mese su ENTRAMBE le letture: una
     #     sola normalizzata e l'altra no darebbe una lista di un mese e un
     #     contorno di un altro.
-    @patch.object(vendite_service, "VenditeRepository")
+    @patch.object(vendite_service, "VenditeRepository", autospec=True)
     def test_gruppi_competenza_normalizzata_al_primo(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
         fn_dash_competenza_gruppi(competenza_mese=date(2026, 6, 23))
@@ -1076,8 +1076,8 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     un mapping che le confondesse passerebbe questo test solo per caso.
     # ⚠️ Il `lotto_id` viaggia perche' il frontend ci disegna un GESTO: senza,
     #     l'operatore ricopia un codice e poi lo cerca a mano.
-    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta", autospec=True)
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_mapping_espone_il_blocco_di_emissione_col_bersaglio(
         self, mock_query, _band,
     ):
@@ -1103,8 +1103,8 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
 
     # 24-novies-bis) ⚠️ E senza blocco resta `None` su tutti e quattro: la riga
     #     si puo' prendere. Uno zero o una stringa vuota direbbero un'altra cosa.
-    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta", autospec=True)
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_senza_blocco_di_emissione_i_quattro_campi_restano_none(
         self, mock_query, _band,
     ):
@@ -1126,8 +1126,8 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     segno dice «ci ho provato», non «non si puo' fare» — e la riga deve
     #     restare fatturabile, o il rimedio (correggi e riprova) sarebbe
     #     impossibile proprio dove serve.
-    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta", autospec=True)
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_mapping_espone_l_esito_dell_ultimo_tentativo(self, mock_query, _band):
         mock_query.return_value = (self._rows(
             5387,
@@ -1157,8 +1157,8 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     verita' di ogni gruppo che nessun giro ha ancora lavorato — «nessuno
     #     l'ha detto», che il frontend deve poter distinguere da «e' andata
     #     bene». Un `"None"` a video sarebbe un esito inventato.
-    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta", autospec=True)
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_esito_assente_resta_none(self, mock_query, _band):
         mock_query.return_value = (self._rows(5387), 1)
         righe, _ = VenditeRepository().list_dash_competenza_gruppi(
@@ -1175,7 +1175,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     questa classe girano su `_rows`, quindi una tupla rimasta indietro non
     #     li fa fallire — li fa passare su una forma che il database non
     #     produce. Il conteggio si legge dal SELECT, non si scrive qui.
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_larghezza_riga_finta_uguale_al_select(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         VenditeRepository().list_dash_competenza_gruppi(
@@ -1203,7 +1203,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     stessa regola — il commento la dichiarava «drift noto e accettato» —
     #     e id e codice potevano descrivere documenti diversi. Il test ora
     #     presidia il verso opposto: che quella risoluzione NON torni.
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_id_documento_dalla_vista_non_da_una_seconda_risoluzione(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         VenditeRepository().list_dash_competenza_gruppi(
@@ -1218,7 +1218,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     # 24) Il mapping consegna l'id al FE. Il caso NULL non e' un dettaglio: i
     #     gruppi SOURCELESS (oneri di commessa) non hanno documento, e il FE
     #     deve poter nascondere l'azione invece di aprire un drawer vuoto.
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_mapping_espone_documento_id_e_ne_preserva_il_null(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         righe, _ = VenditeRepository().list_dash_competenza_gruppi(
@@ -1243,7 +1243,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     vista, e l'ultimo ramo e' la chiave del gruppo — riscrivere quella
     #     catena nel repository o nel frontend sarebbe la stessa regola in due
     #     posti (brief-db-riferimento-gruppi-lateral-costosa §9).
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_mapping_espone_riferimento_non_nullo(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         righe, _ = VenditeRepository().list_dash_competenza_gruppi(
@@ -1256,7 +1256,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     nessuno leggeva — l'operatore vedeva lavoro promesso e scopriva il
     #     blocco solo cliccando. Col PERCHE' accanto (stato commessa), non solo
     #     il CHE: «segnalare, non nascondere» pretende il motivo.
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_mapping_espone_emittibilita_testata_col_motivo(self, mock_query):
         mock_query.return_value = (
             self._rows(5387, emittibile=False, stato="BOZZA", stato_descr="Bozza"), 1,
@@ -1281,7 +1281,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     dallo scope dell'operatore, che resta in lista e finisce nella voce
     #     «cliente non determinabile» (D-5). Coercerlo a stringa vuota lo
     #     renderebbe indistinguibile da un codice mancante a monte.
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_mapping_espone_cliente_di_fatturazione_e_ne_preserva_il_null(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         righe, _ = VenditeRepository().list_dash_competenza_gruppi(
@@ -1312,7 +1312,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     # ⚠️ Si asserisce la RAGIONE SOCIALE e si nega l'id: la vista espone anche
     #     `emittente_soggetto_ruolo_id`, e portarlo a video sposterebbe
     #     l'ambiguita' di un passo invece di toglierla (§11.4).
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_mapping_espone_emittente_ragione_sociale(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         righe, _ = VenditeRepository().list_dash_competenza_gruppi(
@@ -1354,7 +1354,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     `tipo_colonna = 'azione'` sono fuori perche' un campo sorgente non ce
     #     l'hanno (lo dichiara gia' `test_colonna_azione_mai_ordinabile` del
     #     presidio trasversale).
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga(self, mock_query):
         # Import locale: lega questo test al presidio trasversale invece di
         # riscrivere la lettura del CSV (che li' e' gia' scritta, con la
@@ -1502,7 +1502,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     # 28) Il mapping consegna le due colonne con le chiavi che il catalogo
     #     dichiara, e la data come stringa ISO (il FE la formatta, il BE non
     #     inventa un formato — memoria locale_formatters).
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_mapping_sezionale_e_data_prevista(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         righe, _ = VenditeRepository().list_dash_competenza_gruppi(
@@ -1529,7 +1529,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     ⚠️ Che i due numeri NASCANO da perimetri diversi lo presidia
     #     `test_due_perimetri_dentro_la_query`, dove sta la query. Qui si
     #     verifica solo che il service non li confonda per strada.
-    @patch.object(vendite_service, "VenditeRepository")
+    @patch.object(vendite_service, "VenditeRepository", autospec=True)
     def test_riepilogo_e_totale_perimetro_restano_due_numeri(self, mock_repo_cls):
         repo = mock_repo_cls.return_value
         repo.list_dash_competenza_gruppi.return_value = ([], 0)
@@ -1550,7 +1550,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     #     andrebbe deciso cosa farne dei NULL che `array_agg(DISTINCT)`
     #     conserva — e due numeri che rispondono «quanti sezionali» in modo
     #     diverso sono peggio di uno solo.
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_registri_ids_non_esce_nel_payload(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         righe, _ = VenditeRepository().list_dash_competenza_gruppi(
@@ -1604,8 +1604,8 @@ class DashCompetenzaRespintaEErroriRepositoryTests(TestCase):
     #        il totale. Misurato il 2026-09-04 su `2026-06` (48 gruppi): 27 ms
     #        senza, 1073 ms con. Questo test dice che la lettura resta UNA,
     #        fuori dal SELECT paginato e ristretta agli id della pagina.
-    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta", autospec=True)
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_la_bandiera_non_entra_nel_select_paginato(self, mock_query, _mock_band):
         mock_query.return_value = (DashCompetenzaGruppiRepositoryTests()._rows(1), 1)
         VenditeRepository().list_dash_competenza_gruppi(
@@ -1674,7 +1674,7 @@ class DashCompetenzaRespintaEErroriRepositoryTests(TestCase):
             1,
         )
 
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_errori_mappano_le_commesse_respinte_in_coda(self, mock_query):
         mock_query.return_value = ([self._riga_errore()], 1)
         righe, _ = VenditeRepository().list_dash_competenza_errori(
@@ -1697,7 +1697,7 @@ class DashCompetenzaRespintaEErroriRepositoryTests(TestCase):
     # Scopo: il presidio del presidio, come per i gruppi — la riga finta e il
     #        SELECT vero devono avere la stessa larghezza, o tutti i test di
     #        mapping qui sopra girano su una forma che il database non produce.
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_larghezza_riga_errori_uguale_al_select(self, mock_query):
         mock_query.return_value = ([self._riga_errore()], 1)
         VenditeRepository().list_dash_competenza_errori(
@@ -1805,7 +1805,7 @@ class DashCompetenzaGruppiOrdinamentoTests(TestCase):
     errore — da' pagine con doppioni e righe che non compaiono mai.
     """
 
-    @patch.object(VenditeRepository, "_query_paged_view")
+    @patch.object(VenditeRepository, "_query_paged_view", autospec=True)
     def test_colonne_nuove_ordinano_col_tiebreaker(self, mock_query) -> None:
         mock_query.return_value = ([], 0)
         for colonna in ("ba_codice_fatturazione", "id_fiscale"):
@@ -1870,9 +1870,9 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
     #     stesso mese, un innesto per chiave sbagliata (solo mese, ignorando lo
     #     stadio) spalmerebbe le 2 fatture di FATTURATA anche sugli altri — e
     #     sarebbe invisibile in un test a stadio singolo.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True)
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", autospec=True)
     def test_n_fatture_innestato_sulla_cella_di_quello_stadio(
         self, mock_fatture, mock_rows, _mock_err,
     ):
@@ -1885,9 +1885,9 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
 
     # 26) Stadio NON calcolabile per progetto (DA_EMETTERE): nessun numero e
     #     stato NON_APPLICABILE -> la card tace, ed e' corretto che taccia.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True)
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", autospec=True)
     def test_stadio_non_calcolabile_e_non_applicabile(
         self, mock_fatture, mock_rows, _mock_err,
     ):
@@ -1901,9 +1901,9 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
     #     NON_APPLICABILE. Se questi due collassassero, un guasto sarebbe
     #     indistinguibile a video dal comportamento normale — e nessuno
     #     verrebbe mai a saperlo, perche' il warning vive nei log del server.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True)
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", autospec=True)
     def test_calcolo_fallito_e_errore_non_silenzio(
         self, mock_fatture, mock_rows, _mock_err,
     ):
@@ -1920,9 +1920,9 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
 
     # 28) Cella VUOTA: nessuna attivita' -> nessun conteggio da mostrare
     #     («0 fatture» sotto «0 attivita'» e' rumore), ma NON e' un errore.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", return_value=({}, set()))
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True, return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", autospec=True, return_value=({}, set()))
     def test_cella_vuota_tace_senza_essere_errore(
         self, _mock_fatture, _mock_rows, _mock_err,
     ):
@@ -1935,9 +1935,9 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
     # 29) Zero VERO: attivita' presenti, stadio calcolabile, nessuna fattura
     #     ancora -> 0 con stato OK. E' il caso che un `or None` scritto per
     #     comodita' trasformerebbe in un silenzio.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True)
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", autospec=True)
     def test_zero_esplicito_non_diventa_none(self, mock_fatture, mock_rows, _mock_err):
         mock_rows.return_value = self._RIGHE
         mock_fatture.return_value = ({("2026-01-01", "EMESSA_NON_FATTURATA"): 0}, set())
@@ -1947,12 +1947,13 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
 
     # 30) UNA sola lettura per l'intera griglia, non una per cella (48 query
     #     per un cruscotto sarebbero un difetto di per se').
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", return_value=({}, set()))
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True, return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", autospec=True, return_value=({}, set()))
     def test_una_sola_lettura_per_la_griglia(self, mock_fatture, _mock_rows, _mock_err):
         fn_dash_competenza_mensile(anno=2026)
-        mock_fatture.assert_called_once_with(anno=2026)
+        # `ANY` e' `self`: il mock `autospec` di un metodo registra l'istanza.
+        mock_fatture.assert_called_once_with(ANY, anno=2026)
 
     # 31) L'avvertimento NON si spande sui mesi vuoti. Il calcolo fallisce per
     #     l'intero anno: senza questo presidio, un guasto accenderebbe fino a
@@ -1961,9 +1962,9 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
     #     Presidia l'ORDINE dei rami di `_stato_fatture_cella`, che una prova
     #     di mutazione ha mostrato essere l'unica parte non coperta (e da
     #     correggere: il codice valutava prima il guasto).
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
-    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", autospec=True)
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", autospec=True)
     def test_errore_solo_dove_ci_sono_attivita(self, mock_fatture, mock_rows, _mock_err):
         mock_rows.return_value = self._RIGHE            # solo GENNAIO e' popolato
         mock_fatture.return_value = ({}, {"EMESSA_NON_FATTURATA"})
@@ -1994,7 +1995,7 @@ class CardResiduiTests(TestCase):
     def setUp(self):
         patcher = patch.object(
             vendite_service.VenditeRepository,
-            "count_dash_competenza_fatture_mensile",
+            "count_dash_competenza_fatture_mensile", autospec=True,
             return_value=({}, set()),
         )
         patcher.start()
@@ -2006,10 +2007,10 @@ class CardResiduiTests(TestCase):
     # ⛔ Se questo test cade, la card torna a sommare il lavoro fermo per un
     #        difetto con quello in transito legittimo — e il verbo verrebbe
     #        proposto su emissioni corrette, disfacendole.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=_ROWS_DUE_POPOLAZIONI,
     )
     def test_card_separa_residui_da_transito(self, _mock_rows, _mock_err):
@@ -2027,10 +2028,10 @@ class CardResiduiTests(TestCase):
 
     # Scopo: Su uno stadio dove il motivo non si applica il campo c'e' e vale 0
     #        (contratto simmetrico DL-8: il frontend rende, non deduce).
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=_ROWS_BUCKET_SPEZZATO,
     )
     def test_campo_presente_e_zero_dove_non_si_applica(self, _mock_rows, _mock_err):
@@ -2046,10 +2047,10 @@ class CardResiduiTests(TestCase):
     # ⛔ Con l'assoluto la card direbbe «di cui 1 · 500,00 €» sotto un totale di
     #        -500,00 €, e sopra una lista che mostra -500,00: due meta' che non
     #        si sommano al tutto, senza che niente fallisca.
-    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", autospec=True, return_value={})
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=[
             {
                 "competenza_mese": "2026-07-01",
@@ -2090,11 +2091,11 @@ class CardResiduiTests(TestCase):
     #    plausibile, cioe' un difetto che nessuno nota.
     @patch.object(
         vendite_service.VenditeRepository,
-        "count_dash_competenza_errori_mensile", return_value={},
+        "count_dash_competenza_errori_mensile", autospec=True, return_value={},
     )
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_competenza_mensile",
+        "list_dash_competenza_mensile", autospec=True,
         return_value=[
             {
                 "competenza_mese": "2026-07-01",

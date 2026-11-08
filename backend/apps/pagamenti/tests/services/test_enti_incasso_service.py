@@ -29,17 +29,18 @@ Indice test eseguiti:
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.pagamenti.services import enti_incasso_service
+from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
 
 _ENTE = {"id": 4, "codice": "BANCA-1", "tipo": "BANCA", "conto_iban": "IT00…"}
 
 
 def _repo() -> MagicMock:
-    repo = MagicMock()
+    repo = create_autospec(PagamentiRepository, instance=True)
     repo.get_ente_incasso.return_value = dict(_ENTE)
     repo.create_ente_incasso.return_value = 4
     repo.update_ente_incasso.return_value = 1
@@ -60,7 +61,7 @@ class _Base(TestCase):
     def setUp(self) -> None:
         self.repo = _repo()
         patcher = patch.object(
-            enti_incasso_service, "PagamentiRepository", return_value=self.repo
+            enti_incasso_service, "PagamentiRepository", autospec=True, return_value=self.repo
         )
         patcher.start()
         self.addCleanup(patcher.stop)
