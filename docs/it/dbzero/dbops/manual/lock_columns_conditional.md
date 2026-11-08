@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.lock_columns_conditional`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -103,6 +103,9 @@ che la condizione chiama.
 * 2026-10-13 — entrano la regola del componente che non diventa composito e quelle
   sull'articolo usato (`brief-db-articoli-ammessi-per-documento`); esce la regola del solo
   componente in bozza, assorbita dall'uso.
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

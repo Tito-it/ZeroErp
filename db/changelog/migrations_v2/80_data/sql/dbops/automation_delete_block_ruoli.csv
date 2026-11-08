@@ -1,9 +1,9 @@
-id,schema_name,table_name,guc_key,enabled,trigger_name,meta,data_insert,user_insert,data_update,user_update
-1,anagrafiche,clienti,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""CLIENTE""}",2026-01-23 00:00:00+01,titodb,,
-2,anagrafiche,fornitori,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""FORNITORE""}",2026-01-23 00:00:00+01,titodb,,
-3,anagrafiche,gestori,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""GESTORE""}",2026-01-23 00:00:00+01,titodb,,
-4,anagrafiche,resellers,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""RESELLER""}",2026-01-23 00:00:00+01,titodb,,
-5,anagrafiche,vettori,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""VETTORE""}",2026-01-23 00:00:00+01,titodb,,
-6,anagrafiche,emittenti_fiscali,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""EMITT_FISC""}",2026-01-23 00:00:00+01,titodb,,
-7,anagrafiche,risorse_umane,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""RIS_UMANA""}",2026-01-23 00:00:00+01,titodb,,
-8,anagrafiche,bank_branches,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""BANK""}",2026-01-23 00:00:00+01,titodb,,
+id,schema_name,table_name,guc_key,enabled,trigger_name,meta,data_insert,user_insert
+1,anagrafiche,clienti,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""CLIENTE""}",2026-01-23 00:00:00+01,titodb
+2,anagrafiche,fornitori,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""FORNITORE""}",2026-01-23 00:00:00+01,titodb
+3,anagrafiche,gestori,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""GESTORE""}",2026-01-23 00:00:00+01,titodb
+4,anagrafiche,resellers,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""RESELLER""}",2026-01-23 00:00:00+01,titodb
+5,anagrafiche,vettori,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""VETTORE""}",2026-01-23 00:00:00+01,titodb
+6,anagrafiche,emittenti_fiscali,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""EMITT_FISC""}",2026-01-23 00:00:00+01,titodb
+7,anagrafiche,risorse_umane,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""RIS_UMANA""}",2026-01-23 00:00:00+01,titodb
+8,anagrafiche,bank_branches,zeroerp.maintenance_ruoli_delete,true,,"{""codice_ruolo"":""BANK""}",2026-01-23 00:00:00+01,titodb

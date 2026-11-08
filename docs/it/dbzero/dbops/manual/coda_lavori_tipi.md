@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.coda_lavori_tipi`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -131,6 +131,9 @@ La tabella non solleva errori propri. Quelli che nascono dalle sue righe li soll
 * 2026-11-07 — `ESEGUI_PROCESSO` passa a `SISTEMA`, e la regola fra canale e `run_as` si restringe
   ai `CODA` di `DOMINIO` (`brief-db-revisione-dbops`, giro 5): revoca in parte la decisione del
   2026-09-14.
+* 2026-11-08 — perde `tx_id`, `data_update`, `user_update` e i due trigger montati a mano che li
+  scrivevano: la tabella la scrive solo la migrazione, dal CSV, e le colonne direbbero sempre «il
+  migratore» (regola dello scrittore, `automazione-db.md` §1.1; `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

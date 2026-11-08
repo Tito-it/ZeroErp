@@ -16,9 +16,6 @@
 | data_registrazione | date | NO | script.fn_data_operativa() |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | CURRENT_USER |
-| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -33,14 +30,6 @@
 |------|-------------|
 | pk_rls_perimetro_debito | `CREATE UNIQUE INDEX pk_rls_perimetro_debito ON dbops.rls_perimetro_debito USING btree (id)` |
 | uq_rls_perimetro_debito_target | `CREATE UNIQUE INDEX uq_rls_perimetro_debito_target ON dbops.rls_perimetro_debito USING btree (criterio, schema_tabella, nome_tabella)` |
-
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_rls_perimetro_debito_audit_data_user_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_rls_perimetro_debito_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_rls_perimetro_debito_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_rls_perimetro_debito_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

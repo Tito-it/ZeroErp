@@ -25,6 +25,8 @@ DECLARE
     v_utente      config.user_override_azioni.auth_user_id%TYPE;
     v_t           magazzino.trasferimenti%ROWTYPE;
     v_sorgente_id config.sorgenti.id%TYPE;
+    v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+    v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
     v_motivi      jsonb;
     v_riga        magazzino.trasferimenti_righe%ROWTYPE;
 BEGIN
@@ -60,15 +62,12 @@ BEGIN
         'magazzino', 'magazzino.fn_posta_trasferimento', v_motivi, NULL, NULL::uuid,
         jsonb_build_object('trasferimento_id', p_trasferimento_id));
 
-    SELECT s.id INTO v_sorgente_id
-      FROM config.sorgenti s
-     WHERE s.codice_interno = 'TRASFERIMENTO_RIGA' AND s.attivo;
-    IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_trasferimento',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('config', 'config.sorgenti.TRASFERIMENTO_RIGA'),
-            NULL::uuid, VARIADIC ARRAY['sorgente TRASFERIMENTO_RIGA (config.sorgenti, attiva)']);
-    END IF;
+    -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+    -- TRASFERIMENTO e la chiave secondo il suo key_selector. Un tipo assente o
+    -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_sorgente_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('TRASFERIMENTO', p_trasferimento_id::text) p;
 
     PERFORM set_config('zeroerp.magazzino_posting_trasferimento', p_trasferimento_id::text, true);
 
@@ -84,6 +83,8 @@ BEGIN
             p_causale          => 'TRASF_OUT',
             p_qta              => -v_riga.qta,
             p_sorgente_tipo_id => v_sorgente_id,
+            p_sorgente_id      => v_prov_id,
+            p_sorgente_uid     => v_prov_uid,
             p_sorgente_riga    => v_riga.id,
             p_lotto_id         => v_riga.lotto_id,
             p_asset_id         => v_riga.asset_id,
@@ -101,6 +102,8 @@ BEGIN
             p_causale          => 'TRASF_IN',
             p_qta              => v_riga.qta,
             p_sorgente_tipo_id => v_sorgente_id,
+            p_sorgente_id      => v_prov_id,
+            p_sorgente_uid     => v_prov_uid,
             p_sorgente_riga    => v_riga.id,
             p_lotto_id         => v_riga.lotto_id,
             p_asset_id         => v_riga.asset_id,
@@ -122,7 +125,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.fn_posta_trasferimento(p_trasferimento_id bigint)
-IS 'VERBO del trasferimento interno (D-L2-g). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE col predicato della policy sul magazzino di partenza (fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO). La check e'' quella della capability (script.fn_check_documento_interno_registrabile, TRASFERIMENTO): stato CONFIRM, righe, stessa posizione, partenza e arrivo postabili. Per riga, nello stesso momento: TRASF_OUT (-qta) da magazzino_id_from/ubicazione_id_da e TRASF_IN (+qta) in magazzino_id_to/ubicazione_id_a, transfer_uid = uid del trasferimento (l''entrata al costo dell''uscita), sorgente TRASFERIMENTO_RIGA. Poi POSTED con la GUC transazionale zeroerp.magazzino_posting_trasferimento. UNA transazione. Ritorna (movimento_id, riga_id, qta), due per riga. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-10).';
+IS 'VERBO del trasferimento interno (D-L2-g). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE col predicato della policy sul magazzino di partenza (fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO). La check e'' quella della capability (script.fn_check_documento_interno_registrabile, TRASFERIMENTO): stato CONFIRM, righe, stessa posizione, partenza e arrivo postabili. Per riga, nello stesso momento: TRASF_OUT (-qta) da magazzino_id_from/ubicazione_id_da e TRASF_IN (+qta) in magazzino_id_to/ubicazione_id_a, transfer_uid = uid del trasferimento (l''entrata al costo dell''uscita), sorgente TRASFERIMENTO + la riga. Poi POSTED con la GUC transazionale zeroerp.magazzino_posting_trasferimento. UNA transazione. Ritorna (movimento_id, riga_id, qta), due per riga. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-10). La provenienza del movimento e'' il documento (TRASFERIMENTO, la chiave della testata) con la riga, dal BB script.fn_sorgente_provenienza (brief-db-sorgente-documento-e-riga lotto M).';
 ```
 
 </div>

@@ -1,23 +1,23 @@
-id,dominio_id,task_code,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,select_attivita,Selezione e lock attivita fatturabili,true,{},2026-02-08 00:00:00+01,titodb,,
-2,1,generate_fatture_righe,Generazione righe fattura,true,{},2026-02-08 00:00:00+01,titodb,,
-3,1,numera_fatture,Numerazione e stato fatture,true,{},2026-02-08 00:00:00+01,titodb,,
-4,1,close_lotto,Chiusura operativa lotto,false,{},2026-02-10 00:00:00+01,titodb,2026-02-18 13:20:00+01,titodb
-5,1,reset_lotto_draft,Reset tecnico lotto massivo in bozza,true,{},2026-02-16 12:30:00+01,titodb,,
-6,1,genera_fondi_source_lotto,Generazione/aggiornamento source fondi per lotto,true,{},2026-02-16 12:45:00+01,titodb,,
-7,1,applica_fondi_lotto,Applicazione fondi source alle fatture del lotto,true,{},2026-02-16 12:45:00+01,titodb,,
-8,1,ricalcola_iva_lotto,Ricalcolo IVA lotto con aggiornamento totali,true,{},2026-02-16 12:45:00+01,titodb,,
-9,1,prepare_sdi_payload_lotto,Preparazione payload SDI e apertura tentativi lotto,true,{},2026-02-16 19:00:00+01,titodb,,
-10,2,acquisisci_preventivi,Acquisizione attivita da preventivi,true,{},2026-02-22 15:30:00+01,titodb,,
-11,2,acquisisci_contratti,Acquisizione attivita da contratti,true,{},2026-02-22 15:30:00+01,titodb,,
-12,2,acquisisci_ordini,Acquisizione attivita da ordini,true,{},2026-02-22 15:30:00+01,titodb,,
-13,2,acquisisci_attivita_consumi,Acquisizione attivita da consumi,true,{},2026-02-22 15:30:00+01,titodb,,
-14,2,normalizza_attivita,Normalizzazione dati attivita fatturabili,true,{},2026-02-22 15:30:00+01,titodb,,
-15,2,valida_attivita,Validazione coerenza attivita fatturabili,true,{},2026-02-22 15:30:00+01,titodb,,
-16,2,deduplica_attivita,Deduplica attivita su chiavi sorgente,true,{},2026-02-22 15:30:00+01,titodb,,
-17,1,pull_attivita_da_commessa,Pull attivita fatturabili da commesse emittibili (perimetro lotto),true,{},2026-06-15 09:00:00+02,titodb,,
-18,1,stampa_documenti_lotto,Accodamento stampa documenti del lotto (delega a coda + processo generico),true,{},2026-07-20 00:00:00+02,titodb,,
-19,1,snapshot_indirizzi_lotto,Snapshot indirizzi fattura da anagrafica cliente (step DRAFT),true,{},2026-07-31 00:00:00+02,titodb,,
-20,1,genera_scadenze_lotto,Generazione piano rate fattura (step EMESSA),true,{},2026-08-01 00:00:00+02,titodb,,
-21,1,popola_fatture_rettifiche,Legame documentale note di credito: proietta la coppia fattura rettificante -> fattura rettificata,true,{},2026-08-18 00:00:00+02,mctit,,
-22,1,consuma_plafond_lotto,Consumo del plafond dei titoli IVA del lotto (step DEFINITIVA): registra i movimenti sui titoli per le righe che il plafond copre solo in parte,true,{},2026-08-31 00:00:00+02,mctit,,
+id,dominio_id,task_code,descrizione,attivo,meta,data_insert,user_insert
+1,1,select_attivita,Selezione e lock attivita fatturabili,true,{},2026-02-08 00:00:00+01,titodb
+2,1,generate_fatture_righe,Generazione righe fattura,true,{},2026-02-08 00:00:00+01,titodb
+3,1,numera_fatture,Numerazione e stato fatture,true,{},2026-02-08 00:00:00+01,titodb
+4,1,close_lotto,Chiusura operativa lotto,false,{},2026-02-10 00:00:00+01,titodb
+5,1,reset_lotto_draft,Reset tecnico lotto massivo in bozza,true,{},2026-02-16 12:30:00+01,titodb
+6,1,genera_fondi_source_lotto,Generazione/aggiornamento source fondi per lotto,true,{},2026-02-16 12:45:00+01,titodb
+7,1,applica_fondi_lotto,Applicazione fondi source alle fatture del lotto,true,{},2026-02-16 12:45:00+01,titodb
+8,1,ricalcola_iva_lotto,Ricalcolo IVA lotto con aggiornamento totali,true,{},2026-02-16 12:45:00+01,titodb
+9,1,prepare_sdi_payload_lotto,Preparazione payload SDI e apertura tentativi lotto,true,{},2026-02-16 19:00:00+01,titodb
+10,2,acquisisci_preventivi,Acquisizione attivita da preventivi,true,{},2026-02-22 15:30:00+01,titodb
+11,2,acquisisci_contratti,Acquisizione attivita da contratti,true,{},2026-02-22 15:30:00+01,titodb
+12,2,acquisisci_ordini,Acquisizione attivita da ordini,true,{},2026-02-22 15:30:00+01,titodb
+13,2,acquisisci_attivita_consumi,Acquisizione attivita da consumi,true,{},2026-02-22 15:30:00+01,titodb
+14,2,normalizza_attivita,Normalizzazione dati attivita fatturabili,true,{},2026-02-22 15:30:00+01,titodb
+15,2,valida_attivita,Validazione coerenza attivita fatturabili,true,{},2026-02-22 15:30:00+01,titodb
+16,2,deduplica_attivita,Deduplica attivita su chiavi sorgente,true,{},2026-02-22 15:30:00+01,titodb
+17,1,pull_attivita_da_commessa,Pull attivita fatturabili da commesse emittibili (perimetro lotto),true,{},2026-06-15 09:00:00+02,titodb
+18,1,stampa_documenti_lotto,Accodamento stampa documenti del lotto (delega a coda + processo generico),true,{},2026-07-20 00:00:00+02,titodb
+19,1,snapshot_indirizzi_lotto,Snapshot indirizzi fattura da anagrafica cliente (step DRAFT),true,{},2026-07-31 00:00:00+02,titodb
+20,1,genera_scadenze_lotto,Generazione piano rate fattura (step EMESSA),true,{},2026-08-01 00:00:00+02,titodb
+21,1,popola_fatture_rettifiche,Legame documentale note di credito: proietta la coppia fattura rettificante -> fattura rettificata,true,{},2026-08-18 00:00:00+02,mctit
+22,1,consuma_plafond_lotto,Consumo del plafond dei titoli IVA del lotto (step DEFINITIVA): registra i movimenti sui titoli per le righe che il plafond copre solo in parte,true,{},2026-08-31 00:00:00+02,mctit

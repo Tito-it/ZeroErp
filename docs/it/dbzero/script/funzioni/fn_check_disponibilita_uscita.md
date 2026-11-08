@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_check_disponibilita_uscita`
 
 ```sql
-CREATE FUNCTION fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint, p_sorgente_riga bigint, p_sorgente_uid uuid, p_lotto_id bigint, p_asset_id bigint, p_ignora_blocchi boolean)
+CREATE FUNCTION fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint, p_sorgente_riga bigint, p_sorgente_uid uuid, p_lotto_id bigint, p_asset_id bigint, p_ignora_blocchi boolean, p_sorgente_id bigint, p_sorgente_dettaglio bigint)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint DEFAULT NULL::bigint, p_sorgente_riga bigint DEFAULT NULL::bigint, p_sorgente_uid uuid DEFAULT NULL::uuid, p_lotto_id bigint DEFAULT NULL::bigint, p_asset_id bigint DEFAULT NULL::bigint, p_ignora_blocchi boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION script.fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint DEFAULT NULL::bigint, p_sorgente_riga bigint DEFAULT NULL::bigint, p_sorgente_uid uuid DEFAULT NULL::uuid, p_lotto_id bigint DEFAULT NULL::bigint, p_asset_id bigint DEFAULT NULL::bigint, p_ignora_blocchi boolean DEFAULT false, p_sorgente_id bigint DEFAULT NULL::bigint, p_sorgente_dettaglio bigint DEFAULT NULL::bigint)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE
@@ -31,12 +31,14 @@ AS $function$
 --      in questo magazzino; lotto -> somma del lotto; altrimenti vw_giacenza;
 --      deve valere >= richiesta, o E_MAG_GIACENZA_INSUFFICIENTE;
 --   2) BLOCCHI alla grana dell'articolo: giacenza(articolo, magazzino) +
---      somma FIRMATA degli attesi APERTA in USCITA (qta < 0) di sorgente
---      ALTRUI deve valere >= richiesta, o E_MAG_MERCE_BLOCCATA — salvo
+--      somma FIRMATA degli attesi APERTA in USCITA (qta < 0) ALTRUI
+--      deve valere >= richiesta, o E_MAG_MERCE_BLOCCATA — salvo
 --      p_ignora_blocchi (is_rettifica: il fatto vince sulla promessa).
---   «Altrui»: sorgente diversa (tipo + chiave) da quella di chi chiede; un
---   blocco senza sorgente e' sempre altrui; chi chiede senza sorgente li vede
---   tutti come altrui. Un atteso in entrata (in arrivo) non e' un blocco.
+--   «Propria»: stesso tipo e stesso documento, e ogni livello che l'attesa
+--   valorizza (riga, dettaglio) uguale a quello di chi chiede: confronto per
+--   PREFISSO (un'attesa del documento intero e' propria di ogni sua riga).
+--   Un blocco senza sorgente e' sempre altrui; chi chiede senza sorgente li
+--   vede tutti come altrui. Un atteso in entrata (in arrivo) non e' un blocco.
 -- Perimetro: INVOKER sotto RLS — chi non vede il magazzino legge zero.
 -- I numeri nei `valori` passano da trim_scale(): «11», non «11.000000» — la
 -- frase la legge una persona; nel `dettaglio` restano numeric pieni.
@@ -84,30 +86,38 @@ BEGIN
     IF (p_lotto_id IS NOT NULL AND p_lotto_id <= 0)
        OR (p_asset_id IS NOT NULL AND p_asset_id <= 0)
        OR (p_sorgente_tipo_id IS NOT NULL AND p_sorgente_tipo_id <= 0)
-       OR (p_sorgente_riga IS NOT NULL AND p_sorgente_riga <= 0) THEN
+       OR (p_sorgente_id IS NOT NULL AND p_sorgente_id <= 0)
+       OR (p_sorgente_riga IS NOT NULL AND p_sorgente_riga <= 0)
+       OR (p_sorgente_dettaglio IS NOT NULL AND p_sorgente_dettaglio <= 0) THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_check_disponibilita_uscita',
             'E_MAG_CHIAMATA_NON_VALIDA',
             jsonb_build_object('detail', 'un identificativo passato vale zero o meno',
                                'p_lotto_id', p_lotto_id, 'p_asset_id', p_asset_id,
                                'p_sorgente_tipo_id', p_sorgente_tipo_id,
-                               'p_sorgente_riga', p_sorgente_riga),
+                               'p_sorgente_id', p_sorgente_id,
+                               'p_sorgente_riga', p_sorgente_riga,
+                               'p_sorgente_dettaglio', p_sorgente_dettaglio),
             NULL::uuid,
             'script.fn_check_disponibilita_uscita',
-            'p_lotto_id / p_asset_id / p_sorgente_tipo_id / p_sorgente_riga (se passati, maggiori di zero)');
+            'p_lotto_id / p_asset_id / p_sorgente_tipo_id / p_sorgente_id / p_sorgente_riga / p_sorgente_dettaglio (se passati, maggiori di zero)');
     END IF;
-    IF (p_sorgente_tipo_id IS NULL AND (p_sorgente_riga IS NOT NULL OR p_sorgente_uid IS NOT NULL))
-       OR (p_sorgente_tipo_id IS NOT NULL AND (p_sorgente_riga IS NOT NULL) = (p_sorgente_uid IS NOT NULL)) THEN
+    IF (p_sorgente_tipo_id IS NULL
+        AND num_nonnulls(p_sorgente_id, p_sorgente_uid, p_sorgente_riga, p_sorgente_dettaglio) > 0)
+       OR (p_sorgente_tipo_id IS NOT NULL AND num_nonnulls(p_sorgente_id, p_sorgente_uid) <> 1)
+       OR (p_sorgente_dettaglio IS NOT NULL AND p_sorgente_riga IS NULL) THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_check_disponibilita_uscita',
             'E_MAG_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('detail', 'sorgente: con il tipo esattamente una chiave, senza il tipo nessuna',
+            jsonb_build_object('detail', 'sorgente: con il tipo una sola chiave di documento, senza il tipo niente; il dettaglio con la sua riga',
                                'p_sorgente_tipo_id', p_sorgente_tipo_id,
+                               'p_sorgente_id', p_sorgente_id,
+                               'p_sorgente_uid', p_sorgente_uid,
                                'p_sorgente_riga', p_sorgente_riga,
-                               'p_sorgente_uid', p_sorgente_uid),
+                               'p_sorgente_dettaglio', p_sorgente_dettaglio),
             NULL::uuid,
             'script.fn_check_disponibilita_uscita',
-            'p_sorgente_riga / p_sorgente_uid (esattamente una con p_sorgente_tipo_id, nessuna senza)');
+            'p_sorgente_id / p_sorgente_uid (una sola con p_sorgente_tipo_id, nessuna senza; p_sorgente_dettaglio solo con p_sorgente_riga)');
     END IF;
 
     -- I codici per la frase (non per decidere): sotto RLS un magazzino fuori
@@ -170,7 +180,8 @@ BEGIN
            AND g.articolo_id  = p_articolo_id;
         v_giacenza := COALESCE(v_giacenza, 0);
 
-        -- Gli attesi APERTA in USCITA (qta < 0), firmati, di sorgente altrui.
+        -- Gli attesi APERTA in USCITA (qta < 0), firmati, altrui. Propria =
+        -- stesso tipo e documento, e i livelli dell'attesa per prefisso.
         SELECT COALESCE(sum(a.qta), 0), count(*)
           INTO v_bloccata, v_n_blocchi
           FROM magazzino.movimenti_attesi a
@@ -180,8 +191,10 @@ BEGIN
            AND a.qta          < 0
            AND NOT (    p_sorgente_tipo_id IS NOT NULL
                     AND a.sorgente_tipo_id = p_sorgente_tipo_id
-                    AND a.sorgente_riga IS NOT DISTINCT FROM p_sorgente_riga
-                    AND a.sorgente_uid  IS NOT DISTINCT FROM p_sorgente_uid);
+                    AND a.sorgente_id  IS NOT DISTINCT FROM p_sorgente_id
+                    AND a.sorgente_uid IS NOT DISTINCT FROM p_sorgente_uid
+                    AND (a.sorgente_riga      IS NULL OR a.sorgente_riga      = p_sorgente_riga)
+                    AND (a.sorgente_dettaglio IS NULL OR a.sorgente_dettaglio = p_sorgente_dettaglio));
 
         v_disponibile := v_giacenza + v_bloccata;   -- in COLONNE: la somma, mai «meno»
 
@@ -208,8 +221,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint, p_sorgente_riga bigint, p_sorgente_uid uuid, p_lotto_id bigint, p_asset_id bigint, p_ignora_blocchi boolean)
-IS 'Il controllo di disponibilita'' che UI e primitiva CONDIVIDONO (M-3, D-L2-d; linee-guida-sql 12.5.2): pura, STABLE, INVOKER — [] se l''uscita di p_qta_uscita (positiva, UoM base) e'' ammessa, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. 1) E_MAG_GIACENZA_INSUFFICIENTE: il fisico alla grana piu'' fine dichiarata (asset -> posizione dell''asset in questo magazzino; lotto -> somma del lotto; altrimenti vw_giacenza) e'' minore della richiesta. 2) E_MAG_MERCE_BLOCCATA: giacenza(articolo, magazzino) + somma FIRMATA degli attesi APERTA in USCITA (qta < 0) di sorgente ALTRUI (tipo + chiave diversi da quelli di chi chiede; senza sorgente = sempre altrui; un atteso in entrata non e'' un blocco) e'' minore della richiesta — salvo p_ignora_blocchi, che la primitiva passa da causali.is_rettifica (il fatto vince sulla promessa; il fisico resta). consente_stock_negativo esonera da tutto: la primitiva non la chiama. Non legge la causale: la UI puo'' chiederla senza averne una. Chiamata da un INVOKER sotto RLS legge il magazzino se lo vede (altrimenti zero); dalla DEFINER legge tutto il magazzino, che e'' di un emittente. Guard di parametro E_MAG_CHIAMATA_NON_VALIDA (TECNICO). Le due reason_key sono chiavi i18n del frontend. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.3.';
+COMMENT ON FUNCTION script.fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint, p_sorgente_riga bigint, p_sorgente_uid uuid, p_lotto_id bigint, p_asset_id bigint, p_ignora_blocchi boolean, p_sorgente_id bigint, p_sorgente_dettaglio bigint)
+IS 'Il controllo di disponibilita'' che UI e primitiva CONDIVIDONO (M-3, D-L2-d; linee-guida-sql 12.5.2): pura, STABLE, INVOKER — [] se l''uscita di p_qta_uscita (positiva, UoM base) e'' ammessa, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. 1) E_MAG_GIACENZA_INSUFFICIENTE: il fisico alla grana piu'' fine dichiarata (asset -> posizione dell''asset in questo magazzino; lotto -> somma del lotto; altrimenti vw_giacenza) e'' minore della richiesta. 2) E_MAG_MERCE_BLOCCATA: giacenza(articolo, magazzino) + somma FIRMATA degli attesi APERTA in USCITA (qta < 0) ALTRUI e'' minore della richiesta — salvo p_ignora_blocchi, che la primitiva passa da causali.is_rettifica (il fatto vince sulla promessa; il fisico resta). La provenienza di chi chiede ha i livelli del modello: p_sorgente_tipo_id (il documento), una chiave fra p_sorgente_id e p_sorgente_uid, p_sorgente_riga, p_sorgente_dettaglio. Un''attesa e'' PROPRIA (non blocca) se tipo e documento coincidono e ogni livello che l''attesa valorizza coincide: confronto per prefisso, cosi'' un''attesa del documento intero e'' propria di ogni sua riga e un''attesa di una riga non lo e'' di un''altra. Senza sorgente un blocco e'' sempre altrui; un atteso in entrata non e'' un blocco. consente_stock_negativo esonera da tutto: la primitiva non la chiama. Non legge la causale: la UI puo'' chiederla senza averne una. Chiamata da un INVOKER sotto RLS legge il magazzino se lo vede (altrimenti zero); dalla DEFINER legge tutto il magazzino, che e'' di un emittente. Guard di parametro E_MAG_CHIAMATA_NON_VALIDA (TECNICO): identificativi maggiori di zero; senza tipo nessuna chiave e nessun livello, col tipo una sola chiave di documento, il dettaglio solo con la sua riga. Le due reason_key sono chiavi i18n del frontend. Brief: brief-db-magazzino-lotto-2-motore 4.3; brief-db-sorgente-documento-e-riga lotto M (i livelli e il prefisso).';
 ```
 
 </div>

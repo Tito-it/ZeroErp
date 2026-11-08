@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.presidi_cause`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -88,6 +88,9 @@ modifica al database che la tolga, insieme ai suoi testi.
   processi era assegnato a chi gestisce il server, ma due delle sue cause richiedono una modifica
   del programma.
 * 2026-10-16 — si aggiungono le cause del presidio dei lavori (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
 
 ---
 

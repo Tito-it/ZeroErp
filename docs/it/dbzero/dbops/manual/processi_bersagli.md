@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.processi_bersagli`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -110,6 +110,9 @@ debito, quando non è ovvio.
 * 2026-09-05 — nasce `debito_dichiarato` (`brief-db-processi-automatici-residui-be`, DB-2): prima le
   righe attese erano scritte solo nelle note del seed, mentre le viste dicevano «deve restare
   vuota».
+* 2026-11-08 — perde `tx_id`, `data_update`, `user_update` e i due trigger montati a mano che li
+  scrivevano: la tabella la scrive solo la migrazione, dal CSV, e le colonne direbbero sempre «il
+  migratore» (regola dello scrittore, `automazione-db.md` §1.1; `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

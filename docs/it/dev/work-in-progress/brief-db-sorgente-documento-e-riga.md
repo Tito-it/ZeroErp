@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-08
 
-**Riparte: il team BE** col §8.16 (il link alla pratica, rotto dall'apply di P.1), poi **la sessione DB** coi lotti M e Z, ognuno al via di Tid (riga 8). Il lotto P è chiuso: un giro solo, P.1 (`20261108-64` … `-87`), applicato su dbdev e scratch, pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). Il rimedio alla CI da zero è applicato su dbdev e scratch e committato (riga 7-quadragies-septies). Il lotto D (un giro, D.1) e il giro K.1 (il nome della chiave, richiesta BE) sono applicati su dbdev e scratch, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
+**Riparte: la sessione DB** coi giri M.2 … M.4 e il lotto Z, ognuno al via di Tid (riga 8). Il giro M.1 è applicato da Tid, pgTAP verdi, committato su `dev/db-tid` (2026-11-08). Il team BE ha il §8.16 e il §8.17 (dall'apply di M.1 la consultazione dei movimenti per documento è vuota fino a BE-M.1-a). Il lotto P è chiuso: un giro solo, P.1 (`20261108-64` … `-87`), applicato su dbdev e scratch, pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). Il rimedio alla CI da zero è applicato su dbdev e scratch e committato (riga 7-quadragies-septies). Il lotto D (un giro, D.1) e il giro K.1 (il nome della chiave, richiesta BE) sono applicati su dbdev e scratch, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -76,14 +76,18 @@
 | 7-quinquagies | ✅ Tid | via al lotto P («il via al lotto P, quando vuoi»), numerazione dal primo progressivo libero del giorno (2026-11-08) | §7.2 «Lotto P» | — |
 | 7-quinquagies-bis | ✅ DB | giro P.1: `pratiche_sorgenti` e `reconcile_errori` nelle colonne tipizzate (S-4, D-9), la pratica del documento, lo stato e il reconcile sulle colonne del modello, le sette liste e la sintesi della lineage, E-9 (il reconcile per codice), E-10, i tre verbi sul BB, il guard unico, il guard testuale ritirato; 12 pgTAP allineati, uno nuovo; provato in transazione (2026-11-08) | §7.2 «Il giro P.1, le scelte», §8.16 | — |
 | 7-quinquagies-ter | ✅ Tid | apply del giro P.1 (`20261108-64` … `-87`) su dbdev e scratch, pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). ⚠️ Dall'apply i percorsi BE del §8.16 danno errore, come accettato dal piano | §7.2 «Il giro P.1, le scelte», §8.16 | 7-quinquagies-bis |
-| 8 | DB | lotti M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-quinquagies-ter |
+| 7-sexagies | ✅ DB + Tid | riverifica di D58, D29, ⑧ prima del lotto M: viste e scrittori invariati, censimento §2.4 corretto; Tid: A (riga = bolla + conteggio), B (BB del reso + le due copie di `vendite`), C (presidio dell'arrivo del trasferimento) come proposti, pgTAP confermati (2026-11-08) | §7.2 «Lotto M», «Riverifica fatta» | — |
+| 7-sexagies-bis | ✅ Tid | via al lotto M («l'altro cantiere è fermo, puoi iniziare lo sviluppo»); «ricorda l'utilizzo di %type» (2026-11-08) | §7.2 «Lotto M, i giri» | — |
+| 7-sexagies-ter | ✅ DB | lotto M in quattro giri; giro M.1: il registro nella grammatica del modello (conversione, identità equivalente, primitiva, storno per documento, disponibilità per prefisso, sette verbi, guard unico), i presidi D58, D29, ⑧, C, M22, M23; due pgTAP nuovi, quindici allineati; provato in transazione (2026-11-08) | §7.2 «Il giro M.1, le scelte», §8.17 | — |
+| 7-sexagies-quater | ✅ Tid | apply del giro M.1 (`20261108-94` … `-99`, `20261109-01` … `-14`, `presidi.csv`, `presidi_testi.csv`, `codici_errore.csv`), pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-08). ⚠️ Dall'apply la consultazione dei movimenti per documento del BE è vuota fino a BE-M.1-a (§8.17), come accettato dal piano | §7.2 «Il giro M.1, le scelte», §8.17 | — |
+| 8 | DB | giri M.2, M.3, M.4 e lotto Z, ognuno col suo via; il §8 si riempie strada facendo | §7.2, §8 | via di Tid al giro M.2 |
 | 9-bis | ✅ BE | il §8 fino al lotto T: codici, reso, ordine dal preventivo, contratto dall'offerta (2026-11-07, da committare su `dev/backend-tid`). I due percorsi rotti dal giro T.5 sono ripristinati | §8 «Stato al 2026-11-07, dopo il giro BE» | — |
 | 9-ter | ✅ BE | il §8.13 (D.1: stampa e drenatore della coda) e il §8.14 (K.1: il nome della chiave del push), i due percorsi rotti dall'apply (2026-11-07, da committare su `dev/backend-tid`) | §8.14 «Stato al 2026-11-07, dopo il giro BE di D.1 e K.1» | — |
 | 9 | BE/FE | il §8 dei lotti che restano, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-08, giro P.1 (§7.2 «Il giro P.1, le scelte»): l'unicità del link alla pratica senza `sorgente_riga` (Tid: «sì»); il guard testuale si ritira nel giro P.1 (Tid: «da fare»). Il nome del file `script/test-guard-sorgente-polimorfa-testuale-v1` è una scelta del team DB, non una decisione di Tid (Tid, 2026-11-08). Decise il 2026-11-07: l'esenzione della coda di stampa dal guard unico, confermata (la FK resta, §7.2 «Il giro D.1, le scelte»); la chiave `sorgente_chiave` anche nei cinque lister del push e nel builder pgTAP (§7.2 «Il giro K.1»). ⏭️ Da applicare del giro K.2: niente (`20_code/vendite/20261108-36` … `-40`, `20_code/dbops/20261108-61` … `-63` applicati da Tid, pgTAP verdi, 2026-11-08). `20_code/dbops/20261108-09` (i COMMENT di quattro builder pgTAP) risulta applicato su dbdev e scratch (2026-11-07, 22:30), col suo presidio verde. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
-**Lavoro da committare:** niente del cantiere. Il giro P.1 (i ventiquattro changeSet `20261108-64` … `-87`, il pgTAP nuovo `pratiche/test-sorgente-pratiche-sorgenti-v1`, i dodici pgTAP allineati, le pagine auto-generate rigenerate, le due pagine del guard testuale cancellate, questo brief) è committato su `dev/db-tid` (2026-11-08), insieme al seguito del giro 7 di `brief-db-revisione-dbops` su `shop` (`20261108-88`, `-89`, il loop `ci_apply`, il provisioning, `dbops/test-storico-scope-policy-v1`; il §22 di quel brief resta fuori dal commit, per scelta di Tid). Il rimedio alla CI da zero (`00_schema/vendite/20261107-05`, `90_end/20261108-35`) è committato (`8bbae0df7b`). Il giro K.2 (gli otto changeSet, i 40 pgTAP allineati, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, da lasciare fuori: i changeSet `20261108-41` … `-46` coi loro pgTAP, e `brief-db-revisione-dbops.md`. Il giro D.1 (gli otto changeSet, il pgTAP nuovo `documenti/test-sorgente-documenti-generati-v1`, i quindici pgTAP allineati), il giro K.1 (sei changeSet, 54 pgTAP allineati), `20_code/dbops/20261108-09` col presidio `dbops/test-builder-pgtap-vincoli-immediate-v1`, le pagine auto-generate dei loro oggetti e questo brief sono committati su `dev/db-tid` (2026-11-07). Non del cantiere, lasciati fuori: i changeSet `20261108-25` … `-31` coi loro CSV, pgTAP e pagine, i due indici auto-generati, le tre guide e `brief-db-revisione-dbops.md`. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
+**Decisioni aperte di Tid:** nessuna. Da guardare (giro M.1, §7.2 «Tre fatti trovati in prova»): il pgTAP di ⑧ è costruito con un'uscita a giacenza zero, perché un carico senza valore porta la media a zero e non a NULL. Decise il 2026-11-08, giro P.1 (§7.2 «Il giro P.1, le scelte»): l'unicità del link alla pratica senza `sorgente_riga` (Tid: «sì»); il guard testuale si ritira nel giro P.1 (Tid: «da fare»). Il nome del file `script/test-guard-sorgente-polimorfa-testuale-v1` è una scelta del team DB, non una decisione di Tid (Tid, 2026-11-08). Decise il 2026-11-07: l'esenzione della coda di stampa dal guard unico, confermata (la FK resta, §7.2 «Il giro D.1, le scelte»); la chiave `sorgente_chiave` anche nei cinque lister del push e nel builder pgTAP (§7.2 «Il giro K.1»). ⏭️ Da applicare del giro K.2: niente (`20_code/vendite/20261108-36` … `-40`, `20_code/dbops/20261108-61` … `-63` applicati da Tid, pgTAP verdi, 2026-11-08). `20_code/dbops/20261108-09` (i COMMENT di quattro builder pgTAP) risulta applicato su dbdev e scratch (2026-11-07, 22:30), col suo presidio verde. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
+**Lavoro da committare:** niente del cantiere. Il giro M.1 (i venti changeSet `20261108-94` … `-99`, `20261109-01` … `-14`, i tre CSV, i due pgTAP nuovi `dbops/test-presidi-magazzino-grana-v1` e `magazzino/test-sorgente-registro-v1`, i quindici allineati, le pagine auto-generate dei suoi oggetti e i due indici, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, lasciati fuori: il blocco 7-bis-b di `brief-db-revisione-dbops` (`20261109-31`, i cinque loader e i CSV di `dbops`, le pagine di `dbops/tabelle` e `dbops/manual`, due pgTAP, le due guide) e quel brief. Prima: Il giro P.1 (i ventiquattro changeSet `20261108-64` … `-87`, il pgTAP nuovo `pratiche/test-sorgente-pratiche-sorgenti-v1`, i dodici pgTAP allineati, le pagine auto-generate rigenerate, le due pagine del guard testuale cancellate, questo brief) è committato su `dev/db-tid` (2026-11-08), insieme al seguito del giro 7 di `brief-db-revisione-dbops` su `shop` (`20261108-88`, `-89`, il loop `ci_apply`, il provisioning, `dbops/test-storico-scope-policy-v1`; il §22 di quel brief resta fuori dal commit, per scelta di Tid). Il rimedio alla CI da zero (`00_schema/vendite/20261107-05`, `90_end/20261108-35`) è committato (`8bbae0df7b`). Il giro K.2 (gli otto changeSet, i 40 pgTAP allineati, questo brief) è committato su `dev/db-tid` (2026-11-08). Non del cantiere, da lasciare fuori: i changeSet `20261108-41` … `-46` coi loro pgTAP, e `brief-db-revisione-dbops.md`. Il giro D.1 (gli otto changeSet, il pgTAP nuovo `documenti/test-sorgente-documenti-generati-v1`, i quindici pgTAP allineati), il giro K.1 (sei changeSet, 54 pgTAP allineati), `20_code/dbops/20261108-09` col presidio `dbops/test-builder-pgtap-vincoli-immediate-v1`, le pagine auto-generate dei loro oggetti e questo brief sono committati su `dev/db-tid` (2026-11-07). Non del cantiere, lasciati fuori: i changeSet `20261108-25` … `-31` coi loro CSV, pgTAP e pagine, i due indici auto-generati, le tre guide e `brief-db-revisione-dbops.md`. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
 pagine `manual/` cancellate, questo brief) sono committati su `dev/db-tid` il 2026-11-06. Il lotto 0 intero e il lotto R (giri R.1 e R.2: changeSet `20261106-46` …
 `-60`, i due CSV, i pgTAP, i due brief) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
@@ -2342,6 +2346,46 @@ esente, da rivedere nel lotto Z.
   3. si conferma con Tid il pgTAP per ciascuno: bolla con due prelievi e uno solo scaricato (la vista la
      segnala); reso confermato riconosciuto dal BB; uscita senza costo stornata (lo storno non compare, il carico
      che l'ha causata sì).
+* ✅ **Riverifica fatta (team DB, 2026-11-08), decisioni di Tid (2026-11-08: «A, B, C ok proposta, per i test
+  confermo le tue scelte»).**
+  * **Fatti.** Le tre viste sono quelle del 2026-11-04 (le due del posting) e del 2026-10-26 (quella del costo); gli
+    scrittori (`vendite.fn_posta_ddt`, `vendite.fn_posta_reso`, `magazzino.fn_scrivi_movimento`) sono del 2026-10-26:
+    i lotti R e T non li hanno toccati, l'analisi di D58, D29 e ⑧ regge. Il contratto del posting è più stretto di
+    come lo dice D58: **un movimento per prelievo delle righe attive** (`dr.attivo`), **un carico per rientro delle
+    righe attive** (`rr.attivo`); il presidio fa la stessa domanda, altrimenti segnala un prelievo che il verbo non
+    doveva scaricare. Le tre viste non hanno lettori BE/FE: le leggono `presidi.csv`, `presidi_testi.csv` e tre pgTAP
+    (`magazzino/test-reso-carico-v1`, `magazzino/test-fn-scrivi-movimento-valore-v1`,
+    `script/test-vw-stati-doc-ddt-merce-partita-v1`).
+  * **D58, la domanda alla grana giusta (correzione del censimento §2.4):** per ogni prelievo `p` di una riga attiva
+    `dr` della bolla `d`, `NOT EXISTS` di un movimento `sorgente_tipo_id = DDT_VENDITA`, `sorgente_id = d.id`,
+    `sorgente_riga = dr.id`, `sorgente_dettaglio = p.id`, `qta < 0`, non storno; per il reso lo stesso con
+    `RESO_VENDITA`, il rientro e `qta > 0`.
+  * **A — la riga della vista resta la bolla (il reso)**, con in coda una colonna col numero di prelievi (rientri)
+    senza movimento: `CREATE OR REPLACE` (colonne esistenti invariate), i testi di `presidi_testi.csv` («alcune
+    bolle…») restano veri, e il rimedio è sulla bolla («da dove è passata l'emissione»).
+  * **B — D29 con la regola del 2:** nasce `script.vw_stati_doc_reso_merce_rientrata` (gemello di
+    `vw_stati_doc_ddt_merce_partita`: uscito dalla bozza, `ordine >=` quello di `CONFERMATO`, non abortito, dal
+    catalogo, mai NULL). Nello **stesso giro** passano al BB anche le due copie del letterale `'CONFERMATO'` letto
+    come «merce rientrata»: `vendite.vw_resi_righe_effettive` (che si dichiara «helper unico merce tornata
+    indietro») e `vendite.vw_resi_da_riconsegnare`. Resta fuori `fn_annulla_reso` (`v_stato NOT IN
+    ('DRAFT','CONFERMATO')`): è una regola di transizione, non «merce rientrata».
+  * **C — buco nuovo, entra nel lotto M:** nessun presidio vede una bolla di trasferimento CONSEGNATA con un
+    prelievo senza il suo `TRASF_IN` (l'arrivo). Si aggiunge come controllo separato alla stessa grana
+    (prelievo di riga attiva → entrata `TRASF_IN` non storno), nel giro che riapre le viste.
+  * **I pgTAP (confermati da Tid):**
+    1. D58: bolla con due prelievi, uno solo scaricato → la vista la segnala. Lo stato rotto i verbi non lo
+       producono: il test lo fabbrica da owner, nella sua transazione (secondo prelievo aggiunto dopo l'emissione,
+       lock disattivato), perché il presidio esiste per vedere una porta che non ha tenuto. In più: il gemello sul
+       reso (due rientri, uno solo caricato) e un prelievo su riga non attiva, che **non** compare;
+    2. D29: con i tre stati di oggi BB e letterale rispondono uguale (verde per sottrazione). Il test aggiunge nella
+       transazione uno stato dopo `CONFERMATO` (ordine 25, non abortito) con un reso senza carico → la vista lo
+       vede; e il controllo sul viewdef senza `'CONFERMATO'`, come il test 8 del BB della bolla;
+    3. ⑧: carico senza costo → uscita senza costo → storno: il carico compare, lo storno no. Si fissa anche che
+       l'entrata gemella `TRASF_IN` senza costo **resta**: lo storno è neutro sul valore (rende allo stesso
+       magazzino una quantità uscita a valore zero, la media torna com'era), la `TRASF_IN` porta quantità senza
+       valore in un altro magazzino e lì diluisce la media. Il test impedisce di «semplificare» il filtro in
+       «fuori le entrate a costo copiato»;
+    4. C: bolla di trasferimento consegnata con un prelievo senza `TRASF_IN` → il controllo la vede.
 * **Acquisti:**
   * `ordini` e `ddt`: l'import esce, come in T;
   * `ordini_righe`: `DROP DEFAULT 0`;
@@ -2352,6 +2396,127 @@ esente, da rivedere nel lotto Z.
   `sorgente_dettaglio`); in BE `magazzino_repository`, `types.py`, `famiglie.py`, `config/sorgenti.py`; il seed UI
   `lista_colonna.csv`; in FE `vocabolari.js`, `etichette.js`, i locales e quattro componenti. Elenco chiuso nella
   scheda magazzino §8.
+
+##### Lotto M, i giri (team DB, 2026-11-08)
+
+Via di Tid il 2026-11-08 («l'altro cantiere è fermo, puoi iniziare lo sviluppo»). Il lotto si fa in **quattro giri**.
+Il registro va per primo e da solo: conversione dei dati, identità, primitiva, verbi e presidi cambiano nello stesso
+apply, perché ognuno legge la forma dell'altro.
+
+| Giro | Che cosa | Stato |
+| --- | --- | --- |
+| **M.1** | il registro (`movimenti`, `movimenti_attesi`): dati convertiti, identità equivalente, primitiva, storno per documento, disponibilità per prefisso, i sette verbi, guard unico; i presidi D58, D29 (+ il BB e le due viste di `vendite`), ⑧, C; M22, M23 | ✅ applicato da Tid, pgTAP verdi, committato (2026-11-08) |
+| **M.2** | le testate di magazzino e l'evento (`inventari`, `rettifiche`, `trasferimenti`, `eventi_assets`): guard unico (DOCUMENTO), CHECK di forma, i quattro indici unici residui si ritirano; la grammatica MODELLO_A esce dal perimetro degli orfani | da fare |
+| **M.3** | il ritiro dei cinque tipi di foglia: `config.tipi_entita.is_sorgente = false`, poi `config.sorgenti`; il seed pgTAP che li pretende (`magazzino/test-causali-e-sorgenti-seed-v1`) | da fare, dopo M.1 e M.2 |
+| **M.4** | acquisti: l'import esce da ordini e DDT, `ordini_righe` perde il `DEFAULT 0`, il guard unico su `ddt_righe`, `ddt.ordine_id` (D-3) | da fare |
+
+**Il giro M.1, le scelte** (team DB, 2026-11-08; nessuna è un cambio di modello: è S-3 con il §4, la scheda magazzino
+§2 e le decisioni A, B, C):
+
+* **La conversione** (`-94`). I movimenti passano dalla foglia al documento coi trigger della tabella spenti e
+  riaccesi com'erano, come nel giro P.1: `DDT_VENDITA_PRELIEVO` → `DDT_VENDITA` + bolla + riga + prelievo,
+  `RESO_VENDITA_RIENTRO` → `RESO_VENDITA` + reso + riga + rientro, `*_RIGA` → il documento interno + la riga,
+  `EVENTO_ASSET` → l'evento in `sorgente_id`. Gli storni seguono la stessa regola. Un movimento che resta senza la
+  chiave del documento ferma il migrate: la conversione non inventa una foglia che non c'è.
+* **L'identità** (`-94`) è `(tipo, sorgente_id, sorgente_uid, riga, dettaglio, causale, asset, lotto, ubicazione)
+  NULLS NOT DISTINCT`, stesso nome. È equivalente alla vecchia per le due condizioni della scheda §2.2: il guard unico
+  verifica la catena e, col livello minimo DETTAGLIO, impone a ogni tipo la foglia più bassa che ha. Le prime due
+  colonne servono anche chi cerca per documento (lo storno, i presidi).
+* **La forma** (`-94`): `chk_mag_movimenti_sorgente_chiave` diventa «una sola chiave del documento»; quello degli
+  attesi, «senza tipo niente, col tipo una sola chiave»: riga e dettaglio li verifica il guard.
+* **La primitiva** (`-96`): `p_sorgente_id` e `p_sorgente_dettaglio` in coda; `p_sorgente_riga` è ora la riga del
+  documento. Passi 1, 9, 10, 11 e 13 riscritti insieme all'indice, perché frase e rete non divergano.
+* **La disponibilità** (`-95`): i due livelli in coda; l'attesa è propria per **prefisso** (scheda §1.2, già nel
+  piano): un'attesa del documento intero è propria di ogni sua riga, un'attesa di una riga non lo è di un'altra.
+* **Lo storno per documento** (`-97`): la chiave del documento in coda, obbligatoria; `p_sorgente_righe` NULL = tutto
+  il documento. Chi lo chiama con la firma di prima (tipo e foglie) riceve `E_MAG_CHIAMATA_NON_VALIDA`, non uno storno
+  sbagliato. Resta generico: nessun nome di `vendite` in `magazzino`.
+* **I sette verbi** (`-98`, `-99`, `20261109-01` … `-05`): i cinque posting scrivono la provenienza col BB
+  `script.fn_sorgente_provenienza`, come testate e righe di vendita dal giro T.3. Un tipo assente o spento dà
+  `E_SORG_CONF` (prima `E_CONFIG_MANCANTE`, scritto nel verbo). `fn_posta_reso` rilegge il costo dell'uscita
+  d'origine per bolla, riga e prelievo. ⛔ `fn_cambia_stato_ddt` e `fn_annulla_reso` stornano per documento e **non
+  saltano più lo storno in silenzio**: un tipo che manca è `E_CONFIG_MANCANTE`. È la trappola del ritiro della scheda
+  §0.4: chiusa qui, prima di M.3.
+* **Il guard unico** (`20261109-07`), stesso nome del tipizzato: `movimenti` DETTAGLIO e BLOCCA (un ledger non si
+  cancella: non c'è un'azione conseguente ammissibile), `movimenti_attesi` DOCUMENTO e BLOCCA. Il lato «in uscita» c'è
+  già su tutti i bersagli del catalogo.
+* **I permessi**: primitiva e storno ricreati sono riservati come prima, `REVOKE` da `PUBLIC` **e** da `zeroerp_app`.
+  Trovato in prova: su dbdev i privilegi di default danno `EXECUTE` all'app su una funzione appena creata, quindi il
+  solo `PUBLIC` non bastava. Le due voci sono già in `v_fn_riservate` del loop di `ci_apply` (per nome).
+* **I presidi** (`20261109-06` … `-13`), con le decisioni A, B, C: la domanda per prelievo e per rientro di riga
+  attiva, con il conteggio in coda; il BB `script.vw_stati_doc_reso_merce_rientrata` e le tre copie del letterale che
+  passano a lui; gli storni fuori da `vw_magazzino_movimenti_senza_costo` (e le due colonne nuove in coda); il presidio
+  nuovo `dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo` (ZERO, GIORNALIERA, DEFINER), registrato nei due CSV.
+  Il letterale `CONSEGNATO` del presidio C non copia quello del verbo: lì è l'evento del passaggio, qui l'insieme degli
+  stati in cui l'arrivo deve esserci.
+* **M22, M23**: i COMMENT di `fn_ddt_muove_merce` e `fn_reso_muove_merce` (`20261109-14`) e le note di `presidi.csv`
+  nominano la porta di oggi; la nota e il COMMENT della spia del costo elencano tutti gli scrittori.
+  `codici_errore.csv`: la descrizione di `E_MAG_MOVIMENTO_GIA_REGISTRATO` dice le nove colonne.
+
+**Tre fatti trovati in prova, dichiarati:**
+
+* ⚠️ **Il caso del pgTAP di ⑧ non si costruisce come descritto.** Un carico senza valore porta la media a **zero**, non
+  a NULL (`magazzino.vw_costo_medio` = valore / quantità): le uscite dopo di lui hanno costo 0. Un'uscita **senza**
+  costo nasce solo quando la giacenza è a zero o sotto, cioè da una causale che ammette lo stock negativo
+  (`magazzino.causali.consente_stock_negativo`: la colonna c'è, il seed oggi non ne accende nessuna). Il pgTAP la
+  costruisce così, con la primitiva e due causali di prova in transazione. «Il carico che l'ha causata» non c'è: la
+  causa è la giacenza a zero, non un carico. La regola della vista non cambia: lo storno non entra, la gemella resta.
+  Prima della correzione il test passava a vuoto: lo storno era a costo 0, non NULL.
+* **Una riga spenta con prelievi il modello non la ammette** (la riga con prelievi non si spegne, il prelievo vuole
+  la riga attiva). Il filtro `dr.attivo` dei presidi segue il contratto del posting, ma non c'è un caso da costruire, e
+  il pgTAP non lo finge.
+* **Il buco S-9 del reso era già chiuso** dal giro T.4: `trg_resi_a10_guard_delete_solo_bozza_dlt` parla per primo.
+  Il registro aggiunge la sua rete: spenta la sola regola di stato, il reso coi carichi non si cancella lo stesso
+  (`E_SORG_ORIGINE_REFERENZIATA`), e così una riga di bolla movimentata.
+
+**Debito del giro, dichiarato:** fino al giro M.3 i cinque tipi di foglia restano attivi, e il guard unico accetta un
+movimento che li usa senza livelli (la grammatica vecchia sotto il guard nuovo); nessun verbo li scrive più. Fino al giro
+M.2 il ramo MODELLO_A del presidio degli orfani non ha un caso costruito (`dbops/test-sorgenti-orfane-v1`, test 5, ora
+sul registro): le tabelle che lo montano ancora non le scrive nessuno.
+
+**I changeSet del giro M.1:** `00_schema/magazzino/20261108-94` (forma, conversione, identità), `20_code/script/-95`
+(disponibilità), `20_code/magazzino/-96` (primitiva), `-97` (storno), `-98`, `-99`, `20261109-01` (i tre posting di
+magazzino), `20_code/vendite/20261109-02`, `-03` (posting di bolla e reso), `-04`, `-05` (annullo di bolla e reso),
+`20_code/script/-06` (il BB del reso), `20_code/magazzino/-07` (guard unico), `20_code/vendite/-08`, `-09` (le due viste
+del reso), `20_code/dbops/-10` … `-13` (i quattro presidi), `20_code/vendite/-14` (M22). Venti changeSet; `20261109-15`
+… `-30` riservati al lotto (accordo con la sessione di `brief-db-revisione-dbops`, che parte da `-31`). CSV:
+`dbops/presidi.csv`, `dbops/presidi_testi.csv`, `config/codici_errore.csv`. Nessun codice nuovo. pgTAP nuovi:
+`dbops/test-presidi-magazzino-grana-v1` (15), `magazzino/test-sorgente-registro-v1` (15).
+
+**Gli allineamenti dei pgTAP (15 file):** `dbops/test-sorgenti-orfane-v1` (1, 5), `dbops/test-sorgenti-struttura-v1`
+(il debito perde il registro), `magazzino/test-ddt-scarico-v1` (7), `-movimenti-attesi-forma-v1` (8, 9),
+`-reso-carico-v1`, `-reso-carico-kit-seriali-v1` (il rientro è il dettaglio), `-fn-scrivi-movimento-controlli-v1`,
+`-disponibilita-v1`, `-seriali-v1`, `-valore-v1`, `-valore-giacenza-divergenza-owner-v1` (la fixture passa al tipo
+`INVENTARIO` e ogni chiamata prende in coda l'inventario della riga), `-movimenti-vincoli-v2` (provenienza del modello;
+2-5 con le frasi del guard unico), `rls/test-rls-magazzino-perimetro-v1`. Le note di magazzino restano sui codici
+`*_RIGA` di `config.tipi_entita`: sono entità, non sorgenti.
+
+**La prova del giro M.1** (2026-11-08, in transazione annullata, come owner di ciascun database):
+
+* l'**estratto** dei venti changeSet gira intero su scratch e dbdev; `plpgsql_check` sulle dieci funzioni toccate
+  (scratch) è pulito, salvo gli avvisi che c'erano già (variabili mai lette, STABLE con il raise);
+* **la conversione su dbdev** (fatto datato, 2026-11-08): 387 movimenti (DDT_VENDITA 128, RESO_VENDITA 168,
+  RETTIFICA 91), per tutti la foglia di prima coincide con la più bassa della provenienza nuova; un `UPDATE` a vuoto
+  su tutto il registro passa il guard unico (la catena regge su ogni riga); presidio degli orfani vuoto;
+* **equivalenza dei presidi su dbdev**: i due del posting e quello dell'arrivo vuoti prima e dopo; la spia del costo
+  dopo = prima meno gli storni; `vw_resi_righe_effettive` (98 righe) e `vw_resi_da_riconsegnare` identiche (`EXCEPT
+  ALL` nei due versi); `security_invoker` e ACL al loro posto;
+* **i rami nuovi si costruiscono**: i due pgTAP nuovi 15/15 su scratch e dbdev. Senza l'estratto sono rossi (il
+  registro si ferma al test 11, i presidi muoiono al primo); una mutazione (la spia del costo senza il filtro sugli
+  storni) accende il solo test 11 dei presidi;
+* **regressione prima/dopo su 223 pgTAP** sullo scratch (chi nomina un oggetto o un tipo toccato, chi emette bolle,
+  conferma resi, posta documenti interni o scrive attese; in sequenza, ON_ERROR_STOP): 206 uguali, 15 allineati,
+  verdi anche su dbdev. Seconda corsa intera con l'estratto definitivo, 225 file con i due nuovi: 3119 asserzioni
+  verdi su 3173 pianificate; i rossi sono gli stessi della corsa «prima», riga per riga, tutti test di scope o di
+  permesso rossi da owner per costruzione (es. `magazzino/test-porta-ledger-v1` 4-7,
+  `magazzino/test-documenti-interni-guard-v1` 7, 8, 11), più `vendite/test-annullo-documento-con-legami-v1` (30), già
+  noto, e `dbops/test-marcatori-automazione-senza-esecutore-v1` (14), rosso anche senza l'estratto: è il test del
+  blocco 7-bis-b di `brief-db-revisione-dbops`, non ancora applicato. Nessuna regressione del giro;
+* scratch e dbdev intatti dopo la prova (oggetti nuovi assenti, firma e indice di prima, nessuna causale di prova);
+* guardrail statici (`scripts/guardrail_*.py`): verdi.
+
+Non coperto, e resta di Tid: l'apply, la convergenza `ci_apply` vera, la corsa come applicazione, la baseline. **Fatto da
+Tid il 2026-11-08:** apply del giro su dbdev, pgTAP verdi.
 
 #### Lotto Z — chiusura del DB
 
@@ -2819,6 +2984,26 @@ Il BE non chiama direttamente `fn_pratica_del_documento`, `fn_stato_sorgente` n�
 | BE-P.1-d | `vendite.vw_preventivi_pratiche`: l'id del link si chiama `pratica_sorgente_id` (prima `sorgente_id`, E-10) | `vendite/db/preventivi_repository.py:1407` (`list_pratiche`, `SELECT *`), il tipo `PreventivoPraticaRow` e chi serializza `sorgente_id` | il nome nuovo; se l'API espone il campo, il FE lo segue |
 | BE-P.1-e | un preventivo (o un ordine, un contratto, una commessa) collegato a una pratica non si cancella: lo blocca il DB (`E_SORG_ORIGINE_REFERENZIATA`, `CONFLITTO_STATO`, già nel registro) | `vendite/services/preventivi_service.py:555-592` (`elimina_preventivo`, il pre-check «niente pratiche collegate» su `list_pratiche`) | nessuna obbligatoria. Il pre-check del BE ora ripete una regola del DB: si può ritirare, e il messaggio diventa quello del codice |
 | — | i due verbi DB che scrivono il link sollevano `E_SORG_CONF` (non più `E_CONFIG_MANCANTE`) su un tipo assente o spento | `vendite.fn_genera_pratica_da_preventivo`, `vendite.fn_push_offerta_a_contratto` | nessuna: `E_SORG_CONF` è già nelle policy |
+
+### 8.17 Dal lotto M, giro M.1 (2026-11-08)
+
+⚠️ Dall'apply la consultazione dei movimenti per documento dà risultati vuoti fino a BE-M.1-a: il BE filtra per il
+tipo della riga (`INVENTARIO_RIGA`, `RETTIFICA_RIGA`), che nessun movimento ha più. Il BE non chiama la primitiva, lo
+storno né la disponibilità (grep, 2026-11-08: solo un commento in `magazzino_repository.py:946`). I cinque tipi di
+foglia restano in `config.sorgenti` fino al giro M.3: le costanti BE e il test del seed non si rompono ora, ma
+vanno ritirati con M.3 (la voce si scrive lì).
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-M.1-a | `magazzino.movimenti`: `sorgente_tipo_id` è il tipo del **documento** (`INVENTARIO`, `RETTIFICA`, `TRASFERIMENTO`, `DDT_VENDITA`, `RESO_VENDITA`; `EVENTO_ASSET` resta), la chiave del documento sta in `sorgente_id`, la riga in `sorgente_riga`, il dettaglio (prelievo, rientro) nella colonna nuova `sorgente_dettaglio`. I movimenti di oggi sono convertiti | `magazzino/db/magazzino_repository.py:986-997` (`list_movimenti`: il filtro `documento_sorgente` = `sg.codice_interno = <tipo della riga> AND EXISTS (… r.id = mv.sorgente_riga AND r.<fk> = %s)`), `:383-384` (`_MOVIMENTI_SELECT`), `magazzino/db/famiglie.py:56,84,103` (`sorgente_codice_interno` della famiglia = `INVENTARIO_RIGA` / `RETTIFICA_RIGA`), `magazzino/services/consultazione_service.py` (i parametri `inventario_id` / `rettifica_id`) | il filtro per documento diventa `sg.codice_interno = <tipo del documento> AND mv.sorgente_id = %s`, e l'`EXISTS` sulle righe se ne va; la famiglia porta il tipo del documento (`INVENTARIO`, `RETTIFICA`; il campo `fk_riga` non serve più al filtro). La SELECT proietta anche `sorgente_id` e `sorgente_dettaglio` |
+| BE-M.1-b | il parametro `sorgente_tipo` dell'API prende i codici dei documenti | `magazzino/api/views.py:845` (filtro), `:862-863` (descrizione OpenAPI «INVENTARIO_RIGA, RETTIFICA_RIGA, …») | i valori nuovi nel contratto e nella descrizione |
+| BE-M.1-c | `MovimentoRow`, `BloccoRow`: le colonne `sorgente_id`, `sorgente_dettaglio` | `magazzino/types.py:182-184`, `:212-214`; `_BLOCCHI_SELECT` (`magazzino_repository.py:355-356`) | i due campi nuovi (nullable) |
+| BE-M.1-d | i test e lo smoke che si aspettano i codici di riga sui movimenti | `magazzino/tests/services/test_magazzino_service.py:94`, `tests/api/test_magazzino_api.py:316`, `tests/db/test_documento_interno_db.py:194`, `backend/scripts/tests/smoke-magazzino-inventario-primo-carico.py:25,116-118` | i codici dei documenti |
+| UI-M.1-a | il seed della lista dei movimenti descrive il tipo della riga | `db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv:865-866` | la descrizione col tipo del documento; le colonne nuove (documento, dettaglio) se la lista le mostra |
+| FE-M.1-a | i codici della sorgente del movimento | `frontend/src/magazzino/vocabolari.js:62-66` (`SORGENTE_MOVIMENTO`), `:112`, `:131` (la sorgente delle famiglie), `etichette.js` (`PREFISSO_SORGENTE_MOVIMENTO`), `locales/it.json` e `en.json` (`magazzino.movimenti.sorgente.INVENTARIO_RIGA` …), `components/MovimentiSearchTable.vue` (filtro e cella), `stores/movimenti.js` (deep-link `inventario_id` / `rettifica_id`), `views/MovimentiView.vue`, `DisponibilitaBlocchiPopover.vue` | i codici dei documenti e le loro etichette; il deep-link per documento |
+| — | i presidi: `dbops.vw_ddt_emessi_senza_scarico` e `vw_resi_confermati_senza_carico` prendono in coda un conteggio (`prelievi_senza_scarico`, `rientri_senza_carico`), `vw_magazzino_movimenti_senza_costo` le colonne `sorgente_id`, `sorgente_dettaglio`; nasce `dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo`, con la sua riga in `dbops.presidi` e `presidi_testi` | digest e pagina dei presidi (leggono il catalogo) | nessuna obbligatoria: il catalogo porta la riga nuova |
+| — | i cinque posting (inventario, rettifica, trasferimento, bolla, reso) sollevano `E_SORG_CONF` (non più `E_CONFIG_MANCANTE`) su un tipo assente o spento; l'annullo di bolla e reso solleva `E_CONFIG_MANCANTE` se il tipo del documento manca, invece di saltare lo storno | i verbi DB | nessuna: i due codici sono già nelle policy |
+| — | `codici_errore.csv`: la descrizione di `E_MAG_MOVIMENTO_GIA_REGISTRATO` (le nove colonne dell'identità) | il file generato delle policy d'errore | rigenerarlo, come per ogni CSV dei codici |
 
 ---
 
@@ -4284,8 +4469,11 @@ Con 1 e 2 la vecchia chiave e la nuova separano esattamente le stesse coppie di 
 * `vendite.fn_posta_reso`: il costo dell'uscita si rilegge per `(DDT_VENDITA, ddt, riga, prelievo, qta<0, non storno)`;
   il rientro conosce già prelievo → riga → ddt via join.
 * `script.fn_check_disponibilita_uscita`: confronto «propria» per prefisso (§1.2).
-* `dbops.vw_ddt_emessi_senza_scarico`, `vw_resi_confermati_senza_carico`: `m.sorgente_tipo_id = DDT_VENDITA AND
-  m.sorgente_id = d.id` (spariscono i JOIN su righe e prelievi: è la traduzione che il brief toglie).
+* `dbops.vw_ddt_emessi_senza_scarico`, `vw_resi_confermati_senza_carico`: ~~`m.sorgente_tipo_id = DDT_VENDITA AND
+  m.sorgente_id = d.id`~~ ⛔ **corretto il 2026-11-08**: quella è la domanda sul documento intero che D58 dice
+  sbagliata (uno scarico parziale non accende niente). La domanda resta per prelievo di riga attiva (per rientro):
+  `sorgente_tipo_id = DDT_VENDITA, sorgente_id = d.id, sorgente_riga = dr.id, sorgente_dettaglio = p.id` — §7.2
+  «Lotto M», «Riverifica fatta».
 * pgTAP che costruiscono la 7-upla a mano (§1.1 (3)).
 
 ---

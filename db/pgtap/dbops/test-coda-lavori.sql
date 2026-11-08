@@ -8,7 +8,8 @@
 --
 -- Indice test (1..57):
 --   A) Struttura coda_lavori_tipi ......... 1..9
---      1 has_table; 2-5 colonne; 6 PK; 7 unique codice; 8-9 trigger audit/tx_id
+--      1 has_table; 2-5 colonne; 6 PK; 7 unique codice; 8-9 SENZA marcatori
+--      (tx_id, data_update, user_update e i due trigger: solo seed, §23)
 --   B) Struttura coda_lavori .............. 10..39
 --      10 has_table; 11-26 colonne; 27 PK; 28-31 indici (uid, claim, vivo, stato);
 --      32 FK; 33 col_is_fk job_type; 34 has_check; 35-37 CHECK stato/run_as/origine;
@@ -91,10 +92,23 @@ SELECT ok(
              WHERE schemaname = 'dbops' AND tablename = 'coda_lavori_tipi'
                AND indexname = 'uq_coda_lavori_tipi_codice'),
     '7) unique uq_coda_lavori_tipi_codice esiste');
-SELECT has_trigger('dbops', 'coda_lavori_tipi',
-    'trg_coda_lavori_tipi_audit_data_user_ins_upd', '8) trigger audit registrato');
-SELECT has_trigger('dbops', 'coda_lavori_tipi',
-    'trg_coda_lavori_tipi_gen_tx_id_ins_upd', '9) trigger tx_id registrato');
+-- ⭐ 8-9: il catalogo dei tipi lo scrive solo il migratore, dal CSV di 80_data:
+--   niente tx_id, data_update, user_update, e niente i due trigger che li
+--   scrivevano (criterio dello scrittore, brief-db-revisione-dbops §23,
+--   20261108-90). La coda li tiene (38-39): la scrive il dominio.
+SELECT hasnt_column('dbops', 'coda_lavori_tipi', 'tx_id',
+    '8) catalogo scritto dal solo seed: niente tx_id (e niente il suo trigger)');
+SELECT ok(
+    NOT EXISTS (SELECT 1 FROM pg_trigger tg
+                 WHERE tg.tgrelid = 'dbops.coda_lavori_tipi'::regclass
+                   AND NOT tg.tgisinternal
+                   AND tg.tgname IN ('trg_coda_lavori_tipi_audit_data_user_ins_upd',
+                                     'trg_coda_lavori_tipi_gen_tx_id_ins_upd'))
+    AND NOT EXISTS (SELECT 1 FROM pg_attribute a
+                     WHERE a.attrelid = 'dbops.coda_lavori_tipi'::regclass
+                       AND a.attname IN ('data_update', 'user_update')
+                       AND NOT a.attisdropped),
+    '9) catalogo scritto dal solo seed: niente data_update/user_update né i due trigger');
 
 -- ============================================================
 -- B) Struttura dbops.coda_lavori

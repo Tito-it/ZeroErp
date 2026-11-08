@@ -1,0 +1,249 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DI MAGAZZINO NELLA GRAMMATICA DEL MODELLO: magazzino.movimenti, movimenti_attesi
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.1 (S-3, §4).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il registro scriveva la FOGLIA dell'operazione con un tipo di foglia
+#   (DDT_VENDITA_PRELIEVO + l'id del prelievo, INVENTARIO_RIGA + l'id della riga…).
+#   Nel modello il tipo e' il DOCUMENTO, la chiave e' quella del documento, e
+#   sotto stanno la riga (sorgente_riga) e, per bolla e reso, il dettaglio
+#   (sorgente_dettaglio = il prelievo, il rientro). Le righe si convertono qui,
+#   nel changeSet della forma: e' la migrazione del modello, non una correzione.
+#   La conversione e' esatta: la catena foglia -> riga -> documento sta nelle FK
+#   NOT NULL delle tabelle di dettaglio e di riga.
+#
+# ── LA FORMA ─────────────────────────────────────────────────────────
+#   1. Si tolgono l'indice dell'identita' e i due CHECK di forma (la chiave sta
+#      ora in sorgente_id / sorgente_uid, non piu' in sorgente_riga).
+#   2. Le righe passano al modello, coi trigger della tabella spenti e riaccesi
+#      com'erano (storico, audit, guard: e' il modello che cambia, non il
+#      movimento):
+#        DDT_VENDITA_PRELIEVO -> DDT_VENDITA,  bolla, riga, prelievo
+#        RESO_VENDITA_RIENTRO -> RESO_VENDITA, reso, riga, rientro
+#        INVENTARIO_RIGA      -> INVENTARIO,   inventario, riga
+#        RETTIFICA_RIGA       -> RETTIFICA,    rettifica, riga
+#        TRASFERIMENTO_RIGA   -> TRASFERIMENTO, trasferimento, riga
+#        EVENTO_ASSET         -> resta, l'evento in sorgente_id (S-10, D-2: un
+#                                oggetto senza righe)
+#      Gli storni seguono la stessa regola: sono copie dell'originale.
+#      ⛔ Un movimento che resta senza chiave di documento ferma il migrate:
+#      e' una foglia che non c'e' piu', e la conversione non la inventa.
+#   3. L'identita' si riscrive EQUIVALENTE (scheda magazzino §2): (tipo,
+#      documento, riga, dettaglio, causale, tranche) NULLS NOT DISTINCT. Regge
+#      perche' il guard unico (20261109-07) verifica la catena dettaglio ∈ riga
+#      ∈ documento e, col livello minimo DETTAGLIO, impone a ogni tipo la foglia
+#      piu' bassa che ha: per lo stesso fatto le cinque colonne sono una
+#      funzione della foglia, come prima lo era la sola foglia. Stesso nome:
+#      codici_errore.csv e i pgTAP lo citano.
+#      Le prime due colonne (tipo, documento) servono anche chi cerca «i
+#      movimenti di un documento» (lo storno, i presidi, la consultazione).
+#   4. I CHECK di forma, con gli stessi nomi:
+#        movimenti: una sola chiave di documento (il tipo e' NOT NULL, D-6);
+#        attesi: senza tipo nessuna chiave e nessun livello; col tipo una sola
+#        chiave di documento (le righe e il dettaglio li verifica il guard).
+#   5. I COMMENT delle colonne, al presente.
+#   Da zero (CI) le tabelle sono vuote e il catalogo non e' ancora seminato:
+#   la conversione non tocca niente.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261108-94-alter-magazzino-movimenti-sorgente-modello-mctit.yaml
+
+  - changeSet:
+      id: 20261108-94-alter-magazzino-movimenti-sorgente-modello
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.movimenti e movimenti_attesi nella grammatica del modello: il tipo e' il
+        documento, la chiave in sorgente_id, poi riga e dettaglio. Righe del registro convertite
+        dalla foglia, identita' riscritta equivalente, CHECK di forma sulla chiave del documento.
+        brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Identita' e forma di prima.
+              DROP INDEX magazzino.uq_mag_movimenti_identita;
+              ALTER TABLE magazzino.movimenti DROP CONSTRAINT chk_mag_movimenti_sorgente_chiave;
+              ALTER TABLE magazzino.movimenti_attesi DROP CONSTRAINT chk_mag_movimenti_attesi_sorgente_chiave;
+
+              -- 2. Le righe del registro: dalla foglia al documento.
+              DO $do$
+              DECLARE
+                  -- Tipi espliciti: %TYPE[] non e' sintassi valida (pg_trigger.tgname, .tgenabled);
+                  -- i, v_prima e v_restano sono contatori (bigint di count()).
+                  v_nomi      text[];
+                  v_modi      "char"[];
+                  i           integer;
+                  v_prelievo  config.sorgenti.id%TYPE;
+                  v_rientro   config.sorgenti.id%TYPE;
+                  v_inv_riga  config.sorgenti.id%TYPE;
+                  v_ret_riga  config.sorgenti.id%TYPE;
+                  v_tra_riga  config.sorgenti.id%TYPE;
+                  v_evento    config.sorgenti.id%TYPE;
+                  v_ddt       config.sorgenti.id%TYPE;
+                  v_reso      config.sorgenti.id%TYPE;
+                  v_inv       config.sorgenti.id%TYPE;
+                  v_ret       config.sorgenti.id%TYPE;
+                  v_tra       config.sorgenti.id%TYPE;
+                  v_prima     bigint;
+                  v_restano   bigint;
+              BEGIN
+                  SELECT count(*) INTO v_prima FROM magazzino.movimenti;
+                  IF v_prima = 0 THEN
+                      RETURN;          -- da zero: niente da convertire
+                  END IF;
+
+                  SELECT max(s.id) FILTER (WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'RESO_VENDITA_RIENTRO'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'INVENTARIO_RIGA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'RETTIFICA_RIGA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'TRASFERIMENTO_RIGA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'EVENTO_ASSET'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'DDT_VENDITA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'RESO_VENDITA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'INVENTARIO'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'RETTIFICA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'TRASFERIMENTO')
+                    INTO v_prelievo, v_rientro, v_inv_riga, v_ret_riga, v_tra_riga, v_evento,
+                         v_ddt, v_reso, v_inv, v_ret, v_tra
+                    FROM config.sorgenti s;
+
+                  -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                  -- resta spento, uno ALWAYS torna ALWAYS.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'magazzino.movimenti'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE magazzino.movimenti DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  UPDATE magazzino.movimenti m
+                     SET sorgente_tipo_id   = v_ddt,
+                         sorgente_id        = dr.ddt_id,
+                         sorgente_riga      = dr.id,
+                         sorgente_dettaglio = p.id
+                    FROM vendite.ddt_righe_prelievi p
+                    JOIN vendite.ddt_righe dr ON dr.id = p.ddt_riga_id
+                   WHERE m.sorgente_tipo_id = v_prelievo
+                     AND p.id = m.sorgente_riga;
+
+                  UPDATE magazzino.movimenti m
+                     SET sorgente_tipo_id   = v_reso,
+                         sorgente_id        = rr.reso_id,
+                         sorgente_riga      = rr.id,
+                         sorgente_dettaglio = x.id
+                    FROM vendite.resi_righe_rientri x
+                    JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
+                   WHERE m.sorgente_tipo_id = v_rientro
+                     AND x.id = m.sorgente_riga;
+
+                  UPDATE magazzino.movimenti m
+                     SET sorgente_tipo_id = v_inv,
+                         sorgente_id      = r.inventario_id
+                    FROM magazzino.inventari_righe r
+                   WHERE m.sorgente_tipo_id = v_inv_riga
+                     AND r.id = m.sorgente_riga;
+
+                  UPDATE magazzino.movimenti m
+                     SET sorgente_tipo_id = v_ret,
+                         sorgente_id      = r.rettifica_id
+                    FROM magazzino.rettifiche_righe r
+                   WHERE m.sorgente_tipo_id = v_ret_riga
+                     AND r.id = m.sorgente_riga;
+
+                  UPDATE magazzino.movimenti m
+                     SET sorgente_tipo_id = v_tra,
+                         sorgente_id      = r.trasferimento_id
+                    FROM magazzino.trasferimenti_righe r
+                   WHERE m.sorgente_tipo_id = v_tra_riga
+                     AND r.id = m.sorgente_riga;
+
+                  -- L'evento e' un oggetto senza righe: la sua chiave e' la chiave del documento.
+                  UPDATE magazzino.movimenti m
+                     SET sorgente_id   = m.sorgente_riga,
+                         sorgente_riga = NULL
+                   WHERE m.sorgente_tipo_id = v_evento
+                     AND m.sorgente_id IS NULL;
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE magazzino.movimenti ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+
+                  -- ⛔ Nessun movimento resta senza la chiave del suo documento.
+                  SELECT count(*) INTO v_restano
+                    FROM magazzino.movimenti m
+                   WHERE m.sorgente_id IS NULL AND m.sorgente_uid IS NULL;
+                  IF v_restano > 0 THEN
+                      RAISE EXCEPTION 'magazzino.movimenti: % movimenti su % senza la chiave del documento dopo la conversione (la foglia non esiste piu'')',
+                                      v_restano, v_prima;
+                  END IF;
+              END
+              $do$;
+
+              -- 3. L'identita', equivalente (scheda magazzino §2 del brief).
+              CREATE UNIQUE INDEX uq_mag_movimenti_identita
+                  ON magazzino.movimenti (sorgente_tipo_id, sorgente_id, sorgente_uid,
+                                          sorgente_riga, sorgente_dettaglio,
+                                          causale_id, asset_id, lotto_id, ubicazione_id)
+                  NULLS NOT DISTINCT;
+
+              COMMENT ON INDEX magazzino.uq_mag_movimenti_identita IS
+                  'L''identita'' del movimento e'' l''OPERAZIONE-PER-TRANCHE: (provenienza intera: tipo del documento, chiave del documento, riga, dettaglio; causale; asset, lotto, ubicazione). NULLS NOT DISTINCT: due righe uguali senza lotto, seriale e ubicazione collidono (la stessa operazione scritta due volte); le due righe OUT/IN di un trasferimento no (causali diverse); N tranche dello stesso ricevimento no (lotti o asset diversi). E'' GLOBALE, non per magazzino: la provenienza e'' nella chiave. Equivale all''identita'' per foglia di prima perche'' il guard unico (script.trgfn_guard_sorgente, livello minimo DETTAGLIO) verifica la catena dettaglio della riga, riga del documento e impone a ogni tipo la foglia piu'' bassa che ha. La madre (magazzino.fn_scrivi_movimento, passo 10) cerca prima e da'' la frase E_MAG_MOVIMENTO_GIA_REGISTRATO; l''indice resta la rete. Le prime due colonne servono chi cerca i movimenti di un documento. Brief: brief-db-magazzino-lotto-1-terreno-vuoto 4.4 (D-4, D-L1-c); brief-db-sorgente-documento-e-riga lotto M.';
+
+              -- 4. La forma.
+              ALTER TABLE magazzino.movimenti
+                  ADD CONSTRAINT chk_mag_movimenti_sorgente_chiave
+                  CHECK (num_nonnulls(sorgente_id, sorgente_uid) = 1);
+              COMMENT ON CONSTRAINT chk_mag_movimenti_sorgente_chiave ON magazzino.movimenti IS
+                  'Una sola chiave del documento di origine: sorgente_id oppure sorgente_uid, secondo il key_selector del tipo (lo verifica il guard script.trgfn_guard_sorgente). Il tipo e'' NOT NULL (D-6): ogni movimento ha un documento a monte.';
+
+              ALTER TABLE magazzino.movimenti_attesi
+                  ADD CONSTRAINT chk_mag_movimenti_attesi_sorgente_chiave
+                  CHECK ((sorgente_tipo_id IS NULL
+                          AND num_nonnulls(sorgente_id, sorgente_uid, sorgente_riga, sorgente_dettaglio) = 0)
+                      OR (sorgente_tipo_id IS NOT NULL
+                          AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_mag_movimenti_attesi_sorgente_chiave ON magazzino.movimenti_attesi IS
+                  'Senza documento (blocco manuale) nessuna chiave e nessun livello; con il documento una sola chiave, sorgente_id oppure sorgente_uid secondo il key_selector del tipo. Riga e dettaglio sono facoltativi (un''attesa vale per il documento intero o per una sua riga): li verifica il guard script.trgfn_guard_sorgente.';
+
+              -- 5. Le colonne, al presente.
+              COMMENT ON COLUMN magazzino.movimenti.sorgente_tipo_id IS
+                  'Il tipo del DOCUMENTO che ha generato il movimento (config.sorgenti: DDT_VENDITA, RESO_VENDITA, INVENTARIO, RETTIFICA, TRASFERIMENTO; EVENTO_ASSET, un oggetto senza righe). NOT NULL: ogni movimento ha un''operazione a monte (D-6). La chiave del documento sta in sorgente_id (o sorgente_uid), la riga in sorgente_riga, il dettaglio in sorgente_dettaglio: sempre la foglia piu'' bassa che il tipo ha (guard script.trgfn_guard_sorgente, livello minimo DETTAGLIO).';
+              COMMENT ON COLUMN magazzino.movimenti.sorgente_id IS
+                  'La chiave del documento di origine quando il suo tipo ha key_selector id: l''id della bolla, del reso, dell''inventario, della rettifica, del trasferimento, dell''evento. In alternativa a sorgente_uid, mai tutte e due (chk_mag_movimenti_sorgente_chiave). La verifica il guard script.trgfn_guard_sorgente.';
+              COMMENT ON COLUMN magazzino.movimenti.sorgente_uid IS
+                  'La chiave del documento di origine quando il suo tipo ha key_selector uid. In alternativa a sorgente_id, mai tutte e due (chk_mag_movimenti_sorgente_chiave). Oggi nessun tipo del registro ha chiave uid.';
+              COMMENT ON COLUMN magazzino.movimenti.sorgente_riga IS
+                  'La riga del documento di origine (config.sorgenti.righe_table del tipo: ddt_righe, resi_righe, inventari_righe, rettifiche_righe, trasferimenti_righe). Sempre valorizzata se il tipo ha righe; NULL per un oggetto senza righe (EVENTO_ASSET). Appartiene al documento di sorgente_id: lo verifica il guard script.trgfn_guard_sorgente.';
+              COMMENT ON COLUMN magazzino.movimenti.sorgente_dettaglio IS
+                  'Il dettaglio della riga di origine (config.sorgenti.dettaglio_table del tipo): il prelievo di una riga di bolla, il rientro di una riga di reso. Sempre valorizzato se il tipo ha il dettaglio; NULL altrimenti. Appartiene alla riga di sorgente_riga: lo verifica il guard script.trgfn_guard_sorgente.';
+
+              COMMENT ON COLUMN magazzino.movimenti_attesi.sorgente_id IS
+                  'La chiave del documento che genera l''attesa quando il suo tipo ha key_selector id. In alternativa a sorgente_uid; NULL per un blocco manuale (chk_mag_movimenti_attesi_sorgente_chiave). La verifica il guard script.trgfn_guard_sorgente.';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.sorgente_uid IS
+                  'La chiave del documento che genera l''attesa quando il suo tipo ha key_selector uid. In alternativa a sorgente_id; NULL per un blocco manuale.';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.sorgente_riga IS
+                  'La riga del documento a cui l''attesa si riferisce, se e'' per una riga; NULL = il documento intero. Appartiene al documento: lo verifica il guard script.trgfn_guard_sorgente. Un movimento riconosce come propria l''attesa del suo documento quando i livelli che l''attesa valorizza coincidono con i suoi (script.fn_check_disponibilita_uscita, confronto per prefisso).';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.sorgente_dettaglio IS
+                  'Il dettaglio della riga a cui l''attesa si riferisce, se e'' per un dettaglio; NULL = la riga intera o il documento. Appartiene alla riga: lo verifica il guard script.trgfn_guard_sorgente.';

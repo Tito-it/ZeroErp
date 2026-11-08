@@ -48,7 +48,7 @@ DO $fix$
 DECLARE
     v_mag bigint; v_art uuid; v_art_lotto uuid; v_l1 bigint; v_l2 bigint; v_inv bigint; v_tmp bigint;
     v_r bigint[] := '{}'; i int;
-    v_src bigint := (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA');
+    v_src bigint := (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO');
 BEGIN
     v_mag := dbops.fn_pgtap_crea_magazzino('PGT-L2D-A', false);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L2D-ART', true, false, false);
@@ -63,43 +63,45 @@ BEGIN
     INSERT INTO _fix VALUES (v_mag, v_art, v_art_lotto, v_l1, v_l2, v_src, v_r[1], v_r[2], v_r[3], v_r[4], v_r[5], v_r[6], v_r[7], v_r[8], v_r[9]);
 
     -- Giacenza 20 dell'articolo semplice; 3 + 17 di quello per lotti.
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'INV_INIZIALE', 10, v_src, v_r[1], NULL, 5);
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'RETT_POS',     10, v_src, v_r[2], NULL, 5);
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art_lotto, 'INV_INIZIALE',  3, v_src, v_r[8], NULL, 5, v_l1);
-    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art_lotto, 'RETT_POS',     17, v_src, v_r[9], NULL, 5, v_l2);
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'INV_INIZIALE', 10, v_src, v_r[1], NULL, 5, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = v_r[1]));
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'RETT_POS',     10, v_src, v_r[2], NULL, 5, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = v_r[2]));
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art_lotto, 'INV_INIZIALE',  3, v_src, v_r[8], NULL, 5, v_l1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = v_r[8]));
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art_lotto, 'RETT_POS',     17, v_src, v_r[9], NULL, 5, v_l2, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = v_r[9]));
 
     -- I blocchi: uno manuale (senza sorgente), uno con la sorgente r4.
     INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, qta, causale_id, stato, nota)
     VALUES (v_art, v_mag, -4, (SELECT id FROM magazzino.causali WHERE codice_interno = 'SCARICO_VEN'), 'APERTA', 'blocco manuale');
-    INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, qta, causale_id, stato, sorgente_tipo_id, sorgente_riga)
-    VALUES (v_art, v_mag, -5, (SELECT id FROM magazzino.causali WHERE codice_interno = 'SCARICO_VEN'), 'APERTA', v_src, v_r[4]);
+    -- rev 2026-11-09 (lotto M): la provenienza del modello, l'inventario e la sua riga.
+    INSERT INTO magazzino.movimenti_attesi (articolo_id, magazzino_id, qta, causale_id, stato, sorgente_tipo_id, sorgente_id, sorgente_riga)
+    VALUES (v_art, v_mag, -5, (SELECT id FROM magazzino.causali WHERE codice_interno = 'SCARICO_VEN'), 'APERTA', v_src,
+            (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = v_r[4]), v_r[4]);
 END $fix$;
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', -21, src, r3) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', -21, src, r3, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r3)) FROM _fix $$,
     '%Giacenza insufficiente per l''articolo PGT-L2D-ART nel magazzino PGT-L2D-A: disponibili 20, richiesti 21.%',
     '1) oltre la giacenza: E_MAG_GIACENZA_INSUFFICIENTE con i valori nella frase');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', -12, src, r3) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', -12, src, r3, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r3)) FROM _fix $$,
     '%L''articolo PGT-L2D-ART nel magazzino PGT-L2D-A ha 11 pezzi disponibili (9 bloccati per altri): richiesti 12.%',
     '2) dentro la giacenza ma oltre i blocchi ALTRUI: E_MAG_MERCE_BLOCCATA');
 
 SELECT lives_ok(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', -12, src, r4) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', -12, src, r4, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r4)) FROM _fix $$,
     '3) la stessa uscita con la sorgente del blocco -5: quel blocco non e'' altrui, passa');
 
 SELECT lives_ok(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'RETT_NEG', -7, src, r5) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'RETT_NEG', -7, src, r5, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r5)) FROM _fix $$,
     '4) is_rettifica: il fatto vince sulla promessa — RETT_NEG passa sotto il blocco');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'RETT_NEG', -5, src, r6) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'RETT_NEG', -5, src, r6, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r6)) FROM _fix $$,
     '%disponibili 1, richiesti 5.%',
     '5) ...ma non sotto il fisico: E_MAG_GIACENZA_INSUFFICIENTE');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_lotto, 'SCARICO_VEN', -5, src, r7, NULL, NULL, l1) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_lotto, 'SCARICO_VEN', -5, src, r7, NULL, NULL, l1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r7)) FROM _fix $$,
     '%disponibili 3, richiesti 5.%',
     '6) grana LOTTO: l''articolo ne ha 20, il lotto 3 — l''uscita di 5 dal lotto si ferma sul lotto');
 
@@ -115,7 +117,7 @@ SELECT is(
 -- Il caso costruito: consente_stock_negativo su SCARICO_VEN, in transazione.
 UPDATE magazzino.causali SET consente_stock_negativo = true WHERE codice_interno = 'SCARICO_VEN';
 SELECT lives_ok(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', -100, src, r6) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art, 'SCARICO_VEN', -100, src, r6, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r6)) FROM _fix $$,
     '9) consente_stock_negativo: l''uscita passa sotto zero (ne'' fisico ne'' blocchi)');
 
 SELECT * FROM finish();

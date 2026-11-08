@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.presidi_testi`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -123,6 +123,9 @@ tolga.
   pannello diceva «Esegui ora» a un servizio sempre acceso che aveva perso la connessione.
 * 2026-11-04 — esce il testo di `dbops.vw_run_senza_attore`, cancellato prima della riga del
   presidio quando la vista è stata tolta dal database (`brief-db-revisione-dbops`).
+* 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
+  la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
 
 ---
 

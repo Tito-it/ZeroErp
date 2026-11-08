@@ -40,7 +40,7 @@
 --    8) senza l'azione conferma_reso il verbo rifiuta -> E_PERMESSO_NEGATO
 --    9) il verbo conferma: tre carichi CARICO_RESO_VEN (SEMPLICE 2, lotto A 3, lotto B 1)
 --   10) il rientro automatico della SEMPLICE esiste, per la quantita' resa
---   11) ogni carico ha per sorgente il suo rientro (RESO_VENDITA_RIENTRO)
+--   11) ogni carico ha per provenienza il reso, la riga e il suo rientro (RESO_VENDITA; rev 2026-11-09, lotto M)
 --   12) ogni carico ha il costo della sua uscita (5 e 3), non la media di oggi
 --   13) giacenze in MAG dopo la conferma: A_LOTTI 8, SEMPLICE 8
 --   14) la NON_GESTITO non rientra
@@ -245,8 +245,8 @@ SELECT vendite.fn_conferma_reso((SELECT reso FROM _r1));
 CREATE TEMP TABLE _car1 AS
 SELECT m.*
   FROM magazzino.movimenti m
-  JOIN config.sorgenti so ON so.id = m.sorgente_tipo_id AND so.codice_interno = 'RESO_VENDITA_RIENTRO'
-  JOIN vendite.resi_righe_rientri x ON x.id = m.sorgente_riga
+  JOIN config.sorgenti so ON so.id = m.sorgente_tipo_id AND so.codice_interno = 'RESO_VENDITA'
+  JOIN vendite.resi_righe_rientri x ON x.id = m.sorgente_dettaglio  -- rev 2026-11-09 (lotto M): il rientro e' il dettaglio
   JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
  WHERE rr.reso_id = (SELECT reso FROM _r1);
 SELECT is(

@@ -23,7 +23,7 @@
 --    4) UPDATE diretto a EMESSO di una bolla che muove merce -> E_DOC_STATO_SOLO_DAL_VERBO
 --    5) il verbo emette: tre scarichi SCARICO_VEN (uno automatico, due per lotto)
 --    6) il prelievo automatico della SEMPLICE esiste, per l'intera quantita'
---    7) ogni scarico ha per sorgente il suo prelievo (DDT_VENDITA_PRELIEVO)
+--    7) ogni scarico ha per provenienza la bolla, la riga e il suo prelievo (DDT_VENDITA; rev 2026-11-09, lotto M)
 --    8) giacenze dopo l'emissione: SEMPLICE 6, A_LOTTI 4
 --    9) la NON_GESTITO non ha movimenti
 --   10) prelievi congelati fuori bozza -> E_RIGA_DOC_NON_BOZZA
@@ -134,15 +134,16 @@ SELECT is(
     '4',
     '6) la SEMPLICE ha il suo prelievo, creato dal verbo, per l''intera quantita''');
 
--- 7) la sorgente di ogni movimento e' il suo prelievo
+-- 7) la provenienza di ogni movimento: la bolla, la riga, il prelievo (rev 2026-11-09, lotto M)
 SELECT ok(
-    (SELECT bool_and(s.codice_interno = 'DDT_VENDITA_PRELIEVO' AND p.id IS NOT NULL)
+    (SELECT bool_and(s.codice_interno = 'DDT_VENDITA' AND m.sorgente_id = (SELECT ddt FROM _d1)
+                     AND p.id IS NOT NULL AND p.ddt_riga_id = m.sorgente_riga)
        FROM _em1 e
        JOIN magazzino.movimenti m ON m.id = e.movimento_id
        JOIN config.sorgenti s ON s.id = m.sorgente_tipo_id
-       LEFT JOIN vendite.ddt_righe_prelievi p ON p.id = m.sorgente_riga
+       LEFT JOIN vendite.ddt_righe_prelievi p ON p.id = m.sorgente_dettaglio
                                               AND p.ddt_riga_id IN (SELECT r_s FROM _d1 UNION ALL SELECT r_l FROM _d1)),
-    '7) ogni scarico nomina il proprio prelievo (D-L3-d)');
+    '7) ogni scarico nomina la bolla, la riga e il proprio prelievo (D-L3-d; il modello, lotto M)');
 
 -- 8-9) le giacenze
 SELECT is(

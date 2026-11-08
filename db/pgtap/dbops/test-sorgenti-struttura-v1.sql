@@ -29,6 +29,8 @@
 --   rev 2026-11-08: il lotto P, giro P.1 (20261108-86), monta il guard unico su
 --   pratiche_sorgenti, che esce dal debito; il guard testuale, rimasto senza
 --   montaggi, si ritira (20261108-87): il test 4 guarda la sola sorella _tipizzata.
+--   rev 2026-11-09: il lotto M, giro M.1 (20261109-07), monta il guard unico sul registro di
+--     magazzino: escono magazzino.movimenti e magazzino.movimenti_attesi.
 --
 -- Elenco test (plan 5):
 --   1) dal guard sono esenti il log dei reconcile (D-9) e la coda di stampa (D-3), col motivo
@@ -66,8 +68,8 @@ SELECT results_eq(
         -- lotto M (acquisti e magazzino)
         ('acquisti.ddt'), ('acquisti.ddt_righe'), ('acquisti.ordini'), ('acquisti.ordini_righe'),
         -- lotto M
-        ('magazzino.eventi_assets'), ('magazzino.inventari'), ('magazzino.movimenti'),
-        ('magazzino.movimenti_attesi'), ('magazzino.rettifiche'), ('magazzino.trasferimenti')$$,
+        ('magazzino.eventi_assets'), ('magazzino.inventari'),
+        ('magazzino.rettifiche'), ('magazzino.trasferimenti')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
 SELECT is_empty(
