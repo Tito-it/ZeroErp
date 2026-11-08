@@ -136,24 +136,6 @@ BEGIN
                         USING v_tipo;
                 END IF;
 
-            ELSIF v_grammatica = 'MODELLO_A' THEN
-                -- La chiave dell'oggetto del tipo: sorgente_riga per 'id', sorgente_uid per 'uid'.
-                IF v_selector = 'uid' THEN
-                    CONTINUE WHEN NOT v_ha_uid;
-                    v_chiave_x := 'x.sorgente_uid';
-                    v_chiave_d := 'd.uid';
-                ELSE
-                    CONTINUE WHEN NOT v_ha_riga;
-                    v_chiave_x := 'x.sorgente_riga';
-                    v_chiave_d := 'd.id';
-                END IF;
-
-                RETURN QUERY EXECUTE format(v_testa, 'DOCUMENTO', v_d_relid)
-                    || format('WHERE x.sorgente_tipo_id = $1 AND %s IS NOT NULL '
-                              'AND NOT EXISTS (SELECT 1 FROM %I.%I d WHERE %s = %s)',
-                              v_chiave_x, v_d_schema, v_d_tabella, v_chiave_d, v_chiave_x)
-                    USING v_tipo;
-
             ELSE
                 -- TESTUALE: la chiave in sorgente_uid, come id o come uid, nella
                 -- forma canonica dei BB della chiave (la regola del ponte).
@@ -175,7 +157,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_sorgenti_orfane()
-IS 'Le righe la cui provenienza punta a un record che non esiste piu'': un documento (livello DOCUMENTO), una riga che non c''e'' o non e'' di quel documento (RIGA), un dettaglio che non c''e'' o non e'' di quella riga (DETTAGLIO). Una riga per orfano, con la tabella, l''id, la grammatica, il tipo, le colonne della provenienza e target_table, la tabella dove manca il record. Perimetro: dbops.fn_sorgenti_orfane_perimetro, tranne le tabelle con orfani_esclusi_perche. Per tabella e per tipo un anti-join dinamico nella grammatica della tabella: UNICO a tre livelli; MODELLO_A con la chiave in sorgente_riga o sorgente_uid; TESTUALE con la chiave in sorgente_uid, riconosciuta in forma canonica (script.fn_sorgente_chiave_id / _uuid). Il guard impedisce di scrivere un orfano; qui si trovano quelli nati dopo, cancellando l''origine senza il lato «in uscita». SECURITY DEFINER del proprietario (attraversa la RLS), STABLE. Letta da dbops.vw_sorgenti_orfane, che deve restare vuota.';
+IS 'Le righe la cui provenienza punta a un record che non esiste piu'': un documento (livello DOCUMENTO), una riga che non c''e'' o non e'' di quel documento (RIGA), un dettaglio che non c''e'' o non e'' di quella riga (DETTAGLIO). Una riga per orfano, con la tabella, l''id, la grammatica, il tipo, le colonne della provenienza e target_table, la tabella dove manca il record. Perimetro: dbops.fn_sorgenti_orfane_perimetro, tranne le tabelle con orfani_esclusi_perche. Per tabella e per tipo un anti-join dinamico nella grammatica della tabella: UNICO a tre livelli; TESTUALE con la chiave in sorgente_uid, riconosciuta in forma canonica (script.fn_sorgente_chiave_id / _uuid). Il guard impedisce di scrivere un orfano; qui si trovano quelli nati dopo, cancellando l''origine senza il lato «in uscita». SECURITY DEFINER del proprietario (attraversa la RLS), STABLE. Letta da dbops.vw_sorgenti_orfane, che deve restare vuota.';
 ```
 
 </div>

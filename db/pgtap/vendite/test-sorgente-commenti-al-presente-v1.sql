@@ -2,12 +2,12 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: i COMMENT degli oggetti della provenienza (lotto 0 giro 0.3, lotto R, lotto T giro T.3,
---   lotto C giri C.1, C.2 e C.3, lotto P giro P.1)
+--   lotto C giri C.1, C.2 e C.3, lotto P giro P.1, lotto M giro M.2)
 --   descrivono l'oggetto al presente, come vuole linee-guida-sql §5d: niente
 --   brief, marcatori di revisione, id di changeSet, sigle di decisione.
 --   Il giro 0.3 li aveva scritti con un prefisso di cronaca; il giro R.2 li
 --   riscrive interi, e questo file tiene il punto.
--- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86)
+-- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86; giro M.2: 20261109-15 … -18)
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R, giro R.2
 -- ------------------------------------------------------------
 -- Indice test (plan 5):
@@ -107,7 +107,9 @@ INSERT INTO _fn VALUES
   ('pratiche.fn_stato_sorgente(bigint,bigint,uuid)'),
   ('pratiche.fn_reconcile_sorgente(bigint,bigint,uuid)'),
   ('pratiche.trgfn_documento_reconcile_proiezione()'),
-  ('vendite.fn_genera_pratica_da_preventivo(bigint,integer,integer,text)');
+  ('vendite.fn_genera_pratica_da_preventivo(bigint,integer,integer,text)'),
+  -- lotto M, giro M.2
+  ('dbops.fn_sorgenti_orfane()');
 
 CREATE TEMP TABLE _tab (tabella text PRIMARY KEY);
 INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
@@ -121,7 +123,10 @@ INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
                         -- lotto C, giro C.3: la riga di commessa
                         ('vendite.commesse_attivita'),
                         -- lotto P, giro P.1: il link documento -> pratica e il log del reconcile
-                        ('pratiche.pratiche_sorgenti'), ('pratiche.reconcile_errori');
+                        ('pratiche.pratiche_sorgenti'), ('pratiche.reconcile_errori'),
+                        -- lotto M, giro M.2: le testate di magazzino e l'evento
+                        ('magazzino.inventari'), ('magazzino.rettifiche'),
+                        ('magazzino.trasferimenti'), ('magazzino.eventi_assets');
 
 CREATE TEMP TABLE _ix (indice text PRIMARY KEY);
 INSERT INTO _ix VALUES
@@ -145,7 +150,16 @@ INSERT INTO _ix VALUES
   ('vendite.ix_commesse_attivita_sorgente_riga'),
   -- lotto P, giro P.1 (l'unicita' porta il COMMENT sul vincolo, non sull'indice)
   ('pratiche.ix_pratiche_sorgenti_sorgente_id'), ('pratiche.ix_pratiche_sorgenti_sorgente_uid'),
-  ('pratiche.ix_pratiche_sorgenti_sorgente_riga'), ('pratiche.ix_reconcile_errori_sorgente');
+  ('pratiche.ix_pratiche_sorgenti_sorgente_riga'), ('pratiche.ix_reconcile_errori_sorgente'),
+  -- lotto M, giro M.2
+  ('magazzino.ix_mag_inventari_sorgente_id'), ('magazzino.ix_mag_inventari_sorgente_uid'),
+  ('magazzino.ix_mag_inventari_sorgente_riga'),
+  ('magazzino.ix_mag_rettifiche_sorgente_id'), ('magazzino.ix_mag_rettifiche_sorgente_uid'),
+  ('magazzino.ix_mag_rettifiche_sorgente_riga'),
+  ('magazzino.ix_mag_trasferimenti_sorgente_id'), ('magazzino.ix_mag_trasferimenti_sorgente_uid'),
+  ('magazzino.ix_mag_trasferimenti_sorgente_riga'),
+  ('magazzino.ix_mag_eventi_assets_sorgente_id'), ('magazzino.ix_mag_eventi_assets_sorgente_uid'),
+  ('magazzino.ix_mag_eventi_assets_sorgente_riga');
 
 SELECT is(
   (SELECT count(*)::int FROM _fn WHERE to_regprocedure(firma) IS NULL)
@@ -172,7 +186,7 @@ SELECT is(
     WHERE coalesce(col_description(a.attrelid, a.attnum), '') ~* m.re
        OR col_description(a.attrelid, a.attnum) IS NULL),
   '',
-  '3) i COMMENT delle colonne sorgente_* delle righe e delle testate di vendita descrivono al presente');
+  '3) i COMMENT delle colonne sorgente_* delle righe e delle testate (di vendita, di magazzino) descrivono al presente');
 
 SELECT is(
   (SELECT coalesce(string_agg(k.conname, ', ' ORDER BY k.conname), '')

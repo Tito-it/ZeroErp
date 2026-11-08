@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA IL GUARD TIPIZZATO: script.trgfn_guard_sorgente_polimorfa_tipizzata()
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.2 (Tid, 2026-11-08:
+#   il ritiro anticipato dal lotto Z a questo giro).
+#
+#   Il guard del modello A (la chiave in sorgente_riga) era montato per ultimo
+#   sulle testate di magazzino e sull'evento, che passano al guard unico
+#   (20261109-16); il registro l'aveva lasciato col giro M.1. Senza montaggi una
+#   funzione trigger resta un riferimento morto (dbops/test-riferimenti-morti-v1
+#   la segnala «senza alcun trigger»): si ritira nel giro che toglie l'ultimo
+#   montaggio, come la sorella testuale nel giro P.1 (20261108-87). L'unico
+#   lettore, il perimetro della provenienza, l'ha lasciato in 20261109-17.
+#   I codici che sollevava restano: li solleva il guard unico.
+#   DROP senza IF EXISTS e senza CASCADE: un montaggio o una dipendenza rimasti
+#   fermano il migrate invece di sparire in silenzio.
+#   Rollback: forward-only (il corpo e' nella storia: 20260718-16, l'ultimo 20260818-50).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261109-19-drop-trgfn-guard-sorgente-polimorfa-tipizzata-mctit.yaml
+
+  - changeSet:
+      id: 20261109-19-drop-trgfn-guard-sorgente-polimorfa-tipizzata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_guard_sorgente_polimorfa_tipizzata: si ritira, senza montaggi ne' lettori.
+        brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: nessuna tabella ha piu' la provenienza del modello A.
+              SELECT 1;

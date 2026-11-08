@@ -29,7 +29,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_mag_trasferimenti_sorgente_chiave |  |
+| CHECK | chk_mag_trasferimenti_sorgente_forma |  |
 | CHECK | chk_mag_trasferimenti_stato |  |
 | FOREIGN KEY | fk_mag_trasf_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_mag_trasferimenti_magazzino_from | magazzino_id_from |
@@ -41,16 +41,18 @@
 |------|-------------|
 | ix_mag_trasferimenti_data | `CREATE INDEX ix_mag_trasferimenti_data ON magazzino.trasferimenti USING btree (data)` |
 | ix_mag_trasferimenti_from_to | `CREATE INDEX ix_mag_trasferimenti_from_to ON magazzino.trasferimenti USING btree (magazzino_id_from, magazzino_id_to)` |
+| ix_mag_trasferimenti_sorgente_id | `CREATE INDEX ix_mag_trasferimenti_sorgente_id ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_id) WHERE (sorgente_id IS NOT NULL)` |
+| ix_mag_trasferimenti_sorgente_riga | `CREATE INDEX ix_mag_trasferimenti_sorgente_riga ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_riga) WHERE (sorgente_riga IS NOT NULL)` |
+| ix_mag_trasferimenti_sorgente_uid | `CREATE INDEX ix_mag_trasferimenti_sorgente_uid ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_uid IS NOT NULL)` |
 | ix_mag_trasferimenti_stato | `CREATE INDEX ix_mag_trasferimenti_stato ON magazzino.trasferimenti USING btree (stato_trasferimento)` |
 | pk_mag_trasferimenti | `CREATE UNIQUE INDEX pk_mag_trasferimenti ON magazzino.trasferimenti USING btree (id)` |
-| uq_mag_trasf_sorgente_fk | `CREATE UNIQUE INDEX uq_mag_trasf_sorgente_fk ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_magazzino_trasferimenti_a10_sorgente_in_uscita_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_sorgente_in_uscita()` |
-| trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
-| trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
+| trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
+| trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
 | trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
 | trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
 | trg_trasferimenti_a10_guard_transizione_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_guard_transizione('stato_trasferimento', 'zeroerp.magazzino_posting_trasferimento')` |
@@ -59,10 +61,10 @@
 | trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_trasferimenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_trasferimenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_trasferimenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_trasferimenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_trasferimenti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('trasferimenti_id')` |
+| trg_trasferimenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_trasferimenti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('trasferimenti_id')` |
+| trg_trasferimenti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('trasferimenti_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -31,12 +31,15 @@
 --   montaggi, si ritira (20261108-87): il test 4 guarda la sola sorella _tipizzata.
 --   rev 2026-11-09: il lotto M, giro M.1 (20261109-07), monta il guard unico sul registro di
 --     magazzino: escono magazzino.movimenti e magazzino.movimenti_attesi.
+--   rev 2026-11-09: il lotto M, giro M.2 (20261109-16), monta il guard unico sulle testate di
+--     magazzino e sull'evento, che escono dal debito; il guard tipizzato, rimasto senza
+--     montaggi, si ritira (20261109-19): il test 4 verifica che non esista piu'.
 --
 -- Elenco test (plan 5):
 --   1) dal guard sono esenti il log dei reconcile (D-9) e la coda di stampa (D-3), col motivo
 --   2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato
 --   3) ogni montaggio del guard unico ha argomenti validi
---   4) nessuna tabella monta il guard unico insieme alla sorella vecchia _tipizzata
+--   4) le due sorelle vecchie del guard unico (_tipizzata, _testuale) non esistono piu'
 --   5) il perimetro non e' vuoto (un presidio che esamina zero tabelle e' verde e muto)
 -- ------------------------------------------------------------
 
@@ -65,24 +68,21 @@ SELECT results_eq(
          AND schema_tabella !~ '^pg_temp'
        ORDER BY 1$$,
     $$VALUES
-        -- lotto M (acquisti e magazzino)
-        ('acquisti.ddt'), ('acquisti.ddt_righe'), ('acquisti.ordini'), ('acquisti.ordini_righe'),
-        -- lotto M
-        ('magazzino.eventi_assets'), ('magazzino.inventari'),
-        ('magazzino.rettifiche'), ('magazzino.trasferimenti')$$,
+        -- lotto M, giro M.4 (acquisti)
+        ('acquisti.ddt'), ('acquisti.ddt_righe'), ('acquisti.ordini'), ('acquisti.ordini_righe')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
 SELECT is_empty(
     $$SELECT tabella::text FROM script.fn_sorgente_guard_montaggi() WHERE NOT argomenti_validi$$,
     '3) ogni montaggio del guard unico ha argomenti validi');
 
+-- Per nome da pg_proc, non ::regprocedure: il cast sul nome di una funzione ritirata e' un errore.
 SELECT is_empty(
-    $$SELECT m.tabella::text
-        FROM script.fn_sorgente_guard_montaggi() m
-       WHERE EXISTS (SELECT 1 FROM pg_trigger tg
-                      WHERE tg.tgrelid = m.tabella AND NOT tg.tgisinternal
-                        AND tg.tgfoid = 'script.trgfn_guard_sorgente_polimorfa_tipizzata()'::regprocedure)$$,
-    '4) nessuna tabella monta il guard unico insieme alla sorella vecchia _tipizzata (la _testuale e'' ritirata)');
+    $$SELECT n.nspname || '.' || p.proname
+        FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'script'
+         AND p.proname IN ('trgfn_guard_sorgente_polimorfa_tipizzata', 'trgfn_guard_sorgente_polimorfa_testuale')$$,
+    '4) le due sorelle vecchie del guard unico (_tipizzata, _testuale) non esistono piu'': nessuna tabella le puo'' montare');
 
 SELECT cmp_ok(
     (SELECT count(*)::int FROM dbops.fn_sorgenti_orfane_perimetro() WHERE schema_tabella !~ '^pg_temp'),

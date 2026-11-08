@@ -29,7 +29,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_mag_inventari_sorgente_chiave |  |
+| CHECK | chk_mag_inventari_sorgente_forma |  |
 | CHECK | chk_mag_inventari_stato |  |
 | FOREIGN KEY | fk_mag_inventari_magazzino | magazzino_id |
 | FOREIGN KEY | fk_mag_inventari_sorgenti_tipo | sorgente_tipo_id |
@@ -38,16 +38,18 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_mag_inventari_sorgente_id | `CREATE INDEX ix_mag_inventari_sorgente_id ON magazzino.inventari USING btree (sorgente_tipo_id, sorgente_id) WHERE (sorgente_id IS NOT NULL)` |
+| ix_mag_inventari_sorgente_riga | `CREATE INDEX ix_mag_inventari_sorgente_riga ON magazzino.inventari USING btree (sorgente_tipo_id, sorgente_riga) WHERE (sorgente_riga IS NOT NULL)` |
+| ix_mag_inventari_sorgente_uid | `CREATE INDEX ix_mag_inventari_sorgente_uid ON magazzino.inventari USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_uid IS NOT NULL)` |
 | ix_mag_invetario_data | `CREATE INDEX ix_mag_invetario_data ON magazzino.inventari USING btree (data)` |
 | ix_mag_invetario_stato_inventario | `CREATE INDEX ix_mag_invetario_stato_inventario ON magazzino.inventari USING btree (stato_mag_inventario)` |
 | pk_mag_inv | `CREATE UNIQUE INDEX pk_mag_inv ON magazzino.inventari USING btree (id)` |
-| uq_mag_invetario_sorgente_fk | `CREATE UNIQUE INDEX uq_mag_invetario_sorgente_fk ON magazzino.inventari USING btree (sorgente_tipo_id, sorgente_uid) WHERE ((sorgente_tipo_id IS NOT NULL) AND (sorgente_uid IS NOT NULL))` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_inventari_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
-| trg_inventari_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
+| trg_inventari_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
+| trg_inventari_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
 | trg_inventari_a10_guard_transizione_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_guard_transizione('stato_mag_inventario', 'zeroerp.magazzino_posting_inventario')` |
 | trg_inventari_a10_guard_transizione_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_guard_transizione('stato_mag_inventario', 'zeroerp.magazzino_posting_inventario')` |
 | trg_inventari_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('magazzino_id', 'E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE')` |

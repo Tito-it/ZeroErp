@@ -27,9 +27,13 @@
 --  riceve ancora la chiave in testo e la normalizza, e i censimenti. Il nome del
 --  file resta: lo conoscono la baseline e la storia del cantiere.
 --
+--  ⚠️ rev 2026-11-09 (brief-db-sorgente-documento-e-riga giro M.2): anche la
+--  sorella del modello A (_tipizzata), rimasta senza montaggi, si ritira
+--  (20261109-19): il test 2 ne verifica l'assenza.
+--
 -- Indice test (1..16):
 --   1)  riferimenti minimi disponibili (BA + tipi COMMESSA/PREVENTIVO/ORDINE)
---   2)  esiste script.trgfn_guard_sorgente_polimorfa_tipizzata (modello A)
+--   2)  NON esiste piu' script.trgfn_guard_sorgente_polimorfa_tipizzata (modello A, ritirato)
 --   3)  NON esiste piu' il vecchio nome trgfn_guard_sorgente_polimorfa
 --   4)  NON esiste piu' script.trgfn_guard_sorgente_polimorfa_testuale (ritirato)
 --   5)  pratiche.pratiche_sorgenti monta il guard unico
@@ -109,10 +113,10 @@ SELECT ok(
 );
 
 -- ============================================================
--- 2..6) oggetti in posto: la sorella tipizzata, la testuale ritirata, il guard unico montato
+-- 2..6) oggetti in posto: le due sorelle ritirate, il guard unico montato
 -- ============================================================
-SELECT has_function('script', 'trgfn_guard_sorgente_polimorfa_tipizzata',
-  '2) esiste il guard modello A (tipizzata, ex trgfn_guard_sorgente_polimorfa)');
+SELECT hasnt_function('script', 'trgfn_guard_sorgente_polimorfa_tipizzata',
+  '2) il guard modello A (tipizzata) non esiste piu'' (ritirato, 20261109-19)');
 
 SELECT hasnt_function('script', 'trgfn_guard_sorgente_polimorfa',
   '3) il vecchio nome generico non esiste piu'' (rinomina 20260718-16)');
