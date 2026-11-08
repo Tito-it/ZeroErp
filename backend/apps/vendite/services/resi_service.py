@@ -38,7 +38,6 @@ from django.db import transaction
 from apps.config.sorgenti import SORGENTE_RESO_VENDITA
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
-from apps.core.services.documento_modello import e_stato_iniziale
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
@@ -119,8 +118,9 @@ _FN = "vendite.resi_service"
 TESTATA_RESO = "vendite.resi"
 STATO_CONFERMATO = "CONFERMATO"
 # Il reso si ELIMINA solo nello stato in cui nasce (la bozza: lo stato
-# iniziale del vocabolario, `_assert_stato_iniziale`; abbandono del drawer,
-# `elimina_reso`). I campi della testata li governa il lock di testata del DB
+# iniziale del vocabolario; abbandono del drawer, `elimina_reso`: la regola
+# la giudica il DB, `trgfn_doc_guard_delete_solo_bozza`). I campi della
+# testata li governa il lock di testata del DB
 # (`trg_resi_a05_lock_fuori_bozza_upd`: in bozza tutto, dopo la conferma le
 # sole note); le RIGHE il lock delle righe (`E_RIGA_DOC_NON_BOZZA`, dal
 # `20260929-01`), con lo stesso codice del pre-check `richiedi_righe_in_bozza`.
@@ -569,22 +569,19 @@ def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 # Scopo: Hard-delete reso BOZZA ORFANO (0 righe attive) — supporto al pattern
 #        "abbandono bozza" del drawer. Un reso con righe non si cancella: si
 #        ANNULLA (fn_annulla_reso, che da DRAFT non ha effetti da stornare).
+#        ⛔ «Si cancella solo la bozza vuota» la giudica solo il guard DB
+#        `vendite.trgfn_doc_guard_delete_solo_bozza` (brief-db-sorgente-
+#        documento-e-riga §8.21 BE-Z.2-a); qui resta il 404 del DELETE che non
+#        tocca niente (id inesistente o fuori perimetro RLS).
 def elimina_reso(reso_id: int) -> dict[str, Any]:
     repo = ResiRepository()
-    _assert_stato_iniziale(repo, reso_id, op="elimina_reso")
-    righe_count = repo.count_righe(reso_id)
-    ErrorManager.require(
-        righe_count == 0,
-        code="E_RESO_STATO_TRANSIZIONE",
-        message=(
-            "Impossibile eliminare un reso con righe: annullare il reso "
-            "invece di cancellarlo."
-        ),
-        detail=f"righe_count={righe_count}",
-        function_name=f"{_FN}.elimina_reso",
-    )
     with _db_errors("elimina_reso"):
         deleted = repo.delete_reso(reso_id)
+    ErrorManager.require(
+        deleted,
+        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
+        detail=f"reso_id={reso_id}", function_name=f"{_FN}.elimina_reso",
+    )
     return {"reso_id": reso_id, "deleted": deleted}
 
 
@@ -1270,27 +1267,3 @@ def _richiedi_righe_in_bozza(
         function_name=f"{_FN}.{op}",
     )
     return reso
-
-
-# Scopo: Guard di stato leggero (solo codice_interno): E_RESO_NOT_FOUND se il
-#        reso non esiste, E_RESO_STATO_TRANSIZIONE se lo stato non e' quello in
-#        cui il documento nasce (lo stato iniziale del vocabolario, mai
-#        `'DRAFT'` scritto qui).
-def _assert_stato_iniziale(
-    repo: ResiRepository, reso_id: int, *, op: str,
-    message: str | None = None,
-) -> str:
-    # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
-    stato = testata_o_not_found(
-        repo.get_stato_codice, reso_id,
-        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
-        id_name="reso_id", function_name=f"{_FN}.{op}",
-    )
-    ErrorManager.require(
-        e_stato_iniziale(TESTATA_RESO, stato),
-        code="E_RESO_STATO_TRANSIZIONE",
-        message=message or f"Operazione non ammessa nello stato {stato}.",
-        detail=f"stato={stato}, ammesso: lo stato iniziale del vocabolario",
-        function_name=f"{_FN}.{op}",
-    )
-    return stato

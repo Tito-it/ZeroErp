@@ -77,55 +77,37 @@ _DOC_SORGENTE_SELECT = """
 """
 
 
-# Scopo: frammento LATERAL del descrittore per l'aggancio PER-FLUSSO (percorso/
-# coda): `anchor_cond` = "ps.flusso_id = f.id", SEMPRE statico, mai input utente.
-# COALESCE su risolto: link presente ma dominio senza resolver → false
-# (decisione C del brief design), non NULL.
-# NB l'ancora PRATICA-LEVEL (dettaglio/lista) NON usa piu' questo frammento: e'
-# stata promossa alla vista DB condivisa script.vw_pratica_doc_sorgente (roll-out
-# offerte/ordini/contratti), che accende anche i COLLEGATO senza flusso_id. Qui
-# resta solo il per-flusso, finche' D4 (pinning per-step del COLLEGATO, mappa
-# step→sorgente condivisa con GUIDA) non promuovera' anche questo.
-# Riferimento semantico del fallback: pratiche.fn_stato_sorgente (sentinella
-# UNKNOWN); il join diretto alla vista e' la via sancita per le liste
-# (doc fn_stato_sorgente: "niente N+1").
-# ⚠️ Il resolver si cerca sulla chiave NATIVA del link, un ramo per chiave
-#    (`sorgente_chiave_uuid = ps.sorgente_uid`, `sorgente_chiave_id =
-#    ps.sorgente_id`): sotto RLS l'uguaglianza fra colonne native arriva
-#    all'indice di ogni ramo della union, un OR sulle due chiavi no (legge
-#    tutte le tabelle-documento). Stessa forma di script.vw_pratica_doc_sorgente
-#    dal giro P.1 di brief-db-sorgente-documento-e-riga (2026-11-08), quando
-#    `pratiche_sorgenti` e' passata alle colonne del modello e i BB
-#    `script.fn_sorgente_chiave_uuid/_id` non servono piu'.
-# ⏭️ E' la seconda copia della regola «link → stato del documento» (la prima
-#    e' la vista): la sede per-flusso e' una richiesta al team DB (brief, §8.16).
-def _doc_sorgente_lateral(anchor_cond: str) -> str:
+# Scopo: frammento del descrittore per l'aggancio PER-FLUSSO (percorso/coda):
+# `flusso_col` = la colonna del flusso del chiamante ("f.id", "c.flusso_id"),
+# SEMPRE letterale, mai input utente.
+# La regola d'ancora ha la sua sede DB: script.vw_flusso_doc_sorgente (una riga
+# per flusso: prima il ROOT, poi risolto, non terminale, il link piu' recente;
+# brief-db-sorgente-documento-e-riga giro Z.1, R-P.1-1, regola di Tid del
+# 2026-11-08). E' la gemella per flusso di script.vw_pratica_doc_sorgente, che
+# serve l'ancora PRATICA-LEVEL (dettaglio/lista). Qui non si ripete niente della
+# regola (regola del 2): la copia BE, una LATERAL con lo spareggio scritto a
+# mano, e' ritirata nel lotto BE/FE (§8.20 BE-Z.1-a).
+# COALESCE su risolto lo fa la vista: link presente ma dominio senza resolver
+# → false (decisione C del brief design), non NULL; nessun link → doc_* NULL.
+# ⛔ LATERAL con LIMIT 1, NON un `LEFT JOIN vista ON ds.flusso_id = …`: la vista
+#    e' un DISTINCT ON (flusso_id), e una condizione di JOIN non ci scende
+#    dentro: il planner la calcola INTERA (tutti i link con flusso, ognuno col
+#    suo resolver) e poi la abbina. Anche una LATERAL senza LIMIT viene
+#    riappiattita in quel JOIN. Il LIMIT 1 (innocuo: la vista da' gia' una riga
+#    per flusso) tiene la subquery chiusa, e il filtro arriva all'indice
+#    `ix_pratiche_sorgenti_flusso_id` un flusso per volta (EXPLAIN su dbdev,
+#    2026-11-08: `Index Cond: flusso_id = flussi.id`). Non e' una scelta di
+#    costo sui dati di oggi: senza LIMIT il piano parametrizzato non esiste.
+def _doc_sorgente_flusso(flusso_col: str) -> str:
     return f"""
         LEFT JOIN LATERAL (
-            SELECT COALESCE(ss.risolto, false) AS risolto,
-                   ss.stato_codice_interno, ss.stato_descrizione,
-                   ss.fase, ss.esito, ss.terminale,
-                   so.descrizione AS sorgente_descrizione
-            FROM pratiche.pratiche_sorgenti ps
-            JOIN config.sorgenti so ON so.id = ps.sorgente_tipo_id
-            LEFT JOIN LATERAL (
-                SELECT v.risolto, v.stato_codice_interno, v.stato_descrizione,
-                       v.fase, v.esito, v.terminale
-                FROM script.vw_stato_sorgente v
-                WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
-                  AND v.sorgente_chiave_uuid = ps.sorgente_uid
-                UNION ALL
-                SELECT v.risolto, v.stato_codice_interno, v.stato_descrizione,
-                       v.fase, v.esito, v.terminale
-                FROM script.vw_stato_sorgente v
-                WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
-                  AND v.sorgente_chiave_id = ps.sorgente_id
-            ) ss ON true
-            WHERE {anchor_cond}
-            ORDER BY (ps.ruolo_link = '{RUOLO_LINK_ROOT}') DESC, ps.id DESC
+            SELECT v.risolto, v.stato_codice_interno, v.stato_descrizione,
+                   v.fase, v.esito, v.terminale, v.sorgente_descrizione
+            FROM script.vw_flusso_doc_sorgente v
+            WHERE v.flusso_id = {flusso_col}
             LIMIT 1
         ) ds ON true
-    """  # noqa: S608 — anchor_cond letterale dei chiamanti e costante Final, mai da input
+    """  # noqa: S608 — flusso_col letterale dei chiamanti, mai da input
 
 
 # Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
@@ -803,10 +785,10 @@ class PraticheRepository:
             -- Descrizione umana dell'esito (data-driven da config.esiti_flussi_pratiche,
             -- vocabolario globale): il FE mostra `esito_descrizione`, non il codice grezzo.
             LEFT JOIN config.esiti_flussi_pratiche ef ON ef.codice_interno = f.esito
-            {_doc_sorgente_lateral("ps.pratica_id = p.id AND ps.flusso_id = f.id")}
+            {_doc_sorgente_flusso("f.id")}
             WHERE p.id = %s
             ORDER BY tf.sequenza, tf.id
-        """  # noqa: S608 — _DOC_SORGENTE_SELECT costante e lateral con anchor letterale, valori come parametri
+        """  # noqa: S608 — _DOC_SORGENTE_SELECT costante e frammento per flusso con colonna letterale, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id, pratica_id])
             return rows_to_list(cursor)
@@ -1515,9 +1497,9 @@ class PraticheRepository:
             SELECT c.*,
                 {_DOC_SORGENTE_SELECT}
             FROM pratiche.fn_coda_lavoro_operatore(%s, %s) WITH ORDINALITY c
-            {_doc_sorgente_lateral("ps.pratica_id = c.pratica_id AND ps.flusso_id = c.flusso_id")}
+            {_doc_sorgente_flusso("c.flusso_id")}
             ORDER BY c.ordinality
-        """  # noqa: S608 — _DOC_SORGENTE_SELECT costante e lateral con anchor letterale, valori come parametri
+        """  # noqa: S608 — _DOC_SORGENTE_SELECT costante e frammento per flusso con colonna letterale, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [risorsa_umana_id, emittente_fiscale_id])
             return rows_to_list(cursor)

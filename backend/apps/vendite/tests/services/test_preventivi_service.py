@@ -405,56 +405,46 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
     # ── Eliminazione bozza (abbandono drawer) ──
 
-    # Scopo: hard-delete preventivo BOZZA senza righe ne' pratiche.
+    # Scopo: hard-delete della bozza orfana. ⛔ Nessuna lettura prima del
+    #        DELETE: stato, righe e documenti che la citano li giudica il DB
+    #        (brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a; il pre-check
+    #        «pratiche collegate» e' ritirato con BE-P.1-e, Tid 2026-11-08).
     def test_elimina_preventivo_bozza_orfana_ok(self):
         from apps.vendite.services.preventivi_service import elimina_preventivo
 
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "DRAFT",
-        }
-        self.mock_repo.count_righe.return_value = 0
-        self.mock_repo.list_pratiche.return_value = []
         self.mock_repo.delete_preventivo.return_value = True
 
         result = elimina_preventivo(1)
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["preventivo_id"], 1)
         self.mock_repo.delete_preventivo.assert_called_once_with(1)
+        self.mock_repo.get_preventivo.assert_not_called()
+        self.mock_repo.count_righe.assert_not_called()
 
-    # Scopo: preventivo inesistente → E_PREV_NOT_FOUND, no DELETE.
+    # Scopo: il DELETE che non tocca niente (inesistente o fuori perimetro)
+    #        e' E_PREV_NOT_FOUND, non un «noop» riuscito.
     def test_elimina_preventivo_not_found(self):
         from apps.vendite.services.preventivi_service import elimina_preventivo
 
-        self.mock_repo.get_preventivo.return_value = None
+        self.mock_repo.delete_preventivo.return_value = False
         with self.assertRaises(ServiceError) as ctx:
             elimina_preventivo(999)
         self.assertEqual(ctx.exception.code, "E_PREV_NOT_FOUND")
-        self.mock_repo.delete_preventivo.assert_not_called()
 
-    # Scopo: stato non DRAFT → E_PREV_STATO_NON_MODIFICABILE.
-    def test_elimina_preventivo_stato_non_bozza_bloccato(self):
+    # Scopo: il rifiuto del guard DB (fuori bozza, con righe, citato da un
+    #        altro documento) arriva al client col suo codice, tradotto.
+    def test_elimina_preventivo_rifiuto_del_db_passa_col_suo_codice(self):
+        from django.db import DatabaseError
         from apps.vendite.services.preventivi_service import elimina_preventivo
 
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "ACCETTATO",
-        }
-        with self.assertRaises(ServiceError) as ctx:
-            elimina_preventivo(1)
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
-        self.mock_repo.delete_preventivo.assert_not_called()
-
-    # Scopo: BOZZA con almeno una riga → E_PREV_STATO_NON_MODIFICABILE.
-    def test_elimina_preventivo_con_righe_bloccato(self):
-        from apps.vendite.services.preventivi_service import elimina_preventivo
-
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "DRAFT",
-        }
-        self.mock_repo.count_righe.return_value = 1
-        with self.assertRaises(ServiceError) as ctx:
-            elimina_preventivo(1)
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
-        self.mock_repo.delete_preventivo.assert_not_called()
+        for codice in (
+            "E_DELETE_DOC_NON_BOZZA", "E_DELETE_DOC_CON_RIGHE", "E_SORG_ORIGINE_REFERENZIATA",
+        ):
+            with self.subTest(codice=codice):
+                self.mock_repo.delete_preventivo.side_effect = DatabaseError(f"{codice}: rifiutato")
+                with self.assertRaises(ServiceError) as ctx:
+                    elimina_preventivo(1)
+                self.assertEqual(ctx.exception.code, codice)
 
     # ── Cambio stato → ACCETTATO (modalita' fatturazione) ──
 
@@ -866,22 +856,6 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         MockCommRepo.return_value.get_commessa_viva_by_sorgente.assert_called_once_with(
             sorgente_codice="PREVENTIVO", sorgente_uid="abc",
         )
-
-    # ── Eliminazione bozza (abbandono drawer) ──
-
-    # Scopo: BOZZA senza righe ma con pratica collegata → bloccato.
-    def test_elimina_preventivo_con_pratiche_bloccato(self):
-        from apps.vendite.services.preventivi_service import elimina_preventivo
-
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "DRAFT",
-        }
-        self.mock_repo.count_righe.return_value = 0
-        self.mock_repo.list_pratiche.return_value = [{"id": 50}]
-        with self.assertRaises(ServiceError) as ctx:
-            elimina_preventivo(1)
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
-        self.mock_repo.delete_preventivo.assert_not_called()
 
     # ── Aggiornamento ──
 

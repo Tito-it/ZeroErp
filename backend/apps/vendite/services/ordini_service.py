@@ -31,7 +31,6 @@ from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.documento_modello import (
     e_stato_di_annullo,
-    e_stato_iniziale,
     rifiuta_stato_di_emissione,
     stato_di_emissione,
 )
@@ -585,24 +584,19 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
 #        NON e' un'azione di cancellazione di ordini reali: un ordine con righe
 #        o non in bozza NON si cancella, si ANNULLA (cambia_stato → ANNULLATO).
 #        Allineato a `elimina_preventivo` (niente hard-delete di dati reali).
-# Guard di dominio (defense-in-depth: il FE filtra gia' su righe_count=0):
-#  - ordine esistente, stato BOZZA (DRAFT), zero righe.
+#        ⛔ «Si cancella solo la bozza vuota» la giudica solo il guard DB
+#        `vendite.trgfn_doc_guard_delete_solo_bozza` (brief-db-sorgente-
+#        documento-e-riga §8.21 BE-Z.2-a); qui resta il 404 del DELETE che non
+#        tocca niente (id inesistente o fuori perimetro RLS).
 def elimina_ordine(ordine_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
-    _assert_stato_iniziale(repo, ordine_id, op="elimina_ordine")
-    righe_count = repo.count_righe(ordine_id)
-    ErrorManager.require(
-        righe_count == 0,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message=(
-            "Impossibile eliminare un ordine con righe: annullare l'ordine "
-            "(cambio stato → ANNULLATO) invece di cancellarlo."
-        ),
-        detail=f"righe_count={righe_count}",
-        function_name=f"{_FN}.elimina_ordine",
-    )
     with _db_errors("elimina_ordine"):
         deleted = repo.delete_ordine(ordine_id)
+    ErrorManager.require(
+        deleted,
+        code="E_ORD_NOT_FOUND", message="Ordine non trovato.",
+        detail=f"ordine_id={ordine_id}", function_name=f"{_FN}.elimina_ordine",
+    )
     return {"ordine_id": ordine_id, "deleted": deleted}
 
 
@@ -1147,29 +1141,6 @@ def _get_riga_or_raise(
         code="E_ORD_NOT_FOUND", message="Riga non trovata per questo ordine.",
         function_name=f"{_FN}.{op}",
     )
-
-
-# Scopo: Guard di stato leggero (solo codice_interno): E_ORD_NOT_FOUND se
-#        l'ordine non esiste, E_ORD_STATO_TRANSIZIONE se lo stato non e' quello
-#        in cui il documento nasce (lo stato iniziale del vocabolario, mai
-#        `'DRAFT'` scritto qui).
-def _assert_stato_iniziale(
-    repo: OrdiniRepository, ordine_id: int, *, op: str,
-) -> str:
-    # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
-    stato = testata_o_not_found(
-        repo.get_stato_codice, ordine_id,
-        code="E_ORD_NOT_FOUND", message="Ordine non trovato.",
-        id_name="ordine_id", function_name=f"{_FN}.{op}",
-    )
-    ErrorManager.require(
-        e_stato_iniziale(TESTATA_ORDINI, stato),
-        code="E_ORD_STATO_TRANSIZIONE",
-        message=f"Operazione non ammessa nello stato {stato}.",
-        detail=f"stato={stato}, ammesso: lo stato iniziale del vocabolario",
-        function_name=f"{_FN}.{op}",
-    )
-    return stato
 
 
 def _resolve_emittente_sr_id(repo: OrdiniRepository, testata: dict[str, Any]) -> int:

@@ -308,42 +308,41 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
         repo.cambia_stato.assert_not_called()
 
+    # ⛔ «Si cancella solo la bozza vuota» lo giudica il DB
+    #    (`trgfn_doc_guard_delete_solo_bozza`): il service non legge stato ne'
+    #    righe prima del DELETE (brief-db-sorgente-documento-e-riga §8.21
+    #    BE-Z.2-a). Il rifiuto del guard arriva al client col suo codice, sia
+    #    per l'ordine fuori bozza sia per la bozza con righe.
     @patch(_REPO, autospec=True)
-    def test_elimina_ordine_con_righe_rifiutato(self, repo_cls) -> None:
-        # Niente hard-delete di dati reali (allineato a preventivi): un ordine
-        # in bozza CON righe non si cancella, si annulla.
+    def test_elimina_ordine_rifiuto_del_db_passa_col_suo_codice(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        repo.count_righe.return_value = 1
+        for codice in ("E_DELETE_DOC_NON_BOZZA", "E_DELETE_DOC_CON_RIGHE"):
+            with self.subTest(codice=codice):
+                repo.delete_ordine.side_effect = DatabaseError(f"{codice}: rifiutato")
+                with self.assertRaises(ServiceError) as cm:
+                    ordini_service.elimina_ordine(7)
+                self.assertEqual(cm.exception.code, codice)
+        repo.get_stato_codice.assert_not_called()
+        repo.count_righe.assert_not_called()
+
+    # Il DELETE che non tocca niente (id inesistente o fuori perimetro RLS)
+    # e' il 404 del dominio, non un successo.
+    @patch(_REPO, autospec=True)
+    def test_elimina_ordine_inesistente_e_404(self, repo_cls) -> None:
+        repo_cls.return_value.delete_ordine.return_value = False
         with self.assertRaises(ServiceError) as cm:
-            ordini_service.elimina_ordine(7)
-        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
-        repo.delete_ordine.assert_not_called()
+            ordini_service.elimina_ordine(99)
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
 
     @patch(_REPO, autospec=True)
     def test_elimina_ordine_bozza_orfana_ok(self, repo_cls) -> None:
-        # Bozza orfana (DRAFT, zero righe): hard-delete ammesso (cleanup
-        # abbandono auto-save).
+        # Bozza orfana: hard-delete ammesso (cleanup abbandono auto-save).
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        repo.count_righe.return_value = 0
         repo.delete_ordine.return_value = True
         out = ordini_service.elimina_ordine(7)
         self.assertTrue(out["deleted"])
         repo.delete_ordine.assert_called_once_with(7)
-
-    # ⭐ «Solo in bozza» lo dice il vocabolario (`e_stato_iniziale`), non un
-    #    insieme di codici nel service: uno stato non iniziale si rifiuta
-    #    prima di contare le righe.
-    @patch(_REPO, autospec=True)
-    def test_elimina_ordine_fuori_bozza_rifiutato(self, repo_cls) -> None:
-        repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "CONFERMATO"
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.elimina_ordine(7)
-        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
-        repo.count_righe.assert_not_called()
-        repo.delete_ordine.assert_not_called()
+        repo.get_stato_codice.assert_not_called()
 
 
 _SVC = "apps.vendite.services.ordini_service"

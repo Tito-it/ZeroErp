@@ -106,13 +106,6 @@ class DocumentoModelloRepository:
     def e_stato_di_accettazione(self, testata: str, codice: str) -> bool:
         return self._e_stato_del_modello(_LETTORE_ACCETTAZIONE, testata, codice)
 
-    # Scopo: Lo stato chiesto (codice) e' lo stato iniziale della testata
-    #        (colonna `iniziale` del vocabolario, `fn_doc_stato_iniziale_id`),
-    #        cioe' la bozza? False per una testata che non ne dichiara uno e
-    #        per un codice che non e' uno stato attivo.
-    def e_stato_iniziale(self, testata: str, codice: str) -> bool:
-        return self._e_stato_del_modello(_LETTORE_INIZIALE, testata, codice)
-
     # Scopo: Lo stato di emissione della testata (id e codice), o None: il
     #        documento non si emette (vocabolario senza la colonna `emissione`).
     #        Una lettura, i due lettori composti (V-1, brief-modello-documento-
