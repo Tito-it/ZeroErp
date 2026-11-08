@@ -34,7 +34,6 @@ DECLARE
     v_emittente_fiscale_id vendite.preventivi.emittente_fiscale_id%TYPE;
     v_valuta_id            vendite.preventivi.valuta_id%TYPE;
     v_termine_pag_id       vendite.preventivi.termine_pagamento_id%TYPE;
-    v_preventivo_uid       vendite.preventivi.uid%TYPE;
     -- Il BERSAGLIO del rifiuto. ⚠️ `jsonb` esplicito: e' un frammento del
     -- context, non il valore di una colonna.
     v_bersagli             jsonb;
@@ -47,8 +46,6 @@ DECLARE
     v_ordine_id            vendite.ordini.id%TYPE;
     v_new_riga_id          vendite.ordini_righe.id%TYPE;
     v_overrides            jsonb;
-    v_sorg_prev_id         config.sorgenti.id%TYPE;
-    v_sorg_ord_id          config.sorgenti.id%TYPE;
     v_riga                 RECORD;
     v_prov_tipo_id         vendite.ordini_righe.sorgente_tipo_id%TYPE;
     v_prov_id              vendite.ordini_righe.sorgente_id%TYPE;
@@ -67,9 +64,9 @@ BEGIN
     v_stato_accettato_id := script.fn_stato_accettazione_id('vendite.preventivi'::regclass);
 
     SELECT p.billing_account_id, p.utility_id, p.emittente_fiscale_id,
-           p.valuta_id, p.termine_pagamento_id, p.uid
+           p.valuta_id, p.termine_pagamento_id
       INTO v_ba_id, v_utility_id, v_emittente_fiscale_id,
-           v_valuta_id, v_termine_pag_id, v_preventivo_uid
+           v_valuta_id, v_termine_pag_id
       FROM vendite.preventivi p
      WHERE p.id = p_preventivo_id
        AND p.stato_doc_preventivo_id = v_stato_accettato_id;
@@ -272,21 +269,19 @@ BEGIN
     --    D-B: il link COLLEGATO valorizza flusso_id (p_flusso_id) =
     --    flusso dello step generatore; NULL retro-compatibile.
     IF p_pratica_id IS NOT NULL THEN
-        SELECT id INTO v_sorg_prev_id FROM config.sorgenti
-         WHERE codice_interno = 'PREVENTIVO';
-        SELECT id INTO v_sorg_ord_id FROM config.sorgenti
-         WHERE codice_interno = 'ORDINE_VENDITA';
-
+        -- Il preventivo: la stessa provenienza della testata e delle righe.
         INSERT INTO pratiche.pratiche_sorgenti (
-            pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-        VALUES (p_pratica_id, v_sorg_prev_id, v_preventivo_uid::text, 'ROOT')
-        ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
+            pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link)
+        VALUES (p_pratica_id, v_prov_tipo_id, v_prov_id, v_prov_uid, 'ROOT')
+        ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
         DO NOTHING;
 
+        -- L'ordine appena nato, dal BB che scrive (tipo e chiave del key_selector).
         INSERT INTO pratiche.pratiche_sorgenti (
-            pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
-        VALUES (p_pratica_id, v_sorg_ord_id, v_ordine_id::text, 'COLLEGATO', p_flusso_id)
-        ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
+            pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link, flusso_id)
+        SELECT p_pratica_id, o.sorgente_tipo_id, o.sorgente_id, o.sorgente_uid, 'COLLEGATO', p_flusso_id
+          FROM script.fn_sorgente_provenienza('ORDINE_VENDITA', v_ordine_id::text) o
+        ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
         DO NOTHING;
     END IF;
 

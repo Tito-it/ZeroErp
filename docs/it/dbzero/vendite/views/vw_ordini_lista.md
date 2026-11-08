@@ -95,7 +95,7 @@ SELECT o.id,
      LEFT JOIN vendite.offerte_commerciali oc ON ((((so_or.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND ((oc.id = o.sorgente_id) OR (oc.uid = o.sorgente_uid)))))
      LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
            FROM config.sorgenti so_pr
-          WHERE (((so_pr.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (so_pr.attivo IS TRUE))), (o.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+          WHERE (((so_pr.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (so_pr.attivo IS TRUE))), o.id, o.uid) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
      LEFT JOIN LATERAL ( SELECT min(orr.data_consegna_richiesta_cliente) AS data_consegna_richiesta_cliente_min
            FROM vendite.ordini_righe orr
           WHERE ((orr.ordine_id = o.id) AND (orr.attivo IS TRUE))) dcr ON (true))

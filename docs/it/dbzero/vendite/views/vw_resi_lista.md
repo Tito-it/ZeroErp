@@ -66,7 +66,7 @@ SELECT r.id,
      LEFT JOIN vendite.ddt d_src ON ((((d_src.id = r.sorgente_id) OR (d_src.uid = r.sorgente_uid)) AND ((src.codice_interno)::text = 'DDT_VENDITA'::text))))
      LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
            FROM config.sorgenti so_pr
-          WHERE (((so_pr.codice_interno)::text = 'RESO_VENDITA'::text) AND (so_pr.attivo IS TRUE))), (r.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+          WHERE (((so_pr.codice_interno)::text = 'RESO_VENDITA'::text) AND (so_pr.attivo IS TRUE))), r.id, r.uid) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
      LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = r.registro_id)));
 ```
 

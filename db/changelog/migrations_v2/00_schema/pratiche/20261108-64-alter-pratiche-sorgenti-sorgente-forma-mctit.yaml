@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LINK DOCUMENTO -> PRATICA NELLA GRAMMATICA DEL MODELLO: pratiche.pratiche_sorgenti
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La tabella teneva la chiave del documento come TESTO canonico in sorgente_uid:
+#   id::text per i tipi a chiave id (ordine, contratto, commessa), uuid::text per
+#   quelli a chiave uid (preventivo). Nel modello la chiave sta in una sola delle
+#   due colonne tipizzate, secondo il key_selector del tipo: sorgente_id bigint
+#   oppure sorgente_uid uuid (S-4). Le righe si convertono qui, nel changeSet della
+#   forma: e' la migrazione del modello, non una correzione. Lo stesso passo del
+#   giro C.2 su vendite.commesse_sorgenti.
+#
+# ── LA FORMA ─────────────────────────────────────────────────────────
+#   1. Si tolgono gli oggetti che legano il tipo della colonna (pg_depend, dbdev,
+#      2026-11-08): le due viste script.vw_pratica_doc_sorgente e
+#      vendite.vw_preventivi_pratiche (le ricreano 20261108-81 e -19) e il guard
+#      testuale, che ha sorgente_uid in UPDATE OF (al suo posto il guard unico,
+#      20261108-86, con lo stesso nome). DROP senza CASCADE e senza IF EXISTS:
+#      un dipendente non censito ferma il migrate invece di sparire in silenzio.
+#   2. pratiche.fn_pratica_del_documento(bigint, text) era BEGIN ATOMIC e lega la
+#      colonna, ma le sette viste di lista la chiamano: toglierla vorrebbe dire
+#      toglierle tutte. Diventa plpgsql (CREATE OR REPLACE: stessa firma, stesso
+#      risultato), che non lega le colonne, e cerca gia' nelle colonne del modello
+#      traducendo la chiave testuale coi BB canonici. E' il PONTE di questo giro:
+#      20261108-67 crea la firma tipizzata, -68 … -75 vi portano le viste e la
+#      sintesi della lineage, -76 ritira il ponte.
+#   3. Le righe dei tipi a chiave id passano a sorgente_id, coi trigger della
+#      tabella spenti e riaccesi com'erano (audit e storico: e' il modello che
+#      cambia, non il link).
+#   4. sorgente_uid diventa uuid NULL; l'unicita' passa sulla chiave nuova, con
+#      NULLS NOT DISTINCT (una delle due chiavi e' sempre NULL); il CHECK di forma.
+#      L'indice per tipo e chiave testuale se ne va: gli indici parziali per
+#      chiave li crea 20261108-65.
+#   Nessuna riga orfana su dbdev (2026-11-08, presidio degli orfani). Da zero la
+#   tabella e' vuota.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20261108-64-alter-pratiche-sorgenti-sorgente-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261108-64-alter-pratiche-sorgenti-sorgente-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.pratiche_sorgenti: la chiave del documento dal testo canonico alle colonne
+        tipizzate (sorgente_id / sorgente_uid uuid), unicita' sulla chiave nuova, CHECK di forma.
+        Tolte qui le due viste e il guard testuale che legano la colonna; la pratica del
+        documento passa a plpgsql (ponte del giro). brief-db-sorgente-documento-e-riga §7.2
+        lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Chi lega il tipo di sorgente_uid.
+              DROP VIEW script.vw_pratica_doc_sorgente;
+              DROP VIEW vendite.vw_preventivi_pratiche;
+              DROP TRIGGER trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd ON pratiche.pratiche_sorgenti;
+
+              -- 2. Il ponte: stessa firma, plpgsql (non lega le colonne), gia' sulle
+              --    colonne del modello. Lo ritira 20261108-76.
+              --    p_sorgente_uid resta text esplicito: e' la chiave POLIMORFA come la
+              --    passa il chiamante (id::text o uid::text), non il riflesso di una
+              --    colonna; e qui il %TYPE di sorgente_uid darebbe ancora text, ma
+              --    sarebbe una fotografia presa un attimo prima dell'ALTER TYPE.
+              --    n_pratiche e' un conteggio: bigint di count().
+              CREATE OR REPLACE FUNCTION pratiche.fn_pratica_del_documento(
+                  p_sorgente_tipo_id pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     text)
+               RETURNS TABLE(n_pratiche     bigint,
+                             pratica_id     pratiche.pratiche.id%TYPE,
+                             pratica_numero pratiche.pratiche.codice%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  RETURN QUERY
+                  SELECT count(DISTINCT ps.pratica_id),
+                         min(p.id),
+                         (array_agg(p.codice ORDER BY p.id))[1]
+                    FROM pratiche.pratiche_sorgenti ps
+                    JOIN pratiche.pratiche p ON p.id = ps.pratica_id
+                   WHERE ps.sorgente_tipo_id = p_sorgente_tipo_id
+                     AND (ps.sorgente_id  = script.fn_sorgente_chiave_id(p_sorgente_uid)
+                       OR ps.sorgente_uid = script.fn_sorgente_chiave_uuid(p_sorgente_uid));
+              END;
+              $function$;
+
+              -- 3. Le righe dei tipi a chiave id: l'id del documento in sorgente_id.
+              ALTER TABLE pratiche.pratiche_sorgenti ALTER COLUMN sorgente_uid DROP NOT NULL;
+
+              DO $do$
+              DECLARE
+                  -- Tipi espliciti: %TYPE[] non e' sintassi valida (pg_trigger.tgname, .tgenabled);
+                  -- i e' un contatore.
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                  -- resta spento, uno ALWAYS torna ALWAYS.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'pratiche.pratiche_sorgenti'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE pratiche.pratiche_sorgenti DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  -- ⚠️ Il cast non ha rete: un testo che non e' un id ferma il migrate. Il
+                  --    guard testuale montato fino a qui garantiva la forma canonica.
+                  UPDATE pratiche.pratiche_sorgenti ps
+                     SET sorgente_id  = ps.sorgente_uid::bigint,
+                         sorgente_uid = NULL
+                    FROM config.sorgenti s
+                   WHERE s.id = ps.sorgente_tipo_id
+                     AND s.key_selector = 'id';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE pratiche.pratiche_sorgenti ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END;
+              $do$;
+
+              -- 4. Il tipo, l'unicita' e la forma.
+              ALTER TABLE pratiche.pratiche_sorgenti
+                DROP CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo;
+              DROP INDEX pratiche.ix_pratiche_sorgenti_tipo_uid;
+
+              -- ⚠️ Anche qui il cast non ha rete: restano solo le chiavi dei tipi a uid.
+              ALTER TABLE pratiche.pratiche_sorgenti
+                ALTER COLUMN sorgente_uid TYPE uuid USING sorgente_uid::uuid;
+
+              ALTER TABLE pratiche.pratiche_sorgenti
+                ADD CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
+                UNIQUE NULLS NOT DISTINCT (pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link);
+              COMMENT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo ON pratiche.pratiche_sorgenti IS
+                'Un documento compare una volta sola per pratica e ruolo: pratica, tipo, chiave del documento (sorgente_id o sorgente_uid, una delle due e'' sempre NULL: NULLS NOT DISTINCT) e ruolo del link. La riga del documento non entra: il link e'' al documento, e una seconda riga dello stesso documento non fa un secondo link. E'' il bersaglio dell''ON CONFLICT dei verbi che scrivono il link (vendite.fn_push_preventivo_a_ordine, vendite.fn_push_offerta_a_contratto) e del backend.';
+
+              ALTER TABLE pratiche.pratiche_sorgenti
+                ADD CONSTRAINT chk_pratiche_sorgenti_sorgente_forma CHECK (num_nonnulls(sorgente_id, sorgente_uid) = 1);
+              COMMENT ON CONSTRAINT chk_pratiche_sorgenti_sorgente_forma ON pratiche.pratiche_sorgenti IS
+                'La forma della provenienza: il tipo c''e'' sempre (NOT NULL) e con lui una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              -- 5. I COMMENT delle colonne, al presente.
+              COMMENT ON COLUMN pratiche.pratiche_sorgenti.sorgente_tipo_id IS
+                'Il tipo del documento collegato alla pratica (config.sorgenti): preventivo, ordine, contratto, commessa. Con lui una sola chiave del documento, quella del key_selector del tipo; la forma la tiene chk_pratiche_sorgenti_sorgente_forma, documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione del documento finche'' il link lo cita.';
+              COMMENT ON COLUMN pratiche.pratiche_sorgenti.sorgente_id IS
+                'La chiave del documento quando il suo tipo ha key_selector ''id'' (ordine, contratto, commessa): l''id del documento. In alternativa a sorgente_uid, mai tutte e due. I verbi la scrivono da script.fn_sorgente_provenienza.';
+              COMMENT ON COLUMN pratiche.pratiche_sorgenti.sorgente_uid IS
+                'La chiave del documento quando il suo tipo ha key_selector ''uid'' (preventivo): l''uid del documento. In alternativa a sorgente_id, mai tutte e due. I verbi la scrivono da script.fn_sorgente_provenienza.';
+              COMMENT ON COLUMN pratiche.pratiche_sorgenti.sorgente_riga IS
+                'La riga del documento quando il link e'' a grana di riga: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando il link e'' al documento intero, come lo scrivono oggi i verbi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la chiave testuale non si ricostruisce, e nessuno la legge.
+              SELECT 1;

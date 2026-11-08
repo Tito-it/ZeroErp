@@ -26,6 +26,7 @@
 -- Costruisce il preventivo (rev 2026-10-27, lotto 4 di D7) e legge dal catalogo
 -- di seed un tipo_prestazione valido per i guard/definizione. Idempotente:
 -- BEGIN ... ROLLBACK.
+-- rev 2026-11-08 (brief-db-sorgente-documento-e-riga lotto P, giro P.1): il link ROOT tiene l'uid del preventivo come uuid in sorgente_uid.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -111,7 +112,7 @@ SELECT is(
        JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
       WHERE ps.pratica_id = (SELECT pratica_id FROM r_happy)
         AND s.codice_interno = 'PREVENTIVO'
-        AND ps.sorgente_uid = (SELECT uid::text FROM tmp_prev)
+        AND ps.sorgente_uid = (SELECT uid FROM tmp_prev)
         AND ps.ruolo_link = 'ROOT'),
     1,
     'Happy: link ROOT preventivo->pratica creato e coerente');

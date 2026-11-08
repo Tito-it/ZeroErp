@@ -49,6 +49,7 @@
 --   vendite.fn_cambia_stato_preventivo invece dell'UPDATE dello stato, che la
 --   porta rifiuta: il trigger z90 sotto prova scatta uguale. Nessuna attesa
 --   conta righe o importi.
+-- rev 2026-11-08 (brief-db-sorgente-documento-e-riga lotto P, giro P.1): il preventivo del fixture tiene l'uid come uuid, il reconcile prende (tipo, sorgente_id, sorgente_uid).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -270,7 +271,7 @@ WITH ins AS (
     UNION ALL SELECT 'ADD'
     UNION ALL SELECT 'AMB'
   ) x
-  RETURNING id, (uid)::text AS uid
+  RETURNING id, uid
 )
 SELECT i.id, i.uid
 FROM ins i;
@@ -384,6 +385,7 @@ SELECT results_eq(
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_g_refs),
+    NULL,
     (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'NOV')),
   0,
   '10a. reconcile su preventivo EMESSO (esito NULL) -> 0 avanzamenti');
@@ -418,6 +420,7 @@ SELECT is(
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_g_refs),
+    NULL,
     (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'ADV')),
   0,
   '12a. reconcile ripetuto sul milestone gia'' COMPLETATO -> 0 (idempotenza, D-B11)');
@@ -435,6 +438,7 @@ SELECT is(
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_g_refs),
+    NULL,
     (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'AMB')),
   0,
   '13. tie-break: 2 candidati con flusso_id NULL -> 0 avanzamenti (D-B5)');
@@ -525,7 +529,7 @@ WITH ins AS (
          r.billing_account_id, r.istanza_utility_id, r.utility_id, DATE '2026-07-01', script.fn_data_operativa() + 30, r.valuta_id,
          DATE '2026-07-01', false, false, '{"test_scope":"pgtap_guida"}'::jsonb, r.emittente_id
   FROM tmp_g_refs r
-  RETURNING id, (uid)::text AS uid
+  RETURNING id, uid
 ) SELECT id, uid FROM ins;
 
 DO $porta$ BEGIN
@@ -563,6 +567,7 @@ WITH ins AS (
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_g_refs),
+    NULL,
     (SELECT uid FROM tmp_g_prev_rif)),
   0,
   '19. preventivo RIFIUTATO senza aggancio a una pratica -> 0 avanzamenti');
@@ -574,6 +579,7 @@ VALUES ((SELECT pratica_id FROM tmp_g_prat_neg), (SELECT src_preventivo FROM tmp
 SELECT is(
   pratiche.fn_reconcile_sorgente(
     (SELECT src_preventivo FROM tmp_g_refs),
+    NULL,
     (SELECT uid FROM tmp_g_prev_rif)),
   1,
   '17a. binding NULL: reconcile su preventivo RIFIUTATO avanza 1 milestone');

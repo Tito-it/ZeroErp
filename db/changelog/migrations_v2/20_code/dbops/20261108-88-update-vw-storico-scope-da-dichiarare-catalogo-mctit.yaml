@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO DELLA MAPPA DI STORICO NON DIPENDE DAI PRIVILEGI DI CHI LO LEGGE
+#   dbops.vw_storico_scope_da_dichiarare
+#   Brief: brief-db-revisione-dbops §22 (giro 7, il seguito su shop).
+#
+# ── ⭐ CHE COSA CAMBIA ───────────────────────────────────────────────
+#   La vista trovava la madre di ogni riga di mappa con
+#   to_regclass('schema.tabella'). to_regclass rende NULL se la tabella non
+#   c'e', ma SOLLEVA se chi legge non ha USAGE sullo schema: la vista e'
+#   security_invoker, quindi bastava una riga di mappa su uno schema chiuso
+#   all'app (shop.ricevute, riga 126, dal giro 7) perche' il presidio andasse in
+#   errore per l'app («permesso negato per lo schema shop», provato su dbdev,
+#   2026-11-08). Ora la madre si cerca sul catalogo, pg_class + pg_namespace,
+#   che chiunque legge: stesso risultato, nessun privilegio sugli schemi.
+#   L'alias pg_temp (le righe di prova del pgTAP) si risolve come faceva
+#   to_regclass: lo schema temporaneo della sessione, pg_my_temp_schema().
+#   Il resto identico: colonne, motivi, ordine. Il COMMENT dice il confronto
+#   nuovo. CREATE OR REPLACE: i grant della vista restano; security_invoker
+#   ripetuto.
+#   Rollback: il corpo di 20260912-06.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-88-update-vw-storico-scope-da-dichiarare-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261108-88-update-vw-storico-scope-da-dichiarare-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_storico_scope_da_dichiarare: la madre di ogni riga di mappa si cerca sul catalogo
+        e non con to_regclass, che solleva su uno schema senza USAGE per chi legge.
+        brief-db-revisione-dbops §22.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: dbops
+            viewName: vw_storico_scope_da_dichiarare
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_storico_scope_da_dichiarare
+              WITH (security_invoker = true) AS
+              WITH madri AS (
+                  -- Il marcatore è il TRIGGER, non un elenco.
+                  SELECT DISTINCT c.oid AS madre_oid,
+                         n.nspname::text AS sch, c.relname::text AS tab,
+                         c.relrowsecurity AS rls
+                    FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class     c ON c.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_catalog.pg_proc      p ON p.oid = t.tgfoid
+                   WHERE p.proname = 'trgfn_storico_generic'
+                     AND NOT t.tgisinternal
+              ),
+              righe AS (
+                  -- La madre della riga, sul catalogo: il catalogo lo legge chiunque,
+                  -- to_regclass solleva su uno schema senza USAGE. L'alias pg_temp e'
+                  -- lo schema temporaneo della sessione, come per to_regclass.
+                  SELECT m.id, m.schema_tabella, m.nome_tabella, m.modo, m.ragione,
+                         (SELECT c.oid
+                            FROM pg_catalog.pg_class     c
+                            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                           WHERE c.relname = m.nome_tabella
+                             AND (n.nspname = m.schema_tabella
+                                  OR (m.schema_tabella = 'pg_temp' AND n.oid = pg_catalog.pg_my_temp_schema()))) AS madre_oid
+                    FROM dbops.storico_scope_policy m
+              )
+              -- 1) madre col trigger, nessuna riga di mappa
+              SELECT md.sch || '.' || md.tab                     AS madre,
+                     'storico.' || md.tab                        AS shadow,
+                     'SENZA_RIGA'::text                          AS motivo,
+                     'Madre col trigger di storico e nessuna riga in dbops.storico_scope_policy: nessuno ha ancora detto da dove si prende l''emittente'::text AS dettaglio
+                FROM madri md
+               WHERE NOT EXISTS (SELECT 1 FROM righe r WHERE r.madre_oid = md.madre_oid)
+              UNION ALL
+              -- 2) madre in RLS dichiarata NESSUNO: la storia è ancora aperta
+              SELECT md.sch || '.' || md.tab,
+                     'storico.' || md.tab,
+                     'PROTETTA_NESSUNO',
+                     'Madre con la row level security accesa e modo NESSUNO — la sua storia non è protetta. Ragione dichiarata: ' || COALESCE(r.ragione, '(nessuna)')
+                FROM madri md
+                JOIN righe r ON r.madre_oid = md.madre_oid
+               WHERE md.rls AND r.modo = 'NESSUNO'
+              UNION ALL
+              -- 3) riga di mappa senza una madre col trigger
+              SELECT r.schema_tabella || '.' || r.nome_tabella,
+                     'storico.' || r.nome_tabella,
+                     'RIGA_SENZA_MADRE',
+                     'Riga di mappa (id ' || r.id || ', modo ' || r.modo || ') senza una madre col trigger di storico: tabella cancellata o storicizzazione tolta, riga rimasta'
+                FROM righe r
+               WHERE r.madre_oid IS NULL
+                  OR NOT EXISTS (SELECT 1 FROM madri md WHERE md.madre_oid = r.madre_oid)
+               ORDER BY 3, 1;
+
+              COMMENT ON VIEW dbops.vw_storico_scope_da_dichiarare IS
+                  'ZERO — deve restare VUOTA. Il debito della mappa dello scope di storico (dbops.storico_scope_policy), in tre motivi: SENZA_RIGA (una madre col trigger di storico che nessuno ha ancora guardato), PROTETTA_NESSUNO (una madre in RLS dichiarata NESSUNO: la sua storia è ancora aperta, con la ragione dichiarata), RIGA_SENZA_MADRE (una riga di mappa senza più una madre col trigger: tabella cancellata o storicizzazione tolta). Il marcatore delle madri è il trigger. La madre di una riga si cerca sul catalogo (pg_class, pg_namespace; l''alias pg_temp è lo schema temporaneo della sessione), non con to_regclass, che solleva su uno schema senza USAGE per chi legge: la vista è security_invoker e non dipende dai privilegi del lettore sugli schemi. Porta nel digest settimanale ciò che il pgTAP db/pgtap/dbops/test-storico-scope-policy-v1.sql asserisce in CI (test 2, 4, 5 — e i test 29-33 provano che questa vista dica il vero su casi costruiti). Brief: brief-db-rls-storico-scope-congelato §4.2, §4d; brief-db-revisione-dbops §22.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo di 20260912-06: la madre con to_regclass.
+              CREATE OR REPLACE VIEW dbops.vw_storico_scope_da_dichiarare
+              WITH (security_invoker = true) AS
+              WITH madri AS (
+                  SELECT DISTINCT c.oid AS madre_oid,
+                         n.nspname::text AS sch, c.relname::text AS tab,
+                         c.relrowsecurity AS rls
+                    FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class     c ON c.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_catalog.pg_proc      p ON p.oid = t.tgfoid
+                   WHERE p.proname = 'trgfn_storico_generic'
+                     AND NOT t.tgisinternal
+              ),
+              righe AS (
+                  SELECT m.id, m.schema_tabella, m.nome_tabella, m.modo, m.ragione,
+                         pg_catalog.to_regclass(format('%I.%I', m.schema_tabella, m.nome_tabella)) AS madre_oid
+                    FROM dbops.storico_scope_policy m
+              )
+              SELECT md.sch || '.' || md.tab                     AS madre,
+                     'storico.' || md.tab                        AS shadow,
+                     'SENZA_RIGA'::text                          AS motivo,
+                     'Madre col trigger di storico e nessuna riga in dbops.storico_scope_policy: nessuno ha ancora detto da dove si prende l''emittente'::text AS dettaglio
+                FROM madri md
+               WHERE NOT EXISTS (SELECT 1 FROM righe r WHERE r.madre_oid = md.madre_oid)
+              UNION ALL
+              SELECT md.sch || '.' || md.tab,
+                     'storico.' || md.tab,
+                     'PROTETTA_NESSUNO',
+                     'Madre con la row level security accesa e modo NESSUNO — la sua storia non è protetta. Ragione dichiarata: ' || COALESCE(r.ragione, '(nessuna)')
+                FROM madri md
+                JOIN righe r ON r.madre_oid = md.madre_oid
+               WHERE md.rls AND r.modo = 'NESSUNO'
+              UNION ALL
+              SELECT r.schema_tabella || '.' || r.nome_tabella,
+                     'storico.' || r.nome_tabella,
+                     'RIGA_SENZA_MADRE',
+                     'Riga di mappa (id ' || r.id || ', modo ' || r.modo || ') senza una madre col trigger di storico: tabella cancellata o storicizzazione tolta, riga rimasta'
+                FROM righe r
+               WHERE r.madre_oid IS NULL
+                  OR NOT EXISTS (SELECT 1 FROM madri md WHERE md.madre_oid = r.madre_oid)
+               ORDER BY 3, 1;

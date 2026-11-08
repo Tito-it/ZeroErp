@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DESCRITTORE DELLO STATO DI UN DOCUMENTO, SULLE COLONNE DEL MODELLO
+#   pratiche.fn_stato_sorgente(p_sorgente_tipo_id, p_sorgente_id, p_sorgente_uid)
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4).
+#
+# ── ⭐ CHE COSA CAMBIA ───────────────────────────────────────────────
+#   Il documento arrivava come chiave testuale, e la funzione provava prima
+#   l'uuid, poi l'id, coi BB canonici: due rami per indovinare la specie della
+#   chiave. Ora arriva con le colonne del modello e si cerca sulle colonne
+#   native di script.vw_stato_sorgente: sorgente_chiave_uuid = p_sorgente_uid,
+#   poi, se non trova, sorgente_chiave_id = p_sorgente_id. Spariscono i BB
+#   canonici che indovinavano la specie; restano due letture statiche con
+#   l'uguaglianza, perche' un OR sulle due chiavi non scende nella union e la
+#   legge per intero (piano provato su dbdev, 2026-11-08). int8eq e uuid_eq sono
+#   leakproof: sotto RLS la chiave arriva all'Index Cond del ramo.
+#   Anche il risultato prende la forma del modello: sorgente_id bigint e
+#   sorgente_uid uuid al posto della chiave testuale. La sentinella UNKNOWN
+#   restituisce la chiave ricevuta.
+#   Firma e risultato cambiano: DROP + CREATE (non un overload). L'unico
+#   chiamante nel database e' pratiche.fn_reconcile_sorgente, riscritto da
+#   20261108-78; il backend non la chiama (grep, 2026-11-08). GRANT dal loop
+#   della convergenza, come ogni funzione.
+#   Guard, codice d'errore e sentinella dal corpo vivo (= 20261005-23).
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20261108-77-update-fn-stato-sorgente-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261108-77-update-fn-stato-sorgente-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.fn_stato_sorgente: il documento sulle colonne del modello (tipo, sorgente_id,
+        sorgente_uid) con la regola d'incontro, anche nel risultato.
+        brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il secondo argomento della firma vecchia e' la chiave polimorfa resa a
+              -- text: nessuna colonna da ancorare.
+              DROP FUNCTION pratiche.fn_stato_sorgente(pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE, text);
+
+              -- Il risultato e' la riga di script.vw_stato_sorgente: si ancora alle sue colonne.
+              CREATE FUNCTION pratiche.fn_stato_sorgente(
+                  p_sorgente_tipo_id pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE,
+                  p_sorgente_id      pratiche.pratiche_sorgenti.sorgente_id%TYPE,
+                  p_sorgente_uid     pratiche.pratiche_sorgenti.sorgente_uid%TYPE)
+               RETURNS TABLE(sorgente_tipo_id     script.vw_stato_sorgente.sorgente_tipo_id%TYPE,
+                             sorgente_id          script.vw_stato_sorgente.sorgente_chiave_id%TYPE,
+                             sorgente_uid         script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE,
+                             risolto              script.vw_stato_sorgente.risolto%TYPE,
+                             stato_codice_interno script.vw_stato_sorgente.stato_codice_interno%TYPE,
+                             stato_codice         script.vw_stato_sorgente.stato_codice%TYPE,
+                             stato_descrizione    script.vw_stato_sorgente.stato_descrizione%TYPE,
+                             fase                 script.vw_stato_sorgente.fase%TYPE,
+                             esito                script.vw_stato_sorgente.esito%TYPE,
+                             terminale            script.vw_stato_sorgente.terminale%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Descrittore normalizzato dello stato del documento sorgente.
+              -- Dispatch: lookup sulla union script.vw_stato_sorgente (unica
+              -- superficie); nessuna riga -> sentinella UNKNOWN, mai errore
+              -- (un dominio senza resolver degrada al comportamento manuale).
+              BEGIN
+                  -- Guard fail-fast sui parametri: tipo NULL o <= 0, nessuna chiave.
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0
+                     OR num_nonnulls(p_sorgente_id, p_sorgente_uid) = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.fn_stato_sorgente',
+                          'E_STATO_SORGENTE_PARAM_INVALIDO',
+                          jsonb_build_object(
+                              'sorgente_tipo_id', p_sorgente_tipo_id,
+                              'sorgente_id',      p_sorgente_id,
+                              'sorgente_uid',     p_sorgente_uid
+                          ),
+                          NULL,
+                          COALESCE(p_sorgente_tipo_id::text, 'NULL'),
+                          COALESCE(p_sorgente_id::text, p_sorgente_uid::text, 'NULL')
+                      );
+                  END IF;
+
+                  -- Una lettura statica per chiave, sulle colonne native della union:
+                  -- ogni ramo espone una sola delle due chiavi (l'altra e' NULL), quindi
+                  -- il documento si trova senza leggere il key_selector. Due letture e
+                  -- non un OR: un OR sulle due chiavi non scende nella union e la legge
+                  -- per intero. uuid_eq e int8eq sono leakproof: sotto RLS la chiave
+                  -- arriva all'Index Cond del ramo.
+                  IF p_sorgente_uid IS NOT NULL THEN
+                      RETURN QUERY
+                      SELECT
+                          v.sorgente_tipo_id,
+                          v.sorgente_chiave_id,
+                          v.sorgente_chiave_uuid,
+                          v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                        FROM script.vw_stato_sorgente v
+                       WHERE v.sorgente_tipo_id     = p_sorgente_tipo_id
+                         AND v.sorgente_chiave_uuid = p_sorgente_uid;
+                  END IF;
+
+                  -- ⚠️ FOUND riflette l'ultimo RETURN QUERY eseguito; se non ne e' girato
+                  --   nessuno e' ancora false dall'ingresso nella funzione.
+                  IF NOT FOUND AND p_sorgente_id IS NOT NULL THEN
+                      RETURN QUERY
+                      SELECT
+                          v.sorgente_tipo_id,
+                          v.sorgente_chiave_id,
+                          v.sorgente_chiave_uuid,
+                          v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                        FROM script.vw_stato_sorgente v
+                       WHERE v.sorgente_tipo_id   = p_sorgente_tipo_id
+                         AND v.sorgente_chiave_id = p_sorgente_id;
+                  END IF;
+
+                  -- Degrado con grazia: tipo senza resolver o documento non
+                  -- trovato -> sentinella UNKNOWN (risolto=false). fase=APERTO
+                  -- e' il default di routing; il consumer usa `risolto` per il
+                  -- fallback UI (milestone manuale).
+                  IF NOT FOUND THEN
+                      RETURN QUERY
+                      SELECT
+                          p_sorgente_tipo_id,
+                          p_sorgente_id,
+                          p_sorgente_uid,
+                          false,
+                          'UNKNOWN'::text,
+                          'UNKNOWN'::text,
+                          'n/d'::text,
+                          'APERTO'::text,
+                          NULL::text,
+                          false;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_stato_sorgente(
+                  pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE,
+                  pratiche.pratiche_sorgenti.sorgente_id%TYPE,
+                  pratiche.pratiche_sorgenti.sorgente_uid%TYPE) IS
+                'API di motore per il descrittore normalizzato dello stato del documento sorgente. Il documento si passa con le colonne del modello (tipo, sorgente_id, sorgente_uid) e si cerca in script.vw_stato_sorgente sulle sue colonne native, una lettura per chiave (prima sorgente_chiave_uuid = p_sorgente_uid, poi sorgente_chiave_id = p_sorgente_id): chi ha il documento passa il suo id e il suo uid, chi ha la chiave del modello passa quella e NULL nell''altra. Due letture e non un OR: un OR sulle due chiavi non scende nella union. Sempre esattamente 1 riga: la proiezione della vista (risolto=true) oppure la sentinella UNKNOWN (risolto=false, fase APERTO, esito NULL, terminale false, la chiave ricevuta) senza errore: un tipo senza resolver degrada al comportamento manuale. Il risultato porta la chiave nelle colonne del modello (sorgente_id, sorgente_uid). Guard parametri: E_STATO_SORGENTE_PARAM_INVALIDO su tipo NULL o <= 0, o senza chiave. uuid_eq e int8eq sono leakproof: sotto RLS la chiave arriva all''indice del ramo. Lettore: pratiche.fn_reconcile_sorgente. Per le liste si legge direttamente script.vw_stato_sorgente (niente N+1). STABLE, INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la chiave testuale non c'e' piu'.
+              SELECT 1;

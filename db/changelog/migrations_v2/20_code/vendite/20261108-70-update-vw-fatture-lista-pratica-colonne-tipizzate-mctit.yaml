@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_fatture_lista: LA PRATICA DEL DOCUMENTO SULLE COLONNE DEL MODELLO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4).
+#
+#   La vista chiedeva la pratica con la chiave testuale del documento
+#   (f.id::text). Passa alla firma tipizzata di
+#   pratiche.fn_pratica_del_documento (20261108-67) con l'id e l'uid del documento:
+#   la regola d'incontro trova il link senza leggere il key_selector. L'unica
+#   riga che cambia e' la LATERAL della pratica; colonne, ordine e COMMENT
+#   restano (corpo dal catalogo, dbdev e scratch identici, 2026-11-08).
+#   security_invoker ripetuto: un CREATE OR REPLACE VIEW lo azzera.
+#   Rollback: forward-only (la firma testuale la ritira 20261108-76).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261108-70-update-vw-fatture-lista-pratica-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261108-70-update-vw-fatture-lista-pratica-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_fatture_lista: la pratica del documento con la firma tipizzata di
+        pratiche.fn_pratica_del_documento (id e uid del documento). brief-db-sorgente-documento-e-riga
+        §7.2 lotto P, giro P.1.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_fatture_lista
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete dal catalogo.
+              CREATE OR REPLACE VIEW vendite.vw_fatture_lista WITH (security_invoker=on) AS
+               SELECT f.id,
+                  f.uid,
+                  f.numero,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  f.registro_id,
+                  f.stato_doc_fiscale_id,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.descrizione AS stato_descrizione,
+                  sdf.fase,
+                  f.tipo_doc_fiscale_id,
+                  tdf.codice_interno AS tipo_doc_fiscale_codice_interno,
+                  tdf.descrizione AS tipo_doc_fiscale_descrizione,
+                  f.natura_doc_id,
+                  ndf.codice_interno AS natura_doc_codice_interno,
+                  ndf.descrizione AS natura_doc_descrizione,
+                  f.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s_cli.id AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  f.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  f.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  f.imponibile_tot,
+                  f.imposta_tot,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+                  f.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  f.sorgente_uid,
+                  f.data_insert,
+                  f.user_insert,
+                  f.data_update,
+                  f.user_update,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  vendite.fn_numero_documento_fattura(f.numero, f.serie) AS numero_documento,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione,
+                  f.sorgente_id
+                 FROM vendite.fatture f
+                   JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
+                   LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                   LEFT JOIN config.tipi_doc_fiscale tdf ON tdf.id = f.tipo_doc_fiscale_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_cli ON sr_cli.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_cli ON s_cli.id = sr_cli.soggetto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = f.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = f.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = f.sorgente_tipo_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'FATTURA'::text AND so_pr.attivo IS TRUE), f.id, f.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = f.registro_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la firma testuale della pratica del documento si ritira nello stesso giro.
+              SELECT 1;

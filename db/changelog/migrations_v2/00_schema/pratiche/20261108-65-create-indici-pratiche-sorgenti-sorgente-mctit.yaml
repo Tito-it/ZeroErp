@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «CHI DERIVA DA X» SU pratiche.pratiche_sorgenti: gli indici della provenienza
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+#
+#   L'unicita' (20261108-64) comincia con pratica_id: serve chi parte dalla
+#   pratica, non chi parte dal documento. Dal documento partono la pratica del
+#   documento (le viste di lista, la sintesi della lineage), il reconcile dopo un
+#   cambio di stato e il lato in uscita del guard unico (alla cancellazione del
+#   documento o della riga). Un indice per chiave, parziale, come su
+#   vendite.commesse_sorgenti: la regola d'incontro (sorgente_id = $ OR
+#   sorgente_uid = $) li usa tutti e due.
+#   Prendono il posto di ix_pratiche_sorgenti_tipo_uid (tolto da 20261108-64).
+#   Rollback: DROP INDEX.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20261108-65-create-indici-pratiche-sorgenti-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261108-65-create-indici-pratiche-sorgenti-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.pratiche_sorgenti: indici parziali per tipo e sorgente_id, per tipo e sorgente_uid,
+        per tipo e sorgente_riga. brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_pratiche_sorgenti_sorgente_id ON pratiche.pratiche_sorgenti USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX pratiche.ix_pratiche_sorgenti_sorgente_id IS
+                'Chi deriva da X: i link alle pratiche di un documento a chiave id, per tipo e chiave del documento. Lo usano pratiche.fn_pratica_del_documento, pratiche.fn_reconcile_sorgente e il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione del documento).';
+
+              CREATE INDEX ix_pratiche_sorgenti_sorgente_uid ON pratiche.pratiche_sorgenti USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX pratiche.ix_pratiche_sorgenti_sorgente_uid IS
+                'Chi deriva da X: i link alle pratiche di un documento a chiave uid, per tipo e chiave del documento. Lo usano pratiche.fn_pratica_del_documento, pratiche.fn_reconcile_sorgente, vendite.vw_preventivi_pratiche e il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione del documento).';
+
+              CREATE INDEX ix_pratiche_sorgenti_sorgente_riga ON pratiche.pratiche_sorgenti USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              COMMENT ON INDEX pratiche.ix_pratiche_sorgenti_sorgente_riga IS
+                'Chi deriva da X: i link alle pratiche a grana di riga, per tipo e riga. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione della riga). Non unico.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX pratiche.ix_pratiche_sorgenti_sorgente_id;
+              DROP INDEX pratiche.ix_pratiche_sorgenti_sorgente_uid;
+              DROP INDEX pratiche.ix_pratiche_sorgenti_sorgente_riga;

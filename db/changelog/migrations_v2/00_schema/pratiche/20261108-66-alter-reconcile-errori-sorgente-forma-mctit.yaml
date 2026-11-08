@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LOG DEL RECONCILE NELLA GRAMMATICA DEL MODELLO: pratiche.reconcile_errori
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1 (S-4, D-9).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il log del reconcile scriveva la chiave del documento come testo in
+#   sorgente_uid. Prende la forma delle colonne del modello: sorgente_id bigint
+#   oppure sorgente_uid uuid, secondo il key_selector del tipo.
+#   D-9: e' un log scritto dentro un EXCEPTION, quindi NESSUN guard d'esistenza
+#   (un guard che rifiuta lo farebbe tacere: la riga cadrebbe nel RAISE WARNING).
+#   Il presidio di struttura lo elenca gia' fra le esenzioni dichiarate
+#   (dbops.fn_sorgenti_orfane_perimetro). Della forma resta solo il CHECK «al
+#   piu' una chiave»: il tipo e' facoltativo (un trigger mal configurato si
+#   registra senza tipo), e chi scrive mette la chiave del key_selector.
+#
+# ── LA CONVERSIONE ───────────────────────────────────────────────────
+#   Con la RETE, al contrario di pratiche_sorgenti: nessun guard ha mai
+#   garantito la forma di un log. Una chiave che non si converte non ferma il
+#   migrate e non si perde: va in coda al messaggio, e la colonna resta NULL.
+#   Il trigger del tx_id si spegne durante l'UPDATE: il tx_id della riga e' la
+#   correlazione col giornale, non va riscritto. Su dbdev nessuna riga
+#   (2026-11-08); da zero la tabella e' vuota.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20261108-66-alter-reconcile-errori-sorgente-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261108-66-alter-reconcile-errori-sorgente-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.reconcile_errori: la chiave del documento dal testo alle colonne tipizzate
+        (sorgente_id / sorgente_uid uuid), CHECK «al piu' una chiave», indice sulla chiave nuova.
+        Nessun guard d'esistenza (D-9). brief-db-sorgente-documento-e-riga §7.2 lotto P, giro P.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.reconcile_errori ADD COLUMN sorgente_uid_nuova uuid;
+
+              DO $do$
+              DECLARE
+                  -- Tipi espliciti: %TYPE[] non e' sintassi valida (pg_trigger.tgname, .tgenabled);
+                  -- i e' un contatore.
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'pratiche.reconcile_errori'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE pratiche.reconcile_errori DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  -- La chiave nella colonna del key_selector del tipo; quella che non si
+                  -- converte (o senza tipo) resta scritta nel messaggio.
+                  UPDATE pratiche.reconcile_errori r
+                     SET sorgente_id = CASE WHEN s.key_selector = 'id'
+                                             AND pg_input_is_valid(r.sorgente_uid, 'bigint')
+                                            THEN r.sorgente_uid::bigint END,
+                         sorgente_uid_nuova = CASE WHEN s.key_selector = 'uid'
+                                                    AND pg_input_is_valid(r.sorgente_uid, 'uuid')
+                                                   THEN r.sorgente_uid::uuid END,
+                         messaggio = CASE
+                             WHEN (s.key_selector = 'id'  AND pg_input_is_valid(r.sorgente_uid, 'bigint'))
+                               OR (s.key_selector = 'uid' AND pg_input_is_valid(r.sorgente_uid, 'uuid'))
+                             THEN r.messaggio
+                             ELSE concat_ws(' ', r.messaggio, format('[chiave del documento non convertibile: %s]', r.sorgente_uid))
+                         END
+                    FROM pratiche.reconcile_errori r0
+                    LEFT JOIN config.sorgenti s ON s.id = r0.sorgente_tipo_id
+                   WHERE r0.id = r.id
+                     AND r.sorgente_uid IS NOT NULL;
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE pratiche.reconcile_errori ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END;
+              $do$;
+
+              DROP INDEX pratiche.ix_reconcile_errori_sorgente;
+              ALTER TABLE pratiche.reconcile_errori DROP COLUMN sorgente_uid;
+              ALTER TABLE pratiche.reconcile_errori RENAME COLUMN sorgente_uid_nuova TO sorgente_uid;
+
+              ALTER TABLE pratiche.reconcile_errori
+                ADD CONSTRAINT chk_reconcile_errori_sorgente_forma CHECK (num_nonnulls(sorgente_id, sorgente_uid) <= 1);
+              COMMENT ON CONSTRAINT chk_reconcile_errori_sorgente_forma ON pratiche.reconcile_errori IS
+                'Al piu'' una chiave del documento, sorgente_id oppure sorgente_uid, come nelle tabelle della provenienza. Il tipo e la chiave sono facoltativi: e'' un log, e una riga si scrive anche quando il tipo non si e'' risolto. Nessun guard d''esistenza, di proposito: si scrive dentro un EXCEPTION, e un guard che rifiuta la farebbe cadere nel RAISE WARNING.';
+
+              CREATE INDEX ix_reconcile_errori_sorgente ON pratiche.reconcile_errori USING btree (sorgente_tipo_id, sorgente_id, sorgente_uid);
+              COMMENT ON INDEX pratiche.ix_reconcile_errori_sorgente IS
+                'Gli errori di reconcile di un documento, per tipo e chiave del documento. Non unico: lo stesso documento puo'' fallire piu'' volte.';
+
+              COMMENT ON COLUMN pratiche.reconcile_errori.sorgente_tipo_id IS
+                'Il tipo (config.sorgenti) del documento che ha innescato il reconcile, NULL se il trigger non l''ha risolto. Senza FK: e'' un log resiliente.';
+              COMMENT ON COLUMN pratiche.reconcile_errori.sorgente_id IS
+                'La chiave del documento che ha innescato il reconcile quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid. E'' un log: nessun guard ne verifica l''esistenza, perche'' si scrive proprio quando qualcosa e'' andato storto.';
+              COMMENT ON COLUMN pratiche.reconcile_errori.sorgente_uid IS
+                'La chiave del documento che ha innescato il reconcile quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id. E'' un log: nessun guard ne verifica l''esistenza.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la chiave testuale non si ricostruisce, e nessuno la legge.
+              SELECT 1;

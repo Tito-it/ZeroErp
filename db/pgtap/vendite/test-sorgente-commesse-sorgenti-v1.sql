@@ -44,6 +44,7 @@
 --   dbops.fn_pgtap_*, sullo stesso billing account (un solo emittente). Gira come
 --   l'applicazione (operatore in sessione, RLS attiva). I link li scrive la porta;
 --   i casi rifiutati dal guard si scrivono a mano, perche' la porta non li produce.
+-- rev 2026-11-08 (brief-db-sorgente-documento-e-riga lotto P, giro P.1): il guard testuale si cerca per nome da pg_proc (e' ritirato).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -98,7 +99,10 @@ SELECT is(
         WHERE m.schema_tabella = 'vendite' AND m.nome_tabella = 'commesse_sorgenti'),
       (SELECT count(*) FROM pg_trigger t
         WHERE t.tgrelid = 'vendite.commesse_sorgenti'::regclass
-          AND t.tgfoid = 'script.trgfn_guard_sorgente_polimorfa_testuale'::regproc),
+          -- Per nome da pg_proc, non ::regproc: la _testuale e' ritirata (giro P.1),
+          -- e un cast sul nome di una funzione che non c'e' e' un errore, non uno zero.
+          AND t.tgfoid IN (SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                            WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_sorgente_polimorfa_testuale')),
       (SELECT p.grammatica || '/' || coalesce(p.orfani_esclusi_perche, 'nessuna esenzione')
          FROM dbops.fn_sorgenti_orfane_perimetro() p
         WHERE p.schema_tabella = 'vendite' AND p.nome_tabella = 'commesse_sorgenti'))),

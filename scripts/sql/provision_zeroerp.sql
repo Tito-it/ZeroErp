@@ -371,6 +371,9 @@ INSERT INTO _app_schemas (nspname) VALUES
     ('pratiche'),
     ('public'),
     ('script'),
+    -- Dal 2026-11-08 (brief-db-revisione-dbops §22): shop.ricevute ha le policy
+    -- dell'app; anche nel loop ci_apply 20260205-41.
+    ('shop'),
     ('storico'),
     ('ui'),
     ('vendite');

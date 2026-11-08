@@ -27,8 +27,8 @@
 --   8) reso ANNULLATO -> esito NEGATIVO, terminale true
 --   10) ramo a chiave id ATTRAVERSO fn_stato_sorgente: il DDT CONSEGNATO si
 --       trova cercando la chiave numerica (rev 2026-10-05, 20261005-23)
---   11) forma non canonica dell'id ('0' davanti) -> UNKNOWN, come il
---       confronto testuale di prima
+--   11) la regola d'incontro: con id e uid del DDT si trova, col solo uid
+--       (non e' la chiave del DDT) e' UNKNOWN (giro P.1)
 --   12) la chiave nativa del ramo e' coerente col testo: sorgente_chiave_id =
 --       ddt.id e sorgente_chiave_uuid NULL
 --   13) script.vw_pratica_doc_sorgente risolve un collegamento a chiave id:
@@ -199,20 +199,27 @@ SELECT is(
 
 
 -- 10-12) La chiave si cerca nel suo TIPO (rev 2026-10-05, 20261005-23).
---   fn_stato_sorgente cerca sorgente_chiave_id (bigint), non piu' il testo:
---   e' l'unico confronto che sotto RLS arriva all'indice. Il ramo a chiave id
---   si prova su un documento COSTRUITO qui, non su quelli che il DB contiene.
+--   fn_stato_sorgente cerca sorgente_chiave_id (bigint), non il testo: e'
+--   l'unico confronto che sotto RLS arriva all'indice. Il ramo a chiave id si
+--   prova su un documento COSTRUITO qui, non su quelli che il DB contiene.
+--   rev 2026-11-08 (giro P.1 di brief-db-sorgente-documento-e-riga): la firma
+--   prende le colonne del modello (tipo, sorgente_id, sorgente_uid). Il vecchio
+--   11 (id con lo zero davanti) non ha piu' oggetto, un bigint non ha forme
+--   testuali: al suo posto la regola d'incontro.
 SELECT results_eq(
-  format($$SELECT risolto, esito, terminale FROM pratiche.fn_stato_sorgente(%s, %L)$$,
-         (SELECT sorgente_ddt_id FROM tmp_refs), (SELECT ddt_id FROM tmp_cons)::text),
+  format($$SELECT risolto, esito, terminale FROM pratiche.fn_stato_sorgente(%s, %s, NULL)$$,
+         (SELECT sorgente_ddt_id FROM tmp_refs), (SELECT ddt_id FROM tmp_cons)::bigint),
   $$VALUES (true, 'POSITIVO'::text, true)$$,
   '10) fn_stato_sorgente trova il DDT per chiave id (ramo bigint)');
 
 SELECT results_eq(
-  format($$SELECT risolto, stato_codice_interno FROM pratiche.fn_stato_sorgente(%s, %L)$$,
-         (SELECT sorgente_ddt_id FROM tmp_refs), '0' || (SELECT ddt_id FROM tmp_cons)::text),
-  $$VALUES (false, 'UNKNOWN'::text)$$,
-  '11) id in forma non canonica (zero davanti) -> UNKNOWN, come il confronto testuale');
+  format($$SELECT a.risolto, b.risolto, b.stato_codice_interno
+             FROM pratiche.fn_stato_sorgente(%1$s, %2$s, %3$L) a,
+                  pratiche.fn_stato_sorgente(%1$s, NULL, %3$L) b$$,
+         (SELECT sorgente_ddt_id FROM tmp_refs), (SELECT ddt_id FROM tmp_cons)::bigint,
+         (SELECT ddt_uid FROM tmp_cons)),
+  $$VALUES (true, false, 'UNKNOWN'::text)$$,
+  '11) con id e uid del DDT: trovato; col solo uid, che non e'' la chiave del DDT: UNKNOWN');
 
 SELECT is(
   (SELECT (v.sorgente_chiave_id, v.sorgente_chiave_uuid IS NULL) FROM script.vw_stato_sorgente v
@@ -249,9 +256,10 @@ WITH ins AS (
   RETURNING id
 ) SELECT id AS pratica_id FROM ins;
 
-INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
+-- Il DDT ha chiave id: sorgente_id (giro P.1).
+INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, ruolo_link, flusso_id)
 VALUES ((SELECT pratica_id FROM tmp_prat_ddt), (SELECT sorgente_ddt_id FROM tmp_refs),
-        (SELECT ddt_id FROM tmp_cons)::text, 'ROOT', NULL);
+        (SELECT ddt_id FROM tmp_cons)::bigint, 'ROOT', NULL);
 
 SELECT results_eq(
   $$SELECT risolto, esito, terminale
