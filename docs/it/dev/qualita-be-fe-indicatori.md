@@ -53,6 +53,9 @@ Vengono dalla valutazione del 2026-09/10: ognuna ha un caso vero dietro, nella l
   che deve trovare: si legge il sorgente **senza commenti**.
 * **Un test mockato verde non prova la forma vera.** Un mock sbaglia quando la forma che finge
   non è quella che arriva (D13); `mypy` ha trovato un 500 vero dietro un test verde (D2-b).
+  `autospec` (dal 2026-11-08, sui repository) prova la **firma** — nome del metodo e parametri —
+  non i dati restituiti. Il giro che l'ha messo ha trovato test che verificavano a vuoto (il
+  conto è nell'intestazione del presidio).
 * **Un numero scritto in due posti ne ha sempre uno vecchio**, e quello senza presidio è il
   documento. Per questo qui i valori li stampa lo script.
 * **Un documento che dice il vero su un difetto non si corregge: si rende falso chiudendo il
@@ -119,6 +122,7 @@ la prima misura giusta. È anche l'unico indicatore della tabella senza presidio
 | Header di licenza mancanti | L'hook guarda solo i file **aggiunti**, per scelta; un conteggio sull'intero repo non ha ancora un comando |
 | Endpoint senza consumatore | Le famiglie cross-dominio sono chiamate col dominio come parametro: uno strumento testuale non le vede ([piano](work-in-progress/piano-be-fe-endpoint-senza-porta.md)) |
 | Rilievi `ruff`, `oxlint` | Sono già un cancello a zero: se sono rossi, la CI è rossa |
+| Patch di repository senza `autospec` | Cancello a zero dal 2026-11-08: `test_presidio_autospec_repository` gira nella suite Django, quindi in CI |
 
 ---
 

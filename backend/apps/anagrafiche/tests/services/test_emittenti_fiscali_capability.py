@@ -33,7 +33,7 @@ class TestGetEmittenteNonEditable(TestCase):
     """Detail testata emittente arricchito con non_editable_fields."""
 
     @patch(f"{SVC_MOD}.EmittentiFiscaliRepository", autospec=True)
-    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable")
+    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable", autospec=True)
     def test_get_emittente_include_non_editable_fields(self, mock_list_locks, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliService,

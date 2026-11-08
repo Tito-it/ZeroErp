@@ -117,8 +117,8 @@ def list_blocchi(*, articolo_id: str, magazzino_id: int) -> dict[str, Any]:
 
 
 # Scopo: Il registro dei movimenti — lista `magazzino.movimenti`.
-# ⭐ `inventario_id` / `rettifica_id`: i movimenti nati dalle righe di QUEL
-#    documento (il deep-link dal documento `POSTED`). Uno solo dei due.
+# ⭐ `inventario_id` / `rettifica_id`: i movimenti di QUEL documento (il
+#    deep-link dal documento `POSTED`). Uno solo dei due.
 def list_movimenti(
     *,
     auth_user_id: int | None,

@@ -119,9 +119,13 @@ class JwtMockedApiTest(SimpleTestCase):
         # Bearer che arriva in fondo all'autenticazione. ⭐ Come per lo scope
         # qui sotto, si mocka la LETTURA dei fatti («nessun obbligo»), non il
         # cancello: il suo codice gira in ogni test API. I test del cancello
-        # sovrascrivono questo mock (`apps/core/tests/api/test_cancello_obblighi.py`).
+        # CONFIGURANO questo mock (`self.mock_fatti_obblighi`,
+        # `apps/core/tests/api/test_cancello_obblighi.py`): ⛔ non lo ripatchano,
+        # perche' una seconda patch `autospec` su un metodo gia' patchato e'
+        # `InvalidSpecError` (non si fa lo spec di un mock).
         obblighi_patcher = patch(
             "apps.core.db.auth_repository.AuthRepository.get_fatti_obblighi",
+            autospec=True,
             return_value={
                 "deve_cambiare_password": False,
                 "totp_obbligatorio": False,
@@ -129,7 +133,7 @@ class JwtMockedApiTest(SimpleTestCase):
                 "totp_stato": "ASSENTE",
             },
         )
-        obblighi_patcher.start()
+        self.mock_fatti_obblighi = obblighi_patcher.start()
         self.addCleanup(obblighi_patcher.stop)
 
         # Scope emittente dell'utente finto: UN emittente, cioe' l'operatore

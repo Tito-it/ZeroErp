@@ -79,7 +79,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         self.addCleanup(patcher.stop)
 
     # Scopo: Verifica ricerca con risultati OK.
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_ok(self, _mock_auth, mock_search):
         mock_search.return_value = ([_SOGGETTO_ROW], 1)
@@ -105,7 +105,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
     # Scopo: Verifica che q sotto la soglia della lista a catalogo restituisce
     #        400, e che la soglia e' quella della 113 e non un numero della view
     #        (D-6): alzata a 5, «ross» non passa; abbassata a 1, «r» passa.
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", return_value=([], 0))
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", return_value=([], 0), autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_q_troppo_corto(self, _mock_auth, mock_search):
         response = self.client.get(_SEARCH_URL + "?q=ro&tipo_ruolo_id=1")
@@ -138,7 +138,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
     #        risponde 404 `E_TIPO_RUOLO_NON_RICERCABILE` (provato sul DB vero
     #        in `core/tests/db/test_search_detail_non_trovato_db.py`). Un
     #        valore oltre `integer` resta un 400 prima del DB.
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", return_value=([], 0))
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", return_value=([], 0), autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_tipo_ruolo_non_visibile(self, _mock_auth, mock_search):
         response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=3")
@@ -149,7 +149,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         self.assertEqual(mock_search.call_count, 1)
 
     # Scopo: Verifica che page e page_size vengono passati correttamente.
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_paginazione(self, _mock_auth, mock_search):
         mock_search.return_value = ([], 0)
@@ -160,7 +160,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
 
     # Scopo: dal 2026-10-21 la ricerca pagina con `limit`/`offset`: `page_size`
     #        e' un 400, e cosi' un `limit` oltre il massimo (100): niente riduzione muta.
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_page_size_troppo_grande(self, _mock_auth, mock_search):
         response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&page_size=50")
@@ -172,7 +172,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         mock_search.assert_not_called()
 
     # Scopo: Verifica risultati vuoti → 200 con count=0.
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_risultati_vuoti(self, _mock_auth, mock_search):
         mock_search.return_value = ([], 0)
@@ -184,7 +184,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
 
     # Scopo: ⭐ Il perimetro lo fa la RLS (R-4, 2026-10-08): la view non
     #        calcola ne' passa piu' uno scope emittente al repository.
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_scope_emittente(self, _mock_auth, mock_search):
         mock_search.return_value = ([_SOGGETTO_ROW], 1)
@@ -192,7 +192,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         self.assertNotIn("emittente_ids", mock_search.call_args.kwargs)
 
     # Scopo: Verifica che order_by e order_dir vengono passati al repository.
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_order_by_valido(self, _mock_auth, mock_search):
         mock_search.return_value = ([_SOGGETTO_ROW], 1)
@@ -233,7 +233,7 @@ class SearchDetailApiTests(JwtMockedApiTest):
         self.client = Client()
 
     # Scopo: Verifica dettaglio soggetto con risultato OK.
-    @patch("apps.core.api.search_view.SearchRepository.get_search_detail")
+    @patch("apps.core.api.search_view.SearchRepository.get_search_detail", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_detail_ok(self, _mock_auth, mock_detail):
         mock_detail.return_value = _DETAIL_RESULT
@@ -258,7 +258,7 @@ class SearchDetailApiTests(JwtMockedApiTest):
 
     # Scopo: ⛔ Come la lista: il ruolo ricercabile lo decide il DB, la view
     #        passa il valore (oltre `integer` resta un 400 prima del DB).
-    @patch("apps.core.api.search_view.SearchRepository.get_search_detail", return_value=_DETAIL_RESULT)
+    @patch("apps.core.api.search_view.SearchRepository.get_search_detail", return_value=_DETAIL_RESULT, autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_detail_tipo_ruolo_non_visibile(self, _mock_auth, mock_detail):
         response = self.client.get(_DETAIL_URL + "?tipo_ruolo_id=14")
@@ -269,7 +269,7 @@ class SearchDetailApiTests(JwtMockedApiTest):
         self.assertEqual(mock_detail.call_count, 1)
 
     # Scopo: Verifica che soggetto non trovato restituisce 404.
-    @patch("apps.core.api.search_view.SearchRepository.get_search_detail", return_value=None)
+    @patch("apps.core.api.search_view.SearchRepository.get_search_detail", return_value=None, autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_detail_not_found(self, _mock_auth, _mock_detail):
         response = self.client.get(_DETAIL_URL + "?tipo_ruolo_id=1")
@@ -279,7 +279,7 @@ class SearchDetailApiTests(JwtMockedApiTest):
 
     # Scopo: ⭐ Come la lista: nel dettaglio il perimetro e' della RLS, e la
     #        view non passa uno scope emittente al repository.
-    @patch("apps.core.api.search_view.SearchRepository.get_search_detail")
+    @patch("apps.core.api.search_view.SearchRepository.get_search_detail", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_detail_scope_emittente(self, _mock_auth, mock_detail):
         mock_detail.return_value = _DETAIL_RESULT
@@ -289,7 +289,7 @@ class SearchDetailApiTests(JwtMockedApiTest):
     # Scopo: `utility_id` va a `p_utility_id integer`: un valore oltre il tetto
     #        e' un 400 prima del DB (non un 500 da funzione non risolta), un
     #        valore vuoto e' «assente» (2026-10-09, BB `qp_int_optional`).
-    @patch("apps.core.api.search_view.SearchRepository.get_search_detail")
+    @patch("apps.core.api.search_view.SearchRepository.get_search_detail", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_detail_utility_id_fuori_integer_400(self, _mock_auth, mock_detail):
         mock_detail.return_value = _DETAIL_RESULT
@@ -317,7 +317,7 @@ class LookupTipiRuoliApiTests(JwtMockedApiTest):
         self.client = Client()
 
     # Scopo: Verifica lista tipi ruolo visibili OK.
-    @patch("apps.core.api.search_view.SearchRepository.list_tipi_ruoli_visibili")
+    @patch("apps.core.api.search_view.SearchRepository.list_tipi_ruoli_visibili", autospec=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_lookup_tipi_ruoli_ok(self, _mock_auth, mock_list):
         mock_list.return_value = _TIPI_RUOLI_RESULT

@@ -65,7 +65,7 @@ class EDovutoTests(SimpleTestCase):
     def setUp(self) -> None:
         self.enterContext(fuso_aziendale_forzato("Europe/Rome"))
         self.enterContext(patch.object(e_dovuto, "carica_sveglie", return_value=(_DIGEST, _DRENATORE, _SMOKE)))
-        self.repo = self.enterContext(patch.object(e_dovuto, "MaintenanceRepository")).return_value
+        self.repo = self.enterContext(patch.object(e_dovuto, "MaintenanceRepository", autospec=True)).return_value
         self.repo.corsa_riuscita_dal.return_value = False
         # Acceso, salvo i test che lo spengono: senza, il finto risponderebbe
         # un MagicMock, vero per caso.

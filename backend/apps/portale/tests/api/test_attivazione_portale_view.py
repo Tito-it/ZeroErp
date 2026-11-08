@@ -69,7 +69,7 @@ class ProfileActivateShopTests(TestCase):
         self.assertIn("clienti portale", body["error"]["message"])
 
     @patch(
-        "apps.portale.api.views.PortaleRepository.find_identita_portale"
+        "apps.portale.api.views.PortaleRepository.find_identita_portale", autospec=True
     )
     @patch(
         "apps.portale.api.views.ProfileActivateShopView._read_soggetto_ruolo_from_guc"
@@ -93,7 +93,7 @@ class ProfileActivateShopTests(TestCase):
         self.assertEqual(body["data"]["identita_id"], 555)
 
     @patch(
-        "apps.portale.api.views.PortaleRepository.find_identita_portale"
+        "apps.portale.api.views.PortaleRepository.find_identita_portale", autospec=True
     )
     @patch(
         "apps.portale.api.views.ProfileActivateShopView._read_soggetto_ruolo_from_guc"

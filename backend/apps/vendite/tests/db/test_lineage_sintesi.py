@@ -91,7 +91,7 @@ class _Connessione:
 
 def _unisci(righe: list[dict[str, Any]], sorgente: dict[str, Any], cursor: _CursorFinto,
             tipo: str = "ORDINE_VENDITA") -> list[dict[str, Any]]:
-    with patch.object(SorgentiRepository, "get_sorgente_attiva", return_value=sorgente), \
+    with patch.object(SorgentiRepository, "get_sorgente_attiva", autospec=True, return_value=sorgente), \
          patch.object(_lineage_sintesi, "connection", _Connessione(cursor)):
         unisci_sintesi_lineage(righe, tipo_codice_interno=tipo)
     return righe
@@ -102,7 +102,7 @@ class UnisciSintesiLineageTests(SimpleTestCase):
 
     # Scopo: pagina vuota = nessuna chiamata, nemmeno la sorgente.
     def test_righe_vuote_nessuna_query(self) -> None:
-        with patch.object(SorgentiRepository, "get_sorgente_attiva") as sorgente:
+        with patch.object(SorgentiRepository, "get_sorgente_attiva", autospec=True) as sorgente:
             unisci_sintesi_lineage([], tipo_codice_interno="ORDINE_VENDITA")
         sorgente.assert_not_called()
 

@@ -5224,8 +5224,12 @@
       "filtro_documento_rettifica": "Movimenti della rettifica #{id}",
       "filtro_documento_rimuovi": "Togli il filtro",
       "sorgente": {
-        "INVENTARIO_RIGA": "Inventario",
-        "RETTIFICA_RIGA": "Rettifica"
+        "INVENTARIO": "Inventario",
+        "RETTIFICA": "Rettifica",
+        "TRASFERIMENTO": "Trasferimento",
+        "DDT_VENDITA": "DDT di vendita",
+        "RESO_VENDITA": "Reso di vendita",
+        "EVENTO_ASSET": "Evento dell'asset"
       }
     },
     "documenti_interni": {

@@ -38,12 +38,13 @@ Indice test eseguiti:
 """
 
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.magazzino.db.famiglie import FAMIGLIE, FamigliaDocumentoInterno
+from apps.magazzino.db.magazzino_repository import MagazzinoRepository
 from apps.magazzino.services import consultazione_service as cons
 from apps.magazzino.services import magazzino_service as svc
 
@@ -62,7 +63,8 @@ _RIEPILOGO = {"n_righe": 1, "n_con_delta": 1, "n_invariate": 0, "n_non_contate":
 
 class _ConRepo(SimpleTestCase):
     def setUp(self) -> None:
-        self.repo = MagicMock()
+        # Il finto dal repository vero: un metodo che non c'e' e' un errore.
+        self.repo = create_autospec(MagazzinoRepository, instance=True)
         self.repo.get_documento.return_value = dict(_DOC)
         self.repo.get_magazzino.return_value = {"id": 3, "codice": "MAG-A", "usa_ubicazioni": False}
         self.repo.piano_riepilogo.return_value = dict(_RIEPILOGO)
@@ -73,7 +75,7 @@ class _ConRepo(SimpleTestCase):
         self.repo.create_documento.return_value = 7
         self.repo.create_riga.return_value = 11
         self.repo.posta_documento.return_value = [{"movimento_id": 1, "riga_id": 11, "qta": Decimal("10")}]
-        patcher = patch.object(svc, "MagazzinoRepository", return_value=self.repo)
+        patcher = patch.object(svc, "MagazzinoRepository", autospec=True, return_value=self.repo)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -91,7 +93,7 @@ class FamiglieTests(SimpleTestCase):
         self.assertEqual((inv.col_qta, rett.col_qta), ("qta_contata", "qta_delta"))
         self.assertEqual((inv.ha_piano, rett.ha_piano), (True, False))
         self.assertEqual((inv.sorgente_codice_interno, rett.sorgente_codice_interno),
-                         ("INVENTARIO_RIGA", "RETTIFICA_RIGA"))
+                         ("INVENTARIO", "RETTIFICA"))
         self.assertEqual((inv.con_motivo, rett.con_motivo), (False, True))
         self.assertEqual((inv.ha_descrizione, rett.ha_descrizione), (True, False))
         self.assertEqual(inv.guard_riga_uniq, "uq_mag_inventari_righe_posizione")
@@ -309,7 +311,7 @@ class ArticoloUuidTests(_ConRepo):
         self.repo.list_disponibilita.return_value = ([], 0)
         self.repo.list_disponibilita_articoli.return_value = ([], 0)
         self.repo.list_movimenti.return_value = ([], 0)
-        patcher = patch.object(cons, "MagazzinoRepository", return_value=self.repo)
+        patcher = patch.object(cons, "MagazzinoRepository", autospec=True, return_value=self.repo)
         patcher.start()
         self.addCleanup(patcher.stop)
 

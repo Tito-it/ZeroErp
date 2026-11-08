@@ -70,14 +70,14 @@ def _db_exc(cls, testo: str, *, column_name: str | None = None, constraint_name:
 
 class ParseRelTests(SimpleTestCase):
     # 1.
-    @patch(_VOCE, return_value=None)
+    @patch(_VOCE, return_value=None, autospec=True)
     def test_rel_fuori_whitelist_rifiutata(self, _voce_mock) -> None:
         with self.assertRaises(ServiceError) as cm:
             ConfigCrudService().get_metadata("magazzino.lotti")
         self.assertEqual(cm.exception.code, E_CONFIG_VALIDATION)
 
     # 1b. Nelle tendine si', nel pannello no: il verbo non sa rimettere la RLS.
-    @patch(_VOCE, return_value=_voce("pagamenti.enti_incasso", pannello=False))
+    @patch(_VOCE, return_value=_voce("pagamenti.enti_incasso", pannello=False), autospec=True)
     def test_rel_del_solo_lookup_rifiutata(self, _voce_mock) -> None:
         with self.assertRaises(ServiceError) as cm:
             ConfigCrudService().get_metadata("pagamenti.enti_incasso")
@@ -88,7 +88,7 @@ class VerboTests(SimpleTestCase):
     def setUp(self) -> None:
         self.svc = ConfigCrudService()
         for p in (
-            patch(_VOCE, return_value=_voce("magazzino.causali")),
+            patch(_VOCE, return_value=_voce("magazzino.causali"), autospec=True),
             patch.object(self.svc._meta, "get_table_constraints", return_value=[]),
         ):
             p.start()
@@ -128,7 +128,7 @@ class ErroriTradottiTests(SimpleTestCase):
         self.svc = ConfigCrudService()
         for p in (
             patch.object(self.svc._meta, "get_table_constraints", return_value=_VINCOLI),
-            patch(_VOCE, return_value=_voce("magazzino.causali")),
+            patch(_VOCE, return_value=_voce("magazzino.causali"), autospec=True),
         ):
             p.start()
             self.addCleanup(p.stop)

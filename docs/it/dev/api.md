@@ -2510,6 +2510,21 @@ una regressione arriva nel digest delle 7, non blocca un merge.
   nel corpo del login ma nel cookie `zeroerp_refresh`: lo si legge dal
   `Set-Cookie` (`smoke_login -D`) e ripresenta con `curl_refresh`. Presidio:
   `test_https_header` 13, 15–18.
+* ⛔ **Ogni patch di un repository ha `autospec=True`**: la classe
+  (`patch("…XRepository", autospec=True)`, `patch.object(modulo, "XRepository",
+  autospec=True)`) e il metodo (`patch.object(XRepository, "metodo", autospec=True)`,
+  `patch("…XRepository.metodo", autospec=True)`).
+  Un mock libero accetta metodi e parametri che il repository non ha: il test resta
+  verde dopo una rinomina, e `assert_not_called()` su un nome sparito passa a vuoto.
+  Col mock `autospec` il nome sbagliato è `AttributeError`, il parametro sbagliato
+  `TypeError`. Due conseguenze: il mock di un **metodo** registra anche `self`, quindi
+  negli `assert_called_*` il primo argomento è `mock.ANY`; un repository finto passato
+  come `return_value=` nasce da `create_autospec(XRepository, instance=True)`, non da
+  `MagicMock()`. Un metodo che una classe base di test patcha già (per esempio
+  `AuthRepository.get_fatti_obblighi` in `JwtMockedApiTest`) si **configura** dal mock
+  che la base espone, non si ripatcha: una seconda patch `autospec` è `InvalidSpecError`.
+  Esenti le patch che passano già l'oggetto sostitutivo (`new`). Presidio, con la
+  storia del giro che l'ha introdotta: `apps/core/tests/test_presidio_autospec_repository.py`.
 * Esecuzione: `./manage-test.sh apps.core.tests.api -v 2`. Smoke di docs/schema:
   `apps/core/tests/api/test_diagnostics_api.py`.
 

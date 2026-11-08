@@ -28,12 +28,13 @@ Indice test eseguiti:
 
 from contextlib import nullcontext
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 
 from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
 from apps.pagamenti.services import pagamenti_service
+from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
 
 _DISTINTA = {"id": 7, "stato_codice": "BOZZA", "origine": "MANUALE"}
 
@@ -54,11 +55,11 @@ class RigheDaRateTests(SimpleTestCase):
         savepoint = patch("apps.core.services.fan_out.transaction.atomic", nullcontext)
         savepoint.start()
         self.addCleanup(savepoint.stop)
-        self.repo = MagicMock()
+        self.repo = create_autospec(PagamentiRepository, instance=True)
         self.repo.get_distinta.return_value = dict(_DISTINTA)
         # Ogni rata risolve alla fattura 10 + il suo id, salvo diversa istruzione.
         self.repo.get_fattura_id_di_rata.side_effect = lambda sid: 1000 + int(sid)
-        patcher = patch.object(pagamenti_service, "PagamentiRepository", return_value=self.repo)
+        patcher = patch.object(pagamenti_service, "PagamentiRepository", autospec=True, return_value=self.repo)
         patcher.start()
         self.addCleanup(patcher.stop)
         # La nascita della riga e' FINTA: risponde la riga con l'id della rata.

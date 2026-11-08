@@ -55,10 +55,11 @@ from contextlib import nullcontext
 from datetime import date
 from decimal import Decimal
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from apps.core.services.error_manager import ServiceError
 from apps.pagamenti.services import pagamenti_service
+from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
 
 
 # Distinta minima: il service legge `righe_totali` per `gia_popolata` e i
@@ -94,7 +95,7 @@ def _riga_contabile(**over):
 
 # Scopo: Repository finto con i ritorni che il service si aspetta.
 def _repo(**over) -> MagicMock:
-    repo = MagicMock()
+    repo = create_autospec(PagamentiRepository, instance=True)
     repo.get_distinta.return_value = _distinta()
     repo.get_riga.return_value = _riga_contabile()
     repo.list_righe.return_value = []
@@ -127,7 +128,7 @@ class _ServiceTestCase(TestCase):
     def setUp(self) -> None:
         self.repo = _repo()
         patcher = patch.object(
-            pagamenti_service, "PagamentiRepository", return_value=self.repo
+            pagamenti_service, "PagamentiRepository", autospec=True, return_value=self.repo
         )
         patcher.start()
         self.addCleanup(patcher.stop)
