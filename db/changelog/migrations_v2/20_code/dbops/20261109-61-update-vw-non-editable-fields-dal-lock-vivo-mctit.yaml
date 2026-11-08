@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_non_editable_fields: il form legge il lock VIVO (D25, N1), non il registro.
+#   Brief: brief-db-revisione-dbops, giro 10a (§25).
+#
+#   Prima la vista era una proiezione di dbops.automation_lock_columns (enabled):
+#   mancava codice_interno, che il runner blocca su ogni tabella dell'ambito, e una
+#   riga di un altro exec_mode compariva anche se non bloccata. Il form deve dire
+#   cio' che l'UPDATE rifiuta, cioe' il trigger: la vista legge
+#   dbops.vw_lock_columns_vivi (-59). Le colonne cambiano (escono exec_mode e note,
+#   attributi del registro; entra trigger_name): DROP e CREATE, poi il GRANT.
+#   Lettori censiti il 2026-11-08: dbops.fn_non_editable_fields (plpgsql, legge
+#   column_name: nessuna dipendenza in pg_depend) e LockColumnsRepository del BE
+#   (column_name). Nello stesso changeSet il COMMENT di fn_non_editable_fields.
+#   Rollback = vista, COMMENT e GRANT di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-61-update-vw-non-editable-fields-dal-lock-vivo-mctit.yaml
+
+  - changeSet:
+      id: 20261109-61-update-vw-non-editable-fields-dal-lock-vivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vw_non_editable_fields: i campi bloccati dal trigger di lock vivo, codice_interno compreso; COMMENT di fn_non_editable_fields. Brief: brief-db-revisione-dbops, giro 10a.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class
+               WHERE oid = to_regclass('dbops.vw_non_editable_fields')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class
+               WHERE oid = to_regclass('dbops.vw_lock_columns_vivi')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW dbops.vw_non_editable_fields;
+
+              CREATE VIEW dbops.vw_non_editable_fields
+              WITH (security_invoker = true) AS
+              SELECT v.schema_name           AS target_schema,
+                     v.table_name            AS target_table,
+                     v.argomenti[g.i]        AS column_name,
+                     v.argomenti[g.i + 1]    AS error_code,
+                     v.trigger_name
+                FROM dbops.vw_lock_columns_vivi v
+                CROSS JOIN LATERAL generate_series(1, cardinality(v.argomenti) - 1, 2) AS g(i)
+               WHERE v.abilitato;
+
+              COMMENT ON VIEW dbops.vw_non_editable_fields IS
+                  'I campi che il form deve presentare non modificabili per lock incondizionato: una riga per colonna che un trigger di lock vivo e abilitato blocca (dbops.vw_lock_columns_vivi), con il codice d''errore che l''UPDATE solleverebbe. Dice cio'' che il database rifiuta, codice_interno compreso, e non cio'' che il registro dbops.automation_lock_columns dichiara: se i due divergono e'' rosso il presidio dbops/test-lock-columns-convergenza. Una colonna bloccata da due trigger compare due volte. I lock condizionali, che dipendono dallo stato della riga, non ci sono: li aggiunge dbops.fn_non_editable_fields.';
+
+              COMMENT ON COLUMN dbops.vw_non_editable_fields.column_name IS 'La colonna bloccata: argomento dispari del trigger.';
+              COMMENT ON COLUMN dbops.vw_non_editable_fields.error_code IS 'Il codice d''errore che l''UPDATE della colonna solleva: argomento pari del trigger.';
+              COMMENT ON COLUMN dbops.vw_non_editable_fields.trigger_name IS 'Il trigger di lock che blocca la colonna.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_non_editable_fields TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+
+              COMMENT ON FUNCTION dbops.fn_non_editable_fields(text, text, text) IS
+                  'I campi non modificabili di una riga, per il form: array ordinato e senza doppi delle colonne di (p_schema, p_table) bloccate da un trigger di lock vivo (dbops.vw_non_editable_fields, codice_interno compreso) piu'' quelle delle regole condizionali attive di dbops.lock_columns_conditional che valgono per la riga p_record_id. Ogni condition_expr si valuta con EXECUTE ... USING p_record_id (il $1 dell''espressione e'' un parametro; il cast al tipo della chiave lo scrive l''espressione, per esempio $1::uuid). Una regola condizionale chiama lo stesso predicato del guard che rifiuterebbe la modifica. VOLATILE, SECURITY INVOKER: legge lo stato di oggi con i privilegi di chi chiama.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW dbops.vw_non_editable_fields;
+
+              CREATE VIEW dbops.vw_non_editable_fields AS
+               SELECT target_schema,
+                  target_table,
+                  column_name,
+                  error_code,
+                  exec_mode,
+                  note
+                 FROM dbops.automation_lock_columns alc
+                WHERE enabled = true;
+
+              COMMENT ON VIEW dbops.vw_non_editable_fields IS
+                  'Alias semantico su dbops.automation_lock_columns: elenca i campi non editabili (lock incondizionato) per ciascuna (target_schema, target_table). Filtrata su enabled=true. Non copre i lock condizionali stato-dipendenti gestiti da trigger custom.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_non_editable_fields TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+
+              COMMENT ON FUNCTION dbops.fn_non_editable_fields(text, text, text) IS
+                  'Ritorna i campi non editabili per (schema, tabella, id_riga). Unisce: lock statici (vw_non_editable_fields) + lock condizionali (lock_columns_conditional) valutati su p_record_id via EXECUTE USING. VOLATILE (legge stato corrente DB). SECURITY INVOKER (rispetta RLS). p_record_id = id come text; condition_expr casta $1 al tipo target. rev 2026-05-22.';

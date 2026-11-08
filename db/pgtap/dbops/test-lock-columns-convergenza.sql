@@ -9,7 +9,7 @@
 -- un lock che il registro non conosce.
 -- Brief: brief-db-lock-di-colonna-fuori-registro, sezioni 4 (D2, D3) e 7
 --
--- Elenco test (plan 22):
+-- Elenco test (plan 29):
 --  1-3)  gli oggetti: le due funzioni nuove ci sono, drop_lock_trg e' ritirata
 --  4)    ⭐ PRESIDIO: su tutto il database nessun lock diverge dal registro
 --  5-7)  fn_trigger_argomenti: zero finale, accento, nessun argomento
@@ -26,6 +26,15 @@
 --  20)   nessuna divergenza residua nello schema di prova
 --  21)   una riga di un ALTRO exec_mode non si toglie se la colonna e' gia' bloccata
 --  22)   ...e non si crea se non lo e'
+--  23)   ⭐ PRESIDIO: nessun lock di colonna su una tabella FUORI dall'ambito
+--        (il runner non ci arriva: un lock li' e' montato a mano)
+--  24)   una tabella che solo una regola di un ALTRO modo copre non si confronta
+--  25-26) un lock disabilitato non e' allineato: RIGENERA, e torna abilitato
+--  27)   regola LOCK_COLUMNS spenta: TOGLIE, e codice_interno non e' «persa»
+--  28)   ...e il runner toglie il lock senza fermarsi
+--  29)   regola spenta e lock a mano su una colonna ignota al registro: si FERMA
+--        (D32 e Q3 di brief-db-revisione-dbops, giro 10a: prima una tabella
+--        senza regola usciva dal confronto con i suoi lock)
 --
 -- Scopo:
 --  - il criterio sta in dbops.fn_lock_columns_divergenze, e il test 4 lo
@@ -42,7 +51,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(22);
+SELECT plan(29);
 
 -- ============================================================
 -- Gli oggetti
@@ -64,6 +73,18 @@ SELECT is(
        FROM dbops.fn_lock_columns_divergenze('CI', NULL) AS d),
     ARRAY[]::text[],
     '4) nessun trigger di lock diverge dal registro (codice_interno + dbops.automation_lock_columns)'
+);
+
+-- Fuori dall'ambito il runner non agisce: un lock li' non lo governa nessuno.
+SELECT is(
+    (SELECT COALESCE(array_agg(v.schema_name||'.'||v.table_name||' '||v.trigger_name
+                               ORDER BY v.schema_name, v.table_name, v.trigger_name), ARRAY[]::text[])
+       FROM dbops.vw_lock_columns_vivi v
+      WHERE NOT (    v.tipo_tabella = 'r'
+                 AND v.schema_name = ANY (dbops.fn_resolve_scope(NULL))
+                 AND dbops.fn_table_in_scope(v.schema_name, v.table_name))),
+    ARRAY[]::text[],
+    '23) nessun trigger di lock su una tabella fuori dall''ambito delle automazioni'
 );
 
 -- ============================================================
@@ -254,6 +275,84 @@ SELECT ok(
             AND t.tgfoid = 'script.trgfn_lock_columns()'::regprocedure),
         'z') IS NULL,
     '22) il giro SCHEDULED non crea una colonna che nasce solo nel giro CI'
+);
+
+-- ============================================================
+-- La regola LOCK_COLUMNS: di un altro modo, spenta
+-- ============================================================
+-- Qui t_a ha il lock del giro SCHEDULED del 22 (codice_interno, x, y): si toglie a
+-- mano, per vedere che il giro SCHEDULED non lo rifa'. Le regole si cambiano
+-- dentro la transazione.
+UPDATE dbops.automation_rules_tbl
+   SET exec_mode = 'CI'
+ WHERE upper(btrim(rule_type)) = 'LOCK_COLUMNS' AND enabled;
+
+DROP TRIGGER IF EXISTS trg_t_a_a10_lock_columns_upd ON pgtap_lock_conv.t_a;
+
+SELECT is(
+    (SELECT count(*)::int FROM dbops.fn_lock_columns_divergenze('SCHEDULED', ARRAY['pgtap_lock_conv'])
+      WHERE table_name = 't_a'),
+    0,
+    '24) regola solo CI: per il giro SCHEDULED t_a non diverge, nemmeno senza lock (la governa l''altro giro)'
+);
+
+UPDATE dbops.automation_rules_tbl
+   SET exec_mode = 'AUTO'
+ WHERE upper(btrim(rule_type)) = 'LOCK_COLUMNS' AND enabled;
+
+SELECT dbops.fn_run_automations_lock_columns('SCHEDULED', ARRAY['pgtap_lock_conv'], false);
+ALTER TABLE pgtap_lock_conv.t_a DISABLE TRIGGER trg_t_a_a10_lock_columns_upd;
+
+SELECT is(
+    (SELECT azione FROM dbops.fn_lock_columns_divergenze('SCHEDULED', ARRAY['pgtap_lock_conv'])
+      WHERE table_name = 't_a'),
+    'RIGENERA',
+    '25) un lock disabilitato non blocca niente: diverge (RIGENERA)'
+);
+
+SELECT dbops.fn_run_automations_lock_columns('SCHEDULED', ARRAY['pgtap_lock_conv'], false);
+
+SELECT is(
+    (SELECT t.tgenabled::text FROM pg_trigger t
+      WHERE t.tgrelid = 'pgtap_lock_conv.t_a'::regclass
+        AND t.tgfoid = 'script.trgfn_lock_columns()'::regprocedure),
+    'O',
+    '26) dopo il giro il lock di t_a e'' di nuovo abilitato'
+);
+
+-- Regola spenta = trigger tolto (Q3).
+UPDATE dbops.automation_rules_tbl
+   SET enabled = false
+ WHERE upper(btrim(rule_type)) = 'LOCK_COLUMNS';
+
+SELECT is(
+    (SELECT azione || '|' || cardinality(colonne_perse)
+       FROM dbops.fn_lock_columns_divergenze('SCHEDULED', ARRAY['pgtap_lock_conv'])
+      WHERE table_name = 't_a'),
+    'TOGLIE|0',
+    '27) regola spenta: t_a da togliere, e codice_interno (implicito) non e'' una colonna persa'
+);
+
+SELECT dbops.fn_run_automations_lock_columns('SCHEDULED', ARRAY['pgtap_lock_conv'], false);
+
+SELECT is(
+    (SELECT count(*)::int FROM pg_trigger t
+      WHERE t.tgrelid = 'pgtap_lock_conv.t_a'::regclass
+        AND t.tgfoid = 'script.trgfn_lock_columns()'::regprocedure),
+    0,
+    '28) regola spenta: il runner toglie il lock di t_a senza fermarsi'
+);
+
+-- Un lock scritto a mano su una tabella senza regola, su una colonna che il
+-- registro non nomina: non si cancella in silenzio.
+CREATE TRIGGER trg_t_b_a10_lock_id_a_mano
+    BEFORE UPDATE OF id ON pgtap_lock_conv.t_b
+    FOR EACH ROW EXECUTE FUNCTION script.trgfn_lock_columns('id', 'E_COLONNA_NON_MODIFICABILE');
+
+SELECT throws_like(
+    $$ SELECT dbops.fn_run_automations_lock_columns('SCHEDULED', ARRAY['pgtap_lock_conv'], false) $$,
+    '%non nomina: pgtap_lock_conv.t_b (id)%',
+    '29) regola spenta e lock a mano su una colonna ignota al registro: il runner si FERMA e la nomina'
 );
 
 SELECT * FROM finish();

@@ -238,7 +238,7 @@ Se il bypass non e gia attivo, prova a leggere la GUC `myapp.bypass_tx_id_check`
 
 ### Fase 3 — Lettura tx_id di sessione
 
-Legge `current_setting('dbops.tx_id', true)` per ottenere un eventuale tx_id gia presente in sessione.
+Legge `current_setting('dbops.tx_id', true)` per ottenere un eventuale tx_id gia presente in sessione. Un valore che non e un uuid vale assente.
 
 ### Fase 4 — Determinazione del valore
 
@@ -259,9 +259,9 @@ Legge `current_setting('dbops.tx_id', true)` per ottenere un eventuale tx_id gia
 Si arriva qui solo con `NEW.tx_id` NULL (il caso "gia valorizzato" e uscito alla
 Fase 0). L'assegnazione e:
 
-`NEW.tx_id = COALESCE(GUC dbops.tx_id, v_new_tx_id, uuidv7())`
+`NEW.tx_id = COALESCE(v_new_tx_id, uuidv7())`
 
-La catena COALESCE finale garantisce che `NEW.tx_id` non sia mai NULL, con `uuidv7()` come ultimo fallback.
+Il valore e quello della Fase 4, e la GUC non si rilegge: un id di sessione non registrato prende davvero la sentinella `uuid_nil()`, come promette `W_TXID_NOT_REGISTERED`. `uuidv7()` e solo l'ultimo ripiego, perche `NEW.tx_id` non resti mai NULL.
 
 > Documentazione dettagliata: [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 

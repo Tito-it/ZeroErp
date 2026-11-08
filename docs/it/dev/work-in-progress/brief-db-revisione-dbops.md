@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 9 applicato e committato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 10a applicato; `-65` per il presidio lento)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -44,8 +44,12 @@ test 14 esteso; il `fk_index_policy.csv` orfano passa al blocco 10d. **Blocco 7-
 proposta, dal primo libero. **Giro 9 scritto e provato** sullo scratch (§24.5-24.7): `20261109-40` … `-57`, quattro CSV,
 il guardrail dei codici, sei pgTAP nuovi e cinque riscritti.
 **Giro 9 applicato** (Tid, 2026-11-08, §24.11): migrazione su dbdev e scratch, pgTAP verdi; **committato**.
-**Riparte: team BE** con BE12 e BE6 (§5); **Tid** per la decisione su D12-bis (§24.6 punto 6); poi la sessione DB col giro 10a
-di §8, al via di Tid. In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+**D12-bis deciso** (Tid, 2026-11-08: strada (a)) e **via al giro 10a** dato lo stesso giorno. I numeri `20261109-58` … `-79`
+sono concordati con le altre sessioni DB. **Giro 10a preparato** (§25): difetti riverificati, quattro nodi.
+**Via sui nodi** (Tid, 2026-11-08: «ok inizia», N1-N4 come da proposta). **Giro 10a scritto e provato** sullo scratch e su
+dbdev (§25.6-25.9): `20261109-58` … `-64`, `presidi.csv`, due pgTAP nuovi e due estesi; un nodo nuovo, **N5** (§25.8).
+**Giro 10a applicato** (Tid, 2026-11-08): pgTAP verdi; il presidio su tutto il database era lento, curato da `-65` (§25.12).
+**Riparte: Tid** con l'apply di `20261109-65` e il pgTAP di §25.12, e con N5. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -126,8 +130,15 @@ ancora le tabelle).
 | 9-quadragies-octies | ✅ Tid | Decisioni N1-N6 come da proposta, via al giro 9 dal primo libero (2026-11-08) | §24.4 | 9-quadragies-septies |
 | 9-quadragies-nonies | ✅ sessione DB | Giro 9, blocchi 9a e 9b: scritti e provati sullo scratch (`20261109-40` … `-57`) | §24.5-24.7 | 9-quadragies-octies |
 | 9-quinquagies | ✅ Tid | Apply del giro 9 su dbdev e scratch, pgTAP di §24.8 verdi (2026-11-08); commit dalla sessione DB. Il giro 9 è chiuso | §24.11 | 9-quadragies-nonies |
-| 9-quinquagies-bis | **Tid** ⏭️ | Decisione su D12-bis: il `COALESCE` finale di `trgfn_tx_id_managed` (proposta (a)) | §24.6 | 9-quinquagies |
-| 9-quinquagies-ter | Tid → sessione DB | Via al giro 10a di §8 | §8 | 9-quinquagies |
+| 9-quinquagies-bis | ✅ Tid | D12-bis: strada (a), entra nel giro 10a (2026-11-08) | §24.6, §25 | 9-quinquagies |
+| 9-quinquagies-ter | ✅ Tid → sessione DB | Via al giro 10a; numeri `20261109-58` … `-79`, concordati con le altre sessioni DB (2026-11-08) | §25 | 9-quinquagies |
+| 9-quinquagies-quater | ✅ sessione DB | Giro 10a preparato: riverifica, quattro nodi, changeSet previsti | §25 | 9-quinquagies-ter |
+| 9-quinquagies-quinquies | ✅ Tid | Nodi N1-N4 del giro 10a, come da proposta (2026-11-08) | §25.2, §25.5 | 9-quinquagies-quater |
+| 9-quinquagies-sexies | ✅ sessione DB | Giro 10a scritto e provato su scratch e dbdev (`20261109-58` … `-64`) | §25.6-25.9 | 9-quinquagies-quinquies |
+| 9-quinquagies-septies | ✅ Tid | Apply del giro 10a (`-58` … `-64`, `presidi.csv`) e pgTAP come app verdi (2026-11-08); il test 4 della convergenza lento | §25.11, §25.12 | 9-quinquagies-sexies |
+| 9-quinquagies-nonies | ✅ sessione DB | `20261109-65`: il controllo di `codice_interno` una volta per tabella; 9,2 s → 0,36 s | §25.12 | 9-quinquagies-septies |
+| 9-sexagies | **Tid** ⏭️ | Apply di `-65` e pgTAP della convergenza; N5; le scelte di §25.7; poi il commit del giro | §25.12, §25.8 | 9-quinquagies-nonies |
+| 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
@@ -137,8 +148,8 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** D12-bis (§24.6 punto 6: il `COALESCE` finale di `trgfn_tx_id_managed` fa vincere l'id di
-sessione anche non registrato). **Da committare:** nulla del giro 9 (committato il 2026-11-08). ⚠️ Nel working tree restano
+**Decisioni aperte di Tid:** N5 del giro 10a (§25.8); le scelte di §25.7, da guardare. **Da committare:** il giro 10a
+intero (changeSet, `presidi.csv`, pgTAP, doc, brief), dopo l'apply. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
 `messaggi_errore.csv`): non sono entrati nel commit. Nessuna sul giro 7-bis: il criterio dello scrittore (§20.8.2, punto 2) è confermato
 (Tid, 2026-11-07); le scelte del blocco a sono in §23.5, da guardare. **Da committare:** nulla del giro 7-bis: i blocchi a, b e c sono
@@ -579,7 +590,7 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | # | Che cosa | Dove | Legata a |
 | --- | --- | --- | --- |
 | ~~BE1~~ | ~~L'handler della chiusura per scadenza passa `p_classe = 'DOMINIO'`~~ — ritirata (Q5, 2026-11-05): il cancello è il CHECK nel DB | `backend/apps/core/services/coda_lavori/chiusura_scadenze_handler.py:51-60` | D38 (Q5) |
-| BE2 | I `gaps` scritti a mano per `codice_interno` si ritirano | `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
+| BE2 ⏭️ (giro 10a, dopo l'apply) | `dbops.vw_non_editable_fields` legge il lock **vivo** (§25.4): elenca ogni colonna che un trigger di lock blocca, `codice_interno` compreso, e non piu' le righe del registro che nessun trigger applica. ① I `gaps` che ripetono una colonna gia' bloccata dal DB si ritirano: al 2026-11-08 `("catalogo", "articoli"): ("codice",)` in `catalogo_service.py` e `codice` di `_EMITTENTE_NON_EDITABLE_GAPS` in `emittenti_fiscali_service.py` (tutte e due bloccate da `automation_lock_columns`); gli altri restano finche' il DB non li dichiara. Il controllo si fa colonna per colonna sulla vista dopo l'apply. ② Le colonne della vista cambiano: escono `exec_mode` e `note`, entra `trigger_name`. `LockColumnsRepository` legge solo `column_name`: nessuna rottura, ma il commento di testata del repository («alias semantico su `automation_lock_columns`») e quello di `non_editable_fields_helper.py` vanno riscritti. ③ Una colonna bloccata da due trigger compare due volte: `list_non_editable` restituisce una tupla, e un `DISTINCT` (o un `set`) evita il doppio | `backend/apps/catalogo/services/catalogo_service.py:126-140`, `backend/apps/anagrafiche/services/emittenti_fiscali_service.py:47-50`, `backend/apps/core/db/lock_columns_repository.py:8-50`, `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
 | BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 ✅ (2026-11-07) | **Decisione di Tid (2026-11-07): cade il tetto.** `list_lookup_codici` chiama `dbops.fn_get_lookup_codici` con `p_limit` NULL al posto di `LOOKUP_MAX_SOURCE_ROWS` (la costante e il commento «il limit interno è una guardia» si ritirano); la ricerca `ILIKE` e la paginazione con `sql_order_clause` e `fetch_paged_with_total` restano come sono. Da riscrivere la docstring («chiama con limit ampio…, obiettivo: evitare di modificare la funzione DB»). Non dipende dall'apply: lo spareggio DB del giro 7 non cambia il risultato per il backend, che riordina fuori | `backend/apps/core/db/dbops_repository.py:52-55, 378-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
@@ -3485,3 +3496,198 @@ committato (solo i file del giro; dei due CSV dei codici solo le righe di `E_PRO
 `W_TXID_BYPASS_PARAMETRO_ASSENTE`). Restano: BE12 e BE6 al team BE (§5), la decisione su D12-bis (§24.6 punto 6), la
 rigenerazione delle schede auto-generate di `dbops`, `maintenance` e `script` (§24.8 punto 4; dopo, i link delle due pagine
 nuove si aprono).
+
+## 25. Giro 10a — i lock di colonna, con D12-bis: preparazione (2026-11-08)
+
+Difetti del giro (§8): D25 (A), D28, D32, R2; BE2. In più **D12-bis**, deciso da Tid il 2026-11-08: strada **(a)** di
+§24.6 punto 6. Via al giro dato da Tid lo stesso giorno. **Numeri:** `20261109-58` … `-79`, concordati con le due
+sessioni DB aperte (l'altro cantiere parte dal `-80`; `-28` … `-30` restano suoi). Riletti liberi sull'albero e nei
+due `databasechangelog` alle 2026-11-08 sera.
+
+### 25.1 La riverifica (schede auto-generate di oggi, scratch per la struttura)
+
+| # | Esito | Sul corpo di oggi |
+| --- | --- | --- |
+| D12-bis | ✅ confermato | In fondo a `dbops.trgfn_tx_id_managed`, `COALESCE(NULLIF(current_setting('dbops.tx_id', true), '')::uuid, v_new_tx_id, uuidv7())`: l'id di sessione vince sempre, quindi il ramo «non registrato» scrive `W_TXID_NOT_REGISTERED` e poi assegna lo stesso l'id non registrato. Secondo effetto, non scritto in §24.6: il cast nudo di quella riga **solleva** su una GUC malformata, che il blocco più in alto aveva già intercettato e trasformato in NULL. Lo dice anche il pgTAP `dbops/test-tx-id-coerenza-non-registrato.sql` (commento sopra il test 5: «residua discrepanza con la guida») |
+| D25 | ✅ confermato, ⚠️ precisato | `dbops.vw_non_editable_fields` legge solo `automation_lock_columns` (`enabled = true`), senza `exec_mode`: il `codice_interno` che il runner blocca su ogni tabella dell'ambito non c'è. Quindi il form lo lascia acceso, e l'UPDATE lo rifiuta. Il resto del BE non scrive `codice_interno` fra i suoi `gaps`: compensa altre colonne (§25.4) |
+| D28 | ✅ confermato | Le righe 1-4 di `lock_columns_conditional` ricopiano i tre `EXISTS` di `catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva`. La divergenza del brief (`CURRENT_DATE`) l'ha già sanata `20261010-01`, ma le copie restano due. Le righe 6-13 chiamano già `catalogo.fn_articolo_usato`, cioè la forma giusta. `catalogo.articoli_componenti` non ha RLS (struttura, scratch) |
+| D32 | ✅ confermato | `fn_lock_columns_divergenze` parte da `JOIN regola`: una tabella che nessuna regola `LOCK_COLUMNS` attiva copre esce dal confronto, con i suoi lock. Due varianti dello stesso buco: una regola di un altro `exec_mode` fa uscire la tabella nello stesso modo, e una tabella fuori dall'ambito (`fn_resolve_scope`, `fn_table_in_scope`, `relkind = 'r'`) non la guarda nessuno. Il test 4 di `test-lock-columns-convergenza.sql` si dice «su tutto il database» |
+| R2 | ✅ confermato | `COALESCE(l.error_code, 'E_CODICE_NON_MODIFICABILE')`: `error_code` è NOT NULL senza DEFAULT dal `20261104-09` (D48) |
+
+### 25.2 I nodi (decisioni di Tid)
+
+* **N1 — D25: il form legge il lock VIVO, non quello atteso.** Il §2.2 proponeva «un risolutore unico del lock
+  atteso, letto da vista e runner». Riverificando non regge: il lock atteso dipende da `exec_mode` (il runner lo
+  calcola per `AUTO`, `CI` o `SCHEDULED`), e la vista non ha un modo da scegliere. Il form invece deve dire **ciò
+  che l'UPDATE rifiuta** (§12.2 punto 1: lo stesso predicato del guard), e il guard qui è il trigger stesso.
+  **Proposta:** un BB `dbops.vw_lock_columns_vivi`: una riga per tabella, trigger, colonna e codice, letta dalle
+  coppie di argomenti dei trigger su `script.trgfn_lock_columns`. Lo leggono `fn_lock_columns_divergenze` (il suo
+  CTE `vivo`) e `vw_non_editable_fields`, che diventa una proiezione del BB: `target_schema`, `target_table`,
+  `column_name`, `error_code`, più `trigger_name`. Escono `exec_mode` e `note`, che sono attributi del registro e
+  non del lock; il BE e `fn_non_editable_fields` leggono solo `column_name`. Se il vivo diverge dal registro, è il
+  test 4 a diventare rosso: non tocca alla vista ripararlo. È una **revoca** della correzione scritta in §2.2, non
+  di una decisione di Tid.
+* **N2 — D32: una tabella senza regola.** Q3 (Tid, 2026-11-05): una riga spenta o cancellata vuol dire trigger
+  tolto. **Proposta**, sulle tabelle dell'ambito:
+  ① regola attiva del modo della corsa → come oggi;
+  ② regola attiva **solo** di un altro modo → nessuna azione, come per le righe del registro di un altro modo
+     (altrimenti `AUTO` toglierebbe ciò che `CI` crea, a ogni giro);
+  ③ nessuna regola attiva (spenta, cancellata o mai scritta) → niente di atteso, e il lock vivo si toglie
+     (`TOGLIE`). `codice_interno` è la colonna implicita del framework e conta sempre come nominata, quindi si
+     toglie senza fermare il giro. Un'altra colonna che il registro non nomina ferma il giro con
+     `E_LOCK_COLUMNS`, come oggi: lì non si cancella in silenzio.
+  Fuori dall'ambito il runner non agisce: è il suo perimetro. Lo diventa invece un **presidio** nuovo nel pgTAP:
+  nessun trigger su `trgfn_lock_columns` su una tabella che l'ambito non copre.
+* **N3 — D28: i predicati della distinta.** **Proposta:** tre funzioni `catalogo.*`, `STABLE`, `SECURITY INVOKER`
+  (la distinta non ha RLS), sul modello di `catalogo.fn_articolo_usato`:
+  `fn_articolo_padre_di_distinta_in_vigore(uuid)` (check 1: `prodotto_id`, `validita @>` oggi),
+  `fn_articolo_componente_di_distinta_in_vigore(uuid)` (check 2: `componente_id`, `validita @>` oggi),
+  `fn_articolo_componente_di_distinta_da_oggi(uuid)` (check 3: `componente_id`, `validita &&` [oggi, ∞)).
+  «Oggi» è sempre `script.fn_data_operativa()`. Il guard le chiama tutte e tre. Le righe 1-4 diventano
+  `catalogo.fn_…($1::uuid)`. La riga 4 tiene la sua metà di stato («non è già composito»): nel guard è la
+  transizione OLD → NEW, nel form lo stato della riga di oggi.
+* **N4 — D28: come cambiano le righe 1-4.** `lock_columns_conditional` non ha un CSV. La sua sede sono cinque
+  changeSet SQL di `80_data` (`20260522-04`, `20261010-01`, `20261013-04`, `-46`, `-51`), e il §11.2 non ha un
+  secondo file da far divergere. Strade: (a) un changeSet nuovo di `80_data` con l'`UPDATE` di `condition_expr` e
+  di `descrizione` sulle quattro righe, chiavato su colonna e testo vecchio, come `20261010-01`; (b) la tabella
+  passa a un CSV con mirror, che vuol dire chiave naturale da trovare (l'UNIQUE comprende `condition_expr`), id di
+  identity e cinque changeSet da ri-ancorare. **Proposta: (a).** La (b) è un giro di catalogo, non di questo
+  difetto.
+
+Senza nodo: **D12-bis** (a): il `COALESCE` finale diventa `COALESCE(v_new_tx_id, uuidv7())`, e il test 5 del pgTAP
+asserisce la sentinella. **R2:** il `COALESCE` morto esce. I COMMENT degli oggetti riaperti si riscrivono al
+presente, senza brief né marcatori (§5d): `fn_lock_columns_divergenze`, `fn_run_automations_lock_columns` (se il suo
+testo cambia), `vw_non_editable_fields`, `fn_non_editable_fields`, il guard della distinta.
+
+### 25.3 I changeSet previsti (`20261109-58` … `-79`)
+
+| # | Fase | Che cosa |
+| --- | --- | --- |
+| `-58` | `20_code/dbops` | `trgfn_tx_id_managed` (D12-bis) |
+| `-59` | `20_code/dbops` | `vw_lock_columns_vivi` (BB, N1) |
+| `-60` | `20_code/dbops` | `fn_lock_columns_divergenze` (D32 con N2, R2, il CTE `vivo` dal BB) |
+| `-61` | `20_code/dbops` | `vw_non_editable_fields` dal BB (D25, N1): DROP e CREATE perché le colonne cambiano, poi i GRANT; COMMENT di `fn_non_editable_fields` |
+| `-62` | `20_code/catalogo` | i tre predicati (N3) |
+| `-63` | `20_code/catalogo` | `trgfn_articoli_guard_flags_struttura_bom_attiva` dai predicati |
+| `-64` | `80_data` | righe 1-4 di `lock_columns_conditional` (N4) |
+
+pgTAP: `dbops/test-tx-id-coerenza-non-registrato` (test 5 più uno sulla sentinella);
+`dbops/test-lock-columns-convergenza` (regola spenta → `TOGLIE` senza fermarsi su `codice_interno`; regola spenta e
+colonna ignota → si ferma; regola di un altro modo → nessuna azione; il presidio fuori ambito);
+`dbops/test-non-editable-fields-dal-lock-vivo-v1`, nuovo (`codice_interno` bloccato e senza riga nel registro →
+elencato; colonna con la riga spenta → non elencata; `fn_non_editable_fields` lo stesso);
+`catalogo/test-distinta-predicati-guard-e-form-v1`, nuovo (per ciascuno dei tre casi guard e form rispondono
+uguale). Si rilanciano `dbops/test-fn-non-editable-fields-conditional`,
+`catalogo/test-distinta-un-livello-e-onere-natura-v1`, `catalogo/test-articolo-usato-struttura-v1` e
+`vendite/test-righe-articolo-ammesso-v1`.
+
+### 25.4 Ricaduta BE (BE2, da scrivere in §5 al via sui nodi)
+
+(Riscritta in §5, riga BE2, il 2026-11-08 col giro scritto.) Dopo l'apply la vista elenca **ogni colonna che un
+trigger di lock blocca**, `codice_interno` compreso. I `gaps` del
+BE che ripetono una colonna già bloccata dal DB si ritirano. Al 2026-11-08 sono `catalogo.articoli.codice` in
+`catalogo_service.py` (bloccata da `automation_lock_columns`) e `codice` di `emittenti_fiscali` in
+`emittenti_fiscali_service.py` (idem). Gli altri `gaps` (`uom_id` delle UdM operative, le dimensioni delle matrici)
+non sono lock di colonna: restano finché il DB non li dichiara. La verifica la fa il team BE, colonna per colonna,
+sulla vista dopo l'apply.
+
+### 25.5 Il via sui nodi (Tid, 2026-11-08)
+
+«ok inizia»: N1-N4 come da proposta, numeri `20261109-58` … `-79`. Riletti liberi subito prima di scrivere.
+
+### 25.6 Che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261109-58` | `trgfn_tx_id_managed` (D12-bis): `NEW.tx_id := COALESCE(v_new_tx_id, uuidv7())`; COMMENT al presente |
+| `20_code/dbops/20261109-59` | `vw_lock_columns_vivi` (N1), `security_invoker`, COMMENT di vista e colonne, `GRANT SELECT` all'app |
+| `20_code/dbops/20261109-60` | `fn_lock_columns_divergenze` (D32 con N2, R2): le tre specie di tabella, il vivo dalla vista, `codice_interno` mai persa; COMMENT al presente |
+| `20_code/dbops/20261109-61` | `vw_non_editable_fields` dal lock vivo (D25, N1): DROP e CREATE, `security_invoker`, GRANT; COMMENT di `fn_non_editable_fields` |
+| `20_code/catalogo/20261109-62` | i tre predicati della distinta (N3), `BEGIN ATOMIC`, ognuno nel suo change; i COMMENT nell'ultimo |
+| `20_code/catalogo/20261109-63` | `trgfn_articoli_guard_flags_struttura_bom_attiva` dai predicati; COMMENT al presente |
+| `80_data/changelog/20261109-64` | le righe 1-4 di `lock_columns_conditional` dai predicati (N4 a), chiavate su colonna e testo di prima; si ferma se le righe aggiornate non sono quattro |
+| `80_data/sql/dbops/presidi.csv` | la riga di `dbops.vw_lock_columns_vivi` (INVENTARIO) e la nota di `dbops.vw_non_editable_fields` riscritta |
+
+`-65` l'ha preso la cura di §25.12; `-66` … `-79` restano liberi, di questo cantiere.
+
+pgTAP: `dbops/test-tx-id-coerenza-non-registrato` (11 → 12: il 12 vuole la sentinella); `dbops/test-lock-columns-convergenza`
+(22 → 29: il 23 è il presidio fuori ambito; 24 regola di un altro modo; 25-26 lock disabilitato; 27-29 regola spenta);
+nuovi `dbops/test-non-editable-fields-dal-lock-vivo-v1` (9) e `catalogo/test-distinta-predicati-guard-e-form-v1` (7).
+
+### 25.7 Le scelte dentro il giro (da guardare, Tid)
+
+1. **Il predicato del check 3 restituisce il codice del primo padre, non un booleano** (`fn_articolo_primo_padre_da_oggi`,
+   NULL se non ce n'è). Il guard il codice lo mette nel messaggio: con un booleano, come in N3, il filtro sarebbe
+   rimasto scritto due volte. La regola del form lo legge come `IS NOT NULL`.
+2. **Un lock disabilitato (`tgenabled` D o R) non è allineato** e il confronto dà `RIGENERA`; la vista del form non
+   ne elenca le colonne. È la stessa domanda di D32 («il lock vivo blocca davvero?»), sullo stesso oggetto.
+3. **`vw_lock_columns_vivi` copre tutti gli schemi e i tipi di tabella**; l'ambito lo applica chi legge. Così il
+   presidio fuori ambito (test 23) legge la stessa sede. Le tabelle partizionate (`relkind = 'p'`) restano fuori
+   dal confronto, come prima: un lock su una tabella partizionata cade nel presidio fuori ambito.
+4. **`vw_non_editable_fields` e la vista nuova sono `security_invoker`**, come `vw_codici_errore_argomenti_trigger`:
+   leggono il catalogo di sistema, che è lo stesso per tutti.
+
+### 25.8 Il nodo nuovo: N5 — una riga del registro su una tabella fuori ambito (da decidere, Tid)
+
+Trovato confrontando la vista del form prima e dopo, su dbdev (2026-11-08, dentro una transazione annullata): entrano 75
+righe `codice_interno` (è D25), ed **esce** `dbops.domini_task.codice`. La riga c'è in `automation_lock_columns.csv`
+(riga 26, `AUTO`, attiva, «codice immutabile, lock esplicito»), ma `dbops.fn_table_in_scope('dbops', 'domini_task')` è
+falso: il runner non ci arriva, nessun trigger la blocca, e l'UPDATE passa. La vista di prima diceva «bloccata»
+(il falso); quella nuova dice il vero. Sul modello è una **promessa senza esecutore**: una riga del registro che nessun
+giro può applicare. Strade: (a) la tabella entra nell'ambito per i lock (una regola d'ambito per `dbops.domini_task`,
+o l'esclusione che la toglie si restringe); (b) la riga esce dal registro, e il codice resta modificabile; (c) un
+presidio nuovo rende rossa ogni riga attiva di `automation_lock_columns` su una tabella fuori ambito, e poi (a) o (b).
+**Proposta: (c) con (a)**: la riga dice una decisione (il codice è una chiave di sistema), e il presidio impedisce che
+il caso si ripeta in silenzio. Non è nel giro scritto: lo apre la decisione.
+
+### 25.9 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase, `BEGIN … ROLLBACK`)
+
+* L'SQL estratto passa su scratch e dbdev; andata e ritorno (changes, poi rollback all'indietro) passa sullo scratch.
+* Ogni `- sql:` passato anche dal driver di Liquibase (`postgresql-42.7.10.jar`, un `Statement.execute` per change, in
+  transazione annullata): i tre `BEGIN ATOMIC` di `-62` compresi.
+* L'upsert di **tutto** `presidi.csv` rifatto in transazione (59 righe): il mirror è risvegliabile.
+* pgTAP, con l'SQL del giro inserito dopo la riga `BEGIN;`: sullo scratch verdi i quattro del giro (12, 29, 9, 7) e
+  `dbops/test-fn-non-editable-fields-conditional` (4), `catalogo/test-distinta-un-livello-e-onere-natura-v1` (14),
+  `vendite/test-righe-articolo-ammesso-v1` (18), `dbops/test-catalogo-presidi-v1` (11), `catalogo/test-articolo-colonne-struttura-v1` (12); su dbdev verdi i quattro del
+  giro, `test-catalogo-presidi-v1` e `test-fn-non-editable-fields-conditional`.
+  `catalogo/test-articolo-usato-struttura-v1`: 16 su 17, il 17 è dichiarato nel file «rosso da owner, verde come app»,
+  ed è rosso uguale senza il giro.
+* Guardrail Liquibase (`runOnChange`, preCondition sul seed, DDL su trigger di automazione, GRANT a ruoli batch, v1
+  congelato, letterali, timestamp, preambolo pgTAP) verdi; pre-commit verde sui file del giro.
+* Come app: la vista nuova si prova solo dopo l'apply (la creazione vuole l'owner).
+
+### 25.10 Doc (2026-11-08)
+
+Riscritte: `dbops/manual/vw_non_editable_fields.md`, `fn_lock_columns_divergenze.md`, `fn_non_editable_fields.md`,
+`lock_columns_conditional.md` (la tabella regola → predicato → guard), `trgfn_tx_id_managed.md`;
+`catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva.md`; `guide/automazione-db.md` §4.1 (regola spenta,
+il form legge il vivo); `guide/tx_id_implementation_guide.md` Fasi 3 e 5. Nuove: `dbops/manual/vw_lock_columns_vivi.md`,
+`catalogo/manual/fn_articolo_padre_di_distinta_in_vigore.md`, `…_componente_di_distinta_in_vigore.md`,
+`fn_articolo_primo_padre_da_oggi.md`. Le schede auto-generate si rigenerano dopo l'apply (i link alle pagine nuove si
+aprono allora).
+
+### 25.11 Per Tid
+
+1. **Apply** di `20261109-58` … `-64` e di `presidi.csv` su dbdev e scratch.
+2. **pgTAP come app**: `dbops/test-tx-id-coerenza-non-registrato`, `dbops/test-lock-columns-convergenza`,
+   `dbops/test-non-editable-fields-dal-lock-vivo-v1`, `catalogo/test-distinta-predicati-guard-e-form-v1`,
+   `dbops/test-fn-non-editable-fields-conditional`, `dbops/test-catalogo-presidi-v1`,
+   `catalogo/test-distinta-un-livello-e-onere-natura-v1`, `catalogo/test-articolo-usato-struttura-v1`,
+   `vendite/test-righe-articolo-ammesso-v1`, `catalogo/test-articolo-colonne-struttura-v1`.
+3. **N5** (§25.8).
+4. Le scelte di §25.7.
+
+### 25.12 Dopo l'apply: il presidio su tutto il database è lento (Tid, 2026-11-08)
+
+Tid ha applicato `20261109-58` … `-64` e `presidi.csv` su dbdev e scratch: pgTAP verdi. Il test 4 di
+`dbops/test-lock-columns-convergenza` però è **lento**: misurato sullo scratch, `fn_lock_columns_divergenze('CI', NULL)`
+passa da circa 80 ms (corpo di prima, ricreato in transazione) a 9,7 s. La causa è nel `-60`: il planner stima **una**
+riga per il CTE `regola` e lo unisce a `tab` con un nested loop, e il filtro `dbops.fn_col_exists(…, 'codice_interno')`
+si rivaluta per ogni coppia (tabelle × tabelle). Prima lo stesso filtro stava in un CTE letto una volta sola.
+
+Cura, `20_code/dbops/20261109-65`: la colonna `ha_ci` si calcola in `tab` (`MATERIALIZED`), una volta per tabella, e il
+JOIN confronta un boolean. Comportamento invariato; COMMENT invariato; rollback = corpo di `-60`. Prova (scratch e
+dbdev, corpo estratto in transazione): la funzione torna a 75-135 ms, andata e ritorno passano, il pgTAP intero passa
+da 9,2 s a 0,36 s, 29 su 29 verdi su tutti e due. Anche il runner ne beneficia: chiama la funzione due volte per giro.
+
+**Per Tid:** apply di `-65`, poi `dbops/test-lock-columns-convergenza` come app.
