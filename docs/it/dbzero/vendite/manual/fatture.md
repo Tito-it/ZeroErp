@@ -7,7 +7,7 @@
 > Approfondimento tabelle:
 >
 > * [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione) — i criteri di numerazione
-> * [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) — le righe, che portano la provenienza
+> * [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) — le righe, ognuna con le attività che aggrega
 > * [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva) — i riepiloghi IVA
 > * [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale) — il vocabolario degli stati
 > * [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale) — il canale
@@ -128,8 +128,10 @@ Colonna `canale_origine` di tipo `config.canale_origine` (ENUM
 La testata ha le colonne del modello della provenienza (`sorgente_tipo_id` con una fra
 `sorgente_id` / `sorgente_uid`, forma tenuta da `chk_fatture_sorgente_forma`, guard unico
 `script.trgfn_guard_sorgente`), ma **di norma sono vuote**: una fattura aggrega le attività di
-più documenti, e la provenienza sta sulle **righe** (`vendite.fatture_righe`, e il legame delle
-attività fatturabili con la riga che le fattura, `vendite.attivita_fatturabili.fattura_riga_id`).
+più documenti, e l'origine si legge dalla catena delle sue **righe**: le attività fatturabili
+che ogni riga aggrega (`vendite.attivita_fatturabili.fattura_riga_id`) e la riga di commessa di
+ciascuna. Nemmeno la riga di fattura ha una provenienza propria; la catena la legge
+`vendite.fn_fattura_origini`.
 Non è una chiave d'idempotenza: non c'è un vincolo unico sulla provenienza della testata.
 
 ---

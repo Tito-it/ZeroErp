@@ -87,11 +87,14 @@ semina niente, come nella vista.
 ### Gli archi leggono la provenienza del modello
 
 * **Gli archi fra testate** — A (preventivo → ordine), C (offerta → contratto), D (offerta →
-  ordine), H (ordine → bolla), R (bolla → reso) — leggono la provenienza di testata del documento
-  a valle con la regola d'incontro del modello: il documento a monte combacia per `id` con
-  `sorgente_id` o per `uid` con `sorgente_uid`, in tutti e due i modi, sugli indici della
-  provenienza (`ix_ordini_v_sorgente_uid` / `_id`, `ix_contratti_sorgente_uid` / `_id`,
-  `ix_ddt_v_sorgente` / `_id`, `ix_resi_sorgente` / `_id`).
+  ordine), H (ordine → bolla) — leggono la provenienza di testata del documento a valle con la
+  regola d'incontro del modello: il documento a monte combacia per `id` con `sorgente_id` o per
+  `uid` con `sorgente_uid`, in tutti e due i modi, sugli indici della provenienza
+  (`ix_ordini_v_sorgente_uid` / `_id`, `ix_contratti_sorgente_uid` / `_id`, `ix_ddt_v_sorgente` /
+  `_id`).
+* **L'arco R** (bolla → reso) legge la provenienza del reso per `sorgente_id`, in tutti e due i
+  modi, sull'indice `ix_resi_sorgente_id`: un reso nasce solo da una bolla, e la bolla ha chiave
+  `id`.
 * **Gli archi verso la commessa** — B, E, F, U, dalle sorgenti della commessa — trovano la chiave
   del link nella colonna del suo tipo (`commesse_sorgenti.sorgente_uid` per il preventivo,
   `sorgente_id` per ordine, contratto e DDT): il join verso il documento confronta colonne dello
@@ -110,6 +113,9 @@ semina niente, come nella vista.
   valle, al posto delle colonne parallele `documento_origine_*` e `offerta_id` e della chiave
   testuale `sorgente_uid`; i rami verso la commessa leggono le colonne tipizzate di
   `commesse_sorgenti`, senza conversioni (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — l'arco R cerca la bolla per `sorgente_id` soltanto: la provenienza del reso è solo
+  la bolla, e l'indice `ix_resi_sorgente` (su `sorgente_uid`) si ritira
+  (brief-db-sorgente-documento-e-riga, G-3).
 
 ---
 

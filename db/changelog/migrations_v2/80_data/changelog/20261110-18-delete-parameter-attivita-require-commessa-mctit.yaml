@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: attivita_fatturabili_require_commessa (id 5)
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-1 (Tid, 2026-11-08).
+#
+#   Accendeva il guard della commessa dell'attivita' fatturabile. Dal
+#   20_code/vendite/20261110-17 il guard controlla sempre e non legge piu' il
+#   parametro: nessun altro lettore (DB, BE, FE). La riga e' tolta anche da
+#   parameters.csv: il mirror (loadUpdateData) non cancella, quindi il DELETE e'
+#   l'unica eccezione ammessa (linee-guida-sql §11.2). Gli override vanno con lei
+#   (il parametro non ne ammetteva: ammette_override = false).
+#   ⚠️ Ordine: 20_code gira prima di 80_data, quindi il guard nuovo e' gia' al suo
+#   posto quando la riga sparisce; col guard vecchio, senza la riga, il controllo
+#   si sarebbe spento.
+#   Su un database da zero la riga non nasce (il CSV non l'ha piu'): il DELETE non
+#   trova niente.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-18-delete-parameter-attivita-require-commessa-mctit.yaml
+  - changeSet:
+      id: 20261110-18-delete-parameter-attivita-require-commessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirato il parametro attivita_fatturabili_require_commessa (e i suoi override): il guard della
+        commessa dell'attivita' fatturabile controlla sempre (20261110-17). Riga tolta anche da
+        parameters.csv. brief-db-sorgente-documento-e-riga §7.3, G-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.parameter_overrides o
+               USING config.parameters p
+               WHERE p.id = o.parameter_id
+                 AND p.code = 'attivita_fatturabili_require_commessa';
+              DELETE FROM config.parameters
+               WHERE code = 'attivita_fatturabili_require_commessa';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La riga come stava nel CSV (va rimessa anche in parameters.csv). Serve solo
+              -- insieme al rollback del 20261110-17: il guard di oggi non la legge.
+              INSERT INTO config.parameters (id, code, default_value, description, storicizza, ammette_override, tipo_valore)
+              VALUES (5, 'attivita_fatturabili_require_commessa', 'true',
+                      'Se true blocca insert/update su attivita_fatturabili senza link commessa coerente. Vale per tutti (ammette_override = false): e'' una regola di coerenza dei dati di fatturazione, non una preferenza di chi lavora.',
+                      false, false, 'BOOLEANO')
+              ON CONFLICT (id) DO NOTHING;

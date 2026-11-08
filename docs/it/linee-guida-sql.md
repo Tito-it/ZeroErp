@@ -570,6 +570,8 @@ quelle del modello comune, e il meccanismo intero sta nella guida
 | La tabella monta il guard unico `script.trgfn_guard_sorgente`, col livello minimo e l'azione in cancellazione (`BLOCCA` / `CANCELLA`) | forma, esistenza, riga del documento: un controllo, in un posto |
 | L'unicità solo dove il dominio ha una regola, sulla chiave giusta (`NULLS NOT DISTINCT`, parziale sul tipo) | un vincolo «una riga per sorgente» generico vieta casi che il modello ammette |
 | ⛔ Il lato «in uscita» non si scrive a mano | lo monta la convergenza dal catalogo, su ogni tabella che `config.sorgenti` dichiara come documento, righe o dettaglio |
+| Se il dominio ammette **un solo tipo** d'origine, lo dice: il `CHECK` di forma vuole la sola chiave di quel tipo, e un guard fa valere il tipo per codice (il reso nasce solo dalla bolla: `vendite.trgfn_resi_guard_cliente_ddt`) | un tipo che il dominio non ammette passerebbe per buono, e i controlli che confrontano col documento d'origine uscirebbero senza controllare |
+| ⛔ Una riga che **aggrega** più origini non ha provenienza propria (la riga di fattura): l'origine si legge dai suoi dettagli | una colonna sola non può dire «vengo da tre documenti»; la copia sarebbe sempre vuota o ripetuta |
 
 Il presidio è in CI (`dbops/test-sorgenti-struttura-v1`): una tabella con `sorgente_id` o
 `sorgente_uid` che non monta il guard unico è rossa, salvo le esenzioni dichiarate col loro

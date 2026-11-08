@@ -48,10 +48,11 @@ La vista **lista e dettaglio** dei resi per backend e frontend, gemella di `vw_d
 
 Il reso nasce sempre da una bolla, e la dichiara con la provenienza del modello: la vista espone
 `sorgente_tipo_id`, `sorgente_codice_interno`, `sorgente_id` e `sorgente_uid` così come stanno sulla
-testata. La bolla, tipo `DDT_VENDITA` a chiave `id`, sta in `sorgente_id`; la vista ne espone
-`ddt_origine_id` e `ddt_origine_numero` con un join **qualificato sul tipo** e la regola d'incontro
-(id o uid): se un giorno un reso dichiarasse un altro tipo (una fattura), `ddt_origine_*` resterebbe
-vuoto invece di nominare una bolla che non c'entra.
+testata. La bolla, tipo `DDT_VENDITA` a chiave `id`, sta in `sorgente_id`, e `sorgente_uid` resta
+vuota; la vista ne espone `ddt_origine_id` e `ddt_origine_numero` con un join **qualificato sul
+tipo** e per `sorgente_id`. Un reso con un altro tipo non si scrive (lo rifiuta
+[vendite.trgfn_resi_guard_cliente_ddt](/dbzero/vendite/funzioni/trgfn_resi_guard_cliente_ddt)); il
+join qualificato fa sì che `ddt_origine_*` nomini solo una bolla.
 
 Il reso aggancia la **bolla**, non l'ordine: l'ordine si raggiunge dalla bolla.
 
@@ -94,6 +95,8 @@ valore grezzo.
   `DDT_VENDITA` (brief-db-sorgente-documento-e-riga).
 * 2026-11-08 — la pratica si legge con le due chiavi del reso, sulle colonne tipizzate di
   `pratiche_sorgenti`.
+* 2026-11-08 — la bolla d'origine si cerca per `sorgente_id` soltanto: la provenienza del reso è
+  solo la bolla (brief-db-sorgente-documento-e-riga, G-3).
 
 ---
 

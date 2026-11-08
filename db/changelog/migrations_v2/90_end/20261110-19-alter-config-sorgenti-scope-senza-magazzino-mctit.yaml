@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO SCOPE MAGAZZINO ESCE DAL CATALOGO DELLE SORGENTI
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-2 (Tid, 2026-11-08: «a»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   config.sorgenti.scope dice a quale MECCANISMO serve un tipo. MAGAZZINO l'aveva solo
+#   EVENTO_ASSET, e nessun meccanismo lo legge (DB, BE, FE: verificato il 2026-11-08);
+#   inventario, rettifica e trasferimento, che muovono il magazzino, erano gia' CATALOGO.
+#   Un valore che nessuno legge non decide niente: EVENTO_ASSET diventa CATALOGO
+#   (sorgenti.csv) e MAGAZZINO esce da chk_sorgenti_scope, con lo stesso nome del vincolo.
+#
+# ── ⚠️ PERCHE' STA IN 90_end ────────────────────────────────────────
+#   Il valore nuovo di EVENTO_ASSET arriva da sorgenti.csv (il mirror in 80_data). In
+#   00_schema il CHECK fermerebbe dbdev, che ha ancora MAGAZZINO; da zero la riga nasce dal
+#   mirror gia' CATALOGO. Stessa sede di 20261109-22. scope non e' sotto lucchetto
+#   (trg_sorgenti_a10_lock_columns_upd blocca codice_interno e categoria): il mirror la
+#   aggiorna da solo, senza correzioni a mano. La preCondition si ferma se una riga ha
+#   ancora MAGAZZINO, cioe' se il mirror non e' passato.
+#   Il COMMENT di scope si riscrive qui, perche' descrive i valori del vincolo.
+#   Rollback: il CHECK e il COMMENT di prima (il valore di EVENTO_ASSET torna dal CSV).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261110-19-alter-config-sorgenti-scope-senza-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20261110-19-alter-config-sorgenti-scope-senza-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.sorgenti: MAGAZZINO esce da chk_sorgenti_scope (EVENTO_ASSET e' CATALOGO dal CSV);
+        COMMENT di scope al presente. brief-db-sorgente-documento-e-riga §7.3, G-2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM config.sorgenti WHERE scope = 'MAGAZZINO';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti DROP CONSTRAINT IF EXISTS chk_sorgenti_scope;
+              ALTER TABLE config.sorgenti
+                ADD CONSTRAINT chk_sorgenti_scope CHECK (scope::text = ANY (ARRAY[
+                  'PUSH_COMMESSA', 'PIPELINE_MARKER', 'POST_INVOICE', 'DIRECT_ENTRY',
+                  'PUSH_CONTRATTO', 'REVERSE_FLOW', 'CATALOGO']::text[]));
+
+              COMMENT ON COLUMN config.sorgenti.scope IS
+                'Il meccanismo a cui serve il tipo; i valori ammessi li dice chk_sorgenti_scope. PUSH_COMMESSA: un documento che si spinge in commessa (preventivo, contratto, ordine, bolla, consumi); una riga di commessa che viene da un tipo di questo scope aggancia il documento alla commessa (vendite.fn_upsert_commessa_attivita, con vendite.fn_link_commessa_sorgente), ed e'' lo scope con cui il backend elenca i tipi che si mandano in commessa. PIPELINE_MARKER: la commessa, la radice della pipeline delle attivita'' fatturabili. POST_INVOICE: la fattura, a valle della pipeline. DIRECT_ENTRY: l''inserimento diretto, ammesso dal vincolo e senza un meccanismo che lo legga. PUSH_CONTRATTO: un documento che genera un contratto in bozza con un push uno a uno (l''offerta commerciale). REVERSE_FLOW: il flusso inverso, merce o valore che torna indietro (il reso di vendita). CATALOGO: un tipo che sta a catalogo per il suo nome (note, stato, lock, indirizzi, numerazione) e che nessun meccanismo legge per scope (ordine e DDT d''acquisto, inventario, rettifica, trasferimento, evento d''asset, distinta d''incasso, email). Un tipo cambia scope quando entra in un meccanismo che lo legge. Il valore di ogni tipo sta nel CSV 80_data/sql/config/sorgenti.csv.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti DROP CONSTRAINT IF EXISTS chk_sorgenti_scope;
+              ALTER TABLE config.sorgenti
+                ADD CONSTRAINT chk_sorgenti_scope CHECK (scope::text = ANY (ARRAY[
+                  'PUSH_COMMESSA', 'PIPELINE_MARKER', 'POST_INVOICE', 'DIRECT_ENTRY',
+                  'PUSH_CONTRATTO', 'REVERSE_FLOW', 'MAGAZZINO', 'CATALOGO']::text[]));

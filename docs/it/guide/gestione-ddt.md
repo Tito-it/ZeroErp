@@ -572,6 +572,9 @@ Come funziona, dal punto di vista del DDT:
 
 * dal drawer del DDT consegnato, il pannello **"Crea reso"** apre un reso legato
   a quel DDT (righe con quantità ≤ consegnato, guard DB);
+* il reso nasce **solo** da una bolla di vendita: la sua provenienza è sempre il
+  DDT da cui torna la merce, e un reso che dichiarasse un altro documento d'origine
+  è rifiutato dal database (`E_RESO_SORGENTE_NON_DDT`);
 * ogni riga di reso ha un **tipo** (`config.tipi_reso`): **a credito**
   (`RESO_A_CREDITO`) o **per ri-consegna** (`RESO_PER_RICONSEGNA`, flag
   `riapre_residuo`);
@@ -659,6 +662,7 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | `E_DDT_CLIENTE_OBBLIGATORIO`         | Emissione senza cliente con una causale che manda merce a un cliente (guard DB)                              |
 | `E_DOC_CLIENTE_DIVERSO_DA_BA`        | Destinatario o utility diversi da quelli del cliente scelto (guard DB)                                       |
 | `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE`  | Cliente diverso da quello dell'ordine o del reso di origine (guard DB)                                       |
+| `E_RESO_SORGENTE_NON_DDT`            | Un reso che dichiara come origine un documento diverso dalla bolla di vendita (guard DB)                     |
 | `E_DELETE_DOC_NON_BOZZA`             | Eliminazione di un DDT uscito dalla bozza: si annulla (guard DB) |
 | `E_DELETE_DOC_CON_RIGHE`             | Eliminazione di una bozza con righe attive: si tolgono le righe o si annulla (guard DB) |
 | `E_DDT_NESSUNA_RIGA`                 | Push senza righe eleggibili                                                                                  |

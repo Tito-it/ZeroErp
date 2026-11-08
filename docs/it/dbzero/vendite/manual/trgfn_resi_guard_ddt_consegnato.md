@@ -25,10 +25,12 @@
 ### Le regole
 
 * **Si applica solo a una bolla di vendita**: se il reso dichiara un tipo diverso da
-  `DDT_VENDITA` (un reso da fattura, domani), il guard tace.
+  `DDT_VENDITA`, il guard tace; quel reso lo rifiuta
+  [vendite.trgfn_resi_guard_cliente_ddt](/dbzero/vendite/funzioni/trgfn_resi_guard_cliente_ddt)
+  (`E_RESO_SORGENTE_NON_DDT`), perché un reso nasce solo da una bolla.
 * **La bolla si trova dalla provenienza del reso**: il tipo `DDT_VENDITA` è a chiave `id`, e il
-  reso porta l'id della bolla in `sorgente_id`. Il guard legge la bolla con la regola d'incontro
-  (id o uid), senza leggere il `key_selector`.
+  reso porta l'id della bolla in `sorgente_id`. Il guard cerca la bolla lì; `sorgente_uid` resta
+  vuota. Il dettaglio dei due errori porta `sorgente_id`.
 * **Una bolla di trasferimento fra depositi non genera un reso**
   (`E_RESO_DA_DDT_TRASFERIMENTO`): la merce è rimasta nostra, entrata nel magazzino di arrivo alla
   consegna; un reso la farebbe rientrare una seconda volta, con un accredito verso un cliente che
@@ -51,6 +53,8 @@
 * 2026-09-28 — rifiuta il reso da una bolla di trasferimento (brief-db-magazzino-lotto-3-scarico-da-ddt).
 * 2026-11-06 — la bolla si legge dalla chiave del modello, `sorgente_id`; prima dal suo uid in
   `sorgente_uid` (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — la bolla si cerca per `sorgente_id` soltanto, e `sorgente_uid` esce dal dettaglio
+  degli errori (brief-db-sorgente-documento-e-riga, G-3).
 
 ---
 

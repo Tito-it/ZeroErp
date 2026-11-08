@@ -6,17 +6,21 @@
 -- Indice test (1..13):
 -- 1) funzione trgfn_attivita_fatturabili_guard_commessa presente
 -- 2) trigger guard_commessa presente su attivita_fatturabili
--- 3) parametro attivita_fatturabili_require_commessa presente
+-- 3) il parametro attivita_fatturabili_require_commessa e' ritirato: il guard controlla sempre
 -- 4) riferimenti minimi disponibili
 -- 5) commessa A creata
 -- 6) commessa_attivita A creata
 -- 7) emit da commessa A inserisce attivita_fatturabile
--- 8) guard OFF: update con pair coerente consentito
--- 9) guard ON: blocca link commessa null (vincolo NOT NULL)
--- 10) guard ON: blocca pair incompleta (vincolo NOT NULL)
--- 11) guard ON: blocca mismatch tra commessa_id e commessa_attivita_id
--- 12) guard ON: pair coerente accettata
--- 13) guard ON: emit da commessa resta operativo (no regressione pipeline)
+-- 8) update con coppia coerente consentito
+-- 9) blocca link commessa null: col_not_null su commessa_id (e' l'ancora RLS:
+--    per UPDATE uscirebbe 42501 dal WITH CHECK prima del NOT NULL)
+-- 10) blocca coppia incompleta: commessa_attivita_id NULL -> 23502 (l'ancora
+--     c'e', la policy passa e il NOT NULL si raggiunge)
+-- 11) blocca mismatch tra commessa_id e commessa_attivita_id (il guard, P0001)
+-- 12) coppia coerente accettata
+-- 13) emit da commessa resta operativo (no regressione pipeline)
+-- Dal 2026-11-08 (20261110-17, -18) il parametro che accendeva il guard e' ritirato:
+-- il guard controlla sempre la coerenza, i NULL li rifiuta il vincolo.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -63,12 +67,12 @@ SELECT ok(
 );
 
 SELECT ok(
-  EXISTS (
+  NOT EXISTS (
     SELECT 1
     FROM config.parameters p
     WHERE p.code = 'attivita_fatturabili_require_commessa'
   ),
-  'parametro attivita_fatturabili_require_commessa presente'
+  'il parametro attivita_fatturabili_require_commessa e'' ritirato: il guard controlla sempre'
 );
 
 -- rev 2026-10-27 (lotto 4 di D7): il cliente e l'articolo si COSTRUISCONO
@@ -222,10 +226,6 @@ SELECT ok(
   'emit da commessa A inserisce attivita_fatturabile'
 );
 
-UPDATE config.parameters
-SET default_value = 'false'
-WHERE code = 'attivita_fatturabili_require_commessa';
-
 UPDATE vendite.attivita_fatturabili
 SET commessa_id = (SELECT commessa_id FROM tmp_commessa_a),
     commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_commessa_att_a)
@@ -239,23 +239,18 @@ SELECT ok(
       AND a.commessa_id = (SELECT commessa_id FROM tmp_commessa_a)
       AND a.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_commessa_att_a)
   ),
-  'guard OFF: update con pair coerente consentito'
+  'update con coppia coerente consentito'
 );
 
-UPDATE config.parameters
-SET default_value = 'true'
-WHERE code = 'attivita_fatturabili_require_commessa';
-
-SELECT throws_ok(
-  $$
-    UPDATE vendite.attivita_fatturabili
-    SET commessa_id = NULL,
-        commessa_attivita_id = NULL
-    WHERE id = (SELECT id FROM tmp_af_a);
-  $$,
-  'P0001',
-  NULL,
-  'guard ON: blocca link commessa null (vincolo NOT NULL)'
+-- ⛔ Asserzione STRUTTURALE, non per UPDATE: commessa_id e' la colonna-ancora
+--   della policy RLS (perimetro emittente risalendo alla commessa). Sotto il
+--   runner applicativo PostgreSQL valuta il WITH CHECK prima del NOT NULL:
+--   con commessa_id = NULL la riga esce 42501, e il vincolo non si raggiunge
+--   mai (come owner, invece, darebbe 23502: verde in sessione, rosso col
+--   runner). Il 42501 non si pinna: sarebbe il sintomo, non il vincolo.
+SELECT col_not_null(
+  'vendite', 'attivita_fatturabili', 'commessa_id',
+  'blocca link commessa null: commessa_id e'' NOT NULL (struttura: e'' l''ancora RLS)'
 );
 
 SELECT throws_ok(
@@ -265,9 +260,9 @@ SELECT throws_ok(
         commessa_attivita_id = NULL
     WHERE id = (SELECT id FROM tmp_af_a);
   $$,
-  'P0001',
+  '23502',
   NULL,
-  'guard ON: blocca pair incompleta (vincolo NOT NULL)'
+  'blocca coppia incompleta: lo rifiuta il NOT NULL'
 );
 
 CREATE TEMP TABLE tmp_commessa_b AS
@@ -345,7 +340,7 @@ SELECT throws_ok(
   $$,
   'P0001',
   NULL,
-  'guard ON: blocca mismatch tra commessa_id e commessa_attivita_id'
+  'blocca mismatch tra commessa_id e commessa_attivita_id'
 );
 
 UPDATE vendite.attivita_fatturabili
@@ -361,7 +356,7 @@ SELECT ok(
       AND a.commessa_id = (SELECT commessa_id FROM tmp_commessa_a)
       AND a.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_commessa_att_a)
   ),
-  'guard ON: pair coerente accettata'
+  'pair coerente accettata'
 );
 
 CREATE TEMP TABLE tmp_emit_b AS
@@ -379,7 +374,7 @@ SELECT ok(
     WHERE a.commessa_id = (SELECT commessa_id FROM tmp_commessa_b)
       AND a.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_commessa_att_b)
   ),
-  'guard ON: emit da commessa resta operativo (no regressione pipeline)'
+  'emit da commessa resta operativo (no regressione pipeline)'
 );
 
 SELECT * FROM finish();

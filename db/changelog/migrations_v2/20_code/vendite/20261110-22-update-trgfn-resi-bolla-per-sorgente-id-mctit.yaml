@@ -1,0 +1,405 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TRIGGER DEL RESO CERCANO LA BOLLA PER sorgente_id
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-3 (Tid, 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La provenienza di un reso e' solo DDT_VENDITA (G-3), e la bolla ha chiave id
+#   (config.sorgenti.key_selector = 'id'): la chiave sta in resi.sorgente_id, e
+#   chk_resi_sorgente_forma (00_schema/vendite/20261110-20) vuole sorgente_uid vuota.
+#   Il ramo «OR d.uid = sorgente_uid» non trova mai niente, e tiene in vita
+#   ix_resi_sorgente (sorgente_tipo_id, sorgente_uid), che 90_end/20261110-29 ritira.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   vendite.trgfn_resi_normalize, vendite.trgfn_resi_guard_ddt_consegnato e
+#   vendite.trgfn_resi_default_magazzino: la bolla si cerca per sorgente_id, e la
+#   condizione d'ingresso «sorgente_id o sorgente_uid valorizzata» diventa
+#   «sorgente_id valorizzata». Il guard della consegna toglie sorgente_uid dal
+#   dettaglio dei suoi due errori (era sempre NULL). COMMENT al presente.
+#   I trigger non si rimontano. Corpo di partenza: il vivo (dbdev, 2026-11-08).
+#   Rollback: corpi e COMMENT di prima.
+#   pgTAP: vendite/test-sorgente-testate-bolle-resi-v1, magazzino/test-reso-carico-v1,
+#   vendite/test-sorgente-commenti-al-presente-v1 (la forma dei COMMENT).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261110-22-update-trgfn-resi-bolla-per-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261110-22-update-trgfn-resi-bolla-per-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_resi_normalize, trgfn_resi_guard_ddt_consegnato e trgfn_resi_default_magazzino
+        cercano la bolla d'origine per sorgente_id, senza il ramo uid; COMMENT al presente.
+        brief-db-sorgente-documento-e-riga §7.3, G-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_normalize';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_guard_ddt_consegnato';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_default_magazzino';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo: normalizzazione reso su INSERT/UPDATE.
+                --   1. anno/data se numero presente (INSERT).
+                --   2. eredita billing/destinatario/utility/valuta/emittente
+                --      dalla bolla d'origine (DDT_VENDITA, cercata per
+                --      sorgente_id: la bolla ha chiave id) su INSERT se non gia'
+                --      valorizzati.
+                --   3. l'emittente che la bolla non da' (bolla non trovata o
+                --      invisibile) viene dal billing account.
+                -- =========================================================
+
+                -- 1. anno/data
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+                  IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                    NEW.anno := EXTRACT(YEAR FROM script.fn_data_operativa())::smallint;
+                  END IF;
+                  IF NEW.data IS NULL THEN
+                    NEW.data := script.fn_data_operativa();
+                  END IF;
+                END IF;
+
+                -- 2. eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente
+                IF TG_OP = 'INSERT'
+                   AND NEW.sorgente_tipo_id IS NOT NULL
+                   AND NEW.sorgente_id IS NOT NULL
+                   AND (NEW.billing_account_id IS NULL
+                        OR NEW.destinatario_soggetto_ruolo_id IS NULL
+                        OR NEW.utility_id IS NULL
+                        OR NEW.valuta_id IS NULL
+                        OR NEW.emittente_fiscale_id IS NULL)
+                THEN
+                  IF EXISTS (
+                    SELECT 1 FROM config.sorgenti
+                    WHERE id = NEW.sorgente_tipo_id AND codice_interno = 'DDT_VENDITA'
+                  ) THEN
+                    SELECT
+                      COALESCE(NEW.billing_account_id, d.billing_account_id),
+                      COALESCE(NEW.destinatario_soggetto_ruolo_id, d.destinatario_soggetto_ruolo_id),
+                      COALESCE(NEW.utility_id, d.utility_id),
+                      COALESCE(NEW.valuta_id, d.valuta_id),
+                      COALESCE(NEW.emittente_fiscale_id, d.emittente_fiscale_id)
+                    INTO
+                      NEW.billing_account_id,
+                      NEW.destinatario_soggetto_ruolo_id,
+                      NEW.utility_id,
+                      NEW.valuta_id,
+                      NEW.emittente_fiscale_id
+                    FROM vendite.ddt d
+                    WHERE d.id = NEW.sorgente_id
+                    LIMIT 1;
+                  END IF;
+                END IF;
+
+                -- 3. emittente dal billing_account (convenzione PK).
+                IF TG_OP = 'INSERT'
+                   AND NEW.emittente_fiscale_id IS NULL
+                   AND NEW.billing_account_id IS NOT NULL
+                THEN
+                  NEW.emittente_fiscale_id :=
+                    anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_normalize() IS
+                'Normalize del reso, BEFORE INSERT OR UPDATE: anno e data; su INSERT eredita billing account, destinatario, utility, valuta ed emittente dalla bolla sorgente (DDT_VENDITA), cercata per sorgente_id (la bolla ha chiave id); l''emittente che la bolla non da'' (non trovata o invisibile sotto RLS) viene dal billing account. Gemello di vendite.trgfn_ddt_normalize.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il reso e' ammesso solo se il DDT sorgente e' CONSEGNATO
+              --   (non si rende cio' che non e' stato consegnato). Solo per
+              --   sorgente DDT_VENDITA (data-driven). La bolla ha chiave id: si
+              --   cerca per sorgente_id.
+              DECLARE
+                  v_is_ddt boolean;
+                  v_stato  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_ddt    vendite.ddt%ROWTYPE;
+              BEGIN
+                  -- Applica solo alla sorgente DDT_VENDITA.
+                  SELECT EXISTS (
+                      SELECT 1 FROM config.sorgenti
+                       WHERE id = NEW.sorgente_tipo_id
+                         AND codice_interno = 'DDT_VENDITA'
+                  ) INTO v_is_ddt;
+
+                  IF NOT v_is_ddt THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sdd.codice_interno INTO v_stato
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE d.id = NEW.sorgente_id;
+
+                  -- Una bolla di TRASFERIMENTO fra depositi non genera un reso. La merce e'
+                  --   rimasta nostra (e' entrata nel magazzino di arrivo al CONSEGNATO): un
+                  --   reso la farebbe rientrare una seconda volta, con un accredito verso un
+                  --   cliente che non l'ha mai comprata. Si riconosce dalla causale di
+                  --   magazzino della sua causale di trasporto (TRASF_OUT), non dal codice
+                  --   scritto a mano. Prima del controllo di stato: e' la risposta vera.
+                  SELECT d.* INTO v_ddt
+                    FROM vendite.ddt d
+                   WHERE d.id = NEW.sorgente_id;
+                  IF FOUND AND vendite.fn_ddt_causale_magazzino(v_ddt) = 'TRASF_OUT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DA_DDT_TRASFERIMENTO',
+                          jsonb_build_object('sorgente_id', NEW.sorgente_id, 'ddt_id', v_ddt.id),
+                          NULL::uuid, COALESCE(v_ddt.numero, v_ddt.id::text));
+                  END IF;
+
+                  IF v_stato IS DISTINCT FROM 'CONSEGNATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DDT_NON_CONSEGNATO',
+                          jsonb_build_object('sorgente_id', NEW.sorgente_id, 'stato_ddt', v_stato),
+                          NULL::uuid, COALESCE(v_stato, 'NULL'));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato() IS
+                'Guard del reso: la bolla sorgente (DDT_VENDITA, cercata per sorgente_id: la bolla ha chiave id) deve essere CONSEGNATA (E_RESO_DDT_NON_CONSEGNATO). Prima, una bolla di trasferimento fra depositi (causale di magazzino TRASF_OUT) non genera un reso (E_RESO_DA_DDT_TRASFERIMENTO): la merce e'' rimasta nostra, e un reso la farebbe rientrare due volte. Il dettaglio dei due errori porta la chiave della bolla (sorgente_id), e ddt_id o stato_ddt.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_default_magazzino()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: un reso nato senza magazzino prende quello da cui era partita la
+              --   bolla d'origine, cercata per sorgente_id (la bolla ha chiave id). Solo
+              --   se manca: chi lo sceglie vince.
+              -- ⚠️ Non il predefinito dell'emittente: la domanda del reso e'
+              --   «da dove era partita?», e la risposta sta sulla bolla.
+              DECLARE
+                  v_magazzino_id vendite.ddt.magazzino_id%TYPE;
+              BEGIN
+                  IF NEW.magazzino_id IS NULL
+                     AND NEW.sorgente_id IS NOT NULL THEN
+                      SELECT d.magazzino_id INTO v_magazzino_id
+                        FROM vendite.ddt d
+                        JOIN config.sorgenti s ON s.id = NEW.sorgente_tipo_id
+                                              AND s.codice_interno = 'DDT_VENDITA'
+                       WHERE d.id = NEW.sorgente_id;
+                      NEW.magazzino_id := v_magazzino_id;   -- NULL se la bolla non ne ha uno
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_default_magazzino() IS
+                'BEFORE INSERT su vendite.resi: se magazzino_id manca, prende il magazzino della bolla d''origine (DDT_VENDITA, cercata per sorgente_id: la bolla ha chiave id): la merce rientra, di norma, da dove era partita. Non il predefinito dell''emittente. Bolla senza magazzino: resta NULL, e se il reso muove merce lo chiede la check della conferma. Gira dopo vendite.trgfn_resi_normalize e prima del guard (ordine alfabetico, fascia z10).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo: normalizzazione reso su INSERT/UPDATE.
+                --   1. anno/data se numero presente (INSERT).
+                --   2. eredita billing/destinatario/utility/valuta/emittente
+                --      dal DDT sorgente (DDT_VENDITA, lookup per codice_interno
+                --      via uid) su INSERT se non gia' valorizzati.
+                --   3. fallback emittente da billing_account (standalone,
+                --      predisposizione: sorgente NOT NULL in questa slice).
+                -- =========================================================
+
+                -- 1. anno/data
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+                  IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                    NEW.anno := EXTRACT(YEAR FROM script.fn_data_operativa())::smallint;
+                  END IF;
+                  IF NEW.data IS NULL THEN
+                    NEW.data := script.fn_data_operativa();
+                  END IF;
+                END IF;
+
+                -- 2. eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente
+                IF TG_OP = 'INSERT'
+                   AND NEW.sorgente_tipo_id IS NOT NULL
+                   AND (NEW.sorgente_id IS NOT NULL OR NEW.sorgente_uid IS NOT NULL)
+                   AND (NEW.billing_account_id IS NULL
+                        OR NEW.destinatario_soggetto_ruolo_id IS NULL
+                        OR NEW.utility_id IS NULL
+                        OR NEW.valuta_id IS NULL
+                        OR NEW.emittente_fiscale_id IS NULL)
+                THEN
+                  IF EXISTS (
+                    SELECT 1 FROM config.sorgenti
+                    WHERE id = NEW.sorgente_tipo_id AND codice_interno = 'DDT_VENDITA'
+                  ) THEN
+                    SELECT
+                      COALESCE(NEW.billing_account_id, d.billing_account_id),
+                      COALESCE(NEW.destinatario_soggetto_ruolo_id, d.destinatario_soggetto_ruolo_id),
+                      COALESCE(NEW.utility_id, d.utility_id),
+                      COALESCE(NEW.valuta_id, d.valuta_id),
+                      COALESCE(NEW.emittente_fiscale_id, d.emittente_fiscale_id)
+                    INTO
+                      NEW.billing_account_id,
+                      NEW.destinatario_soggetto_ruolo_id,
+                      NEW.utility_id,
+                      NEW.valuta_id,
+                      NEW.emittente_fiscale_id
+                    FROM vendite.ddt d
+                    WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid)
+                    LIMIT 1;
+                  END IF;
+                END IF;
+
+                -- 3. fallback standalone: emittente da billing_account (convenzione PK).
+                IF TG_OP = 'INSERT'
+                   AND NEW.emittente_fiscale_id IS NULL
+                   AND NEW.billing_account_id IS NOT NULL
+                THEN
+                  NEW.emittente_fiscale_id :=
+                    anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_normalize() IS
+                'Normalize del reso, BEFORE INSERT OR UPDATE: anno e data; su INSERT eredita billing account, destinatario, utility, valuta ed emittente dalla bolla sorgente (DDT_VENDITA), cercata con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid); senza bolla l''emittente viene dal billing account. Gemello di vendite.trgfn_ddt_normalize.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il reso e' ammesso solo se il DDT sorgente e' CONSEGNATO
+              --   (non si rende cio' che non e' stato consegnato). Solo per
+              --   sorgente DDT_VENDITA (data-driven).
+              DECLARE
+                  v_is_ddt boolean;
+                  v_stato  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_ddt    vendite.ddt%ROWTYPE;
+              BEGIN
+                  -- Applica solo alla sorgente DDT_VENDITA.
+                  SELECT EXISTS (
+                      SELECT 1 FROM config.sorgenti
+                       WHERE id = NEW.sorgente_tipo_id
+                         AND codice_interno = 'DDT_VENDITA'
+                  ) INTO v_is_ddt;
+
+                  IF NOT v_is_ddt THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sdd.codice_interno INTO v_stato
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
+
+                  -- rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-c): una
+                  --   bolla di TRASFERIMENTO fra depositi non genera un reso. La merce e'
+                  --   rimasta nostra (e' entrata nel magazzino di arrivo al CONSEGNATO): un
+                  --   reso la farebbe rientrare una seconda volta, con un accredito verso un
+                  --   cliente che non l'ha mai comprata. Si riconosce dalla causale di
+                  --   magazzino della sua causale di trasporto (TRASF_OUT), non dal codice
+                  --   scritto a mano. Prima del controllo di stato: e' la risposta vera.
+                  SELECT d.* INTO v_ddt
+                    FROM vendite.ddt d
+                   WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
+                  IF FOUND AND vendite.fn_ddt_causale_magazzino(v_ddt) = 'TRASF_OUT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DA_DDT_TRASFERIMENTO',
+                          jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'sorgente_id', NEW.sorgente_id, 'ddt_id', v_ddt.id),
+                          NULL::uuid, COALESCE(v_ddt.numero, v_ddt.id::text));
+                  END IF;
+
+                  IF v_stato IS DISTINCT FROM 'CONSEGNATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DDT_NON_CONSEGNATO',
+                          jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'sorgente_id', NEW.sorgente_id, 'stato_ddt', v_stato),
+                          NULL::uuid, COALESCE(v_stato, 'NULL'));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato() IS
+                'Guard del reso: la bolla sorgente (DDT_VENDITA, cercata con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid)) deve essere CONSEGNATA (E_RESO_DDT_NON_CONSEGNATO). Prima, una bolla di trasferimento fra depositi (causale di magazzino TRASF_OUT) non genera un reso (E_RESO_DA_DDT_TRASFERIMENTO): la merce e'' rimasta nostra, e un reso la farebbe rientrare due volte. Il dettaglio dei due errori porta tipo e chiavi della sorgente.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_default_magazzino()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: un reso nato senza magazzino prende quello da cui era partita la
+              --   bolla d'origine (D-3b-a). Solo se manca: chi lo sceglie vince.
+              -- ⚠️ Non il predefinito dell'emittente (D-L3-h): la domanda del reso e'
+              --   «da dove era partita?», e la risposta sta sulla bolla.
+              DECLARE
+                  v_magazzino_id vendite.ddt.magazzino_id%TYPE;
+              BEGIN
+                  IF NEW.magazzino_id IS NULL
+                     AND (NEW.sorgente_id IS NOT NULL OR NEW.sorgente_uid IS NOT NULL) THEN
+                      SELECT d.magazzino_id INTO v_magazzino_id
+                        FROM vendite.ddt d
+                        JOIN config.sorgenti s ON s.id = NEW.sorgente_tipo_id
+                                              AND s.codice_interno = 'DDT_VENDITA'
+                       WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
+                      NEW.magazzino_id := v_magazzino_id;   -- NULL se la bolla non ne ha uno
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_default_magazzino() IS
+                'BEFORE INSERT su vendite.resi: se magazzino_id manca, prende il magazzino della bolla d''origine (DDT_VENDITA, cercata con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid)): la merce rientra, di norma, da dove era partita. Non il predefinito dell''emittente. Bolla senza magazzino: resta NULL, e se il reso muove merce lo chiede la check della conferma. Gira dopo vendite.trgfn_resi_normalize e prima del guard (ordine alfabetico, fascia z10).';

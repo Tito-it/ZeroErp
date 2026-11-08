@@ -191,12 +191,12 @@ ridondante — le righe d'origine sono già passate dallo stesso controllo — e
 tipo ritirato dopo resterebbe sulle righe vecchie e farebbe fallire la copia.
 
 **2. La testata d'origine può mancare, e non si solleva.**
-Il documento di partenza si legge con un `LEFT JOIN` sulla provenienza del reso, con la regola
-d'incontro del modello (la bolla combacia per `id` con `sorgente_id` o per `uid` con
-`sorgente_uid`). Il reso ha sempre il tipo e una chiave (`chk_resi_sorgente_forma`), ma **nulla
-impone che il tipo sia `DDT_VENDITA`**. Se il join non trova niente, le colonne di testata restano
-`NULL` e i guard dell'emissione fanno il loro mestiere. Sollevare lì romperebbe un percorso che
-funziona.
+Il documento di partenza si legge con un `LEFT JOIN` sulla provenienza del reso: la bolla ha
+chiave `id`, e il reso la porta in `sorgente_id` (`chk_resi_sorgente_forma` vuole `sorgente_uid`
+vuota; il tipo `DDT_VENDITA` lo fa valere
+[vendite.trgfn_resi_guard_cliente_ddt](/dbzero/vendite/funzioni/trgfn_resi_guard_cliente_ddt)).
+Il join resta `LEFT`: una bolla invisibile a chi genera lascia le colonne di testata `NULL`, e i
+guard dell'emissione fanno il loro mestiere. Sollevare lì romperebbe un percorso che funziona.
 
 ⭐ L'eredità di **riga** invece non ne è toccata: passa da `resi_righe.ddt_riga_id`, che è
 `NOT NULL`. ⚠️ E le due possono puntare a **DDT diversi**: nessun guard impone che la riga di
@@ -233,6 +233,8 @@ quando la merce è uscita dal fatturato e ri-consegnarla è una vendita nuova.
   `sorgente_riga`); prima il reso order-backed dichiarava come origine l'ordine, con il suo `uid`
   in testo. La testata d'origine si legge con la regola d'incontro sulla provenienza tipizzata del
   reso (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — la bolla d'origine si legge per `sorgente_id` soltanto: la provenienza del reso è
+  solo la bolla (brief-db-sorgente-documento-e-riga, G-3).
 
 ---
 

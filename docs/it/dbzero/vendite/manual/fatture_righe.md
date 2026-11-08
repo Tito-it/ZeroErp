@@ -10,7 +10,7 @@
 > * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — le attività aggregate nella riga
 > * [vendite.fatture_atti](/dbzero/vendite/tabelle/fatture_atti) — il blocco dell'atto (CIG, CUP, commessa)
 > * [config.iva](/dbzero/config/tabelle/iva) — il codice IVA
-> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento d'origine
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento d'origine: la riga di fattura è la riga del tipo `FATTURA`
 > * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — l'articolo
 > * [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura) — l'unità di misura
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il BA destinatario
@@ -19,9 +19,13 @@
 >
 > * [vendite.vw_fattura_righe_esposte](/dbzero/vendite/views/vw_fattura_righe_esposte) — il documento come va rappresentato
 >
+> Approfondimento funzioni:
+>
+> * [vendite.fn_fattura_origini](/dbzero/vendite/funzioni/fn_fattura_origini) — i documenti a monte, letti dalla catena delle attività
+>
 > Guide:
 >
-> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza, di cui la riga di fattura è solo bersaglio
 
 ---
 
@@ -80,15 +84,16 @@ Obiettivi principali:
   **alla stessa fattura**: una riga agganciata all'atto di un altro documento non
   darebbe nessun errore, farebbe solo sparire il CIG dalla fattura giusta.
 * **Governance**: `meta` (JSONB, NOT NULL), `storicizza`, `tx_id`, audit `data_*`/`user_*`.
-* **Tracciabilità di origine**: le colonne del modello della provenienza — `sorgente_tipo_id`,
-  una fra `sorgente_id` / `sorgente_uid` (quella del `key_selector` del tipo) e `sorgente_riga`.
-  ⚠️ Sulle righe prodotte dall'aggregazione sono **vuote**: con *n* attività di sorgenti diverse
-  non esiste una sorgente singola da dichiarare, e sceglierne una sarebbe una bugia. La
-  tracciabilità passa da `attivita_fatturabili.fattura_riga_id`. Una riga che nasce da **una**
-  riga di commessa dichiara `COMMESSA`, la commessa in `sorgente_id` e la riga di commessa in
-  `sorgente_riga`. La forma la tiene `chk_fatture_righe_sorgente_forma`; documento e riga li
-  verifica il guard unico `script.trgfn_guard_sorgente`, che blocca anche la cancellazione
-  dell'origine finché la riga la cita. Non è una chiave d'idempotenza: nessun vincolo unico.
+* **Da dove viene una riga: dalla catena, non da una colonna sua.** La riga di fattura **non
+  ha una provenienza propria**, e non ha le colonne `sorgente_*`: aggrega *n* attività
+  fatturabili, ognuna con la sua origine, e una provenienza sola non esiste per costruzione.
+  L'origine si legge risalendo: dalla riga alle attività che la citano
+  (`attivita_fatturabili.fattura_riga_id`), da ciascuna alla sua riga di commessa, e da lì al
+  documento e alla riga da cui la riga di commessa nasce. È la strada di
+  `vendite.fn_fattura_origini`, che dice i documenti a monte della fattura.
+  ⚠️ La riga di fattura resta invece **bersaglio** di una provenienza: è la riga del tipo
+  `FATTURA` in `config.sorgenti`, e un altro documento può nascere da lei; finché lo cita, la
+  riga non si cancella (il lato «in uscita» del modello).
 
 > ❌ **La riga non ha imposta né totale**: l'imposta di riga non esiste nel regime italiano,
 > l'IVA si liquida per aliquota in `vendite.fatture_riepiloghi_iva`.
@@ -112,19 +117,17 @@ Obiettivi principali:
 
 ### Vincoli, indici e coerenze
 
-* **FK**: fattura, articolo (opz.), UoM, UoM del kit (`fk_fatture_righe_kit_uom`), IVA, BA destinatario (opz.), tipo della provenienza.
+* **FK**: fattura, articolo (opz.), UoM, UoM del kit (`fk_fatture_righe_kit_uom`), IVA, BA destinatario (opz.).
 * **CHECK**:
 
   * `chk_fatture_righe_sconto` → `sconto_percentuale` 0..100.
   * `chk_fatture_righe_competenza_dal_al` → `competenza_dal <= competenza_al`.
-  * `chk_fatture_righe_sorgente_forma` → la provenienza è tutta vuota, o ha il tipo con **una** chiave del documento.
   * `chk_fatture_righe_kit_coerente` → o la riga **non è** di kit (tutte le colonne `kit_*` NULL), o lo è per intero (chiave, esposizione, articolo padre e `kit_qta` valorizzati; `kit_uom_id` può restare vuota come `uom_id`). Una riga con metadati a metà sarebbe indistinguibile da una riga normale per la vista di esposizione, e sparirebbe dal raggruppamento senza un fiato.
   * `chk_fatture_righe_kit_articolo` → una riga di kit ha sempre `articolo_id`: è un componente, e un componente è un articolo della distinta. La vista di esposizione conta i kit **componente per componente**, cioè per articolo: due righe di kit senza articolo cadrebbero nello stesso gruppo e sommerebbero le loro quantità (2 kit dove ce n'è uno), senza un errore. Il periodo di competenza non le separa, perché sono dello stesso kit e dello stesso periodo.
 * **UNIQUE**:
 
   * `uq_fatture_righe_riga_nr` su `(fattura_id, riga_nr)` (per progressivo di stampa/ordinamento).
-* **INDICI operativi**: per ricerche su fattura, IVA, BA destinatario, e per la provenienza
-  (`ix_fatture_righe_sorgente_id`, `ix_fatture_righe_sorgente_uid`, `ix_fatture_righe_sorgente_riga`).
+* **INDICI operativi**: per ricerche su fattura, IVA, BA destinatario.
 
 ---
 
@@ -338,6 +341,11 @@ Le righe sono il **cuore economico** della fattura: fotografano quantità, prezz
   portavano un'impronta in `sorgente_uid`, prendono la commessa in `sorgente_id`; arrivano la
   forma `chk_fatture_righe_sorgente_forma`, gli indici della provenienza e il guard unico
   (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — la riga di fattura perde la provenienza: si ritirano le colonne
+  `sorgente_tipo_id`, `sorgente_id`, `sorgente_uid`, `sorgente_riga`, con la FK verso
+  `config.sorgenti`, `chk_fatture_righe_sorgente_forma`, i tre indici e il guard unico. Le
+  scriveva solo il backend, quasi sempre vuote; le poche righe che le portavano dicevano la
+  stessa cosa della catena delle attività (brief-db-sorgente-documento-e-riga, G-4).
 
 ---
 

@@ -160,6 +160,14 @@ Non usano queste colonne, per scelta:
   record, id esterno in testo), perché un id esterno non è un documento del catalogo;
 * **le attività fatturabili**: puntano alla riga di commessa con una FK vera
   (`commessa_attivita_id`), e la provenienza è quella della riga di commessa.
+* **le righe di fattura**: una riga di fattura aggrega più attività, che possono venire da documenti
+  diversi, quindi non ha una provenienza sola. «Da dove viene» si legge dalle sue attività, cioè dalle
+  loro righe di commessa (`vendite.fn_fattura_origini`). Restano **bersaglio**: una nota di credito può
+  dire da quale riga di fattura nasce.
+
+Quando il dominio ammette **un solo tipo** d'origine lo dice sulla struttura: il reso nasce solo dalla
+bolla di vendita, quindi il suo `CHECK` di forma vuole la sola chiave della bolla (`sorgente_id`) e il
+suo guard del cliente rifiuta un altro tipo (`E_RESO_SORGENTE_NON_DDT`).
 
 ## 7. Aggiungere una tabella che «nasce da»
 
