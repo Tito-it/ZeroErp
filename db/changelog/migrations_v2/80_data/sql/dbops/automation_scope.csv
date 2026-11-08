@@ -18,3 +18,4 @@ dbops,error_log
 dbops,audit_log
 shop,*all
 dbops,ai_query_log
+ui,*all

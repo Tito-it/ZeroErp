@@ -23,10 +23,10 @@
 --    4) ... la dimensione e' quella della preferenza, lo standard resta il preset
 --    5) senza preferenza, preset senza dimensione: 8, origine catalogo
 --   La data del contenuto del preset
---    6) riscrivere la riga del preset uguale: data_update non si sposta
---    7) cambiare dimensione_max: data_update = now()
---    8) riscrivere i widget del preset uguali: data_update non si sposta
---    9) cambiare un widget del preset: data_update = now()
+--    6) riscrivere la riga del preset uguale: contenuto_aggiornato_il non si sposta
+--    7) cambiare dimensione_max: contenuto_aggiornato_il = now()
+--    8) riscrivere i widget del preset uguali: contenuto_aggiornato_il non si sposta
+--    9) cambiare un widget del preset: contenuto_aggiornato_il = now()
 --   Il flag
 --   10) il preset cambia davvero: flag acceso
 --   I trigger
@@ -168,50 +168,50 @@ UPDATE ui.dashboard_preset SET dimensione_max = 6 WHERE id = (SELECT preset_id F
 -- ============================================================
 -- 6-9 La data del contenuto del preset
 -- ============================================================
-UPDATE ui.dashboard_preset SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.dashboard_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE id = (SELECT preset_id FROM _p);
 
 UPDATE ui.dashboard_preset SET dimensione_max = dimensione_max, descrizione = descrizione
  WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT data_update FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
     TIMESTAMPTZ '2026-01-01 10:00:00+00',
-    '6) riscrivere la riga del preset uguale (come fa il seed): data_update non si sposta');
+    '6) riscrivere la riga del preset uguale (come fa il seed): contenuto_aggiornato_il non si sposta');
 
 UPDATE ui.dashboard_preset SET dimensione_max = 7 WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT data_update FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
     now(),
-    '7) cambiare dimensione_max: data_update = now()');
+    '7) cambiare dimensione_max: contenuto_aggiornato_il = now()');
 
-UPDATE ui.dashboard_preset SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.dashboard_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE id = (SELECT preset_id FROM _p);
 
 UPDATE ui.dashboard_preset_widget SET ordine = ordine, visibile = visibile
  WHERE preset_id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT data_update FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
     TIMESTAMPTZ '2026-01-01 10:00:00+00',
-    '8) riscrivere i widget del preset uguali: data_update non si sposta');
+    '8) riscrivere i widget del preset uguali: contenuto_aggiornato_il non si sposta');
 
 UPDATE ui.dashboard_preset_widget SET ordine = 15 WHERE preset_id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT data_update FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
     now(),
-    '9) cambiare un widget del preset: data_update = now()');
+    '9) cambiare un widget del preset: contenuto_aggiornato_il = now()');
 
 -- ============================================================
 -- 10 Il flag
 -- ============================================================
-UPDATE ui.dashboard_preset SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.dashboard_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE id = (SELECT preset_id FROM _p);
 
 INSERT INTO ui.dashboard_preferenza_utente (auth_user_id, dashboard_id, preset_base_id,
-                                            preset_base_data_update, configurazione)
+                                            preset_base_contenuto_aggiornato_il, configurazione)
 VALUES ((SELECT auth_user_id FROM _u), (SELECT dashboard_id FROM _d), (SELECT preset_id FROM _p),
         TIMESTAMPTZ '2026-01-01 10:00:00+00', jsonb_build_object('widget', (SELECT widget FROM _pref_widget)));
 
@@ -232,8 +232,8 @@ SELECT is(
        JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE NOT t.tgisinternal
         AND t.tgrelid IN ('ui.dashboard_preset'::regclass, 'ui.dashboard_preset_widget'::regclass)
-        AND p.proname IN ('trgfn_preset_data_update_contenuto', 'trgfn_preset_riga_tocca_preset')),
-    'ui.dashboard_preset:trgfn_preset_data_update_contenuto,ui.dashboard_preset_widget:trgfn_preset_riga_tocca_preset',
+        AND p.proname IN ('trgfn_preset_contenuto_aggiornato', 'trgfn_preset_riga_tocca_preset')),
+    'ui.dashboard_preset:trgfn_preset_contenuto_aggiornato,ui.dashboard_preset_widget:trgfn_preset_riga_tocca_preset',
     '11) i due trigger delle dashboard ci sono, sulle due funzioni condivise');
 
 SELECT * FROM finish();

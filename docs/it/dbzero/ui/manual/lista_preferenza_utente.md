@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preferenza_utente`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -20,7 +20,7 @@ La tabella **`ui.lista_preferenza_utente`** memorizza la **preferenza personale 
 * **Personalizzazione individuale**: l'operatore può scegliere quali colonne vedere, in che ordine, con quale larghezza, ordinamento, filtri preimpostati e righe per pagina. Ogni chiave scelta è il livello massimo della cascata **per quella chiave** e prevale su qualsiasi preset.
 * ⭐ **Chiave assente = «come lo standard»** (dal 1-11-2026): la preferenza porta solo le chiavi che l'utente ha scelto. Una chiave assente (o `null`) la risolve [`fn_resolve_lista_config`](/dbzero/ui/funzioni/fn_resolve_lista_config) dal preset di base, o dal catalogo; quindi un cambio del preset arriva anche a chi ha personalizzato altro. Chi salva rimanda solo le chiavi che il resolver dice di `origine` `preferenza`, più quella toccata: rimandare la configurazione risolta per intero trasformerebbe in «scelta» una copia del preset, e la congelerebbe. Una preferenza che resta senza chiavi si **cancella**: vuota direbbe «tutto come lo standard», cioè nessuna preferenza, ma lo snapshot del preset di base accenderebbe il banner del preset aggiornato senza niente da riconciliare.
 * **JSONB per resilienza**: la configurazione è in un unico campo JSONB invece di righe separate per colonna. Questo permette di leggere la preferenza sempre completa in una sola query e di aggiungere futuri attributi (es. vista compatta, raggruppamenti) senza alterare lo schema.
-* **Rilevamento preset obsoleto**: `preset_base_data_update` è uno snapshot di `lista_preset.data_update` al momento del salvataggio. Se `lista_preset.data_update > preset_base_data_update`, il preset su cui si basava la preferenza è stato aggiornato — il frontend può avvisare l'utente con un banner "Configurazione aggiornata disponibile".
+* **Rilevamento preset obsoleto**: `preset_base_contenuto_aggiornato_il` è uno snapshot di `lista_preset.contenuto_aggiornato_il` al momento del salvataggio. Se `lista_preset.contenuto_aggiornato_il > preset_base_contenuto_aggiornato_il`, il preset su cui si basava la preferenza è stato aggiornato — il frontend può avvisare l'utente con un banner "Configurazione aggiornata disponibile".
 
 ---
 
@@ -51,7 +51,7 @@ Le chiavi sono quattro, tutte facoltative. Esempio di una preferenza che sceglie
 |---------|-------|
 | `auth_user_id` | Utente proprietario (FK a `django.auth_user` aggiunta in `90_end`) |
 | `preset_base_id` | Preset da cui è partita la personalizzazione (riferimento storico, può diventare NULL) |
-| `preset_base_data_update` | Snapshot per rilevare se il preset padre è stato modificato dopo il salvataggio |
+| `preset_base_contenuto_aggiornato_il` | Snapshot per rilevare se il preset padre è stato modificato dopo il salvataggio |
 | `configurazione` | Le scelte dell'utente in JSONB, chiave per chiave (colonne, ordinamento, filtri, paginazione); una chiave assente segue lo standard |
 
 ---
@@ -61,3 +61,9 @@ Le chiavi sono quattro, tutte facoltative. Esempio di una preferenza che sceglie
 * La FK verso `django.auth_user` è aggiunta in `90_end` perché `auth_user` è creata da Django migrate, che gira dopo Liquibase. Pattern identico a `config.parameter_overrides`.
 * Nessun `user_insert`/`user_update`: l'identità dell'utente è già in `auth_user_id` e la preferenza è sempre di proprietà esclusiva dell'utente stesso.
 * On DELETE CASCADE su `auth_user_id`: eliminare l'utente rimuove automaticamente le sue preferenze.
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — lo snapshot `preset_base_data_update` si rinomina `preset_base_contenuto_aggiornato_il`: confronta la data del contenuto del preset, che ha ora una colonna sua (`brief-db-revisione-dbops`, giro 7-bis blocco c). Le due FK verso lista e preset sono in eccezione al guard ATTIVO: la preferenza è uno stato dell'utente.

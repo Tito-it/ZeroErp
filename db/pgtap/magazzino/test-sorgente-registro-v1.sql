@@ -18,7 +18,7 @@
 --   spedita, consegnata. Reso 1: SEMPLICE 1, confermato. Bolla 2: SEMPLICE 1, emessa e
 --   poi annullata.
 --
--- Elenco test (plan 15):
+-- Elenco test (plan 17):
 --    1) l'inventario scrive INVENTARIO + l'inventario + la riga, senza dettaglio
 --    2) la bolla scrive DDT_VENDITA + la bolla + la riga + il prelievo, per ogni uscita
 --    3) il reso scrive RESO_VENDITA + il reso + la riga + il rientro, al costo dell'uscita (5)
@@ -34,12 +34,14 @@
 --   13) ...un'attesa di un altro documento e' altrui (blocca)
 --   14) S-9: un reso confermato coi suoi carichi, spenta la sola regola di stato -> E_SORG_ORIGINE_REFERENZIATA
 --   15) S-9: ...e una riga di bolla movimentata, spente le sole regole di stato
+--   16) i cinque tipi di foglia non sono piu' sorgenti (giro M.3, 20261109-20)
+--   17) ...e restano entita' di config.tipi_entita, con is_sorgente false
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(15);
+SELECT plan(17);
 
 CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
@@ -248,6 +250,21 @@ SELECT throws_like(
     '15) una riga di bolla movimentata non si cancella neppure senza le regole di stato: E_SORG_ORIGINE_REFERENZIATA');
 ALTER TABLE vendite.ddt_righe ENABLE TRIGGER USER;
 ALTER TABLE vendite.ddt_righe_prelievi ENABLE TRIGGER USER;
+
+-- 16-17) il ritiro dei tipi di foglia (giro M.3): il registro scrive il tipo del documento,
+--   e le foglie restano entita' (note di magazzino, errori), non sorgenti.
+SELECT is_empty(
+    $$SELECT s.codice_interno FROM config.sorgenti s
+       WHERE s.codice_interno IN ('INVENTARIO_RIGA', 'RETTIFICA_RIGA', 'TRASFERIMENTO_RIGA',
+                                  'DDT_VENDITA_PRELIEVO', 'RESO_VENDITA_RIENTRO')$$,
+    '16) INVENTARIO_RIGA, RETTIFICA_RIGA, TRASFERIMENTO_RIGA, DDT_VENDITA_PRELIEVO, RESO_VENDITA_RIENTRO non sono piu'' sorgenti');
+SELECT is(
+    (SELECT string_agg(e.codice || ':' || e.is_sorgente || ':' || coalesce(e.sorgente_codice_interno, '-'), ',' ORDER BY e.codice)
+       FROM config.tipi_entita e
+      WHERE e.codice IN ('INVENTARIO_RIGA', 'RETTIFICA_RIGA', 'TRASFERIMENTO_RIGA',
+                         'DDT_VENDITA_PRELIEVO', 'RESO_VENDITA_RIENTRO')),
+    'DDT_VENDITA_PRELIEVO:false:-,INVENTARIO_RIGA:false:-,RESO_VENDITA_RIENTRO:false:-,RETTIFICA_RIGA:false:-,TRASFERIMENTO_RIGA:false:-',
+    '17) le cinque restano entita'' (note, errori), con is_sorgente false e nessuna sorgente legata');
 
 SELECT * FROM finish();
 ROLLBACK;

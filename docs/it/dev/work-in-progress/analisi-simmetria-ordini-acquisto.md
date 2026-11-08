@@ -3,7 +3,13 @@
 > Stato: **ANALISI**. Nessuna migration, nessun backend, nessun frontend.
 > Le decisioni del §5 vanno chiuse **prima** di aprire il cantiere: ognuna cambia il DDL.
 >
-> Data creazione: 2026-09-01
+> Data creazione: 2026-09-01 · revisione 2026-11-08 (§4.6-bis: la provenienza, passata qui da
+> brief-db-sorgente-documento-e-riga)
+>
+> ⚠️ **Prima di diventare un brief** (Tid, 2026-11-08: «tutte le tabelle acquisti speculari a vendita devono essere
+> riallineate nelle logiche simili») questa analisi va **riscontrata con la vendita di oggi**, come al §4.1-ter: dal
+> 2026-09-14 la vendita è cambiata molto (provenienza col guard unico e i BB, lato «in uscita», «si cancella solo la
+> bozza vuota», grammatica unica dei documenti). Il §4.6, per esempio, è superato in parte: vedi §4.6-bis.
 > Branch target (futuro): `dev/db-tid` (DB) · `dev/backend-tid` (BE/FE)
 >
 > Riferimenti letti per scrivere questa analisi:
@@ -302,6 +308,45 @@ queste è un «di più»:
   acquisto.
 
 Lo segnala già il brief magazzino in D-7.
+
+### 4.6-bis ⭐ La provenienza nel modello (passata qui il 2026-11-08)
+
+**Da dove viene.** Il cantiere [brief-db-sorgente-documento-e-riga](brief-db-sorgente-documento-e-riga.md) porta tutte
+le provenienze («questo record nasce da quel documento, e da quella sua riga») a una grammatica sola: il tipo del
+documento (`config.sorgenti`), la sua chiave in `sorgente_id` o `sorgente_uid` secondo il `key_selector`, la riga in
+`sorgente_riga`; un BB che la scrive (`script.fn_sorgente_provenienza`), un guard unico che la verifica
+(`script.trgfn_guard_sorgente`), un lato «in uscita» che governa la cancellazione dell'origine. Vendita, commesse,
+pratiche, documenti e magazzino sono già lì. Gli acquisti erano il suo giro M.4: Tid l'ha passato qui (2026-11-08),
+perché le tabelle d'acquisto si riallineano alla vendita in un cantiere solo, non due volte.
+
+**Che cosa è già cambiato rispetto al §4.6** (fatti, dbdev 2026-11-08): `config.sorgenti` ha `ORDINE_ACQUISTO` e
+`DDT_ACQUISTO` (chiave `id`, scope CATALOGO, con la tabella delle righe), nati il 2026-10-19; il lato «in uscita» è già
+montato su `acquisti.ordini`, `ordini_righe`, `ddt`, `ddt_righe`; le quattro tabelle hanno già la colonna `sorgente_id`,
+vuota. Le tabelle sono vuote e nessuno le scrive (nessuna funzione DB, `backend/apps/acquisti` vuota).
+
+**Il perimetro che passa, com'era nel piano di quel brief** (scheda «magazzino e acquisti» §1.7-1.10, §5, §6 del suo
+censimento):
+
+| Tabella | Oggi | Nel modello |
+| --- | --- | --- |
+| `acquisti.ordini`, `acquisti.ddt` | `sorgente_tipo_id` + `sorgente_uid` vogliono dire «**import** da un sistema esterno», con l'unico `uq_ordini_v_sorgente_fk` / `uq_ddt_v_sorgente_fk` (tipo, uid) «idempotenza import», nome `_v_` copiato da vendite | l'import esce (avrà una tabella di collegamento propria, §4 del brief), l'unico «import» si ritira con lui; `sorgente_*` diventa la provenienza, col guard unico (DOCUMENTO), come le testate di vendita (giro T.3) |
+| `acquisti.ordini_righe` | `sorgente_riga DEFAULT 0` (una riga che non esiste), unico `uq_ordini_righe_v_sorgente_fk` (tipo, uid) | `DROP DEFAULT`, l'unico si ritira, guard unico, come le righe di vendita (giro R.1) |
+| `acquisti.ddt_righe` | modello A del lotto A di brief-db-articoli-obsoleto-dal, **senza guard** né CHECK di forma | guard unico (RIGA o DOCUMENTO, da decidere sul dominio) e CHECK di forma; la provenienza è la riga dell'ordine d'acquisto, scrivibile ora che il tipo è il documento |
+| `acquisti.ddt.ordine_id` (FK `fk_a_ddt_ordine`) | colonna parallela alla provenienza | **D-3** del brief: confluisce in `sorgente_*` (tipo `ORDINE_ACQUISTO`), e la protezione della FK la dà il lato «in uscita» |
+| `acquisti.ordini_righe_fulfillment` | ponte con la quantità ricevuta, `ON DELETE CASCADE` sui due lati (in vendita è `RESTRICT`) | **resta** (D-3: è un registro di quantità N:M, non una provenienza); la differenza di cascata con la vendita è una divergenza di questa analisi |
+
+**Che cosa resta aperto nel brief della sorgente, e si chiude qui.** Il suo lotto Z chiude senza gli acquisti, con un
+debito dichiarato a elenco chiuso: le quattro tabelle restano nel debito del presidio di struttura
+(`dbops/test-sorgenti-struttura-v1`, test 2), e il ramo TESTUALE del presidio degli orfani (`dbops.fn_sorgenti_orfane`)
+serve solo a loro. ⇒ **Il giro che porta qui la provenienza toglie le quattro tabelle dal debito e ritira il ramo
+TESTUALE**, nello stesso giro.
+
+**Da decidere quando si apre il cantiere** (non prima: dipende dal riscontro con la vendita di oggi):
+
+* il livello minimo del guard su `ddt_righe` (la riga d'ordine sempre, o anche l'ordine intero);
+* la regola «si cancella solo la bozza vuota» su ordini e DDT d'acquisto, come il giro T.4 per la vendita: il lato «in
+  uscita» la presuppone (S-9: della cancellazione decide la tabella del documento);
+* la cascata del fulfillment d'acquisto, da allineare o da dichiarare diversa col motivo.
 
 ### 4.7, 4.8, 4.9 — le restanti
 
@@ -1133,3 +1178,4 @@ volte.
 | 2026-09-02 | ✅ **Quattro decisioni di Tid, applicate ai quattro documenti.** **D-16**: i nomi delle date seguono D-12 (*non marcato = nostro*) → `data_consegna_richiesta_cliente` su vendite/preventivi, `data_consegna_confermata_fornitore` su acquisti, con le derivate (colonna di testata della vista + chiave i18n). **D-13b**: `acquisti.ddt.data` → `data_documento_fornitore`, **senza** il `DEFAULT CURRENT_DATE`; la ricezione resta su `data_ora_consegna_eff`. **D-6b**: scelta **A**, l'ancora degli indirizzi diventa una mappa `tipo → colonna` — ⚠️ con obbligo di ri-collaudo sui 5 domini di vendita che usano il BB. **§4-bis del brief**: `modo_approvvigionamento` default `ACQUISTO`, `commesse.data_apertura` `NOT NULL` con valore iniziale da `data_insert`. 📌 Resta aperta la sola **D-3** (forma del satellite) |
 | 2026-09-02 | ✅ **D-3 e D-2 chiuse — il Lotto 0 si svuota.** **D-3: satellite**, con tutte le conseguenze confermate (due cataloghi insieme, `ambito` come CHECK a due valori, `nessuna_azione_key` e `ordine` sul paio, `ambito` nella chiave delle transizioni, seed `VENDITE` completo, invariante in pgTAP). ⇒ **D-4 si sblocca**. **D-2: si arma la RLS** — ⛔ ma verificando il precedente è emerso che non è un interruttore: le due policy di acquisti sono `FOR SELECT`, e `vendite.ordini` ha già percorso quella strada (`20260601-37` crea la policy, `20260603-18` la estende a `FOR ALL` **due giorni dopo**). Nuovo **§4.1-bis** coi tre pezzi che devono atterrare insieme. 📌 Nessuna decisione bloccante resta aperta |
 | 2026-09-14 | ⭐ **Riscontro con le modifiche di vendite dal 02-09** (domanda di Tid: «vanno riportate anche su acquisto?»). Nove changeSet su `vendite.ordini*`, valutati uno per uno sul modello → nuovo **§4.1-ter**. ✅ Le date erano **già** su acquisti (`20260913-08`, nomi D-16). 🔴 **Buco trovato**: la RLS sui **satelliti** (`20260909-34…38`) mancava dal §4.1-bis, che armava solo le due testate → aggiunto il quarto pezzo. ⭐ Il guard di transizione **nasce** sull'helper unico, non si retrofitta. ⏳ Lista e `giorni_ritardo` arrivano coi rispettivi lotti, con la regola D-16 sulle derivate e il verso del ritardo **invertito**. ⛔ Preventivi-smistabili e `fn_push_preventivo_a_ordine` **non si riportano**: l'RFQ non esiste — nota lasciata al suo cantiere |
+| 2026-11-08 | ⭐ **§4.6-bis: la provenienza passa qui** da brief-db-sorgente-documento-e-riga (giro M.4, Tid: «tutte le tabelle acquisti speculari a vendita devono essere riallineate nelle logiche simili»). In testa la nota: prima di diventare brief l'analisi va riscontrata con la vendita di oggi |

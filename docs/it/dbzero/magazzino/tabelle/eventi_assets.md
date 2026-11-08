@@ -33,7 +33,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_mag_eventi_assets_da_a_distinti |  |
-| CHECK | chk_mag_eventi_assets_sorgente_chiave |  |
+| CHECK | chk_mag_eventi_assets_sorgente_forma |  |
 | FOREIGN KEY | fk_mag_eventi_assets_asset | asset_id |
 | FOREIGN KEY | fk_mag_eventi_assets_magazzino_from | magazzino_id_from |
 | FOREIGN KEY | fk_mag_eventi_assets_magazzino_to | magazzino_id_to |
@@ -45,20 +45,22 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_mag_eventi_assets_data | `CREATE INDEX ix_mag_eventi_assets_data ON magazzino.eventi_assets USING btree (data_evento)` |
+| ix_mag_eventi_assets_sorgente_id | `CREATE INDEX ix_mag_eventi_assets_sorgente_id ON magazzino.eventi_assets USING btree (sorgente_tipo_id, sorgente_id) WHERE (sorgente_id IS NOT NULL)` |
+| ix_mag_eventi_assets_sorgente_riga | `CREATE INDEX ix_mag_eventi_assets_sorgente_riga ON magazzino.eventi_assets USING btree (sorgente_tipo_id, sorgente_riga) WHERE (sorgente_riga IS NOT NULL)` |
+| ix_mag_eventi_assets_sorgente_uid | `CREATE INDEX ix_mag_eventi_assets_sorgente_uid ON magazzino.eventi_assets USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_uid IS NOT NULL)` |
 | ix_mag_eventi_assets_stato_a_id | `CREATE INDEX ix_mag_eventi_assets_stato_a_id ON magazzino.eventi_assets USING btree (stato_a_id)` |
 | ix_mag_eventi_assets_stato_da_id | `CREATE INDEX ix_mag_eventi_assets_stato_da_id ON magazzino.eventi_assets USING btree (stato_da_id)` |
 | ix_magazzino_eventi_assets_asset_id | `CREATE INDEX ix_magazzino_eventi_assets_asset_id ON magazzino.eventi_assets USING btree (asset_id)` |
 | ix_magazzino_eventi_assets_tipo_evento_id | `CREATE INDEX ix_magazzino_eventi_assets_tipo_evento_id ON magazzino.eventi_assets USING btree (tipo_evento_id)` |
 | pk_mag_eventi_assets | `CREATE UNIQUE INDEX pk_mag_eventi_assets ON magazzino.eventi_assets USING btree (id)` |
-| uq_mag_eventi_assets_sorgente_fk | `CREATE UNIQUE INDEX uq_mag_eventi_assets_sorgente_fk ON magazzino.eventi_assets USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_eventi_assets_a10_assets_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'assets', 'attivo', 'asset_id', 'id')` |
 | trg_eventi_assets_a10_assets_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'assets', 'attivo', 'asset_id', 'id')` |
-| trg_eventi_assets_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
-| trg_eventi_assets_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
+| trg_eventi_assets_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
+| trg_eventi_assets_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
 | trg_eventi_assets_a10_note_evento_asset_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'note_evento_asset', 'target_id', 'id', 'attivo')` |
 | trg_eventi_assets_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_eventi_assets_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |

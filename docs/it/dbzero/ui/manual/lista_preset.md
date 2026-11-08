@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preset`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -46,7 +46,8 @@ Il CHECK constraint `chk_ui_lista_preset_ambito_refs` garantisce la coerenza: so
 | `is_default` | `TRUE` = preset applicato automaticamente nella cascata |
 | `ordinamento_default` | JSON `[{"col": "ragione_sociale", "dir": "asc"}]` |
 | `filtri_default` | JSON formato condiviso con il componente Vue filtri |
-| `data_update` | La data dell'ultimo cambio del **contenuto** del preset (vedi sotto): la confronta con lo snapshot della preferenza il flag `preset_aggiornato` |
+| `contenuto_aggiornato_il` | La data dell'ultimo cambio del **contenuto** del preset (vedi sotto): la confronta con lo snapshot della preferenza il flag `preset_aggiornato` |
+| `data_update`, `user_update` | L'audit: chi e quando ha scritto la riga, dal trigger del framework |
 
 ---
 
@@ -62,11 +63,17 @@ Il preset è sempre **completo**: dà tutte e quattro le chiavi, colonne compres
 
 ---
 
-### `data_update`: la data del contenuto
+### `contenuto_aggiornato_il`: la data del contenuto
 
-`data_update` dice **quando è cambiato l'ultima volta ciò che il preset mostra**, non quando la riga è stata scritta. La scrivono due trigger, sulle funzioni condivise con i preset di dashboard:
+`contenuto_aggiornato_il` dice **quando è cambiato l'ultima volta ciò che il preset mostra**, non quando la riga è stata scritta. La scrivono due trigger, sulle funzioni condivise con i preset di dashboard:
 
-* `trg_ui_lista_preset_a20_data_update_contenuto_upd` ([`ui.trgfn_preset_data_update_contenuto`](/dbzero/ui/funzioni/trgfn_preset_data_update_contenuto)): quando cambiano `ordinamento_default`, `filtri_default` o `pagina_dimensione`;
+* `trg_ui_lista_preset_a20_contenuto_aggiornato_upd` ([`ui.trgfn_preset_contenuto_aggiornato`](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato)): quando cambiano `ordinamento_default`, `filtri_default` o `pagina_dimensione`;
 * `trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt` ([`ui.trgfn_preset_riga_tocca_preset`](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)): quando una colonna del preset in [`ui.lista_preset_colonna`](/dbzero/ui/tabelle/lista_preset_colonna) si aggiunge, si toglie o cambia.
 
-Una riscrittura **uguale** non sposta la data: il seed (`loadUpdateData`) riscrive ogni riga del CSV a ogni giro, e con un trigger di audit ogni ritocco del CSV accenderebbe il banner «preset aggiornato» a tutti. Non sono contenuto `codice`, `descrizione`, `ambito`, `is_default`, `attivo`: accendere o spegnere un preset cambia **quale** preset sta sotto una preferenza (`preset_base_id`), non che cosa dice. Un preset appena nato ha `data_update` vuoto: chi prende lo snapshot usa la data di nascita.
+Una riscrittura **uguale** non sposta la data: il seed (`loadUpdateData`) riscrive ogni riga del CSV a ogni giro, e se la data fosse l'audit ogni ritocco del CSV accenderebbe il banner «preset aggiornato» a tutti. Per questo la data del contenuto ha una colonna sua, e `data_update` resta l'audit, che invece si sposta a ogni scrittura. Non sono contenuto `codice`, `descrizione`, `ambito`, `is_default`, `attivo`: accendere o spegnere un preset cambia **quale** preset sta sotto una preferenza (`preset_base_id`), non che cosa dice. Un preset appena nato ha come data del contenuto quella di nascita.
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — la data del contenuto passa da `data_update` a `contenuto_aggiornato_il` (NOT NULL, nasce con la riga); `data_update` e `user_update` diventano l'audit del framework, NOT NULL col default, perché `ui` è entrata nell'ambito delle automazioni (`brief-db-revisione-dbops`, giro 7-bis blocco c). Il guard ATTIVO resta sulla FK verso la lista; quelle verso emittente e profilo sono in eccezione.

@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()
+#   Il trigger z90 azzera lo snapshot rinominato (preset_base_contenuto_aggiornato_il).
+#   Brief: brief-db-revisione-dbops, giro 7-bis, blocco c (§23.12, N1).
+#
+#   Solo il nome della colonna dello snapshot (20261109-32).
+#   Corpo preso dal catalogo dello scratch (2026-11-08), identico salvo le righe
+#   della colonna del contenuto; rollback = il corpo di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261109-37-update-trgfn-ui-dashboard-preferenza-utente-z90-clear-preset-base-ts-contenuto-mctit.yaml
+
+  - changeSet:
+      id: 20261109-37-update-trgfn-ui-dashboard-preferenza-utente-z90-clear-preset-base-ts-contenuto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il trigger z90 azzera lo snapshot rinominato (preset_base_contenuto_aggiornato_il). Brief: brief-db-revisione-dbops, giro 7-bis, blocco c.
+      preConditions:
+        - onFail: HALT
+        - changeSetExecuted:
+            id: 20261109-32-alter-ui-preset-contenuto-aggiornato-il
+            author: mctit
+            changeLogFile: migrations_v2/00_schema/ui/20261109-32-alter-ui-preset-contenuto-aggiornato-il-mctit.yaml
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: mantiene la coerenza tra preset_base_id e i campi derivati
+              -- (snapshot contenuto_aggiornato_il + tombstone ignore). Quando preset_base_id cambia
+              -- verso qualsiasi valore diverso (NULL o altro preset), entrambi i campi
+              -- perdono significato: si riferivano al vecchio preset.
+              -- IS DISTINCT FROM copre: NULL->valore, valore->NULL, valore->valore diverso.
+              BEGIN
+                IF NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id THEN
+                  NEW.preset_base_contenuto_aggiornato_il      := NULL;
+                  NEW.preset_aggiornato_ignored_at := NULL;
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts() IS
+                'Azzera preset_base_contenuto_aggiornato_il e preset_aggiornato_ignored_at quando preset_base_id cambia (IS DISTINCT FROM). Previene badge FE "preset aggiornato" non coerente dopo cambio o eliminazione del preset di base. Mirror del trigger ui.lista_preferenza_utente. rev 2026-11-08 (brief-db-revisione-dbops, giro 7-bis blocco c): la data del contenuto del preset sta in contenuto_aggiornato_il, lo snapshot in preset_base_contenuto_aggiornato_il; data_update e'' l''audit.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: mantiene la coerenza tra preset_base_id e i campi derivati
+              -- (snapshot data_update + tombstone ignore). Quando preset_base_id cambia
+              -- verso qualsiasi valore diverso (NULL o altro preset), entrambi i campi
+              -- perdono significato: si riferivano al vecchio preset.
+              -- IS DISTINCT FROM copre: NULL->valore, valore->NULL, valore->valore diverso.
+              BEGIN
+                IF NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id THEN
+                  NEW.preset_base_data_update      := NULL;
+                  NEW.preset_aggiornato_ignored_at := NULL;
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts() IS
+                'Azzera preset_base_data_update e preset_aggiornato_ignored_at quando preset_base_id cambia (IS DISTINCT FROM). Previene badge FE "preset aggiornato" non coerente dopo cambio o eliminazione del preset di base. Mirror del trigger ui.lista_preferenza_utente.';

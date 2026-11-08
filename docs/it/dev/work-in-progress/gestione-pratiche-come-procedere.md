@@ -1,7 +1,7 @@
 # Gestione Pratiche — Come procedere (stato attuale + roadmap)
 
 > **Tipo documento**: operativo "come procedere" — **autorevole per i prossimi
-> passi del dominio pratiche**. · **Data**: 2026-06-20 · **Stato**: 🟢 vivo.
+> passi del dominio pratiche**. · **Data**: 2026-06-20 (revisione 2026-11-08: §3, la bozza abbandonata dal flusso) · **Stato**: 🟢 vivo.
 >
 > **Origine**: consolidamento dello stato pratiche dopo che il **primo consumatore
 > (PREVENTIVI)** è stato validato end-to-end (anello3 §8.5, Fase E) e dopo
@@ -81,6 +81,29 @@ Oltre alle urgenze §2, item minori tracciati negli handoff (tutti su funzionali
 - **Aggancio documento↔flusso** (handoff 0617): backfill dei 13 ROOT storici non
   fatto (testare con pratiche **nuove**); handler accetta/push ancora **per-pratica**
   (da generalizzare quando nascono offerta/contratto).
+- **La bozza abbandonata dal flusso resta agganciata** (aggiunto il 2026-11-08, dal
+  giro P.1 di [brief-db-sorgente-documento-e-riga](brief-db-sorgente-documento-e-riga.md),
+  §8.16 BE-P.1-e). Dal passo PREVENTIVAZIONE il drawer crea la bozza del preventivo e al
+  primo salvataggio automatico la aggancia al flusso come ROOT (`collegaPratica`). Se
+  l'operatore la abbandona vuota, la cancellazione e' rifiutata: un documento collegato a
+  una pratica non si cancella (`E_SORG_ORIGINE_REFERENZIATA`, il guard unico di
+  `pratiche.pratiche_sorgenti` e' BLOCCA). La bozza vuota resta nell'elenco dei preventivi
+  e riaprendo il passo si ritrova lei (un solo ROOT per flusso,
+  `uq_pratiche_sorgenti_flusso_root`). Lo stesso varra' per offerta e contratto, quando
+  nasceranno i loro flussi.
+  - **Proposta (scelta C, Tid 2026-11-08: «va messa da qualche parte»):** la bozza vuota
+    che si cancella si porta via il suo aggancio alla pratica; la pratica resta, il passo
+    torna senza documento. ⚠️ E' un cambio di modello: l'azione del guard di
+    `pratiche_sorgenti` (BLOCCA → CANCELLA) vale per **ogni** documento collegabile a una
+    pratica, non per il solo preventivo. Si decide con la storia della decisione del giro
+    P.1 davanti.
+  - **Precondizione:** ogni documento collegabile a una pratica deve avere a DB la regola
+    «si cancella solo la bozza vuota». Oggi ce l'hanno ordini, bolle, resi e contratti
+    (giro T.4); **non** preventivi, offerte e commesse: li copre il lotto Z di
+    brief-db-sorgente-documento-e-riga. Senza, CANCELLA farebbe sparire in silenzio
+    l'aggancio di una commessa cancellata.
+  - Fino ad allora il comportamento e' il blocco, con la sola frase del DB (il pre-check BE
+    «pratiche collegate» si ritira: BE-P.1-e, scelta A).
 - **Split natura** (handoff 0609): manca il **dialog FE di smistamento
   riga-per-riga** (l'endpoint/fn accettano già `righe_ids`); coordinamento
   multi-sorgente alla consegna.

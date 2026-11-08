@@ -15,10 +15,11 @@
 --   livelli, 20261106-20); lotto T, giro T.2 (bolla e reso col guard unico: il caso
 --   TESTUALE passa su una tabella del test); lotto C, giro C.1 (un'esenzione sola; i nomi
 --   delle tabelle da pg_class + pg_namespace con pg_temp.qn, non da regclass::text, che
---   col nome dello schema nel search_path perde lo schema).
+--   col nome dello schema nel search_path perde lo schema); lotto M, giro M.2 (rev 2026-11-09:
+--   testate di magazzino ed evento col guard unico, la grammatica MODELLO_A esce dal perimetro).
 --
 -- Elenco test (plan 12):
---   1) il PERIMETRO contiene le sei tabelle di magazzino: il registro UNICO, le altre MODELLO_A
+--   1) il PERIMETRO contiene le sei tabelle di magazzino, tutte UNICO (nessuna MODELLO_A)
 --   2) le testate di vendita sono nel perimetro, tutte col guard unico (UNICO): bolla e reso
 --      dal giro T.2, ordine, contratto e fattura dal giro T.3 di brief-db-sorgente-documento-e-riga
 --   3) le esenzioni dichiarate sono due, col loro motivo: il log dei reconcile, da
@@ -103,9 +104,9 @@ SELECT (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA')    
 SELECT is(
     (SELECT string_agg(pg_temp.qn(tabella) || ':' || grammatica, ',' ORDER BY pg_temp.qn(tabella))
        FROM dbops.fn_sorgenti_orfane_perimetro() WHERE schema_tabella = 'magazzino'),
-    'magazzino.eventi_assets:MODELLO_A,magazzino.inventari:MODELLO_A,magazzino.movimenti:UNICO,'
-    'magazzino.movimenti_attesi:UNICO,magazzino.rettifiche:MODELLO_A,magazzino.trasferimenti:MODELLO_A',
-    '1) il perimetro contiene le sei tabelle di magazzino: il registro col guard unico (UNICO, giro M.1), le testate e l''evento ancora col tipizzato (MODELLO_A)');
+    'magazzino.eventi_assets:UNICO,magazzino.inventari:UNICO,magazzino.movimenti:UNICO,'
+    'magazzino.movimenti_attesi:UNICO,magazzino.rettifiche:UNICO,magazzino.trasferimenti:UNICO',
+    '1) il perimetro contiene le sei tabelle di magazzino, tutte col guard unico (UNICO): il registro dal giro M.1, le testate e l''evento dal giro M.2');
 
 SELECT is(
     (SELECT string_agg(nome_tabella::text || ':' || grammatica, ',' ORDER BY nome_tabella)
@@ -132,9 +133,8 @@ SELECT is(
 -- ===== il registro (UNICO, livello RIGA): il bersaglio sparisce =====
 -- rev 2026-11-09 (brief-db-sorgente-documento-e-riga, lotto M, giro M.1): il movimento
 --   del mondo e' nella grammatica del modello (INVENTARIO + l'inventario + la riga), e la
---   riga cancellata e' un orfano di livello RIGA. ⚠️ Il ramo MODELLO_A resta senza un
---   caso costruito: le tabelle che lo montano ancora (testate di magazzino, evento) non le
---   scrive nessuno, e il giro M.2 le porta al guard unico. Debito dichiarato nel brief.
+--   riga cancellata e' un orfano di livello RIGA. rev 2026-11-09 (giro M.2): il ramo
+--   MODELLO_A non c'e' piu', nessuna tabella monta il guard tipizzato (ritirato).
 -- Come owner, coi trigger utente spenti: le righe di una POSTED sono congelate, e
 -- il lato «in uscita» e' fra i trigger spenti (e' proprio cio' che lascia l'orfano).
 ALTER TABLE magazzino.inventari_righe DISABLE TRIGGER USER;

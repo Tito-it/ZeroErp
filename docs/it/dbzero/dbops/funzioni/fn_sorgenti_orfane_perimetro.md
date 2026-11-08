@@ -38,9 +38,6 @@ BEGIN ATOMIC
              WHEN (EXISTS ( SELECT 1
                 FROM script.fn_sorgente_guard_montaggi() m(tabella, schema_tabella, nome_tabella, livello_minimo, azione_cancellazione, argomenti_validi, ha_sorgente_riga, ha_sorgente_dettaglio)
                WHERE ((m.tabella)::oid = ((c.oid)::regclass)::oid))) THEN 'UNICO'::text
-             WHEN (EXISTS ( SELECT 1
-                FROM pg_trigger tg
-               WHERE ((tg.tgrelid = c.oid) AND (NOT tg.tgisinternal) AND (tg.tgfoid = ('script.trgfn_guard_sorgente_polimorfa_tipizzata()'::regprocedure)::oid)))) THEN 'MODELLO_A'::text
              ELSE 'TESTUALE'::text
          END AS "case",
      col.ha_id,
@@ -58,7 +55,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION dbops.fn_sorgenti_orfane_perimetro()
-IS 'Il perimetro della provenienza polimorfa: ogni tabella (fuori lo storico) con sorgente_tipo_id e almeno una fra sorgente_id e sorgente_uid, con le colonne che ha e la sua GRAMMATICA, dal guard che monta: UNICO (script.trgfn_guard_sorgente: tipo + sorgente_id | sorgente_uid + riga + dettaglio), MODELLO_A (script.trgfn_guard_sorgente_polimorfa_tipizzata: la chiave in sorgente_riga per id, in sorgente_uid per uid), TESTUALE (nessun guard: la chiave in sorgente_uid, come id o uid, in testo o uuid). Le esenzioni sono dichiarate con il motivo, in due colonne: orfani_esclusi_perche (fuori dal presidio degli orfani) e guard_esente_perche (fuori dal guard unico); il log dei reconcile (pratiche.reconcile_errori), fuori da tutte e due, e la coda di stampa (vendite.fatture_stampa_coda), fuori dal solo guard unico perche'' la sua chiave e'' una FK vera verso la fattura. Delle tabelle temporanee, solo quelle della sessione leggibili da chi chiede. Derivato dal catalogo di PostgreSQL, non da un elenco: una tabella nuova con la provenienza entra da sola. Lo leggono dbops.fn_sorgenti_orfane e il presidio di struttura (dbops/test-sorgenti-struttura-v1).';
+IS 'Il perimetro della provenienza polimorfa: ogni tabella (fuori lo storico) con sorgente_tipo_id e almeno una fra sorgente_id e sorgente_uid, con le colonne che ha e la sua GRAMMATICA, dal guard che monta: UNICO (script.trgfn_guard_sorgente: tipo + sorgente_id | sorgente_uid + riga + dettaglio), TESTUALE (nessun guard: la chiave in sorgente_uid, come id o uid, in testo o uuid). Le esenzioni sono dichiarate con il motivo, in due colonne: orfani_esclusi_perche (fuori dal presidio degli orfani) e guard_esente_perche (fuori dal guard unico); il log dei reconcile (pratiche.reconcile_errori), fuori da tutte e due, e la coda di stampa (vendite.fatture_stampa_coda), fuori dal solo guard unico perche'' la sua chiave e'' una FK vera verso la fattura. Delle tabelle temporanee, solo quelle della sessione leggibili da chi chiede. Derivato dal catalogo di PostgreSQL, non da un elenco: una tabella nuova con la provenienza entra da sola. Lo leggono dbops.fn_sorgenti_orfane e il presidio di struttura (dbops/test-sorgenti-struttura-v1).';
 ```
 
 </div>

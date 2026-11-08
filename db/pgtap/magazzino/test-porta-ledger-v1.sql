@@ -84,7 +84,8 @@ BEGIN
     UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv_b;
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
     INSERT INTO _fix VALUES (v_mag, v_mag_b, v_art,
-                             (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA'),
+                             -- rev 2026-11-09 (giro M.3): il tipo e' il documento, INVENTARIO_RIGA non e' piu' una sorgente.
+                             (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'),
                              v_r[1], v_r[2], v_r[3], v_r[4],
                              (SELECT id FROM magazzino.causali WHERE codice_interno = 'INV_INIZIALE'),
                              v_i[1], v_inv_b);
@@ -121,8 +122,8 @@ SELECT is(
 -- 4-7 Il comportamento (come app: e' il runner a garantirlo)
 -- ============================================================
 SELECT throws_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, qta, causale_id, sorgente_tipo_id, sorgente_riga)
-       SELECT art, mag, 1, cau, src, r1 FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, qta, causale_id, sorgente_tipo_id, sorgente_id, sorgente_riga)
+       SELECT art, mag, 1, cau, src, inv1, r1 FROM _fix $$,
     '42501', NULL,
     '4) INSERT diretto sul ledger: permesso negato');
 SELECT throws_ok(

@@ -1,0 +1,298 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE TESTATE DI MAGAZZINO E L'EVENTO NELLA GRAMMATICA DEL MODELLO:
+#   magazzino.inventari, rettifiche, trasferimenti, eventi_assets
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.2 (§4, scheda magazzino §1.3-1.6).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Le quattro tabelle scrivevano la provenienza nel modello A: la chiave
+#   dell'oggetto del tipo in sorgente_riga (key_selector id) o in sorgente_uid
+#   (key_selector uid). Nel modello (§4) il tipo e' il DOCUMENTO, la sua chiave
+#   sta in sorgente_id o sorgente_uid, e sorgente_riga e' la riga di quel
+#   documento (NULL = il documento intero). La provenienza resta facoltativa:
+#   «da quale documento l'operazione e' nata, se ce n'e' uno».
+#
+# ── LA FORMA ─────────────────────────────────────────────────────────
+#   1. Si tolgono i quattro indici unici residui (tipo, uid): nessuna regola di
+#      dominio «un inventario per documento» (scheda magazzino §1.3), e col ramo
+#      id non controllavano niente. Si toglie il CHECK del modello A.
+#   2. Le righe passano al modello, coi trigger della tabella spenti e riaccesi
+#      com'erano (e' il modello che cambia, non l'operazione):
+#        tipo documento o oggetto senza righe (EVENTO_ASSET), chiave id:
+#            sorgente_riga -> sorgente_id, sorgente_riga NULL;
+#        INVENTARIO_RIGA / RETTIFICA_RIGA / TRASFERIMENTO_RIGA:
+#            -> INVENTARIO / RETTIFICA / TRASFERIMENTO + il documento + la riga;
+#        chiave uid: invariata (sorgente_uid e' gia' la chiave del documento).
+#      ⛔ Una riga che resta col tipo e senza chiave di documento ferma il
+#      migrate: e' una foglia che non c'e' piu', o un prelievo / un rientro, che
+#      su una testata (senza sorgente_dettaglio) non si scrive. La conversione
+#      non inventa.
+#   3. Il CHECK di forma chk_mag_<tabella>_sorgente_forma, come sulle tabelle di
+#      vendita: tutto NULL, o il tipo con una sola chiave del documento. Che
+#      documento e riga esistano lo verifica il guard unico (20261109-16).
+#   4. Gli indici «chi deriva da X», non unici e parziali, uno per chiave e uno
+#      per la riga: li usano il lato «in uscita» della provenienza (alla
+#      cancellazione dell'origine) e la ricerca per documento.
+#   5. I COMMENT delle colonne, al presente.
+#   Da zero (CI) le tabelle sono vuote e il catalogo non e' ancora seminato: la
+#   conversione non tocca niente. Su dbdev nessuna testata ha oggi una
+#   provenienza (2026-11-08, fatto datato).
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261109-15-alter-magazzino-testate-sorgente-modello-mctit.yaml
+
+  - changeSet:
+      id: 20261109-15-alter-magazzino-testate-sorgente-modello
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.inventari, rettifiche, trasferimenti, eventi_assets nella grammatica del modello:
+        via i quattro indici unici residui e il CHECK del modello A, righe convertite, CHECK di forma,
+        indici «chi deriva da X», commenti delle colonne. brief-db-sorgente-documento-e-riga §7.2 lotto M,
+        giro M.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. I residui e la forma di prima.
+              DROP INDEX magazzino.uq_mag_invetario_sorgente_fk;
+              DROP INDEX magazzino.uq_mag_rettifiche_source_fk;
+              DROP INDEX magazzino.uq_mag_trasf_sorgente_fk;
+              DROP INDEX magazzino.uq_mag_eventi_assets_sorgente_fk;
+              ALTER TABLE magazzino.inventari     DROP CONSTRAINT chk_mag_inventari_sorgente_chiave;
+              ALTER TABLE magazzino.rettifiche    DROP CONSTRAINT chk_mag_rettifiche_sorgente_chiave;
+              ALTER TABLE magazzino.trasferimenti DROP CONSTRAINT chk_mag_trasferimenti_sorgente_chiave;
+              ALTER TABLE magazzino.eventi_assets DROP CONSTRAINT chk_mag_eventi_assets_sorgente_chiave;
+
+              -- 2. Le righe: dal modello A al modello.
+              DO $do$
+              DECLARE
+                  -- Tipi espliciti: %TYPE[] non e' sintassi valida (pg_trigger.tgname, .tgenabled);
+                  -- i e v_restano sono contatori (integer, bigint di count()).
+                  v_tabelle   text[] := ARRAY['inventari', 'rettifiche', 'trasferimenti', 'eventi_assets'];
+                  v_tabella   text;
+                  v_nomi      text[];
+                  v_modi      "char"[];
+                  i           integer;
+                  v_righe     bigint;
+                  v_restano   bigint;
+                  v_inv_riga  config.sorgenti.id%TYPE;
+                  v_ret_riga  config.sorgenti.id%TYPE;
+                  v_tra_riga  config.sorgenti.id%TYPE;
+                  v_inv       config.sorgenti.id%TYPE;
+                  v_ret       config.sorgenti.id%TYPE;
+                  v_tra       config.sorgenti.id%TYPE;
+              BEGIN
+                  SELECT max(s.id) FILTER (WHERE s.codice_interno = 'INVENTARIO_RIGA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'RETTIFICA_RIGA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'TRASFERIMENTO_RIGA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'INVENTARIO'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'RETTIFICA'),
+                         max(s.id) FILTER (WHERE s.codice_interno = 'TRASFERIMENTO')
+                    INTO v_inv_riga, v_ret_riga, v_tra_riga, v_inv, v_ret, v_tra
+                    FROM config.sorgenti s;
+
+                  FOREACH v_tabella IN ARRAY v_tabelle LOOP
+                      EXECUTE format('SELECT count(*) FROM magazzino.%I WHERE sorgente_tipo_id IS NOT NULL',
+                                     v_tabella)
+                         INTO v_righe;
+                      CONTINUE WHEN v_righe = 0;     -- da zero, o nessuna provenienza scritta
+
+                      -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                      -- resta spento, uno ALWAYS torna ALWAYS.
+                      SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                             array_agg(t.tgenabled    ORDER BY t.tgname)
+                        INTO v_nomi, v_modi
+                        FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = format('magazzino.%I', v_tabella)::regclass
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D';
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE magazzino.%I DISABLE TRIGGER %I', v_tabella, v_nomi[i]);
+                      END LOOP;
+
+                      -- Il tipo e' il documento (o un oggetto senza righe, come l'evento): la
+                      -- chiave dell'oggetto passa da sorgente_riga a sorgente_id.
+                      EXECUTE format(
+                          'UPDATE magazzino.%I x
+                              SET sorgente_id = x.sorgente_riga, sorgente_riga = NULL
+                             FROM config.sorgenti s
+                            WHERE s.id = x.sorgente_tipo_id
+                              AND s.key_selector = ''id''
+                              AND (s.categoria = ''DOCUMENTO'' OR s.codice_interno = ''EVENTO_ASSET'')
+                              AND x.sorgente_id IS NULL
+                              AND x.sorgente_riga IS NOT NULL', v_tabella);
+
+                      -- Il tipo era la riga di un documento interno: il documento + la riga.
+                      EXECUTE format(
+                          'UPDATE magazzino.%I x
+                              SET sorgente_tipo_id = $2, sorgente_id = r.inventario_id
+                             FROM magazzino.inventari_righe r
+                            WHERE x.sorgente_tipo_id = $1 AND r.id = x.sorgente_riga
+                              AND x.sorgente_id IS NULL', v_tabella)
+                        USING v_inv_riga, v_inv;
+                      EXECUTE format(
+                          'UPDATE magazzino.%I x
+                              SET sorgente_tipo_id = $2, sorgente_id = r.rettifica_id
+                             FROM magazzino.rettifiche_righe r
+                            WHERE x.sorgente_tipo_id = $1 AND r.id = x.sorgente_riga
+                              AND x.sorgente_id IS NULL', v_tabella)
+                        USING v_ret_riga, v_ret;
+                      EXECUTE format(
+                          'UPDATE magazzino.%I x
+                              SET sorgente_tipo_id = $2, sorgente_id = r.trasferimento_id
+                             FROM magazzino.trasferimenti_righe r
+                            WHERE x.sorgente_tipo_id = $1 AND r.id = x.sorgente_riga
+                              AND x.sorgente_id IS NULL', v_tabella)
+                        USING v_tra_riga, v_tra;
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE magazzino.%I ENABLE %s TRIGGER %I',
+                                         v_tabella,
+                                         CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                        WHEN 'R' THEN 'REPLICA'
+                                                        ELSE '' END,
+                                         v_nomi[i]);
+                      END LOOP;
+
+                      -- ⛔ Nessuna provenienza resta senza la chiave del suo documento.
+                      EXECUTE format('SELECT count(*) FROM magazzino.%I
+                                       WHERE sorgente_tipo_id IS NOT NULL
+                                         AND sorgente_id IS NULL AND sorgente_uid IS NULL', v_tabella)
+                         INTO v_restano;
+                      IF v_restano > 0 THEN
+                          RAISE EXCEPTION 'magazzino.%: % righe su % con il tipo e senza la chiave del documento dopo la conversione (una foglia che non c''e'' piu'', o un prelievo / rientro che una testata non scrive)',
+                                          v_tabella, v_restano, v_righe;
+                      END IF;
+                  END LOOP;
+              END
+              $do$;
+
+              -- 3. La forma.
+              ALTER TABLE magazzino.inventari
+                ADD CONSTRAINT chk_mag_inventari_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_mag_inventari_sorgente_forma ON magazzino.inventari IS
+                'La forma della provenienza dell''inventario: o nessuna colonna sorgente_* valorizzata (l''inventario nasce da solo), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE magazzino.rettifiche
+                ADD CONSTRAINT chk_mag_rettifiche_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_mag_rettifiche_sorgente_forma ON magazzino.rettifiche IS
+                'La forma della provenienza della rettifica: o nessuna colonna sorgente_* valorizzata (la rettifica nasce da sola), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE magazzino.trasferimenti
+                ADD CONSTRAINT chk_mag_trasferimenti_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_mag_trasferimenti_sorgente_forma ON magazzino.trasferimenti IS
+                'La forma della provenienza del trasferimento: o nessuna colonna sorgente_* valorizzata (il trasferimento nasce da solo), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE magazzino.eventi_assets
+                ADD CONSTRAINT chk_mag_eventi_assets_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_mag_eventi_assets_sorgente_forma ON magazzino.eventi_assets IS
+                'La forma della provenienza dell''evento: o nessuna colonna sorgente_* valorizzata (l''evento nasce da solo), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              -- 4. Chi deriva da X.
+              CREATE INDEX ix_mag_inventari_sorgente_id ON magazzino.inventari USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              CREATE INDEX ix_mag_inventari_sorgente_uid ON magazzino.inventari USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              CREATE INDEX ix_mag_inventari_sorgente_riga ON magazzino.inventari USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              CREATE INDEX ix_mag_rettifiche_sorgente_id ON magazzino.rettifiche USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              CREATE INDEX ix_mag_rettifiche_sorgente_uid ON magazzino.rettifiche USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              CREATE INDEX ix_mag_rettifiche_sorgente_riga ON magazzino.rettifiche USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              CREATE INDEX ix_mag_trasferimenti_sorgente_id ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              CREATE INDEX ix_mag_trasferimenti_sorgente_uid ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              CREATE INDEX ix_mag_trasferimenti_sorgente_riga ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              CREATE INDEX ix_mag_eventi_assets_sorgente_id ON magazzino.eventi_assets USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              CREATE INDEX ix_mag_eventi_assets_sorgente_uid ON magazzino.eventi_assets USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              CREATE INDEX ix_mag_eventi_assets_sorgente_riga ON magazzino.eventi_assets USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+
+              COMMENT ON INDEX magazzino.ix_mag_inventari_sorgente_id IS
+                'Chi deriva da X: gli inventari nati da un documento a chiave id, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico: piu'' inventari possono nascere dallo stesso documento.';
+              COMMENT ON INDEX magazzino.ix_mag_inventari_sorgente_uid IS
+                'Chi deriva da X: gli inventari nati da un documento a chiave uid, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico.';
+              COMMENT ON INDEX magazzino.ix_mag_inventari_sorgente_riga IS
+                'Chi deriva da X: gli inventari nati da una riga di un documento, per tipo e riga. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione della riga d''origine). Non unico.';
+              COMMENT ON INDEX magazzino.ix_mag_rettifiche_sorgente_id IS
+                'Chi deriva da X: le rettifiche nate da un documento a chiave id, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico: piu'' rettifiche possono nascere dallo stesso documento.';
+              COMMENT ON INDEX magazzino.ix_mag_rettifiche_sorgente_uid IS
+                'Chi deriva da X: le rettifiche nate da un documento a chiave uid, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico.';
+              COMMENT ON INDEX magazzino.ix_mag_rettifiche_sorgente_riga IS
+                'Chi deriva da X: le rettifiche nate da una riga di un documento, per tipo e riga. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione della riga d''origine). Non unico.';
+              COMMENT ON INDEX magazzino.ix_mag_trasferimenti_sorgente_id IS
+                'Chi deriva da X: i trasferimenti nati da un documento a chiave id, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico: piu'' trasferimenti possono nascere dallo stesso documento.';
+              COMMENT ON INDEX magazzino.ix_mag_trasferimenti_sorgente_uid IS
+                'Chi deriva da X: i trasferimenti nati da un documento a chiave uid, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico.';
+              COMMENT ON INDEX magazzino.ix_mag_trasferimenti_sorgente_riga IS
+                'Chi deriva da X: i trasferimenti nati da una riga di un documento, per tipo e riga. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione della riga d''origine). Non unico.';
+              COMMENT ON INDEX magazzino.ix_mag_eventi_assets_sorgente_id IS
+                'Chi deriva da X: gli eventi nati da un documento a chiave id, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico: piu'' eventi possono nascere dallo stesso documento.';
+              COMMENT ON INDEX magazzino.ix_mag_eventi_assets_sorgente_uid IS
+                'Chi deriva da X: gli eventi nati da un documento a chiave uid, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico.';
+              COMMENT ON INDEX magazzino.ix_mag_eventi_assets_sorgente_riga IS
+                'Chi deriva da X: gli eventi nati da una riga di un documento, per tipo e riga. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione della riga d''origine). Non unico.';
+
+              -- 5. Le colonne, al presente.
+              COMMENT ON COLUMN magazzino.inventari.sorgente_tipo_id IS
+                'Il tipo del documento da cui l''inventario e'' nato (config.sorgenti), se ce n''e'' uno; NULL: l''inventario nasce da solo. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_mag_inventari_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' l''inventario la cita.';
+              COMMENT ON COLUMN magazzino.inventari.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN magazzino.inventari.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN magazzino.inventari.sorgente_riga IS
+                'La riga del documento d''origine da cui l''inventario e'' nato: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la provenienza e'' il documento intero.';
+
+              COMMENT ON COLUMN magazzino.rettifiche.sorgente_tipo_id IS
+                'Il tipo del documento da cui la rettifica e'' nata (config.sorgenti), se ce n''e'' uno; NULL: la rettifica nasce da sola. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_mag_rettifiche_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' la rettifica la cita.';
+              COMMENT ON COLUMN magazzino.rettifiche.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN magazzino.rettifiche.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN magazzino.rettifiche.sorgente_riga IS
+                'La riga del documento d''origine da cui la rettifica e'' nata: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la provenienza e'' il documento intero.';
+
+              COMMENT ON COLUMN magazzino.trasferimenti.sorgente_tipo_id IS
+                'Il tipo del documento da cui il trasferimento e'' nato (config.sorgenti), se ce n''e'' uno; NULL: il trasferimento nasce da solo. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_mag_trasferimenti_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' il trasferimento la cita.';
+              COMMENT ON COLUMN magazzino.trasferimenti.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN magazzino.trasferimenti.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN magazzino.trasferimenti.sorgente_riga IS
+                'La riga del documento d''origine da cui il trasferimento e'' nato: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la provenienza e'' il documento intero.';
+
+              COMMENT ON COLUMN magazzino.eventi_assets.sorgente_tipo_id IS
+                'Il tipo del documento da cui l''evento e'' nato (config.sorgenti), se ce n''e'' uno; NULL: l''evento nasce da solo. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_mag_eventi_assets_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' l''evento la cita. E'' la provenienza dell''evento, non del movimento: il movimento cita l''evento col tipo EVENTO_ASSET.';
+              COMMENT ON COLUMN magazzino.eventi_assets.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN magazzino.eventi_assets.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN magazzino.eventi_assets.sorgente_riga IS
+                'La riga del documento d''origine da cui l''evento e'' nato: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la provenienza e'' il documento intero.';

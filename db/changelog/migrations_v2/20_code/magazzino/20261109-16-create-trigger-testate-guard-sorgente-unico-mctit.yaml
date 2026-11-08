@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO SULLE TESTATE DI MAGAZZINO E SULL'EVENTO:
+#   magazzino.inventari, rettifiche, trasferimenti, eventi_assets
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.2.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Le quattro tabelle montavano il guard tipizzato del modello A (l'oggetto del
+#   tipo esiste, cercato con sorgente_riga). Col modello (20261109-15) il guard
+#   e' quello unico, script.trgfn_guard_sorgente: una sola chiave, quella del
+#   key_selector; il documento esiste; la riga, se c'e', e' del documento.
+#   Stesso nome di prima: l'ordine dei guard BEFORE ROW lo governa il nome.
+#
+# ── GLI ARGOMENTI ────────────────────────────────────────────────────
+#   DOCUMENTO, BLOCCA, come le testate di vendita. La provenienza e' facoltativa
+#   e vale per il documento intero o per una sua riga (livelli liberi). BLOCCA:
+#   un documento, o una sua riga, citati da una testata di magazzino o da un
+#   evento non si cancellano (E_SORG_ORIGINE_REFERENZIATA, dal lato «in uscita»
+#   gia' montato su tutte le tabelle del catalogo).
+#   UPDATE OF prende le quattro colonne della provenienza (le tabelle non hanno
+#   sorgente_dettaglio).
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261109-16-create-trigger-testate-guard-sorgente-unico-mctit.yaml
+
+  - changeSet:
+      id: 20261109-16-create-trigger-testate-guard-sorgente-unico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard unico della provenienza (DOCUMENTO, BLOCCA) su magazzino.inventari, rettifiche,
+        trasferimenti, eventi_assets, al posto del tipizzato. brief-db-sorgente-documento-e-riga §7.2
+        lotto M, giro M.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_inventari_a10_guard_sorgente_ins_upd ON magazzino.inventari;
+              CREATE TRIGGER trg_inventari_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON magazzino.inventari
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_inventari_a10_guard_sorgente_ins_upd ON magazzino.inventari IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): con un documento d''origine, il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector, il documento esiste e la riga, se c''e'', gli appartiene. Senza tipo passa: la forma la tiene chk_mag_inventari_sorgente_forma. BLOCCA: un documento citato da un inventario non si cancella.';
+
+              DROP TRIGGER trg_rettifiche_a10_guard_sorgente_ins_upd ON magazzino.rettifiche;
+              CREATE TRIGGER trg_rettifiche_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON magazzino.rettifiche
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_rettifiche_a10_guard_sorgente_ins_upd ON magazzino.rettifiche IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): con un documento d''origine, il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector, il documento esiste e la riga, se c''e'', gli appartiene. Senza tipo passa: la forma la tiene chk_mag_rettifiche_sorgente_forma. BLOCCA: un documento citato da una rettifica non si cancella.';
+
+              DROP TRIGGER trg_trasferimenti_a10_guard_sorgente_ins_upd ON magazzino.trasferimenti;
+              CREATE TRIGGER trg_trasferimenti_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON magazzino.trasferimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_trasferimenti_a10_guard_sorgente_ins_upd ON magazzino.trasferimenti IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): con un documento d''origine, il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector, il documento esiste e la riga, se c''e'', gli appartiene. Senza tipo passa: la forma la tiene chk_mag_trasferimenti_sorgente_forma. BLOCCA: un documento citato da un trasferimento non si cancella.';
+
+              DROP TRIGGER trg_eventi_assets_a10_guard_sorgente_ins_upd ON magazzino.eventi_assets;
+              CREATE TRIGGER trg_eventi_assets_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON magazzino.eventi_assets
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_eventi_assets_a10_guard_sorgente_ins_upd ON magazzino.eventi_assets IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): con un documento d''origine, il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector, il documento esiste e la riga, se c''e'', gli appartiene. Senza tipo passa: la forma la tiene chk_mag_eventi_assets_sorgente_forma. BLOCCA: un documento citato da un evento non si cancella.';
