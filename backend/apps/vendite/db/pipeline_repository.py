@@ -1344,7 +1344,16 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         # `Mapping`: si serializza e basta, anche un TypedDict (`PipelineStepLogMeta`).
         meta: Mapping[str, Any] | None,
         gruppo_key: str | None = None,
+        commessa_id: int | None = None,
     ) -> None:
+        # ⭐ `commessa_id` = DI QUALE COMMESSA parla la segnalazione, quando chi
+        #    la solleva ce l'ha in mano (il pull per commessa). Va in
+        #    `fatturazione_lotti_log.commessa_id`, ed e' cio' che la scheda
+        #    Critiche usa per il riferimento di un gruppo senza numero: la
+        #    commessa di QUEL lotto, anche se oggi e' chiusa o il documento e'
+        #    rientrato in un'altra (V-7-bis, brief-db-sorgente-documento-e-riga
+        #    §8.23). `None` = la segnalazione non nasce da una commessa.
+        #
         # ⭐ `gruppo_key` = DI QUALE DOCUMENTO parla questa segnalazione
         #    (changeSet `20260908-20`). `None` = e' del GIRO, ed e' un valore, non
         #    un'assenza: una segnalazione del giro deve fermare il giro, mentre
@@ -1366,7 +1375,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     p_status               => %s,
                     p_messaggio            => %s,
                     p_meta                 => %s::jsonb,
-                    p_gruppo_key           => %s
+                    p_gruppo_key           => %s,
+                    p_commessa_id          => %s
                 )
                 """,
                 [
@@ -1377,6 +1387,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     messaggio,
                     self._to_jsonb_param(meta),
                     gruppo_key,
+                    commessa_id,
                 ],
             )
 

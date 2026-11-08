@@ -40,13 +40,6 @@ export function updateOfferta(id, payload) {
   return api.patch(`${BASE}/${id}/`, payload)
 }
 
-// Hard-delete offerta BOZZA orfana (drawer create abbandono).
-// Per annullare un'offerta gia' BOZZA con motivazione di processo usare
-// `annullaOfferta` (BOZZA o ACCETTATA -> ANNULLATA).
-export function deleteOfferta(id) {
-  return api.delete(`${BASE}/${id}/`)
-}
-
 // --- Transizioni di stato ---
 
 // BOZZA -> EMESSA. L'endpoint (multipart) emette + genera il documento +

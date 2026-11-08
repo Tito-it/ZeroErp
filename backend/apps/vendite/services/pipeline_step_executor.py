@@ -193,6 +193,10 @@ class _PullCommesseRunLogger(FanOutRunLogger):
                     "_handle_pull_attivita_da_commessa_task"
                 ),
                 gruppo_key=gruppo_key,
+                # ⭐ La commessa da cui il pull ricava i documenti: e' la sola
+                #    sede che la sa nel momento del fallimento, prima che
+                #    qualunque attivita' sia consegnata (V-7-bis, §8.23).
+                commessa_id=item,
             )
 
 
