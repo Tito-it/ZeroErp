@@ -500,6 +500,42 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
         repo.annulla.assert_called_once_with(1, "errore impostazione", None)
 
+    # --- eliminazione della bozza (abbandono drawer) -------------------
+
+    # Scopo: «si cancella solo la bozza vuota» (fuori bozza, con eccezioni
+    #        attive) lo giudica il DB: il rifiuto del guard arriva col suo
+    #        codice, e il service non legge lo stato prima del DELETE. ⛔ Fino
+    #        al 2026-11-08 lo anticipava `_STATI_EDITABILI`
+    #        (brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
+    def test_elimina_rifiuto_del_db_passa_col_suo_codice(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        for codice in ("E_DELETE_DOC_NON_BOZZA", "E_DELETE_DOC_CON_RIGHE"):
+            with self.subTest(codice=codice):
+                repo.delete_offerta.side_effect = DatabaseError(f"{codice}: rifiutato")
+                with self.assertRaises(ServiceError) as cm:
+                    OfferteService().elimina_offerta(1)
+                self.assertEqual(cm.exception.code, codice)
+        repo.get_stato_codice.assert_not_called()
+
+    # Scopo: il DELETE che non tocca niente e' il 404, non un successo.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
+    def test_elimina_inesistente_e_404(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo_cls.return_value.delete_offerta.return_value = False
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().elimina_offerta(99)
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
     # Scopo (O-4): l'annullo di una revisione senza conferma lo rifiuta il DB
     #        con E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`), e il codice
     #        arriva com'e'; la conferma dichiara i legami visti, e il verbo li

@@ -5,7 +5,7 @@
 # Scopo: Il LINK documento → pratica (`pratiche.pratiche_sorgenti`) sul DB
 #        vero: chi lo scrive (`PraticheRepository.upsert_pratica_sorgente`) e
 #        chi lo legge (il reverse per sorgente, i lettori del preventivo ROOT e
-#        dell'ordine COLLEGATO, la LATERAL per-flusso del percorso).
+#        dell'ordine COLLEGATO, il documento per flusso del percorso e della coda).
 # Note: ⭐ Giro P.1 di brief-db-sorgente-documento-e-riga (2026-11-08): la
 #        chiave del documento sta in `sorgente_id` (ordine, commessa) oppure in
 #        `sorgente_uid uuid` (preventivo), mai tutte e due; la sceglie il BB DB
@@ -26,8 +26,9 @@
      dall'id e dall'uid; `get_ordine_id_by_pratica` dà l'ordine.
 3. test_codice_che_non_e_un_tipo
      un codice fuori catalogo è `E_SORG_CONF` dal BB, non un link muto.
-4. test_percorso_esegue
-     la LATERAL per-flusso del percorso legge le colonne native e regge.
+4. test_percorso_e_coda_proiettano_il_documento_del_flusso
+     su un flusso vero, percorso e coda proiettano il documento ancorato a
+     quel flusso (vista DB), e i passi senza flusso restano senza.
 """
 
 from __future__ import annotations
@@ -165,6 +166,57 @@ class LinkPraticaSorgenteDbTests(TestCase):
         # Nessun link muto: la pratica ha ancora il solo ROOT del preventivo.
         self.assertEqual(self._link(SORGENTE_PREVENTIVO), [(None, self.preventivo_uid, RUOLO_LINK_ROOT)])
 
-    # 4. Il percorso: la LATERAL per-flusso, eseguita davvero.
-    def test_percorso_esegue(self) -> None:
-        self.assertIsInstance(self.repo.get_percorso_pratica(self.pratica_id), list)
+    # 4. Il percorso e la coda: il documento per flusso dalla vista DB
+    #    `script.vw_flusso_doc_sorgente` (giro Z.1, BE-Z.1-a), eseguiti
+    #    davvero SU UN FLUSSO: la pratica appena generata non ne ha (nascono
+    #    in lavorazione), e senza flusso la LATERAL non legge niente. Il
+    #    mondo: un operatore di fixture, il primo passo del percorso come
+    #    flusso DA_ESEGUIRE assegnato a lui (livello ASSEGNATO della coda), il
+    #    ROOT del preventivo ancorato a quel flusso. La regola d'ancora la
+    #    prova il pgTAP della vista; qui il cablaggio: entrambe le query
+    #    proiettano il documento del flusso, e solo su quel flusso.
+    def test_percorso_e_coda_proiettano_il_documento_del_flusso(self) -> None:
+        primo_passo = self.repo.get_percorso_pratica(self.pratica_id)[0]
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT risorsa_umana_id"
+                "  FROM dbops.fn_pgtap_crea_operatore_umano('link pratica coda')"
+            )
+            risorsa_umana_id = int(cur.fetchone()[0])
+            cur.execute(
+                "SELECT emittente_fiscale_id FROM pratiche.pratiche WHERE id = %s",
+                [self.pratica_id],
+            )
+            emittente_fiscale_id = int(cur.fetchone()[0])
+        flusso_id = self.repo.create_flusso({
+            "pratica_id": self.pratica_id,
+            "template_flusso_id": primo_passo["template_flusso_id"],
+            "stato_id": self.repo.resolve_stato_flusso("DA_ESEGUIRE"),
+            "risorsa_umana_id": risorsa_umana_id,
+            "sequenza": primo_passo["sequenza"],
+        })
+        self.repo.upsert_pratica_sorgente(
+            pratica_id=self.pratica_id, sorgente_codice=SORGENTE_PREVENTIVO,
+            sorgente_chiave=self.preventivo_uid, ruolo_link=RUOLO_LINK_ROOT,
+            flusso_id=flusso_id,
+        )
+
+        percorso = self.repo.get_percorso_pratica(self.pratica_id)
+        col_flusso = [p for p in percorso if p["flusso_id"] == flusso_id]
+        self.assertEqual(len(col_flusso), 1, "il passo del flusso, una volta sola")
+        self.assertIs(col_flusso[0]["doc_risolto"], True)
+        self.assertIsNotNone(col_flusso[0]["doc_sorgente_descrizione"])
+        # I passi senza flusso non ereditano il documento della pratica.
+        for passo in percorso:
+            if passo["flusso_id"] is None:
+                self.assertIsNone(passo["doc_risolto"], passo["template_flusso_id"])
+
+        coda = [
+            c for c in self.repo.list_coda_lavoro(risorsa_umana_id, emittente_fiscale_id)
+            if c["flusso_id"] == flusso_id
+        ]
+        self.assertEqual(len(coda), 1, "il flusso assegnato e' in coda, una volta sola")
+        self.assertIs(coda[0]["doc_risolto"], True)
+        self.assertEqual(
+            coda[0]["doc_sorgente_descrizione"], col_flusso[0]["doc_sorgente_descrizione"],
+        )

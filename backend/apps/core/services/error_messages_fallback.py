@@ -372,7 +372,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DELETE_BLOCK": "Generazione del trigger di blocco cancellazione fallita.",
     "E_DELETE_BLOCKED_FUL": "Cancellazione bloccata: esistono legami fulfillment.",
     "E_DELETE_CONTRATTO_CON_SUCCESSIVI": "Il contratto e' il precedente di altri contratti: non si puo' eliminare.",
-    "E_DELETE_DOC_CON_RIGHE": "Il documento ha ancora delle righe: si puo' eliminare solo una bozza vuota.",
+    "E_DELETE_DOC_CON_RIGHE": "Il documento ha ancora del contenuto (righe, eccezioni, attivita' o documenti collegati): si puo' eliminare solo una bozza vuota.",
     "E_DELETE_DOC_NON_BOZZA": "Il documento non e' piu' in bozza: si puo' eliminare solo finche' e' in bozza.",
     "E_DELETE_NOT_ALLOWED": "Cancellazione non permessa su questi dati.",
     "E_DELETE_RIGA_DOC_NON_BOZZA": "Il documento non e' piu' in bozza: le sue righe si possono togliere solo finche' e' in bozza.",
@@ -1580,5 +1580,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "W_FONDO_TRATTENUTO_DA_SISTEMAZIONE": "Fondo non azzerato: una sistemazione lo trattiene, e si disfa annullando quella.",
     "W_MESSAGGIO_ARITA": "Messaggio di errore con segnaposti non valorizzati: anomalia tecnica di catalogo.",
     "W_SCADENZE_TOTALE_NEGATIVO": "Totale a pagare negativo: nessun piano rate generato.",
+    "W_TXID_BYPASS_PARAMETRO_ASSENTE": "Avviso - il parametro del bypass del tx_id non e' valorizzato: il bypass resta spento.",
     "W_TXID_NOT_REGISTERED": "Transazione non registrata: anomalia tecnica di tracciamento.",
 }

@@ -42,7 +42,6 @@ from apps.vendite.db._righe_repo_mixin import (
 from apps.vendite.types import (
     PreventivoDetailRow,
     PreventivoListRow,
-    PreventivoPraticaRow,
     PreventivoSmistamentoRow,
 )
 
@@ -1403,17 +1402,4 @@ class PreventiviRepository(
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
-
-    # Scopo: Restituisce pratiche collegate al preventivo via vista DB.
-    # La vista filtra gia' per sorgente_tipo codice = 'PREVENTIVO'.
-    def list_pratiche(self, preventivo_id: int) -> list[PreventivoPraticaRow]:
-        sql = """
-            SELECT *
-            FROM vendite.vw_preventivi_pratiche
-            WHERE preventivo_id = %s
-            ORDER BY data_apertura DESC NULLS LAST
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
-            return cast("list[PreventivoPraticaRow]", rows_to_list(cursor))
 

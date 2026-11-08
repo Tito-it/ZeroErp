@@ -596,27 +596,42 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
 
 
 class ResiEliminaTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
-    """elimina_reso: hard-delete solo per bozza orfana (0 righe)."""
+    """elimina_reso: hard-delete della bozza orfana; la regola la giudica il DB."""
 
+    # ⛔ «Si cancella solo la bozza vuota» lo giudica il DB
+    #    (`trgfn_doc_guard_delete_solo_bozza`): il service non legge stato ne'
+    #    righe prima del DELETE (brief-db-sorgente-documento-e-riga §8.21
+    #    BE-Z.2-a). Il rifiuto del guard arriva al client col suo codice.
     @patch(_REPO, autospec=True)
-    def test_elimina_reso_con_righe_rifiutato(self, repo_cls) -> None:
+    def test_elimina_rifiuto_del_db_passa_col_suo_codice(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        repo.count_righe.return_value = 2
+        repo.delete_reso.side_effect = DatabaseError(
+            "E_DELETE_DOC_CON_RIGHE: il documento ha ancora del contenuto",
+        )
         with self.assertRaises(ServiceError) as cm:
             resi_service.elimina_reso(7)
-        self.assertEqual(cm.exception.code, "E_RESO_STATO_TRANSIZIONE")
-        repo.delete_reso.assert_not_called()
+        self.assertEqual(cm.exception.code, "E_DELETE_DOC_CON_RIGHE")
+        repo.get_stato_codice.assert_not_called()
+        repo.count_righe.assert_not_called()
+
+    # Il DELETE che non tocca niente (id inesistente o fuori perimetro RLS)
+    # e' il 404 del dominio, non un successo.
+    @patch(_REPO, autospec=True)
+    def test_elimina_inesistente_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.delete_reso.return_value = False
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.elimina_reso(99)
+        self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
 
     @patch(_REPO, autospec=True)
-    def test_elimina_reso_bozza_orfana_ok(self, repo_cls) -> None:
+    def test_elimina_bozza_orfana_ok(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        repo.count_righe.return_value = 0
         repo.delete_reso.return_value = True
         out = resi_service.elimina_reso(7)
         self.assertTrue(out["deleted"])
         repo.delete_reso.assert_called_once_with(7)
+        repo.get_stato_codice.assert_not_called()
 
 
 class ResiAzioniTests(SimpleTestCase):
