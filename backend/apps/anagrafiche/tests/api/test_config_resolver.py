@@ -111,7 +111,7 @@ def _build_side_effect(mock_cur, ruolo_row, nature_rows, dettaglio_rows, dominio
 _GET_PARAM_PATH = "apps.anagrafiche.db.soggetti_repository.ParameterRepository.get_parameter_se_dichiarato"
 
 
-@patch(_GET_PARAM_PATH, return_value=None)
+@patch(_GET_PARAM_PATH, return_value=None, autospec=True)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverRisUmana(TestCase):
     """Config resolver per RIS_UMANA — solo PF."""
@@ -144,7 +144,7 @@ class TestConfigResolverRisUmana(TestCase):
         self.assertEqual(result["min_search_length"], 3)
 
 
-@patch(_GET_PARAM_PATH, return_value=None)
+@patch(_GET_PARAM_PATH, return_value=None, autospec=True)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverCliente(TestCase):
     """Config resolver per CL — PF, PG, ENC."""
@@ -180,7 +180,7 @@ class TestConfigResolverCliente(TestCase):
         self.assertEqual(len(result["tipi_soggetto_dettaglio"]), 5)
 
 
-@patch(_GET_PARAM_PATH, return_value=None)
+@patch(_GET_PARAM_PATH, return_value=None, autospec=True)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverSenzaMatrice(TestCase):
     """Config resolver per ruolo senza matrice — nature libere."""
@@ -208,7 +208,7 @@ class TestConfigResolverSenzaMatrice(TestCase):
         self.assertIn("natura_soggetto_enum", mock_cur.execute.call_args_list[3].args[0])
 
 
-@patch(_GET_PARAM_PATH, return_value=None)
+@patch(_GET_PARAM_PATH, return_value=None, autospec=True)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverNonTrovato(TestCase):
     """Config resolver per codice ruolo inesistente."""
@@ -234,7 +234,7 @@ class TestConfigResolverNonTrovato(TestCase):
         mock_get_param.assert_not_called()
 
 
-@patch(_GET_PARAM_PATH, return_value=None)
+@patch(_GET_PARAM_PATH, return_value=None, autospec=True)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverChiaveEsatta(TestCase):
     """La chiave del tipo ruolo e' il `codice_interno`: si confronta esatta.
@@ -277,7 +277,7 @@ _DETTAGLI_CL = [
 ]
 
 
-@patch(_GET_PARAM_PATH)
+@patch(_GET_PARAM_PATH, autospec=True)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverDefault(TestCase):
     """Config resolver — risoluzione default tipo_soggetto_dettaglio."""
@@ -300,8 +300,9 @@ class TestConfigResolverDefault(TestCase):
         # Verifica che il param_code passato sia derivato da ruolo["codice"]
         # (post-validazione DB), non dall'input raw.
         mock_get_param.assert_called_once()
+        # Mock `autospec` di un metodo: `args[0]` e' `self`, il codice e' `args[1]`.
         call_args = mock_get_param.call_args
-        self.assertEqual(call_args[0][0], "DEFAULT_TIPO_SOGGETTO_DETTAGLIO_CL")
+        self.assertEqual(call_args[0][1], "DEFAULT_TIPO_SOGGETTO_DETTAGLIO_CL")
 
     # Scopo: Default configurato ma codice non presente nei dettagli ammessi
     #        (config inconsistente o cambio nature) → default_id None, no errore.

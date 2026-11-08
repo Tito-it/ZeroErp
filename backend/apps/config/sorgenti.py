@@ -57,6 +57,11 @@ SORGENTE_FATTURA: Final = "FATTURA"
 SORGENTE_COMMESSA: Final = "COMMESSA"
 SORGENTE_ATTIVITA_CONSUMI: Final = "ATTIVITA_CONSUMI"
 
-# Righe di magazzino (categoria RIGA).
-SORGENTE_INVENTARIO_RIGA: Final = "INVENTARIO_RIGA"
-SORGENTE_RETTIFICA_RIGA: Final = "RETTIFICA_RIGA"
+# Documenti di magazzino (categoria DOCUMENTO). ⭐ Dal giro M.1 di
+# brief-db-sorgente-documento-e-riga (2026-11-08) il movimento porta il tipo
+# del DOCUMENTO, la chiave in `sorgente_id` e la riga in `sorgente_riga`.
+# ⛔ Fino a quel giorno qui c'erano `SORGENTE_INVENTARIO_RIGA` /
+#    `SORGENTE_RETTIFICA_RIGA` (categoria RIGA): nessun movimento li porta
+#    piu', e nessun modulo li nomina. Le righe del seed escono col giro M.3.
+SORGENTE_INVENTARIO: Final = "INVENTARIO"
+SORGENTE_RETTIFICA: Final = "RETTIFICA"

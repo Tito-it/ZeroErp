@@ -70,7 +70,7 @@ _ROWS_RIEPILOGO = [
 class DashBacklogRiepilogoServiceTests(TestCase):
     # Scopo: Le 3 classi sono sempre presenti nell'ordine UI del design
     #        (recuperabile, sollecito cliente, anomalia) anche a repo vuoto.
-    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_riepilogo", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_riepilogo", autospec=True, return_value=[])
     def test_tre_classi_sempre_presenti_ordine_ui(self, _mock_repo):
         data = fn_dash_backlog_riepilogo()
         ordine = [c["classe"] for c in data["classi"]]
@@ -78,7 +78,7 @@ class DashBacklogRiepilogoServiceTests(TestCase):
 
     # Scopo: Contratto simmetrico: classe vuota con zeri espliciti, aree [] e
     #        anzianita' None (eta' sconosciuta != 0 giorni).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_riepilogo", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_riepilogo", autospec=True, return_value=[])
     def test_contratto_simmetrico_classi_vuote(self, _mock_repo):
         data = fn_dash_backlog_riepilogo()
         for classe in data["classi"]:
@@ -92,7 +92,7 @@ class DashBacklogRiepilogoServiceTests(TestCase):
     #        unita', max anzianita') e restano nel dettaglio aree.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_riepilogo",
+        "list_dash_backlog_riepilogo", autospec=True,
         return_value=_ROWS_RIEPILOGO,
     )
     def test_pivot_classe_somma_aree(self, _mock_repo):
@@ -116,7 +116,7 @@ class DashBacklogRiepilogoServiceTests(TestCase):
     #        accodata dopo le 3 note (fail-visible).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_riepilogo",
+        "list_dash_backlog_riepilogo", autospec=True,
         return_value=[
             {
                 "classe": "NUOVA_CLASSE",
@@ -143,7 +143,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
     #        Nessun auth_user_id: lo scope e' interamente DB-side.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_documenti",
+        "list_dash_backlog_documenti", autospec=True,
         return_value=([{"documento_id": 1}], 1),
     )
     def test_documenti_ok_envelope_paginato(self, mock_repo):
@@ -162,7 +162,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
     #        lista vuota, mai 400 — cosi' le classi future restano drillabili.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_documenti",
+        "list_dash_backlog_documenti", autospec=True,
         return_value=([], 0),
     )
     def test_documenti_classe_sconosciuta_passthrough(self, mock_repo):
@@ -182,7 +182,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
     #        regressione "card che non si aprono" (brief BE/FE §2 BE-1).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_documenti",
+        "list_dash_backlog_documenti", autospec=True,
         return_value=([], 0),
     )
     def test_documenti_aree_ddt_resi_valide(self, mock_repo):
@@ -194,7 +194,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
     # Scopo: Senza filtri il repository riceve None (tutte le classi/aree).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_documenti",
+        "list_dash_backlog_documenti", autospec=True,
         return_value=([], 0),
     )
     def test_documenti_filtri_none_passthrough(self, mock_repo):
@@ -208,7 +208,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
     #        (stessa semantica del ritardo della Situazione aperta).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_documenti",
+        "list_dash_backlog_documenti", autospec=True,
         return_value=([], 0),
     )
     @patch.object(
@@ -231,7 +231,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
     #        (stesso helper della Situazione aperta): sul pavimento passa.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_documenti",
+        "list_dash_backlog_documenti", autospec=True,
         return_value=([], 0),
     )
     @patch.object(vendite_service, "oggi_aziendale", return_value=date(2020, 1, 31))
@@ -246,7 +246,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
         self.assertEqual(mock_repo.call_args.kwargs["ritardo_giorni"], 30)
 
     # Scopo: Un giorno oltre il pavimento -> E_VENDITE_VALIDATION.
-    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_documenti")
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_documenti", autospec=True)
     @patch.object(vendite_service, "oggi_aziendale", return_value=date(2020, 1, 31))
     @patch.object(
         vendite_service.ParameterService, "get_default_date",
@@ -262,7 +262,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
 
     # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
     #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
-    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_documenti", return_value=([], 0))
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_documenti", autospec=True, return_value=([], 0))
     def test_documenti_page_invalida(self, mock_repo):
         fn_dash_backlog_documenti(limit=10, offset=30)
         kwargs = mock_repo.call_args.kwargs
@@ -272,7 +272,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
     #        l'ordinamento server-side su tutte le pagine.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_dash_backlog_documenti",
+        "list_dash_backlog_documenti", autospec=True,
         return_value=([], 0),
     )
     def test_documenti_ordinamento_inoltrato(self, mock_repo):

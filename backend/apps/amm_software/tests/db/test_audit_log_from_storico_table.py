@@ -79,7 +79,7 @@ def _sql_generato(sorgenti: tuple[tuple[str, str, str, str], ...], **kwargs: Any
     contesto.__enter__.return_value = cursore
     with (
         patch.object(
-            AmmSoftwareRepository, "_list_audit_sources_cached", return_value=sorgenti
+            AmmSoftwareRepository, "_list_audit_sources_cached", autospec=True, return_value=sorgenti
         ),
         patch(
             "apps.amm_software.db.amm_software_repository.connection.cursor",
@@ -129,7 +129,7 @@ class AuditLogFromStoricoTableTests(unittest.TestCase):
     def test_il_payload_pubblico_non_espone_storico_table(self) -> None:
         with patch.object(
             AmmSoftwareRepository,
-            "_list_audit_sources_cached",
+            "_list_audit_sources_cached", autospec=True,
             return_value=(_SORGENTE,),
         ):
             righe = AmmSoftwareRepository().list_audit_sources()

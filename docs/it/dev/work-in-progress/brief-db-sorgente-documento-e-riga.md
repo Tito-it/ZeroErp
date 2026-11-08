@@ -99,6 +99,7 @@
 | 9-ter | ✅ BE | il §8.13 (D.1: stampa e drenatore della coda) e il §8.14 (K.1: il nome della chiave del push), i due percorsi rotti dall'apply (2026-11-07, da committare su `dev/backend-tid`) | §8.14 «Stato al 2026-11-07, dopo il giro BE di D.1 e K.1» | — |
 | 9-quater | ✅ BE | il §8.16 (P.1: il link documento → pratica, scrittore e lettori), il presidio `pratiche/tests/db/test_link_pratica_sorgente_db`; richieste al DB R-P.1-1, R-P.1-2 (2026-11-08, committato `03fe67e2ac`, merge #57); R-P.1-1 e R-P.1-2 vanno al giro DB di fine cantiere | §8.16 «Stato al 2026-11-08, dopo il giro BE di P.1» | — |
 | 9-quinquies | Tid | gli smoke via API del percorso pratica. ✅ BE-P.1-e decisa (2026-11-08): il pre-check «pratiche collegate» si ritira (A) | §8.16 | 9-quater |
+| 9-sexies | ✅ BE/FE | il §8.17 (M.1: il registro per documento su `sorgente_id`, `sorgente_id` e `sorgente_dettaglio` in SELECT e tipi, i codici dei documenti nell'API, nel FE e nelle etichette); nello stesso giro `autospec` su tutte le patch di repository, col presidio `core/tests/test_presidio_autospec_repository` (2026-11-08, committato `1b45fcc58c`, merge #58) | §8.17 «Stato al 2026-11-08, dopo il giro BE di M.1» | — |
 | 9 | BE/FE | il §8 dei lotti che restano, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
@@ -3471,12 +3472,12 @@ vanno ritirati con M.3 (la voce è BE-M.3-a, §8.19).
 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
-| BE-M.1-a | `magazzino.movimenti`: `sorgente_tipo_id` è il tipo del **documento** (`INVENTARIO`, `RETTIFICA`, `TRASFERIMENTO`, `DDT_VENDITA`, `RESO_VENDITA`; `EVENTO_ASSET` resta), la chiave del documento sta in `sorgente_id`, la riga in `sorgente_riga`, il dettaglio (prelievo, rientro) nella colonna nuova `sorgente_dettaglio`. I movimenti di oggi sono convertiti | `magazzino/db/magazzino_repository.py:986-997` (`list_movimenti`: il filtro `documento_sorgente` = `sg.codice_interno = <tipo della riga> AND EXISTS (… r.id = mv.sorgente_riga AND r.<fk> = %s)`), `:383-384` (`_MOVIMENTI_SELECT`), `magazzino/db/famiglie.py:56,84,103` (`sorgente_codice_interno` della famiglia = `INVENTARIO_RIGA` / `RETTIFICA_RIGA`), `magazzino/services/consultazione_service.py` (i parametri `inventario_id` / `rettifica_id`) | il filtro per documento diventa `sg.codice_interno = <tipo del documento> AND mv.sorgente_id = %s`, e l'`EXISTS` sulle righe se ne va; la famiglia porta il tipo del documento (`INVENTARIO`, `RETTIFICA`; il campo `fk_riga` non serve più al filtro). La SELECT proietta anche `sorgente_id` e `sorgente_dettaglio` |
-| BE-M.1-b | il parametro `sorgente_tipo` dell'API prende i codici dei documenti | `magazzino/api/views.py:845` (filtro), `:862-863` (descrizione OpenAPI «INVENTARIO_RIGA, RETTIFICA_RIGA, …») | i valori nuovi nel contratto e nella descrizione |
-| BE-M.1-c | `MovimentoRow`, `BloccoRow`: le colonne `sorgente_id`, `sorgente_dettaglio` | `magazzino/types.py:182-184`, `:212-214`; `_BLOCCHI_SELECT` (`magazzino_repository.py:355-356`) | i due campi nuovi (nullable) |
-| BE-M.1-d | i test e lo smoke che si aspettano i codici di riga sui movimenti | `magazzino/tests/services/test_magazzino_service.py:94`, `tests/api/test_magazzino_api.py:316`, `tests/db/test_documento_interno_db.py:194`, `backend/scripts/tests/smoke-magazzino-inventario-primo-carico.py:25,116-118` | i codici dei documenti |
-| UI-M.1-a | il seed della lista dei movimenti descrive il tipo della riga | `db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv:865-866` | ✅ le due descrizioni (tipo del documento, riga del documento) le ha corrette il team DB nel giro M.2, su segnalazione del BE (2026-11-08). ✅ Tid, 2026-11-08: la lista mostra anche le colonne nuove, documento (`sorgente_id`) e dettaglio (`sorgente_dettaglio`). Vanno insieme, nel lotto BE/FE: le due righe del CSV (DB, lista 77, gruppo «Sorgente», non ordinabili finché la whitelist BE non le ha), le chiavi `magazzino.movimenti.col_sorgente_id` / `col_sorgente_dettaglio` nei locales (FE: senza, `check_i18n_keys.py` è rosso) e la proiezione delle due colonne nel BE (BE-M.1-c) |
-| FE-M.1-a | i codici della sorgente del movimento | `frontend/src/magazzino/vocabolari.js:62-66` (`SORGENTE_MOVIMENTO`), `:112`, `:131` (la sorgente delle famiglie), `etichette.js` (`PREFISSO_SORGENTE_MOVIMENTO`), `locales/it.json` e `en.json` (`magazzino.movimenti.sorgente.INVENTARIO_RIGA` …), `components/MovimentiSearchTable.vue` (filtro e cella), `stores/movimenti.js` (deep-link `inventario_id` / `rettifica_id`), `views/MovimentiView.vue`, `DisponibilitaBlocchiPopover.vue` | i codici dei documenti e le loro etichette; il deep-link per documento |
+| BE-M.1-a ✅ | `magazzino.movimenti`: `sorgente_tipo_id` è il tipo del **documento** (`INVENTARIO`, `RETTIFICA`, `TRASFERIMENTO`, `DDT_VENDITA`, `RESO_VENDITA`; `EVENTO_ASSET` resta), la chiave del documento sta in `sorgente_id`, la riga in `sorgente_riga`, il dettaglio (prelievo, rientro) nella colonna nuova `sorgente_dettaglio`. I movimenti di oggi sono convertiti | `magazzino/db/magazzino_repository.py:986-997` (`list_movimenti`: il filtro `documento_sorgente` = `sg.codice_interno = <tipo della riga> AND EXISTS (… r.id = mv.sorgente_riga AND r.<fk> = %s)`), `:383-384` (`_MOVIMENTI_SELECT`), `magazzino/db/famiglie.py:56,84,103` (`sorgente_codice_interno` della famiglia = `INVENTARIO_RIGA` / `RETTIFICA_RIGA`), `magazzino/services/consultazione_service.py` (i parametri `inventario_id` / `rettifica_id`) | il filtro per documento diventa `sg.codice_interno = <tipo del documento> AND mv.sorgente_id = %s`, e l'`EXISTS` sulle righe se ne va; la famiglia porta il tipo del documento (`INVENTARIO`, `RETTIFICA`; il campo `fk_riga` non serve più al filtro). La SELECT proietta anche `sorgente_id` e `sorgente_dettaglio` |
+| BE-M.1-b ✅ | il parametro `sorgente_tipo` dell'API prende i codici dei documenti | `magazzino/api/views.py:845` (filtro), `:862-863` (descrizione OpenAPI «INVENTARIO_RIGA, RETTIFICA_RIGA, …») | i valori nuovi nel contratto e nella descrizione |
+| BE-M.1-c ✅ | `MovimentoRow`, `BloccoRow`: le colonne `sorgente_id`, `sorgente_dettaglio` | `magazzino/types.py:182-184`, `:212-214`; `_BLOCCHI_SELECT` (`magazzino_repository.py:355-356`) | i due campi nuovi (nullable) |
+| BE-M.1-d ✅ | i test e lo smoke che si aspettano i codici di riga sui movimenti | `magazzino/tests/services/test_magazzino_service.py:94`, `tests/api/test_magazzino_api.py:316`, `tests/db/test_documento_interno_db.py:194`, `backend/scripts/tests/smoke-magazzino-inventario-primo-carico.py:25,116-118` | i codici dei documenti |
+| UI-M.1-a | il seed della lista dei movimenti descrive il tipo della riga | `db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv:865-866` | ✅ le due descrizioni (tipo del documento, riga del documento) le ha corrette il team DB nel giro M.2; restano le colonne nuove (documento, dettaglio), decise da Tid per il lotto BE/FE |
+| FE-M.1-a ✅ | i codici della sorgente del movimento | `frontend/src/magazzino/vocabolari.js:62-66` (`SORGENTE_MOVIMENTO`), `:112`, `:131` (la sorgente delle famiglie), `etichette.js` (`PREFISSO_SORGENTE_MOVIMENTO`), `locales/it.json` e `en.json` (`magazzino.movimenti.sorgente.INVENTARIO_RIGA` …), `components/MovimentiSearchTable.vue` (filtro e cella), `stores/movimenti.js` (deep-link `inventario_id` / `rettifica_id`), `views/MovimentiView.vue`, `DisponibilitaBlocchiPopover.vue` | i codici dei documenti e le loro etichette; il deep-link per documento |
 | — | i presidi: `dbops.vw_ddt_emessi_senza_scarico` e `vw_resi_confermati_senza_carico` prendono in coda un conteggio (`prelievi_senza_scarico`, `rientri_senza_carico`), `vw_magazzino_movimenti_senza_costo` le colonne `sorgente_id`, `sorgente_dettaglio`; nasce `dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo`, con la sua riga in `dbops.presidi` e `presidi_testi` | digest e pagina dei presidi (leggono il catalogo) | nessuna obbligatoria: il catalogo porta la riga nuova |
 | — | i cinque posting (inventario, rettifica, trasferimento, bolla, reso) sollevano `E_SORG_CONF` (non più `E_CONFIG_MANCANTE`) su un tipo assente o spento; l'annullo di bolla e reso solleva `E_CONFIG_MANCANTE` se il tipo del documento manca, invece di saltare lo storno | i verbi DB | nessuna: i due codici sono già nelle policy |
 | — | `codici_errore.csv`: la descrizione di `E_MAG_MOVIMENTO_GIA_REGISTRATO` (le nove colonne dell'identità) | il file generato delle policy d'errore | rigenerarlo, come per ogni CSV dei codici |
@@ -3500,6 +3501,39 @@ Nessuna voce obbligatoria: le testate di magazzino e l'evento la provenienza non
 | --- | --- | --- | --- |
 | BE-M.3-a | `config.sorgenti` non ha più `INVENTARIO_RIGA`, `RETTIFICA_RIGA`, `TRASFERIMENTO_RIGA`, `DDT_VENDITA_PRELIEVO`, `RESO_VENDITA_RIENTRO`; restano entità di `config.tipi_entita` (`is_sorgente = false`), per note ed errori | `config/sorgenti.py:60-62` (le costanti `SORGENTE_INVENTARIO_RIGA`, `SORGENTE_RETTIFICA_RIGA`); `config/tests/test_sorgenti_seed.py`; i lettori delle costanti (`magazzino/db/famiglie.py:34,84,103`, già in BE-M.1-a) | le due costanti si ritirano; servono `SORGENTE_INVENTARIO`, `SORGENTE_RETTIFICA` (e `SORGENTE_TRASFERIMENTO` se la famiglia nasce), che la famiglia usa al posto delle vecchie. Con BE-M.1-a, nello stesso giro |
 | FE-M.3-a | i codici di foglia non arrivano più come sorgente di un movimento | `frontend/src/magazzino/vocabolari.js` (`SORGENTE_MOVIMENTO`), i locales `magazzino.movimenti.sorgente.<codice>` | i codici dei documenti, con FE-M.1-a. Le chiavi `config.tipi_entita.<x>_riga` restano: sono l'etichetta dell'entità |
+**Stato al 2026-11-08, dopo il giro BE di M.1** (team BE, da committare su `dev/backend-tid`). Fatte le voci segnate
+✅; la consultazione dei movimenti per documento è ripristinata.
+
+* **Il filtro per documento** (BE-M.1-a). `list_movimenti` filtra `sg.codice_interno = <tipo del documento> AND
+  mv.sorgente_id = %s`: l'`EXISTS` sulle righe se n'è andato. La famiglia porta il tipo del documento
+  (`SORGENTE_INVENTARIO`, `SORGENTE_RETTIFICA` in `apps/config/sorgenti.py`; le costanti `…_RIGA` sono ritirate, nessun
+  modulo le nomina). `fk_riga` e `tabella_righe` restano nel registro `FAMIGLIE`: li usano i lettori e gli scrittori
+  delle righe, non più il filtro. Il filtro usa `uq_mag_movimenti_identita`, che comincia per `(sorgente_tipo_id,
+  sorgente_id)`.
+* **API e tipi** (BE-M.1-b, -c). La descrizione OpenAPI di `sorgente_tipo` elenca i codici dei documenti;
+  `MovimentoRow` e `BloccoRow` hanno `sorgente_id` e `sorgente_dettaglio`, proiettati da `_MOVIMENTI_SELECT` e
+  `_BLOCCHI_SELECT`.
+* **Test e smoke** (BE-M.1-d). I codici dei documenti; i test sul DB vero provano anche `sorgente_id` = il documento e
+  `sorgente_riga` = la riga (inventario), e il tipo e la chiave (rettifica).
+* **FE** (FE-M.1-a). `SORGENTE_MOVIMENTO` in `magazzino/vocabolari.js` ha i sei tipi di documento che scrivono sul
+  registro, le famiglie la sorgente del documento, `it.json` / `en.json` le sei etichette. `etichette.js`,
+  `MovimentiSearchTable.vue`, `stores/movimenti.js`, `MovimentiView.vue` e `DisponibilitaBlocchiPopover.vue` non
+  cambiano: leggono il vocabolario, e il deep-link resta `inventario_id` / `rettifica_id`.
+* **Il file delle policy d'errore** è rigenerato (la descrizione di `E_MAG_MOVIMENTO_GIA_REGISTRATO`).
+* ⏭️ **Resta al DB: UI-M.1-a.** `lista_colonna.csv:865` descrive ancora la colonna «(INVENTARIO_RIGA, RETTIFICA_RIGA,
+  …)». È un seed: si cambia dal CSV, nel primo giro DB utile.
+  ✅ **Già fatto (verifica DB al merge, 2026-11-08):** le due descrizioni sono corrette dal giro M.2 (`ad13694ffb`);
+  la nota è stata scritta su una copia precedente.
+* **Nello stesso giro: `autospec` su tutte le patch di repository.** Nato dai mock di `PraticheRepository` del §8.16, è
+  esteso a tutta la suite e reso regola ([api.md](../api.md) §Test) con un presidio,
+  `apps/core/tests/test_presidio_autospec_repository.py`; la storia e i conti sono nella sua intestazione. Il presidio
+  vede anche `patch("…XRepository.metodo")` e `unittest.mock.patch`. Un caso strutturale: il test del cancello degli
+  obblighi ripatchava il mock di `AuthRepository.get_fatti_obblighi` già messo da `JwtMockedApiTest`, e con `autospec`
+  è `InvalidSpecError`; ora la base espone `mock_fatti_obblighi` e il test lo configura. Aggiornati
+  `sicurezza-e-qualita-statica.md` («Perché» di mypy) e `qualita-be-fe-indicatori.md`.
+* Provati: la suite Django intera (6.569 test, verde), i test di `magazzino` sul DB vero (97, `ZEROERP_TEST_DB_E2E=1`),
+  `core/tests/db/test_obblighi_e_secondo_fattore_db` sul DB vero (14), i test FE di `src/magazzino` (19), ruff verde.
+  ⏭️ **Da lanciare da Tid**: `backend/scripts/tests/smoke-magazzino-inventario-primo-carico.py` (allineato, non eseguito).
 
 ### 8.20 Dal lotto Z, giro Z.1 (2026-11-08)
 

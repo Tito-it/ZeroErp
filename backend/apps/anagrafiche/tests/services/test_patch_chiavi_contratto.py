@@ -150,7 +150,7 @@ class EmittentiPatchChiaviTests(_Asserzioni):
         mock_repo.return_value.update_emittente.assert_not_called()
 
     @patch(_EF_REPO, autospec=True)
-    @patch(_EFU_REPO)
+    @patch(_EFU_REPO, autospec=True)
     def test_aggiorna_record_utility_chiave_ignota(self, mock_repo, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,

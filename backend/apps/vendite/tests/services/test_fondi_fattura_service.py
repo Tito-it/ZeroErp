@@ -31,7 +31,7 @@ Indice test eseguiti:
 
 import re
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from django.db import DatabaseError
 
@@ -60,7 +60,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     # Scopo: Envelope paginato standard con i risultati del repository.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_fondi_fattura_da_decidere",
+        "list_fondi_fattura_da_decidere", autospec=True,
         return_value=([_ROW_NON_PIU_CAPIENTE], 1),
     )
     def test_ok_envelope_paginato(self, mock_repo):
@@ -77,7 +77,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     #        risoluzione vive nel service, il repository non deve indovinare.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_fondi_fattura_da_decidere",
+        "list_fondi_fattura_da_decidere", autospec=True,
         return_value=([], 0),
     )
     def test_senza_filtri_passthrough_none(self, mock_repo):
@@ -92,7 +92,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     #        l'operatore la vede nel totale e non riesce a isolarla.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_fondi_fattura_da_decidere",
+        "list_fondi_fattura_da_decidere", autospec=True,
         return_value=([], 0),
     )
     def test_tutti_i_motivi_della_vista_sono_validi(self, mock_repo):
@@ -113,7 +113,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     #        vive li', il service la presidia).
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_fondi_fattura_da_decidere",
+        "list_fondi_fattura_da_decidere", autospec=True,
         return_value=([], 0),
     )
     def test_ordinamento_inoltrato(self, mock_repo):
@@ -139,7 +139,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     #        se l'offset e' oltre il totale.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_fondi_fattura_da_decidere",
+        "list_fondi_fattura_da_decidere", autospec=True,
         return_value=([], 120),
     )
     def test_envelope_pagina_dall_offset(self, _mock_repo):
@@ -153,7 +153,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     #        defense-in-depth: se sparisce, l'elenco dipende da un solo cancello.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_fondi_fattura_da_decidere",
+        "list_fondi_fattura_da_decidere", autospec=True,
         return_value=([], 0),
     )
     def test_auth_user_id_inoltrato_defense_in_depth(self, mock_repo):
@@ -163,7 +163,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     # Scopo: L'offset si deriva dalla pagina (page-based), non dal chiamante.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_fondi_fattura_da_decidere",
+        "list_fondi_fattura_da_decidere", autospec=True,
         return_value=([], 0),
     )
     def test_limit_offset_arrivano_al_repository(self, mock_repo):
@@ -181,7 +181,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     #        a video mentre il file promette il perimetro intero.
     @patch.object(
         vendite_service.VenditeRepository,
-        "list_fondi_fattura_da_decidere",
+        "list_fondi_fattura_da_decidere", autospec=True,
         return_value=([], 0),
     )
     def test_export_salta_la_paginazione(self, mock_repo):
@@ -292,7 +292,7 @@ class CancellaFondoFatturaServiceTests(TestCase):
     #        contatori della madre DB, piu' lo stato del gesto.
     @patch.object(
         vendite_service.VenditeRepository,
-        "cancella_fondo_fattura",
+        "cancella_fondo_fattura", autospec=True,
         return_value={"deleted_righe": 1, "deleted_fondi": 1, "deleted_source": 1},
     )
     def test_ok_conteggi_dalla_madre(self, mock_repo):
@@ -300,7 +300,8 @@ class CancellaFondoFatturaServiceTests(TestCase):
         self.assertEqual(data["status"], "deleted")
         self.assertEqual(data["fondo_source_id"], 7)
         self.assertEqual(data["deleted_source"], 1)
-        mock_repo.assert_called_once_with(7)
+        # `ANY` e' `self`: il mock `autospec` di un metodo registra l'istanza.
+        mock_repo.assert_called_once_with(ANY, 7)
 
     # Scopo: un id non positivo si ferma PRIMA del database. Non e' pedanteria:
     #        la madre solleverebbe comunque (`E_VENDITE_CHIAMATA_NON_VALIDA`,
@@ -332,7 +333,7 @@ class CancellaFondoFatturaServiceTests(TestCase):
             with self.subTest(codice=codice):
                 with patch.object(
                     vendite_service.VenditeRepository,
-                    "cancella_fondo_fattura",
+                    "cancella_fondo_fattura", autospec=True,
                     side_effect=DatabaseError(f"{codice}: il database ha rifiutato."),
                 ):
                     with self.assertRaises(ServiceError) as ctx:
@@ -347,7 +348,7 @@ class CancellaFondoFatturaServiceTests(TestCase):
     def test_codice_nuovo_non_previsto_passa_lo_stesso(self):
         with patch.object(
             vendite_service.VenditeRepository,
-            "cancella_fondo_fattura",
+            "cancella_fondo_fattura", autospec=True,
             side_effect=DatabaseError("E_FONDO_MOTIVO_CHE_NON_ESISTE_ANCORA: nuovo."),
         ):
             with self.assertRaises(ServiceError) as ctx:

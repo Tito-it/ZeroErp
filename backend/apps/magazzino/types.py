@@ -180,7 +180,11 @@ class BloccoRow(TypedDict):
     causale_codice: str | None
     causale_descrizione: str | None
     sorgente_codice_interno: str | None
+    # La provenienza del modello (giro M.1 di brief-db-sorgente-documento-e-
+    # riga): la chiave del documento, la riga, il dettaglio (prelievo, rientro).
+    sorgente_id: int | None
     sorgente_riga: int | None
+    sorgente_dettaglio: int | None
     sorgente_uid: str | None
     soggetto_ruolo_id: int | None
     soggetto_ragione_sociale: str | None
@@ -211,7 +215,12 @@ class MovimentoRow(TypedDict):
     asset_seriale: str | None
     sorgente_tipo_id: int
     sorgente_codice_interno: str | None
+    # Il tipo e' il DOCUMENTO (`INVENTARIO`, `DDT_VENDITA`, …): la sua chiave in
+    # `sorgente_id`, la riga in `sorgente_riga`, il dettaglio in
+    # `sorgente_dettaglio` (giro M.1 di brief-db-sorgente-documento-e-riga).
+    sorgente_id: int | None
     sorgente_riga: int | None
+    sorgente_dettaglio: int | None
     sorgente_uid: str | None
     transfer_uid: str | None
     storno_di_movimento_id: int | None

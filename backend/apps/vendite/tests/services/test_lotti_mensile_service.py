@@ -27,7 +27,7 @@ class LottiMensileServiceTests(TestCase):
     # Scopo: sempre 12 mesi in ordine (gen..dic), 0-riempiti dove il repo non
     #        torna nulla; competenza YYYY-MM-01 come chiave stabile per il FE.
     @patch.object(
-        vendite_service.VenditeRepository, "count_lotti_per_mese", return_value={},
+        vendite_service.VenditeRepository, "count_lotti_per_mese", autospec=True, return_value={},
     )
     def test_dodici_mesi_zero_riempiti_in_ordine(self, _mock_repo):
         out = fn_lotti_mensile(anno=2026)
@@ -41,7 +41,7 @@ class LottiMensileServiceTests(TestCase):
     # Scopo: i conteggi del repo finiscono sul mese giusto (mese 1-based → idx 0).
     @patch.object(
         vendite_service.VenditeRepository,
-        "count_lotti_per_mese",
+        "count_lotti_per_mese", autospec=True,
         return_value={1: 3, 7: 5},
     )
     def test_conteggi_mappati_sul_mese_giusto(self, _mock_repo):
@@ -52,7 +52,7 @@ class LottiMensileServiceTests(TestCase):
 
     # Scopo: anno e scope operatore inoltrati al repository senza alterazioni.
     @patch.object(
-        vendite_service.VenditeRepository, "count_lotti_per_mese", return_value={},
+        vendite_service.VenditeRepository, "count_lotti_per_mese", autospec=True, return_value={},
     )
     def test_anno_inoltrato_e_scope_passthrough(self, mock_repo):
         fn_lotti_mensile(anno=2025, auth_user_id=42)

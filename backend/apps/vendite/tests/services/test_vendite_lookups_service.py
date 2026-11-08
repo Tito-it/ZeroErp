@@ -19,7 +19,7 @@ Indice test:
 """
 
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from apps.vendite.services.contratti_service import (
     _AMBITI_VALIDI,
@@ -80,11 +80,12 @@ class TestVenditeLookupsService(TestCase):
         return_value=[
             {"id": 1, "codice": "STD", "descrizione": "Listino standard"},
             {"id": 2, "codice": "PREM", "descrizione": "Listino premium"},
-        ],
+        ], autospec=True,
     )
     def test_listini_selezionabili_delega_repository(self, mock_repo):
         result = fn_list_listini_selezionabili(3, 41)
-        mock_repo.assert_called_once_with(3, 41)
+        # Mock `autospec` di un metodo: il primo argomento e' `self`.
+        mock_repo.assert_called_once_with(ANY, 3, 41)
         self.assertEqual(len(result), 2)
         self.assertEqual(set(result[0].keys()), {"id", "codice", "descrizione"})
         self.assertEqual([r["codice"] for r in result], ["STD", "PREM"])
