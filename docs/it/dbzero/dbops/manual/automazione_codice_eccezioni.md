@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_codice_eccezioni`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -84,6 +84,14 @@ cancellazione esplicita in un changeSet nuovo, e il giro dopo il trigger torna.
 
 `db/pgtap/dbops/test-codice-maiuscolo-v1.sql`: le dieci righe ci sono e nessuna ha il trigger
 (test 8); un'eccezione nuova porta a TOGLIE e la tabella salva il codice com'è (test 20-21).
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

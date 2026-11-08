@@ -589,7 +589,8 @@ I trigger o constraint di sistema possono aggiornare `data_update/user_update` s
 con una scadenza: una sua tabella che si scrive a runtime (una funzione, il
 backend, un job) tiene `data_update`/`user_update` e `tx_id` e monta **a mano** i
 due trigger del framework; una tabella che scrive solo la migrazione, dai CSV di
-`80_data`, **non** li porta — direbbero sempre «il migratore», e chi e quando lo
+`80_data`, **non** li porta (né `data_update`/`user_update` una tabella che a
+runtime riceve solo `INSERT`: conta chi **aggiorna**, come `dbops.fk_index_policy`) — direbbero sempre «il migratore», e chi e quando lo
 dicono già `databasechangelog` e git. `data_insert`/`user_insert` restano sempre.
 Dettaglio e presidio: [automazione-db.md](guide/automazione-db.md) §1.1.
 

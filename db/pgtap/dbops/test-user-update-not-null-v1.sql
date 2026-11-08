@@ -38,10 +38,12 @@
 --   Le voci al 2026-10-08 sono le tabelle senza trigger di audit, dove la
 --   colonna non la scrive nessuno: chiuderle chiede di decidere chi la
 --   scrive, non un ALTER.
---     * dbops.fk_index_policy (registro caricato dai seed fk_index_policy_*,
---       senza la colonna) e dbops.transaction_ids (lo scrivono le funzioni
---       del tx_id, dbops.fn_generate_tx_id e vicine): registri tecnici, fuori dal perimetro
+--     * dbops.transaction_ids (lo scrivono le funzioni del tx_id,
+--       dbops.fn_generate_tx_id e vicine): registro tecnico, fuori dal perimetro
 --       delle automazioni di audit;
+--   ✅ Chiusa il 2026-11-08: dbops.fk_index_policy, che non ha piu' la colonna
+--     (brief-db-revisione-dbops, giro 7-bis blocco b, 20261109-31: in dbops
+--     un catalogo scritto dal solo migratore non tiene data_update/user_update).
 --     * ui.dashboard_definizione, ui.dashboard_preset, ui.lista_colonna,
 --       ui.lista_colonna_permesso, ui.lista_definizione, ui.lista_preset,
 --       ui.widget: cataloghi della UI, caricati da seed senza la colonna e
@@ -66,7 +68,6 @@ SELECT plan(4);
 -- ============================================================
 CREATE TEMP TABLE _debito_user_update (tabella text PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO _debito_user_update (tabella) VALUES
-    ('dbops.fk_index_policy'),
     ('dbops.transaction_ids'),
     ('ui.dashboard_definizione'),
     ('ui.dashboard_preset'),

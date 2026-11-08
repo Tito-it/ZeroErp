@@ -18,7 +18,8 @@
 --   Brief: brief-db-revisione-dbops, giro 7 (D35, D36, D37; perimetro di Tid del
 --   2026-11-07: tx_id, storicizza, cleanup_at); giro 7-bis (§23, 2026-11-08):
 --   i cataloghi di dbops scritti dal solo seed perdono i marcatori, la vista
---   legge l'override STORICIZZA_COL.
+--   legge l'override STORICIZZA_COL; blocco b (§23.11, 20261109-31): la classe B
+--   perde data_update e user_update.
 --
 -- Elenco test (plan 16):
 --   1) ⭐ IL PRESIDIO: sul database nessuna riga NON_DICHIARATO ne' DEBITO_ESTINTO
@@ -35,8 +36,8 @@
 --  11) ⛔ il registro rifiuta una ragione corta
 --  12) ⛔ e un marcatore fuori vocabolario
 --  13) lo schema storico e' fuori: una shadow ricopia le colonne della madre
---  14) le chiusure del giro 7-bis: i sedici cataloghi di dbops scritti dal solo
---      seed non hanno piu' tx_id, data_update, user_update
+--  14) le chiusure del giro 7-bis: i ventotto cataloghi di dbops scritti dal solo
+--      seed non hanno piu' tx_id, data_update, user_update (blocchi a e b)
 --  15) ⭐ storicizza rinominata con l'override STORICIZZA_COL e' ancora il marcatore
 --  16) ⛔ una colonna «storicizza» su una tabella con l'override verso un'altra
 --      colonna non lo e' (si legge come la provision dello storico)
@@ -201,7 +202,7 @@ SELECT is_empty(
     '13) Lo schema storico e'' fuori dal criterio: le shadow ricopiano le colonne della madre');
 
 -- ============================================================
--- 14) Le chiusure del giro 7-bis (20261108-90, -91)
+-- 14) Le chiusure del giro 7-bis (20261108-90, -91; 20261109-31)
 -- ============================================================
 SELECT is_empty(
     $q$SELECT c.relname::text, a.attname::text
@@ -215,8 +216,22 @@ SELECT is_empty(
                             'messaggi_errore_codici_legacy', 'presidi', 'presidi_cause',
                             'presidi_testi', 'riferimenti_morti_esenzioni', 'storico_scope_policy')
           AND a.attname IN ('tx_id', 'data_update', 'user_update')
+          AND a.attnum > 0 AND NOT a.attisdropped
+       UNION ALL
+       -- blocco b (20261109-31): la classe B non aveva tx_id, perde le due di aggiornamento
+       SELECT c.relname::text, a.attname::text
+         FROM pg_attribute a
+         JOIN pg_class c ON c.oid = a.attrelid
+        WHERE c.relnamespace = 'dbops'::regnamespace
+          AND c.relname IN ('automation_cleanup_exclusions', 'automation_delete_block',
+                            'automation_lock_columns', 'automazione_attivo_eccezioni',
+                            'automazione_codice_eccezioni', 'automazione_guard_utility_tipo_ruolo',
+                            'automazione_overlap', 'domini_task', 'fk_index_policy',
+                            'lock_columns_conditional', 'pipeline_task_registry',
+                            'pipeline_task_registry_impl')
+          AND a.attname IN ('tx_id', 'data_update', 'user_update')
           AND a.attnum > 0 AND NOT a.attisdropped$q$,
-    '14) I sedici cataloghi di dbops scritti dal solo seed non hanno piu'' tx_id, data_update, user_update');
+    '14) I ventotto cataloghi di dbops scritti dal solo seed non hanno piu'' tx_id, data_update, user_update');
 
 -- ============================================================
 -- 15-16) L'override della colonna di storicizzazione (20261108-92)

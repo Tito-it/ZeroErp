@@ -1,23 +1,23 @@
-id,task_registry_id,implementation_key,handler_code,is_default,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,default,select_attivita_default,true,true,{},2026-02-08 00:00:00+01,titodb,,
-2,2,default,generate_fatture_righe_default,true,true,{},2026-02-08 00:00:00+01,titodb,,
-3,3,default,numera_fatture_default,true,true,{},2026-02-08 00:00:00+01,titodb,,
-4,4,default,close_lotto_default,true,false,{},2026-02-10 00:00:00+01,titodb,2026-02-18 13:20:00+01,titodb
-5,5,default,reset_lotto_draft_default,true,true,{},2026-02-16 12:30:00+01,titodb,,
-6,6,default,genera_fondi_source_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb,,
-7,7,default,applica_fondi_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb,,
-8,8,default,ricalcola_iva_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb,,
-9,9,default,prepare_sdi_payload_lotto_default,true,true,{},2026-02-16 19:00:00+01,titodb,,
-10,10,default,acquisisci_preventivi_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
-11,11,default,acquisisci_contratti_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
-12,12,default,acquisisci_ordini_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
-13,13,default,acquisisci_attivita_consumi_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
-14,14,default,normalizza_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
-15,15,default,valida_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
-16,16,default,deduplica_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
-17,17,default,pull_attivita_da_commessa_default,true,true,{},2026-06-15 09:00:00+02,titodb,,
-18,18,default,stampa_documenti_lotto_default,true,true,{},2026-07-20 00:00:00+02,titodb,,
-19,19,default,snapshot_indirizzi_lotto_default,true,true,{},2026-07-31 00:00:00+02,titodb,,
-20,20,default,genera_scadenze_lotto_default,true,true,{},2026-08-01 00:00:00+02,titodb,,
-21,21,default,popola_fatture_rettifiche_default,true,true,{},2026-08-18 00:00:00+02,mctit,,
-22,22,default,consuma_plafond_lotto_default,true,true,{},2026-08-31 00:00:00+02,mctit,,
+id,task_registry_id,implementation_key,handler_code,is_default,attivo,meta,data_insert,user_insert
+1,1,default,select_attivita_default,true,true,{},2026-02-08 00:00:00+01,titodb
+2,2,default,generate_fatture_righe_default,true,true,{},2026-02-08 00:00:00+01,titodb
+3,3,default,numera_fatture_default,true,true,{},2026-02-08 00:00:00+01,titodb
+4,4,default,close_lotto_default,true,false,{},2026-02-10 00:00:00+01,titodb
+5,5,default,reset_lotto_draft_default,true,true,{},2026-02-16 12:30:00+01,titodb
+6,6,default,genera_fondi_source_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb
+7,7,default,applica_fondi_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb
+8,8,default,ricalcola_iva_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb
+9,9,default,prepare_sdi_payload_lotto_default,true,true,{},2026-02-16 19:00:00+01,titodb
+10,10,default,acquisisci_preventivi_default,true,true,{},2026-02-22 15:30:00+01,titodb
+11,11,default,acquisisci_contratti_default,true,true,{},2026-02-22 15:30:00+01,titodb
+12,12,default,acquisisci_ordini_default,true,true,{},2026-02-22 15:30:00+01,titodb
+13,13,default,acquisisci_attivita_consumi_default,true,true,{},2026-02-22 15:30:00+01,titodb
+14,14,default,normalizza_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb
+15,15,default,valida_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb
+16,16,default,deduplica_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb
+17,17,default,pull_attivita_da_commessa_default,true,true,{},2026-06-15 09:00:00+02,titodb
+18,18,default,stampa_documenti_lotto_default,true,true,{},2026-07-20 00:00:00+02,titodb
+19,19,default,snapshot_indirizzi_lotto_default,true,true,{},2026-07-31 00:00:00+02,titodb
+20,20,default,genera_scadenze_lotto_default,true,true,{},2026-08-01 00:00:00+02,titodb
+21,21,default,popola_fatture_rettifiche_default,true,true,{},2026-08-18 00:00:00+02,mctit
+22,22,default,consuma_plafond_lotto_default,true,true,{},2026-08-31 00:00:00+02,mctit

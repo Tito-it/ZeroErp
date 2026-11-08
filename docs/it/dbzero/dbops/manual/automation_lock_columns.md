@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_lock_columns`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -119,6 +119,9 @@ processo `automations_lock_columns`. Non serve un changeSet che tolga e rimonti 
 * 2026-11-04 — `error_code` perde il default `CODICE_NON_MODIFICABILE`, un codice ritirato il
   2026-08-05: una riga che non dichiarava il codice lo riceveva, e la fermava solo il guardrail a
   valle. Nessuna riga si appoggiava al default (`brief-db-revisione-dbops`).
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 

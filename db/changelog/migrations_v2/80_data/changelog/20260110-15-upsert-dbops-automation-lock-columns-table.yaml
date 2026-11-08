@@ -39,5 +39,3 @@ databaseChangeLog:
               - column: { name: note, type: STRING }
               - column: { name: data_insert, type: STRING }
               - column: { name: user_insert, type: STRING }
-              - column: { name: data_update, type: STRING }
-              - column: { name: user_update, type: STRING }

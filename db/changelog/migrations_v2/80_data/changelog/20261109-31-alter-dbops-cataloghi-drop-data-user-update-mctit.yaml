@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DODICI CATALOGHI DI dbops SCRITTI SOLO DAL MIGRATORE PERDONO
+# data_update E user_update
+#   dbops.automation_cleanup_exclusions, automation_delete_block,
+#   automation_lock_columns, automazione_attivo_eccezioni,
+#   automazione_codice_eccezioni, automazione_guard_utility_tipo_ruolo,
+#   automazione_overlap, domini_task, fk_index_policy,
+#   lock_columns_conditional, pipeline_task_registry,
+#   pipeline_task_registry_impl
+#   Brief: brief-db-revisione-dbops, giro 7-bis, blocco b (§23.11).
+#
+# ── ⭐ IL CRITERIO: LO SCRITTORE (Tid, 2026-11-07, §20.8.2) ──────────
+#   In dbops data_update e user_update restano dove qualcuno AGGIORNA la riga
+#   a runtime (una funzione o il backend), coi due trigger a mano. Si tolgono
+#   dove la riga la scrive solo il migratore: li' direbbero sempre «il
+#   migratore, al migrate», e chi e quando lo dicono gia' databasechangelog e
+#   git. Su fk_index_policy il job apply_fk_index_policy fa solo INSERT ... ON
+#   CONFLICT DO NOTHING: nessuno la aggiorna. data_insert e user_insert
+#   restano. Nessuna di queste tabelle ha tx_id ne' un trigger: e' la classe B
+#   del censimento (§23.1); la classe A e' il blocco a (20261108-90, -91).
+#
+# ── ⚠️ PERCHE' IN 80_data E NON IN 00_schema ─────────────────────────
+#   Sei changeSet congelati di 80_data, senza runOnChange, scrivono
+#   data_update = now() su lock_columns_conditional (20260522-04, 20261010-01,
+#   20261013-04, -46, -51) e su automazione_guard_utility_tipo_ruolo
+#   (20260216-06). Da zero girano DOPO 00_schema: un DROP li' li romperebbe.
+#   Questo file ha data successiva a tutti e sei. I cinque loader che
+#   caricavano le due colonne dai CSV (20260110-15, 20260123-11, 20260208-06,
+#   -07, -08) sono mirror vivi (runOnChange + ANY): ripuliti in place nello
+#   stesso commit, CSV compresi. fk_index_policy.csv, che nessun changeSet
+#   carica, non si tocca qui: passa al blocco 10d (§23.11).
+#
+# ── ⚠️ CHI LE NOMINAVA (censito sullo scratch, 2026-11-08, §23.11) ──
+#   Nessuna vista, regola, vincolo o funzione BEGIN ATOMIC (pg_depend); nessun
+#   corpo di funzione viva; nessun trigger sulle dodici tabelle; nessuna shadow
+#   in storico.*; nessuna nell'ambito delle automazioni; nessuna query del
+#   backend. Il pgTAP dbops/test-user-update-not-null-v1 aveva fk_index_policy
+#   nel registro del debito: la voce esce nello stesso commit.
+#
+# IF EXISTS: idempotente. I COMMENT delle tabelle non nominano le colonne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261109-31-alter-dbops-cataloghi-drop-data-user-update-mctit.yaml
+
+  - changeSet:
+      id: 20261109-31-alter-dbops-cataloghi-drop-data-user-update
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dodici cataloghi di dbops scritti solo dal migratore perdono data_update e user_update:
+        il criterio dello scrittore. Brief: brief-db-revisione-dbops, giro 7-bis, blocco b.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: automation_cleanup_exclusions }
+        - tableExists:
+            { schemaName: dbops, tableName: automation_delete_block }
+        - tableExists:
+            { schemaName: dbops, tableName: automation_lock_columns }
+        - tableExists:
+            { schemaName: dbops, tableName: automazione_attivo_eccezioni }
+        - tableExists:
+            { schemaName: dbops, tableName: automazione_codice_eccezioni }
+        - tableExists:
+            { schemaName: dbops, tableName: automazione_guard_utility_tipo_ruolo }
+        - tableExists:
+            { schemaName: dbops, tableName: automazione_overlap }
+        - tableExists:
+            { schemaName: dbops, tableName: domini_task }
+        - tableExists:
+            { schemaName: dbops, tableName: fk_index_policy }
+        - tableExists:
+            { schemaName: dbops, tableName: lock_columns_conditional }
+        - tableExists:
+            { schemaName: dbops, tableName: pipeline_task_registry }
+        - tableExists:
+            { schemaName: dbops, tableName: pipeline_task_registry_impl }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automation_cleanup_exclusions
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.automation_delete_block
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.automation_lock_columns
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.automazione_attivo_eccezioni
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.automazione_codice_eccezioni
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.automazione_guard_utility_tipo_ruolo
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.automazione_overlap
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.domini_task
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.fk_index_policy
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.lock_columns_conditional
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.pipeline_task_registry
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+              ALTER TABLE dbops.pipeline_task_registry_impl
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Le colonne tornano come erano: NOT NULL coi default su undici,
+              -- nullable e senza default su fk_index_policy. Il valore storico
+              -- non torna (vale il default al momento del rollback).
+              ALTER TABLE dbops.automation_cleanup_exclusions
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.automation_delete_block
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.automation_lock_columns
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.automazione_attivo_eccezioni
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.automazione_codice_eccezioni
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.automazione_guard_utility_tipo_ruolo
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.automazione_overlap
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.domini_task
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.fk_index_policy
+                  ADD COLUMN IF NOT EXISTS user_update text,
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz;
+              ALTER TABLE dbops.lock_columns_conditional
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.pipeline_task_registry
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;
+              ALTER TABLE dbops.pipeline_task_registry_impl
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER;

@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 7-bis, blocco a applicato e verde)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 7-bis: blocco b applicato e verde)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -37,7 +37,10 @@ su `shop.ricevute` letta sul catalogo dei due database (§20.9), **committato** 
 **Seguito del giro 7 su `shop` scritto** (2026-11-08, §22): `20261108-88` (il presidio della mappa di storico sul catalogo), `-89` (`shop` fra gli schemi dell'app), applicati su dbdev e scratch e committati (`42fd9eefa0`); il §22 resta nel working tree per scelta di Tid.
 **Via al giro 7-bis** (Tid, 2026-11-08, dal `20261108-90`): diviso in tre blocchi (§23.3). **Blocco 7-bis-a applicato**
 (Tid, 2026-11-08, §23.10): `20261108-90` … `-93` e il CSV del registro su dbdev e scratch, pgTAP di §23.7 verdi.
-**Riparte: Tid** col commit del blocco a; poi la sessione DB col blocco 7-bis-b (§23.2), al via di Tid. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+Blocco a **committato** (`f7ce9855c5`). **Via al blocco 7-bis-b** (Tid, 2026-11-08, §23.11): dal `20261109-31`,
+test 14 esteso; il `fk_index_policy.csv` orfano passa al blocco 10d. **Blocco 7-bis-b applicato** (Tid, 2026-11-08,
+§23.11.4): `20261109-31` su dbdev e scratch, pgTAP verdi. **Riparte: Tid** col commit del blocco b e il via al
+blocco 7-bis-c (§23.3). **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -105,8 +108,10 @@ ancora le tabelle).
 | 9-tricies-sexdecies | ✅ Tid → sessione DB | Via al giro 7-bis dal `20261108-90` (2026-11-08); censimento e tre blocchi | §23.1-23.3 | 9-tricies-quindecies |
 | 9-tricies-septdecies-bis | ✅ sessione DB | Blocco 7-bis-a: i sedici cataloghi di `dbops` scritti dal solo seed perdono i marcatori, il registro si svuota, la vista legge l'override; scritto e provato sullo scratch (2026-11-08) | §23.4-23.6 | 9-tricies-sexdecies |
 | 9-tricies-octodecies | ✅ Tid | Apply del blocco 7-bis-a (`20261108-90` … `-93`, `marcatori_automazione_debito.csv`) su dbdev e scratch; pgTAP di §23.7 verdi (2026-11-08) | §23.10 | 9-tricies-septdecies-bis |
-| 9-tricies-octodecies-bis | **Tid** ⏭️ | Commit del blocco 7-bis-a e via al blocco 7-bis-b | §23.10 | 9-tricies-octodecies |
-| 9-tricies-novemdecies | sessione DB, al via di Tid | Blocco 7-bis-b (`data_update`/`user_update` della classe B, coi CSV e i loader), poi 7-bis-c (`ui` nell'ambito) | §23.2, §23.3 | 9-tricies-octodecies |
+| 9-tricies-octodecies-bis | ✅ Tid | Commit del blocco 7-bis-a (`f7ce9855c5`) e via al blocco 7-bis-b, dal `20261109-31` (2026-11-08) | §23.10, §23.11 | 9-tricies-octodecies |
+| 9-tricies-novemdecies | ✅ sessione DB | Blocco 7-bis-b (`data_update`/`user_update` della classe B, coi CSV e i loader): scritto e provato sullo scratch (2026-11-08), `20261109-31` | §23.11 | 9-tricies-octodecies-bis |
+| 9-quadragies | ✅ Tid | Apply del blocco 7-bis-b (`20261109-31`, i cinque loader) su dbdev e scratch; pgTAP di §23.11.3 verdi (2026-11-08) | §23.11.4 | 9-tricies-novemdecies |
+| 9-quadragies-semel | **Tid** ⏭️ | Commit del blocco 7-bis-b e via al blocco 7-bis-c (`ui` nell'ambito) | §23.11.4, §23.3 | 9-quadragies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
@@ -117,16 +122,18 @@ ancora le tabelle).
 
 **Decisioni aperte di Tid:** il debito della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di
 scrittura) si decide al giro 9. Nessuna sul giro 7-bis: il criterio dello scrittore (§20.8.2, punto 2) è confermato
-(Tid, 2026-11-07); le scelte del blocco a sono in §23.5, da guardare. **Da committare:** lato DB il blocco 7-bis-a
-(`20261108-90` … `-93`, il CSV, i tre pgTAP, le guide e le pagine `manual/`, le schede rigenerate, questo brief):
-applicato e verde; il §22
-dell'altra sessione resta nel working tree per scelta di Tid. Lato BE, BE4 nel working tree di `dev/backend-tid`.
+(Tid, 2026-11-07); le scelte del blocco a sono in §23.5, da guardare. **Da committare:** lato DB nulla del blocco a
+(committato in `f7ce9855c5`); il blocco 7-bis-b (`20261109-31`, i cinque CSV e i cinque loader, i due pgTAP, le
+dodici pagine `manual/`, `automazione-db.md`, `linee-guida-sql.md`, le schede rigenerate, questo brief): applicato e
+verde. ⚠️ Nel working tree
+ci sono anche file dell'altro cantiere (`codici_errore.csv`, `presidi.csv`, `presidi_testi.csv`, il suo brief e i suoi
+changeSet): non entrano nel commit del blocco. Lato BE, BE4 nel working tree di `dev/backend-tid`.
 L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
 **Da verificare:** se lo scratch è stato ricostruito con `ci-local.sh --fresh` dopo il `20261103-29` (§13).
 ⚠️ **Numerazione:** questo cantiere ha preso `20261107-01` … `-27`; il prossimo numero libero del giorno è il
 `-28`; il giro 4 ha preso `-28` … `-30`, `-33`, `-34`, il blocco 4b `-31`, `-32`, `-35` … `-40`; il prossimo libero è il
 `-41`. Il giro 5 ha preso `-51` … `-58` (il 5b `-57`, `-58`) e `20261108-08` (dato da Tid; `-41` … `-50` e `-59` … `-69`
-sono dell'altro cantiere). Il giro 6 ha preso `20261108-10` … `-13` (dato da Tid). Il giro 8 ha preso `20261108-41` … `-60` (dato da Tid). Il giro 7-bis, blocco a, ha preso `20261108-90` … `-93` (dato da Tid; `-86` … `-89` sono dell'altro cantiere e di §22). Il giro 7 ha preso `20261108-25` … `-31` (dato da Tid), la
+sono dell'altro cantiere). Il giro 6 ha preso `20261108-10` … `-13` (dato da Tid). Il giro 8 ha preso `20261108-41` … `-60` (dato da Tid). Il giro 7-bis, blocco a, ha preso `20261108-90` … `-93` (dato da Tid; `-86` … `-89` sono dell'altro cantiere e di §22). Il blocco b parte dal `20261109-31` (`20261108-94` … `-99` e `20261109-01` … `-30` sono del lotto M dell'altro cantiere, che li tiene riservati; 2026-11-08). Il giro 7 ha preso `20261108-25` … `-31` (dato da Tid), la
 regola 28 di `automation_rules_tbl`, la riga 126 di `storico_scope_policy`, gli id 1-10 del registro nuovo; nessun
 codice errore. Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
 cantiere, giro T.4); il prossimo libero è 1458. L'altro cantiere aperto
@@ -800,7 +807,7 @@ entra nel giro che apre lo stesso oggetto.
 | 10a | | Lock di colonna: D25 (A), D28, D32, R2; BE2 | `fn_lock_columns_divergenze` si apre una volta |
 | 10b | | Runner e registro delle regole: D2, D10, D13, D16, D17, D17-bis, D20, D27, R1 | La strategia d'esistenza, l'ambito, la scadenza, i nomi; il vocabolario del registro (D17-bis) con il registro |
 | 10c | | DELETE_BLOCK, guard utility, overlap: D19, D33, D34, D30 (A), D59 (A), Q14 ⑪, ⑫, ⑬, R3 | Ogni apply si apre una volta. ⑬ usa il BB del giro 9 |
-| 10d | | La politica degli indici delle FK: Q14 ②, D23 | `fk_index_policy` e il nome dell'indice di una sua riga |
+| 10d | | La politica degli indici delle FK: Q14 ②, D23; e il `fk_index_policy.csv` che nessuno carica, unica sede di decisioni `true` che da zero non nascono (§23.11) | `fk_index_policy` e il nome dell'indice di una sua riga |
 | 11 | B | **Le etichette di prova.** Q14 ⑩ | La FK verso `django.auth_user` e il comportamento di `fn_elimina_credenziale` |
 | 12 | B | **I presidi dei codici anche sulle funzioni SQL.** Q15 | Viene dopo i giri che portano codici nuovi (2, 3, 9), così le righe nuove che compaiono nei due presidi si leggono una volta sola. Un codice nuovo che emerge porta la rigenerazione BE |
 | 13 | — | **Il livello «sessione» esce dagli override.** Q10 | Cambia il modello, ma non c'è un difetto attivo: oggi quel livello non lo scrive nessuno. Fuori dal perimetro `dbops`; BE8 |
@@ -2838,16 +2845,22 @@ trigger `tx_id`.
 Su A le tre colonne non stanno in nessun CSV né in nessun changeSet di fase successiva: il `DROP` va in
 `00_schema`, come quello di `audit_sources` al giro 7. Su B no:
 
-* `data_update`/`user_update` stanno nell'**header** di `fk_index_policy.csv` (tredici loader, fra cui changeSet di
-  delete congelati), `automation_lock_columns.csv` (otto loader, fra cui provision congelate di `90_end`),
-  `pipeline_task_registry.csv`, `pipeline_task_registry_impl.csv` e `domini_task.csv`;
+* `data_update`/`user_update` stanno nell'**header** di cinque CSV caricati, ognuno da **un** loader
+  `runOnChange` + `ANY`: `domini_task.csv` (`20260208-06`), `pipeline_task_registry.csv` (`-07`),
+  `pipeline_task_registry_impl.csv` (`-08`), `automation_delete_block_ruoli.csv` (`20260123-11`, tabella
+  `automation_delete_block`) e `automation_lock_columns.csv` (`20260110-15`). Anche il loader dichiara le due
+  colonne nelle voci `column:`. ⚠️ Corretto il 2026-11-08 (§23.11): la prima stesura contava «tredici loader» per
+  `fk_index_policy.csv` e «otto» per `automation_lock_columns.csv`, ma gli altri file nominano il CSV solo nei
+  commenti; `fk_index_policy.csv` non lo carica **nessun** changeSet (lo dice già il `20261106-99`), e mancava
+  `automation_delete_block_ruoli.csv`;
 * cinque changeSet di `80_data` **già applicati e senza `runOnChange`** scrivono `data_update = now()` su
   `lock_columns_conditional` (`20260522-04`, `20261010-01`, `20261013-04`, `-46`, `-51`) e su
   `automazione_guard_utility_tipo_ruolo` (`20260216-06`). Da zero girano **dopo** `00_schema`: un `DROP` lì
   rompe la CI, e quei file non si toccano.
 
 Il `DROP` di B va quindi in `80_data` (o `90_end`), dopo l'ultimo changeSet che nomina le colonne, e con i CSV e i
-loader ripuliti: è un lavoro di checksum, non di modello, e si fa dopo l'apply di A. È anche il blocco che chiude la
+loader ripuliti: è un lavoro di checksum, non di modello, e si fa dopo l'apply di A. I cinque loader sono mirror vivi
+(`runOnChange` + `ANY`): si ripuliscono in place, senza file nuovi. È anche il blocco che chiude la
 voce `dbops.fk_index_policy` del registro di `dbops/test-user-update-not-null-v1`.
 
 ### 23.3 I blocchi
@@ -2930,9 +2943,8 @@ Guardrail `ddl_su_trigger_automazione`, `grant_ruolo_batch`, `pgtap_preambolo`, 
 
 ### 23.9 Residuo
 
-* **Blocco 7-bis-b** (§23.2): `data_update`/`user_update` sulle dodici tabelle della classe B, coi CSV e i loader; il
-  `DROP` in `80_data`, dopo i cinque changeSet congelati che le scrivono. Chiude anche la voce `fk_index_policy` di
-  `test-user-update-not-null-v1`.
+* ✅ **Blocco 7-bis-b** (§23.2, §23.11): chiuso il 2026-11-08 (§23.11.4).
+* **`fk_index_policy.csv`**, che nessuno carica: al blocco 10d, non al 7-bis-b (§23.11).
 * **Blocco 7-bis-c**: `ui` nell'ambito (§20.8.2, punto 3).
 * `cleanup_at` riconosciuto per nome (§23.5, punto 4).
 
@@ -2941,5 +2953,98 @@ Guardrail `ddl_su_trigger_automazione`, `grant_ruolo_batch`, `pgtap_preambolo`, 
 Tid ha applicato il blocco 7-bis-a su dbdev e scratch (`20261108-90` … `-93` e `marcatori_automazione_debito.csv`) e
 ha lanciato i pgTAP di §23.7: verdi. Letto sullo scratch (sessione DB, sola lettura): i quattro changeSet sono in
 `databasechangelog`, e `dbops.vw_marcatori_automazione_senza_esecutore` è vuota. Le schede auto-generate delle sedici
-tabelle e della vista si rigenerano con `gen_db_docs.py` ed entrano nel commit. **Il blocco a è chiuso**; restano da
-committare i suoi file (§23.4, §23.8) e questo brief. Il prossimo è il blocco 7-bis-b (§23.2), al via di Tid.
+tabelle e della vista si rigenerano con `gen_db_docs.py` ed entrano nel commit. **Il blocco a è chiuso** e committato
+(`f7ce9855c5`). Il prossimo è il blocco 7-bis-b (§23.11).
+
+### 23.11 Blocco 7-bis-b — il censimento e il via (2026-11-08)
+
+**Via di Tid (2026-11-08).** Numeri dal **`20261109-31`**: Tid aveva indicato il `-15`, ma la sessione di
+`brief-db-sorgente-documento-e-riga` (lotto M) occupa `20261108-94` … `-99` e `20261109-01` … `-14` e tiene
+riservati fino al `-30`, per le correzioni della sua regressione (risposta di quella sessione, 2026-11-08). Il
+`fk_index_policy.csv` orfano si ritira «se non usato»; il test 14 del presidio dei marcatori si estende alla classe B.
+
+**Il censimento** (struttura; file del repo, schede auto-generate e catalogo dello scratch, 2026-11-08):
+
+* **Le dodici tabelle:** nessun trigger. Undici hanno le due colonne `NOT NULL DEFAULT now()` /
+  `DEFAULT CURRENT_USER`; `fk_index_policy` le ha nullable e senza default. Il rollback le rimette così.
+* **Scrittori:** solo i sei changeSet congelati di `80_data` (§23.2; l'ultimo è il `20261013-51`) e i cinque loader.
+  `dbops.fn_seed_automazione_overlap` le scriveva, ma è ritirata dal `20261104-10` (in `20_code`, prima di `80_data`).
+  `fn_populate_fk_index_policy` e `fn_seed_fk_index_policy` non le nominano; le provision di `90_end` su
+  `automation_lock_columns` contano e cancellano righe, non le nominano.
+* **Lettori:** nessuno. Il backend legge `domini_task`, `pipeline_task_registry` e `_impl` (`dbops_repository.py`,
+  `pipeline_repository.py`) senza le due colonne; `script.fn_doc_lock_regola` nomina `data_update`/`user_update` come
+  colonne tecniche **dei documenti**, non di queste tabelle. Ricadute BE: nessuna.
+* **pgTAP:** `dbops/test-user-update-not-null-v1` ha `dbops.fk_index_policy` nel registro del debito; dopo il `DROP`
+  il suo test 2 («ogni voce è ancora nullable») è rosso finché la voce non esce. Esce nello stesso blocco.
+* **L'ordine:** il `DROP` in `80_data/changelog/20261109-31`, dopo i congelati. Su dbdev i cinque loader ripuliti
+  si rilanciano (checksum cambiato, `ANY`) prima del `DROP`, nello stesso update, e non scrivono più le colonne.
+
+**Il `fk_index_policy.csv` non si ritira in questo blocco: passa al blocco 10d.** Nessun changeSet lo carica, ma il
+file non è inerte nel significato: è l'**unica** sede scritta di decisioni `consentito = true` che da zero non
+nascono. Fatto datato, letto il 2026-11-08 col CSV caricato in una tabella temporanea (`BEGIN … ROLLBACK`): sulle
+FK vive il CSV ha 129 righe `true`; sullo scratch, costruito da zero, 2 sono `true`, 24 ci sono con un altro valore e
+103 mancano (101 di queste hanno comunque un indice, nato dal changeSet della tabella). Su dbdev le righe del CSV
+ci sono quasi tutte (353 su 372): vengono dal carico di gennaio, non da un changeSet di oggi. Non è la misura che
+decide: sul modello, il registro dice «questa FK ha l'indice per decisione», e quella decisione da zero non ha
+scrittore. È la domanda del blocco 10d (Q14 ②: «quelle scritte da un seed diventano decisioni», col censimento dei
+seed): lì il CSV si legge riga per riga, le decisioni vere passano a un seed caricato, e solo allora il file si
+ritira. Ritirarlo oggi toglierebbe l'unica traccia di quelle decisioni senza cambiare nessun database. In questo
+blocco il CSV **non si tocca** (senza loader, le sue due colonne non incidono su niente).
+
+**Che cosa si scrive:**
+
+| changeSet / file | Che cosa |
+| --- | --- |
+| `80_data/changelog/20261109-31` | `DROP COLUMN data_update, user_update` sulle dodici tabelle di B; rollback che le rimette coi default e la nullabilità di oggi |
+| i cinque CSV e i cinque loader di §23.2 | via le due colonne dall'header, dalle righe e dalle voci `column:` (mirror vivi, in place) |
+| `dbops/test-user-update-not-null-v1` | `dbops.fk_index_policy` esce dal registro del debito, col commento |
+| `dbops/test-marcatori-automazione-senza-esecutore-v1` | il test 14 (chiusure del 7-bis) si estende alle dodici tabelle di B: nessuna ha più `data_update`/`user_update` |
+| doc | nota di migrazione nelle dodici pagine `dbops/manual/`; `automazione-db.md` §1.1 chiude il residuo B; schede auto-generate da rigenerare |
+
+#### 23.11.1 Che cosa è scritto (2026-11-08)
+
+Tutto quanto nella tabella qui sopra, più due precisazioni di regola che il blocco rende esplicite:
+`automazione-db.md` §1.1 e `linee-guida-sql.md` §7 dicono ora che conta chi **aggiorna** la riga, non chi la
+inserisce (il caso di `fk_index_policy`); in §1.1 i cataloghi delle regole del framework entrano nell'elenco dei
+cataloghi senza le due colonne. `fk_index_policy.md` (manual) non cita più `test-user-update-not-null-v1` ma il
+test 14 del presidio dei marcatori. `automazione_codice_eccezioni.md` prende la sezione delle note di migrazione,
+che non aveva.
+
+#### 23.11.2 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dallo YAML dopo la riga `BEGIN;`, `BEGIN … ROLLBACK`)
+
+Regressione «senza → con» sui **40** pgTAP che nominano le dodici tabelle, col `databasechangelog` invariato
+prima e dopo la corsa (8091 → 8091): **nessun file cambia esito**. Quattro rossi identici prima e dopo, non del
+blocco: `magazzino/test-documenti-interni-guard-v1` (15/18), `magazzino/test-ubicazioni-guard-parent-v1` (12/13),
+`vendite/test-esecutivi-ba-coppia-v1` (38/39) e `vendite/test-snapshot-indirizzi-fattura-v1` (15/16): lo scratch è
+condiviso col lotto M dell'altro cantiere, e da owner; come app li dirà la corsa di Tid.
+
+I due pgTAP riscritti, nei due versi:
+
+| File | Nuovo, senza il `-31` | Vecchio, col `-31` | Nuovo, col `-31` |
+| --- | --- | --- | --- |
+| `dbops/test-marcatori-automazione-senza-esecutore-v1` (16) | rosso il 14 (il difetto) | 16/16 (non lo vedeva) | 16/16 |
+| `dbops/test-user-update-not-null-v1` (4) | rosso l'1 (`fk_index_policy` nullable fuori registro) | rosso il 2 (voce chiusa nel registro) | 4/4 |
+
+Guardrail `ddl_su_trigger_automazione`, `grant_ruolo_batch`, `pgtap_preambolo`, `precondition_seed`,
+`run_on_change`, `sql_letterali`, `timestamp_senza_fuso`, `v1_congelato` verdi sui file del blocco. I cinque
+loader ripuliti non si provano senza un `update` (vietato): non nominano più le due colonne, e il loro CSV
+nemmeno, quindi l'upsert non le tocca prima né dopo il `DROP`.
+
+#### 23.11.3 Per Tid
+
+1. Apply su dbdev e scratch: `20261109-31`; si rilanciano da soli (checksum cambiato, `runOnChange` + `ANY`) i
+   cinque loader `20260110-15`, `20260123-11`, `20260208-06`, `-07`, `-08`.
+2. pgTAP come app: `dbops/test-marcatori-automazione-senza-esecutore-v1` (runner owner),
+   `dbops/test-user-update-not-null-v1`, `dbops/test-pipeline-task-registry`, `dbops/test-lock-columns-convergenza`,
+   `dbops/test-delete-block-audit-v1`, `dbops/test-automazione-guard-utility-tipo-ruolo`,
+   `dbops/test-indici-letture-trasversali-v1`.
+3. Le schede auto-generate delle dodici tabelle si rigenerano con `gen_db_docs.py`.
+4. Ricadute BE: **nessuna** (§23.11, lettori).
+
+#### 23.11.4 Chiusura del blocco b (2026-11-08)
+
+Tid ha applicato il blocco 7-bis-b su dbdev e scratch (`20261109-31` e i cinque loader rilanciati) e ha lanciato i
+pgTAP di §23.11.3: verdi. Letto su tutti e due i database (sessione DB, sola lettura): il `-31` è in
+`databasechangelog`, e nessuna delle dodici tabelle ha più `data_update` o `user_update`. Le schede auto-generate
+delle dodici tabelle si rigenerano con `gen_db_docs.py` ed entrano nel commit. **Il blocco b è chiuso**; restano da
+committare i suoi file (§23.11.1). Il prossimo è il blocco 7-bis-c (`ui` nell'ambito, §23.3), al via di Tid.

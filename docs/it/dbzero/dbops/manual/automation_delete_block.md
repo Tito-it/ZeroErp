@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_delete_block`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -67,6 +67,9 @@ nella corsa vera. Ogni trigger montato nella corsa vera lascia una riga `OK`.
 * 2026-01-23 — nasce, con il seed delle otto tabelle dei ruoli dei soggetti.
 * 2026-11-04 — la corsa vera scrive l'audit: `OK` per ogni trigger montato, `WARN TABLE_NOT_FOUND`
   per ogni tabella sparita (D41 di `brief-db-revisione-dbops`).
+* 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
+  scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
+  `brief-db-revisione-dbops`, giro 7-bis).
 
 ---
 
