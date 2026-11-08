@@ -1,6 +1,6 @@
 # Guida — Processi pgAgent funzionali
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > Destinatari: sviluppatori database, backend, analisti funzionali
 >
@@ -60,15 +60,15 @@ corretta.
 
 ### `chiusura_scadenze_daily` (framework parametrico)
 
-* **Scopo**: motore unico per la chiusura automatica dello stato gestionale su tabelle con pattern "ciclo stato + finestra di validita'" (vedi [linee-guida-sql §7c](/linee-guida-sql)). Itera sulle righe `attivo=true` di `dbops.automazione_chiusura_scadenze`: una testata sotto la porta del modello del documento si chiude chiamando il verbo dichiarato in `verbo_chiusura` (è la strada di tutti i bersagli di oggi), ogni altra tabella con un `UPDATE` dinamico dello stato.
+* **Scopo**: motore unico per la chiusura automatica dello stato gestionale su tabelle con pattern "ciclo stato + finestra di validita'" (vedi [linee-guida-sql §7c](/linee-guida-sql)). Itera sulle righe `attivo=true` di `dbops.automazione_chiusura_scadenze`: un bersaglio con un verbo dichiarato in `verbo_chiusura` si chiude sempre chiamando quel verbo (è la strada di tutti i bersagli di oggi, testate sotto la porta del modello del documento); una testata sotto la porta senza verbo è una configurazione non valida; ogni altra tabella si chiude con un `UPDATE` dinamico dello stato. Vale con `tipo_stato` `VARCHAR` e `FK`.
 * **Che cosa esegue**: lo step chiama la procedura `maintenance.proc_accoda_chiusura_scadenze_job()`, che passa dal giornale dei job e mette in coda un lavoro `CHIUSURA_SCADENZE` per ogni azienda ([fn_accoda_chiusura_scadenze](/dbzero/dbops/funzioni/fn_accoda_chiusura_scadenze)). Il lavoro vero lo fa poi la coda, con l'identità di quell'azienda, applicando `dbops.fn_apply_chiusura_scadenze()`, che ritorna JSONB con conteggio righe chiuse per tabella + meta-info esecuzione (`{"vendite.listini_versioni": 3, "vendite.contratti": 12, "_total": 15, "_executed_at": "..."}`).
 * **Schedule**: **ogni ora, al minuto 5**, anche se il nome dice «daily». Il giorno di una scadenza è quello dell'azienda (`script.fn_data_operativa()`, nel suo fuso), non l'orologio del server: la prima sveglia dopo la mezzanotte dell'azienda accoda il lavoro, le altre del giorno lo trovano già accodato o fatto e non accodano niente. Semantica `valido_al` = ultimo giorno **incluso**. Lo step parte solo se `maintenance.fn_sveglia_accesa('chiusura_scadenze_daily')` è vero.
-* **Classe**: il processo `chiusura_scadenze_daily` del catalogo `dbops.processi` è di classe `DOMINIO`, sul canale `CODA_AUTOMATICA`: tocca i dati delle aziende, e gira con l'identità tecnica di ciascuna dentro la RLS.
+* **Classe**: il processo `chiusura_scadenze_daily` del catalogo `dbops.processi` è di classe `DOMINIO`, sul canale `CODA_AUTOMATICA`: tocca i dati delle aziende, e gira con l'identità tecnica di ciascuna dentro la RLS. Per lo stesso motivo il registro dei bersagli ammette solo bersagli `DOMINIO`.
 * **Tabelle attualmente configurate**:
   * `vendite.listini_versioni` (`tipo_stato=FK`, lookup `config.stati_doc_listino_versioni.codice_interno`, ciclo `BOZZA -> ATTIVA -> CHIUSA`; sotto la porta del modello: chiude il verbo `vendite.fn_chiudi_versioni_listino_scadute`)
   * `vendite.contratti` (`tipo_stato=FK`, lookup `config.stati_doc_contratti.codice_interno`, ciclo `DRAFT -> ATTIVO -> CESSATO`; `SOSPESO` fuori scope operativo; sotto la porta: chiude il verbo `vendite.fn_cessa_contratti_scaduti`)
   * `vendite.preventivi` (`tipo_stato=FK`, lookup `config.stati_doc_preventivi.codice_interno`, `EMESSO -> SCADUTO` sulla colonna `validita_al`; sotto la porta: chiude il verbo `vendite.fn_chiudi_preventivi_scaduti`; dal 31-10-2026, brief-db-scadenza-preventivi)
-* **Pre-check**: prima di ogni UPDATE la fn verifica esistenza schema/tabella/colonne (e per FK anche tabella di lookup + codici). Errore tipato `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` in caso di config invalida (no exec parziale).
+* **Pre-check**: prima di chiudere la fn verifica la classe del bersaglio, l'esistenza di schema/tabella/colonne, il verbo dichiarato (o la sua assenza sotto la porta) e, per FK, la tabella di lookup e i codici. Errore tipato `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` in caso di config invalida (no exec parziale).
 * **Idempotenza**: la query seleziona solo righe ancora attive con `valido_al` scaduto; esecuzioni ripetute nella stessa giornata sono no-op.
 * **Interazione con guard tabella-specifici**: i tre bersagli di oggi si chiudono col loro verbo, che passa dalla porta del modello; il ramo `UPDATE` diretto attraversa i guard di transizione della tabella. La scadenza si confronta con `script.fn_data_operativa()`, non con `CURRENT_DATE`. Nessun bypass, nessun GUC, nessun privilegio elevato: la funzione è `SECURITY INVOKER` e chiude solo ciò che vede l'identità dell'azienda.
 * **Effetto sulla UX**: fra `PATCH valido_al = oggi` e la prima sveglia dopo la mezzanotte dell'azienda (più il tempo del drenatore della coda) lo stato resta `ATTIVA`/`ATTIVO`. L'**applicabilita' operativa** (resolver prezzi, lookup contratti operativi) e' gia' scaduta perche' basata su `validita @> data`, non sullo stato.
@@ -83,7 +83,7 @@ corretta.
 
 1. Verificare che la tabella abbia il pattern `<col_stato> + <col_valido_al>` ([linee-guida-sql §7c](/linee-guida-sql)).
 2. Creare un trigger guard transizione tabella-specifico (`trgfn_<tabella>_guard_transizione_stato`) con la matrice transizioni del workflow + precondizione temporale per la transizione terminale.
-3. Aggiungere una riga in `dbops.automazione_chiusura_scadenze` (via INSERT seed in `80_data/sql/dbops/automazione_chiusura_scadenze.csv`) con `tipo_stato='VARCHAR'` o `tipo_stato='FK'`, i codici stato attivo/chiuso, la `classe` e, per una testata sotto la porta del modello, il verbo in `verbo_chiusura` (una funzione viva senza argomenti).
+3. Aggiungere una riga in `dbops.automazione_chiusura_scadenze` (via INSERT seed in `80_data/sql/dbops/automazione_chiusura_scadenze.csv`) con `tipo_stato='VARCHAR'` o `tipo_stato='FK'`, i codici stato attivo/chiuso, la `classe` e, per una testata sotto la porta del modello, il verbo in `verbo_chiusura` (una funzione viva senza argomenti). ⛔ La classe può essere solo `DOMINIO`: la tabella deve avere un padrone, perché il giro la lavora con l'identità di ciascuna azienda. Una tabella di `MANUTENZIONE` o `AMMINISTRAZIONE` chiede un esecutore da sviluppare, che lavori una volta sola con un'identità tecnica: oggi il registro non la ammette e il motore la rifiuterebbe.
 4. Nessun nuovo codice DB oltre al verbo, se serve: il lavoro di coda la prende in carico alla prima sveglia del giorno aziendale successivo.
 
 ---

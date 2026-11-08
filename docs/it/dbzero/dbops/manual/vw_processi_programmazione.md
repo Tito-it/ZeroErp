@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_programmazione`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -31,9 +31,12 @@
 
 ### 🎯 Scopo Principale
 
-Il panorama dei processi automatici attivi: per ognuno, chi lo sveglia, quando girerà, quando ha
+Il panorama dei processi automatici vivi: per ognuno, chi lo sveglia, quando girerà, quando ha
 girato secondo lo scheduler e secondo il giornale, e uno `stato` che dice se i conti tornano.
 Elenca anche i sani.
+
+Vivo vuol dire ritiro non raggiunto (`script.fn_e_obsoleto`): un processo a ritiro programmato
+compare fino al suo giorno, uno a ritiro raggiunto esce.
 
 ---
 
@@ -217,6 +220,8 @@ quanti sono i sani un guasto sembra la norma. La vista gira coi privilegi del pr
 * `db/pgtap/dbops/test-processi-accensione-v1.sql`, `db/pgtap/dbops/test-processi-accensione-produzione-v1.sql`
   — un processo spento è `SPENTO`, non da guardare; `db/pgtap/dbops/test-installazione-ambiente-v1.sql`
   — senza ambiente il panorama non solleva.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — il panorama mostra il ritiro programmato e il
+  processo vivo con `attivo` falso, non il ritiro raggiunto.
 
 ---
 

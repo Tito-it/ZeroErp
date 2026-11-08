@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_crea_utente_tecnico`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -86,8 +88,10 @@ il bypass su ogni perimetro, cioè esattamente ciò che questo cantiere toglie.
 
 ### I guard, e perché ci sono
 
-* **Il processo deve volerlo davvero**: attivo, non obsoleto, di classe
-  `DOMINIO`, su canale `PGAGENT` o `COMMAND`. ⛔ Un processo di **coda** viene
+* **Il processo deve volerlo davvero**: vivo (ritiro non raggiunto, con la
+  regola di `script.fn_e_obsoleto`: un ritiro programmato è ancora vivo fino al
+  suo giorno), di classe `DOMINIO`, su canale `PGAGENT`, `COMMAND` o
+  `CODA_AUTOMATICA`. ⛔ Un processo di **coda** viene
   rifiutato: gira con l'identità dell'operatore che lo accoda, e dargli un
   utente tecnico cancellerebbe il nome di quella persona.
 * **L'azienda deve esistere ed essere attiva.**

@@ -62,19 +62,19 @@ DECLARE
     v_ritirati_vivi  text;
     v_registro_lock  text;
     v_warning_sollevati text;
-    -- ⚠️ Deve restare IDENTICO al CHECK chk_messaggi_errore_codici_legacy_non_conforme
-    --    (20260805-06, allargato da 20260805-28). Se i due divergono, il registro
-    --    e il presidio finiscono per parlare di due insiemi diversi e nessuno se
-    --    ne accorge.
+    -- ⭐ La convenzione ha una sede sola: dbops.fn_codice_errore_conforme(text),
+    --    IMMUTABLE. La chiama anche il CHECK
+    --    chk_messaggi_errore_codici_legacy_non_conforme, quindi il registro e il
+    --    presidio parlano dello stesso insieme per costruzione (prima erano due
+    --    copie della stessa regex, tenute uguali a mano).
     --
     -- ⚠️ DUE FAMIGLIE, NON UNA: `E_` sono errori e si sollevano; `W_` sono
     --    warning e si scrivono soltanto nel log (es. W_TXID_NOT_REGISTERED, il
-    --    cui messaggio comincia con «Warning - »). Allargare la convenzione ai
+    --    cui messaggio comincia con «Avviso - »). Allargare la convenzione ai
     --    warning evita di rinominarli in `E_` per far tornare un conteggio,
     --    facendogli dire una cosa falsa — ma apre un buco che il controllo (E)
     --    chiude: un `W_` sollevato arriverebbe al backend, non troverebbe policy
     --    (la scorciatoia di resolve() e' solo per `E_`) e darebbe **HTTP 500**.
-    c_convenzione CONSTANT text := '^[EW]_[A-Z0-9_]+$';
 BEGIN
     -- ── (A) un solo mittente autorizzato sul canale CONSTRAINT ──────
     --
@@ -170,7 +170,7 @@ BEGIN
     SELECT string_agg(ce.codice, E'\n  ' ORDER BY ce.codice)
       INTO v_fuori
       FROM config.codici_errore ce
-     WHERE ce.codice !~ c_convenzione
+     WHERE dbops.fn_codice_errore_conforme(ce.codice) IS NOT TRUE
        AND (ce.obsoleto_dal IS NULL OR ce.obsoleto_dal > CURRENT_DATE)
        AND NOT EXISTS (
              SELECT 1 FROM dbops.messaggi_errore_codici_legacy l

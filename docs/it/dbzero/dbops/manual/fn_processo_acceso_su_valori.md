@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_processo_acceso_su_valori`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -29,7 +29,7 @@ scelta a mano e l'ambiente, dice se la sveglia è accesa. È l'unico posto dove 
 
 | Caso | Risposta |
 | --- | --- |
-| il processo non ha sveglia (canale `CODA`, o `obsoleto_dal` valorizzato) | vuoto |
+| il processo non ha sveglia (canale `CODA`, o ritiro raggiunto secondo `script.fn_e_obsoleto`) | vuoto |
 | il processo è **non spegnibile** | acceso, sempre: non legge né la scelta a mano né l'ambiente |
 | c'è una scelta a mano e il divieto di produzione la ammette | la scelta a mano |
 | l'ambiente è `SVILUPPO` | il default di sviluppo |
@@ -45,8 +45,8 @@ L'ordine dei rami è la regola:
   il divieto non sa decidere, e la regola cade sul ramo dell'ambiente, cioè vuoto;
 * una scelta a mano che spegne, o che accende un processo accendibile, decide anche senza ambiente.
 
-⚠️ La regola non riceve `attivo`: un processo spento con `attivo` falso ma senza `obsoleto_dal`
-risulta ancora con una sveglia.
+⚠️ «Senza sveglia» vuol dire ritiro **raggiunto**, non data scritta: un ritiro programmato ha la
+sveglia fino al suo giorno. La regola non riceve `attivo`, che non dice se il processo è vivo.
 
 ---
 
@@ -56,8 +56,9 @@ L'ambiente di un'installazione non cambia e la CI è `SVILUPPO`: una regola che 
 non si potrebbe provare in produzione senza riscrivere l'installazione. Sui valori, i test provano
 ogni ramo passando il valore, senza costruire niente.
 
-È immutabile e `LANGUAGE sql`, così si inlinea in chi la chiama; non è `STRICT`, perché i valori
-vuoti sono casi normali (una scelta a mano assente, un processo senza sveglia).
+È `LANGUAGE sql`, così si inlinea in chi la chiama, e `STABLE`: il ritiro dipende dalla data di
+oggi. Non è `STRICT`, perché i valori vuoti sono casi normali (una scelta a mano assente, un
+processo senza sveglia).
 
 Chi la legge: [fn_processo_acceso_dichiarato](/dbzero/dbops/funzioni/fn_processo_acceso_dichiarato)
 la chiama coi valori del dato, e attraverso di lei la usano il cancello delle sveglie e il panorama
@@ -67,10 +68,12 @@ dei processi. Chi decide rende il vuoto un errore; chi descrive lo mostra.
 
 ### Test
 
-* `db/pgtap/dbops/test-processi-accensione-v1.sql` — la forma (immutabile, `LANGUAGE sql`, senza
-  `STRICT`), ogni ramo sui valori (senza sveglia, non spegnibile anche spento a mano o senza
+* `db/pgtap/dbops/test-processi-accensione-v1.sql` — la forma (`STABLE`, `LANGUAGE sql`, senza
+  `STRICT`), ogni ramo sui valori (senza sveglia per canale o per ritiro raggiunto, non spegnibile anche spento a mano o senza
   ambiente, scelta a mano nei due versi, i due default, ambiente mancante) e la scelta a mano che
   il divieto non ammette, in produzione, in sviluppo e senza ambiente.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — con un ritiro programmato la regola non dice
+  «senza sveglia».
 
 ---
 
@@ -79,6 +82,8 @@ dei processi. Chi decide rende il vuoto un errore; chi descrive lo mostra.
 * 2026-10-16 — nasce col default di accensione per ambiente (`brief-db-processi-accensione-per-ambiente`).
 * 2026-10-18 — riceve `accendibile_in_produzione` e ignora la scelta a mano che il divieto di
   produzione non ammette.
+* 2026-11-08 — da `IMMUTABLE` diventa `STABLE`: «senza sveglia» si legge dal ritiro raggiunto
+  (`script.fn_e_obsoleto`), non più dalla sola presenza di `obsoleto_dal`.
 
 ---
 

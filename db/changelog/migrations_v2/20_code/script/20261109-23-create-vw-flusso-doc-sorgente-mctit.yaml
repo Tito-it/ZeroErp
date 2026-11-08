@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA D'ANCORA PER FLUSSO: script.vw_flusso_doc_sorgente
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.1 (richiesta BE R-P.1-1, §8.16;
+#   regola d'ordine decisa da Tid il 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il documento di una pratica ha la sua sede: script.vw_pratica_doc_sorgente,
+#   una riga per pratica. Il documento di un FLUSSO (il passo della pratica: il
+#   percorso, la coda di lavoro) lo calcolava il backend con una sua copia della
+#   stessa lettura (pratiche_repository._doc_sorgente_lateral). Regola del 2: la
+#   seconda copia diventa una sede DB, e la copia BE si ritira (§8 del brief).
+#
+# ── LA REGOLA (Tid, 2026-11-08) ─────────────────────────────────────
+#   Una riga per flusso_id, fra i link di pratiche.pratiche_sorgenti con quel
+#   flusso: prima il ROOT (e' il documento del passo, per definizione; un flusso
+#   ne ha uno solo, uq_pratiche_sorgenti_flusso_root), poi lo spareggio della
+#   pratica: il risolto, il vivo (non terminale), il link piu' recente.
+#   Stessa lettura del documento della vista per pratica: un ramo per chiave
+#   sulle colonne native, in una LATERAL (sotto RLS arriva all'indice di ogni
+#   ramo; un OR sulle due chiavi non scende nella union).
+#   security_invoker=on, come la gemella. I privilegi li da' il loop di ci_apply.
+#   Rollback: DROP VIEW.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261109-23-create-vw-flusso-doc-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261109-23-create-vw-flusso-doc-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.vw_flusso_doc_sorgente: il documento di un flusso di pratica, ROOT prima, poi lo spareggio
+        della pratica. brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.1 (R-P.1-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW script.vw_flusso_doc_sorgente WITH (security_invoker=on) AS
+               SELECT DISTINCT ON (ps.flusso_id) ps.flusso_id,
+                  ps.pratica_id,
+                  ps.sorgente_tipo_id,
+                  ps.sorgente_id,
+                  ps.sorgente_uid,
+                  ps.ruolo_link,
+                  so.descrizione AS sorgente_descrizione,
+                  COALESCE(ss.risolto, false) AS risolto,
+                  ss.stato_codice_interno,
+                  ss.stato_codice,
+                  ss.stato_descrizione,
+                  ss.fase,
+                  ss.esito,
+                  ss.terminale
+                 FROM pratiche.pratiche_sorgenti ps
+                   JOIN config.sorgenti so ON so.id = ps.sorgente_tipo_id
+                   LEFT JOIN LATERAL ( SELECT v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                         FROM script.vw_stato_sorgente v
+                        WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
+                          AND v.sorgente_chiave_uuid = ps.sorgente_uid
+                      UNION ALL
+                       SELECT v.risolto,
+                          v.stato_codice_interno,
+                          v.stato_codice,
+                          v.stato_descrizione,
+                          v.fase,
+                          v.esito,
+                          v.terminale
+                         FROM script.vw_stato_sorgente v
+                        WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
+                          AND v.sorgente_chiave_id = ps.sorgente_id) ss ON true
+                WHERE ps.flusso_id IS NOT NULL
+                ORDER BY ps.flusso_id, (ps.ruolo_link::text = 'ROOT'::text) DESC, (COALESCE(ss.risolto, false)) DESC, (NOT COALESCE(ss.terminale, false)) DESC, ps.id DESC;
+
+              COMMENT ON VIEW script.vw_flusso_doc_sorgente IS
+                'Una riga per flusso di pratica col descrittore del suo documento, fra i link di pratiche.pratiche_sorgenti con quel flusso_id. Regola d''ancora, NULL-safe: prima il ROOT (il documento del passo: un flusso ne ha uno solo, uq_pratiche_sorgenti_flusso_root), poi lo spareggio della pratica: il risolto, il vivo (non terminale), il link piu'' recente (ps.id). Gemella di script.vw_pratica_doc_sorgente, che e'' la sede per pratica: stesse colonne, piu'' flusso_id. Link non risolto: risolto=false e stato_* NULL. La chiave del documento nelle colonne del modello (sorgente_id o sorgente_uid, una sola); il documento si cerca in script.vw_stato_sorgente un ramo per chiave, in una LATERAL, perche'' sotto RLS arrivi all''indice di ogni ramo della union. Sede unica della regola per flusso; la legge il backend (percorso della pratica, coda di lavoro). security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW script.vw_flusso_doc_sorgente;

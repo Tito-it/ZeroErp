@@ -1,6 +1,6 @@
 # Guida — Gestione del Transaction ID (`tx_id`)
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -229,7 +229,7 @@ gia uscita).
 
 Legge il parametro `tx_id_bypass_enabled` da `config.parameters`.
 
-* Se il parametro non esiste: logga via `fn_log_error_only` e prosegue con bypass disabilitato.
+* Se il parametro non esiste: logga l'avviso `W_TXID_BYPASS_PARAMETRO_ASSENTE` via `fn_log_error_only` e prosegue con bypass disabilitato; la Fase 2 si esegue comunque.
 * Se errore di lettura: logga via `fn_log_and_raise_error` e rilancia.
 
 ### Fase 2 — Override bypass di sessione
@@ -286,7 +286,7 @@ Il sistema tx_id si appoggia a una combinazione di parametri di sessione (GUC) e
 | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `tx_id_bypass_enabled` | BOOLEAN | Bypass globale della validazione tx_id. Se `true`, il trigger non genera ne verifica, usa il tx_id di sessione o `uuid_nil()` |
 
-Il bypass ha due livelli: il parametro globale in `config.parameters` e l'override di sessione via GUC `myapp.bypass_tx_id_check`, che si legge solo se il parametro non è attivo. Basta che uno dei due sia `true` per attivare il bypass, **purché il parametro esista**: se `tx_id_bypass_enabled` manca da `config.parameters`, il trigger registra `E_ERRORE_PARAMETRI_TABELLA` senza sollevare, il bypass resta indefinito, anche l'override di sessione viene ignorato, e il bypass non scatta. Il dettaglio è in [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed).
+Il bypass ha due livelli: il parametro globale in `config.parameters` e l'override di sessione via GUC `myapp.bypass_tx_id_check`, che si legge sempre quando il parametro non accende il bypass. Basta che uno dei due sia `true` per attivare il bypass, anche senza il parametro: se la riga `tx_id_bypass_enabled` manca da `config.parameters`, il parametro vale spento, il trigger scrive l'avviso `W_TXID_BYPASS_PARAMETRO_ASSENTE` nel log senza fermare la scrittura, e l'override di sessione si legge comunque. Il dettaglio è in [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed).
 
 ---
 

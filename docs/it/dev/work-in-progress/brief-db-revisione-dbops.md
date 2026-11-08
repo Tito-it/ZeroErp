@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 7-bis chiuso, BE11 fatta)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 9 applicato e committato)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -40,7 +40,12 @@ su `shop.ricevute` letta sul catalogo dei due database (§20.9), **committato** 
 Blocco a **committato** (`f7ce9855c5`). **Via al blocco 7-bis-b** (Tid, 2026-11-08, §23.11): dal `20261109-31`,
 test 14 esteso; il `fk_index_policy.csv` orfano passa al blocco 10d. **Blocco 7-bis-b applicato** (Tid, 2026-11-08,
 §23.11.4): `20261109-31` su dbdev e scratch, pgTAP verdi, committato (`286117c2f6`). **Blocco 7-bis-c censito**
-(2026-11-08, §23.12), decisioni di Tid prese, **scritto e provato** sullo scratch e su dbdev (§23.12.2-23.12.3). **Blocco c applicato** (Tid, 2026-11-08, §23.12.5): migrazione, convergenza, pgTAP verdi. **Il giro 7-bis è chiuso** e committato. **BE11 fatta** dal team BE (2026-11-08, da committare su `dev/backend-tid`, §5 «Stato al 2026-11-08, BE11»): il salvataggio delle preferenze è ripristinato. **Riparte: Tid** col commit del BE e il via alla sessione DB per il giro successivo di §8. BE4, BE9 e il test di S-BE-2 sono fatti e committati (§5).
+(2026-11-08, §23.12), decisioni di Tid prese, **scritto e provato** sullo scratch e su dbdev (§23.12.2-23.12.3). **Blocco c applicato** (Tid, 2026-11-08, §23.12.5): migrazione, convergenza, pgTAP verdi. **Il giro 7-bis è chiuso** e committato. **Giro 9 preparato** (2026-11-08, §24): difetti riverificati, sei nodi. **Via di Tid** (2026-11-08): N1-N6 come da
+proposta, dal primo libero. **Giro 9 scritto e provato** sullo scratch (§24.5-24.7): `20261109-40` … `-57`, quattro CSV,
+il guardrail dei codici, sei pgTAP nuovi e cinque riscritti.
+**Giro 9 applicato** (Tid, 2026-11-08, §24.11): migrazione su dbdev e scratch, pgTAP verdi; **committato**.
+**Riparte: team BE** con BE12 e BE6 (§5); **Tid** per la decisione su D12-bis (§24.6 punto 6); poi la sessione DB col giro 10a
+di §8, al via di Tid. In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -116,9 +121,15 @@ ancora le tabelle).
 | 9-quadragies-ter | ✅ Tid | Le quattro decisioni del 7-bis-c: tutte come da proposta (2026-11-08) | §23.12 | 9-quadragies-bis |
 | 9-quadragies-quater | ✅ sessione DB | Blocco 7-bis-c scritto e provato (`20261109-32` … `-39`, due CSV, quattro pgTAP); N2 precisato sulle righe di composizione | §23.12.1-23.12.3 | 9-quadragies-ter |
 | 9-quadragies-quinquies | ✅ Tid | Apply del blocco 7-bis-c, convergenza, pgTAP come app verdi (2026-11-08); commit e push dalla sessione DB. Il giro 7-bis è chiuso | §23.12.5 | 9-quadragies-quater |
-| 9-quadragies-sexies | ✅ team BE | BE11: lo snapshot rinominato, la data del contenuto, l'audit a mano che si ritira, i rifiuti nuovi del guard (2026-11-08, da committare su `dev/backend-tid`) | §5 «Stato al 2026-11-08, BE11» | 9-quadragies-quinquies |
-| 9-quadragies-septies | Tid → sessione DB | Via al giro successivo di §8 | §8 | 9-quadragies-quinquies |
-| 9-tricies-decies | ✅ team BE | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
+| 9-quadragies-sexies | **team BE** ⏭️ | BE11: lo snapshot rinominato, la data del contenuto, l'audit a mano che si ritira, i rifiuti nuovi del guard | §5 | 9-quadragies-quinquies |
+| 9-quadragies-septies | ✅ sessione DB | Giro 9 preparato: riverifica sulla struttura, sei nodi, due blocchi (2026-11-08) | §24 | 9-quadragies-quinquies |
+| 9-quadragies-octies | ✅ Tid | Decisioni N1-N6 come da proposta, via al giro 9 dal primo libero (2026-11-08) | §24.4 | 9-quadragies-septies |
+| 9-quadragies-nonies | ✅ sessione DB | Giro 9, blocchi 9a e 9b: scritti e provati sullo scratch (`20261109-40` … `-57`) | §24.5-24.7 | 9-quadragies-octies |
+| 9-quinquagies | ✅ Tid | Apply del giro 9 su dbdev e scratch, pgTAP di §24.8 verdi (2026-11-08); commit dalla sessione DB. Il giro 9 è chiuso | §24.11 | 9-quadragies-nonies |
+| 9-quinquagies-bis | **Tid** ⏭️ | Decisione su D12-bis: il `COALESCE` finale di `trgfn_tx_id_managed` (proposta (a)) | §24.6 | 9-quinquagies |
+| 9-quinquagies-ter | Tid → sessione DB | Via al giro 10a di §8 | §8 | 9-quinquagies |
+| 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
+| 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
@@ -126,8 +137,10 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** il debito della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di
-scrittura) si decide al giro 9. Nessuna sul giro 7-bis: il criterio dello scrittore (§20.8.2, punto 2) è confermato
+**Decisioni aperte di Tid:** D12-bis (§24.6 punto 6: il `COALESCE` finale di `trgfn_tx_id_managed` fa vincere l'id di
+sessione anche non registrato). **Da committare:** nulla del giro 9 (committato il 2026-11-08). ⚠️ Nel working tree restano
+file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
+`messaggi_errore.csv`): non sono entrati nel commit. Nessuna sul giro 7-bis: il criterio dello scrittore (§20.8.2, punto 2) è confermato
 (Tid, 2026-11-07); le scelte del blocco a sono in §23.5, da guardare. **Da committare:** nulla del giro 7-bis: i blocchi a, b e c sono
 committati (`f7ce9855c5`, `286117c2f6` e il commit del blocco c, 2026-11-08). ⚠️ Nel working tree
 ci sono anche file dell'altro cantiere (`codici_errore.csv`, `presidi.csv`, `presidi_testi.csv`, il suo brief e i suoi
@@ -140,7 +153,8 @@ L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
 sono dell'altro cantiere). Il giro 6 ha preso `20261108-10` … `-13` (dato da Tid). Il giro 8 ha preso `20261108-41` … `-60` (dato da Tid). Il giro 7-bis, blocco a, ha preso `20261108-90` … `-93` (dato da Tid; `-86` … `-89` sono dell'altro cantiere e di §22). Il blocco b parte dal `20261109-31` (`20261108-94` … `-99` e `20261109-01` … `-30` sono del lotto M dell'altro cantiere, che li tiene riservati; 2026-11-08). Il giro 7 ha preso `20261108-25` … `-31` (dato da Tid), la
 regola 28 di `automation_rules_tbl`, la riga 126 di `storico_scope_policy`, gli id 1-10 del registro nuovo; nessun
 codice errore. Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
-cantiere, giro T.4); il prossimo libero è 1458. L'altro cantiere aperto
+cantiere, giro T.4); 1458 l'ha preso l'altro cantiere, il giro 9 ha preso 1459; il prossimo libero è 1460. Il giro 9 ha
+preso `20261109-40` … `-57`. L'altro cantiere aperto
 (`brief-db-sorgente-documento-e-riga`) numera oggi nel blocco `20261106-74` … `-87`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-04; decisioni registrate il 2026-11-06. **A chi:** Tid e team DB; §5 al team BE.
@@ -573,7 +587,8 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 ✅ (2026-11-07) | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
-| BE11 ✅ (2026-11-08) | **Insieme all'apply del blocco 7-bis-c (§23.12); prima si rompe il salvataggio delle preferenze.** (a) Lo snapshot della preferenza si rinomina: `preset_base_data_update` → `preset_base_contenuto_aggiornato_il` in `ui.lista_preferenza_utente` e `ui.dashboard_preferenza_utente` (le SELECT e gli upsert dei due repository, i kwargs dei due service e dei test). (b) `get_preset_base_snapshot` legge `contenuto_aggiornato_il` del preset, non `data_update`: oggi `data_update` è l'audit. (c) ⛔ Gli UPDATE di `ui_admin_repository.py` (`update_definizione`, `update_colonna`, `update_preset` e gli upsert dei permessi) non scrivono più `user_update` né `data_update = now()` (`extra_set`): lo fa il trigger di audit dal JWT (`app.jwt_user`). È la stessa regola su due livelli; sui preset l'`extra_set` spostava anche la data del contenuto quando l'admin cambiava solo `attivo`. (d) Rifiuti nuovi dal guard ATTIVO, da mappare se il BE li fa scattare: non si spegne una lista che ha colonne o preset attivi, né una dashboard che ha preset attivi (BLOCK); non nasce né si riattiva una colonna o un preset su una lista spenta, né un widget su un'area o un'azione spenta (REQUIRE). I codici sono `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (BLOCK) ed `E_ATTIVO_PADRE_NON_ATTIVO` (REQUIRE), già in policy. Il commento di `ListaConfigurabile.vue:743` («`preset.data_update` corrente») va riscritto | `backend/apps/ui/db/ui_repository.py:285-360`, `backend/apps/ui/db/dashboard_repository.py:85-150`, `backend/apps/ui/services/lista_preferenza_service.py`, `dashboard_preferenza_service.py`, `backend/apps/ui/db/ui_admin_repository.py:232-260, 469-510, 662-700, 843-880`, i test in `backend/apps/ui/tests/` | §23.12 |
+| BE11 ⏭️ (2026-11-08) | **Insieme all'apply del blocco 7-bis-c (§23.12); prima si rompe il salvataggio delle preferenze.** (a) Lo snapshot della preferenza si rinomina: `preset_base_data_update` → `preset_base_contenuto_aggiornato_il` in `ui.lista_preferenza_utente` e `ui.dashboard_preferenza_utente` (le SELECT e gli upsert dei due repository, i kwargs dei due service e dei test). (b) `get_preset_base_snapshot` legge `contenuto_aggiornato_il` del preset, non `data_update`: oggi `data_update` è l'audit. (c) ⛔ Gli UPDATE di `ui_admin_repository.py` (`update_definizione`, `update_colonna`, `update_preset` e gli upsert dei permessi) non scrivono più `user_update` né `data_update = now()` (`extra_set`): lo fa il trigger di audit dal JWT (`app.jwt_user`). È la stessa regola su due livelli; sui preset l'`extra_set` spostava anche la data del contenuto quando l'admin cambiava solo `attivo`. (d) Rifiuti nuovi dal guard ATTIVO, da mappare se il BE li fa scattare: non si spegne una lista che ha colonne o preset attivi, né una dashboard che ha preset attivi (BLOCK); non nasce né si riattiva una colonna o un preset su una lista spenta, né un widget su un'area o un'azione spenta (REQUIRE). I codici sono `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (BLOCK) ed `E_ATTIVO_PADRE_NON_ATTIVO` (REQUIRE), già in policy. Il commento di `ListaConfigurabile.vue:743` («`preset.data_update` corrente») va riscritto | `backend/apps/ui/db/ui_repository.py:285-360`, `backend/apps/ui/db/dashboard_repository.py:85-150`, `backend/apps/ui/services/lista_preferenza_service.py`, `dashboard_preferenza_service.py`, `backend/apps/ui/db/ui_admin_repository.py:232-260, 469-510, 662-700, 843-880`, i test in `backend/apps/ui/tests/` | §23.12 |
+| BE12 (giro 9) | Dopo l'apply del giro 9: il filtro `attivo` della lista dei processi non dice piu' se un processo e' vivo (la data del ritiro e' l'unica sede). Il filtro «vivo» si chiede al DB (`NOT script.fn_e_obsoleto(p.obsoleto_dal)`), non si ricalcola; `attivo` resta una colonna del catalogo. Con BE6 per `W_TXID_BYPASS_PARAMETRO_ASSENTE` | `backend/apps/core/db/processi_repository.py:75, 238-240` | D11 (Q2) |
 | BE10 ✅ (2026-11-07) | **Prima della RLS (blocco 5b), dal 5a.** (a) ⛔ Un lavoro OPERATORE nasce dentro un'azienda: in modalità globale si accoda un lavoro per azienda, o si chiede di sceglierla. Dall'apply del 5a la porta rifiuta un lavoro senza emittente attivo nello scope (`E_CODA_LAVORO_SENZA_EMITTENTE`): oggi lo accodano il giro di fatturazione dal cockpit in modalità globale (FATTURAZIONE_GIRO/NUMERA, dbdev, ultimo 2026-10-26) e chiunque catturi uno scope senza emittente attivo. (b) Il drenatore della coda lavori prende, recupera e chiude i lavori **un'azienda alla volta**, con l'utente tecnico di `draina_coda_lavori` di quell'azienda (`dbops.vw_processi_roster`), come `draina_coda_stampa`; i lavori SISTEMA li vede ogni utente tecnico del drenatore (`claim` con `SKIP LOCKED`). Claim, reaper, `mark_done`/`mark_error` sotto quell'identità; l'esecuzione del lavoro resta con l'identità dello scope. Un'azienda senza utente tecnico non viene drenata, e lo dice `vw_processi_dominio_senza_identita`. (c) La porta, da una sessione dell'applicazione, accoda un lavoro OPERATORE solo a nome di chi è in sessione e nel suo perimetro (`E_CODA_SCOPE_ALTRUI`), e la chiave di un lavoro OPERATORE deve contenere la sua azienda (`E_CODA_CHIAVE_ALTRUI`): da censire i punti che accodano a nome d'altri | `backend/apps/core/services/coda_lavori/drainer_service.py`, `repository.py` (`claim`, `reap_stale`, `mark_*`), `scope.py`, i chiamanti di `CodaLavoriRepository.accoda` | Q14.3, §18 |
 
 Nessuna ricaduta FE diretta: D25 si vede nel form quando BE2 è fatto.
@@ -849,7 +864,7 @@ entra nel giro che apre lo stesso oggetto.
 | 6 ✅ | A | **Presidi che guardano il campo sbagliato.** Q14 ④, ⑦ — chiuso (§19): applicato, pgTAP verdi, committato | Un presidio che non vede un caso che il modello ammette (il buco dei lotti congelati) dice il falso. Tutti e due riaprono il catalogo `presidi.csv` / `presidi_testi.csv`. ⑧ va nell'altro brief (§8.1) |
 | 7 ✅ | A | **Promesse senza esecutore, ricerca dei lookup.** D35, D36, D37 (Q4), D57 — applicato e verde (§20) | Tutti riaprono l'ambito delle automazioni o un lettore che non vede tutto. BE4. D25 è passato al giro 10a (stessa funzione di D32) |
 | 8 | A | **Le fixture.** D63, D64, D66 (Q11), D67, D70; + D69, D71, D73 (B) e D74 (C). D68 chiuso dall'altro cantiere (§21.1) | Fixture che producono una forma che l'applicazione non produce. Le B e la C usano gli stessi builder: un giro solo |
-| 9 | B | **Il processo vivo, e correzioni locali.** D11 (Q2): il BB «processo vivo» con sveglia, accensione, guard, panorama, roster e le sette viste, fra cui Q14 ⑤; D38, D39 (Q5); D8, D12, D22, D24, D52; Q14 ⑨ | Il BB deve nascere **prima** del giro 10, che lo usa (⑬). D38 e D39 sono lo stesso motore. Gli altri sono correzioni locali, ognuna su un oggetto suo |
+| 9 ✅ | B | **Il processo vivo, e correzioni locali.** D11 (Q2): il BB «processo vivo» con sveglia, accensione, guard, panorama, roster e le sette viste, fra cui Q14 ⑤; D38, D39 (Q5); D8, D12, D22, D24, D52; Q14 ⑨ | Il BB deve nascere **prima** del giro 10, che lo usa (⑬). D38 e D39 sono lo stesso motore. Gli altri sono correzioni locali, ognuna su un oggetto suo |
 | 10 | B | **Il framework delle automazioni e la convergenza dei registri (Q3).** Quattro blocchi, ognuno provato prima del successivo, come il giro 1: | Le copie del framework e i registri che aggiungono e non tolgono. Le A di questo giro (D25, D30, D59) entrano qui perché aprono le stesse funzioni |
 | 10a | | Lock di colonna: D25 (A), D28, D32, R2; BE2 | `fn_lock_columns_divergenze` si apre una volta |
 | 10b | | Runner e registro delle regole: D2, D10, D13, D16, D17, D17-bis, D20, D27, R1 | La strategia d'esistenza, l'ambito, la scadenza, i nomi; il vocabolario del registro (D17-bis) con il registro |
@@ -3257,3 +3272,216 @@ otto changeSet sono in `databasechangelog`, `ui,*all` è nell'ambito, il trigger
 attese, REQUIRE e BLOCK sulle 5 FK col guard (10 trigger), nessun `CODICE_MAIUSCOLO` su `ui`. Le schede auto-generate
 sono rigenerate. **Il blocco c è chiuso, e con lui il giro 7-bis.** Resta BE11 al team BE (§5). Residuo del giro:
 `cleanup_at` riconosciuto per nome (§23.5, punto 4) e il `fk_index_policy.csv` orfano, passato al blocco 10d.
+
+## 24. Giro 9 — il processo vivo, e correzioni locali: preparazione (2026-11-08)
+
+Difetti del giro (§8): D11 (Q2) con Q14 ⑤ e la scelta 3 di §18.4; D38, D39 (Q5); D8, D12, D22, D24, D52; Q14 ⑨.
+Riverificati sulla struttura dello scratch `zeroerp_ruoli` (da owner, sola lettura). **Niente è scritto**: si
+aspetta il via, con l'intervallo dei numeri.
+
+### 24.1 La riverifica
+
+| # | Esito | Che cosa c'è in più rispetto a §2 |
+| --- | --- | --- |
+| D11 | ✅ confermato | I lettori del ritiro sono **dodici**, non sette: le sette viste (`vw_emittenti_non_serviti`, `vw_processi_dominio_senza_difesa`, `…_senza_emittente`, `…_senza_identita`, `…_su_pgagent`, `vw_processi_programmazione`, `vw_processi_roster`) leggono `attivo AND obsoleto_dal IS NULL`; `script.fn_crea_utente_tecnico` e `script.fn_scope_identita_processo` lo stesso; `maintenance.fn_sveglia_accesa`, `dbops.trgfn_processi_accensione_guard` e `dbops.fn_processo_acceso_dichiarato` (via `fn_processo_acceso_su_valori`) leggono `obsoleto_dal IS NOT NULL`. Il test 8 di `test-processi-registro.sql` legge il solo `attivo` (§9.6 di `work-done/brief-db-sveglia-dei-processi`). Nel backend `processi_repository.py` filtra su `p.attivo` (`:238-240`). Nessuno legge la data come data: **un ritiro programmato spegne il processo il giorno in cui si scrive, non il giorno del ritiro** (nodo N1) |
+| ⑤ | ✅ confermato | Il guard si riconosce da `proname = 'trgfn_guard_emittente_scope'`, senza schema né `tgenabled`. La nota del bersaglio `dbops.coda_lavori` in `processi_bersagli.csv` dice ancora «la RLS si arma solo quando il drenatore … lavora per azienda»: la RLS è accesa dal blocco 5b, la nota è stantia |
+| D38 | ✅ confermato | `chk_automazione_chiusura_scadenze_classe` ammette anche `NULL` nel testo (la colonna è NOT NULL). Chiamanti di `p_classe`: il solo `db/pgtap/dbops/test-chiusura-scadenze-classe.sql:101` (`'MANUTENZIONE'`); l'handler chiama senza argomenti e resta compatibile |
+| D39 | ✅ confermato | Il ramo `VARCHAR` fa sempre l'UPDATE dinamico; nel ramo `FK` la porta (`script.trgfn_doc_stato_solo_dal_verbo` per OID) si guarda, e senza porta il verbo dichiarato è ignorato. Le tre righe di oggi sono `FK`, con porta e verbo (fatto datato) |
+| D8 | ✅ confermato | Esclude solo `indisprimary`; nessun riguardo per `conindid` né `indisreplident` |
+| D12 | ✅ confermato | `SELECT … INTO` senza riga **assegna NULL** (non lascia il `FALSE` iniziale): con la riga assente, o `default_value` NULL, `IF NOT v_bypass_enabled` non entra e l'override di sessione non si legge. Il ramo «parametro assente» scrive `E_ERRORE_PARAMETRI_TABELLA` con `fn_log_error_only` (un `E_` che non ferma). Il `RAISE;` dopo `fn_log_and_raise_error` è irraggiungibile |
+| D22 | ✅ confermato | CHECK `codice !~ '^[EW]_[A-Z0-9_]+$'` su `dbops.messaggi_errore_codici_legacy`; la costante `c_convenzione` in `scripts/sql/guardrail_codice_errore_strutturato.sql` |
+| D24 | ✅ confermato | La vista unisce **ogni** pattern che combacia: un codice preso da EXACT e da un LIKE esce due volte, e la seconda riga nomina un `target` che la funzione non ha usato. Presidio esistente: `db/pgtap/dbops/test-vw-parameter-fk-surrogate-dangling-v1.sql` |
+| D52 | ✅ confermato | `fn_storico_arma_scope` (`v_owner <> current_user` → `SKIP_OWNER`) e `fn_storico_backfill_scope` (`v_owner = current_user`); `fn_ensure_storico_table` usa già `pg_has_role(…, 'MEMBER')` o `rolsuper`. Altro chiamante: `scripts/sql/provision_storico_scope.sql` |
+| ⑨ | ✅ confermato | `chk_sessioni_utente_evento` ammette `SCADENZA`; nessun lettore in backend né frontend |
+
+### 24.2 I nodi (decisioni di Tid)
+
+* **N1 — `chk_processi_accensione` legge la data come presenza.** È la conseguenza della Q2 («vivo = data vuota o
+  non ancora arrivata»). Oggi il CHECK pretende le quattro colonne dell'accensione **NULL** appena `obsoleto_dal` è
+  scritta, e sveglia e guard sollevano `E_PROCESSO_SENZA_SVEGLIA` dallo stesso momento: un ritiro programmato
+  spegne (e fa fallire) il processo in anticipo. Un CHECK non può leggere la data di oggi. **Proposta:** il CHECK
+  guarda solo il canale (un processo non `CODA` dichiara sempre la sua accensione, anche da ritirato, e da ritirato
+  non la legge nessuno); sveglia e guard sollevano `E_PROCESSO_SENZA_SVEGLIA` per `CODA` o per ritiro **raggiunto**.
+  Le righe 23 e 24 di `processi.csv` riprendono i quattro valori (quelli che avevano prima del ritiro, da `git log`).
+* **N2 — il BB «processo vivo» c'è già.** `script.fn_e_obsoleto(date)` (STABLE, «data scritta e raggiunta» nel fuso
+  aziendale) è la regola del ritiro di catalogo, la stessa che usa il guard OBSOLETO. **Proposta:** i dodici lettori
+  passano a `NOT script.fn_e_obsoleto(p.obsoleto_dal)` e smettono di leggere `attivo`; niente funzione nuova
+  (regola del 2: sarebbe una seconda copia). CHECK nuovo `chk_processi_ritiro_con_data`:
+  `attivo OR obsoleto_dal IS NOT NULL`. Il test 8 di `test-processi-registro.sql` passa allo stesso predicato.
+* **N3 — la scelta 3 di §18.4: che cosa conta come difesa di scrittura.** Sulla coda lavori la difesa c'è, ed è
+  doppia: per l'app la policy `FOR ALL` con `WITH CHECK` (RLS accesa; l'app ha INSERT/UPDATE/DELETE), per chi scrive
+  da proprietario la porta DEFINER `dbops.fn_accoda_lavoro`. Il presidio conosce solo il guard. Strade:
+  (a) resta così, la riga `DEBITO_DICHIARATO` per sempre, con la nota corretta; (b) **il bersaglio dichiara la sua
+  porta** — colonna `processi_bersagli.porta_scrittura` (nome qualificato), e la vista la conta come difesa se la
+  funzione esiste ed è `SECURITY DEFINER` **e** la tabella ha RLS accesa con una policy che copre INSERT e UPDATE
+  con `WITH CHECK`; (c) il guard impara a riconoscere il proprietario — scartata dalla sessione DB: aprirebbe ogni
+  scrittura DEFINER. **Proposta: (b)**; la riga di `coda_lavori` esce dal presidio e `debito_dichiarato` torna
+  `false`.
+* **N4 — D39: verbo e porta.** **Proposta:** porta e verbo si valutano prima del dispatch, in tutti e due i rami;
+  un verbo dichiarato si usa **sempre** (è la porta del dominio), e una porta senza verbo si rifiuta come oggi
+  (`porta_senza_verbo_di_chiusura`), anche nel ramo `VARCHAR`. L'alternativa della §2.4 (verbo senza porta →
+  errore) rifiuterebbe una configurazione corretta.
+* **N5 — D22: dove sta la convenzione.** **Proposta:** `dbops.fn_codice_errore_conforme(text)` IMMUTABLE in
+  `20_code`; il CHECK la chiama, riscritto in `90_end` (da zero `00_schema` gira prima della funzione); il guardrail
+  chiama la funzione al posto della costante.
+* **N6 — D12: il codice.** **Proposta:** `COALESCE(…, false)` sulla lettura del parametro; il ramo «parametro
+  assente o NULL» scrive un `W_` nuovo, `W_TXID_BYPASS_PARAMETRO_ASSENTE` (messaggio registrato, id dal primo
+  libero); via il `RAISE;` irraggiungibile. Porta BE6.
+
+Senza nodo, come da §2 e §4: D38 (CHECK `classe = 'DOMINIO'`, `p_classe` ritirato con DROP e CREATE, rifiuto con
+codice nel motore, `test-chiusura-scadenze-classe.sql` riscritto, la doc della Q5); D8 (indici di vincolo e di
+replica identity primi nell'ordinamento ed esclusi da `indici_da_droppare`); D24 (un risolutore del pattern usato
+da funzione e vista, `LATERAL … LIMIT 1`); D52 (membership nei due punti); ⑨ (`SCADENZA` esce dal vincolo, col
+conteggio prima).
+
+### 24.3 I blocchi
+
+* **9a — il processo vivo:** D11 con N1 e N2, ⑤ con N3, il test 8. Tocca `processi`, `processi_bersagli`, i due CSV,
+  le sette viste e le cinque funzioni: si apre una volta.
+* **9b — le correzioni locali:** D38, D39, D8, D12, D22, D24, D52, ⑨. Ognuna sul suo oggetto; si possono provare
+  insieme.
+
+Ricadute BE, da scrivere in §5 al via: **BE12** — il filtro `attivo` di `processi_repository.py` diventa «vivo»
+(letto dal DB, non ricalcolato); **BE6** per `W_TXID_BYPASS_PARAMETRO_ASSENTE`; il commento dell'handler della
+chiusura (`chiusura_scadenze_handler.py:16`) se nomina `p_classe`.
+
+**Numeri:** l'ultimo occupato del 2026-11-09 è il `-39` (blocco 7-bis-c); `-21` … `-30` sono dell'altro cantiere.
+L'intervallo lo dà Tid.
+
+### 24.4 Il via (Tid, 2026-11-08)
+
+«ok procedi da primo libero»: N1-N6 come da proposta, numeri dal primo libero. Il primo libero, riletto
+su albero, dbdev e scratch subito prima di scrivere, era il `20261109-40`; il giro ha preso `-40` … `-57`.
+
+### 24.5 Che cosa è scritto
+
+**Blocco 9a — il processo vivo**
+
+| changeSet | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261109-40` | `chk_processi_ritiro_con_data` (`attivo OR obsoleto_dal IS NOT NULL`); `chk_processi_accensione` sul solo canale, `NOT VALID` (N1); COMMENT di `attivo`, `obsoleto_dal` e dei due vincoli |
+| `00_schema/dbops/20261109-41` | `processi_bersagli.porta_scrittura` con il CHECK del nome qualificato (N3) |
+| `20_code/dbops/20261109-42` | `fn_processo_acceso_su_valori` (IMMUTABLE → STABLE, firma invariata) e `trgfn_processi_accensione_guard`: «senza sveglia» = CODA o ritiro raggiunto; COMMENT di `fn_processo_acceso_dichiarato` |
+| `20_code/maintenance/20261109-43` | `maintenance.fn_sveglia_accesa`: lo stesso |
+| `20_code/script/20261109-44` | `script.fn_crea_utente_tecnico`, `script.fn_scope_identita_processo`: processo vivo da `script.fn_e_obsoleto` |
+| `20_code/dbops/20261109-45` | sei viste dei processi (`vw_emittenti_non_serviti`, `…_senza_emittente`, `…_senza_identita`, `…_su_pgagent`, `vw_processi_programmazione`, `vw_processi_roster`): processo vivo da `script.fn_e_obsoleto`; COMMENT al presente |
+| `20_code/dbops/20261109-46` | `vw_processi_dominio_senza_difesa` (⑤, N3): guard per OID, acceso, su INSERT e UPDATE; porta DEFINER dichiarata con RLS e policy su INSERT e UPDATE; processo vivo |
+| `90_end/20261109-47` | `VALIDATE` di `chk_processi_accensione` dopo il CSV |
+| `80_data` | `processi.csv`: righe 23 e 24 con l'accensione (`f,f,t,…,t`, vedi §24.6 punto 1); `processi_bersagli.csv`: colonna `porta_scrittura`, riga 53 (`dbops.coda_lavori`) con `dbops.fn_accoda_lavoro`, `debito_dichiarato = false`, nota riscritta; `codici_errore.csv`: descrizione di `E_PROCESSO_SENZA_SVEGLIA` |
+
+**Blocco 9b — le correzioni locali**
+
+| changeSet | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261109-48` | `chk_automazione_chiusura_scadenze_classe` = `DOMINIO` (D38), col controllo delle righe prima; COMMENT della colonna |
+| `00_schema/dbops/20261109-49` | `chk_sessioni_utente_evento` senza `SCADENZA` (⑨), col conteggio prima; COMMENT di tabella e colonna |
+| `20_code/dbops/20261109-50` | `fn_apply_chiusura_scadenze()`: DROP della `(text)`, CREATE senza `p_classe` (D38), rifiuto di un bersaglio non DOMINIO (motivo `classe_senza_esecutore`), porta e verbo prima del dispatch in tutti e due i rami (D39, N4); GRANT all'app |
+| `20_code/dbops/20261109-51` | `vw_duplicate_indexes` (D8): indici di vincolo (`conindid`) e di replica identity primi ed esclusi da `indici_da_droppare` |
+| `20_code/dbops/20261109-52` | `trgfn_tx_id_managed` (D12, N6): parametro assente = spento con `W_TXID_BYPASS_PARAMETRO_ASSENTE`, l'override di sessione si legge; via il `RAISE` irraggiungibile |
+| `20_code/dbops/20261109-53` | `dbops.fn_codice_errore_conforme(text)` IMMUTABLE (D22, N5) |
+| `20_code/script/20261109-54` | `script.fn_parameter_fk_surrogate_regola(text)` → l'id della regola (D24); `fn_check_parameter_fk_surrogate` la chiama |
+| `20_code/dbops/20261109-55` | `vw_parameter_fk_surrogate_dangling` dal risolutore |
+| `20_code/dbops/20261109-56` | `fn_storico_arma_scope`, `fn_storico_backfill_scope` (D52): `pg_has_role(…, 'USAGE')` |
+| `90_end/20261109-57` | `chk_messaggi_errore_codici_legacy_non_conforme` chiama la funzione |
+| `80_data` | `codici_errore.csv` e `messaggi_errore.csv`: `W_TXID_BYPASS_PARAMETRO_ASSENTE` (AVVISO, id messaggio **1459**) |
+| `scripts/sql` | `guardrail_codice_errore_strutturato.sql` chiama `dbops.fn_codice_errore_conforme` al posto della costante |
+
+pgTAP nuovi: `dbops/test-processo-vivo-v1` (26), `dbops/test-vw-duplicate-indexes-vincoli-v1` (5),
+`dbops/test-tx-id-bypass-parametro-assente-v1` (5), `dbops/test-codice-errore-conforme-v1` (6),
+`dbops/test-sessioni-utente-evento-v1` (2), `dbops/test-storico-scope-proprietario-membership-v1` (4).
+Riscritti o estesi: `dbops/test-chiusura-scadenze-classe` (11, sul contratto nuovo, con D39),
+`dbops/test-vw-parameter-fk-surrogate-dangling-v1` (4 → 6), `dbops/test-processi-accensione-v1` (test 1: STABLE),
+`dbops/test-processi-registro` (test 8 e 15 col processo vivo), `dbops/test-fn-guardiano-digest` (il ritiro si scrive
+con la sola data).
+
+### 24.6 Le scelte dentro il giro (da guardare, Tid)
+
+1. **Le righe ritirate 23 e 24 non avevano mai avuto l'accensione** (le colonne sono nate dopo il ritiro): la
+   proposta N1 diceva «i valori di prima», che non esistono. Hanno preso i valori neutri di un processo spento:
+   spento in tutti e due gli ambienti, spegnibile, accendibile in produzione. Con `accendibile_in_produzione = false`
+   il test 43 di `test-processi-accensione-v1` («i non accendibili sono solo `smoke_notturno`») andava rosso: da
+   ritirati quei valori non li legge nessuno, e `true` è quello che non dice niente.
+2. **Il BB del processo vivo è `script.fn_e_obsoleto`**, come da N2: nessuna funzione nuova.
+   `fn_processo_acceso_su_valori` resta «sui valori» ma diventa STABLE, perché il ritiro dipende dalla data di oggi
+   (firma invariata, nessun chiamante da cambiare).
+3. **D52: `USAGE`, non `MEMBER`.** `ALTER TABLE` e `CREATE POLICY` vogliono i privilegi del proprietario senza
+   `SET ROLE`, cioè una membership con INHERIT; `MEMBER` è vero anche per un membro NOINHERIT, che poi fallirebbe
+   sull'`ALTER`. Il caso vero (un ruolo membro) non si costruisce nei pgTAP (servirebbe CREATEROLE): il test prova la
+   forma del corpo, e il limite è scritto nel file.
+4. **D24: il risolutore restituisce l'id della regola**, non le sue colonne: un `RETURNS TABLE` perde la lunghezza dei
+   `varchar`, e la vista del presidio non si sarebbe potuta sostituire con `CREATE OR REPLACE`. Chi legge unisce il
+   registro sull'id. ⚠️ Resta un'ambiguità del registro: due `LIKE` della stessa lunghezza che prendono lo stesso
+   codice non hanno un ordine definito (com'era prima). Non è un difetto di oggi del codice; se va chiusa, un vincolo
+   sul registro.
+5. **D12: il ramo «valore NULL» il modello non lo ammette** (`config.parameters.default_value` è NOT NULL): resta il
+   solo caso «riga assente», che il `COALESCE` copre.
+6. ⚠️ **Nodo nuovo, D12-bis, trovato provando D12 — non corretto, da decidere.** In fondo a `trgfn_tx_id_managed`
+   `NEW.tx_id := COALESCE(dbops.tx_id di sessione, valore calcolato, uuidv7())`: l'id di sessione **vince sempre**.
+   Così il ramo «id di sessione non registrato → `W_TXID_NOT_REGISTERED` e la sentinella» scrive l'avviso e poi
+   assegna lo stesso l'id non registrato, contro il COMMENT e la guida («assegna nil»); e bypass e ramo normale
+   danno lo stesso valore. Strade: (a) il `COALESCE` finale usa solo il valore calcolato (la sentinella vale
+   davvero), (b) il ramo e il COMMENT si allineano al comportamento di oggi (l'id di sessione passa, l'avviso
+   resta). Proposta: **(a)**, perché è quello che il codice `W_` promette e che la guida descrive. È la stessa
+   funzione appena aperta: se Tid sceglie (a), un changeSet in coda al giro.
+7. **D39: il verbo si usa sempre quando è dichiarato** (N4), anche senza porta e anche nel ramo `VARCHAR`; i pre-check
+   del vocabolario (ramo `FK`) restano prima del verbo: una configurazione con codici sbagliati si rifiuta lo stesso.
+8. **N3: la porta dichiarata si riconosce per nome** (`schema.nome` su `pg_proc`), non per firma: se la funzione avesse
+   due firme, ne basterebbe una `DEFINER`. Il registro dichiara un nome qualificato e non una firma, e oggi la porta
+   ha una firma sola; resta scritto qui perché non si perda.
+
+### 24.10 Doc (2026-11-08)
+
+Riallineate al comportamento nuovo le pagine `manual/` di `dbops` (processi, processi_bersagli, processi_accensione, le
+tre funzioni dell'accensione, le sette viste dei processi, automazione_chiusura_scadenze, fn_apply_chiusura_scadenze,
+vw_duplicate_indexes, trgfn_tx_id_managed, messaggi_errore_codici_legacy, vw_parameter_fk_surrogate_dangling, le due
+dello scope di storico, sessioni_utente), `maintenance/manual/fn_sveglia_accesa.md`, `script/manual/`
+(fn_crea_utente_tecnico, fn_scope_identita_processo, fn_check_parameter_fk_surrogate); due pagine nuove
+(`dbops/manual/fn_codice_errore_conforme.md`, `script/manual/fn_parameter_fk_surrogate_regola.md`, i cui link alle
+schede auto-generate si aprono dopo la rigenerazione); guide `processi-pgagent-funzionali.md` (Q5),
+`audit-e-tracciabilita.md` (SCADENZA), `tx_id_implementation_guide.md` (il parametro assente). Debito documentale
+preesistente, non toccato: `script/manual/fn_check_parameter_fk_surrogate.md` è ancora nel formato vecchio, e le
+cornici di `fn_crea_utente_tecnico.md` e `fn_scope_identita_processo.md`.
+
+### 24.7 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di Liquibase, dopo la riga `BEGIN;` di ogni file, `BEGIN … ROLLBACK`)
+
+* L'SQL estratto dei due blocchi (con la simulazione dei CSV: righe 23, 24, 53 e il codice nuovo) si applica pulito;
+  dopo, `chk_processi_accensione` e `chk_processi_ritiro_con_data` sono convalidati, `vw_processi_dominio_senza_difesa`
+  è vuota (la riga di `coda_lavori` esce), `vw_parameter_fk_surrogate_dangling` vuota.
+* I pgTAP nuovi e riscritti: **verdi** con l'SQL estratto, rossi senza (prima del giro).
+* Tutti i pgTAP che nominano gli oggetti del giro (34 per il 9a, 25 per il 9b): **stesso esito prima e dopo**; i soli
+  `not ok` sono i rossi da owner già dichiarati nei file (`test-emittente-modi-solo-migrazione-v1`,
+  `test-rls-listini-ef-whitelist-write` 4-5, e i «rosso da owner» di credenziali, TOTP e contratto). Un rosso nuovo
+  trovato e corretto nel giro: `test-fn-guardiano-digest` scriveva un ritirato senza accensione.
+* B-7: lo snapshot delle forme dei codici è **identico** prima e dopo (227 righe).
+* Il guardrail `guardrail_codice_errore_strutturato.sql` gira verde dentro la transazione col giro applicato.
+* Guardrail di repository verdi: DDL su trigger generati, GRANT a ruoli batch, preambolo pgTAP, preCondition sul seed,
+  `runOnChange`, letterali SQL, timestamp senza fuso, albero v1.
+
+### 24.8 Per Tid
+
+1. Apply su dbdev e scratch: `20261109-40` … `-57`, i CSV `processi.csv`, `processi_bersagli.csv`, `codici_errore.csv`,
+   `messaggi_errore.csv` (i loader si rilanciano da soli).
+2. pgTAP: i sei nuovi di §24.5, i cinque riscritti o estesi, e `dbops/test-fn-apply-chiusura-scadenze-v1`,
+   `dbops/test-presidi-debito-dichiarato`, `dbops/test-vw-processi-programmazione`, `dbops/test-vw-processi-roster`,
+   `dbops/test-processi-accensione-produzione-v1`, `script/test-fn-scope-identita-processo`,
+   `script/test-fn-crea-utente-tecnico`, `rls/test-rls-email-outbox-ambito`, `storico/test-storico-scope-congelato-v1`.
+3. La decisione sul nodo D12-bis (§24.6 punto 6).
+4. Le schede auto-generate di `dbops`, `maintenance` e `script` si rigenerano con `gen_db_docs.py` dopo l'apply.
+
+### 24.9 Ricadute BE (in §5)
+
+* **BE12** — `backend/apps/core/db/processi_repository.py:238-240`: il filtro `attivo` dei processi non dice più se un
+  processo è vivo. Il filtro «vivo» si chiede al DB (`NOT script.fn_e_obsoleto(p.obsoleto_dal)`), non si ricalcola.
+* **BE6** — `W_TXID_BYPASS_PARAMETRO_ASSENTE` (AVVISO): rigenerare `error_policies_generated.py` (cambia anche la
+  descrizione di `E_PROCESSO_SENZA_SVEGLIA`).
+* Il commento di `chiusura_scadenze_handler.py:16` non nomina `p_classe`: niente da fare. La chiamata senza argomenti
+  resta valida.
+
+### 24.11 Chiusura (2026-11-08)
+
+Tid ha applicato il giro 9 su dbdev e scratch e ha lanciato i pgTAP di §24.8: verdi. Letto su tutti e due i database
+(sessione DB, sola lettura): i diciotto changeSet `20261109-40` … `-57` sono in `databasechangelog`. **Il giro 9 è chiuso** e
+committato (solo i file del giro; dei due CSV dei codici solo le righe di `E_PROCESSO_SENZA_SVEGLIA` e
+`W_TXID_BYPASS_PARAMETRO_ASSENTE`). Restano: BE12 e BE6 al team BE (§5), la decisione su D12-bis (§24.6 punto 6), la
+rigenerazione delle schede auto-generate di `dbops`, `maintenance` e `script` (§24.8 punto 4; dopo, i link delle due pagine
+nuove si aprono).

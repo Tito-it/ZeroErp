@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_scope_identita_processo()`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > **Collegamenti utili**
 >
 Approfondimenti tabelle:
@@ -49,7 +51,7 @@ utente fosse acceso. Non basta.
 | Livello | |
 | --- | --- |
 | il legame processo–utente | non è stato spento |
-| il processo | è vivo e non obsoleto |
+| il processo | è vivo: il ritiro non è raggiunto ([fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto)) |
 | l'identità applicativa | è **utilizzabile oggi** ([fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile): accesa, nelle sue date, soggetto attivo; dal 07-10-2026, prima bastava accesa). L'identità tecnica non ha rapporto e non lo pretende |
 | il ruolo | è quello che le regole di sicurezza riconoscono |
 | l'utente di accesso | non è stato revocato |

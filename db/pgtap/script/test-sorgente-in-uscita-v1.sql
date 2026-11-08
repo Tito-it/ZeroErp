@@ -207,6 +207,12 @@ SELECT lives_ok(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt2 FRO
 INSERT INTO pg_temp._figli_blocca (sorgente_tipo_id, sorgente_uid)
 SELECT (SELECT prev FROM _t), preventivo_uid FROM _p;
 
+-- rev 2026-11-08 (giro Z.2 di brief-db-sorgente-documento-e-riga): il
+-- preventivo si cancella solo da bozza vuota, e il guard della testata parla
+-- prima del lato «in uscita». Le righe si disattivano (in bozza si puo'), la
+-- bozza e' vuota, e il rifiuto che il test prova resta quello del figlio.
+UPDATE vendite.preventivi_righe SET attivo = false WHERE preventivo_id = (SELECT preventivo_id FROM _p);
+
 SELECT is(pg_temp.codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _p))),
     'E_SORG_ORIGINE_REFERENZIATA',
     '13) il preventivo con un figlio BLOCCA su sorgente_uid -> rifiuto');

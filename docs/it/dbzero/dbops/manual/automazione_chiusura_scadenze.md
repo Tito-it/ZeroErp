@@ -68,9 +68,14 @@ Il vincolo `chk_automazione_chiusura_scadenze_verbo_qualificato` pretende la for
 `schema.funzione`; che la funzione esista e non abbia argomenti lo controlla il framework al
 momento di usarla.
 
-⚠️ Il verbo si legge **solo** per una tabella con `tipo_stato = FK` che ha la porta. Su una tabella
-senza porta, o con `tipo_stato = VARCHAR`, un verbo dichiarato viene ignorato e il framework scrive
-lo stato direttamente.
+Porta e verbo si guardano **prima** di scegliere come scrivere lo stato, con qualunque
+`tipo_stato` (`VARCHAR` o `FK`):
+
+| La riga | Che cosa fa il framework |
+| --- | --- |
+| dichiara un verbo | lo chiama, sempre: lo stato lo scrive il verbo, e il conteggio è il suo |
+| non dichiara un verbo, e la tabella è sotto la porta | rifiuta la riga: è una configurazione non valida, perché la scrittura diretta sarebbe respinta |
+| non dichiara un verbo, e la tabella non ha la porta | scrive lo stato direttamente |
 
 Oggi tutte e tre le righe del seed sono testate sotto la porta, con il loro verbo:
 `vendite.fn_cessa_contratti_scaduti`, `vendite.fn_chiudi_versioni_listino_scadute` e
@@ -80,23 +85,24 @@ Oggi tutte e tre le righe del seed sono testate sotto la porta, con il loro verb
 
 ### ⭐ La classe sta sul bersaglio, non sul job
 
-`classe` dice la natura della **tabella** che si chiude: `MANUTENZIONE`, `AMMINISTRAZIONE` o
-`DOMINIO`. Sta qui e non sul processo perché un solo giro chiude più tabelle, e non tutte
-appartengono a un'azienda: una classe sul job avrebbe costretto a dichiarare di dominio un lavoro
-che tocca anche dati di nessuno, o di manutenzione uno che tocca contratti.
+`classe` dice la natura della **tabella** che si chiude. Sta qui e non sul processo perché la
+natura del giro è quella dei suoi bersagli: una classe sul job avrebbe costretto a dichiarare di
+dominio un lavoro che tocca anche dati di nessuno, o di manutenzione uno che tocca contratti.
+
+⛔ **Il registro ammette solo `DOMINIO`** (`chk_automazione_chiusura_scadenze_classe`). Il giro
+gira dentro la coda, un lavoro per azienda con l'identità e la row level security di quell'azienda:
+è l'esecutore giusto per righe che hanno un padrone, e solo per quelle. Un bersaglio di un'altra
+natura (`MANUTENZIONE`, `AMMINISTRAZIONE`) chiede un esecutore che lavori una volta sola con
+un'identità tecnica, e quell'esecutore non c'è: finché non lo si sviluppa, il CHECK respinge la
+riga e il motore la rifiuterebbe (`E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`, motivo
+`classe_senza_esecutore`).
 
 ⛔ **Il `NOT NULL` è il cancello**: una riga nuova deve dichiarare di chi sono le righe che tocca.
 Senza, arruolerebbe un'altra tabella nel giro senza dirlo, che è il difetto per cui la colonna
 esiste.
 
-Oggi tutti i bersagli sono `DOMINIO`: portano l'emittente, il contratto e il preventivo con una
-colonna propria, la versione di listino attraverso il listino. Per questo il giro gira **dentro la
-coda**, un lavoro per azienda con l'identità tecnica di quell'azienda, e la row level security fa
-il perimetro.
-
-⚠️ La classe oggi non la filtra nessuno: il lavoro di coda chiama il motore senza classe, cioè su
-tutti i bersagli attivi. Una riga di altra classe verrebbe lavorata dentro il lavoro di ogni
-azienda, con l'identità di quell'azienda.
+I bersagli portano l'emittente: il contratto e il preventivo con una colonna propria, la
+versione di listino attraverso il listino. La row level security fa il perimetro.
 
 ---
 
@@ -113,8 +119,10 @@ giro successivo la salta.
 * `db/pgtap/dbops/test-fn-apply-chiusura-scadenze-v1.sql` — il giro col verbo su versione di
   listino e contratto, l'idempotenza, i rifiuti di una riga che punta a una tabella, una colonna o
   un codice inesistente, una testata sotto la porta senza verbo o con un verbo che non esiste.
-* `db/pgtap/dbops/test-chiusura-scadenze-classe.sql` — la colonna `classe`, il suo vocabolario, il
-  `NOT NULL` come cancello, i bersagli del seed tutti `DOMINIO`, il filtro per classe del motore.
+* `db/pgtap/dbops/test-chiusura-scadenze-classe.sql` — la colonna `classe`, il CHECK che ammette
+  solo `DOMINIO`, il `NOT NULL` come cancello, i bersagli del seed tutti `DOMINIO`, il motore senza
+  argomenti e il suo rifiuto di un bersaglio di altra classe; il verbo usato anche con
+  `tipo_stato = VARCHAR`, e una testata `VARCHAR` sotto la porta senza verbo rifiutata.
 * `db/pgtap/dbops/test-chiusura-scadenze-audit-v1.sql` — un giro scrive la sua riga di audit.
 * `db/pgtap/vendite/test-listino-versione-al-modello-v1.sql` e
   `db/pgtap/vendite/test-preventivo-scadenza-v1.sql` — la riga del seed della versione di listino e
@@ -136,6 +144,9 @@ giro successivo la salta.
 * 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
   la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
   `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
+* 2026-11-08 — `classe` ammette solo `DOMINIO` (prima anche `MANUTENZIONE` e `AMMINISTRAZIONE`,
+  che il motore avrebbe lavorato con l'identità di ogni azienda); porta e verbo valgono per ogni
+  `tipo_stato` (prima il verbo si leggeva solo con `FK` sotto la porta).
 
 ---
 

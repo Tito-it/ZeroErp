@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_storico_arma_scope`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -80,12 +80,13 @@ riga per riga, con l'emittente congelato.
 
 ---
 
-### ⚠️ Lavora solo sulle shadow del proprio utente
+### ⚠️ Lavora solo chi ha i privilegi del proprietario della shadow
 
 `ALTER TABLE`, `CREATE POLICY` e `REVOKE` li fa il proprietario della tabella. La funzione procede
-solo se l'utente corrente è **esattamente** il proprietario della shadow (il confronto è sul nome
-del ruolo, non sull'appartenenza): altrimenti scrive un `WARN` nell'audit, non fa niente e restituisce
-il salto. Non ferma il migrate. Le shadow di un altro proprietario le allinea
+solo se l'utente corrente **ha i privilegi** del proprietario della shadow: è il proprietario, un
+suo membro che ne eredita i privilegi (`INHERIT`), o un superuser. Il controllo è sui privilegi,
+non sul nome del ruolo: chi ne porta il nome senza averne i privilegi non basta, e chi li ha senza
+portarne il nome sì. Altrimenti scrive un `WARN` nell'audit, non fa niente e restituisce il salto. Non ferma il migrate. Le shadow di un altro proprietario le allinea
 `scripts/sql/provision_storico_scope.sql`, da superuser, che ne riassegna anche la proprietà.
 
 Dal momento in cui il generatore cede ogni shadow nuova al proprietario della madre, e i job girano
@@ -98,7 +99,7 @@ amministratore.
 
 Un oggetto con la madre, la shadow, l'esito e le azioni fatte (o, in simulazione, quelle che farebbe).
 Gli esiti sono quattro: `ALLINEATA` (ha fatto qualcosa), `GIA_ALLINEATA`, `SKIP_OWNER` (shadow di un
-altro proprietario), `NO_SHADOW` (la madre non ha ancora una shadow: non è un errore). In simulazione
+proprietario di cui l'utente corrente non ha i privilegi), `NO_SHADOW` (la madre non ha ancora una shadow: non è un errore). In simulazione
 non scrive niente, nemmeno il `WARN` del salto.
 
 ---
@@ -119,6 +120,8 @@ non scrive niente, nemmeno il `WARN` del salto.
 * 2026-10-18 — la policy di lettura passa a `script.fn_scope_ef_perimetro`, con il perimetro
   calcolato una volta per istruzione invece che per riga (D-3b-2); le policy già armate le ha
   riscritte un changeSet a parte, perché la funzione non le tocca.
+* 2026-11-08 — il proprietario si riconosce dai privilegi (appartenenza con `INHERIT`, o superuser),
+  non più dal nome del ruolo.
 
 ---
 

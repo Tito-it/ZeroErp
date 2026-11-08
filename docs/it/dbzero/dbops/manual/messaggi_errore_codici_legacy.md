@@ -9,6 +9,10 @@
 > * [config.codici_errore](/dbzero/config/tabelle/codici_errore) — il catalogo dei codici
 > * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore) — le frasi dei codici
 > * [dbops.codici_errore_senza_policy](/dbzero/dbops/tabelle/codici_errore_senza_policy) — l'altro registro, da non confondere
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_codice_errore_conforme](/dbzero/dbops/funzioni/fn_codice_errore_conforme) — la convenzione, che il CHECK del registro e il guardrail chiamano
 
 ---
 
@@ -19,7 +23,8 @@ maiuscole, cifre e trattini bassi): ci va un codice che arriva da fuori già fuo
 non conviene rinominare. È a zero righe, e resta.
 
 Il database impedisce di registrarci un codice conforme: nel registro del debito non si mette ciò
-che debito non è.
+che debito non è. Il CHECK `chk_messaggi_errore_codici_legacy_non_conforme` lo chiede a
+`dbops.fn_codice_errore_conforme`, la sola sede della convenzione.
 
 ---
 
@@ -58,7 +63,8 @@ del codice, quello il suo **trasporto**; i due registri si escludono per vincolo
 
 Il guardrail della CI sui codici errore, `scripts/sql/guardrail_codice_errore_strutturato.sql`:
 ogni codice fuori convenzione deve stare qui, e una voce che nel frattempo è stata rinominata va
-tolta. Se il registro manca, il guardrail fallisce invece di saltare i controlli. Nessun pgTAP lo
+tolta. Il guardrail e il CHECK del registro misurano la convenzione con la stessa funzione,
+`dbops.fn_codice_errore_conforme`: non possono parlare di due insiemi diversi. Se il registro manca, il guardrail fallisce invece di saltare i controlli. Nessun pgTAP lo
 legge.
 
 ---
@@ -73,6 +79,8 @@ legge.
 * 2026-11-08 — perde `tx_id`, `data_update` e `user_update`, che nessun trigger scriveva: la tabella
   la scrive solo la migrazione, dal CSV (regola dello scrittore, `automazione-db.md` §1.1;
   `brief-db-revisione-dbops`, giro 7-bis). Esce dal registro `dbops.marcatori_automazione_debito`.
+* 2026-11-08 — il CHECK chiama `dbops.fn_codice_errore_conforme`: prima la stessa espressione
+  regolare era scritta due volte, nel vincolo e nel guardrail, e tenuta uguale a mano.
 
 ---
 

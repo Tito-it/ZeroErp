@@ -164,8 +164,10 @@ del ciclo di vita JWT:
 | `LOGIN`    | Emissione token al login (`/api/token/`)                   |
 | `REFRESH`  | Rinnovo token (`/api/token/refresh/`)                      |
 | `LOGOUT`   | Revoca esplicita da parte dell'utente                      |
-| `SCADENZA` | Token scaduto naturalmente                                 |
 | `REVOCA`   | Token invalidato forzatamente (es. disabilitazione utente) |
+
+La scadenza naturale di un token non è un evento: non la compie nessuno, e le
+sessioni scadute si leggono dalla scadenza del token.
 
 Per ogni evento vengono registrati: l'utente (`auth_user_id`), il JWT ID
 univoco del token (`jti`), l'indirizzo IP, lo user agent del client e

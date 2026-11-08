@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PREVENTIVI, OFFERTE E COMMESSE: LA CANCELLAZIONE SOLO DA BOZZA VUOTA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.2
+#   (Tid, 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Le tre testate non avevano una regola DB di cancellazione: stato e righe
+#   li controllava solo il BE (il preventivo) o solo lo stato (l'offerta), e
+#   la commessa aveva le sole FK, con un 23503 senza frase. La regola e'
+#   quella delle altre testate (giro T.4), nella stessa funzione (-25).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   * il guard montato BEFORE DELETE FOR EACH ROW, fascia _a10_: su preventivi
+#     e commesse precede trg_*_z90_storico_upd_dlt, come sulle altre testate;
+#     sulle offerte e' il primo BEFORE DELETE;
+#   * il lato «in uscita» (trg_*_a10_sorgente_in_uscita_dlt, AFTER STATEMENT)
+#     resta: parla dopo, sui figli che citano il documento;
+#   * scritti a mano, come su ordini, bolle, resi e contratti: non li genera
+#     ci_apply.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261109-26-create-trigger-preventivi-offerte-commesse-guard-delete-solo-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261109-26-create-trigger-preventivi-offerte-commesse-guard-delete-solo-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard della cancellazione (vendite.trgfn_doc_guard_delete_solo_bozza)
+        montato su preventivi, offerte commerciali e commesse.
+        brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_preventivi_a10_guard_delete_solo_bozza_dlt
+                  BEFORE DELETE ON vendite.preventivi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza();
+
+              CREATE TRIGGER trg_offerte_commerciali_a10_guard_delete_solo_bozza_dlt
+                  BEFORE DELETE ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza();
+
+              CREATE TRIGGER trg_commesse_a10_guard_delete_solo_bozza_dlt
+                  BEFORE DELETE ON vendite.commesse
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_delete_solo_bozza_dlt ON vendite.preventivi;
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_guard_delete_solo_bozza_dlt ON vendite.offerte_commerciali;
+              DROP TRIGGER IF EXISTS trg_commesse_a10_guard_delete_solo_bozza_dlt ON vendite.commesse;

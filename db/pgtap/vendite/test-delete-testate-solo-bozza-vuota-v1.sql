@@ -1,16 +1,18 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: le testate di vendita (ordine, bolla, reso, contratto) si cancellano
---   SOLO da bozza vuota: in bozza e senza righe attive. Il guard
+-- Test: le testate di vendita (preventivo, offerta, contratto, ordine, bolla,
+--   reso, commessa) si cancellano SOLO da bozza vuota: nello stato iniziale
+--   del loro vocabolario e senza contenuto. Il guard
 --   vendite.trgfn_doc_guard_delete_solo_bozza, montato BEFORE DELETE.
--- ChangeSet: 20261106-88, -89, -90, -91 (giro T.4); codici E_DELETE_DOC_CON_RIGHE,
---   E_DELETE_CONTRATTO_CON_SUCCESSIVI.
--- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.4 (V-4)
+-- ChangeSet: 20261106-88, -89, -90, -91 (giro T.4); 20261109-25, -26, -27
+--   (giro Z.2); codici E_DELETE_DOC_CON_RIGHE, E_DELETE_CONTRATTO_CON_SUCCESSIVI.
+-- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.4 (V-4);
+--   lotto Z, giro Z.2 (Z2-a … Z2-e)
 -- ------------------------------------------------------------
--- Indice test (plan 19):
+-- Indice test (plan 32):
 --   LA FORMA
---    1) il guard e' montato BEFORE DELETE FOR EACH ROW sulle quattro testate
+--    1) il guard e' montato BEFORE DELETE FOR EACH ROW sulle sette testate
 --       e sulla bozza email, e su nessun'altra tabella
 --    2) e' SECURITY DEFINER, con pg_catalog primo nel search_path
 --    3) E_DELETE_DOC_CON_RIGHE e' a catalogo, vivo, CONFLITTO_STATO, con la
@@ -38,6 +40,23 @@
 --   18) un contratto in bozza vuota che e' il precedente di un altro non si
 --       cancella: E_DELETE_CONTRATTO_CON_SUCCESSIVI, e il successore lo conserva
 --   19) l'indice della FK c'e', parziale (parent_contratto_id IS NOT NULL)
+--   PREVENTIVO (giro Z.2)
+--   20) emesso: E_DELETE_DOC_NON_BOZZA (un DELETE diretto non lo cancella piu')
+--   21) in bozza con una riga attiva: E_DELETE_DOC_CON_RIGHE
+--   22) tolta la riga, la bozza vuota si cancella
+--   OFFERTA (Z2-a, Z2-b): la bozza si chiama BOZZA, la legge il vocabolario
+--   23) in bozza con un'eccezione attiva: E_DELETE_DOC_CON_RIGHE
+--   24) in bozza senza eccezioni: si cancella
+--   25) emessa: E_DELETE_DOC_NON_BOZZA
+--   LA REVISIONE CANCELLATA (Z2-d)
+--   26) nata la revisione, la madre e' superata
+--   27) la revisione in bozza vuota si cancella, e la madre torna emessa
+--   COMMESSA (Z2-c)
+--   28) in bozza con un'attivita': E_DELETE_DOC_CON_RIGHE
+--   29) in bozza col solo documento collegato: E_DELETE_DOC_CON_RIGHE
+--   30) in bozza vuota: si cancella
+--   31) aperta: E_DELETE_DOC_NON_BOZZA
+--   32) la frase nomina la commessa e dice «contenuto», senza segnaposti grezzi
 --
 -- ⚠️ Il mondo si COSTRUISCE coi builder dbops.fn_pgtap_*: un file che scegliesse
 --   i documenti fra quelli esistenti passerebbe a vuoto in CI.
@@ -56,7 +75,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(19);
+SELECT plan(32);
 
 -- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
 -- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
@@ -100,8 +119,9 @@ SELECT is(
              AND (tg.tgtype & 1) = 1 AND (tg.tgtype & 2) = 2 AND (tg.tgtype & 8) = 8
              AND (tg.tgtype & (4 | 16)) = 0
            ORDER BY 1),
-    ARRAY['config.email_outbox', 'vendite.contratti', 'vendite.ddt', 'vendite.ordini', 'vendite.resi'],
-    '1) il guard e'' montato BEFORE DELETE FOR EACH ROW su ordini, bolle, resi, contratti e bozza email, e basta');
+    ARRAY['config.email_outbox', 'vendite.commesse', 'vendite.contratti', 'vendite.ddt',
+          'vendite.offerte_commerciali', 'vendite.ordini', 'vendite.preventivi', 'vendite.resi'],
+    '1) il guard e'' montato BEFORE DELETE FOR EACH ROW sulle sette testate di vendita e sulla bozza email, e basta');
 
 SELECT ok(
     (SELECT p.prosecdef AND p.proconfig[1] LIKE 'search_path=pg_catalog%'
@@ -223,7 +243,7 @@ SELECT is(pg_temp.esito(format('DELETE FROM vendite.contratti WHERE id = %s', (S
 -- LA FRASE
 -- ============================================================
 SELECT ok(
-    (SELECT m LIKE 'Contratto %ha ancora delle righe: si può eliminare solo una bozza vuota.%'
+    (SELECT m LIKE 'Contratto %ha ancora del contenuto (righe, eccezioni, attività o documenti collegati): si può eliminare solo una bozza vuota.%'
             AND m NOT LIKE '%\%s%'
        FROM pg_temp.messaggio(format('DELETE FROM vendite.contratti WHERE id = %s', (SELECT contratto_id FROM _c))) AS m),
     '16) il rifiuto nomina il documento, senza segnaposti grezzi');
@@ -250,6 +270,148 @@ SELECT ok(
                AND i.indexrelid = to_regclass('vendite.ix_contratti_parent_contratto_id')
                AND pg_get_expr(i.indpred, i.indrelid) = '(parent_contratto_id IS NOT NULL)'),
     '19) l''indice della FK c''e'', parziale: guard e controllo referenziale cercano i successori a ogni DELETE');
+
+-- ============================================================
+-- PREVENTIVO (giro Z.2)
+-- ============================================================
+CREATE TEMP TABLE _pe AS
+SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo_con_righe('PGT-Z2-PE', 'EMESSO');
+CREATE TEMP TABLE _pb AS
+SELECT preventivo_id, preventivo_riga_id FROM dbops.fn_pgtap_crea_preventivo_con_righe('PGT-Z2-PB', 'DRAFT');
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pe))),
+    'E_DELETE_DOC_NON_BOZZA',
+    '20) preventivo emesso: E_DELETE_DOC_NON_BOZZA, un DELETE diretto non lo cancella piu''');
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pb))),
+    'E_DELETE_DOC_CON_RIGHE',
+    '21) preventivo in bozza con una riga attiva: E_DELETE_DOC_CON_RIGHE');
+
+DELETE FROM vendite.preventivi_righe WHERE id = (SELECT preventivo_riga_id FROM _pb);
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pb))),
+    'PASSA',
+    '22) tolta la riga, il preventivo in bozza vuoto si cancella');
+
+-- ============================================================
+-- OFFERTA (Z2-a, Z2-b) — stampo: vendite/test-offerta-revisione-nel-lineage-v1
+-- ============================================================
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
+
+CREATE TEMP TABLE _ocli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'bozza vuota Z.2',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE _olist AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _ocli), 'bozza vuota Z.2');
+
+-- Tre offerte in bozza: con un'eccezione (la madre, poi emessa), con
+-- un'eccezione da cancellare, senza eccezioni.
+CREATE TEMP TABLE _off AS
+WITH o AS (
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, revisione_numero)
+    SELECT script.fn_pgtap_emittente_operatore(), c.billing_account_id, c.istanza_utility_id, c.utility_id,
+           l.listino_id, l.listino_versione_id, DATE '2096-01-01', 1
+      FROM _ocli c, _olist l, generate_series(1, 3)
+    RETURNING id
+)
+SELECT id, row_number() OVER (ORDER BY id) AS k FROM o;
+
+INSERT INTO vendite.offerte_commerciali_utilities (offerta_id, istanza_utility_id, utility_id)
+SELECT o.id, c.istanza_utility_id, c.utility_id FROM _off o, _ocli c;
+
+CREATE TEMP TABLE _oart AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-Z2-OFF') AS articolo_id;
+
+INSERT INTO vendite.offerte_commerciali_eccezioni (
+    offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa,
+    prezzo_unitario, attivo, qta_operativa)
+SELECT o.id, a.articolo_id, 'AGGIUNTA'::vendite.tipo_eccezione_contratto,
+       'UNA_TANTUM', 'FISSA', 50.00, TRUE, 1.00
+  FROM _off o, _oart a WHERE o.k IN (1, 2);
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 2))),
+    'E_DELETE_DOC_CON_RIGHE',
+    '23) offerta in bozza (BOZZA) con un''eccezione attiva: E_DELETE_DOC_CON_RIGHE');
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 3))),
+    'PASSA',
+    '24) offerta in bozza senza eccezioni: si cancella');
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', (SELECT id FROM _off WHERE k = 1), 'EMESSA') AS stato;
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 1))),
+    'E_DELETE_DOC_NON_BOZZA',
+    '25) offerta emessa: E_DELETE_DOC_NON_BOZZA');
+
+-- ============================================================
+-- LA REVISIONE CANCELLATA (Z2-d)
+-- ============================================================
+-- Il verbo in un'istruzione sua: in una WHERE girerebbe per ogni riga scandita.
+CREATE TEMP TABLE _orev AS
+SELECT vendite.fn_crea_revisione_offerta((SELECT id FROM _off WHERE k = 1), NULL) AS id;
+
+SELECT is(
+    (SELECT s.is_superato FROM vendite.offerte_commerciali o
+       JOIN config.stati_doc_offerte s ON s.id = o.stato_doc_offerta_id
+      WHERE o.id = (SELECT id FROM _off WHERE k = 1)),
+    true,
+    '26) nata la revisione, la madre e'' superata');
+
+-- La revisione e' una bozza: le eccezioni che ha preso dalla madre si
+-- disattivano, e la bozza resta vuota.
+UPDATE vendite.offerte_commerciali_eccezioni SET attivo = false
+ WHERE offerta_id = (SELECT id FROM _orev);
+
+CREATE TEMP TABLE _orev_esito AS
+SELECT pg_temp.esito(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _orev))) AS esito;
+
+SELECT is(
+    (SELECT esito FROM _orev_esito)
+      || '|' || (SELECT s.emissione::text FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte s ON s.id = o.stato_doc_offerta_id
+                  WHERE o.id = (SELECT id FROM _off WHERE k = 1)),
+    'PASSA|true',
+    '27) la revisione in bozza vuota si cancella, e la madre torna nello stato d''emissione');
+
+-- ============================================================
+-- COMMESSA (Z2-c)
+-- ============================================================
+CREATE TEMP TABLE _ca AS
+SELECT commessa_id FROM dbops.fn_pgtap_crea_commessa('PGT-Z2-CA', NULL, NULL, true);
+CREATE TEMP TABLE _cl AS
+SELECT commessa_id FROM dbops.fn_pgtap_crea_commessa('PGT-Z2-CL', NULL, NULL, false, true);
+CREATE TEMP TABLE _cvz AS
+SELECT commessa_id FROM dbops.fn_pgtap_crea_commessa('PGT-Z2-CV', NULL, NULL, false);
+CREATE TEMP TABLE _cap AS
+SELECT commessa_id FROM dbops.fn_pgtap_crea_commessa('PGT-Z2-CP', 'APERTA');
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _ca))),
+    'E_DELETE_DOC_CON_RIGHE',
+    '28) commessa in bozza con un''attivita'': E_DELETE_DOC_CON_RIGHE');
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cl))),
+    'E_DELETE_DOC_CON_RIGHE',
+    '29) commessa in bozza col solo documento collegato: E_DELETE_DOC_CON_RIGHE');
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cvz))),
+    'PASSA',
+    '30) commessa in bozza vuota: si cancella');
+
+SELECT is(pg_temp.esito(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cap))),
+    'E_DELETE_DOC_NON_BOZZA',
+    '31) commessa aperta: E_DELETE_DOC_NON_BOZZA');
+
+SELECT ok(
+    (SELECT m LIKE 'Commessa %ha ancora del contenuto%: si può eliminare solo una bozza vuota.%'
+            AND m NOT LIKE '%\%s%'
+       FROM pg_temp.messaggio(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _ca))) AS m),
+    '32) il rifiuto nomina la commessa e dice «contenuto», senza segnaposti grezzi');
 
 SELECT * FROM finish();
 ROLLBACK;

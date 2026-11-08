@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_dominio_senza_emittente`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -37,7 +37,8 @@ non esiste, e il processo tocca righe di aziende diverse senza che nessun errore
 guasto rumoroso: è una fattura emessa per l'azienda sbagliata. La vista lo prende quando il
 processo è ancora una riga di catalogo.
 
-Guarda i processi `DOMINIO` attivi e non ritirati.
+Guarda i processi `DOMINIO` vivi: quelli col ritiro non ancora raggiunto (`script.fn_e_obsoleto`).
+Un ritiro programmato resta nel presidio fino al suo giorno.
 
 ---
 
@@ -102,6 +103,8 @@ vista gira coi privilegi del proprietario.
 * `db/pgtap/dbops/test-presidi-debito-dichiarato.sql` — un bersaglio scoperto ma dichiarato si
   presenta come debito, uno nuovo e rotto come allarme; le due viste sorelle parlano la stessa
   lingua.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — un processo a ritiro programmato compare, uno a
+  ritiro raggiunto no.
 
 ---
 

@@ -302,6 +302,12 @@ SELECT is(
 -- ============================================================
 -- LA CANCELLAZIONE (BLOCCA)
 -- ============================================================
+-- rev 2026-11-08 (giro Z.2 di brief-db-sorgente-documento-e-riga): il
+-- preventivo si cancella solo da bozza vuota, e il guard della testata parla
+-- prima del lato «in uscita». Le righe si disattivano (in bozza si puo'), la
+-- bozza e' vuota, e il rifiuto che il test prova resta quello del figlio.
+UPDATE vendite.preventivi_righe SET attivo = false WHERE preventivo_id = (SELECT preventivo_id FROM _pv WHERE k = 'A');
+
 SELECT is(
   pg_temp.esito(format($q$DELETE FROM vendite.preventivi WHERE id = %s$q$, (SELECT preventivo_id FROM _pv WHERE k = 'A'))),
   'E_SORG_ORIGINE_REFERENZIATA',

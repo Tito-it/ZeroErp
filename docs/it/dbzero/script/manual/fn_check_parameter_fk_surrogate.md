@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_parameter_fk_surrogate(text, text)`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
@@ -7,6 +9,7 @@ Approfondimento tabelle:
 > [config.parameters](/dbzero/config/tabelle/parameters)
 >
 Approfondimento funzioni:
+> [script.fn_parameter_fk_surrogate_regola](/dbzero/script/funzioni/fn_parameter_fk_surrogate_regola)
 > [config.trgfn_parameters_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameters_fk_surrogate_dispatch)
 > [config.trgfn_parameter_overrides_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch)
 
@@ -24,8 +27,12 @@ e quello su `parameter_overrides`.
 1. **Short-circuit NULL**: se `p_value IS NULL` ritorna `true`. Significa "no
    default" / "no override" per quel parametro: il caller applichera' fallback
    logico.
-2. **Lookup registry** in `config.parameter_fk_surrogate` con priorita'
-   `EXACT > LIKE`, e a parita' `length(code_pattern)` maggiore (piu' specifico).
+2. **La regola che governa il codice** la sceglie
+   `script.fn_parameter_fk_surrogate_regola`, la sola sede della scelta: fra le
+   regole abilitate di `config.parameter_fk_surrogate`, `EXACT > LIKE`, e a
+   parita' il pattern piu' lungo (piu' specifico). La stessa funzione la usa il
+   presidio `dbops.vw_parameter_fk_surrogate_dangling`, che quindi nomina la
+   stessa regola della check.
 3. **Nessun pattern matcha** -> ritorna `true`. Il `code` non e' soggetto al
    framework: il dispatcher e' di fatto no-op.
 4. **Pattern matcha** -> esegue `EXECUTE` di un `SELECT EXISTS` dinamico:

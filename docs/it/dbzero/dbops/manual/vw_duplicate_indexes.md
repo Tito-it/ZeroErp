@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_duplicate_indexes`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -40,8 +40,22 @@ colonne ed espressioni, classe di operatori, collation, ordinamento, trattamento
 
 ⭐ **Il flag UNIQUE sta fuori dalla firma, apposta.** Un btree non unico identico a una UNIQUE è
 ridondante al cento per cento — la UNIQUE serve le stesse query e in più impone il vincolo — e
-mettere il flag nella firma lo renderebbe invisibile. Il flag decide invece l'**ordine** del gruppo:
-`indice_da_tenere` è sempre la UNIQUE, quando c'è; a parità, il più vecchio.
+mettere il flag nella firma lo renderebbe invisibile. Il flag decide invece l'**ordine** del gruppo,
+insieme ai vincoli (vedi sotto): a parità, si tiene il più vecchio.
+
+---
+
+### ⛔ Un indice che regge un vincolo non si propone per il `DROP`
+
+Un indice regge un vincolo quando lo sostiene (una `UNIQUE` o un `EXCLUDE` dichiarati come
+vincolo), quando una chiave esterna lo usa come riferito, o quando è la `REPLICA IDENTITY` della
+tabella. Toglierlo vorrebbe dire togliere il vincolo, o romperlo.
+
+L'ordine del gruppo è quindi: prima gli indici che reggono un vincolo, poi le UNIQUE, poi il più
+vecchio. `indice_da_tenere` è il primo, e `indici_da_droppare` non contiene **mai** un indice di
+vincolo, nemmeno quando nel gruppo ce n'è più d'uno: in quel caso propone solo gli altri, e un
+gruppo fatto di soli indici di vincolo non propone niente. Un gruppo così resta visibile: dice che
+due vincoli si sovrappongono, ed è una scelta di progetto, non una pulizia.
 
 ---
 
@@ -74,9 +88,6 @@ mettere il flag nella firma lo renderebbe invisibile. Il flag decide invece l'**
 * Se l'indice è governato dall'automazione delle chiavi esterne (`origine = 'AUTOMAZIONE_FK'` nella
   vista per prefisso), un `DROP` secco viene annullato al primo `migrate`: prima si spegne il flag in
   `dbops.fk_index_policy`.
-* `indici_da_droppare` non esclude gli indici che sostengono un vincolo né la `REPLICA IDENTITY`: fra
-  due UNIQUE identiche può proporre di togliere quella che regge un vincolo. Prima di toglierlo si
-  verifica che sia solo un acceleratore.
 
 ---
 
@@ -84,6 +95,9 @@ mettere il flag nella firma lo renderebbe invisibile. Il flag decide invece l'**
 
 * `db/pgtap/dbops/test-indici-letture-trasversali-v1.sql`, test 10 — nessuno degli indici delle
   letture trasversali è un duplicato esatto.
+* `db/pgtap/dbops/test-vw-duplicate-indexes-vincoli-v1.sql` — fra due UNIQUE identiche si tiene
+  quella di vincolo anche se è nata dopo, e si propone l'altra; la replica identity si tiene; due
+  indici di vincolo identici non danno proposte di `DROP`.
 
 ---
 
@@ -94,6 +108,8 @@ mettere il flag nella firma lo renderebbe invisibile. Il flag decide invece l'**
   e indici con espressioni letti come indici a una colonna.
 * 2026-09-01 — un UNIQUE con espressioni sostitutive del nullo su colonne obbligatorie, gemello di
   un altro UNIQUE, viene tolto a mano: è il caso di equivalenza che la vista non vede.
+* 2026-11-08 — gli indici che reggono un vincolo o la replica identity si tengono per primi e non
+  si propongono mai per il `DROP`: prima la vista poteva proporre di togliere la UNIQUE di un vincolo.
 
 ---
 

@@ -1,12 +1,12 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_dominio_senza_difesa`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.processi_bersagli](/dbzero/dbops/tabelle/processi_bersagli) — i bersagli col percorso dichiarato, e il flag del debito
+> * [dbops.processi_bersagli](/dbzero/dbops/tabelle/processi_bersagli) — i bersagli col percorso dichiarato, la porta di scrittura e il flag del debito
 > * [dbops.processi](/dbzero/dbops/tabelle/processi) — i processi dichiarati `DOMINIO`
 > * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo in cui la vista è un presidio
 >
@@ -17,6 +17,7 @@
 > Approfondimento funzioni:
 >
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il guard di scrittura che la vista cerca
+> * [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto) — la regola del processo vivo
 >
 > Guide:
 >
@@ -28,8 +29,8 @@
 ### 🎯 Scopo Principale
 
 Il livello 2 del presidio sui processi: le tabelle di dominio in cui si **sa** dove sta l'emittente,
-ma nessuno lo usa per filtrare, perché manca la policy di row level security, manca il guard di
-scrittura, o mancano tutti e due. L'invariante è «nessuna riga non dichiarata».
+ma nessuno lo usa per filtrare, perché manca la policy di row level security, manca la difesa di
+scrittura (il guard o una porta dichiarata), o mancano tutte e due. L'invariante è «nessuna riga non dichiarata».
 
 ---
 
@@ -44,8 +45,9 @@ scrittura, o mancano tutti e due. L'invariante è «nessuna riga non dichiarata�
 aggiungendo una colonna, il secondo scrivendo una policy o montando un guard, che sono decisioni di
 sicurezza. Un elenco che mescola «da compilare» e «da proteggere» non dice quali righe siano urgenti.
 
-Guarda i bersagli col percorso dichiarato dei processi `DOMINIO` attivi e non ritirati, sulle
-tabelle che esistono (una tabella mancante la dice il livello 1).
+Guarda i bersagli col percorso dichiarato dei processi `DOMINIO` vivi (ritiro non raggiunto,
+`script.fn_e_obsoleto`: un ritiro programmato resta nel presidio fino al suo giorno), sulle tabelle
+che esistono (una tabella mancante la dice il livello 1).
 
 ---
 
@@ -60,14 +62,30 @@ decorazione. Per questo la colonna `manca` distingue:
 | policy e write-guard | niente filtra, né in lettura né in scrittura |
 | la policy c'è ma la row level security non è attiva, e manca il write-guard | la policy non filtra, e la scrittura è scoperta |
 | la policy c'è ma la row level security non è attiva | la policy non filtra niente |
-| policy (lettura scoperta) | il guard c'è, la lettura no |
+| policy (lettura scoperta) | la scrittura è difesa, la lettura no |
+| la porta di scrittura dichiarata non esiste o non è `SECURITY DEFINER`, e manca il write-guard | la porta dichiarata non vale come difesa |
+| la porta di scrittura è dichiarata ma le policy non coprono `INSERT` e `UPDATE`, e manca il write-guard | la porta c'è, ma le scritture dell'applicazione sono scoperte |
 | write-guard (scrittura scoperta) | la policy filtra, la scrittura no |
 
 ⚠️ `FORCE ROW LEVEL SECURITY` non entra nel criterio: il proprietario deve poter leggere fuori dalla
 row security per le funzioni `SECURITY DEFINER` che derivano il perimetro.
 
-⚠️ Il guard si riconosce **dal nome della funzione**: conta qualunque trigger della tabella che
-esegue `trgfn_guard_emittente_scope`, senza guardare con quale via e su quale colonna è montato.
+---
+
+### ⭐ Due modi di difendere la scrittura
+
+La scrittura è difesa da **uno** di questi:
+
+* **il guard** `script.trgfn_guard_emittente_scope`, riconosciuto per la funzione esatta (non
+  un'omonima in un altro schema), montato su `INSERT` **e** su `UPDATE`, e non disattivato. Non
+  guarda con quale via e su quale colonna è montato: quella coerenza la controlla il pgTAP del
+  registro dei modi;
+* **la porta dichiarata** in `dbops.processi_bersagli.porta_scrittura`: una funzione
+  `SECURITY DEFINER` da cui passa ogni scrittura del processo, su una tabella con la row level
+  security attiva e policy permissive che coprono `INSERT` e `UPDATE`. La policy difende le
+  scritture dell'applicazione, la porta quelle del proprietario, che la row security non filtra.
+  Serve dove il guard non si può montare, perché respinge le scritture senza utente che passano da
+  una funzione `SECURITY DEFINER`.
 
 ---
 
@@ -97,6 +115,11 @@ vista gira coi privilegi del proprietario.
   presenta come debito; una policy scritta con la row level security spenta non conta come difesa.
 * `db/pgtap/rls/test-rls-fatture-stampa-coda-write-guard.sql`, `db/pgtap/rls/test-rls-listini-ef-whitelist-write.sql`
   — le tabelle protette non compaiono nel presidio.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — su una tabella di prova: senza guard compare;
+  un'omonima del guard in un altro schema e il guard disattivato non difendono; il guard vero
+  acceso su `INSERT` e `UPDATE` la toglie; la porta `DEFINER` con RLS e policy la toglie, la porta
+  `INVOKER` o con la RLS spenta no; `dbops.coda_lavori` non compare; un processo a ritiro raggiunto
+  non porta qui i suoi bersagli.
 
 ---
 
@@ -108,6 +131,9 @@ vista gira coi privilegi del proprietario.
 * 2026-09-05 — una policy conta solo con la row level security attiva (`brief-db-processi-automatici-identita-e-perimetro`,
   §12.15). Non nasce da una misura, nessun bersaglio era in quello stato, ma dalla scorciatoia che
   si stava per prendere sulla policy di una tabella delle email.
+* 2026-11-08 — il guard si riconosce per la funzione esatta, acceso e montato su `INSERT` e
+  `UPDATE` (prima bastava il nome della funzione in un trigger qualsiasi), e la porta dichiarata
+  in `porta_scrittura` diventa una difesa di scrittura: `dbops.coda_lavori` esce dal debito.
 
 ---
 

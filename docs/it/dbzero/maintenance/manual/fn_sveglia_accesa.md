@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `maintenance.fn_sveglia_accesa`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -58,7 +58,8 @@ database completo.
 La regola dell'accensione ha **una** sede, `dbops.fn_processo_acceso_su_valori`, e si legge
 in quest'ordine:
 
-1. un processo senza sveglia (canale `CODA`, o ritirato) non ha risposta;
+1. un processo senza sveglia (canale `CODA`, o ritiro raggiunto secondo `script.fn_e_obsoleto`)
+   non ha risposta; un ritiro programmato risponde fino al suo giorno;
 2. un processo **non spegnibile** è acceso sempre, senza leggere né la scelta a mano né
    l'ambiente: un'installazione non ancora dichiarata non ferma i processi che non devono
    fermarsi mai;
@@ -94,7 +95,7 @@ un booleano fuori.
 | Caso | Codice |
 | --- | --- |
 | codice di processo inesistente | `E_PROCESSO_NON_TROVATO` |
-| processo senza sveglia (`CODA`, o ritirato) | `E_PROCESSO_SENZA_SVEGLIA` |
+| processo senza sveglia (`CODA`, o ritiro raggiunto) | `E_PROCESSO_SENZA_SVEGLIA` |
 | ambiente non dichiarato, senza una scelta a mano che decida da sola | `E_CONFIG_MANCANTE` (da `script.fn_ambiente_installazione`) |
 | scelta a mano di accensione non ammessa dal divieto, con l'ambiente non dichiarato | `E_CONFIG_MANCANTE` |
 | ambiente dichiarato, ma il catalogo non ha il default di accensione | `E_CONFIG_MANCANTE` |
@@ -117,6 +118,8 @@ su ogni processo con sveglia.
   giornale).
 * `db/pgtap/dbops/test-processi-accensione-produzione-v1.sql` — in produzione costruita, una
   riga accesa a mano di un processo non accendibile non accende: la sveglia dice `false`.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — un ritiro programmato risponde, un ritiro
+  raggiunto oggi dà `E_PROCESSO_SENZA_SVEGLIA`, anche con `attivo` falso conta solo la data.
 
 ---
 
