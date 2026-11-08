@@ -24,7 +24,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_reso_muove_merce(p_reso vendite.resi)
-IS 'True se il reso fa rientrare merce: ha almeno una voce in vendite.fn_reso_merce_da_rientrare (una riga attiva la cui riga di bolla d''origine ha prelievi). Decide la porta del registro sul cambio di stato del reso (vendite.trgfn_resi_guard_transizione), la check della merce e il presidio dbops.vw_resi_confermati_senza_carico. Prende la RIGA del reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
+IS 'True se il reso fa rientrare merce: ha almeno una voce in vendite.fn_reso_merce_da_rientrare (una riga attiva la cui riga di bolla d''origine ha prelievi). Condizione della porta del registro del reso: il verbo vendite.fn_conferma_reso, la sola strada dello stato (script.trgfn_doc_stato_solo_dal_verbo), scrive i carichi solo per un reso che muove merce. La leggono anche la check della merce e il presidio dbops.vw_resi_confermati_senza_carico. Prende la RIGA del reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso; rev 2026-11-09 la porta nominata (M22 di brief-db-revisione-dbops).';
 ```
 
 </div>

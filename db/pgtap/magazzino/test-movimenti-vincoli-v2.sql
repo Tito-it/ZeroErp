@@ -22,8 +22,8 @@
 -- ⚠️ Fixture COSTRUITA (regola zero, corollario sui test): il dominio e' vuoto
 --   e un test che pesca dalla popolazione e' muto in CI. Azienda + operatore
 --   dall'helper, magazzino con quell'emittente, lotto, asset, un inventario
---   con una riga (la sorgente INVENTARIO_RIGA) e un trasferimento con una riga
---   (la sorgente TRASFERIMENTO_RIGA della coppia OUT/IN).
+--   con una riga (la provenienza INVENTARIO + la riga) e un trasferimento con una riga
+--   (TRASFERIMENTO + la riga, la coppia OUT/IN).
 -- ⚠️ Girava come l'applicazione fino al Lotto 2; ora come owner (vedi il
 --   marcatore in testa). Il contesto operatore e' impostato lo stesso: il
 --   guard di scope di magazzini e del ledger legge le GUC, e l'operatore ha
@@ -32,10 +32,13 @@
 -- Elenco test (plan 16):
 --   La sorgente e' obbligatoria e a catalogo (D-1, D-6, D-9):
 --    1) senza sorgente_tipo_id -> 23502 (NOT NULL)
---    2) sorgente_tipo_id inesistente -> il guard tipizzato (E_SORG_CONF), non la FK
---    3) sorgente_riga verso un record che non c'e' -> E_SORG_NOT_FOUND
---    4) nessuna chiave -> E_SORG_KEY_MISSING (il BEFORE ROW oscura il CHECK)
---    5) entrambe le chiavi -> 23514 chk_mag_movimenti_sorgente_chiave
+--    2) sorgente_tipo_id inesistente -> il guard unico (E_SORG_CONF), non la FK
+--    3) un documento che non c'e' -> E_SORG_NOT_FOUND
+--    4) nessuna chiave -> E_SORG_CHIAVE_NON_CONFORME (il BEFORE ROW oscura il CHECK)
+--    5) entrambe le chiavi -> E_SORG_CHIAVE_NON_CONFORME (il guard, prima del CHECK)
+--   rev 2026-11-09 (brief-db-sorgente-documento-e-riga lotto M, giro M.1): la provenienza del
+--     modello (INVENTARIO / TRASFERIMENTO + il documento + la riga) e il guard unico; 2-5 con
+--     le frasi del guard unico.
 --   Lotto e seriale sono chiavi (M-5):
 --    6) asset con |qta| <> 1 -> 23514 chk_mag_movimenti_asset_qta_unitaria
 --   Il verso sta nella quantita' (M-1):
@@ -75,7 +78,7 @@ CREATE TEMP TABLE _fix (
     mag_a  bigint, mag_b bigint, art uuid, lotto bigint, asset bigint,
     inv_riga bigint, trasf_riga bigint,
     cau_inv bigint, cau_out bigint, cau_in bigint, cau_storno_neg bigint,
-    src_inv bigint, src_trasf bigint
+    src_inv bigint, src_trasf bigint, inv bigint, trasf bigint
 );
 
 DO $fix$
@@ -130,49 +133,51 @@ BEGIN
            (SELECT id FROM magazzino.causali WHERE codice_interno = 'TRASF_OUT'),
            (SELECT id FROM magazzino.causali WHERE codice_interno = 'TRASF_IN'),
            (SELECT id FROM magazzino.causali WHERE codice_interno = 'STORNO_NEG'),
-           (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA'),
-           (SELECT id FROM config.sorgenti WHERE codice_interno = 'TRASFERIMENTO_RIGA');
+           -- rev 2026-11-09 (lotto M): il tipo e' il documento, la riga sta sotto.
+           (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'),
+           (SELECT id FROM config.sorgenti WHERE codice_interno = 'TRASFERIMENTO'),
+           v_inv, v_tr;
 END $fix$;
 
 -- ============================================================
 -- 1..5 La sorgente
 -- ============================================================
 SELECT throws_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_riga)
-       SELECT art, mag_a, cau_inv, 5, inv_riga FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_id, sorgente_riga)
+       SELECT art, mag_a, cau_inv, 5, inv, inv_riga FROM _fix $$,
     '23502', NULL,
     '1) senza sorgente_tipo_id: NOT NULL — non esiste un movimento senza operazione (D-6)');
 
 SELECT throws_like(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga)
-       SELECT art, mag_a, cau_inv, 5, 999999, inv_riga FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga)
+       SELECT art, mag_a, cau_inv, 5, 999999, inv, inv_riga FROM _fix $$,
     '%Configurazione sorgente mancante%',
-    '2) sorgente_tipo_id inesistente: parla il guard tipizzato (E_SORG_CONF), prima della FK');
+    '2) sorgente_tipo_id inesistente: parla il guard unico (E_SORG_CONF), prima della FK');
 
 SELECT throws_like(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga)
-       SELECT art, mag_a, cau_inv, 5, src_inv, 999999999 FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga)
+       SELECT art, mag_a, cau_inv, 5, src_inv, 999999999, inv_riga FROM _fix $$,
     '%Riferimento sorgente non trovato%',
-    '3) sorgente_riga verso un record che non c''e'': E_SORG_NOT_FOUND');
+    '3) un documento che non c''e'': E_SORG_NOT_FOUND');
 
 SELECT throws_like(
     $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id)
        SELECT art, mag_a, cau_inv, 5, src_inv FROM _fix $$,
-    '%Chiave sorgente mancante%',
-    '4) nessuna chiave: E_SORG_KEY_MISSING — il BEFORE ROW oscura il CHECK');
+    '%si scrive con la sola chiave sorgente_id%',
+    '4) nessuna chiave: E_SORG_CHIAVE_NON_CONFORME — il BEFORE ROW oscura il CHECK');
 
-SELECT throws_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga, sorgente_uid)
-       SELECT art, mag_a, cau_inv, 5, src_inv, inv_riga, gen_random_uuid() FROM _fix $$,
-    '23514', NULL,
-    '5) entrambe le chiavi: chk_mag_movimenti_sorgente_chiave (esattamente una)');
+SELECT throws_like(
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga, sorgente_uid)
+       SELECT art, mag_a, cau_inv, 5, src_inv, inv, inv_riga, gen_random_uuid() FROM _fix $$,
+    '%si scrive con la sola chiave sorgente_id%',
+    '5) entrambe le chiavi: E_SORG_CHIAVE_NON_CONFORME dal guard, prima di chk_mag_movimenti_sorgente_chiave');
 
 -- ============================================================
 -- 6 Lotto e seriale sono chiavi
 -- ============================================================
 SELECT throws_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga, asset_id)
-       SELECT art, mag_a, cau_inv, 5, src_inv, inv_riga, asset FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga, asset_id)
+       SELECT art, mag_a, cau_inv, 5, src_inv, inv, inv_riga, asset FROM _fix $$,
     '23514', NULL,
     '6) con un asset la quantita'' e'' uno: chk_mag_movimenti_asset_qta_unitaria');
 
@@ -180,8 +185,8 @@ SELECT throws_ok(
 -- 7..9 Il verso
 -- ============================================================
 SELECT throws_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga)
-       SELECT art, mag_a, cau_inv, 0, src_inv, inv_riga FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga)
+       SELECT art, mag_a, cau_inv, 0, src_inv, inv, inv_riga FROM _fix $$,
     'P0001', NULL,
     '7) qta = 0: parla il guard del verso (P0001), non il CHECK (23514)');
 
@@ -192,8 +197,8 @@ SELECT ok(
     '8) ...e chk_mag_movimenti_qta_non_zero esiste ancora: la seconda rete');
 
 SELECT throws_like(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga)
-       SELECT art, mag_a, cau_inv, -5, src_inv, inv_riga FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga)
+       SELECT art, mag_a, cau_inv, -5, src_inv, inv, inv_riga FROM _fix $$,
     '%Verso incoerente%INV_INIZIALE%',
     '9) carico con quantita'' negativa: la frase di E_MAG_MOVIMENTO_VERSO_INCOERENTE, con la causale');
 
@@ -201,34 +206,34 @@ SELECT throws_like(
 -- 10..13 L'identita'
 -- ============================================================
 SELECT lives_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga)
-       SELECT art, mag_a, cau_inv, 5, src_inv, inv_riga FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga)
+       SELECT art, mag_a, cau_inv, 5, src_inv, inv, inv_riga FROM _fix $$,
     '10) il movimento buono (inventario iniziale +5 dalla riga di inventario) passa');
 
 SELECT throws_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga)
-       SELECT art, mag_a, cau_inv, 5, src_inv, inv_riga FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga)
+       SELECT art, mag_a, cau_inv, 5, src_inv, inv, inv_riga FROM _fix $$,
     '23505', NULL,
     '11) la stessa operazione scritta due volte collide: uq_mag_movimenti_identita, NULLS NOT DISTINCT');
 
 SELECT lives_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga, lotto_id)
-       SELECT art, mag_a, cau_inv, 3, src_inv, inv_riga, lotto FROM _fix $$,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga, lotto_id)
+       SELECT art, mag_a, cau_inv, 3, src_inv, inv, inv_riga, lotto FROM _fix $$,
     '12) stessa sorgente, tranche diversa (un lotto): passa');
 
 SELECT lives_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga, transfer_uid)
-       SELECT art, mag_a, cau_out, -2, src_trasf, trasf_riga, '00000000-0000-0000-0000-00000000aa01'::uuid FROM _fix
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga, transfer_uid)
+       SELECT art, mag_a, cau_out, -2, src_trasf, trasf, trasf_riga, '00000000-0000-0000-0000-00000000aa01'::uuid FROM _fix
        UNION ALL
-       SELECT art, mag_b, cau_in,   2, src_trasf, trasf_riga, '00000000-0000-0000-0000-00000000aa01'::uuid FROM _fix $$,
+       SELECT art, mag_b, cau_in,   2, src_trasf, trasf, trasf_riga, '00000000-0000-0000-0000-00000000aa01'::uuid FROM _fix $$,
     '13) le due righe OUT/IN di un trasferimento non collidono: la causale e'' il verbo (D-L1-c)');
 
 -- ============================================================
 -- 14..15 Lo storno
 -- ============================================================
 SELECT lives_ok(
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga, storno_di_movimento_id)
-       SELECT f.art, f.mag_a, f.cau_storno_neg, -5, f.src_inv, f.inv_riga,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga, storno_di_movimento_id)
+       SELECT f.art, f.mag_a, f.cau_storno_neg, -5, f.src_inv, f.inv, f.inv_riga,
               (SELECT m.id FROM magazzino.movimenti m WHERE m.magazzino_id = f.mag_a AND m.qta = 5 AND m.lotto_id IS NULL ORDER BY m.id LIMIT 1)
          FROM _fix f $$,
     '14) lo storno del carico: causale STORNO_NEG, quantita'' opposta, legame al movimento');
@@ -236,8 +241,8 @@ SELECT lives_ok(
 SELECT throws_ok(
     -- ⚠️ Tranche DIVERSA (il lotto): cosi' l'identita' non collide e l'unico
     --   vincolo che puo' parlare e' uq_mag_movimenti_storno_di.
-    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_riga, storno_di_movimento_id, lotto_id)
-       SELECT f.art, f.mag_a, f.cau_storno_neg, -5, f.src_inv, f.inv_riga,
+    $$ INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, sorgente_tipo_id, sorgente_id, sorgente_riga, storno_di_movimento_id, lotto_id)
+       SELECT f.art, f.mag_a, f.cau_storno_neg, -5, f.src_inv, f.inv, f.inv_riga,
               (SELECT m.id FROM magazzino.movimenti m WHERE m.magazzino_id = f.mag_a AND m.qta = 5 AND m.lotto_id IS NULL ORDER BY m.id LIMIT 1),
               f.lotto
          FROM _fix f $$,

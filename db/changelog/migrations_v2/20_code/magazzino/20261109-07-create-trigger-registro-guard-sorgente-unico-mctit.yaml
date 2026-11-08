@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO SUL REGISTRO: magazzino.movimenti, magazzino.movimenti_attesi
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto M, giro M.1 (scheda magazzino §2.2, §1.2).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Le due tabelle montavano il guard tipizzato del modello A (la foglia esiste
+#   nel target del tipo). Nel modello il guard e' quello unico,
+#   script.trgfn_guard_sorgente: una sola chiave, quella del key_selector; il
+#   documento esiste; la riga e' del documento; il dettaglio e' della riga.
+#   Stesso nome di prima: l'ordine dei guard BEFORE ROW lo governa il nome.
+#
+# ── GLI ARGOMENTI ────────────────────────────────────────────────────
+#   * movimenti: DETTAGLIO, BLOCCA. Il registro scrive SEMPRE la foglia piu'
+#     bassa che il tipo ha (il livello minimo e' limitato ai livelli del tipo):
+#     prelievo e rientro per bolla e reso, la riga per inventario, rettifica,
+#     trasferimento, il documento per l'evento. E' la condizione 2 perche'
+#     l'identita' (uq_mag_movimenti_identita, 20261108-94) resti equivalente a
+#     quella per foglia. BLOCCA: un ledger non si cancella, quindi non c'e'
+#     un'azione conseguente ammissibile: un documento, una riga o un dettaglio
+#     movimentati non si cancellano (E_SORG_ORIGINE_REFERENZIATA, dal lato «in
+#     uscita» gia' montato sui bersagli). Chiude anche il buco S-9 del reso: un
+#     DELETE di un reso confermato non lascia piu' carichi orfani.
+#   * movimenti_attesi: DOCUMENTO, BLOCCA. Un'attesa vale per il documento
+#     intero o per una sua riga (livelli liberi, scheda magazzino §1.2). Oggi
+#     nessuno scrive un'attesa con documento.
+#   UPDATE OF prende le cinque colonne della provenienza.
+#   Il lato «in uscita» c'e' gia' su tutte le tabelle del catalogo: la
+#   convergenza (dbops.fn_sorgente_converge_uscita) non monta niente di nuovo.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261109-07-create-trigger-registro-guard-sorgente-unico-mctit.yaml
+
+  - changeSet:
+      id: 20261109-07-create-trigger-registro-guard-sorgente-unico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard unico della provenienza su magazzino.movimenti (DETTAGLIO, BLOCCA) e movimenti_attesi
+        (DOCUMENTO, BLOCCA), al posto del tipizzato. brief-db-sorgente-documento-e-riga §7.2 lotto M, giro
+        M.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_movimenti_a10_guard_sorgente_ins_upd ON magazzino.movimenti;
+              CREATE TRIGGER trg_movimenti_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, sorgente_dettaglio
+                  ON magazzino.movimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DETTAGLIO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_movimenti_a10_guard_sorgente_ins_upd ON magazzino.movimenti IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DETTAGLIO, azione BLOCCA): il tipo del documento esiste ed e'' attivo, la chiave e'' quella del key_selector, il documento esiste, la riga e'' del documento e il dettaglio della riga; il movimento scrive sempre la foglia piu'' bassa che il tipo ha (condizione dell''equivalenza di uq_mag_movimenti_identita). BLOCCA: un documento, una riga o un dettaglio movimentati non si cancellano, perche'' un ledger non si cancella.';
+
+              DROP TRIGGER trg_movimenti_attesi_a10_guard_sorgente_ins_upd ON magazzino.movimenti_attesi;
+              CREATE TRIGGER trg_movimenti_attesi_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, sorgente_dettaglio
+                  ON magazzino.movimenti_attesi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_movimenti_attesi_a10_guard_sorgente_ins_upd ON magazzino.movimenti_attesi IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): con un documento, il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector, il documento esiste, la riga e il dettaglio se ci sono gli appartengono. Livelli liberi: un''attesa vale per il documento intero o per una sua riga. Un blocco manuale (senza tipo) passa: la forma la tiene chk_mag_movimenti_attesi_sorgente_chiave. BLOCCA: un documento con attese che lo citano non si cancella.';

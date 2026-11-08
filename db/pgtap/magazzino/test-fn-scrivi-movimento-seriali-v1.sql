@@ -55,31 +55,31 @@ BEGIN
         v_r := v_r || v_tmp;
     END LOOP;
     INSERT INTO _fix VALUES (v_a, v_b, v_art, v_asset,
-                             (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA'),
+                             (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'),
                              v_r[1], v_r[2], v_r[3], v_r[4], v_r[5], v_r[6]);
 END $fix$;
 
 SELECT lives_ok(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'INV_INIZIALE', 1, src, r1, NULL, 100, NULL, asset) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'INV_INIZIALE', 1, src, r1, NULL, 100, NULL, asset, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '1) entrata del seriale in A: non era dentro da nessuna parte, passa');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'INV_INIZIALE', 1, src, r2, NULL, 100, NULL, asset) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'INV_INIZIALE', 1, src, r2, NULL, 100, NULL, asset, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r2)) FROM _fix $$,
     '%Il seriale PGT-L2S-SN non può fare questo movimento: a registro risulta gia'' presente nel magazzino PGT-L2S-A.%',
     '2) seconda entrata dello stesso seriale altrove: E_MAG_ASSET_POSIZIONE_INCOERENTE');
 
 SELECT throws_like(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'RETT_NEG', -1, src, r4, NULL, NULL, NULL, asset) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'RETT_NEG', -1, src, r4, NULL, NULL, NULL, asset, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r4)) FROM _fix $$,
     '%a registro risulta assente dal magazzino PGT-L2S-B.%',
     '3) uscita da dove non e'': E_MAG_ASSET_POSIZIONE_INCOERENTE');
 
 SELECT lives_ok(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'RETT_NEG', -1, src, r3, NULL, NULL, NULL, asset) FROM _fix;
-       SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'RETT_POS', 1, src, r6, NULL, NULL, NULL, asset) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'RETT_NEG', -1, src, r3, NULL, NULL, NULL, asset, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r3)) FROM _fix;
+       SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'RETT_POS', 1, src, r6, NULL, NULL, NULL, asset, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r6)) FROM _fix $$,
     '4) uscita da A e poi entrata in B: il pezzo si sposta');
 
 SELECT throws_ok(
-    $$ SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'RETT_NEG', -2, src, r5, NULL, NULL, NULL, asset) FROM _fix $$,
+    $$ SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'RETT_NEG', -2, src, r5, NULL, NULL, NULL, asset, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r5)) FROM _fix $$,
     'P0001', NULL,
     '5) |qta| = 2 con un asset: rifiutata (la posizione derivata non ammette due pezzi: la madre, prima del CHECK)');
 

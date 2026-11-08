@@ -58,20 +58,20 @@ BEGIN
         v_r := v_r || v_tmp;
     END LOOP;
     INSERT INTO _fix VALUES (v_a, v_b, v_art, v_art2,
-                             (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA'),
+                             (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'),
                              v_r[1], v_r[2], v_r[3], v_r[4], v_r[5], v_r[6]);
 END $fix$;
 
 -- 1) 5 x 10 + 5 x 20
-SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'INV_INIZIALE', 5, src, r1, NULL, 10) FROM _fix;
-SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'RETT_POS',     5, src, r2, NULL, 20) FROM _fix;
+SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'INV_INIZIALE', 5, src, r1, NULL, 10, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix;
+SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'RETT_POS',     5, src, r2, NULL, 20, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r2)) FROM _fix;
 SELECT is(
     (SELECT (trim_scale(v.valore), trim_scale(v.costo_medio))::text FROM magazzino.vw_giacenza_valorizzata v JOIN _fix f ON v.magazzino_id = f.mag_a AND v.articolo_id = f.art),
     '(150,15)',
     '1) 5 a 10 EUR + 5 a 20 EUR: valore 150, media 15');
 
 -- 2) uscita 4
-SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'RETT_NEG', -4, src, r3) FROM _fix;
+SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'RETT_NEG', -4, src, r3, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r3)) FROM _fix;
 SELECT is(
     (SELECT (trim_scale(m.costo_unitario), (SELECT trim_scale(vg.valore) FROM magazzino.valore_giacenza vg WHERE vg.magazzino_id = f.mag_a AND vg.articolo_id = f.art))::text
        FROM magazzino.movimenti m JOIN _fix f ON m.sorgente_riga = f.r3),
@@ -79,7 +79,7 @@ SELECT is(
     '2) uscita 4: costo 15 sul movimento (la media, letta dentro il lock), valore 90');
 
 -- 3) entrata senza costo con una media
-SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'RETT_POS', 2, src, r5) FROM _fix;
+SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'RETT_POS', 2, src, r5, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r5)) FROM _fix;
 SELECT is(
     (SELECT (trim_scale(m.costo_unitario), (SELECT trim_scale(vg.valore) FROM magazzino.valore_giacenza vg WHERE vg.magazzino_id = f.mag_a AND vg.articolo_id = f.art))::text
        FROM magazzino.movimenti m JOIN _fix f ON m.sorgente_riga = f.r5),
@@ -87,7 +87,7 @@ SELECT is(
     '3) entrata senza costo CON una media: eredita la media (COALESCE, D-L2-c), valore 120');
 
 -- 4) entrata senza costo e senza media: l'articolo nuovo
-SELECT magazzino.fn_scrivi_movimento(mag_a, art2, 'INV_INIZIALE', 3, src, r4) FROM _fix;
+SELECT magazzino.fn_scrivi_movimento(mag_a, art2, 'INV_INIZIALE', 3, src, r4, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r4)) FROM _fix;
 SELECT is(
     (SELECT (m.costo_unitario IS NULL,
              (SELECT trim_scale(vg.valore) FROM magazzino.valore_giacenza vg WHERE vg.magazzino_id = f.mag_a AND vg.articolo_id = f.art2),
@@ -97,8 +97,8 @@ SELECT is(
     '4) entrata senza costo e senza media: costo NULL, valore 0, e la riga sta nella spia LAVORAZIONE');
 
 -- 5-6) trasferimento con lo stesso transfer_uid
-SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'TRASF_OUT', -3, src, r6, NULL, NULL, NULL, NULL, NULL, now(), '22222222-2222-2222-2222-222222222222') FROM _fix;
-SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'TRASF_IN',   3, src, r6, NULL, NULL, NULL, NULL, NULL, now(), '22222222-2222-2222-2222-222222222222') FROM _fix;
+SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'TRASF_OUT', -3, src, r6, NULL, NULL, NULL, NULL, NULL, now(), '22222222-2222-2222-2222-222222222222', p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r6)) FROM _fix;
+SELECT magazzino.fn_scrivi_movimento(mag_b, art, 'TRASF_IN',   3, src, r6, NULL, NULL, NULL, NULL, NULL, now(), '22222222-2222-2222-2222-222222222222', p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r6)) FROM _fix;
 SELECT is(
     (SELECT trim_scale(m.costo_unitario)::text FROM magazzino.movimenti m JOIN _fix f ON m.magazzino_id = f.mag_b AND m.transfer_uid = '22222222-2222-2222-2222-222222222222'),
     '15',
@@ -111,7 +111,7 @@ SELECT is(
 
 -- 7) storno della OUT
 SELECT magazzino.fn_scrivi_movimento(mag_a, art, 'STORNO_POS', 3, src, r6, NULL, NULL, NULL, NULL, NULL, now(), NULL,
-           (SELECT m.id FROM magazzino.movimenti m WHERE m.transfer_uid = '22222222-2222-2222-2222-222222222222' AND m.qta < 0)) FROM _fix;
+           (SELECT m.id FROM magazzino.movimenti m WHERE m.transfer_uid = '22222222-2222-2222-2222-222222222222' AND m.qta < 0), p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r6)) FROM _fix;
 SELECT is(
     (SELECT trim_scale(m.costo_unitario)::text FROM magazzino.movimenti m WHERE m.storno_di_movimento_id IS NOT NULL AND m.sorgente_riga = (SELECT r6 FROM _fix)),
     '15',
