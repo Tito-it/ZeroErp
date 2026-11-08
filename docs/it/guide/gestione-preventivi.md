@@ -792,6 +792,10 @@ una bozza con righe nemmeno (`E_DELETE_DOC_CON_RIGHE`) — si tolgono le righe, 
 Neanche una bozza vuota si cancella se qualcosa ne dichiara la provenienza — una pratica che la
 collega, un ordine che ne nasce, una stampa: lo dice `E_SORG_ORIGINE_REFERENZIATA`
 ([sorgente polimorfa](/guide/sorgente-polimorfa), il lato «in uscita»).
+**scadenza**. L'eliminazione fisica (hard-delete) è possibile solo su una **bozza
+priva di righe**; una bozza con righe non si cancella, si annulla. La regola la
+giudica il database (`E_DELETE_DOC_NON_BOZZA`, `E_DELETE_DOC_CON_RIGHE`), e dal
+2026-11-08 una pratica collegata non impedisce più l'eliminazione.
 
 ---
 

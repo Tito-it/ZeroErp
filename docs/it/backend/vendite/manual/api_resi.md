@@ -52,8 +52,8 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
   testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
 - Update `PATCH /<id>/` — `data`/`meta`/`magazzino_id` (altre chiavi → 400
   `E_RESO_VALIDAZIONE`; `{}` → 400), risposta `{reso_id, updated}`; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a reso confermato restano aperte le note, ferme a reso annullato. Delete `DELETE /<id>/` — hard
-  delete solo DRAFT + 0 righe (abbandono bozza; con righe 409
-  `E_RESO_STATO_TRANSIZIONE`), risposta `{reso_id, deleted}`.
+  delete solo DRAFT + 0 righe (abbandono bozza): la regola «si cancella solo la bozza vuota» la giudica **solo il DB** (`vendite.trgfn_doc_guard_delete_solo_bozza`, dal 2026-11-08: il service non la ripete, brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a): fuori bozza 409 `E_DELETE_DOC_NON_BOZZA`, bozza con contenuto 409 `E_DELETE_DOC_CON_RIGHE`, documento citato come origine da un altro 409 `E_SORG_ORIGINE_REFERENZIATA`; il service legge solo l'esito del `DELETE`;
+  risposta `{reso_id, deleted}`, il reso che non c'è è un 404 `E_RESO_NOT_FOUND`.
 
 ### Azioni di dominio (fn madri DB, effetti atomici)
 
@@ -245,8 +245,8 @@ credito» promette un documento che poi non si trova.
 consegnato), `E_RESO_QTA_SUPERA_CONSEGNATO` (over-return), `E_RESO_ANNULLO_CON_RICONSEGNE`,
 `E_RESO_VALIDAZIONE` (400: payload del verbo, chiavi fuori contratto su testata,
 righe e rientri, filtro di stato fuori vocabolario, filtri coda, etichetta fuori
-whitelist), `E_RESO_STATO_TRANSIZIONE` (409: delete di un reso non in bozza o con
-righe; la testata fuori bozza la ferma il lock DB, `E_DOC_*`),
+whitelist), `E_DELETE_DOC_NON_BOZZA` / `E_DELETE_DOC_CON_RIGHE` (409: delete di un reso non
+in bozza o con righe, dal DB; la testata fuori bozza la ferma il lock DB, `E_DOC_*`),
 `E_RIGA_DOC_NON_BOZZA` (409: righe aggiunte/modificate/tolte fuori bozza — dal
 2026-09-22 il pre-check BE `richiedi_righe_in_bozza` usa il codice del BB a DB
 `trgfn_doc_righe_lock_fuori_bozza`, che su `resi_righe` **non è ancora

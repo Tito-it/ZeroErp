@@ -183,8 +183,9 @@ Errori sono `ServiceError` con `code` semantico:
 1. **Chi è editabile in quale stato lo dicono i lock del DB**: testata
    (`trgfn_doc_testata_lock_fuori_bozza`), eccezioni e componenti
    (`trgfn_doc_righe_lock_fuori_bozza`), utility (lock satelliti).
-   `_assert_stato_corrente(expected=_STATI_EDITABILI)` resta solo su
-   `elimina_offerta` e sulle transizioni che partono da BOZZA.
+   `_assert_stato_corrente` e `_STATI_EDITABILI` sono ritirati il 2026-11-08
+   (BE-Z.2-a): `elimina_offerta` chiama il `DELETE` e la bozza vuota la giudica
+   il guard DB `trgfn_doc_guard_delete_solo_bozza`.
 2. **Annullamento solo da BOZZA, rifiuto solo da EMESSA**. State machine
    asimmetrica: niente `BOZZA -> RIFIUTATA` (non esiste un "no del cliente"
    prima dell'emissione) ne' `EMESSA -> ANNULLATA` (correzioni

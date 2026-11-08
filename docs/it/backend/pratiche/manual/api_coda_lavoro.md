@@ -70,7 +70,7 @@ documento agganciato al flusso in coda): `doc_risolto`, `doc_stato_codice_intern
 `doc_stato_descrizione`, `doc_fase`, `doc_esito`, `doc_terminale`,
 `doc_sorgente_descrizione`. Semantica e fonte in `api_percorso.md` (stessa
 proiezione, ancora per flusso; la fn DB della coda resta invariata — il join
-alla vista `script.vw_stato_sorgente` vive nel wrapper SQL del repository).
+alla vista `script.vw_flusso_doc_sorgente` vive nel wrapper SQL del repository).
 
 ### Errori
 

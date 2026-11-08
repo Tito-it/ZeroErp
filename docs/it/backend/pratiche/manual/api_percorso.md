@@ -104,8 +104,11 @@ Delega a `pratiche_service.get_percorso` → `PraticheRepository.get_percorso_pr
 ### Descrittore documento sorgente `doc_*` (2026-07-02, proiezione V10 fase MOSTRA)
 
 Ogni step espone lo stato **vivo** del documento di dominio agganciato al suo
-flusso (`pratiche_sorgenti.flusso_id`), via `script.vw_stato_sorgente` (union
-dei resolver di dominio) — read-time, nessun mirror. Display fields puri:
+flusso (`pratiche_sorgenti.flusso_id`), via
+`script.vw_flusso_doc_sorgente` (una riga per flusso, dal 2026-11-08,
+brief-db-sorgente-documento-e-riga BE-Z.1-a: la regola sta a DB, la copia BE
+`_doc_sorgente_lateral` è ritirata). Ordine: prima il `ROOT`, poi risolto, non
+terminale, il più recente — read-time, nessun mirror. Display fields puri:
 
 - `doc_risolto` (bool|null) — `true` = proiezione reale; `false` = documento
   collegato ma dominio senza resolver (il FE degrada al milestone manuale);
@@ -118,9 +121,8 @@ dei resolver di dominio) — read-time, nessun mirror. Display fields puri:
 - `doc_terminale` (bool) — il documento non evolverà più;
 - `doc_sorgente_descrizione` — etichetta del tipo sorgente (`config.sorgenti`).
 
-A parità di ancora vince il link `ROOT` (poi il più recente). Stessi campi
-esposti da coda lavoro (ancora per flusso) e dettaglio/lista pratiche (ancora
-ROOT della pratica). Nota: la proiezione fotografa lo **stato scritto** sul
+Stessi campi esposti da coda lavoro (ancora per flusso, la stessa vista) e
+dettaglio/lista pratiche (àncora della pratica, `script.vw_pratica_doc_sorgente`). Nota: la proiezione fotografa lo **stato scritto** sul
 documento (es. scadenza flippata dal job notturno, non ricalcolata qui).
 
 ## Regole
