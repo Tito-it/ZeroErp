@@ -28,8 +28,11 @@
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — i lock di colonna vivi confrontati con il registro
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il motore della regola CLEANUP
 > * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — crea i vincoli EXCLUDE di OVERLAP
+> * [dbops.fn_delete_block_divergenze](/dbzero/dbops/funzioni/fn_delete_block_divergenze) — i blocchi DELETE vivi confrontati con il registro
 > * [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/funzioni/fn_apply_delete_block_trigger) — monta il blocco DELETE con bypass via GUC
-> * [dbops.fn_apply_automazione_guard_utility_tipo_ruolo](/dbzero/dbops/funzioni/fn_apply_automazione_guard_utility_tipo_ruolo) — monta la verifica utility/tipo ruolo
+> * [dbops.fn_guard_utility_divergenze](/dbzero/dbops/funzioni/fn_guard_utility_divergenze) — i guard utility/tipo ruolo vivi confrontati con il registro
+> * [dbops.fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility) — il runner del guard utility/tipo ruolo
+> * [dbops.fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato) — il nome degli oggetti che un registro dichiara riga per riga
 > * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) — crea e rimuove gli indici sulle FK secondo la policy
 > * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) — genera codici e numeri da `config.sistema_codici`
 > * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/funzioni/fn_sveglia_accesa) — il cancello che fa partire un giro notturno solo se il processo è acceso
@@ -149,7 +152,8 @@ I **runner** sono funzioni SQL che leggono rules e ambito, risolvono le tabelle 
 | [fn_run_automations_date_validita](/dbzero/dbops/funzioni/fn_run_automations_date_validita) | DATE_VALIDITA                                      |
 | [fn_run_automations_codice_maiuscolo](/dbzero/dbops/funzioni/fn_run_automations_codice_maiuscolo) | CODICE_MAIUSCOLO (converge: crea, rigenera, toglie) |
 | [fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)               | ATTIVO                                             |
-| [fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)   | DELETE_BLOCK                                       |
+| [fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)   | DELETE_BLOCK (converge: crea, rigenera, toglie)    |
+| [fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility) | GUARD utility/tipo ruolo (converge: crea, rigenera, toglie) |
 | [fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)             | CLEANUP                                            |
 
 Tutti i runner accettano gli stessi tre parametri — modo di esecuzione, schemi (NULL = l'ambito), `p_dry_run`:
@@ -343,6 +347,7 @@ Per tabelle **versionate** (con colonne `valido_dal`/`valido_al` o `valid_from`/
 * **Righe**: le scrive a mano chi migra, con changeSet di `80_data`, quando un vincolo nasce o cambia forma: è l'unica sorgente del registro, non c'è una rilevazione automatica dallo schema (vedi [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap))
 * **Apply**: `dbops.fn_apply_automazione_overlap()` — crea i vincoli EXCLUDE (totali o parziali)
 * **Runner schedulato**: `maintenance.proc_automations_overlap_job()` + job pgAgent `automations_overlap` (ogni giorno alle 21:00) — esegue l'apply periodicamente
+* **Nome del vincolo**: quello della riga o il template `ex_<tabella>_no_overlap`, risolti da [dbops.fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato)
 
 **Vincoli parziali (`where_predicate`):** il framework
 supporta anche EXCLUDE **parziali**, cioè con una clausola `WHERE` (es. "niente
@@ -368,11 +373,16 @@ EXCLUDE viene droppato per errore (es. da un refactor), la passata notturna lo
 
 **Note operative:**
 
-* Se `key_columns` non è valorizzato, il vincolo non viene creato
+* Se `key_columns` non è valorizzato, il vincolo non viene creato; se una sua colonna non esiste, la regola si salta (`KEY_COLUMN_MISSING`) invece di nascere con una chiave più corta
 * Per chiavi UUID è richiesta l'estensione `btree_gist`
 * Le tabelle non versionate restano `active=false`
-* L'apply è idempotente: salta se esiste già un EXCLUDE sul periodo. **Cambiare** un
-  `where_predicate` richiede prima il `DROP CONSTRAINT` manuale (il framework non fa `ALTER`)
+* L'apply è idempotente: la regola è applicata se la tabella ha **il suo** vincolo, col nome della riga, o un `UNIQUE … WITHOUT OVERLAPS` sul periodo. Un altro `EXCLUDE` della tabella non conta. **Cambiare** un
+  `where_predicate` richiede prima di togliere il vincolo vecchio (il framework non fa `ALTER`)
+* ⭐ Un difetto ferma la regola, non il giro: righe già sovrapposte (`DATI_SOVRAPPOSTI`, con la prima coppia in conflitto nell'audit) o un nome già preso (`NOME_OCCUPATO`) lasciano la tabella senza vincolo e un `WARN`, e le altre regole ricevono il loro
+* ⚠️ Spegnere una regola **non** toglie il suo vincolo: togliere un vincolo d'integrità è una decisione, e la prende chi spegne la riga, con un DROP CONSTRAINT esplicito, e il presidio del vincolo la ricorda finché non è presa
+
+Il comportamento completo, con tutti i salti, sta nella pagina di
+[fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap).
 
 ### 4.4 DELETE_BLOCK (blocco DELETE con GUC)
 
@@ -381,8 +391,13 @@ Per tabelle sensibili (es. tabelle ruoli, configurazioni critiche) dove la DELET
 **Come funziona:**
 
 * Config in `dbops.automation_delete_block` con schema, tabella, chiave GUC e flag `enabled`
-* Trigger `script.trgfn_delete_block_by_guc(guc_key)` — blocca la DELETE a meno che il GUC specificato non sia impostato a `'on'`
-* Apply con `dbops.fn_run_automations_delete_block()`, nella convergenza del rilascio e nel giro notturno `automations_delete_block` (§9)
+* Trigger `BEFORE DELETE` per riga su `script.trgfn_delete_block_by_guc(guc_key)` — blocca la DELETE a meno che il GUC specificato non sia impostato a `'on'`. ⭐ `BEFORE` perché il rifiuto arrivi prima delle cascate delle FK e dei guard dei figli
+* Runner `dbops.fn_run_automations_delete_block()`, nella convergenza del rilascio e nel giro notturno `automations_delete_block` (§9). **Converge**: crea il blocco dove manca, lo rigenera se non è quello dichiarato (nome, momento, GUC), lo toglie se la riga è spenta
+* ⛔ Per togliere un blocco si **spegne** la riga (`enabled = false`), non la si cancella: un blocco vivo su una tabella che il registro non nomina ferma il runner, che lo nomina
+* Il blocco vivo si riconosce dalla funzione e dal suo argomento, non dal nome: il confronto sta in [dbops.fn_delete_block_divergenze](/dbzero/dbops/funzioni/fn_delete_block_divergenze)
+
+Il comportamento completo sta nella pagina di
+[fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block).
 
 ### 4.5 CLEANUP (pulizia record scaduti)
 
@@ -445,14 +460,15 @@ tabella.
 
 ### 4.6 GUARD utility/tipo_ruolo
 
-Per tabelle che espongono sia una colonna utility (`utility_id`) sia una colonna ruolo della forma `<prefisso>_soggetto_ruolo_id` (per esempio `emittente_soggetto_ruolo_id`). ⚠️ Una riga di catalogo con la colonna `soggetto_ruolo_id` senza prefisso viene scartata dall'apply in silenzio, anche se accesa. Il trigger verifica che il tipo di ruolo del soggetto sia coerente con la utility indicata, consultando la matrice `config.utilities_tipi_ruolo`.
+Per tabelle che espongono sia una colonna utility (`utility_id`) sia una colonna del soggetto-ruolo, con o senza prefisso (`emittente_soggetto_ruolo_id`, `soggetto_ruolo_id`): il guard è generico, e la colonna la dichiara il registro. Il trigger verifica che il tipo di ruolo del soggetto sia coerente con la utility indicata, consultando la matrice `config.utilities_tipi_ruolo`.
 
 **Componenti:**
 
 * Config: [dbops.automazione_guard_utility_tipo_ruolo](/dbzero/dbops/tabelle/automazione_guard_utility_tipo_ruolo) — mirror del CSV `80_data/sql/dbops/automazione_guard_utility_tipo_ruolo.csv`: una tabella entra o esce dal CSV, opt-in esplicito
-* Diagnosi: `dbops.fn_seed_automazione_guard_utility_tipo_ruolo()` — nonostante il nome **non scrive** nel catalogo: elenca in un `NOTICE` le tabelle che qualificano e mancano dal CSV (la chiama `ci_apply`, prima dell'apply)
-* Apply: `dbops.fn_apply_automazione_guard_utility_tipo_ruolo()`
-* Trigger function: `script.trgfn_guard_utility_tipo_ruolo_by_cols()`
+* Diagnosi: `dbops.fn_seed_automazione_guard_utility_tipo_ruolo()` — nonostante il nome **non scrive** nel catalogo: elenca in un `NOTICE` le tabelle che qualificano e mancano dal CSV (la chiama il primo giro di `ci_apply`)
+* Runner: [dbops.fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility), col processo `automations_guard_utility` (nella convergenza del rilascio e ogni sera alle 21:10, §9). **Converge** come DELETE_BLOCK: crea, rigenera, toglie il guard di una riga spenta, segnala con un `WARN` una colonna che non esiste, e si ferma su un guard che il registro non nomina
+* Porta storica: `dbops.fn_apply_automazione_guard_utility_tipo_ruolo()` — chiama il runner; resta perché la chiama il primo giro di `ci_apply`
+* Trigger function: `script.trgfn_guard_utility_tipo_ruolo_by_cols()`, montata `BEFORE INSERT OR UPDATE OF` le due colonne
 
 **Comportamento:** se la matrice non è configurata per la utility in questione, il trigger adotta un comportamento fail-open (non blocca).
 
@@ -582,6 +598,12 @@ Override disponibili: `ATTIVO_COL`, `STORICO_FK`, `STORICIZZA_COL`, `CODICE_COL`
 I template supportano i placeholder: `{schema}`, `{table}`, `{parent}`, `{child}`, `{fk}`, `{op}`, più `{fkhash6}` (sei caratteri ricavati dal nome della FK, sempre) e `{fkhash6_if_long}` (gli stessi, **solo se** senza di loro il nome supererebbe i 63 caratteri). Il motore ATTIVO tratta `{fkhash6_if_long}` come `{fkhash6}` quando due FK darebbero lo stesso nome sulla stessa tabella.
 
 PostgreSQL impone un limite di **63 caratteri** per i nomi degli oggetti. L'helper [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) non abbrevia: un nome entro i 63 caratteri esce così com'è, senza hash. Solo se il nome supera ancora i 63 caratteri viene troncato e completato con un'impronta di sei caratteri: il risultato è stabile, ma non è il nome che si legge nel template, e un trigger così si cerca per funzione e argomenti.
+
+I registri che dichiarano il nome **riga per riga** — blocco delle cancellazioni, guard
+utility/tipo ruolo, vincoli di non sovrapposizione — lo risolvono con
+[dbops.fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato): il nome
+della riga se c'è e sta nei 63 caratteri, altrimenti il template accorciato come sopra. Un nome
+già risolto, ripassato, esce uguale, cosa che il solo helper dei template non garantisce.
 
 ---
 
@@ -755,6 +777,11 @@ configurazione. Il risultato funziona: il trigger c'è e fa il suo lavoro.
 — da una pulizia, da una ricostruzione, da chiunque — nessuno lo rimette, e non
 c'è nessun controllo che se ne accorga.
 
+Le famiglie che convergono col registro — lock di colonna, blocco delle cancellazioni, guard
+utility/tipo ruolo — riconoscono il trigger dalla funzione e non dal nome: un trigger scritto a
+mano su una tabella che il registro non nomina ferma il loro runner, che lo nomina. Lì l'oggetto
+non resta invisibile, ma il rimedio è lo stesso.
+
 **È successo davvero**: il blocco che rendeva immutabile l'importo di un fondo
 fattura era stato montato così. Quando è sparito, quell'importo è tornato
 modificabile e in nessun registro è comparso niente. Se n'è accorto un test,
@@ -819,7 +846,7 @@ tutti i processi strutturali **nell'ordine** dichiarato da `dbops.processi.ci_or
 
 ```text
 audit_update → storico_provision → storico → tx_id → attivo → lock_columns
-→ delete_block → overlap → cleanup → sync_storico_set_storicizza
+→ delete_block → guard_utility → overlap → cleanup → sync_storico_set_storicizza
 → apply_storicizza → analyze_statistiche (ultimo)
 ```
 
@@ -851,7 +878,7 @@ Dove pgAgent c'è, i job di `85_pgagent` rieseguono le stesse procedure:
 | Quando              | Job                                                                                                                   |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | ogni giorno, 21:00  | `automations_audit_update`, `automations_storico_provision`, `automations_storico`, `automations_tx_id`, `automations_attivo`, `automations_overlap` |
-| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA e CODICE_MAIUSCOLO), `automations_delete_block`                          |
+| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA e CODICE_MAIUSCOLO), `automations_delete_block`, `automations_guard_utility` |
 | sabato, 07:00       | `sync_storico_set_storicizza`                                                                                          |
 | sabato, 07:05       | `apply_storicizza_weekly`: dopo il sync, nello stesso ordine della convergenza                                         |
 | domenica, 23:00     | `automations_cleanup_weekly`, `automations_apply_fk_indexes_policy`                                                   |

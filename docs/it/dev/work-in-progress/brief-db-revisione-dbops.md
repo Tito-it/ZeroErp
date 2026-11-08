@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 10b chiuso: blocchi 10b-3 e 10b-4 applicati, da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 10c applicato e committato; blocco 10c-4 in attesa del via)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -60,7 +60,17 @@ scadenza è `cleanup_at`, nome fisso; base vuota = nessuna scadenza). **Scritti 
 (§27.3-27.5): `20261109-84` … `-94` e il CSV del registro.
 **Applicati** da Tid (2026-11-08): migrazione su dbdev e scratch, pgTAP di §27.6 verdi; scelte di §26.6 ok (il via era su
 tutto). **Il giro 10b è chiuso** (§27.9).
-**Riparte: la sessione DB** col commit dei blocchi 10b-3 e 10b-4 quando Tid lo chiede, poi il giro successivo di §8 col suo via. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+**Committato** (`148ec4eb20`). **Giro 10c preparato** (§28): difetti riverificati, sette nodi, tre blocchi; un difetto nuovo
+(il registro overlap senza CSV, N7).
+**Via al giro 10c** (Tid, 2026-11-08: N1-N7 come da proposta). **Scritto e provato** su scratch e dbdev (§28.5-28.7):
+`20261109-95` … `-99`, `20261110-01` … `-06`, tre CSV, R3. Il CSV dell'overlap (N7) si ferma su un fatto tecnico: nodo N7-bis (§28.9).
+**Applicato** da Tid (2026-11-08): migrazione su dbdev e scratch, pgTAP verdi (§28.10). ⚠️ Su dbdev `zeroerp_job` non ha
+ancora l'EXECUTE sulla procedura nuova: manca la fase post del provisioning.
+**Decisioni di Tid** (2026-11-08, §28.11): N7-bis (a), le colonne dell'overlap diventano `jsonb`; le scelte di §27.4 e
+§28.6 tutte ok, tranne due che aprono lavoro: `p_cleanup_column` esce dalla firma, `fn_name_from_template` si corregge ora.
+Fase post del provisioning su dbdev **fatta** (Tid, 2026-11-08): `zeroerp_job` ha l'EXECUTE sulla procedura nuova.
+Giro 10c **committato** (2026-11-08, su richiesta di Tid; non pushato).
+**Riparte: Tid**, quando dà il via al blocco 10c-4 (§28.11). La sessione DB è ferma. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -161,7 +171,16 @@ ancora le tabelle).
 | 9-sexagies-septies | ✅ Tid | Via ai blocchi 10b-3 e 10b-4, numeri dal primo libero (2026-11-08); N7 e N8 decisi nel giro | §27.1, §27.2 | 9-sexagies-decies |
 | 9-sexagies-undecies | ✅ sessione DB | Blocchi 10b-3 e 10b-4 scritti e provati (`20261109-84` … `-94`, il CSV del registro) | §27.3-27.5 | 9-sexagies-septies |
 | 9-sexagies-duodecies | ✅ Tid | Apply di `-84` … `-94` e del CSV su dbdev e scratch; pgTAP come app di §27.6 verdi; scelte di §26.6 ok (2026-11-08). Il giro 10b è chiuso | §27.9 | 9-sexagies-undecies |
-| 9-sexagies-terdecies | sessione DB, su richiesta di Tid | Commit dei blocchi 10b-3 e 10b-4 | §27 | 9-sexagies-duodecies |
+| 9-sexagies-terdecies | ✅ sessione DB, su richiesta di Tid | Commit dei blocchi 10b-3 e 10b-4 (`148ec4eb20`, 2026-11-08) | §27 | 9-sexagies-duodecies |
+| 9-sexagies-quaterdecies | ✅ sessione DB | Giro 10c preparato: riverifica, sette nodi, tre blocchi | §28 | 9-sexagies-terdecies |
+| 9-sexagies-quindecies | ✅ Tid | Nodi N1-N7 come da proposta, via al giro 10c (2026-11-08) | §28.4 | 9-sexagies-quaterdecies |
+| 9-sexagies-sexdecies | ✅ sessione DB | Giro 10c scritto e provato (tre blocchi; N7 fermo, N7-bis) | §28.5-28.7 | 9-sexagies-quindecies |
+| 9-sexagies-septdecies | ✅ Tid | Apply del giro 10c su dbdev e scratch, pgTAP verdi (2026-11-08) | §28.10 | 9-sexagies-sexdecies |
+| 9-sexagies-novodecies | ✅ Tid | Fase post del provisioning su dbdev: `zeroerp_job` ha l'EXECUTE sulla procedura nuova (2026-11-08) | §28.11 | 9-sexagies-septdecies |
+| 9-sexagies-vicies-semel | ✅ Tid | N7-bis (a); le scelte di §27.4 e §28.6 (2026-11-08) | §28.11 | 9-sexagies-septdecies |
+| 9-sexagies-vicies-bis | sessione DB, **in attesa del via di Tid** | Blocco 10c-4: overlap in `jsonb` con il CSV; via `p_cleanup_column` dalla firma; `fn_name_from_template` idempotente, col censimento dei nomi vivi | §28.11 | 9-sexagies-vicies-semel |
+| 9-sexagies-vicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 10c (2026-11-08, non pushato) | §28 | 9-sexagies-septdecies |
+| 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
@@ -172,8 +191,8 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** le scelte di §27.4, da guardare (§26.6 ok, 2026-11-08). **Da committare:** i blocchi 10b-3 e
-10b-4 (changeSet, CSV, pgTAP, doc, questo brief): applicati, pgTAP verdi. Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
+**Decisioni aperte di Tid:** nessuna (§28.11, 2026-11-08).
+**Da committare:** nulla del giro 10c: committato (2026-11-08). I blocchi 10b-3 e 10b-4 sono in `148ec4eb20`. I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
 (`cdc563dedb`, 2026-11-08). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
 è committato (`d8492eeb77`, 2026-11-08), `-65` compreso, che è ancora da applicare. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
@@ -3977,7 +3996,7 @@ nuovi), `dbops/test-lock-columns-convergenza` (30: il 23 con la regola nuova, il
 `vendite/test-event-log-append-only`, `vendite/test-event-log-deriva-scope`, `config/test-credenziale-login-v1`,
 `config/test-credenziale-login-tempo-v1`: leggono il risolutore invece della funzione ritirata.
 
-### 27.4 Le scelte dentro i blocchi (da guardare, Tid)
+### 27.4 Le scelte dentro i blocchi (✅ decise da Tid, 2026-11-08: vedi §28.11)
 
 1. **Una regola CLEANUP_AT per tabella anche nel runner.** Prima il runner applicava in ordine tutte quelle che coprivano
    la tabella, la `*all` compresa; il trigger ne prendeva una. Fatto datato (dry run prima/dopo, scratch e dbdev,
@@ -4049,4 +4068,205 @@ Letto sui due database (sessione DB, sola lettura, 2026-11-08): gli undici chang
 `dbops.fn_cleanup_at_params` non c'è più, nessuna regola porta `cleanup_column`, `trg_domini_task_a10_lock_columns_upd` è
 montato. Le scelte di §26.6 sono ok (Tid: il via era su tutto). **Il giro 10b è chiuso**, da committare; restano da
 guardare le scelte di §27.4. Le schede auto-generate e gli indici di `dbops` e `script` si rigenerano col prossimo giro
-della doc.
+della doc. **Committato** (`148ec4eb20`, 2026-11-08, non pushato).
+
+## 28. Giro 10c — DELETE_BLOCK, guard utility, overlap: preparazione (2026-11-08)
+
+Difetti del giro (§8): D19, D33, D34, D30, D59, Q14 ⑪, ⑫, ⑬, R3; la regola della Q3 (§2.3) per DELETE_BLOCK e guard
+utility. Via di Tid alla preparazione: «poi riparti», «punto successivo» (2026-11-08). Corpi letti dal catalogo dello
+scratch (2026-11-08, dopo l'apply del 10b).
+
+### 28.1 La riverifica
+
+| # | Esito | Sul corpo di oggi |
+| --- | --- | --- |
+| D19 | ✅ confermato, ⚠️ precisato | Il nome di default `trg_%s_a10_delete_block_dlt` è composto con `format` in due posti (runner e `fn_apply_delete_block_trigger`), senza `fn_name_from_template`: una tabella lunga fa troncare il nome, il controllo per nome non lo trova e il giro dopo prende 42710. Il `NULLIF` nel runner oggi c'è; il runner passa all'apply il `trigger_name` grezzo |
+| D33 | ✅ confermato | Il runner legge solo `enabled`, riconosce il trigger dal nome, non toglie niente: riga spenta o cancellata, `guc_key` o `trigger_name` cambiati non arrivano al trigger |
+| ⑪ | ✅ confermato | `fn_apply_delete_block_trigger` crea `AFTER DELETE`; tutti i trigger vivi della funzione sono `AFTER` (fatto datato: otto, tutti righe del registro) |
+| D34 | ✅ confermato | `fn_apply_automazione_guard_utility_tipo_ruolo` legge solo `enabled`, `DROP TRIGGER IF EXISTS` sul nome di oggi; nessun audit, il dry run non dice niente |
+| D30 | ✅ confermato, ⚠️ precisato | L'apply filtra `LIKE '%_soggetto_ruolo_id'` e scarta la forma senza prefisso; colonne inesistenti saltate senza traccia. `script.trgfn_guard_utility_tipo_ruolo_by_cols` è generico (due argomenti, qualunque nome): il filtro non viene dal guard. Il seed non scrive più dal 2026-08-18 (è una diagnosi con un NOTICE), ma ha lo stesso filtro |
+| ⑬ | ✅ confermato, ⚠️ precisato | Il guard utility non è in `dbops.processi`: lo chiama solo `ci_apply/20250627-31` (seed + apply), che non è `runAlways` e non si riscrive (§28.2 N5). Gli altri runner girano due volte da zero: da quel file e dalla catena dei processi (`ci_apply/20260926-10`, runAlways) |
+| D59 | ✅ confermato | In `fn_apply_automazione_overlap` una colonna di chiave assente si salta in silenzio e il vincolo nasce con una chiave più corta |
+| ⑫ | ✅ confermato, ⚠️ precisato | Nessuna gestione del `23P01`: dati sovrapposti fermano il giro intero. La regola si dà per applicata con **qualunque** `EXCLUDE` della tabella che nomina la colonna del periodo (`v_any_exclusion`), e il nome del vincolo devia su `_c` se esiste una relazione omonima |
+| R3 | ✅ confermato | `ci_apply/20260205-41` (runOnChange, «il corpo si modifica in questo file») elenca ancora `dbops.fn_audit_begin` e `fn_audit_end`, che non esistono; anche `scripts/sql/provision_zeroerp.sql` |
+| **nuovo** | ⚠️ trovato | `dbops.automazione_overlap` **non ha un CSV**: le sue righe le scrivono `INSERT`/`UPDATE` di `80_data` (`20260602-10`, `-22`, `20260626-04`, `20260928-42`, `20261028-30`), contro linee-guida-sql §11.2 e la regola «una tabella, un CSV» degli altri registri `automazione_*` |
+
+### 28.2 I nodi (decisioni di Tid)
+
+* **N1 — la Q3 su DELETE_BLOCK e guard utility.** Come per i lock (giro 10a): il trigger si riconosce dalla funzione e
+  dagli argomenti; il runner porta il vivo all'atteso — riga spenta o cancellata → **TOGLIE**; argomenti, nome o momento
+  diversi → **RIGENERA**; un trigger della funzione che nessuna riga dichiara → il runner **si ferma** e lo nomina, non lo
+  cancella (stessa regola del lock scritto a mano). Una funzione delle divergenze per registro, letta dal runner e da un
+  pgTAP su tutto il database (presidio). **Proposta:** sì, nella forma dei lock.
+* **N2 — ⑪, il momento.** Il generatore crea `BEFORE DELETE … FOR EACH ROW`; un `AFTER` vivo è difforme e si rigenera
+  (N1). Il nome resta `a10` (zona dei guard, ora vera). **Proposta:** sì.
+* **N3 — D19, il nome di default.** In una sede sola, con `fn_name_from_template('trg_{table}_a10_delete_block_dlt')`;
+  il nome serve solo a creare, il riconoscimento è dalla funzione (N1). Stessa forma per il guard utility, che già la usa.
+* **N4 — D30, il filtro.** **Proposta:** il filtro esce (il guard è generico, il registro decide quale colonna); una
+  colonna assente → audit `WARN` `COLUMN_MISSING`; il dry run scrive `DRYRUN`, il giro vero `OK`. Lo stesso nel seed. Le
+  righe di oggi senza prefisso sono spente (fatto datato), quindi niente nasce senza una decisione.
+* **N5 — ⑬, il processo.** Nasce `automations_guard_utility` in `dbops.processi` (`ci_ordine` 75, fra delete_block e
+  overlap), con il runner `dbops.fn_run_automations_guard_utility`, la procedura `maintenance.proc_automations_guard_utility_job`
+  e il job pgAgent come gli altri. `ci_apply/20250627-31` **non si tocca** (già eseguito, non runOnChange): continua a
+  chiamare seed e apply sul database da zero, una volta, come fa con tutti gli altri runner che poi la catena dei processi
+  rilancia; con la convergenza (N1) il secondo giro non cambia niente. Alternativa: riscriverlo (ha `validCheckSum: ANY`),
+  che è un'eccezione alla regola dei changelog già mergiati e la decide Tid. **Proposta:** non toccarlo, dichiarato.
+* **N6 — D59 e ⑫, l'overlap.** Ogni colonna di chiave deve esistere, altrimenti `WARN` `KEY_COLUMN_MISSING` e niente
+  vincolo; ogni `ADD CONSTRAINT` in un blocco `EXCEPTION WHEN exclusion_violation`: `WARN` `DATI_SOVRAPPOSTI` con le
+  coppie di id, e la regola dopo; la regola è applicata solo col **suo** vincolo (per nome), non con un qualsiasi
+  `EXCLUDE`; presidio: regola attiva senza il suo vincolo. Su una regola spenta il vincolo **non** si toglie da solo
+  (togliere un vincolo d'integrità è una decisione, non una convergenza): il presidio lo mostra. **Proposta:** sì.
+* **N7 — il CSV dell'overlap** (nuovo). **Proposta:** `automazione_overlap.csv` con il mirror `runOnChange`, come gli
+  altri registri; le righe dal catalogo di oggi, confrontate con i changeSet che le hanno scritte. I changeSet vecchi
+  restano (non si riscrivono); quelli che fanno `UPDATE` su colonne che il CSV riscrive diventano innocui.
+* **R3:** via i due nomi da `ci_apply/20260205-41` e da `provision_zeroerp.sql`; il pgTAP della postura li cerca già come
+  assenti (test 14-15).
+
+### 28.3 I blocchi
+
+* **10c-1 — DELETE_BLOCK:** D19, D33, ⑪ (N1-N3): divergenze, runner che converge, apply `BEFORE`, presidio.
+* **10c-2 — guard utility:** D30, D34, ⑬, R3 (N1, N4, N5): divergenze, runner nuovo, processo, procedura, job.
+* **10c-3 — overlap:** D59, ⑫ (N6), il CSV (N7).
+
+Ogni blocco si prova prima del successivo. **Numeri:** dal primo libero, `20261109-95` in poi (letti di nuovo subito
+prima di scrivere).
+
+Ricadute BE: da verificare al via — il processo nuovo compare nel panorama dei processi (§10 della guida delle
+automazioni), che il BE legge dal catalogo; nessun codice nuovo previsto oltre ai motivi d'audit.
+
+### 28.4 Il via (Tid, 2026-11-08)
+
+«Il via sui sette punti: come da proposta. Procedi.» N1-N7 come da proposta. Numeri dal primo libero: `20261109-95` …
+`-99`, poi `20261110-01` … `-06` (oltre il `-99` si passa al giorno dopo).
+
+### 28.5 Che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261109-95` | `dbops.fn_nome_oggetto_dichiarato(nome, template, schema, tabella)`: il nome di un oggetto che un registro dichiara riga per riga, in una sede (D19, N3), per DELETE_BLOCK, guard utility e overlap; idempotente (§28.6 punto 1) |
+| `20_code/dbops/20261109-96` | `dbops.fn_delete_block_divergenze(p_schemas)`: CREA, RIGENERA, TOGLIE, SCONOSCIUTO, sul modello dei lock (N1, N2) |
+| `20_code/dbops/20261109-97` | `fn_apply_delete_block_trigger`: **BEFORE DELETE** (⑪), nome dal BB, un omonimo si ricrea |
+| `20_code/dbops/20261109-98` | `fn_run_automations_delete_block`: converge (D33 con la Q3); si ferma con `E_DELETE_BLOCK` su un blocco che il registro non nomina; azioni d'audit CREA/RIGENERA/TOGLIE |
+| `20_code/dbops/20261109-99` | `dbops.fn_guard_utility_divergenze(p_exec_mode, p_schemas)`: CREA, RIGENERA, TOGLIE, COLONNA_MANCANTE, SCONOSCIUTO; nessun filtro sul nome della colonna (D30, D34, N4) |
+| `20_code/dbops/20261110-01` | `dbops.fn_run_automations_guard_utility`: il runner nuovo (⑬, N5), audit OK/DRYRUN e WARN COLUMN_MISSING, si ferma con `E_GUARD_UTILITY` |
+| `20_code/dbops/20261110-02` | `fn_apply_automazione_guard_utility_tipo_ruolo`: la porta storica chiama il runner (la chiama ancora `ci_apply/20250627-31`) |
+| `20_code/dbops/20261110-03` | `fn_seed_automazione_guard_utility_tipo_ruolo`: la diagnosi senza filtro sul nome (D30); COMMENT senza storia |
+| `20_code/maintenance/20261110-04` | `maintenance.proc_automations_guard_utility_job()`: DEFINER, search_path fissato, niente EXECUTE a PUBLIC |
+| `85_pgagent/20261110-05` | il job pgAgent `automations_guard_utility`, ogni notte alle 21:10 |
+| `20_code/dbops/20261110-06` | `fn_apply_automazione_overlap` (D59, ⑫, N6): KEY_COLUMN_MISSING, DATI_SOVRAPPOSTI (23P01, col dettaglio e lo SQLSTATE), NOME_OCCUPATO; il suo vincolo per nome; via `v_any_exclusion` e la variante `_c` |
+| `80_data` | `processi.csv`: riga 49 `automations_guard_utility` (ci_ordine 75); `codici_errore.csv` e `messaggi_errore.csv`: `E_GUARD_UTILITY` (TECNICO, id 1460) |
+| `90_end/ci_apply/20260205-41` (runOnChange) e `scripts/sql/provision_zeroerp.sql` | R3: via `fn_audit_begin`/`fn_audit_end` dalle porte riservate, e i commenti che le nominavano |
+
+pgTAP nuovi: `dbops/test-delete-block-convergenza-v1` (16), `dbops/test-guard-utility-convergenza-v1` (14),
+`dbops/test-overlap-regola-e-vincolo-v1` (9). Riscritto: `dbops/test-delete-block-audit-v1` (i nomi delle azioni).
+
+### 28.6 Le scelte dentro il giro (✅ decise da Tid, 2026-11-08: vedi §28.11)
+
+1. **Il BB del nome è idempotente, e `fn_name_from_template` no.** Trovato col test del nome lungo (D19):
+   `fn_name_from_template` accorcia con `left(…, 56) || '_' || hash`, e se il taglio cade su un `_` lascia un doppio
+   trattino basso; ripassato al template, il doppio si ripulisce e il nome cambia. Il BB prende com'è un nome che sta nei
+   63 caratteri, quindi chi confronta e chi crea dicono lo stesso nome. `fn_name_from_template` non l'ho toccato (cambiare
+   la sua uscita cambierebbe i nomi di oggetti vivi): è nel residuo (§28.9).
+2. **Per togliere un blocco o un guard si spegne la riga, non la si cancella.** Un trigger della funzione senza nessuna
+   riga del registro è SCONOSCIUTO e ferma il giro (N1): una riga cancellata e un trigger scritto a mano non si
+   distinguono. È la regola dei lock («enabled = false se il blocco va tolto»).
+3. **Le righe di un altro `exec_mode`** del guard utility lasciano la tabella fuori dal confronto (come i lock).
+4. **Il dettaglio dei dati sovrapposti è la prima coppia**, quella che PostgreSQL mette nel `DETAIL` del 23P01 (le
+   chiavi in conflitto), non l'elenco di tutte le coppie: calcolarle tutte vorrebbe dire riscrivere chiavi ed espressioni
+   del registro in un self-join. Chi guarda l'audit trova la tabella, il vincolo e la prima coppia.
+5. **Il UNIQUE … WITHOUT OVERLAPS sul periodo resta una forma valida** della regola overlap (è la forma temporale nativa);
+   un EXCLUDE estraneo no.
+6. **La porta storica del guard utility resta e chiama il runner** (N5: `ci_apply/20250627-31` non si riscrive); il
+   seed resta, come diagnosi.
+7. **Un codice nuovo, `E_GUARD_UTILITY`**, come `E_LOCK_COLUMNS` ed `E_DELETE_BLOCK` per i runner sorelle.
+
+### 28.7 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase, le righe nuove dei tre CSV, `BEGIN … ROLLBACK`)
+
+* Andata e ritorno passano su scratch e dbdev; le preCondition passano. Il blocco 10c-1 è stato provato anche da solo
+  prima del 10c-2.
+* Subito dopo l'SQL, prima dei runner, gli otto blocchi di DELETE di oggi sono RIGENERA (sono AFTER): li rigenera il
+  primo giro delle automazioni. Il guard utility non ha divergenze.
+* `CALL maintenance.proc_automations_guard_utility_job()`: una riga ok in `maintenance.job_run_log` sotto il codice del
+  processo.
+* pgTAP, con l'SQL e i due runner (delete_block e guard utility) dopo la riga `BEGIN;`: verdi i quattro del giro su
+  scratch e dbdev. Tutta `dbops/` e i pgTAP che nominano overlap, guard utility, DELETE_BLOCK o le porte dell'audit,
+  sullo scratch: otto rossi, sette uguali senza il giro (si lanciano come app; già in §26.7 e §27.5); il rosso nuovo è il
+  test 7 di `dbops/test-processi-convergenza-ci` (il processo nuovo non ha ancora girato su questo database), atteso
+  fino al primo giro.
+* Guardrail verdi.
+
+### 28.8 Per Tid
+
+1. **Apply** di `20261109-95` … `-99` e `20261110-01` … `-06`, dei tre CSV (`processi.csv`, `codici_errore.csv`,
+   `messaggi_errore.csv`), di `ci_apply/20260205-41` (runOnChange) e del job pgAgent, su dbdev e scratch.
+2. **`make db-ci-apply`** (o il giro delle automazioni): rigenera BEFORE gli otto blocchi di DELETE e fa girare il
+   processo nuovo, che serve al test 7 di `test-processi-convergenza-ci`.
+3. **Provisioning, fase post, su dbdev** (`scripts/sql/provision_zeroerp.sql`): dà a `zeroerp_job` l'EXECUTE sulla
+   procedura nuova; senza, il job notturno pgAgent fallisce per permesso. Sullo scratch lo fa `ci-local.sh`.
+4. **pgTAP come app:** `dbops/test-delete-block-convergenza-v1`, `dbops/test-delete-block-audit-v1`,
+   `dbops/test-guard-utility-convergenza-v1`, `dbops/test-overlap-regola-e-vincolo-v1`,
+   `dbops/test-processi-convergenza-ci`, `dbops/test-registri-append-only-postura-v1`, `dbops/test-processo-vivo-v1`,
+   `dbops/test-processi-accensione-v1`, `dbops/test-marcatori-automazione-senza-esecutore-v1`,
+   `anagrafiche/create-cliente`, `anagrafiche/test-simula-subentro`.
+5. Le scelte di §28.6, e il nodo N7-bis qui sotto.
+
+**Ricadute BE:** il codice nuovo `E_GUARD_UTILITY` va nella rigenerazione delle politiche d'errore
+(`backend/apps/core/services/error_policies_generated.py`, come BE6); il processo nuovo compare nel panorama dei
+processi, che il BE legge dal catalogo (nessun codice da scrivere).
+
+### 28.8-bis Doc (2026-11-08)
+
+Scritte da un agente su brief della sessione DB, rilette dalla sessione. Nuove: `dbops/manual/fn_nome_oggetto_dichiarato.md`,
+`fn_delete_block_divergenze.md`, `fn_guard_utility_divergenze.md`, `fn_run_automations_guard_utility.md`,
+`maintenance/manual/proc_automations_guard_utility_job.md`. Riscritte: le pagine `manual/` di DELETE_BLOCK (registro,
+apply, runner, job, `script.trgfn_delete_block_by_guc`), del guard utility (registro, apply, seed), dell'overlap
+(registro, apply, job), `fn_name_from_template.md` (non idempotente), `fn_trigger_exists_by_name.md` (il runner
+DELETE_BLOCK non la usa più); `guide/automazione-db.md` (§1.4, §4.3, §4.4, §4.6, §5.4, §8, §9.1, §9.3) e
+`tutorial/framework-automazione-db.md` (la catena e le 21:10). I link alle cinque funzioni nuove si attivano con la
+rigenerazione della doc auto-generata, dopo l'apply.
+
+### 28.9 Il nodo N7-bis: il CSV dell'overlap non si può fare così com'è (da decidere, Tid)
+
+N7 (il CSV di `dbops.automazione_overlap`) è deciso, ma scrivendo si ferma su un fatto tecnico: `key_columns` e
+`key_expressions` sono `text[]`, e Liquibase non sa caricare un array da un CSV (il driver lo lega come stringa e
+PostgreSQL lo rifiuta; è la ragione per cui questa è l'unica tabella di configurazione senza CSV). Strade:
+(a) le due colonne diventano `jsonb` (array JSON): il CSV le carica come `params` delle regole, l'unico lettore è
+`fn_apply_automazione_overlap`, e un CHECK ne fissa la forma (array di stringhe); (b) una colonna sola, un testo con le
+colonne separate da virgola: è un array travestito da testo, e non regge le espressioni (che contengono virgole);
+(c) il CSV con una colonna `COMPUTED` (SQL in una cella): fragile. **Proposta: (a)**, in un blocco 10c-4, con il CSV
+ricostruito dalle sette righe di oggi confrontate con i cinque changeSet che le hanno scritte. Non è nel codice del giro.
+
+**Residuo:** `dbops.fn_name_from_template` non è idempotente (§28.6 punto 1): va guardato con D17-bis in
+`framework-automazione-db-migliorie` §2.4, perché cambiarne l'uscita cambia i nomi di oggetti vivi.
+
+### 28.10 Dopo l'apply (2026-11-08)
+
+Tid ha applicato il giro 10c su dbdev e scratch e ha lanciato i pgTAP: verdi. Letto sui due database (sessione DB, sola
+lettura, 2026-11-08): gli undici changeSet sono nel `databasechangelog`; il processo `automations_guard_utility` e il
+codice `E_GUARD_UTILITY` ci sono; nessuna divergenza né per DELETE_BLOCK né per il guard utility; gli otto blocchi di
+DELETE sono `BEFORE` (tgtype 11); il processo nuovo ha righe riuscite in `maintenance.job_run_log`. ⚠️ Su dbdev
+`zeroerp_job` non ha l'EXECUTE su `maintenance.proc_automations_guard_utility_job()` (sullo scratch sì): manca la fase post
+del provisioning, e fino ad allora il job notturno pgAgent fallisce per permesso. **Il giro 10c è chiuso** salvo il nodo
+N7-bis (il CSV dell'overlap, §28.9), da committare.
+
+### 28.11 Le decisioni di Tid sulle scelte e sul nodo N7-bis (2026-11-08)
+
+* **Il permesso su dbdev:** non con un GRANT a mano (linee-guida-sql §11.6 e §11.9) ma con la fase post del
+  provisioning, da superuser: `sudo -u postgres psql -d zeroerp -v fase=post < scripts/sql/provision_zeroerp.sql`
+  (l'ambiente di dbdev è già scritto). Tocca a Tid.
+* **N7-bis: (a).** `key_columns` e `key_expressions` di `dbops.automazione_overlap` diventano `jsonb` (array di
+  stringhe, con un CHECK sulla forma), e il registro prende il suo CSV col mirror. Blocco 10c-4.
+* **§27.4**, una domanda alla volta: 1 una regola di scadenza per tabella ✅; 2 il trigger alla nascita decide sempre lui
+  (NULL sopra il valore del chiamante) ✅; **3 `p_cleanup_column` esce dalla firma** di `fn_apply_cleanup_at` e
+  `fn_purge_cleanup_expired` (Tid: «non possiamo lasciare una firma basata su un campo non più esistente; diverso è
+  quando aggiungiamo un campo alla firma» — il parametro era la manopola ritirata, non la colonna `cleanup_at`, che resta);
+  4 il login scrive adesso + ttl, presidiato dal test ✅; 5 prima la scadenza, poi il purge ✅; 6 due test per il
+  lucchetto fuori ambito ✅.
+* **§28.6:** **1 `fn_name_from_template` si corregge ora** (non al residuo): il doppio trattino basso dell'accorciamento
+  si toglie all'origine, con il censimento dei nomi vivi che cambierebbero e i runner che li rigenerano; 2 per togliere
+  un blocco o un guard si spegne la riga ✅; 3 l'`exec_mode` del guard utility come i lucchetti ✅; 4 la prima coppia dei
+  dati sovrapposti basta ✅; 5 il `WITHOUT OVERLAPS` sul periodo vale ✅; 6 le due porte del guard utility restano (Tid
+  aveva chiesto se un changeSet nuovo potesse ritirarle: no, perché `ci_apply/20250627-31` le chiama per nome su ogni
+  database da zero, e la CI si fermerebbe; riscrivere quel file sarebbe un'eccezione, scartata) ✅; 7 `E_GUARD_UTILITY` ✅.
+* **Il blocco 10c-4** porta quindi tre lavori: l'overlap in `jsonb` col CSV; il ritiro di `p_cleanup_column` (DROP e
+  CREATE delle due funzioni, il runner del cleanup e i pgTAP che le chiamano); `fn_name_from_template` idempotente.

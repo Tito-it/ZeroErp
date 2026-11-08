@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_seed_automazione_guard_utility_tipo_ruolo`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_apply_automazione_guard_utility_tipo_ruolo](/dbzero/dbops/funzioni/fn_apply_automazione_guard_utility_tipo_ruolo) — chi monta il guard sulle righe del catalogo
+> * [dbops.fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility) — il runner che monta il guard sulle righe del catalogo
+> * [dbops.fn_apply_automazione_guard_utility_tipo_ruolo](/dbzero/dbops/funzioni/fn_apply_automazione_guard_utility_tipo_ruolo) — la porta storica che la segue nel primo giro di `ci_apply`
 > * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — l'ambito degli schemi da guardare
 > * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — le esclusioni per tabella dell'ambito
 >
@@ -27,20 +28,20 @@ e che non sono nel catalogo `dbops.automazione_guard_utility_tipo_ruolo`, e le e
 `NOTICE`. ⛔ Nonostante il nome, **non scrive** nel catalogo: il catalogo è un mirror del CSV, e
 chi legge la diagnosi decide se aggiungere la riga al CSV.
 
-La chiama la passata `ci_apply` del rilascio, prima dell'apply.
+La chiama il primo giro della passata `ci_apply` del rilascio, prima della porta storica del guard.
 
 ---
 
 ### Quando una tabella qualifica
 
 Una tabella ordinaria degli schemi dell'ambito (`p_schemas`, o l'ambito risolto se è vuoto), lo
-schema `storico` escluso, che ha la colonna `utility_id` e una colonna del soggetto-ruolo della
-forma `<prefisso>_soggetto_ruolo_id`. Cerca prima una colonna così che sia una FK verso
-`anagrafiche.soggetti_ruoli`, poi una colonna qualsiasi con quel nome; fra più candidate sceglie
-la prima in ordine alfabetico.
+schema `storico` escluso, che ha la colonna `utility_id` e una colonna del soggetto-ruolo. Cerca
+prima una colonna con una FK verso `anagrafiche.soggetti_ruoli`, qualunque nome abbia; in
+mancanza, una colonna che si chiami `soggetto_ruolo_id` o `<prefisso>_soggetto_ruolo_id`. Fra più
+candidate sceglie la prima in ordine alfabetico.
 
-Una colonna `soggetto_ruolo_id` senza prefisso non qualifica: è la stessa forma che l'apply
-accetta.
+Nessun filtro sul prefisso: il guard è generico, e il runner accetta la colonna che la riga del
+registro dichiara.
 
 ---
 
@@ -76,6 +77,9 @@ La funzione non solleva codici suoi.
   presenti.
 * 2026-08-18 — smette di scrivere e diventa una diagnosi: il catalogo passa al CSV
   (`brief-db-automazione-guard-utility-righe-sfuggite`).
+* 2026-11-08 — esce il filtro sul nome della colonna: qualifica anche `soggetto_ruolo_id` senza
+  prefisso, e la FK verso `anagrafiche.soggetti_ruoli` vale qualunque nome abbia la colonna
+  (`20261110-03`, `brief-db-revisione-dbops`, giro 10c).
 
 ---
 

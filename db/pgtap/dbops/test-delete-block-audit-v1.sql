@@ -14,7 +14,8 @@
 --
 -- Test: dbops.fn_run_automations_delete_block lascia traccia anche nel giro vero
 --
--- ChangeSet: 20_code/dbops/20261104-52
+-- ChangeSet: 20_code/dbops/20261104-52; le azioni si chiamano CREA/RIGENERA/TOGLIE dal
+--   20261109-98 (giro 10c, blocco 10c-1: il runner converge)
 -- Brief: brief-db-revisione-dbops, D41 (giro 1, blocco 1c)
 --
 -- ⛔ IL DIFETTO CHE CHIUDE. Il dry run scriveva in dbops.audit_log, il giro
@@ -32,7 +33,7 @@
 --    3 : il dry run non crea il trigger
 --   IL GIRO VERO
 --    4 : il trigger c'e'
---    5 : ⭐ e c'e' una riga OK CREATE_TRIGGER (prima nessuna)
+--    5 : ⭐ e c'e' una riga OK CREA (prima nessuna)
 --    6 : ⭐ la tabella sparita lascia WARN TABLE_NOT_FOUND anche qui (prima
 --        nessuna riga)
 --    7 : un secondo giro, col trigger gia' presente, non registra niente: non
@@ -82,7 +83,7 @@ SELECT ok(EXISTS (
        AND a.function_name = 'dbops.fn_run_automations_delete_block'
        AND a.status = 'DRYRUN' AND a.dry_run
        AND a.params ->> 'table'  = 'dbops.tst_delete_block_audit'
-       AND a.params ->> 'action' = 'DRYRUN_CREATE_TRIGGER'),
+       AND a.params ->> 'action' = 'DRYRUN_CREA'),
     '1. dry run, tabella vera: una riga DRYRUN, il trigger sarebbe creato');
 
 SELECT ok(EXISTS (
@@ -115,8 +116,8 @@ SELECT ok(EXISTS (
        AND a.status = 'OK' AND NOT a.dry_run
        AND a.params ->> 'table'   = 'dbops.tst_delete_block_audit'
        AND a.params ->> 'trigger' = 'trg_tst_delete_block_audit_a10_delete_block_dlt'
-       AND a.params ->> 'action'  = 'CREATE_TRIGGER'),
-    '5. giro vero: il trigger creato lascia una riga OK CREATE_TRIGGER');
+       AND a.params ->> 'action'  = 'CREA'),
+    '5. giro vero: il trigger creato lascia una riga OK CREA');
 
 SELECT ok(EXISTS (
     SELECT 1 FROM dbops.audit_log a

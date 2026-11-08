@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# maintenance.proc_automations_guard_utility_job: la procedura del processo automations_guard_utility
+#   (Q14 ⑬, N5), come le sorelle: SECURITY DEFINER, search_path fissato, nessun EXECUTE a PUBLIC; lo da' a
+#   zeroerp_job il provisioning (fase post). Il processo e' la riga 49 di 80_data/sql/dbops/processi.csv, il
+#   job pgAgent e' 85_pgagent/20261110-05. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-2 (§28).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261110-04-create-proc-automations-guard-utility-job-mctit.yaml
+
+  - changeSet:
+      id: 20261110-04-create-proc-automations-guard-utility-job
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_automations_guard_utility_job: la procedura del processo nuovo. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-2 (§28).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'maintenance' AND p.proname = 'proc_automations_guard_utility_job'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_run_automations_guard_utility(text,text[],boolean)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE PROCEDURE maintenance.proc_automations_guard_utility_job()
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
+              AS $procedure$
+                BEGIN
+                  -- Scopo: il job del guard utility/tipo ruolo, nella catena dei processi strutturali
+                  --   (dbops.processi, ci_ordine 75: dopo il blocco delle cancellazioni, prima dell'overlap).
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'automations_guard_utility',
+                    p_stepname := 'run_automations_guard_utility',
+                    p_sql      := 'SELECT dbops.fn_run_automations_guard_utility(''SCHEDULED'', NULL, false);',
+                    p_lock_key := hashtext('automations_guard_utility')
+                  );
+                END;
+              $procedure$;
+
+              -- DEFINER: senza questa revoca chiunque lancerebbe l'automazione come proprietario.
+              --   L'EXECUTE a zeroerp_job lo da' il provisioning (fase post), come alle sorelle.
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_guard_utility_job() FROM PUBLIC;
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_guard_utility_job() IS
+              'Job automations_guard_utility: chiama dbops.fn_run_automations_guard_utility(''SCHEDULED'', NULL, false) dentro maintenance.fn_run_and_log, con lock e giornale. SECURITY DEFINER del proprietario, search_path fissato; l''EXECUTE va solo a zeroerp_job (provisioning). Nella catena dei processi strutturali di ci_apply (dbops.processi, ci_ordine 75) e di notte da pgAgent.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP PROCEDURE IF EXISTS maintenance.proc_automations_guard_utility_job();
