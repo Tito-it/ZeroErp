@@ -17,7 +17,8 @@
 > * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — i campi `user_insert`/`user_update`
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il `tx_id` su ogni scrittura
 > * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — lo snapshot storico
-> * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) / [dbops.fn_cleanup_at_params](/dbzero/dbops/funzioni/fn_cleanup_at_params) — la scadenza scritta all'INSERT
+> * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) — la scadenza scritta all'INSERT
+> * [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola) — la regola di scadenza di una tabella, la stessa per l'INSERT e per il job
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) / [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup) — il cleanup in batch
 > * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — l'esito delle automazioni
 >
@@ -340,7 +341,8 @@ Entrambe le tabelle di audit condividono il campo `cleanup_at TIMESTAMPTZ`
 che indica quando il record può essere rimosso. Il valore non viene
 impostato all'inserimento ma calcolato in batch dal framework di
 automazione [`fn_apply_cleanup_at()`](/dbzero/dbops/funzioni/fn_apply_cleanup_at), che applica un TTL configurato
-in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a partire dalla colonna `data_insert`.
+in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a partire dalla colonna base della regola
+(la tabella sotto la indica per ogni registro).
 
 | Tabella                  | Retention  | Regola override     | Note                                       |
 | ------------------------ | ---------- | ------------------- | ------------------------------------------ |
@@ -380,8 +382,8 @@ I **registri** di vendite non aspettano il batch:
 `cleanup_at` lo scrive **all'`INSERT`** il trigger generico
 [`dbops.trgfn_cleanup_at_alla_nascita`](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita)
 (`trg_<tabella>_m50_cleanup_at_ins`), leggendo termine **e colonna base** dalla stessa
-regola che userebbe il job, via
-[`dbops.fn_cleanup_at_params`](/dbzero/dbops/funzioni/fn_cleanup_at_params).
+regola che usa il job, via
+[`dbops.fn_cleanup_at_regola`](/dbzero/dbops/funzioni/fn_cleanup_at_regola).
 Su un registro l'UPDATE notturno riscriverebbe `data_update`/`user_update` di ogni riga
 fresca e passerebbe dai trigger di `UPDATE`; alla nascita la riga sa già quando scade. Il
 batch resta per il **pregresso** (righe a `NULL`), una volta.
@@ -410,9 +412,10 @@ ne eredita la scadenza.
 La manutenzione è gestita dal framework generico di automazione tramite
 due regole in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl):
 
-1. **`CLEANUP_AT`** (id=11, default 30gg; override id=13/14 per le tabelle
-   audit): calcola `cleanup_at = data_insert + TTL` per ogni riga con
-   `cleanup_at IS NULL`
+1. **`CLEANUP_AT`** (id=11, default 30gg; le regole delle tabelle sopra la
+   sostituiscono sulla loro tabella): calcola `cleanup_at` come colonna base più
+   TTL per ogni riga che non ha ancora una scadenza e ha la colonna base
+   valorizzata
 2. **`CLEANUP_PURGE`** (id=12): elimina in batch (5000 righe) i record
    con `cleanup_at <= now()`
 

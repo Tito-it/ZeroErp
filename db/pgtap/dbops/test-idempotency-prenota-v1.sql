@@ -134,8 +134,9 @@ SELECT ok(
     '4) idempotency_keys e request_log sono nello scope delle automazioni (il purge le vede)');
 
 SELECT results_eq(
-    $q$SELECT (p ->> 'ttl_days')::int, p ->> 'base_ts_column'
-         FROM dbops.fn_cleanup_at_params('dbops', 'idempotency_keys') p$q$,
+    $q$SELECT r.ttl_days, r.base_ts_column
+         FROM dbops.fn_cleanup_at_regola('dbops', 'idempotency_keys') r
+        WHERE r.motivo_salto IS NULL$q$,
     $q$VALUES (1, 'data_insert'::text)$q$,
     '5) La regola di idempotency_keys: un giorno da data_insert');
 

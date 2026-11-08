@@ -32,10 +32,9 @@
 #   `dbops.audit_log` e `dbops.error_log` raccontano ciò che l'applicazione fa
 #   e sbaglia. Il ruolo raccontato li legge e li aggiunge, non li riscrive né
 #   li cancella: SELECT, INSERT — e REVOKE di UPDATE, DELETE.
-#   La modalità sessione dell'audit (`fn_audit_begin` → `fn_audit_end`) è un
-#   UPDATE del registro: riservata a chi possiede la tabella (migratore, job).
-#   L'app usa `fn_audit_log_once`. Le due funzioni hanno `=X` (PUBLIC): la
-#   revoca dell'EXECUTE va a PUBLIC e all'app insieme, o non toglie niente.
+#   Si scrive con `fn_audit_log_once`: la modalità sessione (`fn_audit_begin`
+#   → `fn_audit_end`, un UPDATE del registro) è ritirata, e il 2026-11-08
+#   (brief-db-revisione-dbops, giro 10c, R3) è uscita anche da questo elenco.
 #   Il changeSet che agisce subito su dev è `90_end/20260911-09`; il pgTAP che
 #   pinna l'esito è `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`.
 #
@@ -221,17 +220,15 @@ databaseChangeLog:
                   'dbops.audit_log',
                   'dbops.error_log'
                 ];
-                -- ⭐ Porte RISERVATE a chi possiede la tabella: la modalità
-                --   sessione dell'audit (begin/end) è un UPDATE del registro.
-                --   L'app usa fn_audit_log_once. Voci `schema.funzione`, tutti
-                --   gli overload; la revoca va anche a PUBLIC, che ha `=X`.
-                --   ⭐ Dal 2026-09-24 anche la primitiva del ledger di magazzino e il
+                -- ⭐ Porte RISERVATE a chi possiede la tabella. Voci `schema.funzione`,
+                --   tutti gli overload; la revoca va anche a PUBLIC, che ha `=X`.
+                --   (La modalità sessione dell'audit, fn_audit_begin/fn_audit_end, non c'è
+                --   più: l'app e i job scrivono con fn_audit_log_once.)
+                --   ⭐ Dal 2026-09-24 la primitiva del ledger di magazzino e il
                 --   ricalcolo del valore: l'app li raggiunge SOLO dai verbi
                 --   (fn_posta_inventario, fn_posta_rettifica, DEFINER), che applicano
                 --   registra_magazzino. Brief: brief-db-magazzino-verbi-con-permesso §2.3.
                 v_fn_riservate text[] := ARRAY[
-                  'dbops.fn_audit_begin',
-                  'dbops.fn_audit_end',
                   'magazzino.fn_scrivi_movimento',
                   'magazzino.fn_ricalcola_valore_giacenza',
                   -- ⭐ Dal 2026-09-28 (Lotto 3): lo storno; l'app ci arriva solo dai verbi.
@@ -241,7 +238,13 @@ databaseChangeLog:
                   --   arriva solo da vendite.fn_cambia_stato_ddt e vendite.fn_conferma_reso.
                   --   Brief: brief-db-magazzino-registro-anello-interno (P-5).
                   'vendite.fn_posta_ddt',
-                  'vendite.fn_posta_reso'
+                  'vendite.fn_posta_reso',
+                  -- ⭐ Dal 2026-11-08 la copia di un'edizione di workflow: INVOKER, la
+                  --   chiamano solo fn_fork_definizione e fn_nuova_versione_definizione,
+                  --   DEFINER e riservate all'app; da sola scriverebbe un'edizione
+                  --   intera senza i loro controlli. Era eseguibile da PUBLIC.
+                  --   Brief: brief-db-sorgente-documento-e-riga §7.3 (giro finale).
+                  'pratiche.fn_copia_definizione'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la

@@ -13,7 +13,6 @@
 > * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — il controllo con cui i runner riconoscono i trigger generati
 > * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — compone il nome che i runner cercano qui
 > * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — la usa per sapere se il trigger riconosciuto ha già il nome atteso
-> * [dbops.fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block) — il runner che riconosce i trigger solo per nome
 >
 > Guide:
 >
@@ -28,9 +27,10 @@ esistenza «per nome» dei runner delle automazioni: prima di creare un trigger 
 runner chiede se il nome del template c'è già.
 
 I runner di audit, `tx_id`, storico e regola del periodo non la usano: riconoscono il trigger dalla
-funzione. La usano il runner ATTIVO, che riconosce il trigger dagli argomenti e chiede qui solo se
-quello trovato ha già il nome atteso (se no lo rigenera), e il runner del blocco delle
-cancellazioni, che riconosce i trigger solo per nome.
+funzione. La usa il runner ATTIVO, che riconosce il trigger dagli argomenti e chiede qui solo se
+quello trovato ha già il nome atteso (se no lo rigenera). Il runner del blocco delle
+cancellazioni non la usa: riconosce il blocco dalla funzione e dall'argomento, con
+`dbops.fn_delete_block_divergenze`.
 
 ---
 
@@ -74,6 +74,8 @@ rigenera col nome atteso, e un secondo giro non ricrea niente.
 * 2026-11-08 — i runner di `tx_id`, audit, storico e regola del periodo non la usano più per
   decidere; ATTIVO la usa solo per il nome atteso: la strategia d'esistenza della regola esce
   (`20261109-68` … `-72`, brief-db-revisione-dbops D17).
+* 2026-11-08 — non la usa più nemmeno il runner del blocco delle cancellazioni, che converge col
+  registro (`20261109-98`, brief-db-revisione-dbops, giro 10c).
 
 ---
 

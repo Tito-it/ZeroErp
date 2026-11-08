@@ -1,5 +1,7 @@
 ## Documentazione Concettuale – Trigger Function `script.trgfn_default_emittente_fiscale`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > **Vedi anche**
 >
 **Tabelle su cui è montata (undici, dal 2026-09-15):**
@@ -36,8 +38,8 @@ tutte le tabelle montate la chiamano così) e:
 
 1. **valore esplicito** → non si tocca mai: una scelta dichiarata non si
    sovrascrive;
-2. **`SALTA_CON_SORGENTE`** e riga con `sorgente_tipo_id` + `sorgente_uid` →
-   non si tocca: l'emittente è quello del documento padre e lo mette il
+2. **`SALTA_CON_SORGENTE`** e riga con `sorgente_tipo_id` e una chiave del
+   documento d'origine (`sorgente_id` o `sorgente_uid`) → non si tocca: l'emittente è quello del documento padre e lo mette il
    `normalize` a valle (vedi «La regola della sorgente»);
 3. **GUC `app.current_user_id` vuota** → nessuno da cui dedurre:
    `LASCIA_NULL` esce, `SOLLEVA` alza `E_EMITTENTE_NON_RISOLTO`;
@@ -54,7 +56,7 @@ tutte le tabelle montate la chiamano così) e:
 | Indice | Valore | Descrizione |
 | ------ | ------ | ----------- |
 | `TG_ARGV[0]` | `'SOLLEVA'` \| `'LASCIA_NULL'` | **Obbligatorio.** Che cosa fare quando dalla sessione non si ricava niente: sollevare `E_EMITTENTE_NON_RISOLTO`, oppure lasciare NULL e far decidere chi viene dopo (un `normalize`, o il `NOT NULL`). |
-| `TG_ARGV[1]` | `'SALTA_CON_SORGENTE'` | Facoltativo. Se la riga porta `sorgente_tipo_id` **e** `sorgente_uid`, il default non scatta. Le due colonne si leggono da `to_jsonb(NEW)` in sola lettura: possono non esistere sulla tabella. |
+| `TG_ARGV[1]` | `'SALTA_CON_SORGENTE'` | Facoltativo. Se la riga porta `sorgente_tipo_id` **e** una chiave del documento d'origine (`sorgente_id` o `sorgente_uid`, quella del tipo), il default non scatta. Le colonne si leggono da `to_jsonb(NEW)` in sola lettura: possono non esistere sulla tabella, e una colonna che manca vale vuota. |
 
 Un argomento non ammesso (modo sconosciuto, terzo argomento, `TG_OP` diverso
 da `INSERT`) solleva **`E_TRIGGER_ARGOMENTI_INVALIDI`** (`TECNICO`) **al primo
@@ -107,6 +109,12 @@ che nasce da un altro documento eredita l'emittente di quello, non della
 sessione.* Non era un dettaglio d'implementazione della vecchia
 `trgfn_ddt_default_emittente`: era una regola, e il building block la conserva.
 
+⚠️ Il `normalize` della bolla eredita dall'**ordine**. Una bolla che nasce da
+un'altra provenienza (la bolla di riconsegna, che nasce dal reso) non trova lì
+il suo emittente: lo porta già chi la scrive (il verbo della riconsegna lo copia
+dalla bolla d'origine), e altrimenti lo prende dal billing account, nel ripiego
+del `normalize`.
+
 ---
 
 ### Il codice: `E_EMITTENTE_NON_RISOLTO`
@@ -155,3 +163,14 @@ una fixture **costruita** — tre aziende, un super admin, un BA — per i sei
 casi: default dall'operatore, esplicito non sovrascritto, attivo di sessione,
 sorgente che vince sulla sessione, admin globale senza emittente, GUC vuota,
 `LASCIA_NULL`, argomento sbagliato, e la revisione del preventivo (D3).
+
+---
+
+### Note di migrazione
+
+* 2026-11-06 — `SALTA_CON_SORGENTE` riconosce la provenienza da tipo e una
+  delle due chiavi del modello (`sorgente_id` o `sorgente_uid`), non più dal
+  solo `sorgente_uid` (`brief-db-sorgente-documento-e-riga`).
+
+---
+{% include-markdown "signature-core.md" %}

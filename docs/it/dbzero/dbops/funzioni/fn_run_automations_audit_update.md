@@ -26,11 +26,8 @@ AS $function$
       rel  regclass;
       has_du boolean;
       has_uu boolean;
-      col_ts   text;
-      col_user text;
       tmpl     text;
       trg_name text;
-      exist_strat text;
     BEGIN
 
       /*
@@ -73,28 +70,23 @@ AS $function$
             AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
           ORDER BY r.priority, r.id
         LOOP
-          exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 
-          col_ts   := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'AUDIT_TS',   COALESCE(rrule.params->>'audit_ts','data_update'));
-          col_user := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'AUDIT_USER', COALESCE(rrule.params->>'audit_user','user_update'));
-
-          SELECT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, col_ts)
-              , dbops.fn_col_exists(rtab.schema_name, rtab.table_name, col_user)
+          -- Le colonne di audit hanno nome fisso per contratto (linee-guida-sql
+          -- §7): script.trgfn_audit_data_user_generic le scrive per nome.
+          SELECT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'data_update')
+              , dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'user_update')
             INTO has_du, has_uu;
 
           IF has_du AND has_uu THEN
-            tmpl     := COALESCE(rrule.name_template,'trg_{table}_audit_data_user_upd');
+            tmpl     := rrule.name_template;
             trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
 
-            IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
-            OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'script','trgfn_audit_data_user_generic'))
-            OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
-                                              OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_audit_data_user_generic')))
+            IF NOT dbops.fn_trigger_exists_by_function(rel, 'script', 'trgfn_audit_data_user_generic')
             THEN
               IF p_dry_run THEN
 
                   PERFORM dbops.fn_audit_log_once(
-                  p_function_name => 'dbops.fn_run_automations',
+                  p_function_name => 'dbops.fn_run_automations_audit_update',
                   p_status        => 'DRYRUN',
                   p_rule_type     => 'AUDIT_UPDATE',
                   p_exec_mode     => p_exec_mode,
@@ -148,7 +140,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_audit_update(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Crea i trigger di audit INSERT OR UPDATE (timestamp/utente con JWT). ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
+IS 'Automazione AUDIT_UPDATE: monta script.trgfn_audit_data_user_generic (BEFORE INSERT OR UPDATE, utente dalla GUC app.jwt_user) sulle tabelle dell''ambito che hanno data_update e user_update, secondo le regole AUDIT_UPDATE di dbops.automation_rules_tbl. Le colonne di audit hanno nome fisso: il trigger le scrive per nome. Il trigger si riconosce dalla funzione, qualunque nome abbia; il nome di uno nuovo viene dal name_template della regola. In simulazione una riga DRYRUN per trigger in dbops.audit_log, firmata col proprio nome. Un guasto dell''ambiente (script.fn_sqlstate_di_ambiente) si scrive nel registro errori e si rilancia col suo SQLSTATE; i difetti di struttura escono col codice dell''automazione.';
 ```
 
 </div>

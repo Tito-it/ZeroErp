@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -221,6 +221,13 @@ l'annullo.
 
 Non esiste revisione come nei preventivi: se le condizioni cambiano, si cessa il
 contratto corrente e se ne crea uno nuovo.
+
+**Cancellare un contratto: solo la bozza vuota.** Un contratto si cancella solo se è in
+`DRAFT` e senza righe attive: è la regola di tutti i documenti di vendita, e la fa valere il
+database ([vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza)).
+Un contratto uscito dalla bozza si annulla o si cessa, non si cancella. E un contratto che è il
+**precedente** di altri contratti (`parent_contratto_id`) non si cancella nemmeno da bozza vuota:
+i successori perderebbero il riferimento da cui nascono.
 
 ### 3.2 Cosa succede alla transizione DRAFT → ATTIVO
 
@@ -700,6 +707,9 @@ Codici sollevati dal dominio contratti (registrati in `config.messaggi_errore`):
 
 | Codice                                         | ID  | HTTP | Quando                                                                                                                   |
 | ---------------------------------------------- | --- | ---- | ------------------------------------------------------------------------------------------------------------------------ |
+| `E_DELETE_DOC_NON_BOZZA` | 993 | 409 | Eliminazione di un contratto uscito dalla bozza: si annulla o si cessa |
+| `E_DELETE_DOC_CON_RIGHE` | 1451 | 409 | Eliminazione di una bozza con righe attive: si tolgono le righe o si annulla |
+| `E_DELETE_CONTRATTO_CON_SUCCESSIVI` | 1452 | 409 | Eliminazione di un contratto che è il precedente di altri contratti |
 | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`          | 450 | 422  | AGGIUNTA su articolo già presente nel listino fissato — usare OVERRIDE                                                   |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`       | 451 | 422  | Attivazione contratto senza listino e senza almeno una riga AGGIUNTA con prezzo valorizzato                              |
 | `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`  | 452 | 422  | ⛔ Ritirato il 2026-10-10: il pricing di un contratto fuori bozza lo ferma `E_DOC_CONDIZIONI_FUORI_BOZZA` (§6.1)         |

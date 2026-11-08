@@ -64,15 +64,17 @@
 | trg_template_flussi_a10_competenze_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'competenze_flussi', 'template_flusso_id', 'id', 'attivo')` |
 | trg_template_flussi_a10_default_definizione_ins | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_default_definizione()` |
 | trg_template_flussi_a10_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'flussi', 'template_flusso_id', 'id', 'attivo')` |
-| trg_template_flussi_a10_formule_tempo_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'formule_tempo', 'template_flusso_a_id', 'id', 'attivo')` |
-| trg_template_flussi_a10_guard_immutabile_iud | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()` |
-| trg_template_flussi_a10_guard_immutabile_iud | BEFORE | DELETE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()` |
+| trg_template_flussi_a10_formule_tempo_block_deact_upd_479290 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'formule_tempo', 'template_flusso_da_id', 'id', 'attivo')` |
+| trg_template_flussi_a10_formule_tempo_block_deact_upd_70546c | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'formule_tempo', 'template_flusso_a_id', 'id', 'attivo')` |
 | trg_template_flussi_a10_guard_immutabile_iud | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()` |
+| trg_template_flussi_a10_guard_immutabile_iud | BEFORE | DELETE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()` |
+| trg_template_flussi_a10_guard_immutabile_iud | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()` |
 | trg_template_flussi_a10_guard_modalita_esito_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()` |
 | trg_template_flussi_a10_guard_modalita_esito_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()` |
-| trg_template_flussi_a10_handler_flussi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
 | trg_template_flussi_a10_handler_flussi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
-| trg_template_flussi_a10_regole_generazione_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'regole_generazione', 'template_flusso_dest_id', 'id', 'attivo')` |
+| trg_template_flussi_a10_handler_flussi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
+| trg_template_flussi_a10_regole_generazione_block_deact_u_13410e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'regole_generazione', 'template_flusso_dest_id', 'id', 'attivo')` |
+| trg_template_flussi_a10_regole_generazione_block_deact_u_44cb36 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'regole_generazione', 'template_flusso_origine_id', 'id', 'attivo')` |
 | trg_template_flussi_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'attende_sorgente_tipo_id', 'id')` |
 | trg_template_flussi_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'attende_sorgente_tipo_id', 'id')` |
 | trg_template_flussi_a10_template_flussi_avanzamento_proi_e10390 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi_avanzamento_proiezione', 'template_flusso_id', 'id', 'attivo')` |
@@ -82,12 +84,12 @@
 | trg_template_flussi_a10_template_flussi_prerequisiti_blo_9af235 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi_prerequisiti', 'template_flusso_id', 'id', 'attivo')` |
 | trg_template_flussi_a10_tipi_prestazione_require_attivo__70e854 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id', 'id')` |
 | trg_template_flussi_a10_tipi_prestazione_require_attivo__70e854 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id', 'id')` |
-| trg_template_flussi_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_template_flussi_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_template_flussi_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_template_flussi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_flussi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_template_flussi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_template_flussi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_template_flussi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_template_flussi_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('template_flussi_id')` |
 | trg_template_flussi_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('template_flussi_id')` |
 

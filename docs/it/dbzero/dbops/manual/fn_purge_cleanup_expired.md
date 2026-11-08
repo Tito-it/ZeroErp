@@ -1,12 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_purge_cleanup_expired`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `CLEANUP_PURGE` da cui arrivano colonna e dimensione del lotto
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `CLEANUP_PURGE` da cui arriva la dimensione del lotto
 >
 > Approfondimento funzioni:
 >
@@ -63,13 +63,21 @@ ammettere per le righe scadute — è ciò che fanno
 [trgfn_event_log_append_only](/dbzero/vendite/funzioni/trgfn_event_log_append_only) — altrimenti
 la funzione fallisce, e il runner registra la tabella come bloccata e va avanti.
 
-Se la colonna di scadenza non esiste sulla tabella, la funzione non fa niente e restituisce zero.
+### La colonna è sempre `cleanup_at`
+
+La scadenza sta in `cleanup_at`, nome fisso del framework. Il parametro `p_cleanup_column` resta
+nella firma ma può solo confermarlo: vuoto o `cleanup_at`; un altro nome è un errore. Se la tabella
+non ha `cleanup_at`, la funzione non fa niente e restituisce zero.
+
+⚠️ La funzione non legge le esclusioni del cleanup: chi la chiama a mano su una tabella esclusa
+la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
 
 ---
 
 ### Codici errore
 
 * `E_GENERICO` — schema o tabella mancanti.
+* `E_PARAMETRO_INVALIDO` — una colonna di scadenza diversa da `cleanup_at`.
 
 ---
 
@@ -80,6 +88,13 @@ Se la colonna di scadenza non esiste sulla tabella, la funzione non fa niente e 
 * `db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql` — su un registro dei log
   di fatturazione la simulazione vede la riga scaduta e il guard la lascia cancellare; su
   `fatture_log` il purge di un critico scaduto spegne il critico della fattura.
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — la colonna della scadenza è sempre `cleanup_at` (`20261109-88`,
+  brief-db-revisione-dbops, giro 10b): prima il parametro la poteva cambiare.
 
 ---
 

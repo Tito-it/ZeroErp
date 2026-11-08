@@ -1,98 +1,86 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.giornale`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica a cui ogni evento appartiene
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — il flusso, per gli eventi di flusso
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_log_evento_dominio](/dbzero/pratiche/funzioni/fn_log_evento_dominio) — l'unico canale degli eventi di dominio
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `pratiche.giornale` e' il **giornale di bordo (audit trail)** del modulo pratiche. Registra ogni evento significativo nel ciclo di vita di pratiche e flussi in modo append-only e immutabile.
+
+La tabella `pratiche.giornale` è il giornale di bordo del modulo pratiche: registra ogni evento
+significativo nel ciclo di vita di pratiche e flussi, una riga per evento.
 
 ---
 
-### Ruolo nel processo
+### Chi scrive, e che cosa
 
-* Ogni modifica rilevante a una pratica o flusso genera un record nel giornale tramite trigger business-specific (DB-5).
-* Il campo `tx_id` consente la **correlazione cross-tabella**: collegando l'evento del giornale con le modifiche nella stessa transazione su altre tabelle.
-* Il giornale e' **append-only**: solo INSERT, mai UPDATE o DELETE. Solo `data_insert/user_insert`.
+Le righe le scrivono i trigger di giornale delle tabelle del modulo, ognuno per i propri eventi, e
+`pratiche.fn_log_evento_dominio` per gli eventi di dominio. Il giornale si legge come append-only: si
+aggiunge, non si corregge. ⚠️ È una convenzione degli scrittori, non un vincolo: nessun trigger impedisce
+l'aggiornamento o la cancellazione di una riga.
 
----
-
-### Colonne specifiche
-
-| Colonna | Note |
-|---------|------|
-| `pratica_id` | BIGINT NOT NULL. Sempre presente — ogni evento e' legato a una pratica. |
-| `flusso_id` | BIGINT nullable. Presente solo per eventi a livello flusso (NULL = evento pratica). |
-| `azione` | VARCHAR(50) NOT NULL. CHECK su lista azioni (vedi sotto). |
-| `origine` | VARCHAR(20) DEFAULT 'SISTEMA'. CHECK (SISTEMA, UTENTE, HANDLER, SCHEDULER). Chi ha originato l'evento. |
-| `dettaglio` | JSONB DEFAULT '{}'. Dati strutturati dell'evento (es. `{"stato_precedente": "BOZZA", "stato_nuovo": "APERTA"}`). |
-| `tx_id` | UUID nullable. Correlazione con il tx_id della transazione per tracciabilita' cross-tabella. |
-
----
-
-### Azioni registrate
-
-| Azione | Trigger | Evento |
-|--------|---------|--------|
-| `PRATICA_CREATA` | INSERT su pratiche | Creazione pratica |
-| `STATO_CAMBIATO` | UPDATE su pratiche (stato_id cambia) | Cambio stato pratica |
-| `ASSEGNAZIONE_CAMBIATA` | UPDATE su pratiche (risorsa/UO cambia) | Cambio assegnazione |
-| `PRIORITA_CAMBIATA` | UPDATE su pratiche (priorita_id cambia) | Cambio priorita' |
-| `FLUSSO_CREATO` | INSERT su flussi | Creazione flusso |
-| `FLUSSO_STATO_CAMBIATO` | UPDATE su flussi (stato_id cambia) | Cambio stato flusso |
-| `NOTA_AGGIUNTA` | INSERT su note_pratiche/note_flussi | Aggiunta nota |
-| `ALLEGATO_AGGIUNTO` | INSERT su allegati_pratiche/allegati_flussi | Aggiunta allegato |
-| `PRATICA_GENERATA` | Generazione cross-pratica | Pratica generata da un flusso |
-| `SOSPENSIONE_REGISTRATA` | INSERT su sospensioni | Sospensione registrata |
-| `SOSPENSIONE_CHIUSA` | Riattivazione sospensione | Sospensione chiusa |
-| `DOMINIO_*` | `pratiche.fn_log_evento_dominio` (origine `HANDLER`) | Evento di dominio applicativo (es. `DOMINIO_COMMESSA_CREATA`, `DOMINIO_PREVENTIVO_EVASO`) |
+| Azione | Chi la scrive | Evento |
+| --- | --- | --- |
+| `PRATICA_CREATA` | inserimento di una pratica | creazione della pratica |
+| `STATO_CAMBIATO` | cambio di stato della pratica | cambio di stato |
+| `ASSEGNAZIONE_CAMBIATA` | cambio di operatore o reparto della pratica | cambio di assegnazione |
+| `PRIORITA_CAMBIATA` | cambio di priorità della pratica | cambio di priorità |
+| `FLUSSO_CREATO` | inserimento di un flusso | creazione del flusso |
+| `FLUSSO_STATO_CAMBIATO` | cambio di stato del flusso | cambio di stato del flusso |
+| `FLUSSO_ASSEGNAZIONE_CAMBIATA` | cambio di operatore o reparto del flusso | cambio di assegnazione del flusso, anche la presa in carico |
+| `NOTA_AGGIUNTA` | inserimento di una nota di pratica o di flusso | nota aggiunta |
+| `ALLEGATO_AGGIUNTO` | inserimento di un allegato di pratica o di flusso | allegato aggiunto |
+| `SOSPENSIONE_REGISTRATA` | inserimento di una sospensione | sospensione registrata |
+| `SOSPENSIONE_CHIUSA` | riattivazione di una sospensione | sospensione chiusa |
+| `PRATICA_GENERATA` | ammessa dal vocabolario; oggi nessuna funzione la scrive | pratica generata da un flusso |
+| `DOMINIO_*` | `pratiche.fn_log_evento_dominio` | evento di dominio applicativo |
 
 ---
 
-### Eventi di dominio (`DOMINIO_*`) — da 2026-06-08
+### Gli eventi di dominio
 
-Oltre agli eventi di **motore** (lista fissa sopra, alimentati dai trigger), il
-giornale accetta **eventi di dominio applicativi** con prefisso `DOMINIO_`. Il
-CHECK `chk_giornale_azione` ammette:
+Oltre agli eventi del motore, a vocabolario chiuso, il giornale accetta eventi di dominio applicativi
+col prefisso `DOMINIO_` seguito da maiuscole, cifre e trattini bassi: un evento nuovo non chiede un
+vincolo nuovo. Il vincolo sull'azione ammette l'elenco del motore oppure quella forma, e rifiuta tutto
+il resto.
 
-```sql
-azione IN (<11 eventi di motore>) OR azione ~ '^DOMINIO_[A-Z][A-Z0-9_]*$'
-```
-
-Gli 11 eventi di motore restano blindati; i `DOMINIO_*` sono liberi (maiuscoli,
-nessun nuovo CHECK per evento). L'unico canale di scrittura consentito e' la
-funzione [`pratiche.fn_log_evento_dominio`](/dbzero/pratiche/funzioni/fn_log_evento_dominio)
-`(p_pratica_id, p_flusso_id, p_tipo_evento, p_meta)`, usata dagli handler
-applicativi (es. `vendita.push_preventivo`): mappa `p_tipo_evento -> azione`,
-`p_meta -> dettaglio`, forza `origine = 'HANDLER'` e correla via `tx_id` di
-sessione. Un nome non conforme (non `DOMINIO_*` e non in lista) viene rifiutato
-dal CHECK. Catalogo eventi `DOMINIO_*` in uso: vedi il catalogo building-block
-backend (mitigazione refusi; promozione a tabella `config` da rivalutare dopo
-3-4 eventi reali).
+L'unico canale per scriverli è `pratiche.fn_log_evento_dominio`, che gli handler applicativi chiamano:
+forza l'origine `HANDLER` e correla la riga alla transazione. Il catalogo degli eventi di dominio in uso
+sta nel catalogo dei building block del backend.
 
 ---
 
-### 📑 Indici espliciti
+### Le colonne che non si capiscono dal nome
 
-| Indice | Tipo | Scopo |
-|--------|------|-------|
-| `ix_pratiche_giornale_data_insert` | BTREE | Query temporali (ultimi N eventi, range date). |
-| `ix_pratiche_giornale_azione` | BTREE | Filtro per tipo azione. |
-
-Questi indici sono espliciti (non FK) perche' servono a query frequenti sull'audit trail.
+* `flusso_id` — presente solo per un evento di flusso; vuoto per un evento della pratica.
+* `origine` — chi ha originato l'evento: `SISTEMA` (predefinito), `UTENTE`, `HANDLER`, `SCHEDULER`.
+* `dettaglio` — i dati strutturati dell'evento, per esempio lo stato precedente e quello nuovo.
+* `tx_id` — la transazione in cui l'evento è stato scritto: collega l'evento alle modifiche fatte nella
+  stessa transazione su altre tabelle. Lo valorizza l'automazione `tx_id` della tabella.
 
 ---
 
-### Convenzioni
+### Accesso e indici
 
-* PK BIGINT IDENTITY (alto volume).
-* Append-only: solo `data_insert/user_insert`, no storicizzazione.
-* `tx_id` per correlazione cross-tabella (non gestito da automazione — impostato dal trigger giornale).
-* Trigger standard **non** applicati (no audit update, no storico, no lock). I trigger giornale sono business-specific (DB-5).
+La tabella ha la RLS: ogni operatore vede gli eventi del perimetro del proprio emittente. Due indici
+servono le letture tipiche: per data (gli ultimi eventi, un intervallo) e per azione.
+
+---
+
+### Note di migrazione
+
+* 2026-06-08 — il giornale accetta gli eventi di dominio `DOMINIO_*`, con `pratiche.fn_log_evento_dominio`
+  come unico canale.
 
 ---
 

@@ -1,51 +1,38 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_flussi_giornale_stato`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_giornale_stato`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.flussi](flussi.md)
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — il flusso che cambia stato
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove si scrive l'evento
 >
-Overview:
+> Approfondimento funzioni:
 >
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.trgfn_sospensioni_riattiva](/dbzero/pratiche/funzioni/trgfn_sospensioni_riattiva) — rilegge questo evento per ripristinare lo stato di un flusso sospeso
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **FLUSSO_STATO_CAMBIATO** nel giornale. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.flussi`, solo quando il valore cambia realmente.
+
+La trigger function `pratiche.trgfn_flussi_giornale_stato` scrive nel giornale l'azione
+`FLUSSO_STATO_CAMBIATO` a ogni cambio di stato di un flusso.
 
 ---
 
-### Firma
+### La regola
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_stato()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+* Scatta dopo l'aggiornamento dello stato del flusso, e solo se lo stato cambia davvero.
+* La riga del giornale è della pratica e del flusso, con origine `SISTEMA`; il dettaglio porta lo stato
+  precedente, lo stato nuovo e l'esito del flusso in quel momento.
+* La transazione della riga è quella del flusso; se manca, quella della sessione.
 
----
-
-### Logica
-
-Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `NEW.pratica_id` |
-| `flusso_id` | `NEW.id` |
-| `azione` | `'FLUSSO_STATO_CAMBIATO'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('stato_precedente_id', OLD.stato_id, 'stato_nuovo_id', NEW.stato_id, 'esito', NEW.esito)` |
-| `tx_id` | `NEW.tx_id` |
-
-Il campo `esito` viene sempre incluso nel dettaglio per tracciare l'esito del flusso al momento del cambio stato (utile per la generazione cross-pratica).
+⭐ **L'evento è anche una memoria.** Lo stato precedente scritto qui è ciò che
+`pratiche.trgfn_sospensioni_riattiva` rilegge per riportare un flusso sospeso allo stato da cui era
+partito; l'esito serve a chi ricostruisce la storia del flusso per generare il lavoro a valle.
 
 ---
 
-### Trigger associato
-
-| Nome | Fase | Evento | WHEN |
-|------|------|--------|------|
-| `trg_flussi_z90_giornale_stato_upd` | AFTER | UPDATE OF stato_id | `OLD.stato_id IS DISTINCT FROM NEW.stato_id` |
+{% include-markdown "signature-core.md" %}

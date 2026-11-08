@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.trasferimenti`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,6 +10,7 @@
 > * [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — origine e destinazione
 > * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — le due righe di uscita e di entrata
 > * [vendite.ddt](/dbzero/vendite/tabelle/ddt) — il trasferimento con trasporto, che non passa da qui
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento
 >
 > Approfondimento funzioni:
 >
@@ -17,10 +18,12 @@
 > * [magazzino.trgfn_trasferimenti_guard_stesso_emittente](/dbzero/magazzino/funzioni/trgfn_trasferimenti_guard_stesso_emittente) — origine e destinazione dello stesso emittente
 > * [magazzino.fn_documento_interno_transizioni](/dbzero/magazzino/funzioni/fn_documento_interno_transizioni) — la matrice degli stati
 > * [magazzino.trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione) — chi la fa rispettare
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della sorgente
 >
 > Guide:
 >
 > * [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls) — il meccanismo comune del perimetro
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello tipo, documento, riga
 
 ---
 
@@ -32,8 +35,8 @@ trasporto**. Dice da dove parte la merce (`magazzino_id_from`), dove arriva
 (`magazzino_id_to`), quando e in che stato; il dettaglio per articolo sta nelle righe.
 
 Un trasferimento genera **due movimenti** per riga, `TRASF_OUT` dalla partenza e `TRASF_IN`
-nell'arrivo, con la stessa sorgente (`TRASFERIMENTO_RIGA`) e causali diverse: è così che le due
-righe non collidono nell'identità del registro. Il costo dell'entrata è ereditato da quello
+nell'arrivo, con la stessa sorgente (il documento `TRASFERIMENTO` e la riga) e causali diverse:
+è così che le due righe non collidono nell'identità del registro. Il costo dell'entrata è ereditato da quello
 dell'uscita: spostare merce non cambia il suo valore, lo sposta.
 
 ---
@@ -65,13 +68,17 @@ coinciderebbero.
 
 ---
 
-### La sorgente, come sul registro
+### La sorgente del trasferimento
 
-`sorgente_tipo_id` (una riga di [config.sorgenti](/dbzero/config/tabelle/sorgenti)) più
-**esattamente una** chiave fra `sorgente_riga` e `sorgente_uid`, secondo quanto il catalogo
-dichiara per quel tipo; senza tipo, nessuna chiave. Il guard tipizzato
-(`script.trgfn_guard_sorgente_polimorfa_tipizzata`) verifica che il record esista. Qui la
-sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è uno.
+Qui la sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è
+uno. Quando c'è, `sorgente_tipo_id` è il tipo del documento in
+[config.sorgenti](/dbzero/config/tabelle/sorgenti), la sua chiave sta in **una sola** fra
+`sorgente_id` e `sorgente_uid` (quella che il catalogo dichiara per quel tipo) e
+`sorgente_riga`, se scritta, dice la riga di quel documento; senza tipo, tutte vuote
+(`chk_mag_trasferimenti_sorgente_forma`). Il guard unico
+[script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) verifica che il
+documento esista e sia visibile, e che la riga gli appartenga; basta il documento intero. Un
+documento citato qui non si può cancellare finché la citazione resta.
 
 ---
 
@@ -122,6 +129,11 @@ Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-
 * 2026-09-28 — arriva il posting (`fn_posta_trasferimento`, `brief-db-magazzino-lotto-3-scarico-da-ddt`);
   lo stesso magazzino in partenza e in arrivo diventa ammesso, con le ubicazioni di partenza e
   di arrivo sulle righe.
+* 2026-11-08 — la sorgente della testata passa al modello comune (`brief-db-sorgente-documento-e-riga`):
+  la chiave del documento in `sorgente_id` o `sorgente_uid`, la riga in `sorgente_riga`, il CHECK
+  di forma e il guard unico al posto del guard tipizzato; esce l'indice unico sulla sorgente. I
+  movimenti citano il documento `TRASFERIMENTO` e la riga, non più il tipo `TRASFERIMENTO_RIGA`,
+  ritirato da `config.sorgenti`.
 
 ---
 

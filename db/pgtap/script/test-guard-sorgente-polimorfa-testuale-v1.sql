@@ -2,13 +2,15 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: guard sorgente polimorfa MODELLO B (chiave unica testuale) +
---       normalizzazione della chiave in vendite.fn_link_commessa_sorgente
---       (brief-db-guard-sorgente-polimorfa, migrations 20260718-15..19).
+-- Test: la porta del link vendite.fn_link_commessa_sorgente, che riceve la
+--       chiave del documento in testo e la scrive nella colonna del modello
+--       (sorgente_id o sorgente_uid, secondo il key_selector del tipo), e i
+--       censimenti che nessuna riga resti con la chiave nella colonna sbagliata.
+--       Il guard testuale («modello B», 20260718-15..19) non e' piu' montato su
+--       nessuna tabella ed e' ritirato: i casi del guard sono usciti (note sotto).
+--       Il nome del file resta: lo conoscono la baseline e la storia del cantiere.
 --
---       Convenzione (config/manual/sorgenti.md §Convenzione chiave sorgente):
---       sorgente_uid TEXT = id::text per i tipi a key_selector='id',
---       uuid testuale per i tipi a key_selector='uid'.
+--  Storia (dal piu' vecchio):
 --
 --  ⚠️ rev 2026-11-07 (brief-db-sorgente-documento-e-riga giro C.2): il guard
 --  testuale resta montato solo su pratiche.pratiche_sorgenti (lo ritira il lotto

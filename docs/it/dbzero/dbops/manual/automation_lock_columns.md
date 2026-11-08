@@ -7,7 +7,7 @@
 > Approfondimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `LOCK_COLUMNS` che dice dove il lock si monta e con che nome
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — l'ambito: una tabella fuori ambito non riceve lock
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — l'ambito: su una tabella fuori ambito il runner non monta lock
 > * [dbops.lock_columns_conditional](/dbzero/dbops/tabelle/lock_columns_conditional) — i lock che valgono solo in uno stato della riga
 >
 > Approfondimento funzioni:
@@ -49,6 +49,25 @@ di sviluppo: un lock scritto a mano può mancare su uno e vivere sull'altro.
 
 ---
 
+### ⚠️ Fuori dall'ambito: il lock lo monta una migrazione, il registro lo dichiara
+
+Su una tabella fuori dall'ambito delle automazioni il runner non arriva. Se una sua colonna va
+bloccata e la tabella non deve entrare nell'ambito (porterebbe con sé tutte le altre automazioni),
+il trigger lo monta una migrazione, ed è l'unico caso in cui un lock si scrive in un changeSet. Due
+condizioni, entrambe obbligatorie:
+
+* la colonna ha **comunque** la sua riga attiva qui, con il codice errore: il registro resta la
+  dichiarazione;
+* il trigger ha il nome che darebbe il template della regola `LOCK_COLUMNS` e gli argomenti che
+  monterebbe il runner.
+
+Il presidio `dbops/test-lock-columns-convergenza` tiene uguali le due metà: fuori dall'ambito ogni
+colonna di un lock vivo ha una riga attiva qui con lo stesso codice, e ogni riga attiva su una
+tabella fuori dall'ambito ha il suo lock vivo, abilitato, con la colonna nell'`UPDATE OF`. Il caso
+di oggi è il `codice` di [dbops.domini_task](/dbzero/dbops/tabelle/domini_task).
+
+---
+
 ### Che cosa dice ogni riga
 
 La chiave è (`target_schema`, `target_table`, `column_name`).
@@ -66,9 +85,11 @@ La chiave è (`target_schema`, `target_table`, `column_name`).
   giro lo toglie.
 * `note` — il perché del lock, per chi legge.
 
-Una riga su una colonna che la tabella non ha è ignorata. E il registro agisce solo sulle tabelle
+Una riga su una colonna che la tabella non ha è ignorata. E il runner agisce solo sulle tabelle
 dell'ambito coperte da una regola `LOCK_COLUMNS` attiva di `dbops.automation_rules_tbl`: su una
-tabella che nessuna regola copre, le righe di qui non montano niente.
+tabella che nessuna regola copre, le righe di qui non montano niente. Fuori dall'ambito una riga
+attiva è la dichiarazione di un lock montato da una migrazione (sopra), e il presidio pretende che
+quel lock esista.
 
 ---
 
@@ -97,7 +118,8 @@ processo `automations_lock_columns`. Non serve un changeSet che tolga e rimonti 
 * `db/pgtap/dbops/test-lock-columns-convergenza.sql` — su tutto il database nessun lock diverge
   dal registro; una riga disattivata toglie il lock; una colonna aggiunta arriva nel trigger; una
   colonna non nominata ferma il giro; una riga di un altro `exec_mode` non toglie un lock già
-  montato e non ne crea uno nuovo.
+  montato e non ne crea uno nuovo; fuori dall'ambito lock vivo e registro coincidono, nei due
+  versi (test 23 e 30).
 * Le prove dei singoli lock stanno coi domini: per esempio
   `db/pgtap/vendite/test-ordini-lock-cliente.sql` e
   `db/pgtap/vendite/offerte_commerciali/test-offerte-commerciali-codice-lock.sql`.
@@ -122,6 +144,9 @@ processo `automations_lock_columns`. Non serve un changeSet che tolga e rimonti 
 * 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
   scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
   `brief-db-revisione-dbops`, giro 7-bis).
+* 2026-11-08 — fuori dall'ambito un lock montato da una migrazione è ammesso se il registro lo
+  dichiara, e una riga attiva su una tabella fuori ambito pretende il suo lock vivo; il primo caso
+  è `dbops.domini_task.codice` (`20261109-94`, brief-db-revisione-dbops, giro 10b).
 
 ---
 

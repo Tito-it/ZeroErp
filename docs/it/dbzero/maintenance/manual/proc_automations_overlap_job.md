@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Procedura `maintenance.proc_automations_overlap_job`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -47,27 +47,32 @@ di colonne e di espressioni, il periodo è una colonna intervallo o la coppia de
 predicato rende il vincolo parziale.
 
 Salta la riga, e lo scrive nel registro delle azioni, quando la tabella non esiste
-(`TABLE_NOT_FOUND`), quando manca la chiave, quando mancano le colonne del periodo, e quando
-sulla tabella c'è già un vincolo che fa il lavoro: un `EXCLUDE`
-che nomina la colonna del periodo (`EXCLUDE_EXISTS`) o un vincolo temporale
-`UNIQUE … WITHOUT OVERLAPS` (`TEMPORAL_UNIQUE_EXISTS`). A regime quindi non fa niente; ma se un
-`EXCLUDE` viene tolto per errore, il giro dopo lo ricrea.
+(`TABLE_NOT_FOUND`), quando manca la chiave o una sua colonna (`KEY_COLUMN_MISSING`), quando
+mancano le colonne del periodo, e quando la regola ha già il suo vincolo: l'`EXCLUDE` col nome
+della riga (`EXCLUDE_EXISTS`) o un vincolo temporale `UNIQUE … WITHOUT OVERLAPS` sul periodo
+(`TEMPORAL_UNIQUE_EXISTS`). A regime quindi non fa niente; ma se un `EXCLUDE` viene tolto per
+errore, il giro dopo lo ricrea.
 
 ⚠️ Il runner **crea e non modifica**: cambiare la chiave o il predicato di una tabella chiede di
-togliere prima il vincolo vecchio, che altrimenti il giro trova e salta.
+togliere prima il vincolo vecchio, che altrimenti il giro trova e salta. E non toglie: una regola
+spenta lascia il suo vincolo, perché togliere un vincolo d'integrità è una decisione di chi
+migra.
 
 ---
 
-### ⚠️ Una tabella sparita si salta, righe sovrapposte fermano il giro
+### ⭐ Un difetto ferma la regola, non il giro
 
 Il registro non ha una chiave esterna verso il catalogo, e non può averla: una riga può restare
-indietro rispetto a una tabella rinominata o ritirata. Quella riga è un **salto dichiarato**,
-come gli altri: il runner la scrive nel registro delle azioni col motivo `TABLE_NOT_FOUND` e
-passa alla successiva, e le altre tabelle ricevono il loro vincolo.
+indietro rispetto a una tabella rinominata o ritirata. Quella riga è un **salto dichiarato**: il
+runner la scrive nel registro delle azioni col motivo `TABLE_NOT_FOUND` e passa alla successiva.
 
-Il runner invece non cattura gli altri errori, e un errore ferma la corsa intera, non solo la sua
-tabella: il caso tipico è una tabella che ha già righe sovrapposte, su cui il vincolo non si può
-creare. L'errore arriva col suo SQLSTATE, e la corsa annulla anche i vincoli creati prima nello
+Lo stesso per i dati: una tabella che ha già righe sovrapposte non può ricevere il vincolo. Il
+runner lo scrive come `WARN DATI_SOVRAPPOSTI`, con il dettaglio della prima coppia in conflitto e
+lo SQLSTATE, e le altre tabelle ricevono il loro vincolo. Un nome già preso è un
+`WARN NOME_OCCUPATO`. La corsa resta verde: il difetto si legge nel registro delle azioni.
+
+Gli altri errori — un'espressione o un predicato scritti male — non si catturano: fermano la
+corsa intera, arrivano col loro SQLSTATE, e la corsa annulla anche i vincoli creati prima nello
 stesso giro.
 
 ---
@@ -77,7 +82,7 @@ stesso giro.
 | Dove | Chi la chiama | Quando |
 | --- | --- | --- |
 | dbdev e installazioni con pgAgent | il job `automations_overlap`, step `run_automations_overlap` | al giro del suo calendario |
-| CI, database ricostruito da zero, ogni migrazione di sviluppo | la convergenza del rilascio (passata `ci_apply`) | `ci_ordine` 80: dopo `automations_delete_block`, prima di `automations_cleanup` |
+| CI, database ricostruito da zero, ogni migrazione di sviluppo | la convergenza del rilascio (passata `ci_apply`) | `ci_ordine` 80: dopo `automations_guard_utility`, prima di `automations_cleanup` |
 
 Lo step pgAgent chiama la procedura solo se `maintenance.fn_sveglia_accesa('automations_overlap')`
 è vero: a processo spento il giro programmato non parte e il giornale non scrive niente. La
@@ -158,6 +163,8 @@ col suo SQLSTATE, e `error_code` del giornale riporta quello.
 * `db/pgtap/dbops/test-overlap-tabella-sparita-v1.sql` — una riga del registro su una tabella
   che non esiste non ferma il giro, e lascia nel registro delle azioni il salto col motivo
   `TABLE_NOT_FOUND`.
+* `db/pgtap/dbops/test-overlap-regola-e-vincolo-v1.sql` — righe già sovrapposte su una tabella
+  non fermano il giro; ogni regola attiva ha il suo vincolo per nome.
 
 ---
 
@@ -174,6 +181,10 @@ col suo SQLSTATE, e `error_code` del giornale riporta quello.
 * 2026-11-03 — una riga del registro su una tabella sparita diventa un salto dichiarato
   (`TABLE_NOT_FOUND`). Prima fermava il giro intero con lo SQLSTATE grezzo, e le tabelle che
   venivano dopo restavano senza vincolo (`brief-db-revisione-maintenance` D6).
+* 2026-11-08 — righe già sovrapposte e nome occupato diventano salti dichiarati; una colonna di
+  chiave assente ferma la regola invece di accorciare la chiave; la regola è applicata solo col
+  suo vincolo, per nome. Nella convergenza viene dopo il nuovo `automations_guard_utility`
+  (`brief-db-revisione-dbops`, giro 10c).
 
 ---
 

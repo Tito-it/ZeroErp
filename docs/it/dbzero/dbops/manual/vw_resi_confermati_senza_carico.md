@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_resi_confermati_senza_carico`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,6 +15,7 @@
 > Approfondimento viste:
 >
 > * [dbops.vw_ddt_emessi_senza_scarico](/dbzero/dbops/views/vw_ddt_emessi_senza_scarico) — la gemella sul verso opposto: la bolla senza scarico
+> * [script.vw_stati_doc_reso_merce_rientrata](/dbzero/script/views/vw_stati_doc_reso_merce_rientrata) — la sede della regola «in questo stato la merce è rientrata»
 >
 > Approfondimento funzioni:
 >
@@ -27,6 +28,7 @@
 > Guide:
 >
 > * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — come si legge un presidio che deve restare vuoto
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — la provenienza del movimento: documento, riga, dettaglio
 
 ---
 
@@ -56,31 +58,22 @@ che muove merce, e le sue sorgenti non hanno il movimento.
 
 Servono quattro fatti insieme:
 
-* il reso è nello stato `CONFERMATO`;
+* il reso è in uno stato in cui **la merce è rientrata**: uscito dalla bozza e non annullato. La
+  regola non è scritta qui ma in `script.vw_stati_doc_reso_merce_rientrata`, che la legge dal
+  catalogo degli stati: uno stato nuovo dopo la conferma entra da solo;
 * ha un **magazzino**;
 * **fa rientrare merce**: almeno una riga attiva viene da una riga di bolla che aveva prelievi
   (`vendite.fn_reso_muove_merce`);
-* **nessuno** dei suoi rientri ha un carico a registro: un movimento con sorgente
-  `RESO_VENDITA_RIENTRO`, quantità positiva, che non sia uno storno.
+* **almeno un rientro** di una sua riga attiva non ha il suo carico a registro: un movimento che
+  viene dal reso (`RESO_VENDITA`), da quella riga e da quel rientro come dettaglio, con quantità
+  positiva, che non sia uno storno.
+
+La domanda è **rientro per rientro**, come il contratto del posting (un carico per ogni rientro
+delle righe attive): anche un carico parziale si vede. La colonna `rientri_senza_carico` dice
+quanti rientri mancano.
 
 I resi confermati prima che il reso caricasse il magazzino non hanno magazzino, e non sono questo
-difetto. Un reso annullato non compare: lo stato non è più `CONFERMATO`.
-
----
-
-### ⚠️ Lo stato è un codice scritto qui, non una regola letta dal catalogo
-
-La gemella della bolla legge «la merce è partita» da un building block che deriva la risposta dal
-catalogo degli stati. Questa vista invece nomina lo stato `CONFERMATO`. Oggi è l'unico stato del
-reso uscito dalla bozza e non annullato, quindi le due forme dicono la stessa cosa; uno stato
-nuovo dopo la conferma farebbe uscire il reso dalla vista.
-
----
-
-### ⚠️ Che cosa non vede
-
-**Il carico parziale.** La domanda è «nessun carico», non «un carico per ogni rientro»: un reso
-che ha caricato un rientro su tre non compare.
+difetto. Un reso annullato non compare: in quello stato la merce non è rientrata.
 
 ---
 
@@ -96,6 +89,9 @@ riporta il numero. Cadenza `GIORNALIERA`, come la gemella.
 
 * `db/pgtap/magazzino/test-reso-carico-v1.sql`, test 17 — un reso confermato dal verbo, col suo
   carico, non compare nella vista.
+* `db/pgtap/dbops/test-presidi-magazzino-grana-v1.sql`, test 3-4 e 7 — il reso tutto caricato non
+  compare; tolto il carico di un rientro su due, compare con un rientro senza carico; portato in uno
+  stato nuovo dopo la conferma, resta nella vista, perché lo stato viene dal building block.
 
 ---
 
@@ -105,6 +101,11 @@ riporta il numero. Cadenza `GIORNALIERA`, come la gemella.
   (`brief-db-magazzino-lotto-3-bis-carico-da-reso`, P-13).
 * 2026-10-25 — la porta del registro passa dal guard di transizione del reso alla porta comune
   `script.trgfn_doc_stato_solo_dal_verbo` (`brief-modello-documento-vendita` §7).
+* 2026-11-08 — lo stato si legge da `script.vw_stati_doc_reso_merce_rientrata` invece che dal codice
+  `CONFERMATO` scritto qui; la domanda passa da «nessun carico» a «rientro per rientro», e il carico
+  parziale si vede (nasce la colonna `rientri_senza_carico`); il movimento si riconosce dalla
+  provenienza del modello (reso, riga, rientro come dettaglio) invece che dal tipo
+  `RESO_VENDITA_RIENTRO`, ritirato.
 
 ---
 

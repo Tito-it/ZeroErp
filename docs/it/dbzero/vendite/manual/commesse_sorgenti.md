@@ -1,54 +1,93 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.commesse_sorgenti`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
-> • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
+> * [vendite.commesse](/dbzero/vendite/tabelle/commesse) — la commessa a cui il documento è collegato
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — le righe, che nascono insieme al link
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento, con la chiave di ognuno
 >
+> Approfondimento funzioni:
+>
+> * [vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) — la porta che scrive il link
+> * [vendite.fn_commessa_viva_di_sorgente](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente) — quale link conta, fra quelli di un documento
+> * [script.fn_sorgente_chiave](/dbzero/script/funzioni/fn_sorgente_chiave) — il BB che dà la chiave da scrivere
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della provenienza
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
+
+---
+
 ### 🎯 Scopo Principale
-La tabella `vendite.commesse_sorgenti` traccia la sorgente ROOT della commessa e
-garantisce idempotenza sorgente a livello commessa.
+
+`vendite.commesse_sorgenti` registra i documenti collegati a una commessa: la sorgente ROOT, da cui la commessa nasce, e le sorgenti COLLEGATO che vi confluiscono.
+
+---
+
+### Il documento collegato: tipo, chiave, riga
+
+Ogni link dice quale documento è collegato con le colonne del modello della provenienza:
+
+* `sorgente_tipo_id` — il tipo del documento in `config.sorgenti` (preventivo, ordine,
+  contratto, DDT), obbligatorio;
+* `sorgente_id` *oppure* `sorgente_uid` — la chiave del documento: **una sola**, quella che
+  il `key_selector` del tipo dichiara (uid per il preventivo, id per ordine, contratto e DDT).
+  La forma la tiene `chk_commesse_sorgenti_sorgente_forma`;
+* `sorgente_riga` — la riga del documento, quando il link è a grana di riga; vuota quando il
+  link è al documento intero, come lo scrive oggi la porta.
+
+La chiave la decide il BB che scrive, `script.fn_sorgente_chiave`, dentro la porta del link:
+nessuno la compone a mano. Il guard unico `script.trgfn_guard_sorgente` verifica che il
+documento (e la riga, se c'è) esista, e blocca la cancellazione del documento finché un link
+lo cita.
 
 ---
 
 ### Regole principali
 
-* una sola ROOT per commessa (unique parziale `uq_commesse_sorgenti_commessa_root`);
-  dal 2026-06-09 la commessa è **multi-sorgente**: 1 ROOT + N COLLEGATO
-  (`vendite.fn_link_commessa_sorgente` decide il ruolo);
-* ⭐ un documento sorgente compare **una volta per commessa**
-  (`uq_commesse_sorgenti_src_uid_commessa`, dal 2026-10-12), e sta in **una sola
-  commessa APERTA** alla volta: la regola la fa valere la porta,
-  [vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente),
-  perche' un indice non legge lo stato della commessa. Il link verso una commessa
-  **chiusa o annullata resta come storia**: il documento si rimanda in una
-  commessa nuova, e ha piu' link. Quale conta lo dice
-  [vendite.fn_commessa_viva_di_sorgente](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente).
-  Fino al 2026-10-12 l'unicita' era globale (`uq_commesse_sorgenti_src_uid`):
-  «una commessa per sempre» (brief-db-annullo-a-valle-riapre-a-monte §10);
-* il link lo scrive la madre delle righe, `vendite.fn_upsert_commessa_attivita`,
-  insieme alla riga (D-13);
-* **formato della chiave** (`sorgente_uid` TEXT): segue
-  `config.sorgenti.key_selector` — uuid testuale per i tipi a chiave `uid`
-  (preventivo, offerta), **`id::text`** per i tipi a chiave `id` (ordine,
-  contratto, ddt, commessa). Dal 2026-07-18 la convenzione è blindata
-  (brief-db-guard-sorgente-polimorfa): la fn di link **normalizza** (traduce
-  l'uuid dei chiamanti storici in `id::text`) e il guard
-  `trg_commesse_sorgenti_a10_guard_sorgente_ins_upd`
-  (`trgfn_guard_sorgente_polimorfa_testuale`) valida formato ed esistenza;
-* `sorgente_riga` non è una chiave documento: è la grana di riga del link,
-  non validata dal guard.
+* **Una sola ROOT per commessa** (`uq_commesse_sorgenti_commessa_root`). La commessa è
+  **multi-sorgente**: una ROOT e più COLLEGATO; il ruolo lo decide
+  `vendite.fn_link_commessa_sorgente`.
+* ⭐ **Un documento compare una volta per commessa**
+  (`uq_commesse_sorgenti_sorgente_commessa`), e sta in **una sola commessa aperta** alla volta:
+  questa regola la fa valere la porta, perché un indice non legge lo stato della commessa.
+  Il link verso una commessa **chiusa o annullata resta come storia**: il documento si
+  rimanda in una commessa nuova, e ha più link. Quale conta lo dice
+  `vendite.fn_commessa_viva_di_sorgente`.
+* **Il link nasce con la riga**: lo scrive la madre delle righe,
+  `vendite.fn_upsert_commessa_attivita`, insieme alla riga di commessa.
+* **Emittente omogeneo**: un guard dedicato tiene coerente l'emittente del documento collegato
+  con quello della commessa.
 
 ---
 
 ### Utilizzo previsto
 
-* tracciabilita` della root source commessa;
-* protezione anti-doppio aggancio documento->commessa (aperta);
-* storia delle commesse in cui il documento e' passato;
-* base per recovery/audit lato orchestratore push.
+* tracciabilità della sorgente ROOT della commessa;
+* protezione contro il doppio aggancio di un documento a commesse aperte;
+* storia delle commesse in cui il documento è passato;
+* base per recovery e audit dell'orchestratore del push.
+
+---
+
+### Note di migrazione
+
+* 2026-06-09 — la commessa diventa multi-sorgente: una ROOT e più COLLEGATO.
+* 2026-07-18 — la chiave testuale `sorgente_uid` viene normalizzata alla forma del
+  `key_selector` e validata da un guard testuale (brief-db-guard-sorgente-polimorfa).
+* 2026-10-12 — l'unicità da globale («una commessa per sempre», `uq_commesse_sorgenti_src_uid`)
+  diventa per commessa, con la regola della commessa aperta nella porta
+  (brief-db-annullo-a-valle-riapre-a-monte §10).
+* 2026-11-07 — la chiave testuale `sorgente_uid` lascia il posto alla coppia tipizzata
+  `sorgente_id` / `sorgente_uid` (uuid), e il guard testuale
+  `script.trgfn_guard_sorgente_polimorfa_testuale` al guard unico `script.trgfn_guard_sorgente`;
+  l'unicità per commessa diventa `uq_commesse_sorgenti_sorgente_commessa`
+  (brief-db-sorgente-documento-e-riga).
 
 ---
 

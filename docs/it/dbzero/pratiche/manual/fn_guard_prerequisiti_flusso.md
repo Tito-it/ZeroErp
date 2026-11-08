@@ -1,71 +1,52 @@
-## 📘 Documentazione Funzione – `pratiche.fn_guard_prerequisiti_flusso`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_guard_prerequisiti_flusso`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.fn_check_prerequisiti_flusso](fn_check_prerequisiti_flusso.md)
-> `script.fn_log_and_raise_error`
+> * [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti) — i prerequisiti dichiarati
 >
-Trigger:
+> Approfondimento funzioni:
 >
-`trg_flussi_a10_guard_prerequisiti_ins` (BEFORE INSERT su flussi)
+> * [pratiche.fn_check_prerequisiti_flusso](/dbzero/pratiche/funzioni/fn_check_prerequisiti_flusso) — il controllo che dice prerequisito per prerequisito
+> * [pratiche.trgfn_flussi_guard_prerequisiti](/dbzero/pratiche/funzioni/trgfn_flussi_guard_prerequisiti) — il trigger che la chiama all'inserimento di un flusso
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
 
 ---
+
 ### 🎯 Scopo Principale
-La funzione **`pratiche.fn_guard_prerequisiti_flusso`** e' una **guard fail-fast** (`fn_guard_*`): verifica i prerequisiti e **solleva eccezione** se non sono tutti soddisfatti.
+
+La funzione `pratiche.fn_guard_prerequisiti_flusso` è la versione bloccante del controllo dei
+prerequisiti: se un passo della pratica non ha tutti i prerequisiti soddisfatti, solleva un errore.
 
 ---
 
-### Firma della funzione
+### Come decide
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.fn_guard_prerequisiti_flusso(
-  p_pratica_id         pratiche.pratiche.id%TYPE,
-  p_template_flusso_id pratiche.template_flussi.id%TYPE
-)
-RETURNS void
-LANGUAGE plpgsql
-```
+Non riscrive la regola: chiede a `pratiche.fn_check_prerequisiti_flusso` l'esito di ogni prerequisito
+del template per quella pratica, e se almeno uno non è soddisfatto solleva l'errore con l'elenco dei
+codici mancanti. Se sono tutti soddisfatti non restituisce niente.
 
----
-
-### Descrizione parametri
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:---:|-------------|
-| `p_pratica_id` | bigint | SI | ID della pratica |
-| `p_template_flusso_id` | integer | SI | ID del template flusso di cui verificare i prerequisiti |
+* La chiama il trigger `pratiche.trgfn_flussi_guard_prerequisiti` all'inserimento di ogni flusso: il
+  template è obbligatorio, e non esiste un flusso che salti il controllo.
+* Il backend può chiamarla prima di tentare l'inserimento, per avere lo stesso verdetto in anticipo.
 
 ---
 
-### Logica di funzionamento
+### Codici errore
 
-1. Invoca `fn_check_prerequisiti_flusso(p_pratica_id, p_template_flusso_id)`.
-2. Raccoglie i codici di tutti i prerequisiti con `soddisfatto = false` tramite `string_agg`.
-3. Se almeno uno non e' soddisfatto, chiama `script.fn_log_and_raise_error` con codice errore `PRATICHE_PREREQUISITI_NON_SODDISFATTI` e l'elenco dei codici mancanti.
-4. Se tutti soddisfatti, ritorna senza errori.
+* `E_PRATICHE_PREREQUISITI_NON_SODDISFATTI` — almeno un prerequisito non è soddisfatto; il messaggio e
+  il contesto portano i codici mancanti.
 
 ---
 
-### ⚠️ Errori sollevati
+### Test
 
-| Codice errore | Condizione | Dettaglio |
-|---------------|------------|-----------|
-| `PRATICHE_PREREQUISITI_NON_SODDISFATTI` | Almeno un prerequisito non soddisfatto | Lista codici mancanti nel dettaglio jsonb |
-
----
-
-### Esempi di utilizzo
-
-```sql
--- Verifica fail-fast (solleva eccezione se prerequisiti mancanti)
-SELECT pratiche.fn_guard_prerequisiti_flusso(100, 5);
-```
+* `pratiche/test-fn-guard-prerequisiti-flusso` — l'errore sui prerequisiti mancanti e il passaggio
+  quando sono soddisfatti.
 
 ---
 
-### Note operative
-
-* Usata come wrapper dal trigger `trgfn_flussi_guard_prerequisiti()` per bloccare l'INSERT di flussi senza prerequisiti.
-* Puo' essere chiamata anche direttamente dal backend Django prima di tentare l'inserimento.
+{% include-markdown "signature-core.md" %}

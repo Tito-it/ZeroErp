@@ -1,73 +1,75 @@
 ## 📘 Documentazione Concettuale – Funzione `pratiche.fn_crea_pratica`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> Tabelle:
-> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+> Approfondimento tabelle:
 >
-> Funzioni:
-> [vendite.fn_genera_pratica_da_preventivo](/dbzero/vendite/funzioni/fn_genera_pratica_da_preventivo) (consumer)
-> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica che nasce, coi suoi trigger
+> * [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche) — lo stato iniziale `APERTA`
+> * [config.priorita_pratiche](/dbzero/config/tabelle/priorita_pratiche) — la priorità predefinita `NORMALE`
 >
-> WIP:
-> [Analisi e piano di fix — gestione transazioni backend](/dev/work-done/analisi-fix-transazioni) (Classe A)
-
-### 🎯 Scopo Principale
-
-(latest review 08-07-2026)
-
-La funzione **`pratiche.fn_crea_pratica`** è il **building block condiviso** per
-la creazione di una pratica. La creazione è identica per ogni sorgente
-(preventivo, ordine, futuri domini): risolve lo stato iniziale `APERTA` e la
-priorità di default `NORMALE`, poi esegue l'`INSERT`.
-
-Ogni **funzione madre di dominio** la chiama e vi aggiunge la sola parte
-specifica (risoluzione contesto + link della propria sorgente). Così
-l'atomicità di ogni dominio si ottiene **senza duplicare** la logica di
-creazione pratica: si scrive una volta, si riusa.
+> Approfondimento funzioni:
+>
+> * [vendite.fn_genera_pratica_da_preventivo](/dbzero/vendite/funzioni/fn_genera_pratica_da_preventivo) — una madre di dominio che la chiama
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva gli errori
 
 ---
 
-### Firma
+### 🎯 Scopo Principale
 
-```sql
-pratiche.fn_crea_pratica(
-    p_emittente_fiscale_id pratiche.pratiche.emittente_fiscale_id%TYPE,
-    p_tipo_prestazione_id  pratiche.pratiche.tipo_prestazione_id%TYPE,
-    p_soggetto_id          pratiche.pratiche.soggetto_id%TYPE DEFAULT NULL,
-    p_soggetto_ruolo_id    pratiche.pratiche.soggetto_ruolo_id%TYPE DEFAULT NULL,
-    p_istanza_utility_id   pratiche.pratiche.istanza_utility_id%TYPE DEFAULT NULL,
-    p_priorita_id          pratiche.pratiche.priorita_id%TYPE DEFAULT NULL,
-    p_descrizione          pratiche.pratiche.descrizione%TYPE DEFAULT NULL,
-    p_meta                 jsonb DEFAULT '{}'::jsonb
-) RETURNS pratiche.pratiche.id%TYPE
-```
+`pratiche.fn_crea_pratica` è il building block condiviso che crea una pratica e ne ritorna l'id: risolve
+lo stato iniziale `APERTA` e, se non è data, la priorità predefinita `NORMALE`, poi inserisce la riga.
 
-### Guard di dominio (già trigger, applicati all'INSERT)
+La creazione è identica per ogni sorgente (preventivo, ordine, i domini che verranno): ogni funzione
+madre di dominio la chiama e aggiunge solo la sua parte specifica, la risoluzione del contesto e il
+collegamento al proprio documento. L'atomicità di ogni dominio si ottiene così senza duplicare la
+creazione della pratica.
 
-I guard sulla pratica **non** sono replicati nella funzione: sono trigger su
-`pratiche.pratiche` e scattano all'INSERT — coerenza contesto
-(`trgfn_pratiche_guard_contesto`), scope emittente, pin definizione
-(`trgfn_pratiche_default_definizione`), parent attivi (emittente / tipo / stato
-/ priorità / soggetto / UO / canale), audit, tx_id, gen_codice, giornale.
+---
 
-> ⚠️ **Guard pre/post-attivazione NON incluso.** Il controllo «tipo prestazione
-> ammesso pre/post attivazione cliente» vive **solo** nel service Python
-> (`pratiche_service.crea_pratica`, via `repo.ha_ba_attivo`): non esiste un
-> trigger DB equivalente. Questa funzione **non** lo replica (nessuna
-> regressione: non era in DB). I chiamanti che lo richiedono lo pre-verificano a
-> monte.
+### Il significato dei parametri
 
-### Note tecniche
+* Emittente e tipo di prestazione sono obbligatori; soggetto, ruolo del soggetto, istanza della
+  utility, priorità, descrizione e metadati sono facoltativi.
+* `p_billing_account_id`, in coda e facoltativo, è il cliente di cui parla la pratica, a grana fine.
 
-* **`SECURITY INVOKER`**: RLS su `pratiche.pratiche` valutata come dal Python.
-* Stato/priorità di default risolti per `codice_interno` (`APERTA`, `NORMALE`);
-  se non configurati ⇒ **`E_CONFIG_MANCANTE`**.
+---
+
+### ⭐ I guard non sono nella funzione: sono sulla tabella
+
+La funzione non ripete nessun controllo: li fanno i trigger di `pratiche.pratiche` all'inserimento, e
+valgono per qualunque strada di scrittura. Fra questi la coerenza del contesto, il perimetro
+dell'emittente, la definizione del workflow risolta e fissata alla nascita, i riferimenti attivi
+(emittente, tipo, stato, priorità, soggetto, unità organizzativa, canale), il tipo di prestazione non
+obsoleto, il codice, l'audit, la transazione, la data di apertura e il giornale.
+
+⚠️ Il controllo «tipo di prestazione ammesso prima o dopo l'attivazione del cliente» non sta nel
+database: lo fa il servizio del backend, e la funzione non lo ripete. I chiamanti che ne hanno bisogno
+lo verificano prima.
+
+---
+
+### Sicurezza
+
+`SECURITY INVOKER`: la RLS su `pratiche.pratiche` si valuta come per chi la chiama.
+
+---
+
+### Codici errore
+
+* `E_CONFIG_MANCANTE` — manca a catalogo lo stato `APERTA` o la priorità `NORMALE`.
 
 ---
 
 ### Note di migrazione
 
-* **2026-10-08** (`20261008-67`): parametro `p_billing_account_id` **in coda**, `DEFAULT NULL` — il
-  cliente di cui parla la pratica. La firma vecchia e' stata tolta (un overload avrebbe reso
-  ambigue le chiamate per nome). Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).
+* 2026-07-08 — nasce come building block comune delle madri di dominio, per chiudere la creazione della
+  pratica in una transazione sola col dominio (analisi-fix-transazioni).
+* 2026-10-08 — arriva il parametro `p_billing_account_id`, in coda; la firma vecchia è stata tolta,
+  perché un overload avrebbe reso ambigue le chiamate per nome (brief-db-istanza-nasce-col-ba).
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,10 +1,14 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_registra_tentativo_login()`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **Il modello (tre regole):** [config.credenziali](/dbzero/config/tabelle/credenziali)
 >
 > **La gemella, prima della password:** [fn_check_blocco_login](/dbzero/script/funzioni/fn_check_blocco_login)
+>
+> **La scadenza delle righe:** [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola)
 
 ---
 
@@ -41,6 +45,25 @@ c'è.
 
 ---
 
+### La scadenza si sposta a ogni fallimento
+
+Le tre tabelle dei tentativi — le coppie credenziale + macchina
+([config.credenziali_provenienze](/dbzero/config/tabelle/credenziali_provenienze)), i nomi
+tentati e le coppie nome + macchina — scadono contando dall'ultimo fallimento. A ogni fallimento
+la funzione riscrive la scadenza della riga che tocca: istante della chiamata più il termine della
+regola della tabella, letta da
+[dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola), la stessa del trigger
+alla nascita e del giro di pulizia.
+
+L'istante della chiamata è la base giusta perché la colonna base della regola di quelle tabelle è
+l'ultimo fallimento, e la funzione lo scrive uguale all'istante della chiamata nella stessa
+istruzione.
+
+Se per la tabella non c'è una regola che si applica (nessuna regola, tabella esclusa dal cleanup,
+colonna base assente), la scadenza diventa vuota: la riga non scade.
+
+---
+
 ### Cosa restituisce
 
 Un oggetto JSON:
@@ -66,5 +89,9 @@ mancanti, impronta che non è di 32 byte, un accesso **riuscito** senza credenzi
 * 2026-09-25 — `20260925-61` (R-7): conta anche un nome che non esiste, per
   impronta; la firma prende l'impronta del nome (quella a tre argomenti non esiste
   più).
+* 2026-11-08 — `20261109-87`: il termine della scadenza viene da
+  `dbops.fn_cleanup_at_regola`, come per il trigger alla nascita e il giro di
+  pulizia. Prima lo leggeva da `dbops.fn_cleanup_at_params`, ritirata, senza
+  guardare le esclusioni.
 
 {% include-markdown "signature-core.md" %}

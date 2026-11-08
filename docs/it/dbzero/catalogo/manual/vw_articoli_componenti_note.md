@@ -1,68 +1,63 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_componenti_note`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:  
+> Approfondimento tabelle:
 >
-[catalogo.note_articoli_componenti](/dbzero/catalogo/tabelle/note_articoli_componenti)    
-> [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)     
-> [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
-> [config.note_stili](/dbzero/config/tabelle/note_stili)    
-> [config.lingue](/dbzero/config/tabelle/lingue)    
+> * [catalogo.note_articoli_componenti](/dbzero/catalogo/tabelle/note_articoli_componenti) — la partizione delle note che la vista legge
+> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — il legame di distinta annotato
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — il padre e il componente del legame, da cui prende codice e descrizione
+> * [config.note_stili](/dbzero/config/tabelle/note_stili) — lo stile della nota
+> * [config.lingue](/dbzero/config/tabelle/lingue) — la lingua della nota
+>
+> Approfondimento viste:
+>
+> * [catalogo.vw_articoli_note](/dbzero/catalogo/views/vw_articoli_note) — la stessa lettura per le note degli articoli
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 14-01-26)
-La vista **`catalogo.vw_articoli_componenti_note`** fornisce una lettura delle
-note legate ai componenti articolo, includendo i riferimenti a prodotto,
-componente, stile e lingua.
 
-Restituisce **una riga per nota**.
+Le note dei legami di distinta base, una riga per nota, con il padre e il componente del legame (codice e descrizione) e la decodifica dello stile e della lingua.
 
----
-
-### Struttura logica della vista
-
-La vista parte da `catalogo.note_articoli_componenti` e aggiunge:
-
-* join a `catalogo.articoli_componenti` per il legame prodotto–componente;
-* join a `catalogo.articoli` per codice/descrizione prodotto e componente;
-* join a `config.note_stili` per dati stile nota;
-* join a `config.lingue` per dati lingua.
+Si legge per mostrare o stampare le note di una distinta; si scrive sulla partizione
+[catalogo.note_articoli_componenti](/dbzero/catalogo/tabelle/note_articoli_componenti), non qui.
 
 ---
 
-### 📑 Campi esposti (principali)
+### Mostra ogni nota, di ogni versione del legame
 
-| Colonna                                                     | Descrizione                |
-| ----------------------------------------------------------- | -------------------------- |
-| `articolo_componente_id`, `prodotto_id`, `componente_id`    | Identificativi del legame. |
-| `prodotto_codice`, `prodotto_descrizione`                   | Dati articolo prodotto.    |
-| `componente_codice`, `componente_descrizione`               | Dati articolo componente.  |
-| `nota_id`, `nota_anchor_tipo`, `nota_posizione`, `nota_seq` | Posizionamento nota.       |
-| `nota_testo`, `nota_testo_md`                               | Contenuto nota.            |
-| `stile_id`, `stile_codice`, `stile_descrizione`             | Stile applicato.           |
-| `lingua_id`, `lingua_codice_iso`, `lingua_descrizione`      | Lingua della nota.         |
+La vista non filtra: espone le note visibili e quelle nascoste, quelle di sola stampa e le
+altre, e le note dei legami chiusi nel tempo come quelle dei legami in vigore. Chi cerca le
+note della distinta a una data deve filtrare il legame per la sua validità; quali note far
+vedere, e in che ordine, si sceglie con i flag `visibile` e `solo_stampa` e con posizione e
+sequenza della nota.
 
-(Sono esposti anche i campi di audit della nota.)
+Un legame senza note non compare.
 
 ---
 
-### Modalita' d'uso tipiche
+### ⚠️ Che cosa oggi non copre
 
-```sql
-SELECT *
-FROM catalogo.vw_articoli_componenti_note
-WHERE prodotto_id = :articolo_id
-ORDER BY nota_posizione, nota_seq;
-```
+* **È una copia.** La proiezione della nota (colonne della nota, stile e lingua) è la stessa di
+  [catalogo.vw_articoli_note](/dbzero/catalogo/views/vw_articoli_note), scritta due volte: un
+  ritocco fatto su una sola delle due le fa divergere senza errore.
+* **Non espone la validità del legame.** Per sapere se un legame è in vigore a una data bisogna
+  tornare a [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti).
+* **Non passa dalla lettura comune.** Le note dei documenti si leggono con
+  [script.fn_get_note](/dbzero/script/funzioni/fn_get_note), che qui non si può usare perché
+  vuole un bersaglio `bigint`.
+
+---
+
+### Test
+
+* `db/pgtap/catalogo/test-vw-articoli-componenti-note.sql` — su un padre e un componente
+  costruiti dal test, la nota del legame compare nella vista con lo stile e la lingua giusti; una
+  nota col tipo dell'articolo e il bersaglio di un legame è rifiutata.
 
 ---
 
-### Best practice e raccomandazioni
-
-* Usare la vista per consultazione e rendering note componenti.
-* Per modifiche, operare su `catalogo.note_articoli_componenti`.
-
----
 {% include-markdown "signature-core.md" %}

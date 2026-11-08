@@ -1,49 +1,45 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_pratiche_giornale_priorita`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_giornale_priorita`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.pratiche](pratiche.md)
->
-Overview:
->
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica di cui cambia la priorità
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove si registra l'evento
+> * [config.priorita_pratiche](/dbzero/config/tabelle/priorita_pratiche) — il catalogo delle priorità
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **PRIORITA_CAMBIATA** nel giornale. Si attiva **AFTER UPDATE OF priorita_id** su `pratiche.pratiche`, solo quando il valore cambia realmente.
+
+La trigger function `pratiche.trgfn_pratiche_giornale_priorita` registra nel giornale l'evento
+`PRIORITA_CAMBIATA` quando la priorità di una pratica cambia davvero.
 
 ---
 
-### Firma
+### La riga di giornale
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_priorita()
-RETURNS trigger
-LANGUAGE plpgsql
-```
-
----
-
-### Logica
-
-Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `NEW.id` |
-| `flusso_id` | `NULL` |
-| `azione` | `'PRIORITA_CAMBIATA'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('priorita_precedente_id', OLD.priorita_id, 'priorita_nuova_id', NEW.priorita_id)` |
-| `tx_id` | `NEW.tx_id` |
+* È un evento della pratica: il flusso resta vuoto.
+* L'origine è `SISTEMA`.
+* Il dettaglio porta la priorità precedente e quella nuova, come id del catalogo.
+* Il `tx_id` è quello della pratica o, se manca, quello della sessione: l'evento resta correlato alla
+  transazione che ha cambiato la priorità.
 
 ---
 
-### Trigger associato
+### Quando scatta
 
-| Nome | Fase | Evento | WHEN |
-|------|------|--------|------|
-| `trg_pratiche_z90_giornale_priorita_upd` | AFTER | UPDATE OF priorita_id | `OLD.priorita_id IS DISTINCT FROM NEW.priorita_id` |
+Dopo l'aggiornamento della priorità di una pratica, e solo se il valore è cambiato: riscrivere la stessa
+priorità non produce eventi.
+
+---
+
+### Test
+
+* `pratiche/test-trigger-giornale-pratiche` — gli eventi di giornale della pratica.
+
+---
+
+{% include-markdown "signature-core.md" %}

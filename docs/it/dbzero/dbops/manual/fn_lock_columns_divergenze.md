@@ -94,15 +94,17 @@ e su una tabella senza regola si toglie senza fermare il giro.
 ### ⛔ Fuori dall'ambito
 
 La funzione guarda solo le tabelle dell'ambito (`dbops.fn_resolve_scope`, `dbops.fn_table_in_scope`):
-è il perimetro del runner. Un lock su una tabella fuori dall'ambito non lo governa nessuno, e lo
-segnala il presidio `dbops/test-lock-columns-convergenza`, che legge `dbops.vw_lock_columns_vivi`.
+è il perimetro del runner. Fuori dall'ambito un lock lo monta una migrazione e il registro lo
+dichiara comunque (vedi [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)):
+che le due cose coincidano non lo dice questa funzione, ma il presidio
+`dbops/test-lock-columns-convergenza`, che legge `dbops.vw_lock_columns_vivi`.
 
 ---
 
 ### Test
 
 * `db/pgtap/dbops/test-lock-columns-convergenza.sql` — su tutto il database la funzione non
-  restituisce righe, e fuori dall'ambito non c'è nessun lock; su uno schema di prova costruito a
+  restituisce righe, e fuori dall'ambito lock vivi e registro coincidono; su uno schema di prova costruito a
   mano dà `RIGENERA` e `TOGLIE` con le colonne perse; dopo la convergenza non resta nessuna
   divergenza; una riga di un altro `exec_mode` resta attesa solo se la colonna è già bloccata; una
   tabella governata da un'altra corsa non si confronta; un lock disabilitato si rigenera; con la

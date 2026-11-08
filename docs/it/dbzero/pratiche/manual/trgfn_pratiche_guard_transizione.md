@@ -1,57 +1,45 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_pratiche_guard_transizione`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_guard_transizione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[config.transizioni_stati_pratiche](/dbzero/config/manual/transizioni_stati_pratiche)
-> [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
-> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la tabella su cui è montata
+> * [config.transizioni_stati_pratiche](/dbzero/config/tabelle/transizioni_stati_pratiche) — la matrice delle transizioni ammesse
+> * [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche) — gli stati della pratica
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva gli errori
 
 ---
+
 ### 🎯 Scopo Principale
-Trigger function guard che **blocca transizioni di stato non ammesse** per le pratiche. Consulta la matrice `config.transizioni_stati_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
+
+`pratiche.trgfn_pratiche_guard_transizione` blocca i cambi di stato di una pratica che la matrice
+`config.transizioni_stati_pratiche` non ammette.
 
 ---
 
-### Firma
+### La regola
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_transizione()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+* Una transizione è ammessa se la coppia (stato di partenza, stato di arrivo) è una riga attiva della
+  matrice. Una riga disattivata non ammette più quella transizione.
+* Se lo stato non cambia non c'è niente da controllare.
+* Nel messaggio d'errore gli stati compaiono col loro codice interno, così chi legge sa da dove a dove
+  si voleva passare.
 
----
-
-### Logica
-
-1. Se `OLD.stato_id = NEW.stato_id` → nessuna transizione, RETURN NEW senza controllo.
-2. Cerca la coppia `(OLD.stato_id, NEW.stato_id)` in `config.transizioni_stati_pratiche` con `attivo = true`.
-3. Se non esiste:
-   - Risolve i `codice_interno` degli stati da e a per un messaggio leggibile.
-   - Solleva eccezione tramite `script.fn_log_and_raise_error('PRATICHE_TRANSIZIONE_NON_AMMESSA', ...)`.
-4. Se esiste → RETURN NEW.
+È montata `BEFORE UPDATE OF stato_id`, riga per riga, nella fase dei guard (`_a10_`), e scatta solo
+quando lo stato cambia davvero: gira prima dei trigger di giornale, quindi una transizione rifiutata
+non lascia traccia nel giornale.
 
 ---
 
-### Trigger associato
+### Codici errore
 
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_pratiche_a10_guard_transizione_upd` | BEFORE | UPDATE OF stato_id | `pratiche.pratiche` |
-
-Fase `_a10_`: guard/block — esegue prima dei trigger giornale (`_z90_`).
-
-Condizione WHEN: `OLD.stato_id IS DISTINCT FROM NEW.stato_id`.
-
----
-
-### Messaggi errore
-
-| Codice | Messaggio |
-|--------|-----------|
-| `PRATICHE_TRANSIZIONE_NON_AMMESSA` | Transizione pratica non ammessa: {da} -> {a} |
+* `E_PRATICHE_TRANSIZIONE_NON_AMMESSA` — la transizione non è nella matrice, o la sua riga non è attiva.
 
 ---
 

@@ -1,94 +1,74 @@
-## 📘 Documentazione Concettuale – Funzione `pratiche.trgfn_pratiche_gen_codice()`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_gen_codice`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> • [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
-> • [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica che riceve il codice
+> * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici) — la configurazione del codice, e la riga da cui la funzione nasce
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) — il generatore centrale dei codici
+> * [script.trgfn_config_sistema_codici_sync_gen_codice](/dbzero/script/funzioni/trgfn_config_sistema_codici_sync_gen_codice) — crea, sposta e ritira questa funzione dalla configurazione
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+La trigger function `pratiche.trgfn_pratiche_gen_codice` assegna il codice della pratica quando chi la
+crea non lo fornisce, chiedendolo al generatore centrale `script.fn_generate_codice` con la chiave
+`pratica`.
 
-Assegna il **codice della pratica** quando chi la crea non lo fornisce, delegando a
-`script.fn_generate_codice('pratica')`. È lo stesso pattern delle anagrafiche
-(`trgfn_soggetti_gen_codice` e famiglia): la funzione non calcola nulla, si limita a
-riconoscere il campo vuoto e a chiedere il codice al generatore centrale.
-
----
-
-### Aggancio
-
-Trigger `trg_pratiche_a10_gen_codice_ins_upd` — fase `_a10_`, `BEFORE INSERT OR UPDATE`
-su `pratiche.pratiche`.
+La funzione non calcola niente: riconosce il campo vuoto e chiede il codice.
 
 ---
 
-### Regole applicate
+### Le regole
 
-1. Se `NEW.codice` è `NULL` o vuoto dopo `btrim`, viene valorizzato con
-   `script.fn_generate_codice('pratica')`.
-2. Un codice già presente non viene mai sovrascritto.
-
-Configurazione in `config.sistema_codici`, riga `codice_interno = 'pratica'`:
-prefisso `PRA`, separatore `-`, numero a 7 cifre (`PRA-0000123`).
+* Scatta prima dell'inserimento di una pratica e prima di un aggiornamento del codice.
+* Se il codice è vuoto, o fatto di soli spazi, lo valorizza col generatore; un codice presente non
+  viene mai sovrascritto.
+* Formato, prefisso e numerazione stanno nella riga `pratica` di `config.sistema_codici`.
 
 ---
 
-### ⚠️ Note e trappole
+### ⚠️ Da sapere
 
-* **La chiave è `'pratica'` al singolare**, mentre lo schema e la tabella sono al plurale.
-  Il legame con `config.sistema_codici` è per stringa: rinominare quella riga fa fallire
-  ogni inserimento con `E_SEQUENZA_NON_CONFIGURATA`.
-* **`usa_sequenza = false` restituisce `NULL`, non un errore.** Se un giorno quella riga
-  venisse spenta, le pratiche nascerebbero senza codice e il difetto emergerebbe a valle,
-  non qui.
-* **In `UPDATE` la generazione è trattenuta dal lock.** La tabella ha anche
-  `script.trgfn_lock_columns` sul codice; i `BEFORE ROW` scattano in ordine alfabetico, quindi
-  `gen_codice` gira prima di `lock_columns`: chi svuota `codice` in un `UPDATE` ne ottiene uno
-  nuovo, che il lock rifiuta subito dopo come modifica. Con
-  `SET LOCAL zeroerp.allow_lock_columns_override = 'on'` la rete sparisce e il codice cambia
-  davvero.
+* **La chiave è `pratica` al singolare**, mentre schema e tabella sono al plurale. Il legame con
+  `config.sistema_codici` è per stringa: rinominare quella riga fa fallire ogni inserimento.
+* **Una riga di configurazione con la sequenza spenta dà un codice vuoto, non un errore.** Il difetto
+  emergerebbe a valle, non qui.
+* **In aggiornamento, svuotare il codice ne genera uno nuovo.** Sul codice della pratica non è montato
+  un lock: chi lo svuota in un aggiornamento ottiene un codice diverso, senza errori.
 
 ---
 
-### ⚠️ Questa funzione è **generata**, non scritta a mano
+### ⚠️ La funzione è generata, non scritta a mano
 
-Il corpo compresso su una riga sola non è una svista di formattazione. La funzione, la
-sequenza e il trigger che la invoca sono creati con DDL dinamico da
-`script.trgfn_config_sistema_codici_sync_gen_codice` — il trigger
-`AFTER INSERT OR UPDATE OR DELETE` di `config.sistema_codici`. Basta la riga
-`codice_interno = 'pratica'` con `schema_tabella`, `nome_tabella`, `nome_colonna` valorizzati
-e `usa_sequenza = true`, e i tre oggetti nascono da soli.
+La funzione, la sequenza e il trigger che la invoca sono creati da
+`script.trgfn_config_sistema_codici_sync_gen_codice`, il trigger di `config.sistema_codici`: basta la
+riga `pratica` con la tabella e la colonna di destinazione e la sequenza accesa. Per questo tutte le
+funzioni `*_gen_codice` del progetto hanno lo stesso corpo: è la stessa funzione, parametrizzata per
+tabella.
 
-È il motivo per cui **tutte** le `trgfn_*_gen_codice` del progetto hanno corpo identico: non
-sono sette funzioni simili, sono la stessa funzione parametrizzata sette volte.
-
-Conseguenze pratiche:
-
-* **Modificarla a mano non serve a niente.** Il loader del CSV `sistema_codici` è
-  `runOnChange`, quindi ripassa a ogni migrate: la funzione viene riscritta col template e
-  qualunque ritocco locale sparisce senza lasciare traccia.
-* **Non si spegne con un `DROP`, si spegne dalla configurazione.** Portando `usa_sequenza`
-  a `false` il trigger di sync cancella da sé trigger e funzione; un `DROP` manuale li fa
-  ricomparire al primo migrate.
-* **Cambiare `schema_tabella`/`nome_tabella`/`nome_colonna` sposta gli oggetti**: il sync
-  fa `DROP` di quelli vecchi e ricrea altrove. Nessun errore, nessun avviso.
+* **Modificarla a mano non serve.** Il caricamento della configurazione ripassa a ogni migrazione e la
+  riscrive dal modello: un ritocco locale sparisce senza traccia.
+* **Non si spegne togliendola, si spegne dalla configurazione.** Spegnendo la sequenza, il sync ritira
+  da sé trigger e funzione; tolta a mano, ricompare alla migrazione successiva.
+* **Cambiare tabella o colonna di destinazione sposta gli oggetti**: il sync ritira i vecchi e li ricrea
+  altrove, senza avvisi.
 
 ---
 
 ### Codici errore
 
-| Codice | Sollevato da | Quando |
-|--------|--------------|--------|
-| `E_SEQUENZA_NON_CONFIGURATA` | `script.fn_generate_codice` | Nessuna riga `codice_interno = 'pratica'` in `config.sistema_codici` |
-
 La funzione non solleva errori propri.
+
+* `E_SEQUENZA_NON_CONFIGURATA` — sollevato da `script.fn_generate_codice` quando la riga `pratica`
+  manca in `config.sistema_codici`.
 
 ---
 

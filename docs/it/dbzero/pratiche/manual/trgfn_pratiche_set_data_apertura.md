@@ -1,64 +1,51 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_pratiche_set_data_apertura`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_set_data_apertura`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
+> Approfondimento tabelle:
+>
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica e la sua `data_apertura`
+> * [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche) — gli stati `BOZZA` e `APERTA`, letti per codice interno
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — la data di oggi nel fuso dell'azienda
 
 ---
+
 ### 🎯 Scopo Principale
 
-Valorizza automaticamente `data_apertura` quando la pratica entra in APERTA, sia
-per **creazione diretta** (INSERT con stato APERTA) sia per **transizione**
-BOZZA → APERTA su UPDATE. Immutabile: una volta valorizzata, non viene sovrascritta
-da transizioni successive (ne' da un valore esplicito gia' fornito all'INSERT).
+La trigger function `pratiche.trgfn_pratiche_set_data_apertura` valorizza `data_apertura` quando la
+pratica entra in `APERTA`, sia quando nasce già aperta sia quando passa da `BOZZA` ad `APERTA`.
+
+Una volta valorizzata, la data non cambia più con le transizioni successive.
 
 ---
 
-### Firma
+### Le regole
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
-RETURNS trigger LANGUAGE plpgsql
-```
+* **Alla nascita**: se la pratica nasce in `APERTA` e la data non è stata fornita, prende la data di
+  oggi. Una data fornita dal chiamante si conserva. In qualunque altro stato (per esempio `BOZZA`) la
+  data resta vuota.
+* **Al cambio di stato**: solo la transizione `BOZZA` → `APERTA` valorizza la data. Se la data è già
+  valorizzata, si conserva quella di prima, qualunque sia la transizione.
+* Gli stati si riconoscono per codice interno, mai per id.
 
----
+⭐ La data è quella del giorno operativo dell'azienda (`script.fn_data_operativa`), non quella della
+sessione: canali con fusi diversi danno lo stesso giorno.
 
-### Logica di funzionamento
-
-Lo stato APERTA viene risolto da `config.stati_pratiche.codice_interno` (mai hardcodato).
-
-**Ramo INSERT** (creazione diretta):
-
-1. Se `stato_id` = APERTA e `data_apertura` non e' stata fornita → valorizza `data_apertura = CURRENT_DATE`.
-2. Se `data_apertura` e' gia' fornita dal chiamante → preserva il valore (immutabilita' anche all'INSERT).
-3. Per qualsiasi altro stato all'INSERT (es. BOZZA) → nessuna azione (`data_apertura` resta NULL).
-
-**Ramo UPDATE** (transizione):
-
-1. Se `stato_id` non cambia → nessuna azione.
-2. Se `data_apertura` e' gia' valorizzata → preserva il valore originale (immutabilita').
-3. Se la transizione e' BOZZA → APERTA → valorizza `data_apertura = CURRENT_DATE`.
-4. Per qualsiasi altra transizione → nessuna azione.
+⚠️ L'immutabilità vale sui cambi di stato: una modifica che tocca la sola `data_apertura`, senza
+cambiare stato, non passa da questa funzione.
 
 ---
 
-### Trigger associati
+### Il significato della colonna
 
-| Nome                                     | Fase   | Evento             | Tabella             |
-|------------------------------------------|--------|--------------------|---------------------|
-| `trg_pratiche_m50_set_data_apertura_ins` | BEFORE | INSERT             | `pratiche.pratiche` |
-| `trg_pratiche_m50_set_data_apertura_upd` | BEFORE | UPDATE OF stato_id | `pratiche.pratiche` |
-
-La fase `_m50_` e' intermedia: dopo i guard `_a10_` (transizione ammessa, solo su UPDATE), prima dei trigger finali `_z90_` (giornale).
-
----
-
-### Note operative
-
-* `data_apertura` e' di tipo `DATE` (non timestamp) — per dashboard e SLA conta il giorno, non l'ora. Il timestamp preciso e' nel giornale (evento STATO_CAMBIATO).
-* `data_apertura` e' NULL per pratiche ancora in BOZZA o annullate senza passare per APERTA.
-* Valorizzata con `CURRENT_DATE` (non `NOW()`) per coerenza col tipo `DATE`.
+* `data_apertura` è una data, non un istante: per cruscotti e tempi conta il giorno. L'istante preciso
+  sta nel giornale, nell'evento di cambio di stato.
+* È vuota per le pratiche ancora in `BOZZA` e per quelle annullate senza essere mai state aperte.
 
 ---
 

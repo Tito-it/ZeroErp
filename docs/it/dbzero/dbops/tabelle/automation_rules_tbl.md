@@ -15,7 +15,6 @@
 | target_table | text | NO | '*all'::text |
 | exec_mode | text | NO | 'AUTO'::text |
 | name_template | text | YES |  |
-| existence_strategy | text | NO | 'BY_NAME'::text |
 | params | jsonb | NO | '{}'::jsonb |
 | priority | integer | NO | 100 |
 | note | text | YES |  |
@@ -23,6 +22,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_automation_rules_tbl_exec_mode |  |
+| CHECK | chk_automation_rules_tbl_regola_valida |  |
+| CHECK | chk_automation_rules_tbl_rule_type |  |
 | PRIMARY KEY | automation_rules_tbl_pkey | id |
 
 ## 📑 Indici

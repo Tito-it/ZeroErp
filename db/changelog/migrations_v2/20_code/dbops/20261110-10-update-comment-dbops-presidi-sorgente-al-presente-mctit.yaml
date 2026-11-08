@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DEI PRESIDI DI MAGAZZINO E DEL BUILDER DELLA SORGENTE, AL PRESENTE
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 (giro finale).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   linee-guida-sql §5d: il COMMENT descrive l'oggetto al presente. I due
+#   presidi (dbops.vw_ddt_emessi_senza_scarico, dbops.vw_resi_confermati_senza_carico)
+#   finivano con una cronaca di brief, rev datate e sigle di decisione, e
+#   spiegavano le righe senza magazzino con il lotto che le aveva fatte nascere;
+#   il builder dbops.fn_pgtap_crea_sorgente portava una data e un brief.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   Solo COMMENT ON: due viste e una funzione. Nessun corpo.
+#   Il builder non chiude i vincoli (niente SET CONSTRAINTS ALL IMMEDIATE),
+#   quindi dbops/test-builder-pgtap-vincoli-immediate-v1 non gli chiede la parola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-10-update-comment-dbops-presidi-sorgente-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261110-10-update-comment-dbops-presidi-sorgente-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente (linee-guida-sql §5d) di dbops.vw_ddt_emessi_senza_scarico, dbops.vw_resi_confermati_senza_carico e dbops.fn_pgtap_crea_sorgente. brief-db-sorgente-documento-e-riga §7.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'dbops' AND c.relname = 'vw_resi_confermati_senza_carico'
+                 AND a.attname = 'rientri_senza_carico' AND NOT a.attisdropped;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_ddt_emessi_senza_scarico IS
+                'Presidio, DEVE restare vuota. Una riga e'' una bolla in uno stato in cui la merce e'' partita (il BB script.vw_stati_doc_ddt_merce_partita: uscita dalla bozza e non abortita), con un magazzino, che muove merce (vendite.fn_ddt_muove_merce), con almeno un prelievo di una riga attiva senza la sua uscita a registro: un movimento di magazzino.movimenti con provenienza DDT_VENDITA (la bolla, la riga, il prelievo come dettaglio), quantita'' negativa, che non sia uno storno. La domanda e'' PRELIEVO PER PRELIEVO, come il contratto del posting (vendite.fn_posta_ddt: un movimento per prelievo delle righe attive): anche uno scarico parziale si vede, e prelievi_senza_scarico dice quanti prelievi mancano. Una riga e'' la porta del registro che non ha tenuto (lo stato cambia solo dal verbo vendite.fn_cambia_stato_ddt, attraverso script.trgfn_doc_stato_solo_dal_verbo): una bolla uscita senza la sua merce, cioe'' una giacenza che mente. Il rimedio non e'' scrivere il movimento a mano: e'' capire da dove e'' passata l''emissione. Una bolla senza magazzino resta fuori: non e'' questo difetto. Non vede l''arrivo di un trasferimento, che presidia dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo. security_invoker; il digest conta da proprietario (dbops.fn_conta_presidio, perimetro DEFINER).';
+
+              COMMENT ON VIEW dbops.vw_resi_confermati_senza_carico IS
+                'Presidio, DEVE restare vuota. Una riga e'' un reso in uno stato in cui la merce e'' rientrata (il BB script.vw_stati_doc_reso_merce_rientrata: oltre la bozza, non abortito), con un magazzino, che fa rientrare merce (vendite.fn_reso_muove_merce), con almeno un rientro di una riga attiva senza il suo carico a registro: un movimento di magazzino.movimenti con provenienza RESO_VENDITA (il reso, la riga, il rientro come dettaglio), quantita'' positiva, che non sia uno storno. La domanda e'' RIENTRO PER RIENTRO, come il contratto del posting (vendite.fn_posta_reso: un carico per rientro delle righe attive): anche un carico parziale si vede, e rientri_senza_carico dice quanti rientri mancano. Una riga e'' la porta del registro del reso che non ha tenuto (lo stato cambia solo dai verbi del reso, attraverso script.trgfn_doc_stato_solo_dal_verbo; la conferma e'' vendite.fn_conferma_reso): merce tornata dal cliente che la giacenza non vede. Il rimedio non e'' scrivere il movimento a mano: e'' capire da dove e'' passata la conferma. Un reso senza magazzino resta fuori: non e'' questo difetto. Gemella di dbops.vw_ddt_emessi_senza_scarico, la stessa domanda sul verso opposto. security_invoker; il digest conta da proprietario (dbops.fn_conta_presidio, perimetro DEFINER).';
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_sorgente(character varying, regclass) IS
+                'Builder pgTAP: una sorgente di PROVA, costruita e non pescata: un tipo di documento che il catalogo non ha, col codice dato (codice_interno e codice) e la tabella dei documenti facoltativa (NULL = nessuna: il caso del riferimento che manca). Ritorna l''id, il primo libero dentro la transazione del test (config.sorgenti.id non ha default: gli id li da'' il seed). Categoria DOCUMENTO, attiva, key_selector id, nel meta il marchio pgtap. Spenta come documento: apribile falso, scope CATALOGO, etichetta uguale al codice; il test la vede, nessuna lista la propone. Un codice gia'' a catalogo collide con l''unicita''. Serve a chi costruisce una famiglia di numerazione di prova (la famiglia e'' una sorgente: fk_famiglie_documento_sorgenti) o un ambito di prova.';

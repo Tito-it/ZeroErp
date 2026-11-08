@@ -1,20 +1,31 @@
-## 📘 Documentazione Concettuale – Tabella `vendite.ordini` (testata)
+## 📘 Documentazione Concettuale – Tabella `vendite.ordini`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
-> • [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini)  
-> • [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)   
-> • [config.valute](/dbzero/config/tabelle/valute)  
-> • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)  
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
+> * [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe) — le righe dell'ordine
+> * [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini) — gli stati del documento
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento d'origine
+> * [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento) — la modalità di pagamento
+> * [config.valute](/dbzero/config/tabelle/valute) — la valuta
+> * [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento) — il termine di pagamento
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il cliente e l'agente
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il billing account
 >
-**Viste correlate:**
+> Approfondimento viste:
 >
-> • [vendite.vw_ordini_lista](/dbzero/vendite/views/vw_ordini_lista) — lista UI configurabile  
+> * [vendite.vw_ordini_lista](/dbzero/vendite/views/vw_ordini_lista) — la lista configurabile, con la provenienza leggibile
+>
+> Approfondimento funzioni:
+>
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della provenienza
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 ### 🎯 Scopo Principale
@@ -26,7 +37,7 @@ Obiettivi principali:
 * Gestire in modo univoco gli **ordini cliente** con identificazione tramite `uid` e *(anno, serie, numero)*.  
 * Mantenere coerenza con gli **stati di avanzamento** (bozza, confermato, evaso, ecc.).  
 * Integrare **dati economici, di trasporto e di fatturazione** in un unico oggetto coerente.  
-* Supportare l’**idempotenza** d’import (da CRM o sistemi esterni) tramite coppia *(sorgente_tipo_id, sorgente_uid)*.  
+* Dichiarare la **provenienza** dell'ordine nato da un preventivo o da un'offerta, con le colonne `sorgente_*` del modello comune.  
 * Favorire il **riuso in downstream** per generazione DDT, documenti di trasporto o fatture.
 
 ---
@@ -143,7 +154,7 @@ creazione**:
   registro stesso. Il vecchio trigger `trgfn_ordini_gen_codice` non esiste più.  
 * **UID** (`uuid`) – identificatore universale per import/export o sincronizzazione API.
 
-> *Gli ordini possono essere generati anche da sistemi esterni (CRM, portali clienti, configuratori) e successivamente importati nel gestionale tramite `sorgente_tipo_id` + `sorgente_uid`.*
+> *Le colonne `sorgente_*` dicono da quale documento l'ordine nasce (vedi «Documento di origine»), non da quale sistema esterno è stato importato.*
 
 ---
 
@@ -176,7 +187,7 @@ I campi di sintesi (`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`) rap
 * **`meta jsonb`** – estensioni dinamiche (es. note interne, parametri specifici del cliente o canale).  
 * **Audit standard** – colonne `data_insert`, `user_insert`, `data_update`, `user_update`.  
 * **`storicizza`** – abilita i trigger del framework Zero ERP per la storicizzazione automatica dei record modificati o eliminati.  
-* **Idempotenza** – tramite `uid` o coppia `(sorgente_tipo_id, sorgente_uid)` garantisce sincronizzazioni senza duplicazioni.
+* **Idempotenza** – l'`uid` identifica l'ordine nelle sincronizzazioni senza duplicazioni.
 
 ---
 
@@ -189,13 +200,14 @@ I campi di sintesi (`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`) rap
   * Stato → `config.stati_doc_ordini`
   * Valuta → `config.valute`
   * Pagamento e termini → `config.modalita_pagamento`, `config.termini_pagamento`
-  * Sorgente import → `config.sorgenti` (idempotenza CRM, distinta da `documento_origine_*`)
+  * Tipo del documento d'origine → `config.sorgenti` (`sorgente_tipo_id`)
 
 * **Indici**:
   * `ix_ordini_v_cliente_statoid_data` → per dashboard cliente/stato.  
   * `ix_ordini_v_statoid` → query per stato ordine.  
   * `uq_ordini_v_uid` → unicità globale UID.  
-  * `uq_ordini_v_sorgente_fk` → idempotenza import (solo se `sorgente_tipo_id` non nullo).  
+  * `uq_ordini_v_sorgente_offerta` → un'offerta genera al più un ordine vivo.  
+  * `ix_ordini_v_sorgente_id`, `ix_ordini_v_sorgente_uid` → ricerca degli ordini nati da un documento.  
   * `uq_ordini_v_anno_serie_numero` → numerazione univoca condizionata.
 
 ---
@@ -231,30 +243,31 @@ l'agente/venditore associato all'ordine, per provvigioni e reporting commerciale
 
 ---
 
-### Documento di origine — provenienza upstream (A1, 2026-06-03)
+### Documento di origine — la provenienza dell'ordine
 
-Quando l'ordine **nasce da un preventivo o un'offerta** (conversione commerciale),
-la provenienza è tracciata da una coppia di colonne tipizzate dedicate:
+Quando l'ordine **nasce da un preventivo o da un'offerta**, la provenienza sta nelle colonne
+del modello comune della [sorgente polimorfa](/guide/sorgente-polimorfa):
 
-| Colonna | Tipo | Note |
-| --- | --- | --- |
-| `documento_origine_tipo` | `varchar` + CHECK | vocabolario chiuso `PREVENTIVO` / `OFFERTA` (stesso idioma di `fatturazione_trigger`) |
-| `documento_origine_id` | `bigint` | riferimento **polimorfo**: `preventivi.id` o `offerte_commerciali.id` secondo il tipo |
+| Colonna | Che cosa dice |
+| --- | --- |
+| `sorgente_tipo_id` | il tipo del documento d'origine in `config.sorgenti`: `PREVENTIVO` o `OFFERTA_COMMERCIALE` |
+| `sorgente_id` *oppure* `sorgente_uid` | quale documento: una sola delle due, quella della chiave del tipo (preventivo e offerta si riconoscono per uid) |
 
-* **Niente UNIQUE** sul link → un preventivo/offerta può generare **più ordini**
-  (riordini, consegne parziali). CHECK di **co-presenza** tipo↔id
-  (`chk_ordini_documento_origine_copres`): o entrambi NULL (ordine diretto) o entrambi
-  valorizzati.
-* **Riferimento polimorfo**: nessuna FK fisica unica (punterebbe a due tabelle);
-  l'integrità è garantita alla **valorizzazione** (service di conversione), non da una FK.
-* **Distinto da `sorgente_tipo_id`/`sorgente_uid`**: quelle colonne servono
-  all'**idempotenza d'import da sistemi esterni** (CRM/portali, FK `config.sorgenti`,
-  con UNIQUE `uq_ordini_v_sorgente_fk`); `documento_origine_*` traccia invece la
-  **conversione interna** di un documento commerciale. Sono meccanismi separati con
-  scopi diversi (la scelta A1 — colonne dedicate senza UNIQUE — nasce proprio per non
-  imporre il vincolo 1:1 dell'idempotenza import alla conversione).
-* **Display**: nella vista `vw_ordini_lista` come `documento_origine_codice`
-  (`preventivi.numero` | `offerte_commerciali.codice`, risolto per tipo).
+* **Forma**: o le colonne sono tutte vuote (l'**ordine nato da solo**), o c'è il tipo con
+  una sola chiave (`chk_ordini_sorgente_forma`). La provenienza è il documento intero:
+  l'ordine non dichiara una riga d'origine.
+* **Esistenza**: il guard unico `script.trgfn_guard_sorgente` controlla che il documento
+  esista e sia visibile a chi scrive; finché un ordine lo dichiara, il documento d'origine
+  non si cancella.
+* **Chi la scrive**: i verbi che generano l'ordine, `vendite.fn_push_preventivo_a_ordine` e
+  `vendite.fn_genera_ordine_da_offerta`.
+* **Unicità solo dove il dominio la vuole**: un preventivo può generare **più ordini**
+  (riordini, consegne parziali); un'**offerta** ne genera al più **uno vivo**
+  (`uq_ordini_v_sorgente_offerta`). Un ordine annullato conserva la provenienza e non
+  consuma l'offerta, che può generare un nuovo ordine.
+* **Display**: nella vista `vw_ordini_lista` la provenienza è esposta anche in forma
+  leggibile (`documento_origine_tipo`, `documento_origine_id`, `documento_origine_codice`),
+  calcolata da `sorgente_*`.
 
 ---
 
@@ -264,7 +277,6 @@ la provenienza è tracciata da una coppia di colonne tipizzate dedicate:
 2. **Numerazione** – assegnata dal trigger `trgfn_ordini_gen_numero` all'INSERT (anche in BOZZA) se `numero` è NULL; immutabile dopo (lock colonne).
 3. **Cancellazione** – vietata se ordine gia` confermato o collegato a DDT/fatture (vincolo logico).
 4. **Cambio valuta** – ammesso solo finche` non esistono righe evase.
-5. **Sorgente esterna** – se popolata, blocca rinumerazione automatica e update su `serie/numero`.  
 
 ---
 
@@ -305,3 +317,18 @@ preventivi**: qui i due valori sono indipendenti e vanno tenuti tali.
 Il default `false` garantisce che l'aggiunta della colonna **non cambi la corsia
 di nessun documento esistente**.
 
+---
+
+### Note di migrazione
+
+* 2026-06-03 — introdotta la provenienza da preventivo e offerta, allora in due colonne
+  dedicate `documento_origine_tipo` (vocabolario chiuso `PREVENTIVO` / `OFFERTA`) e
+  `documento_origine_id`, separate da `sorgente_*` che serviva all'idempotenza d'import.
+* 2026-11-06 — la provenienza passa nelle colonne `sorgente_*` del modello comune:
+  ritirate `documento_origine_tipo` e `documento_origine_id`, e con loro gli indici
+  `uq_ordini_v_sorgente_fk` (idempotenza d'import) e `uq_ordini_v_documento_origine_offerta`,
+  sostituiti da `uq_ordini_v_sorgente_offerta` (brief-db-sorgente-documento-e-riga).
+
+---
+
+{% include-markdown "signature-core.md" %}

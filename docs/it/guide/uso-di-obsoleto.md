@@ -1,6 +1,6 @@
 # Guida — Mandare in pensione una voce di catalogo (`obsoleto_dal`)
 
-> **Ultimo aggiornamento**: 6 novembre 2026 (gli articoli: riga nuova e riga derivata)
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori database e backend
 >
@@ -191,8 +191,11 @@ nascere in due modi.
 | è di **magazzino** (movimenti, inventari, rettifiche, trasferimenti)                            | ✅ mai bloccata: la giacenza residua va scaricata |
 
 **Come si riconosce la riga derivata.** Dalla riga stessa, mai da un parametro di chi chiama: una
-riga derivata porta la sua **sorgente** (`sorgente_tipo_id` valorizzata). Il controllo vale solo
-alla nascita: dopo, conta solo il cambio di articolo.
+riga derivata porta la sua **sorgente** (`sorgente_tipo_id` valorizzata, con il documento e la
+riga da cui nasce: [sorgente polimorfa](/guide/sorgente-polimorfa)). La scrivono i verbi che
+generano una riga da un altro documento — l'ordine dal preventivo, la revisione, la bolla
+dall'ordine, la riconsegna, l'ordine e il contratto dall'offerta. Il controllo vale solo alla
+nascita: dopo, conta solo il cambio di articolo.
 
 **Dove sta la regola.** In due posti, secondo la riga:
 
@@ -222,12 +225,8 @@ alla nascita: dopo, conta solo il cambio di articolo.
 `obsoleto_dal` (la data, che il form modifica; cancellarla riattiva l'articolo) ed `e_obsoleto`
 (ritirato alla data operativa, già calcolato: l'applicazione non confronta date).
 
-> ⚠️ **Stato al 6 novembre 2026.** Perché una riga derivata passi, il verbo che la genera deve
-> scriverne la sorgente. Su preventivo, ordine, bolla e contratto la regola è attiva, ma i verbi
-> di generazione (ordine dal preventivo, revisione, bolla dall'ordine, riconsegna, ordine e
-> contratto dall'offerta) **non la scrivono ancora**. Finché non la scrivono, una riga derivata da
-> un articolo ritirato viene trattata come nuova e respinta. Righe di fattura e righe d'acquisto
-> non sono ancora protette.
+> ⚠️ Righe di fattura e righe d'acquisto non hanno ancora la regola: un articolo ritirato ci entra
+> come in qualunque altra riga.
 
 ---
 

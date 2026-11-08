@@ -1,14 +1,23 @@
-## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_preventivi_da_pushare(...)`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_preventivi_da_pushare`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-• [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
-> • [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)  
-> • [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
-> • [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)  
+> Approfondimento tabelle:
+>
+> * [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)
+> * [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
+> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
 
 ---
+
 ### 🎯 Scopo Principale
+
 `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo
 pronte per il push verso `commesse_attivita`, restituendo un payload completo
 per l’handler di acquisizione.
@@ -18,33 +27,27 @@ per l’handler di acquisizione.
 ### Regole principali
 
 * considera preventivi nello stato di accettazione (`ACCETTATO`, dal lettore
-  [`script.fn_stato_accettazione_id`](/dbzero/script/funzioni/fn_stato_accettazione_id)
-  dal 31-10-2026). Se il vocabolario non ne marca uno la funzione solleva
-  `E_CONFIG_MANCANTE` (prima `E_CODICE`): non lista mai preventivi in uno stato qualunque (fino al
-  2026-10-10 il filtro era `IS NULL OR` e in quel caso cadeva; D-2 di
-  `brief-db-istanza-nasce-col-ba-residui`). Nessun filtro sulla
-  testata: `billing_account_id` e `utility_id` sono `NOT NULL` (il filtro di
-  «testata completa» e' stato ritirato il 2026-10-10,
-  `brief-db-istanza-nasce-col-ba-residui` R-3);
+  [`script.fn_stato_accettazione_id`](/dbzero/script/funzioni/fn_stato_accettazione_id)).
+  Se il vocabolario non ne marca uno la funzione solleva
+  `E_CONFIG_MANCANTE`: non lista mai preventivi in uno stato qualunque. Nessun filtro sulla
+  testata: `billing_account_id` e `utility_id` sono `NOT NULL`;
 * **predicato di riga dalla vista unica**
-  [vw_preventivi_righe_smistabili_commessa](vw_preventivi_righe_smistabili_commessa.md)
-  *(rev 2026-06-12)*: righe attive con quantità e prezzo validi, natura NULL
+  [vw_preventivi_righe_smistabili_commessa](/dbzero/vendite/views/vw_preventivi_righe_smistabili_commessa):
+  righe attive con quantità e prezzo validi, natura NULL
   (pregresso → COMMESSA) o `destinazione_tipo='COMMESSA'`, non già EMESSE in
   commessa (idempotenza). La merce (`ORDINE`) è esclusa: va su
   `fn_push_preventivo_a_ordine`;
-* costruisce `segment_key` deterministica (`PREV:{uid}:R:{riga_id}`);
+* costruisce `segment_key` deterministica con `script.fn_segment_key` (`PREVENTIVO:{uid}:R:{riga_id}`);
 * supporta filtri opzionali:
   * `p_competenza_mese`
   * `p_billing_account_id`
   * `p_limit`
-  * `p_preventivo_id` *(2026-05)* — vedi sezione dedicata
-  * `p_righe_ids` *(2026-06-12)* — vedi sezione dedicata
+  * `p_preventivo_id` — vedi sezione dedicata
+  * `p_righe_ids` — vedi sezione dedicata
 
 ---
 
 ### Push singolo preventivo (UI-driven)
-
-> **Aggiunto:** 2026-05 — migration `20260510-01/06`
 
 Il parametro `p_preventivo_id` (tipo `vendite.preventivi.id%TYPE`, default `NULL`) consente
 di restringere il risultato al singolo preventivo selezionato dall'utente nel drawer preventivo
@@ -54,7 +57,7 @@ di restringere il risultato al singolo preventivo selezionato dall'utente nel dr
 |---------|------------------------------------------------------------------------|
 | `NULL`  | Lista globale — comportamento batch invariato                          |
 | `> 0`   | Filtra al preventivo specificato; tutti gli altri filtri in AND        |
-| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO` (id 433)                  |
+| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO`                           |
 
 **Semantica AND dei filtri:** `p_preventivo_id` si aggiunge in AND agli altri filtri. Se si
 passa anche `p_billing_account_id` di un BA diverso da quello del preventivo, si ottengono
@@ -67,8 +70,6 @@ la funzione restituisce 0 righe — coerente con il NOT EXISTS del batch.
 
 ### Push per sottoinsieme righe (Pannello Smistamento)
 
-> **Aggiunto:** 2026-06-12 — migration `20260612-06` (brief-db-smistamento-preventivi.md, C)
-
 Il parametro `p_righe_ids bigint[]` (default `NULL`) consente lo smistamento
 **riga per riga** dal Pannello Smistamento, simmetrico al ramo ordine
 (`fn_push_preventivo_a_ordine.p_righe_ids`).
@@ -77,21 +78,18 @@ Il parametro `p_righe_ids bigint[]` (default `NULL`) consente lo smistamento
 |--------|---------------|
 | `NULL` | Comportamento invariato (batch e push-tutto) |
 | valorizzato | Filtro aggiuntivo `pr.id = ANY(p_righe_ids)`; **richiede `p_preventivo_id`** |
-| valorizzato senza `p_preventivo_id` | Guard: solleva `E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO` (id 489) |
+| valorizzato senza `p_preventivo_id` | Guard: solleva `E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO` |
 
 Le righe del sottoinsieme **non eleggibili** (già in commessa, natura ORDINE,
 non attive) sono **skippate in silenzio** — coerente con D5: il "tutte già
 allocate → errore semantico" resta a carico del BE con il count eleggibili.
 
-> ⚠️ **Cambio firma 2026-06-12**: la firma a 4 parametri è stata **droppata**
-> (l'overload sarebbe ambiguo: tutti i parametri hanno DEFAULT). Le chiamate
-> posizionali esistenti restano valide (nuovo parametro in coda con DEFAULT).
+> ⚠️ Una sola firma: un overload a 4 parametri sarebbe ambiguo (tutti i parametri hanno
+> DEFAULT). Il parametro è in coda con DEFAULT, e le chiamate posizionali restano valide.
 
 ---
 
 ### Competenza e periodo
-
-> **Aggiornato:** 2026-06-10 — migration `20260610-06`
 
 I campi di competenza alimentano `commesse_attivita` (colonne **NOT NULL**) e
 sono derivati così:
@@ -122,32 +120,29 @@ Restituisce per ogni riga candidata:
 * contesto documento (`preventivo_id`, `preventivo_uid`, `riga_id`),
 * dati commessa/competenza,
 * dati economici (`prezzo_snapshot`, `prezzo_bloccato`, `pricing_mode`),
-* sorgente (`sorgente_tipo_id`, `sorgente_uid`, `segment_key`),
+* provenienza (`sorgente_tipo_id`, `sorgente_chiave`, `segment_key`): `sorgente_chiave` è l'uid
+  del preventivo in testo, e la madre `fn_upsert_commessa_attivita` la traduce con
+  `script.fn_sorgente_chiave` nella colonna del `key_selector` del tipo (`sorgente_uid`, perché
+  il preventivo si riconosce dall'uid); `riga_id` arriva in commessa come la riga della provenienza (`sorgente_riga`),
 * `meta` tecnico per il push.
 
 ---
 
-### Esempi d’uso
+### Note di migrazione
 
-**Batch globale (orchestrator):**
-
-```sql
-SELECT *
-FROM vendite.fn_list_preventivi_da_pushare(
-  p_competenza_mese => DATE ‘2026-02-01’,
-  p_billing_account_id => NULL,
-  p_limit => 500
-);
-```
-
-**Push singolo preventivo (UI):**
-
-```sql
-SELECT *
-FROM vendite.fn_list_preventivi_da_pushare(
-  p_preventivo_id => 12345
-);
-```
+* 2026-05-10 — arriva `p_preventivo_id`.
+* 2026-06-10 — competenza e periodo derivati con i ripieghi.
+* 2026-06-12 — arriva `p_righe_ids`, e il predicato di riga passa alla vista unica; la firma a 4
+  parametri si ritira (brief-db-smistamento-preventivi, C).
+* 2026-10-10 — il filtro sullo stato di accettazione non cade più con `IS NULL OR`, e il filtro di
+  «testata completa» si ritira (brief-db-istanza-nasce-col-ba-residui, D-2 e R-3).
+* 2026-10-20 — la `segment_key` la compone `script.fn_segment_key` col codice del tipo, al posto
+  del prefisso `PREV:` (brief-db-grammatica-unica-documenti).
+* 2026-10-31 — lo stato di accettazione lo dà `script.fn_stato_accettazione_id`
+  (`E_CONFIG_MANCANTE` al posto di `E_CODICE`).
+* 2026-11-07 — `riga_id` arriva in commessa come `sorgente_riga` (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — la colonna d'uscita `sorgente_uid` diventa `sorgente_chiave`, la chiave del
+  documento in testo che la madre traduce (brief-db-sorgente-documento-e-riga).
 
 ---
 

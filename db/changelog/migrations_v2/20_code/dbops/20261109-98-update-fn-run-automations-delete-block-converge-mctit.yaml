@@ -1,0 +1,343 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_run_automations_delete_block: converge col registro (D33 con la Q3, N1): CREA, RIGENERA,
+#   TOGLIE da dbops.fn_delete_block_divergenze; un blocco che il registro non nomina ferma il giro con
+#   E_DELETE_BLOCK prima di qualunque DDL. Le azioni nell'audit si chiamano come quelle dei lock (CREA,
+#   RIGENERA, TOGLIE). Al primo giro i blocchi AFTER di oggi si rigenerano BEFORE. Corpo di partenza dal
+#   catalogo dello scratch (2026-11-08); rollback = corpo e COMMENT di prima. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-1 (§28).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-98-update-fn-run-automations-delete-block-converge-mctit.yaml
+
+  - changeSet:
+      id: 20261109-98-update-fn-run-automations-delete-block-converge
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_run_automations_delete_block: converge col registro. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-1 (§28).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_run_automations_delete_block(text,text[],boolean)')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_delete_block_divergenze(text[])')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_delete_block(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              /*
+                Scopo
+                Porta i trigger DELETE_BLOCK (script.trgfn_delete_block_by_guc) delle tabelle in
+                scope allo stato che dichiara dbops.automation_delete_block. Il confronto fra
+                atteso e vivo lo fa dbops.fn_delete_block_divergenze: qui si esegue l'azione.
+
+                Azioni
+                CREA      il trigger atteso (dbops.fn_apply_delete_block_trigger)
+                RIGENERA  toglie tutti i trigger vivi della funzione sulla tabella, qualunque nome
+                          abbiano, e crea quello atteso
+                TOGLIE    toglie tutti i trigger vivi (la riga e' spenta)
+
+                Trigger fuori dal registro
+                Un trigger della funzione su una tabella che il registro non nomina (SCONOSCIUTO)
+                ferma il giro con E_DELETE_BLOCK, prima di qualunque DDL: convergere lo
+                cancellerebbe in silenzio. Si aggiunge la riga (enabled = false se il blocco va
+                tolto).
+
+                Righe su tabelle che non esistono: WARN TABLE_NOT_FOUND, in tutti e due i giri.
+
+                DRY RUN
+                p_dry_run = true: nessuna DDL, l'azione nell'audit (dbops.fn_audit_log_once).
+              */
+              DECLARE
+                -- Il contesto dell'errore, costruito una volta e usato dalle due
+                -- chiamate del gestore (registro e involucro).
+                v_ctx_errore dbops.error_log.context%TYPE;
+                -- text[]: %TYPE non fa array
+                v_schemas text[];
+                rconf record;
+                r record;
+                v_trg text;
+                v_sconosciuti text;
+              BEGIN
+                v_schemas := dbops.fn_resolve_scope(p_schemas);
+
+                -- Le righe che puntano a una tabella che non c'e': un salto dichiarato.
+                FOR rconf IN
+                  SELECT d.*
+                    FROM dbops.automation_delete_block d
+                   WHERE d.enabled
+                     AND d.schema_name = ANY(v_schemas)
+                     AND to_regclass(format('%I.%I', d.schema_name, d.table_name)) IS NULL
+                   ORDER BY d.id
+                LOOP
+                  PERFORM dbops.fn_audit_log_once(
+                    p_function_name => 'dbops.fn_run_automations_delete_block',
+                    p_status        => 'WARN',
+                    p_rule_type     => 'DELETE_BLOCK',
+                    p_exec_mode     => p_exec_mode,
+                    p_parts         => ARRAY['DELETE_BLOCK'],
+                    p_dry_run       => p_dry_run,
+                    p_params        => jsonb_build_object(
+                                        'action','SKIP',
+                                        'reason','TABLE_NOT_FOUND',
+                                        'table', rconf.schema_name||'.'||rconf.table_name
+                                      ),
+                    p_message       => 'Skip: table not found'
+                  );
+                END LOOP;
+
+                IF NOT p_dry_run THEN
+                  SELECT string_agg(d.schema_name||'.'||d.table_name||' ('||array_to_string(d.trigger_vivi, ', ')||')',
+                                    '; ' ORDER BY d.schema_name, d.table_name)
+                    INTO v_sconosciuti
+                    FROM dbops.fn_delete_block_divergenze(p_schemas) AS d
+                   WHERE d.azione = 'SCONOSCIUTO';
+
+                  IF v_sconosciuti IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                        'database',
+                        'dbops.fn_run_automations_delete_block',
+                        'E_DELETE_BLOCK',
+                        jsonb_build_object('where', 'DELETE_BLOCK_FUORI_REGISTRO', 'tabelle', v_sconosciuti),
+                        NULL::uuid,
+                        format('trigger di blocco DELETE su tabelle che dbops.automation_delete_block non nomina: %s. '
+                               'Aggiungere la riga (enabled = false se il blocco va tolto) prima di convergere',
+                               v_sconosciuti));
+                  END IF;
+                END IF;
+
+                FOR r IN
+                  SELECT d.*
+                    FROM dbops.fn_delete_block_divergenze(p_schemas) AS d
+                   ORDER BY d.schema_name, d.table_name
+                LOOP
+                  IF p_dry_run THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_delete_block',
+                      p_status        => 'DRYRUN',
+                      p_rule_type     => 'DELETE_BLOCK',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['DELETE_BLOCK'],
+                      p_dry_run       => true,
+                      p_params        => jsonb_build_object(
+                                          'table',        r.schema_name||'.'||r.table_name,
+                                          'trigger',      r.trigger_atteso,
+                                          'guc_key',      r.guc_atteso,
+                                          'trigger_vivi', r.trigger_vivi,
+                                          'action',       'DRYRUN_'||r.azione
+                                        ),
+                      p_message       => 'Delete block: '||r.azione
+                    );
+                    CONTINUE;
+                  END IF;
+
+                  BEGIN
+                    FOREACH v_trg IN ARRAY r.trigger_vivi LOOP
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', v_trg, r.schema_name, r.table_name);
+                    END LOOP;
+
+                    IF r.azione IN ('CREA', 'RIGENERA') THEN
+                      -- Il nome atteso viene da dbops.fn_nome_oggetto_dichiarato: lo stesso che l'apply
+                      -- ricalcola dal nome gia' risolto.
+                      PERFORM dbops.fn_apply_delete_block_trigger(
+                        r.schema_name, r.table_name, r.guc_atteso, r.trigger_atteso);
+                    END IF;
+                  EXCEPTION WHEN others THEN
+                    -- ⭐ Un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente:
+                    --   connessione, risorse, arresto, sistema, privilegio, lock) si
+                    --   rilancia COM'E', col suo SQLSTATE, dopo averlo scritto nel registro
+                    --   errori; gli altri escono con E_DELETE_BLOCK.
+                    v_ctx_errore := jsonb_build_object(
+                        'where','DELETE_BLOCK',
+                        'table', r.schema_name||'.'||r.table_name,
+                        'azione', r.azione,
+                        'error', SQLERRM
+                      );
+                    IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+                      PERFORM script.fn_log_error_only(
+                          'dbops', 'run_automations', 'E_DELETE_BLOCK',
+                          v_ctx_errore, NULL::uuid, SQLERRM);
+                      RAISE;
+                    END IF;
+                    PERFORM script.fn_log_and_raise_error(
+                        'dbops', 'run_automations', 'E_DELETE_BLOCK',
+                        v_ctx_errore, NULL::uuid, SQLERRM);
+                  END;
+
+                  -- ⭐ Il giro vero lascia traccia: qui l'azione e' fatta (se fosse fallita, il
+                  --   blocco avrebbe sollevato).
+                  PERFORM dbops.fn_audit_log_once(
+                    p_function_name => 'dbops.fn_run_automations_delete_block',
+                    p_status        => 'OK',
+                    p_rule_type     => 'DELETE_BLOCK',
+                    p_exec_mode     => p_exec_mode,
+                    p_parts         => ARRAY['DELETE_BLOCK'],
+                    p_dry_run       => false,
+                    p_params        => jsonb_build_object(
+                                        'table',        r.schema_name||'.'||r.table_name,
+                                        'trigger',      r.trigger_atteso,
+                                        'guc_key',      r.guc_atteso,
+                                        'trigger_vivi', r.trigger_vivi,
+                                        'action',       r.azione
+                                      ),
+                    p_message       => 'Delete block: '||r.azione
+                  );
+                END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_delete_block(text, text[], boolean) IS
+              'Porta i trigger DELETE_BLOCK (script.trgfn_delete_block_by_guc) delle tabelle in scope allo stato di dbops.automation_delete_block, con il confronto di dbops.fn_delete_block_divergenze: CREA il trigger atteso (BEFORE DELETE FOR EACH ROW, dbops.fn_apply_delete_block_trigger), RIGENERA (toglie tutti i vivi della funzione sulla tabella e crea l''atteso), TOGLIE (riga spenta). Un trigger della funzione su una tabella che il registro non nomina ferma il giro con E_DELETE_BLOCK prima di qualunque DDL; si aggiunge la riga, con enabled = false se il blocco va tolto. Ogni azione lascia una riga in dbops.audit_log: OK nel giro vero, DRYRUN nel dry run (nessuna DDL); una riga su una tabella che non esiste lascia WARN TABLE_NOT_FOUND. p_exec_mode va solo nell''audit; p_schemas NULL = dbops.fn_resolve_scope. Nel gestore un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente) si rilancia com''e'', col suo SQLSTATE, dopo averlo scritto nel registro errori; gli altri errori escono da fn_log_and_raise_error con E_DELETE_BLOCK.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_delete_block(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- Il contesto dell'errore, costruito una volta e usato dalle due
+                -- chiamate del gestore (registro e involucro).
+                v_ctx_errore dbops.error_log.context%TYPE;
+                -- text[]: %TYPE non fa array
+                v_schemas text[];
+                rconf record;
+                -- regclass: tipo del valore, nessuna colonna lo porta
+                rel regclass;
+                v_trigger_name dbops.automation_delete_block.trigger_name%TYPE;
+              BEGIN
+                v_schemas := dbops.fn_resolve_scope(p_schemas);
+
+                FOR rconf IN
+                  SELECT d.*
+                    FROM dbops.automation_delete_block d
+                   WHERE d.enabled
+                     AND d.schema_name = ANY(v_schemas)
+                     AND dbops.fn_table_in_scope(d.schema_name, d.table_name)
+                   ORDER BY d.id
+                LOOP
+                  rel := to_regclass(format('%I.%I', rconf.schema_name, rconf.table_name));
+                  IF rel IS NULL THEN
+                    -- ⭐ Un salto, in tutti e due i giri: la configurazione punta a
+                    --   una tabella che non c'e'. dry_run dice quale giro.
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_delete_block',
+                      p_status        => 'WARN',
+                      p_rule_type     => 'DELETE_BLOCK',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['DELETE_BLOCK'],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'action','SKIP',
+                                          'reason','TABLE_NOT_FOUND',
+                                          'table', rconf.schema_name||'.'||rconf.table_name
+                                        ),
+                      p_message       => 'Skip: table not found'
+                    );
+                    CONTINUE;
+                  END IF;
+
+                  -- Lo stesso nome che calcola fn_apply_delete_block_trigger.
+                  v_trigger_name := COALESCE(
+                    NULLIF(rconf.trigger_name, ''),
+                    format('trg_%s_a10_delete_block_dlt', rconf.table_name)
+                  );
+
+                  IF dbops.fn_trigger_exists_by_name(rel, v_trigger_name) THEN
+                    CONTINUE;
+                  END IF;
+
+                  IF p_dry_run THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_delete_block',
+                      p_status        => 'DRYRUN',
+                      p_rule_type     => 'DELETE_BLOCK',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['DELETE_BLOCK'],
+                      p_dry_run       => true,
+                      p_params        => jsonb_build_object(
+                                          'table', rconf.schema_name||'.'||rconf.table_name,
+                                          'trigger', v_trigger_name,
+                                          'guc_key', rconf.guc_key,
+                                          'action','DRYRUN_CREATE_TRIGGER'
+                                        ),
+                      p_message       => 'Trigger would be created'
+                    );
+                  ELSE
+                    BEGIN
+                      PERFORM dbops.fn_apply_delete_block_trigger(
+                        rconf.schema_name,
+                        rconf.table_name,
+                        rconf.guc_key,
+                        rconf.trigger_name
+                      );
+                    EXCEPTION WHEN others THEN
+                      -- ⭐ Un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente:
+                      --   connessione, risorse, arresto, sistema, privilegio, lock) si
+                      --   rilancia COM'E', col suo SQLSTATE: l'involucro lo faceva
+                      --   diventare P0001, e il presidio dei job lo mandava allo
+                      --   sviluppo. Prima si scrive nel registro errori, col contesto.
+                      --   Brief: brief-db-presidio-job-run-a-chi-tocca D8, D10, D11.
+                      v_ctx_errore := jsonb_build_object(
+                          'where','DELETE_BLOCK',
+                          'table', rconf.schema_name||'.'||rconf.table_name,
+                          'error', SQLERRM
+                        );
+                      IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+                        PERFORM script.fn_log_error_only(
+                            'dbops', 'run_automations', 'E_DELETE_BLOCK',
+                            v_ctx_errore, NULL::uuid, SQLERRM);
+                        RAISE;
+                      END IF;
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'run_automations', 'E_DELETE_BLOCK',
+                          v_ctx_errore, NULL::uuid, SQLERRM);
+                    END;
+
+                    -- ⭐ Il giro vero lascia traccia: qui il trigger c'e' (se la
+                    --   creazione fosse fallita, il blocco avrebbe sollevato).
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_delete_block',
+                      p_status        => 'OK',
+                      p_rule_type     => 'DELETE_BLOCK',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['DELETE_BLOCK'],
+                      p_dry_run       => false,
+                      p_params        => jsonb_build_object(
+                                          'table', rconf.schema_name||'.'||rconf.table_name,
+                                          'trigger', v_trigger_name,
+                                          'guc_key', rconf.guc_key,
+                                          'action','CREATE_TRIGGER'
+                                        ),
+                      p_message       => 'Trigger created'
+                    );
+                  END IF;
+                END LOOP;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_delete_block(text,text[],boolean) IS 'Applica i trigger DELETE_BLOCK configurati in dbops.automation_delete_block, sulle tabelle in ambito. Ogni azione lascia una riga in dbops.audit_log: OK quando il giro vero crea il trigger, DRYRUN quando il dry run lo creerebbe, WARN TABLE_NOT_FOUND in tutti e due i giri quando la tabella configurata non esiste. Un trigger gia'' presente non e'' un''azione e non si registra. Il nome del trigger si calcola come in dbops.fn_apply_delete_block_trigger. Nel gestore WHEN others un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia com''e'', col suo SQLSTATE, dopo averlo scritto nel registro errori (fn_log_error_only); gli altri errori escono da fn_log_and_raise_error con E_DELETE_BLOCK.';

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Procedura `maintenance.proc_automations_delete_block_job`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -43,12 +43,12 @@ della corsa in `maintenance.job_run_log`, esegue il runner e chiude la riga con 
 ### Che cosa allinea: si cancella solo con la chiave dichiarata
 
 Per ogni riga accesa del registro `dbops.automation_delete_block`, su una tabella dell'ambito,
-il runner monta il trigger che rifiuta la cancellazione a meno che la sessione non abbia
-acceso l'impostazione nominata dalla riga: con `script.trgfn_delete_block_by_guc`. Il nome del
-trigger è quello della riga o, se manca, `trg_<tabella>_a10_delete_block_dlt`.
+il runner tiene il trigger `BEFORE DELETE` che rifiuta la cancellazione a meno che la sessione
+non abbia acceso l'impostazione nominata dalla riga: con `script.trgfn_delete_block_by_guc`.
 
-⚠️ Il runner **aggiunge e non toglie**: riconosce il trigger dal nome e lo monta dove manca,
-salta una tabella che non esiste, e una riga spenta non toglie il trigger già montato.
+⭐ Il runner **converge**: crea il blocco dove manca, lo rigenera se non è quello dichiarato, lo
+toglie se la riga è spenta. Un blocco su una tabella che il registro non nomina ferma la corsa
+con `E_DELETE_BLOCK`. Le regole stanno nella pagina del runner.
 
 ---
 
@@ -56,8 +56,9 @@ salta una tabella che non esiste, e una riga spenta non toglie il trigger già m
 
 Il lucchetto viene dopo ciò su cui si chiude: una tabella nuova riceve prima le colonne e i
 trigger della famiglia, poi il blocco. Nella convergenza l'ordine lo dà il catalogo
-(`automations_attivo` 50, `automations_lock_columns` 60, `automations_delete_block` 70). Di
-notte i job `automations_lock_columns` e `automations_delete_block` partono dieci minuti dopo
+(`automations_attivo` 50, `automations_lock_columns` 60, `automations_delete_block` 70,
+`automations_guard_utility` 75). Di notte i job `automations_lock_columns`,
+`automations_delete_block` e `automations_guard_utility` partono dieci minuti dopo
 gli altri della famiglia (oggi alle 21:10 contro le 21:00, in
 [Job pgAgent](/dbzero/maintenance/job_pgagent)): è una distanza, non una garanzia, e l'ordine
 vero lo dà solo la convergenza.
@@ -69,7 +70,7 @@ vero lo dà solo la convergenza.
 | Dove | Chi la chiama | Quando |
 | --- | --- | --- |
 | dbdev e installazioni con pgAgent | il job `automations_delete_block`, step `run_automations_delete_block` | al giro del suo calendario |
-| CI, database ricostruito da zero, ogni migrazione di sviluppo | la convergenza del rilascio (passata `ci_apply`) | `ci_ordine` 70: dopo `automations_lock_columns`, prima di `automations_overlap` |
+| CI, database ricostruito da zero, ogni migrazione di sviluppo | la convergenza del rilascio (passata `ci_apply`) | `ci_ordine` 70: dopo `automations_lock_columns`, prima di `automations_guard_utility` |
 
 Lo step pgAgent chiama la procedura solo se `maintenance.fn_sveglia_accesa('automations_delete_block')`
 è vero: a processo spento il giro programmato non parte e il giornale non scrive niente. La
@@ -130,7 +131,7 @@ La procedura chiama il runner con tre scelte fisse:
 
 La procedura non ne solleva di suoi: l'errore è del runner, e arriva com'è.
 
-* `E_DELETE_BLOCK` — il trigger di blocco non si è potuto creare su una tabella.
+* `E_DELETE_BLOCK` — un blocco su una tabella che il registro non nomina, o un DDL del blocco fallito su una tabella.
 
 Un guasto dell'ambiente (connessione, risorse, privilegi, lock) non si traveste: il runner lo
 scrive nel registro errori e lo rilancia col suo SQLSTATE.
@@ -161,6 +162,9 @@ scrive nel registro errori e lo rilancia col suo SQLSTATE.
   (`brief-db-ruoli-di-sistema`).
 * 2026-10-16 — lo step pgAgent passa dal cancello `maintenance.fn_sveglia_accesa`
   (`brief-db-processi-accensione-per-ambiente`).
+* 2026-11-08 — il runner converge (crea, rigenera, toglie) e il blocco diventa `BEFORE DELETE`;
+  dopo questo processo, nella convergenza, viene `automations_guard_utility`
+  (`brief-db-revisione-dbops`, giro 10c).
 
 ---
 

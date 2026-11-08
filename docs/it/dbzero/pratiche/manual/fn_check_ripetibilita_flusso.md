@@ -1,76 +1,64 @@
-## 📘 Documentazione Funzione – `pratiche.fn_check_ripetibilita_flusso`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_check_ripetibilita_flusso`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — la regola `ripetibilita` dichiarata sul template
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — le istanze già nella pratica
+> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche) — gli stati `ANNULLATO` e `COMPLETATO`
 >
-Funzioni collegate:
+> Approfondimento funzioni:
 >
-[pratiche.fn_guard_ripetibilita_flusso](fn_guard_ripetibilita_flusso.md)
-> [pratiche.trgfn_flussi_guard_ripetibilita](trgfn_flussi_guard_ripetibilita.md)
+> * [pratiche.fn_guard_ripetibilita_flusso](/dbzero/pratiche/funzioni/fn_guard_ripetibilita_flusso) — la sentinella che solleva l'errore
+> * [pratiche.trgfn_flussi_guard_ripetibilita](/dbzero/pratiche/funzioni/trgfn_flussi_guard_ripetibilita) — il trigger che applica la regola a ogni inserimento
 
 ---
+
 ### 🎯 Scopo Principale
-La funzione **`pratiche.fn_check_ripetibilita_flusso`** e' una **pure check** (`fn_check_*`): verifica se una **nuova istanza** di un template flusso e' ammessa nella pratica, secondo la regola di ripetibilita' dichiarata sul template (`template_flussi.ripetibilita` — decisione D3, analisi-pratiche-workflow-v2).
 
-Ritorna un singolo `boolean`. Non solleva eccezioni — il chiamante decide come gestire il divieto.
+`pratiche.fn_check_ripetibilita_flusso` dice se una nuova istanza di un template di flusso è ammessa
+nella pratica, secondo la regola di ripetibilità dichiarata sul template.
 
----
-
-### Firma della funzione
-
-```sql
-CREATE OR REPLACE FUNCTION pratiche.fn_check_ripetibilita_flusso(
-  p_pratica_id         pratiche.flussi.pratica_id%TYPE,
-  p_template_flusso_id pratiche.flussi.template_flusso_id%TYPE
-)
-RETURNS boolean
-LANGUAGE plpgsql
-STABLE
-```
+È un controllo puro: risponde vero o falso e non solleva niente. Chi chiama decide che cosa fare del
+divieto: la sentinella `pratiche.fn_guard_ripetibilita_flusso` lo trasforma in errore, il backend lo
+usa per sapere se offrire il gesto «Ripeti» nel percorso della pratica, senza ricopiare la regola.
 
 ---
 
-### Descrizione parametri
+### Le regole
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:---:|-------------|
-| `p_pratica_id` | bigint | SI | ID della pratica in cui si vuole creare la nuova istanza |
-| `p_template_flusso_id` | integer | SI | ID del template flusso da istanziare |
+La funzione guarda l'**ultima istanza** del template nella pratica, escluse quelle annullate:
 
-**Ritorna**: `boolean` — `true` se la nuova istanza e' ammessa.
+* un'istanza annullata non consuma la ripetibilità;
+* «ultima» è la più recente per creazione, non per `sequenza`, che è la posizione nel template.
 
----
+| Regola del template | Nuova istanza ammessa quando |
+| --- | --- |
+| `SEMPRE` | sempre |
+| `MAI` | non esiste nessuna istanza non annullata |
+| `SE_NON_POSITIVO` | l'ultima istanza è `COMPLETATO` con un esito diverso da `POSITIVO`; un'istanza ancora aperta blocca, per non avere doppioni vivi |
 
-### Logica di funzionamento
+La prima istanza di un template è sempre ammessa, qualunque sia la regola. Un template inesistente
+non si blocca qui: lo rifiuta la chiave esterna su `pratiche.flussi`.
 
-1. Legge `ripetibilita` dal template. Template inesistente o `SEMPRE` → `true` (la FK su `flussi` copre il caso inesistente).
-2. Individua l'**ultima istanza** del template nella pratica: `MAX(id)` tra i flussi non `ANNULLATO` (un'istanza annullata **non consuma** la ripetibilita'; la recency e' per `id`, **non** per `sequenza`, che e' la posizione nel template).
-3. Applica la regola:
-
-| Regola | Esito del check |
-|---|---|
-| `SEMPRE` | sempre `true` |
-| `MAI` | `true` solo se non esiste alcuna istanza non annullata |
-| `SE_NON_POSITIVO` | `true` solo se l'ultima istanza e' `COMPLETATO` con esito **diverso** da `POSITIVO`. Un'istanza ancora aperta (`DA_ESEGUIRE`/`IN_CORSO`/`SOSPESO`/`ERRORE`) **blocca** (niente doppioni vivi) |
+La funzione è `STABLE` e non modifica dati.
 
 ---
 
-### Esempi di utilizzo
+### Test
 
-```sql
--- La pratica 100 puo' avere una nuova istanza del template 5?
-SELECT pratiche.fn_check_ripetibilita_flusso(100, 5);
-```
+* `pratiche/test-ripetibilita-flussi` — le tre regole, l'istanza annullata che non conta e l'istanza
+  aperta che blocca.
 
 ---
 
-### Note operative
+### Note di migrazione
 
-* Funzione `STABLE`: non modifica dati.
-* Usata internamente da `fn_guard_ripetibilita_flusso` per la validazione fail-fast e dal BE per pilotare il bottone "Ripeti" nel percorso pratica (ripetibile adesso si'/no) senza duplicare logica.
-* La prima istanza di un template e' **sempre** ammessa, qualunque sia la regola.
+* 2026-06-11 — nasce con la regola di ripetibilità sul template (analisi-pratiche-workflow-v2).
+
+---
+
+{% include-markdown "signature-core.md" %}

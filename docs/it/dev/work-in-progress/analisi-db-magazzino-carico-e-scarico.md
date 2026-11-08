@@ -11,6 +11,15 @@
 > guardava la sorgente polimorfa, una la simmetria degli acquisti, una la
 > produzione.
 >
+> ⚠️ **La forma della sorgente è superata (2026-11-08).** Dove questo documento scrive la sorgente di un movimento
+> come un tipo di riga (`DDT_VENDITA_RIGA:{riga}`, `RETTIFICA_RIGA:{riga}`, `INVENTARIO_RIGA`, `RESO_VENDITA_RIGA`),
+> oggi vale il modello unico di `brief-db-sorgente-documento-e-riga` (lotto M): il tipo è il **documento**
+> (`DDT_VENDITA`, `RETTIFICA`, `INVENTARIO`, …), la chiave del documento sta in `sorgente_id` o `sorgente_uid`, la riga
+> in `sorgente_riga` e, dove serve, il dettaglio (il prelievo di una bolla) in `sorgente_dettaglio`; i tipi di riga e di
+> foglia sono ritirati, e `uq_mag_movimenti_identita` è su queste colonne. Il ragionamento sull'identità
+> (sorgente, chiave, verbo) resta valido; il meccanismo è nella guida
+> [Sorgente polimorfa](../../guide/sorgente-polimorfa.md).
+>
 > **Stato al 2026-09-26:** 🟡 **analisi COMPLETA (M-1 → M-9 chiuse) e in gran
 > parte COSTRUITA; restano i lotti 3 → 5.** Costruiti:
 > [Lotto 1](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md) (DDL, RLS,
@@ -602,7 +611,9 @@ del trasferimento, e uno storno ha una causale sua — senza una colonna
 `operazione_verbo`, che sarebbe un vocabolario parallelo alle causali. Il vincolo
 costruito è `uq_mag_movimenti_identita` su `(sorgente_tipo_id, sorgente_riga,
 sorgente_uid, causale_id, asset_id, lotto_id, ubicazione_id)` `NULLS NOT DISTINCT`
-(`20260915-05`), col `COMMENT` sull'operazione-per-tranche.
+(`20260915-05`), col `COMMENT` sull'operazione-per-tranche. ⚠️ *Oggi (2026-11-08) l'indice è su `(sorgente_tipo_id,
+sorgente_id, sorgente_uid, sorgente_riga, sorgente_dettaglio, causale_id, asset_id, lotto_id, ubicazione_id)`
+`NULLS NOT DISTINCT`: la chiave del documento e la riga stanno in colonne distinte (avviso in testa).*
 | `uq_mag_movimenti_docref` | ⛔ si **toglie** |
 | `transfer_uid` | resta, e fa il lavoro **opposto**: raggruppa i due movimenti di un trasferimento (il suo indice è **non** unico, apposta). Una dice «questi vanno insieme», l'altra «questo esiste una volta sola» |
 

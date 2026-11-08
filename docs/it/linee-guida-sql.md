@@ -555,6 +555,27 @@ usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.m
 
 ---
 
+### 6e. ⭐ «Nasce da»: la provenienza ha un modello solo
+
+Una tabella che dice **da quale documento nasce** una riga non inventa le sue colonne: usa
+quelle del modello comune, e il meccanismo intero sta nella guida
+[Sorgente polimorfa](/guide/sorgente-polimorfa).
+
+| Regola | Perché |
+| --- | --- |
+| Le colonne sono `sorgente_tipo_id` (il tipo, da `config.sorgenti`), **una** fra `sorgente_id` e `sorgente_uid` (la chiave del **documento**, secondo il `key_selector` del tipo), `sorgente_riga` e, dove serve, `sorgente_dettaglio` | una grammatica sola per tutte le tabelle: chi legge non deve sapere come l'ha scritta ognuna |
+| ⛔ La riga non va al posto del documento | la chiave dice il documento, `sorgente_riga` la riga: confonderle è il difetto da cui il modello nasce |
+| Un `CHECK` di forma per tabella, `chk_<tabella>_sorgente_forma`: tutto vuoto, o il tipo con una chiave | la forma la tiene la tabella, anche per chi scrive senza passare dal verbo |
+| La coppia di colonne la scrive `script.fn_sorgente_chiave`, chiamato dal verbo | nessuno compone a mano quale chiave usa un tipo |
+| La tabella monta il guard unico `script.trgfn_guard_sorgente`, col livello minimo e l'azione in cancellazione (`BLOCCA` / `CANCELLA`) | forma, esistenza, riga del documento: un controllo, in un posto |
+| L'unicità solo dove il dominio ha una regola, sulla chiave giusta (`NULLS NOT DISTINCT`, parziale sul tipo) | un vincolo «una riga per sorgente» generico vieta casi che il modello ammette |
+| ⛔ Il lato «in uscita» non si scrive a mano | lo monta la convergenza dal catalogo, su ogni tabella che `config.sorgenti` dichiara come documento, righe o dettaglio |
+
+Il presidio è in CI (`dbops/test-sorgenti-struttura-v1`): una tabella con `sorgente_id` o
+`sorgente_uid` che non monta il guard unico è rossa, salvo le esenzioni dichiarate col loro
+motivo. Un id che arriva da un sistema esterno non usa queste colonne: va in una tabella di
+collegamento propria.
+
 ### 7. Colonne di Audit e Log
 
 Standardizzare i campi di auditing:
@@ -2894,11 +2915,13 @@ metà. Le regole restano in un posto solo. Precedente:
 ### 13.3 ⛔ Un cast o una funzione nel join verso una tabella sotto policy
 
 Sotto RLS una condizione di join entra nell'indice solo se è **leakproof**
-(§8.5-bis vale anche per i join, non solo per i `WHERE`). `p.uid =
-cs.sorgente_uid::uuid` non lo è: il cast resta un filtro sopra la policy, e la
+(§8.5-bis vale anche per i join, non solo per i `WHERE`). Un join come `p.uid =
+x.chiave_testo::uuid` non lo è: il cast resta un filtro sopra la policy, e la
 tabella si legge tutta. La chiave si converte **prima**, in una CTE
-`MATERIALIZED`, e il join confronta tipi uguali. Caso:
-`vendite.fn_documento_lineage_archi` (`20261011-92`).
+`MATERIALIZED`, e il join confronta tipi uguali. È anche la ragione per cui la
+provenienza ha colonne tipizzate (§6e): una chiave nel suo tipo non chiede cast.
+Caso: `vendite.fn_documento_lineage_archi` (`20261011-92`), quando la provenienza
+era ancora una chiave in testo.
 
 ### 13.4 Il piano generico: `plan_cache_mode` sulla funzione
 

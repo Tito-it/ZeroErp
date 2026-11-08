@@ -1,58 +1,37 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_allegati_flussi_giornale`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_allegati_flussi_giornale`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.allegati_flussi](allegati_flussi.md)
-> [pratiche.flussi](flussi.md)
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove scrive
+> * [pratiche.allegati_flussi](/dbzero/pratiche/tabelle/allegati_flussi) — la tabella su cui è montata
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — da cui legge la pratica
 >
-Overview:
+> Approfondimento funzioni:
 >
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.trgfn_allegati_pratiche_giornale](/dbzero/pratiche/funzioni/trgfn_allegati_pratiche_giornale) — la gemella per gli allegati della pratica
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **ALLEGATO_AGGIUNTO** nel giornale a livello flusso. Si attiva **AFTER INSERT** su `pratiche.allegati_flussi`.
+
+La trigger function `pratiche.trgfn_allegati_flussi_giornale` registra nel giornale l'aggiunta di un
+allegato a un flusso, con l'azione `ALLEGATO_AGGIUNTO`.
 
 ---
 
-### Firma
+### Che cosa scrive
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_allegati_flussi_giornale()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+Scatta `AFTER INSERT` su `pratiche.allegati_flussi`. L'allegato conosce solo il flusso: la pratica si
+legge dal flusso, e la riga di `pratiche.giornale` porta entrambi, con origine `SISTEMA`. Il dettaglio
+porta l'id dell'allegato, il suo tipo e il nome del file.
 
----
-
-### Logica
-
-1. Recupera `pratica_id` dal flusso tramite `SELECT f.pratica_id FROM pratiche.flussi f WHERE f.id = NEW.flusso_id`.
-2. Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `v_pratica_id` (recuperato dal flusso) |
-| `flusso_id` | `NEW.flusso_id` |
-| `azione` | `'ALLEGATO_AGGIUNTO'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('allegato_id', NEW.id, 'tipo_allegato_id', NEW.tipo_allegato_id, 'nome_file', NEW.nome_file)` |
-
-**Nota**: `tx_id` non e' incluso perche' la tabella `allegati_flussi` e' immutabile e non ha il campo `tx_id`.
-
-### DECLARE
-
-| Variabile | Tipo | Descrizione |
-|-----------|------|-------------|
-| `v_pratica_id` | `pratiche.pratiche.id%TYPE` | Pratica recuperata dal flusso |
+`pratiche.allegati_flussi` non ha una colonna di transazione, e la funzione non ne passa una: la riga
+del giornale riceve la transazione della sessione dal trigger di `tx_id` del giornale.
 
 ---
 
-### Trigger associato
-
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_allegati_flussi_z90_giornale_ins` | AFTER | INSERT | `pratiche.allegati_flussi` |
+{% include-markdown "signature-core.md" %}

@@ -1,57 +1,49 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_flussi_guard_transizione`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_guard_transizione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[config.transizioni_stati_flussi_pratiche](/dbzero/config/manual/transizioni_stati_flussi_pratiche)
-> [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
-> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+> * [config.transizioni_stati_flussi_pratiche](/dbzero/config/tabelle/transizioni_stati_flussi_pratiche) — la matrice delle transizioni ammesse
+> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche) — gli stati del flusso
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — il flusso che cambia stato
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
 
 ---
+
 ### 🎯 Scopo Principale
-Trigger function guard che **blocca transizioni di stato non ammesse** per i flussi pratica. Consulta la matrice `config.transizioni_stati_flussi_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
+
+La trigger function `pratiche.trgfn_flussi_guard_transizione` blocca i cambi di stato di un flusso che
+la matrice `config.transizioni_stati_flussi_pratiche` non ammette.
 
 ---
 
-### Firma
+### La regola
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_transizione()
-RETURNS trigger
-LANGUAGE plpgsql
-```
-
----
-
-### Logica
-
-1. Se `OLD.stato_id = NEW.stato_id` → nessuna transizione, RETURN NEW senza controllo.
-2. Cerca la coppia `(OLD.stato_id, NEW.stato_id)` in `config.transizioni_stati_flussi_pratiche` con `attivo = true`.
-3. Se non esiste:
-   - Risolve i `codice_interno` degli stati da e a per un messaggio leggibile.
-   - Solleva eccezione tramite `script.fn_log_and_raise_error('FLUSSI_TRANSIZIONE_NON_AMMESSA', ...)`.
-4. Se esiste → RETURN NEW.
+* Scatta a ogni modifica che cambia davvero lo stato di un flusso, nella fase dei guard: prima dei
+  trigger che scrivono il giornale.
+* La coppia (stato di partenza, stato di arrivo) deve comparire fra le righe attive della matrice; una
+  riga spenta non ammette niente.
+* La transizione è un dato, non codice: per ammetterne una nuova si aggiunge una riga alla matrice.
+* L'inserimento non passa di qui: lo stato con cui un flusso nasce lo presidiano altri controlli.
 
 ---
 
-### Trigger associato
+### Codici errore
 
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_flussi_a10_guard_transizione_upd` | BEFORE | UPDATE OF stato_id | `pratiche.flussi` |
-
-Fase `_a10_`: guard/block — esegue prima dei trigger giornale (`_z90_`).
-
-Condizione WHEN: `OLD.stato_id IS DISTINCT FROM NEW.stato_id`.
+* `E_FLUSSI_TRANSIZIONE_NON_AMMESSA` — la transizione non è nella matrice; la frase nomina i due stati
+  per codice interno.
 
 ---
 
-### Messaggi errore
+### Test
 
-| Codice | Messaggio |
-|--------|-----------|
-| `FLUSSI_TRANSIZIONE_NON_AMMESSA` | Transizione flusso non ammessa: {da} -> {a} |
+* `pratiche/test-transizioni-stati` — transizioni ammesse e rifiutate dei flussi.
 
 ---
 

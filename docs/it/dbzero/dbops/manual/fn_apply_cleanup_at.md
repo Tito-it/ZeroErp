@@ -1,16 +1,17 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_cleanup_at`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole `CLEANUP_AT` da cui arrivano termine e colonne
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole `CLEANUP_AT` da cui arrivano termine e colonna base
 >
 > Approfondimento funzioni:
 >
 > * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup) — il runner che la chiama, tabella per tabella
+> * [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola) — la regola da cui il runner prende termine, colonna base e ricalcolo
 > * [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired) — il passo dopo: cancella le righe scadute
 > * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) — l'altra via: la scadenza scritta all'INSERT
 >
@@ -49,20 +50,28 @@ e questa funzione resta per le righe nate prima del trigger.
 
 ---
 
-### Le colonne mancanti non sono un errore
+### Le colonne
 
-* La colonna di scadenza, se non indicata, è `cleanup_at`; la colonna di base, se non
-  indicata, è `data_insert`. Il runner passa sempre una colonna di base: quella dichiarata
-  nella regola, o la prima che trova nella sua catena di ripiego.
-* Se una delle due colonne non esiste sulla tabella, la funzione non fa niente e restituisce
-  zero.
+* **La colonna base è obbligatoria.** La sceglie chi chiama: il runner la prende da
+  [fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola), la dichiarata o la prima
+  della catena. La funzione non la indovina.
+* **La colonna della scadenza è sempre `cleanup_at`**, nome fisso del framework. Il parametro
+  `p_cleanup_column` resta nella firma ma può solo confermarlo: vuoto o `cleanup_at`; un altro nome
+  è un errore.
+* Se la tabella non ha `cleanup_at` o non ha la colonna base, la funzione non fa niente e
+  restituisce zero.
 * In simulazione (`p_dry_run`) conta le righe che aggiornerebbe, senza scrivere.
+
+⚠️ La funzione non legge le esclusioni del cleanup: chi la chiama a mano su una tabella esclusa
+la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
 
 ---
 
 ### Codici errore
 
 * `E_GENERICO` — schema o tabella mancanti, oppure termine mancante o negativo.
+* `E_PARAMETRO_INVALIDO` — colonna base mancante, oppure una colonna di scadenza diversa da
+  `cleanup_at`.
 
 ---
 
@@ -70,6 +79,17 @@ e questa funzione resta per le righe nate prima del trigger.
 
 * `db/pgtap/dbops/test-cleanup-framework.sql` — la simulazione conta le righe senza scadenza,
   l'esecuzione le valorizza tutte (test 5-7), e il runner la usa sulle tabelle in ambito.
+* `db/pgtap/dbops/test-cleanup-at-regola-unica-v1.sql` — la scadenza che il runner scrive con lei
+  è quella che il trigger alla nascita aveva scritto; una riga con la base vuota non si tocca.
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — la colonna base è obbligatoria e la colonna della scadenza è sempre `cleanup_at`
+  (`20261109-88`, brief-db-revisione-dbops, giro 10b). Prima la base, se mancava, era
+  `data_insert` — una terza regola accanto a quelle del trigger e del runner — e la colonna della
+  scadenza si poteva cambiare col parametro.
 
 ---
 

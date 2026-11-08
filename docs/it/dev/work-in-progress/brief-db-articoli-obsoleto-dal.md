@@ -1,9 +1,9 @@
 # Brief DB — Ritirare un articolo senza cancellarlo (`obsoleto_dal`)
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-06 (sera)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08
 
-**Riparte: Tid**, con la conferma di O-9 affinata; poi il **team DB**, col changeSet dei `COMMENT` (D-C) e, quando
-`brief-db-sorgente-documento-e-riga` ha il suo primo lotto, col lotto B riscritto lì sopra.
+**Riparte: Tid**, con la conferma di O-9 affinata; poi il **team DB**, col changeSet dei `COMMENT` (D-C). Il lotto B
+è applicato, riscritto sul modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -14,8 +14,8 @@
 | 5 | ✅ DB + Tid | lotto A (`20261105-01…-14`, CSV dei codici): scritto, applicato su dbdev e scratch, pgTAP verdi (2026-11-05) | §7.1 | — |
 | 6 | ✅ DB + Tid | lotti C e D senza sorgente (`20261106-01…-03`, pgTAP, guida, manuali): applicati, pgTAP verdi (2026-11-06) | §7.2-bis | — |
 | 7 | Tid | **confermare O-9 affinata**: l'`ONERE` con sorgente (dal push di ordine e bolla) passa | §7.2-bis | — |
-| 8 | DB | **D-C**: riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d | sotto | — |
-| 9 | DB + Tid | lotto B (verbi): ✍️ riscritto sul modello nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`), provato in transazione, da applicare (2026-11-06). Righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D): ancora fermi | §7.2, §7.3 | `brief-db-sorgente-documento-e-riga` |
+| 8 | ➡️ DB, in `brief-db-revisione-catalogo` | **D-C**: riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11) | sotto | — |
+| 9 | ✅ DB + Tid | lotto B (verbi): riscritto sul modello nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`), applicato da Tid, pgTAP verdi (2026-11-06). Righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D): ancora fermi (le righe d'acquisto aspettano il cantiere `acquisti`, che porta le loro tabelle al modello; le righe di fattura non hanno un verbo che ne scriva la provenienza) | §7.2, §7.3 | — |
 | 10 | BE / FE | `obsoleto_dal` ed `e_obsoleto` nel form e nella lista, `righe_saltate` del «Clona», policy, chiave i18n | §8 | — |
 
 ⛔ **Lotto B fermo (Tid, 2026-11-06):** non si applica finché non è deciso il modello della sorgente in
@@ -29,7 +29,7 @@ scrive, nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … 
 revisione su un articolo ritirato) è il test 6 di `vendite/test-sorgente-righe-vendita-v1`. Il buco si chiude
 all'apply.
 
-⚠️ **Buco noto fino al lotto B:** il guard di riga del lotto A è applicato, ma oggi push, revisione e bolle non
+✅ **Chiuso all'apply del giro R.1 (2026-11-06)**, il testo resta come storia. ⚠️ **Buco noto fino al lotto B:** il guard di riga del lotto A è applicato, ma oggi push, revisione e bolle non
 scrivono la sorgente. Una riga **derivata** da un articolo ritirato viene quindi trattata come scelta nuova e
 respinta. Il buco è del modello, non dei dati (fatto datato: 0 articoli ritirati su 739), e si chiude col lotto B.
 Accettato perché non c'è produzione. La guida lo dice, con la data.
@@ -140,6 +140,9 @@ accanto avrebbe fatto proporre al picker ciò che la riga poi respinge, contro i
   punto»). Era scritto a mano in quattro oggetti (`fn_get_lookup_codici`, il guard generico,
   `vw_bersagli_non_dichiarati`, `trgfn_event_log_deriva_scope`), che ora passano tutti dal BB. I processi
   (`dbops.processi.obsoleto_dal`) seguono un'altra regola, «qualunque data spegne subito», e restano fuori.
+* ⚠️ **Superato (2026-11-08):** il «modello A» e il guard tipizzato sono ritirati; la chiave del documento sta in
+  `sorgente_id` o `sorgente_uid`, la riga in `sorgente_riga`, i tipi di riga non esistono più (guida
+  `sorgente-polimorfa`, `brief-db-sorgente-documento-e-riga`). Il testo che segue resta come storia.
 * **Convenzione della chiave di sorgente**: è il «modello A» di `script.trgfn_guard_sorgente_polimorfa_tipizzata`.
   Con `key_selector = 'id'` la chiave sta in `sorgente_riga`, con `'uid'` in `sorgente_uid`. Le righe
   (`PREVENTIVO_RIGA`, `ORDINE_VENDITA_RIGA`, `RESO_VENDITA_RIGA`, …) scrivono quindi `sorgente_riga`. Il guard
@@ -299,7 +302,8 @@ scioglie con la pulizia del §9, che **precede** i due verbi.
 conservati nella scratchpad della sessione del 2026-11-06 (`lotto-B-fermo/`) come base da riscrivere sul modello di
 `brief-db-sorgente-documento-e-riga`. I due pgTAP del lotto B (`test-fattura-origini-v1`,
 `test-documento-lineage-seminata-v1`) restano modificati: scrivono la sorgente a mano nella forma di oggi (modello A) e
-si riscrivono con quel modello.
+si riscrivono con quel modello. ✅ Riscritti nei giri di quel brief (2026-11-06 … 2026-11-08): scrivono la provenienza
+nel modello (la chiave del documento nella sua colonna, la riga in `sorgente_riga`).
 
 ### 7.2-bis Lotti C e D senza sorgente — ✅ scritti e provati (2026-11-06), ⏳ da applicare
 

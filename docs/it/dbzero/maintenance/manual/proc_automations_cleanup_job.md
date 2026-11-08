@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Procedura `maintenance.proc_automations_cleanup_job`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -47,12 +47,13 @@ della corsa in `maintenance.job_run_log`, esegue il runner e chiude la riga con 
 Il runner applica due regole, tabella per tabella:
 
 * `CLEANUP_AT` scrive la scadenza di ogni riga (`cleanup_at`), da un periodo fisso a partire da
-  un istante della riga;
+  un istante della riga, con una regola sola per tabella
+  ([dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola));
 * `CLEANUP_PURGE` cancella, a lotti, le righe la cui scadenza è passata.
 
 Salta le tabelle escluse in `dbops.automation_cleanup_exclusions`, quelle senza la colonna della
-scadenza, e quelle a cui manca il periodo o l'istante di partenza, e scrive ogni salto nel
-registro delle azioni. ⛔ Non pulisce oggetti: non toglie trigger, tabelle o vincoli generati.
+scadenza, e quelle a cui manca l'istante di partenza, e scrive ogni salto nel registro delle
+azioni. ⛔ Non pulisce oggetti: non toglie trigger, tabelle o vincoli generati.
 
 ---
 
@@ -66,14 +67,14 @@ regole dichiarate su tabelle di qualunque schema — i log di `vendite`, le tabe
 esecutore, o non sta nel registro.
 
 Allargare l'ambito non accorcia la vita di nessun log. La scadenza si scrive solo dove manca, e
-le regole girano in ordine di priorità: la regola dichiarata su una tabella scrive prima di
-quella generica su tutte, che su quella tabella non trova più niente da fare.
+su ogni tabella vale una sola regola `CLEANUP_AT`: quella dichiarata sulla tabella vince sulla
+generica su tutte, che vale solo dove non c'è altro.
 
 ---
 
 ### ⭐ Una tabella che si è opposta rende rossa la corsa
 
-Ogni regola gira in una sottotransazione. Se una tabella rifiuta la pulizia — un trigger che la
+Ogni passo — la scadenza, ogni purge — gira in una sottotransazione. Se una tabella rifiuta la pulizia — un trigger che la
 vuole immutabile, il guard sulla cancellazione di un log — il runner la salta, scrive in
 `dbops.audit_log` una riga `ERROR` col motivo `BLOCKED_BY_TABLE` e lo SQLSTATE, e prosegue con le
 altre. A fine giro restituisce il suo riepilogo, e il giornale lo legge: con almeno una tabella

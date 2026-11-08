@@ -1,73 +1,82 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_flussi_autochiusura_pratica`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_autochiusura_pratica`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.flussi](flussi.md)
-> [pratiche.fn_check_pratica_chiudibile](fn_check_pratica_chiudibile.md)
-> [pratiche.fn_pratica_flussi_aperti](fn_pratica_flussi_aperti.md)
-> [pratiche.trgfn_flussi_guard_chiusura_prematura](trgfn_flussi_guard_chiusura_prematura.md)
-> [pratiche.trgfn_pratiche_guard_chiusura_flussi](trgfn_pratiche_guard_chiusura_flussi.md)
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — il flusso che si completa
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica che si chiude
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — `chiude_pratica` e `obbligatorio`
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_check_pratica_chiudibile](/dbzero/pratiche/funzioni/fn_check_pratica_chiudibile) — il predicato del modello senza flusso di chiusura
+> * [pratiche.trgfn_flussi_guard_chiusura_prematura](/dbzero/pratiche/funzioni/trgfn_flussi_guard_chiusura_prematura) — il flusso di chiusura si completa solo a percorso concluso
+> * [pratiche.trgfn_pratiche_guard_chiusura_flussi](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_chiusura_flussi) — il guard di chiusura della pratica, che la chiusura automatica attraversa
+> * [pratiche.trgfn_flussi_guard_pratica_terminale](/dbzero/pratiche/funzioni/trgfn_flussi_guard_pratica_terminale) — niente flussi nuovi su una pratica chiusa
 
 ---
+
 ### 🎯 Scopo Principale
 
-**Chiusura guidata dal workflow**: la pratica non si chiude con un'azione manuale,
-ma in automatico al completamento dei flussi. Al passaggio di un flusso a
-`COMPLETATO`, questo trigger chiude la pratica padre (`APERTA → CHIUSA`) secondo un
-**modello misto**.
+La trigger function `pratiche.trgfn_flussi_autochiusura_pratica` chiude la pratica guidata dal
+workflow: quando un flusso passa a `COMPLETATO`, porta la pratica da `APERTA` a `CHIUSA` se
+l'edizione di workflow della pratica dice che il percorso è concluso.
 
 ---
 
-### Trigger associato
+### Le regole
 
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_flussi_z90_autochiusura_pratica_upd` | AFTER | UPDATE OF `stato_id` | `pratiche.flussi` |
+1. Scatta solo quando lo stato del flusso cambia davvero verso `COMPLETATO`.
+2. Solo da pratica `APERTA`: una pratica in bozza, sospesa o terminale non si chiude da sé.
+3. **Edizione con flusso di chiusura** (`chiude_pratica`, attivo): la pratica si chiude se e solo se il
+   flusso completato è quello. Nessun altro flusso la chiude.
+4. **Edizione senza flusso di chiusura ma con almeno un obbligatorio attivo**: la pratica si chiude se
+   `pratiche.fn_check_pratica_chiudibile` risponde sì, cioè non resta nessun obbligatorio bloccante e
+   nessun flusso istanziato aperto, escluso quello appena completato.
+5. **Edizione senza obbligatori e senza flusso di chiusura**: niente, la pratica resta aperta. Non ha un
+   percorso di chiusura automatico.
 
-Fase `_z90_` (effetto a valle del completamento). Indipendente da
-`trgfn_flussi_generazione` (genera la pratica figlia): ordine non vincolato.
-
----
-
-### Regole (modello misto)
-
-1. Scatta solo alla **transizione** di stato verso `COMPLETATO`.
-2. Solo da pratica **APERTA** (SOSPESA/BOZZA/terminale non si auto-chiudono).
-3. **Definizione pinnata con flusso di chiusura** (`template_flussi.chiude_pratica`):
-   chiude **sse** il flusso completato e' quello.
-4. **Definizione pinnata senza flusso di chiusura ma con ≥1 obbligatorio**: chiude
-   **sse** [fn_check_pratica_chiudibile](fn_check_pratica_chiudibile.md) — predicato
-   **D1**: nessun obbligatorio bloccante **e** nessun flusso istanziato aperto (escluso
-   `NEW.id`, gia' terminale).
-5. **Definizione senza obbligatori e senza flusso di chiusura**: **no-op** (nessun percorso
-   di chiusura deterministico — la pratica resta APERTA).
-6. La chiusura e' un `UPDATE pratiche → CHIUSA` che riusa i guard transizione/chiusura
-   e il **giornale** esistenti: l'evento `STATO_CAMBIATO` e' registrato come per la
-   chiusura manuale.
+La chiusura è un aggiornamento della pratica che passa dai guard di transizione e di chiusura e dal
+giornale come una chiusura manuale; tocca la pratica solo se è ancora `APERTA`, e non riscrive i flussi,
+quindi non ricorre.
 
 ---
 
-### Note operative
+### ⭐ Si legge dall'edizione della pratica, non dal tipo
 
-* La `UPDATE` chiude solo se la pratica e' ancora APERTA (sicurezza concorrenza).
-* Nessuna ricorsione: l'UPDATE su `pratiche` non riscrive `flussi`.
-* **Resta AFTER (eager), niente deferral (D2 scartato)**: i rami condizionali si
-  modellano come **bivio-per-esito** (obbligatori-su-ramo via prerequisito esito-aware),
-  cosi' il predicato template-based blocca **prima** che serva creare istanze a valle.
-  Se un flusso a valle venisse creato su pratica gia' chiusa, il guard pratica-terminale
-  fallisce in modo **rumoroso** (err 490): rete fail-safe che rende inutile il deferral.
-* **Fork-aware** (`20260703-14`, completamento Fase 1): il flusso di chiusura (regola 3) e
-  il gate obbligatori (regola 4) sono scopati per `definizione_id` **pinnata** della pratica,
-  **non** per `tipo_prestazione_id`. Con i fork (Fase 2) piu' definizioni condividono il tipo
-  e l'unique `uq_template_flussi_chiusura_definizione` garantisce **un** `chiude_pratica` per
-  definizione: senza il fix la SELECT del template di chiusura leggeva piu' righe (pick
-  arbitrario) e il gate contava obbligatori di edizioni diverse. Con una definizione per tipo
-  il comportamento e' identico a prima.
-* Test: `db/pgtap/pratiche/test-autochiusura-pratica.sql` (modelli A/B),
-  `test-chiusura-nessun-lavoro-pendente.sql` (bivio + D1) e
-  `test-fork-chiusura-per-definizione.sql` (isolamento fork: due definizioni stesso tipo).
+Il flusso di chiusura e gli obbligatori si cercano nell'edizione di workflow fissata sulla pratica
+(`definizione_id`), non nel tipo di prestazione: un tipo può avere più edizioni, ciascuna col suo
+flusso di chiusura.
 
 ---
+
+### ⭐ Subito, non a fine transazione
+
+Il trigger è `AFTER UPDATE OF stato_id` su `pratiche.flussi`, nella fase finale, e chiude subito. I rami
+condizionali si modellano come bivi per esito (obbligatori sul ramo, tramite prerequisiti che guardano
+l'esito): il predicato blocca prima che servano istanze a valle. Se un flusso a valle venisse creato su
+una pratica già chiusa, `pratiche.trgfn_flussi_guard_pratica_terminale` lo rifiuta a voce alta: è la
+rete che rende inutile rimandare il controllo.
+
+---
+
+### Test
+
+* `pratiche/test-autochiusura-pratica` — i due modelli, con e senza flusso di chiusura.
+* `pratiche/test-chiusura-nessun-lavoro-pendente` — il bivio e il lavoro rimasto.
+* `pratiche/test-fork-chiusura-per-definizione` — due edizioni dello stesso tipo non si mescolano.
+* `pratiche/test-bivi-condizionali` — la chiusura su un ramo.
+
+---
+
+### Note di migrazione
+
+* 2026-07-03 — flusso di chiusura e obbligatori si cercano nell'edizione della pratica e non più nel
+  tipo: con le copie degli emittenti un tipo ha più edizioni.
+
+---
+
 {% include-markdown "signature-core.md" %}

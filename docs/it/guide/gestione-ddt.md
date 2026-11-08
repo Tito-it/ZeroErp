@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -18,7 +18,7 @@
 > * [vendite.trgfn_ddt_guard_transizione](/dbzero/vendite/funzioni/trgfn_ddt_guard_transizione) — enforcement del grafo stati
 > * [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) — evasione delle righe ordine in un DDT
 > * [vendite.fn_ddt_riga_correggi_qta_evasa](/dbzero/vendite/funzioni/fn_ddt_riga_correggi_qta_evasa) / [vendite.trgfn_ddt_righe_guard_riga_evasa](/dbzero/vendite/funzioni/trgfn_ddt_righe_guard_riga_evasa) — la riga evasa: ferma, corretta solo dal verbo
-> * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) / [vendite.fn_ddt_legami](/dbzero/vendite/funzioni/fn_ddt_legami) — l'annullo di una bolla con righe legate a ordini o resi
+> * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) / [vendite.fn_documento_legami](/dbzero/vendite/funzioni/fn_documento_legami) — l'annullo di una bolla con righe legate a ordini o resi
 > * [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare) — righe eleggibili al push a commessa
 > * [vendite.trgfn_ddt_gen_numero_emesso](/dbzero/vendite/funzioni/trgfn_ddt_gen_numero_emesso) / [vendite.trgfn_v_ddt_protect_num](/dbzero/vendite/funzioni/trgfn_v_ddt_protect_num) — numero assegnato a EMESSO e poi immutabile
 > * [vendite.trgfn_ddt_guard_indirizzi_obbligatori](/dbzero/vendite/funzioni/trgfn_ddt_guard_indirizzi_obbligatori) — indirizzo di consegna obbligatorio all'emissione
@@ -130,7 +130,7 @@ completamente evaso, la sua proiezione di stato lo riflette
 
 È possibile creare un DDT **da zero**, scegliendo il cliente (billing account) e
 le righe a mano. In questo caso il DDT nasce senza riferimento a un ordine di
-origine (`sorgente_tipo_id`/`sorgente_uid` NULL). Il cliente è **obbligatorio**
+origine (la provenienza `sorgente_*` è vuota). Il cliente è **obbligatorio**
 alla creazione: da lì il sistema deriva destinatario ed emittente.
 
 ---
@@ -150,8 +150,10 @@ Contiene il contesto del documento e del trasporto:
   `modalita_addebito_trasporto_id`, `mittente_soggetto_ruolo_id`,
   `vettore_soggetto_ruolo_id`, `num_colli`, `peso_lordo`, `peso_netto`, `volume`,
   `targa`, `autista`, `tracking_code`.
-* **da dove arriva** (`sorgente_tipo_id` + `sorgente_uid`) — valorizzata
-  dall'evasione (sorgente `ORDINE_VENDITA`); NULL se il DDT è standalone.
+* **da dove arriva** — la provenienza del modello comune
+  ([sorgente polimorfa](/guide/sorgente-polimorfa)): il tipo (`sorgente_tipo_id`) e la chiave del
+  documento (`sorgente_id`). È l'ordine (`ORDINE_VENDITA`) per la bolla d'evasione, il reso
+  (`RESO_VENDITA`) per la bolla di riconsegna; vuota se il DDT è standalone.
 * **identità e stato** (`numero`/`anno` — assegnati a EMESSO —, `uid`,
   `stato_doc_ddt_id`).
 
@@ -377,7 +379,8 @@ Se non resta residuo, l'evasione segnala che non c'è nulla da consegnare.
 > **Bozza "usa e getta".** La creazione salva subito una bozza (auto-save al
 > primo cliente o destinatario) per poter aggiungere righe e indirizzi. Se l'operatore esce
 > senza inserire nulla, la bozza vuota può essere eliminata. Un DDT **emesso**
-> non si cancella: si **annulla**.
+> non si cancella: si **annulla**. Una bozza con righe attive non si cancella nemmeno: si tolgono
+> prima le righe. La regola la fa valere il database, per ogni strada che cancella.
 
 ### 6.3 Le righe di un DDT da ordine
 
@@ -638,8 +641,9 @@ dettaglio, l'export (CSV/XLSX) e i documenti generati.
 
 ### 13.4 Bozza creata per errore
 
-1. DDT ancora in `DRAFT` **senza righe/indirizzi** → eliminabile.
-2. DDT **emesso** → non si elimina: usa "Annulla" (→ `ANNULLATO`).
+1. DDT ancora in `DRAFT` **senza righe attive** → eliminabile (gli indirizzi se ne vanno con lui).
+2. DDT in `DRAFT` **con righe** → non si elimina (`E_DELETE_DOC_CON_RIGHE`): togli le righe, o annulla.
+3. DDT **emesso** → non si elimina (`E_DELETE_DOC_NON_BOZZA`): usa "Annulla" (→ `ANNULLATO`).
 
 ---
 
@@ -655,7 +659,8 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | `E_DDT_CLIENTE_OBBLIGATORIO`         | Emissione senza cliente con una causale che manda merce a un cliente (guard DB)                              |
 | `E_DOC_CLIENTE_DIVERSO_DA_BA`        | Destinatario o utility diversi da quelli del cliente scelto (guard DB)                                       |
 | `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE`  | Cliente diverso da quello dell'ordine o del reso di origine (guard DB)                                       |
-| `E_DDT_STATO_TRANSIZIONE`            | Operazione non ammessa nello stato (modifica fuori da `DRAFT`, delete di una bozza con righe → va annullata) |
+| `E_DELETE_DOC_NON_BOZZA`             | Eliminazione di un DDT uscito dalla bozza: si annulla (guard DB) |
+| `E_DELETE_DOC_CON_RIGHE`             | Eliminazione di una bozza con righe attive: si tolgono le righe o si annulla (guard DB) |
 | `E_DDT_NESSUNA_RIGA`                 | Push senza righe eleggibili                                                                                  |
 | `E_DOC_EMITTENTE_BA_INCOERENTE`      | L'azienda che emette non è quella del cliente (stesso codice per i sei documenti di vendita)                 |
 | `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` | Cambio di stato non previsto/attivo nella matrice (guard DB)                                                 |

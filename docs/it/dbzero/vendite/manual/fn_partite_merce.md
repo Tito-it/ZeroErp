@@ -1,21 +1,26 @@
-## 📘 Documentazione Concettuale – Funzione `vendite.fn_partite_merce(p_ddt_ids, p_ordine_ids)`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_partite_merce`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
-
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [vendite.vw_partite_merce](/dbzero/vendite/views/vw_partite_merce) — la stessa cosa, senza filtro
-> [vendite.fn_af_merce_per_riga](/dbzero/vendite/funzioni/fn_af_merce_per_riga) — il contatore, letto per le chiavi della chiusura
-> [vendite.vw_af_merce_per_riga](/dbzero/vendite/views/vw_af_merce_per_riga)
-> [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare)
-> [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi)
-> Brief: `docs/it/dev/work-done/brief-db-partita-merce-per-documento.md`
+> Approfondimento viste:
+>
+> * [vendite.vw_partite_merce](/dbzero/vendite/views/vw_partite_merce) — la stessa cosa, senza filtro
+> * [vendite.vw_af_merce_per_riga](/dbzero/vendite/views/vw_af_merce_per_riga)
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_af_merce_per_riga](/dbzero/vendite/funzioni/fn_af_merce_per_riga) — il contatore, letto per le chiavi della chiusura
+> * [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare)
+> * [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi)
 
 ---
+
 ### 🎯 Scopo Principale
 
 `vendite.fn_partite_merce` è **il conto della merce** — lo stesso di
-[`vw_partite_merce`](vw_partite_merce.md), che ne è la proiezione senza filtro —
+[`vw_partite_merce`](/dbzero/vendite/views/vw_partite_merce), che ne è la proiezione senza filtro —
 calcolato **per i documenti che si chiedono**, non per tutti.
 
 Nasce per un difetto di forma, non di numeri: una vista non ha un parametro, e
@@ -76,15 +81,15 @@ Ne discende la **chiusura**, a due salti:
 `riga` e `orig` si calcolano su R0 ∪ R1; `sospetto` sui DDT di R0 ∪ R1;
 `af` — il contatore delle attività fatturabili — si legge **per chiave di
 segmento** (giro 4, D5): la chiusura conosce le chiavi che le servono — una
-chiave `DDT:<uid>:R:<riga>` per ogni riga di O (la rettifica dell'origine, la
-merce e le rettifiche delle righe in uscita) e una chiave `ORD:<uid>:R:<riga>`
+chiave `DDT_VENDITA:<uid>:R:<riga>` per ogni riga di O (la rettifica dell'origine, la
+merce e le rettifiche delle righe in uscita) e una chiave `ORDINE_VENDITA:<uid>:R:<riga>`
 per ogni riga d'ordine dei fulfillment della chiusura (il serbatoio della
-greedy) — e le passa a
+greedy), composte da `script.fn_segment_key` come le compone il push — e le passa a
 [`fn_af_merce_per_riga`](/dbzero/vendite/funzioni/fn_af_merce_per_riga), che
 risolve da sola i suffissi `#RET`/`#CMP`. Era l'ultimo pezzo del conto letto
 intero, ed è quello che cresce con le fatture, non con i DDT.
 
-> ⚠️ La chiave `ORD` nasce dall'`uid` dell'ordine, letto sotto RLS: la vista
+> ⚠️ La chiave dell'ordine nasce dall'`uid` dell'ordine, letto sotto RLS: la vista
 > senza seme conta il serbatoio d'ordine di una riga anche senza *vedere*
 > l'ordine (legge solo la commessa). L'equivalenza presuppone che ordine e
 > commessa stiano nello stesso perimetro — il billing account li tiene insieme,
@@ -153,9 +158,7 @@ identica: provata su dbdev come app, nei tre modi (tutte, per DDT, per ordine).
 
 ### Solo la merce della bolla
 
-(rev 3-11-2026, `20261103-30`, brief `brief-db-addebito-trasporto-ordine` §8.1)
-
-Dal 2026-11-03 una bolla puo' portare anche gli **oneri** (trasporto, spese):
+Una bolla puo' portare anche gli **oneri** (trasporto, spese):
 articoli-onere scritti sulle righe come gli articoli. Un onere non e' merce
 consegnata: non ha partita, non si rende, non si accredita, non si
 riconsegna. La funzione tiene in `dr_in` (nei due rami) solo le righe la cui
@@ -172,8 +175,6 @@ nei tre modi, prima dell'apply).
 ---
 
 ### L'origine della partita
-
-(rev 20-10-2026, `20261020-24`, brief `brief-db-grammatica-unica-documenti` §12.8)
 
 `origine` dice da dove parte la merce della riga di DDT:
 
@@ -202,22 +203,6 @@ dell'origine, come `ONERE` nei legami di `fn_documento_legami`. Il tipo resta
 
 ---
 
-### Esempio d'uso
-
-```sql
--- La situazione della merce di una spedizione, riga per riga.
-SELECT ddt_riga_id, consegnato, reso, tenuti, fatturato, stato
-  FROM vendite.fn_partite_merce(ARRAY[15854])
- ORDER BY ddt_riga_id;
-
--- Tutte le spedizioni di un ordine, comprese le righe aggiunte a mano ai suoi DDT
--- (origine ORDINE_VENDITA, MULTIPLA o NESSUNA).
-SELECT ddt_id, ddt_riga_id, origine, stato, differenza
-  FROM vendite.fn_partite_merce(NULL, ARRAY[18586]);
-```
-
----
-
 ### Presidio
 
 `db/pgtap/vendite/test-fn-partite-merce-chiusura-v1.sql` (16 test). I casi
@@ -234,6 +219,17 @@ che contano sono costruiti, non letti dai dati:
 * più i pin di forma: la vista nomina la funzione e nessuna tabella (un corpo
   solo), le 23 colonne coi loro tipi (`consegnato` resta `numeric(18,6)`: un
   `SELECT *` dalla funzione lo perderebbe in silenzio), lo scope.
+
+---
+
+### Note di migrazione
+
+* 2026-10-20 — `origine` dice `ORDINE_VENDITA`, il codice di `config.sorgenti`, al posto del codice
+  corto `ORDINE` (brief-db-grammatica-unica-documenti §12.8).
+* 2026-10-20 — le chiavi di segmento che la chiusura passa al contatore le compone
+  `script.fn_segment_key` col codice del tipo (`DDT_VENDITA:`, `ORDINE_VENDITA:`), al posto dei
+  prefissi `DDT:` e `ORD:` (brief-db-grammatica-unica-documenti).
+* 2026-11-03 — dalla partita escono le righe-onere della bolla (brief-db-addebito-trasporto-ordine §8.1).
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.inventari_righe`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -33,8 +33,9 @@ articolo (ed eventualmente lotto, pezzo serializzato, ubicazione) quanto è stat
 (`qta_contata`, mai negativa) e quanto il sistema si aspettava (`qta_sistema`). Una riga da
 sola non ha contesto: data, magazzino e stato stanno nella testata.
 
-Ogni riga è la **sorgente** del movimento di allineamento che il conteggio produce
-(`INVENTARIO_RIGA`).
+Ogni riga è il punto preciso da cui nasce il movimento di allineamento che il conteggio
+produce: il movimento cita come sorgente il documento (`INVENTARIO`, la testata) e, in
+`sorgente_riga`, questa riga. Una riga citata dal registro non si può cancellare.
 
 ---
 
@@ -95,6 +96,8 @@ da lì al magazzino e al suo emittente. Meccanismo comune: [Linee guida SQL — 
   dei due testi liberi `lotto` e `seriale`.
 * 2026-09-18 — arrivano `costo_unitario`, la scrittura di `qta_sistema` dal posting e l'unicità
   della posizione.
+* 2026-11-08 — il movimento non cita più la riga come tipo a sé (`INVENTARIO_RIGA`, ritirato da
+  `config.sorgenti`): cita il documento e la riga.
 
 ---
 

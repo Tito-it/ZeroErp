@@ -44,9 +44,15 @@ identico a quello registrato.
 * **Il perimetro**, facoltativo: `where_predicate` rende il vincolo **parziale**, valido solo fra
   le righe che soddisfano la condizione (per esempio solo fra le righe attive, o fra le versioni
   in un certo stato). Vuoto, il vincolo vale per tutte le righe.
-* **Il nome** del vincolo, `constraint_name`; vuoto, lo sceglie l'apply dal suo template.
+* **Il nome** del vincolo, `constraint_name`; vuoto, vale il template `ex_<tabella>_no_overlap`.
+  Lo risolve [fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato),
+  che lo accorcia con un hash oltre i 63 caratteri. ⭐ È dal nome che l'apply riconosce il vincolo
+  della riga.
 * **L'interruttore**: `active` vero rende la riga eleggibile; `exec_mode` (`AUTO`, `CI`,
-  `SCHEDULED`) la limita a un contesto d'esecuzione, e `AUTO` vale per tutti.
+  `SCHEDULED`) la limita a un contesto d'esecuzione, e `AUTO` vale per tutti. ⚠️ Spegnere una
+  riga non toglie il vincolo già creato: togliere un vincolo d'integrità è una decisione, e la
+  prende lo stesso changeSet che spegne la riga. Un presidio pgTAP è rosso se una regola spenta ha
+  ancora il suo vincolo.
 * `note` racconta perché la riga è com'è.
 
 ---
@@ -65,8 +71,10 @@ sovrapposizione nasce o cambia forma. È l'unica sorgente del registro: non c'è
 automatica che le deduca dallo schema.
 
 ⚠️ Cambiare `where_predicate` o la chiave di una riga **non** cambia un vincolo già creato:
-l'apply salta la tabella se ci trova già un vincolo sul periodo. Il vincolo vecchio si toglie
+l'apply salta la tabella se ci trova già il vincolo col nome della riga (o un
+`UNIQUE … WITHOUT OVERLAPS` sul periodo), senza confrontarne la forma. Il vincolo vecchio si toglie
 nello stesso changeSet che cambia la riga, e il giro successivo lo ricrea nella forma nuova.
+Un altro `EXCLUDE` della tabella, con un altro nome, non conta: la regola riceve comunque il suo.
 
 ---
 
@@ -74,6 +82,9 @@ nello stesso changeSet che cambia la riga, e il giro successivo lo ricrea nella 
 
 * `db/pgtap/dbops/test-anti-overlap-enforcement-gate-v1.sql` — ogni `constraint_name` di una riga
   attiva esiste come vincolo `EXCLUDE`, e nessun oggetto con quel nome è un semplice indice.
+* `db/pgtap/dbops/test-overlap-regola-e-vincolo-v1.sql` — ogni regola attiva su una tabella che
+  esiste ha il suo vincolo, per nome, o un `UNIQUE … WITHOUT OVERLAPS` sul periodo; nessuna regola
+  spenta ha ancora il suo vincolo vivo.
 * `db/pgtap/vendite/test-listino-versione-in-vigore-v1.sql` — la riga del registro delle versioni
   di listino dice lo stesso predicato del vincolo vivo.
 * I test del comportamento dell'apply sono nella scheda di
@@ -94,6 +105,9 @@ nello stesso changeSet che cambia la riga, e il giro successivo lo ricrea nella 
 * 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
   scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
   `brief-db-revisione-dbops`, giro 7-bis).
+* 2026-11-08 — l'apply riconosce il vincolo della riga per nome, non da un qualsiasi `EXCLUDE`
+  che nomini la colonna del periodo; il nome viene da `fn_nome_oggetto_dichiarato`, e sparisce la
+  variante col suffisso `_c` (`brief-db-revisione-dbops`, giro 10c).
 
 ---
 

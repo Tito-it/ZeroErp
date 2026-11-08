@@ -27,7 +27,6 @@ DECLARE
   has_txid boolean;
   tmpl     text;
   trg_name text;
-  exist_strat text;
 BEGIN
 
 
@@ -57,16 +56,13 @@ BEGIN
     BEFORE INSERT OR UPDATE
     EXECUTE FUNCTION dbops.trgfn_tx_id_managed()
   Il nome del trigger è derivato da un template:
-    - rrule.name_template (default: 'trg_{table}_gen_tx_id_ins_upd')
+    - rrule.name_template (obbligatorio per TX_ID: CHECK del registro)
     - dbops.fn_name_from_template per generare un nome coerente e standardizzato.
 
-  Esistenza trigger / strategie
-  -----------------------------
-  La creazione del trigger è condizionata da rrule.existence_strategy (default 'BY_NAME'):
-  - BY_NAME     : verifica esistenza per nome trigger
-  - BY_FUNCTION : verifica esistenza per funzione trigger (dbops.trgfn_tx_id_managed)
-  - BOTH        : considera presente se esiste per nome OR per funzione
-  Questo consente migrazioni controllate e previene duplicazioni.
+  Esistenza del trigger
+  ---------------------
+  Il trigger si riconosce dalla FUNZIONE (dbops.trgfn_tx_id_managed), qualunque nome abbia: il nome
+  serve solo a crearlo. Un trigger con un altro nome non ne riceve un secondo.
 
   Modalità DRY RUN
   ---------------
@@ -80,7 +76,7 @@ BEGIN
 */
 
 
-  v_schemas := dbops.fn_resolve_scope(p_schemas); 
+  v_schemas := dbops.fn_resolve_scope(p_schemas);
   FOR rtab IN
     SELECT n.nspname AS schema_name,
           c.relname AS table_name,
@@ -104,7 +100,6 @@ BEGIN
         AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
       ORDER BY r.priority, r.id
     LOOP
-      exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 
       SELECT EXISTS(
         SELECT 1 FROM information_schema.columns
@@ -114,13 +109,10 @@ BEGIN
       ) INTO has_txid;
 
       IF has_txid THEN
-        tmpl     := COALESCE(rrule.name_template,'trg_{table}_gen_tx_id_ins_upd');
+        tmpl     := rrule.name_template;
         trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
 
-        IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
-        OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'dbops','trgfn_tx_id_managed'))
-        OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
-                                          OR dbops.fn_trigger_exists_by_function(rel,'dbops','trgfn_tx_id_managed')))
+        IF NOT dbops.fn_trigger_exists_by_function(rel, 'dbops', 'trgfn_tx_id_managed')
         THEN
           IF p_dry_run THEN
 
@@ -135,7 +127,7 @@ BEGIN
                   p_params        => jsonb_build_object(
                                       'table', rtab.schema_name||'.'||rtab.table_name,
                                       'trigger', trg_name,
-                                      'action', 'DRYRUN_CREATE_TRIGGER'   
+                                      'action', 'DRYRUN_CREATE_TRIGGER'
                                     ),
                   p_message       => 'Trigger would be created'
                 );
@@ -179,7 +171,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_tx_id(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione TX_ID: monta il trigger dbops.trgfn_tx_id_managed (BEFORE INSERT OR UPDATE) sulle tabelle dell''ambito che hanno la colonna tx_id di tipo uuid, secondo le regole TX_ID di dbops.automation_rules_tbl (nome dal template, strategia d''esistenza della regola). In simulazione scrive in dbops.audit_log una riga DRYRUN per trigger, firmata con il proprio nome e con rule_type TX_ID. Un guasto dell''ambiente (script.fn_sqlstate_di_ambiente) si scrive nel registro errori e si rilancia con il suo SQLSTATE; gli altri errori della DDL escono con E_TX_ID.';
+IS 'Automazione TX_ID: monta il trigger dbops.trgfn_tx_id_managed (BEFORE INSERT OR UPDATE) sulle tabelle dell''ambito che hanno la colonna tx_id di tipo uuid, secondo le regole TX_ID di dbops.automation_rules_tbl. Il trigger si riconosce dalla funzione, qualunque nome abbia; il nome di uno nuovo viene dal name_template della regola. In simulazione scrive in dbops.audit_log una riga DRYRUN per trigger, firmata con il proprio nome e con rule_type TX_ID. Un guasto dell''ambiente (script.fn_sqlstate_di_ambiente) si scrive nel registro errori e si rilancia con il suo SQLSTATE; gli altri errori della DDL escono con E_TX_ID.';
 ```
 
 </div>

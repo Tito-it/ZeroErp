@@ -34,9 +34,8 @@ AS $function$
 
   Idempotenza
   -----------
-  Esistenza secondo la regola (BY_NAME / BY_FUNCTION / BOTH). Il nome
-  oltre i 63 caratteri PostgreSQL lo tronca: con BOTH il trigger si
-  riconosce comunque dalla funzione.
+  Il trigger si riconosce dalla FUNZIONE (script.trgfn_guard_date_validita),
+  qualunque nome abbia: anche un nome troncato oltre i 63 caratteri.
 
   Dry run
   -------
@@ -50,7 +49,6 @@ DECLARE
     rtab        record;
     rrule       record;
     trg_name    text;
-    exist_strat text;
     created     boolean;
 BEGIN
     v_schemas := dbops.fn_resolve_scope(p_schemas);
@@ -82,20 +80,16 @@ BEGIN
              ORDER BY r.priority, r.id
         LOOP
             EXIT WHEN created;
-            exist_strat := COALESCE(rrule.existence_strategy, 'BOTH');
             trg_name := dbops.fn_name_from_template(
-                            COALESCE(rrule.name_template, 'trg_{table}_a10_date_validita_ins_upd'),
+                            rrule.name_template,
                             rtab.schema_name, rtab.table_name,
                             NULL, NULL, NULL, NULL);
 
-            IF (exist_strat = 'BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rtab.rel, trg_name))
-            OR (exist_strat = 'BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rtab.rel, 'script', 'trgfn_guard_date_validita'))
-            OR (exist_strat = 'BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rtab.rel, trg_name)
-                                              OR dbops.fn_trigger_exists_by_function(rtab.rel, 'script', 'trgfn_guard_date_validita')))
+            IF NOT dbops.fn_trigger_exists_by_function(rtab.rel, 'script', 'trgfn_guard_date_validita')
             THEN
                 IF p_dry_run THEN
                     PERFORM dbops.fn_audit_log_once(
-                        p_function_name => 'dbops.fn_run_automations',
+                        p_function_name => 'dbops.fn_run_automations_date_validita',
                         p_status        => 'DRYRUN',
                         p_rule_type     => 'DATE_VALIDITA',
                         p_exec_mode     => p_exec_mode,
@@ -145,7 +139,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_date_validita(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione DATE_VALIDITA: su ogni tabella dello scope che porta valido_dal e valido_al monta script.trgfn_guard_date_validita (BEFORE INSERT OR UPDATE OF valido_dal, valido_al), secondo la regola DATE_VALIDITA di dbops.automation_rules_tbl. ⭐ La regola e'' della COPPIA di colonne, non della tabella: la sola presenza basta, come il lock di codice_interno, e una tabella nuova nasce presidiata. ⚠️ Esclude lo schema storico (le tabelle ombra ricordano, non si giudicano). Esistenza BY_NAME / BY_FUNCTION / BOTH: con BOTH un nome troncato oltre i 63 caratteri si riconosce dalla funzione. Dry run con audit; errore strutturato E_DATE_VALIDITA. Chiamata a ogni migrate (90_end, runAlways) e dal job notturno automations_lock_columns. Brief: brief-db-guard-date-validita.md ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
+IS 'Automazione DATE_VALIDITA: su ogni tabella dello scope che porta valido_dal e valido_al monta script.trgfn_guard_date_validita (BEFORE INSERT OR UPDATE OF valido_dal, valido_al), secondo la regola DATE_VALIDITA di dbops.automation_rules_tbl. La regola e'' della COPPIA di colonne, non della tabella: la sola presenza basta, e una tabella nuova nasce presidiata. Esclude lo schema storico (le tabelle ombra ricordano, non si giudicano). Il trigger si riconosce dalla funzione, qualunque nome abbia; il nome di uno nuovo viene dal name_template della regola. Dry run con audit firmato col proprio nome; errore strutturato E_DATE_VALIDITA; un guasto dell''ambiente (script.fn_sqlstate_di_ambiente) si scrive nel registro errori e si rilancia col suo SQLSTATE. Chiamata a ogni migrate (90_end, runAlways) e dal job notturno automations_lock_columns.';
 ```
 
 </div>

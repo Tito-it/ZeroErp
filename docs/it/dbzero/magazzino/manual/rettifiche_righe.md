@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.rettifiche_righe`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -26,8 +26,11 @@
 
 **Le righe di [magazzino.rettifiche](/dbzero/magazzino/tabelle/rettifiche)**: per ogni
 articolo (ed eventualmente lotto, pezzo serializzato, ubicazione) di quanto la giacenza va
-corretta (`qta_delta`, con segno, mai zero) e perché (`motivo`). Ogni riga è la **sorgente** del
-movimento di rettifica (`RETTIFICA_RIGA`, causale `RETT_POS` o `RETT_NEG` secondo il verso).
+corretta (`qta_delta`, con segno, mai zero) e perché (`motivo`).
+
+Ogni riga è il punto preciso da cui nasce un movimento di rettifica (causale `RETT_POS` o
+`RETT_NEG` secondo il verso): il movimento cita come sorgente il documento (`RETTIFICA`, la
+testata) e, in `sorgente_riga`, questa riga. Una riga citata dal registro non si può cancellare.
 
 ---
 
@@ -78,6 +81,8 @@ da lì al magazzino e al suo emittente. Meccanismo comune: [Linee guida SQL — 
   (`brief-db-magazzino-lotto-1-terreno-vuoto`, §4.7); `lotto_id` e `asset_id` prendono il posto
   dei due testi liberi `lotto` e `seriale`.
 * 2026-09-18 — arriva `costo_unitario`, con il posting.
+* 2026-11-08 — il movimento non cita più la riga come tipo a sé (`RETTIFICA_RIGA`, ritirato da
+  `config.sorgenti`): cita il documento e la riga.
 
 ---
 

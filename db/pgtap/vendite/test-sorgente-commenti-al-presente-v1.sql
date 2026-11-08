@@ -2,20 +2,22 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: i COMMENT degli oggetti della provenienza (lotto 0 giro 0.3, lotto R, lotto T giro T.3,
---   lotto C giri C.1, C.2 e C.3, lotto P giro P.1, lotto M giro M.2)
+--   lotto C giri C.1, C.2 e C.3, lotto P giro P.1, lotto M giro M.2, giro finale)
 --   descrivono l'oggetto al presente, come vuole linee-guida-sql §5d: niente
 --   brief, marcatori di revisione, id di changeSet, sigle di decisione.
 --   Il giro 0.3 li aveva scritti con un prefisso di cronaca; il giro R.2 li
 --   riscrive interi, e questo file tiene il punto.
--- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86; giro M.2: 20261109-15 … -18; giro Z.5: 20261109-82, la firma nuova del riferimento)
+-- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86; giro M.2: 20261109-15 … -18; giro Z.5: 20261109-82, la firma nuova del riferimento; giro finale: 20261110-07 … -13)
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R, giro R.2
 -- ------------------------------------------------------------
--- Indice test (plan 5):
+-- Indice test (plan 7):
 --   1) l'elenco chiuso esiste tutto (un oggetto rinominato o ritirato si toglie da qui)
 --   2) nessun COMMENT di funzione dell'elenco porta un marcatore di storia
 --   3) nessun COMMENT di colonna
 --   4) nessun COMMENT di vincolo
 --   5) nessun COMMENT di indice
+--   6) nessun COMMENT di vista (giro finale)
+--   7) nessun COMMENT delle colonne nominate una per una (giro finale)
 --
 -- ⚠️ Il perimetro e' un ELENCO, per nome: un oggetto nuovo di questa famiglia
 --   entra qui nello stesso changeSet che lo crea. Il marcatore e' una regex sul
@@ -30,7 +32,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(5);
+SELECT plan(7);
 
 CREATE TEMP TABLE _marcatore (re text);
 INSERT INTO _marcatore VALUES
@@ -109,7 +111,19 @@ INSERT INTO _fn VALUES
   ('pratiche.trgfn_documento_reconcile_proiezione()'),
   ('vendite.fn_genera_pratica_da_preventivo(bigint,integer,integer,text)'),
   -- lotto M, giro M.2
-  ('dbops.fn_sorgenti_orfane()');
+  ('dbops.fn_sorgenti_orfane()'),
+  -- giro finale (20261110-07 … -13)
+  ('script.fn_sorgente_chiave_id(text)'),
+  ('script.fn_sorgente_chiave_uuid(text)'),
+  ('script.trgfn_componenti_guard_coerenza_bom()'),
+  ('script.trgfn_note_validate_generic()'),
+  ('dbops.fn_pgtap_crea_sorgente(character varying,regclass)'),
+  ('vendite.fn_documento_lineage_nodi(bigint[],text[])'),
+  ('vendite.fn_documento_lineage(bigint,text,text)'),
+  ('vendite.fn_fattura_origini(bigint)'),
+  ('vendite.trgfn_commesse_attivita_proietta_stato_preventivo()'),
+  ('vendite.fn_select_attivita_fatturabili(date,bigint,uuid,boolean,date,bigint,integer,integer,bigint,bigint,integer,text[])'),
+  ('vendite.fn_reso_muove_merce(vendite.resi)');
 
 CREATE TEMP TABLE _tab (tabella text PRIMARY KEY);
 INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
@@ -159,14 +173,38 @@ INSERT INTO _ix VALUES
   ('magazzino.ix_mag_trasferimenti_sorgente_id'), ('magazzino.ix_mag_trasferimenti_sorgente_uid'),
   ('magazzino.ix_mag_trasferimenti_sorgente_riga'),
   ('magazzino.ix_mag_eventi_assets_sorgente_id'), ('magazzino.ix_mag_eventi_assets_sorgente_uid'),
-  ('magazzino.ix_mag_eventi_assets_sorgente_riga');
+  ('magazzino.ix_mag_eventi_assets_sorgente_riga'),
+  -- giro finale
+  ('vendite.uq_attivita_fatturabili_commessa_attivita');
+
+-- giro finale: le viste della provenienza e le colonne nominate una per una
+CREATE TEMP TABLE _vw (vista text PRIMARY KEY);
+INSERT INTO _vw VALUES
+  ('vendite.vw_documento_lineage_archi'), ('vendite.vw_documento_lineage_nodi'),
+  ('vendite.vw_stato_sorgente_ddt'), ('vendite.vw_stato_sorgente_reso'),
+  ('vendite.vw_stato_sorgente_preventivo'), ('vendite.vw_stato_sorgente_offerta'),
+  ('vendite.vw_stato_sorgente_ordine'), ('vendite.vw_stato_sorgente_contratto'),
+  ('vendite.vw_contratti_lista'),
+  ('script.vw_stato_sorgente'), ('script.vw_stati_doc_reso_merce_rientrata'),
+  ('script.vw_giornale_entita'),
+  ('dbops.vw_ddt_emessi_senza_scarico'), ('dbops.vw_resi_confermati_senza_carico');
+
+CREATE TEMP TABLE _col (tabella text, colonna text, PRIMARY KEY (tabella, colonna));
+INSERT INTO _col VALUES
+  ('config.sorgenti', 'scope'), ('config.sorgenti', 'apribile'),
+  ('vendite.attivita_fatturabili', 'commessa_attivita_id'),
+  ('vendite.attivita_fatturabili', 'commessa_id');
 
 SELECT is(
   (SELECT count(*)::int FROM _fn WHERE to_regprocedure(firma) IS NULL)
   + (SELECT count(*)::int FROM _tab WHERE to_regclass(tabella) IS NULL)
-  + (SELECT count(*)::int FROM _ix WHERE to_regclass(indice) IS NULL),
+  + (SELECT count(*)::int FROM _ix WHERE to_regclass(indice) IS NULL)
+  + (SELECT count(*)::int FROM _vw WHERE to_regclass(vista) IS NULL)
+  + (SELECT count(*)::int FROM _col c WHERE NOT EXISTS (
+       SELECT 1 FROM pg_attribute a WHERE a.attrelid = to_regclass(c.tabella)
+          AND a.attname = c.colonna AND NOT a.attisdropped)),
   0,
-  '1) le funzioni, le tabelle e gli indici dell''elenco esistono tutti');
+  '1) le funzioni, le tabelle, gli indici, le viste e le colonne dell''elenco esistono tutti');
 
 SELECT is(
   (SELECT coalesce(string_agg(f.firma, ', ' ORDER BY f.firma), '')
@@ -205,6 +243,25 @@ SELECT is(
        OR obj_description(to_regclass(i.indice), 'pg_class') IS NULL),
   '',
   '5) i COMMENT degli indici descrivono al presente');
+
+SELECT is(
+  (SELECT coalesce(string_agg(v.vista, ', ' ORDER BY v.vista), '')
+     FROM _vw v, _marcatore m
+    WHERE coalesce(obj_description(to_regclass(v.vista), 'pg_class'), '') ~* m.re
+       OR obj_description(to_regclass(v.vista), 'pg_class') IS NULL),
+  '',
+  '6) i COMMENT delle viste della provenienza descrivono al presente');
+
+SELECT is(
+  (SELECT coalesce(string_agg(c.tabella || '.' || c.colonna, ', ' ORDER BY 1), '')
+     FROM _col c
+     JOIN pg_attribute a ON a.attrelid = to_regclass(c.tabella) AND a.attname = c.colonna
+                        AND NOT a.attisdropped,
+          _marcatore m
+    WHERE coalesce(col_description(a.attrelid, a.attnum), '') ~* m.re
+       OR col_description(a.attrelid, a.attnum) IS NULL),
+  '',
+  '7) i COMMENT delle colonne nominate descrivono al presente');
 
 SELECT * FROM finish();
 ROLLBACK;

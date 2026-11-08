@@ -1,131 +1,172 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_contratti`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**    
+> Approfondimento tabelle:
 >
-• [vendite.contratti](/dbzero/vendite/tabelle/contratti)    
-> • [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)    
+> * [vendite.contratti](/dbzero/vendite/tabelle/contratti) — il documento che porta lo stato (`stato_doc_contratto_id`)
+> * [config.transizioni_stati_contratti](/dbzero/config/tabelle/transizioni_stati_contratti) — i passaggi ammessi fra questi stati
+> * [config.esiti_flussi_pratiche](/dbzero/config/tabelle/esiti_flussi_pratiche) — il vocabolario dei verdetti a cui punta `esito`
 >
+> Approfondimento viste:
+>
+> * [vendite.vw_stato_sorgente_contratto](/dbzero/vendite/views/vw_stato_sorgente_contratto) — la proiezione dello stato per il motore pratiche
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_stato_iniziale_id](/dbzero/script/funzioni/fn_stato_iniziale_id) — legge lo stato `iniziale`
+> * [script.trgfn_doc_stato_iniziale](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) — fa nascere il contratto nello stato iniziale
+> * [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) — legge lo stato di `emissione` (l'attivazione)
+> * [script.fn_stato_cessazione_id](/dbzero/script/funzioni/fn_stato_cessazione_id) — legge lo stato di `cessazione`
+> * [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) — legge lo stato di annullo (`is_abortito`)
+> * [vendite.trgfn_doc_snapshot_da_stato](/dbzero/vendite/funzioni/trgfn_doc_snapshot_da_stato) — copia `is_abortito` e `is_bozza` sul contratto
+> * [script.fn_available_actions_contratto](/dbzero/script/funzioni/fn_available_actions_contratto) — la capability, che legge `meta` e `pdf_mode`
+>
+> Guide:
+>
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — vocabolario, matrice, nascita, emissione e annullo
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 2026-05-21)
-`config.stati_doc_contratti` definisce gli **stati documento** del ciclo di vita
-dei contratti commerciali. Fornisce un catalogo centralizzato per rappresentare
-le fasi operative del contratto, dalla bozza fino alla chiusura o all'annullamento.
+
+`config.stati_doc_contratti` è il **vocabolario degli stati del contratto commerciale**: quali
+stati esistono e, per ciascuno, che cosa significa per il resto del sistema — se il contratto ci
+nasce, se è attivo, se è cessato o annullato, se partecipa all'esclusività del periodo.
+
+Il codice non riconosce uno stato dal suo nome: chi ha bisogno di «lo stato in cui il contratto è
+attivo» o «lo stato di cessazione» lo chiede a una colonna di questa tabella, attraverso il suo
+lettore. I passaggi fra gli stati stanno nella matrice
+[`config.transizioni_stati_contratti`](/dbzero/config/tabelle/transizioni_stati_contratti).
 
 ---
 
-### Campi chiave (semantica)
+### Gli stati
 
-* **Identita` stato**: `id`, `codice`, `codice_interno`.
-* **Ordine**: `ordine` per esprimere una progressione logica degli stati.
-* **Governance**: `attivo`, `meta`, `is_abortito`.
-* **Audit**: `data_insert`, `user_insert`, `data_update`, `user_update`.
+| `codice_interno` | Che cosa vuol dire | Marcato da |
+| --- | --- | --- |
+| `DRAFT` | bozza in costruzione: si modifica tutto; non partecipa all'esclusività del periodo | `iniziale`, `is_bozza` |
+| `ATTIVO` | il contratto è in vigore: lo usa il prezzo, si fattura | `emissione` |
+| `CESSATO` | il contratto ha finito il suo corso, alla sua data di fine | `cessazione`, `terminale` |
+| `ANNULLATO` | la bozza è stata annullata prima dell'attivazione | `is_abortito`, `terminale` |
 
-#### Campo `is_abortito`
-
-`is_abortito BOOLEAN NOT NULL DEFAULT false` — aggiunto in migration `20260520-07`.
-
-Indica che lo stato rappresenta un contratto **abortito** (annullato prima
-dell'attivazione). Gli stati con `is_abortito = true` hanno effetti speciali:
-
-* Il constraint di overlap `ex_contratti_no_overlap` su `vendite.contratti`
-  usa un predicato parziale `WHERE NOT is_abortito_snapshot`: i contratti in
-  stato abortito sono esclusi dal check di sovrapposizione temporale.
-* `is_abortito` viene denormalizzato su `vendite.contratti.is_abortito_snapshot`
-  tramite il trigger `trg_contratti_z90_snapshot_da_stato_ins_upd` (BB
-  `vendite.trgfn_doc_snapshot_da_stato`, dal 2026-10-11) a ogni scrittura.
-
-#### Campo `meta`
-
-**La sede e` il CSV** `80_data/sql/config/stati_doc_contratti.csv`, letto dal
-mirror `20260806-14` (`loadUpdateData`, `runOnChange`). Si modifica editando il
-CSV: nessun `UPDATE` SQL nuovo su questa colonna.
-
-Contenuto oggi: `meta.nessuna_azione_key`, la chiave i18n che spiega
-all'operatore cosa sta succedendo quando il contratto e` in uno stato chiuso
-(`CESSATO`, `ANNULLATO`). La legge `script.fn_available_actions_contratto` e la
-espone nel blob come **`stato_info_key`** — il nome del campo e quello della
-proprieta` sono diversi di proposito, vedi `20260811-01`.
-
-> 🔴 **Correzione del 2026-08-11 — questo paragrafo diceva l'opposto, ed era
-> stale di due generazioni.** Diceva: «popolato da `20260430-61` + `20260520-10`
-> tramite UPDATE SQL (non da `loadUpdateData` — il meta e` gestito solo da SQL
-> dedicato per evitare sovrascritture)». Non e` piu` vero **e non va rimesso**.
-> Il testo resta qui perche` il dubbio che ha generato e` legittimo e tornera` a
-> qualcun altro.
->
-> **Cosa e` cambiato, in due passaggi:**
->
-> 1. **2026-05-28** — `meta.outgoing_action` era un ripiego: i contratti non
->    avevano una tabella di transizioni, quindi il bottone si descriveva nel
->    `meta` dello stato sorgente. Quel giorno la tabella e` nata
->    (`20260528-04-create-transizioni-stati-contratti`) e la funzione e` passata
->    a leggere quella (`20260528-05`). Da allora `outgoing_action` e` un **campo
->    morto**: verificato sulla funzione viva, non lo legge piu`, e nel CSV non
->    compare.
-> 2. **2026-08-06** — `20260806-14` ha **ri-ancorato il mirror** dopo i due
->    `UPDATE`, che sono stati spenti (`runOnChange: false`). Il motivo e` la
->    trappola descritta in `.codex/AGENTS.md`: quei due SQL scrivevano `meta`
->    *dopo* il mirror originale `20260520-08`, quindi su sviluppo vinceva il CSV
->    (il mirror ri-esegue a ogni migrate) e su un database **ricostruito da zero**
->    vincevano loro, riportando in vita `outgoing_action` con le chiavi i18n
->    vecchie. Due macchine su due versioni della stessa tabella.
->
-> **Verificato l'11-08 su tre piani**, perche` sul solo DB di sviluppo si misura
-> una macchina e non la riproducibilita`: il valore vivo (le due
-> `nessuna_azione_key` sono in tabella), la funzione (non legge piu`
-> `outgoing_action`), e l'ordine in timeline (`20260806-14` e` l'ultimo dei
-> quattro e ha `runOnChange: true`, quindi vince anche su un DB da zero).
+`codice_interno` è la chiave stabile e non si modifica (`E_CODICE_NON_MODIFICABILE`). Uno stato
+già usato da un contratto o da una riga della matrice non si disattiva.
 
 ---
 
-### Stati registrati
+### ⭐ Gli stati che hanno un significato si leggono da una colonna
 
-| `codice_interno` | `ordine` | `is_abortito` | Significato |
-| --- | --- | --- | --- |
-| `DRAFT` | 10 | false | Bozza in costruzione — modificabile |
-| `ATTIVO` | 20 | false | Contratto in vigore — usato dal resolver pricing |
-| `CESSATO` | 50 | false | Contratto scaduto o terminato — terminale |
-| `ANNULLATO` | 70 | **true** | Bozza annullata prima dell'attivazione — terminale |
+Ognuna di queste colonne marca **al più uno stato** (un indice unico parziale) e lo stato marcato
+deve essere **attivo** (un CHECK). Spostare il significato su un altro stato è una cella del CSV, e
+tutti i lettori seguono.
+
+* **`iniziale`** — lo stato in cui un contratto nasce. Il trigger
+  [`script.trgfn_doc_stato_iniziale`](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) su
+  `vendite.contratti` mette questo stato quando chi crea non ne dice uno, e rifiuta ogni altro con
+  `E_DOC_STATO_INIZIALE_NON_VALIDO`. Gli altri stati si raggiungono solo coi passaggi.
+* **`emissione`** — lo stato in cui il contratto è emesso, cioè **attivato**. Ci si arriva solo da
+  «Emetti», che genera il PDF (il numero del contratto si assegna alla nascita, non all'emissione:
+  divergenza dichiarata dalla guida del modello). Il backend chiede a
+  [`script.fn_doc_azione_passaggio`](/dbzero/script/funzioni/fn_doc_azione_passaggio) se il passaggio
+  porta in emissione e, se sì, lo rifiuta sul cambio di stato generico. La leggono anche il job delle
+  scadenze e la maturazione degli addebiti, per sapere quali contratti sono in corso.
+* **`cessazione`** — lo stato in cui il contratto è cessato. Ci portano il verbo della cessazione
+  ([`vendite.fn_cessa_contratto`](/dbzero/vendite/funzioni/fn_cessa_contratto)) e il job delle
+  scadenze ([`vendite.fn_cessa_contratti_scaduti`](/dbzero/vendite/funzioni/fn_cessa_contratti_scaduti));
+  la leggono la generazione dei canoni
+  ([`vendite.fn_contratti_addebiti_maturati`](/dbzero/vendite/funzioni/fn_contratti_addebiti_maturati)),
+  il guard di transizione del contratto e i controlli della distinta in `pagamenti`.
+* **`is_abortito`** — lo stato di annullo. Lo legge il verbo d'annullo
+  ([`vendite.fn_annulla_contratto`](/dbzero/vendite/funzioni/fn_annulla_contratto)) attraverso
+  [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id).
+
+Il vocabolario del contratto **non ha** la colonna `accettazione`: chiesto al suo lettore, lo stato
+di accettazione del contratto è vuoto.
 
 ---
 
-### Regole operative
+### `is_bozza` e `is_abortito` decidono chi partecipa all'esclusività del periodo
 
-* Lo stato e` usato da `vendite.contratti.stato_doc_contratto_id` come riferimento funzionale univoco.
-* `codice` e `codice_interno` devono restare **stabili** per non rompere query, mapping applicativi e integrazioni (protetti da `script.trgfn_lock_columns`).
-* La disattivazione di uno stato gia` usato da contratti esistenti e` bloccata da trigger DB.
-* `ordine` va mantenuto coerente con la sequenza attesa del processo contrattuale.
-* Nuovi stati con `is_abortito = true` richiedono verifica del constraint `ex_contratti_no_overlap` su `vendite.contratti` (il predicato `WHERE NOT is_abortito_snapshot` li esclude automaticamente).
+Due contratti con lo stesso account di fatturazione, la stessa fornitura e lo stesso ambito non possono avere
+periodi di validità che si sovrappongono. Il vincolo (`ex_contratti_no_overlap` su
+`vendite.contratti`) non legge questa tabella: legge la colonna calcolata
+`partecipa_overlap_snapshot` del contratto, che è vera quando il contratto **non è in bozza e non è
+annullato**.
+
+Le due metà arrivano da qui: il trigger
+[`vendite.trgfn_doc_snapshot_da_stato`](/dbzero/vendite/funzioni/trgfn_doc_snapshot_da_stato) copia
+`is_bozza` e `is_abortito` dello stato sul contratto (`is_draft_snapshot`, `is_abortito_snapshot`) a
+ogni scrittura. Una bozza quindi non occupa il periodo, e un'annullata lo libera.
+
+⚠️ `terminale` non sostituisce `is_abortito`: `CESSATO` è terminale ma occupa ancora il suo periodo,
+perché è la storia di un contratto che è stato in vigore; `ANNULLATO` è terminale e non lo occupa.
 
 ---
 
-### Uso tipico nel processo
+### La proiezione per il motore pratiche: `fase`, `esito`, `terminale`
 
-* **Apertura**: `DRAFT` — bozza in costruzione, tutto modificabile.
-* **Attivazione**: `ATTIVO` — contratto operativo, resolver pricing attivo, lock post-attivazione.
-* **Chiusura ordinaria**: `CESSATO` — scadenza automatica (job notturno) o cessazione manuale.
-* **Annullamento bozza**: `ANNULLATO` — bozza non ancora attivata; non blocca nuovi contratti sulla stessa quadrupla.
-
----
-
-### Proiezione stato di dominio (mappa dichiarata)
-
-Mappa D1 (brief `brief-db-proiezione-stato-dominio`) consumata via
-`vendite.vw_stato_sorgente_contratto` → `script.vw_stato_sorgente`:
+Il motore pratiche non conosce i codici dei contratti: ragiona su una scala comune a tutti i
+documenti, che ogni stato dichiara qui.
 
 | `codice_interno` | `fase` | `esito` | `terminale` |
-|------------------|--------|---------|-------------|
+| --- | --- | --- | --- |
 | `DRAFT` | `APERTO` | — | no |
 | `ATTIVO` | `IN_CORSO` | — | no |
 | `CESSATO` | `CHIUSO` | `POSITIVO` | sì |
 | `ANNULLATO` | `CHIUSO` | `NEGATIVO` | sì |
 
-* `fase` NOT NULL con CHECK sui 4 valori; `esito` = verdetto (`is_verdetto=true`, guard
-  `trg_stati_doc_contratti_a10_guard_esito_verdetto_ins_upd`) o NULL; `terminale ⇒ CHIUSO`.
-* `terminale` **non sostituisce** `is_abortito`: `CESSATO` è terminale ma non abortito;
-  `ANNULLATO` è entrambi. Sono assi distinti (§decisione E del brief).
+* `fase` è obbligatoria e sta nei quattro valori della scala: ogni stato nuovo dichiara la sua.
+* `esito` punta a un verdetto di
+  [`config.esiti_flussi_pratiche`](/dbzero/config/tabelle/esiti_flussi_pratiche) (lo controlla il
+  guard [`config.trgfn_stati_doc_guard_esito_verdetto`](/dbzero/config/funzioni/trgfn_stati_doc_guard_esito_verdetto));
+  vuoto vuol dire nessun verdetto.
+* `terminale` implica `fase = CHIUSO`.
+
+La proiezione la espone [`vendite.vw_stato_sorgente_contratto`](/dbzero/vendite/views/vw_stato_sorgente_contratto).
+
+---
+
+### `meta` e la stampa
+
+* **`meta.nessuna_azione_key`** — sugli stati chiusi (`CESSATO`, `ANNULLATO`), la chiave del testo
+  che spiega all'operatore perché non ci sono azioni. La capability la espone come
+  `stato_info_key`: i due nomi sono diversi di proposito, perché il controllo delle chiavi di
+  traduzione cerca quelle seminate col nome della proprietà.
+* **`pdf_mode`** e **`pdf_allow_allegati`** — che cosa offre il bottone PDF in quello stato:
+  l'anteprima in bozza, l'archivio negli altri. Non hanno un default: uno stato nuovo li dichiara.
+
+Il contenuto di tutte le colonne, `meta` compreso, sta nel CSV
+`80_data/sql/config/stati_doc_contratti.csv`: si cambia lì, non con un `UPDATE`.
+
+---
+
+### Codici errore
+
+* `E_DOC_STATO_INIZIALE_NON_VALIDO` — un contratto nuovo chiesto in uno stato diverso dall'iniziale.
+* `E_CODICE_NON_MODIFICABILE` — una modifica di `codice_interno`.
+
+---
+
+### Test
+
+* `db/pgtap/script/test-trgfn-doc-stato-iniziale-v1.sql` — uno stato iniziale per vocabolario, attivo, e la nascita.
+* `db/pgtap/script/test-doc-stati-dal-vocabolario-v1.sql` — i lettori di `emissione`, `cessazione` e degli altri stati marcati.
+* `db/pgtap/vendite/test-contratto-al-modello-v1.sql` — il contratto sul modello del documento.
+* `db/pgtap/vendite/test-contratto-attiva-spento-se-sovrapposto-v1.sql` — la bozza fuori dall'esclusività del periodo.
+
+---
+
+### Note di migrazione
+
+* 2026-05-28 — nasce la matrice `config.transizioni_stati_contratti`; la chiave `meta.outgoing_action`,
+  che descriveva il bottone nello stato sorgente, smette di essere letta ed esce dal CSV.
+* 2026-08-06 — il CSV diventa la sede unica di `meta`: i vecchi `UPDATE` che lo scrivevano sono
+  spenti, perché su un database ricostruito da zero riportavano in vita le chiavi vecchie.
+* 2026-10-24 / 2026-10-31 — arrivano `iniziale`, `emissione` e `cessazione` (brief
+  `brief-modello-documento-vendita`): il codice smette di scrivere `'DRAFT'`, `'ATTIVO'`, `'CESSATO'`.
 
 ---
 

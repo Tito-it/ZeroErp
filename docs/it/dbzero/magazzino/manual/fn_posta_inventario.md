@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `magazzino.fn_posta_inventario`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,6 +14,7 @@
 > * [magazzino.fn_inventario_piano](/dbzero/magazzino/funzioni/fn_inventario_piano) — da dove legge
 > * [magazzino.fn_scrivi_movimento](/dbzero/magazzino/funzioni/fn_scrivi_movimento) — la primitiva che chiama per riga
 > * [script.fn_check_documento_interno_registrabile](/dbzero/script/funzioni/fn_check_documento_interno_registrabile) — le condizioni per registrare
+> * [script.fn_sorgente_provenienza](/dbzero/script/funzioni/fn_sorgente_provenienza) — la sorgente da scrivere sui movimenti
 > * [magazzino.trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione) — la porta `POSTED`
 >
 > Guide:
@@ -61,7 +62,7 @@ divergere, perché vengono dalla stessa sede.
   (articolo, ubicazione, lotto, seriale); differenza zero = nessun movimento;
 * la **causale** la decide il registro: `INV_INIZIALE` se quell'articolo non ha nessun
   movimento nel magazzino (è il primo carico in assoluto), altrimenti `RETT_POS` / `RETT_NEG`;
-* la **sorgente** è la riga (`INVENTARIO_RIGA`), il **costo** è quello della riga solo su
+* la **sorgente** è l'inventario (tipo `INVENTARIO`) con la riga in `sorgente_riga`, il **costo** è quello della riga solo su
   un'entrata (un'uscita va alla media), la **data** del movimento è l'inizio del giorno
   operativo della data dell'inventario;
 * le posizioni `NON_CONTATA` del piano restano com'erano — informazione, non blocco;
@@ -97,7 +98,8 @@ testata. Fuori perimetro il documento **non c'è** (`E_MAG_DOCUMENTO_NON_TROVATO
 * `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA` — l'inventario non è in `CONFIRM`.
 * `E_MAG_DOCUMENTO_SENZA_RIGHE` — l'inventario non ha righe.
 * il primo motivo di una riga non postabile, con il codice della check.
-* `E_CONFIG_MANCANTE` — la sorgente `INVENTARIO_RIGA` non è a catalogo o non è attiva.
+* `E_SORG_CONF` — il tipo `INVENTARIO` non è a catalogo in `config.sorgenti` o non è attivo (dal BB
+  che compone la sorgente).
 * i codici della primitiva, se una riga viene rifiutata alla scrittura.
 
 ---
@@ -116,6 +118,10 @@ testata. Fuori perimetro il documento **non c'è** (`E_MAG_DOCUMENTO_NON_TROVATO
   restano quelli di prima.
 * 2026-09-24 — `brief-db-magazzino-verbi-con-permesso` (D-4): diventa un verbo, con il
   permesso in testa e i privilegi del proprietario.
+* 2026-11-08 — `brief-db-sorgente-documento-e-riga`: la sorgente dei movimenti diventa il
+  documento con la riga (prima il tipo `INVENTARIO_RIGA`, ritirato), composta da
+  `script.fn_sorgente_provenienza`; un tipo mancante o spento è `E_SORG_CONF`, non più
+  `E_CONFIG_MANCANTE`.
 
 ---
 

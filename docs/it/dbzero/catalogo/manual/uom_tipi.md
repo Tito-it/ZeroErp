@@ -1,94 +1,86 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.uom_tipi`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**
-> • [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)
-> • [`catalogo.unita_misura_conversioni`](/dbzero/catalogo/tabelle/unita_misura_conversioni)
-> • [`catalogo.articoli_uom_operativa`](/dbzero/catalogo/tabelle/articoli_uom_operativa)
+> Approfondimento tabelle:
+>
+> * [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura) — le unità, ognuna in una sola famiglia
+> * [catalogo.unita_misura_conversioni](/dbzero/catalogo/tabelle/unita_misura_conversioni) — le conversioni globali, ammesse solo dentro una famiglia
+> * [catalogo.articoli_uom_operativa](/dbzero/catalogo/tabelle/articoli_uom_operativa) — i fattori di un solo articolo, che la famiglia non limita
+>
+> Approfondimento funzioni:
+>
+> * [catalogo.trgfn_uom_conversioni_guard_tipo](/dbzero/catalogo/funzioni/trgfn_uom_conversioni_guard_tipo) — rifiuta una conversione fra due famiglie
+> * [catalogo.trgfn_unita_misura_guard_tipo_update](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo_update) — rifiuta il cambio di famiglia di un'unità che ha conversioni
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — il blocco di `codice_interno`
 
-## Scopo
+---
 
-Definire il catalogo delle **tipologie/dimensioni fisiche** delle unita' di
-misura, separato dal catalogo delle UoM, per governare in modo esplicito le
-famiglie di conversione ammesse.
+### 🎯 Scopo Principale
 
-## Contesto
+È l'elenco delle famiglie di unità di misura (massa, lunghezza, energia, tempo…). Ogni
+unità di `catalogo.unita_misura` appartiene a una sola famiglia, e una conversione globale
+si scrive solo fra due unità della stessa famiglia.
 
-`catalogo.uom_tipi` e' la tabella di classificazione che completa
-`catalogo.unita_misura`.
+Senza famiglie il database accetterebbe conversioni senza senso, come metri in grammi o
+litri in pezzi. La famiglia non riguarda i fattori di un singolo articolo (la scatola da 50
+pezzi, il cartone da 6 bottiglie): quelli stanno in `articoli_uom_operativa` e collegano
+anche unità di famiglie diverse.
 
-Prima della sua introduzione, il sistema aveva un unico catalogo UoM e una
-tabella di conversioni globali, ma senza una dimensione semantica che
-impedisse accoppiamenti incoerenti come:
+---
 
-* `metri -> grammi`
-* `kg -> kWh`
-* `litri -> pezzi`
+### Le famiglie del seed
 
-Con `catalogo.uom_tipi`, ogni UoM viene assegnata a una famiglia omogenea
-(`MASSA`, `LUNGHEZZA`, `ENERGIA`, `IMBALLAGGIO`, ecc.) e le conversioni globali
-possono essere controllate a livello DB.
+Il seed porta `LUNGHEZZA`, `MASSA`, `VOLUME`, `AREA`, `ENERGIA`, `POTENZA`, `TEMPO`,
+`QUANTITA`, `IMBALLAGGIO` e `GENERICO`. Non c'è una famiglia per le valute.
 
-## Input
+* `IMBALLAGGIO` classifica pallet, colli, scatole. Non vuol dire che esista un fattore
+  universale fra loro: quanti pezzi stanno in una scatola dipende dall'articolo.
+* `GENERICO` è un ripiego controllato, da non usare come contenitore di unità eterogenee.
+* `SMC` (standard metro cubo di gas) sta in `ENERGIA` con `KWH` e `MJ`, non in `VOLUME`:
+  così una sua conversione verso le unità di energia è ammessa. Il seed delle conversioni
+  però è vuoto: nessuna conversione è scritta.
 
-La tabella riceve e governa questi attributi principali:
+---
 
-* `codice` identificativo stabile della tipologia
-* `descrizione` leggibile per amministrazione e documentazione
-* `attivo` per attivazione/disattivazione logica
+### L'identificativo stabile è `codice_interno`
 
-Tipologie iniziali previste:
+La tabella ha due codici, `codice` e `codice_interno`, tutti e due unici, e nel seed hanno
+lo stesso valore. Quello bloccato è `codice_interno`: dopo la creazione non si modifica.
+`codice` invece si può cambiare, e si salva normalizzato (senza spazi ai lati, in
+maiuscolo).
 
-* `LUNGHEZZA`
-* `MASSA`
-* `VOLUME`
-* `AREA`
-* `ENERGIA`
-* `POTENZA`
-* `TEMPO`
-* `QUANTITA`
-* `IMBALLAGGIO`
-* `VALUTA`
-* `GENERICO`
+---
 
-## Output
+### Una famiglia usata non si spegne
 
-La tabella fornisce al dominio questi effetti strutturali:
+`attivo = false` ritira una famiglia senza cancellarla, ma solo se nessuna unità attiva vi
+appartiene. Un'unità attiva non può puntare a una famiglia spenta: il controllo scatta alla
+fine della transazione.
 
-* classificazione univoca di ogni riga di `catalogo.unita_misura`
-* base di validazione per `catalogo.unita_misura_conversioni`
-* separazione esplicita tra conversioni globali standard e conversioni
-  articolo-specifiche
+---
 
-## Regole
+### Codici errore
 
-* Ogni riga di `catalogo.unita_misura` appartiene a **una sola** tipologia.
-* Le conversioni globali in `catalogo.unita_misura_conversioni` sono ammesse
-  solo tra UoM della **stessa** tipologia.
-* Le conversioni dipendenti dall'articolo restano in
-  `catalogo.articoli_uom_operativa`, soprattutto per packaging/logistica.
-* `IMBALLAGGIO` serve a classificare UoM come `pallet`, `collo`, `scatola`,
-  ma non implica che esista una conversione globale universale fra esse.
-* `GENERICO` e' un fallback controllato e non deve diventare il contenitore
-  ordinario di UoM eterogenee.
+* `E_CODICE_NON_MODIFICABILE` — modifica di `codice_interno`.
+* `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` — spegnimento di una famiglia che ha ancora unità attive.
 
-## Dipendenze DB
+---
 
-* `catalogo.unita_misura.tipo_uom_id`
-* `catalogo.unita_misura_conversioni`
-* trigger/funzioni guard che validano la compatibilita' tipologica delle
-  conversioni globali
+### Test
 
-## Note di migrazione
+* `db/pgtap/catalogo/test-uom-tipi-global-conversioni-v1.sql` — le famiglie del seed ci
+  sono, una conversione dentro la stessa famiglia passa, una fra due famiglie è rifiutata.
+* `db/pgtap/script/test-fn-codice-normalizzato-v1.sql` — la normalizzazione del codice.
 
-* La tabella e' introdotta con seed base e backfill su `catalogo.unita_misura`.
-* Nel seed corrente `SMC` e' classificata come `ENERGIA` tecnica/commerciale
-  per mantenere coerenti le conversioni globali gia' presenti (`SMC` ↔ `KWH`
-  / `MJ`).
-* La classificazione di alcuni casi legacy puo' essere raffinata in un secondo
-  passaggio, ma il modello introdotto resta invariato: **no conversioni globali
-  cross-type**.
+---
+
+### Note di migrazione
+
+* 2026-04-28 — nasce la tabella, con il seed delle famiglie e il riempimento di
+  `unita_misura.tipo_uom_id` per le unità che esistevano già.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.inventari`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,6 +10,7 @@
 > * [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — l'ancora del perimetro
 > * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — dove il conteggio finisce
 > * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns) — da dove nasce il blocco sul magazzino
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento
 >
 > Approfondimento funzioni:
 >
@@ -17,10 +18,12 @@
 > * [magazzino.fn_posta_inventario](/dbzero/magazzino/funzioni/fn_posta_inventario) — l'operazione che registra il conteggio
 > * [magazzino.fn_documento_interno_transizioni](/dbzero/magazzino/funzioni/fn_documento_interno_transizioni) — la matrice degli stati
 > * [magazzino.trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione) — chi la fa rispettare
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della sorgente
 >
 > Guide:
 >
 > * [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls) — il meccanismo comune del perimetro
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello tipo, documento, riga
 
 ---
 
@@ -29,9 +32,9 @@
 **Il documento di conteggio fisico**: la rilevazione di quanto c'è davvero a scaffale, in un
 magazzino, a una data, con uno stato. Il dettaglio per articolo sta nelle righe.
 
-Il conteggio non modifica la giacenza da sé: quando è registrato, le sue righe diventano la
-**sorgente** dei movimenti di allineamento (`INVENTARIO_RIGA`), e la giacenza cambia sul
-registro. È la catena che tiene il registro come unica fonte: anche una correzione da
+Il conteggio non modifica la giacenza da sé: quando è registrato, diventa la **sorgente** dei
+movimenti di allineamento (tipo `INVENTARIO`, con la riga che li ha prodotti), e la giacenza
+cambia sul registro. È la catena che tiene il registro come unica fonte: anche una correzione da
 inventario è una scrittura tracciata.
 
 ---
@@ -50,13 +53,17 @@ leggono i pulsanti del drawer, così l'operatore non vede un'azione che verrebbe
 
 ---
 
-### La sorgente, come sul registro
+### La sorgente dell'inventario
 
-`sorgente_tipo_id` (una riga di [config.sorgenti](/dbzero/config/tabelle/sorgenti)) più
-**esattamente una** chiave fra `sorgente_riga` e `sorgente_uid`, secondo quanto il catalogo
-dichiara per quel tipo; senza tipo, nessuna chiave. Il guard tipizzato
-(`script.trgfn_guard_sorgente_polimorfa_tipizzata`) verifica che il record esista. Qui la
-sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è uno.
+Qui la sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è
+uno. Quando c'è, `sorgente_tipo_id` è il tipo del documento in
+[config.sorgenti](/dbzero/config/tabelle/sorgenti), la sua chiave sta in **una sola** fra
+`sorgente_id` e `sorgente_uid` (quella che il catalogo dichiara per quel tipo) e
+`sorgente_riga`, se scritta, dice la riga di quel documento; senza tipo, tutte vuote
+(`chk_mag_inventari_sorgente_forma`). Il guard unico
+[script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) verifica che il
+documento esista e sia visibile, e che la riga gli appartenga; basta il documento intero. Un
+documento citato qui non si può cancellare finché la citazione resta.
 
 ---
 
@@ -103,9 +110,9 @@ Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-
   documento già registrato lascerebbe orfani i movimenti che ha prodotto. Le righe seguono lo
   stato della testata
   ([trgfn_documento_interno_righe_guard_testata](/dbzero/magazzino/funzioni/trgfn_documento_interno_righe_guard_testata)).
-* ⚠️ Un debito di nome: l'indice parziale `uq_mag_invetario_sorgente_fk` porta il refuso
-  «invetario». Un indice del passato non si rinomina in corsa: quando servirà, si cancella e
-  si ricrea col nome giusto.
+* ⚠️ Un debito di nome: gli indici `ix_mag_invetario_stato_inventario` e `ix_mag_invetario_data`
+  portano il refuso «invetario». Un indice del passato non si rinomina in corsa: quando servirà,
+  si cancella e si ricrea col nome giusto.
 
 ---
 
@@ -130,6 +137,12 @@ Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-
   `fn_documento_interno_transizioni`.
 * 2026-09-25 — la porta `POSTED` chiede, oltre alla firma dell'operazione, di girare dentro il
   verbo (`brief-db-magazzino-verbi-con-permesso`).
+* 2026-11-08 — la sorgente della testata passa al modello comune (`brief-db-sorgente-documento-e-riga`):
+  la chiave del documento in `sorgente_id` o `sorgente_uid`, la riga in `sorgente_riga`, il CHECK
+  di forma e il guard unico al posto del guard tipizzato. Esce l'indice unico
+  `uq_mag_invetario_sorgente_fk`: nessuna regola di dominio vuole un inventario per documento. I
+  movimenti di allineamento citano il documento `INVENTARIO` e la riga, non più il tipo
+  `INVENTARIO_RIGA`, ritirato da `config.sorgenti`.
 
 ---
 

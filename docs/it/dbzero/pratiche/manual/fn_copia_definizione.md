@@ -1,82 +1,84 @@
-## 📘 Documentazione Funzione – `pratiche.fn_copia_definizione`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_copia_definizione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.fn_fork_definizione](fn_fork_definizione.md)
-> [pratiche.fn_nuova_versione_definizione](fn_nuova_versione_definizione.md)
-> [pratiche.fn_pubblica_definizione](fn_pubblica_definizione.md)
-> [pratiche.workflow_definizioni](workflow_definizioni.md)
-> [pratiche.template_flussi](template_flussi.md)
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — l'edizione copiata e quella nuova
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — gli step di template, rimappati per codice
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_fork_definizione](/dbzero/pratiche/funzioni/fn_fork_definizione) — copia verso un altro emittente, con provenienza
+> * [pratiche.fn_nuova_versione_definizione](/dbzero/pratiche/funzioni/fn_nuova_versione_definizione) — copia nello stesso perimetro
+> * [pratiche.fn_pubblica_definizione](/dbzero/pratiche/funzioni/fn_pubblica_definizione) — pubblica la bozza nata qui
+> * [pratiche.fn_genera_pratica_da_flusso](/dbzero/pratiche/funzioni/fn_genera_pratica_da_flusso) — rimappa per codice, a runtime, la destinazione delle regole di generazione
 
 ---
+
 ### 🎯 Scopo Principale
 
-**Motore di copia** di un'edizione di workflow: replica header + template + **tutti
-i figli di configurazione** di una definizione in una nuova edizione **BOZZA**,
-rimappando gli id dei template **per codice** (il codice è unico per definizione, quindi
-è la chiave naturale del remap).
+`pratiche.fn_copia_definizione` è il motore di copia di un'edizione di workflow: replica la testata,
+gli step di template e tutta la loro configurazione in una nuova edizione in `BOZZA`, rimappando gli
+step per codice. Restituisce l'id della nuova edizione.
 
-È l'**unico punto** che elenca il set di copia (contratto C6): aggiungere un figlio al
-modello = aggiungere un blocco `INSERT ... SELECT` qui, e nient'altro. Usata dai wrapper
-[fn_fork_definizione](fn_fork_definizione.md) e
-[fn_nuova_versione_definizione](fn_nuova_versione_definizione.md).
+La usano `pratiche.fn_fork_definizione` e `pratiche.fn_nuova_versione_definizione`.
 
 ---
 
-### Firma
+### ⭐ L'unico punto che elenca che cosa si copia
 
-```sql
-CREATE FUNCTION pratiche.fn_copia_definizione(
-    p_sorgente_id    pratiche.workflow_definizioni.id%TYPE,
-    p_emittente_dest pratiche.workflow_definizioni.emittente_fiscale_id%TYPE,
-    p_provenance     boolean
-)
-RETURNS pratiche.workflow_definizioni.id%TYPE
-LANGUAGE plpgsql VOLATILE
-```
+Il perimetro della copia è scritto qui e in nessun altro posto: aggiungere al modello una tabella di
+configurazione posseduta da uno step vuol dire aggiungerla qui, e basta.
 
-| Parametro | Descrizione |
-|---|---|
-| `p_sorgente_id` | Definizione da copiare (di solito il preset) |
-| `p_emittente_dest` | Scope emittente della copia (NULL = preset; valorizzato = edizione società) |
-| `p_provenance` | `true` → valorizza `preset_origine_id`/`versione_origine` (fork, per il drift); `false` → nessuna provenance (nuova versione stesso scope) |
+| Che cosa | Come si rimappa |
+| --- | --- |
+| Gli step di template | Codice conservato, id nuovo, edizione nuova; compreso il tipo di documento atteso |
+| Canali, handler sugli eventi, competenze, collegamenti di avanzamento su proiezione | Lo step, per codice |
+| Prerequisiti, formule di tempo | Entrambi i lati, che sono step della stessa edizione |
+| Regole di generazione | Lo step di origine per codice; la destinazione resta quella della sorgente, e `pratiche.fn_genera_pratica_da_flusso` la rimappa per codice a runtime nell'edizione della pratica figlia |
 
-**Ritorna**: l'id della nuova edizione BOZZA.
+Non si copiano le istanze (flussi, calcoli di tempo) né i valori generati e di audit.
+
+⭐ **Il codice è la chiave del rimappaggio** perché è unico per edizione: ogni riga copiata ritrova il
+suo step nuovo cercando, nella nuova edizione, lo stesso codice dello step vecchio.
 
 ---
 
-### Set di copia (figli posseduti dalla definizione via i suoi template)
+### Le regole della nuova edizione
 
-| Tabella | Remap |
-|---|---|
-| `template_flussi` | header dei template (codice preservato, id nuovo, `definizione_id` = nuova; include `attende_sorgente_tipo_id`, GUIDA D4/G1) |
-| `template_flussi_canali` | singolo (`template_flusso_id`) |
-| `template_flussi_handler_eventi` | singolo (`handler_id` globale invariato) |
-| `competenze_flussi` | singolo |
-| `template_flussi_prerequisiti` | **doppio** (`template_flusso_id` + `prerequisito_id`) |
-| `formule_tempo` | **doppio** (`template_flusso_da_id` + `_a_id`; `tipo_prestazione_id` invariato) |
-| `regole_generazione` | **origine** rimappata per codice; **dest** lasciata invariata — [fn_genera_pratica_da_flusso](fn_genera_pratica_da_flusso.md) la rimappa per codice a runtime (D2-8) |
-| `template_flussi_avanzamento_proiezione` | singolo (`template_flusso_id`) — GUIDA D4/G2, binding avanzamento su proiezione |
+* Nasce sempre in `BOZZA`, quindi non collide con l'edizione pubblicata del perimetro.
+* La versione è la successiva nel perimetro di destinazione (tipo di prestazione ed emittente).
+* Descrizione e metadati della testata vengono dalla sorgente.
+* L'emittente di destinazione vuoto indica il preset; valorizzato, l'edizione di quella società.
+* Con la provenienza attiva (il fork) la testata ricorda l'edizione sorgente e la sua versione, per il
+  confronto col preset; senza (la nuova versione) non ricorda niente.
 
-**NON copiati**: istanze runtime (`flussi`, `calcoli_tempo`) e i valori
-generati/audit (`id`, `tx_id`, `storicizza`, `data_/user_`).
+La funzione non controlla lo stato della sorgente né l'unicità della bozza: lo fanno i due wrapper, ognuno
+con la sua regola.
 
 ---
 
-### Note operative
+### Codici errore
 
-- La nuova edizione nasce sempre **BOZZA** (non collide con l'indice
-  `uq_workflow_definizioni_pubblicata`), con `versione = max(scope) + 1`
-  (`uq_workflow_definizioni_scope_versione`).
-- Il remap per codice funziona perché il codice è unico per definizione
-  (`uq_template_flussi_definizione_codice`): ogni figlio risolve il nuovo template via
-  join `(nuova_definizione, codice_del_vecchio_template)`.
-- **VOLATILE**: scrive (INSERT). Errori parlanti: `E_PARAMETRO_INVALIDO` (sorgente NULL/≤0),
-  `E_VALORE_MANCANTE` (sorgente inesistente).
-- Introdotta con `20260703-06` (brief-db-step-dominio-e-definizioni-versionate, Parte 2 / Fase 2, D2-10).
-- Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2.sql` (fork + doppio remap prereq/formula).
+* `E_PARAMETRO_INVALIDO` — sorgente assente o non positiva.
+* `E_VALORE_MANCANTE` — la sorgente non esiste.
 
 ---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase2` — il fork e il rimappaggio doppio di prerequisiti e
+  formule.
+
+---
+
+### Note di migrazione
+
+* 2026-07-03 — nasce con le definizioni versionate (brief-db-step-dominio-e-definizioni-versionate).
+
+---
+
 {% include-markdown "signature-core.md" %}

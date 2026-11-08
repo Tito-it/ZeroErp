@@ -50,16 +50,17 @@ SELECT ok(
     '1) I cinque registri di dbops sono nello scope: il purge li vede');
 
 SELECT results_eq(
-    $q$SELECT t.tabella, (p ->> 'ttl_days')::int, p ->> 'base_ts_column'
+    $q$SELECT t.tabella, r.ttl_days, r.base_ts_column
          FROM (VALUES ('ai_query_log'), ('audit_log'), ('error_log'), ('idempotency_keys'), ('request_log')) t(tabella)
-         CROSS JOIN LATERAL dbops.fn_cleanup_at_params('dbops', t.tabella) p
+         CROSS JOIN LATERAL dbops.fn_cleanup_at_regola('dbops', t.tabella) r
+        WHERE r.motivo_salto IS NULL
         ORDER BY t.tabella$q$,
     $q$VALUES ('ai_query_log'::text,     90, 'data_insert'::text),
               ('audit_log'::text,        90, 'executed_at'::text),
               ('error_log'::text,        90, 'occurred_at'::text),
               ('idempotency_keys'::text,  1, 'data_insert'::text),
-              ('request_log'::text,      90, NULL::text)$q$,
-    '2) Le regole: audit_log, error_log e ai_query_log 90 giorni (come request_log), le key un giorno');
+              ('request_log'::text,      90, 'data_insert'::text)$q$,
+    '2) Le regole: audit_log, error_log e ai_query_log 90 giorni (come request_log), le key un giorno; request_log non dichiara la base e prende data_insert dalla catena');
 
 SELECT ok(
     dbops.fn_col_exists('dbops', 'audit_log',        'executed_at')

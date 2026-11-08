@@ -1,50 +1,36 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_allegati_pratiche_giornale`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_allegati_pratiche_giornale`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.allegati_pratiche](allegati_pratiche.md)
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove scrive
+> * [pratiche.allegati_pratiche](/dbzero/pratiche/tabelle/allegati_pratiche) — la tabella su cui è montata
 >
-Overview:
+> Approfondimento funzioni:
 >
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.trgfn_allegati_flussi_giornale](/dbzero/pratiche/funzioni/trgfn_allegati_flussi_giornale) — la gemella per gli allegati di un flusso
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **ALLEGATO_AGGIUNTO** nel giornale a livello pratica. Si attiva **AFTER INSERT** su `pratiche.allegati_pratiche`.
+
+La trigger function `pratiche.trgfn_allegati_pratiche_giornale` registra nel giornale l'aggiunta di
+un allegato a una pratica, con l'azione `ALLEGATO_AGGIUNTO`.
 
 ---
 
-### Firma
+### Che cosa scrive
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_allegati_pratiche_giornale()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+Scatta `AFTER INSERT` su `pratiche.allegati_pratiche` e scrive una riga di `pratiche.giornale` per la
+pratica, senza flusso (l'allegato è della pratica, non di un passo), con origine `SISTEMA`. Il
+dettaglio porta l'id dell'allegato, il suo tipo e il nome del file.
 
----
-
-### Logica
-
-Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `NEW.pratica_id` |
-| `flusso_id` | `NULL` (allegato a livello pratica) |
-| `azione` | `'ALLEGATO_AGGIUNTO'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('allegato_id', NEW.id, 'tipo_allegato_id', NEW.tipo_allegato_id, 'nome_file', NEW.nome_file)` |
-
-**Nota**: `tx_id` non e' incluso nell'INSERT perche' la tabella `allegati_pratiche` e' immutabile (solo `data_insert/user_insert`) e non ha il campo `tx_id`.
+`pratiche.allegati_pratiche` non ha una colonna di transazione, e la funzione non ne passa una: la
+riga del giornale riceve la transazione della sessione dal trigger di `tx_id` del giornale.
 
 ---
 
-### Trigger associato
-
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_allegati_pratiche_z90_giornale_ins` | AFTER | INSERT | `pratiche.allegati_pratiche` |
+{% include-markdown "signature-core.md" %}

@@ -1,85 +1,85 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_template_flussi_guard_immutabile`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_template_flussi_guard_immutabile`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
-> [pratiche.fn_check_definizione_congelata](fn_check_definizione_congelata.md)
-> [pratiche.trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md)
-> [pratiche.trgfn_workflow_definizioni_guard](trgfn_workflow_definizioni_guard.md)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — la tabella sorvegliata
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — l'edizione a cui il template appartiene
 >
-Tabelle:
+> Approfondimento funzioni:
 >
-[pratiche.template_flussi](template_flussi.md)
+> * [pratiche.fn_check_definizione_struttura_bloccata](/dbzero/pratiche/funzioni/fn_check_definizione_struttura_bloccata) — il predicato per inserimento e modifica
+> * [pratiche.fn_check_definizione_congelata](/dbzero/pratiche/funzioni/fn_check_definizione_congelata) — il predicato per la cancellazione
+> * [pratiche.trgfn_template_flussi_figli_guard_immutabile](/dbzero/pratiche/funzioni/trgfn_template_flussi_figli_guard_immutabile) — la stessa regola sui figli del template
+> * [pratiche.trgfn_workflow_definizioni_guard](/dbzero/pratiche/funzioni/trgfn_workflow_definizioni_guard) — l'intestazione e le transizioni dell'edizione
+> * [pratiche.fn_nuova_versione_definizione](/dbzero/pratiche/funzioni/fn_nuova_versione_definizione) — la strada per cambiare un'edizione emessa
 
 ---
+
 ### 🎯 Scopo Principale
 
-**Immutabilità strutturale «Leggera»** dei template su un'edizione forkata già
-emessa. Solo i **fork** si bloccano, il **preset** (emittente NULL) e le **BOZZA**
-restano editabili. **Strategia C** (freeze *modifica* ≠ freeze *cancellazione*):
+La trigger function `pratiche.trgfn_template_flussi_guard_immutabile` congela la struttura dei template
+di un'edizione forkata già emessa: modificarla vuol dire fare una nuova versione.
 
-| Operazione | Bloccata quando | Predicato | Errore |
-|---|---|---|---|
-| **INSERT** | edizione **emessa** (fork PUBBLICATA **o RITIRATA**) | [`struttura_bloccata`](fn_check_definizione_struttura_bloccata.md) | `TEMPLATE_DEFINIZIONE_CONGELATA` (514) |
-| **UPDATE** | edizione **emessa** e cambia una colonna **diversa da `descrizione`** | [`struttura_bloccata`](fn_check_definizione_struttura_bloccata.md) | `TEMPLATE_DEFINIZIONE_CONGELATA` (514) |
-| **DELETE** | edizione **PUBBLICATA** soltanto (in uso) | [`congelata`](fn_check_definizione_congelata.md) | `TEMPLATE_DEFINIZIONE_CONGELATA` (514) |
-
-Conseguenza: una **RITIRATA-emittente** non è **editabile** (INSERT/UPDATE bloccati:
-ha ancora pratiche pinnate alla sua versione) ma resta **cancellabile** (DELETE
-consentito, housekeeping). `descrizione` è l'**unico campo display correggibile a
-caldo** (contratto C4), su PUBBLICATA e RITIRATA.
+Si bloccano solo i fork di un emittente: il preset (senza emittente) e le bozze restano modificabili.
 
 ---
 
-### Trigger associato
+### ⭐ Congelare la modifica non è congelare la cancellazione
 
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_template_flussi_a10_guard_immutabile_iud` | BEFORE | INSERT OR UPDATE OR DELETE | `pratiche.template_flussi` |
+| Operazione | Bloccata quando | Predicato |
+| --- | --- | --- |
+| Inserimento | l'edizione è emessa, pubblicata o ritirata | `pratiche.fn_check_definizione_struttura_bloccata` |
+| Modifica | l'edizione è emessa e cambia qualcosa oltre a `descrizione` | `pratiche.fn_check_definizione_struttura_bloccata` |
+| Cancellazione | l'edizione è pubblicata, cioè in uso | `pratiche.fn_check_definizione_congelata` |
 
-Ordine `_a10_`: `default_definizione` (risolve `NEW.definizione_id` su INSERT) fira
-**prima**; `guard_immutabile` fira prima di `guard_modalita_esito`, `audit`,
-`gen_tx_id`, `z90_storico`.
-
----
-
-### Regole
-
-* **UPDATE robusto ai nuovi campi**: il confronto è su `to_jsonb(NEW/OLD)` meno una
-  **allowlist esplicita** (`descrizione` + audit tecnici `tx_id`, `data_/user_insert`,
-  `data_/user_update`). Conseguenza fail-safe: una **futura colonna strutturale** è
-  congelata **di default**; una futura colonna display va aggiunta esplicitamente
-  all'allowlist.
-* **Re-parent** (`definizione_id` cambiato in UPDATE): se la definizione di partenza
-  **o** di destinazione è struttura-bloccata, il cambio ricade nel diff → bloccato
-  (non si sposta uno step dentro/fuori un'edizione emessa).
-* Le due verità sono centralizzate nei predicati puri
-  [fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
-  (INSERT/UPDATE, PUBBLICATA o RITIRATA) e
-  [fn_check_definizione_congelata](fn_check_definizione_congelata.md) (DELETE,
-  PUBBLICATA): questo guard non ripete le regole `stato`/`emittente`.
+Un'edizione ritirata non si modifica, perché ha ancora pratiche fissate alla sua versione, ma si
+cancella: è pulizia. `descrizione` è l'unico campo display correggibile a caldo, su pubblicata e
+ritirata. Le due verità stanno nei predicati: questo guard non ripete le regole su stato ed emittente.
 
 ---
 
-### Note operative
+### Le regole
 
-* **Complementare** al guard di Fase 1
-  [trgfn_workflow_definizioni_guard](trgfn_workflow_definizioni_guard.md) (blindava
-  header e transizioni della definizione): qui si blinda la **struttura** (i template).
-* Per modificare un fork emesso → nuova versione:
-  [fn_nuova_versione_definizione](fn_nuova_versione_definizione.md) → BOZZA → modifica →
-  [fn_pubblica_definizione](fn_pubblica_definizione.md) (ritira la precedente); le
-  pratiche in volo restano pinnate (V6).
-* **Teardown**: un fork **PUBBLICATO** non è smantellabile (il guard blocca il DELETE)
-  → va prima `RITIRATA` (`PUBBLICATA→RITIRATA` via
-  [trgfn_workflow_definizioni_guard](trgfn_workflow_definizioni_guard.md)); da RITIRATA
-  i template/figli sono cancellabili (strategia C). Vale per manutenzione e cleanup pgTAP.
-* Introdotto con `20260703-11` (Fase 2b, D2-9); **strategia C** (freeze modifica ≠
-  cancellazione, RITIRATA editabile=no/cancellabile=sì) con `20260704-03`.
-* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql` (PUBBLICATA, casi 5–8, 12–14)
-  e `test-definizione-ritirata-edit-freeze.sql` (RITIRATA: edit bloccato, delete consentito).
+* Scatta `BEFORE INSERT OR UPDATE OR DELETE`, riga per riga, su `pratiche.template_flussi`, nella fase
+  dei guard, dopo il trigger che risolve l'edizione di default su un inserimento.
+* ⭐ **La modifica si confronta per esclusione.** Si confronta la riga intera meno `descrizione` e le
+  colonne tecniche di audit e transazione: una colonna strutturale aggiunta domani è congelata di
+  default, e una futura colonna display va esclusa esplicitamente.
+* **Spostare un template d'edizione** è bloccato se è emessa l'edizione di partenza o quella di arrivo:
+  uno step non entra né esce da un'edizione emessa.
+* Per cambiare un fork emesso si crea una nuova versione in bozza, la si modifica e la si pubblica,
+  ritirando la precedente; le pratiche in corso restano sulla loro edizione.
+* Per smantellare un fork pubblicato lo si ritira prima: da ritirato, template e figli si cancellano.
 
 ---
+
+### Codici errore
+
+* `E_TEMPLATE_DEFINIZIONE_CONGELATA` — scrittura vietata su un template di un'edizione emessa, o
+  cancellazione da un'edizione pubblicata.
+
+---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase2b` — inserimento, modifica, correzione della descrizione,
+  spostamento e cancellazione su un'edizione pubblicata.
+* `pratiche/test-definizione-ritirata-edit-freeze` — su un'edizione ritirata la modifica è bloccata e la
+  cancellazione consentita.
+
+---
+
+### Note di migrazione
+
+* 2026-07-03 — nasce l'immutabilità «leggera» della struttura: si congelano solo le edizioni forkate,
+  il preset resta modificabile dai seed.
+* 2026-07-04 — modifica e cancellazione si separano: un'edizione ritirata non si modifica ma si
+  cancella.
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -1,6 +1,15 @@
 # Brief Design — Proiezione generica dello stato di dominio nelle pratiche
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE, FE di consumo) · **Data**: 2026-07-01
+> ⚠️ **Allineamento al modello della provenienza (2026-11-08).** Dove questo documento descrive la sorgente
+> della pratica come `(sorgente_tipo_id, sorgente_uid)` testuale, con la chiave nativa castata a testo e il
+> `key_selector` passato come letterale al trigger del reconcile, oggi vale il modello unico di
+> `brief-db-sorgente-documento-e-riga` (lotto P): `pratiche.pratiche_sorgenti` e `pratiche.reconcile_errori` hanno
+> le colonne tipizzate (`sorgente_id` bigint o `sorgente_uid` uuid, secondo il tipo, e `sorgente_riga`),
+> `pratiche.fn_stato_sorgente` prende tipo, `sorgente_id` e `sorgente_uid`, e il trigger del reconcile riceve il
+> solo codice del tipo: la chiave la risolve il catalogo. Il meccanismo è nella guida
+> [Sorgente polimorfa](../../guide/sorgente-polimorfa.md). Il resto del modello di proiezione resta valido.
+>
 > **Owner**: Tid · **Stato**: 🟢 **fase MOSTRA: livello di lettura DB GENERICO su 4 domini;
 > BE/FE pilotati e smoke-verdi su PREVENTIVI** (agg. 2026-07-16) —
 > ⚠️ *rettifica della dicitura precedente «MOSTRA implementata **su PREVENTIVI**», che sottostimava

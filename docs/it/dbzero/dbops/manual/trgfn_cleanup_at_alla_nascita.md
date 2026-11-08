@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_cleanup_at_alla_nascita`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_cleanup_at_params](/dbzero/dbops/funzioni/fn_cleanup_at_params) — la regola che copre la tabella
+> * [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola) — la regola di scadenza della tabella, la stessa del job
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — l'altra via, per il pregresso
 > * [vendite.trgfn_logs_guard_delete](/dbzero/vendite/funzioni/trgfn_logs_guard_delete) — lascia cancellare le righe scadute dei log di fatturazione
 > * [vendite.trgfn_event_log_append_only](/dbzero/vendite/funzioni/trgfn_event_log_append_only) — lo stesso, per il diario degli eventi
@@ -27,8 +27,12 @@
 ### 🎯 Scopo Principale
 
 Trigger `BEFORE INSERT` generico che scrive la scadenza (`cleanup_at`) di una riga quando nasce:
-colonna di base più il termine della regola `CLEANUP_AT` che copre la tabella. Se nessuna regola
-la copre, la scadenza resta vuota e la riga non scade mai: in dubbio si conserva.
+colonna di base più il termine della regola `CLEANUP_AT` della tabella. La regola la dà
+[fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola), la stessa che il job applica al
+pregresso: una riga riceve la stessa scadenza alla nascita e dal job.
+
+Dove non c'è una regola che si applica, la scadenza resta vuota e la riga non scade: in dubbio si
+conserva.
 
 ---
 
@@ -58,23 +62,28 @@ Il framework standard scrive la scadenza con un `UPDATE` periodico
 
 Alla nascita la riga sa già quando scade, e nessun trigger di `UPDATE` si sveglia. Il job resta
 per il pregresso: con le regole che riempiono solo i vuoti tocca le righe nate prima del trigger,
-una volta.
+o nate con la colonna base vuota e completate dopo, una volta.
 
 ---
 
-### La colonna di base si legge dalla regola
+### Che cosa scrive
 
-La base è la colonna che la regola dichiara, letta dalla riga in arrivo: la stessa che il job usa
-sul pregresso, così righe nuove e righe vecchie hanno la scadenza calcolata sullo stesso orario.
+| Caso | `cleanup_at` |
+| --- | --- |
+| la tabella non ha `cleanup_at` | niente: la riga passa intatta |
+| nessuna regola copre la tabella | vuoto: la riga non scade |
+| la regola c'è ma non si applica: tabella esclusa, colonna base assente | vuoto: la riga non scade |
+| la colonna base è vuota sulla riga | vuoto: la scadenza la scrive il job quando la base c'è |
+| la regola si applica | colonna base della riga più `ttl_days` |
 
-Se la regola non dichiara la colonna, se la colonna non esiste sulla tabella o se sulla riga è
-vuota, la base è l'istante della transazione.
+La colonna base è quella che sceglie la regola: la dichiarata, o la prima della catena
+`data_insert`, `executed_at`, `occurred_at`, `created_at`. Si legge dalla riga in arrivo, così
+righe nuove e righe vecchie hanno la scadenza calcolata sullo stesso orario.
 
-⚠️ Su questo punto il job ragiona diversamente: senza una colonna dichiarata cerca la prima che
-esiste fra `data_insert`, `executed_at`, `occurred_at`, `created_at`. Le due vie coincidono solo
-quando quella colonna vale l'istante dell'inserimento.
+⭐ Una tabella esclusa in `dbops.automation_cleanup_exclusions` non riceve scadenze nemmeno alla
+nascita: il giro non la pulisce, e una scadenza che nessuno esegue sarebbe una promessa vuota.
 
-⚠️ La colonna scritta è sempre `cleanup_at`, qualunque colonna di scadenza dichiari la regola.
+La colonna scritta è sempre `cleanup_at`, nome fisso del framework.
 
 ---
 
@@ -101,8 +110,8 @@ che la riga non avrà.
 
 ### Codici errore
 
-La funzione non solleva codici suoi. Un termine nella regola che non è un numero intero fa fallire
-l'`INSERT` con l'errore di conversione.
+La funzione non solleva codici suoi. La forma della regola (un termine intero ≥ 1) la garantisce
+il CHECK del registro, quindi la conversione non fallisce.
 
 ---
 
@@ -119,6 +128,9 @@ l'`INSERT` con l'errore di conversione.
   registro delle richieste, e non c'è su `error_log` e `audit_log` (test 4).
 * `db/pgtap/config/test-credenziale-login-v1.sql` — una riga di provenienza nasce con l'ultimo
   fallimento più il termine.
+* `db/pgtap/dbops/test-cleanup-at-regola-unica-v1.sql` — il trigger e il job danno alla stessa
+  riga la stessa scadenza; una base vuota, una tabella esclusa o senza colonna base danno una
+  scadenza vuota, anche se il chiamante ne passa una.
 
 ---
 
@@ -129,6 +141,10 @@ l'`INSERT` con l'errore di conversione.
   `vendite.trgfn_event_log_deriva_scope`.
 * 2026-09-25 — montato sui registri dei tentativi di login.
 * 2026-10-23 — montato sulle chiavi di idempotenza e sul registro delle richieste.
+* 2026-11-08 — legge la regola da `dbops.fn_cleanup_at_regola` (`20261109-86`,
+  brief-db-revisione-dbops, giro 10b). Prima la leggeva da `fn_cleanup_at_params`, ritirata,
+  senza guardare le esclusioni, partiva dall'istante della transazione quando la colonna base
+  mancava o era vuota, e scriveva la scadenza anche su una tabella esclusa.
 
 ---
 

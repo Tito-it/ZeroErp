@@ -3,7 +3,7 @@
 -- pgTAP test — vendite.trgfn_event_log_deriva_scope (+ dbops.trgfn_cleanup_at_alla_nascita)
 --   ⏱️ 2026-09-18 (Passo D): la scadenza non la scrive piu' deriva_scope ma il
 --   BB generico dbops.trgfn_cleanup_at_alla_nascita (trigger _m50_, 20260918-31),
---   che legge il TTL da dbops.fn_cleanup_at_params; vendite.fn_event_log_ttl_days
+--   che legge il TTL da dbops.fn_cleanup_at_regola; vendite.fn_event_log_ttl_days
 --   e' ritirata. Il test 4 pinna lo stesso identico risultato di prima.
 --   La riga di `vendite.event_log` si compila da sola: perimetro, identita' e
 --   scadenza li scrive il database, non il chiamante.
@@ -46,7 +46,7 @@ CREATE TEMP TABLE _rif AS
 SELECT
     script.fn_pgtap_emittente_sr_operatore()                        AS sr_atteso,
     current_setting('app.current_user_id', true)::bigint            AS uid_atteso,
-    (dbops.fn_cleanup_at_params('vendite', 'event_log') ->> 'ttl_days')::integer AS ttl_days,
+    (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('vendite', 'event_log') r WHERE r.motivo_salto IS NULL) AS ttl_days,
     (SELECT c.id
        FROM vendite.commesse c
       WHERE c.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore()

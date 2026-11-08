@@ -13,6 +13,7 @@
 > * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — uno dei runner che danno il nome ai trigger generati
 > * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) — un altro, per i trigger di storicizzazione
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — calcola con lei il nome atteso del trigger di lock
+> * [dbops.fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato) — il nome dichiarato riga per riga da un registro, che passa da lei solo quando serve
 >
 > Guide:
 >
@@ -57,6 +58,13 @@ spariscono: un segnaposto vuoto non lascia buchi nel nome.
 sei caratteri ricavata dal nome intero. Il risultato è stabile — rigenerare dà lo stesso nome — ma
 **non è il nome che si legge nel modello**: chi cerca un trigger generato lo cerca per funzione e
 argomenti, non per il nome scritto per esteso, che sul database non esiste.
+
+⚠️ **Non è idempotente sul suo risultato.** Il nome accorciato contiene un doppio trattino basso:
+ripassato dalla funzione come modello, quel trattino si riduce a uno e il nome cambia. Chi deve
+risolvere un nome che può essere già risolto — il nome dichiarato da una riga di un registro, che
+il runner calcola e poi passa a chi crea l'oggetto — usa
+[fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato), che lascia
+intatto un nome già nei 63 caratteri e chiama questa funzione solo per il resto.
 
 ---
 

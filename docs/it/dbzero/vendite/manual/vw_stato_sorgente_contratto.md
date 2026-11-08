@@ -1,66 +1,82 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_stato_sorgente_contratto`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[vendite.contratti](/dbzero/vendite/tabelle/contratti)
-> [config.stati_doc_contratti](/dbzero/config/tabelle/stati_doc_contratti)
-> [config.sorgenti](/dbzero/config/tabelle/sorgenti)
-> [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente)
+> * [vendite.contratti](/dbzero/vendite/tabelle/contratti) — il documento
+> * [config.stati_doc_contratti](/dbzero/config/tabelle/stati_doc_contratti) — lo stato nativo e la sua proiezione
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il tipo `CONTRATTO` e la sua chiave
+>
+> Approfondimento viste:
+>
+> * [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente) — l'unione dei resolver, da cui passano i consumatori
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_stato_sorgente](/dbzero/pratiche/funzioni/fn_stato_sorgente) — il motore delle pratiche, che la legge sulla chiave tipizzata
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 2026-07-02)
-`vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la
-proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2):
-espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato
-nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` —
-con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 
-È **read-time**: nessun mirror, il documento resta l'unica verità.
+Il **resolver del dominio CONTRATTO** per la proiezione dello stato: per ogni contratto dice lo stato **vivo** nel vocabolario comune — lo stato nativo e la sua proiezione `fase` / `esito` / `terminale`, dichiarata su `config.stati_doc_contratti`.
+
+È **read-time**: nessuna copia, il documento resta l'unica verità.
 
 ---
 
-### JOIN principali
+### 🔑 La chiave: tipizzata per cercare, in testo per il grafo
 
-| Tabella | Ruolo |
-|---------|-------|
-| `config.sorgenti` | Aggancia il `sorgente_tipo_id` filtrando per `codice_interno='CONTRATTO'` (mai id letterale) |
-| `vendite.contratti` | Documento sorgente; `sorgente_uid = (id)::text` (coerente con `key_selector='id'`) |
-| `config.stati_doc_contratti` | Stato nativo + mapping proiezione (`fase`/`esito`/`terminale`) |
+La vista espone la chiave del documento in due forme:
 
----
+* **`sorgente_chiave_id` / `sorgente_chiave_uuid`** — la chiave nel suo tipo, come la scrive il
+  modello della provenienza: `sorgente_chiave_id` è l'id del contratto, `sorgente_chiave_uuid` è vuota (il tipo `CONTRATTO` è a chiave `id`). È la chiave che il motore delle pratiche
+  ([`pratiche.fn_stato_sorgente`](/dbzero/pratiche/funzioni/fn_stato_sorgente)) confronta con
+  `sorgente_id` / `sorgente_uid` di `pratiche.pratiche_sorgenti`, e quella da usare per cercare **un**
+  documento: sotto RLS il confronto sul testo non arriva all'indice, quello sul tipo nativo sì;
+* **`sorgente_uid`** — la stessa chiave **in testo**, nella forma canonica (l'id in testo): è la chiave dei
+  nodi della genealogia e delle unioni con il grafo. ⚠️ Il nome è storico: qui non è la colonna
+  uuid del modello, e per il contratto vale il suo id.
 
-### 📑 Campi chiave esposti
-
-* **Chiave**: sorgente_tipo_id, sorgente_uid
-* **Stato nativo (logica)**: stato_codice_interno (immutabile)
-* **Stato nativo (display)**: stato_codice, stato_descrizione
-* **Proiezione normalizzata**: fase, esito (verdetto o NULL), terminale
-
-Alias **fedeli** alla sorgente (linee-guida-sql §6c). `terminale` è un asse distinto da
-`is_abortito` (che resta invariato): `CESSATO` è terminale ma non abortito.
+Il tipo si aggancia da `config.sorgenti` per `codice_interno = 'CONTRATTO'` (attivo), mai con un
+id scritto nel codice.
 
 ---
 
-### Esempio d'uso
+### 📑 Che cosa espone
 
-```sql
--- Descrittore dello stato vivo di un contratto, per id (key_selector='id').
-SELECT stato_codice, stato_descrizione, fase, esito, terminale
-FROM vendite.vw_stato_sorgente_contratto
-WHERE sorgente_uid = (12345)::text;
-```
+* **Chiave**: `sorgente_tipo_id`, `sorgente_chiave_id`, `sorgente_chiave_uuid`, e `sorgente_uid` in testo
+* **Stato nativo (logica)**: `stato_codice_interno` (immutabile)
+* **Stato nativo (display)**: `stato_codice`, `stato_descrizione`
+* **Proiezione normalizzata**: `fase`, `esito` (il verdetto, o vuoto), `terminale`
+
+Alias **fedeli** alla sorgente. `terminale` è un asse distinto da `is_abortito`: `CESSATO` è terminale ma non abortito.
 
 ---
 
 ### Note operative
 
-* **Al più una riga per (tipo, uid)** — garantito da `contratti.id` PK.
-* Il motore pratiche **non interroga questa vista direttamente**: passa da
-  `script.vw_stato_sorgente` (layering `pratiche → script → dominio`).
+* **Al più una riga per documento** — la garantisce `contratti.id`, la chiave primaria.
+* I consumatori **non interrogano questa vista direttamente**: passano da `script.vw_stato_sorgente`
+  (a strati: dominio → `script` → consumatore).
+* `security_invoker = on`: la vista applica le policy di chi la interroga.
 * Test: `db/pgtap/pratiche/test-proiezione-stato-sorgente.sql`.
+
+---
+
+### Note di migrazione
+
+* 2026-07-02 — nasce come resolver di dominio della proiezione dello stato (brief-db-proiezione-stato-dominio).
+* 2026-10-05 — espone in coda la chiave nel suo tipo, `sorgente_chiave_id` / `sorgente_chiave_uuid`, accanto alla forma in testo.
+* 2026-11-08 — il motore delle pratiche la legge sulla chiave tipizzata: `pratiche_sorgenti` tiene la
+  chiave del documento nelle colonne del modello, non più in testo (brief-db-sorgente-documento-e-riga).
 
 ---
 

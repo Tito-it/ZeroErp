@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_cleanup`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,7 +15,8 @@
 >
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il passo che scrive la scadenza
 > * [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired) — il passo che cancella le righe scadute
-> * [dbops.fn_cleanup_at_params](/dbzero/dbops/funzioni/fn_cleanup_at_params) — la stessa regola, letta da chi scrive la scadenza alla nascita
+> * [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola) — la regola di scadenza della tabella, la stessa del trigger alla nascita
+> * [dbops.fn_cleanup_esclusa](/dbzero/dbops/funzioni/fn_cleanup_esclusa) — la tabella è esclusa dal cleanup?
 > * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — gli schemi del giro
 > * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — le tabelle del giro
 > * [maintenance.proc_automations_cleanup_job](/dbzero/maintenance/funzioni/proc_automations_cleanup_job) — il wrapper che la lancia
@@ -30,9 +31,9 @@
 
 ### 🎯 Scopo Principale
 
-Il runner del cleanup: per ogni tabella dell'ambito applica le regole `CLEANUP_AT` (scrive la
-scadenza `cleanup_at` delle righe) e `CLEANUP_PURGE` (cancella a lotti le righe scadute) che la
-coprono, e lascia una riga di esito in `dbops.audit_log` per ogni tabella e regola. Lo lancia il
+Il runner del cleanup: per ogni tabella dell'ambito prima scrive la scadenza `cleanup_at` delle
+righe che non l'hanno (regola `CLEANUP_AT`), poi cancella a lotti le righe scadute (regole
+`CLEANUP_PURGE`), e lascia una riga di esito in `dbops.audit_log` per ogni tabella e regola. Lo lancia il
 processo `automations_cleanup`, la domenica su pgAgent e nella convergenza in CI.
 
 ---
@@ -43,36 +44,41 @@ L'ambito sono gli schemi che il chiamante passa o, se non ne passa, quelli del r
 `dbops.automation_scope`; dentro gli schemi, le tabelle semplici che l'ambito ammette. Una tabella
 partizionata non si tratta come padre: si trattano le sue partizioni, che sono tabelle semplici.
 
-Per ogni tabella il runner applica, in ordine di priorità e poi di `id`, **tutte** le regole
-abilitate che la coprono — per schema, e per nome o con il carattere jolly — e la cui modalità è
-`AUTO` o quella del giro. Con le regole del seed, che riempiono solo le scadenze vuote, la prima
-regola `CLEANUP_AT` che si applica decide la scadenza, e le successive non trovano più niente da
-riempire: per questo la regola di una tabella ha una priorità più bassa della generica.
+Su ogni tabella, nell'ordine:
 
-⚠️ Una regola successiva che ricalcola anche le scadenze già scritte sovrascrive quella della
-regola più specifica: il «vince la più specifica» di
-[fn_cleanup_at_params](/dbzero/dbops/funzioni/fn_cleanup_at_params) qui vale solo per le regole
-che riempiono i vuoti.
+1. **L'esclusione.** Se la tabella ha un'esclusione attiva
+   ([fn_cleanup_esclusa](/dbzero/dbops/funzioni/fn_cleanup_esclusa)), la salta intera: né
+   scadenza né purge.
+2. **La scadenza, con una regola sola.** La regola `CLEANUP_AT` è quella di
+   [fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola): la più specifica, la
+   stessa che il trigger alla nascita applica alle righe nuove. Se la regola c'è ma non si
+   applica, il motivo del risolutore è il motivo del salto.
+3. **Il purge.** Le regole `CLEANUP_PURGE` abilitate che coprono la tabella, in ordine di priorità
+   e poi di `id`.
+
+Le regole `CLEANUP_*` valgono in ogni giro: il CHECK del registro le vuole `AUTO`. La modalità
+del giro finisce solo nell'audit.
 
 ---
 
 ### I parametri di una regola
 
-* **`CLEANUP_AT`** legge il termine in giorni, che è obbligatorio, la colonna di base, la colonna di
-  scadenza (di default `cleanup_at`) e se ricalcolare anche le scadenze già scritte (di default no).
-* **`CLEANUP_PURGE`** legge la colonna di scadenza e la dimensione del lotto (di default 5000).
+* **`CLEANUP_AT`**: il termine in giorni, la colonna di base e se ricalcolare anche le scadenze
+  già scritte (di default no). Li legge [fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola),
+  che sceglie anche la colonna base quando la regola non la dichiara.
+* **`CLEANUP_PURGE`**: la dimensione del lotto (di default 5000).
+
+La colonna della scadenza non è un parametro: è sempre `cleanup_at`.
 
 ⭐ **La colonna di base si dichiara solo dove serve.** È una proprietà della tabella, mentre i
 parametri sono della regola: sulla regola generica, che copre ogni tabella, un valore unico sarebbe
-sbagliato per costruzione. Senza colonna dichiarata il runner prende la prima che esiste fra
-`data_insert`, `executed_at`, `occurred_at`, `created_at`. Si dichiara sulle regole di tabella
-dove quella catena sceglierebbe la colonna sbagliata, o dove la scadenza la scrive anche il trigger
-alla nascita, che legge solo la colonna dichiarata: `vendite.event_log`, per esempio, ha sia
-`data_insert` sia `event_time`, e la sua scadenza si calcola dal secondo.
+sbagliato per costruzione. Si dichiara sulle regole di tabella dove la catena di ripiego
+sceglierebbe la colonna sbagliata: `vendite.event_log`, per esempio, ha sia `data_insert` sia
+`event_time`, e la sua scadenza si calcola dal secondo.
 
-⚠️ I parametri si convertono prima di entrare nella rete che protegge il giro: un termine o una
-dimensione del lotto che non sono numeri interi, o un ricalcolo che non è un booleano, fermano il
-giro intero, non solo la tabella.
+La forma dei parametri la garantisce il CHECK del registro
+([fn_regola_automazione_valida](/dbzero/dbops/funzioni/fn_regola_automazione_valida)): il runner
+non converte valori del tipo sbagliato.
 
 ---
 
@@ -84,13 +90,14 @@ motivo nella chiave `skip_reason`:
 | Motivo | Quando | Esito |
 | --- | --- | --- |
 | `EXCLUDED` | la tabella è in `automation_cleanup_exclusions` con l'esclusione attiva, che prevale su ogni regola | `WARN` |
-| `NO_CLEANUP_COLUMN` | la colonna di scadenza della regola non esiste sulla tabella | `WARN` |
-| `MISSING_TTL_DAYS` | una regola `CLEANUP_AT` senza termine | `WARN` |
+| `NO_CLEANUP_COLUMN` | la tabella non ha la colonna `cleanup_at` | `WARN` |
 | `MISSING_BASE_TS_COLUMN` | la colonna di base dichiarata non esiste, o la catena di ripiego non ne trova nessuna | `WARN` |
-| `BLOCKED_BY_TABLE` | la tabella si è opposta: un trigger append-only, un guard sul `DELETE`, un termine negativo | `ERROR` |
+| `BLOCKED_BY_TABLE` | la tabella si è opposta: un trigger append-only, un guard sul `DELETE` | `ERROR` |
 
 ⚠️ `MISSING_BASE_TS_COLUMN` non rompe niente, ma la tabella non riceve scadenze: è un difetto
 silenzioso, da cercare negli audit e non fra gli errori.
+
+Le righe con la colonna base vuota non si toccano: non ricevono scadenza finché la base non c'è.
 
 Una regola applicata lascia una riga `OK` (`DRYRUN` in simulazione) con le righe toccate.
 
@@ -98,9 +105,9 @@ Una regola applicata lascia una riga `OK` (`DRYRUN` in simulazione) con le righe
 
 ### Una tabella che rifiuta non ferma il giro
 
-Ogni regola gira in una sottotransazione. Se la tabella rifiuta, il suo lavoro si annulla, il
-rifiuto finisce nell'audit con SQLSTATE e contesto, e il giro passa alla regola e alla tabella
-successive. L'esito è `ERROR` e non `WARN` di proposito: i `WARN` sono salti dichiarati, questo è
+Ogni passo — la scadenza, ogni purge — gira in una sottotransazione. Se la tabella rifiuta, il
+suo lavoro si annulla, il rifiuto finisce nell'audit con SQLSTATE e contesto, e il giro passa al
+passo e alla tabella successivi. L'esito è `ERROR` e non `WARN` di proposito: i `WARN` sono salti dichiarati, questo è
 una tabella che si è opposta, e va distinta a colpo d'occhio.
 
 ⛔ Un annullamento resta un annullamento: se qualcuno ferma il giro, il giro si ferma.
@@ -133,8 +140,8 @@ nell'audit.
 
 ### Codici errore
 
-Il runner non solleva codici suoi. I rifiuti dei passi finiscono nell'audit; escono soltanto
-l'annullamento e gli errori di conversione dei parametri di una regola.
+Il runner non solleva codici suoi. I rifiuti dei passi finiscono nell'audit; esce soltanto
+l'annullamento.
 
 ---
 
@@ -142,7 +149,7 @@ l'annullamento e gli errori di conversione dei parametri di una regola.
 
 * `db/pgtap/dbops/test-cleanup-framework.sql` — un'esclusione attiva impedisce la cancellazione e
   una disattivata la lascia fare (test 11-12); una tabella che rifiuta non ferma il giro, resta
-  com'era, la regola successiva sulla stessa tabella gira, e il rifiuto lascia una riga `ERROR` con
+  com'era, il purge della stessa tabella, che viene dopo, gira, e il rifiuto lascia una riga `ERROR` con
   lo SQLSTATE (test 13-16); il riepilogo della stessa chiamata conta il rifiuto in `_falliti`, con
   la tabella nel dettaglio, e la regola passata in `_applicate` (test 17-18); l'app esegue ancora
   il runner (test 19).
@@ -151,6 +158,9 @@ l'annullamento e gli errori di conversione dei parametri di una regola.
   simulazione con quell'ambito.
 * `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql` — i quattro registri di `dbops` sono
   nell'ambito, hanno la loro regola, e la colonna di base di ogni regola esiste.
+* `db/pgtap/dbops/test-cleanup-at-regola-unica-v1.sql` — sulla stessa riga il runner scrive la
+  scadenza che il trigger alla nascita aveva scritto; non tocca una riga con la base vuota né una
+  tabella esclusa.
 
 ---
 
@@ -168,6 +178,12 @@ l'annullamento e gli errori di conversione dei parametri di una regola.
   rossa la corsa del job (D40 di `brief-db-revisione-dbops`). Prima il rifiuto stava solo
   nell'audit e la corsa era verde. Il cambio del tipo restituito ha richiesto di ricreare la
   funzione; le righe di audit sono le stesse di prima.
+* 2026-11-08 — la scadenza viene da `dbops.fn_cleanup_at_regola`, una regola sola per tabella, e
+  l'esclusione da `dbops.fn_cleanup_esclusa` (`20261109-89`, brief-db-revisione-dbops, giro 10b).
+  Prima il runner applicava in ordine tutte le regole `CLEANUP_AT` che coprivano la tabella,
+  compresa la generica, e una regola successiva che ricalcolava le scadenze sovrascriveva quella
+  più specifica. Escono il parametro `cleanup_column` (la colonna è sempre `cleanup_at`) e il salto
+  `MISSING_TTL_DAYS`, che il CHECK del registro rende impossibile.
 
 ---
 

@@ -38,7 +38,7 @@
 --  3) struttura: vendite.fn_event_log_ttl_days non esiste piu' (copia ritirata)
 --  4) regole: le cinque tabelle rispondono 750 giorni (regole 15-19)
 --  5) regole: una tabella senza override cade sul default *all (30 giorni)
---  6) fn_cleanup_at_params: schema/tabella vuoti → NULL, non un errore
+--  6) fn_cleanup_at_regola: schema/tabella vuoti → nessuna regola, non un errore
 --  7) commesse_push_log: nasce con cleanup_at = run_at + 750 giorni
 --  8) commesse_push_log retrodatata: nasce gia' scaduta
 --  9) fatturazione_lotti_log: cleanup_at = data_ora + 750 giorni
@@ -125,10 +125,10 @@ SELECT id FROM ins;
 CREATE TEMP TABLE _rif AS
 SELECT (SELECT id FROM _lotto)   AS lotto_id,
        (SELECT id FROM _fattura) AS fattura_id,
-       (dbops.fn_cleanup_at_params('vendite', 'fatturazione_lotti_log') ->> 'ttl_days')::integer AS ttl_lotti_log,
-       (dbops.fn_cleanup_at_params('vendite', 'fatture_log') ->> 'ttl_days')::integer AS ttl_fatture_log,
-       (dbops.fn_cleanup_at_params('vendite', 'fatturazione_lotti_task_runs') ->> 'ttl_days')::integer AS ttl_task_runs,
-       (dbops.fn_cleanup_at_params('vendite', 'commesse_push_log') ->> 'ttl_days')::integer AS ttl_push_log;
+       (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('vendite', 'fatturazione_lotti_log') r WHERE r.motivo_salto IS NULL) AS ttl_lotti_log,
+       (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('vendite', 'fatture_log') r WHERE r.motivo_salto IS NULL) AS ttl_fatture_log,
+       (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('vendite', 'fatturazione_lotti_task_runs') r WHERE r.motivo_salto IS NULL) AS ttl_task_runs,
+       (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('vendite', 'commesse_push_log') r WHERE r.motivo_salto IS NULL) AS ttl_push_log;
 
 -- ============================================================
 -- 1-3) Struttura
@@ -176,7 +176,7 @@ SELECT is(
     (SELECT count(*)::int
        FROM unnest(ARRAY['event_log', 'fatturazione_lotti_log', 'fatture_log',
                          'fatturazione_lotti_task_runs', 'commesse_push_log']) AS t(nome)
-      WHERE (dbops.fn_cleanup_at_params('vendite', t.nome) ->> 'ttl_days')::integer = 750),
+      WHERE (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('vendite', t.nome) r WHERE r.motivo_salto IS NULL) = 750),
     5,
     '4. le cinque tabelle del giornale e del push rispondono 750 giorni (regole 15-19)'
 );
@@ -185,14 +185,16 @@ SELECT is(
 --   Se un giorno cambia, cambia anche qui: il test pinna che una tabella senza
 --   override cada sul default, non che il default valga 30 per sempre.
 SELECT is(
-    (dbops.fn_cleanup_at_params('vendite', 'fatture') ->> 'ttl_days')::integer,
+    -- senza filtro sul motivo: vendite.fatture non ha cleanup_at (NO_CLEANUP_COLUMN),
+    -- e qui conta quale regola la copre, non se si applica
+    (SELECT r.ttl_days FROM dbops.fn_cleanup_at_regola('vendite', 'fatture') r),
     30,
     '5. una tabella senza override cade sulla regola *all (default 30 giorni)'
 );
 
 SELECT ok(
-    dbops.fn_cleanup_at_params('', 'fatture_log') IS NULL
-    AND dbops.fn_cleanup_at_params('vendite', NULL) IS NULL,
+    NOT EXISTS (SELECT 1 FROM dbops.fn_cleanup_at_regola('', 'fatture_log'))
+    AND NOT EXISTS (SELECT 1 FROM dbops.fn_cleanup_at_regola('vendite', NULL)),
     '6. schema o tabella vuoti: NULL (nessuna regola), non un errore — la funzione e'' STABLE'
 );
 

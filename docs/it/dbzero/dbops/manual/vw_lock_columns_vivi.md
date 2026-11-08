@@ -53,15 +53,17 @@ risposte diverse alla stessa domanda.
 * `tipo_tabella` — tabella o tabella partizionata.
 
 L'ambito delle automazioni non si applica qui: lo applica chi legge. Il presidio
-`dbops/test-lock-columns-convergenza` usa la vista anche per pretendere che **fuori** dall'ambito
-non ci sia nessun lock, perché lì il runner non arriva e un lock sarebbe montato a mano.
+`dbops/test-lock-columns-convergenza` usa la vista anche **fuori** dall'ambito, dove il runner non
+arriva e il lock lo monta una migrazione: pretende che ogni lock vivo sia dichiarato in
+`dbops.automation_lock_columns` con lo stesso codice, e che ogni riga attiva del registro abbia il
+suo lock vivo.
 
 ---
 
 ### Test
 
-* `db/pgtap/dbops/test-lock-columns-convergenza.sql` — il confronto col registro, e nessun lock
-  fuori dall'ambito.
+* `db/pgtap/dbops/test-lock-columns-convergenza.sql` — il confronto col registro, e fuori
+  dall'ambito lock vivi e registro che coincidono nei due versi.
 * `db/pgtap/dbops/test-non-editable-fields-dal-lock-vivo-v1.sql` — il form che la legge.
 
 ---

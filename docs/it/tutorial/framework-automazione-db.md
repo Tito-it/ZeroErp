@@ -1,6 +1,6 @@
 # Tutorial — Portare una tabella nuova nel framework di automazione DB
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database che creano una tabella nuova e vogliono che il framework la governi
 >
@@ -189,7 +189,7 @@ Non li monti tu: li monta il **giro delle automazioni**, che esiste in tre forme
 La pipeline invoca Liquibase due volte. Nella seconda passata (`--contexts=ci_apply`) il changeSet
 `90_end/ci_apply/20260926-10-run-processi-strutturali-in-ordine` chiama, nell'ordine dichiarato da
 `dbops.processi.ci_ordine`, tutte le procedure dei processi strutturali: audit, provisioning dello
-storico, storico, `tx_id`, attivo, lucchetti, blocco delete, overlap, pulizia, storicizzazione,
+storico, storico, `tx_id`, attivo, lucchetti, blocco delete, guard utility/tipo ruolo, overlap, pulizia, storicizzazione,
 statistiche. Dopo ogni chiamata pretende una riga riuscita in `maintenance.job_run_log`, altrimenti
 la migrazione si ferma nominando il processo.
 
@@ -220,7 +220,7 @@ Se nessuno lancia la convergenza, la tabella viene coperta dal giro notturno. I 
 | Quando              | Job                                                                                                               |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | ogni giorno, 21:00  | `automations_audit_update`, `automations_storico_provision`, `automations_storico`, `automations_tx_id`, `automations_attivo`, `automations_overlap` |
-| ogni giorno, 21:10  | `automations_lock_columns` (anche DATE_VALIDITA), `automations_delete_block`                                       |
+| ogni giorno, 21:10  | `automations_lock_columns` (anche DATE_VALIDITA), `automations_delete_block`, `automations_guard_utility`          |
 | sabato, 07:00       | `apply_storicizza_weekly`, `sync_storico_set_storicizza`                                                           |
 | domenica, 23:00     | `automations_cleanup_weekly`, `automations_apply_fk_indexes_policy`                                               |
 

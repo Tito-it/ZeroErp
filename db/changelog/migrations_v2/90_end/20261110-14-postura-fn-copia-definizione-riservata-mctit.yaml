@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COPIA DI UN'EDIZIONE DI WORKFLOW E' UNA PORTA RISERVATA
+#   REVOKE EXECUTE su pratiche.fn_copia_definizione FROM PUBLIC, zeroerp_app
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Trovato da DOC.4» (⑩), giro finale.
+#
+# -- PERCHE' -----------------------------------------------------------------------------------
+#   fn_copia_definizione e' INVOKER e scrive un'edizione intera (testata, template,
+#   figli). La chiamano solo pratiche.fn_fork_definizione e
+#   pratiche.fn_nuova_versione_definizione, SECURITY DEFINER del proprietario, che
+#   fanno i controlli (bozza unica, edizione d'origine) e dentro cui la copia gira
+#   come proprietario. Aveva EXECUTE a PUBLIC (=X di default) e all'app: un chiamante
+#   qualunque avrebbe saltato quei controlli. Ne' il backend ne' il frontend la
+#   chiamano; i pgTAP che la chiamano direttamente girano come owner.
+#
+# -- LA POSTURA, LE TRE SEDI (linee-guida-sql §11.8) -----------------------------------------------
+#   1. questo forward, per dbdev (che non rinasce da zero);
+#   2. il loop 90_end/ci_apply/20260205-41, voce in v_fn_riservate;
+#   3. scripts/sql/provision_zeroerp.sql, blocco «LA PORTA SULLE FUNZIONI».
+#   Il presidio: pratiche/test-copia-definizione-riservata-v1 (gira come app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261110-14-postura-fn-copia-definizione-riservata-mctit.yaml
+
+  - changeSet:
+      id: 20261110-14-postura-fn-copia-definizione-riservata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.fn_copia_definizione riservata: EXECUTE revocato a PUBLIC e all'app (ci si
+        arriva solo da fn_fork_definizione e fn_nuova_versione_definizione, DEFINER). Resa stabile
+        dal loop 20260205-41 e dal provisioning. brief-db-sorgente-documento-e-riga §7.3, giro finale.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pratiche' AND p.proname = 'fn_copia_definizione' AND p.pronargs = 3;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- A PUBLIC sempre (=X per default), all'app se il ruolo esiste.
+              REVOKE EXECUTE ON FUNCTION pratiche.fn_copia_definizione(integer, bigint, boolean) FROM PUBLIC;
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: revoca all''app saltata.';
+                      RETURN;
+                  END IF;
+                  REVOKE EXECUTE ON FUNCTION pratiche.fn_copia_definizione(integer, bigint, boolean) FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre la copia all'app e a PUBLIC. Senza togliere la voce dal loop 20260205-41
+              -- e dal provisioning, la passata ci_apply successiva richiude.
+              GRANT EXECUTE ON FUNCTION pratiche.fn_copia_definizione(integer, bigint, boolean) TO PUBLIC;
+              GRANT EXECUTE ON FUNCTION pratiche.fn_copia_definizione(integer, bigint, boolean) TO zeroerp_app;

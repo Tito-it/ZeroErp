@@ -1,21 +1,33 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_documento_legami`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento funzioni:**
+> Approfondimento viste:
 >
-• [vendite.trgfn_doc_guard_annullo_con_legami](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami) — l'avviso  
-> • [vendite.fn_documento_ritira_legami](/dbzero/vendite/funzioni/fn_documento_ritira_legami) — la conferma e il ritiro  
-> • [vendite.fn_doc_porta_ritiro_ammette](/dbzero/vendite/funzioni/fn_doc_porta_ritiro_ammette) — la porta  
-> • [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi) — il nome dei documenti  
+> * [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi) — il nome dei documenti
+>
+> Approfondimento funzioni:
+>
+> * [vendite.trgfn_doc_guard_annullo_con_legami](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami) — l'avviso
+> * [vendite.fn_documento_ritira_legami](/dbzero/vendite/funzioni/fn_documento_ritira_legami) — la conferma e il ritiro
+> * [vendite.fn_doc_porta_ritiro_ammette](/dbzero/vendite/funzioni/fn_doc_porta_ritiro_ammette) — la porta
+> * [script.fn_sorgente_documento](/dbzero/script/funzioni/fn_sorgente_documento) — il BB che risolve il documento dalla provenienza
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 
 ### 🎯 Scopo Principale
-(2026-10-11, brief-db-annullo-documento-con-legami, D-4; ultima revisione 2026-10-26)
 
-Risponde a una domanda sola: **«se annullo questo documento, che cosa torna
-disponibile, e dove?»**. Una riga per legame.
+`vendite.fn_documento_legami` risponde a una domanda sola: **«se annullo questo documento, che cosa torna disponibile, e dove?»**. Una riga per legame.
+
+Il documento si nomina col suo codice in `config.sorgenti` (`DDT_VENDITA`, `ORDINE_VENDITA`,
+`PREVENTIVO`, `CONTRATTO`, `COMMESSA`, `OFFERTA_COMMERCIALE`), e `origine` è il codice del
+documento dall'altra parte, nello stesso vocabolario.
 
 È il **lettore unico** di tre cose che devono contare la stessa cosa:
 
@@ -25,22 +37,20 @@ disponibile, e dove?»**. Una riga per legame.
 | il BB del ritiro (verbi di annullo) | controllare la conferma e ritirare |
 | il backend | disegnare la finestra di conferma: «riga 1, ordine 12, 10 pz» |
 
-Generalizza `vendite.fn_ddt_legami` (la sola bolla), che si è ritirata.
-
 ---
 
 ### I legami, per documento
 
 | `origine` | `natura` | Da dove | Documento |
 | --- | --- | --- | --- |
-| `ORDINE` | consumo | `ordini_righe_fulfillment` (quantità evasa) | bolla |
-| `RESO` | consumo | `resi_righe_riconsegne` (quantità del ponte) | bolla |
-| `PREVENTIVO` | consumo | `ordini_righe.preventivo_riga_id` | ordine |
-| `OFFERTA` | **provenienza** | `contratti.offerta_id`, `ordini.documento_origine_*` | contratto, ordine |
-| `COMMESSA` | consumo | righe di commessa `NON_EMESSA` spinte dal documento | bolla, ordine, preventivo, contratto |
-| `OFFERTA_COMMERCIALE` | **provenienza** | `offerte_commerciali.revisione_padre_id`: la revisione precedente, superata, che torna emessa | offerta (dal 2026-10-26) |
+| `ORDINE_VENDITA` | `CONSUMO` | `ordini_righe_fulfillment` (quantità evasa) | bolla |
+| `RESO_VENDITA` | `CONSUMO` | `resi_righe_riconsegne` (quantità del ponte) | bolla |
+| `PREVENTIVO` | `CONSUMO` | `ordini_righe.preventivo_riga_id` | ordine |
+| `OFFERTA_COMMERCIALE` | **`PROVENIENZA`** | la provenienza `sorgente_*` del documento: tipo `OFFERTA_COMMERCIALE` e la chiave dell'offerta | contratto, ordine |
+| `COMMESSA` | `CONSUMO` | righe di commessa `NON_EMESSA` spinte dal documento, cercate con la chiave del documento data dal BB che risolve | bolla, ordine, preventivo, contratto |
+| `OFFERTA_COMMERCIALE` | **`PROVENIENZA`** | `offerte_commerciali.revisione_padre_id`: la revisione precedente, superata, che torna emessa | offerta |
 
-#### L'offerta (dal 2026-10-26, brief-modello-documento-vendita §13, O-4)
+#### L'offerta
 
 Annullare l'**ultima revisione viva** di un'offerta fa tornare emessa la revisione
 precedente: è un annullo che riapre un altro documento, e la guida del modello (§8)
@@ -51,29 +61,31 @@ dopo l'annullo. Nessun legame se la revisione è già annullata, se il padre non
 superato o se un'altra revisione viva lo tiene superato: l'annullo non riaprirebbe
 niente. Il verbo che conferma è [`vendite.fn_annulla_offerta`](/dbzero/vendite/funzioni/fn_annulla_offerta).
 
-#### La commessa (dal 2026-10-12, brief-db-annullo-a-valle-riapre-a-monte)
+#### La commessa
 
 La commessa è **a valle** di tutto ciò che la riempie: i suoi legami sono le sue
 righe `NON_EMESSA`, una riga per legame (`riga_id` = la riga di commessa).
 
 | `origine` | `natura` | La riga | All'annullo della commessa |
 | --- | --- | --- | --- |
-| `PREVENTIVO`, `ORDINE`, `CONTRATTO`, `DDT` | consumo | spinta dal documento | si ritira; il documento torna da mandare in commessa |
-| `CONSUMI` | consumo | spinta da un consumo | si ritira; il consumo torna da mandare |
-| `RESO` | consumo | la rettifica di un accredito (`origine_riga_id` = la riga di reso) | l'accredito si annulla |
-| `ONERE` | **annullo** | un onere, senza documento a monte | si annulla con la commessa |
+| `PREVENTIVO`, `ORDINE_VENDITA`, `CONTRATTO`, `DDT_VENDITA` | `CONSUMO` | spinta dal documento | si ritira; il documento torna da mandare in commessa |
+| `ATTIVITA_CONSUMI` | `CONSUMO` | spinta da un consumo | si ritira; il consumo torna da mandare |
+| `RESO_VENDITA` | `CONSUMO` | la rettifica di un accredito (`origine_riga_id` = la riga di reso) | l'accredito si annulla |
+| `ONERE` | **`ANNULLO`** | un onere, senza documento a monte | si annulla con la commessa |
 
-Una riga senza sorgente è sempre un onere o una rettifica: lo impone il vincolo
-`chk_commesse_attivita_senza_sorgente_onere_rettifica` (`20261012-27`). Fino al
-`20261012-28` il lettore aveva un ramo `MANUALE` per le altre, che rendeva la
-commessa non annullabile.
+Per le righe con una provenienza, `origine` è il codice del tipo com'è in `config.sorgenti`;
+`ONERE` non è un tipo di documento, è il nome del legame che non ne ha uno.
+
+Una riga senza provenienza è sempre un onere o una rettifica: lo impone il vincolo
+`chk_commesse_attivita_senza_sorgente_onere_rettifica`.
 
 ⭐ **La natura `ANNULLO`** esiste perché la finestra possa dire «si annulla»
 invece di «si riapre»: dietro un onere non c'è niente da riaprire. Per l'avviso
 conta come un consumo: rifiuta finché la riga c'è.
 
-`origine_id` viene dal resolver unico della sorgente polimorfa
-([`fn_get_sorgente_documento_ref`](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref)).
+`origine_id` viene dal BB che risolve la provenienza,
+[`script.fn_sorgente_documento`](/dbzero/script/funzioni/fn_sorgente_documento), sulle colonne
+del modello della riga di commessa.
 Le commesse già annullate non si filtrano: con l'avviso e il verbo una commessa
 annullata non ha più righe `NON_EMESSA` (D-9).
 
@@ -140,6 +152,24 @@ a `PUBLIC`.
 * Test: `db/pgtap/vendite/test-annullo-documento-con-legami-v1.sql`;
   per la commessa `test-annullo-commessa-v1.sql` e
   `test-annullo-commessa-rettifica-v1.sql`.
+
+---
+
+### Note di migrazione
+
+* 2026-10-11 — nasce generalizzando `vendite.fn_ddt_legami` (la sola bolla), che si è ritirata
+  (brief-db-annullo-documento-con-legami, D-4).
+* 2026-10-12 — la commessa come documento: un legame per riga `NON_EMESSA`; il ramo `MANUALE`
+  esce quando il vincolo di tabella impone che una riga senza sorgente sia un onere o una
+  rettifica (brief-db-annullo-a-valle-riapre-a-monte).
+* 2026-10-19 — `origine` usa i codici di `config.sorgenti` (`ORDINE_VENDITA`, `RESO_VENDITA`,
+  `OFFERTA_COMMERCIALE`, `DDT_VENDITA`, `ATTIVITA_CONSUMI`) al posto dei nomi corti di prima.
+* 2026-10-26 — l'offerta come documento: la revisione precedente che torna emessa
+  (brief-modello-documento-vendita §13, O-4).
+* 2026-11-06 — la provenienza dall'offerta si legge da `sorgente_*` di contratto e ordine, non più
+  da `vendite.contratti.offerta_id` né da `vendite.ordini.documento_origine_*`, ritirate; la
+  chiave del documento e quella della riga di commessa le dà il BB che risolve
+  (brief-db-sorgente-documento-e-riga).
 
 ---
 

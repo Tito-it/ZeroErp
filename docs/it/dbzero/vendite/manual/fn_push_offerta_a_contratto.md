@@ -1,245 +1,178 @@
-## 📘 Documentazione Concettuale – Funzione `vendite.fn_push_offerta_a_contratto(...)`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_push_offerta_a_contratto`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
-> [vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali)
-> [vendite.offerte_commerciali_eccezioni](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni)
-> [vendite.offerte_commerciali_eccezioni_componenti](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni_componenti)
-> [vendite.offerte_commerciali_utilities](/dbzero/vendite/tabelle/offerte_commerciali_utilities)
-> [vendite.contratti](/dbzero/vendite/tabelle/contratti)
-> [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
-> [vendite.contratti_righe_componenti](/dbzero/vendite/tabelle/contratti_righe_componenti)
-> [vendite.contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities)
-> [config.sorgenti](/dbzero/config/tabelle/sorgenti)
-> [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti)
 >
-> Trigger correlati:
-> [vendite.trgfn_contratti_snapshot_precontrattuali](/dbzero/vendite/funzioni/trgfn_contratti_snapshot_precontrattuali)
+> * [vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali) — l'offerta accettata, il documento d'origine
+> * [vendite.offerte_commerciali_eccezioni](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni) — le eccezioni, che diventano righe del contratto
+> * [vendite.offerte_commerciali_eccezioni_componenti](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni_componenti) — i componenti delle eccezioni
+> * [vendite.offerte_commerciali_utilities](/dbzero/vendite/tabelle/offerte_commerciali_utilities) — le utility negoziate
+> * [vendite.contratti](/dbzero/vendite/tabelle/contratti) — il contratto generato, con la provenienza dall'offerta
+> * [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe) — le righe, con la provenienza dall'eccezione
+> * [vendite.contratti_righe_componenti](/dbzero/vendite/tabelle/contratti_righe_componenti) — i componenti copiati
+> * [vendite.contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities) — le utility del contratto
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento d'origine
+> * [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti) — l'aggancio facoltativo alla pratica
 >
-> Funzioni correlate:
-> [vendite.fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta)
-> [vendite.fn_contratto_sovrapposto](/dbzero/vendite/funzioni/fn_contratto_sovrapposto)
-> [vendite.fn_chiudi_contratto_per_successione](/dbzero/vendite/funzioni/fn_chiudi_contratto_per_successione)
+> Approfondimento funzioni:
 >
-> Contesto di sviluppo:
-> [Brief DB offerte commerciali — Step 8](/dev/work-done/analisi-offerta-commerciale-db)
-> [analisi-pratiche-domini-anello3.md §6.9.3 — Pattern A idempotenza](/dev/work-in-progress/analisi-pratiche-domini-anello3)
-> [Brief DB — successione contratti su overlap](/dev/work-done/brief-db-offerta-push-successione-contratto-overlap)
+> * [vendite.fn_offerta_documenti_vivi](/dbzero/vendite/funzioni/fn_offerta_documenti_vivi) — i documenti vivi generati da un'offerta, sede unica del controllo
+> * [script.fn_sorgente_provenienza](/dbzero/script/funzioni/fn_sorgente_provenienza) — la provenienza da scrivere, con la chiave del tipo
+> * [vendite.fn_genera_ordine_da_offerta](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta) — il verbo gemello, che genera l'ordine
+> * [vendite.fn_contratto_sovrapposto](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) — il rilevamento della sovrapposizione
+> * [vendite.fn_chiudi_contratto_per_successione](/dbzero/vendite/funzioni/fn_chiudi_contratto_per_successione) — la chiusura per successione
+> * [vendite.trgfn_contratti_snapshot_precontrattuali](/dbzero/vendite/funzioni/trgfn_contratti_snapshot_precontrattuali) — il trigger che crea le utility dai precontrattuali
+> * [vendite.fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — la revisione dell'offerta
+> * [script.fn_available_actions_offerta](/dbzero/script/funzioni/fn_available_actions_offerta) — le azioni disponibili sull'offerta
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
+`vendite.fn_push_offerta_a_contratto` genera un **contratto in bozza** (DRAFT) da un'offerta commerciale **accettata**, copiando eccezioni, componenti e utility, e scrive sul contratto e sulle sue righe la provenienza dall'offerta.
 
-`vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)`
-genera un **contratto DRAFT** da un'offerta commerciale **ACCETTATA**, copiando
-1:1 eccezioni e utility. La funzione è **idempotente per costruzione**: una
-seconda invocazione sulla stessa offerta fallisce con errore semantico, senza
-creare duplicati (pattern A §6.9.3 analisi pratiche domini).
+Il push è **idempotente per costruzione**: una seconda invocazione sulla stessa offerta,
+finché il contratto generato è vivo, fallisce con un errore semantico senza creare duplicati.
 
-Dalla rev4 il push è **consumatore del meccanismo generico di successione
-contratti**: se per la stessa quintupla (`billing_account`, `istanza_utility`,
-`utility`, `ambito`, periodo) esiste già un contratto attivo sovrapposto, il push
-non lascia trapelare l'errore grezzo del vincolo di esclusione, ma lo gestisce in
-modo esplicito (vedi *Successione su overlap*). La logica di rilevamento e
-chiusura vive nelle funzioni di dominio
-[`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) e
-[`fn_chiudi_contratto_per_successione`](/dbzero/vendite/funzioni/fn_chiudi_contratto_per_successione);
-il push aggiunge solo *lock*, *routing* e *rete di sicurezza*.
+È anche **consumatore del meccanismo generico di successione dei contratti**: se per la
+stessa combinazione (billing account, istanza utility, utility, ambito, periodo) esiste già un
+contratto attivo sovrapposto, il push non lascia trapelare l'errore grezzo del vincolo di
+esclusione, ma lo gestisce in modo esplicito (vedi «Successione su sovrapposizione»). La logica
+di rilevamento e chiusura vive nelle funzioni di dominio `fn_contratto_sovrapposto` e
+`fn_chiudi_contratto_per_successione`; il push aggiunge solo lock, instradamento e rete di
+sicurezza.
 
 ---
 
-### Regole principali
+### Un'offerta genera al più un documento vivo
 
-- **Stato ammesso**: solo offerte in stato `ACCETTATA`. Qualsiasi altro stato
-  (BOZZA, EMESSA, RIFIUTATA, SUPERATA, ANNULLATA) produce
-  `E_OFFERTA_PUSH_STATO_NON_AMMESSO`.
-- **Idempotenza**: se esiste già un contratto con `offerta_id = p_offerta_id`,
-  la funzione fallisce con `E_OFFERTA_CONTRATTO_GIA_GENERATO` senza creare
-  duplicati. La UNIQUE `uq_contratti_offerta_id` garantisce la protezione anche
-  a livello strutturale.
-- **Mutua esclusività contratto/ordine (rev6, 2026-06-08)**: se l'offerta ha
-  già generato un **ordine** (`vendite.ordini` con `documento_origine_tipo =
-  'OFFERTA' AND documento_origine_id = p_offerta_id`), il push fallisce con
-  `E_OFFERTA_ORDINE_GIA_GENERATO`. Contratto e ordine sono **alternativi**:
-  un'offerta ne genera al massimo uno. È lo specchio write-path del guard di
-  capability [`fn_available_actions_offerta`](/dbzero/script/funzioni/fn_available_actions_offerta);
-  il guard speculare lato ordine (impedire l'ordine se esiste un contratto) vive
-  dal 2026-10-21 nel verbo gemello
-  [`vendite.fn_genera_ordine_da_offerta`](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta)
-  (prima nel BE `crea_ordine_da_offerta`), che blocca l'offerta `FOR UPDATE`.
-  Non esiste un vincolo strutturale incrociato
-  contratti↔ordini: la race cross-tab non è coperta (scelta esplicita,
-  [brief §10](/dev/work-done/brief-db-univocita-offerta-ordine)).
-- **Contratto creato in DRAFT**: l'auto-attivazione non è prevista in v1
-  (§1.2 analisi). Il passaggio DRAFT → ATTIVO avviene separatamente.
-- **Copia 1:1 (§5.2 analisi)**:
-  - Testata: `billing_account_id`, `istanza_utility_id`, `utility_id`,
-    `listino_id`, `listino_versione_id`, `valore/tipo_variazione_globale`,
-    `valido_dal`/`valido_al` (da `offerta.validita_dal`/`al`), `meta`.
-  - `emittente_fiscale_id` copiato 1:1 da `v_offerta.emittente_fiscale_id`
-    (rev2, 2026-05-26). Il trigger di default dell'emittente (dal 2026-09-15
-    `script.trgfn_default_emittente_fiscale`, prima la copia `trgfn_contratti_default_emittente`) salta
-    (campo già valorizzato); il guard `script.trgfn_doc_guard_emittente_ba`
-    valida la coerenza BA↔emittente.
-- **Eccezioni → `contratti_righe`** + **componenti → `contratti_righe_componenti`**: il batch INSERT di eccezioni è stato convertito in un loop `FOR v_eccezione IN SELECT * FROM offerte_commerciali_eccezioni WHERE offerta_id = p_offerta_id ORDER BY id` che, per ogni eccezione, esegue:
-  1. `INSERT INTO contratti_righe (...) RETURNING id INTO v_riga_id` — ottiene il PK della riga appena creata.
-  2. `INSERT INTO contratti_righe_componenti (...) SELECT v_riga_id, occ.* FROM offerte_commerciali_eccezioni_componenti occ WHERE occ.eccezione_offerta_id = v_eccezione.id` — copia i componenti.
-  - `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` delle eccezioni copiati **1:1** su `contratti_righe` (rev5, 2026-06-01). Prima di rev5 venivano forzati a `NULL` perché la sorgente `offerte_commerciali_eccezioni` non aveva le colonne (aggiunte da `20260601-01`): l'approvazione L3 ottenuta in offerta viaggia ora fino al contratto senza riapprovazione (guida §6/§11.3).
-  - `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` dei **componenti** copiati **1:1** da `offerte_commerciali_eccezioni_componenti` (preservazione stato approvazione pre-negoziazione).
-  - Il loop evita la necessità di correlare eccezione→riga_contratto tramite `ROW_NUMBER + INSERT RETURNING` (non ordinamento garantito).
-- **Utility → `contratti_utilities`** (UPSERT): il trigger
-  `trg_contratti_z90_snapshot_precontrattuali_ins` (AFTER INSERT su contratti)
-  può aver già creato un record in `contratti_utilities` dai dati precontrattuali.
-  La funzione usa `INSERT ... ON CONFLICT DO UPDATE` per sovrascrivere con i
-  dati negoziati dell'offerta, che hanno precedenza sul precontrattuale generico.
-- **`sorgente_tipo_id`** = id di `OFFERTA_COMMERCIALE` da `config.sorgenti`.
-- **`sorgente_uid`** = `offerta.uid` (UUID).
-- **`offerta_id`** valorizzato sul contratto: unico punto di lookup per
-  idempotenza e tracciabilità della sorgente.
-- **Collegamento pratica** (facoltativo): se `p_pratica_id IS NOT NULL`,
-  inserisce in `pratiche.pratiche_sorgenti` il contratto generato come sorgente
-  `CONTRATTO` con ruolo `COLLEGATO`. La registrazione dell'evento nel giornale
-  pratica è delegata al livello applicativo (`pratiche_service.log_evento_dominio`).
+* **Stato ammesso**: solo un'offerta in uno stato di accettazione (`ACCETTATA`, colonna
+  `accettazione` del vocabolario). Ogni altro stato produce `E_OFFERTA_PUSH_STATO_NON_AMMESSO`.
+* **Contratto e ordine sono alternativi**: un'offerta genera al più **un** documento vivo, o un
+  contratto o un ordine. Il push legge i documenti vivi dell'offerta da
+  `vendite.fn_offerta_documenti_vivi`, la sede unica del controllo, e si ferma con
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO` se c'è già un contratto, con
+  `E_OFFERTA_ORDINE_GIA_GENERATO` se c'è già un ordine; l'errore porta il bersaglio, il
+  documento già generato.
+* **Un documento annullato non consuma l'offerta**: conserva la provenienza, ma non conta fra i
+  vivi; dopo l'annullo l'offerta può generare un nuovo documento.
+* **La rete strutturale**: gli indici unici `uq_contratti_sorgente_offerta` (su
+  `vendite.contratti`) e `uq_ordini_v_sorgente_offerta` (su `vendite.ordini`) rendono
+  impossibile un secondo documento vivo dello **stesso** tipo dalla stessa offerta. Non esiste
+  un vincolo strutturale incrociato fra contratti e ordini: la gara fra i due tipi la chiude il
+  controllo dei verbi, non un indice. Il controllo speculare lato ordine vive nel verbo gemello
+  `vendite.fn_genera_ordine_da_offerta`, ed è lo specchio, in scrittura, delle azioni
+  disponibili sull'offerta (`script.fn_available_actions_offerta`).
 
 ---
 
-### Successione su overlap (rev4)
+### La provenienza: sul contratto e su ogni riga
 
-Subito dopo le guard e prima dell'INSERT del contratto, il push:
-
-1. **Advisory lock sulla quintupla** — `pg_advisory_xact_lock` su una chiave
-   derivata da `billing_account_id : istanza_utility_id : utility_id : ambito`.
-   Serializza i push concorrenti sullo **stesso** combo (due operatori non
-   possono creare contratti sovrapposti nello stesso istante), **senza** bloccare
-   l'intera tabella; il lock si rilascia a fine transazione.
-2. **Rilevamento** — chiama
-   [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto)
-   con `ambito = 'COMMODITY'`. *Invariante*: l'INSERT del push non valorizza
-   `ambito`, quindi il nuovo contratto assume il default `'COMMODITY'`; se un
-   giorno il push valorizzasse `ambito`, va allineato anche il rilevamento.
-3. **Routing**:
-   - **A — nessun overlap**: comportamento standard, crea il contratto.
-   - **B — overlap e `p_chiudi_contratto_esistente = false`** (default): solleva
-     `E_CONTRATTO_OVERLAP_ESISTENTE` con il numero del contratto in conflitto.
-     **Nessun contratto creato.** È il caso che il frontend usa per mostrare il
-     conflitto e chiedere conferma.
-   - **C — overlap e `p_chiudi_contratto_esistente = true`**: chiama
-     [`fn_chiudi_contratto_per_successione`](/dbzero/vendite/funzioni/fn_chiudi_contratto_per_successione)
-     (accorcia il vecchio a `validita_dal − 1`), poi crea il nuovo.
-4. **Backstop** — l'INSERT in `contratti` è avvolto in
-   `EXCEPTION WHEN exclusion_violation`: se il vincolo di esclusione scattasse
-   comunque (gara sfuggita al lock, percorso futuro senza lock, conflitto residuo
-   multi-overlap), l'errore grezzo viene **ritradotto** in
-   `E_CONTRATTO_OVERLAP_ESISTENTE` parlante. Il client non vede mai l'errore GiST.
-
-> La successione **accorcia** il contratto preesistente, non lo annulla, e **non**
-> ne cambia lo stato: la cessazione `ATTIVO → CESSATO` la fa il job notturno
-> `chiusura_scadenze_daily`.
+* **Il contratto** dichiara di nascere dall'offerta: tipo `OFFERTA_COMMERCIALE` e la chiave
+  dell'offerta, nella colonna che il tipo vuole (l'offerta si riconosce per uid). La coppia di
+  colonne la dà `script.fn_sorgente_provenienza`, letta una volta per testata e righe: il push
+  non la compone da sé.
+* **Ogni riga del contratto** porta la stessa provenienza, e in più la riga d'origine: l'eccezione
+  dell'offerta da cui è stata copiata.
+* La provenienza è l'unico legame fra contratto e offerta: è lei che il controllo dei documenti
+  vivi, la lineage e le liste leggono.
 
 ---
 
-### Ridondanza intenzionale `offerta_id` + `sorgente_uid`
+### Che cosa copia
 
-`vendite.contratti` espone due chiavi di lookup verso la sorgente offerta:
-
-| Colonna         | Tipo   | Scopo                                                      |
-| --------------- | ------ | ---------------------------------------------------------- |
-| `offerta_id`    | bigint | FK diretta + UNIQUE: idempotenza strutturale, JOIN veloce. |
-| `sorgente_uid`  | UUID   | Pattern cross-dominio (§6.3 pratiche): lookup universale senza FK diretta (es. da pratiche_sorgenti che usa text). |
-
-La ridondanza è intenzionale e documentata (O1 brief). `offerta_id` è la
-chiave operativa; `sorgente_uid` è la chiave di integrazione cross-dominio.
-
----
-
-### Parametri
-
-| Parametro      | Tipo     | Note                                                                  |
-| -------------- | -------- | --------------------------------------------------------------------- |
-| `p_offerta_id` | `bigint` | ID offerta commerciale ACCETTATA. Obbligatorio, > 0.                  |
-| `p_pratica_id` | `bigint` | ID pratica da collegare al contratto. Opzionale — `NULL` ammesso.     |
-| `p_chiudi_contratto_esistente` | `boolean` | Default `false`. Se `true` e c'è un contratto sovrapposto, lo chiude per successione e poi crea il nuovo; se `false`, su overlap solleva `E_CONTRATTO_OVERLAP_ESISTENTE` senza creare nulla. |
+* **Testata**: billing account, istanza utility, utility, listino e sua versione, variazione
+  globale, validità (dalla validità dell'offerta), `meta`, ed emittente fiscale 1:1
+  dall'offerta. Il trigger di default dell'emittente salta (il campo è già valorizzato) e il
+  guard di coerenza fra billing account ed emittente lo valida.
+* **Eccezioni → righe del contratto**, una per eccezione nell'ordine dell'id, ognuna coi suoi
+  **componenti**. Lo stato di approvazione del prezzo e la pratica di approvazione viaggiano
+  **1:1**, sulle righe e sui componenti: l'approvazione ottenuta in offerta arriva al contratto
+  senza riapprovazione. La copia una eccezione alla volta tiene il legame fra eccezione e riga
+  senza dover correlare due insiemi.
+* **Utility**: il trigger dei precontrattuali, all'inserimento del contratto, può aver già creato
+  le utility del contratto; il push le **sovrascrive** coi dati negoziati dell'offerta, che hanno
+  precedenza sul precontrattuale generico.
+* **Indirizzi**: quelli ammessi per il contratto.
+* **Il contratto nasce in bozza**: il passaggio ad attivo avviene separatamente.
+* **Aggancio alla pratica** (facoltativo): se si passa una pratica, il contratto generato entra
+  fra le sorgenti della pratica come `CONTRATTO` con ruolo `COLLEGATO`. La registrazione
+  dell'evento nel giornale della pratica è del livello applicativo.
 
 ---
 
-### 📦 Output
+### Successione su sovrapposizione
 
-| Campo           | Tipo     | Descrizione                          |
-| --------------- | -------- | ------------------------------------ |
-| `RETURNS BIGINT` | bigint  | ID del contratto DRAFT generato.     |
+Dopo i controlli e prima di inserire il contratto, il push:
+
+1. **Serializza sulla combinazione** — un lock transazionale su una chiave derivata da billing
+   account, istanza utility, utility e ambito: due operatori non possono creare contratti
+   sovrapposti nello stesso istante, senza bloccare l'intera tabella.
+2. **Rileva** la sovrapposizione con `fn_contratto_sovrapposto`, sull'ambito `COMMODITY`.
+   ⚠️ Il push non valorizza l'ambito, quindi il nuovo contratto prende il default
+   `COMMODITY`: se un giorno lo valorizzasse, va allineato anche il rilevamento.
+3. **Instrada**:
+   * **nessuna sovrapposizione**: crea il contratto;
+   * **sovrapposizione senza conferma** (`p_chiudi_contratto_esistente` falso, il default):
+     solleva `E_CONTRATTO_OVERLAP_ESISTENTE` col numero del contratto in conflitto, e non crea
+     niente. È il caso che il frontend usa per mostrare il conflitto e chiedere conferma;
+   * **sovrapposizione con conferma**: chiude il vecchio contratto per successione (lo accorcia
+     al giorno prima della nuova validità), poi crea il nuovo.
+4. **Rete di sicurezza** — se il vincolo di esclusione scattasse comunque (gara sfuggita al
+   lock, sovrapposizioni multiple), l'errore grezzo è ritradotto in
+   `E_CONTRATTO_OVERLAP_ESISTENTE`: il client non vede mai l'errore del vincolo.
+
+> La successione **accorcia** il contratto preesistente, non lo annulla, e non ne cambia lo
+> stato: la cessazione da attivo a cessato la fa il job notturno `chiusura_scadenze_daily`.
+
+```text
+fn_push_offerta_a_contratto
+  ├─ controlli: stato di accettazione, documenti vivi dell'offerta
+  ├─ lock sulla combinazione → rilevamento sovrapposizione → instradamento
+  │    └─ [con conferma] chiusura per successione del vecchio contratto
+  ├─ contratto DRAFT con la provenienza dall'offerta
+  │    ├─ default emittente (salta), guard emittente/billing account, numerazione, normalizzazione
+  │    └─ dopo l'inserimento: utility dai precontrattuali
+  ├─ per ogni eccezione: riga con la provenienza dall'eccezione, poi i suoi componenti
+  ├─ utility dell'offerta, sopra quelle dei precontrattuali
+  └─ [con pratica] aggancio del contratto alla pratica
+```
 
 ---
 
 ### Codici errore
 
-| Codice                              | Quando                                                            |
-| ----------------------------------- | ----------------------------------------------------------------- |
-| `E_PARAMETRO_INVALIDO`              | `p_offerta_id` NULL o <= 0.                                       |
-| `E_OFFERTA_NON_TROVATA`             | L'offerta non c'è, o è fuori perimetro (404).                     |
-| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`  | Lo stato dell'offerta non è quello di accettazione (`ACCETTATA`, colonna `accettazione` del vocabolario). |
-| `E_OFFERTA_CONTRATTO_GIA_GENERATO`  | Esiste già un contratto con `offerta_id = p_offerta_id`.          |
-| `E_OFFERTA_ORDINE_GIA_GENERATO`     | Esiste già un ordine generato dall'offerta (`documento_origine ('OFFERTA', p_offerta_id)`) — mutua esclusività contratto/ordine (rev6). |
-| `E_CONTRATTO_OVERLAP_ESISTENTE`     | Esiste un contratto attivo sovrapposto e `p_chiudi_contratto_esistente = false` (caso B), oppure conflitto residuo intercettato dal backstop. |
-| `E_CONFIG_MANCANTE`                 | `DRAFT` non trovato in `stati_doc_contratti`; `OFFERTA_COMMERCIALE` o `CONTRATTO` non trovati in `config.sorgenti`. |
+| Codice | Quando |
+| --- | --- |
+| `E_PARAMETRO_INVALIDO` | l'offerta non è indicata o l'id non è positivo |
+| `E_OFFERTA_NON_TROVATA` | l'offerta non c'è, o è fuori perimetro |
+| `E_OFFERTA_PUSH_STATO_NON_AMMESSO` | l'offerta non è in uno stato di accettazione |
+| `E_OFFERTA_CONTRATTO_GIA_GENERATO` | l'offerta ha già un contratto vivo |
+| `E_OFFERTA_ORDINE_GIA_GENERATO` | l'offerta ha già un ordine vivo |
+| `E_CONTRATTO_OVERLAP_ESISTENTE` | c'è un contratto attivo sovrapposto e non si è chiesta la successione, oppure un conflitto residuo intercettato dalla rete di sicurezza |
+| `E_CONFIG_MANCANTE` | manca lo stato DRAFT dei contratti, o un tipo atteso in `config.sorgenti` |
 
 ---
 
-### Interazione con i trigger di `contratti`
+### Note di migrazione
 
-La sequenza di eventi al momento dell'INSERT del contratto:
-
-```text
-fn_push_offerta_a_contratto
-  └─ pg_advisory_xact_lock(quintupla)            → serializza push concorrenti
-  └─ fn_contratto_sovrapposto(...)               → rilevamento overlap (routing A/B/C)
-  └─ [caso C] fn_chiudi_contratto_per_successione → accorcia il vecchio
-  └─ INSERT contratti (DRAFT, emittente_fiscale_id = v_offerta.emittente_fiscale_id)
-       │  (avvolto in EXCEPTION WHEN exclusion_violation → backstop E_CONTRATTO_OVERLAP_ESISTENTE)
-       ├─ BEFORE INSERT: trg_contratti_a10_default_emittente_ins (script.trgfn_default_emittente_fiscale) → SKIP (già valorizzato)
-       ├─ BEFORE INSERT: script.trgfn_doc_guard_emittente_ba → valida coerenza BA↔EF
-       ├─ BEFORE INSERT: trgfn_contratti_gen_codice         → assegna numero contratto
-       ├─ BEFORE INSERT: trgfn_contratti_normalize          → default ambito/campi
-       ├─ BEFORE INSERT: trgfn_contratti_set_categoria_cliente_snapshot
-       └─ AFTER INSERT:  trg_contratti_z90_snapshot_precontrattuali_ins
-                           └─ crea contratti_utilities dai precontrattuali
-                                (se non esiste già — idempotente)
-  └─ FOR EACH eccezione IN offerte_commerciali_eccezioni ORDER BY id:
-       ├─ INSERT contratti_righe (...) RETURNING id INTO v_riga_id
-       │    └─ trigger righe: guard aggiunta, default fonte_qta, ecc.
-       └─ INSERT contratti_righe_componenti SELECT v_riga_id, occ.*
-            FROM offerte_commerciali_eccezioni_componenti
-            WHERE eccezione_offerta_id = v_eccezione.id
-  └─ UPSERT contratti_utilities (da offerte_commerciali_utilities)
-       └─ ON CONFLICT DO UPDATE → sovrascrive il record creato dal trigger
-          precontrattuali con i dati negoziati dell'offerta
-  └─ [se p_pratica_id NOT NULL] INSERT pratiche.pratiche_sorgenti
-```
-
----
-
-### Esempio d'uso
-
-```sql
--- Push offerta 42 (ACCETTATA) senza pratica collegata.
--- p_chiudi_contratto_esistente omesso = false (default).
-SELECT vendite.fn_push_offerta_a_contratto(42, NULL);
--- Restituisce: 101  (id del nuovo contratto DRAFT)
-
--- Push con collegamento pratica 7
-SELECT vendite.fn_push_offerta_a_contratto(42, 7);
--- Stessa offerta: fallisce con E_OFFERTA_CONTRATTO_GIA_GENERATO (idempotenza)
-
--- Offerta 55 sovrapposta a un contratto esistente, senza conferma:
-SELECT vendite.fn_push_offerta_a_contratto(55, NULL, false);
--- Fallisce con E_CONTRATTO_OVERLAP_ESISTENTE (mostra il contratto in conflitto).
-
--- Stessa offerta 55 con conferma di successione:
-SELECT vendite.fn_push_offerta_a_contratto(55, NULL, true);
--- Accorcia il contratto esistente e crea il nuovo DRAFT. Restituisce il nuovo id.
-```
+* 2026-05-26 — la copia include i componenti delle eccezioni e l'emittente fiscale 1:1.
+* 2026-05-31 — il push diventa consumatore della successione dei contratti su sovrapposizione.
+* 2026-06-01 — lo stato di approvazione del prezzo viaggia 1:1 anche sulle righe.
+* 2026-06-08 — mutua esclusività fra contratto e ordine generati dalla stessa offerta.
+* 2026-10-11 — il controllo conta solo i documenti vivi: un annullato non consuma l'offerta.
+* 2026-11-06 — ritirata la colonna `vendite.contratti.offerta_id` con la sua unicità: la
+  provenienza del contratto sta in `sorgente_*` (chiave dal tipo, via
+  `script.fn_sorgente_provenienza`), l'unicità è `uq_contratti_sorgente_offerta` sui soli
+  contratti vivi, e le righe del contratto dichiarano l'eccezione d'origine
+  (brief-db-sorgente-documento-e-riga).
 
 ---
 

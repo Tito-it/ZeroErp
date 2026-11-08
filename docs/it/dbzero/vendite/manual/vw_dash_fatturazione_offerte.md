@@ -1,69 +1,84 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_dash_fatturazione_offerte`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali)
-> [vendite.contratti](/dbzero/vendite/tabelle/contratti) (figlio via `offerta_id`)
-> [vendite.ordini](/dbzero/vendite/tabelle/ordini) (figlio via `documento_origine_*`)
-> [config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte)
+> * [vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali) — il documento, una riga per offerta
+> * [vendite.contratti](/dbzero/vendite/tabelle/contratti) — il figlio contratto, che dichiara l'offerta come provenienza
+> * [vendite.ordini](/dbzero/vendite/tabelle/ordini) — il figlio ordine, che dichiara l'offerta come provenienza
+> * [config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte) — lo stato e l'esito dell'offerta
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il tipo `OFFERTA_COMMERCIALE`
 >
-Union e aggregata:
+> Approfondimento viste:
 >
-[vw_dash_fatturazione_documenti](vw_dash_fatturazione_documenti.md)
-> [vw_dash_aperto_documenti](vw_dash_aperto_documenti.md)
+> * [vendite.vw_dash_fatturazione_documenti](/dbzero/vendite/views/vw_dash_fatturazione_documenti) — l'unione delle aree, che consuma questa vista
+> * [vendite.vw_dash_aperto_documenti](/dbzero/vendite/views/vw_dash_aperto_documenti) — l'aggregato dell'aperto
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 03-07-2026)
-Resolver dell'area **OFFERTE** per la Dashboard Fatturazione
-(brief-design-dashboard-fatturazione §5, Fase 1): una riga per offerta,
-**a conteggi** (decisione D-2: niente valore in euro in v1 — le righe offerta
-sono eccezioni al listino, non hanno totale di testata). `valore_* = NULL`,
-`unita_totali = 1`, `unita_transitate = 0/1`.
+
+`vendite.vw_dash_fatturazione_offerte` è il resolver dell'area `OFFERTA_COMMERCIALE` della dashboard della fatturazione: una riga per offerta, a conteggi.
+
+L'area non ha valore in euro: le righe dell'offerta sono eccezioni al listino e l'offerta non
+ha un totale di testata. I valori sono vuoti, `unita_totali` vale 1 e `unita_transitate` 0 o 1.
 
 ---
 
-### Semantica
+### Il transito si legge dai figli
 
-L'offerta **non ha uno stato post-push** (resta `ACCETTATA`): il transito si
-legge dai **figli**, in XOR permanente.
+L'offerta **non ha uno stato dopo il push** (resta accettata): il transito si legge dai suoi
+**figli**, cioè dai documenti che la dichiarano come provenienza (tipo `OFFERTA_COMMERCIALE` e
+la chiave dell'offerta, nella colonna che il tipo vuole).
 
 | Aspetto | Regola |
-|---------|--------|
-| Figlio contratto | `contratti.offerta_id` (UNIQUE `uq_contratti_offerta_id`); vivo se `NOT is_abortito_snapshot` |
-| Figlio ordine | `ordini.documento_origine_tipo = 'OFFERTA'` + `documento_origine_id` (UNIQUE parziale); vivo se esito ≠ `NEGATIVO`. Il literale `'OFFERTA'` è un valore dell'enum CHECK di colonna, non un codice di catalogo (§6d) |
-| `is_transitato` | Esiste un figlio **vivo** |
-| Competenza | Mese di `COALESCE(validita_dal, data_emissione, data_insert)` |
-| `is_abortito` | `esito = 'NEGATIVO'` (RIFIUTATA / ANNULLATA / SUPERATA secondo il seed D1) |
-| `motivo_fermo` | `DOC_BOZZA` · `IN_ATTESA_ACCETTAZIONE` (EMESSA) · `SENZA_FIGLIO` (accettata, nessun figlio) · `FIGLIO_ABORTITO` (figlio generato ma annullato) |
-| `cliente_display` | Ragione sociale intestatario istanza (`istanze_utilities → soggetti`, path `vw_offerte_commerciali_lista`), nullable |
+| --- | --- |
+| Figlio contratto | un contratto che nasce dall'offerta; vivo se non annullato (`is_abortito_snapshot`) |
+| Figlio ordine | un ordine che nasce dall'offerta; vivo se l'esito del suo stato non è `NEGATIVO` |
+| `is_transitato` | esiste un figlio **vivo** |
+| Competenza | il mese della validità, o in mancanza dell'emissione o dell'inserimento (giorno operativo) |
+| `is_abortito` | l'esito dello stato dell'offerta è `NEGATIVO` (rifiutata, annullata, superata) |
+| `motivo_fermo` | `DOC_BOZZA` · `IN_ATTESA_ACCETTAZIONE` (emessa) · `SENZA_FIGLIO` (accettata, nessun figlio) · `FIGLIO_ABORTITO` (solo figli annullati); vuoto se transitata o abortita |
+| `cliente_display` | la ragione sociale dell'intestatario dell'istanza utility, se c'è |
+
+⭐ **Un'offerta ha al più un figlio vivo, ma può averne più annullati.** I figli si riassumono
+in una riga per lato (esiste, vivo): l'offerta non si duplica, e un figlio annullato non
+nasconde quello vivo.
+
+⚠️ **`FIGLIO_ABORTITO` non è `SENZA_FIGLIO`**: l'offerta ha generato un documento, poi
+annullato. Un documento annullato conserva la provenienza ma non consuma l'offerta: l'offerta
+si sblocca **generando** un nuovo contratto o ordine.
 
 ---
 
-### Esempio d'uso
+### Chi la usa
 
-```sql
--- Offerte "bloccate": figlio annullato, XOR permanente -> serve una revisione.
-SELECT codice, stato_codice, competenza_mese
-FROM vendite.vw_dash_fatturazione_offerte
-WHERE motivo_fermo = 'FIGLIO_ABORTITO';
-```
+* **Non si interroga dal backend**: il backend passa da `vendite.vw_dash_fatturazione_documenti`
+  e dalle viste `vw_dash_aperto_*`.
+* È `security_invoker = on`: la RLS per emittente di `vendite.offerte_commerciali` si applica
+  attraverso la vista.
 
 ---
 
-### Note operative
+### Test
 
-* **Non interrogarla dal BE**: il backend passa da
-  `vw_dash_fatturazione_documenti` / `vw_dash_aperto_*` (layering).
-* **`FIGLIO_ABORTITO` ≠ `SENZA_FIGLIO`**: la XOR contratto/ordine è permanente
-  anche se il figlio viene annullato (capability spente) — non è rimediabile con
-  un nuovo push, serve una **revisione** dell'offerta (brief §8.1).
-* Il valore in euro dell'offerta (espansione listino + eccezioni) è rinviato a v2
-  (decisione D-2).
-* RLS emittente applicata automaticamente (vista invoker su `offerte_commerciali`).
-* Test: `db/pgtap/vendite/test-vw-dash-fatturazione-v1.sql`.
+* `db/pgtap/vendite/test-vw-dash-fatturazione-v1.sql` — le aree della dashboard.
+
+---
+
+### Note di migrazione
+
+* 2026-07-03 — la vista è parte della dashboard della fatturazione (brief-design-dashboard-fatturazione §5).
+* 2026-11-06 — i figli si leggono dalla provenienza `sorgente_*` (tipo `OFFERTA_COMMERCIALE`),
+  non più da `vendite.contratti.offerta_id` né da `vendite.ordini.documento_origine_*`, ritirate
+  (brief-db-sorgente-documento-e-riga).
 
 ---
 

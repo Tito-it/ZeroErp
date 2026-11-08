@@ -1,68 +1,81 @@
-## 📘 Documentazione Concettuale – Funzione `catalogo.trgfn_articoli_seed_uom_base()`
+## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_articoli_seed_uom_base`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
-> • [catalogo.articoli_uom_operativa](/dbzero/catalogo/tabelle/articoli_uom_operativa)
-> • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)
+> Approfondimento tabelle:
+>
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — la tabella su cui è montata, alla creazione dell'articolo
+> * [catalogo.articoli_uom_operativa](/dbzero/catalogo/tabelle/articoli_uom_operativa) — dove scrive la riga base
+>
+> Approfondimento funzioni:
+>
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il controllo che vuole l'articolo attivo sotto una riga attiva
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+Fa nascere ogni articolo con la sua riga base in `catalogo.articoli_uom_operativa`: alla
+creazione dell'articolo scrive la riga sull'unità di `articoli.uom_id`, con `is_base` vero,
+fattore 1 e attiva.
 
-Garantisce che **ogni articolo nasca con la sua unità di misura base già presente** in
-`catalogo.articoli_uom_operativa`. Alla creazione dell'articolo inserisce la riga
-`is_base = TRUE`, `factor_to_base = 1`, `attivo = TRUE` sull'UoM dichiarata in
-`articoli.uom_id`.
-
-Senza questo automatismo l'articolo esisterebbe con una `uom_id` in testata ma senza la
-corrispondente riga operativa, e ogni conversione articolo-specifica partirebbe da un
-insieme vuoto: non ci sarebbe il fattore 1 su cui poggiare tutti gli altri.
+Senza questa riga l'articolo avrebbe l'unità base in testata ma non fra le sue unità
+operative, e la lista delle unità dell'articolo partirebbe vuota.
 
 ---
 
-### Aggancio
+### Come lavora
 
-Trigger `trg_articoli_a10_seed_uom_base_ins` — `AFTER INSERT` su `catalogo.articoli`,
-`FOR EACH ROW`.
+Gira dopo l'inserimento di ogni articolo, riga per riga. Se per quell'articolo e quell'unità
+una riga esiste già, non fa niente: non la aggiorna e non dà errore.
 
-⚠️ Il nome porta il prefisso di fase `_a10_`, riservato per convenzione a guard e blocchi,
-ma il trigger è un **seed `AFTER`**, non un guard. È un'incoerenza di naming, non di
-comportamento.
+All'inserimento di un articolo nuovo il caso non capita, perché l'id è nuovo e nessuna
+mappatura può già puntarvi: quella clausola rende solo la funzione ripetibile, se la si
+lanciasse di nuovo sugli stessi articoli.
 
----
+`articoli.uom_id` è obbligatorio, quindi un articolo senza unità non arriva fin qui: lo ferma
+prima il vincolo di colonna. Dopo la creazione `articoli.uom_id` è bloccato: la riga base non
+deve seguire un cambio di unità che non può avvenire.
 
-### Regole applicate
-
-1. `INSERT` in `catalogo.articoli_uom_operativa` con `articolo_id = NEW.id`,
-   `uom_id = NEW.uom_id`, `is_base = TRUE`, `factor_to_base = 1`, `attivo = TRUE`.
-2. `ON CONFLICT ON CONSTRAINT uq_artuomop_articolo_uom DO NOTHING`: se la coppia
-   articolo/UoM esiste già, non succede nulla.
-3. `RETURN NULL` — corretto e ininfluente, trattandosi di un trigger `AFTER`.
+Il trigger porta il prefisso di fase `a10`, che per convenzione è dei guard, ma è un seed
+che scrive dopo l'inserimento, non un controllo.
 
 ---
 
-### Perché è idempotente (e perché conta)
+### ⚠️ Che cosa oggi non copre
 
-Il `DO NOTHING` sul vincolo di unicità rende l'inserimento ripetibile: un re-run di un
-import o un seed che ripassa sugli stessi articoli non fallisce e non duplica.
-
-⚠️ Il rovescio: se la riga esiste già ma con valori **diversi** — per esempio
-`is_base = FALSE` o `factor_to_base ≠ 1` perché qualcuno l'ha modificata a mano — il
-trigger **non la corregge**. `DO NOTHING` non è `DO UPDATE`: l'articolo resta senza una
-UoM base valida e il difetto non emerge qui.
+* **Un articolo creato spento non si salva.** La riga base nasce sempre attiva, anche quando
+  l'articolo nasce con `attivo = false`. Una riga attiva vuole l'articolo attivo, e il
+  controllo scatta alla fine della transazione: l'inserimento dell'articolo spento viene
+  rifiutato con `E_ATTIVO_PADRE_NON_ATTIVO`.
+* **La riga che scrive non resta protetta.** Dopo la nascita, la riga base si può modificare
+  (unità, flag, fattore) o cancellare, e nessun vincolo le impone il fattore 1: questa funzione
+  la crea giusta, ma nessuno la tiene giusta.
 
 ---
 
 ### Codici errore
 
-Nessuno: la funzione non chiama `script.fn_log_and_raise_error`. Un eventuale fallimento
-è una violazione di vincolo grezza sulla tabella figlia.
+La funzione non ne solleva di suoi. Un errore che nasce qui è quello di un vincolo della
+tabella figlia, o `E_ATTIVO_PADRE_NON_ATTIVO` alla fine della transazione, come detto sopra.
 
-`articoli.uom_id` è `NOT NULL`, quindi il caso «articolo senza UoM» non arriva mai a
-questo trigger: viene fermato prima dal vincolo di colonna.
+---
+
+### Test
+
+* `db/pgtap/catalogo/test-articoli-seed-uom-base-lock.sql` — la funzione e il trigger ci
+  sono; un articolo nuovo ha la sua riga base, e una sola; `articoli.uom_id` non si modifica,
+  se non con l'interruttore di manutenzione.
+
+Il caso dell'articolo creato spento non ha un test.
+
+---
+
+### Note di migrazione
+
+* 2026-04-07 — nasce.
 
 ---
 

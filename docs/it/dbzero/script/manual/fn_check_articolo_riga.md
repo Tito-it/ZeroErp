@@ -1,12 +1,14 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_articolo_riga`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/manual/trgfn_righe_guard_articolo_ammesso) — il guard di tabella che la chiama
 > [script.trgfn_righe_natura_vendita](/dbzero/script/manual/trgfn_righe_natura_vendita) — la natura della riga, che questa check giudica
 > [config.nature_vendita](/dbzero/config/manual/nature_vendita) — le destinazioni
 > [script.fn_articolo_riga_contesto](/dbzero/script/manual/fn_articolo_riga_contesto) e [script.fn_check_articolo_riga_su_contesto](/dbzero/script/manual/fn_check_articolo_riga_su_contesto) — le due metà che compone
-> [catalogo.fn_articoli_ammessi](/dbzero/catalogo/manual/fn_articoli_ammessi) — il picker, che chiama le due metà
+> [catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi) — il picker, che chiama le due metà
 
 ### 🎯 Scopo Principale
 
@@ -16,7 +18,7 @@ Dice **perché un articolo non può stare in una riga** di un documento. `[]` vu
 altrimenti un array **ordinato** di motivi `{codice, reason, reason_key, dettaglio, valori}`.
 
 È la **sede unica** della regola: la chiama il guard di tabella, che solleva il primo motivo, e
-il picker degli articoli ([catalogo.fn_articoli_ammessi](/dbzero/catalogo/manual/fn_articoli_ammessi))
+il picker degli articoli ([catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi))
 mostra lo stesso motivo prima della scelta. Picker e guard non possono dissentire, perché
 leggono la stessa regola. Il primo motivo è lo stesso
 per tutti perché **l'ordine dell'array è il contratto**, ed è scritto qui, non deciso dai nomi

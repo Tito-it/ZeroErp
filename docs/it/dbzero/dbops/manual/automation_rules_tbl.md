@@ -22,7 +22,7 @@
 > * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns) — regola `LOCK_COLUMNS`
 > * [dbops.fn_run_automations_date_validita](/dbzero/dbops/funzioni/fn_run_automations_date_validita) — regola `DATE_VALIDITA`
 > * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup) — regole `CLEANUP_AT` e `CLEANUP_PURGE`
-> * [dbops.fn_cleanup_at_params](/dbzero/dbops/funzioni/fn_cleanup_at_params) — la regola `CLEANUP_AT` letta alla nascita della riga
+> * [dbops.fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola) — la regola `CLEANUP_AT` di una tabella, letta da chi scrive la scadenza
 > * [dbops.fn_regola_automazione_valida](/dbzero/dbops/funzioni/fn_regola_automazione_valida) — la forma di una regola, letta dal CHECK
 > * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — costruisce il nome del trigger dal template
 > * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match) — il confronto fra lo schema della regola e quello della tabella
@@ -62,8 +62,11 @@ con lo stesso modo (`CI` la convergenza del rilascio, `SCHEDULED` i job pgAgent)
 nascita della riga, che non è un giro.
 
 Più regole dello stesso tipo possono coprire la stessa tabella: si applicano in ordine di
-`priority` (più basso prima), poi di `id`. Il seed usa questo ordine per le scadenze: le regole
-`CLEANUP_AT` di una tabella (priorità 190) vengono prima di quella generica su tutte (200).
+`priority` (più basso prima), poi di `id`. Per la scadenza no: di regole `CLEANUP_AT` su una
+tabella ne vale **una sola**, la prima in quell'ordine
+([fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola)). Il seed lo usa così: la
+regola di una tabella (priorità 190) vince sulla generica su tutte (200), che vale solo dove non
+c'è altro.
 
 `rule_type` ed `exec_mode` sono vocabolari chiusi, nella forma canonica (maiuscolo, senza spazi):
 CHECK `chk_automation_rules_tbl_rule_type` e `chk_automation_rules_tbl_exec_mode`. In più il CHECK
@@ -135,21 +138,24 @@ montato a mano, o con un nome troncato, non resta invisibile e non ne riceve un 
 * `CLEANUP_AT`:
   * `ttl_days` — i giorni di conservazione, obbligatorio, intero ≥ 1 (il CHECK rifiuta una
     regola senza, o con un valore di altro tipo);
-  * `cleanup_column` — la colonna della scadenza (default `cleanup_at`);
-  * `base_ts_column` — la colonna da cui contare. Se manca, il runner prende la prima che la
-    tabella ha fra `data_insert`, `executed_at`, `occurred_at`, `created_at`, e se non ne ha
-    nessuna salta la tabella con un audit `WARN`. ⚠️ Va dichiarata sulla regola della tabella,
+  * `base_ts_column` — la colonna da cui contare. Se manca, vale la prima che la tabella ha fra
+    `data_insert`, `executed_at`, `occurred_at`, `created_at`; se non ne ha nessuna, la tabella
+    non scade (il runner lo dice con un audit `WARN`). ⚠️ Va dichiarata sulla regola della tabella,
     mai su una regola `*all`: è una proprietà della tabella, e un solo valore per tutte sarebbe
     sbagliato per costruzione. Si dichiara dove la tabella ha più colonne candidate e quella
     giusta non è la prima della catena;
   * `apply_on_update` — booleano, se ricalcolare anche le righe che una scadenza ce l'hanno già
     (default falso: si riempiono solo quelle vuote).
-* `CLEANUP_PURGE` — `cleanup_column` (default `cleanup_at`) e `batch_limit`, la dimensione del
-  lotto, intero ≥ 1 (default 5000).
+* `CLEANUP_PURGE` — `batch_limit`, la dimensione del lotto, intero ≥ 1 (default 5000).
+
+Le chiavi delle regole di scadenza sono un **elenco chiuso**: il CHECK rifiuta una regola
+`CLEANUP_AT` con una chiave diversa da `ttl_days`, `apply_on_update`, `base_ts_column`, e una
+`CLEANUP_PURGE` con una chiave diversa da `batch_limit`.
 
 `TX_ID`, `AUDIT_UPDATE`, `STORICO`, `LOCK_COLUMNS`, `DATE_VALIDITA` e `CODICE_MAIUSCOLO` non
 leggono parametri: `params` è `{}`. In ogni regola `params` è un oggetto JSON. Le colonne di
-audit hanno nome fisso per contratto (`data_update`, `user_update`): non si configurano.
+audit (`data_update`, `user_update`) e quella della scadenza (`cleanup_at`) hanno nome fisso per
+contratto: non si configurano.
 
 ⭐ Una chiave che nessuno legge non si dichiara: una manopola scollegata invita a girarla e non fa
 niente. E una chiave letta si dichiara anche quando vale il suo default, perché chi legge il
@@ -157,13 +163,13 @@ registro veda tutte le leve.
 
 ---
 
-### ⚠️ Due lettori della regola `CLEANUP_AT`
+### Una sola lettura della regola `CLEANUP_AT`
 
-La scadenza di una riga si calcola in due posti: il giro di cleanup per le righe che non ce l'hanno,
-e il trigger `dbops.trgfn_cleanup_at_alla_nascita`, che la scrive all'inserimento leggendo la regola
-con [fn_cleanup_at_params](/dbzero/dbops/funzioni/fn_cleanup_at_params). Il trigger prende la
-prima regola `CLEANUP_AT` attiva che copre la tabella e dichiara `ttl_days`, senza guardare
-`exec_mode` né le esclusioni di `dbops.automation_cleanup_exclusions`.
+La scadenza di una riga la scrivono in tre: il trigger `dbops.trgfn_cleanup_at_alla_nascita`
+all'inserimento, il giro di cleanup sul pregresso e il login sulle tabelle dei tentativi. Tutti e
+tre leggono la regola da [fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola): stessa
+regola, stessa colonna base, stesse esclusioni. Una riga riceve la stessa scadenza chiunque la
+scriva.
 
 ---
 
@@ -171,6 +177,8 @@ prima regola `CLEANUP_AT` attiva che copre la tabella e dichiara `ttl_days`, sen
 
 * `db/pgtap/dbops/test-cleanup-framework.sql` — le regole `CLEANUP_AT` e `CLEANUP_PURGE` applicate
   dal giro, con e senza esclusione.
+* `db/pgtap/dbops/test-cleanup-at-regola-unica-v1.sql` — una regola `CLEANUP_AT` sola per tabella,
+  la stessa per trigger, giro e login; nessuna regola porta `cleanup_column`.
 * `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql`,
   `db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql` — le regole `CLEANUP_AT`
   per tabella e la scadenza scritta alla nascita.
@@ -206,6 +214,11 @@ prima regola `CLEANUP_AT` attiva che copre la tabella e dichiara `ttl_days`, sen
   `exec_mode` e sulla forma della regola, con `dbops.fn_regola_automazione_valida`
   (`20261109-66`, `20261109-75`); `name_template` è obbligatorio per le regole che montano un
   trigger (brief-db-revisione-dbops D17, D20, D27, D17-bis).
+* 2026-11-08 — esce la chiave `cleanup_column` dai `params` delle regole `CLEANUP_*`: la scadenza
+  sta sempre in `cleanup_at`. Le chiavi delle regole di scadenza diventano un elenco chiuso, e il
+  CHECK della forma ricontrolla le righe (`20261109-92`, `20261109-93`). La regola `CLEANUP_AT`
+  che vale su una tabella è una sola, letta da `dbops.fn_cleanup_at_regola` (brief-db-revisione-dbops,
+  giro 10b).
 
 ---
 

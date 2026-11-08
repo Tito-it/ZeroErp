@@ -1,55 +1,60 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_preventivi_pratiche`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[vendite.preventivi](/dbzero/vendite/tabelle/preventivi)
-> [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti)
-> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> [config.sorgenti](/dbzero/config/tabelle/sorgenti)
-> [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
+> * [vendite.preventivi](/dbzero/vendite/tabelle/preventivi) — il preventivo
+> * [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti) — il collegamento documento → pratica
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il tipo `PREVENTIVO`
+> * [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche) — lo stato della pratica
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 03-04-2026)
-`vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita**
-tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
+
+Le **pratiche collegate a ciascun preventivo di vendita**: una riga per ogni collegamento in `pratiche.pratiche_sorgenti` che dichiara come documento un preventivo, con i dati della pratica, il suo stato e il tipo di prestazione.
 
 ---
 
-### JOIN principali
+### Come aggancia il preventivo
 
-| Tabella | Ruolo |
-|---------|-------|
-| `config.sorgenti` | Filtro per codice 'PREVENTIVO' |
-| `pratiche.pratiche_sorgenti` | Ponte sorgente_uid = preventivo.uid |
-| `pratiche.pratiche` | Dati pratica |
-| `config.stati_pratiche` | Codice e descrizione stato pratica |
-| `pratiche.tipi_prestazione` | Tipo prestazione della pratica |
+Il collegamento dichiara il documento con la provenienza del modello. Il tipo `PREVENTIVO` è a
+chiave `uid`: il collegamento porta l'uid del preventivo in `sorgente_uid` (uuid), e la vista lo
+confronta con l'uid del preventivo, sul tipo risolto da `config.sorgenti` per `codice_interno`
+(attivo). Un collegamento può nominare anche una **riga** del preventivo (`sorgente_riga`).
 
----
-
-### 📑 Campi chiave esposti
-
-* **Preventivo**: preventivo_id, preventivo_uid, preventivo_numero
-* **Collegamento**: sorgente_id, ruolo_link, sorgente_riga, sorgente_meta
-* **Pratica**: pratica_id, pratica_codice, pratica_descrizione
-* **Stato**: stato_codice, stato_descrizione
-* **Tipo**: tipo_prestazione_codice, tipo_prestazione_descrizione
-* **Date**: data_apertura, data_scadenza
+Stato della pratica e tipo di prestazione sono in `LEFT JOIN`: una pratica senza l'uno o l'altro
+compare con le colonne vuote.
 
 ---
 
-### Esempio d'uso
+### Che cosa espone
 
-```sql
--- Pratiche collegate a un preventivo (sezione integrazione frontend)
-SELECT pratica_codice, pratica_descrizione, stato_codice, stato_descrizione,
-       tipo_prestazione_descrizione, data_apertura, ruolo_link
-FROM vendite.vw_preventivi_pratiche
-WHERE preventivo_id = 42;
-```
+* **Preventivo**: id, uid, numero.
+* **Collegamento**: `pratica_sorgente_id` (l'id della riga di `pratiche_sorgenti`), `ruolo_link`,
+  `sorgente_riga`, `sorgente_meta`.
+* **Pratica**: id, codice, descrizione, date di apertura e scadenza.
+* **Stato**: `stato_codice`, `stato_descrizione`.
+* **Tipo di prestazione**: codice e descrizione.
+
+`security_invoker = on`: la vista applica le policy di chi la interroga.
+
+---
+
+### Note di migrazione
+
+* 2026-04-03 — nasce per la sezione pratiche del preventivo.
+* 2026-11-08 — il collegamento si legge sulle colonne tipizzate di `pratiche_sorgenti`; l'id della
+  riga di collegamento si chiama `pratica_sorgente_id` (era `sorgente_id`, che nel modello è la
+  chiave del documento) (brief-db-sorgente-documento-e-riga).
 
 ---
 

@@ -1,57 +1,34 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_note_flussi_giornale`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_note_flussi_giornale`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.note_flussi](note_flussi.md)
-> [pratiche.flussi](flussi.md)
->
-Overview:
->
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.note_flussi](/dbzero/pratiche/tabelle/note_flussi) — la tabella su cui è montata
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove scrive
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — da cui risale alla pratica
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello flusso. Si attiva **AFTER INSERT** su `pratiche.note_flussi`.
+
+`pratiche.trgfn_note_flussi_giornale` registra nel giornale della pratica l'azione `NOTA_AGGIUNTA`
+quando a un flusso si aggiunge una nota.
 
 ---
 
-### Firma
+### Che cosa scrive
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_note_flussi_giornale()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+È montata `AFTER INSERT`, riga per riga, su `pratiche.note_flussi`, nella fase `_z90_`.
 
----
-
-### Logica
-
-1. Recupera `pratica_id` dal flusso tramite `SELECT f.pratica_id FROM pratiche.flussi f WHERE f.id = NEW.flusso_id`.
-2. Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `v_pratica_id` (recuperato dal flusso) |
-| `flusso_id` | `NEW.flusso_id` |
-| `azione` | `'NOTA_AGGIUNTA'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('nota_id', NEW.id, 'tipo_nota_id', NEW.tipo_nota_id)` |
-| `tx_id` | `NEW.tx_id` |
-
-### DECLARE
-
-| Variabile | Tipo | Descrizione |
-|-----------|------|-------------|
-| `v_pratica_id` | `pratiche.pratiche.id%TYPE` | Pratica recuperata dal flusso |
+* La riga di giornale è a livello di flusso: porta il flusso della nota e la pratica a cui il flusso
+  appartiene, che la funzione risale dal flusso.
+* L'origine è `SISTEMA`; il dettaglio porta l'id della nota e il suo tipo.
+* La transazione è quella della nota, o quella di sessione se la nota non la porta: la riga di giornale
+  si lega sempre alla transazione che l'ha prodotta.
 
 ---
 
-### Trigger associato
-
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_note_flussi_z90_giornale_ins` | AFTER | INSERT | `pratiche.note_flussi` |
+{% include-markdown "signature-core.md" %}

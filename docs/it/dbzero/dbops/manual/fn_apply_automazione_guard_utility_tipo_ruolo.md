@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_automazione_guard_utility_tipo_ruolo`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,10 +10,9 @@
 >
 > Approfondimento funzioni:
 >
-> * [script.trgfn_guard_utility_tipo_ruolo_by_cols](/dbzero/script/funzioni/trgfn_guard_utility_tipo_ruolo_by_cols) — la funzione trigger che monta
-> * [script.fn_guard_utility_tipo_ruolo](/dbzero/script/funzioni/fn_guard_utility_tipo_ruolo) — la regola che il trigger applica
-> * [dbops.fn_seed_automazione_guard_utility_tipo_ruolo](/dbzero/dbops/funzioni/fn_seed_automazione_guard_utility_tipo_ruolo) — la diagnosi che la precede nello stesso passo
-> * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger dal template, con il troncamento a 63 caratteri
+> * [dbops.fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility) — il runner che fa il lavoro
+> * [dbops.fn_seed_automazione_guard_utility_tipo_ruolo](/dbzero/dbops/funzioni/fn_seed_automazione_guard_utility_tipo_ruolo) — la diagnosi che la precede nel primo giro di `ci_apply`
+> * [script.trgfn_guard_utility_tipo_ruolo_by_cols](/dbzero/script/funzioni/trgfn_guard_utility_tipo_ruolo_by_cols) — la funzione trigger che il runner monta
 >
 > Guide:
 >
@@ -24,62 +23,35 @@
 
 ### 🎯 Scopo Principale
 
-Monta il guard **utility → tipo ruolo** sulle tabelle accese di
-`dbops.automazione_guard_utility_tipo_ruolo`: un trigger `BEFORE INSERT OR UPDATE OF` delle due
-colonne della riga, che esegue `script.trgfn_guard_utility_tipo_ruolo_by_cols` con i loro nomi
-come argomenti.
-
-La chiama soltanto la passata `ci_apply` del rilascio, in modo `CI`, subito dopo la diagnosi del
-catalogo. Non ha un giro a orario.
+La **porta storica** del guard **utility → tipo ruolo**: chiama
+[fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility) con
+il modo e la simulazione che riceve, su tutto l'ambito. Non contiene una seconda copia della
+regola: che cosa si crea, si rigenera o si toglie lo decide il runner.
 
 ---
 
-### Quali righe monta
+### Perché resta
 
-Le righe con `enabled` vero, il cui `exec_mode` è `AUTO` o coincide (senza badare a maiuscole e
-spazi) con il modo della chiamata, e la cui colonna del ruolo ha la forma
-`<prefisso>_soggetto_ruolo_id`. Una riga che nomina una colonna che la tabella non ha si salta.
-
-⚠️ Tutti gli scarti sono **muti**: una colonna senza prefisso, una colonna inesistente, una riga
-spenta non lasciano traccia, né nell'audit né in un avviso. La funzione non scrive in
-`dbops.audit_log`.
-
----
-
-### ⭐ Ricrea sempre, a ogni giro
-
-Per ogni riga montabile la funzione toglie il trigger con quel nome, se c'è, e lo crea di nuovo:
-non controlla se esiste già. Il risultato converge sempre alla forma del catalogo, ma ogni giro fa
-DDL su ogni tabella accesa.
-
-* Il nome è `trigger_name` della riga, o il template `trg_<tabella>_a10_guard_utility_tipo_ruolo_ins_upd`,
-  troncato con un hash oltre i 63 caratteri.
-* ⚠️ Toglie solo il trigger con il nome di **oggi**: un trigger montato con un nome diverso (un
-  `trigger_name` cambiato, un template cambiato) resta, e la tabella si trova due guard uguali.
-* ⚠️ Una riga **spenta** non viene guardata: il guard che aveva montato quando era accesa resta
-  sulla tabella. Spegnere una riga non toglie la protezione.
-
----
-
-### ⚠️ Il dry run non fa niente
-
-Con `p_dry_run` vero la funzione percorre le righe e non crea niente, ma non dice nemmeno che cosa
-creerebbe: non scrive audit né avvisi.
+La chiama ancora il primo giro di `ci_apply`, in modo `CI`, subito dopo la diagnosi del catalogo:
+quel changeSet è storico e non si riscrive. Il giro programmato e la convergenza del rilascio
+passano invece dal processo `automations_guard_utility`, che chiama il runner direttamente.
 
 ---
 
 ### Codici errore
 
-La funzione non solleva codici suoi: un errore del DDL esce con lo SQLSTATE di PostgreSQL. Il
-codice del dominio, `E_UTILITY_RUOLO_NON_AMMESSO`, lo solleva il guard montato, sulle scritture
-delle tabelle protette.
+Quelli del runner: `E_GUARD_UTILITY`, per un guard su una tabella che il registro non nomina o per
+un DDL fallito. Il codice del dominio, `E_UTILITY_RUOLO_NON_AMMESSO`, lo solleva il guard montato
+sulle scritture delle tabelle protette.
 
 ---
 
 ### Test
 
-* `db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql` — l'apply monta su
-  `anagrafiche.emittenti_fiscali_utilities` un trigger con la funzione del guard, `BEFORE` su
+* `db/pgtap/dbops/test-guard-utility-convergenza-v1.sql` — la porta storica fa lo stesso lavoro
+  del runner.
+* `db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql` — su
+  `anagrafiche.emittenti_fiscali_utilities` c'è un trigger con la funzione del guard, `BEFORE` su
   `INSERT` e `UPDATE`.
 
 ---
@@ -87,6 +59,11 @@ delle tabelle protette.
 ### Note di migrazione
 
 * 2026-02-16 — nasce, con il catalogo e la funzione trigger generica per colonne.
+* 2026-11-08 — diventa una porta verso il runner `fn_run_automations_guard_utility`
+  (`20261110-02`, `brief-db-revisione-dbops`, giro 10c). Prima montava il guard da sé: ricreava a
+  ogni giro il trigger col nome di oggi, lasciava i guard con un altro nome e quelli delle righe
+  spente, scartava in silenzio la colonna `soggetto_ruolo_id` senza prefisso, e il dry run non
+  scriveva niente.
 
 ---
 
