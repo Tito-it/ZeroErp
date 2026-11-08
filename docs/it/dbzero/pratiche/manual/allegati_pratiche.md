@@ -1,48 +1,64 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.allegati_pratiche`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> [pratiche.allegati_flussi](/dbzero/pratiche/tabelle/allegati_flussi)
-> [config.tipi_allegato](/dbzero/config/tabelle/tipi_allegato)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica a cui l'allegato appartiene
+> * [pratiche.allegati_flussi](/dbzero/pratiche/tabelle/allegati_flussi) — la gemella, per gli allegati di un singolo flusso
+> * [config.tipi_allegato](/dbzero/config/tabelle/tipi_allegato) — la classificazione dell'allegato
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove si registra l'aggiunta
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_allegati_pratiche_giornale](/dbzero/pratiche/funzioni/trgfn_allegati_pratiche_giornale) — scrive `ALLEGATO_AGGIUNTO` nel giornale
+>
+> Guide:
+>
+> * [Gestione pratiche](/guide/gestione-pratiche) — il modello delle pratiche
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `pratiche.allegati_pratiche` gestisce i **file allegati** a una pratica. Gli allegati sono **immutabili**: non vengono modificati ma versionati tramite `allegato_padre_id`.
+
+La tabella `pratiche.allegati_pratiche` registra i file allegati a una pratica: una riga per file, con
+il tipo di allegato e il riferimento al file nello storage.
+
+Il database non contiene il file: `percorso` è la chiave di storage (un percorso o una chiave di
+oggetto), `nome_file` il nome originale, `mime_type` e `dimensione` le sue proprietà.
 
 ---
 
-### Ruolo nel processo
+### Un allegato non si modifica: si versiona
 
-* Ogni allegato e' classificato per tipo (DOCUMENTO, IMMAGINE, CONTRATTO, ecc.).
-* Il **versionamento** funziona tramite `allegato_padre_id`: una nuova versione punta alla precedente.
-* L'aggiunta viene registrata nel giornale con azione `ALLEGATO_AGGIUNTO` (trigger DB-5).
-* Il file fisico e' referenziato da `percorso` (chiave di storage); il DB non contiene il contenuto binario.
+Una nuova versione di un file è una riga nuova, che punta alla precedente con `allegato_padre_id`. Se
+la versione precedente viene cancellata, il riferimento si svuota e la nuova resta.
 
----
-
-### Colonne specifiche
-
-| Colonna | Note |
-|---------|------|
-| `nome_file` | TEXT NOT NULL. Nome originale del file caricato. |
-| `percorso` | TEXT NOT NULL. Percorso o chiave di storage (es. S3 key, path filesystem). |
-| `mime_type` | VARCHAR(255) nullable. Content-type (es. `application/pdf`). |
-| `dimensione` | BIGINT nullable. Dimensione in byte. |
-| `allegato_padre_id` | BIGINT nullable. FK self-reference per versionamento. ON DELETE SET NULL. |
+⚠️ L'immutabilità è una **convenzione**, non un vincolo: la tabella ha le colonne di audit
+dell'aggiornamento (`data_update`, `user_update`, mantenute dal trigger di audit) e il ruolo
+applicativo può aggiornare e cancellare. Nessun guard rifiuta un `UPDATE`. Per questo la tabella non è
+storicizzata e non porta `tx_id`.
 
 ---
 
-### Caratteristiche
+### Chi scrive e chi legge
 
-| Aspetto | Dettaglio |
-|---------|-----------|
-| **Immutabilita'** | Solo `data_insert/user_insert` — nessun UPDATE. |
-| **Versionamento** | Nuova versione → nuovo record con `allegato_padre_id` che punta al precedente. |
-| **No storicizza** | Non necessario: i record sono immutabili. |
-| **No tx_id** | Non necessario per record immutabili. |
+* Scrive il backend, quando l'operatore carica un file sulla pratica.
+* All'inserimento, `pratiche.trgfn_allegati_pratiche_giornale` registra nel giornale della pratica
+  l'azione `ALLEGATO_AGGIUNTO`.
+* Il tipo di allegato deve essere attivo: lo controlla, a fine transazione, il presidio sul padre
+  attivo di `config.tipi_allegato`.
+* La visibilità segue la pratica: la regola RLS lascia vedere a un operatore solo gli allegati delle
+  pratiche del proprio perimetro di emittente.
+
+---
+
+### Test
+
+* `pratiche/test-audit-update-appendonly-pratiche` — la tabella ha le colonne di audit
+  dell'aggiornamento, valorizzate con l'utente reale.
 
 ---
 

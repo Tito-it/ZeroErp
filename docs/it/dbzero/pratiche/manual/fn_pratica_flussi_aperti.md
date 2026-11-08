@@ -1,67 +1,71 @@
-## 📘 Documentazione Funzione – `pratiche.fn_pratica_flussi_aperti`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_pratica_flussi_aperti`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.flussi](flussi.md)
-> [pratiche.fn_check_pratica_chiudibile](fn_check_pratica_chiudibile.md)
-> [pratiche.trgfn_pratiche_guard_chiusura_flussi](trgfn_pratiche_guard_chiusura_flussi.md)
-> [config.transizioni_stati_flussi_pratiche](/dbzero/config/tabelle/transizioni_stati_flussi_pratiche)
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — le istanze di flusso della pratica
+> * [config.transizioni_stati_flussi_pratiche](/dbzero/config/tabelle/transizioni_stati_flussi_pratiche) — da qui si capisce se uno stato è terminale
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_check_pratica_chiudibile](/dbzero/pratiche/funzioni/fn_check_pratica_chiudibile) — l'autochiusura e il guard pre-completamento
+> * [pratiche.trgfn_pratiche_guard_chiusura_flussi](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_chiusura_flussi) — la chiusura manuale
+> * [pratiche.fn_check_chiusura_pratica](/dbzero/pratiche/funzioni/fn_check_chiusura_pratica) — il controllo complementare, sui template obbligatori
 
 ---
+
 ### 🎯 Scopo Principale
 
-`fn_check_*` puro (no raise): elenca i **flussi ISTANZIATI** della pratica che sono
-in stato **non terminale**, cioe' il **lavoro ancora pendente** (D1 —
-brief-db-chiusura-pratica-nessun-lavoro-pendente).
-
-Uno stato e' **terminale** in modo **data-driven**: non ha alcuna transizione di
-stato in **uscita attiva** in `config.transizioni_stati_flussi_pratiche` — stessa
-definizione auto-mantenuta del guard pratica-terminale. Sul grafo attuale i terminali
-sono `COMPLETATO` e `ANNULLATO`; `ERRORE` **non** e' terminale (ha uscite) quindi un
-flusso in errore risulta pendente e blocca la chiusura. Nessun `codice_interno`
-cablato: se cambia il grafo stati, la nozione di terminale si adegua.
+`pratiche.fn_pratica_flussi_aperti` elenca i flussi istanziati di una pratica che sono in uno stato
+non terminale, cioè il lavoro ancora pendente. È un predicato puro: non solleva mai.
 
 ---
 
-### Firma
+### Terminale si legge dal grafo degli stati
 
-```sql
-CREATE FUNCTION pratiche.fn_pratica_flussi_aperti(
-    p_pratica_id        pratiche.flussi.pratica_id%TYPE,
-    p_escludi_flusso_id pratiche.flussi.id%TYPE DEFAULT NULL
-)
-RETURNS TABLE(
-    flusso_id            pratiche.flussi.id%TYPE,
-    template_flusso_id   pratiche.flussi.template_flusso_id%TYPE,
-    codice               pratiche.template_flussi.codice%TYPE,
-    stato_codice_interno config.stati_flussi_pratiche.codice_interno%TYPE
-)
-LANGUAGE sql STABLE
-```
+Uno stato è terminale quando non ha nessuna transizione in uscita attiva in
+`config.transizioni_stati_flussi_pratiche`: è la stessa definizione del guard sulla pratica terminale,
+e nessuno stato è scritto per nome. Se il grafo cambia, la nozione di terminale si adegua da sola.
 
-| Parametro | Obbligatorio | Descrizione |
-|-----------|:---:|-------------|
-| `p_pratica_id` | SI | Pratica da valutare |
-| `p_escludi_flusso_id` | NO | Istanza di flusso da ignorare |
-
-`p_escludi_flusso_id` serve al guard pre-completamento: in `BEFORE UPDATE` il flusso
-che sta completando e' ancora `IN_CORSO` (non terminale) e conterebbe **se stesso**;
-escludendolo il check non blocca il proprio completamento.
+Nel catalogo di oggi i terminali sono `COMPLETATO` e `ANNULLATO`. `ERRORE` ha uscite, quindi non è
+terminale: un flusso in errore è lavoro pendente e blocca la chiusura della pratica.
 
 ---
 
-### Note operative
+### Il flusso da escludere
 
-* Fonte **unica** del predicato "flusso aperto", condivisa da
-  [fn_check_pratica_chiudibile](fn_check_pratica_chiudibile.md) (auto-chiusura + guard
-  pre-completamento) e da [trgfn_pratiche_guard_chiusura_flussi](trgfn_pratiche_guard_chiusura_flussi.md)
-  (chiusura manuale): manuale e auto usano cosi' la **stessa** definizione di "lavoro pendente".
-* Complementare a `fn_check_chiusura_pratica` (che ragiona sui **template obbligatori**):
-  questa ragiona sulle **istanze aperte** (anche opzionali).
-* Funzione `STABLE`, pura: nessun effetto collaterale, nessun `RAISE`.
-* Test: `db/pgtap/pratiche/test-chiusura-nessun-lavoro-pendente.sql`.
+Il secondo parametro, facoltativo, ignora un'istanza. Serve al guard che scatta prima del completamento
+di un flusso: in quel momento il flusso è ancora in corso, quindi non terminale, e conterebbe sé stesso.
+Escludendolo, il controllo non blocca il suo stesso completamento.
 
 ---
+
+### ⭐ Una sola definizione di «lavoro pendente»
+
+La funzione è la sede unica del predicato «flusso aperto», e la condividono l'autochiusura
+(`pratiche.fn_check_pratica_chiudibile`) e la chiusura manuale
+(`pratiche.trgfn_pratiche_guard_chiusura_flussi`): le due strade non possono dissentire.
+
+È complementare a `pratiche.fn_check_chiusura_pratica`, che ragiona sui template obbligatori: questa
+ragiona sulle istanze aperte, anche quelle opzionali.
+
+---
+
+### Test
+
+* `pratiche/test-chiusura-nessun-lavoro-pendente` — la chiusura bloccata da un flusso aperto, manuale e
+  automatica.
+
+---
+
+### Note di migrazione
+
+* 2026-07-01 — nasce con la regola «una pratica non si chiude con lavoro pendente»
+  (brief-db-chiusura-pratica-nessun-lavoro-pendente).
+
+---
+
 {% include-markdown "signature-core.md" %}

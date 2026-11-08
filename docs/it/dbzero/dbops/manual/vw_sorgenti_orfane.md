@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_sorgenti_orfane`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,8 @@
 >
 > * [dbops.fn_sorgenti_orfane](/dbzero/dbops/funzioni/fn_sorgenti_orfane) — chi la calcola
 > * [dbops.fn_sorgenti_orfane_perimetro](/dbzero/dbops/funzioni/fn_sorgenti_orfane_perimetro) — su quali tabelle
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico, che impedisce di scrivere un orfano
+> * [script.trgfn_sorgente_in_uscita](/dbzero/script/funzioni/trgfn_sorgente_in_uscita) — il lato «in uscita», che impedisce di crearne cancellando l'origine
 >
 > Guide:
 >
@@ -23,18 +25,21 @@
 
 ### 🎯 Scopo Principale
 
-Le righe la cui sorgente punta a un record che non c'è più. **Deve restare vuota.** Ogni riga dice
-la tabella, l'identificativo della riga, il tipo e la chiave di sorgente, e il bersaglio cercato.
+Le righe la cui provenienza punta a un record che non c'è più. **Deve restare vuota.** Ogni riga dice
+la tabella, l'identificativo della riga, la grammatica della tabella, il **livello** a cui manca
+l'origine (`DOCUMENTO`, `RIGA`, `DETTAGLIO`), il tipo e le colonne della provenienza, e la tabella
+dove il record manca.
 
 ---
 
 ### Che cosa vuol dire una riga
 
-Un movimento di magazzino (o un atteso, una testata) dice da quale riga di documento nasce, con un
-tipo a catalogo e una chiave. Il collegamento non è una chiave esterna e non può esserlo, perché il
-bersaglio cambia con il tipo. Il guard tipizzato impedisce di **inserire** un collegamento verso un
-bersaglio inesistente; questa vista trova quelli rimasti orfani **dopo**, quando qualcuno ha
-cancellato il bersaglio.
+Un movimento di magazzino, una riga d'ordine, una testata dicono da quale documento nascono: un tipo a
+catalogo, la chiave del documento e, dove serve, la riga e il dettaglio. Il collegamento non è una
+chiave esterna e non può esserlo, perché il bersaglio cambia con il tipo. Il guard unico impedisce
+di **scrivere** una provenienza che non si risolve, e il lato «in uscita» impedisce di cancellare
+un'origine ancora referenziata (o cancella i figli con lei); questa vista trova gli orfani nati per
+altre strade, **dopo**: una tabella senza guard, una cancellazione fatta a trigger spenti.
 
 ⛔ Il rimedio non è cancellare la riga orfana: è capire chi ha cancellato il bersaglio. Di norma è
 una cancellazione fuori dalle porte, perché i documenti registrati non si eliminano.
@@ -52,15 +57,20 @@ legge da `dbops.fn_sorgenti_orfane_perimetro`.
 
 ### Test
 
-* `db/pgtap/dbops/test-sorgenti-orfane-v1.sql` — un bersaglio cancellato produce una riga, il
-  conteggio del presidio la vede, e la riga di catalogo dei presidi ha natura, perimetro e cadenza
-  attesi.
+* `db/pgtap/dbops/test-sorgenti-orfane-v1.sql` — un'origine che manca produce una riga, a ognuno
+  dei tre livelli e in tutte e due le grammatiche; il conteggio del presidio la vede; la riga di
+  catalogo dei presidi ha natura, perimetro e cadenza attesi.
 
 ---
 
 ### Note di migrazione
 
 * 2026-09-18 — nasce con il secondo lotto del magazzino (`brief-db-magazzino-lotto-2-motore`).
+* 2026-11-06 — l'origine si cerca a tre livelli (documento, riga, dettaglio), nella grammatica di
+  ogni tabella: nascono le colonne `grammatica`, `livello`, `sorgente_id`, `sorgente_riga` e
+  `sorgente_dettaglio`.
+* 2026-11-08 — esce la grammatica del guard tipizzato, ritirato: le tabelle che lo montavano sono
+  passate al guard unico.
 
 ---
 

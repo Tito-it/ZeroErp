@@ -1,88 +1,104 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.pratiche_sorgenti`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> [config.sorgenti](/dbzero/config/tabelle/sorgenti)
-> [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica collegata
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — i tipi di documento, la loro chiave e le loro righe
+> * [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti) — la tabella gemella, per le commesse
+>
+> Approfondimento viste:
+>
+> * [script.vw_pratica_doc_sorgente](/dbzero/script/views/vw_pratica_doc_sorgente) — il documento più vivo fra i collegamenti di una pratica
+>
+> Approfondimento funzioni:
+>
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della provenienza
+> * [pratiche.fn_pratica_del_documento](/dbzero/pratiche/funzioni/fn_pratica_del_documento) — la pratica di un documento, letta da qui
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza: tipo, documento, riga
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 03-04-2026)
-La tabella `pratiche.pratiche_sorgenti` e' la **tabella ponte** che collega una pratica
-a una o piu' sorgenti esterne (preventivi, ordini, contratti, ecc.).
 
-Il pattern e' allineato a `vendite.commesse_sorgenti`: una pratica puo' avere piu'
-sorgenti ROOT di tipi diversi e una sorgente puo' essere collegata a piu' pratiche.
+La tabella ponte che collega una pratica ai documenti da cui nasce o che segue (preventivi, ordini,
+contratti, commesse…): una riga per collegamento, con il tipo del documento, la sua chiave e il ruolo
+del collegamento.
 
----
-
-### Ruolo nel processo
-
-* Quando un preventivo vendita viene accettato, l'operatore puo' generare una pratica
-  operativa (es. sopralluogo, installazione). La pratica viene collegata al preventivo
-  tramite questa tabella con `sorgente_tipo = 'PREVENTIVO'` e `sorgente_uid = preventivo.uid`.
-* La navigazione e' **bidirezionale**: dal preventivo si vedono le pratiche collegate,
-  dalla pratica si risale ai documenti sorgente.
-* Il campo `ruolo_link` distingue la sorgente principale (ROOT) da quelle secondarie (COLLEGATO).
+Una pratica può avere più documenti, anche di tipi diversi, e un documento può stare in più
+pratiche. La navigazione va nei due sensi: dal documento si vedono le pratiche collegate, dalla
+pratica si risale ai documenti.
 
 ---
 
-### Colonne specifiche
+### Il documento collegato, nelle colonne del modello
 
-| Colonna | Note |
-|---------|------|
-| `pratica_id` | BIGINT NOT NULL. FK a `pratiche.pratiche`. |
-| `sorgente_tipo_id` | BIGINT NOT NULL. FK a `config.sorgenti` — identifica il tipo di documento sorgente (PREVENTIVO, ORDINE, ecc.). |
-| `sorgente_uid` | TEXT NOT NULL. **La chiave** del documento sorgente, nel formato dettato da `config.sorgenti.key_selector`: **uuid testuale** per i tipi a chiave `uid` (preventivo, offerta), **`id::text`** per i tipi a chiave `id` (ordine, commessa, ddt, ...). Formato ed esistenza sono blindati dal guard `trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd` (2026-07-18). |
-| `sorgente_riga` | BIGINT nullable. ID di una riga specifica della sorgente (es. riga preventivo). **NON è una chiave documento**: è la grana di riga del link (non validata dal guard; decisione D4 del brief-db-guard-sorgente-polimorfa). |
-| `ruolo_link` | VARCHAR(30) DEFAULT 'ROOT'. Valori ammessi: ROOT (sorgente principale), COLLEGATO (secondaria). CHECK constraint. |
-| `meta` | JSONB DEFAULT '{}'. Metadati aggiuntivi del collegamento. |
-| `storicizza` | BOOLEAN DEFAULT true. Flag per storicizzazione automatica. |
-| `tx_id` | UUID. Transaction ID di sessione. |
+Il collegamento dice il documento con le colonne del modello della provenienza:
 
----
+* `sorgente_tipo_id` — il tipo del documento (`config.sorgenti`), sempre presente;
+* `sorgente_id` **oppure** `sorgente_uid` — la chiave del documento, una sola: quella che
+  `config.sorgenti.key_selector` dichiara per il tipo (l'uid per preventivo e offerta, l'id per gli
+  altri). Il `CHECK` di forma vuole esattamente una delle due;
+* `sorgente_riga` — la riga del documento, quando il collegamento è a grana di riga; vuota quando il
+  collegamento è al documento intero, come lo scrivono oggi i verbi.
 
-### Vincoli principali
+Il guard unico `script.trgfn_guard_sorgente`, montato con livello minimo `DOCUMENTO` e azione
+`BLOCCA`, verifica che il tipo sia attivo, che la chiave sia quella del tipo, che il documento
+esista e sia visibile a chi scrive, e che la riga, se c'è, sia di quel documento. I verbi che
+scrivono il collegamento ottengono la chiave dal BB che scrive, e non la compongono da sé.
 
-| Vincolo | Tipo | Descrizione |
-|---------|------|-------------|
-| `uq_pratiche_sorgenti_pratica_tipo_uid_ruolo` | UNIQUE | Una sola associazione per pratica + tipo + uid + ruolo |
-| `chk_pratiche_sorgenti_ruolo` | CHECK | `ruolo_link IN ('ROOT', 'COLLEGATO')` |
-| `ix_pratiche_sorgenti_tipo_uid` | INDEX | Per query bidirezionali dalla sorgente alle pratiche |
+⛔ **Un documento collegato non si cancella.** Con `BLOCCA`, il lato «in uscita» ferma la
+cancellazione di un documento finché un collegamento lo cita (`E_SORG_ORIGINE_REFERENZIATA`), anche
+in bozza: prima si toglie il collegamento.
 
 ---
 
-### Differenze rispetto a `vendite.commesse_sorgenti`
+### Il ruolo e il milestone del collegamento
 
-| Aspetto | `commesse_sorgenti` | `pratiche_sorgenti` |
-|---------|---------------------|---------------------|
-| Cardinalita' ROOT | Una sola ROOT per commessa | Piu' ROOT di tipi diversi per pratica |
-| UNIQUE | `(commessa_id, ruolo_link)` | `(pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)` |
-| Caso d'uso | Commessa ha un documento sorgente principale | Pratica puo' servire piu' sorgenti commerciali |
-
----
-
-### Esempio d'uso
-
-```sql
--- Pratiche collegate a un preventivo
-SELECT ps.pratica_id, p.codice, p.descrizione
-FROM pratiche.pratiche_sorgenti ps
-JOIN pratiche.pratiche p ON p.id = ps.pratica_id
-JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-WHERE s.codice = 'PREVENTIVO'
-  AND ps.sorgente_uid = '550e8400-e29b-41d4-a716-446655440000';
-
--- Sorgenti collegate a una pratica
-SELECT s.codice AS tipo_sorgente, ps.sorgente_uid, ps.ruolo_link
-FROM pratiche.pratiche_sorgenti ps
-JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-WHERE ps.pratica_id = 42;
-```
+* `ruolo_link` distingue il documento principale (`ROOT`) da quelli che si aggiungono dopo
+  (`COLLEGATO`): una pratica nata da un preventivo lo ha come `ROOT`, l'ordine che ne deriva vi entra
+  come `COLLEGATO`.
+* `flusso_id`, facoltativo, aggancia il collegamento a un milestone della stessa pratica (lo
+  verifica `pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso`); un milestone ha al più un
+  collegamento `ROOT`. Il reconcile sull'esito proiettato lo usa come tie-break fra più istanze.
 
 ---
 
+### L'unicità
+
+Un collegamento è unico per pratica, documento (tipo e chiave) e ruolo: lo stesso documento non entra
+due volte con lo stesso ruolo nella stessa pratica.
+
+| Aspetto | `vendite.commesse_sorgenti` | `pratiche.pratiche_sorgenti` |
+| --- | --- | --- |
+| Documento principale | uno solo per commessa | più `ROOT`, di tipi diversi, per pratica |
+| Unicità | un documento sta una volta in una commessa | un documento sta una volta per ruolo in una pratica |
+| Caso d'uso | la commessa ha un documento d'origine | la pratica può servire più documenti commerciali |
+
+---
+
+### Test
+
+* `db/pgtap/pratiche/test-sorgente-pratiche-sorgenti-v1.sql` — la forma, il guard unico, la riga di
+  un altro documento rifiutata, la cancellazione bloccata, gli scrittori e i lettori sulle colonne
+  del modello.
+* `db/pgtap/pratiche/test-pratiche-sorgenti-flusso.sql` — l'aggancio al milestone.
+
+---
+
+### Note di migrazione
+
+* 2026-11-06 — si aggiunge `sorgente_id`, per i tipi a chiave id.
+* 2026-11-08 — `sorgente_uid` diventa uuid e porta solo l'uid dei tipi a chiave uid; la chiave in
+  testo è ritirata, con l'unicità e gli indici riscritti sulle due colonne. Il guard unico prende il
+  posto del guard sulla chiave in testo, e verifica ora anche la riga del documento
+  (`brief-db-sorgente-documento-e-riga`).
+
+---
 {% include-markdown "signature-core.md" %}

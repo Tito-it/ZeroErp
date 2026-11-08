@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `magazzino.fn_posta_rettifica`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,6 +18,7 @@
 > * [magazzino.fn_posta_inventario](/dbzero/magazzino/funzioni/fn_posta_inventario) — la gemella, con un passo in più (il piano)
 > * [magazzino.fn_scrivi_movimento](/dbzero/magazzino/funzioni/fn_scrivi_movimento) — la primitiva che chiama per riga
 > * [script.fn_check_documento_interno_registrabile](/dbzero/script/funzioni/fn_check_documento_interno_registrabile) — le condizioni per registrare
+> * [script.fn_sorgente_provenienza](/dbzero/script/funzioni/fn_sorgente_provenienza) — la sorgente da scrivere sui movimenti
 >
 > Guide:
 >
@@ -29,8 +30,8 @@
 
 **Registra una rettifica confermata**: la *correzione a mano* che il modello promette («la
 correzione a mano È una rettifica»). Per ogni riga posta con la primitiva il delta **dato**
-(`qta_delta`, con segno) con `RETT_POS` o `RETT_NEG` secondo il segno, sorgente
-`RETTIFICA_RIGA`, il costo della riga solo su un'entrata; poi porta la testata a `POSTED`. Una
+(`qta_delta`, con segno) con `RETT_POS` o `RETT_NEG` secondo il segno, come sorgente la
+rettifica (tipo `RETTIFICA`) con la riga, il costo della riga solo su un'entrata; poi porta la testata a `POSTED`. Una
 transazione sola; ritorna i movimenti scritti.
 
 Ha la stessa forma dell'inventario con un passo in meno: il delta non si calcola, è scritto
@@ -88,7 +89,8 @@ rifiuto del conteggio.
 * `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA` — la rettifica non è in `CONFIRM`.
 * `E_MAG_DOCUMENTO_SENZA_RIGHE` — la rettifica non ha righe.
 * il primo motivo di una riga non postabile, con il codice della check.
-* `E_CONFIG_MANCANTE` — la sorgente `RETTIFICA_RIGA` non è a catalogo o non è attiva.
+* `E_SORG_CONF` — il tipo `RETTIFICA` non è a catalogo in `config.sorgenti` o non è attivo (dal BB
+  che compone la sorgente).
 * i codici della primitiva, se una riga viene rifiutata alla scrittura.
 
 ---
@@ -107,6 +109,10 @@ rifiuto del conteggio.
   primitiva a metà ciclo, con lo stesso codice; la transazione annullava comunque tutto.
 * 2026-09-24 — `brief-db-magazzino-verbi-con-permesso` (D-4): diventa un verbo, con il
   permesso in testa e i privilegi del proprietario.
+* 2026-11-08 — `brief-db-sorgente-documento-e-riga`: la sorgente dei movimenti diventa il
+  documento con la riga (prima il tipo `RETTIFICA_RIGA`, ritirato), composta da
+  `script.fn_sorgente_provenienza`; un tipo mancante o spento è `E_SORG_CONF`, non più
+  `E_CONFIG_MANCANTE`.
 
 ---
 

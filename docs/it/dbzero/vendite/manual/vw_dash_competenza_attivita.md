@@ -1,330 +1,255 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_dash_competenza_attivita`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle e funzioni:
+> Approfondimento tabelle:
 >
-[vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
-> [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)
-> [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)
-> [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — la riga di commessa, una per riga della vista
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — la sua controparte fatturabile
+> * [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) — la riga di fattura
 >
-Famiglia due lenti:
+> Approfondimento viste:
 >
-[vw_dash_competenza_mensile](vw_dash_competenza_mensile.md)
-> [vw_dash_competenza_errori](vw_dash_competenza_errori.md)
-> [vw_dash_backlog_documenti](vw_dash_backlog_documenti.md)
+> * [vendite.vw_dash_competenza_mensile](/dbzero/vendite/views/vw_dash_competenza_mensile) · [vendite.vw_dash_competenza_errori](/dbzero/vendite/views/vw_dash_competenza_errori) · [vendite.vw_dash_backlog_documenti](/dbzero/vendite/views/vw_dash_backlog_documenti) — la famiglia a due lenti
+> * [vendite.vw_dash_competenza_gruppi](/dbzero/vendite/views/vw_dash_competenza_gruppi) — i gruppi fatturabili, costruiti da qui
+> * [vendite.vw_commesse_attivita_emittibilita](/dbzero/vendite/views/vw_commesse_attivita_emittibilita) — la sede unica del «può entrare in un giro?», da cui viene la trattenuta
+> * [vendite.vw_lotti_fase](/dbzero/vendite/views/vw_lotti_fase) — dice se un lotto è in gioco
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa) — l'emissione
+> * [vendite.fn_gruppo_fatturabile_key_di_attivita](/dbzero/vendite/funzioni/fn_gruppo_fatturabile_key_di_attivita) · [vendite.fn_documento_uid_di_attivita](/dbzero/vendite/funzioni/fn_documento_uid_di_attivita) — la chiave del gruppo e l'uid del documento di una riga di commessa
+> * [vendite.fn_resolve_registro_documento](/dbzero/vendite/funzioni/fn_resolve_registro_documento) · [vendite.fn_calcola_data_documento](/dbzero/vendite/funzioni/fn_calcola_data_documento) — il sezionale e la data previsti
+> * [script.fn_check_attivita_riportabile_da_emettere](/dbzero/script/funzioni/fn_check_attivita_riportabile_da_emettere) — l'altra metà della dimensione `motivo_non_fatturata`
+> * [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — il perimetro dell'emittente
+>
+> Guide:
+>
+> * [Cruscotti di fatturazione](/guide/cruscotti-fatturazione) — le due lenti
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 06-07-2026)
-Vista di dettaglio della **Lente 1 Competenza** (cruscotti fatturazione a due
-lenti, brief `brief-db-fatturazione-due-lenti` §4): una riga per **attività di
-commessa computabile**, con la sua posizione nel funnel a valle
-(commessa → attività fatturabile → riga fattura → stato fiscale) e la
-dimensione dei **recuperi tardivi**. L'asse è la competenza **vera**
-(`commesse_attivita.competenza_mese`, NOT NULL) — nessun proxy.
+
+La vista di dettaglio della Lente Competenza dei cruscotti di fatturazione: una riga per attività di
+commessa computabile, con la sua posizione nel ciclo a valle (commessa, attività fatturabile, riga di
+fattura, stato fiscale) e i recuperi tardivi.
+
+L'asse è la competenza vera della riga di commessa, `commesse_attivita.competenza_mese`, obbligatoria:
+nessun proxy. Il backend aggrega da `vw_dash_competenza_mensile` e usa questa vista per il drill-down,
+che raggruppa per commessa.
 
 ---
 
-### Semantica
+### Le regole delle colonne
 
 | Aspetto | Regola |
-|---------|--------|
-| **`stadio`** | `DA_APPROVARE` (BOZZA, non emessa) · `DA_EMETTERE` (approvata, non emessa) · `EMESSA_NON_FATTURATA` (riga AF con `fattura_riga_id` NULL) · `FATTURATA` (agganciata a riga fattura, con `stato_fattura_codice_interno` per il breakdown) |
-| **Misura (DB-6)** | `valore = prezzo_snapshot × quantita` su **tutti** gli stadi (stessa misura del resolver commesse: funnel omogeneo); `valore_fatturato = fatture_righe.imponibile_riga` è la **riconciliazione** col fatturato reale |
-| **`data_emissione` (DL-5)** | = `attivita_fatturabili.data_insert`. Validata 2026-07-06: la riga AF nasce una volta sola all'emissione, mai DELETE in produzione, il reset lotto fa solo UPDATE (la data non si sposta), nessuna re-emissione possibile |
-| **`emessa_in_ritardo`** | `mese(data_emissione) > competenza_mese` — competenza M lavorata dopo M. NULL per attività non ancora emesse |
-| **Perimetro (computabile)** | Esclude commesse `ANNULLATE` (testata) e attività void (predicato `20260703-61`: `stato_emissione <> 'ANNULLATA' AND (stato_approvazione <> 'RIFIUTATA' OR stato_emissione = 'EMESSA')`) |
-| **Scope emittente** | In-vista via `script.fn_get_emittenti_scope_sr_ids(app.current_user_id)` da GUC: `NULL`=tutto · `'{}'`=niente · array=whitelist. `security_invoker = on` |
-| `cliente_display` | Intestatario BA (`billing_account → soggetto_ruolo → soggetti`) |
+| --- | --- |
+| `stadio` | `DA_APPROVARE` (non emessa e non approvata) · `DA_EMETTERE` (approvata, non emessa) · `EMESSA_NON_FATTURATA` (emessa, senza riga di fattura) · `FATTURATA` (agganciata a una riga di fattura, con lo stato fiscale per il dettaglio) |
+| `valore` | Prezzo congelato della riga di commessa per la quantità, su tutti gli stadi: è la stessa misura del resolver commesse, e il ciclo resta omogeneo |
+| `valore_fatturato` | La riconciliazione col fatturato reale: l'imponibile della riga di fattura, ripartito sulla quantità dell'attività fatturabile (zero se la riga di fattura ha quantità zero, vuoto se non c'è) |
+| `data_emissione` | La nascita dell'attività fatturabile (`data_insert`): la riga nasce una volta all'emissione, e il reset di un lotto la aggiorna senza spostarne la data |
+| `emessa_in_ritardo` | Il mese del giorno operativo dell'emissione è successivo alla competenza: la competenza M è stata lavorata dopo M. Vuoto per un'attività non ancora emessa |
+| `lotto_id` | Il lotto della fattura, l'ultimo se la fattura ne ha più d'uno |
+| `cliente_display` | L'intestatario del billing account della commessa |
+| `emittente_ragione_sociale` | Il nome dell'emittente della commessa |
+| `commessa_stato_descrizione` | La descrizione dello stato della commessa, o il suo codice quando a catalogo la descrizione manca |
+
+**Perimetro computabile.** Restano fuori le commesse annullate e le attività che non arriveranno mai
+in fattura: annullate, oppure rifiutate e non emesse.
+
+**Perimetro dell'emittente.** La vista è `security_invoker` e filtra al suo interno con
+`script.fn_get_emittenti_scope_sr_ids` letto dalla variabile di sessione dell'operatore: tutto, niente
+o l'elenco degli emittenti visibili. ⚠️ È fail-closed: senza `app.current_user_id` la funzione dà
+l'elenco vuoto e non passa nessuna riga, anche per un superuser, perché il filtro sta nella vista e
+non in una regola RLS che `BYPASSRLS` scavalcherebbe. Chi interroga a mano, o scrive un test, imposta
+la variabile.
 
 ---
 
-### Esempio d'uso
+### ⭐ `data_emissione` appartiene alla sua riga di commessa
 
-```sql
--- Il mese M e' completo? Cosa manca, e cosa e' stato recuperato in ritardo.
-SELECT stadio, count(*), sum(valore),
-       count(*) FILTER (WHERE emessa_in_ritardo) AS recuperi_tardivi
-FROM vendite.vw_dash_competenza_attivita
-WHERE competenza_mese = DATE '2026-05-01'
-GROUP BY stadio;
-```
+L'emissione ritrova l'attività fatturabile per `commessa_attivita_id`, la FK obbligatoria e unica
+verso la riga di commessa: un'attività non può ereditare la `data_insert` di un'altra, e il flag di
+ritardo non può sotto-stimare.
 
 ---
 
-### Note operative
+### ⚠️ `EMESSA_NON_FATTURATA` è uno stadio residuale, non una tappa
 
-* **Il BE aggrega da `vw_dash_competenza_mensile`** e usa questa vista per il
-  drill-down (layering come la famiglia `vw_dash_fatturazione_*`).
-* ⚠️ **Caveat C1 (`data_insert`)**: il ramo UPDATE di idempotenza di
-  `fn_emit_attivita_fatturabili_da_commessa` cerca la riga AF per
-  `(sorgente_tipo_id, sorgente_uid)` **senza** filtrare per commessa: una
-  collisione di `segment_key` fra attività diverse farebbe ereditare un
-  `data_insert` **più vecchio**. Nessun percorso di produzione lo genera oggi;
-  direzione benigna (il flag ritardo può solo **sotto-stimare**, mai falso
-  positivo). Sentinella pgTAP sul reset in `test-vw-dash-competenza-v1.sql`.
-* ⚠️ **Fail-closed dello scope**: senza GUC operatore (`app.current_user_id`)
-  la vista restituisce **0 righe** (vale per superuser/psql/batch ad-hoc, il
-  filtro-in-vista non è aggirato da `BYPASSRLS`). Per interrogare a mano:
-  impostare la GUC. Il pgTAP la imposta esplicitamente.
-* Un'attività `EMESSA` senza riga AF (solo manutenzioni fuori flusso) cade in
-  `EMESSA_NON_FATTURATA` con `data_emissione` NULL: classificazione corretta,
-  ritardo non calcolabile. ⭐ **Dal 2026-08-26 quel caso ha un nome**:
-  `motivo_non_fatturata = 'SENZA_ATTIVITA_FATTURABILE'`, e la chiave del verbo
-  resta `NULL` — vedi la sezione dedicata più in basso.
-* ⚠️ **`EMESSA_NON_FATTURATA` è uno stadio RESIDUALE, non una tappa.** Pull e
-  generazione righe stanno nello stesso step DRAFT: il percorso normale va da
-  `DA_EMETTERE` a `FATTURATA` e questo stadio resta **vuoto** finché l'emissione
-  e la fatturazione sono un gesto solo.
+Il prelievo delle attività e la generazione delle righe stanno nello stesso passo del lotto: il
+percorso normale va da `DA_EMETTERE` a `FATTURATA`, e questo stadio si popola solo fuori da quel
+percorso. Ci finiscono situazioni con rimedi opposti, e la colonna `motivo_non_fatturata` è ciò che le
+distingue: chi emette in modo mirato vede passare di qui lavoro sano, accanto a lavoro rimasto orfano.
 
-    > 🔴 **CORREZIONE (2026-08-26), e va letta prima di usare questa voce per
-    > decidere.** Questo punto diceva due cose che oggi sono false, ed erano
-    > entrambe vere quando furono scritte:
-    >
-    > 1. *«che azzera `fattura_riga_id` lasciando però `fatturato = t`»* — ⛔ non
-    >    più possibile: dal `20260826-33` `fatturato` è una colonna **GENERATA**
-    >    da `fattura_riga_id`, quindi il disaccordo fra le due **non è più
-    >    rappresentabile**. È il lotto L3b del cantiere «il lavoro che non torna
-    >    indietro»;
-    > 2. *«chi legge un numero in questa card lo legga come una perdita
-    >    silenziosa»* — ⛔ vero **solo** per una delle popolazioni. In questo
-    >    stadio ne convivono più d'una, con **rimedi opposti**, ed è il motivo
-    >    per cui esiste `motivo_non_fatturata`: chi emette in modo mirato ci
-    >    vede passare lavoro perfettamente sano.
-    >
-    > 📌 Resta vero il **fatto datato** che motivò la voce: il 2026-08-26 la card
-    > conteneva 5 AF di luglio (5.019 €) orfane della fattura 834 del lotto 603,
-    > tutte residue. ⚠️ Ed è un fatto, non un motivo: il modello ammette le altre
-    > popolazioni anche nel giorno in cui non ce n'è nessuna.
-* Test: `db/pgtap/vendite/test-vw-dash-competenza-v1.sql`.
+#### La dimensione: `motivo_non_fatturata`
 
----
+Lo stadio guarda una cosa sola, la riga di fattura. La dimensione, vuota fuori da
+`EMESSA_NON_FATTURATA`, dice il rimedio:
 
----
-
-### Colonne di gruppo fatturabile (rev 2026-07-27)
-
-Aggiunte **in coda** quattro colonne: `sorgente_tipo_id`, `sorgente_uid`,
-`tipo_movimento`, `gruppo_key`.
-
-`gruppo_key` viene da
-[`fn_build_gruppo_fatturabile_key`](/dbzero/vendite/funzioni/fn_build_gruppo_fatturabile_key),
-la **stessa** funzione usata dai filtri `p_gruppi` dell'emissione: le chiavi
-mostrate sono esattamente quelle che l'emissione accetta.
-
-Questa vista è la base di
-[`vw_dash_competenza_gruppi`](/dbzero/vendite/views/vw_dash_competenza_gruppi),
-che da qui eredita **scope emittente** e **coerenza dei conteggi con la card**.
-
-⚠️ **Due vincoli su ogni futura modifica**:
-
-1. `CREATE OR REPLACE VIEW` ammette solo l'**aggiunta di colonne in fondo**: non
-   si possono rinominare, riordinare o eliminare quelle esistenti. L'ordine
-   attuale è di fatto immutabile;
-2. `WITH (security_invoker=on)` va **ri-specificato ogni volta**: la reloption
-   non compare in `pg_get_viewdef` e PostgreSQL la azzera in silenzio,
-   trasformando la vista in `security_definer` di fatto e aprendo un buco nello
-   scope emittente su tutte le dashboard di competenza.
-
-**Fail-closed senza GUC**: `script.fn_get_emittenti_scope_sr_ids(NULL)`
-restituisce l'array **vuoto**, non `NULL`, quindi senza `app.current_user_id`
-nessuna riga passa. Da tenere presente scrivendo test.
-
----
-
-### 🆕 `commessa_stato_descrizione` (2026-08-15)
-
-Aggiunta con `20260815-24` su richiesta del backend
-([brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-done/brief-db-emittibilita-visibile-e-sbloccabile)
-§8.3), e propagata sui gruppi dal `20260815-25`.
-
-La vista esponeva `commessa_stato_codice_interno` e nient'altro. A video va però
-la **descrizione**: la convenzione del progetto è che le liste ricevano i campi
-di display già decodificati dal DB, mai risolti lato client, e un codice interno
-dentro un'interfaccia inglese — *«The job order is in state BOZZA»* — è il
-sintomo che quella convenzione è stata aggirata.
-
-Il backend si era messo un `LEFT JOIN` sul repository per cavarsela. Funzionava,
-ed è la ragione per cui la richiesta era arancione e non rossa: ma quel JOIN **la
-vista lo faceva già** — è da lì che arrivano `emittibile` e `codice_interno` — e
-una seconda risoluzione della stessa cosa è la duplicazione che il §7.1 di quel
-brief aveva già dovuto estrarre una volta, sul guard di transizione.
-
-ℹ️ `COALESCE(descrizione, codice)` e non `descrizione` nuda: la colonna è
-nullable a catalogo (il seed la valorizza su tutte e sei le righe, ma il DDL non
-lo impone), e un campo di **display** che torna `NULL` produce una cella vuota,
-che l'operatore legge come «non lo so» invece che come «manca il dato di
-catalogo». `codice` è `NOT NULL` ed è la forma leggibile del mutabile: è il
-ripiego giusto.
-
-
----
-
-### 🆕 `emittente_ragione_sociale` *(R-4, 18-08-2026)*
-
-Il nome dell'emittente **della commessa** arriva in coda alla proiezione.
-
-⭐ **Il drill-down commesse può metterla nel `GROUP BY` in sicurezza**, e non è
-una misura sui dati: nella vista quella colonna è `co.emittente_soggetto_ruolo_id`
-dove `co` è `vendite.commesse`, e `commessa_id` è la sua **chiave primaria**.
-L'emittente è un campo *della commessa*: una commessa ne ha uno solo per lo
-stesso motivo per cui ha un solo codice, e non può avere attività di emittenti
-diversi perché l'emittente non sta sull'attività. Non è una proprietà dei dati
-che possa cambiare domani.
-
-⚠️ **La colonna nel `GROUP BY` serve comunque.** PostgreSQL deduce da sé la
-dipendenza funzionale quando si raggruppa per la chiave primaria di una
-*tabella*, ma qui si raggruppa su una colonna di **vista**: la deduzione non
-scatta. È innocua, non superflua.
-
-⚠️ **Due catene distinte sulle stesse tabelle**: `sr`/`s` sono il **cliente**
-(via billing account), `sr_ef`/`s_ef` l'**emittente**. Scambiarle non darebbe
-nessun errore — solo un nome sbagliato a video.
-
-⚠️ **Il flag `multi_emittente` della lista NON si accende insieme alla colonna.**
-Si guadagna dopo, quando la colonna mostra un nome su dati veri (brief
-perimetro-emittente §7, decisione 3). Il controllo automatico
-`dbops.vw_liste_multi_emittente_non_certificate` deve restare a zero righe.
-
-* Test: `db/pgtap/vendite/test-viste-dash-emittente-v1.sql`.
-
----
-
----
-
-### 🆕 La chiave del verbo e la dimensione *(D-1, 26-08-2026)*
-
-Changeset `20260826-54`, brief `brief-db-residui-competenza-dimensione-e-chiave`
-(richiesta del backend). **Otto** colonne in coda.
-
-| Colonna | Cosa | Perché
-| --- | --- | --- |
-| `attivita_fatturabile_id` | `attivita_fatturabili.id` | ⛔ **la chiave del verbo** |
-| `lock_in_fatturazione` | `COALESCE(…, false)` | metà del discriminante |
-| `stato_esecuzione` | l'altra metà | separa **l'orfana dal giro vivo** |
-| `motivo_non_fatturata` | vocabolario chiuso, `NULL` fuori dallo stadio | **la dimensione** |
-| `lotto_provenienza_id` · `_codice` | da `fatturazione_lotti` via `COALESCE(lock_batch_id, emit_batch_id)` (dal 12-09-2026) | «da dove viene questo residuo» — anche quello **divergente**, dal marchio |
-| `articolo_codice` · `articolo_descrizione` | decode di `catalogo.articoli` | **che lavoro è** |
-
-#### ⛔ Perché la chiave sta qui e non si traduce a valle
-
-`vendite.fn_riporta_attivita_da_emettere` consuma `attivita_fatturabili.id`, e
-nessuna vista lo esponeva: **il frontend non aveva la chiave del verbo**. Esiste
-un `UNIQUE` 1:1 su `attivita_fatturabili(commessa_attivita_id)`, quindi il
-backend *potrebbe* tradurre da sé — ma tradurre a mano un legame che il database
-conosce già è una **seconda implementazione**, ed è la forma di difetto che il
-cantiere precedente ha appena finito di pagare.
-
-⚠️ `attivita_fatturabile_id` è un **identificatore**, non una colonna da
-mostrare: non va a catalogo in `ui.lista_colonna`.
-
-#### ⭐ La dimensione: lo stadio guarda una cosa sola
-
-Il ramo `EMESSA_NON_FATTURATA` del `CASE` guarda **solo** `fattura_riga_id`, e
-dentro quel valore finiscono situazioni con **rimedi opposti**:
-
-| `motivo_non_fatturata` | Come si riconosce | Rimedio | Il verbo la tocca? |
+| `motivo_non_fatturata` | Come si riconosce | Rimedio | Il verbo «riporta da emettere» la tocca? |
 | --- | --- | --- | --- |
-| `GIRO_IN_CORSO` | lucchettata, `stato_esecuzione` ≠ `COMPLETED` — **oppure** (dal 12-09-2026) libera col **marchio** (`emit_batch_id`) di un lotto **in gioco** (`vw_lotti_fase`): il transito fra pull e select | ⏳ si aspetta che il lotto finisca | ⛔ no (`E_ATTIVITA_IN_LAVORAZIONE`, motivi 4 e 5) |
-| ⭐ `RESIDUO` | lucchettata **e** `COMPLETED`, senza riga di fattura — **oppure** (dal 12-09-2026) libera col marchio di un lotto **morto**, o senza marchio: la **divergenza** fra i due livelli, che nessun giro riprende | ✅ «Riporta da emettere» | ✅ sì |
-| `SENZA_ATTIVITA_FATTURABILE` | nessuna riga in `attivita_fatturabili` | ⚠️ nessuno: non c'è niente da riportare | ⛔ no: **la chiave è `NULL`** |
-| ~~`IN_ATTESA_LOTTO`~~ | **ritirato il 12-09-2026** (`20260912-36`) | — | — |
+| `GIRO_IN_CORSO` | Attività lucchettata da un giro non ancora completato; oppure libera, col marchio di un lotto in gioco (il transito fra prelievo e selezione) | Si aspetta che il lotto finisca | No (`E_ATTIVITA_IN_LAVORAZIONE`) |
+| `RESIDUO` | Lucchettata da un giro completato, senza riga di fattura; oppure libera col marchio di un lotto non più in gioco, o senza marchio: una divergenza che nessun giro riprende | «Riporta da emettere» | Sì |
+| `SENZA_ATTIVITA_FATTURABILE` | La riga di commessa è emessa ma non ha nessuna attività fatturabile (il modello ne ammette la cancellazione finché non è fatturata) | Nessuno: non c'è niente da riportare | No: la chiave del verbo è vuota |
 
-🔴 **Perché `IN_ATTESA_LOTTO` è morto, e perché la vista lo diceva ancora.**
-Diceva «non lucchettata: il prossimo giro la prende da sé». Dentro
-`EMESSA_NON_FATTURATA` la riga di commessa è `EMESSA` **per costruzione**, e il
-`20260912-35` ha stabilito sul modello che un'attività libera con la riga
-`EMESSA` non la riprende nessun giro (il pull la vede `EMESSA`, la select di un
-altro lotto non trova il suo marchio): è una **divergenza** fra i due livelli —
-in transito se il marchio è di un lotto in gioco, orfana altrimenti. La funzione
-ha cambiato ramo la sera dell'11-09 e la vista no: la lista dei residui
-(perimetro `= 'RESIDUO'`) **nascondeva** il verbo proprio sulle righe che nessun
-giro avrebbe ripreso — il caso del lotto 13338. L'ha detto il presidio
-`test-motivo-non-fatturata-v1` (test 5 e 11), e il `-36` ha riallineato la vista
-nella stessa giornata. Il motivo 3 del check («libera, riga `NON_EMESSA`») vive
-nello stadio `DA_EMETTERE`, dove la dimensione è `NULL`: un valore che la vista
-non può produrre non resta nel vocabolario. «In gioco» non è riscritto: è un
-`EXISTS` su `vendite.vw_lotti_fase` dentro il ramo del `CASE`, valutato solo
-sulle righe libere dello stadio.
+«In gioco» si legge da `vendite.vw_lotti_fase`, ed è valutato solo sulle righe libere dello stadio.
 
-⛔ **Non si spezza lo stadio in due valori.** Lo *stadio* dice **a che punto del
-ciclo** è il lavoro, e queste situazioni sono allo **stesso punto**: cambia la
-loro *salute*, non il loro *avanzamento*. Spezzarlo confonderebbe i due assi e
-romperebbe un vocabolario consumato da whitelist BE, i18n FE e cataloghi di
-lista. È lo stesso ragionamento con cui il 2026-08-20 `tipo_movimento` entrò
-come **dimensione** e non come colonna `valore_rettifiche`.
+⛔ **Lo stadio non si spezza in due valori.** Lo stadio dice a che punto del ciclo è il lavoro, e
+queste situazioni sono allo stesso punto: cambia la loro salute, non il loro avanzamento. Spezzarlo
+confonderebbe i due assi e romperebbe un vocabolario che backend, traduzioni e cataloghi di lista
+consumano.
 
-#### ⛔ Le due superfici non devono poter divergere
+⛔ **Le due superfici non devono divergere.** `motivo_non_fatturata` e
+`script.fn_check_attivita_riportabile_da_emettere` rispondono alla stessa domanda da due lati, con gli
+stessi rami. Cambiarne uno senza l'altro non dà nessun errore: la lista proporrebbe il verbo su una
+riga che la mutazione rifiuta, o lo nasconderebbe su una che accetta. Le lega un test con una fixture
+costruita per ogni caso.
 
-`motivo_non_fatturata` e
-[`script.fn_check_attivita_riportabile_da_emettere`](/dbzero/script/funzioni/fn_check_attivita_riportabile_da_emettere)
-rispondono alla **stessa domanda** da due lati. Scritte due volte, divergono — e
-la divergenza sarebbe **silenziosa**: la lista proporrebbe il verbo su una riga
-che la mutazione rifiuta, oppure lo nasconderebbe su una che accetta.
+⛔ **Il confronto con `COMPLETED` tratta il vuoto come «non completato».** `stato_esecuzione` è
+nullable e ammette anche `ERRORE`: un confronto per disuguaglianza semplice darebbe un risultato
+indeterminato su un lucchetto senza stato, e la riga cadrebbe su `RESIDUO` dove la funzione risponde
+`E_ATTIVITA_IN_LAVORAZIONE`. Un giro in errore resta così `GIRO_IN_CORSO`, col rimedio giusto:
+aspettare che il lotto si chiuda.
 
-Il presidio è `db/pgtap/vendite/test-motivo-non-fatturata-v1.sql`, con una
-fixture **costruita** per ciascun caso: un test che itera su ciò che c'è
-passerebbe a vuoto su un database ricostruito da zero, cioè in CI.
+⛔ **`fatturato` non entra nel discriminante**: è generata da `fattura_riga_id`, e dentro questo stadio
+è sempre falsa.
 
-⛔ **`IS DISTINCT FROM 'COMPLETED'`, mai `<>`.** `stato_esecuzione` è
-**nullable** e il `CHECK` ammette anche `ERRORE`: con un `<>` un lucchetto a
-`NULL` darebbe `NULL`, il `CASE` cadrebbe sul ramo successivo e la vista direbbe
-`RESIDUO` dove la funzione risponde `E_ATTIVITA_IN_LAVORAZIONE`. `ERRORE`
-finisce perciò in `GIRO_IN_CORSO`, e il rimedio — aspettare che il lotto si
-chiuda — è lo stesso.
+#### La chiave del verbo: `attivita_fatturabile_id`
 
-⛔ **E `fatturato` non entra nel discriminante.** Dal `20260826-33` è generata da
-`fattura_riga_id`: dentro `EMESSA_NON_FATTURATA` è **sempre falsa**, quindi non
-distingue niente.
+`vendite.fn_riporta_attivita_da_emettere` consuma l'id dell'attività fatturabile, e la vista lo espone.
+Il backend potrebbe tradurlo da `commessa_attivita_id`, ma tradurre a mano un legame che il database
+conosce già è una seconda implementazione. ⚠️ È un identificatore, non una colonna da mostrare.
 
-#### ⭐ Lo stadio si calcola una volta sola
-
-`motivo_non_fatturata` è definito **sopra** lo stadio («`NULL` fuori da
-`EMESSA_NON_FATTURATA`»), e in SQL un alias di `SELECT` non è riferibile da
-un'altra espressione della stessa `SELECT`. Ricopiare la condizione avrebbe
-messo la definizione dello stadio in **due posti della stessa vista**: la
-`CROSS JOIN LATERAL … st` la calcola una volta e la serve a entrambe le colonne.
-Valore, nome e tipo della colonna `stadio` non cambiano.
+Accanto stanno le due metà del discriminante (`lock_in_fatturazione`, `stato_esecuzione`) e il decode
+dell'articolo (`articolo_codice`, `articolo_descrizione`): una lista di residui su cui si deve agire
+ha bisogno del nome del lavoro.
 
 #### ⚠️ Il lotto di provenienza non è `lotto_id`
 
-`lotto_id` arriva dalla catena della **fattura** (`fatture_righe → fatture →
-fatturazione_lotti_fatture`): su un residuo la fattura **non c'è**, quindi è
-`NULL` proprio sulle righe per cui la domanda si pone. `lotto_provenienza_*`
-arriva invece da `attivita_fatturabili.lock_batch_id`, il timbro del giro che
-l'ha lucchettata — e, dal 12-09-2026, da `emit_batch_id` quando il lucchetto non
-c'è: un residuo **divergente** è stato marchiato da un giro (il pull) e mai
-lucchettato (la select non è arrivata), e la sua provenienza è quel marchio, che
-è il `lock_batch_id` del lotto che l'ha preso in carico. Per un'attività
-lucchettata i due coincidono. La chiave sul lato lotti resta `lock_batch_id`.
+`lotto_id` viene dalla catena della fattura: su un residuo la fattura non c'è, quindi è vuoto proprio
+dove la domanda si pone. `lotto_provenienza_id` e `lotto_provenienza_codice` vengono invece dal lotto
+che ha lucchettato l'attività o, se il lucchetto non c'è, da quello che l'ha marchiata: un residuo
+divergente è stato marchiato da un giro e mai lucchettato. Per un'attività lucchettata i due
+coincidono.
 
-* il `LEFT JOIN` è lecito perché `fatturazione_lotti.lock_batch_id` ha un
-  **`UNIQUE`**: non può moltiplicare le righe di una vista che ne alimenta altre
-  quattro. Il vincolo è verificato in `preCondition` e ha un test suo;
-* ⚠️ `LEFT` e non `INNER` perché `fatturazione_lotti` ha la **RLS**: un lotto
-  fuori perimetro deve lasciare le colonne a `NULL`, non far sparire il residuo;
-* ⚠️ `lotto_provenienza_codice` viene da `codice`, colonna **mutabile**: è
-  display (§6c) e nessuna logica può appoggiarcisi.
+* Il collegamento è lecito perché sul lato dei lotti la chiave del giro è unica: non può moltiplicare
+  le righe di una vista che ne alimenta altre.
+* È esterno, non interno, perché i lotti hanno la RLS: un lotto fuori perimetro lascia le colonne
+  vuote, non fa sparire il residuo.
+* `lotto_provenienza_codice` viene da un codice mutabile: è display, e nessuna logica ci si appoggia.
 
-#### ℹ️ I due JOIN nuovi non li paga chi non li usa
+ℹ️ I collegamenti al lotto di provenienza e all'articolo non li paga chi non ne legge le colonne: sono
+esterni su chiavi uniche, e PostgreSQL li toglie dal piano quando nessuna loro colonna è selezionata.
+⚠️ Regge finché regge l'unicità: togliendola, la vista comincerebbe a contare doppio in silenzio.
 
-La ragione è **strutturale, non una misura**: entrambi sono `LEFT JOIN` su
-chiavi con indice `UNIQUE`, quindi PostgreSQL può *provare* che non moltiplicano
-le righe e li **elimina dal piano** quando nessuna delle loro colonne è
-selezionata (*left join removal*).
+#### ⭐ Lo stadio si calcola una volta sola
 
-📌 Fatto datato, e non è il motivo: il 2026-08-26 nei piani di
-`vw_dash_competenza_gruppi` e della vista stessa interrogata senza le colonne
-nuove non compare nessuna scansione di `fatturazione_lotti` né di
-`catalogo.articoli`. ⚠️ **La condizione che regge tutto è il `UNIQUE`**:
-togliendolo, l'eliminazione smetterebbe di essere lecita e la vista comincerebbe
-a contare doppio in silenzio.
+Lo stadio è calcolato una volta, in un `LATERAL`, e serve sia la colonna `stadio` sia
+`motivo_non_fatturata`: ricopiarne la condizione avrebbe messo la definizione dello stadio in due
+posti della stessa vista.
 
-* Test: `db/pgtap/vendite/test-motivo-non-fatturata-v1.sql` (17 asserzioni).
-* Lista a catalogo: `ui.lista_definizione` **49** —
-  `vendite.dash_competenza_residui`.
+---
+
+### Il sezionale e la data che il documento porterà
+
+`registro_id`, `registro_codice`, `politica_data_documento` e `data_documento_prevista` rispondono,
+prima di fatturare, a due domande: su quale sezionale finirà il documento, e che data porterà.
+
+* ⭐ Il sezionale si risolve con `vendite.fn_resolve_registro_documento`, la stessa funzione che usa la
+  costruzione della fattura vera: la previsione è una lettura, non una seconda implementazione, e non
+  può divergere dal documento.
+* ⚠️ Alla funzione si passa il billing account della commessa, quello della riga: risale al padre da
+  sé, e passarle quello di fatturazione darebbe una previsione plausibile e sbagliata proprio sui
+  billing account con padre.
+* ⛔ La previsione si fa solo dove la riga di fattura non c'è ancora: dove il documento esiste la
+  colonna mentirebbe al proprio nome. Il discriminante è la riga di fattura, non lo stadio: anche
+  un'attività rimasta orfana di una fattura eliminata riceve la previsione, ed è lì che serve.
+* ⛔ La data si calcola solo quando il sezionale è risolto: `vendite.fn_calcola_data_documento` solleva
+  su un sezionale nullo, e senza quella condizione una sola riga non risolvibile farebbe morire tutta
+  la lista.
+* ⚠️ `registro_codice` è un codice mutabile, solo display: chi filtra lo fa su `registro_id`.
+
+---
+
+### La trattenuta: `emissione_trattenuta`
+
+`emissione_trattenuta` dice che la riga di commessa ha classe `TRATTENUTA` in
+`vendite.vw_commesse_attivita_emittibilita`: il suo gruppo fatturabile è trattenuto da un lotto di
+competenza uguale o successiva, e un altro giro non può prenderla. `emissione_trattenuta_da_lotti` è
+l'elenco di quei lotti, ordinato, e vuoto quando la riga non è trattenuta. La vista non ricalcola il
+criterio: lo legge dalla sua sede unica.
+
+---
+
+### Colonne di gruppo fatturabile
+
+`sorgente_tipo_id`, `sorgente_uid`, `tipo_movimento` e `gruppo_key` collegano la riga al gruppo
+fatturabile.
+
+* `sorgente_tipo_id` è il tipo del documento da cui nasce la riga di commessa.
+* ⚠️ `sorgente_uid` **non** è la colonna uuid della provenienza: è l'uid del documento in testo, per
+  ogni tipo (anche per quelli a chiave `id`), letto dal `segment_key` della riga con
+  `vendite.fn_documento_uid_di_attivita`. È la stessa forma che sta nella chiave di gruppo; chi deve
+  arrivare al documento la passa al ponte delle chiavi in testo (`script.fn_sorgente_documento_da_chiave`).
+  Vuoto su una riga senza documento.
+* `gruppo_key` viene da `vendite.fn_gruppo_fatturabile_key_di_attivita`, che compone la chiave con
+  `vendite.fn_build_gruppo_fatturabile_key`, la stessa dei filtri per gruppo dell'emissione: le chiavi
+  mostrate sono esattamente quelle che l'emissione accetta.
+
+Questa vista è la base di `vendite.vw_dash_competenza_gruppi`, che ne eredita il perimetro
+dell'emittente e la coerenza dei conteggi con la card.
+
+---
+
+### ⚠️ Due vincoli su ogni modifica
+
+1. La vista si ridefinisce aggiungendo colonne solo in fondo: quelle esistenti non si rinominano, non
+   si riordinano e non si tolgono.
+2. `security_invoker` va ridichiarato a ogni ridefinizione: PostgreSQL lo azzera in silenzio, e la
+   vista girerebbe coi permessi del proprietario, aprendo il perimetro dell'emittente su tutte le
+   dashboard di competenza.
+
+⚠️ Raggruppando per commessa, il drill-down può mettere `emittente_ragione_sociale` nel raggruppamento
+in sicurezza: l'emittente è un campo della commessa, non dell'attività. La colonna nel raggruppamento
+serve comunque, perché su una colonna di vista PostgreSQL non deduce la dipendenza funzionale. E le
+catene del cliente e dell'emittente passano dalle stesse tabelle anagrafiche: scambiarle non darebbe
+nessun errore, solo un nome sbagliato a video.
+
+---
+
+### Test
+
+* `vendite/test-vw-dash-competenza-v1` — stadi, misure, perimetro, e la sentinella sul reset di un
+  lotto per `data_emissione`.
+* `vendite/test-motivo-non-fatturata-v1` — la dimensione `motivo_non_fatturata` caso per caso, legata a
+  `script.fn_check_attivita_riportabile_da_emettere`.
+* `vendite/test-viste-dash-emittente-v1` — `emittente_ragione_sociale` e il perimetro dell'emittente.
+
+---
+
+### Note di migrazione
+
+* 2026-07-06 — nasce come dettaglio della Lente Competenza (brief-db-fatturazione-due-lenti).
+* 2026-07-27 — arrivano le colonne di gruppo fatturabile.
+* 2026-08-15 — arriva `commessa_stato_descrizione`: il backend risolveva la descrizione con un proprio
+  collegamento, che la vista faceva già (brief-db-emittibilita-visibile-e-sbloccabile).
+* 2026-08-18 — arriva `emittente_ragione_sociale`; il flag multi-emittente della lista si accende a
+  parte, quando la colonna è certificata su dati veri (brief perimetro-emittente).
+* 2026-08-26 — arrivano il sezionale e la data previsti (brief-db-registro-e-data-prevista-in-competenza)
+  e la chiave del verbo con la dimensione `motivo_non_fatturata`
+  (brief-db-residui-competenza-dimensione-e-chiave). Lo stesso giorno `fatturato` diventa generata da
+  `fattura_riga_id`, e il disaccordo fra le due smette di essere rappresentabile.
+* 2026-09-09 — arrivano `emissione_trattenuta` ed `emissione_trattenuta_da_lotti`
+  (brief-db-il-trattenuto-passa-lo-stesso).
+* 2026-09-12 — ritirato il valore `IN_ATTESA_LOTTO` di `motivo_non_fatturata` («non lucchettata, il
+  prossimo giro la prende da sé»): dentro questo stadio la riga è emessa, e nessun giro la riprende. Il
+  lotto di provenienza si legge anche dal marchio (brief-db-rilancio-step-non-rivede-le-proprie-commesse).
+* 2026-11-07 — `sorgente_uid` e `gruppo_key` si leggono dal `segment_key` della riga di commessa;
+  l'emissione ritrova l'attività fatturabile per `commessa_attivita_id`
+  (brief-db-sorgente-documento-e-riga).
 
 ---
 

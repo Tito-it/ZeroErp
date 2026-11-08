@@ -1,70 +1,72 @@
-## 📘 Documentazione Funzione – `pratiche.fn_check_definizione_congelata`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_check_definizione_congelata`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.trgfn_template_flussi_guard_immutabile](trgfn_template_flussi_guard_immutabile.md)
-> [pratiche.trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md)
-> [pratiche.fn_nuova_versione_definizione](fn_nuova_versione_definizione.md)
-> [pratiche.fn_pubblica_definizione](fn_pubblica_definizione.md)
-> [pratiche.workflow_definizioni](workflow_definizioni.md)
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — le edizioni del workflow
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_check_definizione_struttura_bloccata](/dbzero/pratiche/funzioni/fn_check_definizione_struttura_bloccata) — il predicato più ampio, per le modifiche
+> * [pratiche.trgfn_template_flussi_guard_immutabile](/dbzero/pratiche/funzioni/trgfn_template_flussi_guard_immutabile) · [pratiche.trgfn_template_flussi_figli_guard_immutabile](/dbzero/pratiche/funzioni/trgfn_template_flussi_figli_guard_immutabile) — i guard che lo usano
+> * [pratiche.fn_nuova_versione_definizione](/dbzero/pratiche/funzioni/fn_nuova_versione_definizione) — la strada per cambiare la struttura di un'edizione in uso
+> * [pratiche.fn_pubblica_definizione](/dbzero/pratiche/funzioni/fn_pubblica_definizione) — la pubblicazione che congela un fork
 
 ---
+
 ### 🎯 Scopo Principale
 
-Predicato **puro** (boolean, nessun raise) che risponde a una sola domanda:
-**questa edizione di workflow è "congelata" (in uso, non cancellabile)?**
+`pratiche.fn_check_definizione_congelata` è un predicato puro che risponde a una domanda sola: questa
+edizione del workflow è congelata, cioè in uso e non cancellabile?
 
-> `TRUE` **se e solo se** la definizione è un'edizione **forkata**
-> (`emittente_fiscale_id` valorizzato) **e** in stato **`PUBBLICATA`**.
-
-Con la **strategia C** dell'immutabilità «Leggera» questo predicato governa
-**specificamente il blocco `DELETE`** (un'edizione in uso non si smantella). Il blocco
-`INSERT`/`UPDATE` (modifica struttura) è invece governato dal predicato più ampio
-[fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
-(PUBBLICATA **o** RITIRATA).
-
-Conseguenze dirette:
-
-* il **preset** di fabbrica (`emittente_fiscale_id NULL`) **non è mai congelato**, in
-  qualsiasi stato → resta editabile da seed CSV / migrazioni (zero attrito sul seeding);
-* solo il **fork `PUBBLICATA`** è congelato → non cancellabile (né modificabile);
-* una **`RITIRATA`-emittente** **non è congelata** → **cancellabile** (housekeeping), pur
-  restando **non modificabile** (è struttura-bloccata: ha ancora pratiche pinnate);
-* le **`BOZZA`** non sono congelate → editabili e cancellabili.
+È vero se e solo se l'edizione è un fork di un emittente (`emittente_fiscale_id` valorizzato) ed è in
+stato `PUBBLICATA`.
 
 ---
 
-### Firma
+### Che cosa governa
 
-```sql
-CREATE FUNCTION pratiche.fn_check_definizione_congelata(
-    p_definizione_id pratiche.workflow_definizioni.id%TYPE
-)
-RETURNS boolean
-LANGUAGE plpgsql STABLE
-```
+Nell'immutabilità «leggera» delle definizioni questo predicato governa la **cancellazione**: un'edizione
+in uso non si smantella. Le **modifiche** della struttura le governa il predicato più ampio,
+`pratiche.fn_check_definizione_struttura_bloccata` (pubblicata o ritirata).
 
-**Ritorna**: `true` se l'edizione è un fork pubblicato; `false` altrimenti.
-`p_definizione_id` NULL o non trovata → `false` (fail-open: la coerenza
-referenziale è già garantita dalle FK a monte).
+| Edizione | Congelata? | Che cosa ne segue |
+| --- | --- | --- |
+| Preset di fabbrica (senza emittente), in qualsiasi stato | No | Resta modificabile da seed e migrazioni |
+| Fork `BOZZA` | No | Modificabile e cancellabile |
+| Fork `PUBBLICATA` | **Sì** | Né cancellabile né modificabile |
+| Fork `RITIRATA` | No | Cancellabile, ma non modificabile: ha ancora pratiche legate |
+
+Per smantellare un fork lo si porta a `RITIRATA`; per cambiarne la struttura si crea una nuova versione
+in bozza con `pratiche.fn_nuova_versione_definizione`.
+
+---
+
+### Il predicato non decide
+
+Non solleva mai: la decisione di bloccare è dei guard che lo chiamano, oggi i due guard di
+immutabilità dei template di flusso e delle loro tabelle figlie. Lo possono chiamare anche viste e
+backend, per dire «modificabile sì o no» senza riscrivere la regola.
+
+Un'edizione assente o inesistente dà `false`: la coerenza referenziale la garantiscono già le FK.
 
 ---
 
-### Note operative
+### Test
 
-* Funzione **`fn_check_*`** per convenzione: pura, `STABLE`, non solleva mai — la
-  decisione di bloccare (raise) è dei guard che la invocano.
-* Riuso: la usano i due guard di immutabilità
-  ([template](trgfn_template_flussi_guard_immutabile.md) e
-  [figli](trgfn_template_flussi_figli_guard_immutabile.md)); è chiamabile anche da
-  viste/BE per esporre "editabile sì/no" senza duplicare la regola.
-* Per **scongelare** un fork (es. per smantellarlo) va portato a `RITIRATA`
-  (`PUBBLICATA→RITIRATA`); per modificarne la struttura si crea una nuova versione
-  BOZZA ([fn_nuova_versione_definizione](fn_nuova_versione_definizione.md)).
-* Introdotta con `20260703-10` (Parte 2 / Fase 2b, D2-9).
-* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql` (casi 3–4).
+* `pratiche/test-workflow-definizioni-fase2b` — il fork pubblicato congelato, il preset e le bozze no.
+* `pratiche/test-definizione-ritirata-edit-freeze` — l'edizione ritirata: cancellabile, ma non
+  modificabile.
 
 ---
+
+### Note di migrazione
+
+* 2026-07-03 — nasce con l'immutabilità «leggera» delle definizioni di workflow.
+
+---
+
 {% include-markdown "signature-core.md" %}

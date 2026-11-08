@@ -1,10 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_articolo_riga_contesto`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — la firma che compone le due metà
 > [script.fn_check_articolo_riga_su_contesto](/dbzero/script/manual/fn_check_articolo_riga_su_contesto) — i motivi, che ricevono questo contesto
-> [catalogo.fn_articoli_ammessi](/dbzero/catalogo/manual/fn_articoli_ammessi) — il picker
+> [catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi) — il picker
 
 ### 🎯 Scopo Principale
 

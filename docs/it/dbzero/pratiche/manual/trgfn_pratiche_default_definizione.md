@@ -1,54 +1,64 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_pratiche_default_definizione`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_default_definizione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.fn_risolvi_definizione](fn_risolvi_definizione.md)
-> [pratiche.trgfn_template_flussi_default_definizione](trgfn_template_flussi_default_definizione.md)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la tabella su cui è montata
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — le edizioni del workflow
 >
-Tabelle:
+> Approfondimento funzioni:
 >
-[pratiche.workflow_definizioni](workflow_definizioni.md)
-> [pratiche.pratiche](pratiche.md)
+> * [pratiche.fn_risolvi_definizione](/dbzero/pratiche/funzioni/fn_risolvi_definizione) — sceglie l'edizione
+> * [pratiche.trgfn_pratiche_guard_pin_immutabile](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_pin_immutabile) — tiene fermo il pin dopo la nascita
+> * [pratiche.trgfn_template_flussi_default_definizione](/dbzero/pratiche/funzioni/trgfn_template_flussi_default_definizione) — lo stesso default sui template dei flussi
 
 ---
+
 ### 🎯 Scopo Principale
 
-**Auto-pin dell'edizione di workflow** alla nascita della pratica (V6): se
-`definizione_id` è NULL lo risolve con `fn_risolvi_definizione(tipo, emittente della
-pratica)` — l'edizione **PUBBLICATA dell'emittente** (fork, Fase 2) vince sul
-**preset**. Il pin è per sempre: le pratiche in volo restano sull'edizione con cui sono
-nate, qualunque cosa accada alle definizioni dopo.
-
-DB-first: il BE (`create_pratica`, INSERT senza la colonna) **resta invariato** — è il
-motivo per cui l'auto-pin è stato anticipato dalla Fase 1 alla Fase 0 (senza, il
-`SET NOT NULL` del backfill avrebbe rotto la creazione pratiche).
+La trigger function `pratiche.trgfn_pratiche_default_definizione` fissa l'edizione del workflow di una
+pratica alla sua nascita, quando chi la crea non la indica.
 
 ---
 
-### Trigger associato
+### ⭐ Il pin è per sempre
 
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_pratiche_a10_default_definizione_ins` | BEFORE | INSERT | `pratiche.pratiche` |
+Scatta `BEFORE INSERT` su `pratiche.pratiche`, nella fase dei default, prima dei guard. Se
+`definizione_id` è vuoto lo risolve con `pratiche.fn_risolvi_definizione` per il tipo di prestazione e
+l'emittente della pratica: l'edizione pubblicata dell'emittente vince sul preset.
 
-Fase `_a10_` con descrizione `default` — gira prima dei guard della tabella.
+Una pratica resta sull'edizione con cui è nata, qualunque cosa accada dopo alle definizioni: il pin non
+si cambia, e lo impedisce `pratiche.trgfn_pratiche_guard_pin_immutabile`.
 
----
-
-### Regole
-
-* Interviene **solo** quando `NEW.definizione_id IS NULL`; un pin esplicito passa
-  intatto (coerenza tipo garantita dalla FK composita). I guard su scope/stato del pin
-  esplicito e l'**immutabilità del pin** (no UPDATE) arrivano con la Fase 1.
-* Risoluzione fallita (tipo senza alcuna PUBBLICATA — caso anomalo) → errore parlante
-  `DEFINIZIONE_NON_TROVATA` (507), la pratica non nasce.
+* Un pin esplicito passa intatto: la coerenza col tipo la garantisce la FK composita.
+* Chi crea la pratica non deve passare la colonna: il default sta nel database, qualunque sia la
+  strada di scrittura.
 
 ---
 
-### Note operative
+### Codici errore
 
-* Introdotta con `20260702-24` (brief-db-step-dominio-e-definizioni-versionate,
-  Parte 2 / Fase 0, raffinamento §2.1 punto 1 — fix del bug di sequenza del brief).
-* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase0.sql` (caso 3).
+* `E_DEFINIZIONE_NON_TROVATA` — sollevato da `pratiche.fn_risolvi_definizione` quando il tipo non ha
+  nessuna edizione pubblicata: la pratica non nasce.
+
+---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase0` — una pratica inserita senza definizione riceve il preset
+  del tipo.
+
+---
+
+### Note di migrazione
+
+* 2026-07-02 — nasce insieme alle definizioni versionate, prima del vincolo di obbligatorietà sulla
+  colonna, così la creazione delle pratiche dal backend resta invariata
+  (brief-db-step-dominio-e-definizioni-versionate).
+
+---
+
+{% include-markdown "signature-core.md" %}

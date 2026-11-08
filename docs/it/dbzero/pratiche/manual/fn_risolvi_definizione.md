@@ -1,58 +1,70 @@
-## 📘 Documentazione Funzione – `pratiche.fn_risolvi_definizione`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_risolvi_definizione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.workflow_definizioni](workflow_definizioni.md)
-> [pratiche.trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md)
-> [pratiche.trgfn_template_flussi_default_definizione](trgfn_template_flussi_default_definizione.md)
-> [pratiche.trgfn_tipi_prestazione_bootstrap_definizione](trgfn_tipi_prestazione_bootstrap_definizione.md)
+> * [pratiche.workflow_definizioni](/dbzero/pratiche/tabelle/workflow_definizioni) — le edizioni del workflow, per tipo di prestazione e scope
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_pratiche_default_definizione](/dbzero/pratiche/funzioni/trgfn_pratiche_default_definizione) — l'aggancio automatico della pratica alla sua edizione
+> * [pratiche.trgfn_template_flussi_default_definizione](/dbzero/pratiche/funzioni/trgfn_template_flussi_default_definizione) — l'edizione predefinita di un template
+> * [pratiche.trgfn_tipi_prestazione_bootstrap_definizione](/dbzero/pratiche/funzioni/trgfn_tipi_prestazione_bootstrap_definizione) — il preset che nasce con il tipo di prestazione
+> * [pratiche.fn_fork_definizione](/dbzero/pratiche/funzioni/fn_fork_definizione) — l'edizione di un emittente
 
 ---
+
 ### 🎯 Scopo Principale
 
-**Punto unico di risoluzione** dell'edizione di workflow per (tipo prestazione, scope
-emittente). Catena (design brief §3.4):
-
-1. edizione **PUBBLICATA dell'emittente**, se esiste (fork — da Fase 2);
-2. altrimenti il **preset** PUBBLICATA (`emittente_fiscale_id IS NULL`);
-3. altrimenti errore parlante `DEFINIZIONE_NON_TROVATA` (507).
+`pratiche.fn_risolvi_definizione` è il punto unico che decide quale edizione di workflow vale per un
+tipo di prestazione e uno scope di emittente, e ne ritorna l'id.
 
 ---
 
-### Firma
+### La catena di risoluzione
 
-```sql
-CREATE FUNCTION pratiche.fn_risolvi_definizione(
-    p_tipo_prestazione_id  pratiche.tipi_prestazione.id%TYPE,
-    p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE DEFAULT NULL
-)
-RETURNS pratiche.workflow_definizioni.id%TYPE
-LANGUAGE plpgsql VOLATILE
-```
+1. L'edizione `PUBBLICATA` dell'emittente, se l'emittente è indicato e ne ha una (un fork).
+2. Altrimenti il preset `PUBBLICATA`, quello senza emittente.
+3. Altrimenti l'errore `E_DEFINIZIONE_NON_TROVATA`.
 
-| Parametro | Obbligatorio | Descrizione |
-|-----------|:---:|-------------|
-| `p_tipo_prestazione_id` | SI (guard: errore se NULL o ≤ 0) | Tipo prestazione di cui risolvere l'edizione |
-| `p_emittente_fiscale_id` | NO (NULL = solo preset) | Scope emittente: la sua edizione pubblicata vince sul preset |
+Senza emittente la funzione risolve solo il preset.
 
 ---
 
-### Note operative
+### Chi la usa
 
-* **VOLATILE** (non STABLE): il ramo di errore scrive il log via
-  `script.fn_log_and_raise_error` (INSERT vietato nelle funzioni non-volatile).
-* Consumatori: [auto-pin delle pratiche](trgfn_pratiche_default_definizione.md)
-  (con l'emittente della pratica) e [auto-default dei
-  template](trgfn_template_flussi_default_definizione.md) (con emittente NULL →
-  preset). In Fase 1 la userà anche `fn_genera_pratica_da_flusso` (risoluzione con
-  l'emittente della pratica sorgente).
-* Errore sollevato: `DEFINIZIONE_NON_TROVATA` (507) — sia per parametro tipo invalido
-  sia per assenza di edizioni pubblicate (il `context` jsonb distingue il motivo).
-  In pratica non dovrebbe mai scattare per un tipo reale: il preset v1 è garantito dal
-  [bootstrap](trgfn_tipi_prestazione_bootstrap_definizione.md) e dal backfill Fase 0.
-* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase0.sql` (casi 4–5).
+* L'aggancio automatico delle pratiche (`pratiche.trgfn_pratiche_default_definizione`), con l'emittente
+  della pratica.
+* L'edizione predefinita dei template (`pratiche.trgfn_template_flussi_default_definizione`), senza
+  emittente: il preset.
+
+Per un tipo di prestazione reale l'errore non dovrebbe scattare: il preset nasce col tipo, attraverso
+`pratiche.trgfn_tipi_prestazione_bootstrap_definizione`.
 
 ---
+
+### ⚠️ È `VOLATILE`, non `STABLE`
+
+Il ramo d'errore scrive il registro attraverso `script.fn_log_and_raise_error`, e una funzione non
+volatile non può scrivere.
+
+---
+
+### Codici errore
+
+* `E_DEFINIZIONE_NON_TROVATA` — sia per un tipo di prestazione assente o non positivo, sia quando non
+  c'è nessuna edizione pubblicata. Il contesto dell'errore distingue i due motivi.
+
+---
+
+### Test
+
+* `pratiche/test-workflow-definizioni-fase0` — la risoluzione sul preset e l'errore senza edizioni
+  pubblicate.
+
+---
+
 {% include-markdown "signature-core.md" %}

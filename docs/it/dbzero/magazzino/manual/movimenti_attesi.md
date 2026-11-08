@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.movimenti_attesi`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -19,6 +19,11 @@
 > * [magazzino.fn_apri_blocco](/dbzero/magazzino/funzioni/fn_apri_blocco) — apre un blocco manuale
 > * [magazzino.fn_libera_blocco](/dbzero/magazzino/funzioni/fn_libera_blocco) — lo libera
 > * [script.fn_check_disponibilita_uscita](/dbzero/script/funzioni/fn_check_disponibilita_uscita) — il controllo che i blocchi fermano
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della provenienza
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza: tipo, documento, riga, dettaglio
 
 ---
 
@@ -37,6 +42,13 @@ qui la sorgente è **facoltativa**, perché il blocco manuale non ha documento. 
 è lo dice il **soggetto** (`soggetto_ruolo_id`) o la **nota**: un'attesa senza sorgente,
 senza soggetto e senza nota è una riga muta, e il database la rifiuta
 (`chk_mag_movimenti_attesi_per_chi`; una nota di soli spazi non vale).
+
+La sorgente, quando c'è, ha la forma comune a tutte le tabelle che «nascono da» un documento: il
+tipo (`sorgente_tipo_id`), **una** chiave del documento (`sorgente_id` o `sorgente_uid`, quella
+che il tipo dichiara), e se l'attesa è per una riga o per un suo dettaglio, `sorgente_riga` e
+`sorgente_dettaglio`. Senza tipo tutte vuote (`chk_mag_movimenti_attesi_sorgente_chiave`).
+Documento, riga e dettaglio li verifica il guard unico `script.trgfn_guard_sorgente`, che basta
+al livello del documento e **blocca** la cancellazione del documento finché un'attesa lo cita.
 
 ---
 
@@ -74,7 +86,8 @@ per forza chi può riservarla a un cliente.
 I blocchi aperti **in uscita** contano nella disponibilità —
 [vw_disponibilita](/dbzero/magazzino/views/vw_disponibilita) li somma tutti,
 [fn_check_disponibilita_uscita](/dbzero/script/funzioni/fn_check_disponibilita_uscita)
-esclude quelli della stessa sorgente di chi chiede. Un atteso in entrata è merce in arrivo,
+esclude quelli della stessa sorgente di chi chiede: lo stesso documento e, se l'attesa nomina una
+riga o un dettaglio, la stessa riga e lo stesso dettaglio. Un atteso in entrata è merce in arrivo,
 non un blocco. L'indice che serve alla disponibilità è **parziale** sulle attese `APERTA`,
 per articolo e magazzino.
 
@@ -130,6 +143,11 @@ chiude, non si cancella.
   cancellazione (Lotto 2).
 * 2026-09-28 — i due verbi del blocco, e l'app passa a sola lettura
   (`brief-db-magazzino-lotto-3-scarico-da-ddt`).
+* 2026-11-06 — nascono `sorgente_id` e `sorgente_dettaglio`.
+* 2026-11-08 — la sorgente passa al modello comune: la chiave del documento al posto di quella
+  della riga, il guard unico al posto del guard tipizzato, i tipi «foglia» di magazzino escono dal
+  catalogo; il controllo di disponibilità riconosce le attese proprie per documento, riga e
+  dettaglio.
 
 ---
 

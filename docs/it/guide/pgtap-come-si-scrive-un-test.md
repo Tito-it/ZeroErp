@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -118,7 +118,7 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | **una testata che cambia stato dopo aver preso le righe** (ogni testata di vendita con una matrice dei passaggi: nasce nello stato iniziale, il test scrive le righe, poi lo stato per le transizioni vere — fuori bozza le righe non si scrivono) | `dbops.fn_pgtap_porta_a_stato('vendite.<testata>', <id>, '<stato>')` (anche `vendite.fatturazione_lotti`, se vuoto). ⚠️ Su **tutte** le testate che conosce (preventivo, offerta, contratto, ordine, bolla, reso, commessa, fattura, lotto, versione di listino) lo stato si cambia solo dal verbo (la porta): la fixture fa ogni passo col verbo e **concede** all'operatore in sessione l'azione del passaggio (per esempio `emetti_ddt`, `conferma_reso`). Un `UPDATE` diretto della colonna di stato è rifiutato (`E_DOC_STATO_SOLO_DAL_VERBO`); una bolla `RESO` si costruisce confermando un reso totale |
 | **una commessa** del mondo, aperta dalla madre del dominio (codice ed emittente dal dominio, competenza nel mese corrente) — nello stato chiesto, sul cliente di un'altra fixture; fuori bozza con l'attività approvata che l'uscita pretende; a richiesta con la **sorgente ROOT** | `dbops.fn_pgtap_crea_commessa('<etichetta>'[, '<stato>'[, <ba_id>[, <con_attivita>[, <con_sorgente_root>]]]])` |
 | **un lotto di fatturazione** dell'azienda, nato dalla madre e portato allo stato chiesto (vuoto); a richiesta l'esito che trattiene un gruppo | `dbops.fn_pgtap_crea_lotto('<etichetta>'[, '<stato>'[, <ba_id>[, <tipo_doc_id>[, <mese>[, '<gruppo_key>'[, <del_cliente>]]]]]])` |
-| **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione; articolo e listino del chiamante se li dà); con la **sorgente** l'attività che la push di una riga avrebbe scritto — la chiave la compone `script.fn_segment_key`, mai a mano — con quantità, stati e periodo dichiarati | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, …], p_sorgente_codice => …, p_sorgente_uid => …, p_sorgente_riga_id => …, p_stato_emissione => …)` (per nome) |
+| **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione; articolo e listino del chiamante se li dà); con la **sorgente** l'attività che la push di una riga avrebbe scritto — la chiave la compone `script.fn_segment_key`, mai a mano — con quantità, stati e periodo dichiarati | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, …], p_sorgente_codice => …, p_sorgente_chiave => …, p_sorgente_riga_id => …, p_stato_emissione => …)` (per nome) |
 | una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
 | il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |

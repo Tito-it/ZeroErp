@@ -1,143 +1,141 @@
 ## 📘 Documentazione Concettuale – Vista `script.vw_pratica_doc_sorgente`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente)
-> [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti)
-> [pratiche.fn_stato_sorgente](/dbzero/pratiche/funzioni/fn_stato_sorgente)
+> * [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti) — i collegamenti fra cui sceglie
+>
+> Approfondimento viste:
+>
+> * [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente) — il descrittore dello stato di ogni documento
+> * [script.vw_flusso_doc_sorgente](/dbzero/script/views/vw_flusso_doc_sorgente) — la gemella, una riga per milestone
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_stato_sorgente](/dbzero/pratiche/funzioni/fn_stato_sorgente) — lo stesso descrittore per un documento solo, con la sentinella
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza: tipo, documento, riga
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 2026-09-07)
-`script.vw_pratica_doc_sorgente` risolve, **per ogni pratica**, *quale documento*
-rappresenta lo stato vivo della pratica, e ne proietta il descrittore normalizzato
-(brief-db-proiezione-stato-dominio roll-out, deliverable D3b). Restituisce **una riga per
-`pratica_id`**: il documento **più vivo** tra tutti i link della pratica (ROOT + COLLEGATO)
-in `pratiche.pratiche_sorgenti`, con il descrittore letto da `script.vw_stato_sorgente`.
 
-Promuove a livello DB la **regola d'ancora** che prima viveva solo nel frammento Python
-`pratiche_repository._doc_sorgente_lateral`: sede **unica**, riusabile anche dalla futura
-fase GUIDA (D4, "avanza-su-esito-proiettato").
+Per ogni pratica, il documento che ne rappresenta lo stato vivo, con il suo descrittore normalizzato:
+una riga per pratica, il documento **più vivo** fra tutti i suoi collegamenti (`ROOT` e `COLLEGATO`)
+in `pratiche.pratiche_sorgenti`, con fase, esito e flag terminale letti da `script.vw_stato_sorgente`.
+
+È la sede unica della regola d'ancora a livello di pratica (dettaglio e lista), e la legge il
+backend. Il percorso e la coda di lavoro, che ragionano per milestone, leggono la gemella
+`script.vw_flusso_doc_sorgente`.
 
 ---
 
-### La regola d'ancora (priorità)
+### La regola d'ancora
 
-Tra i link della pratica si sceglie il primo per questo ordinamento:
+Fra i collegamenti della pratica vince il primo in quest'ordine:
 
-| # | Criterio | SQL |
-|---|----------|-----|
-| 1 | **risolto** batte non-risolto | `COALESCE(ss.risolto, false) DESC` |
-| 2 | **vivo** (non-terminale) batte terminale | `(NOT COALESCE(ss.terminale, false)) DESC` |
-| 3 | **ROOT** come tiebreak | `(ps.ruolo_link = 'ROOT') DESC` |
-| 4 | link **più recente** | `ps.id DESC` |
+1. il documento **risolto** batte quello non risolto;
+2. il documento **vivo** (non terminale) batte quello terminale;
+3. il collegamento **`ROOT`** batte il `COLLEGATO`;
+4. il collegamento **più recente** batte il più vecchio.
 
-Perché serve (e perché la naive `ORDER BY (NOT terminale) DESC` è **sbagliata**):
+Perché non basta «il vivo prima»:
 
-* Una pratica evoluta **preventivo → ordine** ha il preventivo ROOT spesso già terminale
-  (es. `EVASO`): con la sola àncora ROOT non si vedrebbe mai l'**ordine** `COLLEGATO` vivo.
-  Il criterio 2 fa vincere l'ordine vivo (entrambi risolti, l'ordine non-terminale).
-* Una pratica **preventivo → commessa** ha la commessa `COLLEGATO` **non risolta**
-  (`PIPELINE_MARKER`, nessun resolver): il suo `terminale` è **NULL** e sotto `DESC` i NULL
-  ordinano *per primi* → con la naive vincerebbe la commessa (**regressione**). Il criterio
-  1 (risolto-first) e i `COALESCE` NULL-safe chiudono il buco: la commessa non risolta
-  perde, il preventivo resta proiettato.
+* una pratica evoluta da preventivo a ordine ha spesso il preventivo `ROOT` già terminale (evaso):
+  con la sola ancora `ROOT` non si vedrebbe mai l'ordine `COLLEGATO` vivo. Il secondo criterio fa
+  vincere l'ordine;
+* una pratica evoluta da preventivo a commessa ha la commessa `COLLEGATO` **non risolta** (la
+  commessa non ha un resolver di stato): il suo flag terminale è vuoto, e in un ordinamento
+  decrescente i vuoti vengono per primi. Senza il primo criterio, e senza trattare il vuoto come
+  «falso», vincerebbe la commessa e la pratica perderebbe il suo stato.
 
 ---
 
-### 📑 Campi chiave esposti
+### Che cosa espone
 
-* **Chiave**: pratica_id
-* **Link scelto**: sorgente_tipo_id, sorgente_uid, ruolo_link, sorgente_descrizione
-* **Risoluzione**: risolto (`false` se il documento scelto è di un dominio senza resolver)
-* **Descrittore** (NULL se il link scelto non è risolto): stato_codice_interno,
-  stato_codice, stato_descrizione, fase, esito, terminale
+* **La pratica**: `pratica_id`.
+* **Il collegamento scelto**: il tipo, la chiave del documento nelle colonne del modello
+  (`sorgente_id` oppure `sorgente_uid`, una sola, quella del `key_selector` del tipo), il ruolo e la
+  descrizione del tipo.
+* **Il descrittore**: `risolto`, e fase, esito, terminale e stato del documento.
 
-**Fallback**: coerente con il consumo BE odierno (non la sentinella `UNKNOWN` dello scalare
-`fn_stato_sorgente`). Link scelto non risolto → `risolto=false` e campi `stato_*` NULL (il
-FE mostra il milestone come oggi). Pratica **senza link** → nessuna riga (il consumer in
-LEFT JOIN ottiene NULL).
-
----
-
-### Esempio d'uso
-
-```sql
--- Dettaglio/lista pratiche: descrittore del documento vivo, una riga per pratica.
-SELECT p.id, d.stato_descrizione, d.fase, d.esito, d.terminale, d.risolto
-FROM pratiche.pratiche p
-LEFT JOIN script.vw_pratica_doc_sorgente d ON d.pratica_id = p.id
-WHERE p.id = 42;
-```
+Il ripiego è quello che il backend si aspetta, non la sentinella `UNKNOWN` di
+`pratiche.fn_stato_sorgente`: se il collegamento scelto non è risolto, `risolto` è falso e i campi di
+stato sono vuoti. Una pratica **senza collegamenti** non ha righe: chi legge la vista in join esterno
+da `pratiche.pratiche` ottiene vuoto.
 
 ---
 
-### 🔴 Scope: la vista gira col perimetro di chi legge (dal 2026-09-07)
+### ⭐ Come si trova il documento
 
-`WITH (security_invoker = on)` — changeSet `20260907-04`.
+Il documento di ogni collegamento si cerca nella vista dello stato sulle **chiavi native**, un ramo
+per chiave: l'uid del collegamento su `sorgente_chiave_uuid`, l'id su `sorgente_chiave_id`. La
+ricerca sta dentro una `LATERAL`.
 
-⛔ **Fino a quel giorno non ce l'aveva**, e non era una scelta: la vista è del
-`20260702-14`, il correttivo che ha insegnato la regola al progetto è del `20260706-15`.
-Quattro giorni dopo. Senza il flag la vista gira come **proprietario**, che possiede anche
-le sei tabelle documentali sottostanti e — senza `FORCE ROW LEVEL SECURITY` — dalla RLS è
-esente: lo scope emittente non veniva applicato.
-
-⚠️ **E gli anelli sotto non bastavano.** `script.vw_stato_sorgente` e le sei
-`vendite.vw_stato_sorgente_*` il flag ce l'hanno tutte. Non serve: `security_invoker` **non
-si propaga**. Da dentro una vista DEFINER, «il chiamante» che gli anelli interni onorano è
-il proprietario della vista esterna. *Sei anelli accesi e uno spento fanno una catena
-spenta.*
-
-**Che cosa cambia**, e va letto insieme alla regola d'ancora qui sopra:
-
-* le colonne che vengono da `pratiche_sorgenti` e da `config.sorgenti` (nessuna delle due in
-  RLS) restano invariate;
-* diventano NULL le colonne `stato_*`, `risolto` e `terminale` quando il documento sorgente
-  è **fuori dal perimetro di chi legge**;
-* ⭐ **e può cambiare il link scelto**: la regola d'ancora ordina proprio su `risolto` e
-  `terminale`. Su una pratica con più sorgenti può vincerne un'altra. È corretto — non si
-  sceglie un'àncora guardando dati che non si possono vedere — ma è un cambio di
-  comportamento, non solo un nascondimento.
-
-⚠️ **Su dati coerenti non si vede nulla**: il consumer legge questa vista in `LEFT JOIN` su
-`pratiche.pratiche`, che ha la policy `rls_pratiche_ef_whitelist` sullo **stesso**
-`fn_scope_ef_whitelist` delle sei tabelle documentali.
-
-⛔ **Ma il modello ammette la divergenza, e per questo il caso non è teorico**: nulla lega
-la sorgente al perimetro della pratica. `pratiche_sorgenti` non ha nessun vincolo né guard
-che confronti l'emittente del documento con quello della pratica, e `sorgente_uid` è una
-chiave polimorfa senza FK. ⇒ Una pratica di un emittente **può** puntare a un documento di
-un altro, e lì il comportamento cambia — che è esattamente il caso per cui il flag esiste.
-
-Presidio: `db/pgtap/rls/test-rls-viste-security-invoker.sql` — non elenca più le viste per
-nome, chiede *«esiste una vista che tocca dati protetti, anche attraverso altre viste, e non
-ha il flag?»*. È il criterio che ha trovato questa. Brief:
-`work-done/brief-db-viste-security-invoker-criterio.md` (chiuso il 2026-09-07).
+⚠️ Né l'una né l'altra cosa sono di stile. Dentro la `LATERAL` la chiave del collegamento arriva come
+valore esterno, e sotto RLS il database può usare l'indice di ogni ramo della union (i confronti fra
+uuid e fra interi sono `leakproof`); scritta come join allo stesso livello, o con un OR sulle due
+chiavi in un ramo solo, la ricerca tornerebbe a leggere tutti i documenti di tutti i tipi.
 
 ---
 
-### Note operative
+### 🔴 La vista gira con il perimetro di chi legge
 
-* Il **percorso/coda** per-flusso continua ad ancorare per `flusso_id` (invariato): questa
-  vista serve l'àncora **a livello pratica** (dettaglio/lista), dove un ordine/commessa
-  `COLLEGATO` senza `flusso_id` altrimenti non si vedrebbe.
-* Placement `script` (layer applicativo cross-dominio), coerente con `vw_stato_sorgente`.
-* **Come si trova il documento** (dal 2026-10-05): per **chiave nativa**, non confrontando la
-  chiave come testo. La chiave del collegamento si converte con
-  [script.fn_sorgente_chiave_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid) o
-  [script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id) e si cerca
-  sulle colonne `sorgente_chiave_uuid` / `sorgente_chiave_id` di `script.vw_stato_sorgente`,
-  dentro una `LATERAL`. Sotto RLS il confronto sul testo non poteva usare l'indice, e per
-  ogni collegamento si rileggevano tutti i documenti di tutti i tipi.
-  ⚠️ La `LATERAL` non è una scelta di stile: lì dentro la chiave del collegamento arriva
-  come valore esterno e il database può usare l'indice; scritta come join allo stesso livello
-  tornerebbe a leggere tutto.
-* Test: `db/pgtap/pratiche/test-proiezione-stato-sorgente.sql` (casi 25-28, incl. la
-  regressione preventivo→commessa) e `db/pgtap/vendite/test-vw-stato-sorgente-ddt-reso-v1.sql`
-  caso 13 (collegamento a chiave `id`).
+La vista è `security_invoker`. Senza, girerebbe come il proprietario, che possiede anche le tabelle
+dei documenti e, senza `FORCE ROW LEVEL SECURITY`, è esente dalla RLS: lo scope dell'emittente non
+si applicherebbe.
+
+⚠️ **Gli anelli sotto non bastano.** `script.vw_stato_sorgente` e le `vendite.vw_stato_sorgente_*`
+hanno tutte il flag, ma `security_invoker` **non si propaga**: da dentro una vista che gira come il
+proprietario, il «chiamante» che gli anelli interni onorano è il proprietario della vista esterna.
+Basta un anello spento per spegnere la catena.
+
+Che cosa vuol dire per chi legge:
+
+* le colonne che vengono da `pratiche_sorgenti` e da `config.sorgenti` non dipendono dal perimetro;
+* `risolto`, il flag terminale e i campi di stato sono vuoti quando il documento è **fuori dal
+  perimetro di chi legge**;
+* ⭐ **e può cambiare il collegamento scelto**: la regola d'ancora ordina proprio su `risolto` e
+  terminale, e su una pratica con più documenti può vincerne un altro. È corretto (non si sceglie
+  un'ancora guardando dati che non si possono vedere), ma è un cambio di scelta, non solo un
+  nascondimento.
+
+⚠️ Su dati coerenti non si vede niente: `pratiche.pratiche` ha la stessa regola di perimetro delle
+tabelle dei documenti. ⛔ Ma il modello ammette la divergenza: il guard della provenienza verifica che
+il documento esista e sia visibile **a chi scrive** il collegamento, e niente confronta l'emittente
+del documento con quello della pratica. Una pratica di un emittente può citare il documento di un
+altro, ed è il caso per cui il flag esiste.
 
 ---
 
+### Test
+
+* `db/pgtap/pratiche/test-proiezione-stato-sorgente.sql` — la regola d'ancora: il documento solo, il
+  `COLLEGATO` vivo che batte il `ROOT` terminale, il `ROOT` risolto che batte la commessa non
+  risolta, il solo collegamento non risolto.
+* `db/pgtap/pratiche/test-sorgente-pratiche-sorgenti-v1.sql` — il documento più vivo, con la chiave
+  nelle colonne del modello.
+* `db/pgtap/vendite/test-vw-stato-sorgente-ddt-reso-v1.sql` — un collegamento a chiave id.
+* `db/pgtap/rls/test-rls-viste-security-invoker.sql` — ogni vista che tocca dati protetti, anche
+  attraverso altre viste, ha il flag.
+
+---
+
+### Note di migrazione
+
+* 2026-07-02 — nasce, portando nel database la regola d'ancora che viveva nel repository Python delle
+  pratiche (`brief-db-proiezione-stato-dominio`).
+* 2026-09-07 — prende `security_invoker`, che fino ad allora mancava: lo scope dell'emittente non si
+  applicava (`brief-db-viste-security-invoker-criterio`).
+* 2026-10-05 — il documento si cerca sulle chiavi native della vista dello stato, non più sulla
+  chiave in testo.
+* 2026-11-08 — il collegamento scelto espone la chiave nelle colonne del modello (`sorgente_id`,
+  `sorgente_uid` uuid), e la ricerca va per ramo di chiave (`brief-db-sorgente-documento-e-riga`).
+
+---
 {% include-markdown "signature-core.md" %}

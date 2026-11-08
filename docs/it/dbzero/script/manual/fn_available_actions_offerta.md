@@ -1,259 +1,154 @@
-# fn_available_actions_offerta
+## 📘 Documentazione Concettuale – Funzione `script.fn_available_actions_offerta`
 
-### Scopo
-
-Restituisce in un **unico JSONB** tutte le capability dell'offerta commerciale
-necessarie al detail endpoint BE. Permette ai drawer Vue di eliminare qualsiasi
-ricalcolo di stato/transizioni lato client.
-
-Pattern **data-driven capability layer**: specchio strutturale di
-[fn_available_actions_preventivo](/dbzero/script/funzioni/fn_available_actions_preventivo),
-adattato al dominio offerte commerciali.
-
-Differenze rispetto al preventivo:
-
-- Le transizioni manuali vengono lette da `config.stati_doc_offerte_transizioni`
-  (stesso schema di `config.transizioni_stati_preventivi`).
-- I check `can_push_contratto` e `can_genera_ordine` sono **cross-dominio**
-  (`EXISTS` su `vendite.contratti.offerta_id` e su
-  `vendite.ordini.documento_origine_*`), a differenza di `can_push_commessa`
-  del preventivo che usa solo lo stato e rinvia il check cross-dominio a Fase 3.
-- Le azioni speciali hardcoded sono `crea_revisione` (EMESSA),
-  `push_contratto` e `genera_ordine` (entrambe ACCETTATA). Tutte hanno
-  `target_state: null` e appaiono in `available_actions` (non solo come flag).
-- **Mutua esclusività contratto/ordine (rev 2026-06-08)**: `push_contratto` e
-  `genera_ordine` hanno la **stessa** condizione di abilitazione (`ACCETTATA` +
-  nessun contratto + nessun ordine generati dall'offerta) e sono quindi
-  **mutuamente esclusive** — un'offerta ne genera al massimo una: la prima
-  generazione disabilita anche l'altra. Vedi
-  [brief-db-univocita-offerta-ordine §10](/dev/work-done/brief-db-univocita-offerta-ordine).
-
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-> - [trgfn_offerte_commerciali_guard_transizione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione) — guard transizioni (regola reale)
-> - [stati_doc_offerte_transizioni](/dbzero/config/tabelle/stati_doc_offerte_transizioni) — matrice transizioni + meta UI
-> - [fn_push_offerta_a_contratto](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto) — esegue il push (guard idempotenza reale)
-> - [fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — esegue la revisione
-
-## Schema
-
-`script` (cross-dominio: legge `vendite.*`, `config.*`).
-
-## Firma
-
-```sql
-script.fn_available_actions_offerta(
-    p_offerta_id vendite.offerte_commerciali.id%TYPE  -- bigint
-) RETURNS jsonb
-```
-
-## Parametri
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|:---:|---|
-| `p_offerta_id` | `bigint` | Sì | ID dell'offerta. Ritorna `NULL` se non esiste (gestito dal BE come 404). |
-
-## Output
-
-`jsonb` con le seguenti chiavi (contratto API stabile):
-
-```jsonc
-{
-    // Lista azioni manuali + speciali disponibili dallo stato corrente.
-    // Vuota ([]) per stati terminali (ACCETTATA con contratto O ordine, RIFIUTATA, ANNULLATA, SUPERATA).
-    // Costruita da config.stati_doc_offerte_transizioni.meta + azioni hardcoded.
-    "available_actions": [
-        {
-            "key": "emetti",
-            "target_state": "EMESSA",          // null per azioni speciali (crea_revisione, push_contratto, genera_ordine)
-            "label_key": "offerte.azione_emetti",
-            "requires_confirm": true,
-            "requires_motivazione": false       // true per annulla e rifiuta
-        }
-        // ...
-    ],
-    "can_change_state":             true,    // true se esiste almeno un'azione
-    "can_edit_testata":             true,    // true solo in BOZZA
-    "can_edit_eccezioni":           true,    // true solo in BOZZA
-    "can_edit_utility":             true,    // true solo in BOZZA (utility 1:1 inline)
-    "can_create_revisione":         false,   // true solo in EMESSA
-    // push_contratto e genera_ordine: MUTUAMENTE ESCLUSIVE — stessa abilitazione
-    // (ACCETTATA + nessun contratto + nessun ordine). can_push == can_genera sempre.
-    "can_push_contratto":           false,   // true solo in ACCETTATA senza contratto NE ordine
-    "can_push_contratto_reason":    "OFFERTA_NON_ACCETTATA",  // null se can_push=true
-    "can_push_contratto_reason_key": "offerte.push_reason.non_accettata", // null se can_push=true
-    "can_genera_ordine":            false,   // true solo in ACCETTATA senza ordine NE contratto
-    "can_genera_ordine_reason":     "OFFERTA_NON_ACCETTATA",  // null se can_genera=true
-    "can_genera_ordine_reason_key": "offerte.push_reason.non_accettata", // null se can_genera=true
-    "non_editable_fields":          [...],   // vedi dettaglio sotto
-    "stato_codice":                 "BOZZA"
-}
-```
-
-### Dettaglio `available_actions` per stato
-
-| `stato_codice` | Azioni in `available_actions` | Note |
-|---|---|---|
-| `BOZZA` | `emetti`, `annulla` | Da matrice transizioni |
-| `EMESSA` | `accetta`, `rifiuta`, `crea_revisione` | `crea_revisione` hardcoded |
-| `ACCETTATA` (né contratto né ordine) | `push_contratto`, `genera_ordine` | Hardcoded, mutuamente esclusive: entrambe esposte finché l'offerta è «vergine» |
-| `ACCETTATA` (con contratto **o** ordine) | `[]` | Generata una delle due, **entrambe** spariscono (mutua esclusività) |
-| `RIFIUTATA` | `[]` | Terminale |
-| `ANNULLATA` | `[]` | Terminale |
-| `SUPERATA` | `[]` | Terminale tecnico (sostituita da revisione successiva) |
-
-### Reason di `can_push_contratto` / `can_genera_ordine`
-
-Le due capability condividono l'abilitazione (`ACCETTATA` + nessun contratto +
-nessun ordine), quindi `can_push_contratto == can_genera_ordine` **sempre**.
-Quando bloccate, il `reason` segue una priorità **own-doc first** (la propria
-sorgente prima dell'altra, poi lo stato). I `reason_key` i18n sono riusati.
-
-| Caso | `can_*` | `can_push_contratto_reason` | `can_genera_ordine_reason` |
-|------|:---:|---|---|
-| ACCETTATA, né contratto né ordine | `true` | `null` | `null` |
-| ACCETTATA, contratto già generato | `false` | `OFFERTA_CONTRATTO_GIA_GENERATO` | `OFFERTA_CONTRATTO_GIA_GENERATO` |
-| ACCETTATA, ordine già generato | `false` | `OFFERTA_ORDINE_GIA_GENERATO` | `OFFERTA_ORDINE_GIA_GENERATO` |
-| Qualsiasi altro stato | `false` | `OFFERTA_NON_ACCETTATA` | `OFFERTA_NON_ACCETTATA` |
-
-`reason_key`: `offerte.push_reason.gia_generato` (contratto),
-`offerte.push_reason.ordine_gia_generato` (ordine),
-`offerte.push_reason.non_accettata` (stato).
-
-### Dettaglio `non_editable_fields`
-
-> ⚠️ **Superato il 2026-10-10** (brief `brief-db-testata-dopo-emissione`, fase 2). Le liste
-> qui sotto erano scritte a mano nella funzione: la terza copia della regola «che cosa si
-> cambia ancora fuori bozza». Ora `non_editable_fields` e `can_edit_testata` si leggono dal
-> montaggio del lock di testata con
-> [`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in_stato): restano
-> nella capability solo le colonne «sempre» (campi di sistema e lock assoluti, valgono anche in
-> bozza), seguite da quelle che il lock blocca nello stato. Fuori bozza `can_edit_testata` è vero
-> negli stati in cui una colonna resta aperta (le note di un documento vivo, `valido_al` e
-> CIG/CUP del contratto attivo), falso a documento chiuso. La tabella resta per la storia.
-
-Due famiglie di immutabilità:
-
-| Famiglia | Campi |
-|---|---|
-| **Sempre immutabili** (gestiti da trigger transizione stato) | `codice`, `uid`, `revisione_numero`, `revisione_padre_id`, `stato_doc_offerta_id`, `data_emissione`, `data_accettazione`, `data_rifiuto`, `data_annullamento`, `motivazione_rifiuto` |
-| **Bloccati fuori BOZZA** | `emittente_fiscale_id`, `billing_account_id`, `istanza_utility_id`, `utility_id`, `listino_id`, `listino_versione_id`, `valore_variazione_globale`, `tipo_variazione_globale`, `validita_dal`, `validita_al`, `meta` |
-
-Risultato per stato:
-
-| Stato | `non_editable_fields` |
-|---|---|
-| `BOZZA` | Solo famiglia "sempre immutabili" (10 campi) |
-| Tutti gli altri | Unione delle due famiglie (21 campi) |
-
-## Algoritmo
-
-1. **Lookup offerta** — JOIN `vendite.offerte_commerciali` ×
-   `config.stati_doc_offerte` per ottenere `stato_id` e `codice_interno`.
-   `NOT FOUND` → `RETURN NULL`.
-2. **Transizioni manuali** — `jsonb_agg` su `config.stati_doc_offerte_transizioni`
-   filtrata per `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`.
-   I metadati UI (`label_key`, `requires_confirm`,
-   `requires_motivazione`) vengono letti da `t.meta`; icona e colore li sceglie il frontend dal `key`. Ordine: `sa.ordine`.
-   Filtro defense-in-depth: `AND t.meta ?? 'action_key' AND t.meta ?? 'label_key'`.
-3. **Presenza documenti** — due `EXISTS` calcolati una volta:
-   - `v_has_contratto` = `EXISTS` contratto con `offerta_id = p_offerta_id`.
-   - `v_has_ordine` = `EXISTS` ordine con `documento_origine_tipo = 'OFFERTA'
-     AND documento_origine_id = p_offerta_id`.
-   «Esiste» = in qualsiasi stato (esclusività permanente).
-4. **Abilitazione condivisa** —
-   `v_enabled = (stato di accettazione AND NOT v_has_contratto AND NOT v_has_ordine)`;
-   accettazione ed emissione dalle colonne del vocabolario (`accettazione`, `emissione`),
-   non dal codice *(rev 31-10-2026)*.
-5. **Azioni speciali** — aggiunte hardcoded in coda a `v_actions`:
-   - `crea_revisione` se lo stato è quello di emissione.
-   - `push_contratto` **e** `genera_ordine` se `v_enabled` (entrambe o nessuna).
-6. **Capability derivate**:
-   - `can_edit_*` = `(stato = 'BOZZA')`.
-   - `can_create_revisione` = `(stato di emissione)`.
-   - `can_push_contratto` = `can_genera_ordine` = `v_enabled`. Reason con priorità
-     own-doc first quando bloccate (contratto>ordine per push; ordine>contratto
-     per genera; poi `OFFERTA_NON_ACCETTATA`).
-7. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
-
-## Dipendenze
-
-| Oggetto | Tipo | Ruolo |
-|---|---|---|
-| `vendite.offerte_commerciali` | tabella | sorgente stato e ID |
-| `config.stati_doc_offerte` | tabella | risoluzione `codice_interno` e `ordine` |
-| `config.stati_doc_offerte_transizioni` | tabella | matrice transizioni + meta UI |
-| `vendite.contratti` | tabella | check `v_has_contratto` (`can_push_contratto`) |
-| `vendite.ordini` | tabella | check `v_has_ordine` su `documento_origine_*` (`can_genera_ordine`) |
-| `20260524-22-upsert-stati-doc-offerte-transizioni-mctit` | migration 80_data | seed iniziale meta transizioni |
-| `20260526-01-update-stati-doc-offerte-transizioni-meta-mctit` | migration 80_data | completa meta (requires_motivazione, severity, requires_confirm) |
-| `20260607-08-update-fn-available-actions-offerta-genera-ordine-mctit` | migration 20_code | aggiunge azione/flag `genera_ordine` (allora indipendente) |
-| `20260608-12-update-fn-available-actions-offerta-mutua-esclusivita-mctit` | migration 20_code | **mutua esclusività** contratto/ordine (rev corrente) |
-
-## Note operative
-
-- **STABLE**: solo lettura; il pianificatore può riusare il risultato nella
-  stessa transazione.
-- **Fallback NULL**: il BE interpreta `NULL` come offerta non trovata e
-  risponde 404 prima di serializzare il payload.
-- **Meta mancante**: se una transizione non ha `manuale` in meta, viene
-  trattata come manuale (`COALESCE(..., true)`). Se non ha `requires_confirm`
-  o `requires_motivazione`, il valore default è `false`.
-- **Guard meta keys**: il WHERE esclude transizioni manuali senza
-  `action_key` o `label_key` (defense-in-depth equivalente a
-  `ck_transizioni_stati_prev_meta_ui` dei preventivi).
-- **Idempotenza/esclusività reali a write-path**: questa funzione calcola solo
-  l'abilitabilità UI. Le guard reali risiedono nelle funzioni di scrittura:
-  - lato contratto, `vendite.fn_push_offerta_a_contratto` fallisce sia se esiste
-    già un contratto (`E_OFFERTA_CONTRATTO_GIA_GENERATO` + `UNIQUE
-    uq_contratti_offerta_id`) sia se esiste già un ordine
-    (`E_OFFERTA_ORDINE_GIA_GENERATO`, guard mutua esclusività rev6);
-  - lato ordine, il guard speculare (impedire l'ordine se esiste un contratto)
-    vive nel BE `crea_ordine_da_offerta` (fuori scope DB). L'indice
-    `uq_ordini_v_documento_origine_offerta` impedisce ordini duplicati dalla
-    stessa offerta.
-  - La **race cross-tab** (push + genera_ordine simultanei) non è coperta da
-    alcun vincolo strutturale: scelta esplicita (back-office mono-utente).
-- **Azioni speciali `target_state: null`**: il FE distingue queste azioni
-  dal `key` (`crea_revisione`, `push_contratto` e `genera_ordine` usano routing
-  speciale nel drawer; le transizioni standard usano l'endpoint generico
-  cambio-stato).
-
-## Rev 2026-09-24 — «Emetti» e «Accetta» spenti finché un prezzo non è autorizzato
-
-Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*.
-Un'offerta con un'eccezione o un suo componente **attivi** in attesa di approvazione
-(`PENDING`) o **rifiutati** (`REJECTED`) non si emette e non si accetta.
-
-* Le azioni di stato passano alla forma dell'**array dei motivi**: `enabled`, `reason` e
-  `reason_key` discendono da una chiave **nuova**, `reasons`. `crea_revisione`, le push e
-  l'ordine non cambiano.
-* Verso `EMESSA`: prima il motivo del listino di prima (versione mancante o non attiva,
-  stessi `reason` e `reason_key`), poi i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati).
-* Verso `ACCETTATA`: i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati).
-* Il rientro automatico `SUPERATA → EMESSA` non è un'azione manuale e non compare qui.
-* È lo stesso building block che
-  [`vendite.trgfn_offerte_commerciali_guard_transizione`](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione)
-  usa per sollevare: pulsanti e database non possono dissentire.
-
-Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
-`common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
-(changeSet `20260924-28`, brief `brief-db-preventivi-congelamento-pricing`.)
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte) — il vocabolario degli stati: emissione, accettazione, annullo, PDF, nota di stato
+> * [config.stati_doc_offerte_transizioni](/dbzero/config/tabelle/stati_doc_offerte_transizioni) — la matrice dei passaggi, con i dati del pulsante
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_available_actions_preventivo](/dbzero/script/funzioni/fn_available_actions_preventivo) — la capability gemella del preventivo
+> * [script.fn_doc_azioni_permesse](/dbzero/script/funzioni/fn_doc_azioni_permesse) — i passaggi manuali che l'utente può fare
+> * [script.fn_doc_testata_in_stato](/dbzero/script/funzioni/fn_doc_testata_in_stato) — la testata nello stato, dal lock di testata
+> * [script.fn_doc_riga_modificabile](/dbzero/script/funzioni/fn_doc_riga_modificabile) — fornitura e indirizzi nello stato, dal lock dei satelliti
+> * [vendite.fn_offerta_documenti_vivi](/dbzero/vendite/funzioni/fn_offerta_documenti_vivi) — il contratto o l'ordine vivo nato dall'offerta
+> * [vendite.trgfn_offerte_commerciali_guard_transizione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione) — il guard dei passaggi di stato, che solleva con gli stessi motivi
+> * [vendite.fn_push_offerta_a_contratto](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto) — il verbo «Genera contratto»
+> * [vendite.fn_genera_ordine_da_offerta](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta) — il verbo «Genera ordine»
+> * [vendite.fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — il verbo «Crea revisione»
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — come il contratto e l'ordine dichiarano di nascere dall'offerta
 
 ---
 
-### Rev 2026-09-24 (2) — «Crea revisione» spento con un prezzo in attesa
+### 🎯 Scopo Principale
 
-(`20260924-37`.) L'azione `crea_revisione` resta proposta su `EMESSA`, ma è **spenta con il
-motivo** se l'offerta ha un prezzo in attesa —
-[script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa), la
-stessa funzione con cui `fn_crea_revisione_offerta` rifiuta. `can_create_revisione` diventa
-**veritiero**.
+Le capability di un'offerta commerciale, in un unico oggetto: le azioni disponibili nello stato di
+oggi, con il motivo di quelle spente, che cosa si può ancora modificare, se si può generare un
+contratto o un ordine, la modalità del PDF e la nota di stato. Il dettaglio dell'offerta la
+trasporta così com'è, e l'interfaccia non ricalcola nessuna regola di stato. Un'offerta che non
+esiste dà un risultato vuoto, che il backend traduce in «non trovata».
 
-## Rev 2026-10-11 — fornitura, indirizzi e motivazione del rifiuto (brief-db-testata-dopo-emissione §11)
+---
 
-* **R-DB-2.** `motivazione_rifiuto` non è più fra le colonne ferme in ogni stato: la governa il
-  lock di testata, aperta in EMESSA e ACCETTATA, chiusa a offerta chiusa.
-* **R-DB-3.** `can_edit_utility` non è più «stato = BOZZA» scritto nella funzione: si legge dal
-  lock montato sulla fornitura (`vendite.offerte_commerciali_utilities`). Nuovo
-  `can_edit_indirizzi`, dal lock sugli indirizzi.
+### ⭐ Pulsanti e database non possono dissentire
+
+Ogni motivo che spegne un'azione viene dallo **stesso** building block con cui il guard o il verbo
+rifiuterebbero l'operazione: la funzione non scrive regole proprie, le chiede. Un'azione spenta
+porta l'elenco dei motivi, e il primo è quello che si mostra.
+
+* **Verso l'emissione**: il listino che si congelerebbe (`script.fn_check_listino_congelabile`), i
+  prezzi non autorizzati (`script.fn_check_prezzi_autorizzati`), gli indirizzi che non sono del
+  cliente (`script.fn_check_indirizzi_documento_cliente`) e, per ultime, le righe che la regola
+  intera non ammette (`script.fn_check_righe_documento`, solo dalla bozza).
+* **Verso l'accettazione**: i prezzi non autorizzati.
+* **Verso l'annullo**: un contratto o un ordine vivo nato dall'offerta
+  (`script.fn_check_offerta_annullabile`).
+* **«Crea revisione»**: proposta sull'offerta emessa, spenta se c'è un prezzo in attesa
+  (`script.fn_check_prezzi_in_attesa`, la stessa con cui il verbo rifiuta).
+
+Quali stati sono l'emissione, l'accettazione e l'annullo lo dice il vocabolario degli stati, non il
+codice dello stato.
+
+---
+
+### Le azioni, stato per stato
+
+I passaggi manuali vengono dalla matrice, filtrati da `script.fn_doc_azioni_permesse`: matrice viva,
+passaggio manuale, permesso dell'utente. Un passaggio che chiede un'azione di processo **sparisce**
+per chi non ce l'ha; un passaggio che lo stato non consente resta **spento col motivo**. Le tre
+azioni applicative (`crea_revisione`, `push_contratto`, `genera_ordine`) non cambiano stato, e non
+hanno uno stato di destinazione.
+
+| Stato | Azioni |
+| --- | --- |
+| `BOZZA` | `emetti`, `annulla` |
+| `EMESSA` | `accetta`, `rifiuta`, `crea_revisione` |
+| `ACCETTATA`, senza contratto né ordine vivi | `annulla`, `push_contratto`, `genera_ordine` |
+| `ACCETTATA`, con un contratto o un ordine vivo | `annulla`, spenta: l'offerta vive nel documento generato |
+| `RIFIUTATA`, `ANNULLATA`, `SUPERATA` | nessuna |
+
+Il rientro automatico da `SUPERATA` a `EMESSA`, quando una revisione si annulla, non è un'azione
+manuale e non compare.
+
+---
+
+### ⛔ Contratto e ordine: uno solo, e solo i vivi
+
+Un'offerta accettata genera **un** documento: o il contratto o l'ordine. Le due azioni hanno quindi
+la stessa abilitazione (offerta accettata, nessun contratto e nessun ordine **vivi** nati da lei), e
+generato uno dei due spariscono entrambe.
+
+* «Nato dall'offerta» è la provenienza del contratto o dell'ordine: tipo `OFFERTA_COMMERCIALE` e la
+  chiave dell'offerta. La legge `vendite.fn_offerta_documenti_vivi`, la stessa sede che leggono i
+  due verbi. Un documento annullato conserva la provenienza ma non consuma l'offerta.
+* Con l'offerta trasformabile le due azioni sono **proposte**, e si spengono col motivo se una riga
+  non può andare nel documento da generare: per il contratto le righe dell'offerta
+  (`script.fn_check_righe_documento`), per l'ordine le righe espanse giudicate da ordine
+  (`script.fn_check_righe_offerta_in_ordine`).
+* Con l'azione non proposta, il motivo segue l'ordine «prima il proprio documento»: per il contratto
+  `OFFERTA_CONTRATTO_GIA_GENERATO`, poi `OFFERTA_ORDINE_GIA_GENERATO`; per l'ordine l'inverso; in
+  ogni altro stato `OFFERTA_NON_ACCETTATA`. Le chiavi di traduzione stanno sotto `vendite.offerte.`.
+
+⚠️ La capability calcola solo che cosa proporre. La regola vera sta nei verbi, che rifiutano un
+secondo contratto o un ordine accanto al contratto (e viceversa) leggendo gli stessi documenti
+vivi, e negli indici unici che ammettono al più un contratto vivo e un ordine vivo per offerta.
+
+---
+
+### Che cosa si modifica nello stato
+
+* **La testata**: le colonne non modificabili sono quelle «sempre» (i campi di sistema e quelli che
+  scrivono i passaggi di stato: codice, uid, numero e padre della revisione, stato, date di
+  emissione, accettazione, rifiuto e annullo), seguite da quelle che il lock di testata blocca nello
+  stato, lette con `script.fn_doc_testata_in_stato`. La testata è modificabile se nello stato almeno
+  una colonna si cambia: fuori bozza restano aperte, per esempio, le note di un documento vivo e la
+  motivazione del rifiuto.
+* **Fornitura e indirizzi**: dal lock montato sui satelliti, con `script.fn_doc_riga_modificabile`.
+* **Le eccezioni di prezzo**: solo in bozza.
+
+---
+
+### Il PDF e la nota di stato
+
+La modalità del PDF e la possibilità di allegare vengono dal vocabolario degli stati. La nota di
+stato è la frase che spiega lo stato in cui si trova il documento: viene dal dato dello stato, e
+c'è **sempre** quando lo stato la dichiara, anche accanto a un'azione ancora accesa. Il campo è
+sempre presente, col valore vuoto quando non si applica: va guardato il valore, non la presenza.
+
+---
+
+### Test
+
+* `db/pgtap/script/test-fn-available-actions-offerta-v1.sql` — le azioni per stato, l'esclusività
+  fra contratto e ordine coi suoi motivi, le modifiche nello stato, l'indice unico dell'ordine nato
+  dall'offerta, l'emissione col listino in vigore, gli spazi delle chiavi di traduzione.
+* `db/pgtap/script/test-fn-check-prezzi-autorizzati-v1.sql` — i motivi dei prezzi non autorizzati.
+* `db/pgtap/vendite/test-annullo-documento-con-legami-v1.sql` — un documento annullato non consuma
+  l'offerta.
+
+---
+
+### Note di migrazione
+
+* 2026-06-08 — contratto e ordine diventano mutuamente esclusivi (`brief-db-univocita-offerta-ordine`).
+* 2026-09-24 — le azioni di stato passano all'elenco dei motivi, con i prezzi non autorizzati
+  (`brief-db-preventivi-congelamento-pricing`).
+* 2026-10-10 — le colonne non modificabili non sono più scritte nella funzione: si leggono dal lock
+  di testata (`brief-db-testata-dopo-emissione`).
+* 2026-10-11 — contano i soli documenti vivi (`brief-db-annullo-documento-con-legami`).
+* 2026-10-21 — righe ammesse, «Genera» proposte con il motivo, annullo dell'accettata
+  (`brief-db-offerta-emissione-ed-erogazione`).
+* 2026-11-07 — l'ordine nato dall'offerta si riconosce dalla provenienza del modello
+  (`sorgente_tipo_id` con la chiave del documento); le colonne `documento_origine_*` dell'ordine e il
+  loro indice unico sono ritirati (`brief-db-sorgente-documento-e-riga`).
+
+---
+
+{% include-markdown "signature-core.md" %}

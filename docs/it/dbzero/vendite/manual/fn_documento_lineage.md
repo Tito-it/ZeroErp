@@ -1,154 +1,122 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_documento_lineage`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> Approfondimento:
+> Approfondimento tabelle:
 >
-> [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi)
-> [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) (era `vw_documento_lineage`, ritirata nel giro B)
-> [vendite.vw_documento_lineage_nodi](/dbzero/vendite/views/vw_documento_lineage_nodi)
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il tipo del nodo di partenza e la sua chiave (`key_selector`)
+>
+> Approfondimento viste:
+>
+> * [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi) — il grafo intero, proiezione «senza seme» degli stessi archi
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_documento_lineage_archi](/dbzero/vendite/funzioni/fn_documento_lineage_archi) — i passaggi dei soli documenti chiesti: la grammatica degli archi
+> * [vendite.fn_documento_lineage_nodi](/dbzero/vendite/funzioni/fn_documento_lineage_nodi) — codice, stato, fase e natura dei nodi toccati
+> * [vendite.fn_documento_lineage_legami](/dbzero/vendite/funzioni/fn_documento_lineage_legami) — se il legame di un arco è stato ritirato
+> * [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) — la sintesi per le liste
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — gli errori sui parametri
 
 ---
 
 ### 🎯 Scopo Principale
 
-`vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo**
-del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento:
-ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e
-`livello`/`ordine` per il rendering a timeline/albero.
-
-Sorgente unica: `vendite.vw_documento_lineage_archi` (tutti gli archi, incluso R).
+`vendite.fn_documento_lineage` percorre la genealogia di un documento per il pannello «Passaggi» del
+dettaglio: ritorna la catena degli archi attraversati dal nodo di partenza, con lo stato di ogni tappa
+e il livello e l'ordine per renderla a timeline o ad albero.
 
 ---
 
-### 📥 Input
+### I parametri
 
-| Parametro | Tipo | Significato |
-|---|---|---|
-| `p_tipo_id` | `bigint` | `config.sorgenti.id` del nodo di partenza (guard: NOT NULL, `> 0`) |
-| `p_uid` | `text` | chiave nodo (secondo `key_selector`; guard: NOT NULL / non vuoto) |
-| `p_direzione` | `text` | `avanti` (documento → destinazioni) o `indietro` (nodo → sorgenti); default `avanti` (guard: solo questi due valori) |
-
-I guard sui parametri usano `script.fn_log_and_raise_error` con codice registrato
-`ERRORE_PARAMETRI`.
+* Il nodo di partenza è la coppia tipo (`config.sorgenti.id`) e chiave del documento in testo, secondo
+  il `key_selector` del tipo: `uid` per preventivo e offerta, `id` per gli altri.
+* La direzione è `avanti` (dal documento verso le sue destinazioni, per le liste dei documenti) o
+  `indietro` (dal documento verso le sue sorgenti, per la lista delle commesse). Il valore predefinito
+  è `avanti`.
 
 ---
 
-### 📤 Output (`RETURNS TABLE`, una riga per arco)
+### ⭐ La catena si risale un livello alla volta
 
-* `livello` — profondità dal nodo di partenza (1 = adiacente)
-* `ordine` — sequenza stabile per il rendering
-* `arco`, `ruolo` — tipo di relazione (`A`..`H`/`R`) e ruolo `ROOT`/`COLLEGATO`
-* `from_*`, `to_*` — estremi dell'arco + `to_stato_codice_interno`/`to_fase`/`to_is_abortito`
-* `is_ramo_inverso` — `true` per l'arco **R** (DDT→Reso): il reso compare nei "Passaggi"
-  come **ramo di ritorno**; il FE lo rende in modo distinto. La frontiera forward della
-  summary lo esclude già.
-* `is_legame_ritirato` — (rev 2026-10-13) il **legame** dell'arco, non il nodo:
-  `true` quando quello che il documento ha portato dall'altra parte non c'è più,
-  anche se i due documenti sono vivi. Vedi
-  [`fn_documento_lineage_legami`](fn_documento_lineage_legami.md).
+La funzione non legge il grafo intero. Parte dal documento e, a ogni livello, chiede a
+`vendite.fn_documento_lineage_archi` i passaggi dei soli documenti raggiunti; alla fine legge una volta
+i dettagli dei soli nodi toccati da `vendite.fn_documento_lineage_nodi` e il legame di ogni arco da
+`vendite.fn_documento_lineage_legami`. Il costo segue la lunghezza della catena, non il numero dei
+documenti del sistema.
 
----
-
-### Esempio d'uso
-
-```sql
--- AVANTI: da un preventivo alle sue destinazioni.
-SELECT livello, ordine, arco, from_codice, to_codice, to_fase, is_ramo_inverso
-FROM vendite.fn_documento_lineage(
-     (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO'),
-     (SELECT uid::text FROM vendite.preventivi WHERE numero = 'PRV0000185'),
-     'avanti')
-ORDER BY ordine;
-
--- INDIETRO: da una commessa alle sue sorgenti (ROOT + COLLEGATO).
-SELECT livello, arco, from_codice, to_codice, ruolo
-FROM vendite.fn_documento_lineage(
-     (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA'),
-     '186', 'indietro')
-ORDER BY ordine;
-```
+* Il traversal è un insieme di **percorsi**: un nodo raggiunto per due strade compare due volte,
+  ciascuna col suo livello.
+* La guardia dei cicli è sul percorso: un nodo già visitato su quel percorso non si riattraversa.
+* Si risale al massimo per dieci livelli.
+* Un nodo che chi legge non vede esce con le colonne di decorazione vuote: la decorazione è un
+  collegamento esterno, e l'arco resta.
 
 ---
 
-### Note operative
+### Le colonne che non si capiscono dal nome
 
-* **`STABLE` · `SECURITY INVOKER`**: sola lettura; gira come il chiamante → la RLS
-  emittente delle viste `security_invoker=on` resta applicata.
-* **Cycle guard**: il traversal traccia i nodi visitati sul percorso e limita a
-  `livello < 10` (le catene reali sono ≤ ~5 hop).
-* **Direzioni**: `avanti` per le liste dei documenti, `indietro` per la lista commesse
-  (genealogia inversa, G-11).
-* Test: `db/pgtap/vendite/test-documento-lineage-v1.sql`.
+* `livello` — la profondità dal nodo di partenza (1 = adiacente).
+* `ordine` — una sequenza stabile per il rendering: livello, poi gli estremi dell'arco.
+* `arco`, `ruolo` — la lettera della relazione (il vocabolario è chiuso e sta in
+  `vendite.fn_documento_lineage_archi`) e il ruolo `ROOT` o `COLLEGATO`.
+* `is_ramo_inverso` — `true` sui rami di ritorno (per esempio il reso dal DDT, la nota di credito dalla fattura):
+  il pannello li rende in modo distinto. Non si ricalcola qui: arriva dalla grammatica degli archi,
+  l'unica sede dell'elenco dei rami di ritorno.
+* `from_natura_doc_codice_interno`, `to_natura_doc_codice_interno` — la natura del documento fiscale:
+  distinguono la fattura dalla nota di credito che la rettifica, due nodi che altrimenti hanno stesso
+  tipo, stesso stato e nessun codice finché non sono numerati.
+* `is_legame_ritirato` — il **legame** dell'arco, non il nodo: `true` quando quello che il documento ha
+  portato dall'altra parte non c'è più, anche se i due documenti sono vivi (dal preventivo annullato la
+  commessa resta viva, ma le righe che il preventivo le aveva portato sono annullate). Vale nei due
+  versi, perché è dell'arco; vuoto su un arco che il decoratore non censisce. Il passaggio resta come
+  storia: si ritira il legame, non il passaggio.
 
----
-
-
-### ⭐ Le due colonne nuove, e una conseguenza a video (rev 2026-08-21)
-
-Il traversal espone anche `from_natura_doc_codice_interno` /
-`to_natura_doc_codice_interno`: sono
-ciò che, nel pannello «Passaggi», distingue la fattura dalla nota di credito che
-la rettifica — due nodi che senza la natura hanno stesso tipo, stesso stato e
-`codice` NULL finché non sono numerati.
-
-`is_ramo_inverso` **non è più ricalcolato qui** come `arco = 'R'`: arriva da
-`vw_documento_lineage_archi`, che è l'unica sede dell'elenco dei rami di ritorno.
-Sull'arco N vale `true`, quindi il FE lo rende già in modo distinto senza sapere
-nulla di note di credito.
-
-⚠️ **Una conseguenza da sapere, per chi rende a video.** Camminando in avanti da
-una **commessa**, la nota di credito compare **due volte**: una come figlia
-diretta (arco G, dalla commessa) e una a livello 2 (arco N, dalla fattura che
-rettifica). Non è un difetto — sono due relazioni diverse verso lo stesso
-documento, e questa funzione ritorna **archi**, non nodi.
-
-⛔ La revisione è un **DROP + CREATE** (la `RETURNS TABLE` cambia, e PostgreSQL
-non lo consente in place). Il DROP porta via i GRANT: sono ri-concessi a
-`zeroerp_app` nello stesso changeSet, altrimenti il pannello e i pgTAP
-prenderebbero «permesso negato» fino alla passata serale di `ci_apply`.
+⚠️ **Una conseguenza, per chi rende a video.** Camminando in avanti da una commessa, la nota di credito
+compare due volte: come figlia diretta della commessa e, al livello 2, come rettifica della fattura.
+Non è un difetto: sono due relazioni diverse verso lo stesso documento, e la funzione ritorna archi,
+non nodi.
 
 ---
 
-### 🔄 rev 2026-10-10 — il grafo si legge una volta
+### Sicurezza
 
-Il pannello «Passaggi» impiegava più di mezzo secondo a ogni apertura (~0,6-0,8 s,
-misurato come applicazione il 2026-10-10), anche per un documento senza
-collegamenti. La vista degli archi costruisce **l'intero grafo** dei documenti,
-già decorato con stato e natura di ogni nodo, e la funzione la ricostruiva più
-volte: al primo passo e a ogni livello della risalita.
-
-Da `20261010-44` la funzione legge la vista **una volta** e risale su quella
-copia: ~0,18 s a chiamata, con le stesse righe di prima su tutti i casi del
-grafo. Il costo che resta è quello di costruire il grafo intero; scendere ai
-millisecondi vorrebbe dire costruire solo i collegamenti del documento chiesto,
-ed è un lavoro a parte. Dettaglio:
-`brief-db-plancache-funzioni-con-query-incorporate` §5.
+La funzione è `STABLE` e `SECURITY INVOKER`: gira coi permessi di chi la chiama, e la visibilità per
+emittente dei documenti resta applicata a ogni passo.
 
 ---
 
+### Codici errore
+
+* `E_ERRORE_PARAMETRI` — tipo assente o non positivo, chiave assente o vuota, direzione diversa da
+  `avanti` e `indietro`.
+
 ---
 
-### 🔄 rev 2026-10-11 — la catena si risale un livello alla volta
+### Test
 
-Changeset `20261011-93`. Il pannello non legge più l'intero grafo: parte dal
-documento, chiede a [`fn_documento_lineage_archi`](fn_documento_lineage_archi.md)
-i passaggi dei soli documenti raggiunti, livello per livello, e alla fine legge i
-dettagli dei soli documenti toccati da
-[`fn_documento_lineage_nodi`](fn_documento_lineage_nodi.md). Il risultato è lo
-stesso di prima, riga per riga; il costo segue la lunghezza della catena e non il
-numero dei documenti del sistema (su dbdev, 2026-10-11: ~154 → ~16 ms).
+* `vendite/test-documento-lineage-v1` — forma, `STABLE` e `SECURITY INVOKER`, il vocabolario chiuso
+  degli archi e le invarianti del grafo.
+* `vendite/test-documento-lineage-seminata-v1` — la risalita per chiave dà gli stessi archi del grafo
+  intero.
+* `vendite/test-lineage-legame-ritirato-v1` — `is_legame_ritirato` sui percorsi reali.
 
-### 🔄 rev 2026-10-13 — il legame, oltre al nodo
+---
 
-`20261013-70`, R-17 del backend, dal collaudo. Un preventivo annullato mostrava
-nel pannello la sua commessa «pronta da fatturare», come se ci fosse ancora
-dentro. Lo stato del nodo diceva il vero (la commessa è viva, porta righe di
-altri documenti), ma rispondeva a un'altra domanda. La colonna nuova
-`is_legame_ritirato` risponde a quella giusta: *quello che questo documento ha
-portato nella commessa è ancora lì?* Viene da
-[`fn_documento_lineage_legami`](fn_documento_lineage_legami.md), letta una volta
-alla fine come i nodi, e vale nei due versi (è dell'arco). Il link resta come
-storia: si ritira il legame, non il passaggio.
+### Note di migrazione
+
+* 2026-08-20 — arrivano le colonne della natura del documento, e `is_ramo_inverso` smette di essere
+  ricalcolato qui: con l'arco della nota di credito l'elenco dei rami di ritorno viveva in tre posti.
+* 2026-10-10 — la vista degli archi si legge una volta per chiamata, non a ogni livello
+  (brief-db-plancache-funzioni-con-query-incorporate).
+* 2026-10-11 — la catena si risale per chiave, un livello alla volta, invece di leggere il grafo
+  intero; la sintesi per le liste passa da una vista a `vendite.fn_documento_lineage_sintesi`
+  (brief-db-lineage-seminata-per-chiave).
+* 2026-10-13 — arriva `is_legame_ritirato`, su richiesta del backend dopo un collaudo.
+
+---
 
 {% include-markdown "signature-core.md" %}

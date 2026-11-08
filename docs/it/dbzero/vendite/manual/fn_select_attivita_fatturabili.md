@@ -1,19 +1,24 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_select_attivita_fatturabili`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)   
-> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
-> • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — le attività che seleziona e blocca
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — la riga di commessa, che dice il gruppo fatturabile
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza utility
+> * [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale) — il tipo documento richiesto
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [backend.fn_execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step)   
->
+> * [backend.fn_execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step) — il passo di pipeline che la chiama
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 27-01-2026)
+
 La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe
 **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
 
@@ -53,42 +58,7 @@ Ritorna le righe selezionate (o lockate) ordinate per `data_attivita`, `id`.
 
 ---
 
-### Esempi d’uso
-
-**Dry-run (solo selezione)**
-
-```sql
-SELECT *
-FROM vendite.fn_select_attivita_fatturabili(
-  p_competenza_mese       => date '2026-01-01',
-  p_tipo_doc_fiscale_id   => 1,
-  p_lock                 => false,
-  p_billing_account_id   => NULL,
-  p_utility_id           => NULL,
-  p_valuta_id            => NULL,
-  p_emittente_soggetto_ruolo_id => NULL,
-  p_limit                => 200
-);
-```
-
-**Selezione + lock**
-
-```sql
-SELECT *
-FROM vendite.fn_select_attivita_fatturabili(
-  p_competenza_mese       => date '2026-01-01',
-  p_tipo_doc_fiscale_id   => 1,
-  p_lock_batch_id         => uuidv7(),
-  p_lock                 => true,
-  p_limit                => 200
-);
-```
-
----
-
----
-
-### ⭐ Emissione mirata: `p_gruppi` — il punto critico della slice (rev 2026-07-27)
+### ⭐ Emissione mirata: `p_gruppi`
 
 Parametro `text[]`, default `NULL`, stessa semantica delle altre funzioni della
 catena (`NULL` = nessuna restrizione, `'{}'` = zero righe, chiave inesistente =
@@ -110,12 +80,11 @@ perimetro**: l'errore peggiore, perché silenzioso.
 
 #### Come, e perché così
 
-Il legame attività → documento **non è** su `attivita_fatturabili`: lì
-`sorgente_tipo_id`/`sorgente_uid` sono rioccupati dall'idempotenza del pull
-(sorgente `COMMESSA` + hash md5 della `segment_key`) e resta solo
-`sorgente_origine_tipo_id`, cioè il *tipo* di origine. Sopravvive però
-`commessa_attivita_id` **NOT NULL**: l'identità è recuperabile con un **JOIN**
-alla riga di commessa.
+Il legame attività → documento **non è** su `attivita_fatturabili`: l'attività non
+porta una provenienza propria, ma punta la riga di commessa con `commessa_attivita_id`,
+**NOT NULL**. Il gruppo si ricava con un **JOIN** alla riga di commessa: dal suo tipo
+d'origine, dalla sua chiave di segmento e dalla commessa, la stessa chiave del gruppo
+fatturabile che calcola il resto della catena.
 
 Da qui la scelta di **non denormalizzare**: nessuna colonna nuova su una tabella
 calda, nessun backfill, nessun drift possibile fra valore copiato e sorgente. Il
@@ -127,6 +96,17 @@ non paga nulla, né in forma né in piano d'esecuzione.
 Anche in presenza del join, il lock resta ristretto ad `attivita_fatturabili`.
 Estenderlo a `commesse_attivita` serializzerebbe il giro di fatturazione con le
 operazioni di commessa (approvazioni, oneri): un deadlock che oggi non esiste.
-La rev 2026-06-19 aveva introdotto `OF a` proprio per restringerlo.
+
+---
+
+### Note di migrazione
+
+* 2026-06-19 — il lock diventa `FOR UPDATE OF a`, ristretto ad `attivita_fatturabili`.
+* 2026-07-27 — aggiunto `p_gruppi`, l'emissione mirata per gruppo fatturabile.
+* 2026-11-07 — ritirate le colonne di provenienza di `attivita_fatturabili` (che portavano
+  l'impronta d'idempotenza del pull e il tipo d'origine): il gruppo si legge solo dalla riga di
+  commessa, come già faceva il filtro (brief-db-sorgente-documento-e-riga).
+
+---
 
 {% include-markdown "signature-core.md" %}

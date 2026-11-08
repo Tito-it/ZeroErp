@@ -193,6 +193,11 @@ trasporto, sopra C-1a.
 
 ### 6.4 Il censimento (prossimo passo DB, dopo C-1)
 
+> ⚠️ **Fotografia del 2026-11-03 (nota del 2026-11-08).** Dopo il giro C.3 di `brief-db-sorgente-documento-e-riga` la
+> riga di commessa porta la chiave del documento tipizzata (`sorgente_id` per i tipi a chiave id, `sorgente_uid` uuid
+> per gli altri) e la riga in `sorgente_riga`; i lettori sono passati alle colonne del modello. Il censimento che
+> segue va riletto su quella struttura prima di riprenderlo.
+
 Gli oggetti che leggono `sorgente_tipo_id`/`sorgente_uid` di `vendite.commesse_attivita` sono circa
 35 (doc auto-gen, 2026-11-03). Per ciascuno: che cosa deve succedere a un onere legato. I primi tre
 già visti:

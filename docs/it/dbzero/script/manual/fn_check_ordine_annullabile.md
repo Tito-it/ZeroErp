@@ -1,136 +1,135 @@
-## 📘 Documentazione Concettuale – Funzione `script.fn_check_ordine_annullabile()`
+## 📘 Documentazione Concettuale – Funzione `script.fn_check_ordine_annullabile`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [vendite.ordini](/dbzero/vendite/tabelle/ordini)
-> • [vendite.ddt](/dbzero/vendite/tabelle/ddt)
-> • [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [script.fn_check_preventivo_annullabile](/dbzero/script/funzioni/fn_check_preventivo_annullabile)
-> • [vendite.trgfn_ordini_guard_transizione](/dbzero/vendite/funzioni/trgfn_ordini_guard_transizione)
+> * [vendite.ordini](/dbzero/vendite/tabelle/ordini) — il documento di cui si chiede l'annullamento
+> * [vendite.ddt](/dbzero/vendite/tabelle/ddt) — le bolle figlie, che portano l'ordine nella provenienza
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — le righe di commessa spinte dall'ordine
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_check_sorgente_chiudibile](/dbzero/script/funzioni/fn_check_sorgente_chiudibile) — la primitiva a cui delega il motivo delle righe emesse
+> * [script.fn_check_preventivo_annullabile](/dbzero/script/funzioni/fn_check_preventivo_annullabile) — la gemella, sul preventivo
+> * [vendite.trgfn_ordini_guard_transizione](/dbzero/vendite/funzioni/trgfn_ordini_guard_transizione) — il guard che ne solleva il primo motivo
+> * [vendite.fn_documento_ritira_legami](/dbzero/vendite/funzioni/fn_documento_ritira_legami) — il verbo che all'annullo ritira le righe non emesse
+> * [vendite.fn_riporta_attivita_da_emettere](/dbzero/vendite/funzioni/fn_riporta_attivita_da_emettere) — la via d'uscita per le righe emesse
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza: tipo, documento, riga
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21 — funzione rev 2026-08-15)
-
-Elenca i motivi che impediscono di **annullare** un ordine: merce già uscita con un DDT figlio
-vivo (MOTIVO 1), oppure **righe di commessa già `EMESSA`** (MOTIVO 2).
-
-> ⛔ **rev 26-08-2026 — il MOTIVO 2 è cambiato, e non di poco.**
-> Fino a quella data bastava che l'ordine **avesse spinto** in commessa perché
-> l'annullamento fosse rifiutato (`E_ORD_ANNULLA_IN_COMMESSA`). Quel divieto è
-> stato **ritirato**: il motivo per cui esisteva era che **non c'era modo di
-> disfare il push**, e adesso c'è — alla chiusura il documento **ritira da sé**
-> le righe che nessuno ha ancora emesso
-> (rev 2026-10-11: non più in silenzio — le righe `NON_EMESSA` sono legami, l'annullo chiede
-> conferma e le ritira il verbo di annullo, BB
-> [`vendite.fn_documento_ritira_legami`](/dbzero/vendite/funzioni/fn_documento_ritira_legami);
-> brief-db-annullo-documento-con-legami, D-5).
->
-> ⭐ Resta un freno solo, e su una condizione **vera**: le righe già `EMESSA`
-> sono in volo verso una fattura. E ha una via d'uscita che il messaggio nomina —
-> [«Riporta da emettere»](/dbzero/vendite/funzioni/fn_riporta_attivita_da_emettere)
-> le riporta a `NON_EMESSA`, e da lì il ritiro le prende.
->
-> ⭐ Il conteggio **non si scrive più qui**: si delega a
-> [`script.fn_check_sorgente_chiudibile`](/dbzero/script/funzioni/fn_check_sorgente_chiudibile),
-> la stessa che il guard generico usa. *Una implementazione, due superfici* —
-> questa accende il pulsante, quella ferma la scrittura.
->
-> ⚠️ **E la chiave è cambiata insieme al criterio.** Il vecchio conteggio leggeva
-> `vendite.commesse_sorgenti` con `id::text`; la primitiva legge
-> `vendite.commesse_attivita` con `uid::text`. Sono chiavi polimorfe **diverse e
-> deliberate**: passare quella vecchia non darebbe un errore, darebbe **zero
-> motivi**.
->
-> ⚠️ `E_ORD_ANNULLA_IN_COMMESSA` **non è stato cancellato**: resta a catalogo con
-> `obsoleto_dal = 2026-08-26` e smette di essere sollevato.
-> Cantiere: `brief-db-lavoro-che-non-torna-indietro.md`, Q-9.
+Elenca i motivi che impediscono di **annullare** un ordine: merce già uscita con una bolla figlia viva,
+oppure righe di commessa già `EMESSA`. Un elenco vuoto vuol dire che l'annullamento è lecito.
 
 ---
 
-### ⚠️ Qui `sorgente_uid` **è** il legame — al contrario del gemello
+### I due motivi
 
-Il DDT si aggancia al padre con `ddt.sorgente_uid` (uuid, punta all'`uid` dell'ordine) più
-`sorgente_tipo_id`. È la catena diretta, e la colonna è popolata.
+1. **Una bolla figlia viva** (`E_ORD_ANNULLA_CON_DDT`): la merce è già uscita.
+2. **Righe di commessa già `EMESSA`** (`E_SORGENTE_CON_RIGHE_EMESSE`): sono in volo verso una fattura.
+   Il conteggio non si scrive qui: si delega a `script.fn_check_sorgente_chiudibile`, la stessa che il
+   guard generico della chiusura usa. *Una implementazione, due superfici*: questa accende il
+   pulsante, quella ferma la scrittura. I motivi della primitiva arrivano già fatti, valori compresi,
+   e non si ricompongono.
 
-⛔ **Non trasportare questa forma sul preventivo**: là la colonna omonima è l'origine *import*
-e non il legame al padre. È la stessa parola per due cose diverse, ed è precisamente ciò che
-ha tenuto spento per tre changeSet il MOTIVO 1 del gemello.
-
-⛔ **rev 26-08-2026** — il MOTIVO 2 usava la chiave **`id::text`** su
-`vendite.commesse_sorgenti`, perché per `ORDINE_VENDITA` il `key_selector` della
-sorgente polimorfa dice `id` e non `uid`. Adesso legge
-`vendite.commesse_attivita`, dove `sorgente_uid` porta **`uid::text` per tutte le
-sorgenti** — verificato sul corpo delle cinque `fn_list_*_da_pushare`.
-
-⚠️ **Le due tabelle usano chiavi polimorfe diverse per la stessa sorgente**, e
-non è disordine: `commesse_sorgenti` registra *chi* ha spinto (con la chiave
-dichiarata dal catalogo), `commesse_attivita` porta *cosa* è stato spinto (con
-l'`uid` che il push scrive). Confonderle non produce un errore: produce **zero
-motivi**, cioè un freno che lascia passare tutto.
-
-⭐ Tre legami nella stessa funzione, tre chiavi diverse: è il modello polimorfo,
-e va letto ogni volta invece che dedotto per simmetria.
+⭐ Le righe `NON_EMESSA` **non bloccano**: sono legami, l'annullo chiede conferma e il verbo di annullo
+le ritira (`vendite.fn_documento_ritira_legami`). Per le righe emesse la via d'uscita c'è, e il
+messaggio la nomina: «Riporta da emettere» le riporta a `NON_EMESSA`, e da lì il ritiro le prende.
 
 ---
 
-### 🔴 «Asimmetria latente, oggi non morde» — su dati di test
+### ⭐ L'ordine si cerca nella provenienza, con le due chiavi
 
-Fino al 2026-08-15 il MOTIVO 1 contava **anche i DDT annullati**, mentre il gemello sul
-preventivo li escludeva già dal 10 agosto.
+Sia la bolla figlia sia la riga di commessa dicono di nascere dall'ordine con le colonne del modello
+della provenienza: il tipo `ORDINE_VENDITA` e la chiave dell'ordine. L'ordine si riconosce dall'id
+(il `key_selector` del tipo), quindi la chiave sta in `sorgente_id`.
 
-La lacuna era stata classificata *«asimmetria latente, oggi non morde»* perché **nessun DDT
-bloccante risultava annullato** — ⚠️ **ma era una conta su dati di TEST**.
+La funzione cerca con la **regola d'incontro**: vale una provenienza il cui `sorgente_id` è l'id
+dell'ordine **oppure** il cui `sorgente_uid` è il suo uid, e alla primitiva passa tutte e due le
+chiavi. È la stessa regola della gemella sul preventivo, che cerca gli ordini nati dal preventivo
+nella loro provenienza.
 
-In esercizio annullare un DDT è ordinario: destinatario sbagliato, merce sbagliata, duplicato.
-L'ordine il cui unico figlio fosse stato annullato sarebbe rimasto bloccato **per sempre**.
-
-⭐ È il caso da tenere a mente ogni volta che una misura sul database di sviluppo dice «non
-succede»: la domanda giusta è *«può succedere?»*, non *«è successo?»*.
-
----
-
-### ⚠️ Esclude solo l'annullato, non il reso
-
-Il predicato è `is_abortito IS NOT TRUE`. Un DDT in stato **RESO** ha `is_abortito = false` e
-**continua a bloccare** — ed è giusto: la merce è tornata, ma il documento è vissuto.
+⛔ **Una chiave sbagliata non dà un errore: dà zero motivi**, cioè un freno che lascia passare tutto.
+Per questo si passano le chiavi del documento, e non se ne sceglie una per simmetria.
 
 ---
 
-### Codici errore
+### Le bolle annullate non contano, quelle rese sì
 
-| Codice | Motivo |
-|--------|--------|
-| `E_ORD_ANNULLA_CON_DDT` | Esiste un DDT figlio vivo |
-| `E_SORGENTE_CON_RIGHE_EMESSE` | Ci sono righe di commessa già `EMESSA` (delegato a `fn_check_sorgente_chiudibile`) |
-| ~~`E_ORD_ANNULLA_IN_COMMESSA`~~ | ⛔ **ritirato il 26-08-2026**: resta a catalogo, non viene più sollevato |
-| `E_PARAMETRO_INVALIDO` | `ordine_id` nullo o non positivo |
+Una bolla **annullata** non blocca: un figlio morto non deve tenere fermo il padre per sempre e senza
+uscita. Il predicato è l'asse uniforme degli stati, `is_abortito`, non il codice dello stato.
+
+⚠️ Esclude **solo** l'annullata. Una bolla in stato `RESO` ha `is_abortito` falso e continua a
+bloccare, ed è giusto: la merce è tornata, ma il documento è vissuto.
+
+⭐ Annullare una bolla è un fatto ordinario dell'esercizio (destinatario sbagliato, merce sbagliata,
+un duplicato): un ordine il cui unico figlio fosse stato annullato, contato fra i bloccanti,
+resterebbe fermo per sempre. La domanda da farsi davanti a una misura che dice «non succede» è
+*«può succedere?»*, non *«è successo?»*.
 
 ---
 
 ### Il pattern `fn_check_*`
 
-**Funzione pura**: `STABLE`, nessuna scrittura, nessun raise di dominio. Ritorna `[]` se
-l'azione è permessa, altrimenti un array JSONB ordinato di
-`{codice, reason, reason_key, dettaglio}` — l'ordine è quello di gravità, chi solleva prende
-il **primo**.
+**Funzione pura**: `STABLE`, nessuna scrittura, nessun errore di dominio. Ritorna l'elenco dei motivi
+in ordine di gravità; chi solleva prende il primo.
 
-⭐ **Sorgente unica** per il guard di transizione (che solleva) e per
-`fn_available_actions_*` (che espone `disabled` + `reasons`): il bottone della UI e il rifiuto
-del database non possono divergere, perché leggono lo stesso verdetto.
+⭐ **Sorgente unica** per il guard di transizione (che solleva) e per `script.fn_available_actions_ordine`
+(che espone il pulsante spento e i motivi): il pulsante dell'interfaccia e il rifiuto del database
+non possono divergere, perché leggono lo stesso verdetto.
 
-⚠️ Unica eccezione alla purezza: `id` nullo o `<= 0` solleva `E_PARAMETRO_INVALIDO` — errore
-di programmazione, non condizione di dominio.
+⚠️ Unica eccezione alla purezza: un id vuoto o non positivo solleva `E_PARAMETRO_INVALIDO`, errore di
+programmazione e non condizione di dominio.
 
-⚠️ **Documento inesistente ⇒ `[]`, cioè «nessun ostacolo».** La funzione non distingue
-«annullabile» da «non esiste»: la decisione è lasciata al chiamante. Nel percorso reale il
-guard gira su un `UPDATE` di una riga che esiste per definizione, quindi il caso non si
-presenta — ma chi la chiamasse da fuori quel percorso deve saperlo.
+⚠️ **Ordine inesistente vuol dire nessun ostacolo.** La funzione non distingue «annullabile» da «non
+esiste»: decide il chiamante. Nel percorso reale il guard gira sull'aggiornamento di una riga che
+esiste, quindi il caso non si presenta; chi la chiama da fuori quel percorso deve saperlo.
 
 ---
 
+### Codici errore
+
+| Codice | Quando |
+| --- | --- |
+| `E_ORD_ANNULLA_CON_DDT` | esiste una bolla figlia viva |
+| `E_SORGENTE_CON_RIGHE_EMESSE` | ci sono righe di commessa già `EMESSA` (dalla primitiva) |
+| `E_PARAMETRO_INVALIDO` | l'id dell'ordine è vuoto o non positivo (sollevato) |
+
+`E_ORD_ANNULLA_IN_COMMESSA` resta a catalogo con `obsoleto_dal` e non viene più sollevato.
+
+---
+
+### Test
+
+* `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` — il guard di transizione che solleva il
+  primo motivo.
+* `db/pgtap/vendite/test-ritiro-commessa-attivita-da-sorgente-v1.sql` — il motivo delle righe emesse.
+* `db/pgtap/vendite/test-sorgente-testate-due-grammatiche-v1.sql` — la bolla figlia trovata con la
+  chiave del modello.
+* `db/pgtap/script/test-capability-motivi-e-nessuna-azione-v1.sql` e
+  `db/pgtap/script/test-rubinetto-primo-motivo-v1.sql` — i motivi nella capability e il primo nel guard.
+
+---
+
+### Note di migrazione
+
+* 2026-08-15 — le bolle annullate smettono di contare fra i figli che bloccano, come sul preventivo
+  dal 2026-08-10.
+* 2026-08-26 — `E_ORD_ANNULLA_IN_COMMESSA` si ritira: vietava di annullare un ordine che aveva spinto
+  in commessa perché il push non si poteva disfare, e ora alla chiusura il documento ritira le righe
+  non emesse. Il motivo delle righe emesse passa alla primitiva `script.fn_check_sorgente_chiudibile`
+  (`brief-db-lavoro-che-non-torna-indietro`).
+* 2026-11-06 e 2026-11-07 — la bolla figlia e le righe di commessa si cercano nella provenienza del
+  modello, con l'id e l'uid dell'ordine; prima la bolla portava l'uid dell'ordine e la riga di commessa
+  la chiave in testo (`brief-db-sorgente-documento-e-riga`).
+
+---
 {% include-markdown "signature-core.md" %}

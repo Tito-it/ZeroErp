@@ -1,21 +1,22 @@
-# Sorgente polimorfa — l'aggancio universale ai documenti
+# Sorgente polimorfa — da quale documento nasce una riga
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, analisti funzionali
 >
 > **Vedi anche** — schemi DB:
 >
-> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il dizionario: per ogni tipo agganciabile la `target_table` e la `key_selector`
-> * [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente) — lo stato del documento agganciato, in un vocabolario comune
-> * [dbops.vw_sorgenti_orfane](/dbzero/dbops/views/vw_sorgenti_orfane) — i collegamenti il cui bersaglio è stato cancellato; **deve restare vuota**
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento: tabella, chiave, righe e dettaglio di ognuno
+> * [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente) — lo stato del documento di provenienza, in un vocabolario comune
+> * [dbops.vw_sorgenti_orfane](/dbzero/dbops/views/vw_sorgenti_orfane) — le provenienze il cui documento non c'è più; **deve restare vuota**
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
-> * [script.trgfn_guard_sorgente_polimorfa_testuale](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa_testuale) — il guard del modello a chiave unica testuale
-> * [script.trgfn_guard_sorgente_polimorfa_tipizzata](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa_tipizzata) — il guard del modello a colonne tipizzate
-> * [script.fn_get_sorgente_emittente_sr_id](/dbzero/script/funzioni/fn_get_sorgente_emittente_sr_id) — chi emette il documento agganciato
-> * [vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) — normalizza la chiave in scrittura
+> * [script.fn_sorgente_chiave](/dbzero/script/funzioni/fn_sorgente_chiave) — il BB che scrive: da tipo e chiave, la coppia di colonne giusta
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico: forma, esistenza, riga del documento
+> * [script.fn_sorgente_documento](/dbzero/script/funzioni/fn_sorgente_documento) — il BB che risolve: id, uid e numero del documento
+> * [script.trgfn_sorgente_in_uscita](/dbzero/script/funzioni/trgfn_sorgente_in_uscita) — che cosa succede ai figli quando si cancella l'origine
+> * [script.fn_get_sorgente_emittente_sr_id](/dbzero/script/funzioni/fn_get_sorgente_emittente_sr_id) — chi emette il documento di provenienza
 >
 > **Vedi anche** — guide correlate:
 >
@@ -25,210 +26,195 @@
 
 ## 1. Il problema che risolve
 
-Molte tabelle devono puntare a «un documento»: **note**, **log**, **attività
-fatturabili**, **pratiche**, **commesse**… Ma quel documento può essere di **tipo
-diverso** e vivere in **tabelle diverse**. Avere un collegamento fisso per ogni tipo
-(una colonna per preventivo, una per ordine, una per DDT…) sarebbe ingestibile.
+Molte righe del sistema **nascono da un documento**: la riga d'ordine nasce dalla riga di
+un preventivo, la bolla da un ordine, la riga di commessa da un contratto o da un consumo,
+il collegamento di una pratica da un preventivo, la stampa da una fattura. Il documento
+d'origine può essere di **tipo diverso** e vivere in **tabelle diverse**: una colonna
+dedicata per ogni tipo (una per il preventivo, una per l'ordine, una per la bolla…) non
+si potrebbe gestire.
 
-La soluzione è un **aggancio universale**: invece del tunnel dedicato, si memorizza
-**tipo + identificatore**, e un dizionario centrale sa dove e come trovare il bersaglio.
+La soluzione è una **provenienza universale**: si scrive *che tipo di documento è* e *quale
+documento è*, e un catalogo centrale sa dove trovarlo. Le stesse colonne, con lo stesso
+significato, su tutte le tabelle.
 
-## 2. Come funziona — tre pezzi
+## 2. Il modello: tipo, documento, riga
 
-1. **Il dizionario** — `config.sorgenti`. Elenca i tipi ammessi; per ognuno dice:
-   * `target_table` = in quale tabella cercare (es. `ORDINE_VENDITA` → `vendite.ordini`);
-   * `key_selector` = con quale chiave cercare, **`id`** o **`uid`**.
-2. **Le colonne di aggancio** sulla tabella che collega:
-   * `sorgente_tipo_id` = *che tipo è* (FK a `config.sorgenti`);
-   * `sorgente_uid` = *quale in particolare* (il valore che identifica la riga).
-3. **Il guard** — apre il dizionario, controlla che la chiave sia **nel formato giusto**
-   per il `key_selector`, va nella `target_table` giusta e verifica che **quel documento
-   esista davvero**; altrimenti **blocca**. Esiste in **due modelli**, corrispondenti ai
-   due modi di scrivere l'aggancio:
-   * `script.trgfn_guard_sorgente_polimorfa_testuale` — **modello B**: una sola colonna
-     `sorgente_uid` di tipo TEXT, che porta la chiave canonica (`id::text` o `uid::text`).
-     È il modello di `pratiche.pratiche_sorgenti` e `vendite.commesse_sorgenti`.
-   * `script.trgfn_guard_sorgente_polimorfa_tipizzata` — **modello A**: due colonne
-     tipizzate, `sorgente_riga` BIGINT per i tipi a chiave `id` e `sorgente_uid` UUID per
-     quelli a chiave `uid`. È il modello delle tabelle di magazzino.
+Una tabella che dice «nasce da» porta queste colonne, e solo queste:
 
-   Quali agganci sono oggi vivi **non si legge qui**: lo dice il database (§5).
-   In più, `vendite.fn_link_commessa_sorgente` **normalizza** la chiave alla
-   scrittura (traduce l'uuid in `id::text` per i tipi a chiave `id`): i chiamanti
-   storici continuano a funzionare e scrivono canonico.
+| Colonna | Che cosa dice |
+| --- | --- |
+| `sorgente_tipo_id` | il **tipo** del documento, un codice di [`config.sorgenti`](/dbzero/config/tabelle/sorgenti) |
+| `sorgente_id` *oppure* `sorgente_uid` | **quale** documento: una sola delle due, quella della chiave del tipo (§3) |
+| `sorgente_riga` | la **riga** di quel documento; vuota se la provenienza è il documento intero |
+| `sorgente_dettaglio` | il **dettaglio** di quella riga (il prelievo di una bolla, il rientro di un reso), dove serve |
 
-> ⚠️ **Il guard chiude la porta in ingresso, non sorveglia l'uscita.** Verifica che il
-> bersaglio esista **quando si scrive il collegamento**: se poi qualcuno cancella il
-> documento bersaglio, il collegamento resta orfano e il guard non c'entra più. A
-> trovarli, **dopo**, c'è un presidio apposito (vedi sotto).
->
-> Analogia: un **adattatore universale**. Non serve una presa diversa per ogni Paese:
-> basta l'adattatore + l'indicazione di quale spina usare (`key_selector`).
+Le regole che tengono insieme il modello:
 
-## 2a. Le quattro domande che il meccanismo sa fare
+* **La chiave è sempre quella del documento**, mai quella della riga: `sorgente_id` /
+  `sorgente_uid` dicono il documento, `sorgente_riga` dice la riga. Una tabella non mette
+  la riga al posto del documento.
+* **Una sola forma per tutte le tabelle.** Un `CHECK` per tabella (`chk_<tabella>_sorgente_forma`)
+  dice che o le colonne sono tutte vuote (la riga non nasce da nessun documento), o c'è il
+  tipo con **una** chiave.
+* **I livelli li dichiara il catalogo.** Per ogni tipo `config.sorgenti` dice la tabella del
+  documento, quella delle righe e quella del dettaglio, ognuna con la colonna che la lega al
+  livello sopra. Se un tipo non ha righe (una mail, un consumo) la riga resta vuota per forza.
+* **Unicità solo dove il dominio ha una regola.** Non esiste un vincolo generico «una riga per
+  sorgente»: dove il dominio ne ha uno (un'offerta genera al più un ordine vivo, un documento
+  sta in una sola commessa aperta), la regola è scritta lì, sulla chiave giusta: un indice
+  unico, o la porta che scrive il legame quando la regola guarda anche lo stato.
 
-Un aggancio universale serve a poco se poi, del documento agganciato, non si sa
-niente. Oggi il meccanismo risponde a **quattro** domande, e ognuna ha un pezzo suo:
+## 3. La chiave del documento: `id` o `uid`
 
-| Domanda                              | Chi risponde                                                                                                                                                                  |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **esiste?** (al momento di scrivere) | `script.trgfn_guard_sorgente_polimorfa_testuale` / `_tipizzata` — bloccano l'aggancio a un documento che non c'è                                                              |
-| **è rimasto orfano?** (dopo)         | [`dbops.vw_sorgenti_orfane`](/dbzero/dbops/views/vw_sorgenti_orfane) — trova i collegamenti il cui bersaglio è stato cancellato dopo; il perimetro si **deriva dal catalogo** |
-| **in che stato è?**                  | `script.vw_stato_sorgente` — traduce lo stato nel vocabolario comune                                                                                                          |
-| **chi lo emette?**                   | [`script.fn_get_sorgente_emittente_sr_id`](/dbzero/script/funzioni/fn_get_sorgente_emittente_sr_id)                                                                           |
+<a id="la-chiave-del-documento"></a>
 
-La quarta domanda è nata per un controllo preciso — il guard
-`vendite.trgfn_commesse_sorgenti_guard_emittente`, che vieta a una commessa di
-aggregare documenti di emittenti diversi — ma la domanda è generale e la risposta
-esiste in **un posto solo**.
+Ogni tipo dichiara in `config.sorgenti.key_selector` con quale chiave lo si riconosce:
 
-⛔ **Una trappola che quella funzione ha già pagato**, e che vale per chiunque
-scriva un risolutore su questo meccanismo: l'emittente **non** si chiede al
-cliente del documento. Su `ordini`, `preventivi`, `ddt` e `resi` il cliente
-**può mancare** — è uno stato legittimo — mentre l'emittente c'è sempre. Un
-risolutore che passasse dal cliente si fermerebbe su documenti perfettamente
-validi, e *un controllo che rifiuta una situazione che il modello ammette non è
-severo: è rotto*.
+* **`uid`** — `PREVENTIVO`, `OFFERTA_COMMERCIALE`: la chiave sta in `sorgente_uid`;
+* **`id`** — tutti gli altri: la chiave sta in `sorgente_id`.
 
-## 3. Come si usa
+⛔ **La chiave non si unifica.** Portare tutti i tipi su `id`, o tutti su `uid`, è un'idea
+già tornata più volte, e la risposta è no: non si propone, né come raccomandazione né come
+opzione. Le due colonne tipizzate rendono la scelta innocua per chi scrive e per chi legge
+(nessuno deve sapere quale chiave usa un tipo: lo sanno i BB, §4), mentre cambiarla vorrebbe
+dire convertire ogni provenienza salvata. E le chiavi di `config.tipi_entita.key_selector`
+rispondono a un'altra domanda (con che chiave si **apre** un documento a video): non è una
+divergenza da sanare.
 
-Una **pratica** deve collegarsi all'ordine `ORD0000163`: si scrive una riga in
-`pratiche.pratiche_sorgenti` con il tipo di sorgente (`ORDINE_VENDITA`) e la chiave del
-documento ([esempio](#area-tecnica-esempi)). Il guard verifica: esiste `vendite.ordini`
-con `id = 163`? Sì → ok. Domani lo stesso meccanismo collega un **DDT** (basta cambiare
-tipo) senza nuove colonne né nuovo codice.
+Unificare il **nome del tipo** di documento (un codice solo, quello di `config.sorgenti`) è
+un'altra cosa, e si fa.
 
-## 4. La convenzione chiave `id` vs `uid` (trappola da conoscere)
+## 4. I pezzi: chi fa che cosa
 
-`key_selector` decide se `sorgente_uid` contiene un **id** (bigint::text) o un **uid**
-(UUID). Nel modello attuale è **misto ma voluto**:
+Nessuno scrive o legge la provenienza a mano: ogni domanda ha **un** pezzo che risponde.
 
-* **`uid`**: PREVENTIVO, OFFERTA_COMMERCIALE;
-* **`id`**: ORDINE, CONTRATTO, DDT, FATTURA, COMMESSA, ATTIVITA, ATTIVITA_CONSUMI.
+| Domanda | Chi risponde |
+| --- | --- |
+| **che cosa scrivo?** (ho un tipo e una chiave qualsiasi, id o uid) | [`script.fn_sorgente_chiave`](/dbzero/script/funzioni/fn_sorgente_chiave) — restituisce la coppia `sorgente_id` / `sorgente_uid` da scrivere, traducendo la chiave dell'altra specie |
+| **è giusta?** (al momento di scrivere) | [`script.trgfn_guard_sorgente`](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico, montato su ogni tabella che dice «nasce da» |
+| **che documento è?** (id, uid, numero) | [`script.fn_sorgente_documento`](/dbzero/script/funzioni/fn_sorgente_documento) — una riga sempre, mai un errore: una provenienza che non si risolve fa sparire l'azione, non rompe la lista |
+| **in che stato è?** | [`script.vw_stato_sorgente`](/dbzero/script/views/vw_stato_sorgente) — lo stato nel vocabolario comune |
+| **chi lo emette?** | [`script.fn_get_sorgente_emittente_sr_id`](/dbzero/script/funzioni/fn_get_sorgente_emittente_sr_id) |
+| **si può cancellare l'origine?** | [`script.trgfn_sorgente_in_uscita`](/dbzero/script/funzioni/trgfn_sorgente_in_uscita) — il lato «in uscita», la FK che il legame non ha |
+| **è rimasto qualcosa di orfano?** | [`dbops.vw_sorgenti_orfane`](/dbzero/dbops/views/vw_sorgenti_orfane) — il presidio, a tre livelli |
 
-⚠️ **Non è un errore da "ripulire"**: è portante (lo usano guard e resolver). Mappa
-completa + spiegazione dei **due meccanismi** (polimorfo vs colonne tipizzate dirette
-come `ddt.sorgente_uid`/`resi.sorgente_uid` che sono `uuid` a sé):
-[config.sorgenti — §Convenzione chiave sorgente](/dbzero/config/tabelle/sorgenti).
+### Il guard unico
 
-⛔ **Decisione definitiva: la chiave non si unifica.** Portare tutto su `id` (o su
-`uid`) è un'idea già tornata più volte, e la risposta è sempre no. Non si propone, né
-come raccomandazione né come opzione. I motivi:
+Il guard controlla, prima la forma e poi l'esistenza: il tipo esiste ed è attivo; c'è una
+sola chiave, quella del tipo; il documento esiste ed è visibile a chi scrive; la riga è di
+quel documento e il dettaglio di quella riga, nelle tabelle che il catalogo dichiara. Ogni
+tabella lo monta con due argomenti:
 
-* **l'`uid` non vive solo qui.** `vendite.commesse_attivita` porta sempre l'`uid` del
-  documento (§4a), le chiavi di idempotenza del push lo contengono, `vendite.ddt` e
-  `vendite.resi` hanno un `sorgente_uid` di tipo `uuid`, e la proiezione dello stato
-  delle pratiche si aggancia al preventivo per `uid`. Cambiarla vuol dire rifare guard,
-  resolver, `vw_stato_sorgente_*`, lineage e push, e convertire i dati salvati (§6);
-* **far viaggiare l'`id` dai lister è già stato scartato**: rompe il contratto fra
-  database e backend, e non porta niente che la normalizzazione nel punto unico di
-  scrittura (`fn_link_commessa_sorgente`) non dia già;
-* **le due chiavi rispondono a due domande.** `config.sorgenti.key_selector` dice con
-  che chiave un documento si **collega**; `config.tipi_entita.key_selector` dice con
-  che chiave lo si **apre** a video, e per preventivo e offerta è `id`. Non è una
-  divergenza da sanare.
+* il **livello minimo** che la sua provenienza deve raggiungere (`DOCUMENTO`, `RIGA`,
+  `DETTAGLIO`): il registro di magazzino, per esempio, vuole sempre il dettaglio di una bolla;
+* che cosa succede quando l'origine si cancella (`BLOCCA` o `CANCELLA`), come un `ON DELETE`.
 
-Unificare il **nome del tipo** di documento (un codice solo, quello di
-`config.sorgenti`) è un'altra cosa, e si fa.
+### Il lato «in uscita»
 
-### 4a. ⚠️ La trappola vera: colonne che *sembrano* polimorfe ma non lo sono
+Il guard chiude la porta in ingresso; quando poi qualcuno **cancella** il documento d'origine,
+o una sua riga, interviene il lato «in uscita». È montato su ogni tabella che il catalogo
+dichiara come documento, righe o dettaglio di un tipo, e guarda le righe che ne dichiarano la
+provenienza:
 
-Il punto che fa sbagliare più spesso **non è** `key_selector` in sé — quello è
-scritto e chiaro. È che esistono colonne chiamate `sorgente_tipo_id` /
-`sorgente_uid` **fuori** da questo meccanismo, che quindi **non sono
-normalizzate** e non seguono `key_selector`.
+* se un figlio ha dichiarato `BLOCCA`, la cancellazione si ferma (`E_SORG_ORIGINE_REFERENZIATA`,
+  col numero dei figli nella frase);
+* se ha dichiarato `CANCELLA`, i figli se ne vanno con l'origine.
 
-| Dove                           | Tipo | Cosa contiene davvero                                              | Dentro il meccanismo?                                           |
-| ------------------------------ | ---- | ------------------------------------------------------------------ | --------------------------------------------------------------- |
-| `pratiche.pratiche_sorgenti`   | TEXT | chiave **canonica** per `key_selector`                             | **sì** (guard)                                                  |
-| `vendite.commesse_sorgenti`    | TEXT | chiave **canonica** per `key_selector`                             | **sì** (guard + normalizzazione in `fn_link_commessa_sorgente`) |
-| `vendite.commesse_attivita`    | TEXT | **l'`uid` del documento, sempre** — anche per i tipi a chiave `id` | no                                                              |
-| `vendite.attivita_fatturabili` | UUID | `md5(segment_key)`, con tipo `COMMESSA`                            | no (idempotenza del pull)                                       |
-| `vendite.ddt`, `vendite.resi`  | UUID | uid del padre                                                      | no (colonna tipizzata diretta)                                  |
+Prima conta i figli che bloccano, poi cancella: se uno blocca, non si cancella niente. Come una
+FK, vede anche i figli che la RLS nasconde a chi cancella. Il montaggio **deriva dal catalogo**:
+un tipo nuovo in `config.sorgenti` riceve il suo lato «in uscita» alla migrazione successiva,
+senza un changeSet suo.
 
-**Come si riconosce chi è dentro**: si interroga il catalogo dei trigger agganciati
-([esempio](#area-tecnica-esempi)). Se una tabella non compare lì, **non dare per scontata la
-forma della chiave**: vai a leggere la funzione che fa l'INSERT.
+⚠️ Il lato «in uscita» non decide **se** un documento si può cancellare: quello lo dice la regola
+della tabella padre (per le testate di vendita, «si cancella solo la bozza vuota»). Il lato «in
+uscita» parla dopo, sui figli.
 
-**La regola che chiude il dubbio**: la convenzione di `sorgente_uid` la
-determina **chi scrive**, non chi chiama. `fn_link_commessa_sorgente` riceve un
-uid e scrive `id::text`; `fn_upsert_commessa_attivita` riceve lo stesso uid e lo
-scrive tale e quale. Guardare il chiamante (il push, che passa sempre l'uid)
-porta a concludere «è sempre l'uid» e a scrivere query che non trovano nulla,
-**in silenzio**.
+## 5. Le chiavi in testo: dove esistono, e chi le legge
 
-> Caso concreto: `commesse_sorgenti` e `commesse_attivita` sono popolate dallo
-> stesso push, hanno colonne omonime, e per lo **stesso ordine** contengono
-> valori **diversi** (`id::text` vs `uid::text`). Nessuna delle due è
-> sbagliata; sbagliato è dedurre l'una dall'altra.
+Le tabelle scrivono la chiave nelle colonne tipizzate. Esistono però chiavi che sono **testo
+per costruzione**: i nodi della lineage, la chiave di un gruppo fatturabile (che contiene l'uid
+del documento), la chiave che il backend passa ai verbi del push. Quelle si leggono con
+[`script.fn_sorgente_documento_da_chiave`](/dbzero/script/funzioni/fn_sorgente_documento_da_chiave),
+che riconosce la forma **canonica** (`id::text` o `uuid::text`, con
+[`fn_sorgente_chiave_id`](/dbzero/script/funzioni/fn_sorgente_chiave_id) e
+[`fn_sorgente_chiave_uuid`](/dbzero/script/funzioni/fn_sorgente_chiave_uuid)) e poi risolve come
+il BB che risolve. Una chiave non canonica (zeri davanti, spazi, maiuscole) non si risolve.
 
-## 5. Stato attuale di utilizzo — **NON è una lista scritta qui**
+## 6. Chi resta fuori, e perché
 
-Una lista a mano invecchierebbe, e ne abbiamo la prova: le tabelle agganciate, i tipi
-ammessi e le colonne che *sembrano* polimorfe senza esserlo sono **stato**, e lo stato
-sta nel database. Qui resta la domanda e il modo di farla; le query sono in
-[Area tecnica](#area-tecnica-esempi).
+Il presidio di struttura (un pgTAP in CI) fa rossa ogni tabella che ha `sorgente_id` o
+`sorgente_uid` e non monta il guard unico. Fuori dal guard ci sono solo casi **dichiarati**,
+ognuno col suo motivo scritto nel perimetro del presidio:
 
-Le due domande da fare:
+* **`pratiche.reconcile_errori`** — è un log scritto dentro un `EXCEPTION`: un guard d'esistenza
+  lo farebbe tacere, e un log rimanda per costruzione anche a documenti che non ci sono più;
+* **`vendite.fatture_stampa_coda`** — la sua chiave è una FK vera verso la fattura: esistenza e
+  cancellazione le tiene la FK;
+* **le tabelle degli acquisti** (`acquisti.ordini`, `ordini_righe`, `ddt`, `ddt_righe`) — non
+  sono ancora sul modello: le porta il cantiere degli acquisti, e fino ad allora sono l'unico
+  elenco del presidio di struttura.
 
-* **chi usa la macchina** — quali tabelle hanno oggi un guard agganciato (il catalogo
-  dei trigger dice anche *quale dei due modelli*);
-* **quali tipi-sorgente sono ammessi** — il dizionario è già una tabella, `config.sorgenti`.
+Non usano queste colonne, per scelta:
 
-> Per comodità, la prima si può incapsulare in una vista (`vw_sorgenti_consumatori`),
-> così smette di essere una query da ricordare.
+* **l'import da un sistema esterno**: avrà una tabella di collegamento propria (canale, tipo di
+  record, id esterno in testo), perché un id esterno non è un documento del catalogo;
+* **le attività fatturabili**: puntano alla riga di commessa con una FK vera
+  (`commessa_attivita_id`), e la provenienza è quella della riga di commessa.
 
-## 6. Per chi costruisce grafi tra documenti (lineage, genealogia, proiezione)
+## 7. Aggiungere una tabella che «nasce da»
 
-Usa la **chiave nativa polimorfa** `(sorgente_tipo_id, sorgente_uid)` come identità del
-nodo (per la commessa → `id::text`, coerente con `key_selector='id'`). Le **colonne
-tipizzate dirette** fuori dal meccanismo (`ddt.sorgente_uid`/`resi.sorgente_uid` uuid,
-`ordini.documento_origine_id`, `contratti.offerta_id`) vanno **tradotte** su quella
-chiave con un join alla tabella target. **Non** canonicalizzare "al volo" a un'unica
-chiave: significherebbe rifare guard, resolver e `vw_stato_sorgente_*`.
+1. le colonne del §2, nullable, con il `CHECK` di forma;
+2. il verbo che scrive la riga ottiene la coppia di colonne da `script.fn_sorgente_chiave`, e non
+   la compone da sé;
+3. il guard unico montato con il livello minimo e l'azione in cancellazione;
+4. l'unicità solo se il dominio ha una regola, sulla chiave giusta;
+5. il lato «in uscita» sul documento d'origine non si scrive: lo monta la convergenza dal
+   catalogo.
 
-I resolver di stato pronti da riusare come mattoni:
-`vendite.vw_stato_sorgente_{preventivo,offerta,ordine,contratto,ddt,reso}` e
-[`script.vw_stato_sorgente`](/dbzero/script/views/vw_stato_sorgente).
+Il presidio di struttura in CI fa rossa la tabella a cui manca il guard.
+
+## 8. Per chi costruisce grafi tra documenti (lineage, legami, proiezione)
+
+<a id="grafi-tra-documenti"></a>
+
+L'identità di un nodo è **tipo + chiave del documento**, come la scrive il modello. Il documento
+si risolve con il BB che risolve, non con un join scritto a mano verso la tabella: è lui che sa
+quale chiave usa il tipo e dove sta il numero. I resolver di stato da riusare sono
+[`script.vw_stato_sorgente`](/dbzero/script/views/vw_stato_sorgente) e le viste
+`vendite.vw_stato_sorgente_*` che la compongono.
 
 ---
 
 ## Area tecnica — esempi
 
-**Agganciare una pratica a un ordine** — `key_selector` di `ORDINE_VENDITA` è `id`,
-quindi `sorgente_uid` porta l'`id` del documento, non il suo uid:
+**Scrivere una provenienza** — la coppia di colonne la dà il BB che scrive, qualunque chiave abbia
+in mano il chiamante (qui l'uid di un ordine, tipo a chiave `id`: esce in `sorgente_id`):
 
 ```sql
-INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-VALUES (:pratica_id,
-        (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_VENDITA'),
-        '163',          -- key_selector='id' per ORDINE_VENDITA → qui va l'id, non l'uid
-        'COLLEGATO');
+SELECT k.sorgente_id, k.sorgente_uid
+  FROM script.fn_sorgente_chiave(
+         (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_VENDITA'),
+         '01a06ce4-35a6-721a-9cd8-9da48bf77626') k;
 ```
 
-**Quali tabelle hanno oggi un guard agganciato** — e quale dei due modelli:
+**Quali tabelle montano il guard unico** — con il livello minimo e l'azione in cancellazione:
 
 ```sql
-SELECT n.nspname AS schema, c.relname AS tabella,
-       p.proname AS guard, t.tgname AS trigger
-FROM pg_trigger t
-JOIN pg_class c     ON c.oid = t.tgrelid
-JOIN pg_namespace n ON n.oid = c.relnamespace
-JOIN pg_proc p      ON p.oid = t.tgfoid
-WHERE p.proname LIKE 'trgfn_guard_sorgente_polimorfa%'
-  AND NOT t.tgisinternal
-ORDER BY 1, 2;
+SELECT tabella, livello_minimo, azione_cancellazione, argomenti_validi
+  FROM script.fn_sorgente_guard_montaggi()
+ ORDER BY 1;
 ```
 
-**Il dizionario dei tipi ammessi** — la mappa che decide la forma della chiave:
+**Il catalogo dei tipi** — la chiave, le righe e il dettaglio di ognuno:
 
 ```sql
-SELECT id, codice_interno, categoria, target_table, key_selector, attivo
-FROM config.sorgenti
-ORDER BY id;
+SELECT codice_interno, key_selector, target_table, righe_table, dettaglio_table
+  FROM config.sorgenti
+ WHERE attivo
+ ORDER BY codice_interno;
 ```
 
-**Gli agganci rimasti orfani** — deve restare vuota:
+**Le provenienze rimaste orfane** — deve restare vuota:
 
 ```sql
 SELECT * FROM dbops.vw_sorgenti_orfane;

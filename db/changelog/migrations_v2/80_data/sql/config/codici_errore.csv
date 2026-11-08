@@ -189,7 +189,7 @@ E_DDT_ORDINE_NOT_FOUND,NON_TROVATO,NULL,"Evasione da ordine (fn_genera_ddt_da_or
 E_DDT_ORDINE_STATO_NON_EVADIBILE,CONFLITTO_STATO,NULL,NULL,NULL
 E_DDT_PREZZO_NON_RISOLVIBILE,CONFLITTO_STATO,NULL,NULL,NULL
 E_DDT_RIGA_NON_TROVATA,NON_TROVATO,NULL,NULL,NULL
-E_DDT_STATO_TRANSIZIONE,CONFLITTO_STATO,NULL,NULL,NULL
+E_DDT_STATO_TRANSIZIONE,CONFLITTO_STATO,2026-11-08,"Lo sollevavano solo i controlli del backend sulla bolla (cancellazione di una bozza con righe, modifica fuori bozza), ritirati: le stesse regole le dice il database, con E_DELETE_DOC_NON_BOZZA, E_DELETE_DOC_CON_RIGHE e i lock fuori bozza.",NULL
 E_DDT_VALIDAZIONE,DATO_ERRATO,NULL,NULL,NULL
 E_DEFAULT_CONTATTO_MISSING,DATO_ERRATO,NULL,NULL,NULL
 E_DEFAULT_ERRATO,TECNICO,NULL,"Un parametro di default punta a un valore che la sua tabella non ha: e' un default configurato male, non un dato sbagliato dall'operatore. Dal 2026-10-18 lo solleva script.fn_stato_proposto_id (STATO_PROPOSTO_ISO2 senza stato in config.stati); script.fn_get_default_by_param, che lo sollevava prima, e' ritirata (20261018-93).",NULL
@@ -453,7 +453,7 @@ E_PREV_REVISIONE_BOZZA_ESISTENTE,CONFLITTO_STATO,NULL,<- PREV_REVISIONE_BOZZA_ES
 E_PREV_REVISIONE_STATO_NON_AMMESSO,CONFLITTO_STATO,NULL,<- PREV_REVISIONE_STATO_NON_AMMESSO  (ritirato),NULL
 E_PREV_RIGA_NOT_FOUND,NON_TROVATO,NULL,NULL,NULL
 E_PREV_STATO_CORRENTE_NON_TROVATO,NON_TROVATO,NULL,NULL,NULL
-E_PREV_STATO_NON_MODIFICABILE,CONFLITTO_STATO,NULL,NULL,NULL
+E_PREV_STATO_NON_MODIFICABILE,CONFLITTO_STATO,2026-11-08,"Lo sollevavano solo i controlli del backend sul preventivo (cancellazione fuori bozza o con righe o pratiche collegate), ritirati: le stesse regole le dice il database, con E_DELETE_DOC_NON_BOZZA, E_DELETE_DOC_CON_RIGHE ed E_SORG_ORIGINE_REFERENZIATA.",NULL
 E_PREV_STATO_TRANSIZIONE,CONFLITTO_STATO,NULL,NULL,NULL
 E_PREV_TRANSIZIONE_NON_AMMESSA,CONFLITTO_STATO,NULL,"Matrice del preventivo, ora vincolante anche a DB (brief vie-uscita · §11.1, changeSet 20260805-15): dal 2026-08-05 la transizione fuori · matrice e' rifiutata dal guard `trgfn_preventivi_guard_transizione`, · non piu' dalla sola porta `fn_cambia_stato_preventivo`. · ⚠️ UNO solo per DUE sedi: porta e guard sollevano lo stesso codice. · Il precedente `PREV_TRANSIZIONE_NON_AMMESSA` (senza prefisso `E_`, · quindi non agganciato dall'estrattore e degradato a E_DATABASE) resta · dichiarato piu' sotto e a catalogo — la sua riga non e' cancellabile, · ha 109 righe in `dbops.error_log` che la trattengono — ma nessuna · funzione viva lo solleva piu'. · 409 e non 400: e' un rifiuto di PERCORSO (lo stato di partenza non · ammette quell'arrivo), non un campo compilato male.",NULL
 E_PREV_UTILITY_ISTANZA_INCOERENTE,CONFLITTO_STATO,NULL,NULL,NULL
@@ -504,7 +504,7 @@ E_RESO_RINUNCIA_SUPERA_RESO,CONFLITTO_STATO,NULL,"Gemello del precedente sull'AL
 E_RESO_SENZA_RIGHE,CONFLITTO_STATO,NULL,NULL,NULL
 E_RESO_STATO_NON_ANNULLABILE,CONFLITTO_STATO,NULL,fn_annulla_reso: annullo ammesso da DRAFT/CONFERMATO; bloccato se il · reso e' gia' stato ri-spedito (storno ri-spedizione fuori perimetro).,NULL
 E_RESO_STATO_NON_CONFERMABILE,CONFLITTO_STATO,NULL,fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.,NULL
-E_RESO_STATO_TRANSIZIONE,CONFLITTO_STATO,NULL,NULL,NULL
+E_RESO_STATO_TRANSIZIONE,CONFLITTO_STATO,2026-11-08,"Lo sollevavano solo i controlli del backend sul reso (cancellazione di una bozza con righe, modifica fuori bozza), ritirati: le stesse regole le dice il database, con E_DELETE_DOC_NON_BOZZA, E_DELETE_DOC_CON_RIGHE e i lock fuori bozza.",NULL
 E_RESO_VALIDAZIONE,DATO_ERRATO,NULL,NULL,NULL
 E_RIGA_COMMESSA_GIA_ANNULLATA,CONFLITTO_STATO,NULL,NULL,NULL
 E_RIGA_COMMESSA_GIA_EMESSA,CONFLITTO_STATO,NULL,NULL,NULL

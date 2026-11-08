@@ -1,105 +1,98 @@
-## 📘 Documentazione Funzione – `pratiche.fn_stato_sorgente`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_stato_sorgente`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente)
-> [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti)
-> [config.sorgenti](/dbzero/config/tabelle/sorgenti)
-> [config.esiti_flussi_pratiche](/dbzero/config/tabelle/esiti_flussi_pratiche)
+> * [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti) — i collegamenti fra pratiche e documenti, nelle stesse colonne
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — i tipi di documento e la loro chiave
+> * [config.esiti_flussi_pratiche](/dbzero/config/tabelle/esiti_flussi_pratiche) — i verdetti
+>
+> Approfondimento viste:
+>
+> * [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente) — la union dei resolver di dominio, l'unica superficie che legge
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_reconcile_sorgente](/dbzero/pratiche/funzioni/fn_reconcile_sorgente) — il motore che ne usa l'esito
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza: tipo, documento, riga
 
 ---
+
 ### 🎯 Scopo Principale
 
-API del **motore pratiche** per il **descrittore normalizzato** dello stato del documento
-sorgente collegato (brief-db-proiezione-stato-dominio, deliverable D3). Dato
-`(sorgente_tipo_id, sorgente_uid)` ritorna **sempre esattamente 1 riga**:
-
-* la **proiezione del dominio** (`risolto=true`) se il tipo ha un resolver registrato in
-  `script.vw_stato_sorgente` e il documento esiste;
-* altrimenti la **sentinella `UNKNOWN`** (`risolto=false`, `stato_codice_interno='UNKNOWN'`,
-  `stato_descrizione='n/d'`, `fase='APERTO'`, `esito=NULL`, `terminale=false`) **senza
-  errore**: degrado con grazia, il milestone resta manuale come prima del roll-out.
-
-Il motore ragiona **solo** su `fase`/`esito`/`terminale` normalizzati: non nomina mai uno
-stato di dominio.
+Il descrittore normalizzato dello stato di un documento, per il motore delle pratiche: dato il
+documento, risponde **sempre con una riga**, con la fase, l'esito e il flag terminale nel
+vocabolario comune. Il motore ragiona solo su questi tre valori e non nomina mai uno stato di
+dominio.
 
 ---
 
-### Firma
+### Due risposte possibili, mai un errore sul documento
 
-```sql
-CREATE FUNCTION pratiche.fn_stato_sorgente(
-    p_sorgente_tipo_id config.sorgenti.id%TYPE,
-    p_sorgente_uid     pratiche.pratiche_sorgenti.sorgente_uid%TYPE
-)
-RETURNS TABLE(
-    sorgente_tipo_id     config.sorgenti.id%TYPE,
-    sorgente_uid         pratiche.pratiche_sorgenti.sorgente_uid%TYPE,
-    risolto              boolean,
-    stato_codice_interno text,
-    stato_codice         text,
-    stato_descrizione    text,
-    fase                 text,
-    esito                text,
-    terminale            boolean
-)
-LANGUAGE plpgsql STABLE
-```
+* **La proiezione del dominio** (`risolto` vero), se il tipo ha un resolver in
+  `script.vw_stato_sorgente` e il documento esiste ed è visibile a chi legge.
+* **La sentinella `UNKNOWN`** (`risolto` falso, fase `APERTO`, esito vuoto, non terminale, con la
+  chiave ricevuta), in tutti gli altri casi: un tipo senza resolver, un documento che non c'è più o
+  non c'è ancora. Il milestone resta manuale, come prima che il dominio avesse un resolver.
 
-| Parametro | Obbligatorio | Descrizione |
-|-----------|:---:|-------------|
-| `p_sorgente_tipo_id` | SI | Tipo sorgente (`config.sorgenti.id`). Guard: NULL o ≤ 0 → `E_STATO_SORGENTE_PARAM_INVALIDO` (502) |
-| `p_sorgente_uid` | SI | Chiave del documento come in `pratiche_sorgenti.sorgente_uid`. Guard: NULL o vuoto → idem |
-
-Output = **descrittore universale** (contratto §4 del brief design). I campi descrittore
-sono in `text`/`boolean` piani: il contratto è cross-dominio e il motore non deve dipendere
-dai tipi delle tabelle di dominio (layering).
+Il flag `risolto` distingue l'`APERTO` vero dal ripiego: la fase `APERTO` della sentinella serve solo
+all'instradamento del motore, e chi disegna l'interfaccia guarda `risolto`.
 
 ---
 
-### Note operative
+### Il documento si passa con le colonne del modello
 
-* **Un tipo valido ma senza resolver NON è un errore** → `UNKNOWN`. Idem per uid inesistente
-  (documento cancellato / non ancora creato). L'errore parametri scatta solo su
-  `tipo NULL/≤0` o `uid vuoto`.
-* Il flag `risolto` distingue l'`APERTO` **reale** dal fallback: `fase='APERTO'` sulla
-  sentinella serve solo al routing del motore; il consumer (BE/FE) usa `risolto` per il
-  fallback UI (milestone manuale).
-* **Wrapper scalare** su `script.vw_stato_sorgente`: unica superficie di dispatch, nessun
-  dynamic SQL, nessun `resolver_key`.
-* **Cerca per chiave nativa** (dal 2026-10-05): riconosce se `p_sorgente_uid` è un uuid o
-  un intero e filtra su `sorgente_chiave_uuid` / `sorgente_chiave_id` della union, non sulla
-  forma testuale. Così, sotto RLS, ogni ramo arriva all'indice invece di leggere l'intera
-  tabella. La conversione sta nei building block
-  [script.fn_sorgente_chiave_uuid](/dbzero/script/funzioni/fn_sorgente_chiave_uuid) e
-  [script.fn_sorgente_chiave_id](/dbzero/script/funzioni/fn_sorgente_chiave_id). I risultati sono gli stessi del confronto testuale: vale solo la **forma
-  canonica** della chiave (un uid in maiuscolo o un id con zeri davanti danno `UNKNOWN`,
-  come prima) e una chiave malformata dà `UNKNOWN` senza errore.
-* **Per le liste** con molte pratiche **non** chiamare questa funzione per-riga (N+1):
-  joinare direttamente `script.vw_stato_sorgente`.
-* Funzione `STABLE`, read-time: nessuna scrittura, nessun mirror di stato (il documento
-  resta l'unica verità).
-* Test: `db/pgtap/pratiche/test-proiezione-stato-sorgente.sql`.
+Il documento si indica con il tipo (`config.sorgenti`), `sorgente_id` e `sorgente_uid`, come lo
+scrive il modello della provenienza, e il risultato riporta la chiave nelle stesse due colonne. Chi
+ha il documento passa il suo id e il suo uid; chi ha la chiave del modello passa quella, e vuoto
+nell'altra.
+
+⭐ **Due letture, non una con l'OR.** La funzione cerca prima per uid, sulla colonna
+`sorgente_chiave_uuid` della vista, e solo se non trova niente per id, su `sorgente_chiave_id`. Un
+OR sulle due chiavi non scenderebbe nei rami della union e la leggerebbe per intero; due letture per
+chiave nativa, sotto RLS, arrivano all'indice di ogni ramo (i confronti fra uuid e fra interi sono
+`leakproof`).
+
+⚠️ **Per le liste non si chiama riga per riga.** Una lista di pratiche che volesse lo stato di ogni
+documento con questa funzione farebbe una lettura per riga: si legge direttamente
+`script.vw_stato_sorgente`, o la vista che ne sceglie il documento per pratica
+(`script.vw_pratica_doc_sorgente`).
+
+La funzione è `STABLE` e non scrive: nessuna copia dello stato, il documento resta l'unica verità.
 
 ---
 
-### Esempio d'uso
+### Codici errore
 
-```sql
--- Descrittore dello stato del documento collegato a una riga di pratiche_sorgenti.
-SELECT d.*
-  FROM pratiche.pratiche_sorgenti ps
- CROSS JOIN LATERAL pratiche.fn_stato_sorgente(ps.sorgente_tipo_id, ps.sorgente_uid) d
- WHERE ps.pratica_id = 42;
-
--- Preventivo EMESSO    -> risolto=t, fase=IN_ATTESA, esito=NULL,     terminale=f
--- Preventivo ACCETTATO -> risolto=t, fase=IN_CORSO,  esito=POSITIVO, terminale=f
--- Preventivo ANNULLATO -> risolto=t, fase=CHIUSO,    esito=NEGATIVO, terminale=t
--- Tipo senza resolver  -> risolto=f, fase=APERTO,    esito=NULL,     stato='UNKNOWN'
-```
+* `E_STATO_SORGENTE_PARAM_INVALIDO` — il tipo è vuoto o non positivo, oppure manca la chiave del
+  documento (né `sorgente_id` né `sorgente_uid`). Un documento che non si trova non è un errore: dà
+  la sentinella.
 
 ---
 
+### Test
+
+* `db/pgtap/pratiche/test-proiezione-stato-sorgente.sql` — le mappe di stato dei domini, la
+  proiezione, la sentinella, il guard sui parametri.
+* `db/pgtap/pratiche/test-sorgente-pratiche-sorgenti-v1.sql` — il preventivo per uid e l'ordine per
+  id, la chiave nelle colonne del modello, la sentinella con la chiave ricevuta, il rifiuto senza
+  chiave.
+* `db/pgtap/vendite/test-vw-stato-sorgente-ddt-reso-v1.sql` — i rami di bolla e reso, a chiave id.
+
+---
+
+### Note di migrazione
+
+* 2026-07-01 — nasce con la proiezione dello stato di dominio (`brief-db-proiezione-stato-dominio`).
+* 2026-10-05 — la ricerca passa sulle chiavi native della vista, invece che sulla chiave in testo.
+* 2026-11-08 — il documento si passa con tipo, `sorgente_id` e `sorgente_uid` al posto della chiave
+  in testo, e il risultato porta la chiave nelle stesse colonne (`brief-db-sorgente-documento-e-riga`).
+
+---
 {% include-markdown "signature-core.md" %}

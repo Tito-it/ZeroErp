@@ -1,5 +1,14 @@
 # Analisi — Pratiche come container di processo: integrazione domini Anello 3
 
+> ⚠️ **Allineamento al modello della provenienza (2026-11-08).** Dove questa analisi lega la pratica e i documenti
+> derivati con la coppia `(sorgente_tipo_id, sorgente_uid)` testuale, e propone indici unici su `sorgente_uid`, oggi
+> vale il modello unico di `brief-db-sorgente-documento-e-riga`: la chiave del documento sta in `sorgente_id` o
+> `sorgente_uid` (tipizzate, secondo il tipo), la riga in `sorgente_riga`; `pratiche.pratiche_sorgenti` ha le colonne
+> tipizzate; un'unicità esiste solo dove il dominio ha una regola, sulla chiave del modello (l'ordine e il contratto
+> dall'offerta: `uq_ordini_v_sorgente_offerta`, `uq_contratti_sorgente_offerta`). Gli esempi SQL con `sorgente_uid`
+> qui sotto vanno riletti su quella struttura. Il meccanismo è nella guida
+> [Sorgente polimorfa](../../guide/sorgente-polimorfa.md).
+>
 > **Stato**: ANALISI infrastrutturale + **Fase E chiusa** (primo consumatore
 > PREVENTIVI validato runtime, §8.5). Documento di consolidamento delle convenzioni
 > di aggancio fra motore `pratiche` (Anello 2) e processi di Anello 3 (`vendite`,

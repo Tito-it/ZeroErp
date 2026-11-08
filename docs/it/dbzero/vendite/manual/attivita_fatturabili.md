@@ -1,20 +1,31 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.attivita_fatturabili`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)   
-> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
-> • [config.sorgenti](/dbzero/config/tabelle/sorgenti)   
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
-> • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)   
-> • [vendite.note](/dbzero/vendite/tabelle/note)   
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — la riga di commessa da cui ogni attività nasce, e che porta la provenienza
+> * [vendite.commesse](/dbzero/vendite/tabelle/commesse) — la testata della commessa
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — l'articolo o servizio
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'intestazione economica
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — il punto tecnico
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) — il documento emesso
+> * [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) — la riga di fattura che consuma l'attività
+> * [vendite.note](/dbzero/vendite/tabelle/note) — le note
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa) — l'emissione dalle righe di commessa
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza, e perché l'attività fatturabile ne resta fuori
 
 ---
 ### 🎯 Scopo Principale
-(latest review 21-01-2026)
+
 `vendite.attivita_fatturabili` è il **registro centrale delle prestazioni/attività da fatturare** (time & material, canoni, una‑tantum, letture/consumi valorizzati, import batch, ecc.).
 Ogni riga rappresenta **una voce fatturabile** riferita a un *articolo/servizio*, a una *istanza tecnica/utility* e, opzionalmente, a un *billing account*.
 Queste righe sono **pre‑documentali**: quando il ciclo di fatturazione le preleva, diventano **righe di fattura** (`vendite.fatture_righe`).
@@ -24,14 +35,14 @@ Obiettivi principali:
 * **Accentramento** della sorgente di verità per tutto ciò che va fatturato.
 * **Controllo del periodo di competenza** (mensile o a intervallo) per stabilire **quando** fatturare.
 * **Tracciabilità** dallo *stato bozza → approvato → fatturato* con blocchi anti‑doppia fatturazione.
-* **Idempotenza** degli import/import batch tramite coppia (`sorgente_tipo_id`, `sorgente_uid`).
+* **Provenienza** univoca: ogni attività nasce da **una** riga di commessa, e una riga di commessa genera al più un'attività.
 
 ---
 
 ### Collocazione nel flusso di fatturazione
 
 1. **Acquisizione**: le attività arrivano da input manuali, sistemi esterni, motori di calcolo o letture; vengono registrate qui con `data_attivita`, `quantita`, riferimenti a `articolo_id`, `istanza_utility_id`, `billing_account_id` (**obbligatorio**).
-2. **Normalizzazione/validazione** (trigger): allineamento della competenza mensile, coerenze su sorgente, BA e istanza.
+2. **Normalizzazione/validazione** (trigger): allineamento della competenza mensile, coerenze su commessa, BA e istanza.
 3. **Approvazione**: il flag `approvato` abilita l’eleggibilità al prelievo.
 4. **Selezione per fatturazione**: il motore estrae le righe **non fatturate**, **non sospese**, **non posticipate** e **in competenza** (vedi paragrafo successivo).
 5. **Generazione documento**: le righe selezionate generano entries su `vendite.fatture_righe` e valorizzano `fattura_riga_id`; `fatturato = true`.
@@ -41,10 +52,12 @@ Obiettivi principali:
 
 ### Periodo di competenza & regole di fatturabilità
 
-* `competenza_mese` → **competenza mensile** obbligatoria (sempre valorizzata) e al **1° giorno del mese** (es. `YYYY‑MM‑01`).
-  Rappresenta l’**anno/mese di fatturazione**. Se non valorizzata, viene derivata
-  da `posticipa_al` (se presente). Non viene derivata da `data_attivita`.
-  Se `posticipa_al` e` valorizzata, sposta l’attivita al **nuovo anno/mese** di fatturazione.
+* `competenza_mese` → **competenza mensile** obbligatoria, al **1° giorno del mese**:
+  rappresenta l’**anno/mese di fatturazione**. Come `competenza_dal`, `competenza_al` e
+  `posticipa_al`, la copia dalla sua riga di commessa chi emette l’attività
+  ([vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)),
+  e la riga di commessa la porta già nella forma giusta (il suo `CHECK` sul primo del mese).
+  Se `posticipa_al` è valorizzata, sposta l’attività al **nuovo anno/mese** di fatturazione.
 
   * **Regola**: non fatturare **prima** di quel mese.
 * `competenza_dal` / `competenza_al` → competenza **a intervallo** (es. periodo consumi).
@@ -65,8 +78,8 @@ Tipico filtro di eleggibilità per il motore:
 
 * **Identificazione & riferimenti**:
   `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (**obbligatorio** — l'intestazione economica), `area_geografica_id` (opz. area di fatturazione).
-  Con modello commessa attivo:
-  `commessa_id` (testata), `commessa_attivita_id` (riga commessa).
+  `commessa_id` (testata della commessa) e `commessa_attivita_id` (riga di commessa), entrambe
+  obbligatorie: sono la provenienza dell'attività (vedi «La provenienza è la riga di commessa»).
 * **Dati attività**:
   `data_attivita`, `quantita`, `meta` (estensioni specifiche: matricole, rilevazioni, tariffa applicata, ecc.).
 * **Competenza & gating**:
@@ -74,23 +87,23 @@ Tipico filtro di eleggibilità per il motore:
 * **Stato di processo**:
   `approvato`, `fatturato`, `lock_in_fatturazione`, `lock_batch_id`, `fattura_riga_id` (consumo su documento).
 * **Batch alimentazione**:
-  `lotto_attivita_id` (lotto alimentazione legacy), `attivita_consumi_id` (testata consumi legacy), `commessa_id`/`commessa_attivita_id` (nuovo percorso standard).
-* **Idempotenza import**:
-  `uid` (identita` applicativa) e `sorgente_tipo_id`, `sorgente_uid` (vincolo unico parziale per evitare duplicazioni dai sistemi esterni).
+  `attivita_consumi_id` (testata consumi legacy), `emit_batch_id` (la corsa di emissione), `commessa_id`/`commessa_attivita_id` (il percorso standard).
+* **Identità**:
+  `uid` (identità applicativa), unica.
 * **Governance**:
   `tx_id`, `storicizza`, `user_*`, `data_*`.
 * **Economiche & tipo documento**:
   `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario` (snapshot economico),
   `prezzo_bloccato` (freeze prezzo da override/policy).
-  In fase di alimentazione il tipo documento segue l’ordine: sorgente → utility (fallback).
+  Se non è passato, il tipo documento si ricava dal tipo del documento d'origine della riga di commessa (`COMMESSA` quando la riga non ne dichiara uno).
   `natura_doc_id` (fattura, nota di credito, nota di debito) viene dalla commessa;
   `natura_dal_segno` (rev 2026-10-31) marca l'attività che è diventata `NOTA_CREDITO` perché il
   suo documento somma negativo
   ([vendite.fn_lotto_natura_dal_segno](/dbzero/vendite/manual/fn_lotto_natura_dal_segno)): quando
   torna libera ([vendite.fn_libera_attivita_fatturabili](/dbzero/vendite/manual/fn_libera_attivita_fatturabili))
   o viene riemessa dalla commessa riprende la natura `FATTURA` e la marca cade.
-* **Misure & dettaglio sorgente**:
-  `sorgente_riga` (riferimento tecnico riga sorgente), `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).
+* **Misure**:
+  `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).
 
 ---
 
@@ -106,17 +119,17 @@ Tipico filtro di eleggibilità per il motore:
   * `billing_account_id` → `anagrafiche.billing_account` (**NOT NULL** dal 2026-09-10, `ON UPDATE CASCADE`).
     ⚠️ Questa riga diceva «nullable, `ON DELETE SET NULL`»: **erano due cose false**. La nullabilità è caduta con il changeSet `20260910-25`; l'`ON DELETE SET NULL` non c'è mai stato sul vincolo vivo, che non dichiara nessuna azione di cancellazione.
   * `istanza_utility_id` → `anagrafiche.istanze_utilities`.
-  * `sorgente_tipo_id` → `config.sorgenti`.
+  * `commessa_id` → `vendite.commesse`, `commessa_attivita_id` → `vendite.commesse_attivita` (entrambe **NOT NULL**).
 * **Indici utili al motore**:
 
   * `ix_attivita_articolo_flags` (articolo + flag `approvato`/`fatturato`).
   * `ix_attivita_billing_competenza` (BA + competenza mensile).
   * `ix_attivita_istanza_data` (istanza + data attività).
   * `ix_attivita_fatturabili_posticipa_sospesa`, `ix_attivita_fatturabili_lock`, `ix_attivita_fatturabili_fattura_riga_id`.
-  * **Unique parziale** `uq_attivita_fatturabili_v_sorgente_fk` su (`sorgente_tipo_id`, `sorgente_uid`) *WHEN* `sorgente_tipo_id IS NOT NULL` → **idempotenza import**.
+  * **Unique** `uq_attivita_fatturabili_commessa_attivita` su `commessa_attivita_id` → una riga di commessa genera al più un'attività.
 * **Trigger**:
 
-* `trg_attivita_fatturabili_normalize_ins_upd` → **normalizza** `competenza_mese` al 1° del mese (obbligatoria, derivata da `posticipa_al` se assente), imposta `sorgente_riga` a `0` se `sorgente_tipo_id` è valorizzato e risolve `tipo_doc_fiscale_id`/`valuta_id` quando mancanti.
+  * `trg_attivita_fatturabili_normalize_ins_upd` → risolve `tipo_doc_fiscale_id` (dal tipo d'origine della riga di commessa) e `valuta_id` quando mancanti.
   * `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` → **coerenza BA/istanza**: la riga e il suo billing account devono nominare la stessa istanza di utility.
     🔴 Fino al 2026-09-10 **non validava niente**: usciva subito quando `commessa_attivita_id` era valorizzato, e quella colonna è obbligatoria — quindi l'uscita valeva per ogni riga. Corretto dal changeSet `20260910-26`.
   * `trg_attivita_fatturabili_a10_guard_commessa_ins_upd` → coerenza col segmento commessa (`commessa_id`/`commessa_attivita_id`).
@@ -124,66 +137,20 @@ Tipico filtro di eleggibilità per il motore:
 
 ---
 
-### ⚠️ Validazione polimorfa della sorgente — NON attiva (decisione, non dimenticanza)
+### ⭐ La provenienza è la riga di commessa
 
-> Registrato qui (doc permanente) perché i brief migrano in work-done —
-> decisioni Tid 2026-02-25 e 2026-07-18.
+L'attività fatturabile **non porta le colonne `sorgente_*`** del modello della provenienza:
+nasce sempre da una riga di commessa, e la punta con una **FK vera**, `commessa_attivita_id`,
+obbligatoria e unica. Da dove venga la merce o il servizio (il documento d'origine, la sua
+riga) lo dice la riga di commessa, con la sua provenienza tipizzata; chi ne ha bisogno la
+legge da lì, con un join sulla FK.
 
-Le colonne `sorgente_tipo_id` / `sorgente_riga` / `sorgente_uid` **non hanno un
-guard polimorfo di esistenza**. Storia:
-
-* `20251026-02`: agganciato `trg_attivita_fatturabili_a10_guard_fonte_ins_upd`
-  (guard polimorfo, oggi `script.trgfn_guard_sorgente_polimorfa_tipizzata`).
-  ⚠️ Il changeSet **droppa e ricrea quel nome di trigger**, che fino a quel
-  momento apparteneva a `vendite.trgfn_attivita_fatturabili_guard_fonte`: da lì
-  quella funzione è rimasta **orfana in silenzio** — il trigger col suo nome
-  continuava a esistere, puntato a un'altra funzione. Nessuno se n'è accorto per
-  nove mesi, finché non l'ha trovata `plpgsql_check`
-  ([brief-db-bonifica-riferimenti-morti](/dev/work-done/brief-db-bonifica-riferimenti-morti) F1).
-  Droppata da `20260804-48`: nominava anche una tabella e una colonna che non
-  esistono più, quindi non avrebbe potuto girare nemmeno riagganciandola;
-* `20260225-45`: **rimosso deliberatamente** — nel flusso commessa-only la
-  sorgente è sempre COMMESSA e la FK `commessa_attivita_id` garantisce già il
-  padre; il probe polimorfo era ridondante;
-* 2026-07-18 (brief-db-guard-sorgente-polimorfa, D6): **confermato staccato**.
-
-**Condizione di riaggancio** — rivalutare `trgfn_guard_sorgente_polimorfa_tipizzata`
-il giorno in cui un flusso scriverà attività fatturabili **non** commessa-only
-(import esterni diretti, sorgenti documento senza segmento commessa): solo lì il
-guard aggiunge protezione che la FK non dà. Prerequisiti già censiti per quel
-giorno:
-
-1. **semantica `sorgente_riga`**: qui NON è la chiave del modello A — il trigger
-   normalize la imposta a `0` (sentinella «nessuna riga specifica») quando
-   `sorgente_tipo_id` è valorizzato, e il guard tipizzato com'è oggi la
-   interpreterebbe come id documento (fallendo sempre su 0). Va risolto il
-   conflitto (togliere la sentinella o adattare il guard);
-2. drop del DEFAULT 0 su `sorgente_riga`;
-3. verifica dei writer (le fn di generazione attività);
-4. regressione pgTAP (~20 file toccano questa tabella).
-
----
-
-### Esempi d’uso (query applicative)
-
-```sql
--- 1) Selezione righe eleggibili per il ciclo del mese M
-SELECT *
-FROM vendite.attivita_fatturabili a
-WHERE a.approvato
-  AND NOT a.fatturato
-  AND NOT a.sospesa
-  AND (a.posticipa_al IS NULL OR a.posticipa_al <= :data_fatturazione)
-  AND a.competenza_mese <= date_trunc('month', :data_fatturazione);
-
--- 2) Marcatura come fatturato (eseguita dal motore dopo creazione riga fattura)
-UPDATE vendite.attivita_fatturabili
-SET fatturato = true,
-    fattura_riga_id = :fattura_riga_id,
-    user_update = current_user,
-    data_update = now()
-WHERE id = ANY(:ids);
-```
+* **Niente guard della sorgente**: esistenza e cancellazione le tiene la FK, che il guard unico
+  non migliorerebbe.
+* **Niente copia della provenienza**: una seconda copia del tipo o della chiave sulla riga
+  dell'attività sarebbe una seconda verità, da tenere allineata alla riga di commessa.
+* **Unicità**: l'indice unico su `commessa_attivita_id` fa sì che una riga di commessa non
+  generi due attività.
 
 ---
 
@@ -192,7 +159,6 @@ WHERE id = ANY(:ids);
 * Imporre `approvato = true` come prerequisito di fatturabilità (workflow di approvazione esplicito).
 * Usare `posticipa_al` per rinviare selettivamente righe **senza** perdere la tracciabilità del motivo (`exclude_reason`).
 * Evitare update manuali su righe già collegate a `fattura_riga_id`; i trigger **bloccano** modifiche distruttive.
-* Per import esterni, popolare **sempre** `sorgente_tipo_id` + `sorgente_uid` per ottenere **idempotenza** e facilitare il retry.
 
 ---
 
@@ -249,3 +215,21 @@ dovrebbe risalire la catena per sapere se sta guardando merce o un onere.
 
 Semantica e razionale completi: [`vendite.commesse_attivita`](/dbzero/vendite/tabelle/commesse_attivita),
 sezione "Registro della riga".
+
+---
+
+### Note di migrazione
+
+* 2026-02-24 — `commessa_id` e `commessa_attivita_id` diventano obbligatorie; l'indice unico
+  d'idempotenza sulla sorgente (`uq_attivita_fatturabili_v_sorgente_fk`) lascia il posto a
+  `uq_attivita_fatturabili_commessa_attivita`.
+* 2026-02-25 — staccato il guard polimorfo della sorgente: nel flusso che passa sempre dalla
+  commessa la FK `commessa_attivita_id` garantiva già il padre.
+* 2026-11-07 — ritirate le colonne `sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga` (col
+  suo default 0) e `sorgente_origine_tipo_id`, con le loro FK: erano una copia della riga di
+  commessa e un'impronta d'idempotenza che nessuno leggeva più. La provenienza si legge dalla riga di
+  commessa (brief-db-sorgente-documento-e-riga).
+
+---
+
+{% include-markdown "signature-core.md" %}

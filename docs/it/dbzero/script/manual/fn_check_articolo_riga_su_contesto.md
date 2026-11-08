@@ -1,12 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_articolo_riga_su_contesto`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 
 > 👀 **Vedi anche**
 >
 > [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — le regole, documento per documento
 > [script.fn_articolo_riga_contesto](/dbzero/script/manual/fn_articolo_riga_contesto) — il contesto che riceve
-> [catalogo.fn_articoli_ammessi](/dbzero/catalogo/manual/fn_articoli_ammessi) — il picker
+> [catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi) — il picker
 
 ### 🎯 Scopo Principale
 
@@ -42,7 +42,7 @@ trovato. Una regola, due chiamanti (A-2).
   [script.fn_natura_e_merce](/dbzero/script/funzioni/fn_natura_e_merce), sulla natura
   giudicata (quella congelata della riga, altrimenti quella dell'articolo). Che l'onere sia un
   addebito e non un bene lo garantisce l'articolo
-  ([catalogo.trgfn_articoli_guard_onere_natura](/dbzero/catalogo/manual/trgfn_articoli_guard_onere_natura)).
+  ([catalogo.trgfn_articoli_guard_onere_natura](/dbzero/catalogo/funzioni/trgfn_articoli_guard_onere_natura)).
 
 ---
 {% include-markdown "signature-core.md" %}

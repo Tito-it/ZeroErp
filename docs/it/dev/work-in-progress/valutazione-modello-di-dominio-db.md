@@ -1,5 +1,14 @@
 # Valutazione del modello di dominio — la *forma* dei dati (lato DB)
 
+> ⚠️ **Allineamento al modello della provenienza (2026-11-08).** I «polimorfi dichiarati» `sorgente_tipo_id` +
+> `sorgente_uid` di questa valutazione sono passati al modello unico di `brief-db-sorgente-documento-e-riga`: il
+> tipo, **una** chiave del documento tipizzata (`sorgente_id` bigint o `sorgente_uid` uuid, secondo il tipo), la
+> riga in `sorgente_riga`, un `CHECK` di forma per tabella e il guard unico `script.trgfn_guard_sorgente`; il caso
+> «`sorgente_uid` significava due cose» è chiuso. `vendite.ordini.documento_origine_id` («da spiegare») è ritirata:
+> l'origine dell'ordine sta nella provenienza. Fuori: le tabelle d'acquisto, ancora nella grammatica precedente.
+> Il meccanismo è nella guida [Sorgente polimorfa](../../guide/sorgente-polimorfa.md); i conteggi qui sotto restano
+> fatti datati della loro valutazione.
+>
 > **Cos'è.** La valutazione del **modello di dominio** del database: **329
 > tabelle** in dieci schemi (`vendite`, `acquisti`, `magazzino`, `pagamenti`,
 > `pratiche`, `documenti`, `anagrafiche`, `catalogo`, `config`, `shop`), **4886

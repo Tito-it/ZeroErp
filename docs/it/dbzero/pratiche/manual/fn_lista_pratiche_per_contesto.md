@@ -1,103 +1,81 @@
-## 📘 Documentazione Funzione – `pratiche.fn_lista_pratiche_per_contesto`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_lista_pratiche_per_contesto`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — le pratiche e il loro contesto anagrafico
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo del soggetto, prima lente
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza utility, seconda lente
 >
-Funzioni collegate:
+> Approfondimento funzioni:
 >
-[pratiche.trgfn_pratiche_guard_contesto](trgfn_pratiche_guard_contesto.md)
+> * [pratiche.trgfn_pratiche_guard_contesto](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_contesto) — la coerenza fra soggetto, ruolo e istanza su cui le lenti si appoggiano
+> * [pratiche.fn_coda_lavoro_operatore](/dbzero/pratiche/funzioni/fn_coda_lavoro_operatore) — la coda dell'operatore, che il contesto non lo guarda
+> * [pratiche.fn_genera_pratica_da_flusso](/dbzero/pratiche/funzioni/fn_genera_pratica_da_flusso) — la generazione fra pratiche, che propaga il contesto
 
 ---
+
 ### 🎯 Scopo Principale
-La funzione **`pratiche.fn_lista_pratiche_per_contesto`** e' la **lente canonica del contesto anagrafico** (decisione D1, analisi-pratiche-workflow-v2): il punto unico di verita' per ogni vista "pratiche di X" dell'applicazione.
 
-Tre lenti **mutuamente alternative** sulla stessa lista:
+La funzione `pratiche.fn_lista_pratiche_per_contesto` è la lente canonica del contesto anagrafico:
+il punto unico da cui passa ogni elenco «pratiche di X» dell'applicazione, per un emittente.
 
-1. **Pratiche del ruolo** (`p_soggetto_ruolo_id`) — es. tutte le pratiche del ruolo CLIENTE di un soggetto (drawer cliente, tab pratiche);
-2. **Pratiche dell'istanza** (`p_istanza_utility_id`) — es. tutte le pratiche di un contatore (viste utenze);
-3. **Pratiche interne** (`p_solo_interne = true`) — nessun contesto cliente (`soggetto_id IS NULL`).
-
-Nessuna lente valorizzata = tutte le pratiche dell'emittente. Ogni vista applicativa deve passare da qui — **mai ricostruzioni ad hoc del filtro**.
+Nessuna vista applicativa ricostruisce il filtro per conto suo.
 
 ---
 
-### Firma della funzione
+### Tre lenti, al massimo una per volta
 
-```sql
-CREATE FUNCTION pratiche.fn_lista_pratiche_per_contesto(
-  p_emittente_fiscale_id pratiche.pratiche.emittente_fiscale_id%TYPE,
-  p_soggetto_ruolo_id    pratiche.pratiche.soggetto_ruolo_id%TYPE DEFAULT NULL,
-  p_istanza_utility_id   pratiche.pratiche.istanza_utility_id%TYPE DEFAULT NULL,
-  p_solo_interne         boolean DEFAULT false
-)
-RETURNS TABLE(...)
-LANGUAGE plpgsql
-STABLE
-```
+* **Pratiche del ruolo** — le pratiche di un ruolo di soggetto (per esempio il ruolo cliente, nel
+  drawer del cliente).
+* **Pratiche dell'istanza** — le pratiche di un'istanza utility (per esempio un contatore).
+* **Pratiche interne** — quelle senza soggetto, cioè senza contesto cliente; il guard del contesto
+  garantisce che una pratica senza soggetto non abbia nemmeno ruolo né istanza.
 
----
+Senza nessuna lente, la funzione restituisce tutte le pratiche dell'emittente. Le lenti sono
+alternative: chiederne più d'una nella stessa chiamata è un errore, non un'intersezione.
 
-### Descrizione parametri
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:---:|-------------|
-| `p_emittente_fiscale_id` | bigint | SI | Emittente fiscale (segregazione multi-company) |
-| `p_soggetto_ruolo_id` | bigint | NO | Lente 1: pratiche del ruolo soggetto |
-| `p_istanza_utility_id` | bigint | NO | Lente 2: pratiche dell'istanza utility |
-| `p_solo_interne` | boolean | NO | Lente 3: solo pratiche senza contesto cliente |
+L'emittente è obbligatorio: è la separazione fra aziende.
 
 ---
 
-### Colonne ritornate
+### Il contesto di ogni pratica
 
-| Colonna | Descrizione |
-|---------|-------------|
-| `pratica_id`, `codice`, `descrizione` | Identificazione pratica |
-| `contesto` | **Bucket canonico calcolato**: `RUOLO` / `ISTANZA` / `SOGGETTO` (solo soggetto, senza ruolo ne' istanza) / `INTERNA` |
-| `tipo_prestazione_codice`, `stato_codice`, `priorita_codice` | Decodifiche |
-| `soggetto_id`, `soggetto_ragione_sociale`, `soggetto_ruolo_id`, `istanza_utility_id` | Contesto anagrafico |
-| `risorsa_umana_id`, `unita_organizzativa_id` | Assegnazione |
-| `data_apertura`, `data_scadenza` | Date di lavoro |
+La colonna `contesto` dà a ogni pratica un solo valore, per il raggruppamento a video, in ordine di
+precedenza: `RUOLO` se ha un ruolo di soggetto, altrimenti `ISTANZA` se ha un'istanza utility,
+altrimenti `SOGGETTO` se ha solo il soggetto, altrimenti `INTERNA`.
 
-Ordinamento: priorita' (`sequenza` DESC) → scadenza (NULLS LAST) → id.
+`stato_codice` e `priorita_codice` sono i codici interni dello stato e della priorità.
+
+L'ordine è per priorità (dalla più alta), poi per scadenza (quelle senza scadenza in fondo), poi per
+id.
 
 ---
 
-### ⚠️ Errori sollevati
+### Da sapere
 
-| Codice errore | Condizione |
-|---------------|------------|
-| `E_PARAMETRO_INVALIDO` | `p_emittente_fiscale_id` NULL o <= 0 |
-| `PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` (484) | Piu' di una lente valorizzata nella stessa chiamata |
-
----
-
-### Esempi di utilizzo
-
-```sql
--- Pratiche del ruolo cliente 42 (drawer soggetto)
-SELECT * FROM pratiche.fn_lista_pratiche_per_contesto(1, p_soggetto_ruolo_id := 42);
-
--- Pratiche dell'istanza utility 7 (vista utenze)
-SELECT * FROM pratiche.fn_lista_pratiche_per_contesto(1, p_istanza_utility_id := 7);
-
--- Pratiche interne (inventario, attivita' senza cliente)
-SELECT * FROM pratiche.fn_lista_pratiche_per_contesto(1, p_solo_interne := true);
-
--- Dashboard: tutte, raggruppabili per bucket "contesto"
-SELECT contesto, count(*) FROM pratiche.fn_lista_pratiche_per_contesto(1) GROUP BY contesto;
-```
+* La coda di lavoro dell'operatore non guarda il contesto, per scelta di modello: la coda è per
+  operatore, il contesto è per cliente.
+* La generazione fra pratiche propaga ruolo e istanza alla pratica figlia: le pratiche generate cadono
+  nelle lenti giuste.
 
 ---
 
-### Note operative
+### Codici errore
 
-* Indici di supporto (via `dbops.fk_index_policy`, parziali su NOT NULL): `ix_pratiche_soggetto_ruolo_id`, `ix_pratiche_istanza_utility_id`.
-* La coda lavoro (`fn_coda_lavoro_operatore`) **non** e' contesto-aware per scelta di modello: la coda e' per-operatore, il contesto e' per-cliente.
-* La generazione cross-pratica propaga `soggetto_ruolo_id`/`istanza_utility_id` alla figlia (fix-4, `fn_genera_pratica_da_flusso`): le pratiche generate ricadono nelle lenti corrette.
-* Test: `db/pgtap/pratiche/test-lista-pratiche-contesto.sql`.
+* `E_PARAMETRO_INVALIDO` — emittente assente o non positivo.
+* `E_PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` — più di una lente nella stessa chiamata.
+
+---
+
+### Test
+
+* `pratiche/test-lista-pratiche-contesto` — le tre lenti, il valore di `contesto` e l'esclusività
+  delle lenti.
+
+---
+
+{% include-markdown "signature-core.md" %}

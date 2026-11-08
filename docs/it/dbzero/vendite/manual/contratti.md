@@ -1,29 +1,38 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.contratti`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Guide generali:**    
+> Approfondimento tabelle:
 >
-• [Generazione di un cliente](/guide/generazione-cliente)    
-> • [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility)    
+> * [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe) — le eccezioni del contratto rispetto al listino
+> * [vendite.note_contratto](/dbzero/vendite/tabelle/note_contratto) — le note del contratto
+> * [vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali) — l'offerta da cui il contratto può nascere
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — il punto di fornitura
+> * [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali) — i dati raccolti prima del contratto
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'intestatario economico
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — il cliente
+> * [config.utilities](/dbzero/config/tabelle/utilities) — il dominio tecnico
+> * [config.stati_doc_contratti](/dbzero/config/tabelle/stati_doc_contratti) — il vocabolario degli stati
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento d'origine
 >
-**Approfondimento tabelle:**    
+> Approfondimento funzioni:
 >
-• [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)    
-> • [vendite.note_contratto](/dbzero/vendite/tabelle/note_contratto)    
-> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)    
-> • [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)     
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
-> • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)    
-> • [config.utilities](/dbzero/config/tabelle/utilities)    
-> • [config.stati_doc_contratti](/dbzero/config/tabelle/stati_doc_contratti)   
+> * [vendite.trgfn_contratti_gen_codice](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice) — il numero del contratto
+> * [vendite.fn_push_offerta_a_contratto](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto) — il contratto che nasce da un'offerta
+> * [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — si cancella solo la bozza vuota
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della provenienza
 >
-**Approfondimento funzioni:**
+> Guide:
 >
-• [`vendite.trgfn_contratti_gen_codice`](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)
->
+> * [Generazione di un cliente](/guide/generazione-cliente) — da dove arrivano BA e istanza
+> * [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility) — l'istanza a cui il contratto si lega
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
+
+---
+
 ### 🎯 Scopo Principale
-> **Ultimo aggiornamento**: 4 novembre 2026
 
 `vendite.contratti` rappresenta la **testata del contratto commerciale**: l’accordo che lega un **billing account** a una **istanza/utility** e ne definisce **ambito**, **periodo di validita** e **stato**. E` la base di aggregazione delle righe (`vendite.contratti_righe`) e il punto di riferimento per la generazione di **attivita fatturabili**.
 
@@ -77,10 +86,9 @@ Obiettivi principali:
 * **Trigger `trg_contratti_z90_snapshot_da_stato_ins_upd`** (BEFORE INSERT OR
   UPDATE, fase `_z90_`; BB
   [`vendite.trgfn_doc_snapshot_da_stato`](/dbzero/vendite/funzioni/trgfn_doc_snapshot_da_stato),
-  dal 2026-10-11 al posto di `trg_contratti_z90_sync_is_abortito_snapshot_ins_upd`):
   mantiene `is_abortito_snapshot` e `is_draft_snapshot` allineati allo stato a
   ogni scrittura, anche se qualcuno li scrive a mano. Serve anche all'indice
-  unico sui vivi `uq_contratti_offerta_id` (un'offerta genera al più un
+  unico sui vivi `uq_contratti_sorgente_offerta` (un'offerta genera al più un
   contratto vivo).
   Deve essere BEFORE (non AFTER): il predicato WHERE del constraint e’
   valutato al momento della scrittura della riga.
@@ -91,8 +99,7 @@ Obiettivi principali:
 > **Nota PG18**: `UNIQUE WITHOUT OVERLAPS` non supporta predicati `WHERE`
 > parziali e non ammette `’empty’::daterange` nel temporal part. Per questo
 > motivo si usa `EXCLUDE USING gist` parziale anziche’ il temporal UNIQUE
-> SQL:2011 introdotto in PG18 (migration `20260521-03`, vedi
-> `linee-guida-sql §7b`).
+> SQL:2011 introdotto in PG18 (vedi `linee-guida-sql §7b`).
 
 ---
 
@@ -105,7 +112,29 @@ Obiettivi principali:
 
 ---
 
-### 📄 Riferimenti dell'atto: CIG, CUP e commessa (dal 2026-08-29)
+### Da quale documento nasce: l'offerta
+
+Un contratto può nascere da un'offerta commerciale, e lo dice con le colonne del modello della
+provenienza: `sorgente_tipo_id` (l'offerta, `OFFERTA_COMMERCIALE` in `config.sorgenti`) e la
+chiave del documento in `sorgente_uid`, perché l'offerta si riconosce dall'uid. Un contratto nato
+da solo le ha tutte vuote; la forma la tiene `chk_contratti_sorgente_forma`. La scrive
+`vendite.fn_push_offerta_a_contratto`; il guard unico `script.trgfn_guard_sorgente` verifica
+che l'offerta esista, e ne blocca la cancellazione finché un contratto la cita.
+
+* ⭐ **Un'offerta genera al più un contratto vivo**: l'indice unico `uq_contratti_sorgente_offerta`
+  vale sulle righe con tipo offerta e non annullate.
+* Fuori bozza la provenienza è ferma, con il resto della testata.
+
+### ⛔ Si cancella solo la bozza vuota
+
+Un contratto si cancella solo nello stato in cui nasce, senza righe attive e senza contratti
+che lo dichiarano come precedente (`parent_contratto_id`): la regola la tiene
+`vendite.trgfn_doc_guard_delete_solo_bozza`, la stessa delle altre testate di vendita
+(`E_DELETE_DOC_NON_BOZZA`, `E_DELETE_DOC_CON_RIGHE`, `E_DELETE_CONTRATTO_CON_SUCCESSIVI`).
+
+---
+
+### 📄 Riferimenti dell'atto: CIG, CUP e commessa
 
 Tre colonne nullable — `codice_cig`, `codice_cup`, `codice_commessa` — che portano i
 riferimenti dell'**atto** da cui il contratto nasce: rispettivamente la gara, il progetto
@@ -124,19 +153,18 @@ forniture dello stesso contratto (troppo) e incapace di tenerne due sulla stessa
 poco).
 
 ⚠️ **In fattura non ci arrivano ancora.** `vendite.fatture` non ha **nessun** collegamento al
-contratto — solo `billing_account_id` e la coppia `sorgente_tipo_id`/`sorgente_uid` — quindi
+contratto — solo `billing_account_id` e la provenienza (`sorgente_tipo_id` con la chiave del
+documento) — quindi
 i tre codici vanno **copiati** al momento dell'emissione.
 ⭐ E la sede giusta e` la **riga di fattura**, non la testata: `vendite.fatture_righe` porta
-una sorgente per riga fra **quindici tipi** (`config.sorgenti`), quindi una fattura puo`
+una provenienza per riga fra i tipi di `config.sorgenti`, quindi una fattura puo`
 mescolare righe di **contratti diversi** — un campo di testata dovrebbe sceglierne uno fra
 tanti. E` anche cio` che la FatturaPA prevede, con `RiferimentoNumeroLinea`.
-Da costruire insieme a chi lo riempie (cantiere IVA, `I4`).
+Da costruire insieme a chi lo riempie.
 
 📌 **Fuori perimetro, annotato**: negli accordi quadro PA il contratto ha un CIG «padre» e
 ogni ordine attuativo ne ha uno derivato. Se quel caso arrivera`, la forma sono gli stessi
-tre campi su `vendite.ordini`, nullable, col contratto come ripiego (`COALESCE`).
-
-Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, D9 / I8.
+tre campi su `vendite.ordini`, nullable, col contratto come ripiego.
 
 ---
 
@@ -152,12 +180,9 @@ Per attivita **non‑utilities** o servizi eterogenei, i dati precontrattuali po
 
 ---
 
-### Pricing — modello unificato (dal 2026-05-15)
+### Pricing — modello unificato
 
-> **Refactor da modalità A/B/C a modello unificato** (migration 20260515-10,
-> `brief-db-refactor-contratti-completo.md` Fase 2 Step 2.1).
-> La distinzione A/B/C è eliminata: il contratto è **uno solo** con forma
-> derivata automaticamente dai campi compilati.
+Il contratto è **uno solo**, con forma derivata automaticamente dai campi compilati.
 
 Il contratto e' il **ponte commerciale** tra billing account e listino (STADIO 1
 del resolver prezzi). Due **forme derivate** (non scelta dell'operatore):
@@ -186,7 +211,7 @@ versione, anche se ne esce una successiva.
 
 **Righe come eccezioni del listino**: `vendite.contratti_righe` contiene solo le
 **eccezioni** rispetto al listino (non le righe del listino copiate). Ogni riga ha
-un campo `tipo_eccezione` (introdotto in Step 2.2):
+un campo `tipo_eccezione`:
 
 | `tipo_eccezione` | Significato | `prezzo_unitario` |
 | --- | --- | --- |
@@ -198,50 +223,36 @@ Vincoli CHECK attivi:
 
 * `chk_contratti_tipo_variazione_globale`: solo `PERCENTUALE`/`VALORE_FISSO` o NULL.
 
-Vincoli CHECK rimossi (modello unificato):
+Qualsiasi combinazione di listino e variazione globale è ammessa.
 
-* ~~`chk_contratti_modalita_pricing`~~ — droppato in Step 2.1: qualsiasi combinazione listino/variazione è ora ammessa
-* ~~`chk_contratti_variazione_globale_coerente`~~ — droppato in Step 2.1: ora rilassato
-
-Trigger modalità C rimossi:
-
-* ~~`trg_contratti_a10_guard_modalita_c_activation_ins_upd`~~ — droppato in Step 2.1; sostituito dal trigger di freeze versione (Step 2.3)
-* ~~`trg_contratti_righe_a10_guard_modalita_c_ins_upd`~~ — droppato in Step 2.1; ora le righe hanno logica propria per `tipo_eccezione`
-
-**Comportamento attivazione** (dal Step 2.3) — trigger
+**Comportamento attivazione** — trigger
 `trg_contratti_a10_freeze_listino_versione_upd`:
 
 * Transizione DRAFT→ATTIVO con `listino_id IS NULL`: richiede almeno una riga AGGIUNTA con `prezzo_unitario NOT NULL`. Errore: `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (451).
 * Transizione DRAFT→ATTIVO con `listino_id IS NOT NULL`: fissa `listino_versione_id` sulla versione attiva a `CURRENT_DATE`. Se non trovata: attivazione consentita, `listino_versione_id` resta NULL (§4.4).
-* Dal 2026-10-21 il guard di transizione (`vendite.trgfn_contratti_guard_transizione_stato`) rifiuta
+* Il guard di transizione (`vendite.trgfn_contratti_guard_transizione_stato`) rifiuta
   anche un contratto con una riga che la regola intera (articolo, erogazione, fonte) non ammette
   più: `script.fn_check_righe_documento`, `E_DOC_RIGA_NON_AMMESSA`; la capability spegne «Attiva»
   con lo stesso motivo. Le regole di una riga dipendono da dati che stanno fuori dalla riga, e in
-  DRAFT la riga si corregge (`brief-db-offerta-emissione-ed-erogazione` §I.2, H-R4).
+  DRAFT la riga si corregge.
 
-**Lock post-attivazione** (dal Step 2.3):
+**Lock post-attivazione**:
 
 * **Testata** — trigger `trg_contratti_a05_lock_fuori_bozza_upd`
   (→ [`trgfn_doc_testata_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_testata_lock_fuori_bozza)):
   fuori bozza sono fermi identità, cliente, condizioni (pricing compreso) e
-  sorgente; `valido_al`, CIG, CUP, codice commessa e note si cambiano in ATTIVO
-  e si fermano in CESSATO e ANNULLATO. Dal 2026-10-10 (brief
-  `brief-db-testata-dopo-emissione`); prima le quattro colonne di pricing le
-  fermava `trgfn_contratti_lock_post_attivazione` solo in ATTIVO
-  (`E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`, ritirati).
+  provenienza; `valido_al`, CIG, CUP, codice commessa e note si cambiano in ATTIVO
+  e si fermano in CESSATO e ANNULLATO.
 * **Righe** — trigger `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt`
   (→ [`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
   il building block «le righe di un documento si toccano solo in bozza»):
   blocca qualsiasi INSERT/UPDATE/DELETE su `contratti_righe` quando il contratto
-  padre **non è in DRAFT** — quindi in ATTIVO, e da questa revisione anche in
-  CESSATO e ANNULLATO, dove il backend le negava già.
-  Errore: `E_RIGA_DOC_NON_BOZZA`. La copia dedicata
-  (`trgfn_contratti_righe_lock_post_attivazione`, che bloccava il solo ATTIVO)
-  è stata ritirata il 2026-09-22 e riassorbita nel building block.
+  padre **non è in DRAFT**: in ATTIVO, CESSATO e ANNULLATO.
+  Errore: `E_RIGA_DOC_NON_BOZZA`.
 
 ---
 
-### Valuta del contratto (dal 2026-05-29)
+### Valuta del contratto
 
 * `valuta_id` — FK a `config.valute(id)`, **nullable**. Source-of-truth della valuta
   sulla testata, fissata come **snapshot a INSERT-time** (simmetria con
@@ -261,12 +272,11 @@ Trigger modalità C rimossi:
 
 ---
 
-### Workflow stato e cessazione automatica (dal 2026-04-26)
+### Workflow stato e cessazione automatica
 
 Le transizioni di stato sono **vincolate da guard trigger**
 (`trg_contratti_a10_guard_transizione_stato_upd` →
-`vendite.trgfn_contratti_guard_transizione_stato`,
-migration `20260426-05-...`).
+`vendite.trgfn_contratti_guard_transizione_stato`).
 
 Lo `stato_doc_contratto_id` e' FK a `config.stati_doc_contratti`. Il
 guard fa lookup via `codice_interno` (immutabile per `lock_columns`)
@@ -287,8 +297,7 @@ per stabilita' rispetto a relabelling.
 | CESSATO | * | **no** | stato terminale |
 | ANNULLATO | * | **no** | stato terminale (`is_abortito = true`) |
 
-**Stato ANNULLATO** (`codice_interno = 'ANNULLATO'`, `is_abortito = true`,
-migration `20260520-07..08`):
+**Stato ANNULLATO** (`codice_interno = 'ANNULLATO'`, `is_abortito = true`):
 
 * Raggiungibile **solo da DRAFT** — annullamento di una bozza non ancora attivata.
 * Terminale: nessuna transizione successiva ammessa.
@@ -298,8 +307,7 @@ migration `20260520-07..08`):
 * Il campo `meta` di `config.stati_doc_contratti` per ANNULLATO e` `{}`:
   stato terminale, nessuna azione manuale in uscita.
 * L'azione UI "Annulla" e` esposta da `script.fn_available_actions_contratto`
-  leggendo `outgoing_action` dal `meta` dello stato DRAFT
-  (migration `20260430-61` + `20260520-10`).
+  leggendo `outgoing_action` dal `meta` dello stato DRAFT.
 
 > **Nota su SOSPESO**: il `codice_interno='SOSPESO'` esiste in
 > `config.stati_doc_contratti` ma **non rientra nel workflow operativo
@@ -319,14 +327,13 @@ le date comandano.
 `stato_doc_contratto_id`. Consente seed/import e creazione di
 contratti direttamente in stato non-DRAFT se necessario.
 
-**Come si cessa un contratto** (rev 2026-10-31: fino a questa data la pagina diceva che non
-esisteva un'azione per cessare, e che si scriveva `valido_al` a mano).
+**Come si cessa un contratto**.
 
-* **Dall'operatore**: [`vendite.fn_cessa_contratto`](/dbzero/vendite/manual/fn_cessa_contratto)
+* **Dall'operatore**: [`vendite.fn_cessa_contratto`](/dbzero/vendite/funzioni/fn_cessa_contratto)
   con la data di fine. Oggi → `CESSATO` subito; futura → **cessazione programmata**, si scrive
   solo `valido_al` e il contratto resta ATTIVO; passata → rifiutata
   (`E_CONTRATTO_VALIDO_AL_RETROATTIVO`). Chiede l'azione `emetti_contratto`.
-* **Alla scadenza**: [`vendite.fn_cessa_contratti_scaduti`](/dbzero/vendite/manual/fn_cessa_contratti_scaduti),
+* **Alla scadenza**: [`vendite.fn_cessa_contratti_scaduti`](/dbzero/vendite/funzioni/fn_cessa_contratti_scaduti),
   chiamata dalla chiusura per scadenza (`dbops.fn_apply_chiusura_scadenze`, eseguita dal lavoro
   di coda `CHIUSURA_SCADENZE` di ogni azienda, che il job `chiusura_scadenze_daily` sveglia), cessa uno per uno, dalla scrittura comune del modello del
   documento, i contratti ATTIVO con `valido_al` prima di oggi.
@@ -379,14 +386,10 @@ Riferimenti:
 
 ---
 
-### Corsia di fatturazione: `fatturazione_immediata` (27-07-2026)
+### Corsia di fatturazione: `fatturazione_immediata`
 
-Colonna `boolean NOT NULL DEFAULT false` aggiunta dalla slice di simmetria del
-flag (brief `brief-db-emissione-fattura-per-documento-sorgente` PARTE B,
-migration `20260727-02`). Prima esisteva **solo** su `vendite.preventivi`: le altre
-sorgenti esponevano il campo nel contratto delle `fn_list_*_da_pushare` ma con
-valore costante `FALSE`, quindi **solo un preventivo poteva essere fatturato
-subito** — non per una scelta di dominio, ma per un buco di modello.
+Colonna `boolean NOT NULL DEFAULT false`: dice se il contratto si fattura subito o nel giro
+differito, come per gli altri documenti che vanno in commessa.
 
 | Valore | Corsia | Arriva a |
 |---|---|---|
@@ -405,14 +408,9 @@ dall'**emissione mirata per gruppo fatturabile**, non da questo flag.
 `prezzo_bloccato = COALESCE(fatturazione_immediata, false)` esiste **solo sui
 preventivi**: qui i due valori sono indipendenti e vanno tenuti tali.
 
-Il default `false` garantisce che l'aggiunta della colonna **non cambi la corsia
-di nessun documento esistente**.
-
-{% include-markdown "signature-core.md" %}
-
 ---
 
-### Il listino del documento (dal 2026-10-08)
+### Il listino del documento
 
 Il contratto si riferisce solo a un listino della **sua utility** e del **suo emittente**. Lo dice la
 check pura `script.fn_check_listino_documento(listino, utility, emittente_fiscale_id)`, che il guard
@@ -420,5 +418,35 @@ check pura `script.fn_check_listino_documento(listino, utility, emittente_fiscal
 `utility_id` o `emittente_fiscale_id` (`E_DOC_LISTINO_UTILITY_DIVERSA`,
 `E_DOC_LISTINO_EMITTENTE_DIVERSO`, campo `listino_id`). I documenti già scritti non si
 rigiudicano. La tendina del form legge la stessa check da `vendite.fn_listini_selezionabili(utility,
-emittente_fiscale_id)`. Brief `brief-db-offerta-emissione-ed-erogazione` §F.2.
+emittente_fiscale_id)`.
 
+---
+
+### Note di migrazione
+
+* 2026-04-26 — il workflow degli stati passa sotto il guard di transizione.
+* 2026-05-15 — il pricing a modalità A/B/C diventa il modello unificato: ritirati
+  `chk_contratti_modalita_pricing`, `chk_contratti_variazione_globale_coerente` e i trigger
+  della modalità C (brief-db-refactor-contratti-completo).
+* 2026-05-29 — arriva `valuta_id`, snapshot alla nascita.
+* 2026-07-27 — arriva `fatturazione_immediata`: prima il flag esisteva solo sul preventivo, e solo
+  un preventivo poteva essere fatturato subito (brief-db-emissione-fattura-per-documento-sorgente).
+* 2026-08-29 — CIG, CUP e codice commessa passano da `anagrafiche.clienti` al contratto
+  (brief-db-be-iva-risolutore-e-regime-cliente).
+* 2026-09-22 — il lock dedicato delle righe (`trgfn_contratti_righe_lock_post_attivazione`) si
+  ritira nel building block delle righe in bozza.
+* 2026-10-10 — il lock della testata fuori bozza prende il posto di
+  `trgfn_contratti_lock_post_attivazione` (brief-db-testata-dopo-emissione).
+* 2026-10-11 — lo snapshot dello stato passa al BB `vendite.trgfn_doc_snapshot_da_stato`.
+* 2026-10-31 — arrivano le porte di cessazione `fn_cessa_contratto` e
+  `fn_cessa_contratti_scaduti`.
+* 2026-11-07 — la provenienza passa al modello: la colonna parallela `offerta_id` e
+  `uq_contratti_offerta_id` si ritirano, la chiave testuale `sorgente_uid` diventa la coppia
+  tipizzata `sorgente_id` / `sorgente_uid` (uuid) col guard unico, e l'unicità dell'offerta
+  diventa `uq_contratti_sorgente_offerta`; la cancellazione passa sotto la regola della bozza
+  vuota, e la FK del contratto precedente (`fk_contratti_parent`) diventa `NO ACTION`
+  (brief-db-sorgente-documento-e-riga).
+
+---
+
+{% include-markdown "signature-core.md" %}

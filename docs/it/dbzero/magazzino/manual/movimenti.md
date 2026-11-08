@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.movimenti`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,7 @@
 > * [magazzino.lotti](/dbzero/magazzino/tabelle/lotti) — la partita, una dimensione della tranche
 > * [magazzino.assets](/dbzero/magazzino/tabelle/assets) — il pezzo serializzato, l'altra dimensione
 > * [magazzino.valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza) — la copia del valore
-> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo delle sorgenti
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento
 >
 > Approfondimento viste:
 >
@@ -20,13 +20,13 @@
 > Approfondimento funzioni:
 >
 > * [magazzino.fn_scrivi_movimento](/dbzero/magazzino/funzioni/fn_scrivi_movimento) — l'unica porta di scrittura
-> * [magazzino.fn_storna_movimenti_sorgente](/dbzero/magazzino/funzioni/fn_storna_movimenti_sorgente) — lo storno dei movimenti di una sorgente
+> * [magazzino.fn_storna_movimenti_sorgente](/dbzero/magazzino/funzioni/fn_storna_movimenti_sorgente) — lo storno dei movimenti di un documento
 > * [magazzino.trgfn_movimenti_guard_verso](/dbzero/magazzino/funzioni/trgfn_movimenti_guard_verso) — il guard del verso
-> * [script.trgfn_guard_sorgente_polimorfa_tipizzata](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa_tipizzata) — il guard della sorgente
+> * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della sorgente
 >
 > Guide:
 >
-> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello tipo + chiave
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello tipo, documento, riga
 
 ---
 
@@ -43,12 +43,18 @@ Quattro regole governano la tabella, e chi la legge deve saperle prima di scrive
 
 ### Le quattro regole
 
-**1. La sorgente è obbligatoria e a catalogo.** Ogni movimento dice *quale operazione* lo
-ha generato: `sorgente_tipo_id` (una riga di [config.sorgenti](/dbzero/config/tabelle/sorgenti):
-riga di bolla, riga di inventario, riga di rettifica, riga di trasferimento, evento di un
-asset…) più **esattamente una** chiave fra `sorgente_riga` (numerica) e `sorgente_uid`
-(UUID), secondo quanto il catalogo dichiara per quel tipo. Un guard verifica che il record
-esista davvero: una sorgente inesistente è rifiutata, non registrata.
+**1. La sorgente è obbligatoria e a catalogo.** Ogni movimento dice *da quale documento*
+nasce: `sorgente_tipo_id` è il tipo del documento in [config.sorgenti](/dbzero/config/tabelle/sorgenti)
+(bolla, reso, inventario, rettifica, trasferimento, evento di un asset…); la chiave del
+documento sta in **una sola** fra `sorgente_id` e `sorgente_uid`, quella che il catalogo
+dichiara per quel tipo; `sorgente_riga` dice la riga del documento e `sorgente_dettaglio` il
+dettaglio di quella riga (il prelievo di una bolla, il rientro di un reso). Il guard unico
+[script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) pretende la
+provenienza fino al livello più fine che il tipo ha: il dettaglio per una bolla o un reso, la
+riga per un inventario, una rettifica o un trasferimento, il documento per l'evento di un
+asset. Verifica poi che il documento esista e che riga e dettaglio gli appartengano: una
+sorgente inesistente è rifiutata, non registrata. E, come una FK senza cancellazione a
+cascata, un documento, una riga o un dettaglio che il registro cita non si cancellano.
 
 ⭐ Non esiste un movimento senza operazione a monte: **la correzione a mano è una
 rettifica**, con la sua riga.
@@ -66,7 +72,7 @@ il movimento raggiunge attraverso la sorgente. La conversione la fa l'operazione
 scrivere qui.
 
 **4. L'identità è l'operazione-per-tranche.** L'indice unico `uq_mag_movimenti_identita` è
-sulla terna *(sorgente, chiave del record, causale)* più la tranche *(asset, lotto,
+sulla provenienza intera *(tipo, documento, riga, dettaglio)* e la causale, più la tranche *(asset, lotto,
 ubicazione)*, e due valori vuoti contano come uguali: due righe uguali senza lotto, seriale e
 ubicazione **collidono** (è la stessa operazione scritta due volte), mentre le due righe
 OUT/IN di un trasferimento no (causali diverse) e N tranche dello stesso ricevimento no
@@ -96,8 +102,8 @@ annullare un'uscita, `STORNO_NEG` per un'entrata). Il legame è unico: un movime
 una volta sola. Lo storno è lo specchio esatto dell'originale — stesso articolo, magazzino,
 sorgente e posizione, quantità opposta, costo dell'originale — e lo scrive
 [fn_storna_movimenti_sorgente](/dbzero/magazzino/funzioni/fn_storna_movimenti_sorgente), che
-storna tutti i movimenti di una sorgente (per esempio all'annullo di una bolla emessa)
-passando dalla primitiva.
+storna tutti i movimenti di un documento, o solo di alcune sue righe (per esempio all'annullo
+di una bolla emessa), passando dalla primitiva.
 
 ---
 
@@ -159,6 +165,12 @@ senza identità in sessione.
   `storno_di_movimento_id`, l'identità, e il guard del verso.
 * 2026-09-18 — la porta (Lotto 2): l'app perde la scrittura, il guard di scope entra sul
   registro, nasce la primitiva. `test-movimenti-vincoli-v2` passa al runner owner.
+* 2026-11-08 — la sorgente diventa il documento: il tipo è quello del documento (`INVENTARIO`,
+  `RETTIFICA`, `TRASFERIMENTO`, `DDT_VENDITA`, `RESO_VENDITA`, `EVENTO_ASSET`) e non più quello
+  della riga o del prelievo (`INVENTARIO_RIGA`, `DDT_VENDITA_PRELIEVO`…, ritirati da
+  `config.sorgenti`); la chiave del documento passa in `sorgente_id`, la riga in
+  `sorgente_riga`, il dettaglio in `sorgente_dettaglio`. Il guard tipizzato
+  lascia il posto al guard unico, e lo storno lavora per documento.
 
 ---
 

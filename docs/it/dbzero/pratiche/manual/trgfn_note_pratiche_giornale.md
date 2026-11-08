@@ -1,49 +1,31 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_note_pratiche_giornale`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_note_pratiche_giornale`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.giornale](giornale.md)
-> [pratiche.note_pratiche](note_pratiche.md)
->
-Overview:
->
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.note_pratiche](/dbzero/pratiche/tabelle/note_pratiche) — la nota che si registra
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — il giornale in cui finisce la riga
 
 ---
+
 ### 🎯 Scopo Principale
-Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello pratica. Si attiva **AFTER INSERT** su `pratiche.note_pratiche`.
+
+La trigger function `pratiche.trgfn_note_pratiche_giornale` registra nel giornale l'azione
+`NOTA_AGGIUNTA` quando a una pratica si aggiunge una nota.
 
 ---
 
-### Firma
+### La riga di giornale
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_note_pratiche_giornale()
-RETURNS trigger
-LANGUAGE plpgsql
-```
-
----
-
-### Logica
-
-Inserisce una riga in `pratiche.giornale` con:
-
-| Campo | Valore |
-|-------|--------|
-| `pratica_id` | `NEW.pratica_id` |
-| `flusso_id` | `NULL` (nota a livello pratica) |
-| `azione` | `'NOTA_AGGIUNTA'` |
-| `origine` | `'SISTEMA'` |
-| `dettaglio` | `jsonb_build_object('nota_id', NEW.id, 'tipo_nota_id', NEW.tipo_nota_id)` |
-| `tx_id` | `NEW.tx_id` |
+* Scatta dopo l'inserimento di una riga in `pratiche.note_pratiche`.
+* La riga è a livello di pratica: il flusso resta vuoto.
+* L'origine è `SISTEMA`: la scrive il database, non l'operatore.
+* Il dettaglio porta l'id della nota e il suo tipo, così dal giornale si risale alla nota.
+* La transazione è quella della nota; se la nota non la porta, quella della sessione.
 
 ---
 
-### Trigger associato
-
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
-| `trg_note_pratiche_z90_giornale_ins` | AFTER | INSERT | `pratiche.note_pratiche` |
+{% include-markdown "signature-core.md" %}

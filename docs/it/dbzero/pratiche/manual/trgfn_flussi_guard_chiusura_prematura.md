@@ -1,59 +1,69 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_flussi_guard_chiusura_prematura`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_guard_chiusura_prematura`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.flussi](flussi.md)
-> [pratiche.fn_check_pratica_chiudibile](fn_check_pratica_chiudibile.md)
-> [pratiche.trgfn_flussi_autochiusura_pratica](trgfn_flussi_autochiusura_pratica.md)
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — la tabella su cui è montato il guard
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_check_pratica_chiudibile](/dbzero/pratiche/funzioni/fn_check_pratica_chiudibile) — la regola «la pratica si può chiudere», che il guard interroga
+> * [pratiche.trgfn_flussi_autochiusura_pratica](/dbzero/pratiche/funzioni/trgfn_flussi_autochiusura_pratica) — l'auto-chiusura che segue il completamento del flusso di chiusura
 
 ---
+
 ### 🎯 Scopo Principale
 
-Il **flusso "di chiusura"** (`template_flussi.chiude_pratica`) e' lo step che chiude la
-pratica: non puo' essere completato finche' la pratica **non e' chiudibile**. Coerente
-col guard di chiusura della pratica; evita che l'auto-chiusura conseguente fallisca (e
-quindi un rollback della transazione di completamento).
+Il **flusso di chiusura** (il flusso il cui template ha `chiude_pratica`) è lo step che chiude la
+pratica: non può essere completato finché la pratica **non è chiudibile**. Il guard è coerente con
+quello di chiusura della pratica, ed evita che l'auto-chiusura conseguente fallisca, e con lei
+l'intera transazione di completamento.
 
 ---
 
-### Trigger associato
+### Quando scatta
 
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_flussi_a10_guard_chiusura_prematura_upd` | BEFORE | UPDATE OF `stato_id` | `pratiche.flussi` |
-
-Fase `_a10_` (guard). Convive con gli altri guard `_a10_` del flusso
-(`esito_completato`, `pratica_terminale`, `transizione`).
-
----
-
-### Regole
-
-1. Scatta solo alla **transizione** di stato verso `COMPLETATO`.
-2. Solo se il template del flusso ha `chiude_pratica = true`.
-3. Ammette il completamento **sse** [fn_check_pratica_chiudibile](fn_check_pratica_chiudibile.md)
-   **escludendo il flusso di chiusura stesso** — il suo **template** dai bloccanti
-   (clausola a) e la sua **istanza** (`NEW.id`) dai flussi aperti (clausola b, D1): il
-   flusso, ancora `IN_CORSO` in `BEFORE`, non deve contare né bloccare sé stesso. Se
-   `false` → errore parlante.
+* Alla **transizione** dello stato del flusso verso `COMPLETATO`; un aggiornamento che lascia lo
+  stato com'è non viene esaminato.
+* Solo per i flussi il cui template ha `chiude_pratica`; un flusso di un template che non chiude la
+  pratica passa.
+* È un guard della fase `_a10_` dell'aggiornamento dello stato, e convive con gli altri guard della
+  stessa fase sul flusso (esito completato, pratica terminale, transizione).
 
 ---
 
-### ⚠️ Errori sollevati
+### ⭐ Il flusso di chiusura non conta sé stesso
 
-| Codice errore | Condizione |
-|---------------|------------|
-| `PRATICHE_CHIUSURA_FLUSSO_PREMATURO` (492) | Completamento del flusso di chiusura con altri obbligatori bloccanti o altri flussi ancora aperti |
+Il completamento è ammesso solo se `pratiche.fn_check_pratica_chiudibile` risponde di sì
+**escludendo il flusso di chiusura stesso**, in due modi:
+
+* il suo **template** dai flussi obbligatori bloccanti;
+* la sua **istanza** dai flussi ancora aperti.
+
+Nel momento in cui il guard parla il flusso è ancora in corso: senza l'esclusione dell'istanza si
+vedrebbe come un flusso aperto, e il suo completamento fallirebbe sempre.
+
+⚠️ Il flusso di chiusura va quindi eseguito **per ultimo**: prima si completano (o si rendono non
+percorribili) gli altri obbligatori e si chiudono i flussi aperti.
 
 ---
 
-### Note operative
+### Codici errore
 
-* Il flusso di chiusura va eseguito **per ultimo**: completare (o annullare) prima gli
-  altri obbligatori e chiudere i flussi aperti.
-* L'esclusione per **istanza** (`p_escludi_flusso_id = NEW.id`) e' ciò che consente al
-  flusso di chiusura di completarsi senza che la clausola (b) di D1 lo veda come "flusso
-  aperto": senza di essa il completamento fallirebbe sempre.
-* Test: `db/pgtap/pratiche/test-autochiusura-pratica.sql` (modello B).
+* `E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO` — completamento del flusso di chiusura con altri flussi
+  obbligatori bloccanti, o altri flussi ancora aperti.
+
+---
+
+### Test
+
+* `db/pgtap/pratiche/test-autochiusura-pratica.sql`, scenario B (tipo di prestazione **con** flusso
+  di chiusura) — il completamento con un altro obbligatorio pendente fallisce; completato l'altro
+  obbligatorio la pratica resta aperta; completato il flusso di chiusura la pratica si chiude.
+
+---
+
+{% include-markdown "signature-core.md" %}

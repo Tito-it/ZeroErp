@@ -1,6 +1,15 @@
 # Brief Design — GUIDA roll-out multi-dominio (OFFERTA / ORDINE / CONTRATTO)
 
 > **Tipo**: brief di design autorevole (modello + sequenza + decisioni → poi brief DB per dominio) · **Data**: 2026-07-07
+> ⚠️ **Allineamento al modello della provenienza (2026-11-08).** Dove questo documento descrive la sorgente
+> della pratica come `(sorgente_tipo_id, sorgente_uid)` testuale, con la chiave nativa castata a testo e il
+> `key_selector` passato come letterale al trigger del reconcile, oggi vale il modello unico di
+> `brief-db-sorgente-documento-e-riga` (lotto P): `pratiche.pratiche_sorgenti` e `pratiche.reconcile_errori` hanno
+> le colonne tipizzate (`sorgente_id` bigint o `sorgente_uid` uuid, secondo il tipo, e `sorgente_riga`),
+> `pratiche.fn_stato_sorgente` prende tipo, `sorgente_id` e `sorgente_uid`, e il trigger del reconcile riceve il
+> solo codice del tipo: la chiave la risolve il catalogo. Il meccanismo è nella guida
+> [Sorgente polimorfa](../../guide/sorgente-polimorfa.md). Il resto del modello di proiezione resta valido.
+>
 > **Owner**: Tid · **Stato**: 🟢 **DECISO (owner, 2026-07-07)** — le 4 decisioni (§6) sono adottate; pronto per
 > i brief DB per dominio, **si parte da OFFERTA**. Il pilota PREVENTIVI è chiuso ed E2E-verde
 > ([brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md),

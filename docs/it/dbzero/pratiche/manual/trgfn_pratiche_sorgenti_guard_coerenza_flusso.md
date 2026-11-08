@@ -1,68 +1,71 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.pratiche_sorgenti](pratiche_sorgenti.md)
-> [pratiche.flussi](flussi.md)
-> [pratiche.trgfn_sospensioni_guard_coerenza_flusso](trgfn_sospensioni_guard_coerenza_flusso.md)
+> * [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti) — i collegamenti fra documento e pratica, che il guard presidia
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — il flusso d'origine del collegamento
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_sospensioni_guard_coerenza_flusso](/dbzero/pratiche/funzioni/trgfn_sospensioni_guard_coerenza_flusso) — la stessa regola sulle sospensioni
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
 
 ---
+
 ### 🎯 Scopo Principale
 
-In `pratiche.pratiche_sorgenti` la colonna `flusso_id` **àncora il link ROOT al flusso
-d'origine** del documento (preventivo aperto da un'attività UI di flusso), non a tutta
-la pratica — vedi *brief-db-aggancio-documento-flusso*. Il flusso indicato deve
-appartenere alla **stessa pratica** del link.
+La trigger function `pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso` garantisce che il flusso
+d'origine di un collegamento fra documento e pratica appartenga alla stessa pratica del collegamento.
 
-La FK `fk_pratiche_sorgenti_flusso` garantisce solo che `flusso_id` punti a un flusso
-**esistente**, non che sia un flusso *di quella* pratica. Un `CHECK` non può fare
-subquery cross-tabella: serve un guard fail-fast che impedisca l'incoerenza
-`pratiche_sorgenti.pratica_id ≠ flussi.pratica_id` (denormalizzazione divergente
-introdotta da una scrittura buggy).
+In `pratiche.pratiche_sorgenti`, `flusso_id` àncora il collegamento `ROOT` al flusso da cui il
+documento è nato (per esempio un preventivo aperto da un'attività di flusso), non a tutta la pratica.
+La chiave esterna garantisce solo che il flusso esista, non che sia di quella pratica, e un `CHECK` non
+può guardare un'altra tabella: serve un guard.
 
 ---
 
-### Trigger associato
+### Le regole
 
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_pratiche_sorgenti_a10_guard_coerenza_flusso_ins_upd` | BEFORE | INSERT · UPDATE OF `flusso_id`, `pratica_id` | `pratiche.pratiche_sorgenti` |
+1. Il guard lavora solo quando `flusso_id` è valorizzato: i collegamenti `COLLEGATO` a valle (commessa,
+   ordine) nascono senza flusso e non sono toccati.
+2. Se il flusso indicato non esiste, il guard lascia passare: lo rifiuta la chiave esterna, con l'errore
+   giusto, invece di mascherarlo.
+3. Se il flusso appartiene a un'altra pratica, il guard rifiuta il collegamento.
 
-Fase `_a10_` (guard).
-
----
-
-### Regole
-
-1. Scatta **solo se `flusso_id IS NOT NULL`**: i link `COLLEGATO` a valle
-   (commessa/ordine dai push handler) nascono con `flusso_id` NULL e **non** sono
-   toccati.
-2. Se il flusso indicato **non esiste**, `RETURN NEW`: si lascia sollevare la FK
-   `fk_pratiche_sorgenti_flusso` (errore corretto, non mascherato dal guard).
-3. Se `flussi.pratica_id` del flusso indicato **differisce** da `pratiche_sorgenti.pratica_id`
-   del link → errore parlante.
+Scatta all'inserimento e quando cambiano `flusso_id` o `pratica_id`.
 
 ---
 
-### ⚠️ Errori sollevati
+### ⭐ In coppia con l'unicità del ROOT per flusso
 
-| Codice errore | Condizione |
-|---------------|------------|
-| `PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE` (493) | Link con `flusso_id` valorizzato che punta a un flusso di un'**altra** pratica |
+L'indice unico parziale `uq_pratiche_sorgenti_flusso_root` ammette al più un collegamento `ROOT` per
+flusso: l'indice garantisce l'unicità, questo guard la coerenza del flusso con la pratica. I collegamenti
+`COLLEGATO` lasciano `flusso_id` vuoto, e non sono vincolati né dall'uno né dall'altro.
+
+---
+
+### Codici errore
+
+* `E_PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE` — il collegamento indica un flusso di un'altra
+  pratica. L'errore porta il `tx_id` della riga.
 
 ---
 
-### Note operative
+### Test
 
-* Lavora in coppia con l'indice unico parziale `uq_pratiche_sorgenti_flusso_root`
-  (`WHERE ruolo_link='ROOT' AND flusso_id IS NOT NULL`), che impone **max 1 ROOT per
-  flusso**: l'indice garantisce l'unicità, questo guard la **coerenza** del flusso
-  con la pratica.
-* Per i link `COLLEGATO` a valle lasciare `flusso_id` NULL: non vincolati né
-  dall'indice né da questo guard.
-* Test: `db/pgtap/pratiche/test-pratiche-sorgenti-flusso.sql`.
+* `pratiche/test-pratiche-sorgenti-flusso` — il flusso di un'altra pratica rifiutato, il flusso
+  inesistente lasciato alla chiave esterna, l'unicità del `ROOT` per flusso.
 
 ---
+
+### Note di migrazione
+
+* 2026-06-16 — nasce con l'aggancio del documento al flusso d'origine (brief-db-aggancio-documento-flusso).
+
+---
+
 {% include-markdown "signature-core.md" %}

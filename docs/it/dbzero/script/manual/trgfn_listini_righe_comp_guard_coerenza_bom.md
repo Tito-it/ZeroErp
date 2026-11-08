@@ -1,5 +1,7 @@
 # trgfn_listini_righe_comp_guard_coerenza_bom
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > **Vedi anche**
 >
 > - [vendite.listini_righe_componenti](/dbzero/vendite/manual/listini_righe_componenti) — tabella su cui il trigger opera
@@ -12,7 +14,7 @@
 
 Esegue 5 guard di coerenza (1–4 + 7) per garantire che ogni riga inserita o aggiornata in `vendite.listini_righe_componenti` sia perfettamente allineata con la BoM catalogo e con i vincoli di validità temporale. È il punto di verità centralizzato per l'integrità della tabella bundle: senza questi guard, le colonne denorm (`articolo_padre_id`, `articolo_figlio_id`) potrebbero divergere dalla BoM, o potrebbero esistere prezzi bundle per periodi non coperti dalla versione listino.
 
-> La coerenza IVA padre=figlio **non** è più verificata qui: era il Guard 5, rimosso il 2026-06-03 perché ridondante. L'invariante è garantito a punto unico alla sorgente da [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (motivo `E_BOM_IVA_DISCORDANTE`, INSERT + riattivazione) e [`catalogo.trgfn_articoli_guard_iva_bom_attiva`](/dbzero/catalogo/manual/trgfn_articoli_guard_iva_bom_attiva).
+> La coerenza IVA padre=figlio **non** è più verificata qui: era il Guard 5, rimosso il 2026-06-03 perché ridondante. L'invariante è garantito a punto unico alla sorgente da [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_guard_componente) (motivo `E_BOM_IVA_DISCORDANTE`, INSERT + riattivazione) e [`catalogo.trgfn_articoli_guard_iva_bom_attiva`](/dbzero/catalogo/funzioni/trgfn_articoli_guard_iva_bom_attiva).
 
 ---
 

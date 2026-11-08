@@ -1,6 +1,6 @@
 # Guida Tecnica – API Commesse (DB layer)
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > Destinatari: sviluppatori backend e database di Zero ERP
 >
@@ -190,6 +190,16 @@ commessa raccoglie righe di più documenti dello stesso cliente, e il blocco
 costringerebbe ad annullare l'intera commessa o a togliere le righe una a una, che il
 modello vieta (`vendite.fn_annulla_commessa_attivita` rifiuta le righe con sorgente).
 Il blocco resta dove la riga è già emessa.
+
+### Cancellare una commessa: solo la bozza vuota
+
+Una commessa si **cancella** solo se è una **bozza vuota**: nello stato in cui nasce
+(`BOZZA`), senza **attività** e senza **documenti collegati**. È la regola di tutti i
+documenti di vendita, e la fa valere il database
+([vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza)):
+fuori bozza il rifiuto è `E_DELETE_DOC_NON_BOZZA`, una bozza che ha ancora attività o un
+documento collegato è `E_DELETE_DOC_CON_RIGHE`. Le attività non hanno uno stato «disattivata»:
+ognuna conta. Una commessa che non serve più si **annulla** (sopra), e resta con la sua storia.
 
 ---
 
@@ -522,11 +532,11 @@ FROM vendite.fn_list_commesse_emittibili(
 **Regole chiave**:
 
 * ROOT source obbligatoria sulla commessa
-* Sorgente AF = `COMMESSA` + hash deterministico `segment_key` -> UUID
-* Idempotenza su chiave `(sorgente_tipo_id, sorgente_uid)`
+* Ogni AF punta la sua riga di commessa con una FK vera (`commessa_attivita_id`): la provenienza
+  dell'AF è quella della riga, e l'AF non ha colonne di sorgente sue
+* Idempotenza sulla riga di commessa: una riga produce al più un'AF
 * Blocco se riga AF già fatturata
 * Aggiorna `stato_emissione = EMESSA` sulle righe processate
-* Propaga `sorgente_origine_tipo_id` (sorgente business originale)
 
 ```sql
 SELECT *
@@ -779,7 +789,7 @@ Logica orchestrata da `BoMComponentExpander` + `_componenti_repo_factory` in
   2026-10-01 era `esposto_in_fattura` (booleano). Il passaggio lo fa il backend
   (`BoMComponentExpander` che la scrive, `FattureRigheService` che la legge): richiesta
   aperta nel brief `brief-db-esposizione-componenti-kit-in-fattura` §5
-* Tutti gli altri campi (BA, utility, competenza, sorgente_uid, tipo_doc_fiscale) ereditati dal padre
+* Tutti gli altri campi (BA, utility, competenza, la provenienza `sorgente_*`, tipo_doc_fiscale) ereditati dal padre
 
 **Qualunque sia il modo, ogni componente è tracciato in `commesse_attivita` col suo
 prezzo**: l'esposizione decide solo la **presentazione** a valle, e la applica la vista

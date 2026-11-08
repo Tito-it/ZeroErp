@@ -1,54 +1,54 @@
-## 📘 Documentazione Funzione – `pratiche.fn_guard_ripetibilita_flusso`
+## 📘 Documentazione Concettuale – Funzione `pratiche.fn_guard_ripetibilita_flusso`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.fn_check_ripetibilita_flusso](fn_check_ripetibilita_flusso.md)
-> [pratiche.trgfn_flussi_guard_ripetibilita](trgfn_flussi_guard_ripetibilita.md)
-> [pratiche.fn_guard_prerequisiti_flusso](fn_guard_prerequisiti_flusso.md)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — la regola `ripetibilita` del template
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_check_ripetibilita_flusso](/dbzero/pratiche/funzioni/fn_check_ripetibilita_flusso) — il controllo puro, dove sta la regola
+> * [pratiche.trgfn_flussi_guard_ripetibilita](/dbzero/pratiche/funzioni/trgfn_flussi_guard_ripetibilita) — il trigger che la chiama
+> * [pratiche.fn_guard_prerequisiti_flusso](/dbzero/pratiche/funzioni/fn_guard_prerequisiti_flusso) — la sentinella simmetrica dei prerequisiti
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
 
 ---
+
 ### 🎯 Scopo Principale
-La funzione **`pratiche.fn_guard_ripetibilita_flusso`** e' la **sentinella fail-fast** (`fn_guard_*`) della regola di ripetibilita': se la regola del template vieta una nuova istanza nella pratica, solleva `PRATICHE_FLUSSO_NON_RIPETIBILE` con contesto parlante (regola del template + stato/esito dell'ultima istanza).
 
-Pattern simmetrico a `fn_guard_prerequisiti_flusso`: il check puro vive in `fn_check_ripetibilita_flusso`, il guard aggiunge solo il sollevamento errore.
+`pratiche.fn_guard_ripetibilita_flusso` è la sentinella della regola di ripetibilità: se la regola del
+template vieta una nuova istanza nella pratica, solleva `E_PRATICHE_FLUSSO_NON_RIPETIBILE`; altrimenti
+ritorna senza effetti.
 
----
-
-### Firma della funzione
-
-```sql
-CREATE OR REPLACE FUNCTION pratiche.fn_guard_ripetibilita_flusso(
-  p_pratica_id         pratiche.flussi.pratica_id%TYPE,
-  p_template_flusso_id pratiche.flussi.template_flusso_id%TYPE
-)
-RETURNS void
-LANGUAGE plpgsql
-```
+La regola non è scritta qui: la sentinella chiede a `pratiche.fn_check_ripetibilita_flusso` e aggiunge
+solo l'errore, come `pratiche.fn_guard_prerequisiti_flusso` fa per i prerequisiti.
 
 ---
 
-### Descrizione parametri
+### Dove si applica
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:---:|-------------|
-| `p_pratica_id` | bigint | SI | ID della pratica in cui si vuole creare la nuova istanza |
-| `p_template_flusso_id` | integer | SI | ID del template flusso da istanziare |
-
----
-
-### ⚠️ Errori sollevati
-
-| Codice errore | Condizione |
-|---------------|------------|
-| `PRATICHE_FLUSSO_NON_RIPETIBILE` (483) | La regola di ripetibilita' del template vieta una nuova istanza: `MAI` con istanza esistente, oppure `SE_NON_POSITIVO` con ultima istanza aperta o chiusa `POSITIVO` |
-
-Placeholders del messaggio: codice template, regola, stato/esito dell'ultima istanza.
+La chiama il trigger `pratiche.trgfn_flussi_guard_ripetibilita` prima di ogni inserimento in
+`pratiche.flussi`: ogni flusso nasce da un template (`template_flusso_id` è obbligatorio), e la
+regola vale per qualunque chiamante (backend, funzioni del database, SQL diretto).
 
 ---
 
-### Note operative
+### Codici errore
 
-* Invocata dal trigger `trg_flussi_a10_guard_ripetibilita_ins` (BEFORE INSERT su `pratiche.flussi`): la regola vale per **qualunque chiamante** (BE, funzioni DB, SQL diretto).
-* Se il check passa, la funzione ritorna senza effetti.
+* `E_PRATICHE_FLUSSO_NON_RIPETIBILE` — la regola del template vieta una nuova istanza: `MAI` con
+  un'istanza già presente, oppure `SE_NON_POSITIVO` con l'ultima istanza ancora aperta o chiusa
+  `POSITIVO`. La frase nomina il template, la regola e lo stato (con l'esito) dell'ultima istanza
+  non annullata; gli stessi fatti stanno nel contesto dell'errore.
+
+---
+
+### Test
+
+* `pratiche/test-ripetibilita-flussi` — il rifiuto sull'inserimento e i casi ammessi.
+
+---
+
+{% include-markdown "signature-core.md" %}

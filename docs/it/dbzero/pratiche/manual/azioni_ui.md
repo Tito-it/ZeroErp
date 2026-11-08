@@ -1,68 +1,50 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.azioni_ui`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [pratiche.handler_flussi](/dbzero/pratiche/tabelle/handler_flussi)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — il template che offre l'attività, con `azione_ui_id`
+> * [pratiche.handler_flussi](/dbzero/pratiche/tabelle/handler_flussi) — il gemello lato server
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `pratiche.azioni_ui` e' il **catalogo delle attivita' UI lanciabili dal flusso di pratica**. E' lo **specchio lato frontend** del registry handler (`pratiche.handler_flussi`):
 
-* `handler_flussi` mappa una `handler_key` a un handler **Python** per l'automazione **server-side** (eseguita da Django sull'evento di flusso).
-* `azioni_ui` mappa una `azione_ui_key` a un **componente/drawer di dominio** risolto dal **registry frontend** (`UI_ACTIVITY_REGISTRY`), per l'**attivita' interattiva** (es. aprire il drawer di un preventivo dentro la pratica).
+La tabella `pratiche.azioni_ui` è il catalogo delle attività interattive che un passo di pratica può
+offrire all'operatore: ogni riga è una chiave che il frontend risolve in un componente di dominio
+(per esempio il drawer di un preventivo aperto dentro la pratica).
 
-Il DB conserva solo la chiave: non interpreta mai `azione_ui_key`, esattamente come per `handler_key`.
-
----
-
-### Ruolo nel processo
-
-* Un template di flusso con `azione_ui_id NOT NULL` (vedi [template_flussi](/dbzero/pratiche/tabelle/template_flussi)) **offre un'attivita' interattiva** nel flusso: il frontend risolve la `azione_ui_key` nel registry e apre il componente dichiarato.
-* Un template con `azione_ui_id NULL` non offre attivita' interattiva (flusso avvia/completa standard).
-* La chiave non presente nel registry FE → **nessun pulsante** (fail-safe): la registrazione effettiva delle azioni vive lato FE, il DB ne e' il catalogo referenziale.
+È lo specchio, lato interfaccia, del registro degli handler: `pratiche.handler_flussi` lega una chiave
+a un'automazione eseguita dal backend sull'evento di flusso, `pratiche.azioni_ui` lega una chiave a
+un'attività che l'operatore svolge.
 
 ---
 
-### Relazione con il frontend
+### ⭐ Il database conserva la chiave, non la interpreta
 
-```js
-// In frontend/src/pratiche/uiActivityRegistry.js
-const UI_ACTIVITY_REGISTRY = {
-  APRI_PREVENTIVO: { loadComponent: () => import('.../PreventiviDrawer.vue'), /* ... */ },
-  // APRI_OFFERTA, APRI_CONTRATTO → quando nasceranno i relativi flussi
-}
-```
+`azione_ui_key` è unica e il database non le dà nessun significato, esattamente come `handler_key`: la
+registrazione effettiva delle attività vive nel registro del frontend, che risolve la chiave nel
+componente con un caricamento differito, così il dominio delle pratiche non dipende da quello delle
+vendite. Il catalogo è il riferimento delle chiavi ammesse.
 
-Il dispatch avviene per lookup: `azione_ui_key` → componente di dominio. Import lazy per non accoppiare `pratiche → vendite` (stessa cautela del registry handler lato Python).
+* Un template di flusso con `azione_ui_id` valorizzato offre l'attività nel suo passo.
+* Un template senza `azione_ui_id` non offre nessuna attività interattiva: il passo si avvia e si
+  completa nel modo standard.
+* Una chiave che il frontend non conosce non produce nessun pulsante: è il comportamento sicuro.
 
----
-
-### Colonne specifiche
-
-| Colonna | Note |
-|---------|------|
-| `azione_ui_key` | VARCHAR(100), UNIQUE. Chiave risolta dal registry FE `UI_ACTIVITY_REGISTRY`. Non interpretata dal DB. |
-| `codice` | VARCHAR(50), UNIQUE. Codice leggibile per interfaccia. |
+Una voce entra nel catalogo quando nasce il flusso che la usa: una riga, un consumatore reale, come in
+`pratiche.handler_flussi`.
 
 ---
 
-### Seed corrente
+### Le regole della tabella
 
-| `azione_ui_key` | Consumatore |
-|---|---|
-| `APRI_PREVENTIVO` | template `PREVENTIVAZIONE` delle pratiche PREVENTIVI (apre il preventivo collegato dal flusso) |
-
-Le voci `APRI_OFFERTA` / `APRI_CONTRATTO` (famiglia documenti confermata) entreranno nel catalogo **quando nasceranno i relativi flussi** — coerente col precedente `handler_flussi` (1 riga = 1 consumatore reale). Gli **ordini** restano fuori: nascono dal push a valle, non si aprono in bianco da un flusso.
-
----
-
-### Convenzioni
-
-* Registry puro: no `storicizza`, no `tx_id` (non serve tracciamento transazionale) — identico a `handler_flussi`.
-* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
+* `codice` è unico, ed è la forma leggibile della voce; si scrive in maiuscolo.
+* Una voce non si disattiva finché un template di flusso la usa.
+* È un registro di configurazione: non si storicizza e non porta la transazione.
 
 ---
 

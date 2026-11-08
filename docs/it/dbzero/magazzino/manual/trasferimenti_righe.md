@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.trasferimenti_righe`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -27,8 +27,11 @@
 **Le righe di [magazzino.trasferimenti](/dbzero/magazzino/tabelle/trasferimenti)**: per
 ogni articolo (ed eventualmente lotto o pezzo serializzato) quanto viene spostato (`qta`,
 sempre positiva) e, quando servono, l'ubicazione di partenza (`ubicazione_id_da`) e quella di
-arrivo (`ubicazione_id_a`). Ogni riga è la **sorgente** della coppia di movimenti di uscita e
-di entrata (`TRASFERIMENTO_RIGA`): due righe del registro con la stessa sorgente e due causali.
+arrivo (`ubicazione_id_a`).
+
+Ogni riga è il punto preciso da cui nasce la coppia di movimenti di uscita e di entrata: due
+righe del registro con la stessa sorgente, il documento (`TRASFERIMENTO`, la testata) e, in
+`sorgente_riga`, questa riga, e due causali. Una riga citata dal registro non si può cancellare.
 
 ---
 
@@ -83,6 +86,8 @@ e da lì al magazzino di origine e al suo emittente. Meccanismo comune: [Linee g
   dei due testi liberi `lotto` e `seriale`.
 * 2026-09-28 — con il posting del trasferimento arrivano le ubicazioni di partenza e di arrivo
   (`brief-db-magazzino-lotto-3-scarico-da-ddt`).
+* 2026-11-08 — i movimenti non citano più la riga come tipo a sé (`TRASFERIMENTO_RIGA`, ritirato
+  da `config.sorgenti`): citano il documento e la riga.
 
 ---
 

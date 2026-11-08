@@ -1,16 +1,26 @@
-## 🔍 Documentazione Concettuale – Vista `vendite.vw_dash_competenza_gruppi`
+## 📘 Documentazione Concettuale – Vista `vendite.vw_dash_competenza_gruppi`
 
-> **Versione**: 2026-09-01 (brief-db-riferimento-gruppi-lateral-costosa ·
-> migration `20260901-04`) — nata il 2026-07-27
-> (brief-db-emissione-fattura-per-documento-sorgente PARTE A step A8,
-> requisito A3, decisione D-4 · migration `20260727-18`)
-
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-[vendite.vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) — la base da cui deriva
-> [vendite.fn_build_gruppo_fatturabile_key](/dbzero/vendite/funzioni/fn_build_gruppo_fatturabile_key)
-> [vendite.fn_get_sorgente_documento_ref](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref) — **da qui** vengono `riferimento` e `documento_id`
-> [config.sorgenti](/dbzero/config/tabelle/sorgenti) — colonne `area`, `target_table`, `label_selector`
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — `apribile`, `target_table`, `label_selector` del tipo
+>
+> Approfondimento viste:
+>
+> * [vendite.vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) — la base da cui deriva
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_build_gruppo_fatturabile_key](/dbzero/vendite/funzioni/fn_build_gruppo_fatturabile_key) — la forma della chiave di gruppo
+> * [vendite.fn_get_sorgente_documento_ref](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref) — **da qui** vengono `riferimento` e `documento_id`
+> * [script.fn_sorgente_documento_da_chiave](/dbzero/script/funzioni/fn_sorgente_documento_da_chiave) — il ponte delle chiavi in testo, su cui quella è scritta
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — §5, le chiavi in testo
 
 ---
 
@@ -28,9 +38,6 @@ Card «Da emettere» (29 attività)
  ├─ ORD-0033              Bianchi  8 righe   2.300 €   [Fattura]
  └─ Oneri · commessa #42  Rossi    1 riga      500 €   [Fattura]
 ```
-
-Prima del 2026-07-27 questo elenco **non esisteva in nessuna forma**: la
-discovery lavorava a livello di terna del lotto, non di gruppo.
 
 ---
 
@@ -61,20 +68,25 @@ documento una parte è già passata.
 
 ---
 
-### ⭐ Il riferimento leggibile viene dal resolver di catalogo (rev. 2026-09-01)
+### ⭐ Il riferimento leggibile viene dal resolver di catalogo
 
 `riferimento` e `documento_id` arrivano da
 `vendite.fn_get_sorgente_documento_ref(sorgente_tipo_id, sorgente_uid)`, in
 `LEFT JOIN LATERAL` **dopo** l'aggregazione — quindi l'etichetta non può toccare
 `n_attivita` e `valore`, che devono coincidere con la card.
 
-Il resolver legge **una** tabella, quella dichiarata da
-`config.sorgenti.target_table`, e ne prende il numero da `label_selector`. È lo
-stesso resolver di `fn_list_commessa_attivita`, la lente gemella.
+⚠️ `sorgente_uid` qui è l'**uid del documento in testo**, per ogni tipo, come
+sta nella chiave del gruppo (lo porta la base): non è la colonna uuid della
+provenienza. `fn_get_sorgente_documento_ref` lo passa al ponte delle chiavi in
+testo, [`script.fn_sorgente_documento_da_chiave`](/dbzero/script/funzioni/fn_sorgente_documento_da_chiave),
+che risolve col BB che risolve: legge **una** tabella, quella dichiarata da
+`config.sorgenti.target_table`, e ne prende il numero da `label_selector`. Lo
+stesso BB lo usa `fn_list_commessa_attivita`, la lente gemella, che lo chiama
+direttamente con le colonne tipizzate della riga di commessa.
 
-#### ⛔ Perché NON si passa più da `vw_dash_fatturazione_documenti`
+#### ⛔ Perché non si passa da `vw_dash_fatturazione_documenti`
 
-Fino al `20260901-04` questa vista risolveva il documento attraverso quella —
+Prima questa vista risolveva il documento attraverso quella —
 cioè attraverso una `UNION ALL` dei **sei resolver** della fatturazione, che
 ricalcolano valori, righe, transitato e motivo di fermo — per tenerne due
 colonne. Due ragioni indipendenti, **nessuna delle due è la velocità**:
@@ -110,8 +122,8 @@ lo vogliono davvero. È cambiato solo chi la usava come tabella di lookup.
 
 ### ⚠️ Tutti i join sono `LEFT`, mai `INNER`
 
-Un gruppo il cui documento non è risolvibile — sorgente senza `area`, oneri di
-commessa — deve **comunque comparire**. Sparire dall'elenco significherebbe
+Un gruppo il cui documento non è risolvibile — un tipo che non ha una pagina
+(`apribile` falso), gli oneri di commessa — deve **comunque comparire**. Sparire dall'elenco significherebbe
 lavoro non azionabile: lo stesso difetto che il concetto di gruppo esiste per
 evitare.
 
@@ -126,18 +138,18 @@ sempre. Quando il documento non si risolve, a video esce il **codice commessa**.
 vede che è rotta, un codice commessa sembra un valore legittimo — e la riga
 **nomina un oggetto diverso** da quello di cui parla. È lo stesso difetto che il
 frontend ha già corretto sull'azione «Apri commessa», che *«portava a un oggetto
-DIVERSO da quello scritto nella riga»*. Dal `20260901-04` il caso non si produce
-più per un documento che esiste.
+DIVERSO da quello scritto nella riga»*. Col resolver di catalogo il caso non si
+produce per un documento che esiste.
 
 ---
 
 ### Colonne principali
 
 | Colonna | Note |
-|---|---|
+| --- | --- |
 | `gruppo_key` | **esattamente** la stringa che i filtri `p_gruppi` accettano: il FE passa ciò che legge |
 | `tipo_gruppo` | `codice_interno` della sorgente, oppure `ONERI_COMMESSA`. È un **codice**, non un'etichetta: la traduzione a video la fa il frontend (i18n) |
-| `area_documento` | area documentale, `NULL` per i gruppi non sfogliabili |
+| `documento_apribile` | `config.sorgenti.apribile` del tipo: vero se il documento ha una sua pagina, vuoto per i gruppi senza documento |
 | `riferimento` | numero del documento (da `fn_get_sorgente_documento_ref`), o codice commessa. ⚠️ È colonna di **ricerca libera** e di **ordinamento** lato BE: non è solo un'etichetta |
 | `n_attivita` · `valore` | il **peso** di ciò che si sta per fatturare, *prima* di agire |
 | `ha_oneri` | difensivo: un gruppo dovrebbe essere interamente ONERE o interamente NORMALE |
@@ -154,17 +166,15 @@ verifica (`test-vw-dash-competenza-gruppi-v1.sql`, caso 9).
 
 ---
 
-### 🆕 Le colonne del 2026-08-15: display già decodificato
+### Display già decodificato: `commessa_stato_descrizione` e `documento_id`
 
-Due colonne aggiunte con `20260815-25`, su richiesta del backend
-([brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-done/brief-db-emittibilita-visibile-e-sbloccabile)
-§8.3 e §9 F3). Entrambe tolgono al repository una **seconda risoluzione della
+Due colonne che tolgono al repository una **seconda risoluzione della
 stessa cosa**, e nessuna delle due costa un JOIN nuovo.
 
 | Colonna | Da dove viene | Perché in vista |
-|---|---|---|
+| --- | --- | --- |
 | `commessa_stato_descrizione` | `stati_commessa`, `COALESCE(descrizione, codice)` | A video va la descrizione. Un codice interno dentro una frase — *«The job order is in state BOZZA»* — è il sintomo che la decodifica è finita lato client. Il JOIN la vista lo faceva già per `emittibile` e `codice_interno` |
-| `documento_id` | la **stessa** LATERAL da cui esce `riferimento` (dal 2026-09-01: `fn_get_sorgente_documento_ref`) | I drawer di dominio si aprono per **id**, e la vista esponeva solo codice e uid |
+| `documento_id` | la **stessa** LATERAL da cui esce `riferimento` (`fn_get_sorgente_documento_ref`) | I drawer di dominio si aprono per **id**, e la vista esponeva solo codice e uid |
 
 ⭐ **Il punto che rende `documento_id` non cosmetico.** Finché l'id lo risolveva
 il repository con una LATERAL sua, `riferimento` (il codice, dalla vista) e
@@ -174,19 +184,19 @@ sola. Ora arrivano dalla stessa riga per costruzione: non è più una convenzion
 da mantenere a mano.
 
 ℹ️ `documento_id` è `NULL` per i gruppi **sourceless** (oneri di commessa,
-`area_documento` `NULL`). È corretto: quei gruppi un documento non ce l'hanno, e
+`documento_apribile` vuoto). È corretto: quei gruppi un documento non ce l'hanno, e
 il frontend offre la sola commessa.
 
-⚠️ **Il guard che lo tiene `NULL` è `s.area IS NOT NULL` nella `ON` del
-`LATERAL`, ed è semantico, non difensivo.** Il resolver, chiamato su una
-sorgente senza area (`ATTIVITA`, `ATTIVITA_CONSUMI`, le `*_RIGA`), risponderebbe
+⚠️ **Il guard che lo tiene `NULL` è `apribile` nella `ON` del `LATERAL`, ed è
+semantico, non difensivo.** Il resolver, chiamato su un tipo che non ha una
+pagina (un consumo, `ATTIVITA_CONSUMI`), risponderebbe
 con l'id della sua `target_table` — un valore **vero** dentro una colonna che
 afferma *«l'id del documento sorgente»*. Non è un documento che il cruscotto
 sappia aprire, e la colonna direbbe una cosa per un'altra.
 
-⭐ **Quale revisione apre `documento_id`** (decisione D-1 del brief
-`brief-db-riferimento-gruppi-lateral-costosa`): la **revisione spinta**, non la
-corrente. È quella da cui vengono quantità e prezzi che si stanno per fatturare;
+⭐ **Quale revisione apre `documento_id`**: la **revisione spinta**, non la
+corrente: l'uid nella chiave del gruppo è quello della revisione mandata in
+commessa. È quella da cui vengono quantità e prezzi che si stanno per fatturare;
 aprire la corrente mostrerebbe righe diverse da quelle che finiranno in fattura,
 senza dirlo. ⚠️ Il numero a video **non distingue** le revisioni
 (`label_selector = numero`, condiviso), quindi la scelta si vede solo nell'id — e
@@ -215,6 +225,22 @@ cercarlo: al 2026-09-01 le righe nel caso rotto sono **zero** su tutta la
 popolazione di sviluppo, quindi un test che confrontasse i dati esistenti
 sarebbe verde per sottrazione, e in CI (database ricostruito da zero)
 passerebbe a vuoto sempre.
+
+---
+
+### Note di migrazione
+
+* 2026-07-27 — nasce l'elenco dei gruppi fatturabili: prima la discovery lavorava a livello di terna
+  del lotto (brief-db-emissione-fattura-per-documento-sorgente, parte A, A8).
+* 2026-08-15 — arrivano `commessa_stato_descrizione` e `documento_id` (brief-db-emittibilita-visibile-e-sbloccabile §8.3, §9 F3).
+* 2026-09-01 — il riferimento viene dal resolver di catalogo e non più da
+  `vw_dash_fatturazione_documenti`; la revisione aperta è quella spinta (brief-db-riferimento-gruppi-lateral-costosa, D-1).
+* 2026-10-20 — `area_documento` lascia il posto a `documento_apribile`, da `config.sorgenti.apribile`
+  (brief-db-grammatica-unica-documenti).
+* 2026-11-06 — il resolver passa dal ponte delle chiavi in testo del modello della provenienza; i
+  tipi `*_RIGA` escono dal catalogo dei tipi (brief-db-sorgente-documento-e-riga).
+* 2026-11-07 — la base porta l'uid del documento in testo dal `segment_key`; il tipo `ATTIVITA` esce
+  dal catalogo dei tipi.
 
 ---
 

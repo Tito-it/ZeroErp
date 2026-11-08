@@ -1,83 +1,70 @@
-## 📘 Documentazione Trigger Function – `pratiche.trgfn_flussi_guard_pratica_terminale`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_guard_pratica_terminale`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni / oggetti collegati:
+> Approfondimento tabelle:
 >
-> [pratiche.flussi](flussi.md)
-> [pratiche.trgfn_flussi_guard_transizione](trgfn_flussi_guard_transizione.md)
-> [pratiche.trgfn_pratiche_guard_chiusura_flussi](trgfn_pratiche_guard_chiusura_flussi.md)
-> [config.transizioni_stati_pratiche](/dbzero/config/tabelle/transizioni_stati_pratiche)
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — la tabella sorvegliata
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — la pratica padre, di cui si legge lo stato
+> * [config.transizioni_stati_pratiche](/dbzero/config/tabelle/transizioni_stati_pratiche) — la matrice da cui si deriva «terminale»
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_flussi_guard_transizione](/dbzero/pratiche/funzioni/trgfn_flussi_guard_transizione) — la legalità delle transizioni del flusso
+> * [pratiche.trgfn_pratiche_guard_chiusura_flussi](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_chiusura_flussi) — che cosa deve essere finito perché la pratica chiuda
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva gli errori
 
 ---
+
 ### 🎯 Scopo Principale
 
-Difesa lato DB contro le operazioni su una **pratica conclusa**. Quando la pratica
-padre e' in uno **stato terminale**, i suoi flussi sono **congelati**: non possono
-essere creati nuovi flussi ne' modificati quelli esistenti (transizioni di stato,
-`esito`, `note_esito` o qualunque altro campo operativo).
+La trigger function `pratiche.trgfn_flussi_guard_pratica_terminale` congela i flussi di una pratica
+conclusa: quando la pratica padre è in uno stato terminale, non si creano nuovi flussi e non si
+modificano quelli esistenti.
 
-La protezione FE (scheda in sola lettura, percorso non cliccabile, drawer senza
-azioni) e' la prima linea; questo guard garantisce che una chiamata API diretta o
-un batch non aggiri la regola.
+La scheda in sola lettura dell'interfaccia è la prima linea; questo guard garantisce che una chiamata
+diretta o un batch non aggirino la regola.
 
 ---
 
-### Definizione di "stato terminale"
+### «Terminale» si deriva dalla matrice
 
-Uno stato pratica e' **terminale** quando **non ha alcuna transizione di stato in
-uscita attiva** in `config.transizioni_stati_pratiche`. Oggi corrispondono a
-`CHIUSA` e `ANNULLATA`. La definizione e' **derivata dalla matrice transizioni**
-(non da una lista di codici/id hardcodati): si auto-mantiene se in futuro si
-aggiunge/rimuove uno stato terminale o una transizione.
-
----
-
-### Trigger associato
-
-| Trigger | Timing | Evento | Tabella |
-|---|---|---|---|
-| `trg_flussi_a10_guard_pratica_terminale_ins_upd` | BEFORE | INSERT OR UPDATE | `pratiche.flussi` |
-
-Fase `_a10_` (guard). L'evento copre tutte le colonne (non `UPDATE OF`): il
-congelamento riguarda l'intera riga, quindi anche le modifiche di soli `esito` /
-`note_esito` senza cambio di stato. Convive con gli altri guard `_a10_` del flusso
-(`esito_completato`, `prerequisiti`, `ripetibilita`, `transizione`).
+Uno stato della pratica è terminale quando non ha nessuna transizione attiva in uscita in
+`config.transizioni_stati_pratiche`. Nel catalogo di oggi lo sono `CHIUSA` e `ANNULLATA`. La funzione
+non conosce nessun codice né id: se si aggiunge uno stato terminale o una transizione, la regola segue
+la matrice da sé.
 
 ---
 
-### Regole
+### Le regole
 
-1. Risolve lo stato corrente della pratica padre (`NEW.pratica_id`, sempre presente
-   per la FK `fk_flussi_pratica`).
-2. Se lo stato ha **almeno una transizione di stato in uscita attiva** → la pratica
-   e' ancora operabile → **nessun blocco**.
-3. Se lo stato e' **terminale** → solleva errore parlante, con codice distinto per
-   operazione (creazione vs modifica).
-4. Il guard e' su `pratiche.flussi`: l'**atto di rendere terminale la pratica**
-   (UPDATE su `pratiche.pratiche`) **non passa di qui** e resta permesso, anche con
-   flussi ancora attivi.
-
----
-
-### ⚠️ Errori sollevati
-
-| Codice errore | Condizione |
-|---------------|------------|
-| `PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO` (490) | INSERT di un flusso su pratica padre terminale. Placeholder: codice stato terminale |
-| `PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE` (491) | UPDATE di un flusso (stato, esito, note_esito, ogni campo) su pratica padre terminale. Placeholder: codice stato terminale |
+* Scatta `BEFORE INSERT OR UPDATE`, riga per riga, su `pratiche.flussi`, nella fase dei guard, su
+  tutte le colonne: il congelamento riguarda l'intera riga, anche una modifica del solo esito o delle
+  sue note senza cambio di stato.
+* Si legge lo stato della pratica padre; se ha almeno un'uscita attiva la pratica è operabile e non
+  si blocca niente.
+* Se è terminale, l'errore dipende dall'operazione: creazione o modifica, e porta il codice dello stato.
+* ⚠️ L'atto di rendere terminale la pratica è un aggiornamento di `pratiche.pratiche` e non passa di
+  qui: resta permesso anche con flussi ancora attivi.
+* ⚠️ Non c'è cascata dalla pratica ai flussi: chiudendo o annullando una pratica, i flussi attivi
+  restano nel loro stato, congelati. Una futura cascata di sistema andrebbe resa esente da questo guard.
 
 ---
 
-### Note operative
+### Codici errore
 
-* Nessuna cascata pratica → flussi alla terminazione: annullando/chiudendo una
-  pratica i flussi attivi restano nel loro stato (congelati). Se in futuro si
-  decidesse di portarli automaticamente a uno stato coerente, quella cascata "di
-  sistema" andra' resa esente da questo guard.
-* Lato BE: mappare i due codici in `pratiche_service` / `error_policies` per un
-  messaggio utente coerente sulle rotte di creazione/cambio stato/modifica flusso.
-* Test: `db/pgtap/pratiche/test-guard-pratica-terminale-flussi.sql`.
+* `E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO` — inserimento di un flusso su una pratica terminale.
+* `E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE` — modifica di un flusso su una pratica terminale.
 
 ---
+
+### Test
+
+* `pratiche/test-guard-pratica-terminale-flussi` — creazione e modifica bloccate su pratica terminale,
+  libere su pratica operabile, chiusura della pratica permessa.
+
+---
+
 {% include-markdown "signature-core.md" %}

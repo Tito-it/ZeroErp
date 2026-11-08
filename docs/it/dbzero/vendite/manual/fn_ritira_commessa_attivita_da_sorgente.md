@@ -1,22 +1,27 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_ritira_commessa_attivita_da_sorgente`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
-> • [vendite.commesse_attivita_log](/dbzero/vendite/tabelle/commesse_attivita_log)  
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — le righe che si ritirano
+> * [vendite.commesse_attivita_log](/dbzero/vendite/tabelle/commesse_attivita_log) — il registro, una riga per riga ritirata
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [script.fn_check_sorgente_chiudibile](/dbzero/script/funzioni/fn_check_sorgente_chiudibile)  
-> • [vendite.fn_documento_ritira_legami](/dbzero/vendite/funzioni/fn_documento_ritira_legami) — chi la chiama, dopo la conferma dell'annullo  
-> • [vendite.fn_annulla_commessa_attivita](/dbzero/vendite/funzioni/fn_annulla_commessa_attivita)  
+> * [script.fn_check_sorgente_chiudibile](/dbzero/script/funzioni/fn_check_sorgente_chiudibile) — ferma la chiusura se ci sono righe in volo
+> * [vendite.fn_documento_ritira_legami](/dbzero/vendite/funzioni/fn_documento_ritira_legami) — chi la chiama, dopo la conferma dell'annullo
+> * [vendite.fn_annulla_commessa_attivita](/dbzero/vendite/funzioni/fn_annulla_commessa_attivita) — la complementare, per le righe manuali
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 26-08-2026)
 
 **Il ritiro: il documento riprende ciò che aveva spinto.** Porta ad `ANNULLATA`
 le sole righe di commessa in **`NON_EMESSA`** della sorgente indicata, e lascia
@@ -26,18 +31,15 @@ una riga di registro **per ciascuna**. Restituisce **quante** ne ha ritirate.
 
 ### ⭐ È l'oggetto di una promessa che il modello faceva già per iscritto
 
-Il guard 4 di
+Il guard d'origine di
 [`fn_annulla_commessa_attivita`](/dbzero/vendite/funzioni/fn_annulla_commessa_attivita)
-dice, da sempre:
+dice:
 
 > *«per una riga da push il rimedio è **SEMPRE a monte, sul documento**»*
 
-⛔ Fino al 26 agosto 2026 quella frase era **una promessa senza oggetto**:
-annullare l'ordine fermava i push **futuri** e non ritirava niente di ciò che era
-già passato. Il lavoro restava in commessa, fatturabile, e l'unico modo di
-uscirne era **essere fatturato**.
-
-Questa funzione è l'oggetto.
+Questa funzione è quel rimedio: annullare il documento non ferma solo i push **futuri**, ritira
+anche ciò che era già passato e non è ancora emesso. Senza, il lavoro resterebbe in commessa,
+fatturabile, e l'unico modo di uscirne sarebbe **essere fatturato**.
 
 ---
 
@@ -54,18 +56,21 @@ Insieme coprono il piano, e nessuna delle due invade l'altra.
 ritiro per sorgente **non le trova**. È corretto: per l'onere la via è
 `fn_annulla_commessa_attivita`, per la rettifica
 `fn_annulla_accredito_riga_reso`. È la stessa distinzione **origine / natura**
-che ha morso il dominio il 20 agosto 2026.
+dell'annullo manuale.
 
 ---
 
 ### ⛔ La chiave, e sbagliarla non dà errore
 
-`p_sorgente_uid` è **`<testata>.uid::text`**, per ogni sorgente: è ciò che le
-cinque `fn_list_*_da_pushare` scrivono in `commesse_attivita.sorgente_uid`.
+Il documento si passa con le colonne del modello della provenienza: il tipo, `p_sorgente_id` e
+`p_sorgente_uid` (uuid). La ricerca segue la **regola d'incontro**: una riga combacia se il suo
+`sorgente_id` è quello passato **o** il suo `sorgente_uid` è quello passato. Chi ha il documento
+passa il suo id **e** il suo uid, senza leggere il `key_selector`: nella riga la colonna che il
+tipo non usa è vuota, e non incontra niente. Serve almeno una delle due chiavi (altrimenti
+`E_RITIRO_SORGENTE_PARAMETRO_MANCANTE`).
 
-⚠️ **Non** è la chiave di `vendite.commesse_sorgenti`, che varia per sorgente
-(`uid` per il preventivo, `id::text` per l'ordine). Passare quella sbagliata non
-solleva niente: **ritira zero righe**, cioè un ritiro che non ritira.
+⚠️ Una chiave sbagliata (l'id di un altro documento, un tipo che non è quello) non solleva
+niente: **ritira zero righe**, cioè un ritiro che non ritira.
 
 ⭐ È il motivo per cui la funzione restituisce un **conteggio** invece di `void`,
 e per cui c'è un test apposta.
@@ -115,34 +120,16 @@ il **non toccarlo** — fail-closed su un verbo irreversibile.
 
 ---
 
-### Esempio d'uso
+### ⭐ Una sorgente, una commessa: `p_commessa_id`
 
-```sql
--- Ritiro manuale (il caso normale passa dal trigger)
-SELECT vendite.fn_ritira_commessa_attivita_da_sorgente(
-    (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_VENDITA'),
-    (SELECT uid::text FROM vendite.ordini WHERE id = 41),
-    'Ritiro manuale: ordine chiuso per errore di inserimento');
--- → 3
-
--- Chiave sbagliata: nessun errore, e nessun ritiro
-SELECT vendite.fn_ritira_commessa_attivita_da_sorgente(6, '41', 'prova');
--- → 0   ⛔ è il modo silenzioso in cui questo verbo può fallire
-```
-
----
-
-### ⭐ Una sorgente, una commessa: `p_commessa_id` (dal 2026-10-12)
-
-Quarto parametro, in coda e `DEFAULT NULL` (brief-db-annullo-a-valle-riapre-a-monte, D-1):
+Ultimo parametro, in coda e `DEFAULT NULL`:
 
 | `p_commessa_id` | Chi lo usa | Cosa ritira |
 | --- | --- | --- |
 | `NULL` | l'annullo di un **documento** | le righe della sorgente in tutte le commesse: il documento riprende tutto ciò che ha spinto |
 | valorizzato | l'annullo di una **commessa** | le sole righe di quella commessa: la stessa sorgente può avere righe vive in un'altra commessa, che non c'entra |
 
-Il filtro è residuo: l'accesso resta dalla coppia sorgente. La firma è cambiata
-(`DROP` + `CREATE`, `20261012-18`); le chiamate a tre argomenti restano valide.
+Il filtro è residuo: l'accesso resta dalla provenienza.
 
 ---
 
@@ -158,14 +145,24 @@ Il filtro è residuo: l'accesso resta dalla coppia sorgente. La firma è cambiat
   [`fn_documento_ritira_legami`](/dbzero/vendite/funzioni/fn_documento_ritira_legami)
   dentro i verbi di annullo (`fn_annulla_ddt`, `fn_annulla_ordine`,
   `fn_annulla_preventivo`, `fn_annulla_contratto`), **dopo la conferma** di chi
-  annulla. Fino al 2026-10-11 la chiamava in silenzio un trigger `_z90_`
-  all'ingresso in uno stato abortito (brief-db-annullo-documento-con-legami, D-5).
-  Il motivo registrato è ora «Ritiro all'annullo confermato del documento di
+  annulla. Il motivo registrato è «Ritiro all'annullo confermato del documento di
   origine (…)».
-* Test: `db/pgtap/vendite/test-ritiro-commessa-attivita-da-sorgente-v1.sql`
-  (10 test). ⭐ Il **7** è quello che vale: con la chiave sbagliata ritira zero e
-  non solleva.
-* Cantiere: `brief-db-lavoro-che-non-torna-indietro.md`, lotto L7 / Q-5′ strada A.
+* Test: `db/pgtap/vendite/test-ritiro-commessa-attivita-da-sorgente-v1.sql`.
+  ⭐ Il **7** è quello che vale: con la chiave sbagliata ritira zero e non solleva.
+
+---
+
+### Note di migrazione
+
+* 2026-08-26 — nasce la funzione: fino ad allora annullare l'ordine fermava i push futuri e non
+  ritirava niente di ciò che era già passato (brief-db-lavoro-che-non-torna-indietro, lotto L7).
+* 2026-10-11 — non la chiama più un trigger `_z90_` all'ingresso in uno stato abortito, ma il BB
+  `fn_documento_ritira_legami` dopo la conferma dell'annullo
+  (brief-db-annullo-documento-con-legami, D-5).
+* 2026-10-12 — arriva `p_commessa_id` (brief-db-annullo-a-valle-riapre-a-monte, D-1).
+* 2026-11-07 — il documento si passa con le colonne tipizzate (`p_sorgente_id` e `p_sorgente_uid`
+  uuid) e si cerca con la regola d'incontro, al posto della chiave testuale `p_sorgente_uid`, che
+  era l'uid della testata in testo per ogni tipo (brief-db-sorgente-documento-e-riga).
 
 ---
 

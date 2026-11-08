@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_ddt_emessi_senza_scarico`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,6 +15,7 @@
 >
 > * [script.vw_stati_doc_ddt_merce_partita](/dbzero/script/views/vw_stati_doc_ddt_merce_partita) — la sede della regola «in questo stato la merce è partita»
 > * [dbops.vw_resi_confermati_senza_carico](/dbzero/dbops/views/vw_resi_confermati_senza_carico) — la gemella sul verso opposto: il reso senza carico
+> * [dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo](/dbzero/dbops/views/vw_ddt_trasferimenti_consegnati_senza_arrivo) — il presidio dell'arrivo, che questa vista non guarda
 >
 > Approfondimento funzioni:
 >
@@ -28,6 +29,7 @@
 >
 > * [Gestione DDT](/guide/gestione-ddt) — la bolla e il suo scarico
 > * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — come si legge un presidio che deve restare vuoto
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — la provenienza del movimento: documento, riga, dettaglio
 
 ---
 
@@ -61,8 +63,13 @@ Servono quattro fatti insieme:
 * ha un **magazzino**;
 * **muove merce**: la sua causale di trasporto corrisponde a una causale di magazzino e almeno una
   voce è gestita a magazzino (`vendite.fn_ddt_muove_merce`);
-* **nessuno** dei suoi prelievi ha un'uscita a registro: un movimento con sorgente
-  `DDT_VENDITA_PRELIEVO`, quantità negativa, che non sia uno storno.
+* **almeno un prelievo** di una sua riga attiva non ha la sua uscita a registro: un movimento
+  che viene dalla bolla (`DDT_VENDITA`), da quella riga e da quel prelievo come dettaglio, con
+  quantità negativa, che non sia uno storno.
+
+La domanda è **prelievo per prelievo**, come il contratto del posting (un movimento per ogni
+prelievo delle righe attive): anche uno scarico parziale si vede. La colonna
+`prelievi_senza_scarico` dice quanti prelievi mancano.
 
 Le bolle senza magazzino sono nate prima che la bolla scaricasse il magazzino, e non sono questo
 difetto.
@@ -71,10 +78,9 @@ difetto.
 
 ### ⚠️ Che cosa non vede
 
-* **Lo scarico parziale.** La domanda è «nessuna uscita», non «un'uscita per ogni prelievo»: una
-  bolla che ha scaricato un prelievo su tre non compare.
-* **L'arrivo del trasferimento.** Per una bolla di trasferimento guarda solo l'uscita dal
-  magazzino di partenza, non il carico nel magazzino d'arrivo.
+**L'arrivo del trasferimento.** Per una bolla di trasferimento guarda solo l'uscita dal
+magazzino di partenza, non il carico nel magazzino d'arrivo: quello lo presidia
+`dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo`.
 
 ---
 
@@ -92,6 +98,8 @@ Cadenza `GIORNALIERA`: una giacenza falsa si propaga a ogni bolla del giorno dop
 
 * `db/pgtap/script/test-vw-stati-doc-ddt-merce-partita-v1.sql`, test 8 — la vista legge la regola
   degli stati dal suo building block, senza un elenco di codici.
+* `db/pgtap/dbops/test-presidi-magazzino-grana-v1.sql`, test 1-2 — la bolla tutta scaricata non
+  compare; tolta l'uscita di un prelievo su due, compare con un prelievo senza scarico.
 
 ---
 
@@ -104,6 +112,10 @@ Cadenza `GIORNALIERA`: una giacenza falsa si propaga a ogni bolla del giorno dop
   divergeva al primo stato nuovo.
 * 2026-10-25 — la porta del registro passa dal guard di transizione della bolla alla porta comune
   `script.trgfn_doc_stato_solo_dal_verbo` (`brief-modello-documento-vendita` §7).
+* 2026-11-08 — la domanda passa da «nessuna uscita» a «prelievo per prelievo», e lo scarico
+  parziale si vede (nasce la colonna `prelievi_senza_scarico`); il movimento si riconosce dalla
+  provenienza del modello (bolla, riga, prelievo come dettaglio) invece che dal tipo
+  `DDT_VENDITA_PRELIEVO`, ritirato.
 
 ---
 

@@ -1,75 +1,69 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_flussi_generazione`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_flussi_generazione`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Funzioni collegate:
+> Approfondimento tabelle:
 >
-[pratiche.fn_genera_pratica_da_flusso](fn_genera_pratica_da_flusso.md)
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — la tabella su cui è montata
+> * [pratiche.regole_generazione](/dbzero/pratiche/tabelle/regole_generazione) — le regole che dicono che cosa generare
+> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche) — lo stato `COMPLETATO`
 >
-Tabelle:
+> Approfondimento funzioni:
 >
-[pratiche.regole_generazione](regole_generazione.md)
-> [pratiche.flussi](flussi.md)
-> [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
->
-Overview:
->
-[Trigger business overview](trigger_business_overview.md)
+> * [pratiche.fn_genera_pratica_da_flusso](/dbzero/pratiche/funzioni/fn_genera_pratica_da_flusso) — genera la pratica di una regola
 
 ---
+
 ### 🎯 Scopo Principale
-Trigger function per la **generazione automatica cross-pratica**. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.flussi`. Quando un flusso **transita** allo stato COMPLETATO, cerca le regole di generazione automatica e invoca `fn_genera_pratica_da_flusso` per ciascuna regola matching.
 
-**Idempotente** (rev 2026-06-11): genera solo alla **transizione di stato** (`OLD.stato_id IS DISTINCT FROM NEW.stato_id`) — un UPDATE su un flusso gia' COMPLETATO (es. correzione `note_esito`) non rigenera nulla. Terza difesa: dedup in `fn_genera_pratica_da_flusso` + indice `uq_pratiche_flusso_origine_tipo`.
-
----
-
-### Firma
-
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_generazione()
-RETURNS trigger
-LANGUAGE plpgsql
-```
+`pratiche.trgfn_flussi_generazione` fa la generazione automatica fra pratiche: quando un flusso
+transita a `COMPLETATO`, applica le regole di generazione automatica del suo template e genera, per
+ciascuna, la pratica a valle con `pratiche.fn_genera_pratica_da_flusso`.
 
 ---
 
-### DECLARE
+### Quando genera
 
-| Variabile | Tipo | Descrizione |
-|-----------|------|-------------|
-| `v_codice_interno` | `config.stati_flussi_pratiche.codice_interno%TYPE` | Codice interno del nuovo stato |
-| `v_regola` | `RECORD` | Cursore per le regole matching |
+È montata `AFTER UPDATE OF stato_id`, riga per riga, su `pratiche.flussi`, nella fase `_z90_`.
 
----
-
-### Logica
-
-1. **Guard transizione (idempotenza)**: se `OLD.stato_id IS NOT DISTINCT FROM NEW.stato_id` → RETURN NEW (un UPDATE che non cambia stato non genera).
-2. Recupera `codice_interno` del nuovo stato da `config.stati_flussi_pratiche`.
-3. Se non e' `'COMPLETATO'` → RETURN NEW (nessuna azione).
-4. Se `template_flusso_id IS NULL` (flusso manuale) → RETURN NEW.
-5. Cerca regole matching in `pratiche.regole_generazione`:
-   - `template_flusso_origine_id = NEW.template_flusso_id`
-   - `auto = true` e `attivo = true`
-   - `esito_richiesto IS NULL` (qualsiasi esito) oppure `esito_richiesto = NEW.esito`
-6. Per ogni regola trovata, invoca `pratiche.fn_genera_pratica_da_flusso(NEW.id, regola.id)` (dedup interno alla fn).
+* ⭐ Solo alla **transizione** di stato: un aggiornamento che non cambia lo stato (per esempio la
+  correzione delle note di esito su un flusso già completato) non genera niente. Il controllo è dentro
+  la funzione, così copre anche un aggiornamento che riscrive lo stesso stato.
+* Solo se il nuovo stato è `COMPLETATO`.
+* Solo per un flusso nato da un template: un flusso manuale non ha regole.
 
 ---
 
-### Trigger associato
+### Quali regole
 
-| Nome | Fase | Evento |
-|------|------|--------|
-| `trg_flussi_z90_generazione_upd` | AFTER | UPDATE OF `stato_id` |
-
-Il check di transizione (`OLD IS DISTINCT FROM NEW`) e' **interno alla funzione**, non una clausola WHEN del trigger: copre anche gli UPDATE che riscrivono lo stesso `stato_id`.
+Le regole di `pratiche.regole_generazione` che hanno come origine il template del flusso, attive e
+automatiche, e il cui esito richiesto è vuoto (qualsiasi esito) o uguale all'esito del flusso. Le
+regole non automatiche il trigger non le guarda: le invoca il backend in modo esplicito.
 
 ---
 
-### Note operative
+### ⭐ Tre difese contro la doppia generazione
 
-* Prima della rev 2026-06-11 il trigger era `AFTER UPDATE` senza `OF` e senza check di transizione: ogni UPDATE su un flusso gia' COMPLETATO rigenerava una pratica figlia (bug di idempotenza, analisi-pratiche-workflow-v2 §7.B).
-* Le regole con `auto = false` non vengono elaborate dal trigger: richiedono invocazione esplicita dal backend Django.
-* Il filtro `esito_richiesto` permette di generare pratiche solo per specifici esiti del flusso (es. solo su esito positivo).
-* Test: `db/pgtap/pratiche/test-generazione-cross-pratica.sql`.
+1. Il trigger genera solo alla transizione di stato.
+2. `pratiche.fn_genera_pratica_da_flusso` non rigenera una pratica che esiste già.
+3. Un indice unico sulle pratiche impedisce due pratiche dello stesso tipo di prestazione generate dallo
+   stesso flusso di origine.
+
+---
+
+### Test
+
+* `pratiche/test-generazione-cross-pratica` — la generazione alla transizione e la sua idempotenza.
+
+---
+
+### Note di migrazione
+
+* 2026-06-11 — il trigger diventa idempotente: prima scattava a ogni aggiornamento, senza controllo di
+  transizione, e ogni aggiornamento di un flusso già completato generava una nuova pratica figlia.
+
+---
+
+{% include-markdown "signature-core.md" %}

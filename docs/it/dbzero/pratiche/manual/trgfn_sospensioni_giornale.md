@@ -1,50 +1,58 @@
-## 📘 Documentazione Funzioni – Giornale Sospensioni
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_sospensioni_giornale`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> **Tabelle:**
+> Approfondimento tabelle:
 >
-> • [pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni) — la tabella sorvegliata
-> • [pratiche.giornale](/dbzero/pratiche/manual/giornale) — dove finiscono gli eventi
+> * [pratiche.sospensioni](/dbzero/pratiche/tabelle/sospensioni) — la tabella sorvegliata
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — dove finiscono gli eventi
 >
-> **Le due funzioni vive descritte qui:**
+> Approfondimento funzioni:
 >
-> • [pratiche.trgfn_sospensioni_giornale_ins](/dbzero/pratiche/funzioni/trgfn_sospensioni_giornale_ins)
-> • [pratiche.trgfn_sospensioni_giornale_riattivazione](/dbzero/pratiche/funzioni/trgfn_sospensioni_giornale_riattivazione)
+> * [pratiche.trgfn_sospensioni_giornale_ins](/dbzero/pratiche/funzioni/trgfn_sospensioni_giornale_ins) — l'apertura di una sospensione
+> * [pratiche.trgfn_sospensioni_giornale_riattivazione](/dbzero/pratiche/funzioni/trgfn_sospensioni_giornale_riattivazione) — la sua chiusura
 
 ---
+
 ### 🎯 Scopo Principale
-Due trigger functions per registrare nel giornale gli eventi di sospensione e riattivazione.
 
-> ℹ️ **Questa pagina copre una coppia, non un oggetto singolo.** Nel database non
-> esiste una funzione `trgfn_sospensioni_giornale`: il nome del file è il **prefisso
-> di famiglia** delle due funzioni reali, `_ins` e `_riattivazione`. Sono documentate
-> insieme perché sono i due lati dello stesso fatto — una sospensione che si apre e
-> la stessa sospensione che si chiude — e leggerne una sola non spiega il giornale.
-> Le rispettive schede auto-generate sono linkate qui sopra.
+Le due trigger function che registrano nel giornale della pratica l'apertura e la chiusura di una
+sospensione.
 
----
-
-### Funzioni
-
-#### `pratiche.trgfn_sospensioni_giornale_ins()`
-
-Registra `SOSPENSIONE_REGISTRATA` nel giornale su INSERT. Dettaglio JSONB: `sospensione_id`, `motivo`, `data_inizio`, `data_riattivazione_prevista`, `livello` (PRATICA/FLUSSO).
-
-#### `pratiche.trgfn_sospensioni_giornale_riattivazione()`
-
-Registra `SOSPENSIONE_CHIUSA` nel giornale su UPDATE OF data_fine (riattivazione). Dettaglio JSONB: `sospensione_id`, `data_inizio`, `data_fine`, `motivo`, `livello`.
+⚠️ Nel database non esiste una funzione `trgfn_sospensioni_giornale`: il nome di questa pagina è il
+prefisso della famiglia delle due funzioni reali, `_ins` e `_riattivazione`, documentate insieme perché
+sono i due lati dello stesso fatto. Ognuna ha la sua scheda.
 
 ---
 
-### Trigger associati
+### Le due funzioni
 
-| Nome                                              | Fase  | Evento              | Funzione                                    |
-| ------------------------------------------------- | ----- | ------------------- | ------------------------------------------- |
-| `trg_sospensioni_z90_giornale_ins`                | AFTER | INSERT              | `trgfn_sospensioni_giornale_ins()`          |
-| `trg_sospensioni_z90_giornale_riattivazione_upd`  | AFTER | UPDATE OF data_fine | `trgfn_sospensioni_giornale_riattivazione()`|
+* `pratiche.trgfn_sospensioni_giornale_ins` — dopo l'inserimento di una sospensione scrive
+  `SOSPENSIONE_REGISTRATA`, con motivo, data di inizio, riattivazione prevista e livello.
+* `pratiche.trgfn_sospensioni_giornale_riattivazione` — quando la data di fine passa da vuota a
+  valorizzata scrive `SOSPENSIONE_CHIUSA`, con le due date, il motivo e il livello. Una data di fine che
+  cambia dopo essere stata scritta non produce un secondo evento.
 
-WHEN (riattivazione): `OLD.data_fine IS NULL AND NEW.data_fine IS NOT NULL`.
+Entrambe scattano `AFTER`, riga per riga, su `pratiche.sospensioni`, nella fase finale.
+
+---
+
+### Le regole comuni
+
+* Il livello è `PRATICA` quando la sospensione non indica un flusso, `FLUSSO` altrimenti; la riga di
+  giornale porta la pratica e, se c'è, il flusso.
+* L'origine dell'evento è `SISTEMA`.
+* La riga di giornale porta il `tx_id` della sospensione, che il trigger `tx_id` di
+  `pratiche.sospensioni` valorizza sempre prima dell'inserimento; il ripiego su un identificativo nuovo
+  è solo difensivo.
+
+---
+
+### Test
+
+* `pratiche/test-sospensioni-tempi` — gli eventi di sospensione e riattivazione nel ciclo dei tempi.
 
 ---
 

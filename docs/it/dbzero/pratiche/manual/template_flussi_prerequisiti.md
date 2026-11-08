@@ -1,67 +1,92 @@
 ## 📘 Documentazione Concettuale – Tabella `pratiche.template_flussi_prerequisiti`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi) — gli step collegati
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — le istanze su cui il prerequisito si verifica
+> * [config.esiti_flussi_pratiche](/dbzero/config/tabelle/esiti_flussi_pratiche) — il vocabolario di `esito_richiesto`
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.fn_check_prerequisiti_flusso](/dbzero/pratiche/funzioni/fn_check_prerequisiti_flusso) — la verifica, senza tentare l'inserimento
+> * [pratiche.trgfn_flussi_guard_prerequisiti](/dbzero/pratiche/funzioni/trgfn_flussi_guard_prerequisiti) — il guard alla nascita di un flusso
+> * [pratiche.trgfn_template_flussi_figli_guard_immutabile](/dbzero/pratiche/funzioni/trgfn_template_flussi_figli_guard_immutabile) — protegge i prerequisiti di un'edizione emessa
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `pratiche.template_flussi_prerequisiti` definisce il **grafo diretto aciclico (DAG) dei prerequisiti** tra template flussi. Un flusso puo' essere creato solo se tutti i suoi prerequisiti sono stati completati.
+
+La tabella `pratiche.template_flussi_prerequisiti` definisce le dipendenze fra gli step di un workflow:
+uno step può nascere in una pratica solo quando i suoi prerequisiti sono completati, eventualmente con un
+certo esito.
 
 ---
 
-### Ruolo nel processo
+### Le regole
 
-* Configura le **dipendenze** tra step del workflow: "il flusso B richiede il completamento del flusso A".
-* Il trigger guard `trg_flussi_a10_guard_prerequisiti_ins` (DB-5) verifica i prerequisiti al momento della creazione di un flusso.
-* La funzione `pratiche.fn_check_prerequisiti_flusso()` (DB-5) consente la verifica lato API/UI senza tentare l'inserimento.
-
----
-
-### Caratteristiche
-
-| Aspetto | Dettaglio |
-|---------|-----------|
-| **Relazione** | Immutabile: si cancella e ricrea (no UPDATE). |
-| **Audit** | Solo `data_insert/user_insert` — coerente con l'immutabilita'. |
-| **Self-reference** | CHECK `template_flusso_id <> prerequisito_id` impedisce auto-riferimenti. |
-| **FK ON DELETE** | CASCADE — se un template flusso viene rimosso, i suoi prerequisiti spariscono. |
+* Una riga dice «lo step `template_flusso_id` richiede lo step `prerequisito_id`».
+* Uno step non è prerequisito di se stesso, e la stessa coppia non si ripete.
+* Il controllo avviene alla nascita del flusso, dal guard su `pratiche.flussi`; chi vuole saperlo prima,
+  per esempio per abilitare un comando a video, chiama `pratiche.fn_check_prerequisiti_flusso`. La
+  regola è scritta una volta, nella funzione.
+* Cancellando uno dei due step la riga sparisce con lui.
+* Un prerequisito vuole i due step attivi, e uno step con prerequisiti attivi non si spegne.
 
 ---
 
-### Prerequisiti esito-aware (colonna `esito_richiesto`, da 2026-06-08)
+### Prerequisiti che guardano l'esito
 
-La colonna `esito_richiesto` (`varchar` nullable, CHECK sui valori dell'enum
-esito `POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE`) condiziona l'abilitazione del
-passo successivo **anche all'esito** del flusso prerequisito, non solo al suo
-completamento:
+`esito_richiesto` condiziona il prerequisito anche all'esito del flusso che lo soddisfa:
 
-| `esito_richiesto` | Prerequisito soddisfatto se il flusso prerequisito e' COMPLETATO e... |
-|-------------------|----------------------------------------------------------------------|
-| `NULL` | ...con **qualsiasi** esito (comportamento storico, retro-compatibile). |
-| `POSITIVO` (o altro) | ...e `flussi.esito` coincide con il valore richiesto. |
+| `esito_richiesto` | Il prerequisito è soddisfatto quando il flusso prerequisito è completato… |
+| --- | --- |
+| vuoto | …con qualsiasi esito |
+| un esito | …con quell'esito |
 
-La verifica e' centralizzata in `pratiche.fn_check_prerequisiti_flusso` (filtra su
-`COMPLETATO` + esito). L'esito e' garantito sempre valorizzato sui flussi chiusi
-dal guard `trg_flussi_a10_guard_esito_completato_ins_upd` (vincolo
-`COMPLETATO => esito NOT NULL` su `pratiche.flussi`): cosi' un passo chiuso
-`NEGATIVO` non abilita un successivo che richiede `POSITIVO`. Tutti i prerequisiti
-storici hanno `esito_richiesto = NULL`: nessun workflow esistente cambia
-comportamento.
+Il vocabolario è `config.esiti_flussi_pratiche`. Un flusso completato ha sempre un esito (lo garantisce
+il guard su `pratiche.flussi`): così un passo chiuso `NEGATIVO` non abilita un successivo che richiede
+`POSITIVO`. È il modo in cui si modellano i bivi per esito.
 
 ---
 
-### Esempio
+### ⛔ I prerequisiti seguono l'edizione
 
-Per un tipo_prestazione "Allacciamento" con 3 step:
+I prerequisiti appartengono, con i loro step, a un'edizione di workflow, e la copia di un'edizione li
+porta con sé. Su un'edizione di un emittente pubblicata o ritirata non si inseriscono né si modificano, e
+su una pubblicata non si cancellano.
 
-| template_flusso_id | prerequisito_id | Significato |
-|--------------------|-----------------|-------------|
-| Sopralluogo (id=2) | Richiesta (id=1) | Il sopralluogo richiede la richiesta completata |
-| Esecuzione (id=3) | Sopralluogo (id=2) | L'esecuzione richiede il sopralluogo completato |
+---
+
+### Codici errore
+
+* `E_TEMPLATE_DEFINIZIONE_CONGELATA` — modifica di un prerequisito di un'edizione emessa.
+
+Il rifiuto di un flusso con prerequisiti non soddisfatti è `E_PRATICHE_PREREQUISITI_NON_SODDISFATTI`, sul
+guard dei flussi.
+
+---
+
+### Test
+
+* `pratiche/test-fn-check-prerequisiti-flusso`, `pratiche/test-fn-guard-prerequisiti-flusso` — la
+  verifica e il guard.
+* `pratiche/test-prerequisiti-esito-aware`, `pratiche/test-bivi-condizionali` — i prerequisiti per esito
+  e i bivi.
+* `pratiche/test-definizione-ritirata-edit-freeze` — i prerequisiti di un'edizione ritirata.
+
+---
+
+### Note di migrazione
+
+* 2026-06-08 — arriva `esito_richiesto`; i prerequisiti esistenti restano senza esito, e il loro
+  comportamento non cambia.
+* 2026-06-18 — la tabella, nata con l'audit del solo inserimento, riceve l'audit degli aggiornamenti.
+* 2026-07-01 — il vocabolario di `esito_richiesto` passa da un `CHECK` a una chiave esterna verso
+  `config.esiti_flussi_pratiche`.
 
 ---
 

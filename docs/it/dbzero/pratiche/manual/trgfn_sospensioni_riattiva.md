@@ -1,41 +1,49 @@
-## 📘 Documentazione Funzione – `pratiche.trgfn_sospensioni_riattiva`
+## 📘 Documentazione Concettuale – Trigger function `pratiche.trgfn_sospensioni_riattiva`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-[pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
-> [pratiche.giornale](/dbzero/pratiche/manual/giornale)
+> Approfondimento tabelle:
+>
+> * [pratiche.sospensioni](/dbzero/pratiche/tabelle/sospensioni) — la sospensione che si chiude
+> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale) — da dove si legge lo stato che un flusso aveva prima
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — i flussi che tornano al loro stato
+>
+> Approfondimento funzioni:
+>
+> * [pratiche.trgfn_sospensioni_propaga](/dbzero/pratiche/funzioni/trgfn_sospensioni_propaga) — l'andata: la sospensione della pratica sospende i flussi attivi
+> * [pratiche.trgfn_flussi_giornale_stato](/dbzero/pratiche/funzioni/trgfn_flussi_giornale_stato) — scrive nel giornale lo stato precedente che qui si rilegge
 
 ---
+
 ### 🎯 Scopo Principale
-Ripristina gli stati precedenti alla riattivazione. AFTER UPDATE OF `data_fine` su `pratiche.sospensioni`: quando la sospensione viene chiusa (data_fine passa da NULL a valorizzata), ripristina lo stato precedente dei flussi (dal giornale) e riporta la pratica ad APERTA.
+
+La trigger function `pratiche.trgfn_sospensioni_riattiva` riattiva una pratica quando la sua
+sospensione si chiude: la pratica torna `APERTA` e ogni flusso `SOSPESO` torna allo stato che aveva
+prima della sospensione.
 
 ---
 
-### Firma
+### Quando scatta
 
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_riattiva()
-RETURNS trigger LANGUAGE plpgsql
-```
-
----
-
-### Logica
-
-1. Si attiva solo quando `OLD.data_fine IS NULL AND NEW.data_fine IS NOT NULL`.
-2. Solo per sospensioni a livello pratica (`flusso_id IS NULL`).
-3. Riporta la pratica allo stato APERTA.
-4. Per ogni flusso in stato SOSPESO: cerca nel giornale l'ultimo `FLUSSO_STATO_CAMBIATO` con `stato_nuovo = 'SOSPESO'` e recupera `stato_precedente_id`. Ripristina quel stato.
+Scatta dopo l'aggiornamento della data di fine di una sospensione, solo quando la data passa da vuota
+a valorizzata: è la chiusura della sospensione. Una sospensione di un singolo flusso (con `flusso_id`)
+non riattiva niente: la regola vale solo per le sospensioni dell'intera pratica.
 
 ---
 
-### Trigger associato
+### ⭐ Lo stato precedente si legge dal giornale
 
-| Nome                                               | Fase  | Evento              | Tabella                |
-| -------------------------------------------------- | ----- | ------------------- | ---------------------- |
-| `trg_sospensioni_z90_propaga_riattivazione_upd`    | AFTER | UPDATE OF data_fine | `pratiche.sospensioni` |
+La sospensione non conserva lo stato da cui ogni flusso è partito: lo conserva il giornale. Per ogni
+flusso ancora `SOSPESO`, la funzione cerca l'ultimo cambio di stato registrato (`FLUSSO_STATO_CAMBIATO`)
+che ha portato il flusso a `SOSPESO`, e lo riporta allo stato di partenza di quel cambio.
 
-WHEN: `OLD.data_fine IS NULL AND NEW.data_fine IS NOT NULL`.
+⚠️ Un flusso `SOSPESO` senza quel passaggio nel giornale resta `SOSPESO`: senza lo stato di partenza
+non c'è niente da ripristinare.
+
+Il ritorno allo stato precedente è un normale cambio di stato del flusso: passa dai guard di
+transizione dei flussi e lascia la sua riga nel giornale, come qualunque altro cambio.
 
 ---
 

@@ -1,20 +1,27 @@
-## Documentazione Concettuale – Funzione `vendite.fn_list_ddt_da_pushare(...)`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_ddt_da_pushare`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
-
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-[vendite.ddt](/dbzero/vendite/tabelle/ddt)
-> [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)
-> [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)
-> [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare)
-> [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
-> [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
-> [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi) — **la fonte unica dell'eleggibilità**: questo lister ne deriva
-> [vendite.fn_partite_merce](/dbzero/vendite/funzioni/fn_partite_merce) — la partita, per documento
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [vendite.ddt](/dbzero/vendite/tabelle/ddt)
+> * [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)
+> * [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)
+>
+> Approfondimento funzioni:
+>
+> * [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare)
+> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
+> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+> * [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi) — **la fonte unica dell'eleggibilità**: questo lister ne deriva
+> * [vendite.fn_partite_merce](/dbzero/vendite/funzioni/fn_partite_merce) — la partita, per documento
 
 ---
+
 ### 🎯 Scopo Principale
+
 `vendite.fn_list_ddt_da_pushare(...)` seleziona le righe DDT pronte per
 il push verso `commesse_attivita`, restituendo un payload completo per
 l'handler di acquisizione.
@@ -60,20 +67,18 @@ Supporta **due modalita`**:
 * la `quantita` proiettata e` la **dose** della diagnosi — `GREATEST(0,
   LEAST(quantita della riga, differenza della partita))` — e una riga con dose
   zero non esce (`DDT_CONTATORE`); `qta_operativa` scala in proporzione;
-* costruisce `segment_key` deterministica (`DDT:{uid}:R:{riga_id}`);
+* costruisce `segment_key` deterministica con `script.fn_segment_key` (`DDT_VENDITA:{uid}:R:{riga_id}`);
 * `prezzo_bloccato = TRUE` se prezzo_snapshot presente;
-* sorgente tipo: `DDT_VENDITA` da `config.sorgenti` (id=8);
+* sorgente tipo: `DDT_VENDITA`, letto da `config.sorgenti` per `codice_interno`;
 * supporta filtri opzionali:
   * `p_competenza_mese`
   * `p_billing_account_id`
   * `p_limit`
-  * `p_ddt_id` *(2026-05)* — vedi sezione dedicata
+  * `p_ddt_id` — vedi sezione dedicata
 
 ---
 
 ### Push singolo DDT (estensione coordinata)
-
-> **Aggiunto:** 2026-05 — migration `20260510-04`
 
 Il parametro `p_ddt_id` (tipo `vendite.ddt.id%TYPE`, default `NULL`) consente
 di restringere il risultato a un singolo DDT.
@@ -82,7 +87,7 @@ di restringere il risultato a un singolo DDT.
 |---------|----------------------------------------------------------|
 | `NULL`  | Lista globale — comportamento batch invariato            |
 | `> 0`   | Filtra al DDT specificato; tutti gli altri filtri in AND |
-| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO` (id 433)    |
+| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO`             |
 
 Estensione coordinata con le altre 4 `fn_list_*_da_pushare` per uniformare
 la signature al client Python `CommesseRepository.fetch_pushable_rows` (4 args posizionali).
@@ -111,38 +116,17 @@ Restituisce per ogni riga candidata:
 * contesto documento (`ddt_id`, `ddt_uid`, `riga_id`),
 * dati commessa/competenza (risolti da DDT o ordine sorgente),
 * dati economici (`prezzo_snapshot`, `prezzo_bloccato`, `pricing_mode`),
-* sorgente (`sorgente_tipo_id`, `sorgente_uid`, `segment_key`),
+* provenienza (`sorgente_tipo_id`, `sorgente_chiave`, `segment_key`): `sorgente_chiave` è l'uid
+  della bolla in testo, e la madre `fn_upsert_commessa_attivita` la traduce con
+  `script.fn_sorgente_chiave` nella colonna del `key_selector` del tipo (`sorgente_id`, perché la
+  bolla si riconosce dall'id); `riga_id` arriva in commessa come la riga della provenienza
+  (`sorgente_riga`). La provenienza è sempre la bolla, anche quando la riga nasce da un ordine:
+  l'ordine resta in `meta`,
 * `meta` tecnico con riferimento ordine sorgente (se presente).
 
 ---
 
-### Esempi d'uso
-
-**Batch globale (orchestrator):**
-
-```sql
-SELECT *
-FROM vendite.fn_list_ddt_da_pushare(
-  p_competenza_mese => DATE '2026-03-01',
-  p_billing_account_id => NULL,
-  p_limit => 500
-);
-```
-
-**Push singolo DDT:**
-
-```sql
-SELECT *
-FROM vendite.fn_list_ddt_da_pushare(
-  p_ddt_id => 12345
-);
-```
-
----
-
----
-
-### `fatturazione_immediata`: dalla costante alla colonna (rev 2026-07-27)
+### `fatturazione_immediata`: dalla costante alla colonna
 
 Fino al 2026-07-27 questa funzione proiettava la **costante `FALSE`** nello slot
 `fatturazione_immediata`: il contratto della `RETURNS TABLE` era simmetrico a
@@ -214,7 +198,7 @@ grande, e in modo `auto` la plancache la ripianificava a ogni chiamata.
 ripete la perde, senza errore e con gli stessi risultati. Presidio:
 `db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql`.
 
-### La riga-onere va in commessa come ONERE (rev 2026-11-03)
+### La riga-onere va in commessa come ONERE
 
 Dal `20261103-40` (brief-db-addebito-trasporto-ordine §8.1, K-1) la riga-onere della bolla
 (`script.fn_natura_e_merce` falso sulla natura congelata) esce con `tipo_movimento = 'ONERE'` e con la
@@ -225,6 +209,16 @@ cambiato: DROP + CREATE, `plan_cache_mode` ridichiarato.
 
 ⚠️ Il backend deve passare `causale_onere_id` alla madre (`p_causale_onere_id`), o la riga ONERE si
 rifiuta (`E_PARAMETRO_INVALIDO`).
+
+---
+
+### Note di migrazione
+
+* 2026-10-20 — la `segment_key` la compone `script.fn_segment_key` col codice del tipo, al posto
+  del prefisso `DDT:` (brief-db-grammatica-unica-documenti).
+* 2026-11-07 — `riga_id` arriva in commessa come `sorgente_riga` (brief-db-sorgente-documento-e-riga).
+* 2026-11-08 — la colonna d'uscita `sorgente_uid` diventa `sorgente_chiave`, la chiave del
+  documento in testo che la madre traduce (brief-db-sorgente-documento-e-riga).
 
 ---
 

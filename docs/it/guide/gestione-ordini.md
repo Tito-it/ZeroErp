@@ -1,6 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -183,9 +183,11 @@ Contiene il contesto del documento:
 - **da dove arriva** (`canale_origine`: `ADMIN` | `PORTALE` | `SHOP`) — in
   back-office è sempre `ADMIN` e non si cambia.
 - **chi ha venduto** (`agente_soggetto_ruolo_id`) — agente/venditore, opzionale.
-- **origine documentale** (`documento_origine_tipo` ∈ {`PREVENTIVO`, `OFFERTA_COMMERCIALE`},
-  codici di `config.sorgenti`, + `documento_origine_id`) — valorizzata in automatico dalla conversione; NULL se
-  l'ordine è creato a mano.
+- **origine documentale** — la provenienza del modello comune
+  ([sorgente polimorfa](/guide/sorgente-polimorfa)): il tipo (`sorgente_tipo_id`, `PREVENTIVO` o
+  `OFFERTA_COMMERCIALE`) e la chiave del documento (`sorgente_uid`, perché entrambi si riconoscono
+  per uid). La scrive la conversione; vuota se l'ordine è creato a mano. La lista degli ordini la
+  mostra come documento d'origine (tipo e numero).
 - **identità e stato** (`numero`/`serie`/`anno`, `uid`, `stato_doc_ordine_id`) e i
   **totali** (`imponibile_tot`, `iva_tot`, `totale_doc`), tenuti aggiornati dai
   trigger.
@@ -542,7 +544,8 @@ Vincoli:
 
 > **Bozza "usa e getta".** La creazione salva subito una bozza per poter aggiungere
 > le righe. Se l'operatore esce senza inserirne nessuna, quella bozza vuota può
-> essere eliminata. Un ordine **con righe**, invece, non si cancella: si **annulla**.
+> essere eliminata. Un ordine **con righe**, invece, non si cancella: si **annulla**. La regola
+> la fa valere il database, per ogni strada che cancella.
 
 ---
 
@@ -724,7 +727,9 @@ generati.
 ### 12.5 Bozza creata per errore
 
 1. Ordine ancora in `DRAFT` **senza righe** → eliminabile.
-2. Ordine in `DRAFT` **con righe** → non si elimina: usa "Annulla" (→ `ANNULLATO`).
+2. Ordine in `DRAFT` **con righe** → non si elimina (`E_DELETE_DOC_CON_RIGHE`): togli le righe,
+   oppure usa "Annulla" (→ `ANNULLATO`).
+3. Ordine **fuori bozza** → non si elimina (`E_DELETE_DOC_NON_BOZZA`): si annulla.
 
 ---
 
@@ -738,7 +743,9 @@ Codici sollevati dal dominio ordini (registrati in `config.messaggi_errore` /
 | `E_ORD_NOT_FOUND` | Ordine (o riga/componente) inesistente o fuori dal proprio scope emittente |
 | `E_ORD_VALIDAZIONE` | Payload non valido (cliente mancante, campi vuoti, valori non numerici…) |
 | `E_ORD_CLIENTE_IMMUTABILE` | Tentativo di cambiare il cliente di un ordine già creato |
-| `E_ORD_STATO_TRANSIZIONE` | Operazione non ammessa nello stato (es. modifica fuori da `DRAFT`, oppure delete di una bozza con righe → va annullata) |
+| `E_ORD_STATO_TRANSIZIONE` | Operazione non ammessa nello stato (es. modifica fuori da `DRAFT`) |
+| `E_DELETE_DOC_NON_BOZZA` | Eliminazione di un ordine uscito dalla bozza: si annulla (guard DB) |
+| `E_DELETE_DOC_CON_RIGHE` | Eliminazione di una bozza che ha ancora righe attive: si tolgono le righe o si annulla (guard DB) |
 | `E_ORD_NESSUNA_RIGA` | Conferma/push senza righe eleggibili (controllo applicativo) |
 | `E_ORD_OFFERTA_GIA_CONVERTITA` | Conversione offerta → ordine già avvenuta (univocità 1:1) |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO` | L'offerta ha già generato un contratto: non può generare anche un ordine (mutua esclusività XOR) |

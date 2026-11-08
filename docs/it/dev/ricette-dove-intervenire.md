@@ -1,5 +1,7 @@
 # Ricette: dove intervenire per…
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > Questa pagina risponde a una domanda pratica: *"devo fare X — dove metto le mani, e in
 > quale ordine?"*. Per ogni attività comune trovi i **punti di intervento in sequenza**, dal
 > database fino alla schermata. Non rifà le regole già scritte altrove: dove serve, rimanda
@@ -118,7 +120,10 @@ Quando serve un nuovo tipo di documento/processo che segue la forma standard del
    esistenti (es. `vendite.ordini` nella doc auto-generata). L'emittente si nomina
    `emittente_soggetto_ruolo_id`, e il tipo di documento usa il vocabolario di
    `config.sorgenti`. Vedi [Linee Guida SQL](/linee-guida-sql) §2 e §7d-§7e (le regole delle
-   colonne).
+   colonne). Se il documento, o una sua riga, **nasce da** un altro documento, la provenienza
+   usa le colonne del modello comune (`sorgente_tipo_id`, la chiave del documento,
+   `sorgente_riga`), con il loro `CHECK` di forma e il guard unico: §6e delle linee guida e la
+   guida [Sorgente polimorfa](/guide/sorgente-polimorfa).
 2. **Database — perimetro dei dati.** Le tabelle del documento stanno nel perimetro della RLS
    per emittente: policy sulla testata, e righe e satelliti dentro per legame. Il presidio
    `vw_rls_perimetro_scoperto` vede una tabella dimenticata. Lo storico si arma da solo. Vedi
