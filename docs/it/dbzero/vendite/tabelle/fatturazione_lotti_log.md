@@ -26,6 +26,7 @@
 | tx_id | uuid | YES |  |
 | gruppo_key | text | YES |  |
 | cleanup_at | timestamp with time zone | YES |  |
+| commessa_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

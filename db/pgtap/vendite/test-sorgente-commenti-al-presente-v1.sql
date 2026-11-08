@@ -7,7 +7,7 @@
 --   brief, marcatori di revisione, id di changeSet, sigle di decisione.
 --   Il giro 0.3 li aveva scritti con un prefisso di cronaca; il giro R.2 li
 --   riscrive interi, e questo file tiene il punto.
--- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86; giro M.2: 20261109-15 … -18)
+-- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86; giro M.2: 20261109-15 … -18; giro Z.5: 20261109-82, la firma nuova del riferimento)
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R, giro R.2
 -- ------------------------------------------------------------
 -- Indice test (plan 5):
@@ -101,7 +101,7 @@ INSERT INTO _fn VALUES
   ('dbops.fn_pgtap_provenienza_da_chiave(character varying)'),
   ('dbops.fn_pgtap_crea_commessa_attivita(bigint,numeric,uuid,bigint,bigint,character varying,text,bigint,numeric,character varying,character varying,date,date,text)'),
   -- lotto C, V-7
-  ('vendite.fn_riferimento_gruppo_fatturabile(text)'),
+  ('vendite.fn_riferimento_gruppo_fatturabile(text,bigint)'),
   -- lotto P, giro P.1
   ('pratiche.fn_pratica_del_documento(bigint,bigint,uuid)'),
   ('pratiche.fn_stato_sorgente(bigint,bigint,uuid)'),

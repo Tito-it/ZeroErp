@@ -36,7 +36,7 @@ search:
 - [fatturazione_lotti_esiti](tabelle/fatturazione_lotti_esiti.md)
 - [fatturazione_lotti_fatture](tabelle/fatturazione_lotti_fatture.md) — (latest review 23-01-2026) `vendite.fatturazione_lotti_fatture` rappresenta la **relazione esplicita** tra lotto e fattura, consentendo di:
 - [fatturazione_lotti_gruppi](tabelle/fatturazione_lotti_gruppi.md) — Registra il **perimetro di un lotto mirato**: quali gruppi fatturabili quel lotto ha il permesso di lavorare.
-- [fatturazione_lotti_log](tabelle/fatturazione_lotti_log.md) — (latest review 28-01-2026) `vendite.fatturazione_lotti_log` registra **warning** e **errori critici** relativi ai processi del lotto di fatturazione.
+- [fatturazione_lotti_log](tabelle/fatturazione_lotti_log.md) — `vendite.fatturazione_lotti_log` registra **warning** e **errori critici** relativi ai processi del lotto di fatturazione.
 - [fatturazione_lotti_task_runs](tabelle/fatturazione_lotti_task_runs.md) — `vendite.fatturazione_lotti_task_runs` traccia il runtime dei task di pipeline per ogni lotto, con tentativi, esito, tempi e contesto errore.
 - [fatturazione_pipeline](tabelle/fatturazione_pipeline.md) — (latest review 28-01-2026)   La tabella **`vendite.fatturazione_pipeline`** descrive la **pipeline configurabile** dei processi di fatturazione.   Ogni riga rappresenta uno **step** logico (coerente con gli stati lotto definiti in `config.stati_doc_fiscale`, limitati alla parte *lotti*), e definisce:
 - [fatturazione_pipeline_task_policy](tabelle/fatturazione_pipeline_task_policy.md) — La tabella `vendite.fatturazione_pipeline_task_policy` definisce le regole operative per ciascun task della pipeline fatturazione.

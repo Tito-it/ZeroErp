@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.fatturazione_lotti_log`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -7,7 +9,6 @@
 • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 >
 ### 🎯 Scopo Principale
-(latest review 28-01-2026)
 `vendite.fatturazione_lotti_log` registra **warning** e **errori critici**
 relativi ai processi del lotto di fatturazione.
 
@@ -22,6 +23,9 @@ relativi ai processi del lotto di fatturazione.
 * **Governance**: `meta`, audit.
 * **Pipeline**: `fase` (descrizione step) e `stato_doc_fiscale_id`.
 * **Contesto lotto**: `tipo_lotto`, `stato_operativo` (snapshot al momento del log).
+* **Di chi parla**: `gruppo_key` (il documento; `NULL` = la segnalazione è del
+  giro) e `commessa_id` (la commessa, dal 2026-11-08), scritti da chi solleva
+  la segnalazione. Senza FK, di proposito: un log non deve poter fallire.
 
 ---
 
