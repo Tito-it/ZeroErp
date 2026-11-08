@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista flat della lista dei resi di vendita, per l'interfaccia: testata, destinatario (dal soggetto_ruolo), billing account, emittente fiscale, utility, valuta, la fase dello stato, la pratica (pratiche.fn_pratica_del_documento) e il registro (codice e descrizione). La provenienza: sorgente_tipo_id e sorgente_codice_interno, la chiave del documento in sorgente_id o sorgente_uid (una sola, secondo il key_selector del tipo); ddt_origine_id e ddt_origine_numero, la bolla da cui il reso nasce (tipo DDT_VENDITA, la regola d'incontro sulle due colonne). security_invoker=on.
+> Vista flat della lista dei resi di vendita, per l'interfaccia: testata, destinatario (dal soggetto_ruolo), billing account, emittente fiscale, utility, valuta, la fase dello stato, la pratica (pratiche.fn_pratica_del_documento) e il registro (codice e descrizione). La provenienza: sorgente_tipo_id e sorgente_codice_interno, la chiave della bolla in sorgente_id (sorgente_uid resta vuota: la bolla ha chiave id); ddt_origine_id e ddt_origine_numero, la bolla da cui il reso nasce (tipo DDT_VENDITA, cercata per sorgente_id). security_invoker=on.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -63,7 +63,7 @@ SELECT r.id,
      LEFT JOIN config.utilities u ON ((u.id = r.utility_id)))
      LEFT JOIN config.valute v_val ON ((v_val.id = r.valuta_id)))
      LEFT JOIN config.sorgenti src ON ((src.id = r.sorgente_tipo_id)))
-     LEFT JOIN vendite.ddt d_src ON ((((d_src.id = r.sorgente_id) OR (d_src.uid = r.sorgente_uid)) AND ((src.codice_interno)::text = 'DDT_VENDITA'::text))))
+     LEFT JOIN vendite.ddt d_src ON (((d_src.id = r.sorgente_id) AND ((src.codice_interno)::text = 'DDT_VENDITA'::text))))
      LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
            FROM config.sorgenti so_pr
           WHERE (((so_pr.codice_interno)::text = 'RESO_VENDITA'::text) AND (so_pr.attivo IS TRUE))), r.id, r.uid) pr(n_pratiche, pratica_id, pratica_numero) ON (true))

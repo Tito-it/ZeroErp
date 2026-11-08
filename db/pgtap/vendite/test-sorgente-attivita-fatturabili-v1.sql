@@ -2,18 +2,27 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la PROVENIENZA dell'attivita' fatturabile e' la sua riga di commessa,
---   e la riga di fattura e' nella grammatica del modello. Il pull ritrova la
+--   e la riga di fattura non ha una provenienza propria: la sua origine e' la
+--   catena riga di fattura -> attivita' -> riga di commessa. Il pull ritrova la
 --   riga gia' emessa per commessa_attivita_id, non per un'impronta della chiave
 --   del segmento; chi leggeva le colonne sorgente_* dell'attivita' (il
 --   normalize, la vista dello smistamento) legge la riga di commessa.
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1 (D-1, D-3,
---   S-7, V-2, V-3); giro C.4 (D-2: ATTIVITA esce dalle sorgenti, 21-23)
+--   S-7, V-2, V-3); giro C.4 (D-2: ATTIVITA esce dalle sorgenti, 17-19)
+--   rev 2026-11-08 (§7.3, giro finale bis, G-4, 20261110-31 e -32): la riga di
+--   fattura perde le colonne sorgente_*, il CHECK di forma e il guard unico. Il
+--   test 3 dice la forma nuova; i sei test sul guard unico della riga di fattura
+--   (15-20 di prima: la riga di commessa giusta passa, quella di un'altra commessa,
+--   l'impronta in sorgente_uid, il CHECK di forma, la commessa che non c'e', il
+--   presidio degli orfani) escono: provavano una provenienza che la riga non ha
+--   piu'. Al loro posto due test sulla catena che la sostituisce (15, 16).
 -- ------------------------------------------------------------
--- Indice test (plan 23):
+-- Indice test (plan 19):
 --   LA FORMA
 --    1) attivita_fatturabili non ha piu' colonne sorgente_*
 --    2) ... ed e' fuori dal perimetro della provenienza
---    3) fatture_righe: CHECK di forma, guard unico (DOCUMENTO, BLOCCA), nessuna esenzione
+--    3) fatture_righe: nessuna colonna sorgente_*, fuori dal perimetro e senza guard
+--       unico; il lato «in uscita» resta (la riga di fattura e' la riga del tipo FATTURA)
 --   IL PULL (V-3)
 --    4) la prima emissione crea un'attivita' per la riga di commessa
 --    5) 🔴 la chiave del segmento cambia sotto la riga emessa, la riga si libera
@@ -30,17 +39,13 @@
 --   12) ... emessa: EMESSA_AF
 --   13) ... fatturata: FATTURATA
 --   14) ... la riga di commessa annullata non conta
---   LE RIGHE DI FATTURA E IL GUARD UNICO
---   15) COMMESSA + la commessa + la sua riga: passa
---   16) la riga di un'ALTRA commessa: E_SORG_RIGA_NON_DEL_DOCUMENTO
---   17) l'impronta in sorgente_uid (chiave della specie sbagliata): E_SORG_CHIAVE_NON_CONFORME
---   18) sorgente_riga senza il tipo: il CHECK di forma (23514)
---   19) una commessa che non c'e': E_SORG_NOT_FOUND
---   20) il presidio degli orfani non vede la riga di fattura che cita una riga vera
+--   L'ORIGINE DELLA RIGA DI FATTURA E' LA CATENA (G-4)
+--   15) dalla riga di fattura, l'attivita' che la cita porta alla riga di commessa
+--   16) ... e vendite.fn_fattura_origini ne dice il documento (il preventivo)
 --   L'ATTIVITA' NON E' UNA PROVENIENZA (giro C.4)
---   21) ATTIVITA non e' piu' un tipo di config.sorgenti
---   22) ... e resta un'entita' di config.tipi_entita, non sorgente
---   23) ... e attivita_fatturabili non porta piu' il lato «in uscita»
+--   17) ATTIVITA non e' piu' un tipo di config.sorgenti
+--   18) ... e resta un'entita' di config.tipi_entita, non sorgente
+--   19) ... e attivita_fatturabili non porta piu' il lato «in uscita»
 --
 -- ⚠️ Il mondo si COSTRUISCE: commesse, righe di commessa, preventivo, lotto e
 --   fattura dai builder dbops.fn_pgtap_*. Gira come l'applicazione (operatore in
@@ -55,7 +60,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(23);
+SELECT plan(19);
 
 -- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
 -- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
@@ -92,17 +97,19 @@ SELECT ok(
 
 SELECT is(
   (SELECT concat_ws('|',
-      (SELECT count(*) FROM pg_constraint k
-        WHERE k.conrelid = 'vendite.fatture_righe'::regclass AND k.contype = 'c'
-          AND k.conname = 'chk_fatture_righe_sorgente_forma'),
-      (SELECT m.livello_minimo || '/' || m.azione_cancellazione
-         FROM script.fn_sorgente_guard_montaggi() m
+      (SELECT count(*) FROM pg_attribute a
+        WHERE a.attrelid = 'vendite.fatture_righe'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped
+          AND a.attname LIKE 'sorgente%'),
+      (SELECT count(*) FROM script.fn_sorgente_guard_montaggi() m
         WHERE m.schema_tabella = 'vendite' AND m.nome_tabella = 'fatture_righe'),
-      (SELECT p.grammatica || '/' || coalesce(p.orfani_esclusi_perche, 'nessuna esenzione')
-         FROM dbops.fn_sorgenti_orfane_perimetro() p
-        WHERE p.schema_tabella = 'vendite' AND p.nome_tabella = 'fatture_righe'))),
-  '1|DOCUMENTO/BLOCCA|UNICO/nessuna esenzione',
-  '3) fatture_righe: CHECK di forma, guard unico (DOCUMENTO, BLOCCA), nessuna esenzione dagli orfani');
+      (SELECT count(*) FROM dbops.fn_sorgenti_orfane_perimetro() p
+        WHERE p.schema_tabella = 'vendite' AND p.nome_tabella = 'fatture_righe'),
+      (SELECT count(*) FROM pg_trigger tg
+        WHERE tg.tgrelid = 'vendite.fatture_righe'::regclass
+          AND tg.tgfoid = 'script.trgfn_sorgente_in_uscita()'::regprocedure))),
+  '0|0|0|1',
+  '3) fatture_righe: nessuna colonna sorgente_*, fuori dal perimetro, senza guard unico; il lato «in uscita» resta');
 
 -- ============================================================
 -- Fixture: le commesse e le loro righe
@@ -308,50 +315,24 @@ UPDATE vendite.commesse_attivita ca SET stato_emissione = 'EMESSA'
  WHERE ca.id = (SELECT attivita_id FROM _ca WHERE k = 'P');
 
 -- ============================================================
--- LE RIGHE DI FATTURA E IL GUARD UNICO
+-- L'ORIGINE DELLA RIGA DI FATTURA E' LA CATENA (G-4)
 -- ============================================================
-CREATE FUNCTION pg_temp.fr(p_set text) RETURNS text LANGUAGE sql AS $fx$
-  SELECT pg_temp.esito(format('UPDATE vendite.fatture_righe SET %s WHERE id = %s',
-                              p_set, (SELECT fattura_riga_id FROM _fatt LIMIT 1)))
-$fx$;
-
-CREATE FUNCTION pg_temp.commessa_tipo() RETURNS bigint LANGUAGE sql STABLE AS
-$fx$ SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA' $fx$;
-
+-- La riga di fattura aggrega attivita' con provenienze diverse: non ne dichiara
+-- una sua. Da lei si risale all'attivita' che la cita (fattura_riga_id), da
+-- questa alla riga di commessa, e dalla riga di commessa al documento.
 SELECT is(
-  pg_temp.fr(format('sorgente_tipo_id = %s, sorgente_id = %s, sorgente_uid = NULL, sorgente_riga = %s',
-                    pg_temp.commessa_tipo(), pg_temp.comm('MP'), (SELECT attivita_id FROM _ca WHERE k = 'P'))),
-  'PASSA',
-  '15) riga di fattura: COMMESSA + la commessa + la sua riga di commessa, passa');
+  (SELECT string_agg(af.commessa_attivita_id::text, ',')
+     FROM vendite.attivita_fatturabili af
+    WHERE af.fattura_riga_id = (SELECT fattura_riga_id FROM _fatt LIMIT 1)),
+  (SELECT attivita_id::text FROM _ca WHERE k = 'P'),
+  '15) dalla riga di fattura, l''attivita'' che la cita porta alla sua riga di commessa');
 
-SELECT is(
-  pg_temp.fr(format('sorgente_riga = %s', (SELECT attivita_id FROM _ca WHERE k = 'A'))),
-  'E_SORG_RIGA_NON_DEL_DOCUMENTO',
-  '16) la riga di un''ALTRA commessa: E_SORG_RIGA_NON_DEL_DOCUMENTO');
-
-SELECT is(
-  pg_temp.fr('sorgente_id = NULL, sorgente_uid = gen_random_uuid()'),
-  'E_SORG_CHIAVE_NON_CONFORME',
-  '17) l''impronta in sorgente_uid (chiave della specie sbagliata per COMMESSA): E_SORG_CHIAVE_NON_CONFORME');
-
--- ⚠️ Il guard BEFORE ROW parla prima del CHECK: tipo senza chiave lo rifiuta
---   lui. Il caso che resta al solo CHECK e' la riga senza il tipo.
-SELECT is(
-  pg_temp.fr('sorgente_tipo_id = NULL, sorgente_id = NULL'),
-  '23514 chk_fatture_righe_sorgente_forma',
-  '18) sorgente_riga senza il tipo: il CHECK di forma');
-
-SELECT is(
-  pg_temp.fr(format('sorgente_id = %s, sorgente_riga = NULL',
-                    (SELECT coalesce(max(id), 0) + 1000000 FROM vendite.commesse))),
-  'E_SORG_NOT_FOUND',
-  '19) una commessa che non c''e'': E_SORG_NOT_FOUND');
-
-SELECT is(
-  (SELECT count(*)::int FROM dbops.vw_sorgenti_orfane o
-    WHERE o.tabella = 'vendite.fatture_righe'::regclass),
-  0,
-  '20) il presidio degli orfani non vede la riga di fattura che cita una riga vera');
+SELECT ok(
+  EXISTS (SELECT 1 FROM vendite.fn_fattura_origini((SELECT fattura_id FROM _fatt LIMIT 1)) o
+           WHERE o.livello = 1
+             AND o.tipo_codice_interno = 'PREVENTIVO'
+             AND o.uid = (SELECT preventivo_uid::text FROM _prev LIMIT 1)),
+  '16) ... e vendite.fn_fattura_origini ne dice il documento: il preventivo della riga di commessa, al livello 1');
 
 -- ============================================================
 -- L'ATTIVITA' NON E' UNA PROVENIENZA (giro C.4, D-2)
@@ -362,13 +343,13 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM config.sorgenti s WHERE s.codice_interno = 'ATTIVITA'),
   0,
-  '21) ATTIVITA non e'' un tipo di config.sorgenti');
+  '17) ATTIVITA non e'' un tipo di config.sorgenti');
 
 SELECT is(
   (SELECT format('%s|%s|%s', e.is_sorgente::text, (e.sorgente_codice_interno IS NULL)::text, e.etichetta_key)
      FROM config.tipi_entita e WHERE e.codice = 'ATTIVITA'),
   'false|true|config.tipi_entita.attivita',
-  '22) ATTIVITA resta un''entita'' (note), con is_sorgente false e senza legame al catalogo delle sorgenti');
+  '18) ATTIVITA resta un''entita'' (note), con is_sorgente false e senza legame al catalogo delle sorgenti');
 
 -- Il lato «in uscita» lo monta e lo smonta la convergenza di 90_end sul catalogo:
 -- la tabella non e' piu' documento, righe o dettaglio di nessun tipo.
@@ -377,7 +358,7 @@ SELECT is(
     WHERE tg.tgrelid = 'vendite.attivita_fatturabili'::regclass
       AND tg.tgfoid = 'script.trgfn_sorgente_in_uscita()'::regprocedure),
   0,
-  '23) attivita_fatturabili non porta il lato «in uscita»: nessun tipo la dichiara');
+  '19) attivita_fatturabili non porta il lato «in uscita»: nessun tipo la dichiara');
 
 SELECT * FROM finish();
 ROLLBACK;

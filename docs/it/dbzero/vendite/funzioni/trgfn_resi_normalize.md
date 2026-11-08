@@ -21,10 +21,11 @@ BEGIN
   -- Scopo: normalizzazione reso su INSERT/UPDATE.
   --   1. anno/data se numero presente (INSERT).
   --   2. eredita billing/destinatario/utility/valuta/emittente
-  --      dal DDT sorgente (DDT_VENDITA, lookup per codice_interno
-  --      via uid) su INSERT se non gia' valorizzati.
-  --   3. fallback emittente da billing_account (standalone,
-  --      predisposizione: sorgente NOT NULL in questa slice).
+  --      dalla bolla d'origine (DDT_VENDITA, cercata per
+  --      sorgente_id: la bolla ha chiave id) su INSERT se non gia'
+  --      valorizzati.
+  --   3. l'emittente che la bolla non da' (bolla non trovata o
+  --      invisibile) viene dal billing account.
   -- =========================================================
 
   -- 1. anno/data
@@ -40,7 +41,7 @@ BEGIN
   -- 2. eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente
   IF TG_OP = 'INSERT'
      AND NEW.sorgente_tipo_id IS NOT NULL
-     AND (NEW.sorgente_id IS NOT NULL OR NEW.sorgente_uid IS NOT NULL)
+     AND NEW.sorgente_id IS NOT NULL
      AND (NEW.billing_account_id IS NULL
           OR NEW.destinatario_soggetto_ruolo_id IS NULL
           OR NEW.utility_id IS NULL
@@ -64,12 +65,12 @@ BEGIN
         NEW.valuta_id,
         NEW.emittente_fiscale_id
       FROM vendite.ddt d
-      WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid)
+      WHERE d.id = NEW.sorgente_id
       LIMIT 1;
     END IF;
   END IF;
 
-  -- 3. fallback standalone: emittente da billing_account (convenzione PK).
+  -- 3. emittente dal billing_account (convenzione PK).
   IF TG_OP = 'INSERT'
      AND NEW.emittente_fiscale_id IS NULL
      AND NEW.billing_account_id IS NOT NULL
@@ -83,7 +84,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_normalize()
-IS 'Normalize del reso, BEFORE INSERT OR UPDATE: anno e data; su INSERT eredita billing account, destinatario, utility, valuta ed emittente dalla bolla sorgente (DDT_VENDITA), cercata con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid); senza bolla l''emittente viene dal billing account. Gemello di vendite.trgfn_ddt_normalize.';
+IS 'Normalize del reso, BEFORE INSERT OR UPDATE: anno e data; su INSERT eredita billing account, destinatario, utility, valuta ed emittente dalla bolla sorgente (DDT_VENDITA), cercata per sorgente_id (la bolla ha chiave id); l''emittente che la bolla non da'' (non trovata o invisibile sotto RLS) viene dal billing account. Gemello di vendite.trgfn_ddt_normalize.';
 ```
 
 </div>

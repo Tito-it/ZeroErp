@@ -7,11 +7,14 @@
 --   sorgente_riga = la riga d'origine. Ogni verbo si chiama davvero, sulla
 --   strada dell'applicazione, e si legge la riga che ne esce.
 -- ChangeSet: 20261106-46 … -58 (giro R.1), -60 e i due CSV (giro R.2)
+--   rev 2026-11-08 (giro finale bis, G-4, 20261110-32): la riga di fattura non ha
+--   provenienza; il test 1 guarda la sola riga d'ordine, il 2 resta (l'indice non c'e').
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R
 -- ------------------------------------------------------------
 -- Indice test (plan 24):
 --   LA FORMA
---    1) il DEFAULT 0 di sorgente_riga non c'e' piu' (ordini_righe, fatture_righe)
+--    1) il DEFAULT 0 di sorgente_riga non c'e' piu' (ordini_righe; fatture_righe non ha
+--       piu' la colonna dal giro finale bis, G-4)
 --    2) gli indici unici «import» (tipo, uid) non ci sono piu'
 --    3) le quattro tabelle hanno il CHECK di forma
 --    4) le quattro tabelle montano il guard unico, coi loro argomenti
@@ -78,8 +81,8 @@ SELECT is(
   (SELECT string_agg(c.table_name || '=' || coalesce(c.column_default, 'NULL'), ', ' ORDER BY c.table_name)
      FROM information_schema.columns c
     WHERE c.table_schema = 'vendite' AND c.column_name = 'sorgente_riga'
-      AND c.table_name IN ('ordini_righe', 'fatture_righe')),
-  'fatture_righe=NULL, ordini_righe=NULL',
+      AND c.table_name = 'ordini_righe'),
+  'ordini_righe=NULL',
   '1) sorgente_riga senza DEFAULT 0: lo 0 era una riga che non esiste');
 
 SELECT ok(

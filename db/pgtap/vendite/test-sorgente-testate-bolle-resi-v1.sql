@@ -8,7 +8,7 @@
 -- ChangeSet: 20261106-63 … -73 (giro T.2)
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2
 -- ------------------------------------------------------------
--- Indice test (plan 19):
+-- Indice test (plan 20):
 --   LA FORMA
 --    1) bolla e reso hanno il CHECK di forma
 --    2) il reso non ha piu' il NOT NULL su sorgente_uid (le due chiavi sono alternative)
@@ -35,6 +35,8 @@
 --   18) reso in bozza: idem
 --   PRESIDIO
 --   19) nessuna bolla e nessun reso con l'uid per un tipo a chiave id
+--   IL RESO NASCE SOLO DA UNA BOLLA (giro finale bis, G-3: 20261110-20, -21)
+--   20) il reso in bozza che dichiara l'ordine al posto della bolla: E_RESO_SORGENTE_NON_DDT
 --
 -- ⚠️ Il mondo si COSTRUISCE coi builder dbops.fn_pgtap_*, che passano dai verbi.
 --   Gira come l'applicazione (operatore in sessione, RLS attiva).
@@ -48,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(19);
+SELECT plan(20);
 
 -- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
 -- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
@@ -226,6 +228,16 @@ SELECT is_empty(
     SELECT 'reso ' || r.id FROM vendite.resi r JOIN config.sorgenti s ON s.id = r.sorgente_tipo_id
      WHERE s.key_selector = 'id' AND r.sorgente_uid IS NOT NULL$$,
   '19) nessuna bolla e nessun reso con l''uid per un tipo a chiave id');
+
+-- ============================================================
+-- IL RESO NASCE SOLO DA UNA BOLLA
+-- ============================================================
+-- L'ordine esiste e il guard unico lo accetterebbe: e' il tipo che il reso non ammette.
+SELECT is(
+  pg_temp.esito(format('UPDATE vendite.resi SET sorgente_tipo_id = %s, sorgente_id = %s WHERE id = %s',
+                       (SELECT t_ord FROM _t), (SELECT ordine_id FROM _ddt), (SELECT reso_id FROM _reso_bozza))),
+  'E_RESO_SORGENTE_NON_DDT',
+  '20) il reso che dichiara l''ordine al posto della bolla: E_RESO_SORGENTE_NON_DDT');
 
 SELECT * FROM finish();
 ROLLBACK;

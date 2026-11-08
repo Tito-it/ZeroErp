@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA ix_resi_sorgente (sorgente_tipo_id, sorgente_uid)
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-3 (Tid, 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La provenienza di un reso e' solo una bolla, con la chiave in sorgente_id;
+#   chk_resi_sorgente_forma (00_schema/vendite/20261110-20) vuole sorgente_uid
+#   vuota. L'indice su (sorgente_tipo_id, sorgente_uid) non ha piu' lettori: i rami
+#   uid sono usciti dai corpi in 20_code/vendite/20261110-21 ... -27 e
+#   20_code/dbops/20261110-28. Resta ix_resi_sorgente_id (sorgente_tipo_id,
+#   sorgente_id), il cui COMMENT lo citava come gemello: si riscrive al presente.
+#   ⛔ Non si tocca vendite.ix_ddt_v_sorgente: e' della bolla, che ha provenienze
+#   diverse, fuori da G-3.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   In 90_end, dopo i corpi: DROP INDEX e COMMENT di ix_resi_sorgente_id. L'indice
+#   nasce in 00_schema/vendite/20260713-13; nessun changeSet successivo lo ricrea
+#   (cercato in db/ il 2026-11-08). Rollback: l'indice com'era, e il COMMENT di prima.
+#   pgTAP: vendite/test-documento-lineage* (il modo col seme), magazzino/test-reso-carico-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261110-29-drop-ix-resi-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261110-29-drop-ix-resi-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira vendite.ix_resi_sorgente (sorgente_tipo_id, sorgente_uid): i lettori del reso cercano la
+        bolla per sorgente_id. COMMENT di ix_resi_sorgente_id al presente.
+        brief-db-sorgente-documento-e-riga §7.3, G-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite' AND c.relname = 'ix_resi_sorgente' AND c.relkind = 'i';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite' AND c.relname = 'ix_resi_sorgente_id' AND c.relkind = 'i';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX vendite.ix_resi_sorgente;
+
+              COMMENT ON INDEX vendite.ix_resi_sorgente_id IS
+                'I resi nati da una bolla, per tipo e id: la provenienza di un reso e'' una bolla, con la chiave in sorgente_id. Lo usano i lettori che da una bolla cercano i suoi resi, come l''arco R di vendite.fn_documento_lineage_archi. Non unico: piu'' resi per bolla.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_resi_sorgente ON vendite.resi USING btree (sorgente_tipo_id, sorgente_uid);
+
+              COMMENT ON INDEX vendite.ix_resi_sorgente_id IS
+                'I resi nati da una bolla, per tipo e id: il ramo sorgente_id della regola d''incontro dei lettori della sorgente di testata. Gemello di ix_resi_sorgente (ramo uid). Non unico: piu'' resi per bolla.';

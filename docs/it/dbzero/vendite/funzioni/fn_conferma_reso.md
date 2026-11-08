@@ -103,7 +103,7 @@ BEGIN
     v_muove := vendite.fn_reso_muove_merce(v_reso);
     IF v_muove THEN
         PERFORM 1 FROM vendite.ddt d
-         WHERE (d.id = v_reso.sorgente_id OR d.uid = v_reso.sorgente_uid) FOR UPDATE;
+         WHERE d.id = v_reso.sorgente_id FOR UPDATE;
         PERFORM script.fn_raise_primo_motivo_se_presente(
             'vendite', 'vendite.fn_conferma_reso',
             script.fn_check_reso_merce(v_reso), NULL, NULL::uuid,
@@ -141,7 +141,7 @@ BEGIN
       INTO v_ddt_id, v_ddt_stato
       FROM vendite.ddt d
       JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
-     WHERE (d.id = v_reso.sorgente_id OR d.uid = v_reso.sorgente_uid);
+     WHERE d.id = v_reso.sorgente_id;
 
     IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'CONSEGNATO' THEN
         SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
@@ -177,7 +177,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
-IS 'Il verbo della conferma di un reso: DRAFT -> CONFERMATO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso; fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio della matrice (script.fn_guard_passaggio, conferma_reso); fuori bozza E_RESO_STATO_NON_CONFERMABILE. Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, carichi in coda (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). Lo stato del reso e il passaggio della bolla CONSEGNATO -> RESO, se il reso copre tutta la merce (le sole righe di merce, script.fn_natura_e_merce; contano i resi confermati, vw_resi_righe_effettive), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Una transazione; RETURNS void.';
+IS 'Il verbo della conferma di un reso: DRAFT -> CONFERMATO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso; fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio della matrice (script.fn_guard_passaggio, conferma_reso); fuori bozza E_RESO_STATO_NON_CONFERMABILE. Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, carichi in coda (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). Lo stato del reso e il passaggio della bolla CONSEGNATO -> RESO, se il reso copre tutta la merce (le sole righe di merce, script.fn_natura_e_merce; contano i resi confermati, vw_resi_righe_effettive), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca per sorgente_id (la bolla ha chiave id). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Una transazione; RETURNS void.';
 ```
 
 </div>

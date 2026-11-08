@@ -1,0 +1,855 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I VERBI DEL RESO CERCANO LA BOLLA PER sorgente_id
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-3 (Tid, 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La provenienza di un reso e' solo DDT_VENDITA (G-3), e la bolla ha chiave id
+#   (config.sorgenti.key_selector = 'id'): la chiave sta in resi.sorgente_id, e
+#   chk_resi_sorgente_forma (00_schema/vendite/20261110-20) vuole sorgente_uid vuota.
+#   Il ramo «OR d.uid = sorgente_uid» non trova mai niente, e tiene in vita
+#   ix_resi_sorgente (sorgente_tipo_id, sorgente_uid), che 90_end/20261110-29 ritira.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   vendite.fn_conferma_reso (il lock della bolla e la lettura del suo stato) e
+#   vendite.fn_annulla_reso (la lettura dello stato per il ritorno RESO ->
+#   CONSEGNATO): la bolla si cerca per sorgente_id. COMMENT al presente.
+#   Firma con %TYPE, SECURITY DEFINER e search_path come prima. Corpo di partenza:
+#   il vivo (dbdev, 2026-11-08). Rollback: corpi e COMMENT di prima.
+#   pgTAP: magazzino/test-reso-carico-v1, vendite/test-esecutivi-ba-coppia-v1,
+#   vendite/test-sorgente-commenti-al-presente-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261110-23-update-fn-conferma-annulla-reso-bolla-per-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261110-23-update-fn-conferma-annulla-reso-bolla-per-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_conferma_reso e vendite.fn_annulla_reso cercano la bolla d'origine per sorgente_id,
+        senza il ramo uid; COMMENT al presente. brief-db-sorgente-documento-e-riga §7.3, G-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_conferma_reso' AND p.pronargs = 1;
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_annulla_reso' AND p.pronargs = 1;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_conferma_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               VOLATILE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+              --   VERBO del modello «una scrittura = un verbo». SECURITY DEFINER con
+              --   search_path bloccato (ogni nome qui dentro e' qualificato), testata presa
+              --   FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro:
+              --   E_RESO_NOT_FOUND, no-leak, come prima sotto RLS).
+              -- ⭐ rev 2026-10-25 (20261025-17, brief-modello-documento-vendita §7): il
+              --   permesso dalla riga del passaggio (script.fn_guard_passaggio: DRAFT ->
+              --   CONFERMATO chiede conferma_reso), prima di qualunque scrittura; lo
+              --   stato del reso e quello della bolla dalla scrittura comune
+              --   (script.fn_doc_scrivi_stato), attraverso la porta.
+              -- rev 2026-11-03 (20261103-32, brief-db-addebito-trasporto-ordine §8.1):
+              --   il flip CONSEGNATO -> RESO (reso totale) conta solo la MERCE della bolla
+              --   (script.fn_natura_e_merce): un onere non si rende, e senza il
+              --   filtro una bolla con un onere non cambierebbe mai stato.
+              DECLARE
+                  v_utente            config.user_override_azioni.auth_user_id%TYPE;
+                  v_reso              vendite.resi%ROWTYPE;
+                  v_muove             boolean;   -- calcolato, nessuna colonna
+                  v_stato             config.stati_doc_reso.codice_interno%TYPE;
+                  v_stato_conf_id     config.stati_doc_reso.id%TYPE;
+                  v_ddt_id            vendite.ddt.id%TYPE;
+                  v_ddt_stato         config.stati_doc_ddt.codice_interno%TYPE;
+                  v_stato_reso_ddt_id config.stati_doc_ddt.id%TYPE;
+                  v_tutto_reso        boolean;
+                  v_ord               RECORD;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  -- 1) Guard input + reso in DRAFT + almeno una riga.
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  -- La testata, FOR UPDATE, nel perimetro (predicato della policy: DEFINER).
+                  SELECT r.* INTO v_reso
+                    FROM vendite.resi r
+                   WHERE r.id = p_reso_id
+                     AND script.fn_scope_ef_whitelist_via_reso(v_utente, r.id)
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  SELECT sdr.codice_interno INTO v_stato
+                    FROM config.stati_doc_reso sdr
+                   WHERE sdr.id = v_reso.stato_doc_reso_id;
+
+                  -- Il permesso del passaggio, prima di scrivere qualunque cosa: dalla
+                  -- riga DRAFT -> CONFERMATO della matrice (M-3), su OGNI conferma,
+                  -- anche di un reso che non muove merce (D-3b-f).
+                  SELECT id INTO v_stato_conf_id FROM config.stati_doc_reso
+                   WHERE codice_interno = 'CONFERMATO' AND attivo IS TRUE;
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.resi'::regclass,
+                                                    v_reso.stato_doc_reso_id, v_stato_conf_id);
+
+                  IF v_stato IS DISTINCT FROM 'DRAFT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_STATO_NON_CONFERMABILE',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
+                          NULL::uuid, p_reso_id::text, v_stato);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM vendite.resi_righe
+                                  WHERE reso_id = p_reso_id AND attivo IS TRUE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_SENZA_RIGHE',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- 1-bis) La merce che rientra (rev 2026-09-28, D-3b-b/-c). Su un reso
+                  --    che fa rientrare merce: il lock della bolla d'origine (il tetto per
+                  --    prelievo somma i rientri di tutti i suoi resi: due conferme
+                  --    concorrenti si serializzano qui), la conferma che parla (primo
+                  --    motivo di script.fn_check_reso_merce, che conta gia' gli
+                  --    automatici), poi i rientri automatici, finche' il reso e' in bozza.
+                  v_muove := vendite.fn_reso_muove_merce(v_reso);
+                  IF v_muove THEN
+                      PERFORM 1 FROM vendite.ddt d
+                       WHERE d.id = v_reso.sorgente_id FOR UPDATE;
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'vendite', 'vendite.fn_conferma_reso',
+                          script.fn_check_reso_merce(v_reso), NULL, NULL::uuid,
+                          jsonb_build_object('reso_id', p_reso_id));
+                      INSERT INTO vendite.resi_righe_rientri (resi_riga_id, ddt_riga_prelievo_id, qta)
+                      SELECT m.resi_riga_id, m.prelievo_unico_id, m.qta
+                        FROM vendite.fn_reso_merce_da_rientrare(v_reso) m
+                       WHERE m.automatico;
+                  END IF;
+
+                  -- 2) Transizione a CONFERMATO (gen_numero + guard_transizione), dalla
+                  --    scrittura comune: la porta si apre per QUESTO reso.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.resi'::regclass, p_reso_id, v_stato_conf_id);
+
+                  -- 3) Proiezione stato ordine per ogni ordine coinvolto (solo
+                  --    righe ri-consegna: quelle che riaprono il residuo).
+                  FOR v_ord IN
+                      SELECT DISTINCT orr.ordine_id
+                        FROM vendite.resi_righe rr
+                        JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                        JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+                       WHERE rr.reso_id = p_reso_id
+                         AND tr.riapre_residuo IS TRUE
+                  LOOP
+                      -- ⭐ rev 2026-10-11: la proiezione e' il building block
+                      --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+                      PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
+                  END LOOP;
+
+                  -- 4) Flip DDT origine -> RESO se reso TOTALE (tutte le qta
+                  --    consegnate del DDT rese da resi EFFETTIVI). Solo se il
+                  --    DDT e' CONSEGNATO (matrice CONSEGNATO->RESO, passaggio di
+                  --    processo: lo scrive questo verbo, con la sola scrittura comune).
+                  SELECT d.id, sdd.codice_interno
+                    INTO v_ddt_id, v_ddt_stato
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE d.id = v_reso.sorgente_id;
+
+                  IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'CONSEGNATO' THEN
+                      SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
+                        INTO v_tutto_reso
+                        FROM vendite.ddt_righe dr
+                        LEFT JOIN (
+                            -- rev 2026-07-17 (step 2): fonte unica
+                            -- vw_resi_righe_effettive (CONFERMATE + attive, tutti
+                            -- i tipi). Il flip non filtra il tipo: conta tutta la
+                            -- merce tornata indietro su ogni riga DDT.
+                            SELECT e.ddt_riga_id, SUM(e.quantita) AS tot
+                              FROM vendite.vw_resi_righe_effettive e
+                             GROUP BY e.ddt_riga_id
+                        ) reso_riga ON reso_riga.ddt_riga_id = dr.id
+                       WHERE dr.ddt_id = v_ddt_id
+                         AND dr.attivo IS TRUE
+                         -- rev 2026-11-03: solo la merce (un onere non si rende).
+                         AND script.fn_natura_e_merce(dr.natura_vendita_id);
+
+                      IF COALESCE(v_tutto_reso, false) THEN
+                          SELECT id INTO v_stato_reso_ddt_id FROM config.stati_doc_ddt
+                           WHERE codice_interno = 'RESO' AND attivo IS TRUE;
+                          PERFORM script.fn_doc_scrivi_stato('vendite.ddt'::regclass, v_ddt_id, v_stato_reso_ddt_id);
+                      END IF;
+                  END IF;
+
+                  -- 5) I carichi (rev 2026-09-28, D-3b-c): uno per rientro, al costo
+                  --    dell'uscita d'origine, nella stessa transazione della conferma.
+                  IF v_muove THEN
+                      PERFORM 1 FROM vendite.fn_posta_reso(p_reso_id);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_conferma_reso(bigint) IS
+                'Il verbo della conferma di un reso: DRAFT -> CONFERMATO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso; fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio della matrice (script.fn_guard_passaggio, conferma_reso); fuori bozza E_RESO_STATO_NON_CONFERMABILE. Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, carichi in coda (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). Lo stato del reso e il passaggio della bolla CONSEGNATO -> RESO, se il reso copre tutta la merce (le sole righe di merce, script.fn_natura_e_merce; contano i resi confermati, vw_resi_righe_effettive), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca per sorgente_id (la bolla ha chiave id). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Una transazione; RETURNS void.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               VOLATILE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+              --   VERBO del modello «una scrittura = un verbo». SECURITY DEFINER con
+              --   search_path bloccato (ogni nome qui dentro e' qualificato), testata presa
+              --   FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro:
+              --   E_RESO_NOT_FOUND, no-leak, come prima sotto RLS).
+              -- ⭐ rev 2026-10-25 (20261025-18, brief-modello-documento-vendita §7): il
+              --   permesso dalla riga del passaggio (script.fn_guard_passaggio:
+              --   CONFERMATO -> ANNULLATO chiede conferma_reso, DRAFT -> ANNULLATO il solo
+              --   permesso sul documento, M-4), prima di qualunque scrittura; lo stato del
+              --   reso e quello della bolla dalla scrittura comune (script.fn_doc_scrivi_stato),
+              --   attraverso la porta.
+              -- rev 2026-11-03 (20261103-32, brief-db-addebito-trasporto-ordine §8.1):
+              --   il ri-flip RESO -> CONSEGNATO (non piu' totale) conta solo la MERCE della bolla
+              --   (script.fn_natura_e_merce): un onere non si rende, e senza il
+              --   filtro una bolla con un onere non cambierebbe mai stato.
+              DECLARE
+                  v_utente            config.user_override_azioni.auth_user_id%TYPE;
+                  v_reso              vendite.resi%ROWTYPE;
+                  v_muove             boolean;   -- calcolato, nessuna colonna
+                  v_stato            config.stati_doc_reso.codice_interno%TYPE;
+                  v_stato_ann_id     config.stati_doc_reso.id%TYPE;
+                  v_ddt_id           vendite.ddt.id%TYPE;
+                  v_ddt_stato        config.stati_doc_ddt.codice_interno%TYPE;
+                  v_stato_cons_id    config.stati_doc_ddt.id%TYPE;
+                  v_tutto_reso       boolean;
+                  v_ord              RECORD;
+                  v_sorgente_id      config.sorgenti.id%TYPE;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  -- La testata, FOR UPDATE, nel perimetro (predicato della policy: DEFINER).
+                  SELECT r.* INTO v_reso
+                    FROM vendite.resi r
+                   WHERE r.id = p_reso_id
+                     AND script.fn_scope_ef_whitelist_via_reso(v_utente, r.id)
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  SELECT sdr.codice_interno INTO v_stato
+                    FROM config.stati_doc_reso sdr
+                   WHERE sdr.id = v_reso.stato_doc_reso_id;
+
+                  -- Il permesso del passaggio, prima di scrivere qualunque cosa: dalla sua
+                  -- riga della matrice (M-3). Chi fa disfa: l'annullo di un reso CONFERMATO
+                  -- chiede conferma_reso; quello di una bozza solo il permesso sul documento,
+                  -- che controlla il backend (M-4).
+                  SELECT id INTO v_stato_ann_id FROM config.stati_doc_reso
+                   WHERE codice_interno = 'ANNULLATO' AND attivo IS TRUE;
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.resi'::regclass,
+                                                    v_reso.stato_doc_reso_id, v_stato_ann_id);
+
+                  IF v_stato NOT IN ('DRAFT','CONFERMATO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_STATO_NON_ANNULLABILE',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
+                          NULL::uuid, p_reso_id::text, v_stato);
+                  END IF;
+
+                  -- Reso gia' ri-spedito -> storno complesso fuori scope.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.resi_righe_riconsegne rrr
+                        JOIN vendite.resi_righe rr ON rr.id = rrr.resi_riga_id
+                       WHERE rr.reso_id = p_reso_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_ANNULLO_CON_RICONSEGNE',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- ⛔ Reso gia' ACCREDITATO -> l'annullo si RIFIUTA.
+                  --    Gemella di E_RESO_ANNULLO_CON_RICONSEGNE: stessa classe di
+                  --    problema, un effetto gia' in viaggio. Qui l'effetto e' una
+                  --    rettifica a quantita' NEGATIVA in vendite.commesse_attivita,
+                  --    che il giro di fatturazione raccoglie da se': annullare il
+                  --    reso senza disfarla emetterebbe una nota di credito per un
+                  --    reso che non esiste piu'. E il lister non ripara a valle -
+                  --    vendite.fn_list_emittibili_lane e
+                  --    vendite.fn_emit_attivita_fatturabili_da_commessa non nominano
+                  --    mai il reso: per loro quella rettifica e' materia normale.
+                  --
+                  -- ⚠️ IL PREDICATO E' L'ESISTENZA DEL PONTE, NON LO STATO DELLE
+                  --    RETTIFICHE. Se l'accredito e' ormai troppo tardi per essere
+                  --    disfatto lo dice la sua madre con il proprio messaggio
+                  --    (E_ACCREDITO_ANNULLO_NON_AMMESSO): ricalcolare qui «tutte
+                  --    NON_EMESSA» sarebbe una seconda copia della stessa regola,
+                  --    destinata a divergere al primo ritocco.
+                  --
+                  -- ⛔ SI RIFIUTA, NON SI CASCATA. vendite.fn_annulla_accredito_riga_reso
+                  --    pretende un motivo obbligatorio (E_ACCREDITO_MOTIVO_OBBLIGATORIO)
+                  --    e la traccia del perche' vive solo in commesse_attivita_log:
+                  --    una cascata automatica dovrebbe inventarselo. E se anche una
+                  --    sola rettifica ha lasciato NON_EMESSA, quella madre rifiuta:
+                  --    li' l'annullo del reso non deve avvenire affatto, non avvenire
+                  --    a meta'.
+                  --
+                  -- ⭐⚠️ VINCOLO RECIPROCO, ora su TRE posti (C-3): questa guardia,
+                  --    script.fn_check_rinuncia_reversibile e la madre dell'annullo
+                  --    accredito. Si auto-ripara perche' l'annullo dell'accredito
+                  --    CANCELLA le righe di ponte - ed e' anche il motivo per cui
+                  --    E_ACCREDITO_NON_TROVATO copre insieme «mai accreditato» e
+                  --    «gia' annullato». Se un giorno diventasse un soft-delete,
+                  --    questo ramo continuerebbe a vedere la riga e vieterebbe PER
+                  --    SEMPRE l'annullo di un reso ormai annullabile, IN SILENZIO:
+                  --    i tre posti si cambiano INSIEME.
+                  --
+                  -- ⚠️ Sta DOPO le ri-consegne di proposito: un reso che ha entrambe
+                  --    rispondeva gia' con E_RESO_ANNULLO_CON_RICONSEGNE, e cambiargli
+                  --    messaggio adesso non direbbe nulla di piu' a chi lo legge.
+                  --    Nessuna delle due tabelle lette ha la RLS (ce l'ha solo
+                  --    vendite.resi, gia' attraversata sopra): qui uno zero e' un
+                  --    dato, non un fail-closed.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.resi_righe rr
+                        JOIN vendite.resi_righe_accrediti a ON a.resi_riga_id = rr.id
+                       WHERE rr.reso_id = p_reso_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_ANNULLO_CON_ACCREDITO',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- La merce che era rientrata (rev 2026-09-28): letta PRIMA di cambiare
+                  -- lo stato, sulla riga del reso com'e'.
+                  v_muove := vendite.fn_reso_muove_merce(v_reso);
+
+                  -- Transizione -> ANNULLATO, dalla scrittura comune: la porta si apre per
+                  -- QUESTO reso.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.resi'::regclass, p_reso_id, v_stato_ann_id);
+
+                  -- Storno effetti solo se era CONFERMATO.
+                  IF v_stato = 'CONFERMATO' THEN
+                      FOR v_ord IN
+                          SELECT DISTINCT orr.ordine_id
+                            FROM vendite.resi_righe rr
+                            JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                            JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+                           WHERE rr.reso_id = p_reso_id
+                             AND tr.riapre_residuo IS TRUE
+                      LOOP
+                          -- ⭐ rev 2026-10-11: la proiezione e' il building block
+                          --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+                          PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
+                      END LOOP;
+
+                      -- Ri-flip DDT RESO->CONSEGNATO se non piu' reso totale (passaggio di
+                      -- processo: lo scrive questo verbo, con la sola scrittura comune).
+                      SELECT d.id, sdd.codice_interno
+                        INTO v_ddt_id, v_ddt_stato
+                        FROM vendite.ddt d
+                        JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                       WHERE d.id = v_reso.sorgente_id;
+
+                      IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'RESO' THEN
+                          SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
+                            INTO v_tutto_reso
+                            FROM vendite.ddt_righe dr
+                            LEFT JOIN (
+                                -- rev 2026-07-17 (step 2): fonte unica
+                                -- vw_resi_righe_effettive (CONFERMATE + attive,
+                                -- tutti i tipi). Il ri-flip non filtra il tipo.
+                                SELECT e.ddt_riga_id, SUM(e.quantita) AS tot
+                                  FROM vendite.vw_resi_righe_effettive e
+                                 GROUP BY e.ddt_riga_id
+                            ) reso_riga ON reso_riga.ddt_riga_id = dr.id
+                           WHERE dr.ddt_id = v_ddt_id
+                             AND dr.attivo IS TRUE
+                             -- rev 2026-11-03: solo la merce (un onere non si rende).
+                             AND script.fn_natura_e_merce(dr.natura_vendita_id);
+
+                          IF NOT COALESCE(v_tutto_reso, false) THEN
+                              SELECT id INTO v_stato_cons_id FROM config.stati_doc_ddt
+                               WHERE codice_interno = 'CONSEGNATO' AND attivo IS TRUE;
+                              PERFORM script.fn_doc_scrivi_stato('vendite.ddt'::regclass, v_ddt_id, v_stato_cons_id);
+                          END IF;
+                      END IF;
+
+                      -- Lo storno dei carichi (rev 2026-09-28, M-8): la merce riesce con
+                      -- una riga opposta, al costo del carico. Se nel frattempo e' gia'
+                      -- uscita di nuovo, la primitiva rifiuta l'uscita dello storno: il
+                      -- registro non va sotto zero per un annullo.
+                      IF v_muove THEN
+                          -- Lo storno per DOCUMENTO: i carichi del reso, tutti (righe NULL).
+                          -- ⛔ Il tipo che manca non e' «niente da stornare»: e' una
+                          --    configurazione rotta, e un annullo che non storna lascerebbe
+                          --    in giacenza merce che non c'e'.
+                          SELECT s.id INTO v_sorgente_id
+                            FROM config.sorgenti s
+                           WHERE s.codice_interno = 'RESO_VENDITA';
+                          IF v_sorgente_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_annulla_reso',
+                                  'E_CONFIG_MANCANTE',
+                                  jsonb_build_object('config', 'config.sorgenti.RESO_VENDITA'),
+                                  NULL::uuid, VARIADIC ARRAY['sorgente RESO_VENDITA (config.sorgenti)']);
+                          END IF;
+                          PERFORM 1 FROM magazzino.fn_storna_movimenti_sorgente(
+                                             v_sorgente_id, NULL::bigint[], p_sorgente_id => p_reso_id);
+                      END IF;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_reso(bigint) IS
+                'Il verbo dell''annullo di un reso, con storno: -> ANNULLATO, gemello di vendite.fn_conferma_reso. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio (script.fn_guard_passaggio): CONFERMATO -> ANNULLATO chiede conferma_reso, DRAFT -> ANNULLATO il solo permesso sul documento. Due rifiuti prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) ed E_RESO_ANNULLO_CON_ACCREDITO (esiste una riga in vendite.resi_righe_accrediti: senza, le rettifiche negative resterebbero vive e la fatturazione emetterebbe una nota di credito per un reso annullato). Si rifiuta e non si cascata: l''annullo dell''accredito (vendite.fn_annulla_accredito_riga_reso) chiede un motivo, e un accredito non piu'' disfacibile lo dice lui (E_ACCREDITO_ANNULLO_NON_AMMESSO). Vincolo reciproco con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: l''annullo dell''accredito cancella le righe di ponte, e i tre posti cambiano insieme. Annullando un reso confermato che aveva fatto rientrare merce, i carichi si stornano per documento (magazzino.fn_storna_movimenti_sorgente sul reso; un tipo RESO_VENDITA assente e'' E_CONFIG_MANCANTE, non uno storno saltato) al costo del carico; se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Lo stato del reso e il ritorno della bolla RESO -> CONSEGNATO, se il reso non copre piu'' tutta la merce (le sole righe di merce; contano i resi confermati), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca per sorgente_id (la bolla ha chiave id). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. RETURNS void.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_conferma_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               VOLATILE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+              --   VERBO del modello «una scrittura = un verbo». SECURITY DEFINER con
+              --   search_path bloccato (ogni nome qui dentro e' qualificato), testata presa
+              --   FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro:
+              --   E_RESO_NOT_FOUND, no-leak, come prima sotto RLS).
+              -- ⭐ rev 2026-10-25 (20261025-17, brief-modello-documento-vendita §7): il
+              --   permesso dalla riga del passaggio (script.fn_guard_passaggio: DRAFT ->
+              --   CONFERMATO chiede conferma_reso), prima di qualunque scrittura; lo
+              --   stato del reso e quello della bolla dalla scrittura comune
+              --   (script.fn_doc_scrivi_stato), attraverso la porta.
+              -- rev 2026-11-03 (20261103-32, brief-db-addebito-trasporto-ordine §8.1):
+              --   il flip CONSEGNATO -> RESO (reso totale) conta solo la MERCE della bolla
+              --   (script.fn_natura_e_merce): un onere non si rende, e senza il
+              --   filtro una bolla con un onere non cambierebbe mai stato.
+              DECLARE
+                  v_utente            config.user_override_azioni.auth_user_id%TYPE;
+                  v_reso              vendite.resi%ROWTYPE;
+                  v_muove             boolean;   -- calcolato, nessuna colonna
+                  v_stato             config.stati_doc_reso.codice_interno%TYPE;
+                  v_stato_conf_id     config.stati_doc_reso.id%TYPE;
+                  v_ddt_id            vendite.ddt.id%TYPE;
+                  v_ddt_stato         config.stati_doc_ddt.codice_interno%TYPE;
+                  v_stato_reso_ddt_id config.stati_doc_ddt.id%TYPE;
+                  v_tutto_reso        boolean;
+                  v_ord               RECORD;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  -- 1) Guard input + reso in DRAFT + almeno una riga.
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  -- La testata, FOR UPDATE, nel perimetro (predicato della policy: DEFINER).
+                  SELECT r.* INTO v_reso
+                    FROM vendite.resi r
+                   WHERE r.id = p_reso_id
+                     AND script.fn_scope_ef_whitelist_via_reso(v_utente, r.id)
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  SELECT sdr.codice_interno INTO v_stato
+                    FROM config.stati_doc_reso sdr
+                   WHERE sdr.id = v_reso.stato_doc_reso_id;
+
+                  -- Il permesso del passaggio, prima di scrivere qualunque cosa: dalla
+                  -- riga DRAFT -> CONFERMATO della matrice (M-3), su OGNI conferma,
+                  -- anche di un reso che non muove merce (D-3b-f).
+                  SELECT id INTO v_stato_conf_id FROM config.stati_doc_reso
+                   WHERE codice_interno = 'CONFERMATO' AND attivo IS TRUE;
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.resi'::regclass,
+                                                    v_reso.stato_doc_reso_id, v_stato_conf_id);
+
+                  IF v_stato IS DISTINCT FROM 'DRAFT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_STATO_NON_CONFERMABILE',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
+                          NULL::uuid, p_reso_id::text, v_stato);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM vendite.resi_righe
+                                  WHERE reso_id = p_reso_id AND attivo IS TRUE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_SENZA_RIGHE',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- 1-bis) La merce che rientra (rev 2026-09-28, D-3b-b/-c). Su un reso
+                  --    che fa rientrare merce: il lock della bolla d'origine (il tetto per
+                  --    prelievo somma i rientri di tutti i suoi resi: due conferme
+                  --    concorrenti si serializzano qui), la conferma che parla (primo
+                  --    motivo di script.fn_check_reso_merce, che conta gia' gli
+                  --    automatici), poi i rientri automatici, finche' il reso e' in bozza.
+                  v_muove := vendite.fn_reso_muove_merce(v_reso);
+                  IF v_muove THEN
+                      PERFORM 1 FROM vendite.ddt d
+                       WHERE (d.id = v_reso.sorgente_id OR d.uid = v_reso.sorgente_uid) FOR UPDATE;
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'vendite', 'vendite.fn_conferma_reso',
+                          script.fn_check_reso_merce(v_reso), NULL, NULL::uuid,
+                          jsonb_build_object('reso_id', p_reso_id));
+                      INSERT INTO vendite.resi_righe_rientri (resi_riga_id, ddt_riga_prelievo_id, qta)
+                      SELECT m.resi_riga_id, m.prelievo_unico_id, m.qta
+                        FROM vendite.fn_reso_merce_da_rientrare(v_reso) m
+                       WHERE m.automatico;
+                  END IF;
+
+                  -- 2) Transizione a CONFERMATO (gen_numero + guard_transizione), dalla
+                  --    scrittura comune: la porta si apre per QUESTO reso.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.resi'::regclass, p_reso_id, v_stato_conf_id);
+
+                  -- 3) Proiezione stato ordine per ogni ordine coinvolto (solo
+                  --    righe ri-consegna: quelle che riaprono il residuo).
+                  FOR v_ord IN
+                      SELECT DISTINCT orr.ordine_id
+                        FROM vendite.resi_righe rr
+                        JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                        JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+                       WHERE rr.reso_id = p_reso_id
+                         AND tr.riapre_residuo IS TRUE
+                  LOOP
+                      -- ⭐ rev 2026-10-11: la proiezione e' il building block
+                      --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+                      PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
+                  END LOOP;
+
+                  -- 4) Flip DDT origine -> RESO se reso TOTALE (tutte le qta
+                  --    consegnate del DDT rese da resi EFFETTIVI). Solo se il
+                  --    DDT e' CONSEGNATO (matrice CONSEGNATO->RESO, passaggio di
+                  --    processo: lo scrive questo verbo, con la sola scrittura comune).
+                  SELECT d.id, sdd.codice_interno
+                    INTO v_ddt_id, v_ddt_stato
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE (d.id = v_reso.sorgente_id OR d.uid = v_reso.sorgente_uid);
+
+                  IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'CONSEGNATO' THEN
+                      SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
+                        INTO v_tutto_reso
+                        FROM vendite.ddt_righe dr
+                        LEFT JOIN (
+                            -- rev 2026-07-17 (step 2): fonte unica
+                            -- vw_resi_righe_effettive (CONFERMATE + attive, tutti
+                            -- i tipi). Il flip non filtra il tipo: conta tutta la
+                            -- merce tornata indietro su ogni riga DDT.
+                            SELECT e.ddt_riga_id, SUM(e.quantita) AS tot
+                              FROM vendite.vw_resi_righe_effettive e
+                             GROUP BY e.ddt_riga_id
+                        ) reso_riga ON reso_riga.ddt_riga_id = dr.id
+                       WHERE dr.ddt_id = v_ddt_id
+                         AND dr.attivo IS TRUE
+                         -- rev 2026-11-03: solo la merce (un onere non si rende).
+                         AND script.fn_natura_e_merce(dr.natura_vendita_id);
+
+                      IF COALESCE(v_tutto_reso, false) THEN
+                          SELECT id INTO v_stato_reso_ddt_id FROM config.stati_doc_ddt
+                           WHERE codice_interno = 'RESO' AND attivo IS TRUE;
+                          PERFORM script.fn_doc_scrivi_stato('vendite.ddt'::regclass, v_ddt_id, v_stato_reso_ddt_id);
+                      END IF;
+                  END IF;
+
+                  -- 5) I carichi (rev 2026-09-28, D-3b-c): uno per rientro, al costo
+                  --    dell'uscita d'origine, nella stessa transazione della conferma.
+                  IF v_muove THEN
+                      PERFORM 1 FROM vendite.fn_posta_reso(p_reso_id);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_conferma_reso(bigint) IS
+                'Il verbo della conferma di un reso: DRAFT -> CONFERMATO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso; fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio della matrice (script.fn_guard_passaggio, conferma_reso); fuori bozza E_RESO_STATO_NON_CONFERMABILE. Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, carichi in coda (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). Lo stato del reso e il passaggio della bolla CONSEGNATO -> RESO, se il reso copre tutta la merce (le sole righe di merce, script.fn_natura_e_merce; contano i resi confermati, vw_resi_righe_effettive), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Una transazione; RETURNS void.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               VOLATILE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
+              --   VERBO del modello «una scrittura = un verbo». SECURITY DEFINER con
+              --   search_path bloccato (ogni nome qui dentro e' qualificato), testata presa
+              --   FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro:
+              --   E_RESO_NOT_FOUND, no-leak, come prima sotto RLS).
+              -- ⭐ rev 2026-10-25 (20261025-18, brief-modello-documento-vendita §7): il
+              --   permesso dalla riga del passaggio (script.fn_guard_passaggio:
+              --   CONFERMATO -> ANNULLATO chiede conferma_reso, DRAFT -> ANNULLATO il solo
+              --   permesso sul documento, M-4), prima di qualunque scrittura; lo stato del
+              --   reso e quello della bolla dalla scrittura comune (script.fn_doc_scrivi_stato),
+              --   attraverso la porta.
+              -- rev 2026-11-03 (20261103-32, brief-db-addebito-trasporto-ordine §8.1):
+              --   il ri-flip RESO -> CONSEGNATO (non piu' totale) conta solo la MERCE della bolla
+              --   (script.fn_natura_e_merce): un onere non si rende, e senza il
+              --   filtro una bolla con un onere non cambierebbe mai stato.
+              DECLARE
+                  v_utente            config.user_override_azioni.auth_user_id%TYPE;
+                  v_reso              vendite.resi%ROWTYPE;
+                  v_muove             boolean;   -- calcolato, nessuna colonna
+                  v_stato            config.stati_doc_reso.codice_interno%TYPE;
+                  v_stato_ann_id     config.stati_doc_reso.id%TYPE;
+                  v_ddt_id           vendite.ddt.id%TYPE;
+                  v_ddt_stato        config.stati_doc_ddt.codice_interno%TYPE;
+                  v_stato_cons_id    config.stati_doc_ddt.id%TYPE;
+                  v_tutto_reso       boolean;
+                  v_ord              RECORD;
+                  v_sorgente_id      config.sorgenti.id%TYPE;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  -- La testata, FOR UPDATE, nel perimetro (predicato della policy: DEFINER).
+                  SELECT r.* INTO v_reso
+                    FROM vendite.resi r
+                   WHERE r.id = p_reso_id
+                     AND script.fn_scope_ef_whitelist_via_reso(v_utente, r.id)
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  SELECT sdr.codice_interno INTO v_stato
+                    FROM config.stati_doc_reso sdr
+                   WHERE sdr.id = v_reso.stato_doc_reso_id;
+
+                  -- Il permesso del passaggio, prima di scrivere qualunque cosa: dalla sua
+                  -- riga della matrice (M-3). Chi fa disfa: l'annullo di un reso CONFERMATO
+                  -- chiede conferma_reso; quello di una bozza solo il permesso sul documento,
+                  -- che controlla il backend (M-4).
+                  SELECT id INTO v_stato_ann_id FROM config.stati_doc_reso
+                   WHERE codice_interno = 'ANNULLATO' AND attivo IS TRUE;
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.resi'::regclass,
+                                                    v_reso.stato_doc_reso_id, v_stato_ann_id);
+
+                  IF v_stato NOT IN ('DRAFT','CONFERMATO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_STATO_NON_ANNULLABILE',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
+                          NULL::uuid, p_reso_id::text, v_stato);
+                  END IF;
+
+                  -- Reso gia' ri-spedito -> storno complesso fuori scope.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.resi_righe_riconsegne rrr
+                        JOIN vendite.resi_righe rr ON rr.id = rrr.resi_riga_id
+                       WHERE rr.reso_id = p_reso_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_ANNULLO_CON_RICONSEGNE',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- ⛔ Reso gia' ACCREDITATO -> l'annullo si RIFIUTA.
+                  --    Gemella di E_RESO_ANNULLO_CON_RICONSEGNE: stessa classe di
+                  --    problema, un effetto gia' in viaggio. Qui l'effetto e' una
+                  --    rettifica a quantita' NEGATIVA in vendite.commesse_attivita,
+                  --    che il giro di fatturazione raccoglie da se': annullare il
+                  --    reso senza disfarla emetterebbe una nota di credito per un
+                  --    reso che non esiste piu'. E il lister non ripara a valle -
+                  --    vendite.fn_list_emittibili_lane e
+                  --    vendite.fn_emit_attivita_fatturabili_da_commessa non nominano
+                  --    mai il reso: per loro quella rettifica e' materia normale.
+                  --
+                  -- ⚠️ IL PREDICATO E' L'ESISTENZA DEL PONTE, NON LO STATO DELLE
+                  --    RETTIFICHE. Se l'accredito e' ormai troppo tardi per essere
+                  --    disfatto lo dice la sua madre con il proprio messaggio
+                  --    (E_ACCREDITO_ANNULLO_NON_AMMESSO): ricalcolare qui «tutte
+                  --    NON_EMESSA» sarebbe una seconda copia della stessa regola,
+                  --    destinata a divergere al primo ritocco.
+                  --
+                  -- ⛔ SI RIFIUTA, NON SI CASCATA. vendite.fn_annulla_accredito_riga_reso
+                  --    pretende un motivo obbligatorio (E_ACCREDITO_MOTIVO_OBBLIGATORIO)
+                  --    e la traccia del perche' vive solo in commesse_attivita_log:
+                  --    una cascata automatica dovrebbe inventarselo. E se anche una
+                  --    sola rettifica ha lasciato NON_EMESSA, quella madre rifiuta:
+                  --    li' l'annullo del reso non deve avvenire affatto, non avvenire
+                  --    a meta'.
+                  --
+                  -- ⭐⚠️ VINCOLO RECIPROCO, ora su TRE posti (C-3): questa guardia,
+                  --    script.fn_check_rinuncia_reversibile e la madre dell'annullo
+                  --    accredito. Si auto-ripara perche' l'annullo dell'accredito
+                  --    CANCELLA le righe di ponte - ed e' anche il motivo per cui
+                  --    E_ACCREDITO_NON_TROVATO copre insieme «mai accreditato» e
+                  --    «gia' annullato». Se un giorno diventasse un soft-delete,
+                  --    questo ramo continuerebbe a vedere la riga e vieterebbe PER
+                  --    SEMPRE l'annullo di un reso ormai annullabile, IN SILENZIO:
+                  --    i tre posti si cambiano INSIEME.
+                  --
+                  -- ⚠️ Sta DOPO le ri-consegne di proposito: un reso che ha entrambe
+                  --    rispondeva gia' con E_RESO_ANNULLO_CON_RICONSEGNE, e cambiargli
+                  --    messaggio adesso non direbbe nulla di piu' a chi lo legge.
+                  --    Nessuna delle due tabelle lette ha la RLS (ce l'ha solo
+                  --    vendite.resi, gia' attraversata sopra): qui uno zero e' un
+                  --    dato, non un fail-closed.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.resi_righe rr
+                        JOIN vendite.resi_righe_accrediti a ON a.resi_riga_id = rr.id
+                       WHERE rr.reso_id = p_reso_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_ANNULLO_CON_ACCREDITO',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- La merce che era rientrata (rev 2026-09-28): letta PRIMA di cambiare
+                  -- lo stato, sulla riga del reso com'e'.
+                  v_muove := vendite.fn_reso_muove_merce(v_reso);
+
+                  -- Transizione -> ANNULLATO, dalla scrittura comune: la porta si apre per
+                  -- QUESTO reso.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.resi'::regclass, p_reso_id, v_stato_ann_id);
+
+                  -- Storno effetti solo se era CONFERMATO.
+                  IF v_stato = 'CONFERMATO' THEN
+                      FOR v_ord IN
+                          SELECT DISTINCT orr.ordine_id
+                            FROM vendite.resi_righe rr
+                            JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                            JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+                           WHERE rr.reso_id = p_reso_id
+                             AND tr.riapre_residuo IS TRUE
+                      LOOP
+                          -- ⭐ rev 2026-10-11: la proiezione e' il building block
+                          --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+                          PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
+                      END LOOP;
+
+                      -- Ri-flip DDT RESO->CONSEGNATO se non piu' reso totale (passaggio di
+                      -- processo: lo scrive questo verbo, con la sola scrittura comune).
+                      SELECT d.id, sdd.codice_interno
+                        INTO v_ddt_id, v_ddt_stato
+                        FROM vendite.ddt d
+                        JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                       WHERE (d.id = v_reso.sorgente_id OR d.uid = v_reso.sorgente_uid);
+
+                      IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'RESO' THEN
+                          SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
+                            INTO v_tutto_reso
+                            FROM vendite.ddt_righe dr
+                            LEFT JOIN (
+                                -- rev 2026-07-17 (step 2): fonte unica
+                                -- vw_resi_righe_effettive (CONFERMATE + attive,
+                                -- tutti i tipi). Il ri-flip non filtra il tipo.
+                                SELECT e.ddt_riga_id, SUM(e.quantita) AS tot
+                                  FROM vendite.vw_resi_righe_effettive e
+                                 GROUP BY e.ddt_riga_id
+                            ) reso_riga ON reso_riga.ddt_riga_id = dr.id
+                           WHERE dr.ddt_id = v_ddt_id
+                             AND dr.attivo IS TRUE
+                             -- rev 2026-11-03: solo la merce (un onere non si rende).
+                             AND script.fn_natura_e_merce(dr.natura_vendita_id);
+
+                          IF NOT COALESCE(v_tutto_reso, false) THEN
+                              SELECT id INTO v_stato_cons_id FROM config.stati_doc_ddt
+                               WHERE codice_interno = 'CONSEGNATO' AND attivo IS TRUE;
+                              PERFORM script.fn_doc_scrivi_stato('vendite.ddt'::regclass, v_ddt_id, v_stato_cons_id);
+                          END IF;
+                      END IF;
+
+                      -- Lo storno dei carichi (rev 2026-09-28, M-8): la merce riesce con
+                      -- una riga opposta, al costo del carico. Se nel frattempo e' gia'
+                      -- uscita di nuovo, la primitiva rifiuta l'uscita dello storno: il
+                      -- registro non va sotto zero per un annullo.
+                      IF v_muove THEN
+                          -- Lo storno per DOCUMENTO: i carichi del reso, tutti (righe NULL).
+                          -- ⛔ Il tipo che manca non e' «niente da stornare»: e' una
+                          --    configurazione rotta, e un annullo che non storna lascerebbe
+                          --    in giacenza merce che non c'e'.
+                          SELECT s.id INTO v_sorgente_id
+                            FROM config.sorgenti s
+                           WHERE s.codice_interno = 'RESO_VENDITA';
+                          IF v_sorgente_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_annulla_reso',
+                                  'E_CONFIG_MANCANTE',
+                                  jsonb_build_object('config', 'config.sorgenti.RESO_VENDITA'),
+                                  NULL::uuid, VARIADIC ARRAY['sorgente RESO_VENDITA (config.sorgenti)']);
+                          END IF;
+                          PERFORM 1 FROM magazzino.fn_storna_movimenti_sorgente(
+                                             v_sorgente_id, NULL::bigint[], p_sorgente_id => p_reso_id);
+                      END IF;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_reso(bigint) IS
+                'Il verbo dell''annullo di un reso, con storno: -> ANNULLATO, gemello di vendite.fn_conferma_reso. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio (script.fn_guard_passaggio): CONFERMATO -> ANNULLATO chiede conferma_reso, DRAFT -> ANNULLATO il solo permesso sul documento. Due rifiuti prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) ed E_RESO_ANNULLO_CON_ACCREDITO (esiste una riga in vendite.resi_righe_accrediti: senza, le rettifiche negative resterebbero vive e la fatturazione emetterebbe una nota di credito per un reso annullato). Si rifiuta e non si cascata: l''annullo dell''accredito (vendite.fn_annulla_accredito_riga_reso) chiede un motivo, e un accredito non piu'' disfacibile lo dice lui (E_ACCREDITO_ANNULLO_NON_AMMESSO). Vincolo reciproco con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: l''annullo dell''accredito cancella le righe di ponte, e i tre posti cambiano insieme. Annullando un reso confermato che aveva fatto rientrare merce, i carichi si stornano per documento (magazzino.fn_storna_movimenti_sorgente sul reso; un tipo RESO_VENDITA assente e'' E_CONFIG_MANCANTE, non uno storno saltato) al costo del carico; se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Lo stato del reso e il ritorno della bolla RESO -> CONSEGNATO, se il reso non copre piu'' tutta la merce (le sole righe di merce; contano i resi confermati), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. RETURNS void.';

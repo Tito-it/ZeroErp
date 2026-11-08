@@ -38,11 +38,12 @@ La testata del **reso di vendita**: il documento che registra il rientro di merc
 
 ### Il reso nasce sempre da una bolla
 
-La provenienza è **obbligatoria** e segue il modello comune: il tipo del documento
-(`sorgente_tipo_id`, non nullo) e la chiave del documento in una sola fra `sorgente_id` e
-`sorgente_uid`, quella che il `key_selector` del tipo dichiara. Oggi l'unico tipo è `DDT_VENDITA`,
-a chiave `id`: il reso porta l'id della bolla in `sorgente_id`. Un tipo nuovo (la fattura, per un
-reso da fattura) entrerebbe senza colonne nuove.
+La provenienza è **obbligatoria**, ed è sempre la **bolla di vendita** da cui torna la merce: il
+tipo `DDT_VENDITA` e l'id della bolla in `sorgente_id` (la bolla ha chiave `id`); `sorgente_uid`
+resta vuota. La forma la tiene il CHECK `chk_resi_sorgente_forma`; il tipo lo fa valere il guard
+del cliente (`vendite.trgfn_resi_guard_cliente_ddt`), che rifiuta un altro tipo con
+`E_RESO_SORGENTE_NON_DDT`, perché il reso registra il rientro di una consegna, e la consegna è la
+bolla.
 
 * La forma la dice `chk_resi_sorgente_forma` (il tipo con **una** chiave); che la bolla esista e si
   veda lo verifica il guard unico (`trg_resi_a10_guard_sorgente_ins_upd`, livello `DOCUMENTO`,
@@ -128,6 +129,8 @@ Se un reso confermato restasse senza carico, lo segnala il presidio
   `sorgente_id` (prima stava come uid in `sorgente_uid`), col guard unico
   (brief-db-sorgente-documento-e-riga).
 * 2026-11-07 — si cancella solo la bozza vuota.
+* 2026-11-08 — la provenienza è solo la bolla: il CHECK di forma vuole la chiave in `sorgente_id`, il
+  guard del cliente rifiuta un altro tipo, e i lettori cercano la bolla per `sorgente_id`.
 * 2026-11-08 — i carichi di magazzino dichiarano il reso con riga e rientro come dettaglio, al posto
   del tipo dedicato ai rientri.
 

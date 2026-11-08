@@ -24,6 +24,8 @@
 --   ora i tre documenti interni (INVENTARIO, RETTIFICA, TRASFERIMENTO: scope CATALOGO, con la
 --   tabella delle righe) e l'evento d'asset (EVENTO_ASSET: MAGAZZINO, senza righe). Il ritiro
 --   lo asserisce magazzino/test-sorgente-registro-v1 (16, 17).
+-- Dal 2026-11-08 (20261110-19) lo scope dice a quale meccanismo serve un tipo: MAGAZZINO,
+--   che nessun meccanismo leggeva, e' ritirato, e anche l'evento d'asset e' CATALOGO.
 -- ⚠️ Nessuna fixture: il soggetto e' il seed. Le asserzioni sono sull'INSIEME
 --   dei codici (un catalogo puo' crescere con i lotti successivi: si asserisce
 --   che i sedici ci siano, non che siano gli unici).
@@ -39,8 +41,8 @@
 --   config.sorgenti:
 --    7) le quattro sorgenti di magazzino (tre documenti interni e l'evento) esistono, ATTIVE
 --    8) ...e ogni target_table (e tabella delle righe) risolve (to_regclass): le tabelle esistono
---    9) ognuna ha lo scope atteso: i documenti CATALOGO, l'evento MAGAZZINO
---   10) MAGAZZINO e' ammesso dal CHECK chk_sorgenti_scope
+--    9) ognuna ha lo scope atteso: CATALOGO, l'evento compreso
+--   10) MAGAZZINO non e' piu' ammesso dal CHECK chk_sorgenti_scope
 --   catalogo.articoli:
 --   11) requires_lotto esiste, NOT NULL, default false — accanto a requires_serial
 -- ------------------------------------------------------------
@@ -110,7 +112,7 @@ INSERT INTO _attese_sorgenti VALUES
     ('INVENTARIO',     'CATALOGO',  'magazzino.inventari',     'magazzino.inventari_righe'),
     ('RETTIFICA',      'CATALOGO',  'magazzino.rettifiche',    'magazzino.rettifiche_righe'),
     ('TRASFERIMENTO',  'CATALOGO',  'magazzino.trasferimenti', 'magazzino.trasferimenti_righe'),
-    ('EVENTO_ASSET',   'MAGAZZINO', 'magazzino.eventi_assets', NULL);
+    ('EVENTO_ASSET',   'CATALOGO',  'magazzino.eventi_assets', NULL);
 
 SELECT is(
     (SELECT count(*)::int FROM _attese_sorgenti a
@@ -136,12 +138,12 @@ SELECT is(
        JOIN config.sorgenti s ON s.codice_interno = a.codice_interno
       WHERE s.scope <> a.scope),
     0,
-    '9) lo scope atteso: i documenti interni CATALOGO, l''evento MAGAZZINO (D-7)');
+    '9) lo scope atteso: CATALOGO, l''evento d''asset compreso');
 
 SELECT ok(
-    (SELECT pg_get_constraintdef(oid) ~ '''MAGAZZINO'''
+    (SELECT pg_get_constraintdef(oid) !~ '''MAGAZZINO'''
        FROM pg_constraint WHERE conrelid = 'config.sorgenti'::regclass AND conname = 'chk_sorgenti_scope'),
-    '10) MAGAZZINO e'' ammesso da chk_sorgenti_scope');
+    '10) MAGAZZINO non e'' piu'' ammesso da chk_sorgenti_scope: nessun meccanismo lo leggeva');
 
 -- ============================================================
 -- 11 catalogo.articoli

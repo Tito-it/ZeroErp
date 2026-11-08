@@ -44,6 +44,9 @@
 --     grammatica, TESTUALE, che quelle quattro tabelle tengono in vita; il test 1 legge
 --     schema e nome dal perimetro, non regclass::text (rosso con lo schema nel search_path
 --     di chi lancia, la trappola gia' tolta al test 2).
+--   rev 2026-11-08: il giro finale bis (G-4, 20261110-32) ritira le colonne sorgente_* della
+--     riga di fattura (la sua origine e' la catena delle attivita'): vendite.fatture_righe esce
+--     dal perimetro da sola, come attivita_fatturabili al giro C.1. Nessun test cambia.
 --
 -- Elenco test (plan 5):
 --   1) dal guard sono esenti il log dei reconcile (D-9) e la coda di stampa (D-3), col motivo

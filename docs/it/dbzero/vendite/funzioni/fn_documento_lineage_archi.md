@@ -46,9 +46,6 @@ BEGIN ATOMIC
                    WHERE (o.id = ANY (k.ord_ids))) AS ord_uids,
              k.con_ids,
              k.ddt_ids,
-             ( SELECT array_agg(d.uid) AS array_agg
-                    FROM vendite.ddt d
-                   WHERE (d.id = ANY (k.ddt_ids))) AS ddt_uids,
              k.fat_ids,
              k.com_ids,
              k.res_ids,
@@ -219,7 +216,7 @@ BEGIN ATOMIC
              'R'::text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON (((d.id = r.sorgente_id) OR (d.uid = r.sorgente_uid))))
+              JOIN vendite.ddt d ON ((d.id = r.sorgente_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
          UNION ALL
@@ -568,12 +565,11 @@ BEGIN ATOMIC
              'R'::text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON (((d.id = r.sorgente_id) OR (d.uid = r.sorgente_uid))))
+              JOIN vendite.ddt d ON ((d.id = r.sorgente_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (r.sorgente_tipo_id = ( SELECT k.t_ddt
-                    FROM chiavi k)) AND ((r.sorgente_id = ANY (( SELECT k.ddt_ids
-                    FROM chiavi k)::bigint[])) OR (r.sorgente_uid = ANY (( SELECT k.ddt_uids
-                    FROM chiavi k)::uuid[]))))
+                    FROM chiavi k)) AND (r.sorgente_id = ANY (( SELECT k.ddt_ids
+                    FROM chiavi k)::bigint[])))
          UNION ALL
           SELECT s_from.id,
              (d.id)::text AS id,
@@ -583,7 +579,7 @@ BEGIN ATOMIC
              'R'::text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON (((d.id = r.sorgente_id) OR (d.uid = r.sorgente_uid))))
+              JOIN vendite.ddt d ON ((d.id = r.sorgente_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (r.id = ANY (( SELECT k.res_ids
                     FROM chiavi k)::bigint[])) AND ((d.id = ANY (( SELECT k.ddt_ids
@@ -709,7 +705,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage_archi(p_tipo_ids bigint[], p_uids text[])
-IS 'Gli ARCHI della lineage dei documenti, grezzi (chiavi, ruolo, lettera A…V, is_ramo_inverso, rango_origine), per chiave del nodo. Il seme e'' quello di vendite.fn_documento_lineage_nodi: il tipo (config.sorgenti.id) e la chiave del documento in testo secondo il key_selector, l''uid per preventivo e offerta e l''id per ordine, contratto, DDT, fattura, commessa e reso, in due array paralleli; entrambi NULL = tutti gli archi (vendite.vw_documento_lineage_archi ne e'' la proiezione decorata); array vuoti, tipo ignoto o chiave inesistente non seminano niente; una chiave fuori forma per il suo tipo fa fallire il cast del seme. Col seme: gli archi uscenti da un nodo del seme e quelli entranti il cui from non sta nel seme, ciascuno una volta, con gli stessi DISTINCT del modo senza seme (G, N, S, T). Il seme scende come array (= ANY) sulla prima tabella di ogni ramo. Gli archi A (preventivo -> ordine), C (offerta -> contratto), D (offerta -> ordine), H (ordine -> bolla) e R (bolla -> reso) leggono la provenienza di testata del documento a valle (sorgente_*) con la regola d''incontro (doc.id = sorgente_id OR doc.uid = sorgente_uid), in tutti e due i modi, con gli indici ix_ordini_v_sorgente_uid / _id, ix_contratti_sorgente_uid / _id, ix_ddt_v_sorgente / ix_ddt_v_sorgente_id e ix_resi_sorgente / ix_resi_sorgente_id. Nei rami B, E, F, U (le sorgenti delle commesse) la chiave del link sta nella colonna del suo tipo, vendite.commesse_sorgenti.sorgente_uid per il preventivo e sorgente_id per ordine, contratto e DDT (indici ix_commesse_sorgenti_sorgente_uid e uq_commesse_sorgenti_sorgente_commessa): il join verso il documento confronta colonne dello stesso tipo, senza cast, ed e'' leakproof anche sotto RLS. V e'' la revisione dell''offerta (madre -> figlia, revisione_padre_id), rango 60, non un''origine. Il vocabolario delle lettere e'' quello di vendite.vw_documento_lineage_archi: un arco nuovo si aggiunge qui, nei due modi. SET jit = off e plan_cache_mode = force_generic_plan: la funzione si pianifica una volta per sessione. BEGIN ATOMIC, SECURITY INVOKER.';
+IS 'Gli ARCHI della lineage dei documenti, grezzi (chiavi, ruolo, lettera A…V, is_ramo_inverso, rango_origine), per chiave del nodo. Il seme e'' quello di vendite.fn_documento_lineage_nodi: il tipo (config.sorgenti.id) e la chiave del documento in testo secondo il key_selector, l''uid per preventivo e offerta e l''id per ordine, contratto, DDT, fattura, commessa e reso, in due array paralleli; entrambi NULL = tutti gli archi (vendite.vw_documento_lineage_archi ne e'' la proiezione decorata); array vuoti, tipo ignoto o chiave inesistente non seminano niente; una chiave fuori forma per il suo tipo fa fallire il cast del seme. Col seme: gli archi uscenti da un nodo del seme e quelli entranti il cui from non sta nel seme, ciascuno una volta, con gli stessi DISTINCT del modo senza seme (G, N, S, T). Il seme scende come array (= ANY) sulla prima tabella di ogni ramo. Gli archi A (preventivo -> ordine), C (offerta -> contratto), D (offerta -> ordine) e H (ordine -> bolla) leggono la provenienza di testata del documento a valle (sorgente_*) con la regola d''incontro (doc.id = sorgente_id OR doc.uid = sorgente_uid), in tutti e due i modi, con gli indici ix_ordini_v_sorgente_uid / _id, ix_contratti_sorgente_uid / _id e ix_ddt_v_sorgente / ix_ddt_v_sorgente_id. L''arco R (bolla -> reso) la legge per sorgente_id, in tutti e due i modi, con l''indice ix_resi_sorgente_id: un reso nasce solo da una bolla, che ha chiave id. Nei rami B, E, F, U (le sorgenti delle commesse) la chiave del link sta nella colonna del suo tipo, vendite.commesse_sorgenti.sorgente_uid per il preventivo e sorgente_id per ordine, contratto e DDT (indici ix_commesse_sorgenti_sorgente_uid e uq_commesse_sorgenti_sorgente_commessa): il join verso il documento confronta colonne dello stesso tipo, senza cast, ed e'' leakproof anche sotto RLS. V e'' la revisione dell''offerta (madre -> figlia, revisione_padre_id), rango 60, non un''origine. Il vocabolario delle lettere e'' quello di vendite.vw_documento_lineage_archi: un arco nuovo si aggiunge qui, nei due modi. SET jit = off e plan_cache_mode = force_generic_plan: la funzione si pianifica una volta per sessione. BEGIN ATOMIC, SECURITY INVOKER.';
 ```
 
 </div>

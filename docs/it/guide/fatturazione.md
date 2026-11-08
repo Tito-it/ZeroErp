@@ -683,6 +683,14 @@ Il legame fra i primi due è `attivita_fatturabili.fattura_riga_id`. Non esiste
 una tabella di dettaglio *sotto* la riga di fattura: **il dettaglio sono le
 attività**.
 
+⭐ **La riga di fattura non ha una provenienza propria.** Aggrega attività che
+possono venire da documenti diversi, quindi «da dove viene» non è una sola cosa:
+si legge dalle sue attività, ognuna con la sua riga di commessa, che dice il
+documento e la riga d'origine. È la strada di `vendite.fn_fattura_origini`, la
+catena delle origini stampata in fattura. La riga di fattura resta invece
+**bersaglio** di una provenienza: una nota di credito può dire «vengo dalla riga
+5 di questa fattura».
+
 ### Come si aggrega
 
 L'aggregazione la fa il **backend**, non il database: il servizio

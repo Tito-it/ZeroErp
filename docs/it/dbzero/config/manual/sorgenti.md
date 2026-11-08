@@ -50,7 +50,7 @@ Il **nome del tipo** è il `codice_interno`, ed è uno solo per database e backe
 | `etichetta` | il nome del tipo come lo legge una persona sulla carta («Ordine», «DDT»): lo usa la stampa |
 | `apribile` | il documento ha una sua pagina, e chi lo mostra lo può aprire |
 | `citato_in_fattura` | un documento di questo tipo si cita fra le origini di una fattura |
-| `scope` | il meccanismo che legge il tipo (il push verso la commessa o verso il contratto, la pipeline, il flusso inverso, il magazzino); `CATALOGO` per i tipi che stanno qui solo per il nome |
+| `scope` | il meccanismo che legge il tipo (il push verso la commessa o verso il contratto, la pipeline, il flusso inverso); `CATALOGO` per i tipi che stanno qui solo per il nome, documenti di magazzino ed evento d'asset compresi: nessun meccanismo li legge per scope |
 | `tipo_doc_fiscale_id` | il tipo di documento fiscale associato, quando serve |
 
 ---
@@ -121,7 +121,8 @@ tipo di questo catalogo: l'import avrà una sua tabella di collegamento.
   i tipi di riga (`*_RIGA`) di vendita, e poi quelli di magazzino, escono: la riga sta in
   `sorgente_riga`. Il tipo `ATTIVITA` esce, e resta un'entità.
 * 2026-11-08 — `categoria` passa al vocabolario della natura (`DOCUMENTO` / `EVENTO`); lo scope
-  `ROW_VALIDATOR` esce, perché nessun tipo lo usa più.
+  `ROW_VALIDATOR` esce, perché nessun tipo lo usa più. Esce anche `MAGAZZINO`, che nessun
+  meccanismo leggeva: l'evento d'asset diventa `CATALOGO` come gli altri documenti di magazzino.
 
 ---
 

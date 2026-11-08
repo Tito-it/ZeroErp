@@ -7,7 +7,7 @@
 --   brief, marcatori di revisione, id di changeSet, sigle di decisione.
 --   Il giro 0.3 li aveva scritti con un prefisso di cronaca; il giro R.2 li
 --   riscrive interi, e questo file tiene il punto.
--- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86; giro M.2: 20261109-15 … -18; giro Z.5: 20261109-82, la firma nuova del riferimento; giro finale: 20261110-07 … -13)
+-- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87; giro C.3: 20261107-70 … -99, 20261108-01 … -04; giro P.1: 20261108-64 … -86; giro M.2: 20261109-15 … -18; giro Z.5: 20261109-82, la firma nuova del riferimento; giro finale: 20261110-07 … -13; giro finale bis: 20261110-32, le righe di fattura escono dall'elenco)
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R, giro R.2
 -- ------------------------------------------------------------
 -- Indice test (plan 7):
@@ -130,8 +130,8 @@ INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
                         ('vendite.ddt_righe'), ('vendite.contratti_righe'),
                         -- lotto T, giro T.3: le testate
                         ('vendite.ordini'), ('vendite.contratti'), ('vendite.fatture'),
-                        -- lotto C, giro C.1: le righe di fattura
-                        ('vendite.fatture_righe'),
+                        -- (le righe di fattura escono al giro finale bis, G-4: non hanno piu'
+                        --  le colonne della provenienza)
                         -- lotto C, giro C.2: il link documento -> commessa
                         ('vendite.commesse_sorgenti'),
                         -- lotto C, giro C.3: la riga di commessa
@@ -154,9 +154,8 @@ INSERT INTO _ix VALUES
   ('vendite.ix_contratti_sorgente_uid'), ('vendite.ix_contratti_sorgente_id'),
   ('vendite.ix_fatture_v_sorgente_uid'), ('vendite.ix_fatture_v_sorgente_id'),
   ('vendite.uq_ordini_v_sorgente_offerta'), ('vendite.uq_contratti_sorgente_offerta'),
-  -- lotto C, giro C.1
-  ('vendite.ix_fatture_righe_sorgente_id'), ('vendite.ix_fatture_righe_sorgente_uid'),
-  ('vendite.ix_fatture_righe_sorgente_riga'),
+  -- (i tre indici della provenienza delle righe di fattura, del giro C.1, escono con le
+  --  colonne al giro finale bis, G-4)
   -- lotto C, giro C.2 (l'unicita' porta il COMMENT sul vincolo, non sull'indice)
   ('vendite.ix_commesse_sorgenti_sorgente_uid'), ('vendite.ix_commesse_sorgenti_sorgente_riga'),
   -- lotto C, giro C.3

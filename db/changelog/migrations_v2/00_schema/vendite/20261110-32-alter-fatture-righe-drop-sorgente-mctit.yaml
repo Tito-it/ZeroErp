@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI FATTURA PERDE LE COLONNE DELLA PROVENIENZA: vendite.fatture_righe
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-4.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La riga di fattura aggrega n attivita' fatturabili con n provenienze: una
+#   provenienza sola non esiste per costruzione, e il backend la scriveva vuota.
+#   L'origine sta nella catena riga di fattura -> attivita_fatturabili.fattura_riga_id
+#   -> riga di commessa -> documento e riga, che questo changeSet non tocca, ed e'
+#   quella che legge vendite.fn_fattura_origini. Nessuna vista e nessuna funzione
+#   del database legge o scrive queste colonne (pg_depend e corpi, dbdev
+#   2026-11-08); nessuna tabella di storico le ha (lo storico e' uno snapshot jsonb).
+#   ⚠️ Le scrive il backend: questo changeSet si applica DOPO il backend che le
+#   toglie dalle sue INSERT (brief §8.25, BE-G4-a). Con il backend vecchio la
+#   generazione delle righe di fattura si ferma (colonna inesistente).
+#
+# ── ⚠️ CHE COSA SE NE VA ────────────────────────────────────────────
+#   * le quattro colonne sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga;
+#   * fk_fatture_righe_sorgente_tipo (la sua riga del registro degli indici FK esce
+#     in un changeSet di 80_data), chk_fatture_righe_sorgente_forma, gli indici
+#     ix_fatture_righe_sorgente_id/_uid/_riga;
+#   * il trigger ATTIVO generato sulla FK verso config.sorgenti, che porta
+#     sorgente_tipo_id in UPDATE OF e blocca il DROP COLUMN: IF EXISTS (§11.5: da
+#     zero non c'e' ancora, lo genera ci_apply, e senza la FK non lo genera piu').
+#     Il gemello su config.sorgenti (trg_sorgenti_a10_fatture_righe_block_deact_upd)
+#     lo ritira il generatore (dbops.fn_ritira_attivo_orfani) a ci_apply.
+#   Il guard unico e' gia' uscito nel changeSet precedente (20261110-31).
+#   Resta il lato «in uscita»: la riga di fattura e' ancora la riga del tipo
+#   FATTURA, e un altro documento puo' nascere da lei. Il COMMENT della tabella
+#   al presente. Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261110-32-alter-fatture-righe-drop-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261110-32-alter-fatture-righe-drop-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_righe: via sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, con
+        la FK, il CHECK di forma e i tre indici della provenienza; COMMENT della tabella al
+        presente. brief-db-sorgente-documento-e-riga §7.3, giro finale bis (G-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_trigger
+               WHERE tgrelid = 'vendite.fatture_righe'::regclass
+                 AND tgname = 'trg_fatture_righe_a10_guard_sorgente_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il trigger ATTIVO generato porta sorgente_tipo_id in UPDATE OF e blocca il
+              -- DROP COLUMN. IF EXISTS: su un database da zero, alla prima passata, non c'e'
+              -- ancora (lo genera ci_apply, e senza la FK non lo genera piu').
+              DROP TRIGGER IF EXISTS trg_fatture_righe_a10_sorgenti_require_attivo_ins_upd
+                  ON vendite.fatture_righe;
+
+              DROP INDEX vendite.ix_fatture_righe_sorgente_id;
+              DROP INDEX vendite.ix_fatture_righe_sorgente_uid;
+              DROP INDEX vendite.ix_fatture_righe_sorgente_riga;
+
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT chk_fatture_righe_sorgente_forma,
+                  DROP CONSTRAINT fk_fatture_righe_sorgente_tipo,
+                  DROP COLUMN sorgente_tipo_id,
+                  DROP COLUMN sorgente_id,
+                  DROP COLUMN sorgente_uid,
+                  DROP COLUMN sorgente_riga;
+
+              COMMENT ON TABLE vendite.fatture_righe IS
+                'Le righe economiche di una fattura: descrizione, articolo, quantita'', prezzo, sconto, IVA e imponibile congelati alla generazione, con l''attribuzione al billing account destinatario. La riga non ha una provenienza propria: aggrega una o piu'' attivita'' fatturabili, che la citano in vendite.attivita_fatturabili.fattura_riga_id, e l''origine di ciascuna e'' la sua riga di commessa. La riga di fattura puo'' essere a sua volta la provenienza di un altro documento: e'' la riga del tipo FATTURA in config.sorgenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: l'origine della riga di fattura e' la catena delle attivita'.
+              SELECT 1;

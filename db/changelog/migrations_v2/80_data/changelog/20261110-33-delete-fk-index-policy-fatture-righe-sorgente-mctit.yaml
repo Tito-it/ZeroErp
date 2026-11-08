@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DEGLI INDICI FK PERDE LA FK RITIRATA DI fatture_righe
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-4.
+#
+#   fk_fatture_righe_sorgente_tipo cade con la colonna sorgente_tipo_id
+#   (20261110-32): la sua riga di dbops.fk_index_policy (consentito = f) resta
+#   senza oggetto. Sta nel CSV base fk_index_policy.csv, che nessun changeSet
+#   carica: il file la tiene, il database no (la forma di 20261106-99 e
+#   20261107-50; il destino del CSV e' del blocco 10d di brief-db-revisione-dbops).
+#   Da zero la riga non c'e' (nessun loader, e senza la FK nessun seed la genera):
+#   il DELETE e' a vuoto. Forma: per coordinate complete, come la PK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-33-delete-fk-index-policy-fatture-righe-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261110-33-delete-fk-index-policy-fatture-righe-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.fk_index_policy la riga di fk_fatture_righe_sorgente_tipo, caduta con la
+        colonna. brief-db-sorgente-documento-e-riga §7.3, giro finale bis (G-4).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE (schema_name, table_name, constraint_name) IN (
+                     ('vendite', 'fatture_righe', 'fk_fatture_righe_sorgente_tipo'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La riga la rimette fn_populate_fk_index_policy() se la FK torna. Nessun INSERT qui.
+              SELECT 1;

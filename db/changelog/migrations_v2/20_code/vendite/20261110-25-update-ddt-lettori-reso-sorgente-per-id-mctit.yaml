@@ -1,0 +1,364 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA BOLLA DI RICONSEGNA TROVA IL SUO RESO PER sorgente_id
+#   Brief: brief-db-sorgente-documento-e-riga §7.3 «Il giro finale bis», G-3 (Tid, 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La bolla di una riconsegna dichiara il reso in sorgente_id: RESO_VENDITA ha
+#   chiave id (config.sorgenti.key_selector = 'id'), e script.trgfn_guard_sorgente
+#   rifiuta un uid per un tipo a chiave id. Il ramo «OR r.uid = p_sorgente_uid»
+#   verso vendite.resi.uid non trova mai niente. Il ramo dell'ordine resta com'e':
+#   la provenienza della bolla e' fuori da G-3.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   vendite.fn_ddt_vincoli_cliente e vendite.fn_ddt_trigger_ordine_testata: il reso
+#   si cerca per p_sorgente_id. Le firme restano (p_sorgente_uid serve all'ordine).
+#   fn_ddt_trigger_ordine_testata e' BEGIN ATOMIC: il suo COMMENT sta in un change a
+#   parte (pgjdbc). COMMENT al presente. Corpi di partenza: il vivo (dbdev,
+#   2026-11-08); per la BEGIN ATOMIC il 20261106-63, verificato uguale al vivo.
+#   Rollback: corpi e COMMENT di prima.
+#   pgTAP: vendite/test-sorgente-testate-bolle-resi-v1 (il test 8 legge
+#   fn_ddt_trigger_ordine_testata sulla riconsegna), vendite/test-esecutivi-ba-coppia-v1,
+#   vendite/test-sorgente-commenti-al-presente-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261110-25-update-ddt-lettori-reso-sorgente-per-id-mctit.yaml
+
+  - changeSet:
+      id: 20261110-25-update-ddt-lettori-reso-sorgente-per-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ddt_vincoli_cliente e vendite.fn_ddt_trigger_ordine_testata cercano il reso
+        dichiarato dalla bolla di riconsegna per p_sorgente_id, senza il ramo uid; COMMENT al presente.
+        brief-db-sorgente-documento-e-riga §7.3, G-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_vincoli_cliente' AND p.pronargs = 4;
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_trigger_ordine_testata' AND p.pronargs = 3;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_vincoli_cliente(
+                  p_ddt_id           vendite.ddt.id%TYPE,
+                  p_sorgente_tipo_id vendite.ddt.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     vendite.ddt.sorgente_uid%TYPE,
+                  p_sorgente_id      vendite.ddt.sorgente_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  vincolo            text,
+                  sorgente           config.sorgenti.codice_interno%TYPE,
+                  billing_account_id vendite.ddt.billing_account_id%TYPE,
+                  etichetta          text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- ⚠️ Tipi nudi DICHIARATI: vincolo e' un selettore (SORGENTE |
+              --   FULFILLMENT) senza colonna di vocabolario; etichetta e' una frase
+              --   composta per l'operatore.
+              DECLARE
+                  v_sorgente  config.sorgenti.codice_interno%TYPE;
+                  v_ba        vendite.ddt.billing_account_id%TYPE;
+                  v_etichetta text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da dove viene il cliente di una bolla, cioe' che cosa
+                  --   gli impedisce di cambiare (D-6 di brief-db-esecutivi-ba-
+                  --   coppia: «un esecutivo derivato ha il BA della sua
+                  --   sorgente»). Una riga per vincolo:
+                  --   - SORGENTE: la sorgente di testata e' un ordine o un reso
+                  --     (ORDINE_VENDITA, RESO_VENDITA). billing_account_id e'
+                  --     quello della sorgente (NULL compreso); etichetta NULL =
+                  --     dichiarata e non trovata (o invisibile sotto RLS);
+                  --   - FULFILLMENT: la bolla evade gia' righe d'ordine;
+                  --     etichetta = il primo ordine evaso.
+                  --   Nessuna riga: il cliente della bolla e' libero.
+                  -- E' il predicato condiviso (brief-db-testata-dopo-emissione
+                  --   §11, R-DB-1): lo usano il guard
+                  --   vendite.trgfn_ddt_guard_cliente_sorgente, che solleva, e
+                  --   la capability script.fn_available_actions_ddt, che spegne
+                  --   il campo. I due non possono rispondere in due modi.
+                  -- ⚠️ INVOKER come il guard: ordine, reso e fulfillment si
+                  --   leggono sotto la RLS di chi scrive.
+                  -- =========================================================
+
+                  -- 1. La sorgente di testata.
+                  --   L'ordine si cerca con la regola d'incontro (o.id = p_sorgente_id
+                  --   OR o.uid = p_sorgente_uid); il reso ha chiave id e si cerca per
+                  --   p_sorgente_id.
+                  IF p_sorgente_tipo_id IS NOT NULL
+                     AND (p_sorgente_id IS NOT NULL OR p_sorgente_uid IS NOT NULL) THEN
+                      SELECT s.codice_interno INTO v_sorgente
+                        FROM config.sorgenti s
+                       WHERE s.id = p_sorgente_tipo_id;
+
+                      IF v_sorgente = 'ORDINE_VENDITA' THEN
+                          SELECT o.billing_account_id,
+                                 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+                            INTO v_ba, v_etichetta
+                            FROM vendite.ordini o
+                           WHERE (o.id = p_sorgente_id OR o.uid = p_sorgente_uid);
+                      ELSIF v_sorgente = 'RESO_VENDITA' THEN
+                          SELECT r.billing_account_id,
+                                 'reso ' || COALESCE(r.numero, '#' || r.id::text)
+                            INTO v_ba, v_etichetta
+                            FROM vendite.resi r
+                           WHERE r.id = p_sorgente_id;
+                      END IF;
+
+                      IF v_sorgente IN ('ORDINE_VENDITA', 'RESO_VENDITA') THEN
+                          vincolo            := 'SORGENTE';
+                          sorgente           := v_sorgente;
+                          billing_account_id := v_ba;
+                          etichetta          := v_etichetta;
+                          RETURN NEXT;
+                      END IF;
+                  END IF;
+
+                  -- 2. Le righe d'ordine che la bolla evade gia': hanno il BA
+                  --    di prima.
+                  IF p_ddt_id IS NOT NULL THEN
+                      v_etichetta := NULL;
+                      SELECT 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+                        INTO v_etichetta
+                        FROM vendite.ddt_righe dr
+                        JOIN vendite.ordini_righe_fulfillment ful ON ful.ddt_riga_id = dr.id
+                        JOIN vendite.ordini_righe orr ON orr.id = ful.ordine_riga_id
+                        JOIN vendite.ordini o ON o.id = orr.ordine_id
+                       WHERE dr.ddt_id = p_ddt_id
+                       ORDER BY ful.id
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          vincolo            := 'FULFILLMENT';
+                          sorgente           := NULL;
+                          billing_account_id := NULL;
+                          etichetta          := v_etichetta;
+                          RETURN NEXT;
+                      END IF;
+                  END IF;
+
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_vincoli_cliente(bigint, bigint, uuid, bigint) IS
+                'Da dove viene il cliente di una bolla, cioe'' che cosa gli impedisce di cambiare. Una riga per vincolo: SORGENTE (la sorgente di testata, ORDINE_VENDITA o RESO_VENDITA, c''e'' quando il tipo e una delle due chiavi sono valorizzati; l''ordine si cerca con la regola d''incontro (o.id = p_sorgente_id OR o.uid = p_sorgente_uid), il reso per p_sorgente_id (ha chiave id); billing_account_id del documento, NULL compreso; etichetta NULL = dichiarato e non trovato, o invisibile sotto RLS) e FULFILLMENT (la bolla evade gia'' righe d''ordine; etichetta = il primo ordine). Nessuna riga = cliente libero. Predicato condiviso: il guard vendite.trgfn_ddt_guard_cliente_sorgente solleva da qui, la capability script.fn_available_actions_ddt spegne billing_account_id da qui. p_sorgente_id e'' in coda, DEFAULT NULL. INVOKER e STABLE, come il guard: ordine, reso e fulfillment si leggono sotto la RLS di chi scrive.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_trigger_ordine_testata(
+                  p_sorgente_tipo_id vendite.ddt.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     vendite.ddt.sorgente_uid%TYPE,
+                  p_sorgente_id      vendite.ddt.sorgente_id%TYPE DEFAULT NULL)
+              RETURNS vendite.ordini.fatturazione_trigger%TYPE
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                SELECT o.fatturazione_trigger
+                  FROM config.sorgenti so
+                  JOIN vendite.ordini o ON (o.id = p_sorgente_id OR o.uid = p_sorgente_uid)
+                 WHERE so.id = p_sorgente_tipo_id
+                   AND so.codice_interno = 'ORDINE_VENDITA'
+                UNION ALL
+                SELECT o.fatturazione_trigger
+                  FROM config.sorgenti so
+                  JOIN vendite.resi r ON r.id = p_sorgente_id
+                  JOIN LATERAL (SELECT orr.ordine_id
+                                  FROM vendite.resi_righe rr
+                                  JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                                 WHERE rr.reso_id = r.id
+                                 ORDER BY rr.id
+                                 LIMIT 1) x ON true
+                  JOIN vendite.ordini o ON o.id = x.ordine_id
+                 WHERE so.id = p_sorgente_tipo_id
+                   AND so.codice_interno = 'RESO_VENDITA';
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_ddt_trigger_ordine_testata(bigint, uuid, bigint) IS
+                'Il fatturazione_trigger dell''ordine dietro la testata di una bolla. Se la testata dichiara un ordine (ORDINE_VENDITA), e'' quell''ordine, cercato con la regola (o.id = p_sorgente_id OR o.uid = p_sorgente_uid). Se dichiara un reso (RESO_VENDITA, la bolla di riconsegna), cercato per p_sorgente_id (il reso ha chiave id), e'' l''ordine dietro le righe del reso (resi_righe.ordine_riga_id, la prima per id): la riconsegna segue la corsia dell''ordine da cui la merce era partita. NULL se la bolla non viene da un ordine ne'' da un reso nato da un ordine, se la sorgente manca o se il documento non e'' visibile (SECURITY INVOKER: la RLS di chi chiede). Serve alla riga-onere senza legame di fulfillment, scritta a mano sulla bolla, il cui trigger non si legge dal legame. La leggono vendite.fn_ddt_push_diagnosi e script.fn_check_ddt_emittibile. p_sorgente_id e'' in coda, DEFAULT NULL. BEGIN ATOMIC.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_vincoli_cliente(
+                  p_ddt_id           vendite.ddt.id%TYPE,
+                  p_sorgente_tipo_id vendite.ddt.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     vendite.ddt.sorgente_uid%TYPE,
+                  p_sorgente_id      vendite.ddt.sorgente_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  vincolo            text,
+                  sorgente           config.sorgenti.codice_interno%TYPE,
+                  billing_account_id vendite.ddt.billing_account_id%TYPE,
+                  etichetta          text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- ⚠️ Tipi nudi DICHIARATI: vincolo e' un selettore (SORGENTE |
+              --   FULFILLMENT) senza colonna di vocabolario; etichetta e' una frase
+              --   composta per l'operatore.
+              DECLARE
+                  v_sorgente  config.sorgenti.codice_interno%TYPE;
+                  v_ba        vendite.ddt.billing_account_id%TYPE;
+                  v_etichetta text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da dove viene il cliente di una bolla, cioe' che cosa
+                  --   gli impedisce di cambiare (D-6 di brief-db-esecutivi-ba-
+                  --   coppia: «un esecutivo derivato ha il BA della sua
+                  --   sorgente»). Una riga per vincolo:
+                  --   - SORGENTE: la sorgente di testata e' un ordine o un reso
+                  --     (ORDINE_VENDITA, RESO_VENDITA). billing_account_id e'
+                  --     quello della sorgente (NULL compreso); etichetta NULL =
+                  --     dichiarata e non trovata (o invisibile sotto RLS);
+                  --   - FULFILLMENT: la bolla evade gia' righe d'ordine;
+                  --     etichetta = il primo ordine evaso.
+                  --   Nessuna riga: il cliente della bolla e' libero.
+                  -- E' il predicato condiviso (brief-db-testata-dopo-emissione
+                  --   §11, R-DB-1): lo usano il guard
+                  --   vendite.trgfn_ddt_guard_cliente_sorgente, che solleva, e
+                  --   la capability script.fn_available_actions_ddt, che spegne
+                  --   il campo. I due non possono rispondere in due modi.
+                  -- ⚠️ INVOKER come il guard: ordine, reso e fulfillment si
+                  --   leggono sotto la RLS di chi scrive.
+                  -- =========================================================
+
+                  -- 1. La sorgente di testata.
+                  -- ⭐ rev 2026-11-06 (20261106-28, giro 0.3): la chiave nelle due
+                  --   grammatiche, (doc.id = p_sorgente_id OR doc.uid = p_sorgente_uid):
+                  --   oggi l'uid, dal lotto T l'id.
+                  IF p_sorgente_tipo_id IS NOT NULL
+                     AND (p_sorgente_id IS NOT NULL OR p_sorgente_uid IS NOT NULL) THEN
+                      SELECT s.codice_interno INTO v_sorgente
+                        FROM config.sorgenti s
+                       WHERE s.id = p_sorgente_tipo_id;
+
+                      IF v_sorgente = 'ORDINE_VENDITA' THEN
+                          SELECT o.billing_account_id,
+                                 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+                            INTO v_ba, v_etichetta
+                            FROM vendite.ordini o
+                           WHERE (o.id = p_sorgente_id OR o.uid = p_sorgente_uid);
+                      ELSIF v_sorgente = 'RESO_VENDITA' THEN
+                          SELECT r.billing_account_id,
+                                 'reso ' || COALESCE(r.numero, '#' || r.id::text)
+                            INTO v_ba, v_etichetta
+                            FROM vendite.resi r
+                           WHERE (r.id = p_sorgente_id OR r.uid = p_sorgente_uid);
+                      END IF;
+
+                      IF v_sorgente IN ('ORDINE_VENDITA', 'RESO_VENDITA') THEN
+                          vincolo            := 'SORGENTE';
+                          sorgente           := v_sorgente;
+                          billing_account_id := v_ba;
+                          etichetta          := v_etichetta;
+                          RETURN NEXT;
+                      END IF;
+                  END IF;
+
+                  -- 2. Le righe d'ordine che la bolla evade gia': hanno il BA
+                  --    di prima.
+                  IF p_ddt_id IS NOT NULL THEN
+                      v_etichetta := NULL;
+                      SELECT 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+                        INTO v_etichetta
+                        FROM vendite.ddt_righe dr
+                        JOIN vendite.ordini_righe_fulfillment ful ON ful.ddt_riga_id = dr.id
+                        JOIN vendite.ordini_righe orr ON orr.id = ful.ordine_riga_id
+                        JOIN vendite.ordini o ON o.id = orr.ordine_id
+                       WHERE dr.ddt_id = p_ddt_id
+                       ORDER BY ful.id
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          vincolo            := 'FULFILLMENT';
+                          sorgente           := NULL;
+                          billing_account_id := NULL;
+                          etichetta          := v_etichetta;
+                          RETURN NEXT;
+                      END IF;
+                  END IF;
+
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_vincoli_cliente(bigint, bigint, uuid, bigint) IS
+                'Da dove viene il cliente di una bolla, cioe'' che cosa gli impedisce di cambiare. Una riga per vincolo: SORGENTE (la sorgente di testata, ORDINE_VENDITA o RESO_VENDITA, c''e'' quando il tipo e una delle due chiavi sono valorizzati; il documento si cerca con (doc.id = p_sorgente_id OR doc.uid = p_sorgente_uid); billing_account_id del documento, NULL compreso; etichetta NULL = dichiarato e non trovato, o invisibile sotto RLS) e FULFILLMENT (la bolla evade gia'' righe d''ordine; etichetta = il primo ordine). Nessuna riga = cliente libero. Predicato condiviso: il guard vendite.trgfn_ddt_guard_cliente_sorgente solleva da qui, la capability script.fn_available_actions_ddt spegne billing_account_id da qui. p_sorgente_id e'' in coda, DEFAULT NULL. INVOKER e STABLE, come il guard: ordine, reso e fulfillment si leggono sotto la RLS di chi scrive.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_trigger_ordine_testata(
+                  p_sorgente_tipo_id vendite.ddt.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     vendite.ddt.sorgente_uid%TYPE,
+                  p_sorgente_id      vendite.ddt.sorgente_id%TYPE DEFAULT NULL)
+              RETURNS vendite.ordini.fatturazione_trigger%TYPE
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                SELECT o.fatturazione_trigger
+                  FROM config.sorgenti so
+                  JOIN vendite.ordini o ON (o.id = p_sorgente_id OR o.uid = p_sorgente_uid)
+                 WHERE so.id = p_sorgente_tipo_id
+                   AND so.codice_interno = 'ORDINE_VENDITA'
+                UNION ALL
+                SELECT o.fatturazione_trigger
+                  FROM config.sorgenti so
+                  JOIN vendite.resi r ON (r.id = p_sorgente_id OR r.uid = p_sorgente_uid)
+                  JOIN LATERAL (SELECT orr.ordine_id
+                                  FROM vendite.resi_righe rr
+                                  JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                                 WHERE rr.reso_id = r.id
+                                 ORDER BY rr.id
+                                 LIMIT 1) x ON true
+                  JOIN vendite.ordini o ON o.id = x.ordine_id
+                 WHERE so.id = p_sorgente_tipo_id
+                   AND so.codice_interno = 'RESO_VENDITA';
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_ddt_trigger_ordine_testata(bigint, uuid, bigint) IS
+                'Il fatturazione_trigger dell''ordine dietro la testata di una bolla. Se la testata dichiara un ordine (ORDINE_VENDITA), e'' quell''ordine, cercato con la regola (o.id = p_sorgente_id OR o.uid = p_sorgente_uid). Se dichiara un reso (RESO_VENDITA, la bolla di riconsegna), e'' l''ordine dietro le righe del reso (resi_righe.ordine_riga_id, la prima per id): la riconsegna segue la corsia dell''ordine da cui la merce era partita. NULL se la bolla non viene da un ordine ne'' da un reso nato da un ordine, se la sorgente manca o se il documento non e'' visibile (SECURITY INVOKER: la RLS di chi chiede). Serve alla riga-onere senza legame di fulfillment, scritta a mano sulla bolla, il cui trigger non si legge dal legame. La leggono vendite.fn_ddt_push_diagnosi e script.fn_check_ddt_emittibile. p_sorgente_id e'' in coda, DEFAULT NULL. BEGIN ATOMIC.';

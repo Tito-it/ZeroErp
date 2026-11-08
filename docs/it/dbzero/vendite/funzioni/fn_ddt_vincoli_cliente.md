@@ -48,9 +48,9 @@ BEGIN
     -- =========================================================
 
     -- 1. La sorgente di testata.
-    -- ⭐ rev 2026-11-06 (20261106-28, giro 0.3): la chiave nelle due
-    --   grammatiche, (doc.id = p_sorgente_id OR doc.uid = p_sorgente_uid):
-    --   oggi l'uid, dal lotto T l'id.
+    --   L'ordine si cerca con la regola d'incontro (o.id = p_sorgente_id
+    --   OR o.uid = p_sorgente_uid); il reso ha chiave id e si cerca per
+    --   p_sorgente_id.
     IF p_sorgente_tipo_id IS NOT NULL
        AND (p_sorgente_id IS NOT NULL OR p_sorgente_uid IS NOT NULL) THEN
         SELECT s.codice_interno INTO v_sorgente
@@ -68,7 +68,7 @@ BEGIN
                    'reso ' || COALESCE(r.numero, '#' || r.id::text)
               INTO v_ba, v_etichetta
               FROM vendite.resi r
-             WHERE (r.id = p_sorgente_id OR r.uid = p_sorgente_uid);
+             WHERE r.id = p_sorgente_id;
         END IF;
 
         IF v_sorgente IN ('ORDINE_VENDITA', 'RESO_VENDITA') THEN
@@ -108,7 +108,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ddt_vincoli_cliente(p_ddt_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid uuid, p_sorgente_id bigint)
-IS 'Da dove viene il cliente di una bolla, cioe'' che cosa gli impedisce di cambiare. Una riga per vincolo: SORGENTE (la sorgente di testata, ORDINE_VENDITA o RESO_VENDITA, c''e'' quando il tipo e una delle due chiavi sono valorizzati; il documento si cerca con (doc.id = p_sorgente_id OR doc.uid = p_sorgente_uid); billing_account_id del documento, NULL compreso; etichetta NULL = dichiarato e non trovato, o invisibile sotto RLS) e FULFILLMENT (la bolla evade gia'' righe d''ordine; etichetta = il primo ordine). Nessuna riga = cliente libero. Predicato condiviso: il guard vendite.trgfn_ddt_guard_cliente_sorgente solleva da qui, la capability script.fn_available_actions_ddt spegne billing_account_id da qui. p_sorgente_id e'' in coda, DEFAULT NULL. INVOKER e STABLE, come il guard: ordine, reso e fulfillment si leggono sotto la RLS di chi scrive.';
+IS 'Da dove viene il cliente di una bolla, cioe'' che cosa gli impedisce di cambiare. Una riga per vincolo: SORGENTE (la sorgente di testata, ORDINE_VENDITA o RESO_VENDITA, c''e'' quando il tipo e una delle due chiavi sono valorizzati; l''ordine si cerca con la regola d''incontro (o.id = p_sorgente_id OR o.uid = p_sorgente_uid), il reso per p_sorgente_id (ha chiave id); billing_account_id del documento, NULL compreso; etichetta NULL = dichiarato e non trovato, o invisibile sotto RLS) e FULFILLMENT (la bolla evade gia'' righe d''ordine; etichetta = il primo ordine). Nessuna riga = cliente libero. Predicato condiviso: il guard vendite.trgfn_ddt_guard_cliente_sorgente solleva da qui, la capability script.fn_available_actions_ddt spegne billing_account_id da qui. p_sorgente_id e'' in coda, DEFAULT NULL. INVOKER e STABLE, come il guard: ordine, reso e fulfillment si leggono sotto la RLS di chi scrive.';
 ```
 
 </div>

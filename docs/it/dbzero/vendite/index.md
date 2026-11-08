@@ -356,7 +356,7 @@ search:
 - [fn_upsert_commessa_attivita](funzioni/fn_upsert_commessa_attivita.md) — Scrive, o riscrive, una riga di `vendite.commesse_attivita` sulla chiave `(commessa_id, segment_key)`: è la porta da cui il lavoro entra in commessa, dal push di un documento, dalla porta degli oneri o da una rettifica. Restituisce l'id della riga e se è nata ora o è stata aggiornata.
 - [fn_versioni_listino_da_chiudere](funzioni/fn_versioni_listino_da_chiudere.md)
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 10-09-2026)
-- [trgfn_attivita_fatturabili_guard_commessa](funzioni/trgfn_attivita_fatturabili_guard_commessa.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_attivita_fatturabili_guard_commessa()` applica il guardrail anti-bypass sul dominio `attivita_fatturabili`, impedendo scritture senza collegamento commessa quando il flag è attivo.
+- [trgfn_attivita_fatturabili_guard_commessa](funzioni/trgfn_attivita_fatturabili_guard_commessa.md) — Il guard che tiene coerente un'attività fatturabile con la sua commessa: la riga di commessa da cui l'attività nasce esiste e appartiene alla commessa che l'attività dichiara.
 - [trgfn_attivita_fatturabili_guard_fatturato](funzioni/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
 - [trgfn_attivita_fatturabili_guard_quantita_immutabile](funzioni/trgfn_attivita_fatturabili_guard_quantita_immutabile.md) — (rev 2026-08-21)
 - [trgfn_attivita_fatturabili_normalize](funzioni/trgfn_attivita_fatturabili_normalize.md) — Completa, prima della scrittura, due campi di un'attività fatturabile che possono arrivare vuoti: il **tipo di documento fiscale** e la **valuta**. Montata `BEFORE INSERT` e `BEFORE UPDATE` delle colonne di competenza, della riga di commessa, del cliente, del tipo di documento fiscale e della valuta (`trg_attivita_fatturabili_normalize_ins_upd`).
@@ -473,7 +473,7 @@ search:
 - [trgfn_resi_accrediti_guard](funzioni/trgfn_resi_accrediti_guard.md) — (rev 2026-08-18)
 - [trgfn_resi_default_magazzino](funzioni/trgfn_resi_default_magazzino.md)
 - [trgfn_resi_gen_numero](funzioni/trgfn_resi_gen_numero.md) — (rev 2026-08-31, sera)
-- [trgfn_resi_guard_cliente_ddt](funzioni/trgfn_resi_guard_cliente_ddt.md) — **Un reso ha il cliente della bolla da cui nasce, anche quando la bolla non ne ha uno.**
+- [trgfn_resi_guard_cliente_ddt](funzioni/trgfn_resi_guard_cliente_ddt.md) — Il guard che tiene il reso legato alla sua bolla: il reso nasce solo da una bolla di vendita, e ha il cliente di quella bolla, anche quando la bolla non ne ha uno.
 - [trgfn_resi_guard_ddt_consegnato](funzioni/trgfn_resi_guard_ddt_consegnato.md) — **«Non si rende ciò che non è stato consegnato»**: `BEFORE INSERT` su `vendite.resi`, ammette il reso solo se la bolla d'origine è in stato **`CONSEGNATO`** (`E_RESO_DDT_NON_CONSEGNATO`).
 - [trgfn_resi_guard_magazzino](funzioni/trgfn_resi_guard_magazzino.md)
 - [trgfn_resi_guard_transizione](funzioni/trgfn_resi_guard_transizione.md) — (rev 2026-07-13)
