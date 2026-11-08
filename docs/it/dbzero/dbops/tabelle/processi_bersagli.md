@@ -18,10 +18,12 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | debito_dichiarato | boolean | NO | false |
+| porta_scrittura | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_processi_bersagli_porta_qualificata |  |
 | CHECK | chk_processi_bersagli_via_colonna |  |
 | FOREIGN KEY | fk_processi_bersagli_emittente_via | emittente_via |
 | FOREIGN KEY | fk_processi_bersagli_processi | processo_id |

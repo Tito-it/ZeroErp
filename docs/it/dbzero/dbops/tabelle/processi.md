@@ -40,6 +40,7 @@
 | CHECK | chk_processi_contratto_solo_command |  |
 | CHECK | chk_processi_convergenza_ci |  |
 | CHECK | chk_processi_jobname_pgagent_non_vuoto |  |
+| CHECK | chk_processi_ritiro_con_data |  |
 | CHECK | chk_processi_segno_di_vita |  |
 | CHECK | chk_processi_sessione_senza_tolleranza |  |
 | CHECK | chk_processi_tolleranza_positiva |  |

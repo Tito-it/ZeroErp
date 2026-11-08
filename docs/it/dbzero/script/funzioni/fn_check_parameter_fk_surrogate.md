@@ -18,8 +18,8 @@ CREATE OR REPLACE FUNCTION script.fn_check_parameter_fk_surrogate(p_code text, p
  STABLE
 AS $function$
 -- Scopo: check FK-surrogata generico per parametri.
--- Cerca un pattern abilitato in config.parameter_fk_surrogate
--- che matchi p_code (EXACT prioritario su LIKE), poi verifica
+-- Chiede a script.fn_parameter_fk_surrogate_regola la regola
+-- che governa p_code (EXACT prioritario su LIKE), poi verifica
 -- che p_value esista in <target_schema>.<target_table>.
 -- <target_column> via SQL dinamico.
 -- Ritorna true (passa) se: p_value assente, o nessun pattern
@@ -47,16 +47,12 @@ BEGIN
         RETURN true;
     END IF;
 
+    -- La regola la sceglie il risolutore, la stessa che legge il presidio
+    -- dbops.vw_parameter_fk_surrogate_dangling.
     SELECT pfs.target_schema, pfs.target_table, pfs.target_column
       INTO v_target_schema, v_target_table, v_target_column
       FROM config.parameter_fk_surrogate pfs
-     WHERE pfs.enabled
-       AND (
-              (pfs.match_mode = 'EXACT' AND pfs.code_pattern = p_code)
-           OR (pfs.match_mode = 'LIKE'  AND p_code LIKE pfs.code_pattern)
-       )
-     ORDER BY (pfs.match_mode = 'EXACT') DESC, length(pfs.code_pattern) DESC
-     LIMIT 1;
+     WHERE pfs.id = script.fn_parameter_fk_surrogate_regola(p_code);
 
     IF v_target_schema IS NULL THEN
         -- Nessuna regola: code non soggetto a guard.
@@ -73,7 +69,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_parameter_fk_surrogate(p_code text, p_value text)
-IS 'Check FK-surrogata generico per parametri. Lookup registry config.parameter_fk_surrogate (EXACT > LIKE), poi lookup dinamico sul target. Ritorna boolean. Usata dai dispatcher config.trgfn_parameters_fk_surrogate_dispatch e config.trgfn_parameter_overrides_fk_surrogate_dispatch. ⭐ rev 2026-08-31: «valore assente» comprende la STRINGA VUOTA e non solo il NULL. L''argomento sta sul modello e non sulla comodita'': config.parameters.default_value e config.parameter_overrides.overridden_value sono ENTRAMBE NOT NULL, quindi il ramo NULL era codice irraggiungibile da tutti e due i chiamanti e la regola che dichiarava — «assenza di valore, nessun controllo» — non si applicava mai; su un parametro il vuoto e'' l''unica forma che «nessun valore» puo'' assumere. ⛔ Senza questa rev, db/changelog/migrations_v2/80_data/sql/config/parameters.csv e'' un file INTOCCABILE: la riga DEFAULT_UTILITY ha default_value vuoto e una riga di registry attiva, il suo mirror e'' runOnChange, e qualunque modifica al CSV lo sveglia e fa morire il migrate su quella riga (successo il 2026-08-25). ⚠️ Solo la stringa vuota, NON il bianco: un valore fatto di spazi resta rifiutato, perche'' un codice_interno non e'' mai bianco e questa check e'' l''unica cosa che intercetta quel refuso. brief-db-default-iva-chiave-naturale §2-bis (decisione A, Tid 2026-08-31).';
+IS 'Check FK-surrogata generica per i parametri: la regola che governa p_code la sceglie script.fn_parameter_fk_surrogate_regola, poi un lookup dinamico verifica che p_value esista in <target_schema>.<target_table>.<target_column>. Ritorna true se il valore e'' assente, se nessuna regola governa il codice o se il lookup lo trova; false solo se una regola lo governa e il valore non esiste. «Valore assente» comprende la stringa vuota: config.parameters.default_value e config.parameter_overrides.overridden_value sono NOT NULL, e su un parametro il vuoto e'' l''unica forma che «nessun valore» puo'' assumere. Solo la stringa vuota, non il bianco: un valore fatto di spazi resta rifiutato, perche'' un codice_interno non e'' mai bianco. La usano i dispatcher config.trgfn_parameters_fk_surrogate_dispatch e config.trgfn_parameter_overrides_fk_surrogate_dispatch, e il presidio dbops.vw_parameter_fk_surrogate_dangling.';
 ```
 
 </div>

@@ -202,6 +202,7 @@ search:
 - [fn_norm_testo](manual/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](manual/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_notify_permessi_catalogo](manual/fn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
+- [fn_parameter_fk_surrogate_regola](manual/fn_parameter_fk_surrogate_regola.md) — Dice quale regola di `config.parameter_fk_surrogate` governa un codice di parametro, e ne restituisce l'id: al massimo una. Vuoto (`NULL`) vuol dire che nessuna regola lo governa, e il parametro non è soggetto alla verifica.
 - [fn_pgtap_emittente_operatore](manual/fn_pgtap_emittente_operatore.md) — Restituisce l'**emittente fiscale su cui l'operatore del contesto può scrivere**.
 - [fn_pgtap_emittente_sr_operatore](manual/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_set_contesto_operatore](manual/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
