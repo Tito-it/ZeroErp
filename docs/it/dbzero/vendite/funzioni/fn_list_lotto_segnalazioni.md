@@ -267,7 +267,24 @@ BEGIN
                    --   scala di ripiego.
                    -- ⚠️ NULL entra e NULL esce: la segnalazione del GIRO non
                    --   ha un documento da nominare.
-                   vendite.fn_riferimento_gruppo_fatturabile(ll.gruppo_key)
+                   -- ⭐ rev 2026-11-08 (giro Z.5, V-7-bis): con la COMMESSA
+                   --   DI QUESTO LOTTO, per il documento senza numero. La
+                   --   dichiara la riga (commessa_id, scritta da chi solleva);
+                   --   se la riga non la dice (l'uscita dal giro), quella che
+                   --   dichiarano le altre righe dello stesso documento nello
+                   --   stesso lotto, se e' UNA sola. Due commesse diverse per
+                   --   lo stesso documento nello stesso lotto non si scelgono:
+                   --   si lascia il ripiego della funzione.
+                   vendite.fn_riferimento_gruppo_fatturabile(
+                       ll.gruppo_key,
+                       COALESCE(
+                           ll.commessa_id,
+                           (SELECT CASE WHEN count(DISTINCT s.commessa_id) = 1
+                                        THEN min(s.commessa_id) END
+                              FROM vendite.fatturazione_lotti_log s
+                             WHERE s.lotto_id   = ll.lotto_id
+                               AND s.gruppo_key = ll.gruppo_key
+                               AND s.commessa_id IS NOT NULL)))
               FROM vendite.fatturazione_lotti_log ll
              WHERE ll.lotto_id = $1
         ), filtrata AS (

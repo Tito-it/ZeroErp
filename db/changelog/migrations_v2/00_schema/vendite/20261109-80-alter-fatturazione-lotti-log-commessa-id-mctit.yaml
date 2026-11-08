@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SEGNALAZIONE DEL LOTTO DICE ANCHE LA COMMESSA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.5 (V-7-bis, Tid 2026-11-08).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La scheda Critiche nomina un documento senza numero (un consumo) col
+#   codice della commessa. La commessa la cercava fra quelle APERTE del
+#   documento: a commessa chiusa tornava la chiave grezza, e su un lotto
+#   vecchio col documento rientrato in un'altra commessa usciva il codice
+#   sbagliato. La domanda giusta e' «di quale commessa era il documento in
+#   QUESTO lotto», e la risposta la conosce chi scrive la segnalazione: il
+#   pull per commessa ricava i documenti proprio dalla commessa
+#   (script.fn_gruppi_di_commessa_nel_lotto).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   * una colonna nullable, senza FK (un log non fallisce) e senza indice:
+#     la si legge solo insieme a lotto_id e gruppo_key, e l'indice per
+#     lotto c'e' gia' (ix_fatturazione_lotti_log_lotto_id);
+#   * la scrive vendite.fn_log_pipeline_fase (-81), l'unico scrittore;
+#   * nessuno storico, nessuna copia di riga della tabella (catalogo,
+#     2026-11-08).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261109-80-alter-fatturazione-lotti-log-commessa-id-mctit.yaml
+
+  - changeSet:
+      id: 20261109-80-alter-fatturazione-lotti-log-commessa-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatturazione_lotti_log.commessa_id: la commessa della segnalazione, scritta da chi solleva. brief-db-sorgente-documento-e-riga §7.2 lotto Z, giro Z.5 (V-7-bis, Tid 2026-11-08).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_log
+                  ADD COLUMN commessa_id bigint;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.fatturazione_lotti_log.commessa_id IS 'La COMMESSA di cui parla la segnalazione, quando chi la scrive la conosce. Accanto a gruppo_key (il documento): la scrive CHI SOLLEVA, con lo stesso principio, e il database non la deriva. Serve al riferimento leggibile della scheda Critiche (vendite.fn_list_lotto_segnalazioni -> vendite.fn_riferimento_gruppo_fatturabile): un documento senza numero (un consumo) si nomina col codice della commessa DI QUESTO LOTTO, anche quando quella commessa e'' poi chiusa o il documento e'' rientrato in un''altra. NULL = chi scrive non la conosce (una segnalazione del giro, l''uscita di un documento dal giro): il riferimento la cerca fra le altre righe dello stesso documento nello stesso lotto. ⛔ Nessuna FK, di proposito: un log non deve poter fallire per un riferimento in cio'' che registra, perche'' fallirebbe dentro il ramo EXCEPTION di qualcun altro (la stessa regola di gruppo_key).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_log DROP COLUMN IF EXISTS commessa_id;
