@@ -1072,7 +1072,7 @@ def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any
     with transaction.atomic():
         report = pr_run_commesse_push_one(
             sorgente_codice=SORGENTE_ORDINE_VENDITA,
-            sorgente_uid=ordine_id,
+            sorgente_id=ordine_id,
         )
 
         if report["stato"] == "COMPLETATO":

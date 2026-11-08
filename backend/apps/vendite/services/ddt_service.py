@@ -1088,7 +1088,7 @@ def push_a_commessa(ddt_id: int, *, user: str | None = None) -> dict[str, Any]:
     with transaction.atomic():
         report = pr_run_commesse_push_one(
             sorgente_codice=SORGENTE_DDT_VENDITA,
-            sorgente_uid=ddt_id,
+            sorgente_id=ddt_id,
             user=user,
         )
 

@@ -20,9 +20,9 @@ Indice test eseguiti:
 8c) CommesseServiceTests.test_fn_list_commessa_attivita_order_dir_invalido
 9) CommesseServiceTests.test_pr_run_commesse_push_invalid_source_types
 10) CommesseServiceTests.test_build_handlers_only_active_sources
-11) CommesseServiceTests.test_pr_run_commesse_push_one_ok_passa_sorgente_uid
+11) CommesseServiceTests.test_pr_run_commesse_push_one_ok_passa_sorgente_id
 12) CommesseServiceTests.test_pr_run_commesse_push_one_codice_sorgente_invalido
-13) CommesseServiceTests.test_pr_run_commesse_push_one_sorgente_uid_invalido
+13) CommesseServiceTests.test_pr_run_commesse_push_one_sorgente_id_invalido
 13a) CommesseServiceTests.test_pr_run_commesse_push_one_parziale_solleva_all_or_nothing
 13b) CommesseServiceTests.test_pr_run_commesse_push_one_errore_solleva_all_or_nothing
 13c) CommesseServiceTests.test_pr_run_commesse_push_one_skipped_passa_dritto
@@ -184,11 +184,11 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # --- pr_run_commesse_push_one ---
 
     # Scopo: push singolo ok → orchestrator chiamato con source_types=[codice]
-    # e sorgente_uid valorizzato. Payload ritorno equivalente al batch.
+    # e sorgente_id valorizzato. Payload ritorno equivalente al batch.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     @patch("apps.vendite.services.commesse_service._build_handlers")
-    def test_pr_run_commesse_push_one_ok_passa_sorgente_uid(self, mock_build, mock_repo_cls, mock_orch_cls):
+    def test_pr_run_commesse_push_one_ok_passa_sorgente_id(self, mock_build, mock_repo_cls, mock_orch_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
         mock_repo_cls.return_value = MagicMock()
@@ -206,14 +206,14 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
         mock_orch_cls.return_value.run.return_value = report
 
-        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
+        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=42)
 
         # Orchestrator chiamato con i parametri attesi (righe_ids=None:
         # push completo, nessun sottoinsieme selettivo).
         mock_orch_cls.return_value.run.assert_called_once_with(
             source_types=["PREVENTIVO"],
             dry_run=False,
-            sorgente_uid=42,
+            sorgente_id=42,
             righe_ids=None,
         )
         # Payload coerente con pr_run_commesse_push (forma identica).
@@ -267,7 +267,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self._push_one_con_commesse(mock_build, mock_orch_cls, commesse_ids={7701})
 
         result = pr_run_commesse_push_one(
-            sorgente_codice="PREVENTIVO", sorgente_uid=42, user="alice",
+            sorgente_codice="PREVENTIVO", sorgente_id=42, user="alice",
         )
 
         # Il ponte passa SOLO le righe upsertate da questo push (T1): mai
@@ -302,7 +302,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             attivita_ids_per_commessa={7701: []},
         )
 
-        pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
+        pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=42)
 
         mock_repo.rendi_commessa_emittibile.assert_called_once_with(
             commessa_id=7701, righe_ids=[], user=None,
@@ -323,7 +323,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
 
         result = pr_run_commesse_push_one(
-            sorgente_codice="PREVENTIVO", sorgente_uid=42, dry_run=True,
+            sorgente_codice="PREVENTIVO", sorgente_id=42, dry_run=True,
         )
 
         mock_repo.rendi_commessa_emittibile.assert_not_called()
@@ -445,14 +445,14 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_build.return_value = [handler_mock]
 
         with self.assertRaises(ServiceError) as ctx:
-            pr_run_commesse_push_one(sorgente_codice="SORGENTE_INESISTENTE", sorgente_uid=1)
+            pr_run_commesse_push_one(sorgente_codice="SORGENTE_INESISTENTE", sorgente_id=1)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
         self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail or "")
 
-    # Scopo: sorgente_uid non valido (None/0/negativo) → ServiceError validazione.
+    # Scopo: sorgente_id non valido (None/0/negativo) → ServiceError validazione.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     @patch("apps.vendite.services.commesse_service._build_handlers")
-    def test_pr_run_commesse_push_one_sorgente_uid_invalido(self, mock_build, mock_repo_cls):
+    def test_pr_run_commesse_push_one_sorgente_id_invalido(self, mock_build, mock_repo_cls):
         from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
         mock_repo_cls.return_value = MagicMock()
@@ -460,9 +460,9 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         handler_mock.sorgente_codice = "PREVENTIVO"
         mock_build.return_value = [handler_mock]
 
-        for invalid_uid in (0, -1):
+        for invalid_id in (0, -1):
             with self.assertRaises(ServiceError) as ctx:
-                pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=invalid_uid)
+                pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=invalid_id)
             self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
 
     # Scopo: all-or-nothing su PARZIALE — l'orchestrator ritorna PARZIALE
@@ -496,7 +496,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_orch_cls.return_value.run.return_value = report
 
         with self.assertRaises(ServiceError) as ctx:
-            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=7)
+            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=7)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
         self.assertIn("segment_key=PREVENTIVO:abc:R:4", ctx.exception.detail or "")
 
@@ -528,7 +528,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_orch_cls.return_value.run.return_value = report
 
         with self.assertRaises(ServiceError) as ctx:
-            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=8)
+            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=8)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
 
     # Scopo: dry_run con esito PARZIALE NON solleva — la simulazione e'
@@ -562,7 +562,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         mock_orch_cls.return_value.run.return_value = report
 
         result = pr_run_commesse_push_one(
-            sorgente_codice="PREVENTIVO", sorgente_uid=10, dry_run=True,
+            sorgente_codice="PREVENTIVO", sorgente_id=10, dry_run=True,
         )
         # Diagnostica esposta normalmente: caller decide cosa farne.
         self.assertEqual(result["stato"], "PARZIALE")
@@ -587,7 +587,7 @@ class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         report = PushReport(dry_run=False, stato="SKIPPED", durata_ms=0)
         mock_orch_cls.return_value.run.return_value = report
 
-        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=9)
+        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_id=9)
         self.assertEqual(result["stato"], "SKIPPED")
 
     # --- fn_get_commesse_push_log ---

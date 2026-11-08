@@ -1944,7 +1944,7 @@ def delete_componente(
 # Scopo: Push preventivo accettato in commessa per pipeline fatturazione.
 # Obiettivo: guard stato ACCETTATO + discovery righe eleggibili, poi delega
 # al CommessaPushOrchestrator filtrato sul singolo preventivo
-# (`pr_run_commesse_push_one(sorgente_codice='PREVENTIVO', sorgente_uid=preventivo_id)`).
+# (`pr_run_commesse_push_one(sorgente_codice='PREVENTIVO', sorgente_id=preventivo_id)`).
 # Perimetro: questa fn copre solo la Fase 1 (commesse_attivita); l'emit
 # verso attivita_fatturabili (Fase 3) per preventivi `fatturazione_immediata=TRUE`
 # e' tracciato in PR2 (vedi WIP sviluppo-push-singolo-preventivo §9).
@@ -1996,7 +1996,7 @@ def push_a_commessa(
     with transaction.atomic():
         report = pr_run_commesse_push_one(
             sorgente_codice=SORGENTE_PREVENTIVO,
-            sorgente_uid=preventivo_id,
+            sorgente_id=preventivo_id,
             righe_ids=righe_ids,
         )
 

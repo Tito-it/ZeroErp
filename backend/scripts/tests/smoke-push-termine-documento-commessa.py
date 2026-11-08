@@ -276,7 +276,7 @@ with transaction.atomic():
     # 0) BINDING. La fn espone le colonne (T.1) e il PushableRow le porta
     #    (`col_map.get`, ad1151da9): e' il punto esatto in cui il fix BE era
     #    INERTE fino al changeset di oggi.
-    rows_a = repo_commesse.fetch_pushable_rows("ORDINE_VENDITA", sorgente_uid=ord_a)
+    rows_a = repo_commesse.fetch_pushable_rows("ORDINE_VENDITA", sorgente_id=ord_a)
     check("0) fn_list -> PushableRow porta termine e modalita' dell'ordine",
           len(rows_a) == 1
           and rows_a[0].termine_pagamento_id == term_doc
@@ -287,8 +287,8 @@ with transaction.atomic():
     print()
 
     # --- push REALE (handler + ponte approvazione + PRONTA_FATTURAZIONE) ----
-    res_a = pr_run_commesse_push_one(sorgente_codice="ORDINE_VENDITA", sorgente_uid=ord_a)
-    res_b = pr_run_commesse_push_one(sorgente_codice="ORDINE_VENDITA", sorgente_uid=ord_b)
+    res_a = pr_run_commesse_push_one(sorgente_codice="ORDINE_VENDITA", sorgente_id=ord_a)
+    res_b = pr_run_commesse_push_one(sorgente_codice="ORDINE_VENDITA", sorgente_id=ord_b)
     if len(res_a["commesse_ids"]) != 1 or len(res_b["commesse_ids"]) != 1:
         raise SystemExit(f"Push inatteso: A->{res_a['commesse_ids']} B->{res_b['commesse_ids']}")
     com_a, com_b = res_a["commesse_ids"][0], res_b["commesse_ids"][0]

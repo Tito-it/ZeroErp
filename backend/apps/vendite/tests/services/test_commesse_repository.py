@@ -78,7 +78,7 @@ _ORDINI_COLS = [
     ("ordine_id",), ("ordine_uid",), ("riga_id",),
     ("billing_account_id",), ("utility_id",), ("emittente_soggetto_ruolo_id",),
     ("competenza_dal",), ("competenza_al",), ("fatturazione_immediata",),
-    ("sorgente_tipo_id",), ("sorgente_uid",), ("segment_key",),
+    ("sorgente_tipo_id",), ("sorgente_chiave",), ("segment_key",),
     ("articolo_id",), ("istanza_utility_id",), ("data_attivita",),
     ("uom_id",), ("quantita",), ("qta_operativa",),
     ("uom_operativa_id",), ("factor_to_base",), ("competenza_mese",),
@@ -472,7 +472,7 @@ class CommesseRepositoryUnitTests(TestCase):
         cur = _mock_cursor(fetchall=[], description=_ORDINI_COLS)
         mock_cursor_factory.return_value = cur
         repo = CommesseRepository()
-        repo.fetch_pushable_rows("PREVENTIVO", sorgente_uid=42, righe_ids=[7, 9])
+        repo.fetch_pushable_rows("PREVENTIVO", sorgente_id=42, righe_ids=[7, 9])
         sql, params = cur.execute.call_args[0]
         self.assertIn("%s, %s, %s, %s, %s::bigint[]", sql)
         self.assertEqual(params, [None, None, None, 42, [7, 9]])
@@ -483,7 +483,7 @@ class CommesseRepositoryUnitTests(TestCase):
         repo = CommesseRepository()
         with self.assertRaises(ServiceError) as ctx:
             repo.fetch_pushable_rows(
-                "ORDINE_VENDITA", sorgente_uid=42, righe_ids=[7],
+                "ORDINE_VENDITA", sorgente_id=42, righe_ids=[7],
             )
         # ⚠️ Il codice distingue QUESTO rifiuto da quello del test sopra: senza,
         #    i due test proverebbero la stessa cosa e uno dei due rami potrebbe
