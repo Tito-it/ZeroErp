@@ -183,9 +183,9 @@ tutti ritirati
 - Metodo: `DELETE`
 - Path: `/api/v1/vendite/preventivi/{id}/`
 - Scopo: pulizia della bozza abbandonata dal drawer (pattern «abbandono bozza»). Un preventivo reale non si cancella, si annulla (`POST /{id}/stato/` con `ANNULLATO`)
-- Regole: stato BOZZA, zero righe, zero pratiche collegate; altrimenti 409 `E_PREV_STATO_NON_MODIFICABILE` (messaggio dedicato per ciascun caso)
-- Output `200`: `{ "data": { "status": "ok" | "noop", "preventivo_id": 1 } }`
-- Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409)
+- Regole: la regola «si cancella solo la bozza vuota» la giudica **solo il DB** (`vendite.trgfn_doc_guard_delete_solo_bozza`, dal 2026-11-08: il service non la ripete, brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a): fuori bozza 409 `E_DELETE_DOC_NON_BOZZA`, bozza con contenuto 409 `E_DELETE_DOC_CON_RIGHE`, documento citato come origine da un altro 409 `E_SORG_ORIGINE_REFERENZIATA`; il service legge solo l'esito del `DELETE`. Il controllo «zero pratiche collegate» è ritirato (BE-P.1-e, scelta A)
+- Output `200`: `{ "data": { "status": "ok", "preventivo_id": 1 } }` (niente più `noop`: un `DELETE` che non tocca niente è un 404)
+- Errori: `E_PREV_NOT_FOUND` (404), `E_DELETE_DOC_NON_BOZZA` / `E_DELETE_DOC_CON_RIGHE` / `E_SORG_ORIGINE_REFERENZIATA` (409, dal DB)
 
 ---
 
@@ -727,7 +727,7 @@ L'endpoint `GET /{id}/pratiche/` è stato rimosso: la pratica collegata vive nel
 pannello Passaggi (lineage, `GET /{id}/passaggi/` — vedi
 [api_lineage_passaggi.md](api_lineage_passaggi.md)), che espone il link
 cliccabile al `PraticaDrawer`. Il vincolo "zero pratiche collegate" del
-hard-delete resta (guard nel service via `repo.list_pratiche`).
+hard-delete è ritirato il 2026-11-08 con `repo.list_pratiche` (BE-P.1-e, §4b).
 
 ---
 
@@ -885,7 +885,7 @@ righe di preventivo.
 | `E_PREV_NOT_FOUND` | 404 | Preventivo non trovato |
 | `E_PREV_VALIDAZIONE` | 400 | Validazione input fallita (incluse chiavi fuori contratto, filtro di stato fuori vocabolario, booleani non JSON) |
 | `E_PREV_STATO_TRANSIZIONE` | 409 | Transizione stato non ammessa |
-| `E_PREV_STATO_NON_MODIFICABILE` | 409 | DELETE di un preventivo non BOZZA, con righe o con pratiche collegate (§4b) |
+| `E_DELETE_DOC_NON_BOZZA` / `E_DELETE_DOC_CON_RIGHE` | 409 | DELETE di un preventivo non in bozza o con righe: dal DB (§4b). `E_PREV_STATO_NON_MODIFICABILE` non lo solleva più nessuno dal 2026-11-08 |
 | `E_PREV_RIGA_NOT_FOUND` | 404 | Riga non trovata, o non del preventivo dell'URL |
 | `E_PREV_COMPONENTE_NOT_FOUND` | 404 | Componente inesistente o non della riga/preventivo dell'URL |
 | `E_PREV_NESSUNA_RIGA` | 400 | Nessuna riga attiva/eleggibile |

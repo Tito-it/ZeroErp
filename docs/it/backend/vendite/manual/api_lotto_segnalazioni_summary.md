@@ -86,7 +86,10 @@ riscritta), `error_code`, `fase` (solo origine `LOTTO`), `fattura_id`,
 di cui parla la riga; `null` = critica del giro), `uscita_blocco_reason` /
 `uscita_blocco_reason_key` (perché «Togli dal giro» è spento, da
 `script.fn_check_documento_escludibile_da_giro`), `riferimento` (il documento
-come lo legge una persona).
+come lo legge una persona; per un documento senza numero, i consumi, è il
+codice della commessa di cui parla la segnalazione, dalla colonna
+`fatturazione_lotti_log.commessa_id` che il pull per commessa scrive dal
+2026-11-08: V-7-bis, brief-db-sorgente-documento-e-riga §8.23).
 
 Errori: `400 E_PIPELINE_VALIDATION` (`lotto_id`, `order_dir`); `400
 E_VALIDATION_INPUT` (la finestra: `limit`/`offset` non interi, `limit` fuori

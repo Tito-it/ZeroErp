@@ -116,9 +116,10 @@ della pratica, e `sorgente_uid` è polimorfa senza FK).
 Presidio: `backend/scripts/tests/smoke-pratica-doc-sorgente-cross-emittente.py`,
 che costruisce il caso invece di aspettarlo.
 
-⚠️ **Il ramo PER-FLUSSO è un'altra cosa e non è cambiato**: `api_percorso.md` e
-`api_coda_lavoro.md` ancorano per `flusso_id` con la regola ridotta
-(`ROOT` → più recente) dentro un solo flusso. Due àncore, due domande diverse.
+⚠️ **Il ramo PER-FLUSSO è un'altra cosa**: `api_percorso.md` e
+`api_coda_lavoro.md` ancorano per `flusso_id` dentro un solo flusso, con
+`script.vw_flusso_doc_sorgente` (dal 2026-11-08: `ROOT` → risolto → non
+terminale → più recente). Due àncore, due domande diverse.
 
 ⚠️ **`doc_*` tutti `null` non vuol dire «pratica fuori perimetro»**: significa
 che la pratica non ha link. Fuori perimetro la pratica **non si vede affatto** —

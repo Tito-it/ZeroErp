@@ -80,8 +80,9 @@ scartava in silenzio).
   (`trg_ddt_a05_lock_fuori_bozza_upd`: 409 `E_DDT_CLIENTE_IMMUTABILE`). Fino al
   2026-10-10 il service rifiutava il cambio di BA anche in bozza.
 - Delete `DELETE /api/v1/vendite/ddt/<id>/` — hard delete solo DRAFT **e senza
-  righe** (pattern abbandono bozza); altrimenti `409 E_DDT_STATO_TRANSIZIONE`
-  (con righe si annulla, non si cancella). Risposta `{ddt_id, deleted}`.
+  righe** (pattern abbandono bozza; con righe si annulla, non si cancella):
+  la regola «si cancella solo la bozza vuota» la giudica **solo il DB** (`vendite.trgfn_doc_guard_delete_solo_bozza`, dal 2026-11-08: il service non la ripete, brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a): fuori bozza 409 `E_DELETE_DOC_NON_BOZZA`, bozza con contenuto 409 `E_DELETE_DOC_CON_RIGHE`, documento citato come origine da un altro 409 `E_SORG_ORIGINE_REFERENZIATA`; il service legge solo l'esito del `DELETE`. Risposta `{ddt_id, deleted}`; il DDT che non c'è è un 404
+  `E_DDT_NOT_FOUND`.
 - Riepilogo IVA `GET /api/v1/vendite/ddt/<id>/riepilogo-iva/` — lettura pura
   da `vendite.vw_ddt_riepilogo_iva_dettaglio` (ROUND 2 per aliquota, DPR
   633/72 art. 21; righe con `prezzo_unitario` NULL escluse: DDT solo di
@@ -230,8 +231,8 @@ Riferimento: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md`.
 
 ## Codici errore principali
 
-`E_DDT_NOT_FOUND` (404), `E_DDT_VALIDAZIONE` (400), `E_DDT_STATO_TRANSIZIONE`
-(409, la testata), `E_DDT_CLIENTE_OBBLIGATORIO` (409, emissione senza cliente
+`E_DDT_NOT_FOUND` (404), `E_DDT_VALIDAZIONE` (400), `E_DELETE_DOC_NON_BOZZA` /
+`E_DELETE_DOC_CON_RIGHE` (409, delete della bozza, dal DB), `E_DDT_CLIENTE_OBBLIGATORIO` (409, emissione senza cliente
 con una causale che lo vuole), `E_DDT_CLIENTE_IMMUTABILE` (409, cliente fuori
 bozza), `E_DOC_CLIENTE_DIVERSO_DA_BA` (400, destinatario diverso dal BA),
 `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE` (400, BA diverso da quello dell'ordine o
