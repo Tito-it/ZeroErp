@@ -227,7 +227,7 @@ preso `20261109-40` … `-57`. L'altro cantiere aperto
 > due vanno fusi lo decide Tid.
 > [brief-db-addebito-trasporto-ordine](brief-db-addebito-trasporto-ordine.md) §8.1 censisce le fixture
 > della bolla e il predicato «natura è merce»: D71 e D72 completano quel censimento.
-> [brief-db-sorgente-documento-e-riga](brief-db-sorgente-documento-e-riga.md) (aggiunto il 2026-11-06): il suo
+> [brief-db-sorgente-documento-e-riga](../work-done/brief-db-sorgente-documento-e-riga.md) (aggiunto il 2026-11-06): il suo
 > lotto M riscrive le tre viste di magazzino, e porta anche D58, D29 e Q14 ⑧ (decisione di Tid, §8.1). Nessun altro brief aperto tratta i
 > difetti qui sotto.
 
@@ -937,7 +937,7 @@ descrivono la regola cambiata (gli elenchi sono nelle decisioni di §4).
 ### 8.1 Le tre viste di magazzino: si fanno nel lotto M dell'altro brief
 
 **Decisione di Tid (2026-11-06):** D58, D29 (+ M22) e Q14 ⑧ (+ M23) confluiscono nel lotto M di
-[brief-db-sorgente-documento-e-riga](brief-db-sorgente-documento-e-riga.md) (§7.2 «Lotto M»), che riscrive
+[brief-db-sorgente-documento-e-riga](../work-done/brief-db-sorgente-documento-e-riga.md) (§7.2 «Lotto M»), che riscrive
 comunque `vw_ddt_emessi_senza_scarico`, `vw_resi_confermati_senza_carico` e `vw_magazzino_movimenti_senza_costo`:
 le viste si aprono una volta sola, alla grana di prelievo e rientro. Qui resta solo questo rimando, e l'analisi
 (fatto, correzione, presidio, documentazione) nelle loro sezioni, da cui il lotto M la legge. Prima del via al

@@ -21,9 +21,9 @@
 --
 -- Uso:
 --   set -a; . db/internal.env; set +a          (dbdev)
---   psql -v ON_ERROR_STOP=1 -f docs/it/dev/work-in-progress/sql-una-tantum-sorgenti-categoria-evento.sql
+--   psql -v ON_ERROR_STOP=1 -f docs/it/dev/work-done/sql-una-tantum-sorgenti-categoria-evento.sql
 --   set -a; . db/internal.ruoli.env; set +a    (scratch zeroerp_ruoli)
---   psql -v ON_ERROR_STOP=1 -f docs/it/dev/work-in-progress/sql-una-tantum-sorgenti-categoria-evento.sql
+--   psql -v ON_ERROR_STOP=1 -f docs/it/dev/work-done/sql-una-tantum-sorgenti-categoria-evento.sql
 -- ------------------------------------------------------------
 \set ON_ERROR_STOP on
 

@@ -25,7 +25,7 @@
 --
 -- Uso:
 --   set -a; . db/internal.env; set +a
---   psql -v ON_ERROR_STOP=1 -f docs/it/dev/work-in-progress/sql-una-tantum-sorgenti-orfane-canali.sql
+--   psql -v ON_ERROR_STOP=1 -f docs/it/dev/work-done/sql-una-tantum-sorgenti-orfane-canali.sql
 -- ------------------------------------------------------------
 
 BEGIN;
