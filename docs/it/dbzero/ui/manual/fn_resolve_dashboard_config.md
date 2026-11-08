@@ -1,6 +1,6 @@
 # fn_resolve_dashboard_config
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 
 ### 🎯 Scopo Principale
 
@@ -39,21 +39,21 @@ ui.fn_resolve_dashboard_config(
   Entrambe sono GUC-aware: con veste corrente ≠ `OPERATORE` producono `BLOCCATO`/`false` (fail-closed).
 
 **2. Cascata per chiave** (dal 1-11-2026, gemella delle liste) — `widget` e `dimensione_max` si risolvono **ognuna per conto suo**, dal primo livello che la contiene:
-  1. Preferenza personale utente (`ui.dashboard_preferenza_utente`): una chiave presente è una scelta; assente (o `null`) vuol dire «come lo standard». `dimensione_max` vale se è un intero positivo. Si legge anche `preset_base_id`, `preset_base_data_update`, `preset_aggiornato_ignored_at` per lo step 2.5
+  1. Preferenza personale utente (`ui.dashboard_preferenza_utente`): una chiave presente è una scelta; assente (o `null`) vuol dire «come lo standard». `dimensione_max` vale se è un intero positivo. Si legge anche `preset_base_id`, `preset_base_contenuto_aggiornato_il`, `preset_aggiornato_ignored_at` per lo step 2.5
   2. Il **preset di base**: il primo, in quest'ordine, con almeno un widget attivo — di ruolo (`ambito='ruolo'`, join su `fn_get_profili_accesso_applicabili` con `ORDER BY priorita ASC`), di emittente fiscale, di sistema; sempre `is_default=TRUE`. Si cerca **sempre**, anche con una preferenza
   3. **Catalogo grezzo** (fallback "mai vuota"): per i widget, tutti quelli attivi del pool della dashboard (`ui.dashboard_widget ⋈ ui.widget`), ordinati per `ordine_default`, `visibile=TRUE`; per `dimensione_max`, 8
 
   Lo **standard** di `dimensione_max` è quella del preset di base, o 8. ⚠️ Fino al 31-10-2026 la cascata sceglieva un livello solo, il primo con i widget: una preferenza di soli widget rispondeva 8 invece della dimensione del preset, e il frontend congelava nella preferenza la dimensione del preset di quel momento (ripulite dal changeSet `20261101-29`).
 
-**2.5 DEF-2: calcolo flag `preset_aggiornato`** — identico alla funzione liste. Se la preferenza ha `preset_base_id` e `preset_base_data_update` valorizzati, legge `dashboard_preset.data_update` corrente e calcola:
+**2.5 DEF-2: calcolo flag `preset_aggiornato`** — identico alla funzione liste. Se la preferenza ha `preset_base_id` e `preset_base_contenuto_aggiornato_il` valorizzati, legge `dashboard_preset.contenuto_aggiornato_il` corrente e calcola:
 
 ```text
 preset_aggiornato = TRUE sse:
-  (a) preset_base_data_update IS NOT NULL
-  (b) dashboard_preset.data_update IS NOT NULL
-  (c) dashboard_preset.data_update > preset_base_data_update   ← il preset è più recente dello snapshot
+  (a) preset_base_contenuto_aggiornato_il IS NOT NULL
+  (b) dashboard_preset.contenuto_aggiornato_il IS NOT NULL
+  (c) dashboard_preset.contenuto_aggiornato_il > preset_base_contenuto_aggiornato_il   ← il preset è più recente dello snapshot
   (d) preset_aggiornato_ignored_at IS NULL                     ← mai ignorato
-      OPPURE preset_aggiornato_ignored_at < dashboard_preset.data_update  ← preset cambiato dopo l'ultimo ignore
+      OPPURE preset_aggiornato_ignored_at < dashboard_preset.contenuto_aggiornato_il  ← preset cambiato dopo l'ultimo ignore
 ```
 
 **3. Merge widget nuovi** — widget nel pool della dashboard (`ui.dashboard_widget`) ma assenti dalla configurazione candidata vengono aggiunti in coda con `visibile=FALSE` e `ordine = ordine_default + 10000`. Il contatore `widget_nuovi` indica quanti sono stati aggiunti. Garantisce che un widget aggiunto a catalogo dopo il salvataggio dell'utente compaia (non visibile) senza riscrivere la preferenza.
@@ -109,3 +109,9 @@ SELECT ui.fn_resolve_dashboard_config('home', 42, 1);
 -- Variante senza contesto emittente
 SELECT ui.fn_resolve_dashboard_config('home', 42, NULL);
 ```
+
+---
+
+### Note di migrazione
+
+* 2026-11-08 — il flag `preset_aggiornato` legge `dashboard_preset.contenuto_aggiornato_il` e lo snapshot rinominato (`brief-db-revisione-dbops`, giro 7-bis blocco c). Il JSON in uscita non cambia.

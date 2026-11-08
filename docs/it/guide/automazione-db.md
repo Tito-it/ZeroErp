@@ -87,7 +87,7 @@ Il framework è composto da quattro livelli che collaborano tra loro. Ognuno ha 
 
 L'**ambito** definisce il perimetro: su quali schemi e tabelle il framework opera. È configurato nella tabella `dbops.automation_scope`, seminata dal CSV `80_data/sql/dbops/automation_scope.csv`.
 
-Ogni riga indica uno schema e un pattern di tabelle. Il sentinel `'*all'` significa "tutte le tabelle dello schema". Tutti gli schemi di dominio ci sono con `*all`. `dbops` no: una sua tabella entra **per nome**, e solo se è un registro con una scadenza (log delle chiamate, errori, giri delle automazioni, idempotenza, accensione dei processi, sessioni, domande all'assistente).
+Ogni riga indica uno schema e un pattern di tabelle. Il sentinel `'*all'` significa "tutte le tabelle dello schema". Tutti gli schemi di dominio ci sono con `*all`, e così `ui`: anche i cataloghi dell'interfaccia (liste, preset, dashboard, widget) li scrivono l'amministrazione e il backend, e prendono audit e guard come ogni altra tabella. Le FK di `ui` verso le preferenze degli utenti, le righe di composizione (le colonne di un preset, i widget di una dashboard) e l'emittente o il profilo stanno nel registro delle eccezioni del guard ATTIVO: spegnere un preset o un profilo non deve fermarsi su di loro. `dbops` no: una sua tabella entra **per nome**, e solo se è un registro con una scadenza (log delle chiamate, errori, giri delle automazioni, idempotenza, accensione dei processi, sessioni, domande all'assistente).
 
 ⭐ **Le altre tabelle di `dbops` stanno fuori, e i loro marcatori li decide lo scrittore.**
 
@@ -516,7 +516,7 @@ quelli di sempre.
 * un test che crea un codice con un suffisso esadecimale (`uuid4().hex`, `md5`) e poi lo cerca per
   valore mette `.upper()` sul generatore;
 * `E_CODICE_MAIUSCOLO` (classe `TECNICO`) nasce solo dal motore, in un migrate o nel job notturno;
-* le tabelle in eccezione e gli schemi fuori ambito (`ui`, `dbops`) non cambiano; l'elenco delle
+* le tabelle in eccezione e le tabelle fuori ambito (quelle di `dbops`) non cambiano; in `ui` i codici sono chiavi tecniche, tutte in eccezione; l'elenco delle
   tabelle normalizzate lo dà `dbops.fn_codice_maiuscolo_perimetro(NULL)` (`nel_perimetro AND NOT
   in_eccezione`).
 

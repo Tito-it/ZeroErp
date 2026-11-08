@@ -2,7 +2,7 @@
 
 ### 🎯 Scopo Principale
 
-Mantiene la coerenza tra `preset_base_id` e i due campi derivati (`preset_base_data_update`, `preset_aggiornato_ignored_at`) nella tabella `ui.dashboard_preferenza_utente`. Quando `preset_base_id` cambia verso qualsiasi valore diverso (NULL o un altro preset), azzera entrambi i campi. Mirror del trigger omologo di [ui.lista_preferenza_utente](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts).
+Mantiene la coerenza tra `preset_base_id` e i due campi derivati (`preset_base_contenuto_aggiornato_il`, `preset_aggiornato_ignored_at`) nella tabella `ui.dashboard_preferenza_utente`. Quando `preset_base_id` cambia verso qualsiasi valore diverso (NULL o un altro preset), azzera entrambi i campi. Mirror del trigger omologo di [ui.lista_preferenza_utente](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts).
 
 ## Schema
 
@@ -27,14 +27,14 @@ TRIGGER trg_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts_upd
 
 | Condizione | Azione |
 |------------|--------|
-| `NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id` | `NEW.preset_base_data_update := NULL` **e** `NEW.preset_aggiornato_ignored_at := NULL` |
+| `NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id` | `NEW.preset_base_contenuto_aggiornato_il := NULL` **e** `NEW.preset_aggiornato_ignored_at := NULL` |
 | Qualsiasi altra condizione | `RETURN NEW` senza modifiche |
 
 `IS DISTINCT FROM` copre tutte le transizioni significative: `NULL → valore`, `valore → NULL`, `valore → valore diverso`.
 
 ## Perché è necessario
 
-`preset_base_data_update` è uno snapshot di `dashboard_preset.data_update` al salvataggio della preferenza; `preset_aggiornato_ignored_at` è il tombstone dell'avviso "preset aggiornato" ignorato dall'utente. Entrambi sono relativi al **preset di base referenziato**: quando `preset_base_id` cambia (per `ON DELETE SET NULL` dalla FK o per UPDATE diretto verso un altro preset), quei valori perdono significato.
+`preset_base_contenuto_aggiornato_il` è uno snapshot di `dashboard_preset.contenuto_aggiornato_il` al salvataggio della preferenza; `preset_aggiornato_ignored_at` è il tombstone dell'avviso "preset aggiornato" ignorato dall'utente. Entrambi sono relativi al **preset di base referenziato**: quando `preset_base_id` cambia (per `ON DELETE SET NULL` dalla FK o per UPDATE diretto verso un altro preset), quei valori perdono significato.
 
 Azzerarli chiude il contratto col frontend: con `preset_base_id IS NULL` o cambiato, il badge "preset aggiornato" non si basa più su uno snapshot orfano.
 

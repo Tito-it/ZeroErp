@@ -30,8 +30,8 @@
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying(80) | NO |  |
-| data_update | timestamp with time zone | YES |  |
-| user_update | character varying(80) | YES |  |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying(80) | NO | CURRENT_USER |
 | etichetta_i18n_key | character varying(120) | YES |  |
 | priorita | smallint | NO | 50 |
 
@@ -54,6 +54,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_lista_colonna_a10_lista_definizione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'lista_definizione', 'attivo', 'lista_id', 'id')` |
+| trg_lista_colonna_a10_lista_definizione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'lista_definizione', 'attivo', 'lista_id', 'id')` |
+| trg_lista_colonna_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_lista_colonna_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()` |
 | trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()` |
 

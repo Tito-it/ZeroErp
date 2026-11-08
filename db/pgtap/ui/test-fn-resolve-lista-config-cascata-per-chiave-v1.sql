@@ -26,15 +26,15 @@
 --    9) preset senza misura: standard = default PAGINA, origine catalogo
 --   10) lista senza preset: colonne, ordinamento, filtri e misura dal catalogo
 --   La data del contenuto del preset
---   11) riscrivere la riga del preset uguale: data_update non si sposta
---   12) cambiare ordinamento_default: data_update = now()
---   13) riscrivere una colonna del preset uguale: data_update non si sposta
---   14) cambiare una colonna del preset: data_update = now()
---   15) aggiungere una colonna al preset: data_update = now()
---   16) togliere una colonna dal preset: data_update = now()
+--   11) riscrivere la riga del preset uguale: contenuto_aggiornato_il non si sposta
+--   12) cambiare ordinamento_default: contenuto_aggiornato_il = now()
+--   13) riscrivere una colonna del preset uguale: contenuto_aggiornato_il non si sposta
+--   14) cambiare una colonna del preset: contenuto_aggiornato_il = now()
+--   15) aggiungere una colonna al preset: contenuto_aggiornato_il = now()
+--   16) togliere una colonna dal preset: contenuto_aggiornato_il = now()
 --   Il flag
 --   17) snapshot allineato: preset_aggiornato = false
---   18) il preset cambia davvero: data_update spostato e flag acceso
+--   18) il preset cambia davvero: contenuto_aggiornato_il spostato e flag acceso
 --   I trigger
 --   19) i due trigger delle liste ci sono, sulle due funzioni condivise
 -- ------------------------------------------------------------
@@ -243,7 +243,7 @@ SELECT is(
 -- 11-16 La data del contenuto del preset
 -- ============================================================
 -- Data fissa nel passato: ogni spostamento la porta a now().
-UPDATE ui.lista_preset SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE id = (SELECT preset_id FROM _p);
 
 UPDATE ui.lista_preset
@@ -252,39 +252,39 @@ UPDATE ui.lista_preset
  WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT data_update FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
     TIMESTAMPTZ '2026-01-01 10:00:00+00',
-    '11) riscrivere la riga del preset uguale (come fa il seed): data_update non si sposta');
+    '11) riscrivere la riga del preset uguale (come fa il seed): contenuto_aggiornato_il non si sposta');
 
 UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "c_due", "dir": "asc"}]'::jsonb
  WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT data_update FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
     now(),
-    '12) cambiare ordinamento_default: data_update = now()');
+    '12) cambiare ordinamento_default: contenuto_aggiornato_il = now()');
 
-UPDATE ui.lista_preset SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE id = (SELECT preset_id FROM _p);
 
 UPDATE ui.lista_preset_colonna SET ordine = ordine, visibile = visibile
  WHERE preset_id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT data_update FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
     TIMESTAMPTZ '2026-01-01 10:00:00+00',
-    '13) riscrivere le colonne del preset uguali: data_update non si sposta');
+    '13) riscrivere le colonne del preset uguali: contenuto_aggiornato_il non si sposta');
 
 UPDATE ui.lista_preset_colonna SET visibile = FALSE
  WHERE preset_id = (SELECT preset_id FROM _p)
    AND colonna_id = (SELECT colonna_id FROM _c WHERE lista_id = (SELECT lista_id FROM _l) AND codice = 'c_due');
 
 SELECT is(
-    (SELECT data_update FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
     now(),
-    '14) cambiare una colonna del preset: data_update = now()');
+    '14) cambiare una colonna del preset: contenuto_aggiornato_il = now()');
 
-UPDATE ui.lista_preset SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE id = (SELECT preset_id FROM _p);
 
 INSERT INTO ui.lista_preset_colonna (preset_id, colonna_id, ordine, visibile, fissata)
@@ -292,11 +292,11 @@ SELECT (SELECT preset_id FROM _p), colonna_id, 3, TRUE, FALSE
   FROM _c WHERE lista_id = (SELECT lista_id FROM _l) AND codice = 'c_tre';
 
 SELECT is(
-    (SELECT data_update FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
     now(),
-    '15) aggiungere una colonna al preset: data_update = now()');
+    '15) aggiungere una colonna al preset: contenuto_aggiornato_il = now()');
 
-UPDATE ui.lista_preset SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE id = (SELECT preset_id FROM _p);
 
 DELETE FROM ui.lista_preset_colonna
@@ -304,24 +304,24 @@ DELETE FROM ui.lista_preset_colonna
    AND colonna_id = (SELECT colonna_id FROM _c WHERE lista_id = (SELECT lista_id FROM _l) AND codice = 'c_tre');
 
 SELECT is(
-    (SELECT data_update FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
+    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
     now(),
-    '16) togliere una colonna dal preset: data_update = now()');
+    '16) togliere una colonna dal preset: contenuto_aggiornato_il = now()');
 
 -- ============================================================
 -- 17-18 Il flag
 -- ============================================================
-UPDATE ui.lista_preset SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE id = (SELECT preset_id FROM _p);
 
-INSERT INTO ui.lista_preferenza_utente (auth_user_id, lista_id, preset_base_id, preset_base_data_update, configurazione)
+INSERT INTO ui.lista_preferenza_utente (auth_user_id, lista_id, preset_base_id, preset_base_contenuto_aggiornato_il, configurazione)
 VALUES ((SELECT auth_user_id FROM _u), (SELECT lista_id FROM _l), (SELECT preset_id FROM _p),
         TIMESTAMPTZ '2026-01-01 10:00:00+00', jsonb_build_object('colonne', (SELECT colonne FROM _pref_colonne)))
 ON CONFLICT (auth_user_id, lista_id) DO UPDATE
    SET preset_base_id = EXCLUDED.preset_base_id,
        configurazione = EXCLUDED.configurazione;
 -- Lo snapshot dopo: il trigger z90 lo azzera se preset_base_id cambia.
-UPDATE ui.lista_preferenza_utente SET preset_base_data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+UPDATE ui.lista_preferenza_utente SET preset_base_contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
  WHERE auth_user_id = (SELECT auth_user_id FROM _u) AND lista_id = (SELECT lista_id FROM _l);
 
 SELECT is((pg_temp.risolta() ->> 'preset_aggiornato')::boolean, FALSE,
@@ -330,10 +330,10 @@ SELECT is((pg_temp.risolta() ->> 'preset_aggiornato')::boolean, FALSE,
 UPDATE ui.lista_preset SET pagina_dimensione = (SELECT pag FROM _m) WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT format('%s|%s', (SELECT data_update = now() FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p))::text,
+    (SELECT format('%s|%s', (SELECT contenuto_aggiornato_il = now() FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p))::text,
                    pg_temp.risolta() ->> 'preset_aggiornato')),
     'true|true',
-    '18) il preset cambia davvero (la misura): data_update spostato e flag acceso');
+    '18) il preset cambia davvero (la misura): contenuto_aggiornato_il spostato e flag acceso');
 
 -- ============================================================
 -- 19 I trigger
@@ -346,8 +346,8 @@ SELECT is(
        JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE NOT t.tgisinternal
         AND t.tgrelid IN ('ui.lista_preset'::regclass, 'ui.lista_preset_colonna'::regclass)
-        AND p.proname IN ('trgfn_preset_data_update_contenuto', 'trgfn_preset_riga_tocca_preset')),
-    'ui.lista_preset:trgfn_preset_data_update_contenuto,ui.lista_preset_colonna:trgfn_preset_riga_tocca_preset',
+        AND p.proname IN ('trgfn_preset_contenuto_aggiornato', 'trgfn_preset_riga_tocca_preset')),
+    'ui.lista_preset:trgfn_preset_contenuto_aggiornato,ui.lista_preset_colonna:trgfn_preset_riga_tocca_preset',
     '19) i due trigger delle liste ci sono, sulle due funzioni condivise');
 
 SELECT * FROM finish();

@@ -59,9 +59,9 @@ DECLARE
 
   -- Snapshot preset di base dalla preferenza utente (DEF-2)
   v_pref_preset_base_id    ui.dashboard_preferenza_utente.preset_base_id%TYPE;
-  v_pref_preset_base_ts    ui.dashboard_preferenza_utente.preset_base_data_update%TYPE;
+  v_pref_preset_base_ts    ui.dashboard_preferenza_utente.preset_base_contenuto_aggiornato_il%TYPE;
   v_pref_preset_ignored_at ui.dashboard_preferenza_utente.preset_aggiornato_ignored_at%TYPE;
-  v_preset_data_update     ui.dashboard_preset.data_update%TYPE;
+  v_preset_contenuto_aggiornato_il     ui.dashboard_preset.contenuto_aggiornato_il%TYPE;
   v_preset_aggiornato      BOOLEAN := FALSE;
 BEGIN
   -- -------------------------------------------------------
@@ -116,7 +116,7 @@ BEGIN
       CASE WHEN (pu.configurazione ->> 'dimensione_max') ~ '^[1-9][0-9]{0,8}$'
            THEN (pu.configurazione ->> 'dimensione_max')::INTEGER END,
       pu.preset_base_id,
-      pu.preset_base_data_update,
+      pu.preset_base_contenuto_aggiornato_il,
       pu.preset_aggiornato_ignored_at
     INTO v_pref_widget, v_pref_dimensione,
          v_pref_preset_base_id, v_pref_preset_base_ts, v_pref_preset_ignored_at
@@ -250,19 +250,19 @@ BEGIN
   --     ancora ignorato (o il preset e' cambiato dopo l'ignore).
   -- -------------------------------------------------------
   IF v_pref_preset_base_id IS NOT NULL AND v_pref_preset_base_ts IS NOT NULL THEN
-    SELECT lp.data_update
-      INTO v_preset_data_update
+    SELECT lp.contenuto_aggiornato_il
+      INTO v_preset_contenuto_aggiornato_il
       FROM ui.dashboard_preset lp
      WHERE lp.id = v_pref_preset_base_id;
   END IF;
 
   v_preset_aggiornato :=
         v_pref_preset_base_ts IS NOT NULL
-    AND v_preset_data_update  IS NOT NULL
-    AND v_preset_data_update  > v_pref_preset_base_ts
+    AND v_preset_contenuto_aggiornato_il  IS NOT NULL
+    AND v_preset_contenuto_aggiornato_il  > v_pref_preset_base_ts
     AND (
           v_pref_preset_ignored_at IS NULL
-      OR  v_pref_preset_ignored_at < v_preset_data_update
+      OR  v_pref_preset_ignored_at < v_preset_contenuto_aggiornato_il
     );
 
   -- -------------------------------------------------------
@@ -369,7 +369,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve la configurazione effettiva di una dashboard per un utente: cascata PER CHIAVE (2026-11-01: widget e dimensione_max vengono ognuna dal primo livello che la contiene — preferenza, poi il preset di base, il primo con widget fra ruolo GUC-aware deterministico per priorita, emittente e sistema, poi il catalogo; nella preferenza una chiave assente vuol dire «come lo standard»), merge widget nuovi, filtro permessi via resolver script.* (mappe aggregate, fail-closed non-OPERATORE), arricchimento campi opachi (deep_link/contatore_key/soglia). Ritorna JSONB { widget[], dimensione_max, dimensione_max_standard, origine, widget_nuovi, preset_aggiornato }; dimensione_max_standard e origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo) sono del 2026-11-01, ADDITIVE, gemelle di ui.fn_resolve_lista_config. Richiesta BE/FE «preferenza di lista per chiave» §4. Mirror di ui.fn_resolve_lista_config (brief-db-dashboard-home §3). 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block condiviso con fn_resolve_lista_config e fn_lista_colonne_ricerca_full. Brief: brief-db-ricerca-full-colonne-permessi.';
+IS 'Risolve la configurazione effettiva di una dashboard per un utente: cascata PER CHIAVE (2026-11-01: widget e dimensione_max vengono ognuna dal primo livello che la contiene — preferenza, poi il preset di base, il primo con widget fra ruolo GUC-aware deterministico per priorita, emittente e sistema, poi il catalogo; nella preferenza una chiave assente vuol dire «come lo standard»), merge widget nuovi, filtro permessi via resolver script.* (mappe aggregate, fail-closed non-OPERATORE), arricchimento campi opachi (deep_link/contatore_key/soglia). Ritorna JSONB { widget[], dimensione_max, dimensione_max_standard, origine, widget_nuovi, preset_aggiornato }; dimensione_max_standard e origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo) sono del 2026-11-01, ADDITIVE, gemelle di ui.fn_resolve_lista_config. Richiesta BE/FE «preferenza di lista per chiave» §4. Mirror di ui.fn_resolve_lista_config (brief-db-dashboard-home §3). 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block condiviso con fn_resolve_lista_config e fn_lista_colonne_ricerca_full. Brief: brief-db-ricerca-full-colonne-permessi. rev 2026-11-08 (brief-db-revisione-dbops, giro 7-bis blocco c): la data del contenuto del preset sta in contenuto_aggiornato_il, lo snapshot in preset_base_contenuto_aggiornato_il; data_update e'' l''audit.';
 ```
 
 </div>

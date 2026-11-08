@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 7-bis: blocco b applicato e verde)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 7-bis chiuso)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -39,8 +39,8 @@ su `shop.ricevute` letta sul catalogo dei due database (§20.9), **committato** 
 (Tid, 2026-11-08, §23.10): `20261108-90` … `-93` e il CSV del registro su dbdev e scratch, pgTAP di §23.7 verdi.
 Blocco a **committato** (`f7ce9855c5`). **Via al blocco 7-bis-b** (Tid, 2026-11-08, §23.11): dal `20261109-31`,
 test 14 esteso; il `fk_index_policy.csv` orfano passa al blocco 10d. **Blocco 7-bis-b applicato** (Tid, 2026-11-08,
-§23.11.4): `20261109-31` su dbdev e scratch, pgTAP verdi. **Riparte: Tid** col commit del blocco b e il via al
-blocco 7-bis-c (§23.3). **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+§23.11.4): `20261109-31` su dbdev e scratch, pgTAP verdi, committato (`286117c2f6`). **Blocco 7-bis-c censito**
+(2026-11-08, §23.12), decisioni di Tid prese, **scritto e provato** sullo scratch e su dbdev (§23.12.2-23.12.3). **Blocco c applicato** (Tid, 2026-11-08, §23.12.5): migrazione, convergenza, pgTAP verdi. **Il giro 7-bis è chiuso** e committato. **Riparte: team BE** con BE11 (§5); poi la sessione DB col giro successivo di §8, al via di Tid. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -111,7 +111,13 @@ ancora le tabelle).
 | 9-tricies-octodecies-bis | ✅ Tid | Commit del blocco 7-bis-a (`f7ce9855c5`) e via al blocco 7-bis-b, dal `20261109-31` (2026-11-08) | §23.10, §23.11 | 9-tricies-octodecies |
 | 9-tricies-novemdecies | ✅ sessione DB | Blocco 7-bis-b (`data_update`/`user_update` della classe B, coi CSV e i loader): scritto e provato sullo scratch (2026-11-08), `20261109-31` | §23.11 | 9-tricies-octodecies-bis |
 | 9-quadragies | ✅ Tid | Apply del blocco 7-bis-b (`20261109-31`, i cinque loader) su dbdev e scratch; pgTAP di §23.11.3 verdi (2026-11-08) | §23.11.4 | 9-tricies-novemdecies |
-| 9-quadragies-semel | **Tid** ⏭️ | Commit del blocco 7-bis-b e via al blocco 7-bis-c (`ui` nell'ambito) | §23.11.4, §23.3 | 9-quadragies |
+| 9-quadragies-semel | ✅ Tid | Commit del blocco 7-bis-b (`286117c2f6`) e via al blocco 7-bis-c | §23.11.4 | 9-quadragies |
+| 9-quadragies-bis | ✅ sessione DB | Blocco 7-bis-c: censimento dei montaggi e degli scrittori; quattro nodi (2026-11-08) | §23.12 | 9-quadragies-semel |
+| 9-quadragies-ter | ✅ Tid | Le quattro decisioni del 7-bis-c: tutte come da proposta (2026-11-08) | §23.12 | 9-quadragies-bis |
+| 9-quadragies-quater | ✅ sessione DB | Blocco 7-bis-c scritto e provato (`20261109-32` … `-39`, due CSV, quattro pgTAP); N2 precisato sulle righe di composizione | §23.12.1-23.12.3 | 9-quadragies-ter |
+| 9-quadragies-quinquies | ✅ Tid | Apply del blocco 7-bis-c, convergenza, pgTAP come app verdi (2026-11-08); commit e push dalla sessione DB. Il giro 7-bis è chiuso | §23.12.5 | 9-quadragies-quater |
+| 9-quadragies-sexies | **team BE** ⏭️ | BE11: lo snapshot rinominato, la data del contenuto, l'audit a mano che si ritira, i rifiuti nuovi del guard | §5 | 9-quadragies-quinquies |
+| 9-quadragies-septies | Tid → sessione DB | Via al giro successivo di §8 | §8 | 9-quadragies-quinquies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
@@ -122,10 +128,8 @@ ancora le tabelle).
 
 **Decisioni aperte di Tid:** il debito della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di
 scrittura) si decide al giro 9. Nessuna sul giro 7-bis: il criterio dello scrittore (§20.8.2, punto 2) è confermato
-(Tid, 2026-11-07); le scelte del blocco a sono in §23.5, da guardare. **Da committare:** lato DB nulla del blocco a
-(committato in `f7ce9855c5`); il blocco 7-bis-b (`20261109-31`, i cinque CSV e i cinque loader, i due pgTAP, le
-dodici pagine `manual/`, `automazione-db.md`, `linee-guida-sql.md`, le schede rigenerate, questo brief): applicato e
-verde. ⚠️ Nel working tree
+(Tid, 2026-11-07); le scelte del blocco a sono in §23.5, da guardare. **Da committare:** nulla del giro 7-bis: i blocchi a, b e c sono
+committati (`f7ce9855c5`, `286117c2f6` e il commit del blocco c, 2026-11-08). ⚠️ Nel working tree
 ci sono anche file dell'altro cantiere (`codici_errore.csv`, `presidi.csv`, `presidi_testi.csv`, il suo brief e i suoi
 changeSet): non entrano nel commit del blocco. Lato BE, BE4 nel working tree di `dev/backend-tid`.
 L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
@@ -569,6 +573,7 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 ✅ (2026-11-07) | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
+| BE11 ⏭️ (2026-11-08) | **Insieme all'apply del blocco 7-bis-c (§23.12); prima si rompe il salvataggio delle preferenze.** (a) Lo snapshot della preferenza si rinomina: `preset_base_data_update` → `preset_base_contenuto_aggiornato_il` in `ui.lista_preferenza_utente` e `ui.dashboard_preferenza_utente` (le SELECT e gli upsert dei due repository, i kwargs dei due service e dei test). (b) `get_preset_base_snapshot` legge `contenuto_aggiornato_il` del preset, non `data_update`: oggi `data_update` è l'audit. (c) ⛔ Gli UPDATE di `ui_admin_repository.py` (`update_definizione`, `update_colonna`, `update_preset` e gli upsert dei permessi) non scrivono più `user_update` né `data_update = now()` (`extra_set`): lo fa il trigger di audit dal JWT (`app.jwt_user`). È la stessa regola su due livelli; sui preset l'`extra_set` spostava anche la data del contenuto quando l'admin cambiava solo `attivo`. (d) Rifiuti nuovi dal guard ATTIVO, da mappare se il BE li fa scattare: non si spegne una lista che ha colonne o preset attivi, né una dashboard che ha preset attivi (BLOCK); non nasce né si riattiva una colonna o un preset su una lista spenta, né un widget su un'area o un'azione spenta (REQUIRE). I codici sono `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (BLOCK) ed `E_ATTIVO_PADRE_NON_ATTIVO` (REQUIRE), già in policy. Il commento di `ListaConfigurabile.vue:743` («`preset.data_update` corrente») va riscritto | `backend/apps/ui/db/ui_repository.py:285-360`, `backend/apps/ui/db/dashboard_repository.py:85-150`, `backend/apps/ui/services/lista_preferenza_service.py`, `dashboard_preferenza_service.py`, `backend/apps/ui/db/ui_admin_repository.py:232-260, 469-510, 662-700, 843-880`, i test in `backend/apps/ui/tests/` | §23.12 |
 | BE10 ✅ (2026-11-07) | **Prima della RLS (blocco 5b), dal 5a.** (a) ⛔ Un lavoro OPERATORE nasce dentro un'azienda: in modalità globale si accoda un lavoro per azienda, o si chiede di sceglierla. Dall'apply del 5a la porta rifiuta un lavoro senza emittente attivo nello scope (`E_CODA_LAVORO_SENZA_EMITTENTE`): oggi lo accodano il giro di fatturazione dal cockpit in modalità globale (FATTURAZIONE_GIRO/NUMERA, dbdev, ultimo 2026-10-26) e chiunque catturi uno scope senza emittente attivo. (b) Il drenatore della coda lavori prende, recupera e chiude i lavori **un'azienda alla volta**, con l'utente tecnico di `draina_coda_lavori` di quell'azienda (`dbops.vw_processi_roster`), come `draina_coda_stampa`; i lavori SISTEMA li vede ogni utente tecnico del drenatore (`claim` con `SKIP LOCKED`). Claim, reaper, `mark_done`/`mark_error` sotto quell'identità; l'esecuzione del lavoro resta con l'identità dello scope. Un'azienda senza utente tecnico non viene drenata, e lo dice `vw_processi_dominio_senza_identita`. (c) La porta, da una sessione dell'applicazione, accoda un lavoro OPERATORE solo a nome di chi è in sessione e nel suo perimetro (`E_CODA_SCOPE_ALTRUI`), e la chiave di un lavoro OPERATORE deve contenere la sua azienda (`E_CODA_CHIAVE_ALTRUI`): da censire i punti che accodano a nome d'altri | `backend/apps/core/services/coda_lavori/drainer_service.py`, `repository.py` (`claim`, `reap_stale`, `mark_*`), `scope.py`, i chiamanti di `CodaLavoriRepository.accoda` | Q14.3, §18 |
 
 Nessuna ricaduta FE diretta: D25 si vede nel form quando BE2 è fatto.
@@ -2945,7 +2950,7 @@ Guardrail `ddl_su_trigger_automazione`, `grant_ruolo_batch`, `pgtap_preambolo`, 
 
 * ✅ **Blocco 7-bis-b** (§23.2, §23.11): chiuso il 2026-11-08 (§23.11.4).
 * **`fk_index_policy.csv`**, che nessuno carica: al blocco 10d, non al 7-bis-b (§23.11).
-* **Blocco 7-bis-c**: `ui` nell'ambito (§20.8.2, punto 3).
+* **Blocco 7-bis-c**: `ui` nell'ambito (§20.8.2, punto 3): scritto il 2026-11-08 (§23.12).
 * `cleanup_at` riconosciuto per nome (§23.5, punto 4).
 
 ### 23.10 Chiusura del blocco a (2026-11-08)
@@ -3048,3 +3053,165 @@ pgTAP di §23.11.3: verdi. Letto su tutti e due i database (sessione DB, sola le
 `databasechangelog`, e nessuna delle dodici tabelle ha più `data_update` o `user_update`. Le schede auto-generate
 delle dodici tabelle si rigenerano con `gen_db_docs.py` ed entrano nel commit. **Il blocco b è chiuso**; restano da
 committare i suoi file (§23.11.1). Il prossimo è il blocco 7-bis-c (`ui` nell'ambito, §23.3), al via di Tid.
+Committato da Tid in `286117c2f6`.
+
+### 23.12 Blocco 7-bis-c — `ui` nell'ambito: il censimento (2026-11-08)
+
+Il §20.8.2, punto 3, chiede il censimento **prima** di scrivere: con `ui,*all` in `automation_scope` la
+convergenza monta su `ui` tutto ciò che le regole prevedono, non solo l'audit. Struttura letta sul catalogo dello
+scratch, corpi delle funzioni e backend; i conteggi sono fatti datati, non il motivo.
+
+**Che cosa monterebbe, regola per regola** (`automation_rules_tbl`):
+
+| Regola | Su `ui` | Perché |
+| --- | --- | --- |
+| AUDIT_UPDATE | **8 tabelle**: `dashboard_definizione`, `dashboard_preset`, `lista_colonna`, `lista_colonna_permesso`, `lista_definizione`, `lista_preset`, `misure_pagina`, `widget` | il runner monta solo dove ci sono **tutte e due** le colonne; le due `*_preferenza_utente` hanno `data_update` senza `user_update`, e restano fuori |
+| ATTIVO | **21 FK su 22** (manca solo quella verso `misure_pagina`, che non ha `attivo`) | il REQUIRE si monta su ogni FK il cui padre ha `attivo`, **anche se la figlia non ce l'ha**; il BLOCK sul padre |
+| CODICE_MAIUSCOLO | sei colonne `codice`: `lista_definizione`, `lista_colonna`, `lista_preset`, `dashboard_definizione`, `dashboard_preset`, `widget` | due sono già eccezioni (`automazione_codice_eccezioni.csv`, Tid 2026-11-04); quattro no |
+| TX_ID, STORICO, LOCK_COLUMNS, DATE_VALIDITA, CLEANUP | nulla | nessuna tabella di `ui` ha `tx_id`, `storicizza`, `codice_interno`, `valido_dal`/`valido_al` o `cleanup_at` |
+| registri per nome (delete block, overlap, guard utility, lock) | nulla | nessuna riga di `ui` |
+
+**I quattro nodi.** Sono decisioni di modello: senza, la convergenza su `ui` rompe qualcosa che oggi funziona.
+
+**N1 — `data_update` dei preset non è l'audit.** Su `lista_preset` e `dashboard_preset` la colonna è la **data
+del contenuto**: la scrivono a mano `ui.trgfn_preset_data_update_contenuto` (`a20`, solo quando cambia una colonna di
+contenuto, col `WHEN` del trigger) e `ui.trgfn_preset_riga_tocca_preset` (dalle righe figlie). Il flag
+«preset aggiornato» la confronta con lo snapshot `preset_base_data_update` della preferenza
+(`ui.fn_resolve_lista_config`, `ui.fn_resolve_dashboard_config`, `dashboard_repository.py` e
+`dashboard_preferenza_service.py` lato BE). Il trigger di audit generico la riscriverebbe a **ogni** UPDATE,
+anche a una riscrittura uguale fatta dal seed, e il badge si accenderebbe per tutti dopo ogni migrazione. Sul modello
+è una colonna con due significati (memoria del progetto: il significato di una colonna lo dà chi la scrive).
+**Proposta:** (a) la data del contenuto passa a una colonna sua sui due preset (per esempio
+`contenuto_aggiornato_il`), scritta dai due trigger a mano; `data_update` diventa l'audit come altrove; i due
+risolutori leggono la colonna nuova; lo snapshot della preferenza si rinomina di conseguenza (ricaduta BE). In
+alternativa (b) i due preset fuori dall'audit per eccezione: la colonna resta con due significati, e la scarto.
+
+**N2 — Il guard ATTIVO su 21 FK, sette verso altri domini.** Dentro `ui` (14) e verso `anagrafiche.emittenti_fiscali`
+(`lista_preset`, `dashboard_preset`), `config.profili_accesso` (`lista_preset`, `dashboard_preset`,
+`lista_colonna_permesso`), `config.aree_funzionali` e `config.azioni_processo` (`widget`). Rifiuti nuovi che ne
+vengono, sul modello:
+
+* il BLOCK sul padre: non si spegne un emittente o un profilo che ha un preset vivo; non si spegne una lista con
+  colonne o preset vivi; non si spegne un preset che un utente ha scelto (`*_preferenza_utente` non ha `attivo`:
+  conta ogni riga);
+* il REQUIRE sulla figlia: una preferenza non si salva su un preset spento, un preset non nasce su una lista spenta.
+  Le due FK delle preferenze verso il preset sono `ON DELETE SET NULL`: va verificato che il guard non le disarmi o
+  non le blocchi (memoria del progetto, «SET NULL disarma»).
+
+**Proposta:** si decide FK per FK, con le stesse due domande del registro `automazione_attivo_eccezioni`: dentro
+`ui` il guard dice il vero (un preset vivo su una lista spenta è incoerente); le preferenze utente verso il preset
+vanno **in eccezione**, perché la preferenza è uno stato dell'utente e la risoluzione sa già ripiegare
+(`fn_resolve_*`); le sette verso altri domini vanno guardate col dominio (spegnere un emittente o un profilo non
+deve fermarsi su un preset di lista). Il censimento FK per FK si scrive nel blocco, prima del changeSet.
+
+**N3 — Il backend scrive l'audit a mano.** `ui_admin_repository.py` passa `user_update` come parametro e mette
+`data_update = now()` in `extra_set` negli UPDATE di `lista_definizione`, `lista_colonna` e `lista_preset`. Con il
+trigger generico (che legge `app.jwt_user`) è la stessa regola su due livelli. **Ricaduta BE** (BE11, da aprire in §5):
+gli UPDATE non scrivono più le due colonne. Sui preset va insieme a N1: oggi l'`extra_set` sposta la data del
+contenuto anche quando l'admin cambia solo `attivo`.
+
+**N4 — Le sette tabelle di `ui` nel registro del debito.** In `dbops/test-user-update-not-null-v1` ci sono
+`dashboard_definizione`, `dashboard_preset`, `lista_colonna`, `lista_colonna_permesso`, `lista_definizione`,
+`lista_preset` e `widget`: `user_update` nullable e senza default. Il test 3 del file diventa rosso appena prendono
+l'audit (una voce che prende l'audit si chiude). Quindi nello stesso blocco: backfill dei NULL, `DEFAULT
+CURRENT_USER` e `NOT NULL`, le voci fuori dal registro. ⚠️ Il backfill è un `UPDATE` su tabelle con `attivo`:
+va scritto **prima** che la convergenza monti i guard, o li attraversa (memoria del progetto sul backfill).
+
+**Codici (CODICE_MAIUSCOLO).** I codici di `lista_preset` (`clienti_default`), `dashboard_definizione` (`home`),
+`dashboard_preset` (`home_default`) e `widget` (`home.benvenuto`) sono chiavi tecniche come quelle delle liste, lette per
+nome da viste, BE e FE. **Proposta:** quattro righe in più in `automazione_codice_eccezioni.csv`, col motivo della
+decisione del 2026-11-04.
+
+**Il resto, senza nodi:** nessuna tabella di `ui` è sotto RLS né ha shadow in `storico`. Nella politica degli
+indici entrano le FK di `ui` che i CSV `fk_index_policy_ui.csv` e `fk_index_policy_dashboard.csv` non
+coprono già: si legge nel blocco. Nella guida `automazione-db.md` la frase «gli schemi fuori ambito (`ui`,
+`dbops`)» cambia.
+
+**Ordine proposto:** N4 (backfill e `NOT NULL`, `00_schema`) e N1 (la colonna del contenuto, i due trigger e i due
+risolutori, `00_schema` e `20_code`), poi le eccezioni (ATTIVO e codici, `80_data`), e per ultima la riga
+`ui,*all` di `automation_scope.csv`. Così la convergenza trova il terreno pronto. BE11 si apre insieme a N1 e N3.
+**Numeri:** dal `20261109-32`, salvo conferma; il lotto M dell'altro cantiere tiene fino al `-30`.
+
+**Decisioni di Tid, prima di scrivere:**
+
+1. N1: (a) colonna del contenuto separata, o (b) i preset fuori dall'audit?
+2. N2: il criterio per le FK del guard ATTIVO, cioè dentro `ui` sì, preferenze in eccezione, le sette verso altri
+   domini da guardare una per una. Oppure un altro.
+3. Le quattro eccezioni di CODICE_MAIUSCOLO.
+4. BE11 (N1 + N3) al team BE, coordinata: lo snapshot della preferenza cambia nome se passa (a).
+
+✅ **Decise da Tid (2026-11-08): tutte come da proposta.** N1 (a), la colonna del contenuto separata; N2 col criterio
+proposto; le quattro eccezioni dei codici; BE11 al team BE. Numeri dal `20261109-32`.
+
+#### 23.12.1 Due correzioni al censimento, trovate scrivendo (2026-11-08)
+
+1. **I codici erano già tutti in eccezione.** Le quattro righe proposte (`lista_preset`, `dashboard_definizione`,
+   `dashboard_preset`, `widget`) stavano già in `automazione_codice_eccezioni.csv`, decise da Tid il 2026-11-04 con le
+   altre due: il censimento ne aveva lette solo due. Il CSV non cambia, il pgTAP del blocco lo controlla.
+2. **N2, il criterio precisato.** Il BLOCK (`dbops.trgfn_prevent_deactivate_if_children`) conta **ogni** riga figlia
+   quando la figlia non ha `attivo`. Le figlie di `ui` senza `attivo` sono righe di **composizione** (le colonne di un
+   preset, i widget di una dashboard o di un preset, i permessi di una colonna): col guard un preset non si
+   spegnerebbe mai, perché ha sempre le sue colonne. «Dentro `ui` il guard dice il vero» vale fra due entità che hanno
+   entrambe `attivo`. Le parti vanno in eccezione come le preferenze: spegnere il tutto spegne le parti, e quale parte
+   mostrare lo decidono i risolutori. Le sette FK verso altri domini, guardate una per una: le cinque verso emittente e
+   profilo in eccezione (spegnere un'azienda o un profilo è un gesto del dominio); le due di `widget` verso area e
+   azione **tengono** il guard, perché sono due entità con `attivo` e un widget acceso su un'area spenta è incoerente.
+   Restano col guard **5 FK**: `lista_colonna.lista_id`, `lista_preset.lista_id`, `dashboard_preset.dashboard_id`,
+   `widget.area_id`, `widget.azione_id`. In eccezione **16**. Nessun controesempio oggi sulle cinque (letto su
+   dbdev e scratch, 2026-11-08): il rilancio di un loader non le fa scattare.
+
+#### 23.12.2 Che cosa è scritto
+
+| changeSet / file | Che cosa |
+| --- | --- |
+| `00_schema/ui/20261109-32` | `contenuto_aggiornato_il` sui due preset (backfill dalla data di oggi, poi `NOT NULL DEFAULT now()`, COMMENT); lo snapshot delle due preferenze si rinomina `preset_base_contenuto_aggiornato_il` |
+| `00_schema/ui/20261109-33` | le sette tabelle del debito: backfill dei NULL dalla nascita, `data_update`/`user_update` `NOT NULL` col DEFAULT |
+| `20_code/ui/20261109-34` | nasce `ui.trgfn_preset_contenuto_aggiornato`, i due trigger `a20` si ricreano col nome nuovo e lo stesso `WHEN`; `ui.trgfn_preset_data_update_contenuto` si ritira |
+| `20_code/ui/20261109-35` … `-39` | `trgfn_preset_riga_tocca_preset`, le due `z90_clear_preset_base_ts`, `fn_resolve_lista_config`, `fn_resolve_dashboard_config`: corpo dal catalogo, cambiano solo le righe della colonna; rollback = il corpo di prima |
+| `automazione_attivo_eccezioni.csv` | le 16 FK di §23.12.1 col motivo (preferenze, composizione, altri domini) |
+| `automation_scope.csv` | `ui,*all` |
+| pgTAP | nuovo `ui/test-ui-nell-ambito-v1` (10); riscritti sulla colonna nuova `ui/test-fn-resolve-lista-config-cascata-per-chiave-v1`, `ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1`, `ui/test-fn-resolve-lista-config-preset-aggiornato-v1`; in `dbops/test-user-update-not-null-v1` escono le sette voci di `ui` (resta `dbops.transaction_ids`) |
+| doc | `ui/manual/`: `lista_preset`, `dashboard_preset`, le due preferenze, i due risolutori, le due `z90`; `automazione-db.md` §1.1 (`ui` nell'ambito, le eccezioni) e §CODICE_MAIUSCOLO |
+
+`ui` è già fra gli schemi dell'applicazione nei due elenchi (loop dei grant di `ci_apply` e provisioning): a
+differenza di `shop` al §22, non serve un changeSet di grant.
+
+#### 23.12.3 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML dopo la riga `BEGIN;`, `BEGIN … ROLLBACK`)
+
+L'SQL di `-32` … `-39` nell'ordine del migrate, più le righe nuove dei due CSV in upsert, gira fino in fondo sullo
+scratch e su **dbdev** (coi dati veri del backfill). La convergenza si è simulata nella stessa transazione coi tre
+runner (`fn_run_automations_audit_update`, `_attivo`, `_codice_maiuscolo` su `ui`, con `config` e `anagrafiche` per i
+padri): monta l'audit sulle **8** tabelle attese, REQUIRE e BLOCK sulle **5** FK col guard (10 trigger), nessun guard
+sulle 16 in eccezione, nessun `CODICE_MAIUSCOLO` su `ui`.
+
+Regressione sui **38** pgTAP che nominano `ui`, in tre modi (senza il blocco, col blocco, col blocco più la
+convergenza), col `databasechangelog` invariato: **nessun file cambia esito**. Rossi identici nei tre modi, non del
+blocco: `config/test-pannello-porta-v1` (8/11), `script/test-fn-is-proprietario-tabella-v1` (5/7),
+`script/test-search-soggetti-universale` (7/22), `ui/test-lista-competenza-gruppi-colonna-emittente-v1` (6/7),
+`ui/test-lista-definizione-multi-emittente-v1` (3/9), `ui/test-lista-definizione-perimetro-emittente-v1` (7/8),
+`ui/test-misure-pagina-v1` (17/18): da owner; come app li dirà la corsa di Tid. I file riscritti, nella versione nuova
+senza il blocco, muoiono sulla colonna che non c'è; `ui/test-ui-nell-ambito-v1` 3/10 senza, 10/10 con e con la
+convergenza; `dbops/test-user-update-not-null-v1` 3/4 senza (le sette tabelle nullable fuori dal registro), 4/4 con e
+con la convergenza. Guardrail verdi sui file del blocco.
+
+#### 23.12.4 Per Tid
+
+1. Apply su dbdev e scratch: `20261109-32` … `-39`; i loader di `automazione_attivo_eccezioni.csv` (`20260925-49`) e
+   di `automation_scope.csv` (`20250918-01`) si rilanciano da soli. **Poi `make db-ci-apply`** (o la passata
+   `ci_apply`): è lì che i trigger montano su `ui`.
+2. ⚠️ **BE11 va insieme**: dopo l'apply il salvataggio delle preferenze si rompe finché il BE non usa il nome nuovo
+   dello snapshot (§5).
+3. pgTAP come app: `ui/test-ui-nell-ambito-v1` (runner owner), i tre riscritti, `dbops/test-user-update-not-null-v1`,
+   `dbops/test-codice-maiuscolo-v1`, `dbops/test-automazione-attivo-eccezioni-v1`, `ui/test-fn-resolve-lista-config`,
+   `ui/test-fn-resolve-dashboard-config`.
+4. Le schede auto-generate di `ui` (le tabelle toccate, le funzioni, la funzione nuova; quella ritirata sparisce) si
+   rigenerano con `gen_db_docs.py`.
+
+#### 23.12.5 Chiusura del blocco c (2026-11-08)
+
+Tid ha applicato il blocco 7-bis-c su dbdev e scratch (`20261109-32` … `-39` e i due CSV), ha fatto girare la
+convergenza e ha lanciato i pgTAP di §23.12.4: verdi. Letto su tutti e due i database (sessione DB, sola lettura): gli
+otto changeSet sono in `databasechangelog`, `ui,*all` è nell'ambito, il trigger di audit è montato sulle 8 tabelle
+attese, REQUIRE e BLOCK sulle 5 FK col guard (10 trigger), nessun `CODICE_MAIUSCOLO` su `ui`. Le schede auto-generate
+sono rigenerate. **Il blocco c è chiuso, e con lui il giro 7-bis.** Resta BE11 al team BE (§5). Residuo del giro:
+`cleanup_at` riconosciuto per nome (§23.5, punto 4) e il `fk_index_policy.csv` orfano, passato al blocco 10d.

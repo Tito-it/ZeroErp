@@ -89,10 +89,10 @@ DECLARE
 
   -- DEF-2: snapshot preset di base dalla preferenza utente
   v_pref_preset_base_id    ui.lista_preferenza_utente.preset_base_id%TYPE;
-  v_pref_preset_base_ts    ui.lista_preferenza_utente.preset_base_data_update%TYPE;
+  v_pref_preset_base_ts    ui.lista_preferenza_utente.preset_base_contenuto_aggiornato_il%TYPE;
   v_pref_preset_ignored_at ui.lista_preferenza_utente.preset_aggiornato_ignored_at%TYPE;
-  -- DEF-2: data_update corrente del preset di base (lookup step 2.5)
-  v_preset_data_update     ui.lista_preset.data_update%TYPE;
+  -- DEF-2: contenuto_aggiornato_il corrente del preset di base (lookup step 2.5)
+  v_preset_contenuto_aggiornato_il     ui.lista_preset.contenuto_aggiornato_il%TYPE;
   -- DEF-2: flag risultato
   v_preset_aggiornato      BOOLEAN := FALSE;
 BEGIN
@@ -131,7 +131,7 @@ BEGIN
 
   -- 2a. Preferenza personale utente: ogni chiave per conto suo.
   --     Chiave assente o null = «come lo standard» (NULLIF sul null JSON).
-  --     DEF-2: legge anche preset_base_id, preset_base_data_update,
+  --     DEF-2: legge anche preset_base_id, preset_base_contenuto_aggiornato_il,
   --     preset_aggiornato_ignored_at per il calcolo del flag al step 2.5.
   SELECT
       NULLIF(pu.configurazione -> 'colonne',     'null'::JSONB),
@@ -142,7 +142,7 @@ BEGIN
       CASE WHEN (pu.configurazione ->> 'pagina_dimensione') ~ '^[0-9]{1,9}$'
            THEN (pu.configurazione ->> 'pagina_dimensione')::INTEGER END,
       pu.preset_base_id,
-      pu.preset_base_data_update,
+      pu.preset_base_contenuto_aggiornato_il,
       pu.preset_aggiornato_ignored_at
     INTO v_pref_colonne, v_pref_ordinamento, v_pref_filtri, v_pref_pagina,
          v_pref_preset_base_id, v_pref_preset_base_ts, v_pref_preset_ignored_at
@@ -287,27 +287,27 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
-  -- 2.5 DEF-2: lookup data_update corrente del preset di base.
+  -- 2.5 DEF-2: lookup contenuto_aggiornato_il corrente del preset di base.
   --     Solo se la preferenza utente ha preset_base_id non-null
-  --     E uno snapshot valorizzato (preset_base_data_update).
+  --     E uno snapshot valorizzato (preset_base_contenuto_aggiornato_il).
   --     Poi calcola il flag: TRUE sse il preset e' piu' recente
   --     dello snapshot E l'utente non ha ancora ignorato
   --     (o il preset e' cambiato di nuovo dopo l'ignore).
   -- -------------------------------------------------------
   IF v_pref_preset_base_id IS NOT NULL AND v_pref_preset_base_ts IS NOT NULL THEN
-    SELECT lp.data_update
-      INTO v_preset_data_update
+    SELECT lp.contenuto_aggiornato_il
+      INTO v_preset_contenuto_aggiornato_il
       FROM ui.lista_preset lp
      WHERE lp.id = v_pref_preset_base_id;
   END IF;
 
   v_preset_aggiornato :=
         v_pref_preset_base_ts IS NOT NULL
-    AND v_preset_data_update  IS NOT NULL
-    AND v_preset_data_update  > v_pref_preset_base_ts
+    AND v_preset_contenuto_aggiornato_il  IS NOT NULL
+    AND v_preset_contenuto_aggiornato_il  > v_pref_preset_base_ts
     AND (
           v_pref_preset_ignored_at IS NULL
-      OR  v_pref_preset_ignored_at < v_preset_data_update
+      OR  v_pref_preset_ignored_at < v_preset_contenuto_aggiornato_il
     );
 
   -- -------------------------------------------------------
@@ -519,7 +519,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve configurazione lista per un utente: cascata PER CHIAVE (2026-11-01: colonne, ordinamento, filtri e pagina_dimensione vengono ognuna dal primo livello che la contiene — preferenza, poi il preset di base, il primo con colonne fra ruolo GUC-aware deterministico per priorita, emittente e sistema, poi il catalogo; nella preferenza una chiave assente vuol dire «come lo standard»), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. Uscite 2026-11-01, ADDITIVE: origine (per ogni chiave il livello: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza) e pagina_dimensione_standard (la misura senza la preferenza). Richiesta BE/FE «preferenza di lista per chiave». DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile). P-2b (2026-08-18): l''envelope porta anche multi_emittente, la capacita'' dichiarata dalla lista di reggere piu'' emittenti. Chiave ADDITIVA, letta nella SELECT che gia'' recuperava la lista (nessun round-trip in piu''). ⚠️ NON e'' un permesso: non decide cosa l''utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se la SCHERMATA e'' leggibile nella condizione in cui sta per essere aperta. Brief perimetro-emittente P-2b. 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di colonna lo calcola ui.fn_lista_colonne_livello(), building block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full): una sede per il calcolo, perche'' la ricerca non trovi righe per una colonna che la lista non mostra. Brief: brief-db-ricerca-full-colonne-permessi. 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice(), building block condiviso con la ricerca libera e col backend (una lettura sola, stesso E_UI_LISTA_NON_TROVATA), e il JSONB porta ricerca_min_caratteri: la soglia della ricerca libera, proprieta'' della lista (ui.lista_definizione.ricerca_min_caratteri), la stessa che legge il BB di ricerca del backend. Brief: brief-db-be-fe-ricerca-soglia-per-lista.';
+IS 'Risolve configurazione lista per un utente: cascata PER CHIAVE (2026-11-01: colonne, ordinamento, filtri e pagina_dimensione vengono ognuna dal primo livello che la contiene — preferenza, poi il preset di base, il primo con colonne fra ruolo GUC-aware deterministico per priorita, emittente e sistema, poi il catalogo; nella preferenza una chiave assente vuol dire «come lo standard»), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. Uscite 2026-11-01, ADDITIVE: origine (per ogni chiave il livello: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza) e pagina_dimensione_standard (la misura senza la preferenza). Richiesta BE/FE «preferenza di lista per chiave». DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile). P-2b (2026-08-18): l''envelope porta anche multi_emittente, la capacita'' dichiarata dalla lista di reggere piu'' emittenti. Chiave ADDITIVA, letta nella SELECT che gia'' recuperava la lista (nessun round-trip in piu''). ⚠️ NON e'' un permesso: non decide cosa l''utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se la SCHERMATA e'' leggibile nella condizione in cui sta per essere aperta. Brief perimetro-emittente P-2b. 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di colonna lo calcola ui.fn_lista_colonne_livello(), building block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full): una sede per il calcolo, perche'' la ricerca non trovi righe per una colonna che la lista non mostra. Brief: brief-db-ricerca-full-colonne-permessi. 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice(), building block condiviso con la ricerca libera e col backend (una lettura sola, stesso E_UI_LISTA_NON_TROVATA), e il JSONB porta ricerca_min_caratteri: la soglia della ricerca libera, proprieta'' della lista (ui.lista_definizione.ricerca_min_caratteri), la stessa che legge il BB di ricerca del backend. Brief: brief-db-be-fe-ricerca-soglia-per-lista. rev 2026-11-08 (brief-db-revisione-dbops, giro 7-bis blocco c): la data del contenuto del preset sta in contenuto_aggiornato_il, lo snapshot in preset_base_contenuto_aggiornato_il; data_update e'' l''audit.';
 ```
 
 </div>

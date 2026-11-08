@@ -21,8 +21,8 @@
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying(80) | NO |  |
-| data_update | timestamp with time zone | YES |  |
-| user_update | character varying(80) | YES |  |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying(80) | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -39,6 +39,16 @@
 | ix_ui_widget_azione_id | `CREATE INDEX ix_ui_widget_azione_id ON ui.widget USING btree (azione_id) WHERE (azione_id IS NOT NULL)` |
 | uq_ui_widget_codice | `CREATE UNIQUE INDEX uq_ui_widget_codice ON ui.widget USING btree (codice)` |
 | widget_pkey | `CREATE UNIQUE INDEX widget_pkey ON ui.widget USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_widget_a10_aree_funzionali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id', 'id')` |
+| trg_widget_a10_aree_funzionali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id', 'id')` |
+| trg_widget_a10_azioni_processo_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id', 'id')` |
+| trg_widget_a10_azioni_processo_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id', 'id')` |
+| trg_widget_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_widget_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

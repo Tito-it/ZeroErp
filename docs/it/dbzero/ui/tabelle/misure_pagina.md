@@ -31,5 +31,11 @@
 | uq_misure_pagina_misura | `CREATE UNIQUE INDEX uq_misure_pagina_misura ON ui.misure_pagina USING btree (misura)` |
 | uq_misure_pagina_uso_default | `CREATE UNIQUE INDEX uq_misure_pagina_uso_default ON ui.misure_pagina USING btree (uso_default) WHERE (uso_default IS NOT NULL)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_misure_pagina_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_misure_pagina_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}
