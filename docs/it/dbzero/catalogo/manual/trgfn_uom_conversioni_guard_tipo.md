@@ -1,89 +1,79 @@
-## 📘 Documentazione Concettuale – Funzione `catalogo.trgfn_uom_conversioni_guard_tipo()`
+## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_uom_conversioni_guard_tipo`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [catalogo.unita_misura_conversioni](/dbzero/catalogo/tabelle/unita_misura_conversioni)
-> • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)
-> • [catalogo.uom_tipi](/dbzero/catalogo/tabelle/uom_tipi)
-> • [catalogo.articoli_uom_operativa](/dbzero/catalogo/tabelle/articoli_uom_operativa)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [catalogo.trgfn_unita_misura_guard_tipo_update](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo_update)
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [catalogo.unita_misura_conversioni](/dbzero/catalogo/tabelle/unita_misura_conversioni) — la tabella su cui è montata
+> * [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura) — le due unità di cui legge la famiglia
+> * [catalogo.uom_tipi](/dbzero/catalogo/tabelle/uom_tipi) — le famiglie
+> * [catalogo.articoli_uom_operativa](/dbzero/catalogo/tabelle/articoli_uom_operativa) — la sede dei fattori di un solo articolo, che questa regola non tocca
+>
+> Approfondimento funzioni:
+>
+> * [catalogo.trgfn_unita_misura_guard_tipo_update](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo_update) — l'altra metà della regola, sul lato delle unità
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+Rifiuta una conversione globale fra due unità di misura di famiglie diverse: in
+`catalogo.unita_misura_conversioni` si convertono chilogrammi in grammi, non metri in grammi.
 
-Tiene `catalogo.unita_misura_conversioni` nel suo perimetro: **solo conversioni globali fra
-UoM della stessa tipologia** (kg↔g, m↔cm). Una conversione peso→lunghezza non ha senso
-universale, e ammetterla renderebbe ambiguo ogni calcolo che attraversa la tabella.
-
-Le conversioni che *dipendono dall'articolo* — packaging, cartone da 12 pezzi, bancale —
-non stanno qui: vivono in `catalogo.articoli_uom_operativa`, dove il fattore è per articolo.
-Questo guard è ciò che tiene separati i due piani.
+Una conversione fra famiglie diverse non ha un senso valido per tutti gli articoli. I
+rapporti che dipendono dal prodotto (il cartone da 12 pezzi, il bancale) stanno in
+`articoli_uom_operativa`, dove il fattore è per articolo: questo guard tiene separati i due
+posti.
 
 ---
 
-### Aggancio
+### Quando scatta
 
-Trigger `trg_uom_conversioni_a10_guard_tipo_ins_upd` — `BEFORE INSERT OR UPDATE OF
-uom_from_id, uom_to_id` su `catalogo.unita_misura_conversioni`, `FOR EACH ROW`.
+Prima di ogni inserimento, e degli aggiornamenti che scrivono una delle due unità. Un
+aggiornamento del solo fattore o del periodo non tocca la famiglia, e il controllo non gira.
 
-Il `UPDATE OF` limitato alle due colonne è voluto: cambiare il solo fattore di conversione
-non tocca la tipologia e non richiede il controllo.
-
----
-
-### Regole applicate
-
-1. Risolve il tipo di `NEW.uom_from_id` e di `NEW.uom_to_id` (join
-   `unita_misura → uom_tipi`).
-2. Se **entrambi** i tipi sono risolti e sono distinti → blocca.
-3. Se i tipi coincidono → passa.
+Legge la famiglia delle due unità e rifiuta se sono diverse. Ogni unità ha sempre una
+famiglia (la colonna è obbligatoria, con la sua chiave), quindi il ramo che lascia passare
+quando una famiglia non si trova scatta solo per un'unità che non esiste, e in quel caso
+la riga la rifiuta subito dopo la chiave verso `unita_misura`.
 
 ---
 
-### ⚠️ Se un tipo non è risolvibile, il guard lascia passare
+### ⚠️ Che cosa oggi non copre
 
-Il ramo esplicito
-
-```sql
-IF v_from_tipo_id IS NULL OR v_to_tipo_id IS NULL THEN
-  RETURN NEW;
-END IF;
-```
-
-è **fail-open**: quando una delle due UoM non esiste, o esiste con `tipo_uom_id` nullo o
-orfano, la conversione viene accettata senza controlli.
-
-Non è una svista innocua: significa che il guard **non presidia i dati sporchi**, proprio il
-caso in cui servirebbe di più. La rete che regge in quel punto è la FK verso
-`catalogo.unita_misura` (che ferma una UoM inesistente); resta scoperta la UoM esistente con
-tipologia mancante.
-
----
-
-### ⚠️ Debito: solleva `E_GENERICO`
-
-Come il guard gemello, l'errore usa il codice **`E_GENERICO`** invece di un codice di dominio
-registrato. Il backend non può quindi distinguere questa causa da qualunque altro errore
-generico, e in `error_log` le righe si separano solo guardando il `context` JSONB
-(`uom_from_id`, `uom_to_id`, `tipo_from`, `tipo_to`).
-
-Messaggio testuale: *«Conversione globale non ammessa tra UoM di tipologia diversa»*.
+* **L'errore esce come errore tecnico.** Il codice è `E_GENERICO`, con una frase libera come
+  messaggio: all'operatore arriva come errore tecnico, e il backend non lo distingue da
+  qualunque altro errore generico. In `error_log` la causa si riconosce solo dal contesto
+  (le due unità e le due famiglie).
+* **In `error_log` c'è il nome del trigger, non quello della funzione**:
+  `trg_uom_conversioni_a10_guard_tipo_ins_upd`. Chi cerca dal nome della funzione non trova
+  le righe.
+* **Non è al riparo dalla concorrenza.** Legge la famiglia delle unità senza bloccarle: se
+  un'altra transazione sta cambiando la famiglia di una delle due, il guard vede quella
+  vecchia, nessuna delle due transazioni aspetta l'altra, e può nascere una conversione fra
+  famiglie diverse.
 
 ---
 
 ### Codici errore
 
-| Codice | Quando |
-|--------|--------|
-| `E_GENERICO` | `uom_from_id` e `uom_to_id` hanno tipologie diverse, entrambe risolte |
+* `E_GENERICO` — le due unità della conversione sono di famiglie diverse. Area `catalogo`.
 
-Sollevato via `script.fn_log_and_raise_error` con `area = 'catalogo'`.
+---
+
+### Test
+
+* `db/pgtap/catalogo/test-uom-tipi-global-conversioni-v1.sql` — una conversione fra due unità
+  della stessa famiglia passa; una fra massa e lunghezza è rifiutata.
+
+---
+
+### Note di migrazione
+
+* 2026-04-28 — nasce con le famiglie delle unità.
 
 ---
 

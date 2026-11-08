@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -377,12 +377,14 @@ La distinta base è **immutabile nel tempo**: una volta inserita una riga in `ar
 
 **Come si correggono errori o si evolve una distinta base**:
 
-1. **Chiudi la riga corrente**: imposta `valido_al = oggi` (l'unico campo editabile in place). Dalla UI: menu kebab della riga → "Chiudi riga", oppure click sulla cella `valido_al` inline.
-2. **Inserisci una nuova versione**: dalla UI → menu kebab → "Duplica come nuova versione". Il form si pre-compila con i valori della riga sorgente, `valido_dal = oggi`, `valido_al` vuoto. Modifica i campi desiderati e salva.
+1. **Chiudi la riga corrente**: imposta `valido_al` all'ultimo giorno in cui la versione vecchia vale, per esempio oggi (è l'unica data che si cambia in place). Dalla UI: menu kebab della riga → "Chiudi riga", oppure click sulla cella `valido_al` inline.
+2. **Inserisci una nuova versione dal giorno dopo**: dalla UI → menu kebab → "Duplica come nuova versione". Il form si pre-compila con i valori della riga sorgente e `valido_al` vuoto. Imposta `valido_dal` al **giorno successivo** alla chiusura (se hai chiuso oggi, domani), modifica i campi desiderati e salva.
 
-L'exclusion constraint daterange `ex_articoli_componenti_no_overlap` sull'indice GiST `(prodotto_id, componente_id, validita)` garantisce che non ci siano sovrapposizioni temporali tra versioni dello stesso componente.
+⚠️ **Le due date non coincidono.** Il periodo di validità comprende sia il primo sia l'ultimo giorno. Una riga chiusa oggi vale ancora per tutto oggi, e una nuova versione che parte oggi si sovrapporrebbe a lei su quel giorno: il database la rifiuta. Se la nuova versione deve valere già da oggi, chiudi la vecchia a ieri (si può solo se la riga vecchia era già in vigore ieri).
 
-**Campi ancora modificabili in place**: `note`, `meta`, `attivo`, `valido_al` (chiusura). Non sono campi di struttura.
+Il vincolo `uq_articoli_componenti_no_overlap` (un `UNIQUE … WITHOUT OVERLAPS` su prodotto, componente e periodo di validità) garantisce che non ci siano sovrapposizioni temporali tra versioni dello stesso componente nello stesso kit.
+
+**Campi ancora modificabili in place**: `note`, `meta`, `attivo`, `valido_al` (chiusura). Il trigger non blocca nemmeno il cambio del prodotto padre, ma spostare una riga di distinta sotto un altro kit non è un'operazione prevista: anche lì si chiude e si inserisce.
 
 ---
 

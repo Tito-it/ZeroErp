@@ -1,113 +1,96 @@
-# trgfn_articoli_guard_iva_bom_attiva
+## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_articoli_guard_iva_bom_attiva`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
-> - [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — tabella su cui il trigger opera
-> - [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — lookup BoM attive
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — gestione errori strutturata
-> - [catalogo.trgfn_articoli_componenti_guard_componente](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) — il lato legame: il guard di tabella della distinta (`E_BOM_IVA_DISCORDANTE`)
-
-## Scopo
-
-Impedisce la modifica di `iva_id` su un articolo che partecipa come padre o figlio a una BoM attiva, se tale modifica romperebbe l'invariante IVA uniforme del modello unificato BoM. Il trigger opera in due casi distinti: quando l'articolo modificato è un padre composito (verifica i figli), e quando è un figlio (verifica i padri). In entrambi i casi, la presenza di anche un solo articolo correlato con IVA diversa blocca l'operazione.
-
----
-
-## Schema DB
-
-`catalogo`
-
-## Firma
-
-```sql
-CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva()
-RETURNS trigger
-LANGUAGE plpgsql
-```
-
-## Trigger associato
-
-| Attributo | Valore |
-|---|---|
-| Nome trigger | `trg_articoli_a10_guard_iva_bom_attiva_upd` |
-| Tabella | `catalogo.articoli` |
-| Evento | `BEFORE UPDATE OF iva_id` |
-| Fase | `_a10_` (guard) |
-| Scope | `FOR EACH ROW` |
-| Ottimizzazione | `UPDATE OF iva_id` — non aggiunge overhead su update di altri campi dell'articolo |
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — la tabella su cui il guard è montato
+> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — i legami di distinta che il guard interroga
+> * [config.iva](/dbzero/config/tabelle/iva) — l'aliquota che compare nel messaggio
+>
+> Approfondimento funzioni:
+>
+> * [catalogo.trgfn_articoli_componenti_guard_componente](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_guard_componente) — il lato legame della stessa regola
+> * [script.fn_check_articolo_riga](/dbzero/script/funzioni/fn_check_articolo_riga) — la check del legame, col motivo `E_BOM_IVA_DISCORDANTE`
+>
+> Guide:
+>
+> * [Modello componenti BoM](/dev/manual/modello-componenti-bom) — perché un kit ha un'IVA sola
 
 ---
 
-## Logica
+### 🎯 Scopo Principale
 
-Il trigger esegue due controlli separati in sequenza:
+Impedisce di cambiare `iva_id` su un articolo che sta in una distinta attiva, se il cambio
+rompe la regola «il kit e i suoi componenti hanno la stessa IVA».
 
-### Caso A — Articolo padre composito
-
-Attivo solo se `NEW.is_composito = TRUE`. Cerca in `articoli_componenti` un figlio attivo con `iva_id` diverso da `NEW.iva_id`:
-
-```
-SELECT a.codice, a.iva_id
-FROM catalogo.articoli_componenti ac
-JOIN catalogo.articoli a ON a.id = ac.componente_id
-WHERE ac.prodotto_id = NEW.id
-  AND ac.attivo = TRUE
-  AND a.iva_id IS DISTINCT FROM NEW.iva_id
-LIMIT 1
-```
-
-Se trovato → raise `E_BOM_IVA_DISCORDANTE` (445).
-
-### Caso B — Articolo figlio in BoM attive
-
-Sempre eseguito (indipendente da `is_composito`). Cerca in `articoli_componenti` un padre attivo con `iva_id` diverso da `NEW.iva_id`:
-
-```
-SELECT a.codice, a.iva_id
-FROM catalogo.articoli_componenti ac
-JOIN catalogo.articoli a ON a.id = ac.prodotto_id
-WHERE ac.componente_id = NEW.id
-  AND ac.attivo = TRUE
-  AND a.iva_id IS DISTINCT FROM NEW.iva_id
-LIMIT 1
-```
-
-Se trovato → raise `E_BOM_IVA_DISCORDANTE` (445).
+La regola ha due lati. Sul legame la giudica il guard della distinta, quando il legame nasce o
+si riaccende. Sull'articolo la giudica questo guard, quando cambia l'IVA.
 
 ---
 
-## Guard
+### I due casi
 
-| Caso | Condizione di attivazione | Cosa cerca | Errore |
-|---|---|---|---|
-| A — padre composito | `NEW.is_composito = TRUE` | Figlio attivo con `iva_id != NEW.iva_id` | `E_BOM_IVA_DISCORDANTE` (445) |
-| B — figlio in BoM | Sempre | Padre attivo con `iva_id != NEW.iva_id` | `E_BOM_IVA_DISCORDANTE` (445) |
+Il guard è `BEFORE UPDATE OF iva_id`, riga per riga.
 
----
+* **L'articolo è un kit.** Se l'articolo è composito, si cerca un componente di un suo legame
+  attivo con un'IVA diversa dalla nuova.
+* **L'articolo è un componente.** Sempre, anche se l'articolo non è composito, si cerca il padre
+  di un suo legame attivo con un'IVA diversa dalla nuova.
 
-## Codici errore
+Basta un articolo collegato con un'IVA diversa perché il cambio sia rifiutato
+(`E_BOM_IVA_DISCORDANTE`). Il messaggio nomina il kit, il componente e le due aliquote in
+percentuale, non l'id dell'IVA.
 
-| Codice | ID | Quando |
-|---|---|---|
-| `E_BOM_IVA_DISCORDANTE` | 445 | La nuova `iva_id` è incompatibile con almeno un partner BoM attivo |
-
-Contesto JSON (Caso A): `prodotto_id`, `iva_padre_nuova`, `codice_figlio`, `iva_figlio`.  
-Contesto JSON (Caso B): `componente_id`, `iva_figlio_nuova`, `codice_padre`, `iva_padre`.
+Il confronto tratta due IVA vuote come uguali: un articolo senza IVA in un kit senza IVA passa.
+Un'IVA vuota contro una valorizzata è una differenza.
 
 ---
 
-## Dipendenze
+### ⚠️ Che cosa oggi non copre
 
-| Oggetto | Tipo | Motivo |
-|---|---|---|
-| `catalogo.articoli_componenti` | Tabella | Lookup BoM attive per trovare partner con IVA incompatibile |
-| `script.fn_log_and_raise_error` | Funzione | Registrazione e raise strutturato dell'errore |
+* **L'IVA di un kit con legami attivi non si cambia più.** Il guard confronta la nuova IVA con
+  quella **attuale** degli articoli collegati, e non aspetta la fine della transazione. Se si
+  cambia prima il kit, i componenti hanno ancora la vecchia; se si cambia prima un componente,
+  il kit ha ancora la vecchia. Nemmeno un UPDATE unico passa: la prima riga elaborata vede le
+  altre col valore vecchio.
+* **Contano anche i legami chiusi.** Il guard filtra solo i legami attivi, senza guardare la
+  validità. Un legame scaduto resta attivo, e non si può spegnere appena una riga di documento
+  lo cita: blocca il cambio d'IVA anche quando quella distinta non è più in vigore.
+* **Con `iva_id` vuota il messaggio esce incompleto.** Se la nuova IVA è vuota, l'aliquota nuova
+  nel messaggio resta vuota invece di mostrare un segnaposto.
+* **L'errore non porta il `tx_id` della riga.**
+
+La regola dell'IVA sul legame, invece, regge: un legame che si riaccende in uno stato incoerente
+è rifiutato dal guard della distinta.
 
 ---
 
-## Note operative
+### Codici errore
 
-- Il confronto usa `IS DISTINCT FROM`: NULL = NULL è considerato uguale, quindi un articolo con `iva_id = NULL` che modifica verso `NULL` non viene bloccato anche se ha partner con `iva_id = NULL`.
-- La `LIMIT 1` garantisce che anche in BoM con molti figli il trigger si fermi al primo conflitto senza scansionare l'intera tabella.
-- Per modificare `iva_id` su un articolo con BoM attive è necessario prima aggiornare tutti i partner BoM alla nuova IVA, poi aggiornare l'articolo stesso.
-- Migration di riferimento: `20260513-03`.
+* `E_BOM_IVA_DISCORDANTE` — la nuova IVA dell'articolo è diversa da quella di un componente (se
+  l'articolo è un kit) o di un padre (se è un componente) di un legame attivo.
+
+---
+
+### Test
+
+* `db/pgtap/catalogo/test-guard-iva-reactivation-v1.sql` — con il legame spento l'IVA del padre
+  cambia, perché il guard ignora i legami spenti; la riaccensione del legame in uno stato
+  incoerente è rifiutata dal lato legame.
+* `db/pgtap/catalogo/test-distinta-un-livello-e-onere-natura-v1.sql` — su un legame con un
+  componente composito e un'IVA diversa parla prima il livello della distinta, poi l'IVA.
+
+---
+
+### Note di migrazione
+
+* 2026-05-13 — nasce.
+* 2026-06-03 — il lato legame giudica anche la riaccensione di un legame: prima il percorso
+  «spegni il legame, cambia l'IVA, riaccendi» restava scoperto.
+
+---
+
+{% include-markdown "signature-core.md" %}

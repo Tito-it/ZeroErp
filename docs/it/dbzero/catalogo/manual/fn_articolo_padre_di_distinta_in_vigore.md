@@ -4,9 +4,15 @@
 >
 > 👀 **Vedi anche**
 >
-> * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che la chiama
-> * [dbops.lock_columns_conditional](/dbzero/dbops/manual/lock_columns_conditional) — le regole del form che la chiamano
+> Approfondimento tabelle:
+>
 > * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — i legami della distinta
+> * [dbops.lock_columns_conditional](/dbzero/dbops/tabelle/lock_columns_conditional) — le regole del form che la chiamano
+>
+> Approfondimento funzioni:
+>
+> * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che la chiama
+> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale
 
 ---
 
@@ -28,6 +34,8 @@ chiamano la stessa funzione, rispondono uguale: prima la condizione stava scritt
 due copie erano già divergite una volta sul giorno di riferimento.
 
 Guarda solo la distinta **in vigore oggi**: un legame futuro o scaduto non conta. Il passaggio a composito di un componente, che guarda anche il futuro, è un'altra regola (`catalogo.fn_articolo_primo_padre_da_oggi`).
+
+⚠️ Ne segue che un articolo con legami solo futuri non è padre di una distinta in vigore: il guard gli lascia togliere `is_composito` (se nessun documento lo usa), e quei legami entreranno in vigore sotto un articolo che non è più un kit.
 
 ---
 
@@ -53,7 +61,7 @@ chiama.
 ### Note di migrazione
 
 * 2026-11-08 — nasce dalla condizione che il guard e la sua regola per il form scrivevano ciascuno
-  per conto suo (`20261109-62`, brief-db-revisione-dbops D28).
+  per conto suo (brief-db-revisione-dbops).
 
 ---
 

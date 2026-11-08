@@ -1,90 +1,84 @@
-## 📘 Documentazione Concettuale – Funzione `catalogo.trgfn_unita_misura_guard_tipo_update()`
+## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_unita_misura_guard_tipo_update`
 
+> **Ultimo aggiornamento**: 8 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)
-> • [catalogo.unita_misura_conversioni](/dbzero/catalogo/tabelle/unita_misura_conversioni)
-> • [catalogo.uom_tipi](/dbzero/catalogo/tabelle/uom_tipi)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [catalogo.trgfn_uom_conversioni_guard_tipo](/dbzero/catalogo/funzioni/trgfn_uom_conversioni_guard_tipo)
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura) — la tabella su cui è montata, al cambio di famiglia
+> * [catalogo.unita_misura_conversioni](/dbzero/catalogo/tabelle/unita_misura_conversioni) — le conversioni che la funzione conta
+> * [catalogo.uom_tipi](/dbzero/catalogo/tabelle/uom_tipi) — le famiglie
+>
+> Approfondimento funzioni:
+>
+> * [catalogo.trgfn_uom_conversioni_guard_tipo](/dbzero/catalogo/funzioni/trgfn_uom_conversioni_guard_tipo) — l'altra metà della regola, sul lato delle conversioni
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
-
-Chiude la **porta di servizio** del vincolo *same-type* sulle conversioni globali.
-
-Il guard gemello `trgfn_uom_conversioni_guard_tipo` impedisce di creare una conversione fra
-due UoM di tipologia diversa (peso ↔ lunghezza). Ma quel controllo guarda le UoM
-**al momento in cui la conversione viene scritta**: se dopo si cambia il tipo di una delle
-due, la conversione già esistente diventa retroattivamente illegale senza che nessuno se ne
-accorga. Questa funzione toglie quella possibilità, bloccando il cambio di tipo su una UoM
-già coinvolta in conversioni.
-
-I due guard vanno letti **sempre insieme**: presi separatamente coprono metà regola ciascuno.
+Impedisce di cambiare la famiglia (`tipo_uom_id`) a un'unità di misura che compare in almeno
+una conversione globale. Così una conversione nata fra due unità della stessa famiglia non
+diventa, dopo, una conversione fra famiglie diverse.
 
 ---
 
-### Aggancio
+### Le due metà della regola
 
-Trigger `trg_unita_misura_a10_guard_tipo_uom_upd` — `BEFORE UPDATE OF tipo_uom_id`
-su `catalogo.unita_misura`, `FOR EACH ROW`,
-`WHEN (OLD.tipo_uom_id IS DISTINCT FROM NEW.tipo_uom_id)`.
+La regola «una conversione globale collega solo unità della stessa famiglia» ha due porte.
+`trgfn_uom_conversioni_guard_tipo` controlla la conversione quando la si scrive; questa
+funzione controlla l'unità quando le si cambia la famiglia. Presa da sola, ognuna copre metà
+della regola.
 
----
-
-### Regole applicate
-
-1. Conta le righe di `catalogo.unita_misura_conversioni` in cui la UoM compare
-   **da un lato o dall'altro** (`uom_from_id = NEW.id OR uom_to_id = NEW.id`).
-2. Se il conteggio è `> 0`, blocca l'operazione.
-
-Per cambiare il tipo di una UoM già usata bisogna quindi **prima rimuovere le conversioni
-che la coinvolgono**: non esiste un percorso che le riconverta.
+La funzione conta le conversioni in cui l'unità compare da una parte o dall'altra, attive o
+no, in qualunque periodo: basta una riga. Per cambiare famiglia a un'unità usata si tolgono
+prima le sue conversioni; non c'è un percorso che le converta.
 
 ---
 
-### ⚠️ La protezione dal falso positivo sta nel trigger, non nella funzione
+### ⚠️ Il controllo «la famiglia è cambiata» sta nel trigger, non nella funzione
 
-Il corpo **non verifica che il tipo sia davvero cambiato**: se le conversioni collegate
-esistono, solleva. A evitare che un `UPDATE` innocuo venga rifiutato è la clausola
-`WHEN (OLD.tipo_uom_id IS DISTINCT FROM NEW.tipo_uom_id)` sul `CREATE TRIGGER`.
-
-Chi riaggancia questa funzione a un nuovo trigger e omette la `WHEN` ottiene un guard che
-rifiuta **qualunque** `UPDATE` di `tipo_uom_id`, compreso quello che riscrive lo stesso
-valore — e la causa non si vede leggendo la funzione. Il `WHEN` va copiato insieme al resto.
+La funzione non confronta la famiglia vecchia con la nuova: se le conversioni ci sono,
+rifiuta. A lasciar passare un aggiornamento che riscrive la stessa famiglia è la condizione
+`WHEN` del trigger, che la chiama solo quando il valore cambia davvero. Chi monta la
+funzione su un altro trigger deve copiare anche quella condizione, altrimenti ogni
+aggiornamento della colonna su un'unità usata viene rifiutato.
 
 ---
 
-### ⚠️ Debito: solleva `E_GENERICO`
+### ⚠️ Che cosa oggi non copre
 
-L'errore viene registrato e sollevato con il codice **`E_GENERICO`**, non con un codice di
-dominio dedicato. È fuori dalla convenzione di progetto (`E_{MODULO}_{TIPO}`) e ha due
-conseguenze concrete:
-
-* il backend non può mappare questa causa a uno stato HTTP e a un'azione UI specifici,
-  perché il codice è lo stesso di qualunque altro errore generico;
-* in `error_log` queste righe non sono distinguibili per codice: serve leggere il `context`
-  JSONB (`uom_id`, `tipo_uom_old_id`, `tipo_uom_new_id`, `conversioni_collegate`) o il
-  messaggio testuale.
-
-Il messaggio passato come valore è *«Cambio tipo UoM non ammesso: la UoM partecipa a
-conversioni globali»*. ⚠️ Chi cercasse i consumatori di questo errore partendo dal **testo**
-non troverebbe nulla di utile: vanno cercati dal nome della funzione che lo solleva.
+* **L'errore esce come errore tecnico.** Il codice è `E_GENERICO`, con una frase libera come
+  messaggio: all'operatore arriva come errore tecnico, e il backend non lo distingue da
+  qualunque altro errore generico. In `error_log` la causa si riconosce solo dal contesto
+  (l'unità, la famiglia vecchia e la nuova, il numero di conversioni).
+* **In `error_log` c'è il nome del trigger, non quello della funzione.** Chi cerca le righe
+  di questo errore dal nome della funzione non le trova: vanno cercate con il nome del
+  trigger, `trg_unita_misura_a10_guard_tipo_uom_upd`.
+* **Non è al riparo dalla concorrenza.** Se mentre questa funzione conta zero conversioni
+  un'altra transazione ne sta scrivendo una sull'unità, nessuna delle due aspetta l'altra, e
+  può nascere una conversione fra famiglie diverse.
 
 ---
 
 ### Codici errore
 
-| Codice | Quando |
-|--------|--------|
-| `E_GENERICO` | Cambio di `tipo_uom_id` su una UoM presente in almeno una riga di `unita_misura_conversioni` |
+* `E_GENERICO` — cambio di `tipo_uom_id` su un'unità che compare in almeno una conversione
+  globale. Area `catalogo`.
 
-Sollevato via `script.fn_log_and_raise_error` con `area = 'catalogo'`.
+---
+
+### Test
+
+La funzione non ha un test.
+
+---
+
+### Note di migrazione
+
+* 2026-04-28 — nasce con le famiglie delle unità, insieme al guard sulle conversioni.
 
 ---
 
