@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_regola_automazione_valida: la forma di una regola del registro delle
+#   automazioni, letta dal CHECK di 90_end/20261109-75 (D2 con N4, D20 con N6, N3).
+#   Brief: brief-db-revisione-dbops, giro 10b (§26).
+#
+#   Prima un ttl_days testuale fermava il giro del cleanup e ogni INSERT dei registri
+#   coperti; una regola STORICO senza nome prendeva un ripiego diverso dal seed;
+#   due FK della stessa coppia non potevano avere due nomi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-66-create-fn-regola-automazione-valida-mctit.yaml
+
+  - changeSet:
+      id: 20261109-66-create-fn-regola-automazione-valida
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_regola_automazione_valida: la forma di una regola del registro delle automazioni, per il CHECK. Brief: brief-db-revisione-dbops, giro 10b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_regola_automazione_valida'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_regola_automazione_valida(
+                  p_rule_type     dbops.automation_rules_tbl.rule_type%TYPE,
+                  p_exec_mode     dbops.automation_rules_tbl.exec_mode%TYPE,
+                  p_name_template dbops.automation_rules_tbl.name_template%TYPE,
+                  p_params        dbops.automation_rules_tbl.params%TYPE)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               IMMUTABLE
+              AS $function$
+              -- Scopo: una regola di dbops.automation_rules_tbl e' ben formata? La legge il
+              --   CHECK chk_automation_rules_tbl_regola_valida: una regola malformata non
+              --   entra, cosi' i runner non devono difendersi da lei.
+              -- Regole:
+              --   - params e' un oggetto JSON;
+              --   - le regole che montano un trigger dichiarano il nome (name_template non
+              --     vuoto): il nome sta nel registro, e solo li';
+              --   - ATTIVO: name_template e' un oggetto JSON con "block" e "require", e
+              --     ognuno ha il segnaposto dell'hash della FK ({fkhash6} o
+              --     {fkhash6_if_long}): due FK della stessa coppia devono poter avere due nomi;
+              --   - CLEANUP_AT e CLEANUP_PURGE valgono sempre (exec_mode AUTO): la scadenza la
+              --     scrive anche un trigger alla nascita, che non e' una corsa;
+              --   - CLEANUP_AT: ttl_days intero >= 1; apply_on_update booleano;
+              --     cleanup_column e base_ts_column testo;
+              --   - CLEANUP_PURGE: batch_limit intero >= 1; cleanup_column testo.
+              DECLARE
+                  v_t jsonb;
+              BEGIN
+                  IF p_params IS NULL OR jsonb_typeof(p_params) <> 'object' THEN
+                      RETURN false;
+                  END IF;
+
+                  IF p_rule_type IN ('TX_ID', 'AUDIT_UPDATE', 'STORICO', 'LOCK_COLUMNS',
+                                     'DATE_VALIDITA', 'CODICE_MAIUSCOLO')
+                     AND NULLIF(btrim(p_name_template), '') IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  IF p_rule_type = 'ATTIVO' THEN
+                      IF p_name_template IS NULL OR NOT pg_input_is_valid(p_name_template, 'jsonb') THEN
+                          RETURN false;
+                      END IF;
+                      v_t := p_name_template::jsonb;
+                      IF jsonb_typeof(v_t) <> 'object'
+                         OR jsonb_typeof(v_t -> 'block') IS DISTINCT FROM 'string'
+                         OR jsonb_typeof(v_t -> 'require') IS DISTINCT FROM 'string'
+                         OR position('{fkhash6' IN v_t ->> 'block') = 0
+                         OR position('{fkhash6' IN v_t ->> 'require') = 0 THEN
+                          RETURN false;
+                      END IF;
+                  END IF;
+
+                  IF p_rule_type IN ('CLEANUP_AT', 'CLEANUP_PURGE') AND p_exec_mode <> 'AUTO' THEN
+                      RETURN false;
+                  END IF;
+
+                  IF p_rule_type = 'CLEANUP_AT' THEN
+                      IF jsonb_typeof(p_params -> 'ttl_days') IS DISTINCT FROM 'number'
+                         OR (p_params ->> 'ttl_days')::numeric <> trunc((p_params ->> 'ttl_days')::numeric)
+                         OR (p_params ->> 'ttl_days')::numeric < 1 THEN
+                          RETURN false;
+                      END IF;
+                      IF p_params ? 'apply_on_update'
+                         AND jsonb_typeof(p_params -> 'apply_on_update') <> 'boolean' THEN
+                          RETURN false;
+                      END IF;
+                  END IF;
+
+                  IF p_rule_type = 'CLEANUP_PURGE' AND p_params ? 'batch_limit'
+                     AND (   jsonb_typeof(p_params -> 'batch_limit') <> 'number'
+                          OR (p_params ->> 'batch_limit')::numeric <> trunc((p_params ->> 'batch_limit')::numeric)
+                          OR (p_params ->> 'batch_limit')::numeric < 1) THEN
+                      RETURN false;
+                  END IF;
+
+                  IF p_rule_type IN ('CLEANUP_AT', 'CLEANUP_PURGE')
+                     AND (   (p_params ? 'cleanup_column' AND jsonb_typeof(p_params -> 'cleanup_column') <> 'string')
+                          OR (p_params ? 'base_ts_column' AND jsonb_typeof(p_params -> 'base_ts_column') <> 'string')) THEN
+                      RETURN false;
+                  END IF;
+
+                  RETURN true;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_regola_automazione_valida(text, text, text, jsonb) IS
+                  'true se una regola di dbops.automation_rules_tbl e'' ben formata; la legge il CHECK chk_automation_rules_tbl_regola_valida. params e'' un oggetto JSON; le regole che montano un trigger (TX_ID, AUDIT_UPDATE, STORICO, LOCK_COLUMNS, DATE_VALIDITA, CODICE_MAIUSCOLO) dichiarano name_template; ATTIVO dichiara un oggetto JSON con block e require, ciascuno col segnaposto dell''hash della FK ({fkhash6} o {fkhash6_if_long}); CLEANUP_AT e CLEANUP_PURGE hanno exec_mode AUTO, perche'' la scadenza la scrive anche il trigger alla nascita; CLEANUP_AT ha ttl_days intero >= 1, apply_on_update booleano, cleanup_column e base_ts_column testo; CLEANUP_PURGE batch_limit intero >= 1. Una regola malformata non entra nel registro, cosi'' i runner non la convertono alla cieca.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_regola_automazione_valida(text, text, text, jsonb);

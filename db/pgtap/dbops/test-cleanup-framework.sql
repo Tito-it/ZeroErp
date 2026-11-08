@@ -215,7 +215,6 @@ WITH ins AS (
     target_table,
     exec_mode,
     name_template,
-    existence_strategy,
     params,
     priority,
     note
@@ -227,7 +226,6 @@ WITH ins AS (
     'tst_cleanup_framework',
     'AUTO',
     NULL,
-    'BY_NAME',
     '{"cleanup_column":"cleanup_at","batch_limit":5000}'::jsonb,
     10,
     'pgtap_cleanup_' || (SELECT tag FROM tmp_cleanup_ctx)
@@ -329,12 +327,12 @@ CREATE TRIGGER trg_tst_cleanup_veto_guard_dlt
 --   registra: serve la PROVA DEL PASSAGGIO, non un effetto.
 INSERT INTO dbops.automation_rules_tbl (
   enabled, rule_type, target_schema, target_table, exec_mode,
-  name_template, existence_strategy, params, priority, note)
+  name_template, params, priority, note)
 VALUES
-  (true, 'CLEANUP_PURGE', 'dbops', 'tst_cleanup_veto', 'AUTO', NULL, 'BY_NAME',
+  (true, 'CLEANUP_PURGE', 'dbops', 'tst_cleanup_veto', 'AUTO', NULL,
    '{"cleanup_column":"cleanup_at","batch_limit":5000}'::jsonb, 5,
    'pgtap_cleanup_veto_' || (SELECT tag FROM tmp_cleanup_ctx)),
-  (true, 'CLEANUP_AT', 'dbops', 'tst_cleanup_veto', 'AUTO', NULL, 'BY_NAME',
+  (true, 'CLEANUP_AT', 'dbops', 'tst_cleanup_veto', 'AUTO', NULL,
    '{"cleanup_column":"cleanup_at","base_ts_column":"data_insert","ttl_days":10,"apply_on_update":false}'::jsonb, 10,
    'pgtap_cleanup_veto_dopo_' || (SELECT tag FROM tmp_cleanup_ctx));
 

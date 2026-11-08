@@ -312,11 +312,8 @@ Da un punto di vista tecnico:
 2. **Scansione tabelle**: itera tutte le tabelle fisiche (`relkind='r'`) nell'ambito, filtrate da `fn_table_in_scope`
 3. **Selezione regole**: per ciascuna tabella, filtra in `automation_rules_tbl` le regole con `rule_type='TX_ID'`, rispettando `enabled`, `exec_mode`, `priority` e pattern di match su schema/tabella
 4. **Pre-condizione**: verifica che la tabella abbia una colonna `tx_id` di tipo `uuid` (non crea colonne, solo trigger)
-5. **Naming**: genera il nome trigger dal template (default: `trg_{table}_gen_tx_id_ins_upd`) tramite `fn_name_from_template`
-6. **Verifica esistenza**: controlla se il trigger esiste gia, con strategia configurabile:
-    * `BY_NAME` — verifica per nome trigger
-    * `BY_FUNCTION` — verifica per funzione trigger
-    * `BOTH` — presente se almeno uno dei due e vero
+5. **Naming**: genera il nome trigger dal template della regola, obbligatorio (nel seed: `trg_{table}_gen_tx_id_ins_upd`), tramite `fn_name_from_template`
+6. **Verifica esistenza**: il trigger c'è già se sulla tabella un trigger esegue `dbops.trgfn_tx_id_managed`, con qualunque nome: si riconosce dalla funzione, e il nome serve solo a crearne uno nuovo
 7. **Azione**: se il trigger non esiste:
     * `p_dry_run = true` → registra evento `DRYRUN_CREATE_TRIGGER` via `fn_audit_log_once`
     * `p_dry_run = false` → crea il trigger `BEFORE INSERT OR UPDATE ... EXECUTE FUNCTION dbops.trgfn_tx_id_managed()`
@@ -333,12 +330,11 @@ Le regole di automazione sono configurate nella tabella `dbops.automation_rules_
 | -------------------- | ---------- | --------- | ---------------------------------------------------------------- |
 | `id`                 | BIGINT, PK | —         | Chiave primaria                                                  |
 | `enabled`            | BOOLEAN    | true      | Regola attiva                                                    |
-| `rule_type`          | TEXT       | —         | Tipo regola (es. `TX_ID`, `AUDIT`, `FK_INDEX`)                   |
+| `rule_type`          | TEXT       | —         | Tipo regola, vocabolario chiuso (es. `TX_ID`, `AUDIT_UPDATE`, `STORICO`) |
 | `target_schema`      | TEXT       | `*all`    | Schema target (pattern o `*all`)                                 |
 | `target_table`       | TEXT       | `*all`    | Tabella target (pattern ILIKE o `*ALL`)                          |
-| `exec_mode`          | TEXT       | `AUTO`    | Modalita: `AUTO`, `SCHEDULED`, `FORCE`                           |
-| `name_template`      | TEXT       | —         | Template nome trigger (default: `trg_{table}_gen_tx_id_ins_upd`) |
-| `existence_strategy` | TEXT       | `BY_NAME` | Strategia verifica: `BY_NAME`, `BY_FUNCTION`, `BOTH`             |
+| `exec_mode`          | TEXT       | `AUTO`    | Modalita: `AUTO`, `CI`, `SCHEDULED`                              |
+| `name_template`      | TEXT       | —         | Template nome trigger, obbligatorio per `TX_ID` (nel seed: `trg_{table}_gen_tx_id_ins_upd`) |
 | `params`             | JSONB      | `'{}'`    | Parametri aggiuntivi                                             |
 | `priority`           | INTEGER    | 100       | Ordine di applicazione (minore = prima)                          |
 | `note`               | TEXT       | —         | Note descrittive                                                 |
@@ -470,7 +466,6 @@ erDiagram
         text rule_type
         text target_schema
         text target_table
-        text existence_strategy
         text name_template
     }
 

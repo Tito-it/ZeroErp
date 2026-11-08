@@ -4,17 +4,17 @@
 --
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il test fa DDL (una madre in config, la sua gemella in
---   storico, una funzione trigger e un trigger montati a mano) e cambia la
---   strategia della regola STORICO: e' il percorso delle migrazioni e di
---   ci_apply, non dell'applicazione.
+--   storico, una funzione trigger e un trigger montati a mano): e' il percorso
+--   delle migrazioni e di ci_apply, non dell'applicazione.
 --
 -- Test: il runner storico salta un trigger gia' presente senza fermarsi
 --   dbops.fn_run_automations_storico (ramo duplicate_object) · dbops.audit_log
 -- ChangeSet: 20261103-70 · Brief: brief-db-revisione-maintenance R4
 --
 -- Elenco test (plan 3):
---  1) ⭐ BY_FUNCTION, nome del template gia' preso da un trigger su un'altra
---     funzione: il runner vive (prima moriva con 23514 su chk_audit_status)
+--  1) ⭐ nome del template gia' preso da un trigger su un'altra funzione (il
+--     runner riconosce il trigger dalla funzione, quindi lo da' per assente):
+--     il runner vive (prima moriva con 23514 su chk_audit_status)
 --  2) ⭐ ... e il salto e' nell'audit: status WARN, azione SKIP_EXISTS, la
 --     tabella nominata
 --  3) ✅ ... e sulla madre non e' nato nessun trigger di storico
@@ -58,17 +58,13 @@ BEGIN
 END
 $f$;
 
-UPDATE dbops.automation_rules_tbl
-   SET existence_strategy = 'BY_FUNCTION'
- WHERE enabled AND upper(btrim(rule_type)) = 'STORICO';
-
 -- Il trigger col nome del template, su un'altra funzione.
 DO $fx$
 DECLARE
     v_nome text;
 BEGIN
     SELECT dbops.fn_name_from_template(
-               COALESCE(r.name_template, 'trg_z90_{table}_storico_upd_dlt'),
+               r.name_template,
                'config', 'pgtap_sto_skip', NULL, NULL, NULL, 'upd_dlt')
       INTO v_nome
       FROM dbops.automation_rules_tbl r
@@ -94,7 +90,7 @@ SELECT ok(
     EXISTS (
         SELECT 1
           FROM dbops.audit_log a
-         WHERE a.function_name     = 'fn_run_automations_storico'
+         WHERE a.function_name     = 'dbops.fn_run_automations_storico'
            AND a.status            = 'WARN'
            AND a.params ->> 'action' = 'SKIP_EXISTS'
            AND a.params ->> 'table'  = 'config.pgtap_sto_skip'),

@@ -1,20 +1,19 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_audit_update`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole `AUDIT_UPDATE`: ambito, colonne, modello del nome, strategia
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole `AUDIT_UPDATE`: ambito e modello del nome
 > * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — le tabelle che il framework guarda
-> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — i nomi di colonna sostituiti per tabella
 >
 > Approfondimento funzioni:
 >
 > * [maintenance.proc_automations_audit_update_job](/dbzero/maintenance/funzioni/proc_automations_audit_update_job) — il processo che la lancia, dalla convergenza del rilascio e dal suo job pgAgent
 > * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — il trigger che monta
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col) — il nome di colonna sostituito, se c'è
+> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — riconosce il trigger dalla funzione
 > * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger dal modello
 > * [script.fn_sqlstate_di_ambiente](/dbzero/script/funzioni/fn_sqlstate_di_ambiente) — distingue un guasto dell'ambiente da un difetto
 >
@@ -42,22 +41,19 @@ Le tabelle sono quelle ordinarie degli schemi in ambito che lo scope delle autom
 ciascuna valgono le regole `AUDIT_UPDATE` abilitate che ne combaciano schema e tabella, in ordine
 di priorità, e la cui modalità è `AUTO` o quella con cui la funzione è stata lanciata.
 
-Il trigger si monta solo se la tabella ha **entrambe** le colonne di audit: quella del momento e
-quella dell'utente. I loro nomi vengono dai parametri della regola (`data_update` e `user_update`
-se la regola non li dice), sostituiti dal nome della tabella quando
-`dbops.automation_overrides_cols` ne dichiara uno per i ruoli `AUDIT_TS` e `AUDIT_USER`.
-
-⚠️ Il nome sostituito serve **solo** a decidere se montare il trigger: il trigger generico scrive
-sempre `data_update`, `user_update` e, all'inserimento, `user_insert`. Su una tabella con colonne
-di audit dai nomi diversi, il trigger montato fallirebbe alla prima scrittura.
+Il trigger si monta solo se la tabella ha **entrambe** le colonne di audit, `data_update` e
+`user_update`. I nomi sono fissi per contratto ([linee guida SQL](/linee-guida-sql) §7): il trigger
+generico li scrive per nome (e, all'inserimento, `user_insert`), quindi non si sostituiscono per
+tabella e la regola non ha parametri (`params = {}`).
 
 ---
 
 ### Il nome del trigger e la sua esistenza
 
-Il nome viene dal modello della regola (in mancanza, `trg_{table}_audit_data_user_upd`). La
-strategia della regola dice quando il trigger «c'è già»: `BY_NAME` (il default) per nome,
-`BY_FUNCTION` se un trigger esegue già la funzione di audit, `BOTH` se basta uno dei due.
+Il trigger «c'è già» se sulla tabella un trigger esegue già `script.trgfn_audit_data_user_generic`,
+qualunque nome abbia (`dbops.fn_trigger_exists_by_function`). Il nome serve solo a crearne uno
+nuovo, e viene dal modello della regola, obbligatorio (`trg_{table}_audit_data_user_upd` nel seed):
+la funzione non ha un nome di ripiego.
 
 ---
 
@@ -65,8 +61,7 @@ strategia della regola dice quando il trigger «c'è già»: `BY_NAME` (il defau
 
 Con la simulazione accesa la funzione non esegue DDL: per ogni trigger mancante scrive una riga
 `DRYRUN` in `dbops.audit_log`, con tipo di regola `AUDIT_UPDATE`, la tabella e il nome che avrebbe
-creato. ⚠️ La riga è firmata `dbops.fn_run_automations`, non col nome di questa funzione: un nome
-che non esiste più, perché l'orchestratore è stato ritirato. È un difetto aperto.
+creato. La riga è firmata col nome di questa funzione, `dbops.fn_run_automations_audit_update`.
 
 ---
 
@@ -90,6 +85,10 @@ Il primo errore ferma l'intera corsa.
   (`brief-db-presidio-job-run-a-chi-tocca`).
 * 2026-11-04 — ritirato l'orchestratore `dbops.fn_run_automations`, che la chiamava come modulo
   `AUDIT_UPDATE`; la firma della simulazione ne porta ancora il nome (`brief-db-revisione-dbops`).
+* 2026-11-08 — il trigger si riconosce dalla funzione: la strategia d'esistenza della regola esce;
+  il nome viene solo dal registro; le colonne di audit hanno nome fisso (escono gli override
+  `AUDIT_TS`/`AUDIT_USER` e i parametri `audit_ts`/`audit_user`); la simulazione firma col proprio
+  nome (`20261109-69`, brief-db-revisione-dbops D17, D20, D27, R1).
 
 ---
 

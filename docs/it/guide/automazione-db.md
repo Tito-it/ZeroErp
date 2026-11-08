@@ -112,10 +112,13 @@ Le **regole** (`dbops.automation_rules_tbl`, seminata dal CSV `80_data/sql/dbops
 | `target_schema`      | Schema target — `'*all'` per tutti gli schemi nell'ambito                  |
 | `target_table`       | Pattern LIKE per le tabelle (es. `foo_%`) oppure NULL per tutte            |
 | `name_template`      | Template per il nome del trigger/oggetto generato                          |
-| `existence_strategy` | Come verificare se l'oggetto esiste già: `BY_NAME`, `BY_FUNCTION` o `BOTH` |
 | `params`             | Parametri JSON specifici per la regola                                     |
 | `exec_mode`          | Quando eseguire: `AUTO`, `CI`, `SCHEDULED`                                 |
 | `enabled`            | Flag per attivare/disattivare la regola                                    |
+
+**Il trigger si riconosce dalla funzione, non dal nome.** Ogni runner sa che un trigger del framework c'è già perché sulla tabella un trigger esegue la sua funzione, qualunque nome abbia; per ATTIVO, perché esiste un trigger con gli argomenti della FK che difende. Il nome serve solo a **creare** un trigger nuovo, e sta solo nel registro: `name_template` è obbligatorio per ogni regola che monta un trigger, e i runner non hanno nomi di ripiego.
+
+**Una regola malformata non entra.** `rule_type` ed `exec_mode` sono vocabolari chiusi, nella forma canonica (maiuscolo); un vincolo del registro, [`dbops.fn_regola_automazione_valida`](/dbzero/dbops/funzioni/fn_regola_automazione_valida), pretende in più che `params` sia un oggetto JSON, che il template ci sia dove serve (per ATTIVO un JSON con `block` e `require`, ognuno con l'hash della FK), che le regole di scadenza siano `AUTO` e che i loro parametri abbiano il tipo giusto (`ttl_days` e `batch_limit` interi ≥ 1, `apply_on_update` booleano).
 
 **Precedenza ambito/rules**: una regola con `target_schema='*all'` si applica **solo** alle tabelle che rientrano nell'ambito risolto. Se l'ambito include solo `anagrafiche` e `vendite`, la regola `*all` toccherà solo quei due schemi. L'ambito delimita dove, le rules definiscono cosa.
 
@@ -226,7 +229,7 @@ Ogni modifica a un record aggiorna automaticamente **chi** ha fatto la modifica 
 
 * Trigger `BEFORE INSERT OR UPDATE` che chiama `script.trgfn_audit_data_user_generic()`
 * Aggiorna `data_update` (timestamp) e `user_update` (utente corrente)
-* Le colonne devono esistere sulla tabella (i nomi possono essere personalizzati via override)
+* Le colonne devono esistere sulla tabella, con questi nomi: sono fissi per contratto, e non si sostituiscono con un override
 
 **Template naming:** `trg_{table}_audit_data_user_upd`
 
@@ -310,7 +313,7 @@ Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un reco
 | PADRE  | `BEFORE UPDATE OF attivo`      | `dbops.trgfn_prevent_deactivate_if_children(...)` | `trg_{parent}_a10_{child}_block_deact_upd_…`           |
 | FIGLIO | constraint trigger `AFTER INSERT OR UPDATE OF <colonna FK>` (e della colonna `attivo` del figlio, se c'è), differito al commit | `dbops.trgfn_child_requires_active_parent(...)`  | `trg_{child}_a10_{parent}_require_attivo_ins_upd_…`    |
 
-Il suffisso finale è un hash corto della FK, aggiunto solo quando il nome supererebbe i 63 caratteri. ⚠️ Due FK dalla stessa figlia allo stesso padre danno quindi lo stesso nome, se è corto: la seconda risulta «già presente» e resta senza trigger (vedi [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)).
+Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il nome supererebbe i 63 caratteri. Il template nomina le tabelle senza schema e non nomina la colonna, quindi due FK possono dare lo stesso nome sulla stessa tabella: la stessa figlia con più FK verso padri con lo stesso nome di tabella (anche lo stesso padre due volte), o figlie con lo stesso nome di tabella in due schemi verso lo stesso padre (per esempio `vendite.ordini` e `acquisti.ordini` verso `config.sorgenti`). In quei casi il motore mette **sempre** l'hash, e ogni FK ha il suo trigger. Un trigger si riconosce dagli argomenti, cioè dalla FK che difende; uno vivo col nome diverso da quello atteso si rigenera (con `reconcile_on_change`) (vedi [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)).
 
 **Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e il padre ha figli attivi → operazione **bloccata con errore**; un figlio attivo che punta a un padre spento → **rifiutato** al commit.
 
@@ -542,7 +545,8 @@ Le regole si dichiarano nel CSV `80_data/sql/dbops/automation_rules_tbl.csv`, ca
 
 **Consigli:**
 
-* `existence_strategy='BOTH'` minimizza i conflitti (verifica sia per nome che per funzione). ⚠️ Per `LOCK_COLUMNS` non si legge: il lock vivo si riconosce sempre dalla funzione
+* Non serve dire come riconoscere un trigger già montato: ogni runner lo riconosce dalla funzione (ATTIVO dagli argomenti), qualunque nome abbia
+* Ogni regola che monta un trigger dichiara il suo `name_template`: il nome sta solo nel registro
 * Per STORICO, preferisci il template **senza** `{op}` (trigger unico UPDATE+DELETE)
 * Se mantieni un template con `{op}`, passa `'upd_dlt'` all'helper di naming
 
@@ -556,11 +560,11 @@ Aggiungi righe al CSV `80_data/sql/dbops/automation_scope.csv`: una riga per sch
 
 La tabella `automation_overrides_cols` (CSV `80_data/sql/dbops/automation_overrides_cols.csv`) permette di definire nomi colonna diversi dallo standard per singola tabella: si dichiara `(schema, tabella, chiave di override, nome reale della colonna)`.
 
-Override disponibili: `ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`, `STORICIZZA_COL`. Due esempi — una colonna di stato con un altro nome, e una FK storico diversa dal default — sono in coda, in [Area tecnica — esempi](#area-tecnica-esempi).
+Override disponibili: `ATTIVO_COL`, `STORICO_FK`, `STORICIZZA_COL`, `CODICE_COL`, `CODICE_INTERNO_COL` (un vocabolario chiuso: un ruolo diverso non entra). Le colonne di audit (`data_update`, `user_update`) non si sostituiscono: hanno nome fisso per contratto, e il trigger di audit le scrive per nome. Due esempi — una colonna di stato con un altro nome, e una FK storico diversa dal default — sono in coda, in [Area tecnica — esempi](#area-tecnica-esempi).
 
 ### 5.4 Naming e limiti
 
-I template supportano i placeholder: `{schema}`, `{table}`, `{parent}`, `{child}`, `{fk}`, `{op}`, più `{fkhash6}` (sei caratteri ricavati dal nome della FK, sempre) e `{fkhash6_if_long}` (gli stessi, **solo se** senza di loro il nome supererebbe i 63 caratteri).
+I template supportano i placeholder: `{schema}`, `{table}`, `{parent}`, `{child}`, `{fk}`, `{op}`, più `{fkhash6}` (sei caratteri ricavati dal nome della FK, sempre) e `{fkhash6_if_long}` (gli stessi, **solo se** senza di loro il nome supererebbe i 63 caratteri). Il motore ATTIVO tratta `{fkhash6_if_long}` come `{fkhash6}` quando due FK darebbero lo stesso nome sulla stessa tabella.
 
 PostgreSQL impone un limite di **63 caratteri** per i nomi degli oggetti. L'helper [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) non abbrevia: un nome entro i 63 caratteri esce così com'è, senza hash. Solo se il nome supera ancora i 63 caratteri viene troncato e completato con un'impronta di sei caratteri: il risultato è stabile, ma non è il nome che si legge nel template, e un trigger così si cerca per funzione e argomenti.
 
@@ -969,29 +973,29 @@ Gli esempi stanno tutti qui: nel corpo della guida restano le regole, qui il tes
 ### Regole: le righe globali del seed
 
 Le regole vivono nel CSV `80_data/sql/dbops/automation_rules_tbl.csv`. Le righe globali di oggi
-(colonne `id,enabled,rule_type,target_schema,target_table,exec_mode,name_template,existence_strategy,params,priority,note`):
+(colonne `id,enabled,rule_type,target_schema,target_table,exec_mode,name_template,params,priority,note`):
 
 ```text
-1,t,TX_ID,*all,*all,AUTO,trg_{table}_gen_tx_id_ins_upd,BOTH,{},100,txid
-2,t,AUDIT_UPDATE,*all,*all,AUTO,trg_{table}_audit_data_user_upd,BOTH,"{""audit_ts"": ""data_update"", ""audit_user"": ""user_update""}",100,audit
-6,t,STORICO_PROVISION,*all,*all,AUTO,"",BOTH,"{""create_gin_index"": false}",100,storico: provisioning
-7,t,STORICO,*all,*all,AUTO,trg_{table}_z90_storico_upd_dlt,BOTH,"{}",100,storico: trigger UPDATE/DELETE
+1,t,TX_ID,*all,*all,AUTO,trg_{table}_gen_tx_id_ins_upd,{},100,txid
+2,t,AUDIT_UPDATE,*all,*all,AUTO,trg_{table}_audit_data_user_upd,{},100,audit
+6,t,STORICO_PROVISION,*all,*all,AUTO,"","{""create_gin_index"": false}",100,storico: provisioning
+7,t,STORICO,*all,*all,AUTO,trg_{table}_z90_storico_upd_dlt,"{}",100,storico: trigger UPDATE/DELETE
 ```
 
 Una regola mirata è una riga in più, con `target_schema`/`target_table` valorizzati e un `id` nuovo.
 Esempio: la tabella di storico con indice GIN per le sole tabelle `articoli_%` di `catalogo`:
 
 ```text
-<id nuovo>,t,STORICO_PROVISION,catalogo,articoli_%,AUTO,"",BOTH,"{""create_gin_index"": true}",100,storico: prov catalogo con GIN
+<id nuovo>,t,STORICO_PROVISION,catalogo,articoli_%,AUTO,"","{""create_gin_index"": true}",100,storico: prov catalogo con GIN
 ```
 
 ### Regole: ATTIVO
 
 ```text
-4,t,ATTIVO,*all,*all,AUTO,"{""block"": ""trg_{parent}_a10_{child}_block_deact_upd_{fkhash6_if_long}"", ""require"": ""trg_{child}_a10_{parent}_require_attivo_ins_upd_{fkhash6_if_long}""}",BOTH,"{""reconcile_on_change"": true}",100,lab attivo
+4,t,ATTIVO,*all,*all,AUTO,"{""block"": ""trg_{parent}_a10_{child}_block_deact_upd_{fkhash6_if_long}"", ""require"": ""trg_{child}_a10_{parent}_require_attivo_ins_upd_{fkhash6_if_long}""}","{""reconcile_on_change"": true}",100,lab attivo
 ```
 
-Il `name_template` di ATTIVO è un JSON con i due nomi: il block sul padre e il require sul figlio.
+Il `name_template` di ATTIVO è un JSON con i due nomi: il block sul padre e il require sul figlio. Tutti e due devono contenere un segnaposto `{fkhash6...}`, o la regola non entra.
 
 ### Ambito: quali tabelle
 

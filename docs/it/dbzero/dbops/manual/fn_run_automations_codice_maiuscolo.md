@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_codice_maiuscolo`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -43,8 +43,8 @@ copra schema e tabella e il modo della corsa: da lì viene il **nome** (template
 registra (`WARN`, azione `NO_RULE`) e la convergenza del migrate si ferma nominandola. Per togliere
 non serve regola.
 
-⚠️ Il trigger vivo si riconosce sempre dalla funzione: la `existence_strategy` della regola non si
-legge.
+Il trigger vivo si riconosce sempre dalla funzione, qualunque nome abbia: il template serve solo a
+dare il nome a quello che si crea.
 
 ---
 

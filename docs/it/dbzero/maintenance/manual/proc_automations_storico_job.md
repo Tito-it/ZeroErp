@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Procedura `maintenance.proc_automations_storico_job`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -165,9 +165,9 @@ scrive nel registro errori e lo rilancia col suo SQLSTATE.
 * `db/pgtap/dbops/test-storico-automazione-colonna-fk-v1.sql` — il runner: non monta un trigger
   che non potrebbe chiudere uno snapshot.
 * `db/pgtap/dbops/test-storico-nome-funzione-ritirato-v1.sql` — la funzione generica esiste col
-  nome vivo, e nessuna funzione cerca più il trigger col nome che aveva prima; con
-  `existence_strategy` `BY_FUNCTION` e `BOTH`, una tabella che ha già il trigger generico con un
-  altro nome non ne riceve un secondo, e una senza trigger lo riceve.
+  nome vivo, e nessuna funzione cerca più il trigger col nome che aveva prima; una tabella che
+  ha già il trigger generico con un altro nome non ne riceve un secondo, perché il runner lo
+  riconosce dalla funzione, e una senza trigger lo riceve.
 
 ---
 
@@ -188,6 +188,9 @@ scrive nel registro errori e lo rilancia col suo SQLSTATE.
   `script.trgfn_storico_generic`. Prima il controllo per funzione cercava il nome ritirato
   `script.trgfn_upd_dlt_storico_generic`: con la strategia per funzione il trigger non risultava
   mai presente, con quella doppia decideva solo il nome (`brief-db-revisione-maintenance` D3).
+* 2026-11-08 — il runner riconosce il trigger solo dalla funzione: la strategia d'esistenza della
+  regola esce, e il nome viene solo dal template della regola (`20261109-70`,
+  brief-db-revisione-dbops D17, D20).
 
 ---
 

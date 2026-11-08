@@ -1,12 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_storico`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `STORICO`: bersaglio, template del nome, strategia di esistenza
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `STORICO`: bersaglio e template del nome
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — l'override `STORICO_FK` della colonna di legame
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — simulazioni e salti
 >
@@ -18,7 +18,7 @@
 > * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — il filtro per tabella
 > * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col) — il nome della colonna di legame
 > * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger
-> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — l'esistenza giudicata per funzione
+> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — il trigger riconosciuto dalla funzione
 > * [maintenance.proc_automations_storico_job](/dbzero/maintenance/funzioni/proc_automations_storico_job) — il wrapper del job
 >
 > Guide:
@@ -69,20 +69,15 @@ Il controllo guarda i trigger che **nascono**; quelli già montati li presidia u
 
 ### ⚠️ Quando un trigger «c'è già»
 
-La strategia di esistenza della regola decide:
+Il trigger c'è se sulla madre esiste un trigger su `script.trgfn_storico_generic`, con qualunque
+nome: si riconosce dalla **funzione**. Il nome serve solo a creare un trigger nuovo.
 
-| Strategia | Il trigger c'è se… |
-| --- | --- |
-| `BY_NAME` (default) | sulla madre esiste un trigger col nome del template |
-| `BY_FUNCTION` | sulla madre esiste un trigger su `script.trgfn_storico_generic`, con qualunque nome |
-| `BOTH` (la strategia del seed) | vale una delle due |
+Il nome viene dal template della regola, obbligatorio: la funzione non ha un nome di ripiego. Il
+seed usa la forma `trg_<tabella>_z90_storico_upd_dlt`, con l'infisso che fa scattare il trigger di
+storico dopo i guard.
 
-Il nome viene dal template della regola; il seed usa la forma `trg_<tabella>_z90_storico_upd_dlt`,
-con l'infisso che fa scattare il trigger di storico dopo i guard. ⚠️ Una regola senza template ricade
-su una forma diversa, `trg_z90_<tabella>_storico_upd_dlt`.
-
-Se il controllo dice «assente» ma il nome è già preso da un altro trigger (con `BY_FUNCTION`, un
-trigger col nome del template su un'altra funzione), la creazione fallisce per nome duplicato: la
+Se il controllo dice «assente» ma il nome è già preso da un altro trigger (un trigger col nome del
+template su un'altra funzione), la creazione fallisce per nome duplicato: la
 funzione salta la tabella e lo scrive nell'audit con status `WARN` e azione `SKIP_EXISTS`. Il salto non
 ferma la corsa.
 
@@ -117,9 +112,9 @@ nome.
   giusto e un aggiornamento della madre scrive lo snapshot.
 * `db/pgtap/dbops/test-storico-colonna-fk-dei-trigger-v1.sql` — su tutti i trigger di storico già
   montati, l'argomento è una colonna della shadow.
-* `db/pgtap/dbops/test-storico-nome-funzione-ritirato-v1.sql` — con `BY_FUNCTION` e con `BOTH` una madre
-  che ha già il trigger generico con un altro nome non ne riceve un secondo; senza trigger,
-  `BY_FUNCTION` lo monta.
+* `db/pgtap/dbops/test-storico-nome-funzione-ritirato-v1.sql` — una madre che ha già il trigger
+  generico con un altro nome non ne riceve un secondo, perché il trigger si riconosce dalla
+  funzione; la colonna `existence_strategy` non c'è; su una madre senza trigger, il trigger nasce.
 * `db/pgtap/dbops/test-storico-salto-trigger-presente-v1.sql` — nome del template preso da un trigger
   su un'altra funzione: la corsa vive, l'audit ha `WARN` con `SKIP_EXISTS`, nessun trigger di storico
   nasce.
@@ -141,6 +136,9 @@ nome.
   un nome ritirato e con `BY_FUNCTION` non trovava mai il trigger (`brief-db-revisione-maintenance`, D3).
   Lo stesso giorno il salto per nome duplicato si scrive con status `WARN`: prima lo status
   `SKIP_EXISTS` era rifiutato dal vincolo dell'audit e il salto fermava la corsa (R4).
+* 2026-11-08 — il trigger si riconosce dalla funzione: la strategia d'esistenza della regola esce; il
+  nome viene solo dal template della regola, senza il ripiego `trg_z90_<tabella>_storico_upd_dlt`,
+  diverso dal seed (`20261109-70`, brief-db-revisione-dbops D17, D20).
 
 ---
 

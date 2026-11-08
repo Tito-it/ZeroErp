@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_get_override_col`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,6 @@
 >
 > * [dbops.fn_col_exists](/dbzero/dbops/funzioni/fn_col_exists) — verifica che la colonna restituita esista davvero
 > * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — la chiede per la colonna `attivo`
-> * [dbops.fn_run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update) — la chiede per le colonne di audit
 > * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) — la chiede per la chiave verso lo storico
 > * [dbops.fn_storico_risolvi_scope](/dbzero/dbops/funzioni/fn_storico_risolvi_scope) — la chiede per la chiave verso lo storico
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — la chiede, a ogni scrittura, per la colonna `attivo` del padre
@@ -27,7 +26,7 @@
 ### 🎯 Scopo Principale
 
 Restituisce il nome della colonna che una tabella usa per un **ruolo** delle automazioni (la colonna
-`attivo`, le colonne di audit, la chiave verso lo storico…): l'eccezione registrata in
+`attivo`, la chiave verso lo storico…): l'eccezione registrata in
 `dbops.automation_overrides_cols`, se c'è, altrimenti il nome di convenzione che il chiamante passa.
 Restituisce sempre un nome.
 
@@ -40,9 +39,10 @@ ragione ne usa un altro non si rinomina e non si esclude: si registra l'eccezion
 tabella e ruolo. La chiave del registro è (schema, tabella, ruolo), quindi l'eccezione è al più una.
 
 I ruoli sono quelli che i chiamanti chiedono, scritti in maiuscolo: `ATTIVO_COL` (i runner e i due
-trigger di attivazione padre/figlio), `AUDIT_TS` e `AUDIT_USER`, `STORICO_FK` e `STORICIZZA_COL`. Il
-registro porta anche ruoli che non passano da qui: `CODICE_COL` e `CODICE_INTERNO_COL` li legge
-direttamente `dbops.fn_get_lookup_codici`.
+trigger di attivazione padre/figlio), `STORICO_FK` e `STORICIZZA_COL`. Il registro porta anche
+ruoli che non passano da qui: `CODICE_COL` e `CODICE_INTERNO_COL` li legge direttamente
+`dbops.fn_get_lookup_codici`. Le colonne di audit (`data_update`, `user_update`) non hanno
+eccezioni: hanno nome fisso per contratto.
 
 ⚠️ La funzione non verifica che la colonna restituita esista: lo fa il chiamante, di norma con
 `dbops.fn_col_exists`.
