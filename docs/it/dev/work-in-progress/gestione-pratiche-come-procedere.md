@@ -1,7 +1,7 @@
 # Gestione Pratiche — Come procedere (stato attuale + roadmap)
 
 > **Tipo documento**: operativo "come procedere" — **autorevole per i prossimi
-> passi del dominio pratiche**. · **Data**: 2026-06-20 (revisione 2026-11-08: §3, la bozza abbandonata dal flusso) · **Stato**: 🟢 vivo.
+> passi del dominio pratiche**. · **Data**: 2026-06-20 (revisione 2026-11-08: §3, la bozza abbandonata dal flusso e le segnalazioni della revisione delle pagine `manual/`) · **Stato**: 🟢 vivo.
 >
 > **Origine**: consolidamento dello stato pratiche dopo che il **primo consumatore
 > (PREVENTIVI)** è stato validato end-to-end (anello3 §8.5, Fase E) e dopo
@@ -104,6 +104,51 @@ Oltre alle urgenze §2, item minori tracciati negli handoff (tutti su funzionali
     l'aggancio di una commessa cancellata.
   - Fino ad allora il comportamento e' il blocco, con la sola frase del DB (il pre-check BE
     «pratiche collegate» si ritira: BE-P.1-e, scelta A).
+- **Le segnalazioni della revisione delle pagine `manual/` di `pratiche`** (aggiunto il 2026-11-08, dal giro
+  DOC.4 di [brief-db-sorgente-documento-e-riga](brief-db-sorgente-documento-e-riga.md); verificate sul DB, non
+  provate in transazione). Le 99 pagine `pratiche/manual` sono allineate al DB; restano questi difetti, che sono
+  del dominio e si chiudono qui (Tid, 2026-11-08: «tutte le segnalazioni pratiche vanno in quel brief»):
+  - ⚠️ **`pratiche.flussi.data_fine` non la scrive nessuno** (né una funzione DB né il BE: nel BE `data_fine` è
+    delle sospensioni), ma `trgfn_flussi_calcolo_tempo_completamento` la usa come `data_inizio_calcolo`, che è
+    NOT NULL. Al completamento di un flusso che ha una formula di tempo attiva e il flusso d'arrivo già nella
+    pratica, l'inserimento del conteggio fallirebbe. È il primo da guardare: da decidere chi scrive `data_fine`
+    (la chiusura del flusso?) o da dove parte il calcolo. L'avviso è nella pagina di `calcoli_tempo`;
+  - **`regole_generazione.esito_richiesto` ammette `QUALSIASI`**, che nessun flusso ha come esito: una regola con
+    quel valore non scatta mai. Da decidere se vuol dire «qualunque esito» (e la generazione lo deve leggere) o
+    se il valore si toglie dal CHECK;
+  - **`trgfn_flussi_guard_transizione` scrive nel log il nome `'pratiche. trgfn_flussi_guard_transizione'`**, con
+    uno spazio dopo il punto;
+  - **`script.trgfn_lock_columns` è montato su `pratiche.tipi_prestazione`**, ma `dbops.automation_lock_columns`
+    non ha righe per `pratiche`: il lucchetto non blocca niente. Il tema dei lucchetti è della sessione di
+    `brief-db-revisione-dbops`, che ne è avvisata;
+  - **convenzioni che nessun vincolo regge:** `allegati_pratiche` e `allegati_flussi` si dicono «immutabili»
+    (nessun guard; l'app ha UPDATE e DELETE); `sospensioni.data_riattivazione_prevista` la scrive il BE e non la
+    legge nessuno (la riattivazione automatica via pgAgent non esiste). Da decidere se diventano regole o se le
+    frasi si tolgono;
+  - **COMMENT stantii** (ognuno è un changeSet): i codici citati senza `E_` o col numero in
+    `fn_guard_ripetibilita_flusso`, `fn_risolvi_definizione`, `fn_fork_definizione`, `fn_pubblica_definizione`,
+    `fn_nuova_versione_definizione`, `trgfn_pratiche_guard_pin_immutabile`,
+    `trgfn_template_flussi_default_definizione`, `trgfn_flussi_guard_definizione`, `trgfn_tfap_guard_compatibilita`,
+    `trgfn_tfhe_guard_no_proiezione`, `trgfn_template_flussi_guard_immutabile`,
+    `trgfn_template_flussi_figli_guard_immutabile`, `trgfn_workflow_definizioni_guard`,
+    `trgfn_pratiche_guard_chiusura_flussi` (anche la sigla «D1»); `flussi.esito` e
+    `template_flussi_handler_eventi.esito_richiesto` (mancano `MERCE_PRESENTE`, `SOLO_SERVIZI`);
+    `trgfn_tipi_prestazione_bootstrap_definizione` (`fn_fork_nuova_versione`, che non esiste);
+    `trgfn_sospensioni_set_periodo` e `trgfn_calcoli_tempo_set_periodo` («Migrazione daterange»); i COMMENT di
+    tabella di `allegati_pratiche`/`allegati_flussi` («immutabili») e di `sospensioni.data_riattivazione_prevista`
+    (il job pgAgent); marcatori e sigle in `fn_prendi_in_carico_flusso`, `trgfn_pratiche_guard_contesto`,
+    `trgfn_flussi_autochiusura_pratica` («predicato D1»);
+  - **commenti nel corpo stantii:** `trgfn_sospensioni_propaga` (lo stato precedente «salvato in meta»: non lo
+    salva), `trgfn_allegati_*_giornale` («tx_id NULL»: lo assegna il BB del giornale),
+    `trgfn_pratiche_default_definizione` (il guard «arriverà»: c'è già), `fn_guard_prerequisiti_flusso` (codice
+    senza `E_`), `trgfn_flussi_calcolo_tempo_completamento` (il flusso senza template: `template_flusso_id` è
+    NOT NULL). Il ripiego `gen_random_uuid()` dei due trigger di giornale delle sospensioni è il tema di
+    [brief-db-pratiche-giornale-tx-id-senza-ripiego](brief-db-pratiche-giornale-tx-id-senza-ripiego.md), ancora
+    aperto (verificato: il ripiego c'è ancora in tutte e due).
+  - Restano in brief-db-sorgente-documento-e-riga, nel suo giro finale (Tid, 2026-11-08): il `REVOKE` da PUBLIC di
+    `pratiche.fn_copia_definizione` (oggi eseguibile da PUBLIC, mentre `fn_fork_definizione` che la usa è
+    riservata all'app) e la cancellazione della pagina `pratiche/manual/trgfn_sospensioni_giornale`, che descrive
+    una funzione che nel DB non c'è.
 - **Split natura** (handoff 0609): manca il **dialog FE di smistamento
   riga-per-riga** (l'endpoint/fn accettano già `righe_ids`); coordinamento
   multi-sorgente alla consegna.
