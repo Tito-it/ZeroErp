@@ -42,12 +42,9 @@ BEGIN
                a.uom_id         AS a_uom_id,
                a.iva_id         AS a_iva_id,
                um.codice        AS um_codice
-          FROM catalogo.articoli_componenti ac
+          FROM catalogo.fn_distinta_alla_data(p_articolo_id, p_data_riferimento) ac
           JOIN catalogo.articoli a ON a.id = ac.componente_id
           LEFT JOIN catalogo.unita_misura um ON um.id = a.uom_id
-         WHERE ac.prodotto_id        = p_articolo_id
-           AND COALESCE(ac.attivo, TRUE) = TRUE
-           AND ac.validita           @> p_data_riferimento
     LOOP
         articolo_componente_id := v_rec.bom_entry_id;
         componente_id          := v_rec.componente_id;

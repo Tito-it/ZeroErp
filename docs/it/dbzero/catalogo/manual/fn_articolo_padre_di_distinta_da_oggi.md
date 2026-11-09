@@ -13,6 +13,8 @@
 >
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che la chiama
 > * [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi) — la stessa finestra, dal lato del componente
+> * [script.fn_check_articolo_riga_su_contesto](/dbzero/script/funzioni/fn_check_articolo_riga_su_contesto) — la check che la chiama per il kit senza distinta
+> * [catalogo.fn_distinta_alla_data](/dbzero/catalogo/funzioni/fn_distinta_alla_data) — l'altra domanda sul padre: la distinta a una data
 > * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale
 
 ---
@@ -23,12 +25,14 @@ Dice se un articolo è il **padre di una distinta in vigore o futura**: se ha al
 
 ---
 
-### ⭐ Un predicato, due lettori
+### ⭐ Un predicato, tre lettori
 
 È la sede unica della condizione. La leggono:
 
 * il check 1 del guard: `is_composito` e `requires_serial` non si cambiano sul padre di una distinta in vigore o futura (`E_BOM_MODIFICA_VIETATA`);
-* le due regole gemelle per il form in `dbops.lock_columns_conditional`, che spengono quei due campi.
+* le due regole gemelle per il form in `dbops.lock_columns_conditional`, che spengono quei due campi;
+* la check degli articoli ammessi in una riga di documento: un composito senza una distinta da oggi in
+  poi non si vende (`E_ARTICOLO_KIT_SENZA_COMPONENTI`).
 
 Il guard rifiuta il salvataggio, la regola spegne il campo prima che l'operatore ci provi. Poiché
 chiamano la stessa funzione, rispondono uguale.
@@ -67,6 +71,8 @@ chiama.
 * 2026-11-09 — prende il posto di `catalogo.fn_articolo_padre_di_distinta_in_vigore`, che guardava
   solo la distinta in vigore al giorno aziendale e lasciava togliere `is_composito` a un padre con
   legami solo futuri (brief-db-revisione-catalogo, giro 1).
+* 2026-11-09 — la chiama anche la check degli articoli ammessi, per il kit senza distinta
+  (brief-db-revisione-catalogo, giro 1-bis).
 
 ---
 

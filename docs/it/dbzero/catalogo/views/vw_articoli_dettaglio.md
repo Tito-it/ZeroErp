@@ -61,8 +61,7 @@ SELECT a.id,
             ELSE 'ARTICOLO_NON_COMPOSITO'::text
         END AS motivo_non_gestibile_bom,
     (a.is_composito AND (EXISTS ( SELECT 1
-           FROM catalogo.articoli_componenti ac
-          WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> ( SELECT script.fn_data_operativa() AS fn_data_operativa)) AND (ac.attivo = true))))) AS has_componenti_alla_data,
+           FROM catalogo.fn_distinta_alla_data(a.id, oggi.data_operativa) d(id, componente_id, coeff_qta, obbligatorio, esposizione_in_fattura)))) AS has_componenti_alla_data,
     a.natura_vendita_id,
     nv.codice_interno AS natura_vendita_codice_interno,
     nv.descrizione AS natura_vendita_descrizione,
@@ -77,7 +76,9 @@ SELECT a.id,
     a.causale_onere_id,
     a.obsoleto_dal,
     script.fn_e_obsoleto(a.obsoleto_dal) AS e_obsoleto
-   FROM ((((((((catalogo.articoli a
+   FROM (((((((((catalogo.articoli a
+     CROSS JOIN ( SELECT script.fn_data_operativa() AS data_operativa
+         OFFSET 0) oggi)
      LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
      LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
      LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id)))

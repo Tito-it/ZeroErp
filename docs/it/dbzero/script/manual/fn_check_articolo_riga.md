@@ -47,12 +47,16 @@ tabelle qui sotto elencano i motivi che seguono.
 | # | Motivo | Documenti | Codice |
 | --- | --- | --- | --- |
 | 1 | l'articolo vive solo dentro un kit | tutti | `E_ARTICOLO_SOLO_COMPONENTE` |
-| 2 | il kit non ha nessun componente attivo | tutti | `E_ARTICOLO_KIT_SENZA_COMPONENTI` |
+| 2 | il kit non ha una distinta da oggi in poi | tutti | `E_ARTICOLO_KIT_SENZA_COMPONENTI` |
 | 3 | la ricorrenza va in offerta | `PREVENTIVO` | `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` |
 | 3 | solo merce (destinazione `ORDINE_VENDITA`) | `ORDINE_VENDITA`, `DDT_VENDITA` | `E_RIGA_NATURA_NON_AMMESSA` |
 
-Prima il solo componente: «usa il kit» viene prima di «va altrove». Il kit vuoto viene subito
-dopo: non si vende in nessun documento.
+Prima il solo componente: «usa il kit» viene prima di «va altrove». Il kit senza distinta viene subito
+dopo: non si vende in nessun documento. «Senza distinta» vuol dire senza un legame attivo in vigore
+oggi o in futuro ([catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi),
+la finestra dei guard della distinta): un kit con la sola distinta passata è fuori, uno con la sola
+distinta futura no. La distinta alla data del documento la giudica l'init dei componenti
+(`E_DOC_COMPOSITO_BOM_VUOTA`).
 
 **Il kit senza componenti**: «vuoto» vuol dire nessun legame attivo nella distinta, a qualunque
 data. L'inizializzazione dei componenti giudica invece i componenti validi **alla data del
@@ -76,7 +80,7 @@ riga, `p_tipo_eccezione`, obbligatorio qui) decide le regole.
 | # | AGGIUNTA e OVERRIDE (la riga vende) | Codice |
 | --- | --- | --- |
 | 1 | l'articolo vive solo dentro un kit | `E_ARTICOLO_SOLO_COMPONENTE` |
-| 2 | il kit non ha nessun componente attivo | `E_ARTICOLO_KIT_SENZA_COMPONENTI` |
+| 2 | il kit non ha una distinta da oggi in poi | `E_ARTICOLO_KIT_SENZA_COMPONENTI` |
 | 3 | la tipologia dell'articolo non è della utility del documento | `E_RIGA_TIPOLOGIA_FUORI_UTILITY` (composta da `script.fn_check_riga_erogazione`) |
 | 4 | l'articolo non ha nessuna erogazione ammessa | `E_ARTICOLO_SENZA_EROGAZIONE` |
 | 5 | AGGIUNTA di un articolo già nel listino | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` |
@@ -200,6 +204,8 @@ primo con quei valori. La traduzione da `OFFERTA_COMMERCIALE` sta in un punto so
   (brief-db-articoli-obsoleto-dal).
 * 2026-11-09 — nella distinta il padre non composito lo rifiuta il lato documento: prima restava a
   un guard sul legame, che la riattivazione non attraversava (brief-db-revisione-catalogo, giro 1).
+* 2026-11-09 — il kit senza componenti guarda la distinta da oggi in poi: prima bastava un legame
+  attivo in qualunque periodo, anche chiuso (brief-db-revisione-catalogo, giro 1-bis).
 
 ---
 
