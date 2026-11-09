@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-pagamenti,vendite_contabili,fk_vendite_contabili_registro,false,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_registro_id ON pagamenti.vendite_contabili(registro_id);,false,mctit,2026-09-15 00:00:00+02
-pagamenti,vendite_contabili,fk_vendite_contabili_emittente_sr,false,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_emittente_soggetto_ruolo_id ON pagamenti.vendite_contabili(emittente_soggetto_ruolo_id);,false,mctit,2026-09-15 00:00:00+02

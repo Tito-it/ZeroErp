@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,resi_righe_rinunce,fk_resi_rinunce_resi_riga,true,CREATE INDEX IF NOT EXISTS ix_resi_rinunce_resi_riga_id ON vendite.resi_righe_rinunce(resi_riga_id);,false,titodb,2026-07-26 00:00:00+02

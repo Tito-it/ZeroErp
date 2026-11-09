@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_fk_senza_indice diventa SOLO il fatto «la FK e' scoperta» (Q14 ②, N6).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-2 (§29).
+#
+#   Faceva due mestieri: l'ingresso della scoperta e la guardia 1 dell'apply
+#   (il fatto), e il presidio. Il filtro COALESCE(pol.consentito, true) = true
+#   toglieva dal fatto una FK decisa a false: la FK spariva da ogni presidio.
+#   Ora la vista elenca ogni FK scoperta, qualunque decisione abbia, e dice
+#   quale nella colonna decisione (NULL: nessuna riga). Il presidio e' la vista
+#   nuova dbops.vw_fk_da_decidere (-49).
+#
+#   Corpo preso dalla definizione viva (doc auto-generata), con due cambi:
+#   l'ambito da dbops.fn_indici_schema_nell_ambito (-43) e la colonna in coda
+#   (CREATE OR REPLACE ammette una colonna nuova solo in fondo). La copertura
+#   per prefisso e il predicato «IS NOT NULL» restano come sono.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-44-update-vw-fk-senza-indice-fatto-e-decisione-mctit.yaml
+
+  - changeSet:
+      id: 20261110-44-update-vw-fk-senza-indice-fatto-e-decisione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_fk_senza_indice: ogni FK scoperta, con la sua decisione; niente filtro sul flag.
+        Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'fk_index_policy'
+                 AND column_name = 'decisione'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_fk_senza_indice AS
+              WITH fk_grouped AS (
+                  SELECT con.conname AS constraint_name,
+                         nsp.nspname AS schema_name,
+                         rel.relname AS table_name,
+                         con.conrelid,
+                         (SELECT array_agg(a.attname ORDER BY a.attname)
+                            FROM unnest(con.conkey) k(att)
+                            JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.att) AS fk_cols
+                    FROM pg_constraint con
+                    JOIN pg_class rel     ON rel.oid = con.conrelid
+                    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                   WHERE con.contype = 'f'
+                     AND dbops.fn_indici_schema_nell_ambito(nsp.nspname)
+              ), idx_prefix AS (
+                  SELECT ix.indrelid,
+                         p.n AS prefix_len,
+                         pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
+                         (SELECT array_agg(a.attname ORDER BY a.attname)
+                            FROM generate_series(1, p.n) g(k)
+                            JOIN pg_attribute a ON a.attrelid = ix.indrelid AND a.attnum = ix.indkey[g.k - 1]) AS prefix_cols,
+                         (SELECT bool_and(ix.indkey[g.k - 1] > 0)
+                            FROM generate_series(1, p.n) g(k)) AS solo_colonne
+                    FROM pg_index ix
+                    JOIN pg_class i     ON i.oid = ix.indexrelid
+                    JOIN pg_class t     ON t.oid = ix.indrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    JOIN pg_am am       ON am.oid = i.relam
+                    CROSS JOIN LATERAL generate_series(1, ix.indnkeyatts::integer) p(n)
+                   WHERE i.relkind = 'i'
+                     AND am.amname = 'btree'
+                     AND ix.indisvalid
+                     AND ix.indisready
+                     AND dbops.fn_indici_schema_nell_ambito(n.nspname)
+              )
+              SELECT fk.schema_name,
+                     fk.table_name,
+                     fk.constraint_name,
+                     fk.fk_cols,
+                     format('CREATE INDEX IF NOT EXISTS ix_%I_%s ON %I.%I(%s);',
+                            fk.table_name, array_to_string(fk.fk_cols, '_'),
+                            fk.schema_name, fk.table_name, array_to_string(fk.fk_cols, ', ')) AS create_index_suggestion,
+                     pol.decisione
+                FROM fk_grouped fk
+                LEFT JOIN dbops.fk_index_policy pol
+                       ON pol.schema_name = fk.schema_name
+                      AND pol.table_name = fk.table_name
+                      AND pol.constraint_name = fk.constraint_name
+               WHERE NOT EXISTS (
+                       SELECT 1
+                         FROM idx_prefix ip
+                        WHERE ip.indrelid = fk.conrelid
+                          AND ip.prefix_len = cardinality(fk.fk_cols)
+                          AND ip.solo_colonne
+                          AND ip.prefix_cols = fk.fk_cols
+                          AND (ip.predicato IS NULL
+                               OR (SELECT bool_and(btrim(parte.parte, '() ') ~ '^"?[a-z_][a-z0-9_$]*"?[[:space:]]+IS NOT NULL$'
+                                                   AND replace(btrim(regexp_replace(parte.parte, '[[:space:]]+IS NOT NULL.*$', ''), '() '), '"', '') = ANY (fk.fk_cols))
+                                     FROM regexp_split_to_table(ip.predicato, '[[:space:]]+AND[[:space:]]+') parte(parte))))
+               ORDER BY fk.schema_name, fk.table_name;
+
+              COMMENT ON VIEW dbops.vw_fk_senza_indice IS
+                  'Il fatto: le foreign key SENZA copertura di indice negli schemi governati dalla politica (dbops.fn_indici_schema_nell_ambito), qualunque decisione abbiano. decisione e'' quella di dbops.fk_index_policy, NULL se la FK non ha riga. La FK e'' coperta se le sue colonne coincidono, come insieme, con le prime N colonne chiave di un btree valido, e il predicato dell''indice e'' assente oppure e'' una congiunzione di soli "<colonna della FK> IS NOT NULL": il controllo referenziale cerca "fkcol = $1" con $1 mai NULL, quindi su una FK nullabile un indice parziale cosi'' basta. Ogni altro predicato viene rifiutato, anche quando di fatto coprirebbe: l''errore possibile e'' dire scoperta una FK coperta, mai il contrario. Non e'' un presidio: una FK SENZA_INDICE e'' scoperta per decisione. La leggono dbops.fn_populate_fk_index_policy (le FK senza riga), dbops.apply_fk_index_policy (crea solo se la FK e'' ancora scoperta) e il presidio dbops.vw_fk_da_decidere.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La versione precedente filtrava sul flag consentito, che dopo il giro non c'e' piu':
+              -- si torna indietro col rollback dell'intero giro, non di questo changeSet da solo.
+              SELECT 1;

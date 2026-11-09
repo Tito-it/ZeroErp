@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-pratiche,template_flussi,fk_template_flussi_azione_ui,f,CREATE INDEX IF NOT EXISTS ix_template_flussi_azione_ui_id ON pratiche.template_flussi(azione_ui_id) WHERE azione_ui_id IS NOT NULL;,f,mctit,2026-06-15 00:00:00+02

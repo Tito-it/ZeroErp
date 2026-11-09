@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.apply_fk_index_policy legge la decisione (Q14 ②, N4, N8, N9).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-2 (§29).
+#
+#   - DA_DECIDERE: niente, ne' CREATE ne' DROP. Prima una riga false scritta
+#     dalla scoperta toglieva per nome l'indice: un indice nato in un changeSet
+#     col nome canonico spariva senza che nessuno l'avesse deciso.
+#   - CON_INDICE: come il ramo true, con la guardia 1 (solo se la FK e' ancora
+#     scoperta in dbops.vw_fk_senza_indice).
+#   - SENZA_INDICE: come il ramo false, con la guardia 2 (mai un indice che
+#     regge un vincolo o la REPLICA IDENTITY). Il nome e' indice_nome, la
+#     colonna generata (D23), non piu' la sesta parola del comando.
+#   - Fuori ambito (dbops.fn_indici_schema_nell_ambito falso): niente. Prima
+#     una riga false faceva il DROP e una true non creava mai (la guardia 1
+#     vede solo l'ambito); le righe cosi' le mostra dbops.vw_fk_da_decidere.
+#   Il NOTICE finale conta anche le righe da decidere e quelle fuori ambito.
+#   Corpo vivo dalla doc auto-generata; firma invariata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-47-update-apply-fk-index-policy-decisione-mctit.yaml
+
+  - changeSet:
+      id: 20261110-47-update-apply-fk-index-policy-decisione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.apply_fk_index_policy: CON_INDICE crea, SENZA_INDICE toglie, DA_DECIDERE e fuori ambito
+        non toccano niente; il nome da indice_nome. Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'fk_index_policy'
+                 AND column_name = 'indice_nome'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE dbops.apply_fk_index_policy()
+               LANGUAGE plpgsql
+              AS $procedure$
+              DECLARE
+                rec            dbops.fk_index_policy%ROWTYPE;
+                v_scoperte     text[];
+                v_creati       int := 0;
+                v_saltati      int := 0;
+                v_droppati     int := 0;
+                v_rifiutati    int := 0;
+                v_da_decidere  int := 0;
+                v_fuori_ambito int := 0;
+              BEGIN
+                -- Fotografia delle FK scoperte, una sola valutazione: la vista e' costosa.
+                SELECT array_agg(v.schema_name || '.' || v.table_name || '.' || v.constraint_name)
+                  INTO v_scoperte
+                  FROM dbops.vw_fk_senza_indice v;
+
+                v_scoperte := COALESCE(v_scoperte, ARRAY[]::text[]);
+
+                FOR rec IN
+                  SELECT *
+                    FROM dbops.fk_index_policy
+                   ORDER BY schema_name, table_name, constraint_name
+                LOOP
+                  IF NOT dbops.fn_indici_schema_nell_ambito(rec.schema_name) THEN
+                    v_fuori_ambito := v_fuori_ambito + 1;
+
+                  ELSIF rec.decisione = 'DA_DECIDERE' THEN
+                    v_da_decidere := v_da_decidere + 1;
+
+                  ELSIF rec.decisione = 'CON_INDICE' THEN
+                    -- GUARDIA 1: si crea solo se la FK e' ancora scoperta.
+                    IF (rec.schema_name || '.' || rec.table_name || '.' || rec.constraint_name) = ANY (v_scoperte) THEN
+                      EXECUTE rec.dll_command;
+                      v_creati := v_creati + 1;
+                    ELSE
+                      v_saltati := v_saltati + 1;
+                    END IF;
+
+                  ELSIF rec.decisione = 'SENZA_INDICE' THEN
+                    -- GUARDIA 2: mai togliere un vincolo o la replica identity.
+                    IF EXISTS (
+                         SELECT 1
+                           FROM pg_class c
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                           JOIN pg_index ix    ON ix.indexrelid = c.oid
+                          WHERE c.relkind = 'i'
+                            AND n.nspname = rec.schema_name
+                            AND c.relname = rec.indice_nome
+                            AND (ix.indisunique
+                                 OR ix.indisprimary
+                                 OR ix.indisreplident
+                                 OR EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = c.oid)))
+                    THEN
+                      v_rifiutati := v_rifiutati + 1;
+                      RAISE WARNING
+                        'apply_fk_index_policy: DROP RIFIUTATO su %.% — l''indice sostiene un vincolo (UNIQUE/PK/constraint) o e'' la REPLICA IDENTITY. Riga di policy: %.%.%',
+                        rec.schema_name, rec.indice_nome,
+                        rec.schema_name, rec.table_name, rec.constraint_name;
+                    ELSE
+                      EXECUTE format('DROP INDEX IF EXISTS %I.%I', rec.schema_name, rec.indice_nome);
+                      v_droppati := v_droppati + 1;
+                    END IF;
+                  END IF;
+                END LOOP;
+
+                RAISE NOTICE
+                  'apply_fk_index_policy: creati=%, saltati_perche_gia_coperti=%, droppati=%, drop_rifiutati=%, da_decidere=%, fuori_ambito=%',
+                  v_creati, v_saltati, v_droppati, v_rifiutati, v_da_decidere, v_fuori_ambito;
+              END;
+              $procedure$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON PROCEDURE dbops.apply_fk_index_policy() IS
+                  'Applica dbops.fk_index_policy alle righe decise, negli schemi governati (dbops.fn_indici_schema_nell_ambito). CON_INDICE: esegue dll_command solo se la FK figura ancora in dbops.vw_fk_senza_indice, cosi'' una FK gia'' servita da una UNIQUE piu'' larga o da un parziale "IS NOT NULL" non riceve un indice dedicato. SENZA_INDICE: DROP INDEX IF EXISTS di indice_nome, RIFIUTATO con RAISE WARNING se l''indice regge un UNIQUE, una PK, un constraint o la REPLICA IDENTITY: una decisione non deve poter togliere un vincolo di integrita''. DA_DECIDERE e righe fuori ambito: nessuna azione, le mostra dbops.vw_fk_da_decidere. Warning e non eccezione perche'' la procedura gira runAlways in 90_end e nel job settimanale, e un errore bloccherebbe ogni migrate. A fine ciclo un RAISE NOTICE con creati / saltati / droppati / rifiutati / da decidere / fuori ambito.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La versione precedente leggeva il flag consentito, che dopo il giro non c'e' piu':
+              -- si torna indietro col rollback dell'intero giro.
+              SELECT 1;

@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-09 (blocco 10c-4 applicato, pgTAP verdi, da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-11-09 (giro 10d applicato; seguito di §29.11 scritto e provato, da applicare)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -75,7 +75,16 @@ dbdev (§28.12): `20261110-34` … `-41`, il CSV dell'overlap, un pgTAP nuovo e 
 del riconciliatore ATTIVO sulle partizioni (`-41`).
 **Applicato** da Tid (2026-11-09): migrazione su dbdev e scratch, pgTAP verdi. Le dieci righe dell'overlap solo di dbdev
 **cancellate** (decisione di Tid, §28.12 punto 2).
-**Riparte: Tid** col commit del blocco 10c-4, quando lo chiede. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+Blocco 10c-4 **committato** (`48b5d39354`, 2026-11-09): **il giro 10c è chiuso.** **Giro 10d preparato** (§29, 2026-11-09):
+riverifica sulla struttura, nove nodi (N1-N9), tre blocchi; il residuo di §14.8 era una diagnosi sbagliata (§29.1 punto 9).
+**Decisioni di Tid** (2026-11-09, §29.4): proposte accettate; numeri `20261110-42` … `-61` riservati, l'altro cantiere dal `-62`.
+**Via** (Tid, 2026-11-09). **Giro 10d scritto e provato** su scratch e dbdev (§29.5-29.7): `20261110-42` … `-54`, il CSV unico
+(34 laterali cancellati), un pgTAP nuovo; su dbdev nessun indice cambia.
+**Applicato** da Tid (2026-11-09): migrazione su dbdev e scratch, pgTAP verdi (§29.10).
+**Decisioni di Tid** sulle scelte di §29.6 (2026-11-09, §29.11): le quattro righe delle note delle offerte erano di prova ed
+escono; le tre FK di N2 `CON_INDICE`; il resto ok. **Seguito scritto e provato** su scratch e dbdev: il CSV unico e
+`20261110-55`.
+**Riparte: Tid** con l'apply del CSV e del `20261110-55`, poi il commit del giro 10d. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -186,6 +195,14 @@ ancora le tabelle).
 | 9-sexagies-vicies-bis | ✅ sessione DB | Blocco 10c-4 scritto e provato (`20261110-34` … `-41`): overlap in `jsonb` con il CSV; via `p_cleanup_column` dalla firma; `fn_name_from_template` idempotente, col censimento dei nomi vivi | §28.11 | 9-sexagies-vicies-semel |
 | 9-sexagies-vicies-ter | ✅ Tid | Apply del blocco 10c-4, pgTAP come app verdi (2026-11-09); le dieci righe dell'overlap solo di dbdev cancellate dalla sessione DB su decisione di Tid | §28.12 | 9-sexagies-vicies-bis |
 | 9-sexagies-vicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 10c (2026-11-08, non pushato) | §28 | 9-sexagies-septdecies |
+| 9-sexagies-vicies-quater | ✅ Tid | Commit del blocco 10c-4 (`48b5d39354`, 2026-11-09). Il giro 10c è chiuso | §28.12 | 9-sexagies-vicies-ter |
+| 9-sexagies-vicies-quinquies | ✅ sessione DB | Giro 10d preparato: riverifica, nove nodi, tre blocchi (2026-11-09) | §29 | 9-sexagies-vicies-quater |
+| 9-sexagies-vicies-sexies | ✅ Tid, **Tid** ⏭️ | Decisioni N1-N9 ✅ e numeri `20261110-42` … `-61` ✅ (2026-11-09); restano le tre FK di N2 e il via | §29.4 | 9-sexagies-vicies-quinquies |
+| 9-sexagies-vicies-septies | ✅ sessione DB | Giro 10d, blocchi 10d-1 … 10d-3: scritti e provati (`20261110-42` … `-54`) | §29.5-29.7 | 9-sexagies-vicies-sexies |
+| 9-sexagies-vicies-octies | ✅ Tid | Apply del giro 10d su dbdev e scratch, pgTAP come app verdi (2026-11-09) | §29.10 | 9-sexagies-vicies-septies |
+| 9-sexagies-vicies-nonies | ✅ Tid | Le scelte di §29.6: righe di prova fuori, tre FK `CON_INDICE`, il resto ok (2026-11-09) | §29.11 | 9-sexagies-vicies-octies |
+| 9-septuagies | ✅ sessione DB | Il seguito: CSV unico e `20261110-55`, scritti e provati su scratch e dbdev | §29.11 | 9-sexagies-vicies-nonies |
+| 9-septuagies-semel | **Tid** ⏭️ | Apply del CSV e del `20261110-55`, poi il commit del giro 10d | §29.11 | 9-septuagies |
 | 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
@@ -197,8 +214,8 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** nessuna sul giro 10c (le righe dell'overlap solo di dbdev: cancellate, §28.12).
-**Da committare:** il blocco 10c-4 (applicato, pgTAP verdi, 2026-11-09). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
+**Decisioni aperte di Tid:** nessuna sul giro 10d (§29.11). Nessuna sul giro 10c.
+**Da committare:** il giro 10d (§29.5), applicato e verde. ⚠️ Nel working tree ci sono anche i file del cantiere `catalogo` (`20261110-62` …): non entrano nel commit di questo giro. Il blocco 10c-4 è committato (`48b5d39354`). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
 (`cdc563dedb`, 2026-11-08). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
 è committato (`d8492eeb77`, 2026-11-08), `-65` compreso, che è ancora da applicare. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
@@ -1679,6 +1696,8 @@ annullata) su dbdev e sullo scratch: i due change del `-18` e il `-19` passano.
 non le vede `vw_fk_senza_indice` e la politica non ne crea gli indici, ma ne toglie quelli a `false`. E la
 stessa FK ha una riga in due CSV (`fk_index_policy.csv` e quello della bonifica), contro «una tabella, un
 CSV». Si guarda con la convergenza di `fk_index_policy`.
+⚠️ **Correzione (2026-11-09, §29.1 punto 9):** `config` è nell'ambito (`config,*all`, dal 2025-11-23). La FK non si vedeva
+per il filtro su `consentito` della vista, cioè per Q14 ② stessa.
 
 ⚠️ **La lezione per i giri dopo:** la prova si fa anche col `search_path` dell'app
 (`django, public, config, dbops, script, anagrafiche`), non solo da owner, e con le automazioni di `90_end`
@@ -4350,3 +4369,298 @@ CSV), `fn_apply_automazione_overlap.md`; `guide/automazione-db.md` (§4.3, §5.4
 (fuori perimetro, falsa: diceva che un vincolo parziale non lo gestisce il framework, ma lo fa con `where_predicate`).
 La scheda auto-generata di `forme_giuridiche_tipi_soggetto_dettaglio` porta il nome vecchio del trigger fino alla
 rigenerazione dopo l'apply.
+
+## 29. Giro 10d — la politica degli indici delle FK: preparazione (2026-11-09)
+
+Il giro 10c è chiuso: il blocco 10c-4 è committato (`48b5d39354`, 2026-11-09). Questo è l'ultimo blocco del giro 10
+(§8): Q14 ② (la FK a `false` che sparisce dal presidio), D23 (il nome dell'indice di una riga di politica), il
+`fk_index_policy.csv` che nessuno carica (§23.11), la parte di D13 rimasta su `fn_seed_fk_index_policy` (§26.6
+punto 4) e il residuo di §14.8. **Nessuno sviluppo prima del via di Tid**: qui ci sono la riverifica, i nodi e i
+blocchi.
+
+**Brief vicini verificati:** `framework-automazione-db-migliorie.md` §2.1 (il nome di `fn_populate_fk_index_policy`,
+che la guida confondeva con l'apply): è un punto di documentazione, e questo giro riscrive comunque il COMMENT e la
+pagina; non serve un brief nuovo. `brief-db-articoli-obsoleto-dal.md` dice che le righe delle FK nuove «le scrive il
+prossimo `ci_apply`»: non è vero (punto 3 qui sotto), lo si corregge là quando quel brief si riapre.
+
+### 29.1 La riverifica (schede auto-generate di oggi e catalogo dei due database, in sola lettura)
+
+Struttura (il contratto):
+
+1. **`dbops.fk_index_policy`**: `consentito boolean NOT NULL DEFAULT true`, `generated_by_script boolean NULL DEFAULT
+   false`, `dll_command` con il CHECK `chk_fk_index_policy_dll_command_forma`. Il default `true` dice il contrario di
+   ciò che fa la scoperta, che scrive `false`.
+2. **Gli scrittori** dicono tre cose diverse: `fn_populate_fk_index_policy` scrive `false` sulle FK scoperte senza riga;
+   `fn_seed_fk_index_policy` scrive `true` e `generated_by_script = true` sulle FK **già coperte** senza riga (dalla
+   vista `vw_fk_con_indice_missing_policy`); i CSV scrivono una decisione. Q14 ② vuole un solo scrittore delle decisioni,
+   il seed.
+3. **Chi esegue la scoperta:** solo il job pgAgent della domenica (`maintenance.proc_apply_fk_index_policy_job(true)`).
+   Non la esegue né il `90_end` (`20250626-31`, che chiama solo l'apply) né `ci_apply`. Su un database da zero, quindi,
+   le FK nuove non hanno riga, e il presidio non sa distinguere «nuova» da «decisa».
+4. **`fn_seed_fk_index_policy` non la chiama nessuno** (`grep` sul repo, 2026-11-09: solo i changeSet che la creano e
+   la nota di `presidi.csv`). È una promessa senza esecutore, e scrive una decisione da un'automazione. Legge l'ambito
+   da sé, per schema (D13).
+5. **`vw_fk_senza_indice` fa due mestieri:** è l'ingresso della scoperta e la guardia 1 dell'apply (cioè il fatto «la FK
+   è scoperta»), ed è anche il presidio. Il filtro `COALESCE(pol.consentito, true) = true` fa sparire dal fatto una FK
+   decisa a `false`: è Q14 ②.
+6. **D23 confermato:** il nome dell'indice si ricava dal `dll_command` in due modi. L'apply prende la sesta parola
+   (`split_part(…, ' ', 6)`); `vw_indici_ridondanti_prefisso` usa `ILIKE '%' || nome || ' ON%'`, quindi un nome che è
+   il suffisso di un altro, o che contiene `_` (il jolly di LIKE), aggancia la riga sbagliata e dice `AUTOMAZIONE_FK`.
+7. **L'ambito si legge in due modi.** Le quattro viste della politica e `fn_seed_fk_index_policy` guardano solo lo
+   schema (`EXISTS … sc.schema_name = …`); il framework ha il BB `dbops.fn_table_in_scope`, che legge anche
+   `table_like`. Per `dbops`, l'ambito dichiara sette tabelle, ma la politica governa tutte le FK dello schema. Per
+   esempio `dbops.coda_lavori` ha una decisione (`fk_index_policy_coda_lavori_emittente.csv`) e non è fra le sette.
+   L'apply, poi, non legge l'ambito: scorre ogni riga. Una riga `false` fuori ambito fa il `DROP`, una riga `true`
+   fuori ambito non crea mai (la guardia 1 vede solo l'ambito).
+8. **Una tabella, trentacinque CSV:** 34 CSV laterali caricati, uno per cantiere, più il `dbops/fk_index_policy.csv`
+   che nessuno carica (ha ancora le colonne `user_update`/`data_update` tolte nel 7-bis-b). Contro la regola «una
+   tabella, un CSV» (`linee-guida-sql.md` §11.2).
+9. **Il residuo di §14.8 era una diagnosi sbagliata.** `config` è nell'ambito: c'è `config,*all` in
+   `automation_scope.csv` dal 2025-11-23, ed è letto sui due database. La FK `fk_stradario_comune_id` non compariva in
+   `vw_fk_senza_indice` perché la sua riga era `false`: il filtro del punto 5, cioè Q14 ② stessa. La cura di allora (riga
+   a `true` e l'indice in `20261107-19`) resta giusta.
+
+Fatti datati, 2026-11-09. Servono a trovare gli errori, non a decidere:
+
+| | dbdev | scratch (da zero) |
+| --- | --- | --- |
+| righe di politica (`false`/`true`) | 733 / 175 | 96 / 65 |
+| FK nell'ambito senza riga | 139 | 845 |
+| righe di `vw_fk_senza_indice` | 0 | 510 |
+| righe su una FK che non c'è | 34 | 14 |
+
+* Lo zero di dbdev è il difetto di Q14 ②, non un database in ordine: il job ha scritto `false` su ogni FK scoperta, e
+  così sono uscite tutte dal presidio.
+* Le 14 righe «senza FK» dello scratch sono le FK del ponte verso `django.auth_user`
+  (`config/fk_index_policy_auth_user.csv`, `fk_index_policy_credenziali.csv`). In CI quelle FK nascono dopo Liquibase,
+  quindi sono decisioni vere su FK che nascono più tardi, non righe morte. ⇒ **Nessuna pulizia può cancellare una riga
+  di seed perché la FK manca.**
+* I CSV, confrontati fra loro (solo i file): 504 chiavi, di cui 29 in due file. In 28 casi i due file sono l'orfano e un
+  laterale (vince il laterale, l'unico che gira). **Un conflitto è fra due CSV caricati**:
+  `pratiche.template_flussi_handler_eventi.fk_tfhe_template_flusso` è `true` in `pratiche/fk_index_policy_tfhe.csv`
+  (`20260615-10`) e `false` in `dbops/fk_index_policy_bonifica_ridondanze.csv` (`20260727-38`). Oggi vince il file che
+  gira per ultimo.
+* L'orfano: 344 chiavi stanno solo lì. Sono la fotografia di dbdev del 2026-01-16 (`titodb`, `generated_by_script`
+  copiato), cioè l'output delle due automazioni, non decisioni di un seed. Fanno eccezione le 15 righe aggiunte il
+  2026-09-28/29 dai cantieri del magazzino, tutte `false`: decisioni vere, scritte in un file che nessuno carica (i
+  changeSet di quei cantieri dicono «sta nel CSV principale»). Delle 115 `true` che ci sono solo lì, 104 sono su FK
+  vive; 101 di queste hanno l'indice dal changeSet della tabella, quindi la riga non decide niente. **Tre sono scoperte
+  da zero**: `anagrafiche.soggetti_ruoli.fk_tipi_ruoli_config`, `anagrafiche.soggetti.fk_titoli_cortesia_config`,
+  `pagamenti.sepa_mandati.fk_sepa_mandati_billing_account`. Su dbdev hanno l'indice, da zero no.
+
+### 29.2 I nodi (decisioni di Tid)
+
+Q14 ② è già deciso (§4): `consentito` lascia il posto a `decisione` (`DA_DECIDERE` / `CON_INDICE` / `SENZA_INDICE`,
+default `DA_DECIDERE`) e a `motivo`; la scoperta scrive solo `DA_DECIDERE` e solo sulle FK nuove; la decisione la
+scrive solo un seed; il presidio mostra le `DA_DECIDERE`. I nodi che seguono sono quelli che la decisione lascia aperti.
+
+* **N1 — Una tabella, un CSV.** I 34 laterali e l'orfano diventano un solo `80_data/sql/dbops/fk_index_policy.csv`,
+  con un solo mirror (`loadUpdateData`, `primaryKey` sulla terna, `runOnChange` + `validCheckSums: ANY`). Gli YAML e i
+  CSV laterali si cancellano, come per `famiglie_documento` il 2026-09-18; le righe in `databasechangelog` restano
+  orfane. I changeSet di `DELETE` congelati restano, e il CSV unico non contiene le righe che quelli tolgono.
+  **Proposta: sì.** Per il conflitto `fk_tfhe_template_flusso`, la proposta è `SENZA_INDICE`: è la decisione più
+  recente, ed è motivata (la bonifica delle ridondanze); è anche ciò che oggi gira per ultimo.
+* **N2 — Che cosa entra dall'orfano.** Proposta: entrano come decisioni solo le 15 righe del magazzino (`SENZA_INDICE`)
+  e, **una per una, le tre FK scoperte da zero** con `true` (Tid decide: `CON_INDICE`, che da zero crea un indice che
+  oggi c'è solo su dbdev, oppure `SENZA_INDICE`, che su dbdev lo toglie). Le altre 326 righe sono output delle
+  automazioni: non entrano, e su dbdev diventano `DA_DECIDERE` (Q14 ②: «quelle scritte solo dall'automazione»).
+  L'orfano si cancella.
+* **N3 — Come si convertono le righe di oggi.** Proposta: il changeSet della colonna scrive `DA_DECIDERE` su tutte le
+  righe, e il mirror del CSV unico, che gira dopo, riscrive le decisioni. Il risultato è uguale da zero e su dbdev, e
+  non serve un censimento dei seed fatto a mano: il seed è il CSV. Escono anche `consentito` e `generated_by_script`.
+  Il secondo è un marcatore copiato nei CSV coi valori di dbdev e oggi non dice chi ha scritto la riga: lo dice
+  `decisione`. Il vocabolario sta in un CHECK, non in una tabella: sono tre valori che il codice legge, non un catalogo.
+* **N4 — Che cosa fa l'apply con `DA_DECIDERE`.** Proposta: **niente**, né `CREATE` né `DROP`. Oggi una riga `false`
+  scritta dall'automazione toglie l'indice per nome. Con N3, su dbdev le righe dell'automazione smettono di farlo: un
+  indice nato in un changeSet col nome canonico non lo toglie più nessuno finché non c'è una decisione.
+  `CON_INDICE` e `SENZA_INDICE` restano come oggi, con le due guardie.
+* **N5 — Dove gira la scoperta.** Proposta: anche a ogni migrate, con un changeSet `runAlways` di `90_end`, oltre al job
+  della domenica. Così il registro ha la stessa forma da zero e su dbdev, e il presidio vede le FK nuove già in CI.
+  L'ordine rispetto all'apply non conta: l'apply ignora le `DA_DECIDERE` (N4). Alternativa: la scoperta resta solo nel
+  job, e il presidio legge le FK scoperte senza riga direttamente dal catalogo.
+* **N6 — Il fatto e il presidio si separano.** Proposta: `vw_fk_senza_indice` diventa solo il fatto («la FK è
+  scoperta»), senza filtro sulla decisione e con la colonna `decisione` (NULL = senza riga). La leggono la scoperta e la
+  guardia 1. Nasce il presidio `dbops.vw_fk_da_decidere`: le FK scoperte senza riga o `DA_DECIDERE`, più le
+  `CON_INDICE` ancora scoperte dopo l'apply (una promessa non mantenuta). Va nel catalogo dei presidi
+  (`presidi.csv` / `presidi_testi.csv`), e la riga di oggi di `vw_fk_senza_indice` cambia nota.
+* **N7 — `fn_seed_fk_index_policy` e `vw_fk_con_indice_missing_policy` si ritirano.** Proposta: sì. Scrivono una
+  decisione da un'automazione, contro Q14 ②, e non le esegue nessuno. Una FK coperta da un indice del suo changeSet non
+  ha bisogno di una riga: la politica governa gli indici che crea lei. (Il corollario resta: una riga `SENZA_INDICE` col
+  nome canonico toglie quell'indice.) Lettori da riallineare: `presidi.csv` (riga 18), `scripts/indicatori-qualita-db.sh`
+  (riga 180, che oltretutto la chiama «FK senza indice fuori policy», cioè il contrario di ciò che è), le pagine
+  `manual/`. Chiude la parte di D13 rimasta al giro 10d.
+* **N8 — D23: il nome dell'indice in un posto solo.** Proposta: una colonna generata
+  `indice_nome text GENERATED ALWAYS AS (substring(dll_command FROM '^CREATE INDEX IF NOT EXISTS ([a-z_][a-z0-9_$]*) ON '))
+  STORED`, con la stessa grammatica del CHECK. L'apply e `vw_indici_ridondanti_prefisso` la confrontano per
+  uguaglianza. I mirror non la scrivono (non la nominano). Alternativa: una funzione `IMMUTABLE` letta dai due.
+* **N9 — Il perimetro della politica.** Due strade: (a) la politica segue `fn_table_in_scope`, come il resto del
+  framework; allora `dbops.coda_lavori` e le altre tabelle di `dbops` fuori elenco escono dal governo, e le loro
+  decisioni diventano inerti; aggiungerle all'ambito vorrebbe dire armare su di loro anche i trigger delle altre
+  automazioni. (b) La politica degli indici governa **per schema**, per scelta dichiarata: l'indice di una FK serve a
+  ogni tabella, mentre l'elenco delle tabelle serve ai trigger. In questo caso le cinque letture per schema diventano
+  un BB solo, e il COMMENT e `automation_scope.md` lo dicono. **Proposta: (b).** In tutte e due le strade, l'apply agisce
+  solo sulle righe nell'ambito; una riga fuori ambito non fa niente, e la mostra il presidio di N6.
+
+### 29.3 I blocchi
+
+| Blocco | Contenuto | Perché a parte |
+| --- | --- | --- |
+| 10d-1 | N1, N2, N3: il CSV unico e il suo mirror, la colonna `decisione` (con `motivo`), la conversione, le colonne che escono | La forma del registro. Viene prima, perché tutti i lettori la leggono |
+| 10d-2 | N4, N5, N6, N8, N9: apply, scoperta, la vista del fatto, il presidio nuovo, il nome dell'indice, il perimetro | I lettori e gli scrittori della forma nuova, aperti una volta sola |
+| 10d-3 | N7: il ritiro del seed e della vista, coi lettori | Un ritiro in un changeSet solo (D61) |
+
+Dentro 10d-1 l'ordine conta. Lo `00_schema` aggiunge `decisione` e `motivo` e scrive `DA_DECIDERE`. Il mirror unico
+(`80_data`) gira dopo i congelati. Il `DROP` di `consentito` e di `generated_by_script` sta in `80_data`, dopo i loader
+congelati che le nominano: lo stesso schema del `20261109-31`. I loader laterali si cancellano, quindi da zero non
+girano più. I `DELETE` congelati invece girano, e trovano le colonne ancora lì.
+
+**pgTAP previsti:** nuovo, sulla politica: la FK `SENZA_INDICE` resta nel fatto e non compare nel presidio; una FK nuova
+è `DA_DECIDERE` e compare nel presidio; l'apply non tocca una `DA_DECIDERE`; il nome dell'indice è un suffisso di un
+altro e contiene `_` (D23); una riga fuori ambito non fa niente; il CSV unico non ha chiavi doppie e ogni riga nomina una
+FK viva o una FK del ponte django. Da riscrivere: `dbops/test-indici-letture-trasversali-v1` (test 8, `consentito`),
+`dbops/test-marcatori-automazione-senza-esecutore-v1` (riga 229, se il marcatore cambia),
+`dbops/test-processi-jobname-wrapper` (se N5 tocca il processo). Si censiscono anche gli header dei pgTAP che citano
+un laterale.
+
+**Doc:** `dbops/manual/` di `fk_index_policy`, `apply_fk_index_policy`, `fn_populate_fk_index_policy`,
+`vw_fk_senza_indice`, `vw_indici_ridondanti_prefisso`, `automation_scope`, `processi`, una pagina nuova per il
+presidio; le due pagine dei ritirati si cancellano (N7); `guide/automazione-db.md`,
+`guide/database-che-resta-veloce.md`, `linee-guida-sql.md` dove parlano di `consentito` (§11.2 sui CSV laterali). I
+commenti `consentito = false` sparsi nei changeSet mergiati non si toccano: sono storia.
+
+**Ricadute BE:** nessuna (`grep` su `backend/` e `frontend/src`, 2026-11-09: nessuno nomina la tabella né le viste).
+
+**Numeri:** li dà Tid col via. Ci sono altre sessioni DB, e la regola del max+1 si riverifica subito prima di scrivere.
+
+### 29.4 Le decisioni di Tid (2026-11-09)
+
+«Accetto le proposte»: N1, N3-N9 come da §29.2; N1 col conflitto `fk_tfhe_template_flusso` a `SENZA_INDICE`; N9 (b).
+**N2:** le 15 righe del magazzino entrano come `SENZA_INDICE`; **restano da decidere le tre FK scoperte da zero**
+(`CON_INDICE` o `SENZA_INDICE`, una per una), perché N2 non aveva una proposta su di loro.
+
+**Numeri riservati:** `20261110-42` … `-61` (il massimo usato era il `-41`, su file, scratch e dbdev, letto il
+2026-11-09). Il giro ne prevede circa tredici; il resto è margine per le correzioni dopo l'apply. L'altro cantiere parte
+dal `20261110-62`.
+
+### 29.5 Che cosa è scritto (2026-11-09)
+
+Via di Tid: «ok puoi iniziare» (2026-11-09). Numeri usati: `20261110-42` … `-54`; dal `-55` al `-61` restano liberi nel
+range riservato.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261110-42` | `decisione` (CHECK, default `DA_DECIDERE`), `motivo` (CHECK: mai vuoto), `indice_nome` generato dal `dll_command` (D23); COMMENT della tabella e delle colonne |
+| `20_code/dbops/20261110-43` | il BB `dbops.fn_indici_schema_nell_ambito(schema)`, `LANGUAGE sql` espandibile (N9 b) |
+| `20_code/dbops/20261110-44` | `vw_fk_senza_indice` solo il fatto, con `decisione` in coda (N6) |
+| `20_code/dbops/20261110-45` | `vw_indici_ridondanti_prefisso` per nome esatto, `policy_decisione` (D23); DROP e CREATE |
+| `20_code/dbops/20261110-46` | `vw_duplicate_indexes`: l'ambito dal BB (era la sesta copia della stessa lettura) |
+| `20_code/dbops/20261110-47` | `apply_fk_index_policy` sui tre valori, solo nell'ambito (N4, N9) |
+| `20_code/dbops/20261110-48` | `fn_populate_fk_index_policy`: `DA_DECIDERE` sulle FK nuove, via le `DA_DECIDERE` non più scoperte; mai una riga decisa |
+| `20_code/dbops/20261110-49` | il presidio `vw_fk_da_decidere` (N6) |
+| `20_code/dbops/20261110-50` | ritiro di `fn_seed_fk_index_policy` e `vw_fk_con_indice_missing_policy` (N7) |
+| `80_data/changelog/20261110-51` | il mirror del CSV unico `80_data/sql/dbops/fk_index_policy.csv` (N1) |
+| `80_data/changelog/20261110-52` | la riga del presidio ritirato esce dal catalogo |
+| `80_data/changelog/20261110-53` | `DROP` di `consentito` e `generated_by_script`, dopo i congelati che le nominano (N3) |
+| `90_end/20261110-54` | la scoperta a ogni migrate, `runAlways` (N5) |
+
+**Cancellati** (confermato da Tid, 2026-11-09): i 34 loader laterali di `80_data/changelog/` (tutti e soli quelli che
+caricavano un `fk_index_policy_*.csv`) e i loro 34 CSV, come per `famiglie_documento` il 2026-09-18. Nessun changeSet è
+modificato; le righe in `databasechangelog` restano orfane. Il `fk_index_policy.csv` orfano è sostituito dal CSV unico,
+con lo stesso nome: i commenti dei changeSet che dicevano «sta nel CSV principale» ora dicono il vero.
+**Cataloghi:** `presidi.csv` e `presidi_testi.csv` (esce la vista ritirata, entra il presidio, note riscritte),
+`processi.csv` (la nota della scoperta). **Altro:** `scripts/indicatori-qualita-db.sh` e
+`dev/qualita-db-indicatori.md` contano il presidio nuovo.
+**pgTAP:** nuovo `dbops/test-fk-index-policy-decisione-v1` (22, runner owner: si fabbrica due schemi, uno nell'ambito);
+riscritto il test 8 di `dbops/test-indici-letture-trasversali-v1` (`decisione` e `indice_nome`).
+
+Il CSV unico aveva 180 righe (65 `CON_INDICE`, 115 `SENZA_INDICE`): le 161 che lo scratch ha da zero (i 34 laterali più
+`anagrafiche.pdp.fk_pdp_utility`, scritta in linea da `20260215-14`/`-15`) e 19 righe del file orfano scritte a mano.
+Dopo le decisioni di §29.11 ne ha 179 (68 `CON_INDICE`, 111 `SENZA_INDICE`).
+
+### 29.6 Le scelte dentro il giro (da guardare, Tid)
+
+1. **Le righe dell'orfano scritte a mano sono 19, non 15.** Oltre alle 15 del magazzino ci sono 4 righe del 2026-05-24
+   (`vendite.note_offerte_commerciali`, quattro FK, tutte `false`), scritte a mano e non dall'automazione. Sono entrate
+   come `SENZA_INDICE`, perché è quello che dicevano. Le FK sono vive tutte e 19.
+2. **`motivo` è vuoto in tutto il CSV.** Il perché delle decisioni passate sta nelle testate dei loader cancellati (git),
+   ma è scritto per file, non per FK, e pieno di conteggi, nomi di brief e numeri di changeSet: copiarlo avrebbe portato
+   nel dato proprio quello che non deve starci. Il `motivo` si scrive quando una decisione si riapre.
+3. **Le tre FK di N2 non sono nel CSV**: aspettano la decisione di Tid. Fino ad allora su dbdev la loro riga esce (la FK
+   è coperta dall'indice che c'è già, quindi non è scoperta) e l'indice resta; da zero sono `DA_DECIDERE` e l'indice
+   non c'è. Con la decisione entrano nel CSV.
+4. **`vw_duplicate_indexes` è entrata nel giro**: era la sesta copia della lettura dell'ambito per schema (regola del 2).
+5. **Il presidio non ha `colonna_variante`**: i tre casi stanno nella colonna `caso`, con una sola frase per chi agisce.
+6. **I changeSet di codice non hanno un ritorno indietro singolo** (`SELECT 1`): le versioni di prima leggevano
+   `consentito`, che il giro toglie. Il giro torna indietro tutto insieme.
+7. **Il guardrail del preambolo pgTAP** chiede di abbassare la soglia dei `throws_ok` senza discriminante (110 → 109): il
+   calo viene dai pgTAP del cantiere `catalogo` nel working tree, non da questo giro. La soglia la cambia quel cantiere.
+
+### 29.7 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase dopo la riga `BEGIN;`, transazione annullata)
+
+Ordine dell'SQL: `-42` … `-50`, il mirror simulato del CSV unico (UPDATE delle righe che ci sono, INSERT di quelle che
+mancano, nessuna DELETE), i mirror simulati delle righe del giro in `presidi.csv` e `presidi_testi.csv`, `-52`, `-53`,
+l'apply (`90_end/20250626-31`), `-54`.
+
+* **Il pgTAP nuovo:** 22/22 sullo scratch e su dbdev (6,7 s).
+* **Su dbdev nessun indice cambia**: nella stessa transazione zero indici tolti e zero nati. Fatti datati: delle righe
+  di oggi 178 diventano decisioni (65 `CON_INDICE`, 113 `SENZA_INDICE`), 493 restano `DA_DECIDERE` (le FK nuove che il
+  job aveva scritto `false`: il difetto di Q14 ②), 237 escono perché la FK non è più scoperta; 2 righe del CSV nascono.
+  Il presidio su dbdev ha 493 righe `DA_DECIDERE`.
+* **Regressione «senza → con»** su 16 pgTAP vicini (cataloghi dei presidi, processi, riferimenti morti con
+  `plpgsql_check`, marcatori, letture trasversali, duplicati, e i cinque di `vendite` che nominano le viste): zero rossi
+  senza e zero con, sullo scratch.
+* **Guardrail** verdi: `run_on_change`, `v1_congelato`, `pgtap_preambolo`, `sql_letterali`, `timestamp_senza_fuso`,
+  `precondition_seed`, `ddl_su_trigger_automazione`, `grant_ruolo_batch`; pre-commit verde.
+
+### 29.8 Per Tid
+
+1. **Apply** di `20261110-42` … `-54` (e del CSV) su dbdev e scratch.
+2. **pgTAP come app:** `dbops/test-fk-index-policy-decisione-v1` (runner owner), `dbops/test-indici-letture-trasversali-v1`,
+   `dbops/test-catalogo-presidi-v1`, `dbops/test-presidi-testi-v1`, `dbops/test-riferimenti-morti-v1`,
+   `dbops/test-vw-duplicate-indexes-vincoli-v1`, `dbops/test-processi-jobname-wrapper`.
+3. **Le tre FK di N2**, una per una (§29.6 punto 3).
+4. Le scelte di §29.6.
+
+Ricadute BE: nessuna (`backend/` e `frontend/src` non nominano la tabella né le viste).
+
+### 29.9 Doc (2026-11-09)
+
+Scritta da un agente su istruzioni della sessione DB, riletta dalla sessione. Nuove: `dbops/manual/fn_indici_schema_nell_ambito.md`,
+`dbops/manual/vw_fk_da_decidere.md`. Cancellate (oggetti ritirati): `dbops/manual/fn_seed_fk_index_policy.md`,
+`dbops/manual/vw_fk_con_indice_missing_policy.md`, con i loro link. Riscritte: `dbops/manual/` di `fk_index_policy`,
+`apply_fk_index_policy`, `fn_populate_fk_index_policy`, `vw_fk_senza_indice`, `vw_indici_ridondanti_prefisso`,
+`vw_duplicate_indexes`, `automation_scope`, `fn_seed_automazione_guard_utility_tipo_ruolo`;
+`maintenance/manual/proc_apply_fk_index_policy_job.md`; `guide/automazione-db.md` (§6 e §1.1), `linee-guida-sql.md`
+(§8.6, §8.7, §10.9, §11.2), `guide/database-che-resta-veloce.md`, `tutorial/framework-automazione-db.md`,
+`postgresql/row-level-security.md`; le pagine `manual/` di `config`, `vendite` e `documenti` che citavano il flag per una
+FK precisa, tradotte nel vocabolario nuovo e verificate sul CSV unico. Tre di queste dicevano il falso già prima
+(`offerte_commerciali`, `contratti`: «consentito=false come fk_preventivi_valuta», ma nessuna delle due FK ha una riga;
+`fatturazione_lotti_gruppi`: la FK è coperta dalla UNIQUE e la scoperta non la registra). In `fatturazione_lotti_gruppi`
+corretta anche la vista che segnala un indice ridondante per prefisso (è `vw_indici_ridondanti_prefisso`). Gli `index.md`
+di schema e le schede auto-generate si rigenerano dopo l'apply: fino ad allora le schede dei due oggetti nuovi non
+esistono, e i loro link sono morti.
+
+### 29.10 Dopo l'apply (2026-11-09)
+
+**Applicato** da Tid su dbdev e scratch: migrazione `20261110-42` … `-54` e il CSV unico, pgTAP come app verdi. Restano le
+tre FK di N2 (§29.6 punto 3), le scelte di §29.6 e il commit del giro.
+
+### 29.11 Le decisioni di Tid sulle scelte di §29.6, e il seguito (2026-11-09)
+
+| Punto | Decisione | Che cosa ne viene |
+| --- | --- | --- |
+| 1, le 4 righe delle note delle offerte | erano di prova, non decisioni | escono dal CSV; `80_data/changelog/20261110-55` le toglie dove il mirror le aveva scritte (il mirror non cancella) |
+| 2, `motivo` vuoto | ok: è un database di sviluppo | — |
+| 3, le tre FK di N2 | `CON_INDICE` | entrano nel CSV coi comandi del vecchio file: `ix_anagrafiche_soggetti_ruoli_tipo_ruolo_id`, `ix_anagrafiche_soggetti_titolo_cortesia_id`, `ix_pagamenti_sepa_mandati_billing_account_id` |
+| 4, 5, 6 | ok | — |
+| 7, la soglia del preambolo | da correggere | già fatta: la soglia è a 109, l'ha abbassata il cantiere `catalogo` (`scripts/guardrail_pgtap_preambolo.py` nel suo working tree) |
+
+Il CSV unico ha 179 righe (68 `CON_INDICE`, 111 `SENZA_INDICE`); la testata del mirror `-51` (runOnChange + ANY) lo dice.
+
+**Le prove** (scratch e dbdev, da owner, transazione annullata: il mirror simulato col CSV nuovo, il `-55`, l'apply, la
+scoperta): le tre FK sono `CON_INDICE` e coperte su tutti e due; sullo scratch l'apply crea i tre indici, su dbdev ci
+sono già (la guardia 1 salta). Le quattro righe escono; la scoperta ne riregistra tre `DA_DECIDERE`, la quarta FK
+(`fk_offnote_testata`) è coperta. La documentazione non nomina queste righe: nessuna pagina da cambiare.
+
+**Per Tid:** apply del CSV unico e del `20261110-55` su dbdev e scratch; pgTAP `dbops/test-fk-index-policy-decisione-v1`.
+Poi il commit del giro 10d.

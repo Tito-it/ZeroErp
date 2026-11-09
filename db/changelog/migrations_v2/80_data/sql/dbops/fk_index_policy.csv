@@ -1,373 +1,180 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert,user_update,data_update
-anagrafiche,soggetti_ruoli_conti_bancari,fk_soggetti_ruoli_conti_bancari_soggetti_ruoli,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_ruoli_conti_bancari_soggetto_ruolo_id ON anagrafiche.soggetti_ruoli_conti_bancari(soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,soggetti_ruoli_conti_bancari,fk_soggetti_ruoli_conti_bancari_conti_bancari,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_ruoli_conti_bancari_conto_bancario_id ON anagrafiche.soggetti_ruoli_conti_bancari(conto_bancario_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,soggetti_ruoli,fk_tipi_ruoli_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_ruoli_tipo_ruolo_id ON anagrafiche.soggetti_ruoli(tipo_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,soggetti_ruoli,fk_soggetti_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_ruoli_soggetto_id ON anagrafiche.soggetti_ruoli(soggetto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,soggetti_conti_bancari,fk_soggetti_conti_bancari_soggetti,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_conti_bancari_soggetto_id ON anagrafiche.soggetti_conti_bancari(soggetto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,soggetti_conti_bancari,fk_soggetti_conti_bancari_conti_bancari,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_conti_bancari_conto_bancario_id ON anagrafiche.soggetti_conti_bancari(conto_bancario_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,soggetti,fk_titoli_cortesia_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_titolo_cortesia_id ON anagrafiche.soggetti(titolo_cortesia_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,soggetti,fk_stati_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti(stato_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,soggetti,fk_comuni_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_comune_id ON anagrafiche.soggetti(comune_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,risorse_umane,fk_risorse_umane_unita_organizzative,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_risorse_umane_unita_organizzativa_id ON anagrafiche.risorse_umane(unita_organizzativa_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,risorse_umane,fk_risorse_umane_soggetti,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_risorse_umane_soggetto_id ON anagrafiche.risorse_umane(soggetto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,risorse_umane,fk_risorse_umane_qualifiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_risorse_umane_qualifica_id ON anagrafiche.risorse_umane(qualifica_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,pdp,fk_pdp_utility,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_utility_id ON anagrafiche.pdp(utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,pdp,fk_pdp_indirizzi_dettaglio,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_indirizzo_dettaglio_id ON anagrafiche.pdp(indirizzo_dettaglio_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,pdp,fk_pdp_clienti,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_cliente_id ON anagrafiche.pdp(cliente_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,istanze_utilities,fk_istanze_utilities_soggetto,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_istanze_utilities_soggetto_id ON anagrafiche.istanze_utilities(soggetto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,istanze_dati_precontrattuali,fk_idp_utilities,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_istanze_dati_precontrattuali_utility_id ON anagrafiche.istanze_dati_precontrattuali(utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,istanze_dati_precontrattuali,fk_idp_istanze_utilities,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_istanze_dati_precontrattuali_istanza_utility_id ON anagrafiche.istanze_dati_precontrattuali(istanza_utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,istanze_dati_precontrattuali,fk_idp_classi_utenze,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_istanze_dati_precontrattuali_classe_utenza_id ON anagrafiche.istanze_dati_precontrattuali(classe_utenza_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi_soggetti,fk_indirizzi_soggetti_tipi_indirizzi,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_soggetti_tipo_indirizzo_id ON anagrafiche.indirizzi_soggetti(tipo_indirizzo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi_soggetti,fk_indirizzi_soggetti_soggetti,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_soggetti_soggetto_id ON anagrafiche.indirizzi_soggetti(soggetto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi_dettaglio,fk_stradario_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_dettaglio_stradario_id ON anagrafiche.indirizzi_dettaglio(stradario_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi,fk_tipi_indirizzo_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_tipo_indirizzo_id ON anagrafiche.indirizzi(tipo_indirizzo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi,fk_stati_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_stato_id ON anagrafiche.indirizzi(stato_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi,fk_soggetti_ruoli_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_soggetto_ruolo_id ON anagrafiche.indirizzi(soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi,fk_indirizzi_dettaglio_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_indirizzo_dettaglio_id ON anagrafiche.indirizzi(indirizzo_dettaglio_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi,fk_comuni_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_comune_id ON anagrafiche.indirizzi(comune_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,indirizzi,fk_codici_postali_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_codice_postale_id ON anagrafiche.indirizzi(codice_postale_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,gestori_utilities,fk_utilities_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_gestori_utilities_utility_id ON anagrafiche.gestori_utilities(utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,gestori_utilities,fk_gestori_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_gestori_utilities_gestore_id ON anagrafiche.gestori_utilities(gestore_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,gestori,fk_valute_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_gestori_valuta_id ON anagrafiche.gestori(valuta_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,gestori,fk_soggetti_ruoli_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_gestori_soggetto_ruolo_id ON anagrafiche.gestori(soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,dati_societari,fk_province_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_dati_societari_id_prov_iscri_rea ON anagrafiche.dati_societari(id_prov_iscri_rea);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,dati_societari,fk_dati_societari_forme_giuridiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_dati_societari_forma_giuridica_id ON anagrafiche.dati_societari(forma_giuridica_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,contatti,fk_titoli_cortesia_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_contatti_titolo_cortesia_id ON anagrafiche.contatti(titolo_cortesia_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,contatti,fk_tipi_contatti_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_contatti_tipo_contatto_id ON anagrafiche.contatti(tipo_contatto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,contatti,fk_soggetti_ruoli_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_contatti_soggetto_ruolo_id ON anagrafiche.contatti(soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,contatti,fk_soggetti_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_contatti_soggetto_id ON anagrafiche.contatti(soggetto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,contatti,fk_contatti_unita_organizzative_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_contatti_unita_organizzativa_id ON anagrafiche.contatti(unita_organizzativa_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,clienti,fk_utilities_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_clienti_utility_id ON anagrafiche.clienti(utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,clienti,fk_stati_cliente_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_clienti_stato_cliente_id ON anagrafiche.clienti(stato_cliente_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,clienti,fk_soggetti_ruoli_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_clienti_soggetto_ruolo_id ON anagrafiche.clienti(soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,clienti,fk_modalita_pagamento_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_clienti_modalita_pagamento_id ON anagrafiche.clienti(modalita_pagamento_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,clienti,fk_iva_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_clienti_iva_id ON anagrafiche.clienti(iva_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,clienti,fk_clienti_pdp,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_clienti_pdp_id ON anagrafiche.clienti(pdp_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,billing_account,fk_utilities_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_billing_account_utility_id ON anagrafiche.billing_account(utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,billing_account,fk_soggetti_ruoli_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_billing_account_soggetto_ruolo_id ON anagrafiche.billing_account(soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,billing_account,fk_billing_account_istanze_utilities,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_billing_account_istanza_utility_id ON anagrafiche.billing_account(istanza_utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,billing_account,fk_billing_account_anagrafiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_billing_account_parent_account_id ON anagrafiche.billing_account(parent_account_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,bank_branches,fk_bank_branches_soggetti_ruoli,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_bank_branches_soggetto_ruolo_id ON anagrafiche.bank_branches(soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,unita_organizzative,fk_unita_organizzative_parent,t,CREATE INDEX IF NOT EXISTS ix_config_unita_organizzative_parent_id ON config.unita_organizzative(parent_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,toponomastica,fk_toponomastica_stato_id,t,CREATE INDEX IF NOT EXISTS ix_config_toponomastica_stato_id ON config.toponomastica(stato_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,tipi_utenze,fk_tipi_utenze_utility,t,CREATE INDEX IF NOT EXISTS ix_config_tipi_utenze_utility_id ON config.tipi_utenze(utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,tipi_utenze,fk_tipi_utenze_iva,t,CREATE INDEX IF NOT EXISTS ix_config_tipi_utenze_iva_id ON config.tipi_utenze(iva_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,tipi_soggetto_dettaglio_tipi_indirizzo,fk_tsd_tipi_indirizzo_tipo_soggetto_dettaglio,t,CREATE INDEX IF NOT EXISTS ix_config_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_dettaglio_id ON config.tipi_soggetto_dettaglio_tipi_indirizzo(tipo_soggetto_dettaglio_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,tipi_soggetto_dettaglio_tipi_indirizzo,fk_tsd_tipi_indirizzo_tipo_indirizzo,t,CREATE INDEX IF NOT EXISTS ix_config_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_indirizzo_id ON config.tipi_soggetto_dettaglio_tipi_indirizzo(tipo_indirizzo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,tipi_ruolo_tipi_indirizzo,fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo,t,CREATE INDEX IF NOT EXISTS ix_config_tipi_ruolo_tipi_indirizzo_tipo_ruolo_id ON config.tipi_ruolo_tipi_indirizzo(tipo_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,tipi_ruolo_tipi_indirizzo,fk_tipi_ruoli_tipi_indirizzo_ruolo,t,CREATE INDEX IF NOT EXISTS ix_config_tipi_ruolo_tipi_indirizzo_tipo_ruolo_id ON config.tipi_ruolo_tipi_indirizzo(tipo_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,tipi_ruolo_tipi_indirizzo,fk_ruoli_tipi_indirizzo_tipo_indirizzo,t,CREATE INDEX IF NOT EXISTS ix_config_tipi_ruolo_tipi_indirizzo_tipo_indirizzo_id ON config.tipi_ruolo_tipi_indirizzo(tipo_indirizzo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,stradario_generale,fk_stradario_generale_toponomastica_id,t,CREATE INDEX IF NOT EXISTS ix_config_stradario_generale_toponomastica_id ON config.stradario_generale(toponomastica_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-catalogo,note,fk_cat_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_id_stile ON catalogo.note(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli_uom_operativa,fk_artuomop_articolo,f,CREATE INDEX IF NOT EXISTS ix_catalogo_articoli_uom_operativa_articolo_id ON catalogo.articoli_uom_operativa(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,stradario,fk_stradario_stradario_generale_id,t,CREATE INDEX IF NOT EXISTS ix_config_stradario_stradario_generale_id ON config.stradario(stradario_generale_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,stradario,fk_stradario_comune_id,t,CREATE INDEX IF NOT EXISTS ix_config_stradario_comune_id ON config.stradario(comune_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,stradario,fk_stradario_codice_postale_id,t,CREATE INDEX IF NOT EXISTS ix_config_stradario_codice_postale_id ON config.stradario(codice_postale_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,regioni,fk_regioni_stato_id,t,CREATE INDEX IF NOT EXISTS ix_config_regioni_stato_id ON config.regioni(stato_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,province,fk_province_regione_id,t,CREATE INDEX IF NOT EXISTS ix_config_province_regione_id ON config.province(regione_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,iva_stati,fk_iva_stati_stato,t,CREATE INDEX IF NOT EXISTS ix_config_iva_stati_stato_id ON config.iva_stati(stato_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,forme_giuridiche_tipi_soggetto_dettaglio,fk_fg_tsd_tipo_soggetto_dettaglio,t,CREATE INDEX IF NOT EXISTS ix_config_forme_giuridiche_tipi_soggetto_dettaglio_tipo_soggetto_dettaglio_id ON config.forme_giuridiche_tipi_soggetto_dettaglio(tipo_soggetto_dettaglio_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,forme_giuridiche_tipi_soggetto_dettaglio,fk_fg_tsd_forma_giuridica,t,CREATE INDEX IF NOT EXISTS ix_config_forme_giuridiche_tipi_soggetto_dettaglio_forma_giuridica_id ON config.forme_giuridiche_tipi_soggetto_dettaglio(forma_giuridica_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,forme_giuridiche,fk_forme_giuridiche_stato_id,t,CREATE INDEX IF NOT EXISTS ix_config_forme_giuridiche_stato_id ON config.forme_giuridiche(stato_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,comuni,fk_provincia,t,CREATE INDEX IF NOT EXISTS ix_config_comuni_provincia_id ON config.comuni(provincia_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,codici_postali,fk_codici_postali_comune_id,t,CREATE INDEX IF NOT EXISTS ix_config_codici_postali_comune_id ON config.codici_postali(comune_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,classi_utenze,fk_classi_utenze_tipi_utenze,t,CREATE INDEX IF NOT EXISTS ix_config_classi_utenze_tipo_utenza_id ON config.classi_utenze(tipo_utenza_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,classi_utenze,fk_classi_utenze_tipi_tariffa_ee,t,CREATE INDEX IF NOT EXISTS ix_config_classi_utenze_tipi_tariffa_ee_id ON config.classi_utenze(tipi_tariffa_ee_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,classi_utenze,fk_classi_utenze_categoria_accisa,t,CREATE INDEX IF NOT EXISTS ix_config_classi_utenze_categoria_accisa_id ON config.classi_utenze(categoria_accisa_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-config,categoria_accisa,fk_categoria_accisa_utility,t,CREATE INDEX IF NOT EXISTS ix_config_categoria_accisa_utility_id ON config.categoria_accisa(utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,preventivi_righe,fk_prevrighe_preventivi,t,CREATE INDEX IF NOT EXISTS ix_vendite_preventivi_righe_preventivo_id ON vendite.preventivi_righe(preventivo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,preventivi_righe,fk_prevrighe_articoli,t,CREATE INDEX IF NOT EXISTS ix_vendite_preventivi_righe_articolo_id ON vendite.preventivi_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,preventivi_indirizzi,fk_preventivi_indirizzi_origine_sog_ruolo,t,CREATE INDEX IF NOT EXISTS ix_vendite_preventivi_indirizzi_origine_soggetto_ruolo_id ON vendite.preventivi_indirizzi(origine_soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,preventivi_indirizzi,fk_preventivi_indirizzi_origine_indirizzo,t,CREATE INDEX IF NOT EXISTS ix_vendite_preventivi_indirizzi_origine_indirizzo_id ON vendite.preventivi_indirizzi(origine_indirizzo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,preventivi_indirizzi,fk_preventivi_indir_preventivo,t,CREATE INDEX IF NOT EXISTS ix_vendite_preventivi_indirizzi_preventivo_id ON vendite.preventivi_indirizzi(preventivo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ordini_righe_fulfillment,fk_ordini_r_ful_v_ddt_riga,t,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_righe_fulfillment_ddt_riga_id ON vendite.ordini_righe_fulfillment(ddt_riga_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ordini_righe,fk_ordrig_testata,t,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_righe_ordine_id ON vendite.ordini_righe(ordine_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ordini_righe,fk_ordrig_stato_doc_ordine,t,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_righe_stato_doc_ordine_id ON vendite.ordini_righe(stato_doc_ordine_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ordini_righe,fk_ordrig_articolo,t,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_righe_articolo_id ON vendite.ordini_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ordini_indirizzi,fk_ordini_indirizzi_origine_sog_ruolo,t,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_indirizzi_origine_soggetto_ruolo_id ON vendite.ordini_indirizzi(origine_soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ordini_indirizzi,fk_ordini_indirizzi_origine_indirizzo,t,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_indirizzi_origine_indirizzo_id ON vendite.ordini_indirizzi(origine_indirizzo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ordini_indirizzi,fk_ordini_indir_ordine,t,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_indirizzi_ordine_id ON vendite.ordini_indirizzi(ordine_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ordini,fk_ordini_v_stato_ordine,t,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_stato_doc_ordine_id ON vendite.ordini(stato_doc_ordine_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture_righe,fk_fatture_righe_iva,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_righe_iva_id ON vendite.fatture_righe(iva_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture_righe,fk_fatture_righe_fat,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_righe_fattura_id ON vendite.fatture_righe(fattura_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture_righe,fk_fatture_righe_ba_dest,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_righe_dest_billing_account_id ON vendite.fatture_righe(dest_billing_account_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture_rettifiche,fk_fatture_ret_rettificata,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_rettifiche_rettificata_id ON vendite.fatture_rettifiche(rettificata_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture_rettifiche,fk_fatture_ret_fattura,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_rettifiche_fattura_id ON vendite.fatture_rettifiche(fattura_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture_indirizzi,fk_fatture_indirizzi_origine_sog_ruolo,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_indirizzi_origine_soggetto_ruolo_id ON vendite.fatture_indirizzi(origine_soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture_indirizzi,fk_fatture_indirizzi_origine_indirizzo,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_indirizzi_origine_indirizzo_id ON vendite.fatture_indirizzi(origine_indirizzo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture_indirizzi,fk_fatture_indir_fattura,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_indirizzi_fattura_id ON vendite.fatture_indirizzi(fattura_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,fatture,fk_fatture_stato_doc_fiscale,t,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_stato_doc_fiscale_id ON vendite.fatture(stato_doc_fiscale_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ddt_righe,fk_ddt_vendita_r_articolo,t,CREATE INDEX IF NOT EXISTS ix_vendite_ddt_righe_articolo_id ON vendite.ddt_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ddt_indirizzi,fk_ddt_indirizzi_origine_sog_ruolo,t,CREATE INDEX IF NOT EXISTS ix_vendite_ddt_indirizzi_origine_soggetto_ruolo_id ON vendite.ddt_indirizzi(origine_soggetto_ruolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ddt_indirizzi,fk_ddt_indirizzi_origine_indirizzo,t,CREATE INDEX IF NOT EXISTS ix_vendite_ddt_indirizzi_origine_indirizzo_id ON vendite.ddt_indirizzi(origine_indirizzo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ddt_indirizzi,fk_ddt_indirizzi_ddt,t,CREATE INDEX IF NOT EXISTS ix_vendite_ddt_indirizzi_ddt_id ON vendite.ddt_indirizzi(ddt_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,ddt,fk_ddt_v_stato_ddt,t,CREATE INDEX IF NOT EXISTS ix_vendite_ddt_stato_doc_ddt_id ON vendite.ddt(stato_doc_ddt_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,contratti_righe,fk_contrighe_contratti,t,CREATE INDEX IF NOT EXISTS ix_vendite_contratti_righe_contratto_id ON vendite.contratti_righe(contratto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-vendite,contratti_righe,fk_contrighe_articoli,t,CREATE INDEX IF NOT EXISTS ix_vendite_contratti_righe_articolo_id ON vendite.contratti_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-acquisti,ordini_righe_fulfillment,fk_ordini_ful_a_ddt_riga,t,CREATE INDEX IF NOT EXISTS ix_acquisti_ordini_righe_fulfillment_ddt_riga_id ON acquisti.ordini_righe_fulfillment(ddt_riga_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-acquisti,ordini_righe,fk_ao_r_testata,t,CREATE INDEX IF NOT EXISTS ix_acquisti_ordini_righe_ordine_id ON acquisti.ordini_righe(ordine_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-acquisti,ordini_righe,fk_ao_r_stato_doc_ordine,t,CREATE INDEX IF NOT EXISTS ix_acquisti_ordini_righe_stato_doc_ordine_id ON acquisti.ordini_righe(stato_doc_ordine_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-acquisti,ordini_righe,fk_ao_r_articolo,t,CREATE INDEX IF NOT EXISTS ix_acquisti_ordini_righe_articolo_id ON acquisti.ordini_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-acquisti,ordini,fk_ao_stato_doc_ordine,t,CREATE INDEX IF NOT EXISTS ix_acquisti_ordini_stato_doc_ordine_id ON acquisti.ordini(stato_doc_ordine_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-acquisti,ddt_righe,fk_ddt_acquisto_r_articolo,t,CREATE INDEX IF NOT EXISTS ix_acquisti_ddt_righe_articolo_id ON acquisti.ddt_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-acquisti,ddt_indirizzi,fk_ddt_indirizzo_ordine,t,CREATE INDEX IF NOT EXISTS ix_acquisti_ddt_indirizzi_ddt_id ON acquisti.ddt_indirizzi(ddt_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,ubicazioni,fk_mag_ubicazioni_parent,t,CREATE INDEX IF NOT EXISTS ix_magazzino_ubicazioni_parent_id ON magazzino.ubicazioni(parent_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,ubicazioni,fk_mag_ubicazioni_magazzino,t,CREATE INDEX IF NOT EXISTS ix_magazzino_ubicazioni_magazzino_id ON magazzino.ubicazioni(magazzino_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,ubicazioni,fk_mag_tipi_ubicazione_magazzino,t,CREATE INDEX IF NOT EXISTS ix_magazzino_ubicazioni_tipo_id ON magazzino.ubicazioni(tipo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,trasferimenti_righe,fk_mag_trasferimenti_righe_articolo,t,CREATE INDEX IF NOT EXISTS ix_magazzino_trasferimenti_righe_articolo_id ON magazzino.trasferimenti_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,rettifiche_righe,fk_mag_rettifiche_righe_ubicazione,t,CREATE INDEX IF NOT EXISTS ix_magazzino_rettifiche_righe_ubicazione_id ON magazzino.rettifiche_righe(ubicazione_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,rettifiche_righe,fk_mag_rettifiche_righe_articolo,t,CREATE INDEX IF NOT EXISTS ix_magazzino_rettifiche_righe_articolo_id ON magazzino.rettifiche_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,reservations,fk_mag_reservations_ubicazione,t,CREATE INDEX IF NOT EXISTS ix_magazzino_reservations_ubicazione_id ON magazzino.reservations(ubicazione_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,reservations,fk_mag_reservations_magazzino,t,CREATE INDEX IF NOT EXISTS ix_magazzino_reservations_magazzino_id ON magazzino.reservations(magazzino_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,reservations,fk_mag_reservations_articolo,t,CREATE INDEX IF NOT EXISTS ix_magazzino_reservations_articolo_id ON magazzino.reservations(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,movimenti,fk_mag_movimenti_ubicazione_to,t,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_ubicazione_id_to ON magazzino.movimenti(ubicazione_id_to);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,movimenti,fk_mag_movimenti_ubicazione_from,t,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_ubicazione_id_from ON magazzino.movimenti(ubicazione_id_from);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,movimenti,fk_mag_movimenti_magazzino_dest,t,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_magazzino_id_dest ON magazzino.movimenti(magazzino_id_dest);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,movimenti,fk_mag_movimenti_magazzino,t,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_magazzino_id ON magazzino.movimenti(magazzino_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,movimenti,fk_mag_movimenti_causale,t,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_causale_id ON magazzino.movimenti(causale_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,movimenti,fk_mag_movimenti_articolo,t,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_articolo_id ON magazzino.movimenti(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,magazzini,fk_magazzini_indirizzo_dettaglio,t,CREATE INDEX IF NOT EXISTS ix_magazzino_magazzini_indirizzo_dettaglio_id ON magazzino.magazzini(indirizzo_dettaglio_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,inventari_righe,fk_mag_inventario_righe_articolo,t,CREATE INDEX IF NOT EXISTS ix_magazzino_inventari_righe_articolo_id ON magazzino.inventari_righe(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,inventari_righe,fk_mag_inventari_righe_ubicazione,t,CREATE INDEX IF NOT EXISTS ix_magazzino_inventari_righe_ubicazione_id ON magazzino.inventari_righe(ubicazione_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,eventi_assets,fk_mag_eventi_assets_tipo_evento,t,CREATE INDEX IF NOT EXISTS ix_magazzino_eventi_assets_tipo_evento_id ON magazzino.eventi_assets(tipo_evento_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,eventi_assets,fk_mag_eventi_assets_asset,t,CREATE INDEX IF NOT EXISTS ix_magazzino_eventi_assets_asset_id ON magazzino.eventi_assets(asset_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,costo_medio,fk_mag_costo_medio_magazzino,t,CREATE INDEX IF NOT EXISTS ix_magazzino_costo_medio_magazzino_id ON magazzino.costo_medio(magazzino_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,causali,fk_mag_causali_ambito,t,CREATE INDEX IF NOT EXISTS ix_magazzino_causali_ambito_causale_id ON magazzino.causali(ambito_causale_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,assets,fk_mag_assets_ubicazione,t,CREATE INDEX IF NOT EXISTS ix_magazzino_assets_ubicazione_id ON magazzino.assets(ubicazione_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,assets,fk_mag_assets_stato,t,CREATE INDEX IF NOT EXISTS ix_magazzino_assets_stato_id ON magazzino.assets(stato_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,assets,fk_mag_assets_ownership_id,t,CREATE INDEX IF NOT EXISTS ix_magazzino_assets_ownership_id ON magazzino.assets(ownership_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,assets,fk_mag_assets_magazzino,t,CREATE INDEX IF NOT EXISTS ix_magazzino_assets_magazzino_id ON magazzino.assets(magazzino_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-magazzino,assets,fk_mag_assets_articolo,t,CREATE INDEX IF NOT EXISTS ix_magazzino_assets_articolo_id ON magazzino.assets(articolo_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-pagamenti,sepa_mandati,fk_sepa_mandati_soggetto_ruolo_conto,t,CREATE INDEX IF NOT EXISTS ix_pagamenti_sepa_mandati_soggetto_ruolo_conto_id ON pagamenti.sepa_mandati(soggetto_ruolo_conto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-pagamenti,sepa_mandati,fk_sepa_mandati_billing_account,t,CREATE INDEX IF NOT EXISTS ix_pagamenti_sepa_mandati_billing_account_id ON pagamenti.sepa_mandati(billing_account_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-acquisti,ddt,fk_a_ddt_aspetto_bene,f,CREATE INDEX IF NOT EXISTS ix_ddt_aspetto_bene_id ON acquisti.ddt(aspetto_bene_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt,fk_a_ddt_causale_trasporto,f,CREATE INDEX IF NOT EXISTS ix_ddt_causale_trasporto_id ON acquisti.ddt(causale_trasporto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt,fk_a_ddt_destinatario_ruolo,f,CREATE INDEX IF NOT EXISTS ix_ddt_destinatario_soggetto_ruolo_id ON acquisti.ddt(destinatario_soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt,fk_a_ddt_mittente_ruolo,f,CREATE INDEX IF NOT EXISTS ix_ddt_mittente_soggetto_ruolo_id ON acquisti.ddt(mittente_soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt,fk_a_ddt_mod_add_trasporto,f,CREATE INDEX IF NOT EXISTS ix_ddt_modalita_addebito_trasporto_id ON acquisti.ddt(modalita_addebito_trasporto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt,fk_a_ddt_ordine,f,CREATE INDEX IF NOT EXISTS ix_ddt_ordine_id ON acquisti.ddt(ordine_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt,fk_a_ddt_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_ddt_sorgente_tipo_id ON acquisti.ddt(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt,fk_a_ddt_stato_ddt,f,CREATE INDEX IF NOT EXISTS ix_ddt_stato_doc_ddt_id ON acquisti.ddt(stato_doc_ddt_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt_indirizzi,fk_ddt_indirizzo_tipo,f,CREATE INDEX IF NOT EXISTS ix_ddt_indirizzi_tipo_indirizzo_id ON acquisti.ddt_indirizzi(tipo_indirizzo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt_righe,fk_ddt_acquisto_r_testata,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_ddt_id ON acquisti.ddt_righe(ddt_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ddt_righe,fk_ddt_acquisto_r_uom,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_uom_id ON acquisti.ddt_righe(uom_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note,fk_acq_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_id_lingua ON acquisti.note(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note,fk_acq_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_id_stile ON acquisti.note(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note_ddt,fk_acq_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_ddt_id_lingua ON acquisti.note_ddt(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note_ddt,fk_acq_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_ddt_id_stile ON acquisti.note_ddt(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note_ddt,fk_acq_ddt_note_testata,f,CREATE INDEX IF NOT EXISTS ix_note_ddt_target_id ON acquisti.note_ddt(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note_ddt,fk_acq_ddt_note_riga,f,CREATE INDEX IF NOT EXISTS ix_note_ddt_target_riga_id ON acquisti.note_ddt(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note_ordini,fk_acq_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_ordini_id_lingua ON acquisti.note_ordini(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note_ordini,fk_acq_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_ordini_id_stile ON acquisti.note_ordini(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note_ordini,fk_acq_ordini_note_testata,f,CREATE INDEX IF NOT EXISTS ix_note_ordini_target_id ON acquisti.note_ordini(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,note_ordini,fk_acq_ordini_note_riga,f,CREATE INDEX IF NOT EXISTS ix_note_ordini_target_riga_id ON acquisti.note_ordini(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini,fk_ao_aspetto_bene,f,CREATE INDEX IF NOT EXISTS ix_ordini_aspetto_bene_id ON acquisti.ordini(aspetto_bene_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini,fk_ao_causale_trasporto,f,CREATE INDEX IF NOT EXISTS ix_ordini_causale_trasporto_id ON acquisti.ordini(causale_trasporto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini,fk_ordini_ao_indir_cons,f,CREATE INDEX IF NOT EXISTS ix_ordini_indirizzo_consegna_id ON acquisti.ordini(indirizzo_consegna_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini,fk_ao_matr,f,CREATE INDEX IF NOT EXISTS ix_ordini_modalita_addebito_trasporto_id ON acquisti.ordini(modalita_addebito_trasporto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini,fk_ordini_ao_modpag,f,CREATE INDEX IF NOT EXISTS ix_ordini_modalita_pagamento_id ON acquisti.ordini(modalita_pagamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini,fk_ordini_ao_fornitore_ruolo,f,CREATE INDEX IF NOT EXISTS ix_ordini_soggetto_ruolo_id ON acquisti.ordini(soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini,fk_ao_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_ordini_sorgente_tipo_id ON acquisti.ordini(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini,fk_ordini_ao_valute,f,CREATE INDEX IF NOT EXISTS ix_ordini_valuta_id ON acquisti.ordini(valuta_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini_righe,fk_ao_r_iva,f,CREATE INDEX IF NOT EXISTS ix_ordini_righe_iva_id ON acquisti.ordini_righe(iva_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini_righe,fk_ao_r_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_ordini_righe_sorgente_tipo_id ON acquisti.ordini_righe(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini_righe,fk_ao_r_uom,f,CREATE INDEX IF NOT EXISTS ix_ordini_righe_uom_id ON acquisti.ordini_righe(uom_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-acquisti,ordini_righe_fulfillment,fk_ordini_ful_a_ordine_riga,f,CREATE INDEX IF NOT EXISTS ix_ordini_righe_fulfillment_ordine_riga_id ON acquisti.ordini_righe_fulfillment(ordine_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,catasto_unita_immobiliari_indirizzi,fk_cat_un_imm_indir_cat_un_imm,f,CREATE INDEX IF NOT EXISTS ix_catasto_unita_immobiliari_indirizzi_catasto_unita_id ON anagrafiche.catasto_unita_immobiliari_indirizzi(catasto_unita_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,catasto_unita_immobiliari_indirizzi,fk_cat_un_imm_indir_indirizzo_dett,f,CREATE INDEX IF NOT EXISTS ix_catasto_unita_immobiliari_indirizzi_indirizzo_dettaglio_id ON anagrafiche.catasto_unita_immobiliari_indirizzi(indirizzo_dettaglio_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,clienti,fk_clienti_billing_account,f,"CREATE INDEX IF NOT EXISTS ix_clienti_billing_account_id_istanza_utility_id ON anagrafiche.clienti(billing_account_id, istanza_utility_id);",f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,clienti,fk_clienti_termini_pagamento,f,CREATE INDEX IF NOT EXISTS ix_clienti_termine_pagamento_id ON anagrafiche.clienti(termine_pagamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,contatti,fk_utilities_config,f,CREATE INDEX IF NOT EXISTS ix_contatti_utility_id ON anagrafiche.contatti(utility_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,conti_bancari,fk_conti_bancari_bank_branches,f,CREATE INDEX IF NOT EXISTS ix_conti_bancari_bank_branch_id ON anagrafiche.conti_bancari(bank_branch_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,fornitori,fk_fornitori_modalita_pagamento,f,CREATE INDEX IF NOT EXISTS ix_fornitori_modalita_pagamento_id ON anagrafiche.fornitori(modalita_pagamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,fornitori,fk_fornitori_valute,f,CREATE INDEX IF NOT EXISTS ix_fornitori_valuta_id ON anagrafiche.fornitori(valuta_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,indirizzi_soggetti,fk_indirizzi_soggetti_codici_postali,f,CREATE INDEX IF NOT EXISTS ix_indirizzi_soggetti_codice_postale_id ON anagrafiche.indirizzi_soggetti(codice_postale_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,indirizzi_soggetti,fk_indirizzi_soggetti_comuni,f,CREATE INDEX IF NOT EXISTS ix_indirizzi_soggetti_comune_id ON anagrafiche.indirizzi_soggetti(comune_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,indirizzi_soggetti,fk_indirizzi_soggetti_indirizzi_dettaglio,f,CREATE INDEX IF NOT EXISTS ix_indirizzi_soggetti_indirizzo_dettaglio_id ON anagrafiche.indirizzi_soggetti(indirizzo_dettaglio_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,indirizzi_soggetti,fk_indirizzi_soggetti_stati,f,CREATE INDEX IF NOT EXISTS ix_indirizzi_soggetti_stato_id ON anagrafiche.indirizzi_soggetti(stato_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,istanze_utilities,fk_iu_catasto_unita_immobiliare,f,CREATE INDEX IF NOT EXISTS ix_istanze_utilities_catasto_unita_immobiliare_id ON anagrafiche.istanze_utilities(catasto_unita_immobiliare_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,istanze_utilities,fk_istanze_utilities_indirizzo_dettaglio,f,CREATE INDEX IF NOT EXISTS ix_istanze_utilities_indirizzo_dettaglio_id ON anagrafiche.istanze_utilities(indirizzo_dettaglio_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,istanze_utilities,fk_iu_pdp_id_addr,f,"CREATE INDEX IF NOT EXISTS ix_istanze_utilities_indirizzo_dettaglio_id_pdp_id ON anagrafiche.istanze_utilities(indirizzo_dettaglio_id, pdp_id);",f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,istanze_utilities,fk_istanze_utilities_parent_istanza,f,CREATE INDEX IF NOT EXISTS ix_istanze_utilities_parent_istanza_id ON anagrafiche.istanze_utilities(parent_istanza_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,pdp,fk_pdp_stati_pdp,f,CREATE INDEX IF NOT EXISTS ix_pdp_stato_pdp_id ON anagrafiche.pdp(stato_pdp_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,soggetti,fk_contatti_anagrafiche,f,CREATE INDEX IF NOT EXISTS ix_soggetti_default_contatto_id ON anagrafiche.soggetti(default_contatto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-anagrafiche,soggetti,fk_soggetti_tipo_soggetto_dettaglio,f,CREATE INDEX IF NOT EXISTS ix_soggetti_tipo_soggetto_dettaglio_id ON anagrafiche.soggetti(tipo_soggetto_dettaglio_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_conti_contabili_acquisto,f,CREATE INDEX IF NOT EXISTS ix_articoli_conto_contabile_acquisto_id ON catalogo.articoli(conto_contabile_acquisto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_conti_contabili_vendita,f,CREATE INDEX IF NOT EXISTS ix_articoli_conto_contabile_vendita_id ON catalogo.articoli(conto_contabile_vendita_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_articoli_gruppi,f,CREATE INDEX IF NOT EXISTS ix_articoli_gruppo_voce_id ON catalogo.articoli(gruppo_voce_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_iva,f,CREATE INDEX IF NOT EXISTS ix_articoli_iva_id ON catalogo.articoli(iva_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_note_1,f,"CREATE INDEX IF NOT EXISTS ix_articoli_note_id_note_target_tipo ON catalogo.articoli(note_id, note_target_tipo);",f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_note_2,f,"CREATE INDEX IF NOT EXISTS ix_articoli_note_id_note_target_tipo ON catalogo.articoli(note_id, note_target_tipo);",f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_note,f,"CREATE INDEX IF NOT EXISTS ix_articoli_note_id_note_target_tipo ON catalogo.articoli(note_id, note_target_tipo);",f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_articoli_spesa,f,CREATE INDEX IF NOT EXISTS ix_articoli_spesa_id ON catalogo.articoli(spesa_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_articoli_tipologie,f,CREATE INDEX IF NOT EXISTS ix_articoli_tipo_voce_id ON catalogo.articoli(tipo_voce_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli,fk_articoli_unita_misura,f,CREATE INDEX IF NOT EXISTS ix_articoli_uom_id ON catalogo.articoli(uom_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli_componenti,fk_articoli_componenti_articoli_componente,f,CREATE INDEX IF NOT EXISTS ix_articoli_componenti_componente_id ON catalogo.articoli_componenti(componente_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli_componenti,fk_articoli_componenti_note_1,f,"CREATE INDEX IF NOT EXISTS ix_articoli_componenti_note_id_note_target_tipo ON catalogo.articoli_componenti(note_id, note_target_tipo);",f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli_componenti,fk_articoli_componenti_note,f,"CREATE INDEX IF NOT EXISTS ix_articoli_componenti_note_id_note_target_tipo ON catalogo.articoli_componenti(note_id, note_target_tipo);",f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli_componenti,fk_articoli_componenti_note_2,f,"CREATE INDEX IF NOT EXISTS ix_articoli_componenti_note_id_note_target_tipo ON catalogo.articoli_componenti(note_id, note_target_tipo);",f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli_componenti,fk_articoli_componenti_articoli_prodotto,f,CREATE INDEX IF NOT EXISTS ix_articoli_componenti_prodotto_id ON catalogo.articoli_componenti(prodotto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,articoli_uom_operativa,fk_artuomop_uom,f,CREATE INDEX IF NOT EXISTS ix_articoli_uom_operativa_uom_id ON catalogo.articoli_uom_operativa(uom_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,note,fk_cat_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_id_lingua ON catalogo.note(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,note_articoli,fk_cat_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_articoli_id_lingua ON catalogo.note_articoli(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,note_articoli,fk_cat_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_articoli_id_stile ON catalogo.note_articoli(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,note_articoli,fk_cat_note_articoli_target,f,CREATE INDEX IF NOT EXISTS ix_note_articoli_target_id ON catalogo.note_articoli(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,note_articoli_componenti,fk_cat_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_articoli_componenti_id_lingua ON catalogo.note_articoli_componenti(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,note_articoli_componenti,fk_cat_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_articoli_componenti_id_stile ON catalogo.note_articoli_componenti(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,note_articoli_componenti,fk_cat_note_articoli_componenti_target,f,CREATE INDEX IF NOT EXISTS ix_note_articoli_componenti_target_id ON catalogo.note_articoli_componenti(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,unita_misura_conversioni,fk_uom_conv_from,f,CREATE INDEX IF NOT EXISTS ix_unita_misura_conversioni_uom_from_id ON catalogo.unita_misura_conversioni(uom_from_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-catalogo,unita_misura_conversioni,fk_uom_conv_to,f,CREATE INDEX IF NOT EXISTS ix_unita_misura_conversioni_uom_to_id ON catalogo.unita_misura_conversioni(uom_to_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,iva,fk_iva_assoggettamento,f,CREATE INDEX IF NOT EXISTS ix_iva_assoggettamento_id ON config.iva(assoggettamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,iva,fk_iva_conto_acq,f,CREATE INDEX IF NOT EXISTS ix_iva_conto_iva_acquisti_id ON config.iva(conto_iva_acquisti_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,iva,fk_iva_conto_ven,f,CREATE INDEX IF NOT EXISTS ix_iva_conto_iva_vendita_id ON config.iva(conto_iva_vendita_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,iva,fk_iva_split,f,CREATE INDEX IF NOT EXISTS ix_iva_id_iva_split ON config.iva(id_iva_split);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,iva,fk_iva_natura,f,CREATE INDEX IF NOT EXISTS ix_iva_natura_iva_id ON config.iva(natura_iva_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,iva_stati,fk_iva_stati_assoggettamento_override,f,CREATE INDEX IF NOT EXISTS ix_iva_stati_assoggettamento_id_override ON config.iva_stati(assoggettamento_id_override);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,iva_stati,fk_iva_stati_iva,f,CREATE INDEX IF NOT EXISTS ix_iva_stati_iva_id ON config.iva_stati(iva_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,messaggi_errore,fk_cfg_messaggi_errore_lingua,f,CREATE INDEX IF NOT EXISTS ix_messaggi_errore_lingua ON config.messaggi_errore(lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,parameter_overrides,fk_overrides_django_group,f,CREATE INDEX IF NOT EXISTS ix_parameter_overrides_django_group_id ON config.parameter_overrides(django_group_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,parameter_overrides,fk_overrides_django_user,f,CREATE INDEX IF NOT EXISTS ix_parameter_overrides_django_user_id ON config.parameter_overrides(django_user_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,parameter_overrides,fk_overrides_parameter,f,CREATE INDEX IF NOT EXISTS ix_parameter_overrides_parameter_id ON config.parameter_overrides(parameter_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,tipi_indirizzi_allowed,fk_config_tipi_indirizzi,f,CREATE INDEX IF NOT EXISTS ix_tipi_indirizzi_allowed_tipo_indirizzo_id ON config.tipi_indirizzi_allowed(tipo_indirizzo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,tipi_ruolo_tipi_indirizzo,fk_tipi_ruolo_tipi_indirizzo_fallback_tipo,f,CREATE INDEX IF NOT EXISTS ix_tipi_ruolo_tipi_indirizzo_fallback_tipo_indirizzo_id ON config.tipi_ruolo_tipi_indirizzo(fallback_tipo_indirizzo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,tipi_soggetto_dettaglio,fk_tipi_soggetto_dettaglio_stato_id,f,CREATE INDEX IF NOT EXISTS ix_tipi_soggetto_dettaglio_stato_id ON config.tipi_soggetto_dettaglio(stato_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,tipi_soggetto_dettaglio,fk_tipi_soggetto_dettaglio_tipi_soggetto_id,f,CREATE INDEX IF NOT EXISTS ix_tipi_soggetto_dettaglio_tipo_soggetto_id ON config.tipi_soggetto_dettaglio(tipo_soggetto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-config,tipi_soggetto_dettaglio_tipi_indirizzo,fk_tsd_tipi_indirizzo_fallback_tipo,f,CREATE INDEX IF NOT EXISTS ix_tipi_soggetto_dettaglio_tipi_indirizzo_fallback_tipo_indirizzo_id ON config.tipi_soggetto_dettaglio_tipi_indirizzo(fallback_tipo_indirizzo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,assets,fk_mag_assets_billing_account,f,CREATE INDEX IF NOT EXISTS ix_assets_billing_account_id ON magazzino.assets(billing_account_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,assets,fk_mag_assets_contratto,f,CREATE INDEX IF NOT EXISTS ix_assets_contratto_id ON magazzino.assets(contratto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,eventi_assets,fk_mag_eventi_assets_magazzino_from,f,CREATE INDEX IF NOT EXISTS ix_eventi_assets_magazzino_id_from ON magazzino.eventi_assets(magazzino_id_from);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,eventi_assets,fk_mag_eventi_assets_magazzino_to,f,CREATE INDEX IF NOT EXISTS ix_eventi_assets_magazzino_id_to ON magazzino.eventi_assets(magazzino_id_to);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,eventi_assets,fk_mag_eventi_assets_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_eventi_assets_sorgente_tipo_id ON magazzino.eventi_assets(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,inventari,fk_mag_inventari_magazzino,f,CREATE INDEX IF NOT EXISTS ix_inventari_magazzino_id ON magazzino.inventari(magazzino_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,inventari,fk_mag_inventari_sorgenti_tipo,f,CREATE INDEX IF NOT EXISTS ix_inventari_sorgente_tipo_id ON magazzino.inventari(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,inventari_righe,fk_mag_inventario_righe_testata,f,CREATE INDEX IF NOT EXISTS ix_inventari_righe_inventario_id ON magazzino.inventari_righe(inventario_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,movimenti,fk_mag_movimenti_uom,f,CREATE INDEX IF NOT EXISTS ix_movimenti_uom_id ON magazzino.movimenti(uom_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_asset,fk_note_asset_testata,f,CREATE INDEX IF NOT EXISTS ix_note_asset_target_id ON magazzino.note_asset(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_costo_medio,fk_note_costo_medio_testata,f,CREATE INDEX IF NOT EXISTS ix_note_costo_medio_target_id ON magazzino.note_costo_medio(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_evento_asset,fk_note_evento_asset_testata,f,CREATE INDEX IF NOT EXISTS ix_note_evento_asset_target_id ON magazzino.note_evento_asset(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_inventario,fk_note_inventario_testata,f,CREATE INDEX IF NOT EXISTS ix_note_inventario_target_id ON magazzino.note_inventario(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_inventario_riga,fk_note_inventario_riga_testata,f,CREATE INDEX IF NOT EXISTS ix_note_inventario_riga_target_id ON magazzino.note_inventario_riga(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_inventario_riga,fk_note_inventario_riga_riga,f,CREATE INDEX IF NOT EXISTS ix_note_inventario_riga_target_riga_id ON magazzino.note_inventario_riga(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_movimento,fk_note_movimento_testata,f,CREATE INDEX IF NOT EXISTS ix_note_movimento_target_id ON magazzino.note_movimento(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_rettifica,fk_note_rettifica_testata,f,CREATE INDEX IF NOT EXISTS ix_note_rettifica_target_id ON magazzino.note_rettifica(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_rettifica_riga,fk_note_rettifica_riga_testata,f,CREATE INDEX IF NOT EXISTS ix_note_rettifica_riga_target_id ON magazzino.note_rettifica_riga(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_rettifica_riga,fk_note_rettifica_riga_riga,f,CREATE INDEX IF NOT EXISTS ix_note_rettifica_riga_target_riga_id ON magazzino.note_rettifica_riga(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_trasferimento,fk_note_trasf_testata,f,CREATE INDEX IF NOT EXISTS ix_note_trasferimento_target_id ON magazzino.note_trasferimento(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_trasferimento_riga,fk_note_trasf_riga_testata,f,CREATE INDEX IF NOT EXISTS ix_note_trasferimento_riga_target_id ON magazzino.note_trasferimento_riga(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,note_trasferimento_riga,fk_note_trasf_riga_riga,f,CREATE INDEX IF NOT EXISTS ix_note_trasferimento_riga_target_riga_id ON magazzino.note_trasferimento_riga(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,rettifiche,fk_mag_rettifiche_magazzino,f,CREATE INDEX IF NOT EXISTS ix_rettifiche_magazzino_id ON magazzino.rettifiche(magazzino_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,rettifiche_righe,fk_mag_rettifiche_righe_testata,f,CREATE INDEX IF NOT EXISTS ix_rettifiche_righe_rettifica_id ON magazzino.rettifiche_righe(rettifica_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,trasferimenti,fk_mag_trasferimenti_magazzino_from,f,CREATE INDEX IF NOT EXISTS ix_trasferimenti_magazzino_id_from ON magazzino.trasferimenti(magazzino_id_from);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,trasferimenti,fk_mag_trasferimenti_magazzino_to,f,CREATE INDEX IF NOT EXISTS ix_trasferimenti_magazzino_id_to ON magazzino.trasferimenti(magazzino_id_to);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,trasferimenti,fk_mag_trasf_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_trasferimenti_sorgente_tipo_id ON magazzino.trasferimenti(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,trasferimenti,fk_mag_rettifiche_sorgenti_tipo,f,CREATE INDEX IF NOT EXISTS ix_trasferimenti_sorgenti_tipo_id ON magazzino.trasferimenti(sorgenti_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,trasferimenti,fk_mag_trasferimenti_sorgenti_tipo,f,CREATE INDEX IF NOT EXISTS ix_trasferimenti_sorgenti_tipo_id ON magazzino.trasferimenti(sorgenti_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-magazzino,trasferimenti_righe,fk_mag_trasferimenti_righe_testata,f,CREATE INDEX IF NOT EXISTS ix_trasferimenti_righe_trasferimento_id ON magazzino.trasferimenti_righe(trasferimento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-pagamenti,sepa_mandati,fk_sepa_mandati_istanza_utility,f,CREATE INDEX IF NOT EXISTS ix_sepa_mandati_istanza_utility_id ON pagamenti.sepa_mandati(istanza_utility_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,articoli_descrizioni_aggiuntive,fk_articoli_descrizioni_aggiuntive_articoli,f,CREATE INDEX IF NOT EXISTS ix_articoli_descrizioni_aggiuntive_articolo_id ON vendite.articoli_descrizioni_aggiuntive(articolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,attivita_fatturabili,fk_attivita_fatturabili_articoli,f,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_articolo_id ON vendite.attivita_fatturabili(articolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,attivita_fatturabili,fk_attivita_fatturabili_billing_account,f,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_billing_account_id ON vendite.attivita_fatturabili(billing_account_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,attivita_fatturabili,fk_attivita_fatturabili_istanze_utilities,f,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_istanza_utility_id ON vendite.attivita_fatturabili(istanza_utility_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,attivita_fatturabili,fk_attivita_fatturabili_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_sorgente_tipo_id ON vendite.attivita_fatturabili(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,attivita_fatturabili,fk_attivita_fatturabili_uom_id,f,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_uom_id ON vendite.attivita_fatturabili(uom_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,attivita_fatturabili,fk_attivita_fatturabili_uom_operativa_id,f,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_uom_operativa_id ON vendite.attivita_fatturabili(uom_operativa_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,contratti,fk_contratti_billing_account,f,CREATE INDEX IF NOT EXISTS ix_contratti_billing_account_id ON vendite.contratti(billing_account_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,contratti,fk_contratti_istanza,f,CREATE INDEX IF NOT EXISTS ix_contratti_istanza_utility_id ON vendite.contratti(istanza_utility_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,contratti,fk_contratti_parent,f,CREATE INDEX IF NOT EXISTS ix_contratti_parent_contratto_id ON vendite.contratti(parent_contratto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,contratti,fk_v_contratti_stato_ddt,f,CREATE INDEX IF NOT EXISTS ix_contratti_stato_doc_contratto_id ON vendite.contratti(stato_doc_contratto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,contratti,fk_contratti_utility,f,CREATE INDEX IF NOT EXISTS ix_contratti_utility_id ON vendite.contratti(utility_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,contratti_righe,fk_contratti_righe_uom_operativa_id,f,CREATE INDEX IF NOT EXISTS ix_contratti_righe_uom_operativa_id ON vendite.contratti_righe(uom_operativa_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt,fk_ddt_v_aspetto_bene,f,CREATE INDEX IF NOT EXISTS ix_ddt_aspetto_bene_id ON vendite.ddt(aspetto_bene_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt,fk_ddt_v_causale_trasporto,f,CREATE INDEX IF NOT EXISTS ix_ddt_causale_trasporto_id ON vendite.ddt(causale_trasporto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt,fk_ddt_vendita_destinatario_ruolo,f,CREATE INDEX IF NOT EXISTS ix_ddt_destinatario_soggetto_ruolo_id ON vendite.ddt(destinatario_soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt,fk_ddt_vendita_mittente_ruolo,f,CREATE INDEX IF NOT EXISTS ix_ddt_mittente_soggetto_ruolo_id ON vendite.ddt(mittente_soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt,fk_ddt_v_mod_add_trasporto,f,CREATE INDEX IF NOT EXISTS ix_ddt_modalita_addebito_trasporto_id ON vendite.ddt(modalita_addebito_trasporto_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt,fk_ddt_v_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_ddt_sorgente_tipo_id ON vendite.ddt(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt,fk_ddt_vendita_vettore_ruolo,f,CREATE INDEX IF NOT EXISTS ix_ddt_vettore_soggetto_ruolo_id ON vendite.ddt(vettore_soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt_indirizzi,fk_ddt_indirizzo_tipo,f,CREATE INDEX IF NOT EXISTS ix_ddt_indirizzi_tipo_indirizzo_id ON vendite.ddt_indirizzi(tipo_indirizzo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt_righe,fk_ddt_vendita_r_testata,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_ddt_id ON vendite.ddt_righe(ddt_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ddt_righe,fk_ddt_vendita_r_uom_operativa,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_uom_operativa_id ON vendite.ddt_righe(uom_operativa_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_ba,f,CREATE INDEX IF NOT EXISTS ix_fatture_billing_account_id ON vendite.fatture(billing_account_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_emittente,f,CREATE INDEX IF NOT EXISTS ix_fatture_emittente_soggetto_ruolo_id ON vendite.fatture(emittente_soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_modpag,f,CREATE INDEX IF NOT EXISTS ix_fatture_modalita_pagamento_id ON vendite.fatture(modalita_pagamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_registro,f,CREATE INDEX IF NOT EXISTS ix_fatture_registro_id ON vendite.fatture(registro_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_reseller,f,CREATE INDEX IF NOT EXISTS ix_fatture_reseller_soggetto_ruolo_id ON vendite.fatture(reseller_soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_fatture_sorgente_tipo_id ON vendite.fatture(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_termini_pagamento,f,CREATE INDEX IF NOT EXISTS ix_fatture_termine_pagamento_id ON vendite.fatture(termine_pagamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_tipo_doc_fiscale,f,CREATE INDEX IF NOT EXISTS ix_fatture_tipo_doc_fiscale_id ON vendite.fatture(tipo_doc_fiscale_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture,fk_fatture_valuta,f,CREATE INDEX IF NOT EXISTS ix_fatture_valuta_id ON vendite.fatture(valuta_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture_indirizzi,fk_fatture_indir_tipo,f,CREATE INDEX IF NOT EXISTS ix_fatture_indirizzi_tipo_indirizzo_id ON vendite.fatture_indirizzi(tipo_indirizzo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture_riepiloghi_iva,fk_fatture_r_iva_iva,f,CREATE INDEX IF NOT EXISTS ix_fatture_riepiloghi_iva_iva_id ON vendite.fatture_riepiloghi_iva(iva_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture_riepiloghi_iva,fk_fatture_r_iva_natura,f,CREATE INDEX IF NOT EXISTS ix_fatture_riepiloghi_iva_natura_id ON vendite.fatture_riepiloghi_iva(natura_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture_righe,fk_fatture_righe_art,f,CREATE INDEX IF NOT EXISTS ix_fatture_righe_articolo_id ON vendite.fatture_righe(articolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture_righe,fk_fatture_righe_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_fatture_righe_sorgente_tipo_id ON vendite.fatture_righe(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture_righe,fk_fatture_righe_uom,f,CREATE INDEX IF NOT EXISTS ix_fatture_righe_uom_id ON vendite.fatture_righe(uom_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,fatture_scadenze,fk_fatture_scadenze_fattura,f,CREATE INDEX IF NOT EXISTS ix_fatture_scadenze_fattura_id ON vendite.fatture_scadenze(fattura_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note,fk_vendite_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_id_lingua ON vendite.note(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note,fk_vendite_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_id_stile ON vendite.note(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_attivita_fatturabili,fk_vendite_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_attivita_fatturabili_id_lingua ON vendite.note_attivita_fatturabili(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_attivita_fatturabili,fk_vendite_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_attivita_fatturabili_id_stile ON vendite.note_attivita_fatturabili(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_attivita_fatturabili,fk_ven_note_att_testata,f,CREATE INDEX IF NOT EXISTS ix_note_attivita_fatturabili_target_id ON vendite.note_attivita_fatturabili(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_attivita_fatturabili,fk_ven_note_att_riga,f,CREATE INDEX IF NOT EXISTS ix_note_attivita_fatturabili_target_riga_id ON vendite.note_attivita_fatturabili(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_contratto,fk_vendite_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_contratto_id_lingua ON vendite.note_contratto(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_contratto,fk_vendite_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_contratto_id_stile ON vendite.note_contratto(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_contratto,fk_contnote_testata,f,CREATE INDEX IF NOT EXISTS ix_note_contratto_target_id ON vendite.note_contratto(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_contratto,fk_contnote_riga,f,CREATE INDEX IF NOT EXISTS ix_note_contratto_target_riga_id ON vendite.note_contratto(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_ddt,fk_vendite_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_ddt_id_lingua ON vendite.note_ddt(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_ddt,fk_vendite_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_ddt_id_stile ON vendite.note_ddt(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_ddt,fk_ddt_note_testata,f,CREATE INDEX IF NOT EXISTS ix_note_ddt_target_id ON vendite.note_ddt(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_ddt,fk_ddt_note_riga,f,CREATE INDEX IF NOT EXISTS ix_note_ddt_target_riga_id ON vendite.note_ddt(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_fatture,fk_vendite_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_fatture_id_lingua ON vendite.note_fatture(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_fatture,fk_vendite_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_fatture_id_stile ON vendite.note_fatture(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_fatture,fk_fatture_note_testata,f,CREATE INDEX IF NOT EXISTS ix_note_fatture_target_id ON vendite.note_fatture(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_fatture,fk_fatture_note_riga,f,CREATE INDEX IF NOT EXISTS ix_note_fatture_target_riga_id ON vendite.note_fatture(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_ordini,fk_vendite_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_ordini_id_lingua ON vendite.note_ordini(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_ordini,fk_vendite_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_ordini_id_stile ON vendite.note_ordini(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_ordini,fk_ordini_note_testata,f,CREATE INDEX IF NOT EXISTS ix_note_ordini_target_id ON vendite.note_ordini(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_ordini,fk_ordini_note_riga,f,CREATE INDEX IF NOT EXISTS ix_note_ordini_target_riga_id ON vendite.note_ordini(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_preventivo,fk_vendite_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_preventivo_id_lingua ON vendite.note_preventivo(id_lingua);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_preventivo,fk_vendite_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_preventivo_id_stile ON vendite.note_preventivo(id_stile);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_preventivo,fk_prevnote_testata,f,CREATE INDEX IF NOT EXISTS ix_note_preventivo_target_id ON vendite.note_preventivo(target_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_preventivo,fk_prevnote_riga,f,CREATE INDEX IF NOT EXISTS ix_note_preventivo_target_riga_id ON vendite.note_preventivo(target_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini,fk_ordini_v_billing_account,f,CREATE INDEX IF NOT EXISTS ix_ordini_billing_account_id ON vendite.ordini(billing_account_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini,fk_ordini_v_modpag,f,CREATE INDEX IF NOT EXISTS ix_ordini_modalita_pagamento_id ON vendite.ordini(modalita_pagamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini,fk_ordini_v_cliente_ruolo,f,CREATE INDEX IF NOT EXISTS ix_ordini_soggetto_ruolo_id ON vendite.ordini(soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini,fk_ordini_v_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_ordini_sorgente_tipo_id ON vendite.ordini(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini,fk_ordini_termini_pagamento,f,CREATE INDEX IF NOT EXISTS ix_ordini_termine_pagamento_id ON vendite.ordini(termine_pagamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini,fk_ordini_v_valute,f,CREATE INDEX IF NOT EXISTS ix_ordini_valuta_id ON vendite.ordini(valuta_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini_indirizzi,fk_ordini_indir_tipo,f,CREATE INDEX IF NOT EXISTS ix_ordini_indirizzi_tipo_indirizzo_id ON vendite.ordini_indirizzi(tipo_indirizzo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini_righe,fk_ordrig_iva,f,CREATE INDEX IF NOT EXISTS ix_ordini_righe_iva_id ON vendite.ordini_righe(iva_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini_righe,fk_ordrig_sorgente_tipo,f,CREATE INDEX IF NOT EXISTS ix_ordini_righe_sorgente_tipo_id ON vendite.ordini_righe(sorgente_tipo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini_righe,fk_ordini_vendita_r_uom_operativa,f,CREATE INDEX IF NOT EXISTS ix_ordini_righe_uom_operativa_id ON vendite.ordini_righe(uom_operativa_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,ordini_righe_fulfillment,fk_ordini_r_ful_v_ordine_riga,f,CREATE INDEX IF NOT EXISTS ix_ordini_righe_fulfillment_ordine_riga_id ON vendite.ordini_righe_fulfillment(ordine_riga_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi,fk_preventivi_billing_account,f,CREATE INDEX IF NOT EXISTS ix_preventivi_billing_account_id ON vendite.preventivi(billing_account_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi,fk_preventivi_istanza,f,CREATE INDEX IF NOT EXISTS ix_preventivi_istanza_utility_id ON vendite.preventivi(istanza_utility_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi,fk_v_preventivi_stato_ddt,f,CREATE INDEX IF NOT EXISTS ix_preventivi_stato_doc_preventivo_id ON vendite.preventivi(stato_doc_preventivo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi,fk_preventivi_termini_pagamento,f,CREATE INDEX IF NOT EXISTS ix_preventivi_termine_pagamento_id ON vendite.preventivi(termine_pagamento_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi,fk_preventivi_utility,f,CREATE INDEX IF NOT EXISTS ix_preventivi_utility_id ON vendite.preventivi(utility_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi,fk_preventivi_valuta,f,CREATE INDEX IF NOT EXISTS ix_preventivi_valuta_id ON vendite.preventivi(valuta_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi_indirizzi,fk_preventivi_indir_tipo,f,CREATE INDEX IF NOT EXISTS ix_preventivi_indirizzi_tipo_indirizzo_id ON vendite.preventivi_indirizzi(tipo_indirizzo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi_righe,fk_prevrighe_iva,f,CREATE INDEX IF NOT EXISTS ix_preventivi_righe_iva_id ON vendite.preventivi_righe(iva_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,preventivi_righe,fk_preventivi_vendita_r_uom_operativa,f,CREATE INDEX IF NOT EXISTS ix_preventivi_righe_uom_operativa_id ON vendite.preventivi_righe(uom_operativa_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,registri_fatturazione,fk_registri_fatturazione_emitt,f,CREATE INDEX IF NOT EXISTS ix_registri_fatturazione_emittente_soggetto_ruolo_id ON vendite.registri_fatturazione(emittente_soggetto_ruolo_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,registri_fatturazione_progressivi,fk_registri_progressivi_registro,f,CREATE INDEX IF NOT EXISTS ix_registri_fatturazione_progressivi_registro_id ON vendite.registri_fatturazione_progressivi(registro_id);,f,titodb,2026-01-16 11:59:34.176768+01,,
-vendite,note_offerte_commerciali,fk_vendite_note_id_lingua,f,CREATE INDEX IF NOT EXISTS ix_note_offerte_commerciali_id_lingua ON vendite.note_offerte_commerciali(id_lingua);,f,titodb,2026-05-24 00:00:00+02,,
-vendite,note_offerte_commerciali,fk_vendite_note_id_stile,f,CREATE INDEX IF NOT EXISTS ix_note_offerte_commerciali_id_stile ON vendite.note_offerte_commerciali(id_stile);,f,titodb,2026-05-24 00:00:00+02,,
-vendite,note_offerte_commerciali,fk_offnote_testata,f,CREATE INDEX IF NOT EXISTS ix_note_offerte_commerciali_target_id ON vendite.note_offerte_commerciali(target_id);,f,titodb,2026-05-24 00:00:00+02,,
-vendite,note_offerte_commerciali,fk_offnote_riga,f,CREATE INDEX IF NOT EXISTS ix_note_offerte_commerciali_target_riga_id ON vendite.note_offerte_commerciali(target_riga_id);,f,titodb,2026-05-24 00:00:00+02,,
-config,causali_trasporto,fk_causali_trasporto_causale_magazzino,f,CREATE INDEX IF NOT EXISTS ix_causali_trasporto_causale_magazzino ON config.causali_trasporto(causale_magazzino);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,ddt,fk_ddt_magazzino,f,CREATE INDEX IF NOT EXISTS ix_ddt_magazzino_id ON vendite.ddt(magazzino_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,ddt,fk_ddt_magazzino_arrivo,f,CREATE INDEX IF NOT EXISTS ix_ddt_magazzino_arrivo_id ON vendite.ddt(magazzino_arrivo_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_riga,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_ddt_riga_id ON vendite.ddt_righe_prelievi(ddt_riga_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_componente,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_ddt_riga_componente_id ON vendite.ddt_righe_prelievi(ddt_riga_componente_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_lotto,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_lotto_id ON vendite.ddt_righe_prelievi(lotto_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_asset,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_asset_id ON vendite.ddt_righe_prelievi(asset_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_ubicazione,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_ubicazione_id ON vendite.ddt_righe_prelievi(ubicazione_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_ubicazione_arrivo,f,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_ubicazione_arrivo_id ON vendite.ddt_righe_prelievi(ubicazione_arrivo_id);,f,mctit,2026-09-28 00:00:00+02,,
-magazzino,trasferimenti_righe,fk_mag_trasferimenti_righe_ubicazione_da,f,CREATE INDEX IF NOT EXISTS ix_trasferimenti_righe_ubicazione_id_da ON magazzino.trasferimenti_righe(ubicazione_id_da);,f,mctit,2026-09-28 00:00:00+02,,
-magazzino,trasferimenti_righe,fk_mag_trasferimenti_righe_ubicazione_a,f,CREATE INDEX IF NOT EXISTS ix_trasferimenti_righe_ubicazione_id_a ON magazzino.trasferimenti_righe(ubicazione_id_a);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,resi,fk_resi_magazzino,f,CREATE INDEX IF NOT EXISTS ix_resi_magazzino_id ON vendite.resi(magazzino_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,resi_righe_rientri,fk_resi_righe_rientri_riga,f,CREATE INDEX IF NOT EXISTS ix_resi_righe_rientri_resi_riga_id ON vendite.resi_righe_rientri(resi_riga_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,resi_righe_rientri,fk_resi_righe_rientri_prelievo,f,CREATE INDEX IF NOT EXISTS ix_resi_righe_rientri_ddt_riga_prelievo_id ON vendite.resi_righe_rientri(ddt_riga_prelievo_id);,f,mctit,2026-09-28 00:00:00+02,,
-vendite,resi_righe_rientri,fk_resi_righe_rientri_ubicazione,f,CREATE INDEX IF NOT EXISTS ix_resi_righe_rientri_ubicazione_id ON vendite.resi_righe_rientri(ubicazione_id);,f,mctit,2026-09-28 00:00:00+02,,
+schema_name,table_name,constraint_name,decisione,motivo,dll_command
+acquisti,ddt_indirizzi,fk_ddt_indirizzo_ordine,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_acquisti_ddt_indirizzi_ddt_id ON acquisti.ddt_indirizzi(ddt_id);
+acquisti,ordini_righe,fk_ao_r_testata,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_acquisti_ordini_righe_ordine_id ON acquisti.ordini_righe(ordine_id);
+anagrafiche,bank_branches,fk_bank_branches_soggetti_ruoli,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_bank_branches_soggetto_ruolo_id ON anagrafiche.bank_branches(soggetto_ruolo_id);
+anagrafiche,billing_account,fk_billing_account_istanze_utilities,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_billing_account_istanza_utility_id ON anagrafiche.billing_account(istanza_utility_id);
+anagrafiche,clienti,fk_clienti_istanze_utilities,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_clienti_istanza_utility_id ON anagrafiche.clienti(istanza_utility_id);
+anagrafiche,dati_societari,fk_province_config,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_dati_societari_id_prov_iscri_rea ON anagrafiche.dati_societari(id_prov_iscri_rea);
+anagrafiche,gestori,fk_soggetti_ruoli_anagrafiche,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_gestori_soggetto_ruolo_id ON anagrafiche.gestori(soggetto_ruolo_id);
+anagrafiche,gestori_utilities,fk_gestori_anagrafiche,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_gestori_utilities_gestore_id ON anagrafiche.gestori_utilities(gestore_id);
+anagrafiche,indirizzi_dettaglio,fk_stradario_config,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_dettaglio_stradario_id ON anagrafiche.indirizzi_dettaglio(stradario_id);
+anagrafiche,indirizzi_soggetti,fk_indirizzi_soggetti_soggetti,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_soggetti_soggetto_id ON anagrafiche.indirizzi_soggetti(soggetto_id);
+anagrafiche,istanze_dati_precontrattuali,fk_idp_istanze_utilities,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_istanze_dati_precontrattuali_istanza_utility_id ON anagrafiche.istanze_dati_precontrattuali(istanza_utility_id);
+anagrafiche,pdp,fk_pdp_indirizzi_dettaglio,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_indirizzo_dettaglio_id ON anagrafiche.pdp(indirizzo_dettaglio_id);
+anagrafiche,pdp,fk_pdp_utility,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_utility_id ON anagrafiche.pdp(utility_id);
+anagrafiche,soggetti,fk_stati_config,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti(stato_id);
+anagrafiche,soggetti,fk_titoli_cortesia_config,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_titolo_cortesia_id ON anagrafiche.soggetti(titolo_cortesia_id);
+anagrafiche,soggetti_conti_bancari,fk_soggetti_conti_bancari_soggetti,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_conti_bancari_soggetto_id ON anagrafiche.soggetti_conti_bancari(soggetto_id);
+anagrafiche,soggetti_ruoli,fk_soggetti_anagrafiche,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_ruoli_soggetto_id ON anagrafiche.soggetti_ruoli(soggetto_id);
+anagrafiche,soggetti_ruoli,fk_tipi_ruoli_config,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_ruoli_tipo_ruolo_id ON anagrafiche.soggetti_ruoli(tipo_ruolo_id);
+anagrafiche,soggetti_titoli_iva,fk_soggetti_titoli_iva_emittente,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_soggetti_titoli_iva_emittente_fiscale_id ON anagrafiche.soggetti_titoli_iva(emittente_fiscale_id);
+anagrafiche,soggetti_titoli_iva,fk_soggetti_titoli_iva_iva,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_soggetti_titoli_iva_iva_id ON anagrafiche.soggetti_titoli_iva(iva_id);
+anagrafiche,soggetti_titoli_iva,fk_soggetti_titoli_iva_soggetto,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_soggetti_titoli_iva_soggetto_id ON anagrafiche.soggetti_titoli_iva(soggetto_id);
+anagrafiche,soggetti_titoli_iva,fk_soggetti_titoli_iva_tipo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_soggetti_titoli_iva_tipo_titolo_iva_id ON anagrafiche.soggetti_titoli_iva(tipo_titolo_iva_id);
+anagrafiche,soggetti_titoli_iva_ambiti,fk_soggetti_titoli_iva_ambiti_articolo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_soggetti_titoli_iva_ambiti_articolo_id ON anagrafiche.soggetti_titoli_iva_ambiti(articolo_id) WHERE articolo_id IS NOT NULL;
+anagrafiche,soggetti_titoli_iva_ambiti,fk_soggetti_titoli_iva_ambiti_gruppo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_soggetti_titoli_iva_ambiti_gruppo_voce_id ON anagrafiche.soggetti_titoli_iva_ambiti(gruppo_voce_id) WHERE gruppo_voce_id IS NOT NULL;
+anagrafiche,soggetti_titoli_iva_ambiti,fk_soggetti_titoli_iva_ambiti_tipo_voce,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_soggetti_titoli_iva_ambiti_tipo_voce_id ON anagrafiche.soggetti_titoli_iva_ambiti(tipo_voce_id) WHERE tipo_voce_id IS NOT NULL;
+anagrafiche,soggetti_titoli_iva_ambiti,fk_soggetti_titoli_iva_ambiti_titolo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_soggetti_titoli_iva_ambiti_titolo_iva_id ON anagrafiche.soggetti_titoli_iva_ambiti(titolo_iva_id);
+anagrafiche,soggetti_titoli_iva_movimenti,fk_soggetti_titoli_iva_movimenti_annulla,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_stiva_movimenti_annulla_movimento_id ON anagrafiche.soggetti_titoli_iva_movimenti(annulla_movimento_id) WHERE annulla_movimento_id IS NOT NULL;
+anagrafiche,soggetti_titoli_iva_movimenti,fk_soggetti_titoli_iva_movimenti_fattura,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_stiva_movimenti_fattura_id ON anagrafiche.soggetti_titoli_iva_movimenti(fattura_id) WHERE fattura_id IS NOT NULL;
+anagrafiche,soggetti_titoli_iva_movimenti,fk_soggetti_titoli_iva_movimenti_fattura_riga,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_stiva_movimenti_fattura_riga_id ON anagrafiche.soggetti_titoli_iva_movimenti(fattura_riga_id) WHERE fattura_riga_id IS NOT NULL;
+anagrafiche,soggetti_titoli_iva_movimenti,fk_soggetti_titoli_iva_movimenti_titolo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_stiva_movimenti_titolo_iva_id ON anagrafiche.soggetti_titoli_iva_movimenti(titolo_iva_id);
+catalogo,articoli,fk_articoli_modi_approvvigionamento,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_articoli_modo_approvvigionamento_id ON catalogo.articoli(modo_approvvigionamento_id);
+config,auth_totp_device,fk_config_auth_totp_device_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_auth_totp_device_auth_user_id ON config.auth_totp_device(auth_user_id);
+config,causali_trasporto,fk_causali_trasporto_causale_magazzino,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_causali_trasporto_causale_magazzino ON config.causali_trasporto(causale_magazzino);
+config,codici_errore,fk_codici_errore_classi_errore,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_codici_errore_classe ON config.codici_errore(classe);
+config,credenziali,fk_config_credenziali_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_credenziali_auth_user_id ON config.credenziali(auth_user_id);
+config,credenziali,fk_config_credenziali_bloccata_da_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_credenziali_bloccata_da ON config.credenziali(bloccata_da);
+config,credenziali_provenienze,fk_credenziali_provenienze_credenziali,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_credenziali_provenienze_credenziale_id ON config.credenziali_provenienze(credenziale_id);
+config,email_log,fk_config_email_log_auth_user,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_email_log_auth_user_id ON config.email_log(auth_user_id);
+config,email_log,fk_config_email_log_creato_da_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_email_log_creato_da_user_id ON config.email_log(creato_da_user_id);
+config,email_outbox,fk_config_email_outbox_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_email_outbox_auth_user_id ON config.email_outbox(auth_user_id);
+config,email_outbox,fk_config_email_outbox_creato_da_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_email_outbox_creato_da_user_id ON config.email_outbox(creato_da_user_id);
+config,messaggi_errore,fk_messaggi_errore_codici_errore,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_messaggi_errore_codice ON config.messaggi_errore(codice);
+config,nomi_tentati_provenienze,fk_nomi_tentati_provenienze_nomi_tentati,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_nomi_tentati_provenienze_nome_tentato_id ON config.nomi_tentati_provenienze(nome_tentato_id);
+config,stradario,fk_stradario_comune_id,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_config_stradario_comune_id ON config.stradario(comune_id);
+config,stradario_generale,fk_stradario_generale_toponomastica_id,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_config_stradario_generale_toponomastica_id ON config.stradario_generale(toponomastica_id);
+config,tipi_ruolo_tipi_indirizzo,fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_config_tipi_ruolo_tipi_indirizzo_tipo_ruolo_id ON config.tipi_ruolo_tipi_indirizzo(tipo_ruolo_id);
+config,token_monouso,fk_config_token_monouso_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_token_monouso_auth_user_id ON config.token_monouso(auth_user_id);
+config,user_emittente_attivo,fk_config_user_emittente_attivo_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_user_emittente_attivo_auth_user_id ON config.user_emittente_attivo(auth_user_id);
+config,user_emittenti_fiscali,fk_config_user_emittenti_fiscali_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_user_emittenti_fiscali_auth_user_id ON config.user_emittenti_fiscali(auth_user_id);
+config,user_override_aree,fk_config_user_override_aree_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_user_override_aree_auth_user_id ON config.user_override_aree(auth_user_id);
+config,user_override_azioni,fk_config_user_override_azioni_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_user_override_azioni_auth_user_id ON config.user_override_azioni(auth_user_id);
+config,user_override_oggetti,fk_config_user_override_oggetti_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_user_override_oggetti_auth_user_id ON config.user_override_oggetti(auth_user_id);
+config,user_override_oggetti,fk_user_override_oggetti_catalogo,SENZA_INDICE,NULL,"CREATE INDEX IF NOT EXISTS ix_user_override_oggetti_app_label_model_name_riservato ON config.user_override_oggetti(app_label, model_name, riservato);"
+dbops,coda_lavori,fk_coda_lavori_emittente_fiscale,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_coda_lavori_emittente_fiscale_id ON dbops.coda_lavori(emittente_fiscale_id);
+magazzino,assets,fk_mag_assets_emittente_fiscale,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_assets_emittente_fiscale_id ON magazzino.assets(emittente_fiscale_id);
+magazzino,inventari_righe,fk_mag_inventari_righe_asset,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_inventari_righe_asset_id ON magazzino.inventari_righe(asset_id);
+magazzino,inventari_righe,fk_mag_inventari_righe_lotto,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_inventari_righe_lotto_id ON magazzino.inventari_righe(lotto_id);
+magazzino,lotti,fk_mag_lotti_articolo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_lotti_articolo_id ON magazzino.lotti(articolo_id);
+magazzino,magazzini,fk_magazzini_emittente_fiscale,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_magazzini_emittente_fiscale_id ON magazzino.magazzini(emittente_fiscale_id);
+magazzino,movimenti,fk_mag_movimenti_asset,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_asset_id ON magazzino.movimenti(asset_id);
+magazzino,movimenti,fk_mag_movimenti_lotto,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_lotto_id ON magazzino.movimenti(lotto_id);
+magazzino,movimenti,fk_mag_movimenti_sorgente_tipo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_sorgente_tipo_id ON magazzino.movimenti(sorgente_tipo_id);
+magazzino,movimenti,fk_mag_movimenti_storno_di,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_storno_di_movimento_id ON magazzino.movimenti(storno_di_movimento_id);
+magazzino,movimenti,fk_mag_movimenti_ubicazione,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_ubicazione_id ON magazzino.movimenti(ubicazione_id);
+magazzino,movimenti_attesi,fk_mag_movimenti_attesi_articolo,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_attesi_articolo_id ON magazzino.movimenti_attesi(articolo_id);
+magazzino,movimenti_attesi,fk_mag_movimenti_attesi_asset,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_attesi_asset_id ON magazzino.movimenti_attesi(asset_id);
+magazzino,movimenti_attesi,fk_mag_movimenti_attesi_causale,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_attesi_causale_id ON magazzino.movimenti_attesi(causale_id);
+magazzino,movimenti_attesi,fk_mag_movimenti_attesi_lotto,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_attesi_lotto_id ON magazzino.movimenti_attesi(lotto_id);
+magazzino,movimenti_attesi,fk_mag_movimenti_attesi_magazzino,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_attesi_magazzino_id ON magazzino.movimenti_attesi(magazzino_id);
+magazzino,movimenti_attesi,fk_mag_movimenti_attesi_soggetto_ruolo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_attesi_soggetto_ruolo_id ON magazzino.movimenti_attesi(soggetto_ruolo_id);
+magazzino,movimenti_attesi,fk_mag_movimenti_attesi_sorgente_tipo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_movimenti_attesi_sorgente_tipo_id ON magazzino.movimenti_attesi(sorgente_tipo_id);
+magazzino,movimenti_attesi,fk_mag_movimenti_attesi_ubicazione,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_magazzino_movimenti_attesi_ubicazione_id ON magazzino.movimenti_attesi(ubicazione_id);
+magazzino,rettifiche,fk_mag_rettifiche_sorgente_tipo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_rettifiche_sorgente_tipo_id ON magazzino.rettifiche(sorgente_tipo_id);
+magazzino,rettifiche_righe,fk_mag_rettifiche_righe_asset,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_rettifiche_righe_asset_id ON magazzino.rettifiche_righe(asset_id);
+magazzino,rettifiche_righe,fk_mag_rettifiche_righe_lotto,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_rettifiche_righe_lotto_id ON magazzino.rettifiche_righe(lotto_id);
+magazzino,trasferimenti_righe,fk_mag_trasferimenti_righe_asset,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_trasferimenti_righe_asset_id ON magazzino.trasferimenti_righe(asset_id);
+magazzino,trasferimenti_righe,fk_mag_trasferimenti_righe_lotto,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_trasferimenti_righe_lotto_id ON magazzino.trasferimenti_righe(lotto_id);
+magazzino,trasferimenti_righe,fk_mag_trasferimenti_righe_ubicazione_a,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_trasferimenti_righe_ubicazione_id_a ON magazzino.trasferimenti_righe(ubicazione_id_a);
+magazzino,trasferimenti_righe,fk_mag_trasferimenti_righe_ubicazione_da,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_trasferimenti_righe_ubicazione_id_da ON magazzino.trasferimenti_righe(ubicazione_id_da);
+magazzino,ubicazioni,fk_mag_ubicazioni_magazzino,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_magazzino_ubicazioni_magazzino_id ON magazzino.ubicazioni(magazzino_id);
+magazzino,valore_giacenza,fk_mag_valore_giacenza_articolo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_valore_giacenza_articolo_id ON magazzino.valore_giacenza(articolo_id);
+magazzino,valore_giacenza,fk_mag_valore_giacenza_magazzino,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_magazzino_valore_giacenza_magazzino_id ON magazzino.valore_giacenza(magazzino_id);
+pagamenti,enti_incasso,fk_enti_incasso_conto_incasso,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_enti_incasso_conto_incasso ON pagamenti.enti_incasso(soggetto_ruolo_conto_bancario_id);
+pagamenti,sepa_mandati,fk_sepa_mandati_billing_account,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_pagamenti_sepa_mandati_billing_account_id ON pagamenti.sepa_mandati(billing_account_id);
+pagamenti,sistemazioni,fk_sistemazioni_cliente,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_sistemazioni_cliente_soggetto_ruolo_id ON pagamenti.sistemazioni(cliente_soggetto_ruolo_id);
+pagamenti,sistemazioni,fk_sistemazioni_emittente,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_sistemazioni_emittente_soggetto_ruolo_id ON pagamenti.sistemazioni(emittente_soggetto_ruolo_id);
+pagamenti,sistemazioni,fk_sistemazioni_fattura_destinazione,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_sistemazioni_fattura_destinazione_id ON pagamenti.sistemazioni(fattura_destinazione_id) WHERE fattura_destinazione_id IS NOT NULL;
+pagamenti,sistemazioni,fk_sistemazioni_fattura_origine,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_sistemazioni_fattura_origine_id ON pagamenti.sistemazioni(fattura_origine_id);
+pagamenti,transizioni_stati_contabile,fk_transizioni_stati_contabile_a,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_transizioni_stati_contabile_stato_a_id ON pagamenti.transizioni_stati_contabile(stato_a_id);
+pagamenti,transizioni_stati_contabile,fk_transizioni_stati_contabile_da,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_transizioni_stati_contabile_stato_da_id ON pagamenti.transizioni_stati_contabile(stato_da_id);
+pagamenti,transizioni_stati_contabile_riga,fk_transizioni_stati_contabile_riga_a,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_transizioni_stati_contabile_riga_stato_a_id ON pagamenti.transizioni_stati_contabile_riga(stato_a_id);
+pagamenti,transizioni_stati_contabile_riga,fk_transizioni_stati_contabile_riga_da,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_transizioni_stati_contabile_riga_stato_da_id ON pagamenti.transizioni_stati_contabile_riga(stato_da_id);
+pagamenti,vendite_contabili,fk_vendite_contabili_emittente_sr,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_emittente_soggetto_ruolo_id ON pagamenti.vendite_contabili(emittente_soggetto_ruolo_id);
+pagamenti,vendite_contabili,fk_vendite_contabili_registro,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_registro_id ON pagamenti.vendite_contabili(registro_id);
+pagamenti,vendite_contabili_righe,fk_vendite_contabili_righe_contabile,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_righe_contabile_id ON pagamenti.vendite_contabili_righe(contabile_id);
+pagamenti,vendite_contabili_righe,fk_vendite_contabili_righe_fattura,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_righe_fattura_id ON pagamenti.vendite_contabili_righe(fattura_id) WHERE fattura_id IS NOT NULL;
+pagamenti,vendite_contabili_righe,fk_vendite_contabili_righe_fondo_source,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_righe_fondo_source_id ON pagamenti.vendite_contabili_righe(fondo_source_id) WHERE fondo_source_id IS NOT NULL;
+pagamenti,vendite_contabili_righe,fk_vendite_contabili_righe_scadenza,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_righe_scadenza_id ON pagamenti.vendite_contabili_righe(scadenza_id) WHERE scadenza_id IS NOT NULL;
+pagamenti,vendite_movimenti,fk_pagamenti_vendite_movimenti_fattura,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_movimenti_fattura_id ON pagamenti.vendite_movimenti(fattura_id);
+pagamenti,vendite_movimenti,fk_vendite_movimenti_contabile_riga,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_movimenti_contabile_riga_id ON pagamenti.vendite_movimenti(contabile_riga_id);
+pagamenti,vendite_movimenti,fk_vendite_movimenti_scadenza,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_movimenti_scadenza_id ON pagamenti.vendite_movimenti(scadenza_id) WHERE scadenza_id IS NOT NULL;
+pratiche,pratiche,fk_pratiche_billing_account_istanza,CON_INDICE,NULL,"CREATE INDEX IF NOT EXISTS ix_pratiche_billing_account_id_istanza_utility_id ON pratiche.pratiche(billing_account_id, istanza_utility_id) WHERE billing_account_id IS NOT NULL;"
+pratiche,pratiche,fk_pratiche_istanza_utility,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_pratiche_istanza_utility_id ON pratiche.pratiche(istanza_utility_id) WHERE istanza_utility_id IS NOT NULL;
+pratiche,pratiche,fk_pratiche_soggetto_ruolo,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_pratiche_soggetto_ruolo_id ON pratiche.pratiche(soggetto_ruolo_id) WHERE soggetto_ruolo_id IS NOT NULL;
+pratiche,pratiche_sorgenti,fk_pratiche_sorgenti_flusso,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_pratiche_sorgenti_flusso_id ON pratiche.pratiche_sorgenti(flusso_id);
+pratiche,sospensioni,fk_sospensioni_pratica,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_sospensioni_pratica_id ON pratiche.sospensioni(pratica_id);
+pratiche,template_flussi,fk_template_flussi_azione_ui,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_template_flussi_azione_ui_id ON pratiche.template_flussi(azione_ui_id) WHERE azione_ui_id IS NOT NULL;
+pratiche,template_flussi_handler_eventi,fk_tfhe_handler,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_template_flussi_handler_eventi_handler_id ON pratiche.template_flussi_handler_eventi(handler_id);
+pratiche,template_flussi_handler_eventi,fk_tfhe_template_flusso,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_template_flussi_handler_eventi_template_flusso_id ON pratiche.template_flussi_handler_eventi(template_flusso_id);
+ui,dashboard_preferenza_utente,fk_ui_dashboard_preferenza_utente_dashboard_definizione,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_dashboard_preferenza_utente_dashboard_id ON ui.dashboard_preferenza_utente(dashboard_id);
+ui,dashboard_preferenza_utente,fk_ui_dashboard_preferenza_utente_dashboard_preset,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_dashboard_preferenza_utente_preset_base_id ON ui.dashboard_preferenza_utente(preset_base_id) WHERE preset_base_id IS NOT NULL;
+ui,dashboard_preset,fk_ui_dashboard_preset_dashboard_definizione,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_dashboard_preset_dashboard_id ON ui.dashboard_preset(dashboard_id);
+ui,dashboard_preset,fk_ui_dashboard_preset_emittenti_fiscali,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_dashboard_preset_emittente_fiscale_id ON ui.dashboard_preset(emittente_fiscale_id) WHERE emittente_fiscale_id IS NOT NULL;
+ui,dashboard_preset,fk_ui_dashboard_preset_profili_accesso,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_dashboard_preset_profilo_accesso_id ON ui.dashboard_preset(profilo_accesso_id) WHERE profilo_accesso_id IS NOT NULL;
+ui,dashboard_preset_widget,fk_ui_dashboard_preset_widget_widget,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_dashboard_preset_widget_widget_id ON ui.dashboard_preset_widget(widget_id);
+ui,dashboard_widget,fk_ui_dashboard_widget_widget,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_dashboard_widget_widget_id ON ui.dashboard_widget(widget_id);
+ui,lista_colonna,fk_lista_colonna_lista_definizione,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_colonna_lista_id ON ui.lista_colonna(lista_id);
+ui,lista_colonna_permesso,fk_lista_colonna_permesso_profili_accesso,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_colonna_permesso_profilo_accesso_id ON ui.lista_colonna_permesso(profilo_accesso_id);
+ui,lista_preferenza_utente,fk_lista_preferenza_utente_lista_definizione,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_preferenza_utente_lista_id ON ui.lista_preferenza_utente(lista_id);
+ui,lista_preferenza_utente,fk_lista_preferenza_utente_lista_preset,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_preferenza_utente_preset_base_id ON ui.lista_preferenza_utente(preset_base_id) WHERE preset_base_id IS NOT NULL;
+ui,lista_preset,fk_lista_preset_emittenti_fiscali,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_preset_emittente_fiscale_id ON ui.lista_preset(emittente_fiscale_id) WHERE emittente_fiscale_id IS NOT NULL;
+ui,lista_preset,fk_lista_preset_lista_definizione,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_preset_lista_id ON ui.lista_preset(lista_id);
+ui,lista_preset,fk_lista_preset_misure_pagina,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_preset_pagina_dimensione ON ui.lista_preset(pagina_dimensione);
+ui,lista_preset,fk_lista_preset_profili_accesso,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_preset_profilo_accesso_id ON ui.lista_preset(profilo_accesso_id) WHERE profilo_accesso_id IS NOT NULL;
+ui,lista_preset_colonna,fk_lista_preset_colonna_lista_colonna,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_lista_preset_colonna_colonna_id ON ui.lista_preset_colonna(colonna_id);
+ui,widget,fk_ui_widget_aree_funzionali,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_widget_area_id ON ui.widget(area_id) WHERE area_id IS NOT NULL;
+ui,widget,fk_ui_widget_azioni_processo,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ui_widget_azione_id ON ui.widget(azione_id) WHERE azione_id IS NOT NULL;
+vendite,attivita_fatturabili,attivita_fatturabili_listino_riga_id_fkey,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_listino_riga_id ON vendite.attivita_fatturabili(listino_riga_id) WHERE listino_riga_id IS NOT NULL;
+vendite,attivita_fatturabili,fk_attivita_fatturabili_fattura_riga_rettificata,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_fattura_riga_rettificata_id ON vendite.attivita_fatturabili(fattura_riga_rettificata_id) WHERE fattura_riga_rettificata_id IS NOT NULL;
+vendite,attivita_fatturabili,fk_attivita_fatturabili_natura_doc,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_natura_doc_id ON vendite.attivita_fatturabili(natura_doc_id);
+vendite,commesse,fk_commesse_risorse_umane,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_commesse_responsabile_risorsa_umana_id ON vendite.commesse(responsabile_risorsa_umana_id);
+vendite,commesse_attivita,commesse_attivita_listino_riga_id_fkey,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_commesse_attivita_listino_riga_id ON vendite.commesse_attivita(listino_riga_id) WHERE listino_riga_id IS NOT NULL;
+vendite,commesse_attivita,fk_commesse_attivita_fattura_riga_rettificata,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_commesse_attivita_fattura_riga_rettificata_id ON vendite.commesse_attivita(fattura_riga_rettificata_id) WHERE fattura_riga_rettificata_id IS NOT NULL;
+vendite,commesse_attivita,fk_commesse_attivita_natura_doc,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_commesse_attivita_natura_doc_id ON vendite.commesse_attivita(natura_doc_id);
+vendite,contratti,fk_contratti_parent,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_contratti_parent_contratto_id ON vendite.contratti(parent_contratto_id) WHERE parent_contratto_id IS NOT NULL;
+vendite,ddt,fk_ddt_magazzino,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_magazzino_id ON vendite.ddt(magazzino_id);
+vendite,ddt,fk_ddt_magazzino_arrivo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_magazzino_arrivo_id ON vendite.ddt(magazzino_arrivo_id);
+vendite,ddt,fk_ddt_registro,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_registro_id ON vendite.ddt(registro_id);
+vendite,ddt_indirizzi,fk_ddt_indirizzi_ddt,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_ddt_indirizzi_ddt_id ON vendite.ddt_indirizzi(ddt_id);
+vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_asset,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_asset_id ON vendite.ddt_righe_prelievi(asset_id);
+vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_componente,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_ddt_riga_componente_id ON vendite.ddt_righe_prelievi(ddt_riga_componente_id);
+vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_lotto,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_lotto_id ON vendite.ddt_righe_prelievi(lotto_id);
+vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_riga,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_ddt_riga_id ON vendite.ddt_righe_prelievi(ddt_riga_id);
+vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_ubicazione,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_ubicazione_id ON vendite.ddt_righe_prelievi(ubicazione_id);
+vendite,ddt_righe_prelievi,fk_ddt_righe_prelievi_ubicazione_arrivo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ddt_righe_prelievi_ubicazione_arrivo_id ON vendite.ddt_righe_prelievi(ubicazione_arrivo_id);
+vendite,event_log,fk_event_log_emittente,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_event_log_emittente_soggetto_ruolo_id ON vendite.event_log(emittente_soggetto_ruolo_id);
+vendite,event_log,fk_vendite_event_log_auth_user,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_event_log_auth_user_id ON vendite.event_log(auth_user_id);
+vendite,fatturazione_lotti_log,fk_fatturazione_lotti_log_lotto,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatturazione_lotti_log_lotto_id ON vendite.fatturazione_lotti_log(lotto_id);
+vendite,fatture,fk_fatture_ba,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatture_billing_account_id ON vendite.fatture(billing_account_id);
+vendite,fatture,fk_fatture_emittente,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatture_emittente_soggetto_ruolo_id ON vendite.fatture(emittente_soggetto_ruolo_id);
+vendite,fatture,fk_fatture_natura_doc,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatture_natura_doc_id ON vendite.fatture(natura_doc_id);
+vendite,fatture_atti,fk_fatture_atti_contratto,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatture_atti_contratto_id ON vendite.fatture_atti(contratto_id);
+vendite,fatture_atti,fk_fatture_atti_fattura,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatture_atti_fattura_id ON vendite.fatture_atti(fattura_id);
+vendite,fatture_indirizzi,fk_fatture_indir_fattura,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_indirizzi_fattura_id ON vendite.fatture_indirizzi(fattura_id);
+vendite,fatture_rettifiche,fk_fatture_ret_fattura,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_rettifiche_fattura_id ON vendite.fatture_rettifiche(fattura_id);
+vendite,fatture_righe,fk_fatture_righe_fat,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_fatture_righe_fattura_id ON vendite.fatture_righe(fattura_id);
+vendite,fatture_righe,fk_fatture_righe_fattura_atto,CON_INDICE,NULL,"CREATE INDEX IF NOT EXISTS ix_fatture_righe_fattura_atto_id ON vendite.fatture_righe(fattura_atto_id, fattura_id) WHERE fattura_atto_id IS NOT NULL;"
+vendite,fatture_righe,fk_fatture_righe_riga_capofila,CON_INDICE,NULL,"CREATE INDEX IF NOT EXISTS ix_fatture_righe_riga_capofila_id ON vendite.fatture_righe(riga_capofila_id, fattura_id) WHERE riga_capofila_id IS NOT NULL;"
+vendite,fatture_righe,fk_fatture_righe_riga_rettificata,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatture_righe_riga_rettificata_id ON vendite.fatture_righe(riga_rettificata_id) WHERE riga_rettificata_id IS NOT NULL;
+vendite,fatture_stampa_coda,fk_fatture_stampa_coda_fattura,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatture_stampa_coda_sorgente_id ON vendite.fatture_stampa_coda(sorgente_id);
+vendite,fatture_stampa_coda,fk_fatture_stampa_coda_lotto,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_fatture_stampa_coda_lotto_id ON vendite.fatture_stampa_coda(lotto_id);
+vendite,offerte_commerciali,fk_offerte_commerciali_revisione_radice,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_offerte_commerciali_revisione_radice_id ON vendite.offerte_commerciali(revisione_radice_id);
+vendite,ordini,fk_ordini_registro,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_ordini_registro_id ON vendite.ordini(registro_id);
+vendite,ordini_indirizzi,fk_ordini_indir_ordine,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_indirizzi_ordine_id ON vendite.ordini_indirizzi(ordine_id);
+vendite,ordini_righe,fk_ordrig_testata,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_ordini_righe_ordine_id ON vendite.ordini_righe(ordine_id);
+vendite,preventivi_indirizzi,fk_preventivi_indir_preventivo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_vendite_preventivi_indirizzi_preventivo_id ON vendite.preventivi_indirizzi(preventivo_id);
+vendite,registri_fatturazione,fk_registri_fatturazione_famiglia,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_registri_fatturazione_famiglia_documento ON vendite.registri_fatturazione(famiglia_documento);
+vendite,resi,fk_resi_magazzino,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_magazzino_id ON vendite.resi(magazzino_id);
+vendite,resi,fk_resi_registro,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_registro_id ON vendite.resi(registro_id);
+vendite,resi_righe,fk_resi_righe_ddt_riga,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_righe_ddt_riga_id ON vendite.resi_righe(ddt_riga_id);
+vendite,resi_righe_accrediti,fk_resi_accrediti_commessa_attivita,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_accrediti_commessa_attivita_id ON vendite.resi_righe_accrediti(commessa_attivita_id);
+vendite,resi_righe_accrediti,fk_resi_accrediti_fattura_riga,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_accrediti_fattura_riga_rettificata_id ON vendite.resi_righe_accrediti(fattura_riga_rettificata_id);
+vendite,resi_righe_accrediti,fk_resi_accrediti_resi_riga,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_accrediti_resi_riga_id ON vendite.resi_righe_accrediti(resi_riga_id);
+vendite,resi_righe_riconsegne,fk_resi_riconsegne_ddt_riga,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_righe_riconsegne_ddt_riga_id ON vendite.resi_righe_riconsegne(ddt_riga_id);
+vendite,resi_righe_rientri,fk_resi_righe_rientri_prelievo,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_righe_rientri_ddt_riga_prelievo_id ON vendite.resi_righe_rientri(ddt_riga_prelievo_id);
+vendite,resi_righe_rientri,fk_resi_righe_rientri_riga,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_righe_rientri_resi_riga_id ON vendite.resi_righe_rientri(resi_riga_id);
+vendite,resi_righe_rientri,fk_resi_righe_rientri_ubicazione,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_righe_rientri_ubicazione_id ON vendite.resi_righe_rientri(ubicazione_id);
+vendite,resi_righe_rinunce,fk_resi_rinunce_resi_riga,CON_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_resi_rinunce_resi_riga_id ON vendite.resi_righe_rinunce(resi_riga_id);
+vendite,tipi_doc_fiscale_registri,fk_tipi_doc_fiscale_registri_natura_doc,SENZA_INDICE,NULL,CREATE INDEX IF NOT EXISTS ix_tipi_doc_fiscale_registri_natura_doc_id ON vendite.tipi_doc_fiscale_registri(natura_doc_id);

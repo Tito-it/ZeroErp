@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_duplicate_indexes legge l'ambito dal building block della politica
+#   degli indici (N9 b, regola del 2).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-2 (§29).
+#
+#   Era la sesta copia in linea della lettura «lo schema ha una riga in
+#   dbops.automation_scope». Stesso significato, quindi stessa sede:
+#   dbops.fn_indici_schema_nell_ambito (-43). Colonne e corpo invariati, preso
+#   dalla definizione viva; nel COMMENT cambia solo la frase dell'ambito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-46-update-vw-duplicate-indexes-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20261110-46-update-vw-duplicate-indexes-ambito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_duplicate_indexes: l'ambito da dbops.fn_indici_schema_nell_ambito.
+        Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_indici_schema_nell_ambito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_duplicate_indexes AS
+              WITH idx AS (
+                  SELECT ix.indexrelid,
+                         n.nspname AS schema_name,
+                         t.relname AS table_name,
+                         i.relname::text AS index_name,
+                         ix.indisunique,
+                         (ix.indisreplident
+                          OR EXISTS (SELECT 1 FROM pg_constraint co WHERE co.conindid = ix.indexrelid)) AS regge_vincolo,
+                         am.amname::text AS metodo,
+                         pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
+                         (SELECT array_agg(pg_get_indexdef(ix.indexrelid, k.k, false) ORDER BY k.k)
+                            FROM generate_series(1, ix.indnkeyatts::integer) k(k)) AS index_columns,
+                         regexp_replace(regexp_replace(regexp_replace(pg_get_indexdef(ix.indexrelid),
+                                        '^CREATE (UNIQUE )?INDEX .*? ON ', 'ON '),
+                                        ' WITH \(.*?\)', ''),
+                                        ' TABLESPACE \S+', '') AS firma
+                    FROM pg_index ix
+                    JOIN pg_class i     ON i.oid = ix.indexrelid
+                    JOIN pg_class t     ON t.oid = ix.indrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    JOIN pg_am am       ON am.oid = i.relam
+                   WHERE i.relkind = 'i'
+                     AND NOT ix.indisprimary
+                     AND ix.indisvalid
+                     AND dbops.fn_indici_schema_nell_ambito(n.nspname)
+              )
+              SELECT schema_name,
+                     table_name,
+                     index_columns,
+                     metodo,
+                     predicato,
+                     array_agg(index_name ORDER BY regge_vincolo DESC, indisunique DESC, indexrelid) AS duplicate_index_names,
+                     count(*) AS count_of_indexes,
+                     (array_agg(index_name ORDER BY regge_vincolo DESC, indisunique DESC, indexrelid))[1] AS indice_da_tenere,
+                     CASE
+                         WHEN bool_or(regge_vincolo) THEN
+                             COALESCE(array_agg(index_name ORDER BY indisunique DESC, indexrelid) FILTER (WHERE NOT regge_vincolo),
+                                      ARRAY[]::text[])
+                         ELSE (array_agg(index_name ORDER BY indisunique DESC, indexrelid))[2:]
+                     END AS indici_da_droppare
+                FROM idx
+               GROUP BY schema_name, table_name, index_columns, metodo, predicato, firma
+              HAVING count(*) > 1
+               ORDER BY schema_name, table_name;
+
+              COMMENT ON VIEW dbops.vw_duplicate_indexes IS
+                  'Indici DUPLICATI ESATTI negli schemi governati dalla politica degli indici (dbops.fn_indici_schema_nell_ambito). Raggruppa per firma normalizzata (pg_get_indexdef senza nome, senza WITH(...) e senza TABLESPACE): due indici nello stesso gruppo sono intercambiabili (la chiave primaria non entra nel confronto). Il primo dell''ordinamento si tiene (indice_da_tenere), gli altri sono proposti in indici_da_droppare. L''ordinamento mette prima gli indici che reggono un vincolo (UNIQUE, EXCLUDE, o il riferito di una FK: pg_constraint.conindid) o la replica identity, poi gli UNIQUE: un indice di vincolo non e'' mai proposto per il DROP, anche quando nel gruppo ce n''e'' piu'' d''uno. Il flag UNIQUE non e'' nella chiave di raggruppamento: un btree non-unique identico a un UNIQUE e'' ridondante e deve restare visibile. Non copre la ridondanza per prefisso: per quella c''e'' dbops.vw_indici_ridondanti_prefisso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente differiva solo per l'EXISTS in linea su dbops.automation_scope.
+              SELECT 1;

@@ -27,8 +27,8 @@
 --  5)   error_log: (occurred_at)
 --  6)   error_log: (area, occurred_at) e (tx_id)
 --  7)   error_log: (function_name, occurred_at) con text_pattern_ops sulla prima
---  8)   policy FK: fk_fatturazione_lotti_log_lotto e' consentito = true, col
---       dll_command che nomina l'indice canonico
+--  8)   policy FK: fk_fatturazione_lotti_log_lotto e' decisa CON_INDICE, e il nome
+--       dell'indice (indice_nome, generato dal dll_command) e' quello canonico
 --  9)   l'indice FK ix_fatturazione_lotti_log_lotto_id esiste
 -- 10)   nessuno dei nuovi e' un duplicato esatto (dbops.vw_duplicate_indexes)
 -- ------------------------------------------------------------
@@ -85,12 +85,12 @@ SELECT is(
 -- 8-9) La FK di fatturazione_lotti_log, decisa e accesa
 -- ============================================================
 SELECT is(
-    (SELECT (p.consentito, p.dll_command LIKE 'CREATE INDEX IF NOT EXISTS ix_fatturazione_lotti_log_lotto_id ON %')::text
+    (SELECT p.decisione || ' ' || p.indice_nome
        FROM dbops.fk_index_policy p
       WHERE p.schema_name = 'vendite' AND p.table_name = 'fatturazione_lotti_log'
         AND p.constraint_name = 'fk_fatturazione_lotti_log_lotto'),
-    (true, true)::text,
-    '8. policy FK: fk_fatturazione_lotti_log_lotto consentito = true, dll_command col nome canonico'
+    'CON_INDICE ix_fatturazione_lotti_log_lotto_id',
+    '8. policy FK: fk_fatturazione_lotti_log_lotto decisa CON_INDICE, indice col nome canonico'
 );
 
 SELECT has_index('vendite', 'fatturazione_lotti_log', 'ix_fatturazione_lotti_log_lotto_id', ARRAY['lotto_id'],

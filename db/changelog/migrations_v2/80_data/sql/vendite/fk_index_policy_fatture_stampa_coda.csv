@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,fatture_stampa_coda,fk_fatture_stampa_coda_lotto,true,CREATE INDEX IF NOT EXISTS ix_fatture_stampa_coda_lotto_id ON vendite.fatture_stampa_coda(lotto_id);,false,titodb,2026-07-20 00:00:00+02
-vendite,fatture_stampa_coda,fk_fatture_stampa_coda_fattura,true,CREATE INDEX IF NOT EXISTS ix_fatture_stampa_coda_sorgente_id ON vendite.fatture_stampa_coda(sorgente_id);,false,titodb,2026-07-20 00:00:00+02

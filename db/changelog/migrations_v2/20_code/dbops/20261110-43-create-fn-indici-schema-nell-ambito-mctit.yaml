@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_indici_schema_nell_ambito: il perimetro della politica degli indici
+#   in un posto solo (N9, strada b).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-2 (§29).
+#
+#   La politica degli indici governa PER SCHEMA, per scelta: l'indice di una FK
+#   serve a ogni tabella, mentre l'elenco delle tabelle di
+#   dbops.automation_scope (table_like) serve ai trigger delle altre
+#   automazioni. Prima la stessa lettura era scritta in linea in cinque oggetti
+#   (vw_fk_senza_indice, due volte, vw_indici_ridondanti_prefisso,
+#   vw_duplicate_indexes, vw_fk_con_indice_missing_policy e
+#   fn_seed_fk_index_policy); l'apply non la faceva affatto. Da qui la leggono
+#   tutti (-44 ... -49); gli ultimi due si ritirano (-50).
+#
+#   LANGUAGE sql, STABLE, un solo SELECT senza FROM: il planner la espande
+#   nella query che la chiama, quindi nelle viste costa quanto l'EXISTS di
+#   prima. %TYPE in firma: si risolve al CREATE (fotografia della colonna).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-43-create-fn-indici-schema-nell-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20261110-43-create-fn-indici-schema-nell-ambito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_indici_schema_nell_ambito(schema): lo schema e' governato dalla politica degli indici
+        delle FK. Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: dbops, tableName: automation_scope }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_indici_schema_nell_ambito(
+                  p_schema dbops.automation_scope.schema_name%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+               PARALLEL SAFE
+              AS $function$
+                SELECT EXISTS (SELECT 1
+                                 FROM dbops.automation_scope sc
+                                WHERE sc.schema_name = p_schema);
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_indici_schema_nell_ambito(text) IS
+                  'Vero se lo schema e'' governato dalla politica degli indici delle FK: ha almeno una riga in dbops.automation_scope, qualunque sia table_like. La politica governa per schema, di proposito: l''indice di una FK serve a ogni tabella, mentre l''elenco delle tabelle serve ai trigger delle altre automazioni (dbops.fn_table_in_scope). La leggono dbops.vw_fk_senza_indice, dbops.vw_indici_ridondanti_prefisso, dbops.vw_duplicate_indexes, dbops.vw_fk_da_decidere e dbops.apply_fk_index_policy. Uno schema senza righe e'' fuori, e un NULL da'' falso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_indici_schema_nell_ambito(text);

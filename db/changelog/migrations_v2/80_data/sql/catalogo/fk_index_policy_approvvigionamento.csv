@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-catalogo,articoli,fk_articoli_modi_approvvigionamento,false,"CREATE INDEX IF NOT EXISTS ix_articoli_modo_approvvigionamento_id ON catalogo.articoli(modo_approvvigionamento_id);",false,titodb,2026-09-13 00:00:00+02
-vendite,commesse,fk_commesse_risorse_umane,false,"CREATE INDEX IF NOT EXISTS ix_commesse_responsabile_risorsa_umana_id ON vendite.commesse(responsabile_risorsa_umana_id);",false,titodb,2026-09-13 00:00:00+02

@@ -177,8 +177,10 @@ QUERY = [
      "SELECT count(*) FROM dbops.vw_codici_errore_da_dichiarare"),
     ("Catalogo", "codici senza policy — il debito (codici_errore_senza_policy, atteso 0)",
      "SELECT count(*) FROM dbops.codici_errore_senza_policy"),
-    ("Catalogo", "FK senza indice fuori policy (vw_fk_con_indice_missing_policy)",
-     "SELECT count(*) FROM dbops.vw_fk_con_indice_missing_policy"),
+    # La vista di prima (vw_fk_con_indice_missing_policy) contava le FK GIA' coperte senza riga, col
+    #    nome sbagliato; ritirata nel giro 10d di brief-db-revisione-dbops (2026-11-09).
+    ("Catalogo", "FK senza indice da decidere o non applicate (vw_fk_da_decidere)",
+     "SELECT count(*) FROM dbops.vw_fk_da_decidere"),
     ("Catalogo", "indici ridondanti per prefisso (vw_indici_ridondanti_prefisso)",
      "SELECT count(*) FROM dbops.vw_indici_ridondanti_prefisso"),
     ("Catalogo", "processi che bypassano la RLS (atteso 0)",

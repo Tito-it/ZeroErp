@@ -10,7 +10,7 @@ search:
 - [fn_area_consente_azione](manual/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](manual/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](manual/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
-- [fn_articolo_riga_contesto](manual/fn_articolo_riga_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: R-5)
+- [fn_articolo_riga_contesto](manual/fn_articolo_riga_contesto.md) — È **il lato documento** della regola sugli articoli di una riga: ciò che i motivi leggono e che non dipende dall'articolo. Lo legge una volta e lo restituisce come contesto `jsonb`.
 - [fn_audit_summary](manual/fn_audit_summary.md)
 - [fn_available_actions_commessa](manual/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
 - [fn_available_actions_contratto](manual/fn_available_actions_contratto.md)
@@ -32,7 +32,7 @@ search:
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](manual/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
-- [fn_check_articolo_riga](manual/fn_check_articolo_riga.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta; Lotto 4, `20261014-03`: due metà, e la promo; `20261014-06`: il kit senza componenti, D-7)
+- [fn_check_articolo_riga](manual/fn_check_articolo_riga.md) — Dice **perché un articolo non può stare in una riga** di un documento. `[]` vuol dire ammesso; altrimenti un array **ordinato** di motivi `{codice, reason, reason_key, dettaglio, valori}`.
 - [fn_check_articolo_riga_su_contesto](manual/fn_check_articolo_riga_su_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: A-2, D-6)
 - [fn_check_attivita_riportabile_da_emettere](manual/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)

@@ -613,7 +613,7 @@ con una scadenza: una sua tabella che si scrive a runtime (una funzione, il
 backend, un job) tiene `data_update`/`user_update` e `tx_id` e monta **a mano** i
 due trigger del framework; una tabella che scrive solo la migrazione, dai CSV di
 `80_data`, **non** li porta (né `data_update`/`user_update` una tabella che a
-runtime riceve solo `INSERT`: conta chi **aggiorna**, come `dbops.fk_index_policy`) — direbbero sempre «il migratore», e chi e quando lo
+runtime riceve solo `INSERT` e `DELETE`: conta chi **aggiorna**, come `dbops.fk_index_policy`) — direbbero sempre «il migratore», e chi e quando lo
 dicono già `databasechangelog` e git. `data_insert`/`user_insert` restano sempre.
 Dettaglio e presidio: [automazione-db.md](guide/automazione-db.md) §1.1.
 
@@ -1260,7 +1260,7 @@ Il confronto pretende identici opclass, collation, ordinamento **e predicato**; 
 
 | `origine` | Come si rimuove |
 | --- | --- |
-| `AUTOMAZIONE_FK` | `consentito=false` in `dbops.fk_index_policy` **e** `DROP` esplicito. Il solo `DROP` verrebbe annullato da `apply_fk_index_policy()` al primo `migrate` |
+| `AUTOMAZIONE_FK` | la riga di `dbops.fk_index_policy` che nomina quell'indice passa a `SENZA_INDICE` nel CSV della politica, e lo toglie `apply_fk_index_policy()`. Un `DROP` secco di un indice `CON_INDICE` verrebbe annullato al primo `migrate` |
 | `MANUALE` | `DROP INDEX` in un changeSet dedicato |
 
 > ⚠️ Due indici sulla stessa colonna **non** sono ridondanti se differiscono per metodo (un GIN `trgm` e un btree servono query diverse) o per predicato (due UNIQUE parziali disgiunte convivono legittimamente). Le due viste tengono conto di entrambi: se una coppia compare, è ridondante davvero.
@@ -1283,39 +1283,31 @@ Se i due pesano uguale, il più stretto non porta alcun vantaggio di cache e si 
 
 ### 8.7 Automazione Indici FK
 
-Gli indici sulle FK sono gestiti tramite policy centralizzata.
+Gli indici sulle FK sono gestiti tramite una politica centralizzata, `dbops.fk_index_policy`: una riga per FK, con una **decisione**.
 
-Nel changelog `90_end/` deve essere presente:
+| `decisione` | Chi la scrive | Che cosa fa `apply_fk_index_policy()` |
+| --- | --- | --- |
+| `DA_DECIDERE` | la scoperta, `fn_populate_fk_index_policy()`; è il default | niente |
+| `CON_INDICE` | solo il seed | crea l'indice, se la FK è ancora scoperta |
+| `SENZA_INDICE` | solo il seed | toglie l'indice `indice_nome`, se non regge un vincolo |
 
-```yaml
-- changeSet:
-    id: 90-end-apply-fk-policy
-    author: mctit
-    runAlways: true
-    sql:
-      splitStatements: false
-      sql: |
-        CALL dbops.apply_fk_index_policy();
-```
-
-La tabella `dbops.fk_index_policy` governa:
-
-* quali FK indicizzare
-* quali escludere
+La scoperta e l'apply girano a ogni migrate, con due changeSet `runAlways` in `90_end`, e nel job settimanale. Il perimetro è per **schema**: la politica governa le FK degli schemi che compaiono in `dbops.automation_scope`, qualunque sia il filtro per tabella (`dbops.fn_indici_schema_nell_ambito`).
 
 Le viste di supporto:
 
 ```sql
--- FK realmente prive di copertura
+-- Il fatto: le FK prive di copertura, con la loro decisione
 SELECT * FROM dbops.vw_fk_senza_indice;
 
--- FK con un indice dedicato ma senza riga di policy (candidate al governo)
-SELECT * FROM dbops.vw_fk_con_indice_missing_policy;
+-- Il presidio: le FK da decidere, le CON_INDICE non applicate, le righe fuori ambito
+SELECT * FROM dbops.vw_fk_da_decidere;
 ```
 
-#### La policy è OPT-IN
+#### La decisione sta nel seed
 
-`fn_populate_fk_index_policy()` registra le FK nuove con `consentito=false`. **Perché l'indice nasca serve un seed esplicito** che porti il flag a `true`: senza, l'automazione non crea nulla. Il seed va in `80_data` come CSV più `loadUpdateData`, mai come SQL inline.
+La scoperta registra le FK nuove come `DA_DECIDERE`, e non decide niente: finché la riga resta così, l'automazione non crea e non toglie nessun indice, e la FK compare nel presidio. **La decisione la scrive solo il seed**: il CSV `80_data/sql/dbops/fk_index_policy.csv`, uno per tutta la tabella, letto da un solo mirror `loadUpdateData` (§11.2). Una decisione nuova o cambiata si scrive lì, col perché nella colonna `motivo`; mai come SQL inline, mai con un secondo CSV.
+
+Una FK coperta dall'indice nato nel changeSet della sua tabella non ha bisogno di una riga: la politica governa gli indici che crea lei.
 
 #### Quando una FK si considera coperta
 
@@ -1323,22 +1315,22 @@ Non serve un indice dedicato. La FK è coperta se le sue colonne coincidono, **c
 
 Il predicato dell'indice dev'essere assente, oppure una congiunzione di soli `<colonna della FK> IS NOT NULL` — vedi §8.4.
 
-> Pretendere l'uguaglianza esatta dell'elenco di colonne, come faceva la vista fino al 2026-07-27, porta a registrare come scoperte FK già servite da una UNIQUE più larga, e a piantarci sopra un indice gemello. È così che sono nati 27 dei 48 indici ridondanti censiti in quella data.
+> Pretendere l'uguaglianza esatta dell'elenco di colonne porta a registrare come scoperte FK già servite da una UNIQUE più larga, e a piantarci sopra un indice gemello: è l'origine di buona parte degli indici ridondanti censiti.
 
 #### Mai a mano
 
-Gli indici governati dalla policy **non si creano e non si droppano con un `CREATE`/`DROP` scritto a mano**: si agisce sul flag e ci pensa `apply_fk_index_policy()`. Un `DROP` senza flag verrebbe annullato al primo `migrate` successivo, perché la procedura gira `runAlways` in `90_end`.
+Gli indici governati dalla politica **non si creano e non si droppano con un `CREATE`/`DROP` scritto a mano**: si agisce sulla decisione e ci pensa `apply_fk_index_policy()`. Un `DROP` di un indice `CON_INDICE` verrebbe annullato al primo `migrate` successivo, perché la procedura gira `runAlways` in `90_end`.
 
 #### Le due guardie di `apply_fk_index_policy()`
 
-1. **Con `consentito=true` crea solo se la FK figura ancora in `vw_fk_senza_indice`.** Una FK già servita da una UNIQUE più larga, o da un parziale `IS NOT NULL`, non riceve un indice dedicato nemmeno a flag `true`. Un `true` rimesso per errore non può quindi rigenerare ridondanze già bonificate.
-2. **Con `consentito=false` rifiuta il `DROP`**, con `RAISE WARNING`, se il nome estratto dal comando appartiene a un UNIQUE, a una PK, a un indice a supporto di un constraint o alla `REPLICA IDENTITY`. Un flag booleano non deve poter togliere un vincolo di integrità.
+1. **Con `CON_INDICE` crea solo se la FK figura ancora in `vw_fk_senza_indice`.** Una FK già servita da una UNIQUE più larga, o da un parziale `IS NOT NULL`, non riceve un indice dedicato. Un `CON_INDICE` scritto per errore non può quindi rigenerare ridondanze già bonificate.
+2. **Con `SENZA_INDICE` rifiuta il `DROP`**, con `RAISE WARNING`, se `indice_nome` è un UNIQUE, una PK, un indice a supporto di un constraint o la `REPLICA IDENTITY`. Una decisione non deve poter togliere un vincolo di integrità.
 
-Warning e non eccezione: la procedura gira a ogni `migrate` e nel job settimanale, e un errore bloccherebbe la pipeline. A fine ciclo emette un `RAISE NOTICE` con creati / saltati / droppati / rifiutati.
+Warning e non eccezione: la procedura gira a ogni `migrate` e nel job settimanale, e un errore bloccherebbe la pipeline. A fine ciclo emette un `RAISE NOTICE` con creati / saltati / droppati / rifiutati / da decidere / fuori ambito.
 
 #### Il `dll_command` deve nominare l'indice che esiste
 
-`fn_seed_fk_index_policy()` porta sotto il governo della policy le FK che hanno già un indice. Il comando registrato deve puntare al **nome reale** di quell'indice: se ne sintetizza uno diverso, `apply` crea un secondo indice gemello sotto quel nome. E si registrano **solo indici dedicati** alla FK — colonne uguali a quelle della FK, non UNIQUE, non a supporto di constraint — perché il ramo `consentito=false` esegue `DROP INDEX` su quel nome, e deve poter togliere solo un acceleratore.
+Il nome dell'indice, `indice_nome`, è una colonna generata dal `dll_command`, con la stessa grammatica del CHECK di forma: la procedura e `vw_indici_ridondanti_prefisso` lo confrontano per uguaglianza. Una riga `SENZA_INDICE` deve quindi nominare il **nome reale** dell'indice da togliere, altrimenti il `DROP` non trova niente. E col nome canonico toglie anche l'indice con quel nome nato nel changeSet della tabella: la seconda guardia lo ferma solo se l'indice regge un vincolo.
 
 ---
 
@@ -1709,15 +1701,14 @@ Prima di attivare RLS su una tabella esistente:
 * Funzione `script.fn_scope_*` scritta e coperta da pgTAP, con `COST 5000` (§10.3)
 * Backend popola tutti i GUC necessari in tutte le auth class
 * La FK della colonna emittente ha una **decisione dichiarata** in
-  `dbops.fk_index_policy` — un seed CSV con `true` o `false` **e il perché**
-  (§8.7). ⛔ **Il predicato RLS non rende la colonna indicizzabile**: fino al
+  `dbops.fk_index_policy` — `CON_INDICE` o `SENZA_INDICE` nel CSV della politica,
+  **col perché** in `motivo` (§8.7). ⛔ **Il predicato RLS non rende la colonna indicizzabile**: fino al
   2026-10-18 la policy era una **chiamata di funzione per riga** (la canonica
   plpgsql); nella forma di §10.3 per riga resta un confronto
   (`fn_scope_ef_perimetro` col perimetro già calcolato), ma l'indice non si decide sulla
   policy. Un indice sull'emittente si decide sulla **query dell'applicazione che entra
   da quella colonna** (una lista per emittente + data, come
-  `ix_fatture_emitt_data`), non sulla policy — è il criterio già scritto nei
-  seed `20260822-39`, `20260822-41` e `20260829-33`.
+  `ix_fatture_emitt_data`), non sulla policy.
   ⛔ E **mai un `CREATE INDEX` a mano** su una FK governata: con la riga a
   `false` il loop di `90_end` lo rimuove al primo migrate. Successo su
   `20260601-34` (RLS, Fase 5): quattro indici su sei creati apposta per la
@@ -1834,6 +1825,8 @@ changeSet già applicato»). Il 18-09 ne sono stati ritirati **sei**:
 `lista_definizione_perimetro_emittente` (`20260902-02`) e i cinque di
 `famiglie_documento` (`formato`, `colonna_serie`, `regole_fiscali`,
 `anno_nel_numero`, la riga `DISTINTA`), tutti rientrati nel CSV principale.
+Vale anche per le decisioni della politica degli indici delle FK: stanno tutte in
+`80_data/sql/dbops/fk_index_policy.csv`, non in un CSV per cantiere (§8.7).
 ⚠️ Il laterale porta con sé anche una `preCondition` obbligata («le righe
 esistono già, altrimenti INSERT monco») che il principale non ha bisogno di
 avere. ⭐ E la chiave del mirror principale è la **chiave naturale**, non

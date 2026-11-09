@@ -1,4 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,fatture_atti,fk_fatture_atti_fattura,false,"CREATE INDEX IF NOT EXISTS ix_fatture_atti_fattura_id ON vendite.fatture_atti(fattura_id);",false,mctit,2026-08-31 00:00:00+02
-vendite,fatture_atti,fk_fatture_atti_contratto,true,"CREATE INDEX IF NOT EXISTS ix_fatture_atti_contratto_id ON vendite.fatture_atti(contratto_id);",false,mctit,2026-08-31 00:00:00+02
-vendite,fatture_righe,fk_fatture_righe_fattura_atto,true,"CREATE INDEX IF NOT EXISTS ix_fatture_righe_fattura_atto_id ON vendite.fatture_righe(fattura_atto_id, fattura_id) WHERE fattura_atto_id IS NOT NULL;",false,mctit,2026-08-31 00:00:00+02

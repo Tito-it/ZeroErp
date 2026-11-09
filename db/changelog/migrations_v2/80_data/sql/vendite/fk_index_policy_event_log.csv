@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,event_log,fk_event_log_emittente,false,"CREATE INDEX IF NOT EXISTS ix_event_log_emittente_soggetto_ruolo_id ON vendite.event_log(emittente_soggetto_ruolo_id);",false,titodb,2026-08-22 00:00:00+02

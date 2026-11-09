@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-pratiche,template_flussi_handler_eventi,fk_tfhe_template_flusso,t,CREATE INDEX IF NOT EXISTS ix_template_flussi_handler_eventi_template_flusso_id ON pratiche.template_flussi_handler_eventi(template_flusso_id);,f,mctit,2026-06-15 00:00:00+02
-pratiche,template_flussi_handler_eventi,fk_tfhe_handler,f,CREATE INDEX IF NOT EXISTS ix_template_flussi_handler_eventi_handler_id ON pratiche.template_flussi_handler_eventi(handler_id);,f,mctit,2026-06-15 00:00:00+02

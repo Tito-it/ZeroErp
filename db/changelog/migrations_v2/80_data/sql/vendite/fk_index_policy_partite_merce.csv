@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,resi_righe,fk_resi_righe_ddt_riga,t,CREATE INDEX IF NOT EXISTS ix_resi_righe_ddt_riga_id ON vendite.resi_righe(ddt_riga_id);,f,mctit,2026-09-21 00:00:00+02
-vendite,resi_righe_riconsegne,fk_resi_riconsegne_ddt_riga,t,CREATE INDEX IF NOT EXISTS ix_resi_righe_riconsegne_ddt_riga_id ON vendite.resi_righe_riconsegne(ddt_riga_id);,f,mctit,2026-09-21 00:00:00+02

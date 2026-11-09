@@ -1,22 +1,22 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_fk_senza_indice`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — la policy, i cui flag spenti tolgono una chiave esterna da qui
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — gli schemi in cui la vista cerca
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — la politica, da cui viene la colonna `decisione`
 >
 > Approfondimento viste:
 >
-> * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy) — la sorella: le chiavi esterne che un indice dedicato ce l'hanno, ma non la riga di policy
+> * [dbops.vw_fk_da_decidere](/dbzero/dbops/views/vw_fk_da_decidere) — il presidio costruito su questa vista: le chiavi esterne da decidere
 > * [dbops.vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso) — gli indici nati quando la copertura si misurava male
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) — la legge per registrare le scoperte
+> * [dbops.fn_indici_schema_nell_ambito](/dbzero/dbops/funzioni/fn_indici_schema_nell_ambito) — gli schemi in cui la vista cerca
+> * [dbops.fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) — la legge per registrare le scoperte senza riga
 > * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) — la legge come guardia prima di creare
 >
 > Guide:
@@ -27,13 +27,24 @@
 
 ### 🎯 Scopo Principale
 
-Le chiavi esterne degli schemi di `dbops.automation_scope` che **nessun indice sa servire**, con
-il comando che creerebbe l'indice dedicato. Rispetta la policy: una chiave esterna con
-`consentito = false` in `dbops.fk_index_policy` non compare.
+Il fatto: le chiavi esterne degli schemi governati dalla politica degli indici che **nessun indice
+sa servire**, con il comando che creerebbe l'indice dedicato e la decisione che la chiave esterna ha
+in `dbops.fk_index_policy` (vuota se non ha una riga). Le mostra tutte, qualunque decisione
+abbiano.
 
-Ha due lettori, entrambi automatici: `dbops.fn_populate_fk_index_policy` la usa per registrare le
-scoperte, e `dbops.apply_fk_index_policy` la usa come guardia, perché crea un indice solo se la
-chiave esterna compare ancora qui.
+Ha tre lettori: `dbops.fn_populate_fk_index_policy` la usa per registrare le scoperte senza riga,
+`dbops.apply_fk_index_policy` la usa come guardia, perché crea un indice solo se la chiave esterna
+compare ancora qui, e il presidio `dbops.vw_fk_da_decidere` ne prende le chiavi esterne su cui
+nessuno ha deciso.
+
+---
+
+### ⚠️ Non è un presidio
+
+Una chiave esterna scoperta non è per forza un difetto: una `SENZA_INDICE` è scoperta per
+decisione, e resta qui. Che cosa va guardato lo dice `dbops.vw_fk_da_decidere`, che da questa
+vista tiene solo le chiavi esterne senza decisione e le `CON_INDICE` ancora scoperte. Nel catalogo
+dei presidi la vista è iscritta come lavorazione che non entra in nessun digest.
 
 ---
 
@@ -75,26 +86,24 @@ e colonne, nella forma che il vincolo di `dbops.fk_index_policy` pretende. `fk_c
 colonne della chiave esterna in ordine alfabetico, e nello stesso ordine entrano nell'indice.
 
 ⛔ Il comando non si esegue a mano: gli indici delle chiavi esterne nascono da
-`dbops.apply_fk_index_policy`, dopo un seed che accende il flag. Un indice creato fuori dalla policy
-non è governato da nessuno, e ricompare in `dbops.vw_fk_con_indice_missing_policy`.
+`dbops.apply_fk_index_policy`, dopo una decisione `CON_INDICE` nel CSV della politica. Un indice
+creato fuori dalla politica non è governato da nessuno.
 
 ---
 
 ### ⚠️ Che cosa non vede
 
-* le chiavi esterne fuori dagli schemi di `dbops.automation_scope`;
-* le chiavi esterne con `consentito = false`: per scelta, sono eccezioni dichiarate. Ne segue che
-  una chiave esterna registrata dal popolamento a flag spento **esce da qui** e resta visibile solo
-  come riga di policy.
-
-Nel catalogo dei presidi la vista è iscritta come lavorazione che non entra in nessun digest: la
-consuma già un programma, e leggerla in un riepilogo sarebbe una seconda lettura di ciò che
-l'automazione sistema da sola.
+* le chiavi esterne degli schemi che la politica non governa: il perimetro è per schema, e lo dà
+  `dbops.fn_indici_schema_nell_ambito`;
+* le chiavi esterne coperte, anche se hanno una riga di politica: una `CON_INDICE` il cui indice
+  esiste esce da qui, ed è il segno che la decisione è mantenuta.
 
 ---
 
 ### Test
 
+* `db/pgtap/dbops/test-fk-index-policy-decisione-v1.sql` — una chiave esterna scoperta senza riga
+  compare con la decisione vuota, e una decisa `SENZA_INDICE` resta qui ed esce dal presidio.
 * `db/pgtap/vendite/test-ddt-righe-componenti-v1.sql`, `test-ordini-righe-componenti-v1.sql`,
   `test-preventivi-righe-componenti-v1.sql`, `test-contratti-righe-componenti-v1.sql` — la chiave
   esterna verso la riga di documento è coperta dalla UNIQUE che ha la riga come prima colonna: il
@@ -110,6 +119,11 @@ l'automazione sistema da sola.
   risultavano scoperte, finivano in policy e ricevevano un indice gemello (27 dei 48 indici
   ridondanti censiti quel giorno). Il difetto speculare: un indice parziale qualsiasi contava come
   copertura, e due chiavi esterne risultavano a posto senza esserlo.
+* 2026-11-09 — diventa solo il fatto: mostra ogni chiave esterna scoperta, qualunque decisione abbia,
+  con la colonna `decisione` in coda, e legge il perimetro da `fn_indici_schema_nell_ambito`
+  (`20261110-44`, brief-db-revisione-dbops, giro 10d). Prima filtrava le chiavi esterne col flag
+  `consentito` a falso, e faceva anche da presidio: la scoperta scriveva falso su ogni chiave esterna
+  nuova, e così uscivano tutte da ogni controllo. Il presidio è ora `vw_fk_da_decidere`.
 
 ---
 

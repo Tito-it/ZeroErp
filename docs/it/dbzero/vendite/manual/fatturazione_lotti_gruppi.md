@@ -91,10 +91,11 @@ Alternativa valutata e scartata:
 La `UNIQUE (lotto_id, gruppo_key)` è un btree con `lotto_id` come **prefisso**:
 copre già `WHERE lotto_id = ?`, che è l'unico accesso previsto (i filtri leggono
 i gruppi di *un* lotto). Un secondo indice sul solo `lotto_id` sarebbe
-ridondante e verrebbe segnalato da `dbops.vw_duplicate_indexes`.
+ridondante e verrebbe segnalato da `dbops.vw_indici_ridondanti_prefisso` (`vw_duplicate_indexes` vede solo i duplicati esatti).
 
-Stessa logica già applicata su `vendite.resi_righe_riconsegne`. La policy
-opt-in registrerà la FK con `consentito = false`: è corretto così.
+Stessa logica già applicata su `vendite.resi_righe_riconsegne`. La FK è coperta,
+quindi la scoperta della politica degli indici (`dbops.fk_index_policy`) non la
+registra: non c'è niente da decidere.
 
 ---
 

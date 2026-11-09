@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-pagamenti,vendite_contabili_righe,fk_vendite_contabili_righe_fondo_source,true,"CREATE INDEX IF NOT EXISTS ix_vendite_contabili_righe_fondo_source_id ON pagamenti.vendite_contabili_righe(fondo_source_id) WHERE fondo_source_id IS NOT NULL;",false,titodb,2026-08-21 00:00:00+02

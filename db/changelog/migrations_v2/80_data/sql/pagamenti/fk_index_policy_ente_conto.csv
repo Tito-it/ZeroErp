@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-pagamenti,enti_incasso,fk_enti_incasso_conto_incasso,false,"CREATE INDEX IF NOT EXISTS ix_enti_incasso_conto_incasso ON pagamenti.enti_incasso(soggetto_ruolo_conto_bancario_id);",false,titodb,2026-08-22 00:00:00+02
