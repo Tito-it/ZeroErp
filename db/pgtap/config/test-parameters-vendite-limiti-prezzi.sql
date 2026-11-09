@@ -73,8 +73,8 @@ SELECT is(
   );
 -- ============================================================
 -- 5) fn_get_parameter_full risolve con default quando nessun override.
--- Firma: (p_code text, p_emittente_fiscale_id bigint, p_django_user_id integer,
---        p_group_ids integer[], p_session_key text, p_function_name text)
+-- Firma (dal 2026-11-09, senza il livello sessione): (p_code, p_emittente_fiscale_id,
+--        p_django_user_id, p_group_ids integer[], p_function_name, p_categoria_cliente_id)
 -- ============================================================
 SELECT is(
     script.fn_get_parameter_full('VENDITE_MAX_SCONTO_PCT'),
@@ -87,9 +87,9 @@ SELECT is(
 -- Setup: user di test + override.
 -- Nota: parameter_overrides NON ha scope_code/scope_value: lo scope e'
 -- determinato dalle colonne django_user_id/django_group_id/emittente_fiscale_id
--- valorizzate (NULL = wildcard). Unique uq_overrides_full_scope_v5 NULLS NOT
+-- valorizzate (NULL = wildcard). Unique uq_overrides_full_scope_v6 NULLS NOT
 -- DISTINCT su (parameter_id, emittente_fiscale_id, django_user_id,
--- django_group_id, categoria_cliente_id, session_key, function_name).
+-- django_group_id, categoria_cliente_id, function_name).
 CREATE TEMP TABLE tmp_l2_test AS
 SELECT id AS user_id
 FROM django.auth_user
@@ -116,7 +116,7 @@ WHERE EXISTS (
 -- esiste gia' un override puro per questo parametro e questo ambito, lo si
 -- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
 -- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
-ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6
 DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 INSERT INTO config.parameter_overrides (
     parameter_id,
@@ -139,7 +139,7 @@ WHERE EXISTS (
 -- esiste gia' un override puro per questo parametro e questo ambito, lo si
 -- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
 -- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
-ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6
 DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 SELECT is(
     script.fn_get_parameter_full(

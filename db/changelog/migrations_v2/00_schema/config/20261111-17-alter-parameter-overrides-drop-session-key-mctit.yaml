@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.parameter_overrides: la colonna session_key esce.
+#   Brief: brief-db-revisione-dbops, giro 13 (Q10).
+#
+# Decisione di Tid (2026-11-05, Q10): il livello «sessione» esce dal modello.
+# Le funzioni non leggono piu' la colonna (-14, -15, -16, numeri precedenti:
+# da zero girano prima).
+#
+# ⚠️ DROP COLUMN cancella IN SILENZIO ogni vincolo che nomina la colonna: il
+# vincolo d'unicita' dell'ambito sparirebbe per intero. Quindi i due vincoli si
+# tolgono e si ricreano qui, a mano, senza session_key:
+#   uq_overrides_full_scope_v5 -> uq_overrides_full_scope_v6 (NULLS NOT DISTINCT,
+#     parameter_id + le cinque dimensioni rimaste). Il nome cambia versione
+#     perche' cambia la definizione: chi lo nomina (l'upsert del backend,
+#     ON CONFLICT ON CONSTRAINT) si aggiorna con BE8;
+#   chk_parameter_overrides_un_ambito: stesso nome, cinque dimensioni.
+# Prima del DROP, le righe con session_key scritta si contano e si nominano: con
+# una sola il changeSet si ferma (una riga di sessione, tolta la colonna,
+# resterebbe senza ambito e il CHECK nuovo la rifiuterebbe comunque).
+# COMMENT della tabella riscritto: diceva «tenant, user, sessione, funzione».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261111-17-alter-parameter-overrides-drop-session-key-mctit.yaml
+
+  - changeSet:
+      id: 20261111-17-alter-parameter-overrides-drop-session-key
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.parameter_overrides senza session_key; uq_overrides_full_scope_v6 e
+        chk_parameter_overrides_un_ambito ricreati sulle cinque dimensioni. Brief: brief-db-revisione-dbops,
+        giro 13 (Q10).
+      preConditions:
+        - onFail: HALT
+        - columnExists: { schemaName: config, tableName: parameter_overrides, columnName: session_key }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                  v_righe text;
+              BEGIN
+                  SELECT string_agg(po.id::text || ' (' || p.code || ')', ', ' ORDER BY po.id)
+                    INTO v_righe
+                    FROM config.parameter_overrides po
+                    JOIN config.parameters p ON p.id = po.parameter_id
+                   WHERE po.session_key IS NOT NULL;
+                  IF v_righe IS NOT NULL THEN
+                      RAISE EXCEPTION 'config.parameter_overrides: override di sessione ancora presenti (%): il livello esce dal modello, vanno tolti prima', v_righe;
+                  END IF;
+              END $$;
+
+              ALTER TABLE config.parameter_overrides
+                  DROP CONSTRAINT uq_overrides_full_scope_v5,
+                  DROP CONSTRAINT chk_parameter_overrides_un_ambito;
+
+              ALTER TABLE config.parameter_overrides DROP COLUMN session_key;
+
+              ALTER TABLE config.parameter_overrides
+                  ADD CONSTRAINT uq_overrides_full_scope_v6
+                      UNIQUE NULLS NOT DISTINCT (parameter_id, emittente_fiscale_id, django_user_id,
+                                                 django_group_id, categoria_cliente_id, function_name),
+                  ADD CONSTRAINT chk_parameter_overrides_un_ambito
+                      CHECK (num_nonnulls(django_user_id, django_group_id, emittente_fiscale_id,
+                                          categoria_cliente_id, function_name) = 1);
+
+              COMMENT ON CONSTRAINT uq_overrides_full_scope_v6 ON config.parameter_overrides IS
+                  'Un ambito, un override: parameter_id + le cinque dimensioni (utente, gruppo, emittente, categoria cliente, funzione), con NULL uguale a NULL (NULLS NOT DISTINCT). attivo resta fuori: una riga spenta occupa il suo ambito. v6 dal 2026-11-09: la dimensione sessione e'' uscita dal modello.';
+
+              COMMENT ON CONSTRAINT chk_parameter_overrides_un_ambito ON config.parameter_overrides IS
+                  'Ogni override vale per UN ambito: esattamente una fra django_user_id, django_group_id, emittente_fiscale_id, categoria_cliente_id, function_name. Niente righe miste (la cascata le prenderebbe al primo livello e ignorerebbe le altre dimensioni) e niente righe senza ambito (nessun livello le legge). Decisione di Tid del 2026-10-07: fra due ambiti la cascata sceglie un valore, non li combina.';
+
+              COMMENT ON TABLE config.parameter_overrides IS
+                  'Override dei parametri di config.parameters, uno per ambito: utente, gruppo, emittente, categoria cliente o funzione (chk_parameter_overrides_un_ambito, uq_overrides_full_scope_v6). Li legge la cascata di script.fn_get_parameter_full. Un override e'' configurazione che resta: non esiste un livello di sessione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo: la colonna e i vincoli v5.
+              SELECT 1;

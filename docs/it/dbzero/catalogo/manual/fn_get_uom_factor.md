@@ -1,62 +1,63 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_get_uom_factor`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [catalogo.articoli_uom_operativa](/dbzero/catalogo/tabelle/articoli_uom_operativa) — il fattore dell'articolo, la prima fonte
-> * [catalogo.unita_misura_conversioni](/dbzero/catalogo/tabelle/unita_misura_conversioni) — le conversioni globali, il ripiego
+> * [catalogo.unita_misura_conversioni](/dbzero/catalogo/tabelle/unita_misura_conversioni) — le conversioni generali, il ripiego
 >
 > Approfondimento funzioni:
 >
 > * [catalogo.fn_get_uom_base](/dbzero/catalogo/funzioni/fn_get_uom_base) — l'unità base dell'articolo, il primo passo
-> * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — il calcolo reale della quantità sulle righe di vendita, che non chiama questa funzione
-> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — la data a cui si cercano mappature e conversioni in vigore
+> * [catalogo.fn_uom_operativa_alla_data](/dbzero/catalogo/funzioni/fn_uom_operativa_alla_data) — la mappatura dell'articolo a una data
+> * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — il calcolo della quantità sulle righe di vendita, che la chiama
 
 ---
 
 ### 🎯 Scopo Principale
 
 Restituisce il fattore che porta una quantità espressa in un'unità di misura all'unità base
-di un articolo: quante unità base vale una unità richiesta. Se non trova un fattore
-restituisce NULL.
+di un articolo, a una data: quante unità base vale una unità richiesta quel giorno. Se non
+trova un fattore restituisce NULL.
 
 ---
 
 ### I gradini
 
-1. **L'unità base.** La legge con `fn_get_uom_base`; se l'articolo non esiste, restituisce
+1. **La data.** Senza data non c'è fattore: la funzione restituisce NULL. La data non si
+   sottintende; chi vuole il fattore di oggi passa il giorno aziendale.
+2. **L'unità base.** La legge con `fn_get_uom_base`; se l'articolo non esiste, restituisce
    NULL.
-2. **La base stessa.** Se l'unità richiesta è la base, il fattore è 1, senza guardare la
-   mappatura.
-3. **La mappatura dell'articolo.** La riga di `articoli_uom_operativa` attiva per l'articolo e
-   l'unità, in vigore oggi.
-4. **La conversione globale diretta**, dall'unità richiesta alla base, attiva e in vigore.
-5. **La conversione globale inversa**, dalla base all'unità richiesta: il fattore è il suo
-   reciproco.
+3. **La base stessa.** Se l'unità richiesta è la base, il fattore è 1, a ogni data.
+4. **La mappatura dell'articolo** alla data, letta da `fn_uom_operativa_alla_data`: la riga
+   attiva di `articoli_uom_operativa` la cui validità contiene quel giorno.
+5. **La conversione generale** fra le due unità, attiva e in vigore quel giorno. Ce n'è al più
+   una per coppia di unità, in un verso o nell'altro: se è scritta dall'unità richiesta verso
+   la base vale il suo fattore, se è scritta al contrario il suo reciproco.
 6. **Niente**: NULL.
 
-«In vigore oggi» vuol dire alla data operativa dell'azienda (`script.fn_data_operativa`),
-non alla data di un documento: la funzione non prende una data.
+Le conversioni generali valgono solo fra unità della stessa tipologia: lo garantisce la
+tabella stessa, e la funzione non lo ricontrolla.
 
-Le conversioni globali sono già limitate a unità della stessa famiglia dalla tabella stessa:
-la funzione non lo ricontrolla.
+---
+
+### ⭐ Una sede per il fattore
+
+La chiama il trigger della quantità delle righe di vendita, alla data del documento. Quando
+la funzione risponde NULL il trigger rifiuta la riga: una quantità base inventata è peggio di
+nessuna.
 
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Nessuna funzione del database la chiama.** Il calcolo della quantità sulle righe di
-  vendita lo fa `script.trgfn_qta_from_operativa`, che ripete solo il gradino della mappatura
-  e, se non la trova, usa il fattore 1 senza errore. Le due regole sono già in disaccordo: qui
-  un'unità senza mappatura trova la conversione globale o restituisce NULL, là vale 1.
-  Fuori dal database la chiama solo un metodo del repository del backend, che a sua volta
-  non ha chiamanti.
-* **Fra due conversioni che si contraddicono sceglie la diretta in silenzio.** Per la stessa
-  coppia possono essere attive insieme A → B e B → A con fattori incoerenti: vince la diretta.
-* Un NULL non dice perché manca il fattore (articolo inesistente o nessuna conversione).
+* Un NULL non dice perché manca il fattore (articolo inesistente, data mancante o nessuna
+  conversione). Il trigger della quantità lo spiega da sé nell'errore.
+* Fuori dal database la chiamano due metodi del repository del backend, scritti per la firma
+  senza data e senza chiamanti: con la firma nuova non funzionano più, e vanno ritirati.
 
 ---
 
@@ -65,7 +66,9 @@ la funzione non lo ricontrolla.
 * `db/pgtap/catalogo/test-fn-get-uom.sql` — i rami uno per uno, su un mondo costruito dal
   test: fattore 1 sulla base, fattore dalla mappatura, conversione diretta, conversione
   inversa, NULL senza conversioni; con la mappatura spenta, la funzione ricade sulla
-  conversione globale.
+  conversione generale.
+* `db/pgtap/catalogo/test-uom-fattore-e-regole-v1.sql` — la mappatura versionata letta a due
+  date, la conversione nei due versi, il NULL senza conversione.
 
 ---
 
@@ -74,6 +77,8 @@ la funzione non lo ricontrolla.
 * 2025-11-03 — nasce, con la sola mappatura dell'articolo.
 * 2026-01-13 — aggiunge il ripiego sulle conversioni globali, diretta e inversa.
 * 2026-10-09 — «oggi» diventa la data nel fuso dell'azienda invece della data della sessione.
+* 2026-11-09 — prende la data in coda alla firma e la chiama il trigger della quantità; la
+  conversione generale è una per coppia (brief-db-revisione-catalogo, giro 2).
 
 ---
 

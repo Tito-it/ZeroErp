@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -163,7 +163,9 @@ Ogni riga è una voce di merce consegnata:
 
 * **articolo** (`articolo_id`) e **descrizione**;
 * **quantità** in doppia unità: **operativa** (`qta_operativa` +
-  `uom_operativa_id`) e **base** (`quantita`, calcolata da `factor_to_base`);
+  `uom_operativa_id`) e **base** (`quantita`, calcolata da `factor_to_base`: quello
+  copiato dall'ordine, oppure quello dell'articolo o della conversione generale alla data
+  della bolla; senza fattore la riga non si salva);
 * **prezzo** (`prezzo_unitario`) e **IVA** (`iva_id`) — **opzionali**: un DDT può
   essere di **solo trasporto** (righe senza prezzo).
 
@@ -174,7 +176,7 @@ un'offerta). La merce è giudicata
 dalla **natura con cui la riga è stata venduta**: una riga nata da un ordine porta la natura di lì, anche
 se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
 documenti ([`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga)), e
-il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti** (dal 2026-10-14) non si mette in nessuna riga: va prima completata la sua distinta.
+il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti in vigore da oggi in poi** non si mette in nessuna riga: va prima completata la sua distinta. Una distinta tutta chiusa nel passato non basta; i componenti della riga li sceglie poi la distinta alla data del documento.
 
 **Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
 

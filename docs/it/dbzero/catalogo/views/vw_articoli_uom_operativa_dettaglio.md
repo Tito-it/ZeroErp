@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/vw_articoli_uom_operativa_dettaglio.md" %}
 # 🔍 View `vw_articoli_uom_operativa_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Le unita' operative di un articolo per la lista e il drawer: le righe di catalogo.articoli_uom_operativa con codice e descrizione dell'unita' e dell'articolo, e la capability della cancellazione: puo_eliminarsi e' falsa sulla riga dell'unita' base (motivo_non_eliminabile UOM_BASE_NON_ELIMINABILE), che il database non lascia togliere (catalogo.trgfn_articoli_uom_operativa_guard_base). Nessuna security_invoker: le tabelle lette non hanno RLS.
+
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
 <div data-search-exclude markdown>
@@ -16,10 +20,8 @@ SELECT auo.id,
     auo.is_purchase_uom,
     auo.is_logistic_uom,
     auo.qty_step,
-    auo.rounding_mode,
     auo.max_decimals,
     auo.forbid_fraction,
-    auo.require_lot,
     auo.gtin,
     auo.valido_dal,
     auo.valido_al,

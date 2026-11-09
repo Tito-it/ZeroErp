@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.articoli_uom_operativa: la mappatura e' versionata, la riga base e' fissa,
+#   rounding_mode e require_lot si ritirano (D3, D12, D13; Q3, Q4).
+#
+#   D13 (Q3): UNIQUE (articolo_id, uom_id) al posto di un vincolo che non conosceva il
+#   tempo: le date c'erano, ma il pattern «chiudi e inserisci» non si poteva usare.
+#   Ora UNIQUE ... WITHOUT OVERLAPS, come la distinta.
+#   D12: la riga base ha fattore 1 e nessuna data (chk_articoli_uom_operativa_base_fissa);
+#   unita', is_base e cancellazione li governa il guard di -04.
+#   D3 (Q4): rounding_mode e require_lot non hanno lettori (il lotto e'
+#   catalogo.articoli.requires_lotto); max_decimals resta e lo applica il trigger della
+#   quantita' (-07). Il CHECK ck_artuomop_rounding_mode se ne va con la colonna.
+#   La vista vw_articoli_uom_operativa_dettaglio proietta le due colonne: si toglie qui e
+#   si ricrea in -03.
+#   ⚠️ dbdev: la riga base dell'articolo ART_TEST_BASE (id 9001) ha valido_dal: il CHECK
+#   nuovo la rifiuta. Va corretta a mano prima dell'apply (Tid, 2026-11-09).
+#   Rollback: colonne coi default e il CHECK di prima (i valori non tornano), vincolo
+#   unico e COMMENT di prima.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261111-02-alter-articoli-uom-operativa-versionata-mctit.yaml
+
+  - changeSet:
+      id: 20261111-02-alter-articoli-uom-operativa-versionata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        articoli_uom_operativa: UNIQUE WITHOUT OVERLAPS, riga base fissa, via rounding_mode e require_lot. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'catalogo' AND table_name = 'articoli_uom_operativa'
+                 AND column_name IN ('rounding_mode', 'require_lot')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW catalogo.vw_articoli_uom_operativa_dettaglio;
+
+              ALTER TABLE catalogo.articoli_uom_operativa
+                  DROP COLUMN rounding_mode,
+                  DROP COLUMN require_lot;
+
+              ALTER TABLE catalogo.articoli_uom_operativa
+                  ADD CONSTRAINT chk_articoli_uom_operativa_base_fissa
+                  CHECK (NOT is_base OR (factor_to_base = 1 AND valido_dal IS NULL AND valido_al IS NULL));
+
+              ALTER TABLE catalogo.articoli_uom_operativa DROP CONSTRAINT uq_artuomop_articolo_uom;
+
+              ALTER TABLE catalogo.articoli_uom_operativa
+                  ADD CONSTRAINT uq_articoli_uom_operativa_no_overlap
+                  UNIQUE (articolo_id, uom_id, validita WITHOUT OVERLAPS);
+
+              COMMENT ON TABLE catalogo.articoli_uom_operativa IS
+                  'Le unita'' operative ammesse per ciascun articolo, col fattore verso l''unita'' base (factor_to_base: quante unita'' base vale una unita'' operativa) e le regole della quantita'' (qty_step, max_decimals, forbid_fraction). Versionata: per articolo e unita'' le validita'' non si sovrappongono (uq_articoli_uom_operativa_no_overlap), e il fattore si legge alla data del documento (catalogo.fn_uom_operativa_alla_data). La riga is_base e'' l''unita'' dell''articolo: fattore 1, nessuna data, la crea catalogo.trgfn_articoli_seed_uom_base e la protegge catalogo.trgfn_articoli_uom_operativa_guard_base. Un''unita'' senza riga qui si converte con catalogo.unita_misura_conversioni (catalogo.fn_get_uom_factor).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.max_decimals IS
+                  'Quanti decimali ammette qta_operativa in questa unita'' (0-6; NULL = nessun limite). Lo applica script.trgfn_qta_from_operativa: oltre, E_QTA_OPERATIVA_DECIMALI.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.is_base IS
+                  'TRUE sulla riga dell''unita'' base dell''articolo (una per articolo, sull''unita'' di catalogo.articoli.uom_id, fattore 1, senza date: chk_articoli_uom_operativa_base_fissa).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.factor_to_base IS
+                  'Quante unita'' base vale una unita'' operativa (> 0; sulla riga base 1). Lo legge catalogo.fn_get_uom_factor alla data del documento.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.valido_dal IS
+                  'Primo giorno di validita'' della mappatura (incluso; NULL = da sempre).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.valido_al IS
+                  'Ultimo giorno di validita'' della mappatura (incluso; NULL = senza fine).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.validita IS
+                  'Il periodo [valido_dal, valido_al], generato. Per articolo e unita'' i periodi non si sovrappongono (uq_articoli_uom_operativa_no_overlap).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli_uom_operativa DROP CONSTRAINT uq_articoli_uom_operativa_no_overlap;
+
+              ALTER TABLE catalogo.articoli_uom_operativa ADD CONSTRAINT uq_artuomop_articolo_uom UNIQUE (articolo_id, uom_id);
+
+              ALTER TABLE catalogo.articoli_uom_operativa DROP CONSTRAINT chk_articoli_uom_operativa_base_fissa;
+
+              ALTER TABLE catalogo.articoli_uom_operativa
+                  ADD COLUMN rounding_mode character varying(16) DEFAULT 'HALF_UP'::character varying,
+                  ADD COLUMN require_lot boolean DEFAULT false;
+
+              ALTER TABLE catalogo.articoli_uom_operativa
+                  ADD CONSTRAINT ck_artuomop_rounding_mode
+                  CHECK (((rounding_mode)::text = ANY (ARRAY[('UP'::character varying)::text, ('DOWN'::character varying)::text, ('HALF_UP'::character varying)::text, ('HALF_DOWN'::character varying)::text, ('HALF_EVEN'::character varying)::text])));
+
+              COMMENT ON TABLE catalogo.articoli_uom_operativa IS
+                  'Mappa le UoM operative ammesse per ciascun articolo e il fattore di conversione verso la UoM base (stock).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.rounding_mode IS
+                  'Modalità di arrotondamento (UP, DOWN, HALF_UP, HALF_DOWN, HALF_EVEN).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.require_lot IS
+                  'Se TRUE richiede lotto nei documenti per questa UoM/articolo.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.max_decimals IS
+                  'Numero massimo di decimali ammessi per qta_operativa.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.is_base IS
+                  'TRUE per la UoM base dell''articolo (una sola per articolo).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.factor_to_base IS
+                  'Fattore di conversione UoM operativa → UoM base (per la base = 1).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.valido_dal IS
+                  'Validità dal (inclusivo).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.valido_al IS
+                  'Validità al (inclusivo).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW catalogo.vw_articoli_uom_operativa_dettaglio AS
+               SELECT auo.id,
+                  auo.articolo_id,
+                  auo.uom_id,
+                  auo.is_base,
+                  auo.factor_to_base,
+                  auo.is_sell_uom,
+                  auo.is_purchase_uom,
+                  auo.is_logistic_uom,
+                  auo.qty_step,
+                  auo.rounding_mode,
+                  auo.max_decimals,
+                  auo.forbid_fraction,
+                  auo.require_lot,
+                  auo.gtin,
+                  auo.valido_dal,
+                  auo.valido_al,
+                  auo.validita,
+                  auo.attivo,
+                  auo.meta,
+                  auo.user_insert,
+                  auo.user_update,
+                  auo.data_insert,
+                  auo.data_update,
+                  auo.tx_id,
+                  auo.storicizza,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  NOT auo.is_base AS puo_eliminarsi,
+                      CASE
+                          WHEN auo.is_base THEN 'UOM_BASE_NON_ELIMINABILE'::text
+                          ELSE NULL::text
+                      END AS motivo_non_eliminabile
+                 FROM catalogo.articoli_uom_operativa auo
+                   LEFT JOIN catalogo.unita_misura u ON u.id = auo.uom_id
+                   LEFT JOIN catalogo.articoli a ON a.id = auo.articolo_id;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_uom_operativa_dettaglio TO zeroerp_app;

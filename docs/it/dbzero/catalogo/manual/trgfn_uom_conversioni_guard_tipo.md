@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_uom_conversioni_guard_tipo`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [catalogo.trgfn_unita_misura_guard_tipo_update](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo_update) — l'altra metà della regola, sul lato delle unità
+> * [catalogo.trgfn_unita_misura_guard_tipo](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo) — l'altra metà della regola, sul lato delle unità
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
 
 ---
@@ -35,32 +35,27 @@ posti.
 Prima di ogni inserimento, e degli aggiornamenti che scrivono una delle due unità. Un
 aggiornamento del solo fattore o del periodo non tocca la famiglia, e il controllo non gira.
 
-Legge la famiglia delle due unità e rifiuta se sono diverse. Ogni unità ha sempre una
-famiglia (la colonna è obbligatoria, con la sua chiave), quindi il ramo che lascia passare
-quando una famiglia non si trova scatta solo per un'unità che non esiste, e in quel caso
-la riga la rifiuta subito dopo la chiave verso `unita_misura`.
+Legge la famiglia delle due unità e rifiuta se sono diverse, con
+`E_UOM_CONVERSIONE_TIPO_DIVERSO`: la frase nomina le due unità e le due famiglie. Se una delle
+due unità non esiste lascia passare, e la riga la rifiuta subito dopo la chiave verso
+`unita_misura`.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### ⭐ Al riparo dalla concorrenza
 
-* **L'errore esce come errore tecnico.** Il codice è `E_GENERICO`, con una frase libera come
-  messaggio: all'operatore arriva come errore tecnico, e il backend non lo distingue da
-  qualunque altro errore generico. In `error_log` la causa si riconosce solo dal contesto
-  (le due unità e le due famiglie).
-* **In `error_log` c'è il nome del trigger, non quello della funzione**:
-  `trg_uom_conversioni_a10_guard_tipo_ins_upd`. Chi cerca dal nome della funzione non trova
-  le righe.
-* **Non è al riparo dalla concorrenza.** Legge la famiglia delle unità senza bloccarle: se
-  un'altra transazione sta cambiando la famiglia di una delle due, il guard vede quella
-  vecchia, nessuna delle due transazioni aspetta l'altra, e può nascere una conversione fra
-  famiglie diverse.
+Le due unità si leggono bloccandole in condivisione (`FOR SHARE`). Se un'altra transazione sta
+cambiando la famiglia di una delle due, il guard aspetta che finisca e legge la famiglia
+nuova; se è la conversione ad arrivare prima, il cambio di famiglia aspetta lei, e poi trova la
+conversione e si ferma (`E_UOM_TIPO_IN_USO`, dal guard delle unità). In nessun ordine nasce
+una conversione fra famiglie diverse.
 
 ---
 
 ### Codici errore
 
-* `E_GENERICO` — le due unità della conversione sono di famiglie diverse. Area `catalogo`.
+* `E_UOM_CONVERSIONE_TIPO_DIVERSO` — le due unità della conversione sono di famiglie diverse. Area
+  `catalogo`; in `error_log` col nome della funzione.
 
 ---
 
@@ -68,12 +63,16 @@ la riga la rifiuta subito dopo la chiave verso `unita_misura`.
 
 * `db/pgtap/catalogo/test-uom-tipi-global-conversioni-v1.sql` — una conversione fra due unità
   della stessa famiglia passa; una fra massa e lunghezza è rifiutata.
+* `db/pgtap/catalogo/test-uom-fattore-e-regole-v1.sql` — il codice della famiglia diversa,
+  dalla frase del messaggio.
 
 ---
 
 ### Note di migrazione
 
 * 2026-04-28 — nasce con le famiglie delle unità.
+* 2026-11-09 — un codice registrato al posto di `E_GENERICO`, il nome della funzione nel log,
+  le unità lette `FOR SHARE` (brief-db-revisione-catalogo, giro 2).
 
 ---
 

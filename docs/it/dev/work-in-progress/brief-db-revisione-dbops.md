@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-09 (giro 12 scritto e provato su scratch e dbdev, da applicare)
+## ⏭️ Chi riparte — aggiornato al 2026-11-09 (S-BE-2, S-BE-3 e giro 13 applicati, pgTAP verdi)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -88,9 +88,13 @@ escono; le tre FK di N2 `CON_INDICE`; il resto ok. **Seguito scritto e provato**
 **N1 deciso** (Tid, 2026-11-09: strada (b)). **Giro 11 scritto e provato** su scratch e dbdev (§30.4): `20261110-56` … `-58`,
 un pgTAP nuovo. **Giro 11 applicato** (Tid, 2026-11-09): migrazione su dbdev e scratch, pgTAP di §30.4 verdi (§30.5).
 **Via al giro 12** (Tid, 2026-11-09: «procedi prossimo step»): Q15, §31. Censimento fatto, nodi N1-N3 decisi e numeri dati
-(Tid, 2026-11-09, §31.2): `20261110-59` … `-61`, `-80` … `-84`, e `-99` al posto del `-85` preso da `catalogo`.
+(Tid, 2026-11-09, §31.2): `20261110-59` … `-61`, `-80` … `-84`, e `-94` (rinumerato da Tid) al posto del `-85` preso da `catalogo`.
 **Giro 12 scritto e provato** su scratch e dbdev (§31.3-31.4): nove changeSet, i due CSV dei codici, un pgTAP nuovo.
-**Riparte: Tid** con l'apply del giro 12 e i pgTAP di §31.6; il commit del giro 11 se non è ancora fatto. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+**Giri 11 e 12 applicati e committati** da Tid (`df2fc72b53`, PR #75). **S-BE-2 e S-BE-3 scritti e provati**
+(§32, `20261110-95` … `-98`). N4 deciso (strada a). **Giro 13 scritto e provato** (§33, `20261111-14` … `-17`).
+**Applicati** da Tid (2026-11-09): S-BE-2, S-BE-3 e giro 13 su dbdev e scratch, pgTAP di §32.4 e §33.5 verdi (§33.6).
+**Riparte: team BE** con BE8 (§33.4, subito: il backend chiama una firma che non c'è più), S-BE-2 e S-BE-3 lato BE
+(§32.4 punto 3). **Tid** col commit. Poi la sessione DB col giro 14 (§8), al via di Tid. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -217,6 +221,11 @@ ancora le tabelle).
 | 9-septuagies-septies | ✅ sessione DB | Giro 12 (Q15): censimento, nodi N1-N3 decisi da Tid, scritto e provato | §31 | 9-septuagies-quinquies |
 | 9-septuagies-octies | **Tid** ⏭️ | Apply del giro 12, pgTAP di §31.6, commit | §31.6 | 9-septuagies-septies |
 | 9-septuagies-nonies | team BE | BE6 del giro 12: `E_CONTATTI_SOGGETTO_OBBLIGATORIO` nelle politiche d'errore, dopo l'apply | §31.5 | 9-septuagies-octies |
+| 9-octogies | ✅ sessione DB | S-BE-2 e S-BE-3 verificati, N4 deciso (a), scritti e provati (`20261110-95` … `-98`) | §32 | 9-septuagies-octies |
+| 9-octogies-semel | ✅ sessione DB | Giro 13 (Q10) scritto e provato (`20261111-14` … `-17`) | §33 | 9-octogies |
+| 9-octogies-bis | ✅ Tid | Apply di S-BE-2, S-BE-3 e giro 13, pgTAP verdi (2026-11-09) | §33.6 | 9-octogies-semel |
+| 9-octogies-ter | **team BE** ⏭️ | BE8 (giro 13), S-BE-2 e S-BE-3 lato BE, BE6 dei codici `E_CONTATTI_SOGGETTO_OBBLIGATORIO` e `E_SOGGETTO_ID_FISCALE_IMMUTABILE` | §32.4, §33.4 | 9-octogies-bis |
+| 9-octogies-quater | **Tid** ⏭️ | Commit di §32 e §33; via al giro 14 | §8 | 9-octogies-bis |
 | 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
@@ -233,7 +242,9 @@ ancora le tabelle).
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
 **Decisioni aperte di Tid:** nessuna; le scelte dentro il giro 12 sono in §31.3, da guardare. Nessuna sul giro 10c.
-**Da committare:** il giro 11 (§30.4), applicato e verde; il giro 12 (§31) dopo l'apply. Il giro 10d è committato (`2050435065`). ⚠️ Nel working tree ci sono anche i file del cantiere `catalogo` (`20261110-62` …): non entrano nel commit di questo giro. Il blocco 10c-4 è committato (`48b5d39354`). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
+**Da committare:** S-BE-2, S-BE-3 (§32) e il giro 13 (§33), applicati e verdi. ⚠️ `codici_errore.csv`,
+`messaggi_errore.csv` e `test-parameters-uom-defaults-cascade-v1.sql` portano anche modifiche del cantiere `catalogo`.
+I giri 11 e 12 sono committati (`df2fc72b53`). Il giro 10d è committato (`2050435065`). ⚠️ Nel working tree ci sono anche i file del cantiere `catalogo` (`20261110-62` …): non entrano nel commit di questo giro. Il blocco 10c-4 è committato (`48b5d39354`). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
 (`cdc563dedb`, 2026-11-08). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
 è committato (`d8492eeb77`, 2026-11-08), `-65` compreso, che è ancora da applicare. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
@@ -1746,7 +1757,7 @@ Guida `riclassificazione-vie.md`.
 
 #### 14.7.5 Il primo apply si è fermato sul `-05` (Tid, 2026-11-07)
 
-«SQL Precondition failed. Expected '1' got '0'» sul `-05`, dopo `-01` … `-04` entrati su dbdev e sullo
+«SQL Precondition failed. Expected '1' got '0'» sul `-05`, dopo `-14` … `-17` entrati su dbdev e sullo
 scratch. **Causa:** la fusione delle vie del blocco 2b nomina `config.stradario.obsoleto_dal`, sia nella
 preCondition sia in un `DECLARE … %TYPE`, che il `CREATE FUNCTION` risolve subito; la colonna nasce in
 `00_schema/config/20261107-09`. Il migrate esegue in **ordine di numero su tutti i livelli**
@@ -4909,7 +4920,7 @@ Fatti datati, non motivi: il perimetro lo decide Q15 (chi può sollevare un codi
 Numeri (Tid, 2026-11-09): `20261110-59` … `-61` e `20261110-80` … `-85`.
 
 ⚠️ **Numeri, correzione del 2026-11-09.** Il cantiere `catalogo` ha scritto `20261110-85` … `-93` nello stesso momento:
-il `-85` di questo giro è passato a **`20261110-99`**. Questo giro usa `-59` … `-61`, `-80` … `-84`, `-99`.
+il `-85` di questo giro è passato a `-99`, poi Tid l'ha rinumerato al primo libero, **`20261110-94`**. Questo giro usa `-59` … `-61`, `-80` … `-84`, `-94`.
 
 ### 31.3 Che cosa è scritto
 
@@ -4923,7 +4934,7 @@ il `-85` di questo giro è passato a **`20261110-99`**. Questo giro usa `-59` �
 | `20_code/dbops/20261110-82` | `vw_bersagli_non_dichiarati`: il BB, prefiltro allargato come sopra; COMMENT |
 | `20_code/dbops/20261110-83` | `vw_stati_check_scrittori`: la terza copia del filtro (JOIN `pg_language` + elenco a mano) si ritira, legge il BB; perimetro invariato |
 | `20_code/dbops/20261110-84` | `vw_codici_errore_forme_condizione`: solo il COMMENT, il perimetro plpgsql dichiarato e perché (N2) |
-| `20_code/script/20261110-99` | `script.fn_get_contatti` in plpgsql: `IF p_soggetto_id IS NULL` → `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (canale `parametro`, variadico vuoto esplicito); la query di prima senza la CTE morta; firma, `RETURNS TABLE`, GRANT invariati; COMMENT |
+| `20_code/script/20261110-94` | `script.fn_get_contatti` in plpgsql: `IF p_soggetto_id IS NULL` → `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (canale `parametro`, variadico vuoto esplicito); la query di prima senza la CTE morta; firma, `RETURNS TABLE`, GRANT invariati; COMMENT |
 | `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, `DATO_ERRATO` (come gli altri `*_OBBLIGATORIO`), messaggio id **1464** «Indicare il soggetto di cui leggere i contatti.» |
 
 **Le scelte che non si vedono dal titolo (da guardare, Tid):**
@@ -4989,7 +5000,7 @@ funzione nuova compare alla prossima generazione. `linee-guida-sql.md` non descr
 
 ### 31.6 Per Tid
 
-1. **Apply** di `20261110-59` … `-61`, `-80` … `-84`, `-99` e dei due CSV dei codici, su dbdev e scratch.
+1. **Apply** di `20261110-59` … `-61`, `-80` … `-84`, `-94` e dei due CSV dei codici, su dbdev e scratch.
 2. **pgTAP:** `dbops/test-presidi-codici-corpo-leggibile-v1` (runner owner), `dbops/test-punti-canale-campo-v1`,
    `dbops/test-vw-funzioni-check-codici-sotto-jit-v1`, `script/test-rubinetto-primo-motivo-v1`,
    `dbops/test-stati-check-scrittori-v1`, `dbops/test-vw-bersagli-non-dichiarati`, `anagrafiche/test-contatti-soggetto-cliente`,
@@ -4997,3 +5008,184 @@ funzione nuova compare alla prossima generazione. `linee-guida-sql.md` non descr
 3. **Commit:** solo i file del giro. ⚠️ `codici_errore.csv` e `messaggi_errore.csv` hanno nel working tree anche
    modifiche del cantiere `catalogo` (righe `E_DOC_COMPONENTE_BOM_NON_VALIDA`, `E_ARTICOLO_KIT_SENZA_COMPONENTI`):
    di questo giro è solo l'ultima riga di ciascuno.
+
+## 32. Le segnalazioni del BE del 2026-11-09 (S-BE-2, S-BE-3): verifica della sessione DB
+
+Verificate sul catalogo di scratch e dbdev (2026-11-09). Si sviluppano dopo il via di Tid sui nodi.
+
+**S-BE-2 — confermata.** La lista `amm.processi` (`ui.lista_definizione` id 66) ha in `lista_colonna.csv` la sola
+colonna `attivo` (id 723). Il COMMENT di `dbops.processi.attivo` dice già che `attivo` non dice se il processo è vivo:
+`attivo` è «riferimento valido», il ritiro sta in `obsoleto_dal` (`script.fn_e_obsoleto`). Fatto datato: un processo
+su 29 è `attivo` e ritirato, su tutti e due i database. La correzione è solo nel seed (una riga `vivo` in
+`lista_colonna.csv`, e il preset se `vivo` va nella vista standard): nessun changeSet.
+Nodo per Tid: `attivo` resta a video accanto a `vivo`?
+
+**S-BE-3 — confermata.** Su `anagrafiche.soggetti` nessun trigger blocca `codice_fiscale` o `partita_iva`: il lock
+generico (`trg_soggetti_a10_lock_columns_upd`) copre solo `codice`; i due trigger che leggono CF e P.IVA
+(`trgfn_soggetti_guard_cf_piva_obbligatori`, `trgfn_soggetti_valida_cf_piva_dispatch`) controllano presenza e
+forma, non il cambio. `dbops.lock_columns_conditional` ha righe solo per `catalogo.articoli`, e lo applica solo
+`catalogo.fn_articolo_colonne_struttura`: una riga per i soggetti senza un guard sarebbe la stessa promessa senza
+esecutore, come dice la segnalazione. La chiave d'unicità è `uq_soggetto_idstato_id_fiscale_univoco`
+(`stato_id`, `id_fiscale_univoco_cf_piva`). Nessuna funzione aggiorna CF o P.IVA di un soggetto: lo scrittore è la
+PATCH del backend.
+Nodi per Tid: (1) l'errore di battitura su un CF valorizzato — come si corregge, se il campo è immutabile;
+(2) il riempimento di un campo vuoto è ammesso (la lettura della sessione BE); (3) i numeri dei changeSet.
+
+**Fuori dal DB:** la pagina auto-generata di `script.fn_e_obsoleto` va rigenerata (COMMENT del giro 9).
+
+### 32.1 Le decisioni (Tid, 2026-11-09)
+
+S-BE-2 come da proposta: `vivo` visibile nella vista standard, `attivo` resta fra le colonne selezionabili ma non
+visibile di default. S-BE-3: (1) un CF o una P.IVA scritti li cambia solo il SUPER_ADMIN; (2) un campo vuoto si
+riempie; (3) la forma proposta. La pagina di `script.fn_e_obsoleto` non era vecchia per sé: era il **COMMENT vivo**
+che diceva ancora «Non è la regola dei processi», e la pagina generata lo ricopia.
+
+Numeri: `20261110-95` … `-98`, occupati con file scheletro appena decisi (il `-85` di §31 era andato a `catalogo`).
+
+### 32.2 Che cosa è scritto
+
+| Dove | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261110-95` | La regola, in un posto: `anagrafiche.fn_id_fiscale_bloccato(valore)` (scritto e chi agisce non è SUPER_ADMIN: `script.fn_is_super_admin` su `app.current_user_id`, senza utente vale no) e `anagrafiche.fn_soggetto_id_fiscale_bloccato(soggetto, colonna)` (la stessa letta sulla riga, per il form) |
+| `20_code/anagrafiche/20261110-96` | Il guard `anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile`, `trg_soggetti_a10_guard_id_fiscale_immutabile_upd` BEFORE UPDATE OF `codice_fiscale`, `partita_iva`; legge la regola sul valore OLD; rifiuto `E_SOGGETTO_ID_FISCALE_IMMUTABILE` con `campo` = la colonna |
+| `80_data/changelog/20261110-97` | Le due righe di `dbops.lock_columns_conditional` per `anagrafiche.soggetti`, con la condizione `fn_soggetto_id_fiscale_bloccato`: il form spegne ciò che il guard rifiuta |
+| `20_code/script/20261110-98` | Il COMMENT di `script.fn_e_obsoleto`: è anche la regola del ritiro dei processi; via l'elenco dei lettori per nome (era già incompleto) e il nome del brief |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_SOGGETTO_ID_FISCALE_IMMUTABILE`, `CONFLITTO_STATO` (come `E_CODICE_NON_MODIFICABILE`), messaggio id **1465** col segnaposto del dato |
+| `ui/lista_colonna.csv`, `ui/lista_preset_colonna.csv` | S-BE-2: la colonna `vivo` (id **1168**, boolean, filtrabile, ordinabile) della lista 66; nel preset 66 `vivo` visibile (ordine 85), `attivo` non più visibile |
+| `db/pgtap/anagrafiche/test-soggetti-id-fiscale-immutabile-v1.sql` | Nuovo, 11 test (app, contesto operatore e un SUPER_ADMIN costruiti) |
+| `db/pgtap/anagrafiche/test-billing-account-guard-cf-confrontabile-v1.sql` | La preparazione che svuota CF e P.IVA di due soggetti la fa un SUPER_ADMIN costruito, poi si torna all'operatore |
+
+**Le prove** (scratch e dbdev, SQL estratto, dopo la riga `BEGIN;`, transazione annullata): il pgTAP nuovo 11/11 su
+tutti e due. **La prova del rosso:** con il guard non montato i test 1-4, 6 e 11 sono rossi. Regressione «senza →
+con» su 19 pgTAP vicini (soggetti, lock e form, liste, codici, riferimenti morti): stesso esito, salvo i due di sotto.
+I rossi che restano uguali sono i test «come app» lanciati da owner, dichiarati nel loro nome. Guardrail verdi.
+
+**Doc** (2026-11-09): pagine nuove `anagrafiche/manual/trgfn_soggetti_guard_id_fiscale_immutabile.md` e
+`anagrafiche/manual/fn_id_fiscale_bloccato.md`; riallineate `soggetti.md` (anche la definizione di
+`id_fiscale_univoco_cf_piva`, che diceva `COALESCE` e non l'unione dei due), `trgfn_soggetti_guard_cf_piva_obbligatori.md`,
+`dbops/manual/lock_columns_conditional.md`, `dbops/manual/fn_non_editable_fields.md`. Nessuna pagina manual descrive le
+colonne della lista dei processi né ripeteva il falso di `fn_e_obsoleto`. Restano in `soggetti.md`, da guardare in un
+giro di doc: due frasi su `tipo_soggetto` (rimosso) e il link `/dbzero/config/tipi_soggetto_dettaglio` senza `/tabelle/`.
+
+### 32.3 N4: la ditta individuale che diventa privato — ✅ deciso (Tid, 2026-11-09: strada a)
+
+`anagrafiche/test-soggetti-sesso-policy-v1`, test 15: una ditta individuale passa a privato **togliendo la P.IVA**
+(`tipo_soggetto_dettaglio_id` → PR, `partita_iva = NULL`). Con la regola nuova l'operatore non può svuotare la
+P.IVA, quindi il passaggio lo fa solo il SUPER_ADMIN, e il test riceve `E_SOGGETTO_ID_FISCALE_IMMUTABILE` invece del
+rifiuto sul sesso che vuole provare.
+* (a) il passaggio resta al SUPER_ADMIN (coerente con la decisione: la P.IVA esce dalla chiave d'unicità); il test
+  15 fa il passo da SUPER_ADMIN e continua a provare il sesso. **Scelta da Tid.** Fatto: il SUPER_ADMIN nasce con
+  le fixture (crearlo a metà file fa scattare il controllo differito degli indirizzi), il test 15 gira nel suo
+  contesto e poi si torna all'operatore; 20/20 su scratch e dbdev, senza e con.
+* (b) svuotare la P.IVA è ammesso quando la natura nuova non la prevede (cessazione dell'attività): un'eccezione
+  dentro la regola, che va letta anche dal form.
+
+### 32.4 Per Tid e per il team BE
+
+1. **Apply** di `20261110-95` … `-98` e dei CSV (codici, `lista_colonna`, `lista_preset_colonna`).
+2. **pgTAP:** `anagrafiche/test-soggetti-id-fiscale-immutabile-v1`, `anagrafiche/test-billing-account-guard-cf-confrontabile-v1`,
+   `anagrafiche/test-soggetti-sesso-policy-v1`, `dbops/test-fn-non-editable-fields-conditional`,
+   `dbops/test-non-editable-fields-dal-lock-vivo-v1`, `ui/test-fn-resolve-lista-config`, `script/test-catalogo-messaggi-errore-completo`.
+3. **Team BE, dopo l'apply:** S-BE-2, `"vivo": _SQL_VIVO` in `PROCESSI_SORT_COLUMNS` e la cella (fino ad allora
+   `test_liste_configurabili_seed` vede la colonna nel seed e non nel backend); S-BE-3, via il gap di CF e P.IVA,
+   `record_id` al BB, il codice `E_SOGGETTO_ID_FISCALE_IMMUTABILE` sul campo nella PATCH e nelle politiche (BE6).
+
+## 33. Giro 13 — il livello «sessione» esce dagli override (Q10), 2026-11-09
+
+**Via di Tid (2026-11-09):** «puoi fare altro intanto, inizia dal 20261114», poi corretto: «volevo scrivere 20261111-14». Q10 era già deciso (§4): il livello esce
+dal modello, da tutte e due le catene. Numeri `20261111-14` … `-17`, occupati appena scelti.
+
+### 33.1 Il censimento (scratch e dbdev)
+
+* Leggono il livello: `script.fn_get_parameter_full` (il parametro `p_session_key` e il livello 5),
+  `script.fn_get_parameter_di_sessione` (la GUC `app.session_key`, che nessuno scrive). Chiamano la cascata con la
+  firma intera: `script.fn_list_parameters_for_user` (7 argomenti posizionali) e il backend (§33.4).
+* La colonna `config.parameter_overrides.session_key` sta in due vincoli: `uq_overrides_full_scope_v5` e
+  `chk_parameter_overrides_un_ambito`. ⚠️ `DROP COLUMN` cancella in silenzio i vincoli che la nominano: l'unicità
+  sparirebbe per intero, quindi si ricreano a mano.
+* Fatto datato: nessuna riga con `session_key` su tutti e due i database. `storico.parameter_overrides` non ha la
+  colonna. Nessuna vista e nessun trigger la legge.
+* `80_data/sql/config/parameter_overrides.csv`: un CSV orfano (solo l'intestazione, con `tenant_id` e
+  `session_key`, che non esistono più; nessun changeSet lo carica). Cancellato.
+
+### 33.2 Che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261111-14` | `fn_get_parameter_full` senza `p_session_key`: DROP + CREATE (cambia l'identità), cascata a sei livelli, firma e risultato a `%TYPE`, una firma sola; GRANT all'app ripetuto; COMMENT |
+| `20_code/script/20261111-15` | `fn_get_parameter_di_sessione`: non legge `app.session_key`, chiama la cascata **per nome**; COMMENT |
+| `20_code/script/20261111-16` | `fn_list_parameters_for_user`: chiama la cascata per nome; COMMENT (vincolo v6, via marcatori e brief) |
+| `00_schema/config/20261111-17` | Le righe di sessione si contano (con una sola si ferma); via i due vincoli, via la colonna; `uq_overrides_full_scope_v6` (NULLS NOT DISTINCT, cinque dimensioni) e `chk_parameter_overrides_un_ambito` (stesso nome, cinque dimensioni) ricreati; COMMENT dei vincoli e della tabella (diceva «tenant, user, sessione, funzione») |
+
+**Le scelte (da guardare, Tid):**
+1. **Il nome del vincolo cambia versione** (`_v5` → `_v6`), come le volte prima, perché cambia la definizione. Lo
+   nominano l'upsert del backend (`ON CONFLICT ON CONSTRAINT`) e tre pgTAP: questi sono aggiornati, il backend va
+   con BE8.
+2. **Il parametro tolto stava in mezzo** alla firma: un chiamante a 7 argomenti posizionali fallisce subito («la
+   funzione non esiste»), non legge in silenzio un valore sbagliato. I chiamanti del DB ora passano per nome.
+
+**pgTAP aggiornati:** `config/test-fn-get-parameter-full-categoria-cliente-v1` (test 4: emittente su funzione; test
+5: né la colonna né il parametro esistono più), `config/test-parameter-overrides-categoria-cliente-v1` (v6 presente,
+v3-v5 rimossi), `script/test-fn-list-parameters-for-user` (test 18 per nome), e l'upsert su v6 in
+`config/test-parameters-emittente-defaults-cascade`, `-uom-defaults-cascade-v1`, `-vendite-limiti-prezzi`.
+
+### 33.3 Le prove
+
+SQL estratto dagli YAML, dopo la riga `BEGIN;`, transazione annullata, scratch e dbdev.
+* **Con il giro, nessun rosso del giro** su: `config/test-fn-get-parameter-full-categoria-cliente-v1` (9),
+  `config/test-parameter-overrides-categoria-cliente-v1` (15), `script/test-fn-list-parameters-for-user` (18),
+  `script/test-fn-get-parameter-di-sessione-v1` (15), `script/test-fn-get-parameter-full-emittente` (9, il test 1
+  sulla firma viva a sei argomenti), `config/test-parameters-emittente-defaults-cascade`, `-vendite-limiti-prezzi`,
+  `config/test-parameter-overrides-fk-surrogate-dispatch-v1`, `config/test-parameters-ammette-override-v1`,
+  `config/test-parameters-tipo-valore-v1`, `dbops/test-vw-parameter-fk-surrogate-dangling-v1`,
+  `vendite/test-listini-in-scadenza-senza-successore-v1`, `config/test-fk-auth-user-ponte-django-v1`,
+  `dbops/test-nessun-timestamp-senza-fuso-v1`, `dbops/test-riferimenti-morti-v1`.
+* **La prova del rosso:** i pgTAP aggiornati, senza il giro, sono rossi sul modello vecchio (la firma, il vincolo
+  v6, la colonna).
+* Rossi che non sono del giro: `config/test-elimina-credenziale-v1` 18 (come app, lanciato da owner: uguale senza);
+  `config/test-parameters-uom-defaults-cascade-v1` 3 e 8: il file è già modificato dal cantiere `catalogo` per il
+  suo giro 2 (`20261111-13`, il ritiro di `CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE`), non ancora applicato; la versione
+  committata è verde. ⚠️ Nello stesso file c'è la riga `v6` di questo giro: al commit le due modifiche convivono.
+* Sullo scratch due corse sono morte su un deadlock con un'altra sessione (l'`ALTER TABLE` dell'innesto);
+  rilanciate a scratch libero, verdi.
+* Guardrail verdi.
+
+**Numeri, correzione del 2026-11-09:** Tid aveva scritto «20261114» per «20261111-14»; i quattro changeSet sono
+rinumerati `20261111-14` … `-17` (file, `logicalFilePath`, `id`, rimandi), e la data nei testi è la vera, 2026-11-09.
+
+**Doc** (2026-11-09): riallineate `script/manual/fn_get_parameter_full.md` (la sezione degli overload diventa la
+firma unica), `fn_get_parameter_di_sessione.md`, `fn_list_parameters_for_user.md`, `config/manual/parameter_overrides.md`,
+`parameters.md` (anche due esempi col vecchio modello `tenant_id` / `scope_type`), `vendite/manual/fn_get_limite_emissione_default.md`
+e la guida `configurazione-e-gestione-parametri.md` (cascata a sei livelli, «non esiste un override di sessione»).
+Restano in `parameters.md`, da guardare in un giro di doc: «tenant» alle righe ~102 e ~196 (vecchio modello, non la
+sessione).
+
+### 33.4 BE8 — il percorso intero (elenco chiuso, 2026-11-09)
+
+Dopo l'apply il backend chiama una firma che non esiste più e un vincolo che ha cambiato nome:
+1. `backend/apps/core/db/parameter_repository.py`
+   * `_SQL_RESOLVE` e `_SQL_RESOLVE_SE_DICHIARATO`: da 7 a 6 segnaposto, senza il `%s::text` della sessione
+     (ordine: codice, emittente, utente, gruppi, funzione, categoria);
+   * `get_parameter` e `get_parameter_se_dichiarato`: via il kwarg `session_key` e dalle liste dei parametri;
+   * `_DIMENSIONI_OVERRIDE`: via `"session_key"`;
+   * l'upsert (`ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5`, riga ~298) → `_v6`;
+   * i commenti delle righe ~39, ~90, ~121, ~265 (cascata a sei livelli, vincolo v6).
+2. `backend/apps/core/tests/services/test_parameter_repository_dimensioni.py:66` (l'asserzione sul nome v5) e il
+   commento della riga 7; `backend/apps/core/tests/db/test_parameter_overrides_db.py:14` (commento).
+3. `docs/it/dev/backend/catalogo-building-block-backend.md:360`: la cascata a sei livelli.
+Nessun chiamante passa `session_key=` oggi; `ai_assistant/services/tool_registry.py:160` chiama con un argomento
+solo e non cambia.
+
+### 33.5 Per Tid
+
+1. **Apply** di `20261111-14` … `-17` su dbdev e scratch (e la cancellazione del CSV orfano).
+2. **pgTAP:** quelli di §33.2, più `script/test-fn-get-parameter-di-sessione-v1`, `script/test-fn-get-parameter-full-emittente`,
+   `vendite/test-listini-in-scadenza-senza-successore-v1`, `dbops/test-riferimenti-morti-v1`.
+3. **Team BE:** BE8 (§33.4), subito dopo l'apply: fino ad allora la lettura dei parametri dal backend fallisce.
+
+### 33.6 Applicato (Tid, 2026-11-09)
+
+S-BE-2, S-BE-3 (`20261110-95` … `-98`, i CSV dei codici e della lista) e il giro 13 (`20261111-14` … `-17`, il CSV
+orfano tolto) applicati da Tid su dbdev e scratch; pgTAP di §32.4 e §33.5 verdi. Restano il commit e, al team BE,
+BE8 (§33.4), S-BE-2 e S-BE-3 lato BE (§32.4 punto 3) e BE6 dei due codici nuovi. Il giro 13 si chiude col commit;
+poi il giro 14 (§8), al via di Tid.

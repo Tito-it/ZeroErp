@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Override dei parametri per ambiti (tenant, user, sessione, funzione)
+> Override dei parametri di config.parameters, uno per ambito: utente, gruppo, emittente, categoria cliente o funzione (chk_parameter_overrides_un_ambito, uq_overrides_full_scope_v6). Li legge la cascata di script.fn_get_parameter_full. Un override e' configurazione che resta: non esiste un livello di sessione.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -15,7 +15,6 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
-| session_key | text | YES |  |
 | function_name | text | YES |  |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
@@ -35,7 +34,7 @@
 | FOREIGN KEY | fk_overrides_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_overrides_parameter | parameter_id |
 | PRIMARY KEY | parameter_overrides_pkey | id |
-| UNIQUE | uq_overrides_full_scope_v5 | parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, session_key, function_name |
+| UNIQUE | uq_overrides_full_scope_v6 | parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, function_name |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -44,7 +43,7 @@
 | ix_overrides_param_group | `CREATE INDEX ix_overrides_param_group ON config.parameter_overrides USING btree (parameter_id, django_group_id)` |
 | ix_overrides_param_user | `CREATE INDEX ix_overrides_param_user ON config.parameter_overrides USING btree (parameter_id, django_user_id)` |
 | parameter_overrides_pkey | `CREATE UNIQUE INDEX parameter_overrides_pkey ON config.parameter_overrides USING btree (id)` |
-| uq_overrides_full_scope_v5 | `CREATE UNIQUE INDEX uq_overrides_full_scope_v5 ON config.parameter_overrides USING btree (parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, session_key, function_name) NULLS NOT DISTINCT` |
+| uq_overrides_full_scope_v6 | `CREATE UNIQUE INDEX uq_overrides_full_scope_v6 ON config.parameter_overrides USING btree (parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, function_name) NULLS NOT DISTINCT` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

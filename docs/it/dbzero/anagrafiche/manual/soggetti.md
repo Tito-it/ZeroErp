@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti`
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+>
 >  👀 **Vedi anche** 
 >
 Guide generali: 
@@ -19,6 +21,8 @@ Approfondimento Funzioni:
 > 
 [anagrafiche.trgfn_soggetti_guard_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_soggetto_contatti)   
 >  [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
+>  [anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile](/dbzero/anagrafiche/manual/trgfn_soggetti_guard_id_fiscale_immutabile)   
+>  [anagrafiche.fn_id_fiscale_bloccato](/dbzero/anagrafiche/manual/fn_id_fiscale_bloccato)   
 >  [anagrafiche.trgfn_dati_societari_guard_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_guard_tipo_soggetto) 
 >  [anagrafiche.trgfn_soggetti_normalize](/dbzero/anagrafiche/funzioni/trgfn_soggetti_normalize) 
 >  [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
@@ -191,8 +195,21 @@ Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, D8 / I0.
 ### Campi Generati e Indicizzazione
 
 - **`id_fiscale_univoco_cf_piva`** (colonna generata)  
-  - Definito come `COALESCE(codice_fiscale, partita_iva)`.  
+  - Contiene CF e P.IVA insieme («CF P.IVA») quando ci sono tutti e due e sono diversi, altrimenti quello dei due che c'è.  
   - Garantisce l’univocità del soggetto all’interno dello stesso stato.
+
+- ⛔ **CF e P.IVA già scritti non si cambiano** (dal 2026-11-09)  
+  Sono la chiave d'unicità (`uq_soggetto_idstato_id_fiscale_univoco` su
+  `id_fiscale_univoco_cf_piva`): cambiarli farebbe di un soggetto un altro.  
+  - Un valore scritto non si cambia e non si svuota.  
+  - Un campo vuoto si può riempire: l'identità passa da incompleta a completa.  
+  - Riscrivere lo stesso valore non è un cambio.  
+  - L'errore di battitura lo corregge solo il SUPER_ADMIN.  
+  La regola è [anagrafiche.fn_id_fiscale_bloccato](/dbzero/anagrafiche/manual/fn_id_fiscale_bloccato);
+  la fa valere il guard
+  [trgfn_soggetti_guard_id_fiscale_immutabile](/dbzero/anagrafiche/manual/trgfn_soggetti_guard_id_fiscale_immutabile)
+  (`E_SOGGETTO_ID_FISCALE_IMMUTABILE`), e la stessa regola spegne i due campi nel form.
+  Prima esisteva solo nel form.
 
 - **`ragione_sociale_completa`** (colonna generata)  
   - Definito come `COALESCE(ragione_sociale, (cognome || ' ' || nome))`.  

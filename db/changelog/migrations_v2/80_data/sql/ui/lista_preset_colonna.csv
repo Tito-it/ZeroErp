@@ -661,7 +661,8 @@ preset_id,colonna_id,ordine,visibile,fissata
 66,720,60,t,f
 66,721,70,t,f
 66,722,80,t,f
-66,723,90,t,f
+66,723,90,f,f
+66,1168,85,t,f
 67,729,10,t,t
 67,730,20,t,f
 67,731,30,t,f

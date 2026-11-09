@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.ordini_righe, ddt_righe, resi_righe: factor_to_base perde il DEFAULT 1 (D23).
+#
+#   Il default si applica prima dei trigger BEFORE: una riga inserita senza fattore
+#   arrivava a script.trgfn_qta_from_operativa con fattore 1 gia' scritto, e la
+#   mappatura non si leggeva mai. Era la stessa regola sbagliata di D2 («quando non so,
+#   1»), su tre tabelle. Il NOT NULL resta: lo soddisfa il trigger, che scrive il
+#   fattore usato (fill_factor_to_base) prima del controllo. I documenti derivati
+#   copiano il fattore della sorgente e non cambiano.
+#   Rollback: il DEFAULT 1.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261111-09-alter-righe-factor-to-base-senza-default-mctit.yaml
+
+  - changeSet:
+      id: 20261111-09-alter-righe-factor-to-base-senza-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        factor_to_base di ordini, DDT e resi senza DEFAULT 1: il fattore lo scrive il trigger. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'vendite' AND column_name = 'factor_to_base'
+                 AND table_name IN ('ordini_righe', 'ddt_righe', 'resi_righe')
+                 AND column_default IS NOT NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe ALTER COLUMN factor_to_base DROP DEFAULT;
+              ALTER TABLE vendite.ddt_righe ALTER COLUMN factor_to_base DROP DEFAULT;
+              ALTER TABLE vendite.resi_righe ALTER COLUMN factor_to_base DROP DEFAULT;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe ALTER COLUMN factor_to_base SET DEFAULT 1;
+              ALTER TABLE vendite.ddt_righe ALTER COLUMN factor_to_base SET DEFAULT 1;
+              ALTER TABLE vendite.resi_righe ALTER COLUMN factor_to_base SET DEFAULT 1;

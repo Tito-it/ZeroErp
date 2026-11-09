@@ -65,8 +65,10 @@ stesso per tutte le aziende, i documenti che lo usano no.
 
 Dopo l'inserimento di un articolo, `catalogo.trgfn_articoli_seed_uom_base` scrive in
 `catalogo.articoli_uom_operativa` la riga base: l'unità principale dell'articolo, con fattore
-uno. Così l'unità principale è subito usabile nei documenti, senza un secondo passo. Se la coppia
-articolo-unità esiste già, la scrittura non fa niente.
+uno, senza date, attiva o spenta come l'articolo. Così l'unità principale è subito usabile nei
+documenti, senza un secondo passo. La riga base poi resta fissa: non si sposta, non si cancella
+finché c'è l'articolo, e va via con lui
+([catalogo.trgfn_articoli_uom_operativa_guard_base](/dbzero/catalogo/funzioni/trgfn_articoli_uom_operativa_guard_base)).
 
 ---
 
@@ -241,12 +243,6 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Un articolo creato non attivo non si salva.** La riga base dell'unità operativa nasce
-  sempre attiva, e le unità operative pretendono un articolo attivo. Il controllo è differito:
-  l'inserimento di un articolo con `attivo = false` fallisce al COMMIT con
-  `E_ATTIVO_PADRE_NON_ATTIVO`.
-* **La riga base dell'unità operativa non è protetta.** Nessun vincolo impone fattore 1 sulla
-  riga base, né impedisce di cambiarne l'unità o di cancellarla.
 * **Una nota impedisce di spegnere l'articolo.** La partizione delle note di articolo non ha
   `attivo`, quindi per il trigger `block_deact` ogni nota è un figlio vivo
   (`E_ATTIVO_BLOCK_CHILDREN_EXIST`).
@@ -317,6 +313,8 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
 * 2026-11-09 — nasce il CHECK `chk_articoli_composito_non_solo_componente`: prima la
   combinazione era ammessa, e solo un guard sul legame impediva a un solo componente di fare da
   padre (brief-db-revisione-catalogo, giro 1).
+* 2026-11-09 — la riga base dell'unità operativa nasce attiva o spenta come l'articolo, ed è
+  protetta (brief-db-revisione-catalogo, giro 2).
 
 ---
 

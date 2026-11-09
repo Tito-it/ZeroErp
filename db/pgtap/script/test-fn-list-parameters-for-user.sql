@@ -205,7 +205,7 @@ INSERT INTO anagrafiche.categorie_clienti (id, codice, codice_interno, descrizio
 VALUES (9999, '_TEST_CAT_LIST_', '_TEST_CAT_LIST_', 'Categoria test fn_list_parameters_for_user')
 ON CONFLICT (id) DO NOTHING;
 
--- Override categoria su parametro A (scope puro: no user/group/emittente/session/function)
+-- Override categoria su parametro A (scope puro: no user/group/emittente/function)
 INSERT INTO config.parameter_overrides (id, parameter_id, overridden_value, categoria_cliente_id)
 VALUES (99983, 99980, 'CAT_A', 9999);
 
@@ -367,7 +367,7 @@ SELECT ok(
                 (SELECT emittente_id FROM tmp_refs_list),
                 (SELECT user_id FROM tmp_refs_list),
                 ARRAY[(SELECT group_id FROM tmp_refs_list)],
-                NULL, NULL, 9999::smallint))
+                p_categoria_cliente_id => 9999::smallint))
        FROM tmp_lista_c l),
     '18) resolved_value = script.fn_get_parameter_full con gli stessi ambiti'
 );

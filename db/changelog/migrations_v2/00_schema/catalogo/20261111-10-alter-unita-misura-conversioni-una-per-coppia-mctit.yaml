@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.unita_misura_conversioni: una conversione per coppia di unita', nei due
+#   versi (D14).
+#
+#   uq_uom_conv_no_overlap valeva per la coppia orientata: A->B = 10 e B->A = 0,2
+#   convivevano, e fn_get_uom_factor prendeva la diretta senza dire niente. L'EXCLUDE
+#   sulla coppia non orientata (LEAST/GREATEST) e la validita' implica il vincolo di
+#   prima, che si ritira. Gli indici ix_uom_conv_from_to e ix_uom_conv_to_from restano:
+#   coprono le due FK.
+#   Rollback: il vincolo di prima e il COMMENT di prima.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261111-10-alter-unita-misura-conversioni-una-per-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261111-10-alter-unita-misura-conversioni-una-per-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        unita_misura_conversioni: una conversione per coppia non orientata e periodo. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint WHERE conrelid = to_regclass('catalogo.unita_misura_conversioni') AND conname = 'uq_uom_conv_no_overlap'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  ADD CONSTRAINT ex_unita_misura_conversioni_coppia_no_overlap
+                  EXCLUDE USING gist (
+                      (LEAST(uom_from_id, uom_to_id)) WITH =,
+                      (GREATEST(uom_from_id, uom_to_id)) WITH =,
+                      validita WITH &&);
+
+              ALTER TABLE catalogo.unita_misura_conversioni DROP CONSTRAINT uq_uom_conv_no_overlap;
+
+              COMMENT ON TABLE catalogo.unita_misura_conversioni IS
+                  'Le conversioni generali fra due unita'' della stessa tipologia (catalogo.trgfn_uom_conversioni_guard_tipo), con validita'': una uom_from vale fattore uom_to. Una conversione per coppia di unita'', in un verso o nell''altro, per ogni periodo (ex_unita_misura_conversioni_coppia_no_overlap): l''inversa la calcola catalogo.fn_get_uom_factor. La legge quella funzione quando l''articolo non ha una mappatura per l''unita'' (catalogo.articoli_uom_operativa).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.unita_misura_conversioni ADD CONSTRAINT uq_uom_conv_no_overlap UNIQUE (uom_from_id, uom_to_id, validita WITHOUT OVERLAPS);
+              ALTER TABLE catalogo.unita_misura_conversioni DROP CONSTRAINT ex_unita_misura_conversioni_coppia_no_overlap;
+              COMMENT ON TABLE catalogo.unita_misura_conversioni IS
+                  'Conversioni globali tra unita di misura con validita temporale.';

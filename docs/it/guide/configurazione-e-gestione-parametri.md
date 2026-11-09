@@ -1,6 +1,6 @@
 # Guida — Configurazione e Gestione Parametri
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -14,7 +14,7 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full) — la lettura di un parametro con la cascata degli override
-> * [script.fn_get_parameter_di_sessione](/dbzero/script/funzioni/fn_get_parameter_di_sessione) — la stessa cascata, con utente, gruppi, emittente e sessione presi dal contesto della sessione
+> * [script.fn_get_parameter_di_sessione](/dbzero/script/funzioni/fn_get_parameter_di_sessione) — la stessa cascata, con utente, gruppi ed emittente presi dal contesto della sessione
 > * [script.fn_intero_positivo_da_testo](/dbzero/script/funzioni/fn_intero_positivo_da_testo) — la regola «intero positivo» del valore di un parametro di sistema
 > * [script.fn_list_parameters_for_user](/dbzero/script/funzioni/fn_list_parameters_for_user) — la lista per la UI admin: default, override di ogni livello, valore risolto, famiglia
 > * [config.trgfn_parameters_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameters_fk_surrogate_dispatch) · [config.trgfn_parameter_overrides_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch) — il controllo sul *valore* scritto nel default e in un override
@@ -61,9 +61,9 @@ Zero ERP offre due meccanismi distinti:
 
 | Aspetto                    | Parametri tabellari                                                          | GUC                                                                  |
 | -------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| **Ambito**                 | Per record: utente, categoria cliente, gruppo, emittente, sessione, funzione | Per cluster, database, ruolo o sessione                              |
+| **Ambito**                 | Per record: utente, categoria cliente, gruppo, emittente, funzione           | Per cluster, database, ruolo o sessione                              |
 | **Audit**                  | Sì (campi audit, storicizzazione, `tx_id`)                                   | No                                                                   |
-| **Override multi-livello** | Sì, per i parametri che lo ammettono (cascata a 6 livelli + default)         | Limitato (database → ruolo → sessione)                               |
+| **Override multi-livello** | Sì, per i parametri che lo ammettono (cascata a 6 livelli, default compreso) | Limitato (database → ruolo → sessione)                               |
 | **Modifica runtime**       | Sì (INSERT/UPDATE nelle tabelle)                                             | Sì (`SET`, `ALTER DATABASE`)                                         |
 | **Uso tipico**             | Parametri di business e di sistema (default, limiti, soglie)                 | Identità di sessione, connessione dblink, ambiente                   |
 
@@ -83,7 +83,7 @@ non è tecnica: è una regola di business.
 
 | Famiglia | `ammette_override` | Che cosa vuol dire | Come si legge |
 | --- | :---: | --- | --- |
-| **Con override** | `true` | il valore può cambiare per utente, categoria cliente, gruppo, emittente, sessione o funzione | con `script.fn_get_parameter_full`, che applica la cascata |
+| **Con override** | `true` | il valore può cambiare per utente, categoria cliente, gruppo, emittente o funzione | con `script.fn_get_parameter_full`, che applica la cascata |
 | **Senza override** | `false` | il valore deve essere **uguale per tutti**: un override per utente o per azienda darebbe allo stesso documento valori diversi a seconda di chi lo genera | dal valore di default, direttamente, dalla funzione che possiede la regola |
 
 La famiglia la dichiara la colonna `config.parameters.ammette_override`. Non ha valore di default:
@@ -144,7 +144,7 @@ già mentre girano i seed, e su un database nuovo devono esistere prima.
 ### 2. Gli override contestuali: `config.parameter_overrides`
 
 Un override sostituisce il default di un parametro in un contesto. Le dimensioni di ambito sono
-**sei**, ognuna con una colonna sua:
+**cinque**, ognuna con una colonna sua:
 
 | Colonna                | Livello nella cascata |
 | ---------------------- | :-------------------: |
@@ -152,15 +152,17 @@ Un override sostituisce il default di un parametro in un contesto. Le dimensioni
 | `categoria_cliente_id` | 2 — categoria cliente |
 | `django_group_id`      |      3 — gruppo       |
 | `emittente_fiscale_id` |     4 — emittente     |
-| `session_key`          |     5 — sessione      |
-| `function_name`        |     6 — funzione      |
+| `function_name`        |     5 — funzione      |
 
 **Un override vale per un ambito solo** (vincolo `chk_parameter_overrides_un_ambito`): utente,
-oppure categoria cliente, oppure gruppo, oppure emittente, oppure sessione, oppure funzione — mai
-due insieme, mai nessuno. Gli override di livelli diversi non si combinano: la cascata sceglie il
-primo che trova.
+oppure categoria cliente, oppure gruppo, oppure emittente, oppure funzione — mai due insieme, mai
+nessuno. Gli override di livelli diversi non si combinano: la cascata sceglie il primo che trova.
 
-**Un solo override per parametro e ambito** (vincolo `uq_overrides_full_scope_v5`, `NULLS NOT
+**Non esiste un override di sessione.** Un override è configurazione che resta; una sessione di
+login scade, e nessuno creerebbe o pulirebbe un override legato a lei. Il livello sessione è
+uscito dal modello il 9 novembre 2026.
+
+**Un solo override per parametro e ambito** (vincolo `uq_overrides_full_scope_v6`, `NULLS NOT
 DISTINCT`): non possono esistere due override personali dello stesso utente sullo stesso
 parametro.
 
@@ -184,7 +186,6 @@ parametro.
 | `django_group_id`      | INTEGER      |    sì    | Gruppo Django                         |
 | `categoria_cliente_id` | SMALLINT, FK |    sì    | Categoria cliente                     |
 | `emittente_fiscale_id` | BIGINT, FK   |    sì    | Emittente fiscale                     |
-| `session_key`          | TEXT         |    sì    | Chiave di sessione                    |
 | `function_name`        | TEXT         |    sì    | Nome funzione                         |
 | `attivo`               | BOOLEAN      |    sì    | Flag attivo/disattivo (default: true) |
 | `storicizza`           | BOOLEAN      |    sì    | Flag storicizzazione (default: true)  |
@@ -211,9 +212,8 @@ mai un `NULL`.
 |    2     | **Categoria cliente** | `categoria_cliente_id`            |
 |    3     | **Gruppo**            | `django_group_id`                 |
 |    4     | **Emittente**         | `emittente_fiscale_id`            |
-|    5     | **Sessione**          | `session_key`                     |
-|    6     | **Funzione**          | `function_name`                   |
-|    7     | **Default**           | `config.parameters.default_value` |
+|    5     | **Funzione**          | `function_name`                   |
+|    6     | **Default**           | `config.parameters.default_value` |
 
 Un override personale prevale su una regola di categoria, che prevale su una del gruppo
 dell'operatore, e così via. La categoria sta **sopra** il gruppo per una ragione dichiarata: una
@@ -226,7 +226,6 @@ regola commerciale (es. «PREMIUM, sconto massimo 5%») deve vincere sulla senio
 | `p_emittente_fiscale_id` | BIGINT    | NULL    | Emittente fiscale               |
 | `p_django_user_id`       | INTEGER   | NULL    | Utente Django                   |
 | `p_group_ids`            | INTEGER[] | NULL    | Gruppi Django dell'utente       |
-| `p_session_key`          | TEXT      | NULL    | Chiave di sessione              |
 | `p_function_name`        | TEXT      | NULL    | Nome funzione                   |
 | `p_categoria_cliente_id` | SMALLINT  | NULL    | Categoria cliente               |
 
@@ -238,9 +237,11 @@ regola commerciale (es. «PREMIUM, sconto massimo 5%») deve vincere sulla senio
 * Se l'utente appartiene a **più gruppi** con override diversi, vince quello con l'`id` più
   basso: non è una scelta di merito, è il tie-break dichiarato.
 * Considera solo gli override con `attivo = true`.
+* Ha **una firma sola**: niente overload. Conviene chiamarla per nome
+  (`p_categoria_cliente_id := 7`), perché la posizione degli argomenti può cambiare.
 
 Chi gira dentro una richiesta dell'applicazione può usare `script.fn_get_parameter_di_sessione`:
-applica la stessa cascata e prende utente, gruppi, emittente e sessione dai GUC `app.*` della
+applica la stessa cascata e prende utente, gruppi ed emittente dai GUC `app.*` della
 sessione, invece di riceverli come parametri. Un GUC vuoto salta il suo livello; i gruppi si
 leggono solo se la tabella di Django c'è ed è leggibile.
 
@@ -395,7 +396,6 @@ erDiagram
         integer django_group_id
         smallint categoria_cliente_id FK
         bigint emittente_fiscale_id FK
-        text session_key
         text function_name
         boolean attivo
     }

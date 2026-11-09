@@ -71,12 +71,13 @@
 | trg_soggetti_a10_dati_societari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'dati_societari', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_gen_codice()` |
 | trg_soggetti_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_gen_codice()` |
-| trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()` |
 | trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()` |
+| trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()` |
+| trg_soggetti_a10_guard_id_fiscale_immutabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile()` |
 | trg_soggetti_a10_guard_regime_pa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_regime_pa()` |
 | trg_soggetti_a10_guard_regime_pa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_regime_pa()` |
-| trg_soggetti_a10_guard_sesso_policy_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_sesso_policy()` |
 | trg_soggetti_a10_guard_sesso_policy_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_sesso_policy()` |
+| trg_soggetti_a10_guard_sesso_policy_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_sesso_policy()` |
 | trg_soggetti_a10_guard_titoli_iva_ammessi_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_titoli_iva_ammessi()` |
 | trg_soggetti_a10_indirizzi_soggetti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'indirizzi_soggetti', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a10_istanze_utilities_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'istanze_utilities', 'soggetto_id', 'id', 'attivo')` |
@@ -88,8 +89,8 @@
 | trg_soggetti_a10_soggetti_titoli_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_titoli_iva', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_soggetti_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_soggetti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_soggetti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_soggetti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_soggetti_def_guard_dati_societari_required_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()` |
 | trg_soggetti_def_guard_dati_societari_required_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()` |
 | trg_soggetti_def_guard_forma_giuridica_natura_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura()` |

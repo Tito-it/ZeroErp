@@ -82,6 +82,7 @@ search:
 - [fn_guard_istanza_ba_emittente](manual/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ba_gestore_globale](manual/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ha_ba](manual/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
+- [fn_id_fiscale_bloccato](manual/fn_id_fiscale_bloccato.md) — La regola **«CF e P.IVA già scritti non si cambiano»**, in un posto solo.
 - [fn_indirizzo_elemento](manual/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_indirizzo_elemento_dettaglio](manual/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
 - [fn_istanza_di_altro_soggetto](manual/fn_istanza_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
@@ -166,6 +167,7 @@ search:
 - [trgfn_soggetti_gen_codice](manual/trgfn_soggetti_gen_codice.md) — (rev 2026-08-21)
 - [trgfn_soggetti_guard_cf_piva_obbligatori](manual/trgfn_soggetti_guard_cf_piva_obbligatori.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`** e una **trigger function di tipo "guard"** che:
 - [trgfn_soggetti_guard_dati_societari_required](manual/trgfn_soggetti_guard_dati_societari_required.md) — (latest review 03-12-25) Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.
+- [trgfn_soggetti_guard_id_fiscale_immutabile](manual/trgfn_soggetti_guard_id_fiscale_immutabile.md) — La funzione **`anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile`** è una **trigger function di tipo "guard"** su [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti).
 - [trgfn_soggetti_guard_indirizzi_required](manual/trgfn_soggetti_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
 - [trgfn_soggetti_guard_soggetto_contatti](manual/trgfn_soggetti_guard_soggetto_contatti.md) — (latest review 28-12-25) * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 - [trgfn_soggetti_normalize](manual/trgfn_soggetti_normalize.md) — (latest review 28-12-25) * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.

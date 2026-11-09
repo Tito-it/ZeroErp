@@ -86,6 +86,7 @@ search:
 - [fn_guard_istanza_ba_emittente](funzioni/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ba_gestore_globale](funzioni/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ha_ba](funzioni/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
+- [fn_id_fiscale_bloccato](funzioni/fn_id_fiscale_bloccato.md) — La regola **«CF e P.IVA già scritti non si cambiano»**, in un posto solo.
 - [fn_indirizzi_con_obbligatori](funzioni/fn_indirizzi_con_obbligatori.md)
 - [fn_indirizzo_elemento](funzioni/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_indirizzo_elemento_dettaglio](funzioni/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
@@ -98,6 +99,7 @@ search:
 - [fn_scrivi_dati_societari](funzioni/fn_scrivi_dati_societari.md)
 - [fn_scrivi_dati_societari_alla_nascita](funzioni/fn_scrivi_dati_societari_alla_nascita.md)
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
+- [fn_soggetto_id_fiscale_bloccato](funzioni/fn_soggetto_id_fiscale_bloccato.md)
 - [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
 - [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)
 - [fn_titolo_iva_ammesso](funzioni/fn_titolo_iva_ammesso.md)
@@ -182,6 +184,7 @@ search:
 - [trgfn_soggetti_guard_cf_piva_obbligatori](funzioni/trgfn_soggetti_guard_cf_piva_obbligatori.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`** e una **trigger function di tipo "guard"** che:
 - [trgfn_soggetti_guard_dati_societari_required](funzioni/trgfn_soggetti_guard_dati_societari_required.md) — (latest review 03-12-25) Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.
 - [trgfn_soggetti_guard_forma_giuridica_natura](funzioni/trgfn_soggetti_guard_forma_giuridica_natura.md)
+- [trgfn_soggetti_guard_id_fiscale_immutabile](funzioni/trgfn_soggetti_guard_id_fiscale_immutabile.md) — La funzione **`anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile`** è una **trigger function di tipo "guard"** su [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti).
 - [trgfn_soggetti_guard_indirizzi_required](funzioni/trgfn_soggetti_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
 - [trgfn_soggetti_guard_regime_pa](funzioni/trgfn_soggetti_guard_regime_pa.md)
 - [trgfn_soggetti_guard_sesso_policy](funzioni/trgfn_soggetti_guard_sesso_policy.md)
