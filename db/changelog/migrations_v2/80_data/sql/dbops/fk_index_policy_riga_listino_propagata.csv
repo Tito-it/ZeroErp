@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,commesse_attivita,commesse_attivita_listino_riga_id_fkey,true,"CREATE INDEX IF NOT EXISTS ix_commesse_attivita_listino_riga_id ON vendite.commesse_attivita(listino_riga_id) WHERE listino_riga_id IS NOT NULL;",false,mctit,2026-10-09 00:00:00+02
-vendite,attivita_fatturabili,attivita_fatturabili_listino_riga_id_fkey,true,"CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_listino_riga_id ON vendite.attivita_fatturabili(listino_riga_id) WHERE listino_riga_id IS NOT NULL;",false,mctit,2026-10-09 00:00:00+02

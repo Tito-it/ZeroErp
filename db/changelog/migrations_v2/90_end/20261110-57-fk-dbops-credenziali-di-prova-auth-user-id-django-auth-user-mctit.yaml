@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FK dbops.credenziali_di_prova.auth_user_id -> django.auth_user.id,
+#   ON DELETE CASCADE (Q14 ⑩, N1 strada b).
+#   Brief: brief-db-revisione-dbops, giro 11 (§30).
+#
+#   Senza FK l'etichetta sopravviveva alla credenziale. Il motivo scritto nel
+#   COMMENT («in CI django.auth_user nasce dopo Liquibase») e' un fatto, non una
+#   ragione: le FK verso django.auth_user stanno qui, nel ponte di 90_end, con la
+#   preCondition MARK_RAN dove django non c'e' (come le sorelle 20260921-02 ...
+#   -12). CASCADE: eliminare la credenziale (script.fn_elimina_credenziale)
+#   toglie anche l'etichetta; il guard dell'etichetta lo ammette perche' la
+#   radice non c'e' piu' (20_code/dbops/20261110-56). ON UPDATE NO ACTION: il
+#   guard rifiuta ogni UPDATE dell'etichetta, e l'id di un utente non cambia.
+#   La regola di eliminabilita' (script.fn_check_credenziale_eliminabile) non
+#   conta le FK CASCADE: il pulsante resta com'e'.
+#
+#   Prima dell'ADD CONSTRAINT si contano le etichette senza credenziale: con una
+#   sola il changeSet si ferma e le nomina (fatto datato, 2026-11-09: dbdev 8
+#   etichette e nessuna orfana, lo scratch nessuna etichetta).
+#   L'indice: auth_user_id e' la PK, la FK e' coperta (nessuna riga in
+#   dbops.fk_index_policy).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261110-57-fk-dbops-credenziali-di-prova-auth-user-id-django-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20261110-57-fk-dbops-credenziali-di-prova-auth-user-id-django-auth-user
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK dbops.credenziali_di_prova.auth_user_id -> django.auth_user.id, ON DELETE CASCADE: l'etichetta
+        va via con la credenziale. 90_end + MARK_RAN come le sorelle. Brief: brief-db-revisione-dbops, giro 11.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: django
+                tableName: auth_user
+            - tableExists:
+                schemaName: dbops
+                tableName: credenziali_di_prova
+            - not:
+                - foreignKeyConstraintExists:
+                    schemaName: dbops
+                    foreignKeyName: fk_credenziali_di_prova_auth_user
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $orfane$
+              DECLARE
+                  -- le etichette senza credenziale, per nome: nessuna colonna di cui sia il riflesso
+                  v_orfane text;
+              BEGIN
+                  SELECT string_agg(c.chiave || ' (' || c.auth_user_id || ')', ', ' ORDER BY c.chiave)
+                    INTO v_orfane
+                    FROM dbops.credenziali_di_prova c
+                   WHERE NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = c.auth_user_id);
+                  IF v_orfane IS NOT NULL THEN
+                      RAISE EXCEPTION 'dbops.credenziali_di_prova ha etichette senza credenziale: %. La FK verso django.auth_user non nasce: decidere che cosa ne e'' prima di riprovare.', v_orfane;
+                  END IF;
+              END
+              $orfane$;
+
+              ALTER TABLE dbops.credenziali_di_prova
+                  ADD CONSTRAINT fk_credenziali_di_prova_auth_user
+                      FOREIGN KEY (auth_user_id) REFERENCES django.auth_user (id)
+                      ON UPDATE NO ACTION ON DELETE CASCADE;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.credenziali_di_prova DROP CONSTRAINT IF EXISTS fk_credenziali_di_prova_auth_user;

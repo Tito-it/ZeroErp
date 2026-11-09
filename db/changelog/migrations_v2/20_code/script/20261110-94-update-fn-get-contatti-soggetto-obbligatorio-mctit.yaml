@@ -1,0 +1,191 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_contatti: il soggetto obbligatorio lo e' davvero.
+#   Brief: brief-db-revisione-dbops, giro 12 (Q15, N1).
+#
+# Base: 20_code/script/20260325-06, verificato uguale al vivo. Due difetti:
+#   1. La validazione di p_soggetto_id stava in una CTE (validate) che nessuna
+#      parte della query leggeva: PostgreSQL non la eseguiva, e con il soggetto
+#      NULL la funzione restituiva zero righe in silenzio.
+#   2. Il codice era ERRORE_PARAMETRI, obsoleto dal 2026-08-05: la rinomina
+#      dei codici non l'aveva visto perche' i presidi leggevano il solo
+#      plpgsql (Q15).
+# ⇒ La funzione passa a plpgsql: un IF prima della query, e il codice
+#   specifico E_CONTATTI_SOGGETTO_OBBLIGATORIO (decisione di Tid, 2026-11-09),
+#   col canale 'parametro' = p_soggetto_id. Il codice nasce in
+#   config.codici_errore e config.messaggi_errore (i due CSV).
+#   La query e' quella di prima, senza la CTE morta; i nomi di colonna sono
+#   tutti qualificati, quindi non si scontrano con le colonne di RETURNS TABLE.
+#   Firma, RETURNS TABLE, GRANT e volatilita' invariati: CREATE OR REPLACE, e
+#   il chiamante (script.fn_get_contatto_default) non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20261110-94-update-fn-get-contatti-soggetto-obbligatorio-mctit.yaml
+
+    - changeSet:
+          id: 20261110-94-update-fn-get-contatti-soggetto-obbligatorio
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              script.fn_get_contatti in plpgsql: il soggetto NULL e' rifiutato con
+              E_CONTATTI_SOGGETTO_OBBLIGATORIO (prima la validazione non scattava mai).
+              Brief: brief-db-revisione-dbops, giro 12.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: "1"
+                    sql: >
+                        SELECT count(*) FROM pg_catalog.pg_proc p
+                          JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'script' AND p.proname = 'fn_get_contatti';
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.fn_get_contatti(
+                            p_soggetto_id            anagrafiche.soggetti.id%TYPE,
+                            p_soggetto_ruolo_id      anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                            p_istanza_utility_id     anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL,
+                            p_tipo_contatto_id       config.tipi_contatti.id%TYPE DEFAULT NULL,
+                            p_unita_organizzativa_id config.unita_organizzative.id%TYPE DEFAULT NULL
+                        )
+                        RETURNS TABLE (
+                            id                 anagrafiche.contatti.id%TYPE,
+                            tipo_contatto_id   anagrafiche.contatti.tipo_contatto_id%TYPE,
+                            soggetto_id        anagrafiche.contatti.soggetto_id%TYPE,
+                            soggetto_ruolo_id  anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                            istanza_utility_id anagrafiche.contatti.istanza_utility_id%TYPE,
+                            nominativo         anagrafiche.contatti.nominativo%TYPE,
+                            email              anagrafiche.contatti.email%TYPE,
+                            telefono           anagrafiche.contatti.telefono%TYPE,
+                            cellulare          anagrafiche.contatti.cellulare%TYPE,
+                            pec                anagrafiche.contatti.pec%TYPE,
+                            note               anagrafiche.contatti.note%TYPE,
+                            is_default         anagrafiche.contatti.is_default%TYPE,
+                            default_context    anagrafiche.contatti.default_context%TYPE
+                        )
+                        LANGUAGE plpgsql
+                        AS $function$
+                        /*
+                        fn_get_contatti
+
+                        Per un soggetto (ed eventuale ruolo/istanza) il "miglior" contatto per
+                        ciascun tipo_contatto_id, con priorita' a 3 livelli:
+                          1) soggetto + ruolo + istanza
+                          2) soggetto + ruolo (generico)
+                          3) solo soggetto
+                        A parita' di priorita' vince l'unita' organizzativa richiesta, poi il
+                        contatto is_default = TRUE, poi l'id piu' basso.
+                        Il soggetto e' obbligatorio: NULL -> E_CONTATTI_SOGGETTO_OBBLIGATORIO.
+                        */
+                        BEGIN
+                            IF p_soggetto_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database', 'fn_get_contatti', 'E_CONTATTI_SOGGETTO_OBBLIGATORIO',
+                                    jsonb_build_object(
+                                        'parametro',              'p_soggetto_id',
+                                        'soggetto_ruolo_id',      p_soggetto_ruolo_id,
+                                        'istanza_utility_id',     p_istanza_utility_id,
+                                        'tipo_contatto_id',       p_tipo_contatto_id,
+                                        'unita_organizzativa_id', p_unita_organizzativa_id
+                                    ),
+                                    NULL::uuid,
+                                    VARIADIC ARRAY[]::text[]);
+                            END IF;
+
+                            RETURN QUERY
+                            WITH candidates AS (
+                                SELECT
+                                    c.id,
+                                    c.tipo_contatto_id,
+                                    c.unita_organizzativa_id,
+                                    c.soggetto_id,
+                                    c.soggetto_ruolo_id,
+                                    c.istanza_utility_id,
+                                    c.nominativo,
+                                    c.email,
+                                    c.telefono,
+                                    c.cellulare,
+                                    c.pec,
+                                    c.note,
+                                    c.is_default,
+                                    c.default_context,
+                                    CASE
+                                        -- Livello 1: ruolo + istanza (match esatto)
+                                        WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
+                                         AND c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id
+                                         AND c.istanza_utility_id IS NOT NULL
+                                            THEN 1
+                                        -- Livello 2: ruolo generico (istanza NULL)
+                                        WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
+                                         AND c.istanza_utility_id IS NULL
+                                            THEN 2
+                                        -- Livello 3: solo soggetto
+                                        ELSE 3
+                                    END AS priority
+                                FROM anagrafiche.contatti AS c
+                                WHERE c.soggetto_id = p_soggetto_id
+                                  AND (c.soggetto_ruolo_id IS NULL
+                                       OR c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id)
+                                  AND (c.istanza_utility_id IS NULL
+                                       OR c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id)
+                                  AND (p_tipo_contatto_id IS NULL
+                                       OR c.tipo_contatto_id = p_tipo_contatto_id)
+                                  AND (c.unita_organizzativa_id IS NULL
+                                       OR c.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id)
+                            ),
+                            ranked AS (
+                                -- Una sola riga per tipo_contatto_id
+                                SELECT
+                                    k.*,
+                                    ROW_NUMBER() OVER (
+                                        PARTITION BY k.tipo_contatto_id
+                                        ORDER BY
+                                            k.priority,
+                                            CASE
+                                                WHEN p_unita_organizzativa_id IS NULL THEN 0
+                                                WHEN k.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id THEN 0
+                                                ELSE 1
+                                            END,
+                                            CASE WHEN k.is_default THEN 0 ELSE 1 END,
+                                            k.id
+                                    ) AS rn
+                                FROM candidates AS k
+                            )
+                            SELECT
+                                r.id,
+                                r.tipo_contatto_id,
+                                r.soggetto_id,
+                                r.soggetto_ruolo_id,
+                                r.istanza_utility_id,
+                                r.nominativo,
+                                r.email,
+                                r.telefono,
+                                r.cellulare,
+                                r.pec,
+                                r.note,
+                                r.is_default,
+                                r.default_context
+                            FROM ranked AS r
+                            WHERE r.rn = 1;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_get_contatti(uuid, bigint, bigint, integer, integer) IS
+                          'Contatto migliore per tipo_contatto_id con cascata a 3 livelli: (1) ruolo+istanza, (2) ruolo generico, (3) soggetto; a parita'' l''unita'' organizzativa richiesta, poi is_default, poi l''id. p_soggetto_id e'' obbligatorio: NULL -> E_CONTATTI_SOGGETTO_OBBLIGATORIO, col canale parametro.';
+          rollback:
+              - sql:
+                    dbms: postgresql
+                    sql: |
+                        -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260325-06.
+                        SELECT 1;

@@ -94,8 +94,9 @@ in Fase B richiederanno una migration che modifica il `CHECK`.
 | `ix_documenti_generati_eventi_evento_tipo` | `(evento_tipo)` | Analytics/dashboard per tipo evento. |
 
 L'indice composito copre anche la `FK` su `documento_generato_id` (lo prefix
-basta per la policy `dbops.fk_index_policy`). L'indice sulla FK `user_id` è
-delegato alla policy automatica.
+basta per la politica `dbops.fk_index_policy`). L'indice sulla FK `user_id` è
+delegato alla politica degli indici delle FK: nel suo CSV non ha una decisione, e
+finché resta scoperta la mostra il presidio `dbops.vw_fk_da_decidere`.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore) — il predicato del primo controllo
+> * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi) — il predicato del primo controllo
 > * [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore) — il predicato del secondo controllo
 > * [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi) — il predicato del terzo controllo, e il padre nel messaggio
 > * [catalogo.trgfn_articoli_componenti_guard_componente](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_guard_componente) — il lato legame della distinta a un livello
@@ -27,8 +27,8 @@
 ### 🎯 Scopo Principale
 
 Impedisce di cambiare i flag di struttura di un articolo (`is_composito`, `is_solo_componente`,
-`requires_serial`) quando il cambio renderebbe incoerente una distinta in vigore, e impedisce a
-un componente di diventare composito.
+`requires_serial`) quando il cambio renderebbe incoerente una distinta in vigore o futura, e
+impedisce a un componente di diventare composito.
 
 I tre flag decidono il ruolo dell'articolo nella distinta. Cambiarli con legami in vigore lascia
 una struttura che nessuno ripara da solo: un padre «non composito» con componenti attivi, che
@@ -43,7 +43,7 @@ Il guard è `BEFORE UPDATE` dei tre flag. Ogni controllo chiama il suo predicato
 flag cambia davvero: un salvataggio che riscrive lo stesso valore passa.
 
 1. **L'articolo è padre.** Se cambiano `is_composito` o `requires_serial`, e l'articolo ha un
-   legame attivo in vigore alla data operativa, il cambio è rifiutato
+   legame attivo in vigore alla data operativa **o futuro**, il cambio è rifiutato
    (`E_BOM_MODIFICA_VIETATA`).
 2. **L'articolo è componente.** Se cambia `is_solo_componente`, e l'articolo è componente di
    un legame attivo in vigore alla data operativa, il cambio è rifiutato
@@ -53,8 +53,10 @@ flag cambia davvero: un salvataggio che riscrive lo stesso valore passa.
    (`E_BOM_COMPONENTE_DIVENTA_COMPOSITO`). Il messaggio porta il codice dell'articolo e quello
    del primo padre per codice. Un legame scaduto è storia e non conta.
 
-Il terzo controllo guarda anche il futuro perché la distinta ha un livello solo: dal giorno in
-cui il legame futuro entra in vigore, la distinta ne avrebbe due. Il lato legame della stessa
+Il primo e il terzo controllo guardano anche il futuro perché l'arrivo di una data non scrive
+niente sul legame, e nessun guard scatterebbe: un padre con legami solo futuri che smettesse di
+essere composito, il giorno dopo avrebbe una distinta senza kit; un componente di un legame
+futuro che diventasse composito darebbe alla distinta, da quel giorno, due livelli. Il lato legame della stessa
 regola è `catalogo.trgfn_articoli_componenti_guard_componente`, che rifiuta un componente
 composito.
 
@@ -75,26 +77,19 @@ un articolo ancora semplice.
   `catalogo.trgfn_articoli_guard_struttura_se_usato`. La porta amministratore apre quel guard,
   non questo: dalla correzione di struttura la distinta parla lo stesso.
 * L'IVA del kit: la giudica `catalogo.trgfn_articoli_guard_iva_bom_attiva`.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Un padre con una distinta solo futura cambia i flag.** Il primo controllo guarda solo i
-  legami in vigore oggi: un padre i cui legami partono domani può smettere di essere composito,
-  o perdere `requires_serial`. Il terzo controllo, invece, guarda anche il futuro.
-* **Il lato padre di «solo componente» non è protetto.** Il secondo controllo impedisce a un
-  componente in vigore di cambiare `is_solo_componente`, ma niente impedisce a un padre di
-  diventare anche solo componente: l'articolo resta composito e solo componente insieme.
-* **I ritorni in vigore non si rigiudicano.** Il guard scatta quando cambia un flag
-  dell'articolo, non quando un legame si riaccende, si riapre o arriva alla sua data di inizio.
+* Un articolo composito e solo componente insieme: lo esclude il CHECK
+  `chk_articoli_composito_non_solo_componente` di `catalogo.articoli`, prima di ogni guard.
+* Il ritorno in vigore di un legame. Un padre con legami soltanto spenti, o già finiti, può
+  smettere di essere composito; se un legame spento si riaccende, lo rifiuta il guard del legame
+  (`catalogo.trgfn_articoli_componenti_guard_componente`), che chiede un padre composito. Un
+  legame già finito non si riapre: rimettere il componente è un legame nuovo.
 
 ---
 
 ### Codici errore
 
-* `E_BOM_MODIFICA_VIETATA` — primo e secondo controllo: il flag cambia mentre l'articolo è padre
-  o componente di un legame in vigore.
+* `E_BOM_MODIFICA_VIETATA` — primo controllo: il flag cambia mentre l'articolo è padre di un
+  legame in vigore o futuro; secondo controllo: mentre è componente di un legame in vigore.
 * `E_BOM_COMPONENTE_DIVENTA_COMPOSITO` — terzo controllo: un componente di un legame in vigore o
   futuro diventa composito. Il campo è `is_composito`.
 
@@ -107,6 +102,8 @@ un articolo ancora semplice.
 * `db/pgtap/catalogo/test-distinta-un-livello-e-onere-natura-v1.sql` — un componente di una
   distinta in vigore o futura non diventa composito; di una distinta scaduta sì; il form spegne
   `is_composito` sul componente in vigore.
+* `db/pgtap/catalogo/test-distinta-storia-e-ritorni-v1.sql` — un padre con una distinta solo
+  futura non smette di essere composito.
 * `db/pgtap/vendite/test-listini-righe-comp-guard-coerenza-bom-v1.sql` — fa da canarino: un
   padre con distinta attiva non torna semplice, e il guard del listino che lo presuppone resta
   irraggiungibile.
@@ -120,6 +117,9 @@ un articolo ancora semplice.
   (brief-db-articoli-ammessi-per-documento).
 * 2026-11-08 — i tre controlli chiamano i predicati condivisi col form, al posto delle query
   scritte nel corpo (brief-db-revisione-dbops).
+* 2026-11-09 — il primo controllo guarda anche la distinta futura del padre: il predicato
+  `catalogo.fn_articolo_padre_di_distinta_da_oggi` prende il posto di
+  `catalogo.fn_articolo_padre_di_distinta_in_vigore`, ritirato (brief-db-revisione-catalogo, giro 1).
 
 ---
 

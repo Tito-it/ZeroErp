@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Si ritirano dbops.fn_seed_fk_index_policy e la sua coda,
+#   dbops.vw_fk_con_indice_missing_policy (N7; la parte di D13 rimasta al giro).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-3 (§29).
+#
+#   La funzione scriveva consentito = true e generated_by_script = true sulle FK
+#   GIA' coperte da un indice e senza riga: una decisione scritta da
+#   un'automazione, contro Q14 ② (le decisioni le scrive solo il seed). E non la
+#   chiamava nessuno (grep sul repo, 2026-11-09: solo i changeSet che la creano
+#   e la nota del presidio). Leggeva l'ambito da se', per schema (D13).
+#   Una FK coperta dall'indice del suo changeSet non ha bisogno di una riga: la
+#   politica governa gli indici che crea lei.
+#
+#   Lettori ritirati nello stesso giro: la riga del presidio (80_data/changelog/
+#   20261110-52 e i due CSV del catalogo), scripts/indicatori-qualita-db.sh, le
+#   due pagine manual/. Nessun oggetto del database dipende dalla vista
+#   (pg_depend) e nessuno chiama la funzione (prosrc), scratch e dbdev,
+#   2026-11-09. Il DROP sta in 20_code, prima del DROP delle colonne in 80_data
+#   (-53): la vista e la funzione le nominano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-50-drop-fn-seed-fk-index-policy-e-vista-mctit.yaml
+
+  - changeSet:
+      id: 20261110-50-drop-fn-seed-fk-index-policy-e-vista
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di dbops.fn_seed_fk_index_policy e di dbops.vw_fk_con_indice_missing_policy: una decisione
+        scritta da un'automazione, senza esecutore. Brief: brief-db-revisione-dbops, giro 10d.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_seed_fk_index_policy();
+              DROP VIEW IF EXISTS dbops.vw_fk_con_indice_missing_policy;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Oggetti ritirati: scrivevano e leggevano colonne che il giro toglie. Non si ricreano.
+              SELECT 1;

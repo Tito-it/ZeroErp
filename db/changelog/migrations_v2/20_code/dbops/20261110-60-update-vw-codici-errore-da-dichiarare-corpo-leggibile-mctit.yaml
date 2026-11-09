@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_codici_errore_da_dichiarare: anche le funzioni sql.
+#   Brief: brief-db-revisione-dbops, giro 12 (Q15).
+#
+# Base: 20_code/dbops/20261104-23, verificato uguale al vivo. Cambia solo il
+# perimetro dei due rami: dbops.fn_corpo_leggibile (20261110-59) al posto del
+# solo plpgsql. Una funzione LANGUAGE sql puo' chiamare fn_log_and_raise_error
+# con un codice letterale, e il codice che solleva e' un codice come gli altri:
+#   il perimetro sono i corpi leggibili, plpgsql e sql (dbops.fn_corpo_leggibile): conta chi puo' sollevare un codice, non il linguaggio in cui e' scritto.
+#   Il ramo (2), i codici negli argomenti di un trigger, resta di fatto plpgsql
+#   (una funzione trigger non si scrive in sql), ma legge lo stesso BB: il
+#   perimetro e' uno.
+#   COMMENT: la frase del perimetro. ⛔ security_invoker si ripete.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-60-update-vw-codici-errore-da-dichiarare-corpo-leggibile-mctit.yaml
+
+  - changeSet:
+      id: 20261110-60-update-vw-codici-errore-da-dichiarare-corpo-leggibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_codici_errore_da_dichiarare legge ogni corpo leggibile (plpgsql e sql) con dbops.fn_corpo_leggibile. Brief: brief-db-revisione-dbops, giro 12.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_leggibile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_codici_errore_da_dichiarare
+              WITH (security_invoker = true) AS
+              WITH sorgenti AS (
+                  -- (1) i letterali del CORPO
+                  SELECT m[1]                                   AS codice,
+                         t.agganciata                           AS da_trigger,
+                         p.oid                                  AS funzione_oid,
+                         n.nspname || '.' || p.proname          AS funzione
+                    FROM pg_proc p
+                    JOIN pg_namespace n
+                      ON n.oid = p.pronamespace
+                    CROSS JOIN LATERAL (
+                           SELECT EXISTS (SELECT 1 FROM pg_trigger tg
+                                           WHERE tg.tgfoid = p.oid AND NOT tg.tgisinternal) AS agganciata
+                         ) t,
+                         -- ⚠️ Commenti tolti PRIMA di cercare: un codice nominato in
+                         -- un commento non e' un codice sollevato. Li toglie il
+                         -- building block, che lascia intatti i letterali.
+                         LATERAL regexp_matches(
+                           (dbops.fn_corpo_funzione(p.oid) COLLATE "C"),
+                           '''(E_[A-Z0-9_]+)''', 'g') AS m
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND dbops.fn_corpo_leggibile(p.prolang)
+                  UNION ALL
+                  -- (2) i codici che un trigger passa alla funzione negli
+                  -- ARGOMENTI. Agganciata per costruzione.
+                  SELECT a.codice,
+                         true,
+                         p.oid,
+                         n.nspname || '.' || p.proname
+                    FROM dbops.vw_codici_errore_argomenti_trigger a
+                    JOIN pg_proc p
+                      ON p.oid = a.funzione_oid
+                    JOIN pg_namespace n
+                      ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND dbops.fn_corpo_leggibile(p.prolang)
+              )
+              SELECT s.codice,
+                     bool_or(s.da_trigger)                  AS da_trigger,
+                     count(DISTINCT s.funzione_oid)         AS n_funzioni,
+                     string_agg(DISTINCT s.funzione, ', '
+                                ORDER BY s.funzione)        AS funzioni
+                FROM sorgenti s
+               GROUP BY s.codice;
+
+              COMMENT ON VIEW dbops.vw_codici_errore_da_dichiarare IS
+              'Misura canonica del "terzo lato" del presidio sui codici errore: ogni codice E_* nominato da un corpo vivo leggibile, plpgsql o sql (dbops.fn_corpo_leggibile; commenti esclusi) o passato da un trigger alla sua funzione negli ARGOMENTI (dbops.vw_codici_errore_argomenti_trigger, rev 20261103-03), con da_trigger = la funzione che lo nomina e'' agganciata a un trigger, quindi sta sul percorso di una richiesta. ⚠️ VOLUTAMENTE LARGA: raccoglie ogni letterale, non solo quelli dentro una chiamata a fn_log_and_raise_error, perche'' restringere perderebbe i codici che arrivano da espressione (gruppo C: v_motivi -> 0 ->> ''codice'') — 19 codici, 4 dei quali senza policy. Fra i due errori possibili si sceglie quello che si corregge guardando i falsi positivi, non quello che non si vede. Prima della rev 20261103-03 non vedeva i codici dei building block trigger che li ricevono da TG_ARGV (30 al 2026-11-03, D24). Non vede: codici costruiti per concatenazione, e i RAISE EXCEPTION diretti che non passano dall''helper. Brief: brief-db-be-terzo-lato-presidio-codici.md.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo del changeSet base.
+              SELECT 1;

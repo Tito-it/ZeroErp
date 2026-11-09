@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.lock_columns_conditional`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,7 +17,7 @@
 > * [dbops.fn_non_editable_fields](/dbzero/dbops/funzioni/fn_non_editable_fields) — valuta le regole su una riga e dice al form quali campi spegnere
 > * [catalogo.fn_articolo_colonne_struttura](/dbzero/catalogo/funzioni/fn_articolo_colonne_struttura) — legge da qui le colonne strutturali di un articolo
 > * [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — il predicato condiviso dalla regola del form e dal guard
-> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi) — i predicati della distinta, condivisi con il guard
+> * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi) — i predicati della distinta, condivisi con il guard
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che rifiuta, gemello delle regole sulla distinta
 > * [catalogo.trgfn_articoli_guard_struttura_se_usato](/dbzero/catalogo/funzioni/trgfn_articoli_guard_struttura_se_usato) — il guard che rifiuta, gemello delle regole sull'uso
 
@@ -50,7 +50,7 @@ passato da quello del server a quello aziendale in una sola delle due). Per ques
 
 | Regole su `catalogo.articoli` | Predicato | Guard |
 | --- | --- | --- |
-| `is_composito`, `requires_serial`: padre di una distinta in vigore | `catalogo.fn_articolo_padre_di_distinta_in_vigore` | check 1 di `trgfn_articoli_guard_flags_struttura_bom_attiva` |
+| `is_composito`, `requires_serial`: padre di una distinta in vigore o futura | `catalogo.fn_articolo_padre_di_distinta_da_oggi` | check 1 di `trgfn_articoli_guard_flags_struttura_bom_attiva` |
 | `is_solo_componente`: componente di una distinta in vigore | `catalogo.fn_articolo_componente_di_distinta_in_vigore` | check 2 dello stesso |
 | `is_composito`: componente di una distinta in vigore o futura | `catalogo.fn_articolo_primo_padre_da_oggi` (non NULL) | check 3 dello stesso |
 | le otto colonne strutturali: articolo usato | `catalogo.fn_articolo_usato` | `trgfn_articoli_guard_struttura_se_usato` |
@@ -93,7 +93,7 @@ che la condizione chiama.
 ### Test
 
 * `db/pgtap/dbops/test-fn-non-editable-fields-conditional.sql` — le regole sulla distinta: i flag
-  spenti per il padre di una distinta in vigore, per il figlio in vigore e per il figlio di una
+  spenti per il padre di una distinta in vigore o futura, per il figlio in vigore e per il figlio di una
   distinta futura.
 * `db/pgtap/catalogo/test-distinta-predicati-guard-e-form-v1.sql` — le regole sulla distinta chiamano i
   predicati del guard, e per i tre flag form e guard rispondono uguale.

@@ -134,9 +134,11 @@ un documento fiscale.
 
 ### ⚠️ Trappole di una tabella nuova
 
-* indici FK **opt-in**: senza il seed in `dbops.fk_index_policy` non ne nasce
-  nessuno. Seed: `20260818-46`. La FK verso `resi_righe` è a `false` perché già
-  coperta **per prefisso** dalla `UNIQUE`;
+* indici FK **decisi nel seed**: una FK scoperta nasce `DA_DECIDERE` in
+  `dbops.fk_index_policy`, e l'indice c'è solo se il CSV della politica la decide
+  `CON_INDICE` (qui le FK verso la commessa attività e verso la riga di fattura
+  rettificata). La FK verso `resi_righe` è `SENZA_INDICE` perché già coperta
+  **per prefisso** dalla `UNIQUE`;
 * audit, `tx_id` e storico girano solo in contesto `ci_apply`: su un migrate
   manuale li aggancia il job serale del pgagent;
 * il guard legge `fatture_righe` **sotto RLS**, e una riga fuori perimetro si

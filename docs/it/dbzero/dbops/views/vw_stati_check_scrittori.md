@@ -40,10 +40,9 @@ WITH colonne AS (
             (p.proname)::text AS proname,
             (((pn.nspname)::text || '.'::text) || (p.proname)::text) AS funzione,
             (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS sorgente
-           FROM ((pg_proc p
+           FROM (pg_proc p
              JOIN pg_namespace pn ON ((pn.oid = p.pronamespace)))
-             JOIN pg_language l ON ((l.oid = p.prolang)))
-          WHERE ((pn.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (l.lanname = ANY (ARRAY['plpgsql'::name, 'sql'::name])) AND (NOT ((pn.nspname = ANY (ARRAY['dbops'::name, 'script'::name])) AND ((p.proname)::text ~~ 'fn\_pgtap\_%'::text))))
+          WHERE ((pn.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND dbops.fn_corpo_leggibile(p.prolang) AND (NOT ((pn.nspname = ANY (ARRAY['dbops'::name, 'script'::name])) AND ((p.proname)::text ~~ 'fn\_pgtap\_%'::text))))
         ), scritture AS MATERIALIZED (
          SELECT f.oid,
             f.proname,

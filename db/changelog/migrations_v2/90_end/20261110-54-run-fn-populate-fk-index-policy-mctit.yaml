@@ -1,0 +1,36 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La scoperta della politica degli indici gira a ogni migrate (N5).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-2 (§29).
+#
+#   Prima dbops.fn_populate_fk_index_policy la lanciava solo il job pgAgent
+#   della domenica: su un database da zero (la CI) le FK nuove non avevano
+#   riga, e il registro aveva due forme diverse da zero e su dbdev. Ora la
+#   lancia anche il 90_end, runAlways come l'apply (90_end/20250626-31), e il
+#   job resta. L'ordine fra i due non conta: l'apply non tocca le DA_DECIDERE,
+#   e questo file, per nome, gira dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261110-54-run-fn-populate-fk-index-policy-mctit.yaml
+
+  - changeSet:
+      id: 20261110-54-run-fn-populate-fk-index-policy
+      author: mctit
+      runAlways: true
+      failOnError: true
+      comment: >
+        Lancia dbops.fn_populate_fk_index_policy a ogni migrate: le FK scoperte senza riga
+        diventano DA_DECIDERE. Brief: brief-db-revisione-dbops, giro 10d.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT dbops.fn_populate_fk_index_policy();

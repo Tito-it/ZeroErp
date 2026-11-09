@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.trgfn_etichette_di_prova_guard: un'etichetta si toglie solo insieme
+#   alla sua radice (Q14 ⑩, N1 strada b).
+#   Brief: brief-db-revisione-dbops, giro 11 (§30).
+#
+#   Prima ogni DELETE era rifiutato. Con la FK nuova
+#   dbops.credenziali_di_prova -> django.auth_user ON DELETE CASCADE
+#   (90_end/20261110-57), eliminare una credenziale di prova
+#   (script.fn_elimina_credenziale) cancella anche la sua etichetta: la cascata
+#   la toglie DOPO la riga di django.auth_user, quindi qui la radice non c'e'
+#   piu', ed e' il segnale. Regola: DELETE di una riga ammesso solo se la sua
+#   radice (django.auth_user per le credenziali, anagrafiche.soggetti per i
+#   soggetti) non esiste; in ogni altro caso resta E_ETICHETTA_DI_PROVA_IMMUTABILE,
+#   e cosi' UPDATE e TRUNCATE. Il motivo della regola «non si toglie» era non
+#   nascondere un utente al presidio: un'etichetta senza utente non nasconde
+#   niente. soggetti_di_prova resta NO ACTION: la regola le vale uguale, ma un
+#   soggetto etichettato non si cancella comunque.
+#
+#   django.auth_user: letta solo nel ramo DELETE delle credenziali, statica in
+#   plpgsql (risolta alla prima esecuzione, non al CREATE). Se la tabella non
+#   c'e' (un database prima del migrate di Django) la radice non si verifica e
+#   l'etichetta resta immutabile: fail-closed. La cascata gira col proprietario
+#   della tabella figlia, che legge django.auth_user.
+#   Corpo vivo dalla doc auto-generata; firma invariata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-56-update-trgfn-etichette-di-prova-guard-radice-mctit.yaml
+
+  - changeSet:
+      id: 20261110-56-update-trgfn-etichette-di-prova-guard-radice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.trgfn_etichette_di_prova_guard: il DELETE di un'etichetta e' ammesso solo senza la sua
+        radice (la cascata della FK). Brief: brief-db-revisione-dbops, giro 11.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_etichette_di_prova_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ambiente     dbops.installazione.ambiente%TYPE;
+                  v_chiave       dbops.credenziali_di_prova.chiave%TYPE;
+                  -- la radice dell'etichetta esiste ancora: nessuna colonna di cui sia il riflesso
+                  v_radice_viva  boolean := true;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Un'etichetta di prova nasce solo in un'installazione
+                  --   SVILUPPO, non cambia, e si toglie solo insieme alla
+                  --   sua radice.
+                  --
+                  -- Regole:
+                  --   - INSERT: la regola pura sull'ambiente vero
+                  --     (dbops.fn_dati_di_sviluppo_ammessi_su_valori); ambiente
+                  --     non dichiarato: E_CONFIG_MANCANTE dal lettore;
+                  --   - DELETE (riga): ammesso solo se la radice non c'e' piu'
+                  --     (la cascata della FK); la radice non verificabile
+                  --     vale viva (fail-closed);
+                  --   - UPDATE, DELETE con la radice viva e TRUNCATE
+                  --     (istruzione): rifiutati.
+                  -- =========================================================
+                  IF TG_OP = 'INSERT' THEN
+                      v_ambiente := script.fn_ambiente_installazione();
+                      IF NOT dbops.fn_dati_di_sviluppo_ammessi_su_valori(v_ambiente) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'dbops', 'trgfn_etichette_di_prova_guard', 'E_DATI_DI_SVILUPPO_IN_PRODUZIONE',
+                              jsonb_build_object('tabella',  TG_TABLE_NAME,
+                                                 'chiave',   NEW.chiave,
+                                                 'ambiente', v_ambiente),
+                              NULL::uuid,
+                              v_ambiente);
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  IF TG_OP = 'DELETE' AND TG_LEVEL = 'ROW' THEN
+                      IF TG_TABLE_NAME = 'credenziali_di_prova' THEN
+                          IF to_regclass('django.auth_user') IS NOT NULL THEN
+                              SELECT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = OLD.auth_user_id)
+                                INTO v_radice_viva;
+                          END IF;
+                      ELSIF TG_TABLE_NAME = 'soggetti_di_prova' THEN
+                          SELECT EXISTS (SELECT 1 FROM anagrafiche.soggetti s WHERE s.id = OLD.soggetto_id)
+                            INTO v_radice_viva;
+                      END IF;
+
+                      IF NOT v_radice_viva THEN
+                          RETURN OLD;
+                      END IF;
+                  END IF;
+
+                  -- Nel TRUNCATE (trigger di istruzione) OLD non c'e'.
+                  IF TG_LEVEL = 'ROW' THEN
+                      v_chiave := OLD.chiave;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'dbops', 'trgfn_etichette_di_prova_guard', 'E_ETICHETTA_DI_PROVA_IMMUTABILE',
+                      jsonb_build_object('tabella',    TG_TABLE_NAME,
+                                         'operazione', TG_OP,
+                                         'chiave',     v_chiave),
+                      NULL::uuid,
+                      COALESCE(v_chiave, TG_TABLE_NAME::text));
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_etichette_di_prova_guard() IS
+                  'Guard delle etichette di prova (dbops.credenziali_di_prova, dbops.soggetti_di_prova). INSERT: ammesso solo dove l''installazione ammette i dati di sviluppo (dbops.fn_dati_di_sviluppo_ammessi_su_valori), altrimenti E_DATI_DI_SVILUPPO_IN_PRODUZIONE; ambiente non dichiarato: E_CONFIG_MANCANTE. DELETE di una riga: ammesso solo se la sua radice non c''e'' piu'' (django.auth_user per una credenziale, anagrafiche.soggetti per un soggetto), cioe'' dentro la cascata della FK: un''etichetta si toglie solo insieme a cio'' che etichetta. Se la radice non si puo'' verificare (django.auth_user assente) vale viva. UPDATE, DELETE con la radice viva e TRUNCATE: E_ETICHETTA_DI_PROVA_IMMUTABILE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La versione precedente rifiutava ogni DELETE: con la FK in cascata (-57) bloccherebbe
+              -- l'eliminazione della credenziale. Si torna indietro col giro intero.
+              SELECT 1;

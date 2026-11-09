@@ -19,7 +19,8 @@
 > * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap) — la configurazione di OVERLAP
 > * [dbops.automazione_guard_utility_tipo_ruolo](/dbzero/dbops/tabelle/automazione_guard_utility_tipo_ruolo) — la configurazione del GUARD utility/tipo ruolo
 > * [dbops.automazione_chiusura_scadenze](/dbzero/dbops/tabelle/automazione_chiusura_scadenze) — la configurazione della chiusura scadenze
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — la policy degli indici sulle chiavi esterne
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — la politica degli indici sulle chiavi esterne: una decisione per FK
+> * [dbops.vw_fk_da_decidere](/dbzero/dbops/views/vw_fk_da_decidere) — il presidio della politica: le FK da decidere
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — dove le automazioni registrano cosa hanno fatto
 > * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici) — la generazione automatica di codici e numeri
 >
@@ -33,7 +34,8 @@
 > * [dbops.fn_guard_utility_divergenze](/dbzero/dbops/funzioni/fn_guard_utility_divergenze) — i guard utility/tipo ruolo vivi confrontati con il registro
 > * [dbops.fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility) — il runner del guard utility/tipo ruolo
 > * [dbops.fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato) — il nome degli oggetti che un registro dichiara riga per riga
-> * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) — crea e rimuove gli indici sulle FK secondo la policy
+> * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) — crea e rimuove gli indici sulle FK secondo le decisioni della politica
+> * [dbops.fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) — la scoperta: le FK scoperte senza riga diventano da decidere
 > * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) — genera codici e numeri da `config.sistema_codici`
 > * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/funzioni/fn_sveglia_accesa) — il cancello che fa partire un giro notturno solo se il processo è acceso
 >
@@ -96,7 +98,7 @@ Ogni riga indica uno schema e un pattern di tabelle. Il sentinel `'*all'` signif
 
 * Se la riga la scrive a runtime una transazione di dominio o di sessione (la coda lavori, le identità tecniche dei processi), la tabella tiene `tx_id`, `data_update` e `user_update`, e monta **a mano** i due trigger del framework, [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed) e `script.trgfn_audit_data_user_generic`, con il nome che userebbe il framework.
 * Se la riga la scrive solo la migrazione, dai CSV di `80_data` (i cataloghi dei processi, dei presidi, dei tipi di lavoro, delle regole del framework, i registri del debito), la tabella **non** porta `tx_id`, `data_update` e `user_update`: direbbero sempre «il migratore, durante la migrazione», e chi ha cambiato la riga e quando lo dicono già lo storico delle migrazioni e git. `data_insert` e `user_insert` restano: li riempie il default alla nascita.
-* Conta chi **aggiorna** la riga, non chi la inserisce: un popolamento a runtime che solo aggiunge righe nuove (come quello della politica degli indici delle FK) non dà niente da dire a `data_update` e `user_update`.
+* Conta chi **aggiorna** la riga, non chi la inserisce: un popolamento a runtime che aggiunge e toglie righe ma non ne aggiorna mai una (come la scoperta della politica degli indici delle FK) non dà niente da dire a `data_update` e `user_update`.
 
 Il presidio [`dbops.vw_marcatori_automazione_senza_esecutore`](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore) controlla la metà che si vede dal catalogo: una tabella con `tx_id`, `storicizza` o `cleanup_at` fuori dall'ambito e senza il trigger a mano è un allarme. `data_update` e `user_update` non sono fra i marcatori che guarda: che le tabelle di `dbops` scritte dalla sola migrazione non li portino lo controlla il suo test.
 
@@ -614,27 +616,27 @@ Gli indici sulle chiavi esterne sono fondamentali per le performance. Il framewo
 
 ### 6.1 Componenti
 
-**Tabella policy:** [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)
-Ogni riga rappresenta una FK con un flag `consentito` (l'indice deve esistere?) e il `dll_command` per crearlo/rimuoverlo.
+**Tabella della politica:** [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)
+Ogni riga rappresenta una FK con una `decisione` (`DA_DECIDERE`, `CON_INDICE`, `SENZA_INDICE`), un `motivo` facoltativo e il `dll_command` che crea l'indice; il nome dell'indice, `indice_nome`, è generato dal comando.
 
-**View di supporto:**
+**Viste:**
 
-| View                                                                                   | Cosa mostra                                            |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| [vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)                           | FK realmente prive di copertura (vedi 7.2)             |
-| [vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy) | FK con un indice **dedicato** ma senza riga in policy  |
-| [vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes)                       | Indici duplicati esatti (stessa firma completa)        |
-| [vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso)     | Indici le cui colonne sono la testa di un altro indice |
-
-Tutte le view lavorano solo sugli schemi presenti in `dbops.automation_scope`.
+| Vista                                                                                  | Cosa mostra                                                         |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)                           | il fatto: le FK prive di copertura, qualunque decisione abbiano (vedi 6.2) |
+| [vw_fk_da_decidere](/dbzero/dbops/views/vw_fk_da_decidere)                             | il presidio: le FK da decidere, le `CON_INDICE` non applicate, le righe fuori ambito |
+| [vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes)                       | indici duplicati esatti (stessa firma completa)                     |
+| [vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso)     | indici le cui colonne sono la testa di un altro indice              |
 
 **Funzioni e procedure:**
 
-| Nome                                                                              | Tipo      | Cosa fa                                                       |
-| --------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------- |
-| [fn_seed_fk_index_policy](/dbzero/dbops/funzioni/fn_seed_fk_index_policy)         | Funzione  | Registra in policy le FK già indicizzate (`consentito=true`)  |
-| [fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) | Funzione  | Registra in policy le FK senza indice (`consentito=false`)    |
-| [apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy)             | Procedura | Crea/rimuove indici in base alla policy (invocata con `CALL`) |
+| Nome                                                                              | Tipo      | Cosa fa                                                                  |
+| --------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------ |
+| [fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) | Funzione  | la scoperta: registra `DA_DECIDERE` le FK scoperte senza riga, toglie le `DA_DECIDERE` non più scoperte |
+| [apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy)             | Procedura | esegue le decisioni: crea per `CON_INDICE`, toglie per `SENZA_INDICE` (invocata con `CALL`) |
+| [fn_indici_schema_nell_ambito](/dbzero/dbops/funzioni/fn_indici_schema_nell_ambito) | Funzione | il perimetro: lo schema è governato dalla politica                      |
+
+**Il perimetro è lo schema.** La politica governa le FK degli schemi che hanno almeno una riga in `dbops.automation_scope`, qualunque sia il filtro per tabella: l'indice di una FK serve a ogni tabella, mentre l'elenco delle tabelle serve ai trigger delle altre automazioni. Le viste e la procedura leggono il perimetro da `fn_indici_schema_nell_ambito`; una riga fuori perimetro non produce niente, e compare nel presidio come `FUORI_AMBITO`.
 
 ### 6.2 Quando una FK si considera coperta
 
@@ -650,47 +652,59 @@ Ogni altro predicato viene rifiutato, anche quando di fatto coprirebbe: l'errore
 > risulta scoperta e l'automazione ci pianta sopra un indice gemello: è l'origine
 > di buona parte degli indici ridondanti censiti.
 
-### 6.3 La policy è OPT-IN
+Una FK coperta dall'indice nato nel changeSet della sua tabella non ha bisogno di una riga: la politica governa gli indici che crea lei.
 
-`fn_populate_fk_index_policy()` registra le FK nuove con `consentito=false`. **Perché l'indice nasca serve un seed esplicito** che porti il flag a `true`: senza, l'automazione non crea nulla. Il seed va in `80_data` come CSV più `loadUpdateData`, mai come SQL inline.
+### 6.3 La scoperta registra, il seed decide
+
+La scoperta, `fn_populate_fk_index_policy()`, registra ogni FK scoperta senza riga come `DA_DECIDERE`, e toglie le righe `DA_DECIDERE` la cui FK non è più scoperta. Non scrive mai una decisione, e non tocca mai una riga decisa, nemmeno se la sua FK manca: le FK verso `django.auth_user`, su un database da zero, nascono dopo Liquibase.
+
+**Le decisioni le scrive solo il seed**: un CSV solo, `80_data/sql/dbops/fk_index_policy.csv`, con un solo mirror `loadUpdateData`. Una decisione nuova o cambiata si scrive lì, col perché nella colonna `motivo`; mai con un `INSERT` o un `UPDATE` in un changeSet, mai con un secondo CSV.
+
+Una FK nuova, quindi, compare nel presidio `vw_fk_da_decidere` dal primo `migrate`, e ne esce quando qualcuno la decide o quando un indice la copre.
 
 ### 6.4 Flusso operativo
 
 ```text
-1. Seed     → registra le FK già indicizzate
-2. Populate → registra le FK mancanti
-3. Apply    → crea/rimuove indici secondo la policy
+1. Scoperta → registra DA_DECIDERE le FK scoperte senza riga (a ogni migrate e nel job settimanale)
+2. Seed     → il CSV della politica scrive le decisioni CON_INDICE / SENZA_INDICE
+3. Apply    → esegue le decisioni (a ogni migrate e nel job settimanale)
+4. Presidio → vw_fk_da_decidere mostra ciò che resta da decidere
 ```
 
-I tre comandi corrispondenti (`fn_seed_fk_index_policy()`, `fn_populate_fk_index_policy()`, `CALL apply_fk_index_policy()`) sono in coda, in [Area tecnica — esempi](#area-tecnica-esempi).
+La scoperta e l'apply sono invocate a ogni `migrate` da due changeSet `runAlways` di `90_end`, e dal job settimanale. L'ordine fra le due non conta: l'apply lascia stare le `DA_DECIDERE`. I comandi per lanciarle a mano sono in coda, in [Area tecnica — esempi](#area-tecnica-esempi).
 
-`apply` è invocata a ogni `migrate` da `90_end` (`runAlways: true`) e dal job settimanale.
+**Job schedulabile:** `maintenance.proc_apply_fk_index_policy_job()` (con logging e lock). Invocata con `true` esegue anche la scoperta.
 
-**Job schedulabile:** `maintenance.proc_apply_fk_index_policy_job()` (con logging e lock). Invocata con `true` esegue anche il `populate`.
+### 6.5 Che cosa fa l'apply, e le sue due guardie
 
-### 6.5 Le due guardie di `apply_fk_index_policy()`
+| La riga | L'apply |
+| --- | --- |
+| `DA_DECIDERE` | niente: nessuno ha deciso |
+| `CON_INDICE` | esegue il comando, se la FK è ancora scoperta |
+| `SENZA_INDICE` | toglie l'indice `indice_nome`, se non regge un vincolo |
+| fuori perimetro | niente |
 
-La policy poggia su un flag booleano, e un flag può essere girato per errore. Le guardie servono a rendere innocuo l'errore, non a impedirlo.
+Una decisione può essere sbagliata per errore. Le guardie servono a rendere innocuo l'errore, non a impedirlo.
 
-1. **Con `consentito=true` crea solo se la FK figura ancora in `vw_fk_senza_indice`.** Una FK già coperta non riceve un indice dedicato nemmeno a flag `true`: un `true` rimesso per sbaglio non può rigenerare ridondanze già bonificate. L'auto-riparazione resta intatta — se l'indice viene cancellato a mano, la FK ricompare nella view e al giro dopo viene ricreato.
-2. **Con `consentito=false` rifiuta il `DROP`**, con `RAISE WARNING`, se il nome estratto dal comando appartiene a un UNIQUE, a una PK, a un indice a supporto di un constraint o alla `REPLICA IDENTITY`. Un flag non deve poter togliere un vincolo di integrità.
+1. **Con `CON_INDICE` crea solo se la FK figura ancora in `vw_fk_senza_indice`.** Una FK già coperta non riceve un indice dedicato: un `CON_INDICE` scritto per sbaglio non può rigenerare ridondanze già bonificate. L'auto-riparazione resta intatta — se l'indice viene cancellato a mano, la FK torna scoperta e al giro dopo viene ricreato.
+2. **Con `SENZA_INDICE` rifiuta il `DROP`**, con `RAISE WARNING`, se `indice_nome` è un UNIQUE, una PK, un indice a supporto di un constraint o la `REPLICA IDENTITY`. Una decisione non deve poter togliere un vincolo di integrità.
 
-Si sceglie il warning e non l'eccezione perché la procedura gira a ogni `migrate`: un errore bloccherebbe la pipeline, e un indice di troppo costa incomparabilmente meno. A fine ciclo viene emesso un `RAISE NOTICE` con creati / saltati / droppati / rifiutati.
+Si sceglie il warning e non l'eccezione perché la procedura gira a ogni `migrate`: un errore bloccherebbe la pipeline, e un indice di troppo costa incomparabilmente meno. A fine ciclo viene emesso un `RAISE NOTICE` con creati / saltati / droppati / rifiutati / da decidere / fuori ambito.
 
 ### 6.6 Il `dll_command` deve nominare l'indice che esiste
 
-`fn_seed_fk_index_policy()` porta sotto governo le FK che hanno già un indice, leggendo `vw_fk_con_indice_missing_policy`. Due regole rendono l'operazione sicura:
+Il nome dell'indice da togliere è `indice_nome`, generato dal comando con la stessa grammatica del suo CHECK di forma; la procedura e `vw_indici_ridondanti_prefisso` lo confrontano per uguaglianza. Due conseguenze:
 
-* il comando registrato punta al **nome reale** dell'indice trovato. Se ne sintetizza uno diverso, `apply` crea un secondo indice gemello sotto quel nome — è esattamente così che un indice già rimosso è ricomparso mesi dopo senza alcun changeSet;
-* si registrano **solo indici dedicati** alla FK: colonne uguali a quelle della FK, non UNIQUE, non PK, non `REPLICA IDENTITY`, non a supporto di un constraint, totali. Il ramo `consentito=false` esegue `DROP INDEX` su quel nome, e deve poter togliere solo un acceleratore. Le FK coperte da un indice più largo non si registrano: non c'è nulla da governare.
+* una riga `SENZA_INDICE` deve nominare il **nome reale** dell'indice da togliere: con un nome diverso il `DROP` non trova niente;
+* una riga `SENZA_INDICE` col nome canonico toglie anche l'indice con quel nome nato nel changeSet della tabella. La seconda guardia lo impedisce solo se l'indice regge un vincolo.
 
 ### 6.7 Indici ridondanti
 
 Vedi `docs/it/linee-guida-sql.md` §8.6 per il dettaglio. In sintesi, due viste per due nozioni distinte: `vw_duplicate_indexes` mostra i **duplicati esatti**, `vw_indici_ridondanti_prefisso` i **ridondanti per prefisso** (le due query sono in coda, in [Area tecnica — esempi](#area-tecnica-esempi)).
 
-La colonna `origine` della seconda dice **come** si rimuove: `AUTOMAZIONE_FK` richiede `consentito=false` più il `DROP` esplicito, `MANUALE` un `DROP INDEX` in changeSet.
+La colonna `origine` della seconda dice **come** si rimuove: `AUTOMAZIONE_FK` vuol dire che una riga della politica nomina proprio quell'indice, e la si porta a `SENZA_INDICE` nel CSV; `MANUALE` vuol dire un `DROP INDEX` in changeSet.
 
-**Regola operativa:** non creare né droppare indici FK manualmente. Si agisce sulla policy e ci pensa `apply_fk_index_policy()`. Un `DROP` senza flag verrebbe annullato al primo `migrate` successivo.
+**Regola operativa:** non creare né droppare indici FK manualmente. Si agisce sulla decisione e ci pensa `apply_fk_index_policy()`. Un `DROP` di un indice `CON_INDICE` verrebbe annullato al primo `migrate` successivo.
 
 ---
 
@@ -1061,17 +1075,18 @@ vendite,ordini,ATTIVO_COL,attivo_flag
 catalogo,articoli_componenti,STORICO_FK,articoli_componenti_id
 ```
 
-### Policy indici FK: seed, populate, apply
+### Policy indici FK: scoperta, apply, presidio
 
 ```sql
--- 1. Seed (indici già presenti)
-SELECT dbops.fn_seed_fk_index_policy();
-
--- 2. Populate (indici mancanti)
+-- 1. Scoperta (le FK scoperte senza riga diventano DA_DECIDERE)
 SELECT dbops.fn_populate_fk_index_policy();
 
--- 3. Apply
+-- 2. Apply (esegue le decisioni del seed)
 CALL dbops.apply_fk_index_policy();
+
+-- 3. Che cosa resta da decidere
+SELECT caso, schema_name, table_name, constraint_name, dll_command
+  FROM dbops.vw_fk_da_decidere;
 ```
 
 ### Indici ridondanti: le due viste

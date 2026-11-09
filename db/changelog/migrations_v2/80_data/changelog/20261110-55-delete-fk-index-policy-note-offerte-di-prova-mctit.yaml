@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE QUATTRO RIGHE DI PROVA DELLE NOTE DELLE OFFERTE ESCONO DALLA POLITICA
+#   vendite.note_offerte_commerciali: fk_offnote_riga, fk_offnote_testata,
+#   fk_vendite_note_id_lingua, fk_vendite_note_id_stile.
+#   Brief: brief-db-revisione-dbops, giro 10d (§29.11).
+#
+# Il 20261110-51 le aveva caricate come SENZA_INDICE dal CSV unico: venivano
+# dal vecchio file che nessuno caricava, scritte a mano il 2026-05-24. Erano
+# righe di prova, non decisioni (Tid, 2026-11-09): escono dal CSV, e questa
+# DELETE le toglie dove il mirror le ha gia' scritte (loadUpdateData non
+# cancella). Al migrate successivo la scoperta (90_end/20261110-54) le
+# riregistra DA_DECIDERE, se le FK sono ancora scoperte.
+# Su un database da zero il mirror non le scrive piu': la DELETE non trova niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-55-delete-fk-index-policy-note-offerte-di-prova-mctit.yaml
+
+  - changeSet:
+      id: 20261110-55-delete-fk-index-policy-note-offerte-di-prova
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.fk_index_policy le quattro righe di prova di vendite.note_offerte_commerciali,
+        uscite dal CSV unico. loadUpdateData non cancella. Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE schema_name = 'vendite'
+                 AND table_name = 'note_offerte_commerciali'
+                 AND constraint_name IN ('fk_offnote_riga', 'fk_offnote_testata',
+                                         'fk_vendite_note_id_lingua', 'fk_vendite_note_id_stile')
+                 AND decisione = 'SENZA_INDICE';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Righe di prova: non si rimettono.
+              SELECT 1;

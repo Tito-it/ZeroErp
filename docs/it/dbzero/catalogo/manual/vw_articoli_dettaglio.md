@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_dettaglio`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,8 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto) — la regola «ritirato alla data operativa» dietro `e_obsoleto`
-> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore) — la stessa domanda di `has_componenti_alla_data`, per i guard
+> * [catalogo.fn_distinta_alla_data](/dbzero/catalogo/funzioni/fn_distinta_alla_data) — la distinta di un padre a una data, dietro `has_componenti_alla_data`
+> * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi) — la domanda dei guard sul padre, che guarda anche la distinta futura
 > * [catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi) — il picker, a cui la vista aggiunge le colonne dell'articolo
 >
 > Guide:
@@ -53,8 +54,11 @@ Si legge e basta: le modifiche vanno sulla tabella `catalogo.articoli`.
 * `motivo_non_gestibile_bom` dice perché no: `ARTICOLO_SOLO_COMPONENTE` se l'articolo è solo
   componente (vince anche se è composito), altrimenti `ARTICOLO_NON_COMPOSITO`. È vuoto quando
   la gestione è possibile.
-* `has_componenti_alla_data` è vera se l'articolo composito ha almeno un legame attivo in vigore
-  alla data operativa.
+* `has_componenti_alla_data` è vera se l'articolo composito ha almeno un legame nella distinta
+  alla data operativa, letta da `catalogo.fn_distinta_alla_data` (attivo e in vigore oggi). Il
+  giorno aziendale si calcola una volta per tutta la vista. È la distinta di **oggi**: un kit con la
+  sola distinta futura qui risponde falso, mentre i guard sul padre lo trattano già da kit
+  (`catalogo.fn_articolo_padre_di_distinta_da_oggi`).
 
 ---
 
@@ -95,9 +99,6 @@ non ha RLS, e la vista non attraversa tabelle protette.
   solo aggiungere colonne alla fine; chi legge le colonne per nome (il backend) vede una
   colonna nuova solo quando la nomina. Oggi `obsoleto_dal` ed `e_obsoleto` non sono ancora nella
   proiezione del backend.
-* **`has_componenti_alla_data` riscrive la regola a mano.** È la stessa domanda di
-  `catalogo.fn_articolo_padre_di_distinta_in_vigore` (legame attivo, in vigore alla data
-  operativa), ma scritta di nuovo nella vista.
 * **Gli `*_ref_id` ripetono le FK.** `uom_ref_id`, `tipologia_ref_id`, `gruppo_ref_id`,
   `spesa_ref_id` e `iva_ref_id` valgono quanto la FK dell'articolo, quando la voce esiste.
 
@@ -112,6 +113,8 @@ non ha RLS, e la vista non attraversa tabelle protette.
 * `db/pgtap/catalogo/test-articoli-approvvigionamento-v1.sql` — le colonne di approvvigionamento
   nella vista.
 * `db/pgtap/vendite/test-articolo-ritirato-v1.sql` — `e_obsoleto` alla data operativa.
+* `db/pgtap/catalogo/test-distinta-alla-data-v1.sql` — `has_componenti_alla_data` su un kit in
+  vigore, su uno con la sola distinta passata e su uno con la sola distinta futura.
 * `db/pgtap/rls/test-rls-viste-security-invoker.sql` — quali viste devono avere
   `security_invoker`, giudicato sul merito.
 
@@ -128,6 +131,8 @@ non ha RLS, e la vista non attraversa tabelle protette.
   `ARTICOLO`.
 * 2026-11-03 — in coda `e_onere` e `causale_onere_id` (brief-db-addebito-trasporto-ordine).
 * 2026-11-06 — in coda `obsoleto_dal` ed `e_obsoleto` (brief-db-articoli-obsoleto-dal).
+* 2026-11-09 — `has_componenti_alla_data` legge `catalogo.fn_distinta_alla_data`; le colonne non
+  cambiano (brief-db-revisione-catalogo, giro 1-bis).
 
 ---
 

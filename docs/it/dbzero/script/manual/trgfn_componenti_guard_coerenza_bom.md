@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `script.trgfn_componenti_guard_coerenza_bom`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,7 @@
 >
 > Approfondimento funzioni:
 >
+> * [catalogo.fn_distinta_alla_data](/dbzero/catalogo/funzioni/fn_distinta_alla_data) — la distinta del padre alla data, che decide il controllo 4
 > * [script.trgfn_listini_righe_comp_guard_coerenza_bom](/dbzero/script/funzioni/trgfn_listini_righe_comp_guard_coerenza_bom) — il controllo gemello sui componenti dei listini
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva gli errori
 >
@@ -40,13 +41,15 @@ chiamata diretta, un seed.
 | 1 | L'articolo della riga padre è composito (`is_composito`); una riga padre che non si trova vale come non composita | `E_DOC_RIGA_NON_COMPOSITO` |
 | 2 | `articolo_componente_id` è una voce della BoM dell'articolo padre | `E_DOC_COMPONENTE_NON_BOM` |
 | 3 | `componente_id` è l'articolo che quella voce di BoM indica | `E_DOC_COMPONENTE_ID_INCOERENTE` |
-| 4 | La voce di BoM è valida alla data di riferimento della testata | `E_DOC_COMPONENTE_BOM_NON_VALIDA` |
+| 4 | La voce di BoM sta nella distinta del padre alla data di riferimento della testata: è attiva e in vigore quel giorno | `E_DOC_COMPONENTE_BOM_NON_VALIDA` |
 
 Il controllo 3 è difensivo: `componente_id` ripete un'informazione che la voce di BoM già contiene, e
 il trigger impedisce che le due dicano cose diverse.
 
-Il controllo 4 si salta quando la testata non ha la data di riferimento valorizzata: gli altri tre
-restano attivi.
+Il controllo 4 chiede a `catalogo.fn_distinta_alla_data` la distinta del padre alla data della
+testata, e guarda se la voce c'è: è la stessa domanda con cui l'init dei componenti sceglie le voci da
+scrivere. Una voce spenta non c'è, a nessuna data. La data della testata è obbligatoria su tutti e
+cinque i documenti; se mancasse, la distinta sarebbe vuota e il controllo rifiuterebbe.
 
 Tutti i componenti attivi della BoM possono stare in una riga di documento: la funzione non guarda se
 il componente è esposto in fattura.
@@ -93,8 +96,9 @@ controlla `script.trgfn_listini_righe_comp_guard_coerenza_bom`.
 ### Test
 
 * `script/test-componenti-helpers-v1` — i controlli 1, 2 e 3 provocati con un inserimento su
-  `vendite.preventivi_righe_componenti`, e il montaggio su quella tabella. ⚠️ Il controllo 4 non ha
-  una prova che lo faccia scattare: il punto che lo nomina passa senza eseguire niente.
+  `vendite.preventivi_righe_componenti`, e il montaggio su quella tabella.
+* `catalogo/test-distinta-alla-data-v1` — il controllo 4 su una voce spenta e su una voce finita, e
+  un aggiornamento del prezzo di un componente valido che passa.
 * `vendite/test-preventivi-righe-componenti-v1` — la funzione è fra i presidi montati su
   `vendite.preventivi_righe_componenti`.
 
@@ -105,6 +109,10 @@ controlla `script.trgfn_listini_righe_comp_guard_coerenza_bom`.
 * 2026-05-13 — ritirato il controllo che esigeva il componente esposto in fattura
   (`E_DOC_COMPONENTE_NON_ESPOSTO`): col modello unificato della BoM tutti i componenti attivi generano
   righe, qualunque sia il flag di presentazione in fattura.
+* 2026-11-09 — il controllo 4 chiede la distinta alla data a `catalogo.fn_distinta_alla_data`: una
+  voce spenta è rifiutata qui, col codice del controllo, invece che dal vincolo generato sul legame
+  attivo a fine istruzione. Tolto il salto con la data mancante (brief-db-revisione-catalogo,
+  giro 1-bis).
 
 ---
 

@@ -5,7 +5,7 @@
 > storico delle iterazioni e' in
 > [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md).
 >
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 
 ---
 
@@ -30,8 +30,10 @@ Ogni riga BoM e' immutabile per design (UPDATE strutturale bloccato):
 per evolvere la BoM si applica il pattern "chiudi+inserisci nuova
 versione" (chiudi `valido_al` della riga corrente, inserisci nuova riga
 con `valido_dal` successivo). Garantisce ricostruzione storica e audit.
+Il guard e' [`catalogo.trgfn_articoli_componenti_block_modifica_struttura`](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_block_modifica_struttura).
 
-Colonne strutturali (immutabili):
+Colonne strutturali (immutabili; anche il padre: un legame non passa
+sotto un altro kit):
 
 | Colonna                                       | Significato                                                       |
 | --------------------------------------------- | ----------------------------------------------------------------- |
@@ -40,8 +42,21 @@ Colonne strutturali (immutabili):
 | `coeff_qta`                                   | quantita' del figlio per unita' di padre                          |
 | `obbligatorio`                                | TRUE = sempre incluso, FALSE = opzionale                          |
 | `esposizione_in_fattura`                      | come il figlio si vede in fattura: `NASCOSTO` (default) \| `DESCRITTIVO` \| `VALORIZZATO` (vedi §7) |
-| `valido_dal`, `valido_al`, `validita` (range) | versionamento daterange                                           |
-| `attivo`                                      | soft-delete logico                                                |
+| `valido_dal`                                  | inizio della versione                                             |
+
+Restano modificabili `attivo` (soft-delete logico), note, `meta`, audit e
+`valido_al`, la fine della versione (`validita`, il range, e' generata da
+`valido_dal` e `valido_al`). **La fine non cambia i giorni gia' passati**,
+al giorno aziendale:
+
+- la fine di un legame **gia' finito** non si sposta ne' si toglie
+  (`E_BOM_LEGAME_CHIUSO`): rimettere il componente e' un legame nuovo;
+- negli altri legami la fine nuova e' vuota oppure **da ieri in avanti**
+  (`E_BOM_CHIUSURA_RETROATTIVA`). Chiudere a ieri e' il modo di far valere
+  da oggi la versione nuova, perche' la validita' comprende i due estremi;
+- togliere una fine futura, o spostarla in avanti, e' ammesso, ma e' una
+  composizione nuova: la ri-giudica il guard del legame (§6), come la
+  riattivazione.
 
 Fino al 2026-10-02 la distinta aveva anche `partecipa_qta` e
 `determina_qta_padre`: si salvavano, il drawer li mostrava e il guard di
@@ -127,11 +142,15 @@ condividono la **stessa aliquota IVA**.
 
 Regola `E_BOM_IVA_DISCORDANTE` di [`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga) (documento `ARTICOLO`), sollevata dal guard [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_guard_componente) (dal 2026-10-13; prima `catalogo.trgfn_articoli_componenti_guard_iva`):
 
-- BEFORE INSERT OR UPDATE OF `attivo` su `catalogo.articoli_componenti`:
-  per un legame attivo, NEW.componente deve avere `iva_id` uguale al
-  padre. Il fronte `UPDATE OF attivo` copre la **riattivazione** del
-  legame (FALSE→TRUE), chiudendo il percorso *spegni → cambia IVA →
-  riaccendi* (vedi sotto)
+- BEFORE INSERT OR UPDATE OF `componente_id`, `prodotto_id`, `attivo`,
+  `valido_al` su `catalogo.articoli_componenti`: per ogni composizione
+  nuova, NEW.componente deve avere `iva_id` uguale al padre. Composizione
+  nuova e' anche la **riattivazione** del legame (FALSE→TRUE), che chiude
+  il percorso *spegni → cambia IVA → riaccendi* (vedi sotto), e la fine
+  che si allontana (`valido_al` tolto o spostato in avanti). Nello stesso
+  passaggio la check rifiuta un padre non composito
+  (`E_ARTICOLO_NON_COMPOSITO`, lato documento di
+  [`script.fn_articolo_riga_contesto`](/dbzero/script/funzioni/fn_articolo_riga_contesto))
 - BEFORE UPDATE su `catalogo.articoli.iva_id`
   (`trgfn_articoli_guard_iva_bom_attiva`): se l'articolo e' padre
   composito di righe BoM attive → tutti i figli devono avere stessa

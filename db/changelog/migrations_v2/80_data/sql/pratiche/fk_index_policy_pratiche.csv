@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-pratiche,pratiche,fk_pratiche_soggetto_ruolo,t,CREATE INDEX IF NOT EXISTS ix_pratiche_soggetto_ruolo_id ON pratiche.pratiche(soggetto_ruolo_id) WHERE soggetto_ruolo_id IS NOT NULL;,f,mctit,2026-06-11 00:00:00+02
-pratiche,pratiche,fk_pratiche_istanza_utility,t,CREATE INDEX IF NOT EXISTS ix_pratiche_istanza_utility_id ON pratiche.pratiche(istanza_utility_id) WHERE istanza_utility_id IS NOT NULL;,f,mctit,2026-06-11 00:00:00+02

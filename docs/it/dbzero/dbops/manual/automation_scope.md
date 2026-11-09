@@ -1,22 +1,23 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_scope`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole che girano dentro l'ambito deciso qui
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — la politica degli indici delle FK, che dell'ambito legge solo lo schema
 >
 > Approfondimento viste:
 >
-> * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice) — legge l'elenco direttamente, per decidere quali FK guardare
 > * [dbops.vw_marcatori_automazione_senza_esecutore](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore) — le tabelle con una colonna che promette un'automazione che nessuno esegue
 >
 > Approfondimento funzioni:
 >
 > * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — ricava dalla tabella l'elenco degli schemi
 > * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — ricava dalla tabella il filtro per tabella dentro uno schema
+> * [dbops.fn_indici_schema_nell_ambito](/dbzero/dbops/funzioni/fn_indici_schema_nell_ambito) — lo schema è governato dalla politica degli indici delle FK
 >
 > Guide:
 >
@@ -63,6 +64,21 @@ conto proprio.
 Il filtro per tabella risponde «sì» anche per uno schema che non ha nessuna riga: per lui la
 decisione l'ha già presa il livello schema. Chi lo chiama da solo, senza passare per
 l'elenco degli schemi, vede quindi tutto.
+
+---
+
+### ⭐ La politica degli indici delle FK legge solo lo schema
+
+Gli indici delle chiavi esterne (`dbops.fk_index_policy`) non seguono il filtro per tabella: uno
+schema con almeno una riga qui è governato per intero, qualunque sia il suo filtro. È una scelta
+dichiarata. L'indice di una chiave esterna serve a ogni tabella dello schema, mentre l'elenco delle
+tabelle serve ai trigger delle altre automazioni: aggiungere una tabella all'elenco solo per il suo
+indice vorrebbe dire armare su di lei anche quei trigger.
+
+La lettura sta in un posto solo,
+[dbops.fn_indici_schema_nell_ambito](/dbzero/dbops/funzioni/fn_indici_schema_nell_ambito): la usano
+le viste degli indici e la procedura che applica la politica. In `dbops`, per esempio, la politica
+governa le chiavi esterne di tutte le tabelle, non solo dei registri che l'elenco espone ai trigger.
 
 ---
 

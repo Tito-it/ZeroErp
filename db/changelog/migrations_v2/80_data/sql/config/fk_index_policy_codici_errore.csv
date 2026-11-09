@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-config,messaggi_errore,fk_messaggi_errore_codici_errore,false,CREATE INDEX IF NOT EXISTS ix_messaggi_errore_codice ON config.messaggi_errore(codice);,false,titodb,2026-08-07 00:00:00+02
-config,codici_errore,fk_codici_errore_classi_errore,false,CREATE INDEX IF NOT EXISTS ix_codici_errore_classe ON config.codici_errore(classe);,false,titodb,2026-08-07 00:00:00+02

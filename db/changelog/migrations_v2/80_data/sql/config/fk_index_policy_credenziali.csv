@@ -1,5 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-config,credenziali,fk_config_credenziali_auth_user,f,CREATE INDEX IF NOT EXISTS ix_credenziali_auth_user_id ON config.credenziali(auth_user_id);,f,mctit,2026-09-25 00:00:00+02
-config,credenziali,fk_config_credenziali_bloccata_da_auth_user,f,CREATE INDEX IF NOT EXISTS ix_credenziali_bloccata_da ON config.credenziali(bloccata_da);,f,mctit,2026-09-25 00:00:00+02
-config,credenziali_provenienze,fk_credenziali_provenienze_credenziali,f,CREATE INDEX IF NOT EXISTS ix_credenziali_provenienze_credenziale_id ON config.credenziali_provenienze(credenziale_id);,f,mctit,2026-09-25 00:00:00+02
-config,nomi_tentati_provenienze,fk_nomi_tentati_provenienze_nomi_tentati,f,CREATE INDEX IF NOT EXISTS ix_nomi_tentati_provenienze_nome_tentato_id ON config.nomi_tentati_provenienze(nome_tentato_id);,f,mctit,2026-09-25 00:00:00+02

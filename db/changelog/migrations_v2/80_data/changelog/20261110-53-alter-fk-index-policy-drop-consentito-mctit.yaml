@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fk_index_policy perde consentito e generated_by_script (N3).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-1 (§29).
+#
+#   consentito lo sostituisce decisione (-42), riscritta dal mirror del CSV
+#   unico (-51). generated_by_script era il marcatore di chi aveva scritto la
+#   riga, ma e' stato copiato nei CSV coi valori di dbdev e non diceva piu'
+#   niente: chi scrive lo dice decisione (DA_DECIDERE la scoperta, il resto
+#   il seed).
+#
+# ── ⚠️ PERCHE' IN 80_data E NON IN 00_schema ─────────────────────────
+#   Da zero, i due upsert in linea di anagrafiche.pdp.fk_pdp_utility
+#   (20_code/dbops/20260215-15 e 80_data/changelog/20260215-14) nominano le due
+#   colonne, e il secondo gira in 80_data: questo file ha data successiva. Le
+#   altre DELETE congelate sul registro non le nominano (grep, 2026-11-09).
+#   Stesso schema del 20261109-31.
+#
+# ── CHI LE NOMINAVA (censito, scratch e dbdev, 2026-11-09) ──────────
+#   Viste: vw_fk_senza_indice e vw_indici_ridondanti_prefisso (riscritte in
+#   -44, -45), vw_fk_con_indice_missing_policy (ritirata in -50). Funzioni:
+#   apply_fk_index_policy e fn_populate_fk_index_policy (riscritte in -47,
+#   -48), fn_seed_fk_index_policy (ritirata in -50). Nessun lettore nel
+#   backend. Il pgTAP dbops/test-indici-letture-trasversali-v1 riscritto nello
+#   stesso commit.
+# IF EXISTS: idempotente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-53-alter-fk-index-policy-drop-consentito-mctit.yaml
+
+  - changeSet:
+      id: 20261110-53-alter-fk-index-policy-drop-consentito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fk_index_policy perde consentito e generated_by_script: la decisione le sostituisce.
+        Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'fk_index_policy'
+                 AND column_name = 'decisione'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.fk_index_policy
+                  DROP COLUMN IF EXISTS consentito,
+                  DROP COLUMN IF EXISTS generated_by_script;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.fk_index_policy
+                  ADD COLUMN IF NOT EXISTS consentito boolean NOT NULL DEFAULT true,
+                  ADD COLUMN IF NOT EXISTS generated_by_script boolean DEFAULT false;
+              UPDATE dbops.fk_index_policy SET consentito = (decisione = 'CON_INDICE');

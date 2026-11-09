@@ -326,7 +326,7 @@ SELECT throws_like(
     format($$INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione, iva_id, prezzo_unitario, qta_operativa)
              VALUES (%s, 1, %L, 'kit vuoto', %s, 10, 1)$$,
            (SELECT ordine_id FROM _ord), pg_temp.art('V'), (SELECT id FROM _iva)),
-    '%non ha nessun componente%',
+    '%non ha componenti in vigore da oggi in poi%',
     '24) ordine: il guard rifiuta il kit vuoto, col motivo del picker');
 
 SELECT is((SELECT f.motivo ->> 'reason'

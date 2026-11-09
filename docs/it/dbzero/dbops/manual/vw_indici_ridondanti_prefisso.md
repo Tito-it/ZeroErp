@@ -1,13 +1,12 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_indici_ridondanti_prefisso`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — dove si spegne il flag di un indice governato dall'automazione
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — gli schemi in cui la vista cerca
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — dove si decide `SENZA_INDICE` per un indice governato dall'automazione
 >
 > Approfondimento viste:
 >
@@ -16,7 +15,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) — la procedura che rifarebbe un indice tolto senza spegnere il flag
+> * [dbops.fn_indici_schema_nell_ambito](/dbzero/dbops/funzioni/fn_indici_schema_nell_ambito) — gli schemi in cui la vista cerca
+> * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) — la procedura che rifarebbe un indice tolto senza cambiare la decisione
 >
 > Guide:
 >
@@ -26,7 +26,7 @@
 
 ### 🎯 Scopo Principale
 
-I btree degli schemi di `dbops.automation_scope` resi inutili da un altro btree della stessa
+I btree degli schemi governati dalla politica degli indici resi inutili da un altro btree della stessa
 tabella, che ha le stesse colonne in testa. Per ogni candidato dice chi lo copre, quanto pesa,
 quanto è stato letto e, soprattutto, **come si rimuove** (`origine`).
 
@@ -81,17 +81,14 @@ difficile da mettere in discussione.
 
 | `origine` | Come si rimuove |
 | --- | --- |
-| `AUTOMAZIONE_FK` | flag `consentito` spento in `dbops.fk_index_policy` **e** rimozione esplicita. La sola rimozione verrebbe annullata da `dbops.apply_fk_index_policy` al primo `migrate` |
+| `AUTOMAZIONE_FK` | la riga di `dbops.fk_index_policy` che nomina proprio quell'indice si porta a `SENZA_INDICE` nel CSV della politica, e il giro successivo di `dbops.apply_fk_index_policy` lo toglie. Un `DROP` secco verrebbe annullato al primo `migrate` se la riga è `CON_INDICE` |
 | `MANUALE` | rimozione dell'indice in un changeSet dedicato |
 
-`policy_constraint_name` e `policy_consentito` mostrano la riga di policy corrispondente, quando c'è.
+`policy_constraint_name` e `policy_decisione` mostrano la riga di politica corrispondente, quando c'è.
 
-⚠️ La vista riconosce la riga di policy cercando il nome dell'indice dentro il comando registrato,
-con un confronto per somiglianza: non con la regola esatta della procedura, che legge il nome come
-sesta parola del comando. Un nome che termina come quello di un altro indice, o che contiene il
-trattino basso (che nel confronto vale come carattere qualsiasi), può agganciare una riga di policy
-che non è la sua. Prima di agire su `AUTOMAZIONE_FK` si controlla che la riga indicata nomini davvero
-quell'indice.
+⭐ La riga si aggancia per **nome esatto**: `indice_nome` della politica uguale al nome
+dell'indice, la stessa colonna che la procedura usa per togliere. Un nome che termina come quello di
+un altro indice, o che contiene il trattino basso, aggancia solo la riga sua.
 
 ---
 
@@ -108,11 +105,24 @@ motivato con numeri, non con il sospetto.
 
 ---
 
+### Test
+
+* `db/pgtap/dbops/test-fk-index-policy-decisione-v1.sql` — la riga di politica si aggancia per nome
+  esatto anche quando un altro nome ne è il suffisso o contiene il trattino basso.
+
+---
+
 ### Note di migrazione
 
 * 2026-07-27 — nasce con la bonifica degli indici ridondanti. Dei candidati con molte letture, quasi
   tutti avevano un coprente di dimensione identica, e gli altri un rapporto di poco superiore: sono
   stati rimossi tutti.
+* 2026-11-09 — la riga di politica si aggancia per nome esatto (`indice_nome`), e
+  `policy_consentito` diventa `policy_decisione`; il perimetro viene da `fn_indici_schema_nell_ambito`
+  (`20261110-45`, brief-db-revisione-dbops, giro 10d). Prima il nome dell'indice si cercava dentro il
+  comando con un confronto per somiglianza: un nome suffisso di un altro, o col trattino basso che
+  nel confronto vale come carattere qualsiasi, agganciava la riga sbagliata e la vista diceva
+  `AUTOMAZIONE_FK` su un indice che la politica non governa.
 
 ---
 

@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_populate_fk_index_policy: la scoperta scrive solo DA_DECIDERE, e solo
+#   sulle FK nuove (Q14 ②).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-2 (§29).
+#
+#   - INSERT delle FK scoperte SENZA riga (decisione NULL in
+#     dbops.vw_fk_senza_indice): decisione col suo default, DA_DECIDERE. Prima
+#     scriveva consentito = false, cioe' una decisione.
+#   - DELETE delle righe DA_DECIDERE la cui FK non e' piu' scoperta: FK tolta,
+#     rinominata, o coperta da un indice nato nel suo changeSet. Sono righe
+#     dell'automazione, e senza la DELETE il registro aggiungerebbe e non
+#     toglierebbe (§2.3). ⛔ Una riga DECISA non si tocca mai, nemmeno se la sua
+#     FK manca: le FK del ponte verso django.auth_user, su un database da zero,
+#     nascono dopo Liquibase, e le loro righe sono decisioni del seed.
+#   Una sola lettura della vista (CTE MATERIALIZED), una sola istruzione.
+#   Firma invariata (RETURNS void); un NOTICE dice quante righe nuove e tolte.
+#   La chiamano il job settimanale e, da questo giro, il 90_end a ogni migrate
+#   (90_end/20261110-54, N5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-48-update-fn-populate-fk-index-policy-da-decidere-mctit.yaml
+
+  - changeSet:
+      id: 20261110-48-update-fn-populate-fk-index-policy-da-decidere
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_populate_fk_index_policy: DA_DECIDERE sulle FK scoperte senza riga, e via le
+        DA_DECIDERE la cui FK non e' piu' scoperta. Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'vw_fk_senza_indice'
+                 AND column_name = 'decisione'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_populate_fk_index_policy()
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_nuove bigint;
+                v_tolte bigint;
+              BEGIN
+                WITH scoperte AS MATERIALIZED (
+                       SELECT v.schema_name, v.table_name, v.constraint_name,
+                              v.create_index_suggestion, v.decisione
+                         FROM dbops.vw_fk_senza_indice v
+                     ),
+                     tolte AS (
+                       DELETE FROM dbops.fk_index_policy p
+                        WHERE p.decisione = 'DA_DECIDERE'
+                          AND NOT EXISTS (SELECT 1
+                                            FROM scoperte s
+                                           WHERE s.schema_name = p.schema_name
+                                             AND s.table_name = p.table_name
+                                             AND s.constraint_name = p.constraint_name)
+                       RETURNING 1
+                     ),
+                     nuove AS (
+                       INSERT INTO dbops.fk_index_policy (schema_name, table_name, constraint_name, dll_command)
+                       SELECT s.schema_name, s.table_name, s.constraint_name, s.create_index_suggestion
+                         FROM scoperte s
+                        WHERE s.decisione IS NULL
+                       ON CONFLICT (schema_name, table_name, constraint_name) DO NOTHING
+                       RETURNING 1
+                     )
+                SELECT (SELECT count(*) FROM nuove), (SELECT count(*) FROM tolte)
+                  INTO v_nuove, v_tolte;
+
+                RAISE NOTICE 'fn_populate_fk_index_policy: da_decidere_nuove=%, da_decidere_tolte=%', v_nuove, v_tolte;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_populate_fk_index_policy() IS
+                  'La scoperta della politica degli indici: registra in dbops.fk_index_policy, come DA_DECIDERE, le FK scoperte (dbops.vw_fk_senza_indice) che non hanno una riga, e toglie le righe DA_DECIDERE la cui FK non e'' piu'' scoperta (tolta, rinominata o coperta da un indice). Non scrive ne'' tocca mai una decisione: CON_INDICE e SENZA_INDICE le scrive solo il seed, e una riga decisa resta anche se la sua FK non c''e'' (le FK verso django.auth_user nascono dopo Liquibase). Non crea indici: lo fa dbops.apply_fk_index_policy, che le DA_DECIDERE le lascia stare. La chiamano il 90_end a ogni migrate e il job settimanale (maintenance.proc_apply_fk_index_policy_job). NOTICE con le righe nuove e tolte.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La versione precedente scriveva il flag consentito, che dopo il giro non c'e' piu':
+              -- si torna indietro col rollback dell'intero giro.
+              SELECT 1;

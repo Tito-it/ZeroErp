@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_articolo_padre_di_distinta_da_oggi: l'articolo e' il padre di una
+#   distinta in vigore o futura (D9).
+#   Brief: brief-db-revisione-catalogo, giro 1.
+#
+#   Prende il posto di fn_articolo_padre_di_distinta_in_vigore, che guardava solo
+#   il giorno aziendale: un padre con legami solo futuri passava is_composito a
+#   false, e il giorno in cui il legame entrava in vigore la distinta aveva un
+#   padre non composito. La finestra e' la stessa del check 3 del guard flags
+#   (fn_articolo_primo_padre_da_oggi): [giorno aziendale, infinito).
+#   Il guard la chiama da -63, le regole del form da 80_data -69; la funzione di
+#   prima si ritira in 90_end -70.
+#   BEGIN ATOMIC (linee-guida-sql §5c): la funzione da sola nel suo change
+#   (pgjdbc), il COMMENT nel secondo. SECURITY INVOKER: catalogo.articoli_componenti
+#   non ha RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261110-62-create-fn-articolo-padre-di-distinta-da-oggi-mctit.yaml
+
+  - changeSet:
+      id: 20261110-62-create-fn-articolo-padre-di-distinta-da-oggi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo: il predicato «padre di una distinta in vigore o futura», la stessa finestra del lato componente. Brief: brief-db-revisione-catalogo, giro 1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'catalogo'
+                 AND p.proname = 'fn_articolo_padre_di_distinta_da_oggi'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_articolo_padre_di_distinta_da_oggi(p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT EXISTS (
+                   SELECT 1
+                     FROM catalogo.articoli_componenti ac
+                    WHERE ac.prodotto_id = p_articolo_id
+                      AND ac.attivo IS TRUE
+                      AND ac.validita && daterange(script.fn_data_operativa(), NULL, '[)')
+               );
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_articolo_padre_di_distinta_da_oggi(catalogo.articoli.id%TYPE) IS
+                  'true se l''articolo e'' il PADRE di una distinta in vigore o futura: un legame attivo di catalogo.articoli_componenti con prodotto_id = l''articolo e validita che interseca [giorno aziendale, infinito). NULL -> false. Stessa finestra di catalogo.fn_articolo_primo_padre_da_oggi, il lato componente. Predicato unico del check 1 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva (is_composito e requires_serial non si cambiano) e delle sue regole gemelle per il form in dbops.lock_columns_conditional.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_articolo_padre_di_distinta_da_oggi(uuid);

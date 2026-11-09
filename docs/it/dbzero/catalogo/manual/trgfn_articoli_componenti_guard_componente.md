@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_articoli_componenti_guard_componente`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,23 +11,31 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_check_articolo_riga](/dbzero/script/funzioni/fn_check_articolo_riga) — la check che chiama, col documento `ARTICOLO`
+> * [script.fn_articolo_riga_contesto](/dbzero/script/funzioni/fn_articolo_riga_contesto) — il lato documento della check: rifiuta il padre non composito
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — solleva il primo motivo
 > * [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/funzioni/trgfn_righe_guard_articolo_ammesso) — il guard gemello sulle righe dei documenti
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il lato articolo del livello unico
+> * [catalogo.trgfn_articoli_componenti_block_modifica_struttura](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_block_modifica_struttura) — l'immutabilità del legame, che parla prima
 > * [catalogo.trgfn_articoli_guard_iva_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_iva_bom_attiva) — il lato articolo dell'IVA
 
 ---
 
 ### 🎯 Scopo Principale
 
-Il guard di tabella della distinta sul componente: rifiuta un componente che la distinta non ammette, sollevando
-il primo motivo di `script.fn_check_articolo_riga` per il documento `ARTICOLO`, con il kit come padre.
+Il guard di tabella della distinta: rifiuta una composizione che la distinta non ammette, sollevando il primo
+motivo di `script.fn_check_articolo_riga` per il documento `ARTICOLO`, con il kit come padre. Giudica il padre, che
+deve essere composito, e il componente.
 
 Il predicato sta nella check, che vede anche il picker: qui si solleva soltanto.
 
 ---
 
 ### I motivi, nell'ordine
+
+Prima del componente parla il padre: il lato documento della check rifiuta un padre inesistente o non composito
+(`E_ARTICOLO_NON_COMPOSITO`, campo `prodotto_id`), perché un articolo che non è un kit non ha una distinta. Un padre
+«solo componente» non è un caso a parte: il CHECK di `catalogo.articoli` gli impedisce di essere composito. Poi i
+motivi sul componente:
 
 1. **Il componente è ritirato** (`E_ARTICOLO_OBSOLETO`). Il guard chiama la check sempre come scelta nuova: un legame
    che arriva qui è nuovo, cambiato o riattivato.
@@ -40,17 +48,21 @@ Il predicato sta nella check, che vede anche il picker: qui si solleva soltanto.
 
 ### Quando giudica
 
-Scatta prima dell'INSERT e dell'UPDATE di `componente_id`, `prodotto_id` o `attivo`. Giudica un legame **attivo**:
+Scatta prima dell'INSERT e dell'UPDATE di `componente_id`, `prodotto_id`, `attivo` o `valido_al`. Giudica ogni
+**composizione nuova**, cioè un legame attivo:
 
 * quando nasce;
 * quando si riattiva;
-* quando cambia il componente o il kit.
+* quando la sua fine si allontana: `valido_al` tolto o spostato in avanti.
 
-Un legame spento non si giudica. Un UPDATE di un legame già attivo che non cambia componente né kit non si
-ri-giudica.
+Un legame spento non si giudica. Non si giudica neppure la chiusura, o una fine anticipata: un legame si chiude
+sempre, anche se nel frattempo il componente è stato ritirato. Un UPDATE di un legame già attivo che non cambia il
+componente né allontana la fine non si ri-giudica. Il componente e il kit sono nell'elenco delle colonne per
+prudenza: il loro cambio lo ferma prima l'immutabilità.
 
-Fra i trigger della tabella parla dopo i guard sul padre (composito, solo componente): prima la testata, poi la
-riga. Se il padre non è composito, il motivo è quello, anche se il componente ha un altro difetto.
+Il cambio del componente o del kit, e la riapertura di un legame già finito, non arrivano fin qui: li rifiuta prima il trigger
+d'immutabilità (`catalogo.trgfn_articoli_componenti_block_modifica_struttura`), che parla per primo. Qui arriva
+soltanto l'allungamento di una fine ancora futura.
 
 ---
 
@@ -64,8 +76,6 @@ due guard la chiamano con il proprio documento.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **La riapertura di un legame chiuso.** Rimettere `valido_al` vuoto non fa scattare il guard. Se nel frattempo il
-  componente è diventato composito, è stato ritirato o ha cambiato IVA, il legame torna in vigore senza errore.
 * **I cambi dal lato articolo.** Un UPDATE di un legame attivo che non tocca componente né kit non si ri-giudica: se
   il componente cambia nel frattempo, il legame resta com'è. L'IVA la difende il guard sull'articolo; il passaggio
   a composito, il guard sull'articolo lo ferma solo per i legami in vigore o futuri. Un componente ritirato resta
@@ -75,6 +85,7 @@ due guard la chiamano con il proprio documento.
 
 ### Codici errore
 
+* `E_ARTICOLO_NON_COMPOSITO` — il padre non esiste o non è composito. Il campo segnalato è `prodotto_id`.
 * `E_ARTICOLO_OBSOLETO`, `E_BOM_COMPONENTE_PADRE`, `E_BOM_COMPONENTE_COMPOSITO`, `E_BOM_IVA_DISCORDANTE` — il primo
   motivo trovato, nell'ordine sopra. Il campo segnalato è `componente_id`.
 
@@ -87,10 +98,15 @@ due guard la chiamano con il proprio documento.
   componente, e il livello prima dell'IVA.
 * `db/pgtap/catalogo/test-guard-iva-reactivation-v1.sql` — la riattivazione di un legame con IVA discordante è
   rifiutata.
+* `db/pgtap/catalogo/test-distinta-storia-e-ritorni-v1.sql` — l'allungamento di una fine futura con un componente
+  ritirato è rifiutato, la sua chiusura passa; la riattivazione sotto un padre non più composito, e un legame nuovo
+  su un padre non composito, sono rifiutati.
+* `db/pgtap/catalogo/test-articoli-componenti-solo-componente.sql` — un solo componente come padre è rifiutato;
+  come componente è ammesso.
 * `db/pgtap/script/test-rubinetto-primo-motivo-v1.sql` — il guard solleva il primo motivo attraverso il
   rubinetto comune.
 
-Il motivo del componente ritirato e quello del componente uguale al kit, sulla distinta, non hanno un test.
+Il motivo del componente uguale al kit, sulla distinta, non ha un test.
 
 ---
 
@@ -98,6 +114,9 @@ Il motivo del componente ritirato e quello del componente uguale al kit, sulla d
 
 * 2026-10-13 — prende il posto di `catalogo.trgfn_articoli_componenti_guard_un_livello` e
   `catalogo.trgfn_articoli_componenti_guard_iva`: le regole sul componente passano alla check comune.
+* 2026-11-09 — giudica anche la fine che si allontana, e il padre attraverso la check: si ritirano
+  `catalogo.trgfn_articoli_componenti_guard_is_composito` e `catalogo.trgfn_articoli_componenti_guard_solo_componente`,
+  che scattavano solo all'inserimento e al cambio del padre (brief-db-revisione-catalogo, giro 1).
 
 ---
 

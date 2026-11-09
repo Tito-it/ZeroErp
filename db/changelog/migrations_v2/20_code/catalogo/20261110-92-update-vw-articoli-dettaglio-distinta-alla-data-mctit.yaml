@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.vw_articoli_dettaglio: has_componenti_alla_data chiede a
+#   catalogo.fn_distinta_alla_data la distinta di oggi (R2).
+#   Brief: brief-db-revisione-catalogo, giro 1-bis.
+#
+#   La colonna ricopiava il filtro della distinta alla data. Ora chiama il BB con il
+#   giorno aziendale, calcolato una volta per la vista in una sottoquery recintata
+#   (OFFSET 0): con la chiamata diretta per riga, o con la data in una sottoquery
+#   nell'argomento (che impedisce l'espansione), la colonna costava circa tre volte
+#   tanto. Provato su dbdev in BEGIN … ROLLBACK: stessi valori su tutti gli
+#   articoli, stessi tempi di prima.
+#   Le colonne, il loro ordine e i COMMENT non cambiano; la vista non ha opzioni
+#   (reloptions vuoto), quindi CREATE OR REPLACE non ne perde.
+#   Definizione di partenza da pg_get_viewdef su dbdev con search_path = pg_catalog
+#   (2026-11-09); rollback = la definizione di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261110-92-update-vw-articoli-dettaglio-distinta-alla-data-mctit.yaml
+
+  - changeSet:
+      id: 20261110-92-update-vw-articoli-dettaglio-distinta-alla-data
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vw_articoli_dettaglio: has_componenti_alla_data dal BB della distinta alla data. Brief: brief-db-revisione-catalogo, giro 1-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid = to_regclass('catalogo.vw_articoli_dettaglio') AND relkind = 'v'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
+               SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  a.is_composito AND NOT a.is_solo_componente AS puo_gestire_bom,
+                      CASE
+                          WHEN a.is_composito AND NOT a.is_solo_componente THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.fn_distinta_alla_data(a.id, oggi.data_operativa) d)) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni,
+                  a.requires_lotto,
+                  a.causale_onere_id IS NOT NULL AS e_onere,
+                  a.causale_onere_id,
+                  a.obsoleto_dal,
+                  script.fn_e_obsoleto(a.obsoleto_dal) AS e_obsoleto
+                 FROM catalogo.articoli a
+                   CROSS JOIN ( SELECT script.fn_data_operativa() AS data_operativa
+                       OFFSET 0) oggi
+                   LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
+                   LEFT JOIN vendite.articoli_tipologie t ON t.id = a.tipo_voce_id
+                   LEFT JOIN vendite.articoli_gruppi g ON g.id = a.gruppo_voce_id
+                   LEFT JOIN vendite.articoli_spesa s ON s.id = a.spesa_id
+                   LEFT JOIN config.iva i ON i.id = a.iva_id
+                   LEFT JOIN config.listini_tipologie lt ON lt.id = a.listino_tipologia_id
+                   LEFT JOIN config.nature_vendita nv ON nv.id = a.natura_vendita_id
+                   LEFT JOIN config.modi_approvvigionamento ma ON ma.id = a.modo_approvvigionamento_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
+               SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  a.is_composito AND NOT a.is_solo_componente AS puo_gestire_bom,
+                      CASE
+                          WHEN a.is_composito AND NOT a.is_solo_componente THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ac.prodotto_id = a.id AND ac.validita @> (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AND ac.attivo = true)) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni,
+                  a.requires_lotto,
+                  a.causale_onere_id IS NOT NULL AS e_onere,
+                  a.causale_onere_id,
+                  a.obsoleto_dal,
+                  script.fn_e_obsoleto(a.obsoleto_dal) AS e_obsoleto
+                 FROM catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
+                   LEFT JOIN vendite.articoli_tipologie t ON t.id = a.tipo_voce_id
+                   LEFT JOIN vendite.articoli_gruppi g ON g.id = a.gruppo_voce_id
+                   LEFT JOIN vendite.articoli_spesa s ON s.id = a.spesa_id
+                   LEFT JOIN config.iva i ON i.id = a.iva_id
+                   LEFT JOIN config.listini_tipologie lt ON lt.id = a.listino_tipologia_id
+                   LEFT JOIN config.nature_vendita nv ON nv.id = a.natura_vendita_id
+                   LEFT JOIN config.modi_approvvigionamento ma ON ma.id = a.modo_approvvigionamento_id;

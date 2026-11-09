@@ -57,8 +57,8 @@ dei componenti) né da `nature_vendita.e_cessione_beni` (che è fiscale).
   articoli attivi non si può spegnere: i due trigger nascono dal framework
   ATTIVO a `ci_apply`, non da un changeSet — guida
   [automazione DB](/guide/automazione-db).
-* L'indice sulla chiave esterna da `catalogo.articoli` è **dichiarato a no**
-  in `dbops.fk_index_policy`: nessuna interrogazione entra da quella colonna.
+* L'indice sulla chiave esterna da `catalogo.articoli` è deciso **`SENZA_INDICE`**
+  nel CSV di `dbops.fk_index_policy`: nessuna interrogazione entra da quella colonna.
 
 ---
 

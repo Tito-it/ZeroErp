@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-09 (blocco 10c-4 applicato, pgTAP verdi, da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-11-09 (giro 12 scritto e provato su scratch e dbdev, da applicare)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -75,7 +75,22 @@ dbdev (§28.12): `20261110-34` … `-41`, il CSV dell'overlap, un pgTAP nuovo e 
 del riconciliatore ATTIVO sulle partizioni (`-41`).
 **Applicato** da Tid (2026-11-09): migrazione su dbdev e scratch, pgTAP verdi. Le dieci righe dell'overlap solo di dbdev
 **cancellate** (decisione di Tid, §28.12 punto 2).
-**Riparte: Tid** col commit del blocco 10c-4, quando lo chiede; col commit del giro BE del 2026-11-09 su `dev/backend-tid` (BE2, BE5, BE7, BE12 fatte, più la rilettura critica dello stesso giorno, §5). Al team BE resta **BE8** dopo il giro 13 (§5). Al team DB **S-BE-2** (§5): la colonna `vivo` nel catalogo della lista `amm.processi`; **S-BE-3** (§5): CF e P.IVA valorizzati immutabili, a DB (decisione di Tid del 2026-11-09).
+Blocco 10c-4 **committato** (`48b5d39354`, 2026-11-09): **il giro 10c è chiuso.** **Giro 10d preparato** (§29, 2026-11-09):
+riverifica sulla struttura, nove nodi (N1-N9), tre blocchi; il residuo di §14.8 era una diagnosi sbagliata (§29.1 punto 9).
+**Decisioni di Tid** (2026-11-09, §29.4): proposte accettate; numeri `20261110-42` … `-61` riservati, l'altro cantiere dal `-62`.
+**Via** (Tid, 2026-11-09). **Giro 10d scritto e provato** su scratch e dbdev (§29.5-29.7): `20261110-42` … `-54`, il CSV unico
+(34 laterali cancellati), un pgTAP nuovo; su dbdev nessun indice cambia.
+**Applicato** da Tid (2026-11-09): migrazione su dbdev e scratch, pgTAP verdi (§29.10).
+**Decisioni di Tid** sulle scelte di §29.6 (2026-11-09, §29.11): le quattro righe delle note delle offerte erano di prova ed
+escono; le tre FK di N2 `CON_INDICE`; il resto ok. **Seguito scritto e provato** su scratch e dbdev: il CSV unico e
+`20261110-55`.
+**Giro 10d chiuso**: committato da Tid (`2050435065`). **Giro 11 preparato** (§30), numeri `20261110-56` … `-61` riservati.
+**N1 deciso** (Tid, 2026-11-09: strada (b)). **Giro 11 scritto e provato** su scratch e dbdev (§30.4): `20261110-56` … `-58`,
+un pgTAP nuovo. **Giro 11 applicato** (Tid, 2026-11-09): migrazione su dbdev e scratch, pgTAP di §30.4 verdi (§30.5).
+**Via al giro 12** (Tid, 2026-11-09: «procedi prossimo step»): Q15, §31. Censimento fatto, nodi N1-N3 decisi e numeri dati
+(Tid, 2026-11-09, §31.2): `20261110-59` … `-61`, `-80` … `-84`, e `-99` al posto del `-85` preso da `catalogo`.
+**Giro 12 scritto e provato** su scratch e dbdev (§31.3-31.4): nove changeSet, i due CSV dei codici, un pgTAP nuovo.
+**Riparte: Tid** con l'apply del giro 12 e i pgTAP di §31.6; il commit del giro 11 se non è ancora fatto. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -186,6 +201,26 @@ ancora le tabelle).
 | 9-sexagies-vicies-bis | ✅ sessione DB | Blocco 10c-4 scritto e provato (`20261110-34` … `-41`): overlap in `jsonb` con il CSV; via `p_cleanup_column` dalla firma; `fn_name_from_template` idempotente, col censimento dei nomi vivi | §28.11 | 9-sexagies-vicies-semel |
 | 9-sexagies-vicies-ter | ✅ Tid | Apply del blocco 10c-4, pgTAP come app verdi (2026-11-09); le dieci righe dell'overlap solo di dbdev cancellate dalla sessione DB su decisione di Tid | §28.12 | 9-sexagies-vicies-bis |
 | 9-sexagies-vicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 10c (2026-11-08, non pushato) | §28 | 9-sexagies-septdecies |
+| 9-sexagies-vicies-quater | ✅ Tid | Commit del blocco 10c-4 (`48b5d39354`, 2026-11-09). Il giro 10c è chiuso | §28.12 | 9-sexagies-vicies-ter |
+| 9-sexagies-vicies-quinquies | ✅ sessione DB | Giro 10d preparato: riverifica, nove nodi, tre blocchi (2026-11-09) | §29 | 9-sexagies-vicies-quater |
+| 9-sexagies-vicies-sexies | ✅ Tid, **Tid** ⏭️ | Decisioni N1-N9 ✅ e numeri `20261110-42` … `-61` ✅ (2026-11-09); restano le tre FK di N2 e il via | §29.4 | 9-sexagies-vicies-quinquies |
+| 9-sexagies-vicies-septies | ✅ sessione DB | Giro 10d, blocchi 10d-1 … 10d-3: scritti e provati (`20261110-42` … `-54`) | §29.5-29.7 | 9-sexagies-vicies-sexies |
+| 9-sexagies-vicies-octies | ✅ Tid | Apply del giro 10d su dbdev e scratch, pgTAP come app verdi (2026-11-09) | §29.10 | 9-sexagies-vicies-septies |
+| 9-sexagies-vicies-nonies | ✅ Tid | Le scelte di §29.6: righe di prova fuori, tre FK `CON_INDICE`, il resto ok (2026-11-09) | §29.11 | 9-sexagies-vicies-octies |
+| 9-septuagies | ✅ sessione DB | Il seguito: CSV unico e `20261110-55`, scritti e provati su scratch e dbdev | §29.11 | 9-sexagies-vicies-nonies |
+| 9-septuagies-semel | ✅ Tid | Apply del CSV e del `20261110-55` (dbdev), commit del giro 10d (`2050435065`, 2026-11-09). Il giro 10d è chiuso | §29.11 | 9-septuagies |
+| 9-septuagies-bis | ✅ sessione DB | Giro 11 preparato: riverifica, un nodo, numeri `20261110-56` … | §30 | 9-septuagies-semel |
+| 9-septuagies-ter | ✅ Tid | N1 del giro 11: strada (b), l'etichetta va con la credenziale (2026-11-09) | §30.2 | 9-septuagies-bis |
+| 9-septuagies-quater | ✅ sessione DB | Giro 11 scritto e provato (`20261110-56` … `-58`) | §30.4 | 9-septuagies-ter |
+| 9-septuagies-quinquies | ✅ Tid | Apply del giro 11, pgTAP come app verdi (2026-11-09) | §30.5 | 9-septuagies-quater |
+| 9-septuagies-sexies | **Tid** ⏭️ | Commit del giro 11 (solo i file del giro) | §30.5 | 9-septuagies-quinquies |
+| 9-septuagies-septies | ✅ sessione DB | Giro 12 (Q15): censimento, nodi N1-N3 decisi da Tid, scritto e provato | §31 | 9-septuagies-quinquies |
+| 9-septuagies-octies | **Tid** ⏭️ | Apply del giro 12, pgTAP di §31.6, commit | §31.6 | 9-septuagies-septies |
+| 9-septuagies-nonies | team BE | BE6 del giro 12: `E_CONTATTI_SOGGETTO_OBBLIGATORIO` nelle politiche d'errore, dopo l'apply | §31.5 | 9-septuagies-octies |
+| 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
+| 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
+| 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
+| 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-sexagies-octodecies | team BE ✅ (2026-11-09) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore: già in policy, `genera_error_policies --check` pulito | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | **team BE** ✅ (2026-11-09, da committare su `dev/backend-tid`) | BE2: i due gap che ripetevano un lock del DB ritirati, `DISTINCT`, commenti riscritti | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ✅ (2026-11-09, da committare su `dev/backend-tid`) | BE12 (il filtro «vivo» dei processi) ✅; BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`) già in policy | §5, §24.9 | 9-quinquagies |
@@ -197,8 +232,8 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** nessuna sul giro 10c (le righe dell'overlap solo di dbdev: cancellate, §28.12).
-**Da committare:** il blocco 10c-4 (applicato, pgTAP verdi, 2026-11-09). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
+**Decisioni aperte di Tid:** nessuna; le scelte dentro il giro 12 sono in §31.3, da guardare. Nessuna sul giro 10c.
+**Da committare:** il giro 11 (§30.4), applicato e verde; il giro 12 (§31) dopo l'apply. Il giro 10d è committato (`2050435065`). ⚠️ Nel working tree ci sono anche i file del cantiere `catalogo` (`20261110-62` …): non entrano nel commit di questo giro. Il blocco 10c-4 è committato (`48b5d39354`). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
 (`cdc563dedb`, 2026-11-08). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
 è committato (`d8492eeb77`, 2026-11-08), `-65` compreso, che è ancora da applicare. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
@@ -644,6 +679,9 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE2 ✅ (2026-11-09) | `dbops.vw_non_editable_fields` legge il lock **vivo** (§25.4): elenca ogni colonna che un trigger di lock blocca, `codice_interno` compreso, e non piu' le righe del registro che nessun trigger applica. ① I `gaps` che ripetono una colonna gia' bloccata dal DB si ritirano: al 2026-11-08 `("catalogo", "articoli"): ("codice",)` in `catalogo_service.py` e `codice` di `_EMITTENTE_NON_EDITABLE_GAPS` in `emittenti_fiscali_service.py` (tutte e due bloccate da `automation_lock_columns`); gli altri restano finche' il DB non li dichiara. Il controllo si fa colonna per colonna sulla vista dopo l'apply. ② Le colonne della vista cambiano: escono `exec_mode` e `note`, entra `trigger_name`. `LockColumnsRepository` legge solo `column_name`: nessuna rottura, ma il commento di testata del repository («alias semantico su `automation_lock_columns`») e quello di `non_editable_fields_helper.py` vanno riscritti. ③ Una colonna bloccata da due trigger compare due volte: `list_non_editable` restituisce una tupla, e un `DISTINCT` (o un `set`) evita il doppio | `backend/apps/catalogo/services/catalogo_service.py:126-140`, `backend/apps/anagrafiche/services/emittenti_fiscali_service.py:47-50`, `backend/apps/core/db/lock_columns_repository.py:8-50`, `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
 | BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 ✅ (2026-11-07) | **Decisione di Tid (2026-11-07): cade il tetto.** `list_lookup_codici` chiama `dbops.fn_get_lookup_codici` con `p_limit` NULL al posto di `LOOKUP_MAX_SOURCE_ROWS` (la costante e il commento «il limit interno è una guardia» si ritirano); la ricerca `ILIKE` e la paginazione con `sql_order_clause` e `fetch_paged_with_total` restano come sono. Da riscrivere la docstring («chiama con limit ampio…, obiettivo: evitare di modificare la funzione DB»). Non dipende dall'apply: lo spareggio DB del giro 7 non cambia il risultato per il backend, che riordina fuori | `backend/apps/core/db/dbops_repository.py:52-55, 378-470` | D57 |
+| BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
+| BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) **Giro 12 (2026-11-09):** `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (§31.5). | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
+| BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE5 ✅ (2026-11-09) | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
 | BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 ✅ (2026-11-09) | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
@@ -1766,6 +1804,8 @@ annullata) su dbdev e sullo scratch: i due change del `-18` e il `-19` passano.
 non le vede `vw_fk_senza_indice` e la politica non ne crea gli indici, ma ne toglie quelli a `false`. E la
 stessa FK ha una riga in due CSV (`fk_index_policy.csv` e quello della bonifica), contro «una tabella, un
 CSV». Si guarda con la convergenza di `fk_index_policy`.
+⚠️ **Correzione (2026-11-09, §29.1 punto 9):** `config` è nell'ambito (`config,*all`, dal 2025-11-23). La FK non si vedeva
+per il filtro su `consentito` della vista, cioè per Q14 ② stessa.
 
 ⚠️ **La lezione per i giri dopo:** la prova si fa anche col `search_path` dell'app
 (`django, public, config, dbops, script, anagrafiche`), non solo da owner, e con le automazioni di `90_end`
@@ -4437,3 +4477,523 @@ CSV), `fn_apply_automazione_overlap.md`; `guide/automazione-db.md` (§4.3, §5.4
 (fuori perimetro, falsa: diceva che un vincolo parziale non lo gestisce il framework, ma lo fa con `where_predicate`).
 La scheda auto-generata di `forme_giuridiche_tipi_soggetto_dettaglio` porta il nome vecchio del trigger fino alla
 rigenerazione dopo l'apply.
+
+## 29. Giro 10d — la politica degli indici delle FK: preparazione (2026-11-09)
+
+Il giro 10c è chiuso: il blocco 10c-4 è committato (`48b5d39354`, 2026-11-09). Questo è l'ultimo blocco del giro 10
+(§8): Q14 ② (la FK a `false` che sparisce dal presidio), D23 (il nome dell'indice di una riga di politica), il
+`fk_index_policy.csv` che nessuno carica (§23.11), la parte di D13 rimasta su `fn_seed_fk_index_policy` (§26.6
+punto 4) e il residuo di §14.8. **Nessuno sviluppo prima del via di Tid**: qui ci sono la riverifica, i nodi e i
+blocchi.
+
+**Brief vicini verificati:** `framework-automazione-db-migliorie.md` §2.1 (il nome di `fn_populate_fk_index_policy`,
+che la guida confondeva con l'apply): è un punto di documentazione, e questo giro riscrive comunque il COMMENT e la
+pagina; non serve un brief nuovo. `brief-db-articoli-obsoleto-dal.md` dice che le righe delle FK nuove «le scrive il
+prossimo `ci_apply`»: non è vero (punto 3 qui sotto), lo si corregge là quando quel brief si riapre.
+
+### 29.1 La riverifica (schede auto-generate di oggi e catalogo dei due database, in sola lettura)
+
+Struttura (il contratto):
+
+1. **`dbops.fk_index_policy`**: `consentito boolean NOT NULL DEFAULT true`, `generated_by_script boolean NULL DEFAULT
+   false`, `dll_command` con il CHECK `chk_fk_index_policy_dll_command_forma`. Il default `true` dice il contrario di
+   ciò che fa la scoperta, che scrive `false`.
+2. **Gli scrittori** dicono tre cose diverse: `fn_populate_fk_index_policy` scrive `false` sulle FK scoperte senza riga;
+   `fn_seed_fk_index_policy` scrive `true` e `generated_by_script = true` sulle FK **già coperte** senza riga (dalla
+   vista `vw_fk_con_indice_missing_policy`); i CSV scrivono una decisione. Q14 ② vuole un solo scrittore delle decisioni,
+   il seed.
+3. **Chi esegue la scoperta:** solo il job pgAgent della domenica (`maintenance.proc_apply_fk_index_policy_job(true)`).
+   Non la esegue né il `90_end` (`20250626-31`, che chiama solo l'apply) né `ci_apply`. Su un database da zero, quindi,
+   le FK nuove non hanno riga, e il presidio non sa distinguere «nuova» da «decisa».
+4. **`fn_seed_fk_index_policy` non la chiama nessuno** (`grep` sul repo, 2026-11-09: solo i changeSet che la creano e
+   la nota di `presidi.csv`). È una promessa senza esecutore, e scrive una decisione da un'automazione. Legge l'ambito
+   da sé, per schema (D13).
+5. **`vw_fk_senza_indice` fa due mestieri:** è l'ingresso della scoperta e la guardia 1 dell'apply (cioè il fatto «la FK
+   è scoperta»), ed è anche il presidio. Il filtro `COALESCE(pol.consentito, true) = true` fa sparire dal fatto una FK
+   decisa a `false`: è Q14 ②.
+6. **D23 confermato:** il nome dell'indice si ricava dal `dll_command` in due modi. L'apply prende la sesta parola
+   (`split_part(…, ' ', 6)`); `vw_indici_ridondanti_prefisso` usa `ILIKE '%' || nome || ' ON%'`, quindi un nome che è
+   il suffisso di un altro, o che contiene `_` (il jolly di LIKE), aggancia la riga sbagliata e dice `AUTOMAZIONE_FK`.
+7. **L'ambito si legge in due modi.** Le quattro viste della politica e `fn_seed_fk_index_policy` guardano solo lo
+   schema (`EXISTS … sc.schema_name = …`); il framework ha il BB `dbops.fn_table_in_scope`, che legge anche
+   `table_like`. Per `dbops`, l'ambito dichiara sette tabelle, ma la politica governa tutte le FK dello schema. Per
+   esempio `dbops.coda_lavori` ha una decisione (`fk_index_policy_coda_lavori_emittente.csv`) e non è fra le sette.
+   L'apply, poi, non legge l'ambito: scorre ogni riga. Una riga `false` fuori ambito fa il `DROP`, una riga `true`
+   fuori ambito non crea mai (la guardia 1 vede solo l'ambito).
+8. **Una tabella, trentacinque CSV:** 34 CSV laterali caricati, uno per cantiere, più il `dbops/fk_index_policy.csv`
+   che nessuno carica (ha ancora le colonne `user_update`/`data_update` tolte nel 7-bis-b). Contro la regola «una
+   tabella, un CSV» (`linee-guida-sql.md` §11.2).
+9. **Il residuo di §14.8 era una diagnosi sbagliata.** `config` è nell'ambito: c'è `config,*all` in
+   `automation_scope.csv` dal 2025-11-23, ed è letto sui due database. La FK `fk_stradario_comune_id` non compariva in
+   `vw_fk_senza_indice` perché la sua riga era `false`: il filtro del punto 5, cioè Q14 ② stessa. La cura di allora (riga
+   a `true` e l'indice in `20261107-19`) resta giusta.
+
+Fatti datati, 2026-11-09. Servono a trovare gli errori, non a decidere:
+
+| | dbdev | scratch (da zero) |
+| --- | --- | --- |
+| righe di politica (`false`/`true`) | 733 / 175 | 96 / 65 |
+| FK nell'ambito senza riga | 139 | 845 |
+| righe di `vw_fk_senza_indice` | 0 | 510 |
+| righe su una FK che non c'è | 34 | 14 |
+
+* Lo zero di dbdev è il difetto di Q14 ②, non un database in ordine: il job ha scritto `false` su ogni FK scoperta, e
+  così sono uscite tutte dal presidio.
+* Le 14 righe «senza FK» dello scratch sono le FK del ponte verso `django.auth_user`
+  (`config/fk_index_policy_auth_user.csv`, `fk_index_policy_credenziali.csv`). In CI quelle FK nascono dopo Liquibase,
+  quindi sono decisioni vere su FK che nascono più tardi, non righe morte. ⇒ **Nessuna pulizia può cancellare una riga
+  di seed perché la FK manca.**
+* I CSV, confrontati fra loro (solo i file): 504 chiavi, di cui 29 in due file. In 28 casi i due file sono l'orfano e un
+  laterale (vince il laterale, l'unico che gira). **Un conflitto è fra due CSV caricati**:
+  `pratiche.template_flussi_handler_eventi.fk_tfhe_template_flusso` è `true` in `pratiche/fk_index_policy_tfhe.csv`
+  (`20260615-10`) e `false` in `dbops/fk_index_policy_bonifica_ridondanze.csv` (`20260727-38`). Oggi vince il file che
+  gira per ultimo.
+* L'orfano: 344 chiavi stanno solo lì. Sono la fotografia di dbdev del 2026-01-16 (`titodb`, `generated_by_script`
+  copiato), cioè l'output delle due automazioni, non decisioni di un seed. Fanno eccezione le 15 righe aggiunte il
+  2026-09-28/29 dai cantieri del magazzino, tutte `false`: decisioni vere, scritte in un file che nessuno carica (i
+  changeSet di quei cantieri dicono «sta nel CSV principale»). Delle 115 `true` che ci sono solo lì, 104 sono su FK
+  vive; 101 di queste hanno l'indice dal changeSet della tabella, quindi la riga non decide niente. **Tre sono scoperte
+  da zero**: `anagrafiche.soggetti_ruoli.fk_tipi_ruoli_config`, `anagrafiche.soggetti.fk_titoli_cortesia_config`,
+  `pagamenti.sepa_mandati.fk_sepa_mandati_billing_account`. Su dbdev hanno l'indice, da zero no.
+
+### 29.2 I nodi (decisioni di Tid)
+
+Q14 ② è già deciso (§4): `consentito` lascia il posto a `decisione` (`DA_DECIDERE` / `CON_INDICE` / `SENZA_INDICE`,
+default `DA_DECIDERE`) e a `motivo`; la scoperta scrive solo `DA_DECIDERE` e solo sulle FK nuove; la decisione la
+scrive solo un seed; il presidio mostra le `DA_DECIDERE`. I nodi che seguono sono quelli che la decisione lascia aperti.
+
+* **N1 — Una tabella, un CSV.** I 34 laterali e l'orfano diventano un solo `80_data/sql/dbops/fk_index_policy.csv`,
+  con un solo mirror (`loadUpdateData`, `primaryKey` sulla terna, `runOnChange` + `validCheckSums: ANY`). Gli YAML e i
+  CSV laterali si cancellano, come per `famiglie_documento` il 2026-09-18; le righe in `databasechangelog` restano
+  orfane. I changeSet di `DELETE` congelati restano, e il CSV unico non contiene le righe che quelli tolgono.
+  **Proposta: sì.** Per il conflitto `fk_tfhe_template_flusso`, la proposta è `SENZA_INDICE`: è la decisione più
+  recente, ed è motivata (la bonifica delle ridondanze); è anche ciò che oggi gira per ultimo.
+* **N2 — Che cosa entra dall'orfano.** Proposta: entrano come decisioni solo le 15 righe del magazzino (`SENZA_INDICE`)
+  e, **una per una, le tre FK scoperte da zero** con `true` (Tid decide: `CON_INDICE`, che da zero crea un indice che
+  oggi c'è solo su dbdev, oppure `SENZA_INDICE`, che su dbdev lo toglie). Le altre 326 righe sono output delle
+  automazioni: non entrano, e su dbdev diventano `DA_DECIDERE` (Q14 ②: «quelle scritte solo dall'automazione»).
+  L'orfano si cancella.
+* **N3 — Come si convertono le righe di oggi.** Proposta: il changeSet della colonna scrive `DA_DECIDERE` su tutte le
+  righe, e il mirror del CSV unico, che gira dopo, riscrive le decisioni. Il risultato è uguale da zero e su dbdev, e
+  non serve un censimento dei seed fatto a mano: il seed è il CSV. Escono anche `consentito` e `generated_by_script`.
+  Il secondo è un marcatore copiato nei CSV coi valori di dbdev e oggi non dice chi ha scritto la riga: lo dice
+  `decisione`. Il vocabolario sta in un CHECK, non in una tabella: sono tre valori che il codice legge, non un catalogo.
+* **N4 — Che cosa fa l'apply con `DA_DECIDERE`.** Proposta: **niente**, né `CREATE` né `DROP`. Oggi una riga `false`
+  scritta dall'automazione toglie l'indice per nome. Con N3, su dbdev le righe dell'automazione smettono di farlo: un
+  indice nato in un changeSet col nome canonico non lo toglie più nessuno finché non c'è una decisione.
+  `CON_INDICE` e `SENZA_INDICE` restano come oggi, con le due guardie.
+* **N5 — Dove gira la scoperta.** Proposta: anche a ogni migrate, con un changeSet `runAlways` di `90_end`, oltre al job
+  della domenica. Così il registro ha la stessa forma da zero e su dbdev, e il presidio vede le FK nuove già in CI.
+  L'ordine rispetto all'apply non conta: l'apply ignora le `DA_DECIDERE` (N4). Alternativa: la scoperta resta solo nel
+  job, e il presidio legge le FK scoperte senza riga direttamente dal catalogo.
+* **N6 — Il fatto e il presidio si separano.** Proposta: `vw_fk_senza_indice` diventa solo il fatto («la FK è
+  scoperta»), senza filtro sulla decisione e con la colonna `decisione` (NULL = senza riga). La leggono la scoperta e la
+  guardia 1. Nasce il presidio `dbops.vw_fk_da_decidere`: le FK scoperte senza riga o `DA_DECIDERE`, più le
+  `CON_INDICE` ancora scoperte dopo l'apply (una promessa non mantenuta). Va nel catalogo dei presidi
+  (`presidi.csv` / `presidi_testi.csv`), e la riga di oggi di `vw_fk_senza_indice` cambia nota.
+* **N7 — `fn_seed_fk_index_policy` e `vw_fk_con_indice_missing_policy` si ritirano.** Proposta: sì. Scrivono una
+  decisione da un'automazione, contro Q14 ②, e non le esegue nessuno. Una FK coperta da un indice del suo changeSet non
+  ha bisogno di una riga: la politica governa gli indici che crea lei. (Il corollario resta: una riga `SENZA_INDICE` col
+  nome canonico toglie quell'indice.) Lettori da riallineare: `presidi.csv` (riga 18), `scripts/indicatori-qualita-db.sh`
+  (riga 180, che oltretutto la chiama «FK senza indice fuori policy», cioè il contrario di ciò che è), le pagine
+  `manual/`. Chiude la parte di D13 rimasta al giro 10d.
+* **N8 — D23: il nome dell'indice in un posto solo.** Proposta: una colonna generata
+  `indice_nome text GENERATED ALWAYS AS (substring(dll_command FROM '^CREATE INDEX IF NOT EXISTS ([a-z_][a-z0-9_$]*) ON '))
+  STORED`, con la stessa grammatica del CHECK. L'apply e `vw_indici_ridondanti_prefisso` la confrontano per
+  uguaglianza. I mirror non la scrivono (non la nominano). Alternativa: una funzione `IMMUTABLE` letta dai due.
+* **N9 — Il perimetro della politica.** Due strade: (a) la politica segue `fn_table_in_scope`, come il resto del
+  framework; allora `dbops.coda_lavori` e le altre tabelle di `dbops` fuori elenco escono dal governo, e le loro
+  decisioni diventano inerti; aggiungerle all'ambito vorrebbe dire armare su di loro anche i trigger delle altre
+  automazioni. (b) La politica degli indici governa **per schema**, per scelta dichiarata: l'indice di una FK serve a
+  ogni tabella, mentre l'elenco delle tabelle serve ai trigger. In questo caso le cinque letture per schema diventano
+  un BB solo, e il COMMENT e `automation_scope.md` lo dicono. **Proposta: (b).** In tutte e due le strade, l'apply agisce
+  solo sulle righe nell'ambito; una riga fuori ambito non fa niente, e la mostra il presidio di N6.
+
+### 29.3 I blocchi
+
+| Blocco | Contenuto | Perché a parte |
+| --- | --- | --- |
+| 10d-1 | N1, N2, N3: il CSV unico e il suo mirror, la colonna `decisione` (con `motivo`), la conversione, le colonne che escono | La forma del registro. Viene prima, perché tutti i lettori la leggono |
+| 10d-2 | N4, N5, N6, N8, N9: apply, scoperta, la vista del fatto, il presidio nuovo, il nome dell'indice, il perimetro | I lettori e gli scrittori della forma nuova, aperti una volta sola |
+| 10d-3 | N7: il ritiro del seed e della vista, coi lettori | Un ritiro in un changeSet solo (D61) |
+
+Dentro 10d-1 l'ordine conta. Lo `00_schema` aggiunge `decisione` e `motivo` e scrive `DA_DECIDERE`. Il mirror unico
+(`80_data`) gira dopo i congelati. Il `DROP` di `consentito` e di `generated_by_script` sta in `80_data`, dopo i loader
+congelati che le nominano: lo stesso schema del `20261109-31`. I loader laterali si cancellano, quindi da zero non
+girano più. I `DELETE` congelati invece girano, e trovano le colonne ancora lì.
+
+**pgTAP previsti:** nuovo, sulla politica: la FK `SENZA_INDICE` resta nel fatto e non compare nel presidio; una FK nuova
+è `DA_DECIDERE` e compare nel presidio; l'apply non tocca una `DA_DECIDERE`; il nome dell'indice è un suffisso di un
+altro e contiene `_` (D23); una riga fuori ambito non fa niente; il CSV unico non ha chiavi doppie e ogni riga nomina una
+FK viva o una FK del ponte django. Da riscrivere: `dbops/test-indici-letture-trasversali-v1` (test 8, `consentito`),
+`dbops/test-marcatori-automazione-senza-esecutore-v1` (riga 229, se il marcatore cambia),
+`dbops/test-processi-jobname-wrapper` (se N5 tocca il processo). Si censiscono anche gli header dei pgTAP che citano
+un laterale.
+
+**Doc:** `dbops/manual/` di `fk_index_policy`, `apply_fk_index_policy`, `fn_populate_fk_index_policy`,
+`vw_fk_senza_indice`, `vw_indici_ridondanti_prefisso`, `automation_scope`, `processi`, una pagina nuova per il
+presidio; le due pagine dei ritirati si cancellano (N7); `guide/automazione-db.md`,
+`guide/database-che-resta-veloce.md`, `linee-guida-sql.md` dove parlano di `consentito` (§11.2 sui CSV laterali). I
+commenti `consentito = false` sparsi nei changeSet mergiati non si toccano: sono storia.
+
+**Ricadute BE:** nessuna (`grep` su `backend/` e `frontend/src`, 2026-11-09: nessuno nomina la tabella né le viste).
+
+**Numeri:** li dà Tid col via. Ci sono altre sessioni DB, e la regola del max+1 si riverifica subito prima di scrivere.
+
+### 29.4 Le decisioni di Tid (2026-11-09)
+
+«Accetto le proposte»: N1, N3-N9 come da §29.2; N1 col conflitto `fk_tfhe_template_flusso` a `SENZA_INDICE`; N9 (b).
+**N2:** le 15 righe del magazzino entrano come `SENZA_INDICE`; **restano da decidere le tre FK scoperte da zero**
+(`CON_INDICE` o `SENZA_INDICE`, una per una), perché N2 non aveva una proposta su di loro.
+
+**Numeri riservati:** `20261110-42` … `-61` (il massimo usato era il `-41`, su file, scratch e dbdev, letto il
+2026-11-09). Il giro ne prevede circa tredici; il resto è margine per le correzioni dopo l'apply. L'altro cantiere parte
+dal `20261110-62`.
+
+### 29.5 Che cosa è scritto (2026-11-09)
+
+Via di Tid: «ok puoi iniziare» (2026-11-09). Numeri usati: `20261110-42` … `-54`; dal `-55` al `-61` restano liberi nel
+range riservato.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261110-42` | `decisione` (CHECK, default `DA_DECIDERE`), `motivo` (CHECK: mai vuoto), `indice_nome` generato dal `dll_command` (D23); COMMENT della tabella e delle colonne |
+| `20_code/dbops/20261110-43` | il BB `dbops.fn_indici_schema_nell_ambito(schema)`, `LANGUAGE sql` espandibile (N9 b) |
+| `20_code/dbops/20261110-44` | `vw_fk_senza_indice` solo il fatto, con `decisione` in coda (N6) |
+| `20_code/dbops/20261110-45` | `vw_indici_ridondanti_prefisso` per nome esatto, `policy_decisione` (D23); DROP e CREATE |
+| `20_code/dbops/20261110-46` | `vw_duplicate_indexes`: l'ambito dal BB (era la sesta copia della stessa lettura) |
+| `20_code/dbops/20261110-47` | `apply_fk_index_policy` sui tre valori, solo nell'ambito (N4, N9) |
+| `20_code/dbops/20261110-48` | `fn_populate_fk_index_policy`: `DA_DECIDERE` sulle FK nuove, via le `DA_DECIDERE` non più scoperte; mai una riga decisa |
+| `20_code/dbops/20261110-49` | il presidio `vw_fk_da_decidere` (N6) |
+| `20_code/dbops/20261110-50` | ritiro di `fn_seed_fk_index_policy` e `vw_fk_con_indice_missing_policy` (N7) |
+| `80_data/changelog/20261110-51` | il mirror del CSV unico `80_data/sql/dbops/fk_index_policy.csv` (N1) |
+| `80_data/changelog/20261110-52` | la riga del presidio ritirato esce dal catalogo |
+| `80_data/changelog/20261110-53` | `DROP` di `consentito` e `generated_by_script`, dopo i congelati che le nominano (N3) |
+| `90_end/20261110-54` | la scoperta a ogni migrate, `runAlways` (N5) |
+
+**Cancellati** (confermato da Tid, 2026-11-09): i 34 loader laterali di `80_data/changelog/` (tutti e soli quelli che
+caricavano un `fk_index_policy_*.csv`) e i loro 34 CSV, come per `famiglie_documento` il 2026-09-18. Nessun changeSet è
+modificato; le righe in `databasechangelog` restano orfane. Il `fk_index_policy.csv` orfano è sostituito dal CSV unico,
+con lo stesso nome: i commenti dei changeSet che dicevano «sta nel CSV principale» ora dicono il vero.
+**Cataloghi:** `presidi.csv` e `presidi_testi.csv` (esce la vista ritirata, entra il presidio, note riscritte),
+`processi.csv` (la nota della scoperta). **Altro:** `scripts/indicatori-qualita-db.sh` e
+`dev/qualita-db-indicatori.md` contano il presidio nuovo.
+**pgTAP:** nuovo `dbops/test-fk-index-policy-decisione-v1` (22, runner owner: si fabbrica due schemi, uno nell'ambito);
+riscritto il test 8 di `dbops/test-indici-letture-trasversali-v1` (`decisione` e `indice_nome`).
+
+Il CSV unico aveva 180 righe (65 `CON_INDICE`, 115 `SENZA_INDICE`): le 161 che lo scratch ha da zero (i 34 laterali più
+`anagrafiche.pdp.fk_pdp_utility`, scritta in linea da `20260215-14`/`-15`) e 19 righe del file orfano scritte a mano.
+Dopo le decisioni di §29.11 ne ha 179 (68 `CON_INDICE`, 111 `SENZA_INDICE`).
+
+### 29.6 Le scelte dentro il giro (da guardare, Tid)
+
+1. **Le righe dell'orfano scritte a mano sono 19, non 15.** Oltre alle 15 del magazzino ci sono 4 righe del 2026-05-24
+   (`vendite.note_offerte_commerciali`, quattro FK, tutte `false`), scritte a mano e non dall'automazione. Sono entrate
+   come `SENZA_INDICE`, perché è quello che dicevano. Le FK sono vive tutte e 19.
+2. **`motivo` è vuoto in tutto il CSV.** Il perché delle decisioni passate sta nelle testate dei loader cancellati (git),
+   ma è scritto per file, non per FK, e pieno di conteggi, nomi di brief e numeri di changeSet: copiarlo avrebbe portato
+   nel dato proprio quello che non deve starci. Il `motivo` si scrive quando una decisione si riapre.
+3. **Le tre FK di N2 non sono nel CSV**: aspettano la decisione di Tid. Fino ad allora su dbdev la loro riga esce (la FK
+   è coperta dall'indice che c'è già, quindi non è scoperta) e l'indice resta; da zero sono `DA_DECIDERE` e l'indice
+   non c'è. Con la decisione entrano nel CSV.
+4. **`vw_duplicate_indexes` è entrata nel giro**: era la sesta copia della lettura dell'ambito per schema (regola del 2).
+5. **Il presidio non ha `colonna_variante`**: i tre casi stanno nella colonna `caso`, con una sola frase per chi agisce.
+6. **I changeSet di codice non hanno un ritorno indietro singolo** (`SELECT 1`): le versioni di prima leggevano
+   `consentito`, che il giro toglie. Il giro torna indietro tutto insieme.
+7. **Il guardrail del preambolo pgTAP** chiede di abbassare la soglia dei `throws_ok` senza discriminante (110 → 109): il
+   calo viene dai pgTAP del cantiere `catalogo` nel working tree, non da questo giro. La soglia la cambia quel cantiere.
+
+### 29.7 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase dopo la riga `BEGIN;`, transazione annullata)
+
+Ordine dell'SQL: `-42` … `-50`, il mirror simulato del CSV unico (UPDATE delle righe che ci sono, INSERT di quelle che
+mancano, nessuna DELETE), i mirror simulati delle righe del giro in `presidi.csv` e `presidi_testi.csv`, `-52`, `-53`,
+l'apply (`90_end/20250626-31`), `-54`.
+
+* **Il pgTAP nuovo:** 22/22 sullo scratch e su dbdev (6,7 s).
+* **Su dbdev nessun indice cambia**: nella stessa transazione zero indici tolti e zero nati. Fatti datati: delle righe
+  di oggi 178 diventano decisioni (65 `CON_INDICE`, 113 `SENZA_INDICE`), 493 restano `DA_DECIDERE` (le FK nuove che il
+  job aveva scritto `false`: il difetto di Q14 ②), 237 escono perché la FK non è più scoperta; 2 righe del CSV nascono.
+  Il presidio su dbdev ha 493 righe `DA_DECIDERE`.
+* **Regressione «senza → con»** su 16 pgTAP vicini (cataloghi dei presidi, processi, riferimenti morti con
+  `plpgsql_check`, marcatori, letture trasversali, duplicati, e i cinque di `vendite` che nominano le viste): zero rossi
+  senza e zero con, sullo scratch.
+* **Guardrail** verdi: `run_on_change`, `v1_congelato`, `pgtap_preambolo`, `sql_letterali`, `timestamp_senza_fuso`,
+  `precondition_seed`, `ddl_su_trigger_automazione`, `grant_ruolo_batch`; pre-commit verde.
+
+### 29.8 Per Tid
+
+1. **Apply** di `20261110-42` … `-54` (e del CSV) su dbdev e scratch.
+2. **pgTAP come app:** `dbops/test-fk-index-policy-decisione-v1` (runner owner), `dbops/test-indici-letture-trasversali-v1`,
+   `dbops/test-catalogo-presidi-v1`, `dbops/test-presidi-testi-v1`, `dbops/test-riferimenti-morti-v1`,
+   `dbops/test-vw-duplicate-indexes-vincoli-v1`, `dbops/test-processi-jobname-wrapper`.
+3. **Le tre FK di N2**, una per una (§29.6 punto 3).
+4. Le scelte di §29.6.
+
+Ricadute BE: nessuna (`backend/` e `frontend/src` non nominano la tabella né le viste).
+
+### 29.9 Doc (2026-11-09)
+
+Scritta da un agente su istruzioni della sessione DB, riletta dalla sessione. Nuove: `dbops/manual/fn_indici_schema_nell_ambito.md`,
+`dbops/manual/vw_fk_da_decidere.md`. Cancellate (oggetti ritirati): `dbops/manual/fn_seed_fk_index_policy.md`,
+`dbops/manual/vw_fk_con_indice_missing_policy.md`, con i loro link. Riscritte: `dbops/manual/` di `fk_index_policy`,
+`apply_fk_index_policy`, `fn_populate_fk_index_policy`, `vw_fk_senza_indice`, `vw_indici_ridondanti_prefisso`,
+`vw_duplicate_indexes`, `automation_scope`, `fn_seed_automazione_guard_utility_tipo_ruolo`;
+`maintenance/manual/proc_apply_fk_index_policy_job.md`; `guide/automazione-db.md` (§6 e §1.1), `linee-guida-sql.md`
+(§8.6, §8.7, §10.9, §11.2), `guide/database-che-resta-veloce.md`, `tutorial/framework-automazione-db.md`,
+`postgresql/row-level-security.md`; le pagine `manual/` di `config`, `vendite` e `documenti` che citavano il flag per una
+FK precisa, tradotte nel vocabolario nuovo e verificate sul CSV unico. Tre di queste dicevano il falso già prima
+(`offerte_commerciali`, `contratti`: «consentito=false come fk_preventivi_valuta», ma nessuna delle due FK ha una riga;
+`fatturazione_lotti_gruppi`: la FK è coperta dalla UNIQUE e la scoperta non la registra). In `fatturazione_lotti_gruppi`
+corretta anche la vista che segnala un indice ridondante per prefisso (è `vw_indici_ridondanti_prefisso`). Gli `index.md`
+di schema e le schede auto-generate si rigenerano dopo l'apply: fino ad allora le schede dei due oggetti nuovi non
+esistono, e i loro link sono morti.
+
+### 29.10 Dopo l'apply (2026-11-09)
+
+**Applicato** da Tid su dbdev e scratch: migrazione `20261110-42` … `-54` e il CSV unico, pgTAP come app verdi. Restano le
+tre FK di N2 (§29.6 punto 3), le scelte di §29.6 e il commit del giro.
+
+### 29.11 Le decisioni di Tid sulle scelte di §29.6, e il seguito (2026-11-09)
+
+| Punto | Decisione | Che cosa ne viene |
+| --- | --- | --- |
+| 1, le 4 righe delle note delle offerte | erano di prova, non decisioni | escono dal CSV; `80_data/changelog/20261110-55` le toglie dove il mirror le aveva scritte (il mirror non cancella) |
+| 2, `motivo` vuoto | ok: è un database di sviluppo | — |
+| 3, le tre FK di N2 | `CON_INDICE` | entrano nel CSV coi comandi del vecchio file: `ix_anagrafiche_soggetti_ruoli_tipo_ruolo_id`, `ix_anagrafiche_soggetti_titolo_cortesia_id`, `ix_pagamenti_sepa_mandati_billing_account_id` |
+| 4, 5, 6 | ok | — |
+| 7, la soglia del preambolo | da correggere | già fatta: la soglia è a 109, l'ha abbassata il cantiere `catalogo` (`scripts/guardrail_pgtap_preambolo.py` nel suo working tree) |
+
+Il CSV unico ha 179 righe (68 `CON_INDICE`, 111 `SENZA_INDICE`); la testata del mirror `-51` (runOnChange + ANY) lo dice.
+
+**Le prove** (scratch e dbdev, da owner, transazione annullata: il mirror simulato col CSV nuovo, il `-55`, l'apply, la
+scoperta): le tre FK sono `CON_INDICE` e coperte su tutti e due; sullo scratch l'apply crea i tre indici, su dbdev ci
+sono già (la guardia 1 salta). Le quattro righe escono; la scoperta ne riregistra tre `DA_DECIDERE`, la quarta FK
+(`fk_offnote_testata`) è coperta. La documentazione non nomina queste righe: nessuna pagina da cambiare.
+
+**Per Tid:** apply del CSV unico e del `20261110-55` su dbdev e scratch; pgTAP `dbops/test-fk-index-policy-decisione-v1`.
+Poi il commit del giro 10d.
+
+## 30. Giro 11 — le etichette di prova: la FK della credenziale (Q14 ⑩), preparazione (2026-11-09)
+
+Il giro 10d è chiuso: committato da Tid (`2050435065`, 2026-11-09). Il `20261110-55` è applicato su dbdev; nel
+`databasechangelog` dello scratch, letto lo stesso giorno, non c'è ancora. **Numeri riservati** (Tid, 2026-11-09):
+`20261110-56` … `-61`, poi il primo libero.
+
+**Brief vicini verificati:** nessuno in `work-in-progress/` tocca `dbops.credenziali_di_prova`,
+`dbops.trgfn_etichette_di_prova_guard` o `script.fn_elimina_credenziale` (grep, 2026-11-09).
+
+### 30.1 La riverifica (schede auto-generate di oggi)
+
+1. **`dbops.credenziali_di_prova`**: PK `auth_user_id`, nessuna FK. Il COMMENT dà il motivo («in CI `django.auth_user`
+   nasce dopo Liquibase»), che è un fatto e non una ragione: le FK verso `django.auth_user` stanno nel ponte di `90_end`,
+   con la preCondition `MARK_RAN` (per esempio `20260921-03`), e la gemella `soggetti_di_prova` ha la sua FK (verso
+   `anagrafiche.soggetti`, `NO ACTION`). Il COMMENT cita anche un brief (§5d).
+2. **`dbops.trgfn_etichette_di_prova_guard`** (montato su tutte e due le tabelle): rifiuta **ogni** UPDATE, DELETE e
+   TRUNCATE con `E_ETICHETTA_DI_PROVA_IMMUTABILE`, e l'INSERT fuori da SVILUPPO.
+3. **`script.fn_elimina_credenziale`** chiama la regola di `script.fn_check_credenziale_eliminabile`. Il motivo
+   `CON_STORIA` ricava da `pg_constraint` (`script.fn_tabelle_che_trattengono`) le tabelle che trattengono la credenziale
+   con una FK `RESTRICT` o `NO ACTION`. Le FK `CASCADE` non contano: le tabelle che le hanno seguono il `DELETE`.
+4. **Orfani** (fatto datato, 2026-11-09): dbdev ha 8 etichette e nessuna senza credenziale; lo scratch nessuna etichetta.
+   L'`ADD CONSTRAINT` passa; il changeSet li conta lo stesso e si ferma se ce n'è uno.
+5. **L'indice della FK:** la colonna è la PK, quindi la FK è coperta e alla politica degli indici non serve una riga.
+
+### 30.2 Il nodo (decisione di Tid)
+
+**N1 — Che cosa succede a una credenziale di prova quando un SUPER_ADMIN la elimina.** §4 (Q14 ⑩) ha deciso la FK
+`NO ACTION` «come la gemella» e ha lasciato al giro la scelta fra il rifiuto con codice e la porta che toglie etichetta
+e utente insieme, proponendo la seconda. La riverifica (punto 3) cambia il conto delle due strade:
+
+* **(a) `NO ACTION`: la credenziale etichettata non si elimina.** Non c'è codice da scrivere: la regola di eliminabilità
+  vede la FK da `pg_constraint` e risponde `CON_STORIA` con `dbops.credenziali_di_prova` fra le tabelle. Così il
+  pulsante è spento e la porta solleva `E_CREDENZIALE_CON_STORIA`. Il difetto è che la frase è falsa nel significato:
+  un'etichetta non è storia. Diventa vera solo aggiungendo un motivo apposta (un codice nuovo e la rigenerazione BE).
+* **(b) `CASCADE`: l'etichetta va via insieme alla credenziale.** La regola del guard diventa «un'etichetta non
+  cambia, e si toglie **solo insieme alla sua radice**»: il DELETE di una riga è ammesso quando la radice
+  (`django.auth_user` o `anagrafiche.soggetti`) non c'è più, cioè dentro la cascata della FK; resta rifiutato in ogni
+  altro caso, e così TRUNCATE e UPDATE. `fn_elimina_credenziale` e la regola di eliminabilità restano come sono, e
+  nessuno vede l'etichetta di una credenziale che non esiste (era il motivo della regola «non si toglie»: non
+  nascondere un utente al presidio). La gemella resta `NO ACTION`: sulla sua radice la regola vale uguale, ma un
+  soggetto con l'etichetta non si cancella comunque.
+
+**Proposta: (b).** È quella di §4, e il modello la regge: l'etichetta descrive la credenziale e non le sopravvive.
+(a) costa meno, ma dà al pulsante una ragione che non è quella vera.
+
+### 30.3 I changeSet previsti (`20261110-56` …)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/…-56` | (b) il guard: DELETE ammesso solo senza radice; COMMENT |
+| `90_end/…-57` | la FK `fk_credenziali_di_prova_auth_user` verso `django.auth_user`, nel ponte (`MARK_RAN` senza django), `ON DELETE CASCADE` per (b) o `NO ACTION` per (a); prima, il conteggio degli orfani |
+| `00_schema/dbops/…-58` | il COMMENT della tabella, senza il motivo falso e senza il brief |
+
+pgTAP: su dbdev la FK c'è, in CI no (i due mondi, `skip()` motivato); (b) eliminare una credenziale etichettata toglie
+anche l'etichetta, un DELETE diretto dell'etichetta resta rifiutato, e così il DELETE di una gemella con la radice viva;
+(a) la regola di eliminabilità risponde `CON_STORIA`. Da riscrivere: `dbops/test-etichette-di-prova-v1` se prova il
+DELETE. Doc: COMMENT della tabella; `dbops/manual/credenziali_di_prova.md`, `trgfn_etichette_di_prova_guard.md`,
+`vw_radici_di_prova_in_produzione.md`, `soggetti_di_prova.md`, la pagina di `fn_elimina_credenziale`;
+`backend/amm-software/manual/api_amm_software.md` al team BE, se ne parla.
+Ricadute BE: nessuna con (b); con (a) nessuna, salvo il motivo nuovo se lo si vuole vero.
+
+### 30.4 Il via e che cosa è scritto (2026-11-09)
+
+Via di Tid: «ok b procedi» (2026-11-09): N1 strada (b). Numeri usati: `20261110-56` … `-58`; `-59` … `-61` restano liberi.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261110-56` | `trgfn_etichette_di_prova_guard`: il DELETE di una riga è ammesso solo se la radice non c'è più (`django.auth_user` per le credenziali, `anagrafiche.soggetti` per i soggetti); `django.auth_user` assente = radice viva (fail-closed); COMMENT |
+| `90_end/20261110-57` | la FK `fk_credenziali_di_prova_auth_user` verso `django.auth_user`, `ON DELETE CASCADE`, `ON UPDATE NO ACTION`, nel ponte (`MARK_RAN` senza django); prima, le etichette orfane per nome (con una sola si ferma) |
+| `00_schema/dbops/20261110-58` | il COMMENT della tabella: la FK, l'etichetta che va via con la credenziale; senza il motivo falso e senza il brief |
+
+pgTAP nuovo: `dbops/test-credenziale-di-prova-fk-v1` (6, runner owner): i due mondi; DELETE diretto con la credenziale
+viva rifiutato; la regola di eliminabilità non conta l'etichetta come storia; UPDATE rifiutato; cancellare la credenziale
+toglie l'etichetta (la cancellazione in un'istruzione a sé, il conteggio in un'altra); l'etichetta di un soggetto vivo non
+si cancella. Il test 9 di `dbops/test-etichette-di-prova-v1` (DELETE con la radice viva) resta valido com'è.
+
+**Le prove** (scratch e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase, `-56`, `-58`, `-57`, dopo la riga
+`BEGIN;`, transazione annullata):
+
+* il pgTAP nuovo 6/6 su tutti e due. **La prova del rosso:** con la sola FK e il guard di prima la cascata è respinta
+  (`E_ETICHETTA_DI_PROVA_IMMUTABILE`): il `-56` è il prerequisito del `-57`;
+* regressione «senza → con» sui pgTAP vicini (`dbops/test-etichette-di-prova-v1`,
+  `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, `dbops/test-riferimenti-morti-v1`,
+  `config/test-credenziali-porta-v1`, `config/test-elimina-credenziale-v1`, `script/test-rubinetto-primo-motivo-v1`,
+  `dbops/test-app-postura-schema-django-v1`): stesso esito senza e con. I rossi che ci sono (3 in
+  `test-credenziali-porta-v1`, 1 in `test-elimina-credenziale-v1`) sono i test «come app» lanciati da owner: uguali senza il
+  giro;
+* guardrail verdi.
+
+Fatto datato: sullo scratch `django.auth_user` c'è, ma il ponte ha 3 FK su 24 (le sorelle sono segnate `MARK_RAN` da quando
+lo scratch è nato senza django); il `-57` è nuovo, e lì la FK nasce.
+
+**Doc:** `dbops/manual/credenziali_di_prova.md` (la sezione «nessun legame» diventa «l'etichetta segue la credenziale»),
+`trgfn_etichette_di_prova_guard.md`, `soggetti_di_prova.md`, `script/manual/fn_elimina_credenziale.md` (l'etichetta fra le
+cose che vanno via con la credenziale). `backend/amm-software/manual/api_amm_software.md` non ne parla. Ricadute BE: nessuna.
+
+**Per Tid:**
+1. **Apply** di `20261110-56` … `-58` su dbdev e scratch.
+2. **pgTAP come app:** `dbops/test-credenziale-di-prova-fk-v1` (runner owner), `dbops/test-etichette-di-prova-v1`,
+   `config/test-elimina-credenziale-v1`, `dbops/test-riferimenti-morti-v1`.
+
+### 30.5 Applicato (Tid, 2026-11-09)
+
+Migrazione `20261110-56` … `-58` applicata da Tid su dbdev e scratch; pgTAP come app di §30.4 verdi. Resta il commit,
+con i soli file del giro (non quelli del cantiere `catalogo`). Il giro 11 è chiuso col commit.
+
+## 31. Giro 12 — i presidi dei codici anche sulle funzioni SQL (Q15), 2026-11-09
+
+### 31.1 Il censimento (scratch `zeroerp_ruoli` e dbdev, 2026-11-09)
+
+Fatti datati, non motivi: il perimetro lo decide Q15 (chi può sollevare un codice, non il linguaggio).
+
+* **Sette viste di `dbops` limitano i corpi al plpgsql** con lo stesso filtro scritto a mano (`p.prolang = (SELECT oid
+  FROM pg_language WHERE lanname = 'plpgsql')`): `vw_codici_errore_da_dichiarare`, `vw_punti_canale_campo`,
+  `vw_funzioni_check_codici`, `vw_punti_primo_motivo`, `vw_bersagli_non_dichiarati`, `vw_codici_errore_forme_condizione`;
+  `vw_stati_check_scrittori` ha una terza forma (`l.lanname = ANY (ARRAY['plpgsql','sql'])`). Regola del 2: un BB.
+* **Una funzione `LANGUAGE sql` chiama `fn_log_and_raise_error`: `script.fn_get_contatti`**, con due difetti suoi:
+  * la validazione di `p_soggetto_id` sta in una CTE (`validate`) che nessuno legge, e PostgreSQL non la esegue: con il
+    soggetto NULL la funzione restituisce zero righe in silenzio (provato su tutti e due i database);
+  * il codice è `ERRORE_PARAMETRI`, obsoleto dal 2026-08-05 (vivo: `E_ERRORE_PARAMETRI`). È l'unica chiamata, in
+    qualsiasi linguaggio, con un codice letterale fuori dalla grammatica `E_`: la rinomina di agosto non l'ha vista
+    perché i presidi leggevano il solo plpgsql. È il buco di Q15, già aperto.
+* Nessuna funzione SQL nomina oggi un codice `E_`, un motivo `'codice'` o `fn_raise_primo_motivo_se_presente`:
+  l'allargamento non fa comparire righe nuove, quindi nessuna rigenerazione BE dall'allargamento.
+
+### 31.2 Le decisioni (Tid, 2026-11-09)
+
+| Nodo | Decisione |
+| --- | --- |
+| N1 `fn_get_contatti` | Riscritta in plpgsql, con un codice **specifico**: `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, canale `parametro` = `p_soggetto_id`. Codice nuovo: rigenerazione delle politiche d'errore lato BE (§5) |
+| N2 `vw_codici_errore_forme_condizione` | Resta sul plpgsql: la sua grammatica è quella dell'`IF`/`EXCEPTION WHEN`, che una funzione SQL non ha. Il limite si dichiara nel COMMENT, con il BB |
+| N3 il perimetro | Le cinque viste che leggono chi solleva, chi nomina, chi costruisce un bersaglio si allargano. Il filtro diventa un **BB**: `dbops.fn_corpo_leggibile(prolang)`; lo usa anche `vw_stati_check_scrittori`, la cui copia si ritira |
+
+Numeri (Tid, 2026-11-09): `20261110-59` … `-61` e `20261110-80` … `-85`.
+
+⚠️ **Numeri, correzione del 2026-11-09.** Il cantiere `catalogo` ha scritto `20261110-85` … `-93` nello stesso momento:
+il `-85` di questo giro è passato a **`20261110-99`**. Questo giro usa `-59` … `-61`, `-80` … `-84`, `-99`.
+
+### 31.3 Che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261110-59` | Il BB `dbops.fn_corpo_leggibile(p_prolang pg_proc.prolang%TYPE)`: vero per plpgsql e sql (BEGIN ATOMIC compresa), falso per c, internal e NULL. `LANGUAGE sql STABLE`, senza `SET`: si espande nella query, e la lettura di `pg_language` diventa un InitPlan |
+| `20_code/dbops/20261110-60` | `vw_codici_errore_da_dichiarare`: i due rami leggono il BB; COMMENT |
+| `20_code/dbops/20261110-61` | `vw_punti_canale_campo`: la CTE `funzioni` legge il BB; COMMENT (tre frasi dicevano «plpgsql») |
+| `20_code/dbops/20261110-80` | `vw_funzioni_check_codici`: il BB, e il prefiltro diventa `prosrc LIKE '%fn\_check\_%' OR prosqlbody IS NOT NULL`; COMMENT |
+| `20_code/dbops/20261110-81` | `vw_punti_primo_motivo`: il BB, prefiltro allargato come sopra; COMMENT (il perimetro, che non c'era) |
+| `20_code/dbops/20261110-82` | `vw_bersagli_non_dichiarati`: il BB, prefiltro allargato come sopra; COMMENT |
+| `20_code/dbops/20261110-83` | `vw_stati_check_scrittori`: la terza copia del filtro (JOIN `pg_language` + elenco a mano) si ritira, legge il BB; perimetro invariato |
+| `20_code/dbops/20261110-84` | `vw_codici_errore_forme_condizione`: solo il COMMENT, il perimetro plpgsql dichiarato e perché (N2) |
+| `20_code/script/20261110-99` | `script.fn_get_contatti` in plpgsql: `IF p_soggetto_id IS NULL` → `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (canale `parametro`, variadico vuoto esplicito); la query di prima senza la CTE morta; firma, `RETURNS TABLE`, GRANT invariati; COMMENT |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, `DATO_ERRATO` (come gli altri `*_OBBLIGATORIO`), messaggio id **1464** «Indicare il soggetto di cui leggere i contatti.» |
+
+**Le scelte che non si vedono dal titolo (da guardare, Tid):**
+
+1. **Il prefiltro su `prosrc` era cieco alle BEGIN ATOMIC** (trovato scrivendo il pgTAP): per una sql BEGIN ATOMIC
+   `prosrc` è vuoto, e tre viste (`-80`, `-81`, `-82`) l'avrebbero lasciata fuori anche col perimetro allargato. Il
+   prefiltro diventa «`prosrc` … `OR prosqlbody IS NOT NULL`»: le BEGIN ATOMIC passano tutte al filtro vero, sul corpo
+   deparsato. È la stessa classe di D15.
+2. **La forma del BB:** `p_prolang = ANY (ARRAY(SELECT …))` dentro un `COALESCE(…, false)`, non un `EXISTS` per riga:
+   espansa nella vista, la sottoquery non dipende dalla riga e si calcola una volta.
+3. **La classe del codice nuovo** è `DATO_ERRATO`, come i 38 `*_OBBLIGATORIO` e `E_ERRORE_PARAMETRI`.
+4. **I COMMENT delle viste aperte** sono corretti nelle sole frasi sul perimetro: i marcatori di revisione e i nomi
+   di brief che contengono restano al giro 14 (Q13), che li tratta tutti insieme.
+5. **`fn_get_contatti` resta VOLATILE** com'era: il giro non cambia la volatilità di chi la chiama.
+
+### 31.4 Le prove (scratch e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase, dopo la riga `BEGIN;`, transazione annullata)
+
+* **I changeSet base sono il vivo:** riprodotti in transazione, le definizioni delle sette viste e delle due funzioni
+  dei contatti sono uguali a `pg_get_viewdef` / `pg_get_functiondef` su tutti e due i database.
+* **Prima e dopo, riga per riga** (`EXCEPT ALL` nei due versi, tutti e due i database, stesso esito):
+  * `vw_codici_errore_da_dichiarare`, `vw_punti_canale_campo`, `vw_codici_errore_forme_condizione`: **una riga nuova**,
+    `E_CONTATTI_SOGGETTO_OBBLIGATORIO` di `fn_get_contatti` (in `vw_punti_canale_campo`: `DIRETTO`, `IN_CHIAMATA`,
+    `parametro`; in `forme_condizione`: famiglia `PARAMETRO`). Nessuna riga sparita;
+  * `vw_funzioni_check_codici`: **37 righe nuove**, nessuna sparita. Sono funzioni sql che nominano una `fn_check_*`
+    (fatto datato, 2026-11-09): le `script.fn_scope_ef_whitelist*` e `fn_get_user_emittenti_scope` con
+    `fn_check_user_emittente_scope` / `fn_check_ultimo_super_admin_attivo` (check senza motivi: codice NULL),
+    `pratiche.fn_check_pratica_chiudibile` con `fn_check_chiusura_pratica`, `vendite.fn_listini_selezionabili` con
+    `fn_check_listino_documento` (`E_DOC_LISTINO_UTILITY_DIVERSA`, `E_DOC_LISTINO_EMITTENTE_DIVERSO`). È un
+    INVENTARIO: le due viste che lo leggono non cambiano (`vw_punti_primo_motivo` resta a 22 righe, e in
+    `vw_punti_canale_campo` non entra un ramo PRIMO_MOTIVO nuovo);
+  * `vw_punti_primo_motivo`, `vw_bersagli_non_dichiarati`, `vw_stati_check_scrittori`: identiche.
+* **`fn_get_contatti` con un soggetto:** su dbdev 854 righe, uguali prima e dopo, per lei e per `fn_get_contatto_default`
+  (sullo scratch non ci sono contatti). Con il soggetto NULL tutte e due rifiutano `E_CONTATTI_SOGGETTO_OBBLIGATORIO`.
+* **Tempi** (fatto datato, dbdev, 2026-11-09): `vw_codici_errore_da_dichiarare` da ~175 a ~290 ms,
+  `vw_punti_canale_campo` da ~640 a ~740 ms; le altre invariate. È il costo dei ~1.260 corpi sql in più: il
+  perimetro è il modello. Il test sotto JIT (`test-vw-funzioni-check-codici-sotto-jit-v1`) resta verde.
+* **pgTAP nuovo** `dbops/test-presidi-codici-corpo-leggibile-v1` (11, runner owner): il BB; le cinque viste sui casi
+  costruiti in uno schema di prova (una sql, una sql BEGIN ATOMIC, una check sql, un primo motivo a mano, un
+  bersaglio); `forme_condizione` che resta fuori; `fn_get_contatti` e `fn_get_contatto_default` col soggetto NULL;
+  nessuna chiamata diretta, in nessun corpo leggibile, con un codice letterale fuori dalla grammatica `E_`. 11/11 su
+  tutti e due. **La prova del rosso:** con il BB e `fn_get_contatti` ma le viste di prima, i test 3-7 sono rossi.
+* **Regressione «senza → con»**, stesso esito su tutti e due, nessun rosso: `anagrafiche/test-contatti-soggetto-cliente`,
+  `config/test-costanti-catalogo-citate-dal-codice-v1`, `dbops/test-audit-log-perimetro-scrittori-v1`,
+  `dbops/test-corpo-funzione-senza-commenti-v1`, `dbops/test-punti-canale-campo-v1`, `dbops/test-stati-check-scrittori-v1`,
+  `dbops/test-vw-bersagli-non-dichiarati`, `dbops/test-vw-codici-errore-motivo-nominato`,
+  `dbops/test-vw-codici-errore-valore-atteso`, `dbops/test-vw-funzioni-check-codici-sotto-jit-v1`,
+  `pagamenti/test-righe-contabili-eliminazione-v1`, `script/test-canale-log-v1`,
+  `script/test-catalogo-messaggi-errore-completo`, `script/test-rubinetto-primo-motivo-v1`,
+  `dbops/test-riferimenti-morti-v1`, `config/test-codici-errore-obsoleto-dal`, `config/test-codici-errore-identita`.
+* **Guardrail** (pre-commit sui file del giro): verdi.
+
+**Doc** (2026-11-09): pagina nuova `dbops/manual/fn_corpo_leggibile.md`; riallineate le pagine `manual/` delle sette
+viste e di `script/manual/fn_get_contatti.md` (anche lo schema delle priorità, che non aveva le condizioni su
+`istanza_utility_id` del corpo vivo) e `fn_get_contatto_default.md`. L'indice di `dbops` è generato: la voce della
+funzione nuova compare alla prossima generazione. `linee-guida-sql.md` non descrive il perimetro di queste viste.
+
+### 31.5 Ricadute BE
+
+* **BE6, giro 12:** il codice nuovo `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (DATO_ERRATO, canale `parametro`) entra in
+  `error_policies_generated.py` e, se serve, in `error_messages_fallback.py`. Finché manca, il guardrail
+  `test_error_codes_db_policy_guardrail` (CI, `ZEROERP_TEST_DB_E2E=1`) lo segnala: è la regola, non un difetto.
+* Nessun altro: le viste allargate non cambiano colonne, e `fn_get_contatti` non ha chiamanti nel backend.
+
+### 31.6 Per Tid
+
+1. **Apply** di `20261110-59` … `-61`, `-80` … `-84`, `-99` e dei due CSV dei codici, su dbdev e scratch.
+2. **pgTAP:** `dbops/test-presidi-codici-corpo-leggibile-v1` (runner owner), `dbops/test-punti-canale-campo-v1`,
+   `dbops/test-vw-funzioni-check-codici-sotto-jit-v1`, `script/test-rubinetto-primo-motivo-v1`,
+   `dbops/test-stati-check-scrittori-v1`, `dbops/test-vw-bersagli-non-dichiarati`, `anagrafiche/test-contatti-soggetto-cliente`,
+   `script/test-catalogo-messaggi-errore-completo`, `dbops/test-riferimenti-morti-v1`.
+3. **Commit:** solo i file del giro. ⚠️ `codici_errore.csv` e `messaggi_errore.csv` hanno nel working tree anche
+   modifiche del cantiere `catalogo` (righe `E_DOC_COMPONENTE_BOM_NON_VALIDA`, `E_ARTICOLO_KIT_SENZA_COMPONENTI`):
+   di questo giro è solo l'ultima riga di ciascuno.

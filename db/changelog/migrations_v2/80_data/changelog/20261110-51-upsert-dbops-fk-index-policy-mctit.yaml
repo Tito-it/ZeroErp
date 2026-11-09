@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fk_index_policy: UN CSV, il seed delle decisioni (N1, N2, N3; Q14 ②).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-1 (§29).
+#
+#   Prima: 34 CSV laterali, uno per cantiere, ognuno col suo loader, e un
+#   80_data/sql/dbops/fk_index_policy.csv che nessuno caricava (la fotografia
+#   di dbdev del 2026-01-16, con 19 righe scritte a mano dopo, credendolo
+#   caricato). Due CSV caricati si contraddicevano su
+#   fk_tfhe_template_flusso, e vinceva chi girava per ultimo. Ora c'e' solo
+#   questo file, e una decisione si cambia qui (linee-guida-sql §11.2).
+#   I 34 loader e i loro CSV sono cancellati; le loro righe in databasechangelog
+#   restano orfane.
+#
+# ── LE RIGHE (fatti datati, 2026-11-09) ─────────────────────────────
+#   - quelle che i changelog scrivono su un database da zero (lo scratch: i 34
+#     laterali e una riga scritta in linea, anagrafiche.pdp.fk_pdp_utility);
+#     true -> CON_INDICE, false -> SENZA_INDICE;
+#   - fk_tfhe_template_flusso: SENZA_INDICE (decisione di Tid, N1: la bonifica
+#     delle ridondanze, la decisione piu' recente);
+#   - le 15 righe scritte a mano nel file non caricato dai cantieri del
+#     magazzino (2026-09-28): SENZA_INDICE, come dicevano (N2). Le 4 delle note
+#     delle offerte (2026-05-24) erano di prova (Tid, 2026-11-09): fuori dal CSV,
+#     e la DELETE 20261110-55 le toglie dove questo mirror le aveva scritte;
+#   - le tre FK che da zero erano scoperte e su dbdev avevano l'indice
+#     (soggetti_ruoli.fk_tipi_ruoli_config, soggetti.fk_titoli_cortesia_config,
+#     sepa_mandati.fk_sepa_mandati_billing_account): CON_INDICE (Tid, 2026-11-09);
+#   - le altre righe di quel file erano l'output delle due automazioni, non
+#     decisioni: non entrano, e su dbdev restano DA_DECIDERE (N2).
+#   motivo e' vuoto: il perche' delle decisioni di prima sta nelle testate dei
+#   loader cancellati (storia git), scritto per file e non per FK. Si scrive
+#   quando una decisione si riapre.
+#
+# ── L'ORDINE ────────────────────────────────────────────────────────
+#   decisione nasce in 00_schema (-42) con DA_DECIDERE su ogni riga. Questo
+#   mirror gira in 80_data dopo tutti i changeSet congelati che scrivono il
+#   registro (loader cancellati a parte, sono SQL in linea e DELETE), e
+#   riscrive le decisioni; consentito e generated_by_script escono dopo (-53).
+#   Il mirror non cancella: una riga che c'e' solo su una macchina resta
+#   DA_DECIDERE, e la scoperta la toglie se la sua FK non e' scoperta.
+#   Una riga puo' nominare una FK che su un database da zero nasce dopo
+#   Liquibase (il ponte verso django.auth_user): non e' una riga morta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-51-upsert-dbops-fk-index-policy-mctit.yaml
+
+  - changeSet:
+      id: 20261110-51-upsert-dbops-fk-index-policy
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Upsert di dbops.fk_index_policy dal suo CSV unico: le decisioni CON_INDICE e SENZA_INDICE.
+        Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'fk_index_policy'
+                 AND column_name = 'decisione'
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/fk_index_policy.csv
+            tableName: fk_index_policy
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            # Token letterale NULL: su una colonna STRING la cella vuota entrerebbe come stringa vuota.
+            nullValue: "NULL"
+            primaryKey: "schema_name,table_name,constraint_name"
+            columns:
+              - column: { name: schema_name,     type: STRING }
+              - column: { name: table_name,      type: STRING }
+              - column: { name: constraint_name, type: STRING }
+              - column: { name: decisione,       type: STRING }
+              - column: { name: motivo,          type: STRING }
+              - column: { name: dll_command,     type: STRING }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il mirror riscrive le decisioni; il rollback le riporta tutte a DA_DECIDERE.
+              UPDATE dbops.fk_index_policy SET decisione = 'DA_DECIDERE', motivo = NULL;

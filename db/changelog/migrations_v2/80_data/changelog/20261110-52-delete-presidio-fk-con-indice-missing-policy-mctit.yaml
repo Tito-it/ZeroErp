@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO DELLA VISTA RITIRATA ESCE DAL CATALOGO
+#   dbops.vw_fk_con_indice_missing_policy (ritirata in 20_code/dbops/20261110-50, N7).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-3 (§29).
+#
+# La riga e' gia' fuori da `80_data/sql/dbops/presidi.csv` e `presidi_testi.csv`,
+# ma `loadUpdateData` aggiorna e inserisce, non cancella (come il 20261108-13):
+# senza questa DELETE il catalogo terrebbe una riga verso una vista che non
+# esiste, e test-catalogo-presidi-v1 sarebbe rosso.
+# ⚠️ Prima le cause e i testi, poi il presidio (le FK verso dbops.presidi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-52-delete-presidio-fk-con-indice-missing-policy-mctit.yaml
+
+  - changeSet:
+      id: 20261110-52-delete-presidio-fk-con-indice-missing-policy
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal catalogo dei presidi la riga di dbops.vw_fk_con_indice_missing_policy, ritirata.
+        loadUpdateData non cancella. Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.presidi_cause
+               WHERE vista = 'dbops.vw_fk_con_indice_missing_policy';
+              DELETE FROM dbops.presidi_testi
+               WHERE vista = 'dbops.vw_fk_con_indice_missing_policy';
+              DELETE FROM dbops.presidi
+               WHERE vista = 'dbops.vw_fk_con_indice_missing_policy';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La riga torna dal CSV solo se la si rimette li', insieme alla vista.
+              SELECT 1;

@@ -42,6 +42,7 @@ DECLARE
     v_padre_iva    catalogo.articoli.iva_id%TYPE := (p_contesto ->> 'padre_iva_id')::bigint;
     v_causale      catalogo.articoli.causale_onere_id%TYPE;
     v_obsoleto_dal catalogo.articoli.obsoleto_dal%TYPE;
+    v_motivo_kit   jsonb;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -238,6 +239,27 @@ BEGIN
         RETURN v_motivi;
     END IF;
 
+    -- ================= IL KIT SENZA DISTINTA (comune) =================
+    -- Un motivo solo per offerta, contratto, preventivo, ordine e bolla:
+    -- ognuno lo aggiunge al suo posto, dopo il solo componente. Un kit
+    -- senza una distinta da oggi in poi non si vende: l'init dei
+    -- componenti lo rifiuterebbe a ogni data da oggi. La finestra e'
+    -- quella dei guard della distinta
+    -- (catalogo.fn_articolo_padre_di_distinta_da_oggi); la distinta alla
+    -- data del documento la giudica l'init (E_DOC_COMPOSITO_BOM_VUOTA).
+    IF v_composito IS TRUE
+       AND NOT catalogo.fn_articolo_padre_di_distinta_da_oggi(p_articolo_id) THEN
+        v_motivo_kit := jsonb_build_object(
+            'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
+            'reason',     'KIT_SENZA_COMPONENTI',
+            'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
+            'dettaglio',  jsonb_build_object(
+                              'campo',       'articolo_id',
+                              'documento',   v_documento,
+                              'articolo_id', p_articolo_id),
+            'valori',     jsonb_build_array(v_codice));
+    END IF;
+
     -- ======================= OFFERTA, CONTRATTO =======================
     IF v_documento IN ('OFFERTA_COMMERCIALE', 'CONTRATTO') THEN
         -- «Nel listino» = una riga della versione espansa (il contesto).
@@ -262,22 +284,9 @@ BEGIN
                     'valori',     jsonb_build_array());
             END IF;
 
-            -- 2. Un kit senza nessun componente attivo non si vende (D-7):
-            --    l'init dei componenti lo rifiuterebbe sempre. Il caso «componenti
-            --    ma non validi alla data» resta all'init (E_DOC_COMPOSITO_BOM_VUOTA).
-            IF v_composito IS TRUE AND NOT EXISTS (
-                   SELECT 1 FROM catalogo.articoli_componenti ac
-                    WHERE ac.prodotto_id = p_articolo_id
-                      AND COALESCE(ac.attivo, TRUE)) THEN
-                v_motivi := v_motivi || jsonb_build_object(
-                    'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
-                    'reason',     'KIT_SENZA_COMPONENTI',
-                    'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
-                    'dettaglio',  jsonb_build_object(
-                                      'campo',       'articolo_id',
-                                      'documento',   v_documento,
-                                      'articolo_id', p_articolo_id),
-                    'valori',     jsonb_build_array(v_codice));
+            -- 2. Il kit senza distinta: il motivo comune, sopra.
+            IF v_motivo_kit IS NOT NULL THEN
+                v_motivi := v_motivi || v_motivo_kit;
             END IF;
 
             -- 3. Tipologia fuori utility: la stessa domanda del form
@@ -369,22 +378,9 @@ BEGIN
             'valori',     jsonb_build_array());
     END IF;
 
-    -- 2. Un kit senza nessun componente attivo non si vende (D-7):
-    --    l'init dei componenti lo rifiuterebbe sempre. Il caso «componenti
-    --    ma non validi alla data» resta all'init (E_DOC_COMPOSITO_BOM_VUOTA).
-    IF v_composito IS TRUE AND NOT EXISTS (
-           SELECT 1 FROM catalogo.articoli_componenti ac
-            WHERE ac.prodotto_id = p_articolo_id
-              AND COALESCE(ac.attivo, TRUE)) THEN
-        v_motivi := v_motivi || jsonb_build_object(
-            'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
-            'reason',     'KIT_SENZA_COMPONENTI',
-            'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
-            'dettaglio',  jsonb_build_object(
-                              'campo',       'articolo_id',
-                              'documento',   v_documento,
-                              'articolo_id', p_articolo_id),
-            'valori',     jsonb_build_array(v_codice));
+    -- 2. Il kit senza distinta: il motivo comune, sopra.
+    IF v_motivo_kit IS NOT NULL THEN
+        v_motivi := v_motivi || v_motivo_kit;
     END IF;
 
     -- 3. La natura, secondo la destinazione. rev 2026-10-19
@@ -432,7 +428,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint, p_scelta_nuova boolean)
-IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31). ⭐ rev 2026-10-19 (20261019-99, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della natura e'' il codice della sorgente (ORDINE_VENDITA, era ORDINE): il motivo NATURA_NON_MERCE di ordine e bolla confronta due codici dello stesso vocabolario. ⭐ rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine §8.1, decisione 1 di Tid): ordine e bolla ammettono la merce OPPURE l''articolo-onere (catalogo.articoli.causale_onere_id valorizzato); un servizio che non e'' un onere resta fuori con NATURA_NON_MERCE (E_RIGA_NATURA_NON_AMMESSA). «E'' merce» e'' il BB script.fn_natura_e_merce sulla natura giudicata (quella congelata della riga, altrimenti quella dell''articolo): ritirata la copia in linea della condizione sulla destinazione. Seguono da se'' il guard di riga, il picker catalogo.fn_articoli_ammessi e catalogo.fn_articolo_righe_vive_non_ammesse. ⭐ rev 2026-11-05 (20261105-09, brief-db-articoli-obsoleto-dal §4, Tid 2026-11-04/05): quarto parametro in coda p_scelta_nuova (default false) e motivo comune a tutti i documenti, il PRIMO: OBSOLETO (E_ARTICOLO_OBSOLETO, reason_key vendite.righe.articolo_reason.obsoleto, valori codice e data DD/MM/YYYY, campo articolo_id o componente_id per la distinta), l''articolo e'' ritirato secondo script.fn_e_obsoleto (catalogo.articoli.obsoleto_dal raggiunta alla data operativa). Conta SOLO con p_scelta_nuova = true: lo passano il guard di riga (script.trgfn_righe_guard_articolo_ammesso e catalogo.trgfn_articoli_componenti_guard_componente: INSERT senza sorgente, o articolo cambiato) e il picker catalogo.fn_articoli_ammessi. Il default false e'' il comportamento di prima, ed e'' quello giusto per chi giudica righe che esistono gia'' (script.fn_check_riga_documento_su_contesto: emissione, push, attivazione, ordine dall''offerta, correzione di struttura): la riga esistente e la derivata restano.';
+IS 'Check pura (fn_check_*): i motivi, in ordine dichiarato, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto, mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle del COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma. p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. p_scelta_nuova = true aggiunge per ogni documento il primo motivo, OBSOLETO (E_ARTICOLO_OBSOLETO, l''articolo e'' ritirato secondo script.fn_e_obsoleto): lo passano il guard di riga (script.trgfn_righe_guard_articolo_ammesso e catalogo.trgfn_articoli_componenti_guard_componente: INSERT senza sorgente, o articolo cambiato) e il picker. Il default false e'' quello di chi giudica righe che esistono gia'' (script.fn_check_riga_documento_su_contesto: emissione, push, attivazione, ordine dall''offerta, correzione di struttura): la riga esistente e la derivata restano. KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI) e'' un motivo solo, che preventivo, ordine, bolla e AGGIUNTA e OVERRIDE di offerta e contratto aggiungono dopo il solo componente: un composito senza una distinta da oggi in poi (catalogo.fn_articolo_padre_di_distinta_da_oggi, la finestra dei guard della distinta). La distinta alla data del documento la giudica l''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). Chiamanti: script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato.';
 ```
 
 </div>

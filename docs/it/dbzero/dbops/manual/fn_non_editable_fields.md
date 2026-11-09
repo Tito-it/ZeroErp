@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_non_editable_fields`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,7 +16,7 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — il confronto fra il lock vivo e il registro
-> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi), [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — i predicati che le regole dell'articolo condividono coi guard
+> * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi), [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — i predicati che le regole dell'articolo condividono coi guard
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — un guard che rifiuta il salvataggio che la funzione annuncia
 
 ---
@@ -58,7 +58,7 @@ stesso.
 ⭐ **Perché l'annuncio sia vero, legge le stesse regole di chi difende.** I blocchi incondizionati
 vengono dai trigger stessi (`dbops.vw_non_editable_fields`), quindi coincidono con ciò che l'UPDATE
 rifiuta. Un blocco condizionale chiama lo **stesso predicato** del guard che rifiuterebbe la
-modifica: per l'articolo, i predicati della distinta (`catalogo.fn_articolo_padre_di_distinta_in_vigore`,
+modifica: per l'articolo, i predicati della distinta (`catalogo.fn_articolo_padre_di_distinta_da_oggi`,
 `…_componente_di_distinta_in_vigore`, `…_primo_padre_da_oggi`) e `catalogo.fn_articolo_usato`.
 Una regola che ricopiasse la condizione del guard prima o poi risponderebbe in un altro modo.
 

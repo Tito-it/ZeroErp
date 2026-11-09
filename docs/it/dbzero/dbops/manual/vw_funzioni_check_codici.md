@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_funzioni_check_codici`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,7 @@
 >
 > * [dbops.fn_regexp_occorrenze](/dbzero/dbops/funzioni/fn_regexp_occorrenze) — l'estrazione che dichiara la propria cardinalità
 > * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti da cui la vista legge le tre funzioni
+> * [dbops.fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile) — quali funzioni hanno un corpo da leggere: il perimetro
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — il meccanismo condiviso che solleva il primo motivo
 
 ---
@@ -22,6 +23,11 @@
 La risalita «funzione → funzioni di controllo (`fn_check_*`) che nomina → codici d'errore che quei
 controlli producono come motivo», con l'indicazione se il motivo porta anche il nome del campo da
 correggere. È una tabella di collegamenti letta da due presidi, non un allarme.
+
+Il perimetro sono le funzioni dal **corpo leggibile**, PL/pgSQL e SQL (comprese le SQL `BEGIN
+ATOMIC`), come le decide [fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile): una
+funzione SQL che nomina una `fn_check_*` ne può sollevare i motivi, e una `fn_check_*` scritta in SQL
+nomina motivi come le altre.
 
 ---
 
@@ -95,6 +101,8 @@ due presidi che la interrogano.
 * **Legge solo i testi che contengono `fn_check_`**: un testo senza quel nome non può collegare
   niente, quindi le righe sono le stesse. Il prefiltro gira sul sorgente testuale, prima di togliere
   i commenti: è un sovrainsieme, perché togliere un commento accorcia il testo e non lo allunga.
+  Una funzione SQL `BEGIN ATOMIC` non ha un sorgente testuale (il suo è vuoto): il prefiltro la
+  lascia passare sempre, e la decide il filtro vero, sul corpo ricostruito.
 * **Dichiara la cardinalità delle estrazioni**: le occorrenze si estraggono con
   [dbops.fn_regexp_occorrenze](/dbzero/dbops/funzioni/fn_regexp_occorrenze), che dichiara una riga
   invece delle dieci della funzione di sistema; i motivi si tagliano con una forma che non dichiara
@@ -119,6 +127,8 @@ La vista è `security_invoker` e legge i cataloghi di sistema.
   di sistema chiamata direttamente.
 * `db/pgtap/pagamenti/test-righe-contabili-eliminazione-v1.sql` — i codici di una funzione di
   controllo di pagamenti restano visibili qui.
+* `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql` — risale da una funzione SQL `BEGIN
+  ATOMIC` alla check scritta in SQL e al suo codice (caso costruito).
 
 ---
 
@@ -135,6 +145,9 @@ La vista è `security_invoker` e legge i cataloghi di sistema.
 * 2026-11-04 — i tre corpi si leggono da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`):
   la copia di prima toglieva un commento anche dentro un letterale; e `check_emette_valori` leggeva il
   sorgente commenti compresi, così un 'valori' in un commento della check la dava per emittente.
+* 2026-11-09 — il perimetro passa dal solo PL/pgSQL ai corpi leggibili, PL/pgSQL e SQL, letti da
+  `fn_corpo_leggibile`; il prefiltro su `fn_check_` lascia passare le SQL `BEGIN ATOMIC`, che non
+  hanno un sorgente testuale (`20261110-80`, `brief-db-revisione-dbops`, giro 12).
 
 ---
 

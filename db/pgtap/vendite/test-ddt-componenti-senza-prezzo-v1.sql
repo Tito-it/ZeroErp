@@ -79,7 +79,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('kit senza prezzo');
 
 -- Il kit nasce composito: il flag serve PRIMA della distinta
--- (catalogo.trgfn_articoli_componenti_guard_is_composito).
+-- (la check della distinta, script.fn_articolo_riga_contesto).
 CREATE TEMP TABLE _art AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-KSP-KIT', false, p_is_composito => true) AS kit_id,
        dbops.fn_pgtap_crea_articolo('PGT-KSP-CMP1', false) AS cmp1_id,

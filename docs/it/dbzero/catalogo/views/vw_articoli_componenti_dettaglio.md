@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Righe della distinta base (componenti di un articolo) con codici e descrizioni di prodotto e componente, piu' la capability di riga (puo_chiudersi, data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per «Chiudi riga». Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.5) e' la SORGENTE UNICA delle righe: per la lista configurabile catalogo.articolo_componenti e per il repository, che prima ne rifaceva la proiezione e la capability in Python. Dal 2026-10-01 (brief-db-esposizione-componenti-kit-in-fattura) esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) al posto del booleano esposto_in_fattura, e in coda codice ed etichetta_key del modo da config.esposizioni_componente: la logica confronta esposizione_in_fattura, il codice e' solo a video. Dal 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1) senza partecipa_qta e determina_qta_padre, ritirate dalla tabella: nessuna logica le leggeva. Tutte le righe, anche le non attive e le chiuse: filtro e ordine li mette chi legge. Rev 2026-10-25 (20261025-57/-61, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche' la colonna che legge cambia tipo; note_target_tipo vale ARTICOLO_COMPONENTE (era ARTICOLI_COMPONENTI) e diventa varchar(50), dalla colonna di catalogo.articoli_componenti.
+> Righe della distinta base (catalogo.articoli_componenti) con codice e descrizione di prodotto e componente, il modo di esposizione in fattura (esposizione_in_fattura, con codice ed etichetta_key da config.esposizioni_componente: la logica confronta esposizione_in_fattura, il codice e' solo a video) e la capability di riga per «Chiudi riga»: puo_chiudersi (il legame non ha ancora una fine), data_min_chiusura (la prima fine ammessa: la piu' tarda fra valido_dal e ieri, perche' la fine non cambia i giorni gia' passati, come vuole catalogo.trgfn_articoli_componenti_block_modifica_struttura), data_default_chiusura (la piu' tarda fra valido_dal e oggi), motivo_non_chiudibile (RIGA_GIA_CHIUSA). Sorgente unica delle righe della lista configurabile catalogo.articolo_componenti e del repository. Tutte le righe, anche le non attive e le chiuse: filtro e ordine li mette chi legge.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -34,7 +34,7 @@ SELECT ac.id,
     acmp.descrizione AS componente_descrizione,
     (ac.valido_al IS NULL) AS puo_chiudersi,
         CASE
-            WHEN (ac.valido_al IS NULL) THEN ac.valido_dal
+            WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, ( SELECT (script.fn_data_operativa() - 1)))
             ELSE NULL::date
         END AS data_min_chiusura,
         CASE

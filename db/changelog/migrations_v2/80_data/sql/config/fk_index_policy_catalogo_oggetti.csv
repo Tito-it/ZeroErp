@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-config,user_override_oggetti,fk_user_override_oggetti_catalogo,f,"CREATE INDEX IF NOT EXISTS ix_user_override_oggetti_app_label_model_name_riservato ON config.user_override_oggetti(app_label, model_name, riservato);",f,mctit,2026-09-28 00:00:00+02

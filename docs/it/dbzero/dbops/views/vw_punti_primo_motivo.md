@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> I punti che sollevano il codice del PRIMO MOTIVO di una script.fn_check_* (linee-guida-sql §12.5.2) A MANO — `fn_log_and_raise_error(... -&gt;&gt; 'codice'` — legati alla check da cui il motivo viene e ai codici che quella nomina. Una riga per (punto, check, codice). E' il RUBINETTO: i chiamanti di script.fn_raise_primo_motivo_se_presente (i bonificati) NON ci stanno, per costruzione.
+> I punti che sollevano il codice del PRIMO MOTIVO di una script.fn_check_* (linee-guida-sql §12.5.2) A MANO — `fn_log_and_raise_error(... -&gt;&gt; 'codice'` — legati alla check da cui il motivo viene e ai codici che quella nomina. Una riga per (punto, check, codice). E' il RUBINETTO: i chiamanti di script.fn_raise_primo_motivo_se_presente (i bonificati) NON ci stanno, per costruzione. Il perimetro sono i corpi leggibili, plpgsql e sql (dbops.fn_corpo_leggibile).
 > ⭐ DAL 2026-09-21 LA RISALITA punto-&gt;check-&gt;codici si LEGGE da dbops.vw_funzioni_check_codici (sede unica, condivisa col presidio C2 dbops.vw_punti_canale_campo); qui resta il solo marcatore dei punti. Prima viveva in una vista temporanea dentro db/pgtap/script/test-rubinetto-primo-motivo-v1.sql, poi in questa vista — e la seconda lettrice l'avrebbe ricopiata.
 > COME SI USA. (A) il perimetro dell'helper: SELECT sch, fn, count(check_funzione) AS check_trovate, coalesce(bool_or(check_emette_valori), false) AS in_perimetro FROM dbops.vw_punti_primo_motivo GROUP BY 1,2; (B) i codici che un punto puo' sollevare: SELECT DISTINCT funzione, codice FROM dbops.vw_punti_primo_motivo WHERE codice IS NOT NULL.
 > ⭐ PESSIMISTA DI PROPOSITO: i codici sono l'UNIONE di quelli nominati da TUTTE le check citate nel corpo, perche' la vista legge il testo e non sa quale ramo sia stato preso. Un presidio che scegliesse il ramo ottimista assolverebbe il caso che deve segnalare; un falso positivo qui costa una riga in piu' nel VARIADIC, non un rifiuto sbagliato.
@@ -25,9 +25,7 @@ WITH punti AS (
             (p.proname)::text AS fn
            FROM (pg_proc p
              JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
-          WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
-                   FROM pg_language
-                  WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''::text) AND ((dbops.fn_corpo_funzione(p.oid) COLLATE "C") ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''::text) AND (NOT ((n.nspname = 'script'::name) AND (p.proname = 'fn_raise_primo_motivo_se_presente'::name))))
+          WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND dbops.fn_corpo_leggibile(p.prolang) AND ((p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''::text) OR (p.prosqlbody IS NOT NULL)) AND ((dbops.fn_corpo_funzione(p.oid) COLLATE "C") ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''::text) AND (NOT ((n.nspname = 'script'::name) AND (p.proname = 'fn_raise_primo_motivo_se_presente'::name))))
         )
  SELECT pt.sch,
     pt.fn,

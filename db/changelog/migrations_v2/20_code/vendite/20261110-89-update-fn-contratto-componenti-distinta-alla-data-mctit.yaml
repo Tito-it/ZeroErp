@@ -1,0 +1,576 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_contratto_riga_componenti_init e vendite.fn_contratto_riga_componenti_preview: i componenti
+#   del kit per il contratto si leggono da catalogo.fn_distinta_alla_data (R2).
+#   Brief: brief-db-revisione-catalogo, giro 1-bis.
+#
+#   Il filtro della distinta alla data (prodotto_id, attivo, validita @> data) era
+#   scritto a mano nei due corpi; ora lo risponde il BB di -85. Comportamento uguale:
+#   via soltanto il COALESCE su attivo, che e' NOT NULL. I COMMENT delle funzioni non
+#   cambiano (non descrivono il filtro).
+#   Corpi di partenza da pg_get_functiondef su dbdev (2026-11-09); rollback = i corpi
+#   di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261110-89-update-fn-contratto-componenti-distinta-alla-data-mctit.yaml
+
+  - changeSet:
+      id: 20261110-89-update-fn-contratto-componenti-distinta-alla-data
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_contratto_riga_componenti_init e fn_contratto_riga_componenti_preview: la distinta alla data dal BB catalogo.fn_distinta_alla_data. Brief: brief-db-revisione-catalogo, giro 1-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('vendite.fn_contratto_riga_componenti_init(bigint, bigint, date, jsonb)'),
+                             to_regprocedure('vendite.fn_contratto_riga_componenti_preview(uuid, bigint, numeric, date, bigint, integer, bigint, integer)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_contratto_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb DEFAULT NULL::jsonb)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: Popola contratti_righe_componenti per una riga composita.
+              --   Modello unificato: tutti i componenti attivi inseriti con attivo=TRUE.
+              --   BoM = contratto immutabile: l'operatore non sceglie quali includere.
+              --   No-op su quantita IS NULL (riga a consumo).
+              --   rev 2026-06-05: guard difensivo — no-op su tipo_eccezione = 'ESCLUSIONE'
+              --   (articolo escluso interamente, nessun componente; protegge il CHECK prezzo NULL).
+              DECLARE
+                  v_articolo_id      catalogo.articoli.id%TYPE;
+                  v_codice_articolo  catalogo.articoli.codice%TYPE;
+                  v_uom_id           catalogo.unita_misura.id%TYPE;
+                  v_qta_padre        vendite.contratti_righe.quantita%TYPE;
+                  v_contratto_id     vendite.contratti.id%TYPE;
+                  v_tipo_eccezione   vendite.contratti_righe.tipo_eccezione%TYPE;
+                  v_is_composito     catalogo.articoli.is_composito%TYPE;
+                  v_ba_id            anagrafiche.billing_account.id%TYPE;
+                  v_utility_id       vendite.contratti.utility_id%TYPE;
+                  v_istanza_id       vendite.contratti.istanza_utility_id%TYPE;
+                  v_comp             record;
+                  v_resolve          record;
+                  v_prezzo           vendite.listini_righe.prezzo%TYPE;
+                  v_origine          vendite.contratti_righe_componenti.origine_prezzo%TYPE;
+                  v_inserted         integer := 0;
+              BEGIN
+                  IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_contratto_riga_componenti_init',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_riga_id'),
+                          NULL::uuid, 'p_riga_id obbligatorio e > 0');
+                  END IF;
+                  IF p_emittente_sr_id IS NULL OR p_emittente_sr_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_contratto_riga_componenti_init',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_sr_id'),
+                          NULL::uuid, 'p_emittente_sr_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT cr.articolo_id, cr.uom_operativa_id, cr.quantita, cr.contratto_id,
+                         cr.tipo_eccezione, a.is_composito, a.codice
+                    INTO v_articolo_id, v_uom_id, v_qta_padre, v_contratto_id,
+                         v_tipo_eccezione, v_is_composito, v_codice_articolo
+                    FROM vendite.contratti_righe cr
+                    JOIN catalogo.articoli a ON a.id = cr.articolo_id
+                   WHERE cr.id = p_riga_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_contratto_riga_componenti_init',
+                          -- rev 2026-08-07: era E_PARAMETRO_INVALIDO, cioe' 400 su un 404.
+                          'E_CONTRATTO_RIGA_NON_TROVATA',
+                          jsonb_build_object('p_riga_id', p_riga_id),
+                          NULL::uuid, p_riga_id::text);
+                  END IF;
+                  IF NOT COALESCE(v_is_composito, FALSE) THEN RETURN 0; END IF;
+
+                  -- Guard difensivo: ESCLUSIONE = articolo escluso interamente,
+                  -- nessun prezzo (CHECK chk_contrighe_prezzo_per_tipo_eccezione
+                  -- impone prezzo_unitario IS NULL) e quindi nessun componente BoM.
+                  -- Inizializzare i componenti scatenerebbe il ricalcolo del prezzo padre
+                  -- (trigger _z90_ricalcola_padre -> SUM figli) in violazione del CHECK.
+                  -- rev 2026-10-29 (20261029-42, G-0-ter): anche l'ADESIONE, che il prezzo
+                  -- non lo ha: il kit aderito prende prezzo e componenti dal listino.
+                  IF v_tipo_eccezione IN ('ESCLUSIONE', 'ADESIONE') THEN RETURN 0; END IF;
+
+                  -- No-op su riga a consumo senza quantita fissa
+                  IF v_qta_padre IS NULL THEN RETURN 0; END IF;
+
+                  IF EXISTS (
+                      SELECT 1 FROM vendite.contratti_righe_componenti
+                       WHERE riga_contratto_id = p_riga_id
+                  ) THEN RETURN 0; END IF;
+
+                  SELECT c.billing_account_id, c.utility_id, c.istanza_utility_id
+                    INTO v_ba_id, v_utility_id, v_istanza_id
+                    FROM vendite.contratti c WHERE c.id = v_contratto_id;
+
+                  FOR v_comp IN
+                      SELECT ac.id          AS bom_entry_id,
+                             ac.componente_id,
+                             ac.coeff_qta,
+                             ac.obbligatorio,
+                             a.uom_id       AS componente_uom_id,
+                             a.iva_id       AS componente_iva_id
+                        FROM catalogo.fn_distinta_alla_data(v_articolo_id, p_data_riferimento) ac
+                        JOIN catalogo.articoli a ON a.id = ac.componente_id
+                  LOOP
+                      IF p_componenti_overrides IS NOT NULL
+                         AND p_componenti_overrides ? v_comp.componente_id::text THEN
+                          v_prezzo  := (p_componenti_overrides ->> v_comp.componente_id::text)::numeric;
+                          v_origine := 'MANUALE';
+                          IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'vendite', 'fn_contratto_riga_componenti_init',
+                                  -- rev 2026-08-07: era E_PARAMETRO_INVALIDO. Non e' un parametro
+                                  --   malformato: e' una regola di dominio, e il codice giusto
+                                  --   esisteva gia'. Il suo messaggio dice «Componente obbligatorio
+                                  --   [%s]», quindi il valore variadico e' il COMPONENTE, non il
+                                  --   documento. Brief terzo lato §19.4.
+                                  'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO',
+                                  jsonb_build_object('componente_id', v_comp.componente_id,
+                                      'riga_id', p_riga_id,
+                                      'hint', 'prezzo override deve essere diverso da zero'),
+                                  NULL::uuid, v_comp.componente_id::text);
+                          END IF;
+                          INSERT INTO vendite.contratti_righe_componenti (
+                              riga_contratto_id, articolo_componente_id, componente_id,
+                              coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
+                              prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
+                          ) VALUES (
+                              p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
+                              v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
+                              v_comp.componente_uom_id, 1,
+                              v_prezzo, v_comp.componente_iva_id, v_origine,
+                              TRUE,
+                              jsonb_build_object('override', true,
+                                  'emittente_sr_id', p_emittente_sr_id,
+                                  'data_riferimento', p_data_riferimento,
+                                  'ba_id', v_ba_id, 'utility_id', v_utility_id,
+                                  'istanza_utility_id', v_istanza_id)
+                          );
+                      ELSE
+                          BEGIN
+                              SELECT * INTO v_resolve
+                                FROM vendite.fn_resolve_prezzo_listino_v2(
+                                    v_comp.componente_id, v_comp.componente_uom_id,
+                                    p_data_riferimento, v_ba_id, v_utility_id::integer,
+                                    p_emittente_sr_id, NULL,
+                                    v_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
+                                );
+                              INSERT INTO vendite.contratti_righe_componenti (
+                                  riga_contratto_id, articolo_componente_id, componente_id,
+                                  coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
+                                  prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
+                              ) VALUES (
+                                  p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
+                                  v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
+                                  v_comp.componente_uom_id, 1,
+                                  v_resolve.prezzo_finale, v_comp.componente_iva_id,
+                                  v_resolve.origine,
+                                  TRUE,
+                                  jsonb_build_object('emittente_sr_id', p_emittente_sr_id,
+                                      'data_riferimento', p_data_riferimento,
+                                      'ba_id', v_ba_id, 'utility_id', v_utility_id,
+                                      'istanza_utility_id', v_istanza_id,
+                                      'listino_id', v_resolve.listino_id,
+                                      'listino_versione_id', v_resolve.listino_versione_id,
+                                      'listino_riga_id', v_resolve.listino_riga_id,
+                                      'contratto_id', v_resolve.contratto_id,
+                                      'origine', v_resolve.origine)
+                              );
+                          -- ⚠️ rev 2026-08-07: qui c'era `EXCEPTION WHEN SQLSTATE 'P0001'`,
+                          --   che catturava QUALUNQUE errore di dominio del resolver e lo
+                          --   ri-sollevava come E_DOC_COMPONENTE_LISTINO_MANCANTE tenendo solo
+                          --   MESSAGE_TEXT: il codice strutturato originale andava perso, e con
+                          --   lui il tipo di risposta. Sette codici diversi arrivavano al client
+                          --   come 422 «listino non configurato» anche quando il listino non
+                          --   c'entrava nulla. Ora l'errore del resolver passa col proprio codice.
+                          --   Il blocco BEGIN..END resta: non serve piu' a nulla di funzionale,
+                          --   ma toglierlo vorrebbe dire re-indentare venticinque righe per
+                          --   niente. Brief terzo lato §18.3.
+                          END;
+                      END IF;
+                      v_inserted := v_inserted + 1;
+                  END LOOP;
+
+                  -- (raggiunto solo se v_qta_padre IS NOT NULL)
+                  IF v_inserted = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_contratto_riga_componenti_init',
+                          'E_DOC_COMPOSITO_BOM_VUOTA',
+                          jsonb_build_object('articolo_id', v_articolo_id,
+                              'data_riferimento', p_data_riferimento),
+                          NULL::uuid,
+                          v_codice_articolo,
+                          p_data_riferimento::text
+                      );
+                  END IF;
+
+                  RETURN v_inserted;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_contratto_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer)
+               RETURNS TABLE(articolo_componente_id uuid, componente_id uuid, componente_codice character varying, componente_descrizione character varying, coeff_qta_snapshot numeric, quantita_componente numeric, uom_id bigint, uom_codice character varying, iva_id bigint, prezzo_suggerito numeric, origine_prezzo character varying, resolver_error_reason text, obbligatorio boolean, esposizione_in_fattura character varying)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: preview read-only dei componenti BoM CASO A per il drawer riga contratto
+              --   (form atomic). Per ogni componente attivo e valido tenta
+              --   fn_resolve_prezzo_listino_v2; se fallisce ritorna prezzo_suggerito=NULL
+              --   + motivazione in resolver_error_reason. Nessun side-effect (STABLE).
+              --   rev 2026-05-13: modello unificato — rimosso filtro esposto_in_fattura=TRUE;
+              --   obbligatorio e esposto_in_fattura sono ora esposti nella proiezione.
+              --   rev 2026-10-01: esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO)
+              --   al posto del booleano esposto_in_fattura
+              --   (brief-db-esposizione-componenti-kit-in-fattura).
+              DECLARE
+                  v_rec     record;
+                  v_resolve record;
+              BEGIN
+                  FOR v_rec IN
+                      SELECT ac.id          AS bom_entry_id,
+                             ac.componente_id,
+                             ac.coeff_qta,
+                             ac.obbligatorio,
+                             ac.esposizione_in_fattura,
+                             a.codice       AS a_codice,
+                             a.descrizione  AS a_descrizione,
+                             a.uom_id       AS a_uom_id,
+                             a.iva_id       AS a_iva_id,
+                             um.codice      AS um_codice
+                        FROM catalogo.fn_distinta_alla_data(p_articolo_id, p_data_riferimento) ac
+                        JOIN catalogo.articoli a ON a.id = ac.componente_id
+                        LEFT JOIN catalogo.unita_misura um ON um.id = a.uom_id
+                  LOOP
+                      articolo_componente_id := v_rec.bom_entry_id;
+                      componente_id          := v_rec.componente_id;
+                      componente_codice      := v_rec.a_codice;
+                      componente_descrizione := v_rec.a_descrizione;
+                      coeff_qta_snapshot     := v_rec.coeff_qta;
+                      quantita_componente    := v_rec.coeff_qta * p_quantita_padre;
+                      uom_id                 := v_rec.a_uom_id;
+                      uom_codice             := v_rec.um_codice;
+                      iva_id                 := v_rec.a_iva_id;
+                      obbligatorio           := v_rec.obbligatorio;
+                      esposizione_in_fattura := v_rec.esposizione_in_fattura;
+
+                      BEGIN
+                          SELECT * INTO v_resolve
+                            FROM vendite.fn_resolve_prezzo_listino_v2(
+                                v_rec.componente_id,
+                                v_rec.a_uom_id,
+                                p_data_riferimento,
+                                p_ba_id,
+                                p_utility_id::integer,
+                                p_emittente_sr_id,
+                                p_classe_utenza_id,
+                                p_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
+                            );
+                          prezzo_suggerito      := v_resolve.prezzo_finale;
+                          origine_prezzo        := v_resolve.origine;
+                          resolver_error_reason := NULL;
+                      EXCEPTION WHEN SQLSTATE 'P0001' THEN
+                          GET STACKED DIAGNOSTICS resolver_error_reason = MESSAGE_TEXT;
+                          prezzo_suggerito := NULL;
+                          origine_prezzo   := NULL;
+                      END;
+
+                      RETURN NEXT;
+                  END LOOP;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_contratto_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb DEFAULT NULL::jsonb)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: Popola contratti_righe_componenti per una riga composita.
+              --   Modello unificato: tutti i componenti attivi inseriti con attivo=TRUE.
+              --   BoM = contratto immutabile: l'operatore non sceglie quali includere.
+              --   No-op su quantita IS NULL (riga a consumo).
+              --   rev 2026-06-05: guard difensivo — no-op su tipo_eccezione = 'ESCLUSIONE'
+              --   (articolo escluso interamente, nessun componente; protegge il CHECK prezzo NULL).
+              DECLARE
+                  v_articolo_id      catalogo.articoli.id%TYPE;
+                  v_codice_articolo  catalogo.articoli.codice%TYPE;
+                  v_uom_id           catalogo.unita_misura.id%TYPE;
+                  v_qta_padre        vendite.contratti_righe.quantita%TYPE;
+                  v_contratto_id     vendite.contratti.id%TYPE;
+                  v_tipo_eccezione   vendite.contratti_righe.tipo_eccezione%TYPE;
+                  v_is_composito     catalogo.articoli.is_composito%TYPE;
+                  v_ba_id            anagrafiche.billing_account.id%TYPE;
+                  v_utility_id       vendite.contratti.utility_id%TYPE;
+                  v_istanza_id       vendite.contratti.istanza_utility_id%TYPE;
+                  v_comp             record;
+                  v_resolve          record;
+                  v_prezzo           vendite.listini_righe.prezzo%TYPE;
+                  v_origine          vendite.contratti_righe_componenti.origine_prezzo%TYPE;
+                  v_inserted         integer := 0;
+              BEGIN
+                  IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_contratto_riga_componenti_init',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_riga_id'),
+                          NULL::uuid, 'p_riga_id obbligatorio e > 0');
+                  END IF;
+                  IF p_emittente_sr_id IS NULL OR p_emittente_sr_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_contratto_riga_componenti_init',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_sr_id'),
+                          NULL::uuid, 'p_emittente_sr_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT cr.articolo_id, cr.uom_operativa_id, cr.quantita, cr.contratto_id,
+                         cr.tipo_eccezione, a.is_composito, a.codice
+                    INTO v_articolo_id, v_uom_id, v_qta_padre, v_contratto_id,
+                         v_tipo_eccezione, v_is_composito, v_codice_articolo
+                    FROM vendite.contratti_righe cr
+                    JOIN catalogo.articoli a ON a.id = cr.articolo_id
+                   WHERE cr.id = p_riga_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_contratto_riga_componenti_init',
+                          -- rev 2026-08-07: era E_PARAMETRO_INVALIDO, cioe' 400 su un 404.
+                          'E_CONTRATTO_RIGA_NON_TROVATA',
+                          jsonb_build_object('p_riga_id', p_riga_id),
+                          NULL::uuid, p_riga_id::text);
+                  END IF;
+                  IF NOT COALESCE(v_is_composito, FALSE) THEN RETURN 0; END IF;
+
+                  -- Guard difensivo: ESCLUSIONE = articolo escluso interamente,
+                  -- nessun prezzo (CHECK chk_contrighe_prezzo_per_tipo_eccezione
+                  -- impone prezzo_unitario IS NULL) e quindi nessun componente BoM.
+                  -- Inizializzare i componenti scatenerebbe il ricalcolo del prezzo padre
+                  -- (trigger _z90_ricalcola_padre -> SUM figli) in violazione del CHECK.
+                  -- rev 2026-10-29 (20261029-42, G-0-ter): anche l'ADESIONE, che il prezzo
+                  -- non lo ha: il kit aderito prende prezzo e componenti dal listino.
+                  IF v_tipo_eccezione IN ('ESCLUSIONE', 'ADESIONE') THEN RETURN 0; END IF;
+
+                  -- No-op su riga a consumo senza quantita fissa
+                  IF v_qta_padre IS NULL THEN RETURN 0; END IF;
+
+                  IF EXISTS (
+                      SELECT 1 FROM vendite.contratti_righe_componenti
+                       WHERE riga_contratto_id = p_riga_id
+                  ) THEN RETURN 0; END IF;
+
+                  SELECT c.billing_account_id, c.utility_id, c.istanza_utility_id
+                    INTO v_ba_id, v_utility_id, v_istanza_id
+                    FROM vendite.contratti c WHERE c.id = v_contratto_id;
+
+                  FOR v_comp IN
+                      SELECT ac.id          AS bom_entry_id,
+                             ac.componente_id,
+                             ac.coeff_qta,
+                             ac.obbligatorio,
+                             a.uom_id       AS componente_uom_id,
+                             a.iva_id       AS componente_iva_id
+                        FROM catalogo.articoli_componenti ac
+                        JOIN catalogo.articoli a ON a.id = ac.componente_id
+                       WHERE ac.prodotto_id        = v_articolo_id
+                         AND COALESCE(ac.attivo, TRUE) = TRUE
+                         AND ac.validita           @> p_data_riferimento
+                  LOOP
+                      IF p_componenti_overrides IS NOT NULL
+                         AND p_componenti_overrides ? v_comp.componente_id::text THEN
+                          v_prezzo  := (p_componenti_overrides ->> v_comp.componente_id::text)::numeric;
+                          v_origine := 'MANUALE';
+                          IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'vendite', 'fn_contratto_riga_componenti_init',
+                                  -- rev 2026-08-07: era E_PARAMETRO_INVALIDO. Non e' un parametro
+                                  --   malformato: e' una regola di dominio, e il codice giusto
+                                  --   esisteva gia'. Il suo messaggio dice «Componente obbligatorio
+                                  --   [%s]», quindi il valore variadico e' il COMPONENTE, non il
+                                  --   documento. Brief terzo lato §19.4.
+                                  'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO',
+                                  jsonb_build_object('componente_id', v_comp.componente_id,
+                                      'riga_id', p_riga_id,
+                                      'hint', 'prezzo override deve essere diverso da zero'),
+                                  NULL::uuid, v_comp.componente_id::text);
+                          END IF;
+                          INSERT INTO vendite.contratti_righe_componenti (
+                              riga_contratto_id, articolo_componente_id, componente_id,
+                              coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
+                              prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
+                          ) VALUES (
+                              p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
+                              v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
+                              v_comp.componente_uom_id, 1,
+                              v_prezzo, v_comp.componente_iva_id, v_origine,
+                              TRUE,
+                              jsonb_build_object('override', true,
+                                  'emittente_sr_id', p_emittente_sr_id,
+                                  'data_riferimento', p_data_riferimento,
+                                  'ba_id', v_ba_id, 'utility_id', v_utility_id,
+                                  'istanza_utility_id', v_istanza_id)
+                          );
+                      ELSE
+                          BEGIN
+                              SELECT * INTO v_resolve
+                                FROM vendite.fn_resolve_prezzo_listino_v2(
+                                    v_comp.componente_id, v_comp.componente_uom_id,
+                                    p_data_riferimento, v_ba_id, v_utility_id::integer,
+                                    p_emittente_sr_id, NULL,
+                                    v_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
+                                );
+                              INSERT INTO vendite.contratti_righe_componenti (
+                                  riga_contratto_id, articolo_componente_id, componente_id,
+                                  coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
+                                  prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
+                              ) VALUES (
+                                  p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
+                                  v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
+                                  v_comp.componente_uom_id, 1,
+                                  v_resolve.prezzo_finale, v_comp.componente_iva_id,
+                                  v_resolve.origine,
+                                  TRUE,
+                                  jsonb_build_object('emittente_sr_id', p_emittente_sr_id,
+                                      'data_riferimento', p_data_riferimento,
+                                      'ba_id', v_ba_id, 'utility_id', v_utility_id,
+                                      'istanza_utility_id', v_istanza_id,
+                                      'listino_id', v_resolve.listino_id,
+                                      'listino_versione_id', v_resolve.listino_versione_id,
+                                      'listino_riga_id', v_resolve.listino_riga_id,
+                                      'contratto_id', v_resolve.contratto_id,
+                                      'origine', v_resolve.origine)
+                              );
+                          -- ⚠️ rev 2026-08-07: qui c'era `EXCEPTION WHEN SQLSTATE 'P0001'`,
+                          --   che catturava QUALUNQUE errore di dominio del resolver e lo
+                          --   ri-sollevava come E_DOC_COMPONENTE_LISTINO_MANCANTE tenendo solo
+                          --   MESSAGE_TEXT: il codice strutturato originale andava perso, e con
+                          --   lui il tipo di risposta. Sette codici diversi arrivavano al client
+                          --   come 422 «listino non configurato» anche quando il listino non
+                          --   c'entrava nulla. Ora l'errore del resolver passa col proprio codice.
+                          --   Il blocco BEGIN..END resta: non serve piu' a nulla di funzionale,
+                          --   ma toglierlo vorrebbe dire re-indentare venticinque righe per
+                          --   niente. Brief terzo lato §18.3.
+                          END;
+                      END IF;
+                      v_inserted := v_inserted + 1;
+                  END LOOP;
+
+                  -- (raggiunto solo se v_qta_padre IS NOT NULL)
+                  IF v_inserted = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_contratto_riga_componenti_init',
+                          'E_DOC_COMPOSITO_BOM_VUOTA',
+                          jsonb_build_object('articolo_id', v_articolo_id,
+                              'data_riferimento', p_data_riferimento),
+                          NULL::uuid,
+                          v_codice_articolo,
+                          p_data_riferimento::text
+                      );
+                  END IF;
+
+                  RETURN v_inserted;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_contratto_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer)
+               RETURNS TABLE(articolo_componente_id uuid, componente_id uuid, componente_codice character varying, componente_descrizione character varying, coeff_qta_snapshot numeric, quantita_componente numeric, uom_id bigint, uom_codice character varying, iva_id bigint, prezzo_suggerito numeric, origine_prezzo character varying, resolver_error_reason text, obbligatorio boolean, esposizione_in_fattura character varying)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: preview read-only dei componenti BoM CASO A per il drawer riga contratto
+              --   (form atomic). Per ogni componente attivo e valido tenta
+              --   fn_resolve_prezzo_listino_v2; se fallisce ritorna prezzo_suggerito=NULL
+              --   + motivazione in resolver_error_reason. Nessun side-effect (STABLE).
+              --   rev 2026-05-13: modello unificato — rimosso filtro esposto_in_fattura=TRUE;
+              --   obbligatorio e esposto_in_fattura sono ora esposti nella proiezione.
+              --   rev 2026-10-01: esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO)
+              --   al posto del booleano esposto_in_fattura
+              --   (brief-db-esposizione-componenti-kit-in-fattura).
+              DECLARE
+                  v_rec     record;
+                  v_resolve record;
+              BEGIN
+                  FOR v_rec IN
+                      SELECT ac.id          AS bom_entry_id,
+                             ac.componente_id,
+                             ac.coeff_qta,
+                             ac.obbligatorio,
+                             ac.esposizione_in_fattura,
+                             a.codice       AS a_codice,
+                             a.descrizione  AS a_descrizione,
+                             a.uom_id       AS a_uom_id,
+                             a.iva_id       AS a_iva_id,
+                             um.codice      AS um_codice
+                        FROM catalogo.articoli_componenti ac
+                        JOIN catalogo.articoli a ON a.id = ac.componente_id
+                        LEFT JOIN catalogo.unita_misura um ON um.id = a.uom_id
+                       WHERE ac.prodotto_id        = p_articolo_id
+                         AND COALESCE(ac.attivo, TRUE) = TRUE
+                         AND ac.validita           @> p_data_riferimento
+                  LOOP
+                      articolo_componente_id := v_rec.bom_entry_id;
+                      componente_id          := v_rec.componente_id;
+                      componente_codice      := v_rec.a_codice;
+                      componente_descrizione := v_rec.a_descrizione;
+                      coeff_qta_snapshot     := v_rec.coeff_qta;
+                      quantita_componente    := v_rec.coeff_qta * p_quantita_padre;
+                      uom_id                 := v_rec.a_uom_id;
+                      uom_codice             := v_rec.um_codice;
+                      iva_id                 := v_rec.a_iva_id;
+                      obbligatorio           := v_rec.obbligatorio;
+                      esposizione_in_fattura := v_rec.esposizione_in_fattura;
+
+                      BEGIN
+                          SELECT * INTO v_resolve
+                            FROM vendite.fn_resolve_prezzo_listino_v2(
+                                v_rec.componente_id,
+                                v_rec.a_uom_id,
+                                p_data_riferimento,
+                                p_ba_id,
+                                p_utility_id::integer,
+                                p_emittente_sr_id,
+                                p_classe_utenza_id,
+                                p_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
+                            );
+                          prezzo_suggerito      := v_resolve.prezzo_finale;
+                          origine_prezzo        := v_resolve.origine;
+                          resolver_error_reason := NULL;
+                      EXCEPTION WHEN SQLSTATE 'P0001' THEN
+                          GET STACKED DIAGNOSTICS resolver_error_reason = MESSAGE_TEXT;
+                          prezzo_suggerito := NULL;
+                          origine_prezzo   := NULL;
+                      END;
+
+                      RETURN NEXT;
+                  END LOOP;
+              END;
+              $function$;

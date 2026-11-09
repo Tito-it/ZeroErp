@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.lock_columns_conditional (catalogo.articoli): le due regole gemelle del
+#   check 1 del guard flags chiamano catalogo.fn_articolo_padre_di_distinta_da_oggi
+#   (20_code -62), come il guard da -63 (D9).
+#   Brief: brief-db-revisione-catalogo, giro 1.
+#
+#   Guard e form devono rispondere uguale: il form spegne is_composito e
+#   requires_serial anche per un padre con una distinta solo futura. Stessa forma di
+#   20261109-64 (la tabella non ha un CSV: la sua sede sono i changeSet SQL di
+#   80_data): righe chiavate su colonna e testo di prima, il conteggio ferma il
+#   changeSet se le righe aggiornate non sono due. Le regole del check 2 e 3 non
+#   cambiano.
+#   Rollback = espressioni e descrizioni di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-69-update-lock-columns-conditional-padre-da-oggi-mctit.yaml
+
+  - changeSet:
+      id: 20261110-69-update-lock-columns-conditional-padre-da-oggi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        lock_columns_conditional (catalogo.articoli): le regole del padre della distinta guardano anche la distinta futura, come il guard. Brief: brief-db-revisione-catalogo, giro 1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('catalogo.fn_articolo_padre_di_distinta_da_oggi(uuid)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $seed$
+              DECLARE
+                  v_n   bigint;
+                  v_tot bigint := 0;
+              BEGIN
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'catalogo.fn_articolo_padre_di_distinta_da_oggi($1::uuid)',
+                         descrizione    = 'is_composito non modificabile se l''articolo e'' padre di una distinta in vigore o futura: stesso predicato del check 1 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'is_composito'
+                     AND condition_expr = 'catalogo.fn_articolo_padre_di_distinta_in_vigore($1::uuid)';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'catalogo.fn_articolo_padre_di_distinta_da_oggi($1::uuid)',
+                         descrizione    = 'requires_serial non modificabile se l''articolo e'' padre di una distinta in vigore o futura: stesso predicato del check 1 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'requires_serial'
+                     AND condition_expr = 'catalogo.fn_articolo_padre_di_distinta_in_vigore($1::uuid)';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  IF v_tot <> 2 THEN
+                      RAISE EXCEPTION 'lock_columns_conditional (padre da oggi): attese 2 righe, aggiornate %', v_tot;
+                  END IF;
+              END
+              $seed$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $seed$
+              DECLARE
+                  v_n   bigint;
+                  v_tot bigint := 0;
+              BEGIN
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'catalogo.fn_articolo_padre_di_distinta_in_vigore($1::uuid)',
+                         descrizione    = 'is_composito non modificabile se l''articolo e'' padre di una distinta in vigore: stesso predicato del check 1 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'is_composito'
+                     AND condition_expr = 'catalogo.fn_articolo_padre_di_distinta_da_oggi($1::uuid)';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  UPDATE dbops.lock_columns_conditional
+                     SET condition_expr = 'catalogo.fn_articolo_padre_di_distinta_in_vigore($1::uuid)',
+                         descrizione    = 'requires_serial non modificabile se l''articolo e'' padre di una distinta in vigore: stesso predicato del check 1 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva'
+                   WHERE schema_name = 'catalogo'
+                     AND table_name  = 'articoli'
+                     AND column_name = 'requires_serial'
+                     AND condition_expr = 'catalogo.fn_articolo_padre_di_distinta_da_oggi($1::uuid)';
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  v_tot := v_tot + v_n;
+                  IF v_tot <> 2 THEN
+                      RAISE EXCEPTION 'lock_columns_conditional (rollback): attese 2 righe, aggiornate %', v_tot;
+                  END IF;
+              END
+              $seed$;

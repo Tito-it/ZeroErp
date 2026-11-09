@@ -44,6 +44,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_articoli_composito_non_solo_componente |  |
 | CHECK | chk_articoli_lead_time_giorni_non_negativo |  |
 | CHECK | chk_articoli_note_target_tipo |  |
 | FOREIGN KEY | fk_articoli_articoli_gruppi | gruppo_voce_id |

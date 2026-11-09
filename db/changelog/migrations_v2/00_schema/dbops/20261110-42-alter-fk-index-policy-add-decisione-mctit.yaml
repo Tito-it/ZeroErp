@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fk_index_policy: la DECISIONE prende il posto del flag (Q14 ②).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-1 (§29).
+#
+#   consentito (boolean, default true) non sapeva dire «nessuno ha deciso»: la
+#   scoperta scriveva false, e una FK a false spariva da vw_fk_senza_indice,
+#   cioe' da ogni presidio. Nascono:
+#     - decisione: DA_DECIDERE (la scrive la scoperta, e il default) /
+#       CON_INDICE / SENZA_INDICE (le scrive solo il seed, il CSV unico);
+#     - motivo: facoltativo, il perche' di una decisione;
+#     - indice_nome: il nome dell'indice, GENERATO dal dll_command con la
+#       stessa grammatica del CHECK di forma (D23). Prima l'apply prendeva la
+#       sesta parola e vw_indici_ridondanti_prefisso usava un LIKE, che con
+#       un nome suffisso di un altro, o col `_` jolly, agganciava la riga
+#       sbagliata. NOT NULL: il CHECK di forma garantisce che il nome ci sia.
+#
+# ── LA CONVERSIONE (N3) ─────────────────────────────────────────────
+#   ADD COLUMN ... DEFAULT 'DA_DECIDERE' scrive DA_DECIDERE su tutte le righe.
+#   Le decisioni le riscrive il mirror del CSV unico (80_data/changelog/
+#   20261110-51), che su ogni database gira dopo: il seed e' il CSV, non serve
+#   un censimento a mano. Da zero, i changeSet congelati che scrivono il
+#   registro (loader e SQL in linea) non nominano decisione e lasciano il
+#   default: anche le loro righe sono nel CSV unico.
+#   consentito e generated_by_script escono in 80_data/changelog/20261110-53,
+#   dopo quei congelati, che le nominano.
+#
+# Questo changeSet ha il numero piu' basso del giro: 00_schema e 20_code girano
+#   in ordine di numero, e le funzioni e le viste nuove (-43 ... -50) leggono le
+#   colonne nuove.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261110-42-alter-fk-index-policy-add-decisione-mctit.yaml
+
+  - changeSet:
+      id: 20261110-42-alter-fk-index-policy-add-decisione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fk_index_policy: decisione (DA_DECIDERE / CON_INDICE / SENZA_INDICE), motivo e il nome
+        dell'indice generato dal dll_command. Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: dbops, tableName: fk_index_policy }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.fk_index_policy
+                  ADD COLUMN decisione text NOT NULL DEFAULT 'DA_DECIDERE',
+                  ADD COLUMN motivo text NULL,
+                  ADD COLUMN indice_nome text NOT NULL
+                      GENERATED ALWAYS AS (substring(dll_command FROM '^CREATE INDEX IF NOT EXISTS ([a-z_][a-z0-9_$]*) ON ')) STORED;
+
+              ALTER TABLE dbops.fk_index_policy
+                  ADD CONSTRAINT chk_fk_index_policy_decisione
+                      CHECK (decisione = ANY (ARRAY['DA_DECIDERE'::text, 'CON_INDICE'::text, 'SENZA_INDICE'::text])),
+                  ADD CONSTRAINT chk_fk_index_policy_motivo_non_vuoto
+                      CHECK (motivo IS NULL OR btrim(motivo) <> '');
+
+              COMMENT ON TABLE dbops.fk_index_policy IS
+                  'Politica degli indici sulle foreign key: una riga per FK, con la decisione su un indice dedicato. La scoperta (dbops.fn_populate_fk_index_policy) registra le FK scoperte senza riga come DA_DECIDERE e toglie le DA_DECIDERE la cui FK non e'' piu'' scoperta; le decisioni CON_INDICE e SENZA_INDICE le scrive solo il seed, il CSV di 80_data. dbops.apply_fk_index_policy crea o toglie gli indici delle sole righe decise, negli schemi governati (dbops.fn_indici_schema_nell_ambito). Le FK da decidere le mostra il presidio dbops.vw_fk_da_decidere. Una FK gia'' coperta da un indice del suo changeSet non ha bisogno di una riga: la politica governa gli indici che crea lei.';
+
+              COMMENT ON COLUMN dbops.fk_index_policy.schema_name IS
+                  'Schema della tabella che porta la FK. Con table_name e constraint_name e'' la chiave.';
+              COMMENT ON COLUMN dbops.fk_index_policy.table_name IS
+                  'Tabella che porta la FK.';
+              COMMENT ON COLUMN dbops.fk_index_policy.constraint_name IS
+                  'Nome del vincolo di foreign key. Una riga di seed puo'' nominare una FK che su un database da zero nasce dopo Liquibase (il ponte verso django.auth_user): non e'' una riga morta.';
+              COMMENT ON COLUMN dbops.fk_index_policy.decisione IS
+                  'DA_DECIDERE: la FK e'' scoperta e nessuno ha deciso; la scrive la scoperta, e l''apply non tocca l''indice. CON_INDICE: l''apply esegue dll_command se la FK e'' ancora scoperta. SENZA_INDICE: l''apply toglie l''indice indice_nome, salvo che regga un vincolo o la REPLICA IDENTITY. Le due decisioni le scrive solo il seed.';
+              COMMENT ON COLUMN dbops.fk_index_policy.motivo IS
+                  'Perche'' della decisione, facoltativo. Mai una stringa vuota (chk_fk_index_policy_motivo_non_vuoto).';
+              COMMENT ON COLUMN dbops.fk_index_policy.dll_command IS
+                  'Comando che crea l''indice della FK, nella forma CREATE INDEX IF NOT EXISTS <nome> ON <schema>.<tabella>(<colonne>); (chk_fk_index_policy_dll_command_forma). Si scrive su ogni riga, anche SENZA_INDICE e DA_DECIDERE: ne nasce indice_nome, il solo dato che serve per togliere l''indice, e una decisione che passa a CON_INDICE crea l''indice col nome di prima.';
+              COMMENT ON COLUMN dbops.fk_index_policy.indice_nome IS
+                  'Nome dell''indice, generato da dll_command con la grammatica di chk_fk_index_policy_dll_command_forma. Lo leggono dbops.apply_fk_index_policy (il DROP di una SENZA_INDICE) e dbops.vw_indici_ridondanti_prefisso, per uguaglianza.';
+              COMMENT ON COLUMN dbops.fk_index_policy.user_insert IS
+                  'Chi ha inserito la riga.';
+              COMMENT ON COLUMN dbops.fk_index_policy.data_insert IS
+                  'Quando la riga e'' stata inserita.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.fk_index_policy
+                  DROP CONSTRAINT IF EXISTS chk_fk_index_policy_motivo_non_vuoto,
+                  DROP CONSTRAINT IF EXISTS chk_fk_index_policy_decisione,
+                  DROP COLUMN IF EXISTS indice_nome,
+                  DROP COLUMN IF EXISTS motivo,
+                  DROP COLUMN IF EXISTS decisione;
+              COMMENT ON TABLE dbops.fk_index_policy IS NULL;

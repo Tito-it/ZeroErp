@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_articoli_componenti_guard_componente: il guard del legame giudica
+#   ogni composizione nuova, anche la riapertura, e col padre (D9, Q5).
+#   Brief: brief-db-revisione-catalogo, giro 1.
+#
+#   Prima il trigger scattava su UPDATE OF componente_id, prodotto_id, attivo: un
+#   legame chiuso (valido_al passato) si riapriva con SET valido_al = NULL senza
+#   essere giudicato, anche se nel frattempo il componente era diventato composito
+#   o era stato ritirato. Ora valido_al e' nell'elenco OF, e il corpo giudica il
+#   legame quando la sua fine si allontana (tolta o spostata in avanti); la
+#   chiusura no, perche' un legame si chiude sempre. La riapertura di un legame la
+#   cui fine e' gia' passata la rifiuta prima il trigger d'immutabilita' (-66, nome
+#   minore): qui arriva solo l'allungamento di una fine futura.
+#   Il padre non composito lo rifiuta ora il lato documento della check (-64),
+#   quindi anche alla riattivazione: il guard catalogo.trgfn_articoli_componenti_guard_is_composito
+#   si ritira in -67.
+#   Via i COALESCE su attivo (NOT NULL). COMMENT riscritto secondo linee-guida-sql §5d.
+#   Corpo di partenza da pg_get_functiondef su dbdev (2026-11-09); rollback = corpo,
+#   COMMENT e trigger di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261110-65-update-trgfn-articoli-componenti-guard-componente-riapertura-mctit.yaml
+
+  - changeSet:
+      id: 20261110-65-update-trgfn-articoli-componenti-guard-componente-riapertura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_articoli_componenti_guard_componente: giudica anche la riapertura di un legame, e il padre dalla check. Brief: brief-db-revisione-catalogo, giro 1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_trigger
+               WHERE tgname = 'trg_articoli_componenti_a10_guard_riga_componente_ins_upd'
+                 AND tgrelid = 'catalogo.articoli_componenti'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_componente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare una composizione che la distinta non ammette:
+                  --   solleva il primo motivo di script.fn_check_articolo_riga
+                  --   (documento ARTICOLO, padre = prodotto_id). Il lato documento
+                  --   della check rifiuta un padre non composito
+                  --   (E_ARTICOLO_NON_COMPOSITO); i motivi giudicano il componente.
+                  --   BEFORE INSERT OR UPDATE OF componente_id, prodotto_id,
+                  --   attivo, valido_al.
+                  -- Una composizione nuova e': un legame attivo che nasce, che si
+                  --   attiva, che cambia componente o padre, o la cui fine si
+                  --   allontana (valido_al tolto o spostato in avanti). Chiudere
+                  --   un legame, o anticiparne la fine, non compone niente e non
+                  --   si giudica: un legame si chiude sempre.
+                  -- =========================================================
+                  IF NOT NEW.attivo THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF TG_OP = 'UPDATE'
+                     AND OLD.attivo
+                     AND NEW.componente_id IS NOT DISTINCT FROM OLD.componente_id
+                     AND NEW.prodotto_id   IS NOT DISTINCT FROM OLD.prodotto_id
+                     AND NOT (OLD.valido_al IS NOT NULL
+                              AND (NEW.valido_al IS NULL OR NEW.valido_al > OLD.valido_al)) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- p_scelta_nuova = true: qui arriva solo una composizione nuova,
+                  -- quindi un componente ritirato e' un motivo.
+                  v_motivi := script.fn_check_articolo_riga(
+                      'ARTICOLO', NULL, NEW.componente_id, NULL, NULL, NEW.prodotto_id, true);
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'catalogo', TG_NAME::text,
+                      v_motivi,
+                      COALESCE(v_motivi -> 0 -> 'dettaglio' ->> 'campo', 'componente_id'),
+                      NEW.tx_id,
+                      jsonb_build_object('legame_id', NEW.id, 'prodotto_id', NEW.prodotto_id));
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_componente() IS
+                  'Guard BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo, valido_al su catalogo.articoli_componenti: giudica ogni composizione nuova con script.fn_check_articolo_riga (documento ARTICOLO, padre = prodotto_id, p_scelta_nuova = true) e solleva il primo motivo. Il lato documento della check rifiuta un padre inesistente o non composito (E_ARTICOLO_NON_COMPOSITO, campo prodotto_id); i motivi giudicano il componente: ritirato (E_ARTICOLO_OBSOLETO), uguale al padre (E_BOM_COMPONENTE_PADRE), composito, perche'' la distinta ha un livello solo (E_BOM_COMPONENTE_COMPOSITO), con un''IVA diversa dal padre (E_BOM_IVA_DISCORDANTE). Composizione nuova = un legame attivo che nasce, che si attiva, che cambia componente o padre, o la cui fine si allontana (valido_al tolto o spostato in avanti). Un legame spento, o che si chiude, non si giudica. Le righe-componente dei documenti espanse da una distinta esistente sono derivate e non passano di qui; il prodotto ritirato non conta, perche'' la sua distinta si continua a mantenere.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_riga_componente_ins_upd ON catalogo.articoli_componenti;
+
+              CREATE TRIGGER trg_articoli_componenti_a10_guard_riga_componente_ins_upd
+                  BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo, valido_al
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_componente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_componente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare un componente che la distinta non ammette: solleva
+                  --   il primo motivo di script.fn_check_articolo_riga
+                  --   (documento ARTICOLO, padre = prodotto_id). BEFORE INSERT OR
+                  --   UPDATE OF componente_id, prodotto_id, attivo.
+                  -- =========================================================
+                  IF NOT COALESCE(NEW.attivo, FALSE) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF TG_OP = 'UPDATE'
+                     AND COALESCE(OLD.attivo, FALSE)
+                     AND NEW.componente_id IS NOT DISTINCT FROM OLD.componente_id
+                     AND NEW.prodotto_id   IS NOT DISTINCT FROM OLD.prodotto_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- p_scelta_nuova = true: qui arriva solo un legame nuovo, cambiato
+                  -- o riattivato, cioe' una composizione nuova (O-4): il componente
+                  -- ritirato e' un motivo (brief-db-articoli-obsoleto-dal).
+                  v_motivi := script.fn_check_articolo_riga(
+                      'ARTICOLO', NULL, NEW.componente_id, NULL, NULL, NEW.prodotto_id, true);
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'catalogo', TG_NAME::text,
+                      v_motivi,
+                      COALESCE(v_motivi -> 0 -> 'dettaglio' ->> 'campo', 'componente_id'),
+                      NEW.tx_id,
+                      jsonb_build_object('legame_id', NEW.id, 'prodotto_id', NEW.prodotto_id));
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_componente() IS
+                  'Guard BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo su catalogo.articoli_componenti (Lotto 3c di brief-db-articoli-ammessi-per-documento, 2026-10-13): solleva il primo motivo di script.fn_check_articolo_riga per il componente (documento ARTICOLO, padre = prodotto_id): componente uguale al padre (E_BOM_COMPONENTE_PADRE), composito (E_BOM_COMPONENTE_COMPOSITO, D-4), IVA diversa dal padre (E_BOM_IVA_DISCORDANTE). Giudica un legame attivo quando nasce, quando si attiva e quando cambia componente o padre; un legame spento no. Guard suo perche'' qui articolo e padre sono componente_id e prodotto_id (uuid), non articolo_id e un id di documento; la regola resta una, nella check. Sostituisce catalogo.trgfn_articoli_componenti_guard_un_livello e catalogo.trgfn_articoli_componenti_guard_iva (ritirati da 20261013-61). ⭐ rev 2026-11-05 (20261105-13, brief-db-articoli-obsoleto-dal O-4): il guard arriva alla check solo per un legame nuovo, cambiato o riattivato, che e'' sempre una composizione nuova: passa p_scelta_nuova = true, e un componente ritirato (script.fn_e_obsoleto) e'' respinto con E_ARTICOLO_OBSOLETO, campo componente_id. Le righe-componente dei documenti espanse da una distinta esistente sono derivate e non passano di qui. Il prodotto ritirato non conta: la sua distinta si continua a mantenere.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_riga_componente_ins_upd ON catalogo.articoli_componenti;
+
+              CREATE TRIGGER trg_articoli_componenti_a10_guard_riga_componente_ins_upd BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo ON catalogo.articoli_componenti FOR EACH ROW EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_componente();

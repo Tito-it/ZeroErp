@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,offerte_commerciali,fk_offerte_commerciali_revisione_radice,t,CREATE INDEX IF NOT EXISTS ix_offerte_commerciali_revisione_radice_id ON vendite.offerte_commerciali(revisione_radice_id);,f,mctit,2026-09-27 00:00:00+02

@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_punti_primo_motivo: anche le funzioni sql.
+#   Brief: brief-db-revisione-dbops, giro 12 (Q15).
+#
+# Base: 20_code/dbops/20261104-24, verificato uguale al vivo. Cambia solo il
+# perimetro dei punti: dbops.fn_corpo_leggibile (20261110-59) al posto del solo
+# plpgsql; il prefiltro su prosrc resta davanti.
+#   il perimetro sono i corpi leggibili, plpgsql e sql (dbops.fn_corpo_leggibile): conta chi puo' sollevare un codice, non il linguaggio in cui e' scritto.
+#   ⛔ Il prefiltro su prosrc vede solo i corpi testuali: per una sql BEGIN
+#   ATOMIC prosrc e' vuoto, e quella funzione sarebbe rimasta fuori anche con il
+#   perimetro allargato. Il prefiltro diventa «prosrc ... OR prosqlbody IS NOT
+#   NULL»: le BEGIN ATOMIC passano tutte al filtro vero, sul corpo deparsato.
+#   COMMENT: la frase del perimetro, che prima non c'era. ⛔ security_invoker si ripete.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-81-update-vw-punti-primo-motivo-corpo-leggibile-mctit.yaml
+
+  - changeSet:
+      id: 20261110-81-update-vw-punti-primo-motivo-corpo-leggibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_punti_primo_motivo legge ogni corpo leggibile (plpgsql e sql) con dbops.fn_corpo_leggibile. Brief: brief-db-revisione-dbops, giro 12.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_leggibile';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'dbops' AND c.relname = 'vw_funzioni_check_codici';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_punti_primo_motivo
+              WITH (security_invoker=true) AS
+              WITH punti AS (
+                  -- Un PUNTO: una funzione dal corpo leggibile (plpgsql o sql) che passa a
+                  -- fn_log_and_raise_error un codice LETTO da un motivo
+                  -- (`->> 'codice'`) invece che scritto come letterale.
+                  -- ⛔ Il marcatore e' la sede del rubinetto e non si tocca.
+                  SELECT (n.nspname)::text AS sch, (p.proname)::text AS fn
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])
+                     AND dbops.fn_corpo_leggibile(p.prolang)
+                     -- prefiltro economico sul sorgente intero (sovrainsieme) ...
+                     AND (p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice''' OR p.prosqlbody IS NOT NULL)
+                     -- ... e lo stesso marcatore sul corpo senza commenti: una
+                     -- chiamata rimasta in un commento non e' un punto.
+                     AND (dbops.fn_corpo_funzione(p.oid) COLLATE "C") ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''
+                     -- L'helper e' la SEDE della coda, non un suo residuo.
+                     AND NOT (n.nspname = 'script' AND p.proname = 'fn_raise_primo_motivo_se_presente')
+              )
+              SELECT pt.sch,
+                     pt.fn,
+                     ((pt.sch || '.'::text) || pt.fn) AS funzione,
+                     k.check_schema,
+                     k.check_funzione,
+                     k.check_emette_valori,
+                     -- NULL se il punto non si lega a nessuna check, o se la
+                     -- check non nomina codici: e' il ramo cieco, e COMPARE.
+                     k.codice
+                FROM punti pt
+                LEFT JOIN dbops.vw_funzioni_check_codici k
+                       ON k.sch = pt.sch AND k.fn = pt.fn;
+
+              COMMENT ON VIEW dbops.vw_punti_primo_motivo IS
+              'I punti che sollevano il codice del PRIMO MOTIVO di una script.fn_check_* (linee-guida-sql §12.5.2) A MANO — `fn_log_and_raise_error(... ->> ''codice''` — legati alla check da cui il motivo viene e ai codici che quella nomina. Una riga per (punto, check, codice). E'' il RUBINETTO: i chiamanti di script.fn_raise_primo_motivo_se_presente (i bonificati) NON ci stanno, per costruzione. Il perimetro sono i corpi leggibili, plpgsql e sql (dbops.fn_corpo_leggibile).
+              ⭐ DAL 2026-09-21 LA RISALITA punto->check->codici si LEGGE da dbops.vw_funzioni_check_codici (sede unica, condivisa col presidio C2 dbops.vw_punti_canale_campo); qui resta il solo marcatore dei punti. Prima viveva in una vista temporanea dentro db/pgtap/script/test-rubinetto-primo-motivo-v1.sql, poi in questa vista — e la seconda lettrice l''avrebbe ricopiata.
+              COME SI USA. (A) il perimetro dell''helper: SELECT sch, fn, count(check_funzione) AS check_trovate, coalesce(bool_or(check_emette_valori), false) AS in_perimetro FROM dbops.vw_punti_primo_motivo GROUP BY 1,2; (B) i codici che un punto puo'' sollevare: SELECT DISTINCT funzione, codice FROM dbops.vw_punti_primo_motivo WHERE codice IS NOT NULL.
+              ⭐ PESSIMISTA DI PROPOSITO: i codici sono l''UNIONE di quelli nominati da TUTTE le check citate nel corpo, perche'' la vista legge il testo e non sa quale ramo sia stato preso. Un presidio che scegliesse il ramo ottimista assolverebbe il caso che deve segnalare; un falso positivo qui costa una riga in piu'' nel VARIADIC, non un rifiuto sbagliato.
+              ⚠️ RAMO CIECO — un punto con check_funzione NULL non e'' «a posto»: e'' un sito che la lettura non sa legare alla sua check, e va visto. E'' il test 3 di test-rubinetto-primo-motivo-v1.sql.
+              ⛔ NON serve a dbops.vw_codici_errore_forme_condizione: quella classifica la forma della GUARDIA, e sopra questi punti la guardia e'' sempre «IF jsonb_array_length(v_motivi) > 0», che non dice niente. Li'' si classifica dove il codice e'' NOMINATO (changeSet 20260908-35).
+              ⚠️ E'' un''euristica sul corpo senza commenti (dbops.fn_corpo_funzione): riconosce la forma scritta, non il significato; una chiamata rimasta in un commento non e'' un punto. Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (V-0); risalita condivisa: brief-be-presidio-ui-action-e-canale-campi §4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo del changeSet base.
+              SELECT 1;

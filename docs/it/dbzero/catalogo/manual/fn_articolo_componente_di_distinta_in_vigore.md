@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_articolo_componente_di_distinta_in_vigore`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,6 +12,7 @@
 > Approfondimento funzioni:
 >
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che la chiama
+> * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi) — il predicato del check 1, il lato del padre
 > * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale
 
 ---
@@ -33,7 +34,7 @@ Il guard rifiuta il salvataggio, la regola spegne il campo prima che l'operatore
 chiamano la stessa funzione, rispondono uguale: prima la condizione stava scritta due volte, e le
 due copie erano già divergite una volta sul giorno di riferimento.
 
-Guarda solo la distinta **in vigore oggi**. Per un componente di una distinta futura vale la regola del livello unico (`catalogo.fn_articolo_primo_padre_da_oggi`).
+Guarda solo la distinta **in vigore oggi**. Per un componente di una distinta futura vale la regola del livello unico (`catalogo.fn_articolo_primo_padre_da_oggi`). Il lato del padre guarda invece anche il futuro (`catalogo.fn_articolo_padre_di_distinta_da_oggi`): un padre con una distinta solo futura resta composito.
 
 ---
 

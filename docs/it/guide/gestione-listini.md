@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -371,20 +371,28 @@ presentazione.)
 
 ### 5.3 Immutabilità della BoM — pattern "chiudi + nuova versione"
 
-La distinta base è **immutabile nel tempo**: una volta inserita una riga in `articoli_componenti`, i campi di struttura (componente, `coeff_qta`, `esposizione_in_fattura`, `obbligatorio`, `valido_dal`) non possono essere modificati in place. Il trigger DB `trgfn_articoli_componenti_block_modifica_struttura` blocca gli UPDATE con errore `E_BOM_MODIFICA_VIETATA` e le DELETE (una riga BoM non si elimina mai: si chiude).
+La distinta base è **immutabile nel tempo**: una volta inserita una riga in `articoli_componenti`, i campi di struttura (il kit padre, il componente, `coeff_qta`, `esposizione_in_fattura`, `obbligatorio`, `valido_dal`) non possono essere modificati in place. Il trigger DB `trgfn_articoli_componenti_block_modifica_struttura` blocca gli UPDATE con errore `E_BOM_MODIFICA_VIETATA` e le DELETE (una riga BoM non si elimina mai: si chiude).
 
 **Perché**: le commesse e le fatturazioni che hanno già consumato quella BoM restano ancorate alla struttura del momento, e lo snapshot `prezzo_bloccato` sulle righe commessa preserva il calcolo fatto all'epoca. Modificare la BoM "sotto" a una commessa emessa romperebbe la ricostruzione storica.
 
 **Come si correggono errori o si evolve una distinta base**:
 
-1. **Chiudi la riga corrente**: imposta `valido_al` all'ultimo giorno in cui la versione vecchia vale, per esempio oggi (è l'unica data che si cambia in place). Dalla UI: menu kebab della riga → "Chiudi riga", oppure click sulla cella `valido_al` inline.
+1. **Chiudi la riga corrente**: imposta `valido_al` all'ultimo giorno in cui la versione vecchia vale, per esempio oggi (è l'unica data che si cambia in place, con le regole qui sotto). Dalla UI: menu kebab della riga → "Chiudi riga", oppure click sulla cella `valido_al` inline.
 2. **Inserisci una nuova versione dal giorno dopo**: dalla UI → menu kebab → "Duplica come nuova versione". Il form si pre-compila con i valori della riga sorgente e `valido_al` vuoto. Imposta `valido_dal` al **giorno successivo** alla chiusura (se hai chiuso oggi, domani), modifica i campi desiderati e salva.
 
-⚠️ **Le due date non coincidono.** Il periodo di validità comprende sia il primo sia l'ultimo giorno. Una riga chiusa oggi vale ancora per tutto oggi, e una nuova versione che parte oggi si sovrapporrebbe a lei su quel giorno: il database la rifiuta. Se la nuova versione deve valere già da oggi, chiudi la vecchia a ieri (si può solo se la riga vecchia era già in vigore ieri).
+⚠️ **Le due date non coincidono.** Il periodo di validità comprende sia il primo sia l'ultimo giorno. Una riga chiusa oggi vale ancora per tutto oggi, e una nuova versione che parte oggi si sovrapporrebbe a lei su quel giorno: il database la rifiuta. Se la nuova versione deve valere già da oggi, chiudi la vecchia **a ieri** (si può solo se la riga vecchia era già in vigore ieri).
+
+**La fine di una riga non cambia i giorni già passati.** I documenti già emessi rileggono la distinta com'era, quindi, rispetto al giorno aziendale:
+
+* **ieri è la prima fine ammessa.** Una fine prima di ieri toglierebbe alla riga giorni in cui era in vigore, e il database la rifiuta (`E_BOM_CHIUSURA_RETROATTIVA`, che dice la prima data ammessa). Nella UI «Chiudi riga» propone come data minima ieri, o l'inizio della riga se comincia nel futuro;
+* **una riga già finita non si tocca più**: la sua fine non si sposta e non si toglie (`E_BOM_LEGAME_CHIUSO`). Per rimettere il componente nel kit si inserisce una riga nuova, che parte da oggi;
+* **una fine ancora futura si può togliere o spostare in avanti**: la riga torna a valere senza scadenza, e il database la ricontrolla come se fosse nuova (il kit deve essere composito, il componente non ritirato, non composito, con la stessa IVA).
+
+Lo stesso ricontrollo vale quando si riattiva una riga spenta: se nel frattempo il kit non è più composito, la riattivazione è rifiutata.
 
 Il vincolo `uq_articoli_componenti_no_overlap` (un `UNIQUE … WITHOUT OVERLAPS` su prodotto, componente e periodo di validità) garantisce che non ci siano sovrapposizioni temporali tra versioni dello stesso componente nello stesso kit.
 
-**Campi ancora modificabili in place**: `note`, `meta`, `attivo`, `valido_al` (chiusura). Il trigger non blocca nemmeno il cambio del prodotto padre, ma spostare una riga di distinta sotto un altro kit non è un'operazione prevista: anche lì si chiude e si inserisce.
+**Campi ancora modificabili in place**: `note`, `meta`, `attivo`, `valido_al` (la chiusura, con le regole sopra). Il kit padre di una riga non si cambia: per spostare un componente sotto un altro kit si chiude la riga e se ne inserisce una nuova nel kit giusto.
 
 ---
 
@@ -621,6 +629,8 @@ Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore stru
 | `E_PREZZO_OVERRIDE_NON_AUTORIZZATO`       | L1: override prezzo non autorizzato                                                                                                        |
 | `E_VENDITE_PRICING_FAILED`                | Errore generico pricing (envelope, dettaglio in `detail`)                                                                                  |
 | `E_BOM_MODIFICA_VIETATA`                  | Tentata modifica/eliminazione campo struttura BoM. Risolvere con pattern chiudi+inserisci nuova versione (vedi §5.3)                       |
+| `E_BOM_CHIUSURA_RETROATTIVA`              | Chiusura di una riga BoM con una fine prima di ieri: la fine non cambia i giorni già passati (vedi §5.3)                                 |
+| `E_BOM_LEGAME_CHIUSO`                     | Modifica della fine di una riga BoM già finita: per rimettere il componente si inserisce una riga nuova (vedi §5.3)                     |
 | `E_DATA_AL_MINORE_DAL`                    | Tentata chiusura riga BoM con `valido_al < valido_dal` (guard comune delle date, come su ogni periodo di validità)                        |
 | `E_DOC_PREZZO_PENDENTE`                  | Tentata emissione/accettazione di un documento di vendita con un prezzo in attesa di approvazione (L3). Sostituisce `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`, ritirato il 2026-09-24 |
 | `E_DOC_PREZZO_RIFIUTATO`                 | Tentata emissione/accettazione di un documento di vendita con un prezzo rifiutato (L3)                                                     |

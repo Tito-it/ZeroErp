@@ -1,0 +1,289 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_componenti_guard_coerenza_bom: il guard 4 chiede a
+#   catalogo.fn_distinta_alla_data se il legame sta nella distinta del padre alla
+#   data della testata (R2, Q16).
+#   Brief: brief-db-revisione-catalogo, giro 1-bis.
+#
+#   Prima guardava solo la validita del legame: un componente di documento poteva
+#   puntare un legame spento, che nessun init scrive. Lo rifiutava comunque il
+#   vincolo differito generato (dbops.trgfn_child_requires_active_parent, a fine
+#   istruzione, E_ATTIVO_PADRE_NON_ATTIVO): ora lo rifiuta il guard, prima, con il
+#   codice di dominio E_DOC_COMPONENTE_BOM_NON_VALIDA. Tolto lo skip con la data
+#   NULL: la colonna data delle cinque testate e' NOT NULL.
+#   I guard 1-3 non cambiano. COMMENT: cambia solo il punto (4).
+#   Corpo di partenza da pg_get_functiondef su dbdev (2026-11-09); rollback = corpo e
+#   COMMENT di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261110-91-update-trgfn-componenti-guard-coerenza-bom-distinta-alla-data-mctit.yaml
+
+  - changeSet:
+      id: 20261110-91-update-trgfn-componenti-guard-coerenza-bom-distinta-alla-data
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_componenti_guard_coerenza_bom: il guard 4 chiede il BB della distinta alla data (legame attivo e in vigore). Brief: brief-db-revisione-catalogo, giro 1-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.trgfn_componenti_guard_coerenza_bom()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_coerenza_bom()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE INS/UPD su *_righe_componenti — 4 guard BoM modello unificato.
+              --   TG_ARGV[0]: schema padre       (es. 'vendite')
+              --   TG_ARGV[1]: tabella padre      (es. 'preventivi_righe')
+              --   TG_ARGV[2]: col FK figli->padre (es. 'riga_preventivo_id')
+              --   TG_ARGV[3]: tabella testata    (es. 'preventivi')
+              --   TG_ARGV[4]: col FK padre->testata (es. 'preventivo_id')
+              --   TG_ARGV[5]: col data riferimento su testata (es. 'data')
+              DECLARE
+                  v_riga_padre_id     BIGINT;
+                  v_articolo_id_padre catalogo.articoli.id%TYPE;
+                  v_is_composito      catalogo.articoli.is_composito%TYPE;
+                  v_data_rif          date;
+                  v_sql               text;
+                  v_bom               record;
+              BEGIN
+                  -- Legge id riga padre da NEW tramite nome colonna FK in TG_ARGV[2]
+                  EXECUTE format('SELECT ($1).%I', TG_ARGV[2])
+                    INTO v_riga_padre_id USING NEW;
+
+                  -- Legge articolo_id, is_composito e data documento in unica query
+                  v_sql := format(
+                      $q$SELECT pr.articolo_id, a.is_composito, d.%5$I
+                           FROM %1$I.%2$I  pr
+                           JOIN catalogo.articoli a  ON a.id  = pr.articolo_id
+                           JOIN %1$I.%4$I  d  ON d.id  = pr.%3$I
+                          WHERE pr.id = $1$q$,
+                      TG_ARGV[0],   -- 1: schema
+                      TG_ARGV[1],   -- 2: tab_padre
+                      TG_ARGV[4],   -- 3: col FK padre->testata
+                      TG_ARGV[3],   -- 4: tab_testata
+                      TG_ARGV[5]    -- 5: col data testata
+                  );
+                  EXECUTE v_sql INTO v_articolo_id_padre, v_is_composito, v_data_rif
+                    USING v_riga_padre_id;
+
+                  -- Guard 1: l'articolo della riga padre deve essere composito
+                  IF NOT COALESCE(v_is_composito, FALSE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_RIGA_NON_COMPOSITO',
+                          jsonb_build_object(
+                              'riga_padre_id', v_riga_padre_id,
+                              'articolo_id',   v_articolo_id_padre
+                          ),
+                          NULL::uuid,
+                          v_riga_padre_id::text
+                      );
+                  END IF;
+
+                  -- Guard 2+3+4: legge la riga BoM e verifica i vincoli strutturali
+                  SELECT ac.componente_id,
+                         ac.validita
+                    INTO v_bom
+                    FROM catalogo.articoli_componenti ac
+                   WHERE ac.id          = NEW.articolo_componente_id
+                     AND ac.prodotto_id = v_articolo_id_padre;
+
+                  -- Guard 2: articolo_componente_id deve appartenere alla BoM del padre
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_NON_BOM',
+                          jsonb_build_object(
+                              'articolo_componente_id', NEW.articolo_componente_id,
+                              'articolo_id_padre',      v_articolo_id_padre
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_componente_id::text,
+                          v_articolo_id_padre::text
+                      );
+                  END IF;
+
+                  -- Guard 3: componente_id deve coincidere con BoM.componente_id
+                  IF v_bom.componente_id IS DISTINCT FROM NEW.componente_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_ID_INCOERENTE',
+                          jsonb_build_object(
+                              'componente_id_ricevuto', NEW.componente_id,
+                              'componente_id_atteso',   v_bom.componente_id,
+                              'articolo_componente_id', NEW.articolo_componente_id
+                          ),
+                          NULL::uuid,
+                          NEW.componente_id::text,
+                          v_bom.componente_id::text,
+                          NEW.articolo_componente_id::text
+                      );
+                  END IF;
+
+                  -- Guard 4: il legame sta nella distinta del padre alla data della testata,
+                  --   cioe' e' attivo e in vigore quel giorno. La domanda e' di
+                  --   catalogo.fn_distinta_alla_data, sede unica. La data della testata e'
+                  --   NOT NULL; se mancasse, il BB non darebbe nessun legame e il guard rifiuta.
+                  IF NOT EXISTS (
+                         SELECT 1
+                           FROM catalogo.fn_distinta_alla_data(v_articolo_id_padre, v_data_rif) d
+                          WHERE d.id = NEW.articolo_componente_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_BOM_NON_VALIDA',
+                          jsonb_build_object(
+                              'articolo_componente_id', NEW.articolo_componente_id,
+                              'validita_bom',           v_bom.validita::text,
+                              'data_riferimento',       v_data_rif
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_componente_id::text,
+                          v_data_rif::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.trgfn_componenti_guard_coerenza_bom() IS
+                  'Guard BEFORE INSERT OR UPDATE, riga per riga, fascia _a10_, sui componenti delle righe di documento: la riga componente corrisponde a una voce valida della distinta base dell''articolo della riga padre. Quattro controlli: (1) l''articolo della riga padre e'' composito (is_composito; una riga padre che non si trova vale come non composita) -> E_DOC_RIGA_NON_COMPOSITO; (2) articolo_componente_id e'' una voce di catalogo.articoli_componenti dell''articolo padre -> E_DOC_COMPONENTE_NON_BOM; (3) componente_id e'' il componente di quella voce -> E_DOC_COMPONENTE_ID_INCOERENTE; (4) la voce sta nella distinta dell''articolo padre alla data di riferimento della testata, cioe'' e'' attiva e la sua validita contiene quella data (catalogo.fn_distinta_alla_data) -> E_DOC_COMPONENTE_BOM_NON_VALIDA. Non guarda l''esposizione in fattura. TG_ARGV[0..5]: schema, tabella della riga padre, colonna FK componente -> riga padre, tabella della testata, colonna FK riga padre -> testata, colonna data della testata; articolo_componente_id e componente_id hanno lo stesso nome su ogni tabella e si leggono diretti. Montata su vendite.preventivi_righe_componenti, vendite.ordini_righe_componenti, vendite.ddt_righe_componenti e vendite.contratti_righe_componenti (data della testata) e su vendite.offerte_commerciali_eccezioni_componenti (validita_dal dell''offerta). vendite.listini_righe_componenti ha il suo guard, script.trgfn_listini_righe_comp_guard_coerenza_bom. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_coerenza_bom()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE INS/UPD su *_righe_componenti — 4 guard BoM modello unificato.
+              --   TG_ARGV[0]: schema padre       (es. 'vendite')
+              --   TG_ARGV[1]: tabella padre      (es. 'preventivi_righe')
+              --   TG_ARGV[2]: col FK figli->padre (es. 'riga_preventivo_id')
+              --   TG_ARGV[3]: tabella testata    (es. 'preventivi')
+              --   TG_ARGV[4]: col FK padre->testata (es. 'preventivo_id')
+              --   TG_ARGV[5]: col data riferimento su testata (es. 'data')
+              DECLARE
+                  v_riga_padre_id     BIGINT;
+                  v_articolo_id_padre catalogo.articoli.id%TYPE;
+                  v_is_composito      catalogo.articoli.is_composito%TYPE;
+                  v_data_rif          date;
+                  v_sql               text;
+                  v_bom               record;
+              BEGIN
+                  -- Legge id riga padre da NEW tramite nome colonna FK in TG_ARGV[2]
+                  EXECUTE format('SELECT ($1).%I', TG_ARGV[2])
+                    INTO v_riga_padre_id USING NEW;
+
+                  -- Legge articolo_id, is_composito e data documento in unica query
+                  v_sql := format(
+                      $q$SELECT pr.articolo_id, a.is_composito, d.%5$I
+                           FROM %1$I.%2$I  pr
+                           JOIN catalogo.articoli a  ON a.id  = pr.articolo_id
+                           JOIN %1$I.%4$I  d  ON d.id  = pr.%3$I
+                          WHERE pr.id = $1$q$,
+                      TG_ARGV[0],   -- 1: schema
+                      TG_ARGV[1],   -- 2: tab_padre
+                      TG_ARGV[4],   -- 3: col FK padre->testata
+                      TG_ARGV[3],   -- 4: tab_testata
+                      TG_ARGV[5]    -- 5: col data testata
+                  );
+                  EXECUTE v_sql INTO v_articolo_id_padre, v_is_composito, v_data_rif
+                    USING v_riga_padre_id;
+
+                  -- Guard 1: l'articolo della riga padre deve essere composito
+                  IF NOT COALESCE(v_is_composito, FALSE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_RIGA_NON_COMPOSITO',
+                          jsonb_build_object(
+                              'riga_padre_id', v_riga_padre_id,
+                              'articolo_id',   v_articolo_id_padre
+                          ),
+                          NULL::uuid,
+                          v_riga_padre_id::text
+                      );
+                  END IF;
+
+                  -- Guard 2+3+4: legge la riga BoM e verifica i vincoli strutturali
+                  SELECT ac.componente_id,
+                         ac.validita
+                    INTO v_bom
+                    FROM catalogo.articoli_componenti ac
+                   WHERE ac.id          = NEW.articolo_componente_id
+                     AND ac.prodotto_id = v_articolo_id_padre;
+
+                  -- Guard 2: articolo_componente_id deve appartenere alla BoM del padre
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_NON_BOM',
+                          jsonb_build_object(
+                              'articolo_componente_id', NEW.articolo_componente_id,
+                              'articolo_id_padre',      v_articolo_id_padre
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_componente_id::text,
+                          v_articolo_id_padre::text
+                      );
+                  END IF;
+
+                  -- Guard 3: componente_id deve coincidere con BoM.componente_id
+                  IF v_bom.componente_id IS DISTINCT FROM NEW.componente_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_ID_INCOERENTE',
+                          jsonb_build_object(
+                              'componente_id_ricevuto', NEW.componente_id,
+                              'componente_id_atteso',   v_bom.componente_id,
+                              'articolo_componente_id', NEW.articolo_componente_id
+                          ),
+                          NULL::uuid,
+                          NEW.componente_id::text,
+                          v_bom.componente_id::text,
+                          NEW.articolo_componente_id::text
+                      );
+                  END IF;
+
+                  -- Guard 4: BoM deve essere valida alla data documento
+                  -- (skip se data non disponibile: v_data_rif IS NULL)
+                  IF v_data_rif IS NOT NULL AND NOT (v_bom.validita @> v_data_rif) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_BOM_NON_VALIDA',
+                          jsonb_build_object(
+                              'articolo_componente_id', NEW.articolo_componente_id,
+                              'validita_bom',           v_bom.validita::text,
+                              'data_riferimento',       v_data_rif
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_componente_id::text,
+                          v_data_rif::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.trgfn_componenti_guard_coerenza_bom() IS
+                  'Guard BEFORE INSERT OR UPDATE, riga per riga, fascia _a10_, sui componenti delle righe di documento: la riga componente corrisponde a una voce valida della distinta base dell''articolo della riga padre. Quattro controlli: (1) l''articolo della riga padre e'' composito (is_composito; una riga padre che non si trova vale come non composita) -> E_DOC_RIGA_NON_COMPOSITO; (2) articolo_componente_id e'' una voce di catalogo.articoli_componenti dell''articolo padre -> E_DOC_COMPONENTE_NON_BOM; (3) componente_id e'' il componente di quella voce -> E_DOC_COMPONENTE_ID_INCOERENTE; (4) la validita della voce contiene la data di riferimento della testata -> E_DOC_COMPONENTE_BOM_NON_VALIDA, saltato se la data e'' NULL. Non guarda l''esposizione in fattura. TG_ARGV[0..5]: schema, tabella della riga padre, colonna FK componente -> riga padre, tabella della testata, colonna FK riga padre -> testata, colonna data della testata; articolo_componente_id e componente_id hanno lo stesso nome su ogni tabella e si leggono diretti. Montata su vendite.preventivi_righe_componenti, vendite.ordini_righe_componenti, vendite.ddt_righe_componenti e vendite.contratti_righe_componenti (data della testata) e su vendite.offerte_commerciali_eccezioni_componenti (validita_dal dell''offerta). vendite.listini_righe_componenti ha il suo guard, script.trgfn_listini_righe_comp_guard_coerenza_bom. SECURITY INVOKER.';

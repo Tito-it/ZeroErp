@@ -80,7 +80,7 @@ vendite.fn_preventivo_riga_componenti_preview(
 
 ## Logica
 
-1. Interroga la BoM (`attivo = TRUE`, `validita @> p_data_riferimento`) per `p_articolo_id` — tutti i componenti attivi, senza filtro sull'esposizione in fattura.
+1. Legge la distinta di `p_articolo_id` a `p_data_riferimento` da `catalogo.fn_distinta_alla_data` (legami attivi e in vigore quel giorno) — tutti i componenti attivi, senza filtro sull'esposizione in fattura.
 2. Per ogni componente, tenta `fn_resolve_prezzo_listino_v2(componente_id, uom, data, ba, utility_id, emittente_sr, classe_utenza_id, p_articolo_padre_contesto := p_articolo_id)`. Se esiste una riga in `vendite.listini_righe_componenti` per (listino_versione, padre, figlio, data), il resolver ritorna `origine_prezzo = 'LISTINO_BUNDLE'`.
 3. Se il resolver riesce → `prezzo_suggerito = prezzo_finale`, `origine_prezzo` da resolver, `resolver_error_reason = NULL`.
 4. Se il resolver fallisce (`SQLSTATE 'P0001'`) → `prezzo_suggerito = NULL`, `origine_prezzo = NULL`, `resolver_error_reason = MESSAGE_TEXT`.

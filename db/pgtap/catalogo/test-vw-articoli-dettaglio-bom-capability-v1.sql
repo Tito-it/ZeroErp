@@ -23,7 +23,7 @@
 --   Scenario A) composito non solo componente -> puo_gestire_bom=true, motivo=NULL
 --     2. puo_gestire_bom = true
 --     3. motivo_non_gestibile_bom = NULL
---   Scenario B) is_solo_componente=true (qualsiasi is_composito) -> motivo='ARTICOLO_SOLO_COMPONENTE'
+--   Scenario B) is_solo_componente=true (non composito: il CHECK vieta i due insieme) -> motivo='ARTICOLO_SOLO_COMPONENTE'
 --     4. puo_gestire_bom = false
 --     5. motivo_non_gestibile_bom = 'ARTICOLO_SOLO_COMPONENTE'
 --   Scenario C) is_composito=false e is_solo_componente=false -> motivo='ARTICOLO_NON_COMPOSITO'
@@ -74,7 +74,7 @@ SELECT bag_has(
 CREATE TEMP TABLE _t_ctx AS
 SELECT
     dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-A', p_is_composito => true)  AS art_a,
-    dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-B', p_is_composito => true,
+    dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-B', p_is_composito => false,
                                  p_is_solo_componente => true)             AS art_b;
 
 -- =========================================================
@@ -96,8 +96,9 @@ SELECT is(
 
 -- =========================================================
 -- Scenario B) ART_TEST_FALLBACK is_solo_componente=true -> motivo SOLO_COMPONENTE
--- (verifica anche edge case: is_composito=true insieme a is_solo_componente=true,
--- prevale SOLO_COMPONENTE)
+-- (composito e solo componente insieme non esistono: li vieta il CHECK
+-- chk_articoli_composito_non_solo_componente; resta il caso del solo componente
+-- non composito, dove il motivo SOLO_COMPONENTE prevale su NON_COMPOSITO)
 -- =========================================================
 
 SELECT is(
@@ -110,7 +111,7 @@ SELECT is(
     (SELECT motivo_non_gestibile_bom FROM catalogo.vw_articoli_dettaglio
       WHERE id = (SELECT art_b FROM _t_ctx)),
     'ARTICOLO_SOLO_COMPONENTE',
-    '5) Scenario B: motivo = ARTICOLO_SOLO_COMPONENTE (prevale anche se is_composito=true)'
+    '5) Scenario B: motivo = ARTICOLO_SOLO_COMPONENTE (prevale su NON_COMPOSITO)'
 );
 
 -- =========================================================
