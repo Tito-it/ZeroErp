@@ -83,8 +83,21 @@ function isFieldLocked(name) {
 // ⚠️ Spenti anche nella correzione di struttura: il guard non ha eccezioni.
 const ONERE_SENZA = ['gestito_a_magazzino', 'is_composito', 'requires_lotto', 'requires_serial']
 const eOnere = computed(() => detail.value?.e_onere === true)
+// ⭐ Composito e solo componente si escludono: lo dice il CHECK
+// `chk_articoli_composito_non_solo_componente` (brief-db-revisione-catalogo,
+// BE10). Il form spegne l'interruttore dell'uno finche' l'altro e' acceso, cosi'
+// l'operatore non arriva al rifiuto; nessun valore cambia da solo (un flag
+// spento in silenzio potrebbe essere una colonna bloccata, e il PATCH tornerebbe
+// rosso per un campo che l'operatore non ha toccato).
+// ⚠️ E' una copia della regola del DB, voluta: giudica il form NON salvato,
+// che il dettaglio non puo' descrivere. Il presidio che il CHECK c'e' ancora,
+// col nome che il service traduce, e' `test_vincoli_catalogo_db` (BE, e2e).
+const ESCLUSI = { is_composito: 'is_solo_componente', is_solo_componente: 'is_composito' }
+function esclusoDallAltro(name) {
+  return name in ESCLUSI && form.value[ESCLUSI[name]] === true
+}
 function isFieldDisabled(name) {
-  return (eOnere.value && ONERE_SENZA.includes(name)) || isFieldLocked(name)
+  return (eOnere.value && ONERE_SENZA.includes(name)) || esclusoDallAltro(name) || isFieldLocked(name)
 }
 
 // ⭐ La CORREZIONE DI STRUTTURA (A-10, Lotto 3u): un articolo usato non cambia
@@ -559,11 +572,13 @@ const drawerActions = computed(() => {
         <ToggleSwitch v-model="form.is_composito"
           :disabled="isFieldDisabled('is_composito')" />
         <small v-if="eOnere" class="app-text-muted mt-025">{{ t('catalogo.hint_onere_struttura') }}</small>
+        <small v-else-if="esclusoDallAltro('is_composito')" class="app-text-muted mt-025">{{ t('catalogo.hint_composito_solo_componente') }}</small>
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_solo_componente') }}</label>
         <ToggleSwitch v-model="form.is_solo_componente"
-          :disabled="isFieldLocked('is_solo_componente')" />
+          :disabled="isFieldDisabled('is_solo_componente')" />
+        <small v-if="esclusoDallAltro('is_solo_componente')" class="app-text-muted mt-025">{{ t('catalogo.hint_composito_solo_componente') }}</small>
       </div>
     </div>
 
@@ -636,8 +651,12 @@ const drawerActions = computed(() => {
       </div>
     </template>
 
-    <!-- Sezione: BoM riepilogo (edit mode, solo se composito) -->
-    <template v-if="isEdit && detail && form.is_composito">
+    <!-- Sezione: BoM riepilogo (edit mode). ⛔ La decide `puo_gestire_bom` del
+         dettaglio (vw_articoli_dettaglio), non il `form.is_composito` non ancora
+         salvato: il picker della distinta (`fn_articoli_ammessi`, ARTICOLO) su
+         un padre che a DB non e' composito solleva E_ARTICOLO_NON_COMPOSITO
+         (brief-db-revisione-catalogo, BE12). -->
+    <template v-if="isEdit && detail?.puo_gestire_bom">
       <div class="app-drawer-section"><h4>{{ t('catalogo.tab_bom') }}</h4></div>
       <div class="app-riepilogo-section">
         <div v-if="bomRiepilogo.length > 0" class="app-riepilogo-list">

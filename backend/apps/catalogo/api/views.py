@@ -23,7 +23,6 @@ from apps.catalogo.services.catalogo_service import (
     fn_create_uom_tipo,
     fn_create_uom_operativa,
     fn_create_unita_misura,
-    fn_delete_componente,
     fn_delete_nota,
     fn_delete_uom_operativa,
     fn_disattiva_articolo,
@@ -583,18 +582,9 @@ class ApiArticoloComponenteDetail(DomainAPIView):
     def patch(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
         return success_response(fn_update_componente(articolo_id, comp_id, corpo_oggetto(request)))
 
-    @extend_schema(
-        responses={
-            200: inline_serializer(
-                name="CatalogoArticoloComponenteDeleteResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Elimina un componente BoM dell'articolo.
-    def delete(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        del request
-        return success_response(fn_delete_componente(articolo_id, comp_id))
+    # ⛔ Nessun DELETE: la distinta e' una storia e il DB rifiuta ogni
+    #    cancellazione di un legame (trigger d'immutabilita'). Un legame si
+    #    chiude con la PATCH su `valido_al` (brief-db-revisione-catalogo, BE11).
 
 
 # Endpoint atomico Fase 3: chiusura sorgente + apertura nuova versione in

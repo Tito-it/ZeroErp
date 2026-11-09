@@ -116,10 +116,6 @@ export function updateArticoloComponente(articoloId, compId, payload) {
   return api.patch(`${BASE}/articoli/${articoloId}/componenti/${compId}/`, payload)
 }
 
-export function deleteArticoloComponente(articoloId, compId) {
-  return api.delete(`${BASE}/articoli/${articoloId}/componenti/${compId}/`)
-}
-
 // --- Unita' di misura (CRUD) ---
 
 export function listUomTipi(params = {}) {

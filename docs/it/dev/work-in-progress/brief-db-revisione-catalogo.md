@@ -29,6 +29,9 @@ form delle unità operative scrive ancora.
 | 5-quaterdecies | **Tid** ⏭️ | Via al giro 3 coi suoi numeri; le scelte di §13.3 e §10.3 da guardare | §7, §13.3, §10.3 | 5-terdecies |
 | 6 | sessione DB | Giri 3-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-quaterdecies |
 | 7 | **team BE** ⏭️ | BE8-BE12 (giro 1), BE13-BE15 (giro 1-bis), BE1-BE4 e BE16-BE18 (giro 2), tutti applicati; le altre quando il giro corrispondente lo è | §5, §11.6, §13.5 | — |
+| 5-decies | **Tid** ⏭️ | Via al giro 2 coi suoi numeri; le scelte di §10.3 da guardare | §7, §10.3 | 5-nonies |
+| 6 | sessione DB | Giri 2-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-decies |
+| 7 | team BE ✅ (giri 1 e 1-bis) | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis) fatte il 2026-11-09 (§11.10); le altre quando il giro corrispondente lo è | §5, §11.6, §11.10 | — |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
 
 **Decisioni aperte di Tid:** le scelte dentro il giro 2 (§13.3) e il giro 1 (§10.3), da guardare. **Da committare:** niente
@@ -524,6 +527,11 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | BE10 | 1 | Il form dell'articolo: `is_composito` e `is_solo_componente` insieme li rifiuta ora un CHECK (23514, `chk_articoli_composito_non_solo_componente`). Il form spegne l'uno quando l'altro è acceso, e il servizio mappa il vincolo a un messaggio |
 | BE11 | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi». `api_catalogo.md` §4.4 documenta ancora il `DELETE` |
 | BE12 | 1 | Il picker degli articoli ammessi per la distinta (`catalogo.fn_articoli_ammessi` con `ARTICOLO`) su un padre non composito solleva `E_ARTICOLO_NON_COMPOSITO` invece di restituire una lista vuota: il FE apre il picker solo con `puo_gestire_bom` |
+| BE8 ✅ (2026-11-09) | 1 | I due codici nuovi `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO, campo `valido_al`) ed `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO, campo `valido_al`): mappa degli errori generata (`error_policies_generated.py`) e i18n. `E_ARTICOLO_NON_COMPOSITO` ora porta `campo = prodotto_id` e un bersaglio `ARTICOLO` |
+| BE9 ✅ (2026-11-09) | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE |
+| BE10 ✅ (2026-11-09) | 1 | Il form dell'articolo: `is_composito` e `is_solo_componente` insieme li rifiuta ora un CHECK (23514, `chk_articoli_composito_non_solo_componente`). Il form spegne l'uno quando l'altro è acceso, e il servizio mappa il vincolo a un messaggio |
+| BE11 ✅ (2026-11-09) | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi» |
+| BE12 ✅ (2026-11-09) | 1 | Il picker degli articoli ammessi per la distinta (`catalogo.fn_articoli_ammessi` con `ARTICOLO`) su un padre non composito solleva `E_ARTICOLO_NON_COMPOSITO` invece di restituire una lista vuota: il FE apre il picker solo con `puo_gestire_bom` |
 
 ## 6. Le decisioni di Tid
 
@@ -844,9 +852,9 @@ prima. Prima di riscrivere `vw_articoli_dettaglio` si confronta il suo corpo col
 
 | # | Che cosa |
 | --- | --- |
-| BE13 | `listini_repository.list_bundle_preview` (`:1238`) ricopia il filtro della distinta alla data: legge da `catalogo.fn_distinta_alla_data(%s, %s)` e tiene il `LEFT JOIN` sui prezzi del listino |
-| BE14 | Un kit con la sola distinta passata non compare più fra gli articoli ammessi (Q15). Il FE non ha niente da fare: legge i motivi dalla check |
-| BE15 | Il messaggio di `E_ARTICOLO_KIT_SENZA_COMPONENTI` cambia («non ha componenti in vigore da oggi in poi»): va allineata la frase di riserva in `backend/apps/core/services/error_messages_fallback.py:82`, e l'i18n se la ripete |
+| BE13 ✅ (2026-11-09) | `listini_repository.list_bundle_preview` (`:1238`) ricopia il filtro della distinta alla data: legge da `catalogo.fn_distinta_alla_data(%s, %s)` e tiene il `LEFT JOIN` sui prezzi del listino |
+| BE14 ✅ (2026-11-09) | Un kit con la sola distinta passata non compare più fra gli articoli ammessi (Q15). Il FE non ha niente da fare: legge i motivi dalla check |
+| BE15 ✅ (2026-11-09) | Il messaggio di `E_ARTICOLO_KIT_SENZA_COMPONENTI` cambia («non ha componenti in vigore da oggi in poi»): va allineata la frase di riserva in `backend/apps/core/services/error_messages_fallback.py:82`, e l'i18n se la ripete |
 
 ### 11.7 Che cosa è scritto (2026-11-09)
 

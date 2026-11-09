@@ -1196,8 +1196,13 @@ class ListiniRepository:
     # listino target. Restituisce 1 riga per ogni `articoli_componenti`
     # valida alla data; `prezzo_listino_bundle` NULL se non ancora
     # definito (l'admin lo valorizza nel Dialog).
-    # `data_riferimento`: data per filtrare BoM corrente (validita @>).
-    # Tipicamente = oggi o = validita versione listino (lower bound).
+    # `data_riferimento`: la data della distinta. Tipicamente = oggi o =
+    # validita versione listino (lower bound).
+    # ⛔ Quali legami stanno nella distinta a quella data lo dice
+    #    `catalogo.fn_distinta_alla_data` (sede unica: init e preview dei
+    #    documenti, guard dei componenti, vista articoli). Il filtro
+    #    `attivo` + `validita @>` non si ricopia qui: una copia diverge
+    #    (brief-db-revisione-catalogo, BE13). Data NULL -> nessuna riga.
     def list_bundle_preview(
         self,
         *,
@@ -1235,7 +1240,7 @@ class ListiniRepository:
                 -- 10K"). Se servira' al FE, castarla a testo con
                 -- `to_char(...)` o estrarre lower/upper come date guardate.
                 lrc.prezzo                         AS prezzo_suggerito
-              FROM catalogo.articoli_componenti ac
+              FROM catalogo.fn_distinta_alla_data(%s, %s) ac
               JOIN catalogo.articoli a            ON a.id = ac.componente_id
               LEFT JOIN catalogo.unita_misura um   ON um.id = a.uom_id
               LEFT JOIN config.iva iva             ON iva.id = a.iva_id
@@ -1243,13 +1248,10 @@ class ListiniRepository:
                 ON lrc.listino_versione_id = %s
                AND lrc.articolo_componente_id = ac.id
                AND lrc.attivo = TRUE
-             WHERE ac.prodotto_id = %s
-               AND COALESCE(ac.attivo, TRUE) = TRUE
-               AND ac.validita @> %s
              ORDER BY a.codice NULLS LAST, ac.id
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [versione_id, str(articolo_padre_id), data_riferimento])
+            cursor.execute(sql, [str(articolo_padre_id), data_riferimento, versione_id])
             return rows_to_list(cursor)
 
     # Scopo: Batch upsert dei prezzi bundle di un padre composito su

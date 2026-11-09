@@ -64,6 +64,9 @@ Indice test eseguiti:
 56) CatalogoServiceTests.test_fn_update_articolo_lead_time_negativo_invalid
 57) CatalogoServiceTests.test_chiave_fuori_contratto_e_un_400_prima_del_repository
 58) CatalogoServiceTests.test_nota_meta_null_diventa_oggetto_vuoto
+59) CatalogoServiceTests.test_fn_create_articolo_composito_e_solo_componente
+60) CatalogoServiceTests.test_fn_create_componente_periodo_sovrapposto
+61) CatalogoServiceTests.test_fn_create_uom_operativa_doppia
     (2026-09-26: il repository e' a whitelist RIGIDA, quindi il 400 del
     service e' l'unica risposta educata — per OGNI scrittura del dominio)
 """
@@ -361,6 +364,26 @@ class CatalogoServiceTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         self.assertEqual(ctx.exception.message, "Codice articolo gia' esistente.")
+        self.assertEqual(ctx.exception.context.get("field"), "codice")
+
+    # Scopo: composito e solo componente insieme -> il CHECK del DB
+    #        (`chk_articoli_composito_non_solo_componente`, BE10 di
+    #        brief-db-revisione-catalogo) diventa un 400 parlante, senza campo.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    def test_fn_create_articolo_composito_e_solo_componente(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_articolo
+
+        mock_repo_cls.return_value.create_articolo.side_effect = IntegrityError(
+            "new row violates check constraint \"chk_articoli_composito_non_solo_componente\""
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_articolo(
+                {"codice": "ART-001", "descrizione": "Articolo demo", "uom_id": 1}
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("solo componente", ctx.exception.message)
+        self.assertNotIn("field", ctx.exception.context)
 
     # Scopo: update articolo valido -> update delta e dettaglio riletto.
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
@@ -685,6 +708,51 @@ class CatalogoServiceTests(TestCase):
         )
 
         self.assertEqual(result["id"], comp_id)
+
+    # Scopo: il legame che si sovrappone a uno in vigore (EXCLUDE
+    #        `uq_articoli_componenti_no_overlap`) -> 400 parlante, senza campo
+    #        (contano componente E periodo), e la violazione va nel diario.
+    @patch("apps.core.services.error_manager.ErrorManager.log_error_only")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    def test_fn_create_componente_periodo_sovrapposto(self, mock_repo_cls, mock_bom_repo_cls, mock_log):
+        from apps.catalogo.services.catalogo_service import fn_create_componente
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+        mock_bom_repo_cls.return_value.create_componente.side_effect = IntegrityError(
+            'conflicting key value violates exclusion constraint "uq_articoli_componenti_no_overlap"'
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_componente(
+                "art-1",
+                {"componente_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "coeff_qta": "1",
+                 "valido_dal": "2026-01-01"},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("periodo che si sovrappone", ctx.exception.message)
+        self.assertNotIn("field", ctx.exception.context)
+        self.assertEqual(
+            mock_log.call_args.kwargs["function_name"], "catalogo.catalogo_service.fn_create_componente",
+        )
+
+    # Scopo: la stessa UoM due volte sull'articolo (`uq_artuomop_articolo_uom`)
+    #        -> 400 col campo `uom_id`: l'articolo e' nella rotta.
+    @patch("apps.core.services.error_manager.ErrorManager.log_error_only")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    def test_fn_create_uom_operativa_doppia(self, mock_repo_cls, mock_uom_repo_cls, _mock_log):
+        from apps.catalogo.services.catalogo_service import fn_create_uom_operativa
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+        mock_uom_repo_cls.return_value.create_uom_operativa.side_effect = IntegrityError(
+            'duplicate key value violates unique constraint "uq_artuomop_articolo_uom"'
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_uom_operativa("art-1", {"uom_id": 3, "factor_to_base": "1"})
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "uom_id")
 
     # Scopo: tentativo di update componente_id -> errore per immutabilita'.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
