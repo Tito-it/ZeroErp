@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_bersagli_non_dichiarati: anche le funzioni sql.
+#   Brief: brief-db-revisione-dbops, giro 12 (Q15).
+#
+# Base: 20_code/dbops/20261105-07, verificato uguale al vivo. Cambia solo il
+# perimetro: dbops.fn_corpo_leggibile (20261110-59) al posto del solo plpgsql;
+# il prefiltro prosrc LIKE '%bersaglio%' resta. Il bersaglio viaggia con la
+# chiamata a fn_log_and_raise_error, e una funzione sql la puo' fare:
+#   il perimetro sono i corpi leggibili, plpgsql e sql (dbops.fn_corpo_leggibile): conta chi puo' sollevare un codice, non il linguaggio in cui e' scritto.
+#   ⛔ Il prefiltro su prosrc vede solo i corpi testuali: per una sql BEGIN
+#   ATOMIC prosrc e' vuoto, e quella funzione sarebbe rimasta fuori anche con il
+#   perimetro allargato. Il prefiltro diventa «prosrc ... OR prosqlbody IS NOT
+#   NULL»: le BEGIN ATOMIC passano tutte al filtro vero, sul corpo deparsato.
+#   COMMENT: la frase del perimetro. ⛔ security_invoker si ripete.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-82-update-vw-bersagli-non-dichiarati-corpo-leggibile-mctit.yaml
+
+  - changeSet:
+      id: 20261110-82-update-vw-bersagli-non-dichiarati-corpo-leggibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_bersagli_non_dichiarati legge ogni corpo leggibile (plpgsql e sql) con dbops.fn_corpo_leggibile. Brief: brief-db-revisione-dbops, giro 12.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_leggibile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_bersagli_non_dichiarati WITH (security_invoker=true) AS
+               SELECT m.m[1] AS tipo,
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END AS motivo,
+                  count(DISTINCT p.oid) AS n_funzioni,
+                  string_agg(DISTINCT (((n.nspname)::text || '.'::text) || (p.proname)::text), ', '::text ORDER BY (((n.nspname)::text || '.'::text) || (p.proname)::text)) AS funzioni
+                 FROM (((pg_proc p
+                   JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
+                   CROSS JOIN LATERAL regexp_matches((dbops.fn_corpo_funzione(p.oid) COLLATE "C"), '''tipo''\s*,\s*''([A-Z][A-Z0-9_]{0,30})'''::text, 'g'::text) m(m))
+                   LEFT JOIN config.tipi_entita te ON ((te.codice = m.m[1])))
+                WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (dbops.fn_corpo_leggibile(p.prolang)) AND ((p.prosrc ~~ '%bersaglio%'::text) OR (p.prosqlbody IS NOT NULL)) AND ((te.codice IS NULL) OR script.fn_e_obsoleto(te.obsoleto_dal)))
+                GROUP BY m.m[1],
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END;
+
+              COMMENT ON VIEW dbops.vw_bersagli_non_dichiarati IS
+              'Il cancello del vocabolario dei bersagli: ogni tipo scritto in un corpo vivo leggibile, plpgsql o sql (dbops.fn_corpo_leggibile), che costruisce un bersaglio (commenti esclusi) e che config.tipi_entita non dichiara — motivo ASSENTE — o dichiara come ritirato — motivo OBSOLETO, perche'' un bersaglio NUOVO verso una voce ritirata manda l''operatore dove il progetto ha smesso di andare. ⭐ E'' cio'' che rende sicura la decisione di far crescere il catalogo UNA VOCE PER VOLTA insieme al messaggio che la usa (Tid, 2026-08-22): dimenticare la voce fa fallire la BUILD, non l''operatore. ⚠️ Gemella di dbops.vw_codici_errore_da_dichiarare, che legge il SORGENTE — e NON di dbops.vw_eventi_non_dichiarati, che legge i dati perche'' quei codici li scrive Python: qui il bersaglio lo scrive il database, quindi la misura giusta e'' pg_proc. Una vista sui dati sarebbe cieca su un ambiente senza traffico, e da una misura cieca non si puo'' far dipendere una build. ⚠️ Non vede i tipi costruiti per concatenazione o passati in una variabile: stesso limite della gemella, e la stessa scelta — fra i due errori possibili si preferisce quello che si corregge guardando i falsi positivi. ⛔ E il rubinetto non si chiude con una FK: il bersaglio vive in un jsonb, e comunque il canale d''errore non puo'' smettere di funzionare perche'' manca una voce di catalogo — il bersaglio storto si perde (W_BERSAGLIO_MALFORMATO) e l''errore di dominio parte lo stesso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo del changeSet base.
+              SELECT 1;

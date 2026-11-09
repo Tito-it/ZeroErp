@@ -1,0 +1,228 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_punti_canale_campo: anche le funzioni sql.
+#   Brief: brief-db-revisione-dbops, giro 12 (Q15).
+#
+# Base: 20_code/dbops/20261104-27, verificato uguale al vivo. Cambia solo il
+# perimetro della CTE funzioni: dbops.fn_corpo_leggibile (20261110-59) al posto
+# del solo plpgsql; gli helper restano esclusi.
+#   il perimetro sono i corpi leggibili, plpgsql e sql (dbops.fn_corpo_leggibile): conta chi puo' sollevare un codice, non il linguaggio in cui e' scritto.
+#   Le estrazioni che sanno solo di plpgsql (la variabile assegnata con :=) su
+#   un corpo sql non trovano niente: il canale di una chiamata sql si legge
+#   nella chiamata stessa, come IN_CHIAMATA.
+#   COMMENT: le tre frasi che dicevano «plpgsql». ⛔ security_invoker si ripete.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-61-update-vw-punti-canale-campo-corpo-leggibile-mctit.yaml
+
+  - changeSet:
+      id: 20261110-61-update-vw-punti-canale-campo-corpo-leggibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_punti_canale_campo legge ogni corpo leggibile (plpgsql e sql) con dbops.fn_corpo_leggibile. Brief: brief-db-revisione-dbops, giro 12.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_leggibile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_punti_canale_campo
+              WITH (security_invoker=true) AS
+              WITH funzioni AS MATERIALIZED (
+                  SELECT p.oid,
+                         n.nspname::text || '.' || p.proname::text AS funzione,
+                         (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS sorgente
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND dbops.fn_corpo_leggibile(p.prolang)
+                     -- gli helper sono la SEDE del canale, non un suo punto
+                     AND NOT (n.nspname = 'script'
+                              AND p.proname IN ('fn_log_and_raise_error',
+                                                'fn_raise_primo_motivo_se_presente'))
+              ), letterali AS (
+                  -- ogni letterale E_* del corpo, volutamente largo
+                  SELECT f.oid, f.funzione, m[1] AS codice
+                    FROM funzioni f
+                    CROSS JOIN LATERAL regexp_matches(f.sorgente, '''(E_[A-Z0-9_]+)''', 'g') m
+                  UNION
+                  -- rev 20261103-02: e ogni codice che un trigger passa alla
+                  -- funzione negli ARGOMENTI (TG_ARGV), che il corpo non nomina.
+                  -- Il BB lo solleva da una variabile: lo attribuisce il ramo
+                  -- (B) diretti_variabile, al massimo IN_VARIABILE.
+                  SELECT f.oid, f.funzione, t.codice
+                    FROM funzioni f
+                    JOIN dbops.vw_codici_errore_argomenti_trigger t ON t.funzione_oid = f.oid
+              ), variabili_con_chiave AS MATERIALIZED (
+                  -- le variabili del corpo a cui e' assegnato un context con
+                  -- la chiave: `l_error_ctx := jsonb_build_object('campo', …`
+                  SELECT DISTINCT f.oid, m[1] AS variabile,
+                         CASE WHEN m[2] = 'campo' THEN 'campo' ELSE 'parametro' END AS chiave
+                    FROM funzioni f
+                    CROSS JOIN LATERAL regexp_matches(f.sorgente,
+                             '\m([a-z_][a-z0-9_]*)\s*:=\s*[^;]*''(campo|parametro)''\s*,', 'g') m
+              ), chiamate AS MATERIALIZED (
+                  -- una riga per CHIAMATA a uno dei due helper: il testo dal
+                  -- nome fino al primo `;`
+                  SELECT f.oid, f.funzione, m.k AS n,
+                         CASE WHEN m.t ~ '^fn_raise_primo_motivo_se_presente' THEN 'PRIMO_MOTIVO'
+                              WHEN m.t ~ '->>\s*''codice'''                    THEN 'PRIMO_MOTIVO'
+                              ELSE 'DIRETTO' END AS via,
+                         m.t AS testo
+                    FROM funzioni f
+                    CROSS JOIN LATERAL (
+                        SELECT r.m[1] AS t, r.k
+                          FROM regexp_matches(f.sorgente,
+                                   '((?:fn_log_and_raise_error|fn_raise_primo_motivo_se_presente)\s*\([^;]*;)', 'g')
+                               WITH ORDINALITY AS r(m, k)
+                    ) m
+              ), chiamate_variabile AS (
+                  -- la chiamata nomina una variabile del corpo che porta la chiave
+                  SELECT c.oid, c.n, min(v.chiave) AS chiave
+                    FROM chiamate c
+                    JOIN variabili_con_chiave v ON v.oid = c.oid
+                                               AND c.testo ~ ('\m' || v.variabile || '\M')
+                   GROUP BY c.oid, c.n
+              ), chiamate_classificate AS (
+                  SELECT c.oid, c.funzione, c.n, c.via, c.testo,
+                         -- il 4o argomento di fn_raise_primo_motivo_se_presente
+                         -- (p_campo): tre argomenti saltati a UN livello di
+                         -- parentesi, poi il quarto fino a `,` o `)`
+                         (regexp_match(c.testo,
+                             '^fn_raise_primo_motivo_se_presente\s*\(\s*(?:''(?:[^'']|'''')*''|[^,()'']+(?:\([^()]*\))?)\s*,\s*(?:''(?:[^'']|'''')*''|[^,()'']+(?:\([^()]*\))?)\s*,\s*(?:''(?:[^'']|'''')*''|[^,()'']+(?:\([^()]*\))?)\s*,\s*([^,()]+?)\s*[,)]'))[1] AS p_campo,
+                         (c.testo ~ '''campo''\s*,')     AS ha_campo,
+                         (c.testo ~ '''parametro''\s*,') AS ha_parametro,
+                         cv.chiave AS chiave_in_variabile,
+                         -- la colonna come CHIAVE del context: `'x', NEW.x`
+                         (regexp_match(c.testo,
+                             '''([a-z_][a-z0-9_]*)''\s*,\s*(?:NEW|OLD)\.\1\M'))[1] AS nome_in_chiave
+                    FROM chiamate c
+                    LEFT JOIN chiamate_variabile cv ON cv.oid = c.oid AND cv.n = c.n
+              ), chiamate_canale AS (
+                  SELECT cc.*,
+                         CASE
+                             WHEN cc.ha_campo OR cc.ha_parametro                 THEN 'IN_CHIAMATA'
+                             WHEN cc.p_campo ~ '^''[^'']+''$'                    THEN 'IN_CHIAMATA'
+                             WHEN cc.chiave_in_variabile IS NOT NULL             THEN 'IN_VARIABILE'
+                             WHEN cc.p_campo ~ '^[a-z_][a-z0-9_]*$'
+                                  AND upper(cc.p_campo) <> 'NULL'                THEN 'IN_VARIABILE'
+                             WHEN cc.nome_in_chiave IS NOT NULL                  THEN 'CHIAVE_NON_LETTA'
+                             ELSE 'NESSUNO'
+                         END AS canale,
+                         CASE
+                             WHEN cc.ha_campo                      THEN 'campo'
+                             WHEN cc.p_campo ~ '^''[^'']+''$'      THEN 'campo'
+                             WHEN cc.ha_parametro                  THEN 'parametro'
+                             ELSE cc.chiave_in_variabile
+                         END AS chiave
+                    FROM chiamate_classificate cc
+              ), rango AS (
+                  SELECT * FROM (VALUES ('NESSUNO', 0), ('CHIAVE_NON_LETTA', 1),
+                                        ('IN_VARIABILE', 2), ('IN_CHIAMATA', 3)) r(canale, rango)
+              ), diretti AS (
+                  -- (A) DIRETTO col codice LETTERALE nella chiamata
+                  SELECT cc.oid, cc.funzione, m[1] AS codice, cc.n, cc.canale, cc.chiave, cc.nome_in_chiave
+                    FROM chiamate_canale cc
+                    CROSS JOIN LATERAL regexp_matches(cc.testo, '''(E_[A-Z0-9_]+)''', 'g') m
+                   WHERE cc.via = 'DIRETTO'
+              ), diretti_variabile AS (
+                  -- (B) DIRETTO col codice in VARIABILE: il letterale sta nel
+                  -- corpo ma in nessuna chiamata, e il corpo ha chiamate
+                  -- dirette SENZA letterale. Non attribuibile: al massimo
+                  -- IN_VARIABILE.
+                  SELECT l.oid, l.funzione, l.codice, cc.n,
+                         CASE WHEN cc.canale = 'IN_CHIAMATA' THEN 'IN_VARIABILE' ELSE cc.canale END AS canale,
+                         cc.chiave, cc.nome_in_chiave
+                    FROM letterali l
+                    JOIN chiamate_canale cc ON cc.oid = l.oid AND cc.via = 'DIRETTO'
+                                            AND cc.testo !~ '''E_[A-Z0-9_]+'''
+                   WHERE NOT EXISTS (SELECT 1 FROM diretti d WHERE d.oid = l.oid AND d.codice = l.codice)
+              ), primo_motivo AS (
+                  -- (C) PRIMO_MOTIVO: l'UNIONE dei codici di tutte le check del
+                  -- corpo; il canale e' quello della chiamata O del motivo
+                  SELECT cc.oid, cc.funzione, k.codice, cc.n,
+                         CASE WHEN cc.canale = 'IN_CHIAMATA'   THEN 'IN_CHIAMATA'
+                              WHEN k.motivo_chiave IS NOT NULL THEN 'IN_CHIAMATA'
+                              ELSE cc.canale END AS canale,
+                         coalesce(cc.chiave, k.motivo_chiave) AS chiave,
+                         cc.nome_in_chiave,
+                         k.check_funzione
+                    FROM chiamate_canale cc
+                    LEFT JOIN dbops.vw_funzioni_check_codici k ON k.funzione = cc.funzione
+                   WHERE cc.via = 'PRIMO_MOTIVO'
+              ), motivo AS (
+                  -- (M) MOTIVO: la fn_check_* che EMETTE il codice
+                  SELECT DISTINCT k.check_schema || '.' || k.check_funzione AS funzione, k.codice,
+                         CASE WHEN k.motivo_chiave IS NOT NULL THEN 'IN_CHIAMATA' ELSE 'NESSUNO' END AS canale,
+                         k.motivo_chiave AS chiave
+                    FROM dbops.vw_funzioni_check_codici k
+                   WHERE k.codice IS NOT NULL
+              ), tutti AS (
+                  SELECT oid, funzione, codice, 'DIRETTO'::text AS via, n, canale, chiave, nome_in_chiave,
+                         NULL::text AS check_funzione
+                    FROM diretti
+                  UNION ALL
+                  SELECT oid, funzione, codice, 'DIRETTO', n, canale, chiave, nome_in_chiave, NULL
+                    FROM diretti_variabile
+                  UNION ALL
+                  SELECT oid, funzione, codice, 'PRIMO_MOTIVO', n, canale, chiave, nome_in_chiave, check_funzione
+                    FROM primo_motivo
+              ), aggregati AS (
+                  -- una riga per (funzione, codice, via): il canale MIGLIORE
+                  -- fra le chiamate attribuite («almeno un punto»), e i due
+                  -- conteggi per leggere il resto
+                  SELECT t.funzione, t.codice, t.via,
+                         (array_agg(t.canale         ORDER BY r.rango DESC, t.n))[1] AS canale,
+                         (array_agg(t.chiave         ORDER BY r.rango DESC, t.n))[1] AS chiave,
+                         (array_agg(t.nome_in_chiave ORDER BY r.rango DESC, t.n))[1] AS nome_in_chiave,
+                         count(DISTINCT t.n)::int AS n_chiamate,
+                         count(DISTINCT t.n) FILTER (WHERE t.canale IN ('IN_CHIAMATA', 'IN_VARIABILE'))::int AS n_con_canale,
+                         string_agg(DISTINCT t.check_funzione, ', ' ORDER BY t.check_funzione) AS check_funzioni
+                    FROM tutti t
+                    JOIN rango r ON r.canale = t.canale
+                   GROUP BY t.funzione, t.codice, t.via
+              )
+              SELECT funzione, codice, via, canale, chiave, nome_in_chiave,
+                     n_chiamate, n_con_canale, check_funzioni
+                FROM aggregati
+              UNION ALL
+              SELECT funzione, codice, 'MOTIVO', canale, chiave, NULL, NULL, NULL, NULL
+                FROM motivo
+              UNION ALL
+              -- (D) NOMINATO: il letterale sta nel corpo ma la funzione non lo
+              -- solleva con l'helper ne' lo emette come motivo
+              SELECT l.funzione, l.codice, 'NOMINATO', NULL, NULL, NULL, NULL, NULL, NULL
+                FROM letterali l
+               WHERE NOT EXISTS (SELECT 1 FROM tutti t WHERE t.oid = l.oid AND t.codice = l.codice)
+                 AND NOT EXISTS (SELECT 1 FROM motivo m WHERE m.funzione = l.funzione AND m.codice = l.codice);
+
+              COMMENT ON VIEW dbops.vw_punti_canale_campo IS
+              'La meta'' database del presidio C2 (brief-be-presidio-ui-action-e-canale-campi §4): per ogni (funzione dal corpo leggibile, plpgsql o sql — dbops.fn_corpo_leggibile —, codice E_*) COME il codice viene sollevato e SE il context porta la chiave che script.fn_log_and_raise_error legge per la COLUMN dell''eccezione (''campo'', ripiego ''parametro'') — cioe'' il canale che a video accende il campo del form (fields -> campiErrati), l''unico che realizza la promessa ui_action = highlight_form_fields.
+              via: DIRETTO (chiamata a fn_log_and_raise_error col codice letterale, o col codice in variabile), PRIMO_MOTIVO (il codice di un motivo, via fn_raise_primo_motivo_se_presente o a mano: codici = UNIONE delle fn_check_* del corpo, da vw_funzioni_check_codici), MOTIVO (la fn_check_* che lo emette: sede del campo, non un sito), NOMINATO (letterale nel corpo, mai sollevato con l''helper: canale NULL).
+              canale: IN_CHIAMATA (chiave nella chiamata, o p_campo letterale, o nel motivo della check), IN_VARIABILE (in una variabile del corpo, o non attribuibile — mai un «ok» silenzioso), CHIAVE_NON_LETTA (la colonna sta nel context come CHIAVE: sanabile, nome_in_chiave dice quale), NESSUNO. chiave: campo / parametro.
+              ⭐ Per (funzione, codice) il canale e'' il MIGLIORE fra le chiamate attribuite — la regola e'' «almeno un punto» — e n_chiamate / n_con_canale dicono quando una funzione lo porta in 2 chiamate su 3. Il verso 1 del presidio si legge da canale IN (IN_CHIAMATA, IN_VARIABILE) su via IN (DIRETTO, PRIMO_MOTIVO); il verso 2 da n_con_canale = n_chiamate.
+              ⭐ rev 20261103-02: i codici della funzione sono quelli del corpo PIU'' quelli che un trigger le passa negli ARGOMENTI (dbops.vw_codici_errore_argomenti_trigger): un building block trigger che riceve il codice da TG_ARGV e lo solleva da una variabile e'' un sito DIRETTO, attribuito al massimo IN_VARIABILE. Prima per la vista quel sito non esisteva (D24).
+              ⚠️ Euristica sul sorgente senza commenti: chiamata = testo fino al primo `;`; p_campo letto a un livello di parentesi; solo i corpi leggibili (plpgsql e sql); i RAISE diretti non si vedono. Gli helper sono esclusi. Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo del changeSet base.
+              SELECT 1;

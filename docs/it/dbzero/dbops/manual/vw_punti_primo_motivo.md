@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_punti_primo_motivo`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -19,6 +19,7 @@
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — l'helper che solleva il primo motivo, la forma giusta
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il meccanismo che i punti chiamano a mano
 > * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti su cui gira il marcatore dei punti
+> * [dbops.fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile) — quali funzioni hanno un corpo da leggere: il perimetro
 >
 > Guide:
 >
@@ -50,7 +51,7 @@ Questa vista elenca le copie a mano. Chi chiama già l'helper non ci sta, per co
 
 Una riga per (punto, check, codice):
 
-* il **punto**: la funzione PL/pgSQL che solleva a mano un codice letto da un motivo;
+* il **punto**: la funzione dal corpo leggibile, PL/pgSQL o SQL, che solleva a mano un codice letto da un motivo;
 * la **check** citata nel suo corpo, e se quella check emette i **valori** della frase;
 * il **codice** che quella check può produrre.
 
@@ -74,15 +75,18 @@ legare alla sua check, e va visto.
 
 ### ⚠️ È un'euristica sul testo
 
-Riconosce la forma scritta, non il significato: un punto è una funzione PL/pgSQL il cui testo
-contiene una chiamata al meccanismo centrale che legge il codice da un motivo. Le funzioni scritte
-in SQL non sono lette.
+Riconosce la forma scritta, non il significato: un punto è una funzione il cui testo contiene una
+chiamata al meccanismo centrale che legge il codice da un motivo. Il perimetro sono i corpi
+leggibili, PL/pgSQL e SQL (comprese le SQL `BEGIN ATOMIC`), come li decide
+[fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile): conta chi può sollevare un codice,
+non il linguaggio in cui è scritto.
 
 Il marcatore gira sul corpo senza commenti di
 [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione): una chiamata rimasta in un commento
 non fa di una funzione un punto. Davanti resta la stessa forma cercata sul sorgente testuale, come
 prefiltro: costa poco, è un sovrainsieme (un commento può solo aggiungere testo) e tiene bassa la
-stima del costo della vista.
+stima del costo della vista. Una funzione SQL `BEGIN ATOMIC` non ha un sorgente testuale (il suo è
+vuoto): il prefiltro la lascia passare sempre, e la decide il marcatore sul corpo ricostruito.
 
 ⛔ Non serve a classificare la forma della guardia (`dbops.vw_codici_errore_forme_condizione`):
 sopra questi punti la guardia è sempre «se ci sono motivi», che non dice niente. Lì si classifica
@@ -108,6 +112,8 @@ allarme da sola: il cancello è il pgTAP del rubinetto, che ne legge il perimetr
   valori quanti il messaggio ne chiede.
 * `db/pgtap/dbops/test-vw-funzioni-check-codici-sotto-jit-v1.sql`, test 2 — il costo stimato della
   vista resta sotto la soglia del JIT.
+* `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql` — vede il primo motivo sollevato a mano
+  da una funzione SQL (caso costruito).
 
 ---
 
@@ -122,6 +128,9 @@ allarme da sola: il cancello è il pgTAP del rubinetto, che ne legge il perimetr
 * 2026-11-04 — il marcatore gira anche sul corpo senza commenti di `fn_corpo_funzione` (D14 di
   `brief-db-revisione-dbops`): prima leggeva il sorgente commenti compresi, e una chiamata rimasta in
   un commento faceva di una funzione un punto del rubinetto.
+* 2026-11-09 — il perimetro passa dal solo PL/pgSQL ai corpi leggibili, PL/pgSQL e SQL, letti da
+  `fn_corpo_leggibile`; il prefiltro lascia passare le SQL `BEGIN ATOMIC`, che non hanno un sorgente
+  testuale (`20261110-81`, `brief-db-revisione-dbops`, giro 12).
 
 ---
 

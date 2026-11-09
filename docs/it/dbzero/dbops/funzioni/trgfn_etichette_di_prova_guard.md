@@ -17,20 +17,26 @@ CREATE OR REPLACE FUNCTION dbops.trgfn_etichette_di_prova_guard()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_ambiente dbops.installazione.ambiente%TYPE;
-    v_chiave   dbops.credenziali_di_prova.chiave%TYPE;
+    v_ambiente     dbops.installazione.ambiente%TYPE;
+    v_chiave       dbops.credenziali_di_prova.chiave%TYPE;
+    -- la radice dell'etichetta esiste ancora: nessuna colonna di cui sia il riflesso
+    v_radice_viva  boolean := true;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Un'etichetta di prova nasce solo in un'installazione
-    --   SVILUPPO, e poi non cambia e non si toglie.
+    --   SVILUPPO, non cambia, e si toglie solo insieme alla
+    --   sua radice.
     --
     -- Regole:
     --   - INSERT: la regola pura sull'ambiente vero
     --     (dbops.fn_dati_di_sviluppo_ammessi_su_valori); ambiente
     --     non dichiarato: E_CONFIG_MANCANTE dal lettore;
-    --   - UPDATE, DELETE (riga) e TRUNCATE (istruzione): sempre
-    --     rifiutati.
+    --   - DELETE (riga): ammesso solo se la radice non c'e' piu'
+    --     (la cascata della FK); la radice non verificabile
+    --     vale viva (fail-closed);
+    --   - UPDATE, DELETE con la radice viva e TRUNCATE
+    --     (istruzione): rifiutati.
     -- =========================================================
     IF TG_OP = 'INSERT' THEN
         v_ambiente := script.fn_ambiente_installazione();
@@ -44,6 +50,22 @@ BEGIN
                 v_ambiente);
         END IF;
         RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'DELETE' AND TG_LEVEL = 'ROW' THEN
+        IF TG_TABLE_NAME = 'credenziali_di_prova' THEN
+            IF to_regclass('django.auth_user') IS NOT NULL THEN
+                SELECT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = OLD.auth_user_id)
+                  INTO v_radice_viva;
+            END IF;
+        ELSIF TG_TABLE_NAME = 'soggetti_di_prova' THEN
+            SELECT EXISTS (SELECT 1 FROM anagrafiche.soggetti s WHERE s.id = OLD.soggetto_id)
+              INTO v_radice_viva;
+        END IF;
+
+        IF NOT v_radice_viva THEN
+            RETURN OLD;
+        END IF;
     END IF;
 
     -- Nel TRUNCATE (trigger di istruzione) OLD non c'e'.
@@ -64,7 +86,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_etichette_di_prova_guard()
-IS 'Guard delle etichette di prova (dbops.credenziali_di_prova, dbops.soggetti_di_prova). INSERT: ammesso solo se dbops.fn_dati_di_sviluppo_ammessi_su_valori(script.fn_ambiente_installazione()), altrimenti E_DATI_DI_SVILUPPO_IN_PRODUZIONE (lo stesso codice del verbo dei dati di sviluppo: e'' la stessa decisione); ambiente non dichiarato: E_CONFIG_MANCANTE. UPDATE, DELETE (trigger di riga) e TRUNCATE (trigger di istruzione): sempre rifiutati con E_ETICHETTA_DI_PROVA_IMMUTABILE, perche'' togliere un''etichetta nasconderebbe la radice al presidio. Il proprietario puo'' disattivare il trigger: la difesa contro un DBA malevolo sono i ruoli. Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+IS 'Guard delle etichette di prova (dbops.credenziali_di_prova, dbops.soggetti_di_prova). INSERT: ammesso solo dove l''installazione ammette i dati di sviluppo (dbops.fn_dati_di_sviluppo_ammessi_su_valori), altrimenti E_DATI_DI_SVILUPPO_IN_PRODUZIONE; ambiente non dichiarato: E_CONFIG_MANCANTE. DELETE di una riga: ammesso solo se la sua radice non c''e'' piu'' (django.auth_user per una credenziale, anagrafiche.soggetti per un soggetto), cioe'' dentro la cascata della FK: un''etichetta si toglie solo insieme a cio'' che etichetta. Se la radice non si puo'' verificare (django.auth_user assente) vale viva. UPDATE, DELETE con la radice viva e TRUNCATE: E_ETICHETTA_DI_PROVA_IMMUTABILE.';
 ```
 
 </div>

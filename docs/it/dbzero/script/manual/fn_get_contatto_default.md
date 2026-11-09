@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_contatto_default`
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**  
@@ -66,7 +68,7 @@ LANGUAGE sql;
 
 | Nome                  | Tipo      | Obbl. | Descrizione                                                                                                          |
 | --------------------- | --------- | :---: | -------------------------------------------------------------------------------------------------------------------- |
-| `p_soggetto_id`       | `uuid`    |  Sì   | Identificativo del soggetto in `anagrafiche.soggetti`. È il **pivot principale** di ricerca.                         |
+| `p_soggetto_id`       | `uuid`    |  Sì   | Identificativo del soggetto in `anagrafiche.soggetti`. È il **pivot principale** di ricerca. Se `NULL`, la chiamata è rifiutata da `fn_get_contatti` con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`. |
 | `p_soggetto_ruolo_id` | `bigint`  |  No   | Se valorizzato, restringe la ricerca ai contatti legati a **quello specifico ruolo** (`anagrafiche.soggetti_ruoli`). |
 | `p_istanza_utility_id` | `bigint` |  No   | Se valorizzato, filtra per una specifica **istanza utility** (`anagrafiche.istanze_utilities`).                      |
 | `p_tipo_contatto_id`  | `integer` |  No   | Se valorizzato, limita ai contatti di un certo **tipo** (FK a `config.tipi_contatti`).                               |
@@ -232,6 +234,12 @@ Permette di recuperare, ad esempio, il **referente amministrativo predefinito** 
   * se per un dato contesto più contatti risultano marcati `is_default = TRUE`, la funzione **non fallisce**, ma restituisce il contatto con `id` più basso;
   * è comunque consigliabile prevedere **controlli di coerenza** (pgTAP o vincoli applicativi) per garantire che **esista al massimo un default per contesto**.
 
+* **Soggetto mancante:**
+
+  * con `p_soggetto_id` `NULL` la funzione non restituisce zero righe: riceve da
+    `script.fn_get_contatti` il rifiuto `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (classe `DATO_ERRATO`,
+    messaggio «Indicare il soggetto di cui leggere i contatti.», canale `parametro` = `p_soggetto_id`).
+
 * **Assenza di default:**
 
   * se non esiste alcun contatto marcato default, la funzione restituisce **0 righe**;
@@ -240,6 +248,22 @@ Permette di recuperare, ad esempio, il **referente amministrativo predefinito** 
 * **Estendibilità:**
 
   * la colonna `default_context` permette di modellare in futuro contesti diversi di default (es. `"fatturazione"`, `"tecnico"`, `"commerciale"`) senza modificare la firma della funzione.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql`, test 10 — la chiamata col soggetto
+  `NULL` è rifiutata con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, come quella a `fn_get_contatti`.
+
+---
+
+### Note di migrazione
+
+* 2026-11-09 — la funzione non cambia, ma col soggetto `NULL` riceve il rifiuto di
+  `fn_get_contatti`, `E_CONTATTI_SOGGETTO_OBBLIGATORIO`. Prima la validazione di `fn_get_contatti`
+  non girava, e anche questa funzione restituiva zero righe in silenzio (`20261110-99`,
+  `brief-db-revisione-dbops`, giro 12).
 
 ---
 

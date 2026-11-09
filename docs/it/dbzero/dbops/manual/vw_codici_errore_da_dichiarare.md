@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_codici_errore_da_dichiarare`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,6 +18,7 @@
 >
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la porta da cui passano i codici sollevati
 > * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti da cui la vista legge i codici
+> * [dbops.fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile) — quali funzioni hanno un corpo da leggere: il perimetro
 >
 > Guide:
 >
@@ -27,8 +28,8 @@
 
 ### 🎯 Scopo Principale
 
-La misura del «terzo lato» del presidio sui codici errore: ogni codice `E_*` che il codice PL/pgSQL
-vivo può nominare, con le funzioni che lo nominano e se una di esse sta sul percorso di una
+La misura del «terzo lato» del presidio sui codici errore: ogni codice `E_*` che una funzione viva
+dal corpo leggibile (PL/pgSQL o SQL) può nominare, con le funzioni che lo nominano e se una di esse sta sul percorso di una
 richiesta. È una misura, non il registro del debito.
 
 > ⛔ **Il numero di questa vista non è il debito.** Cresce a ogni codice nuovo e legittimo. Il debito
@@ -54,7 +55,7 @@ backend non sa come rispondere è il difetto.
 
 ### ⭐ È volutamente larga: una scelta fra due errori
 
-Raccoglie **ogni letterale** `E_*` in un corpo PL/pgSQL, non solo quelli dentro una chiamata a
+Raccoglie **ogni letterale** `E_*` in un corpo leggibile, PL/pgSQL o SQL, non solo quelli dentro una chiamata a
 `fn_log_and_raise_error`. Restringere sarebbe stato più preciso, e avrebbe perso i codici che
 arrivano **da espressione**: per esempio un guard che delega il verdetto a una funzione di
 controllo e solleva il codice del primo motivo che questa gli restituisce.
@@ -78,7 +79,20 @@ scritto sulla stessa riga dopo una stringa che contiene un doppio trattino non s
 
 1. **I codici costruiti per concatenazione** o passati in una variabile: non sono letterali.
 2. **I `RAISE EXCEPTION` diretti** che non passano dall'helper: non hanno un codice da trovare.
-3. Funzioni che non sono PL/pgSQL: il perimetro resta quello.
+3. **Le funzioni scritte in C o `internal`**: il loro corpo non è un testo da leggere, ma il nome di
+   un simbolo.
+
+---
+
+### Il perimetro: i corpi leggibili
+
+La vista legge ogni funzione dal **corpo leggibile**, PL/pgSQL e SQL (comprese le SQL scritte con
+`BEGIN ATOMIC`), come la decide [fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile).
+Conta chi può sollevare un codice, non il linguaggio in cui è scritto: una funzione SQL può chiamare
+`fn_log_and_raise_error` con un codice letterale come una PL/pgSQL.
+
+Il ramo dei codici negli argomenti di un trigger resta di fatto PL/pgSQL, perché una funzione trigger
+non si scrive in SQL; legge lo stesso perimetro, che è uno solo.
 
 ---
 
@@ -93,6 +107,10 @@ privilegi PostgreSQL, non della row level security.
 
 * `db/pgtap/dbops/test-punti-canale-campo-v1.sql` — un codice passato da un trigger alla sua
   funzione come argomento compare qui, come `da_trigger` (caso costruito).
+* `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql` — vede il codice sollevato da una
+  funzione SQL e da una SQL `BEGIN ATOMIC` (casi costruiti); e nessuna chiamata diretta a
+  `fn_log_and_raise_error`, in nessun corpo leggibile, solleva un codice letterale fuori dalla
+  grammatica `E_`.
 
 Il cancello vero è `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py`: nessun codice
 nuovo senza regola di risposta, nessuna voce del registro già risolta o non più nominata, e la misura
@@ -110,6 +128,9 @@ non degradata.
 * 2026-11-04 — il corpo si legge da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`): prima si
   toglievano i soli commenti di riga, quindi un codice in un commento a blocco contava come nominato,
   e uno scritto sulla stessa riga dopo un letterale che conteneva un doppio trattino spariva.
+* 2026-11-09 — il perimetro passa dal solo PL/pgSQL ai corpi leggibili, PL/pgSQL e SQL, letti da
+  `fn_corpo_leggibile`: prima un codice sollevato da una funzione SQL non compariva (`20261110-60`,
+  `brief-db-revisione-dbops`, giro 12).
 
 ---
 

@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-09 (giro 10d applicato; seguito di §29.11 scritto e provato, da applicare)
+## ⏭️ Chi riparte — aggiornato al 2026-11-09 (giro 12 scritto e provato su scratch e dbdev, da applicare)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -84,7 +84,13 @@ riverifica sulla struttura, nove nodi (N1-N9), tre blocchi; il residuo di §14.8
 **Decisioni di Tid** sulle scelte di §29.6 (2026-11-09, §29.11): le quattro righe delle note delle offerte erano di prova ed
 escono; le tre FK di N2 `CON_INDICE`; il resto ok. **Seguito scritto e provato** su scratch e dbdev: il CSV unico e
 `20261110-55`.
-**Riparte: Tid** con l'apply del CSV e del `20261110-55`, poi il commit del giro 10d. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+**Giro 10d chiuso**: committato da Tid (`2050435065`). **Giro 11 preparato** (§30), numeri `20261110-56` … `-61` riservati.
+**N1 deciso** (Tid, 2026-11-09: strada (b)). **Giro 11 scritto e provato** su scratch e dbdev (§30.4): `20261110-56` … `-58`,
+un pgTAP nuovo. **Giro 11 applicato** (Tid, 2026-11-09): migrazione su dbdev e scratch, pgTAP di §30.4 verdi (§30.5).
+**Via al giro 12** (Tid, 2026-11-09: «procedi prossimo step»): Q15, §31. Censimento fatto, nodi N1-N3 decisi e numeri dati
+(Tid, 2026-11-09, §31.2): `20261110-59` … `-61`, `-80` … `-84`, e `-99` al posto del `-85` preso da `catalogo`.
+**Giro 12 scritto e provato** su scratch e dbdev (§31.3-31.4): nove changeSet, i due CSV dei codici, un pgTAP nuovo.
+**Riparte: Tid** con l'apply del giro 12 e i pgTAP di §31.6; il commit del giro 11 se non è ancora fatto. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -202,7 +208,15 @@ ancora le tabelle).
 | 9-sexagies-vicies-octies | ✅ Tid | Apply del giro 10d su dbdev e scratch, pgTAP come app verdi (2026-11-09) | §29.10 | 9-sexagies-vicies-septies |
 | 9-sexagies-vicies-nonies | ✅ Tid | Le scelte di §29.6: righe di prova fuori, tre FK `CON_INDICE`, il resto ok (2026-11-09) | §29.11 | 9-sexagies-vicies-octies |
 | 9-septuagies | ✅ sessione DB | Il seguito: CSV unico e `20261110-55`, scritti e provati su scratch e dbdev | §29.11 | 9-sexagies-vicies-nonies |
-| 9-septuagies-semel | **Tid** ⏭️ | Apply del CSV e del `20261110-55`, poi il commit del giro 10d | §29.11 | 9-septuagies |
+| 9-septuagies-semel | ✅ Tid | Apply del CSV e del `20261110-55` (dbdev), commit del giro 10d (`2050435065`, 2026-11-09). Il giro 10d è chiuso | §29.11 | 9-septuagies |
+| 9-septuagies-bis | ✅ sessione DB | Giro 11 preparato: riverifica, un nodo, numeri `20261110-56` … | §30 | 9-septuagies-semel |
+| 9-septuagies-ter | ✅ Tid | N1 del giro 11: strada (b), l'etichetta va con la credenziale (2026-11-09) | §30.2 | 9-septuagies-bis |
+| 9-septuagies-quater | ✅ sessione DB | Giro 11 scritto e provato (`20261110-56` … `-58`) | §30.4 | 9-septuagies-ter |
+| 9-septuagies-quinquies | ✅ Tid | Apply del giro 11, pgTAP come app verdi (2026-11-09) | §30.5 | 9-septuagies-quater |
+| 9-septuagies-sexies | **Tid** ⏭️ | Commit del giro 11 (solo i file del giro) | §30.5 | 9-septuagies-quinquies |
+| 9-septuagies-septies | ✅ sessione DB | Giro 12 (Q15): censimento, nodi N1-N3 decisi da Tid, scritto e provato | §31 | 9-septuagies-quinquies |
+| 9-septuagies-octies | **Tid** ⏭️ | Apply del giro 12, pgTAP di §31.6, commit | §31.6 | 9-septuagies-septies |
+| 9-septuagies-nonies | team BE | BE6 del giro 12: `E_CONTATTI_SOGGETTO_OBBLIGATORIO` nelle politiche d'errore, dopo l'apply | §31.5 | 9-septuagies-octies |
 | 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
@@ -214,8 +228,8 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** nessuna sul giro 10d (§29.11). Nessuna sul giro 10c.
-**Da committare:** il giro 10d (§29.5), applicato e verde. ⚠️ Nel working tree ci sono anche i file del cantiere `catalogo` (`20261110-62` …): non entrano nel commit di questo giro. Il blocco 10c-4 è committato (`48b5d39354`). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
+**Decisioni aperte di Tid:** nessuna; le scelte dentro il giro 12 sono in §31.3, da guardare. Nessuna sul giro 10c.
+**Da committare:** il giro 11 (§30.4), applicato e verde; il giro 12 (§31) dopo l'apply. Il giro 10d è committato (`2050435065`). ⚠️ Nel working tree ci sono anche i file del cantiere `catalogo` (`20261110-62` …): non entrano nel commit di questo giro. Il blocco 10c-4 è committato (`48b5d39354`). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
 (`cdc563dedb`, 2026-11-08). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
 è committato (`d8492eeb77`, 2026-11-08), `-65` compreso, che è ancora da applicare. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
@@ -662,7 +676,7 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 ✅ (2026-11-07) | **Decisione di Tid (2026-11-07): cade il tetto.** `list_lookup_codici` chiama `dbops.fn_get_lookup_codici` con `p_limit` NULL al posto di `LOOKUP_MAX_SOURCE_ROWS` (la costante e il commento «il limit interno è una guardia» si ritirano); la ricerca `ILIKE` e la paginazione con `sql_order_clause` e `fetch_paged_with_total` restano come sono. Da riscrivere la docstring («chiama con limit ampio…, obiettivo: evitare di modificare la funzione DB»). Non dipende dall'apply: lo spareggio DB del giro 7 non cambia il risultato per il backend, che riordina fuori | `backend/apps/core/db/dbops_repository.py:52-55, 378-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
-| BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
+| BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) **Giro 12 (2026-11-09):** `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (§31.5). | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 ✅ (2026-11-07) | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
@@ -4664,3 +4678,228 @@ sono già (la guardia 1 salta). Le quattro righe escono; la scoperta ne riregist
 
 **Per Tid:** apply del CSV unico e del `20261110-55` su dbdev e scratch; pgTAP `dbops/test-fk-index-policy-decisione-v1`.
 Poi il commit del giro 10d.
+
+## 30. Giro 11 — le etichette di prova: la FK della credenziale (Q14 ⑩), preparazione (2026-11-09)
+
+Il giro 10d è chiuso: committato da Tid (`2050435065`, 2026-11-09). Il `20261110-55` è applicato su dbdev; nel
+`databasechangelog` dello scratch, letto lo stesso giorno, non c'è ancora. **Numeri riservati** (Tid, 2026-11-09):
+`20261110-56` … `-61`, poi il primo libero.
+
+**Brief vicini verificati:** nessuno in `work-in-progress/` tocca `dbops.credenziali_di_prova`,
+`dbops.trgfn_etichette_di_prova_guard` o `script.fn_elimina_credenziale` (grep, 2026-11-09).
+
+### 30.1 La riverifica (schede auto-generate di oggi)
+
+1. **`dbops.credenziali_di_prova`**: PK `auth_user_id`, nessuna FK. Il COMMENT dà il motivo («in CI `django.auth_user`
+   nasce dopo Liquibase»), che è un fatto e non una ragione: le FK verso `django.auth_user` stanno nel ponte di `90_end`,
+   con la preCondition `MARK_RAN` (per esempio `20260921-03`), e la gemella `soggetti_di_prova` ha la sua FK (verso
+   `anagrafiche.soggetti`, `NO ACTION`). Il COMMENT cita anche un brief (§5d).
+2. **`dbops.trgfn_etichette_di_prova_guard`** (montato su tutte e due le tabelle): rifiuta **ogni** UPDATE, DELETE e
+   TRUNCATE con `E_ETICHETTA_DI_PROVA_IMMUTABILE`, e l'INSERT fuori da SVILUPPO.
+3. **`script.fn_elimina_credenziale`** chiama la regola di `script.fn_check_credenziale_eliminabile`. Il motivo
+   `CON_STORIA` ricava da `pg_constraint` (`script.fn_tabelle_che_trattengono`) le tabelle che trattengono la credenziale
+   con una FK `RESTRICT` o `NO ACTION`. Le FK `CASCADE` non contano: le tabelle che le hanno seguono il `DELETE`.
+4. **Orfani** (fatto datato, 2026-11-09): dbdev ha 8 etichette e nessuna senza credenziale; lo scratch nessuna etichetta.
+   L'`ADD CONSTRAINT` passa; il changeSet li conta lo stesso e si ferma se ce n'è uno.
+5. **L'indice della FK:** la colonna è la PK, quindi la FK è coperta e alla politica degli indici non serve una riga.
+
+### 30.2 Il nodo (decisione di Tid)
+
+**N1 — Che cosa succede a una credenziale di prova quando un SUPER_ADMIN la elimina.** §4 (Q14 ⑩) ha deciso la FK
+`NO ACTION` «come la gemella» e ha lasciato al giro la scelta fra il rifiuto con codice e la porta che toglie etichetta
+e utente insieme, proponendo la seconda. La riverifica (punto 3) cambia il conto delle due strade:
+
+* **(a) `NO ACTION`: la credenziale etichettata non si elimina.** Non c'è codice da scrivere: la regola di eliminabilità
+  vede la FK da `pg_constraint` e risponde `CON_STORIA` con `dbops.credenziali_di_prova` fra le tabelle. Così il
+  pulsante è spento e la porta solleva `E_CREDENZIALE_CON_STORIA`. Il difetto è che la frase è falsa nel significato:
+  un'etichetta non è storia. Diventa vera solo aggiungendo un motivo apposta (un codice nuovo e la rigenerazione BE).
+* **(b) `CASCADE`: l'etichetta va via insieme alla credenziale.** La regola del guard diventa «un'etichetta non
+  cambia, e si toglie **solo insieme alla sua radice**»: il DELETE di una riga è ammesso quando la radice
+  (`django.auth_user` o `anagrafiche.soggetti`) non c'è più, cioè dentro la cascata della FK; resta rifiutato in ogni
+  altro caso, e così TRUNCATE e UPDATE. `fn_elimina_credenziale` e la regola di eliminabilità restano come sono, e
+  nessuno vede l'etichetta di una credenziale che non esiste (era il motivo della regola «non si toglie»: non
+  nascondere un utente al presidio). La gemella resta `NO ACTION`: sulla sua radice la regola vale uguale, ma un
+  soggetto con l'etichetta non si cancella comunque.
+
+**Proposta: (b).** È quella di §4, e il modello la regge: l'etichetta descrive la credenziale e non le sopravvive.
+(a) costa meno, ma dà al pulsante una ragione che non è quella vera.
+
+### 30.3 I changeSet previsti (`20261110-56` …)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/…-56` | (b) il guard: DELETE ammesso solo senza radice; COMMENT |
+| `90_end/…-57` | la FK `fk_credenziali_di_prova_auth_user` verso `django.auth_user`, nel ponte (`MARK_RAN` senza django), `ON DELETE CASCADE` per (b) o `NO ACTION` per (a); prima, il conteggio degli orfani |
+| `00_schema/dbops/…-58` | il COMMENT della tabella, senza il motivo falso e senza il brief |
+
+pgTAP: su dbdev la FK c'è, in CI no (i due mondi, `skip()` motivato); (b) eliminare una credenziale etichettata toglie
+anche l'etichetta, un DELETE diretto dell'etichetta resta rifiutato, e così il DELETE di una gemella con la radice viva;
+(a) la regola di eliminabilità risponde `CON_STORIA`. Da riscrivere: `dbops/test-etichette-di-prova-v1` se prova il
+DELETE. Doc: COMMENT della tabella; `dbops/manual/credenziali_di_prova.md`, `trgfn_etichette_di_prova_guard.md`,
+`vw_radici_di_prova_in_produzione.md`, `soggetti_di_prova.md`, la pagina di `fn_elimina_credenziale`;
+`backend/amm-software/manual/api_amm_software.md` al team BE, se ne parla.
+Ricadute BE: nessuna con (b); con (a) nessuna, salvo il motivo nuovo se lo si vuole vero.
+
+### 30.4 Il via e che cosa è scritto (2026-11-09)
+
+Via di Tid: «ok b procedi» (2026-11-09): N1 strada (b). Numeri usati: `20261110-56` … `-58`; `-59` … `-61` restano liberi.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261110-56` | `trgfn_etichette_di_prova_guard`: il DELETE di una riga è ammesso solo se la radice non c'è più (`django.auth_user` per le credenziali, `anagrafiche.soggetti` per i soggetti); `django.auth_user` assente = radice viva (fail-closed); COMMENT |
+| `90_end/20261110-57` | la FK `fk_credenziali_di_prova_auth_user` verso `django.auth_user`, `ON DELETE CASCADE`, `ON UPDATE NO ACTION`, nel ponte (`MARK_RAN` senza django); prima, le etichette orfane per nome (con una sola si ferma) |
+| `00_schema/dbops/20261110-58` | il COMMENT della tabella: la FK, l'etichetta che va via con la credenziale; senza il motivo falso e senza il brief |
+
+pgTAP nuovo: `dbops/test-credenziale-di-prova-fk-v1` (6, runner owner): i due mondi; DELETE diretto con la credenziale
+viva rifiutato; la regola di eliminabilità non conta l'etichetta come storia; UPDATE rifiutato; cancellare la credenziale
+toglie l'etichetta (la cancellazione in un'istruzione a sé, il conteggio in un'altra); l'etichetta di un soggetto vivo non
+si cancella. Il test 9 di `dbops/test-etichette-di-prova-v1` (DELETE con la radice viva) resta valido com'è.
+
+**Le prove** (scratch e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase, `-56`, `-58`, `-57`, dopo la riga
+`BEGIN;`, transazione annullata):
+
+* il pgTAP nuovo 6/6 su tutti e due. **La prova del rosso:** con la sola FK e il guard di prima la cascata è respinta
+  (`E_ETICHETTA_DI_PROVA_IMMUTABILE`): il `-56` è il prerequisito del `-57`;
+* regressione «senza → con» sui pgTAP vicini (`dbops/test-etichette-di-prova-v1`,
+  `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, `dbops/test-riferimenti-morti-v1`,
+  `config/test-credenziali-porta-v1`, `config/test-elimina-credenziale-v1`, `script/test-rubinetto-primo-motivo-v1`,
+  `dbops/test-app-postura-schema-django-v1`): stesso esito senza e con. I rossi che ci sono (3 in
+  `test-credenziali-porta-v1`, 1 in `test-elimina-credenziale-v1`) sono i test «come app» lanciati da owner: uguali senza il
+  giro;
+* guardrail verdi.
+
+Fatto datato: sullo scratch `django.auth_user` c'è, ma il ponte ha 3 FK su 24 (le sorelle sono segnate `MARK_RAN` da quando
+lo scratch è nato senza django); il `-57` è nuovo, e lì la FK nasce.
+
+**Doc:** `dbops/manual/credenziali_di_prova.md` (la sezione «nessun legame» diventa «l'etichetta segue la credenziale»),
+`trgfn_etichette_di_prova_guard.md`, `soggetti_di_prova.md`, `script/manual/fn_elimina_credenziale.md` (l'etichetta fra le
+cose che vanno via con la credenziale). `backend/amm-software/manual/api_amm_software.md` non ne parla. Ricadute BE: nessuna.
+
+**Per Tid:**
+1. **Apply** di `20261110-56` … `-58` su dbdev e scratch.
+2. **pgTAP come app:** `dbops/test-credenziale-di-prova-fk-v1` (runner owner), `dbops/test-etichette-di-prova-v1`,
+   `config/test-elimina-credenziale-v1`, `dbops/test-riferimenti-morti-v1`.
+
+### 30.5 Applicato (Tid, 2026-11-09)
+
+Migrazione `20261110-56` … `-58` applicata da Tid su dbdev e scratch; pgTAP come app di §30.4 verdi. Resta il commit,
+con i soli file del giro (non quelli del cantiere `catalogo`). Il giro 11 è chiuso col commit.
+
+## 31. Giro 12 — i presidi dei codici anche sulle funzioni SQL (Q15), 2026-11-09
+
+### 31.1 Il censimento (scratch `zeroerp_ruoli` e dbdev, 2026-11-09)
+
+Fatti datati, non motivi: il perimetro lo decide Q15 (chi può sollevare un codice, non il linguaggio).
+
+* **Sette viste di `dbops` limitano i corpi al plpgsql** con lo stesso filtro scritto a mano (`p.prolang = (SELECT oid
+  FROM pg_language WHERE lanname = 'plpgsql')`): `vw_codici_errore_da_dichiarare`, `vw_punti_canale_campo`,
+  `vw_funzioni_check_codici`, `vw_punti_primo_motivo`, `vw_bersagli_non_dichiarati`, `vw_codici_errore_forme_condizione`;
+  `vw_stati_check_scrittori` ha una terza forma (`l.lanname = ANY (ARRAY['plpgsql','sql'])`). Regola del 2: un BB.
+* **Una funzione `LANGUAGE sql` chiama `fn_log_and_raise_error`: `script.fn_get_contatti`**, con due difetti suoi:
+  * la validazione di `p_soggetto_id` sta in una CTE (`validate`) che nessuno legge, e PostgreSQL non la esegue: con il
+    soggetto NULL la funzione restituisce zero righe in silenzio (provato su tutti e due i database);
+  * il codice è `ERRORE_PARAMETRI`, obsoleto dal 2026-08-05 (vivo: `E_ERRORE_PARAMETRI`). È l'unica chiamata, in
+    qualsiasi linguaggio, con un codice letterale fuori dalla grammatica `E_`: la rinomina di agosto non l'ha vista
+    perché i presidi leggevano il solo plpgsql. È il buco di Q15, già aperto.
+* Nessuna funzione SQL nomina oggi un codice `E_`, un motivo `'codice'` o `fn_raise_primo_motivo_se_presente`:
+  l'allargamento non fa comparire righe nuove, quindi nessuna rigenerazione BE dall'allargamento.
+
+### 31.2 Le decisioni (Tid, 2026-11-09)
+
+| Nodo | Decisione |
+| --- | --- |
+| N1 `fn_get_contatti` | Riscritta in plpgsql, con un codice **specifico**: `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, canale `parametro` = `p_soggetto_id`. Codice nuovo: rigenerazione delle politiche d'errore lato BE (§5) |
+| N2 `vw_codici_errore_forme_condizione` | Resta sul plpgsql: la sua grammatica è quella dell'`IF`/`EXCEPTION WHEN`, che una funzione SQL non ha. Il limite si dichiara nel COMMENT, con il BB |
+| N3 il perimetro | Le cinque viste che leggono chi solleva, chi nomina, chi costruisce un bersaglio si allargano. Il filtro diventa un **BB**: `dbops.fn_corpo_leggibile(prolang)`; lo usa anche `vw_stati_check_scrittori`, la cui copia si ritira |
+
+Numeri (Tid, 2026-11-09): `20261110-59` … `-61` e `20261110-80` … `-85`.
+
+⚠️ **Numeri, correzione del 2026-11-09.** Il cantiere `catalogo` ha scritto `20261110-85` … `-93` nello stesso momento:
+il `-85` di questo giro è passato a **`20261110-99`**. Questo giro usa `-59` … `-61`, `-80` … `-84`, `-99`.
+
+### 31.3 Che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261110-59` | Il BB `dbops.fn_corpo_leggibile(p_prolang pg_proc.prolang%TYPE)`: vero per plpgsql e sql (BEGIN ATOMIC compresa), falso per c, internal e NULL. `LANGUAGE sql STABLE`, senza `SET`: si espande nella query, e la lettura di `pg_language` diventa un InitPlan |
+| `20_code/dbops/20261110-60` | `vw_codici_errore_da_dichiarare`: i due rami leggono il BB; COMMENT |
+| `20_code/dbops/20261110-61` | `vw_punti_canale_campo`: la CTE `funzioni` legge il BB; COMMENT (tre frasi dicevano «plpgsql») |
+| `20_code/dbops/20261110-80` | `vw_funzioni_check_codici`: il BB, e il prefiltro diventa `prosrc LIKE '%fn\_check\_%' OR prosqlbody IS NOT NULL`; COMMENT |
+| `20_code/dbops/20261110-81` | `vw_punti_primo_motivo`: il BB, prefiltro allargato come sopra; COMMENT (il perimetro, che non c'era) |
+| `20_code/dbops/20261110-82` | `vw_bersagli_non_dichiarati`: il BB, prefiltro allargato come sopra; COMMENT |
+| `20_code/dbops/20261110-83` | `vw_stati_check_scrittori`: la terza copia del filtro (JOIN `pg_language` + elenco a mano) si ritira, legge il BB; perimetro invariato |
+| `20_code/dbops/20261110-84` | `vw_codici_errore_forme_condizione`: solo il COMMENT, il perimetro plpgsql dichiarato e perché (N2) |
+| `20_code/script/20261110-99` | `script.fn_get_contatti` in plpgsql: `IF p_soggetto_id IS NULL` → `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (canale `parametro`, variadico vuoto esplicito); la query di prima senza la CTE morta; firma, `RETURNS TABLE`, GRANT invariati; COMMENT |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, `DATO_ERRATO` (come gli altri `*_OBBLIGATORIO`), messaggio id **1464** «Indicare il soggetto di cui leggere i contatti.» |
+
+**Le scelte che non si vedono dal titolo (da guardare, Tid):**
+
+1. **Il prefiltro su `prosrc` era cieco alle BEGIN ATOMIC** (trovato scrivendo il pgTAP): per una sql BEGIN ATOMIC
+   `prosrc` è vuoto, e tre viste (`-80`, `-81`, `-82`) l'avrebbero lasciata fuori anche col perimetro allargato. Il
+   prefiltro diventa «`prosrc` … `OR prosqlbody IS NOT NULL`»: le BEGIN ATOMIC passano tutte al filtro vero, sul corpo
+   deparsato. È la stessa classe di D15.
+2. **La forma del BB:** `p_prolang = ANY (ARRAY(SELECT …))` dentro un `COALESCE(…, false)`, non un `EXISTS` per riga:
+   espansa nella vista, la sottoquery non dipende dalla riga e si calcola una volta.
+3. **La classe del codice nuovo** è `DATO_ERRATO`, come i 38 `*_OBBLIGATORIO` e `E_ERRORE_PARAMETRI`.
+4. **I COMMENT delle viste aperte** sono corretti nelle sole frasi sul perimetro: i marcatori di revisione e i nomi
+   di brief che contengono restano al giro 14 (Q13), che li tratta tutti insieme.
+5. **`fn_get_contatti` resta VOLATILE** com'era: il giro non cambia la volatilità di chi la chiama.
+
+### 31.4 Le prove (scratch e dbdev, da owner, SQL estratto dagli YAML in ordine di Liquibase, dopo la riga `BEGIN;`, transazione annullata)
+
+* **I changeSet base sono il vivo:** riprodotti in transazione, le definizioni delle sette viste e delle due funzioni
+  dei contatti sono uguali a `pg_get_viewdef` / `pg_get_functiondef` su tutti e due i database.
+* **Prima e dopo, riga per riga** (`EXCEPT ALL` nei due versi, tutti e due i database, stesso esito):
+  * `vw_codici_errore_da_dichiarare`, `vw_punti_canale_campo`, `vw_codici_errore_forme_condizione`: **una riga nuova**,
+    `E_CONTATTI_SOGGETTO_OBBLIGATORIO` di `fn_get_contatti` (in `vw_punti_canale_campo`: `DIRETTO`, `IN_CHIAMATA`,
+    `parametro`; in `forme_condizione`: famiglia `PARAMETRO`). Nessuna riga sparita;
+  * `vw_funzioni_check_codici`: **37 righe nuove**, nessuna sparita. Sono funzioni sql che nominano una `fn_check_*`
+    (fatto datato, 2026-11-09): le `script.fn_scope_ef_whitelist*` e `fn_get_user_emittenti_scope` con
+    `fn_check_user_emittente_scope` / `fn_check_ultimo_super_admin_attivo` (check senza motivi: codice NULL),
+    `pratiche.fn_check_pratica_chiudibile` con `fn_check_chiusura_pratica`, `vendite.fn_listini_selezionabili` con
+    `fn_check_listino_documento` (`E_DOC_LISTINO_UTILITY_DIVERSA`, `E_DOC_LISTINO_EMITTENTE_DIVERSO`). È un
+    INVENTARIO: le due viste che lo leggono non cambiano (`vw_punti_primo_motivo` resta a 22 righe, e in
+    `vw_punti_canale_campo` non entra un ramo PRIMO_MOTIVO nuovo);
+  * `vw_punti_primo_motivo`, `vw_bersagli_non_dichiarati`, `vw_stati_check_scrittori`: identiche.
+* **`fn_get_contatti` con un soggetto:** su dbdev 854 righe, uguali prima e dopo, per lei e per `fn_get_contatto_default`
+  (sullo scratch non ci sono contatti). Con il soggetto NULL tutte e due rifiutano `E_CONTATTI_SOGGETTO_OBBLIGATORIO`.
+* **Tempi** (fatto datato, dbdev, 2026-11-09): `vw_codici_errore_da_dichiarare` da ~175 a ~290 ms,
+  `vw_punti_canale_campo` da ~640 a ~740 ms; le altre invariate. È il costo dei ~1.260 corpi sql in più: il
+  perimetro è il modello. Il test sotto JIT (`test-vw-funzioni-check-codici-sotto-jit-v1`) resta verde.
+* **pgTAP nuovo** `dbops/test-presidi-codici-corpo-leggibile-v1` (11, runner owner): il BB; le cinque viste sui casi
+  costruiti in uno schema di prova (una sql, una sql BEGIN ATOMIC, una check sql, un primo motivo a mano, un
+  bersaglio); `forme_condizione` che resta fuori; `fn_get_contatti` e `fn_get_contatto_default` col soggetto NULL;
+  nessuna chiamata diretta, in nessun corpo leggibile, con un codice letterale fuori dalla grammatica `E_`. 11/11 su
+  tutti e due. **La prova del rosso:** con il BB e `fn_get_contatti` ma le viste di prima, i test 3-7 sono rossi.
+* **Regressione «senza → con»**, stesso esito su tutti e due, nessun rosso: `anagrafiche/test-contatti-soggetto-cliente`,
+  `config/test-costanti-catalogo-citate-dal-codice-v1`, `dbops/test-audit-log-perimetro-scrittori-v1`,
+  `dbops/test-corpo-funzione-senza-commenti-v1`, `dbops/test-punti-canale-campo-v1`, `dbops/test-stati-check-scrittori-v1`,
+  `dbops/test-vw-bersagli-non-dichiarati`, `dbops/test-vw-codici-errore-motivo-nominato`,
+  `dbops/test-vw-codici-errore-valore-atteso`, `dbops/test-vw-funzioni-check-codici-sotto-jit-v1`,
+  `pagamenti/test-righe-contabili-eliminazione-v1`, `script/test-canale-log-v1`,
+  `script/test-catalogo-messaggi-errore-completo`, `script/test-rubinetto-primo-motivo-v1`,
+  `dbops/test-riferimenti-morti-v1`, `config/test-codici-errore-obsoleto-dal`, `config/test-codici-errore-identita`.
+* **Guardrail** (pre-commit sui file del giro): verdi.
+
+**Doc** (2026-11-09): pagina nuova `dbops/manual/fn_corpo_leggibile.md`; riallineate le pagine `manual/` delle sette
+viste e di `script/manual/fn_get_contatti.md` (anche lo schema delle priorità, che non aveva le condizioni su
+`istanza_utility_id` del corpo vivo) e `fn_get_contatto_default.md`. L'indice di `dbops` è generato: la voce della
+funzione nuova compare alla prossima generazione. `linee-guida-sql.md` non descrive il perimetro di queste viste.
+
+### 31.5 Ricadute BE
+
+* **BE6, giro 12:** il codice nuovo `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (DATO_ERRATO, canale `parametro`) entra in
+  `error_policies_generated.py` e, se serve, in `error_messages_fallback.py`. Finché manca, il guardrail
+  `test_error_codes_db_policy_guardrail` (CI, `ZEROERP_TEST_DB_E2E=1`) lo segnala: è la regola, non un difetto.
+* Nessun altro: le viste allargate non cambiano colonne, e `fn_get_contatti` non ha chiamanti nel backend.
+
+### 31.6 Per Tid
+
+1. **Apply** di `20261110-59` … `-61`, `-80` … `-84`, `-99` e dei due CSV dei codici, su dbdev e scratch.
+2. **pgTAP:** `dbops/test-presidi-codici-corpo-leggibile-v1` (runner owner), `dbops/test-punti-canale-campo-v1`,
+   `dbops/test-vw-funzioni-check-codici-sotto-jit-v1`, `script/test-rubinetto-primo-motivo-v1`,
+   `dbops/test-stati-check-scrittori-v1`, `dbops/test-vw-bersagli-non-dichiarati`, `anagrafiche/test-contatti-soggetto-cliente`,
+   `script/test-catalogo-messaggi-errore-completo`, `dbops/test-riferimenti-morti-v1`.
+3. **Commit:** solo i file del giro. ⚠️ `codici_errore.csv` e `messaggi_errore.csv` hanno nel working tree anche
+   modifiche del cantiere `catalogo` (righe `E_DOC_COMPONENTE_BOM_NON_VALIDA`, `E_ARTICOLO_KIT_SENZA_COMPONENTI`):
+   di questo giro è solo l'ultima riga di ciascuno.

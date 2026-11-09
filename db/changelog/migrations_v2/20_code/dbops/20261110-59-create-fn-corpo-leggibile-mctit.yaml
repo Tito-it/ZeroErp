@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_corpo_leggibile: quali funzioni hanno un corpo che i presidi sanno
+#   leggere. Brief: brief-db-revisione-dbops, giro 12 (Q15, N3).
+#
+#   I presidi che leggono il corpo delle funzioni (chi solleva un codice, chi
+#   nomina una fn_check_*, chi costruisce un bersaglio, chi scrive uno stato)
+#   avevano il perimetro scritto in linea, in tre forme: sei viste il solo
+#   plpgsql, vw_stati_check_scrittori plpgsql e sql con un elenco a mano.
+#   Il perimetro e' il modello: una funzione LANGUAGE sql puo' chiamare
+#   fn_log_and_raise_error come una plpgsql. Da qui lo leggono tutte
+#   (-60, -61, -80 ... -83); vw_codici_errore_forme_condizione resta sul
+#   plpgsql di proposito e lo dice nel COMMENT (-84).
+#
+#   Il corpo di una funzione c o internal non si legge: prosrc e' il nome di un
+#   simbolo. dbops.fn_corpo_funzione legge sia il plpgsql sia le sql (anche
+#   BEGIN ATOMIC): i linguaggi dell'elenco sono quelli.
+#
+#   LANGUAGE sql, STABLE, un solo SELECT senza FROM, senza SET: il planner la
+#   espande nella query che la chiama, e la sottoquery su pg_language, che non
+#   dipende dalla riga, si calcola una volta sola (InitPlan), come il confronto
+#   di prima. %TYPE in firma: si risolve al CREATE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-59-create-fn-corpo-leggibile-mctit.yaml
+
+  - changeSet:
+      id: 20261110-59-create-fn-corpo-leggibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_corpo_leggibile(prolang): il linguaggio ha un corpo che i presidi sanno leggere
+        (plpgsql, sql). Brief: brief-db-revisione-dbops, giro 12.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_corpo_leggibile(
+                  p_prolang pg_catalog.pg_proc.prolang%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+               PARALLEL SAFE
+              AS $function$
+                SELECT COALESCE(p_prolang = ANY (ARRAY(SELECT l.oid
+                                                         FROM pg_catalog.pg_language l
+                                                        WHERE l.lanname IN ('plpgsql', 'sql'))),
+                                false);
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_corpo_leggibile(oid) IS
+                  'Vero se le funzioni di quel linguaggio (pg_proc.prolang) hanno un corpo che i presidi sanno leggere: plpgsql e sql, comprese le sql BEGIN ATOMIC, cioe'' i corpi che dbops.fn_corpo_funzione restituisce come testo. Falso per c e internal, il cui prosrc e'' il nome di un simbolo, e per un NULL. E'' il perimetro dei presidi sul corpo: dbops.vw_codici_errore_da_dichiarare, dbops.vw_punti_canale_campo, dbops.vw_funzioni_check_codici, dbops.vw_punti_primo_motivo, dbops.vw_bersagli_non_dichiarati, dbops.vw_stati_check_scrittori. Il perimetro e'' il modello, non il linguaggio: una funzione sql puo'' sollevare un codice come una plpgsql. Un linguaggio nuovo con un corpo leggibile si aggiunge qui, e solo qui.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_corpo_leggibile(oid);

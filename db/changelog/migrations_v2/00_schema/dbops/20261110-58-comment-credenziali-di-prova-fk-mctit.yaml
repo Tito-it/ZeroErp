@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.credenziali_di_prova: il COMMENT dice la FK, non il motivo per non averla
+#   (Q14 ⑩). Brief: brief-db-revisione-dbops, giro 11 (§30).
+#
+#   Il testo di prima diceva «niente FK verso django.auth_user (in CI nasce dopo
+#   Liquibase)»: un fatto usato come ragione, e falso da quando la FK sta nel
+#   ponte di 90_end (90_end/20261110-57). Citava anche un brief (linee-guida-sql
+#   §5d). Solo COMMENT: niente DDL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261110-58-comment-credenziali-di-prova-fk-mctit.yaml
+
+  - changeSet:
+      id: 20261110-58-comment-credenziali-di-prova-fk
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di dbops.credenziali_di_prova: la FK verso django.auth_user in cascata, l'etichetta che va
+        via con la credenziale. Brief: brief-db-revisione-dbops, giro 11.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: dbops, tableName: credenziali_di_prova }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE dbops.credenziali_di_prova IS
+                  'L''etichetta di una credenziale di prova: una riga per ogni credenziale creata dal verbo dei dati di sviluppo (anagrafiche.fn_provisiona_dati_di_sviluppo), nella stessa transazione. Dato di macchina, come dbops.processi_identita. La FK fk_credenziali_di_prova_auth_user verso django.auth_user sta nel ponte di 90_end (nasce dove lo schema di Django c''e''), ON DELETE CASCADE: l''etichetta va via con la sua credenziale (script.fn_elimina_credenziale), e solo cosi''. Non cambia e non si toglie da sola (guard dbops.trgfn_etichette_di_prova_guard); in un''installazione PRODUZIONE non nasce. L''app la legge e non la scrive. Il presidio dbops.vw_radici_di_prova_in_produzione la guarda.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il testo di prima diceva il falso: non si rimette.
+              SELECT 1;

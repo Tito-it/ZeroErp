@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.soggetti_di_prova`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -43,10 +43,12 @@ tutto ciò che il verbo ha costruito.
 
 Stesse regole delle [credenziali di prova](/dbzero/dbops/tabelle/credenziali_di_prova), con
 lo stesso guard: la scrive solo il verbo dei dati di sviluppo, nasce solo in un'installazione
-dichiarata `SVILUPPO`, e modifica, cancellazione e svuotamento sono sempre rifiutati.
+dichiarata `SVILUPPO`, modifica e svuotamento sono sempre rifiutati, e la cancellazione è
+rifiutata finché il soggetto c'è.
 
-A differenza della gemella, il soggetto è legato con una chiave esterna: l'etichetta non può
-puntare a un soggetto che non esiste.
+Come la gemella, il soggetto è legato con una chiave esterna, e l'etichetta non può puntare a
+un soggetto che non esiste. A differenza della gemella il legame non è in cascata: un soggetto
+con l'etichetta non si cancella, e l'etichetta resta con lui.
 
 ---
 
