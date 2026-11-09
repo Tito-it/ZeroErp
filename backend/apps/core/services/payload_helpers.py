@@ -1423,6 +1423,11 @@ def vincolo_violato(exc: Exception, nomi: Iterable[str]) -> str | None:
 #        non accenderne nessuno: manda a correggere un campo giusto. In quei
 #        casi si lascia la tupla a due elementi.
 #
+#        `function_name` e `log_to_db` (2026-11-09, come `PayloadValidator` e
+#        `validate_enum_param`): il chiamante che vuole la violazione nel diario
+#        (`dbops.error_log`) lo dice, col nome della sua funzione. I default sono
+#        quelli di `ErrorManager.raise_error`: chi non li passa non cambia.
+#
 #        Esempio d'uso:
 #
 #            try:
@@ -1452,6 +1457,8 @@ def map_integrity_error(
     fallback_code: str,
     fallback_message: str = "Violazione vincolo DB.",
     context: dict[str, Any] | None = None,
+    function_name: str = "django_service",
+    log_to_db: bool = False,
 ) -> NoReturn:
     ctx = context or {}
 
@@ -1475,6 +1482,8 @@ def map_integrity_error(
             message=message,
             detail=str(exc),
             context={**campi_extra, **({"field": campo} if campo else {})},
+            function_name=function_name,
+            log_to_db=log_to_db,
             cause=exc,
         )
 
@@ -1505,6 +1514,8 @@ def map_integrity_error(
         detail=str(exc),
         context=ctx,
         fields=diagnostica_db(exc).fields,
+        function_name=function_name,
+        log_to_db=log_to_db,
         cause=exc,
     )
 

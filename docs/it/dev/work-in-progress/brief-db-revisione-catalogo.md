@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-09 (giro 1-bis applicato e committato)
 
-**Riparte: Tid**, col via al giro 2 (le quantità e le unità, §7) e i suoi numeri. In parallelo il **team BE**, con
-BE8-BE12 (§5) e BE13-BE15 (§11.6): i giri 1 e 1-bis sono applicati.
+**Riparte: Tid**, col via al giro 2 (le quantità e le unità, §7) e i suoi numeri. Il **team BE** ha chiuso
+BE8-BE15 dei giri 1 e 1-bis (§11.10, 2026-11-09, da committare).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -23,7 +23,7 @@ BE8-BE12 (§5) e BE13-BE15 (§11.6): i giri 1 e 1-bis sono applicati.
 | 5-nonies | ✅ sessione DB, su richiesta di Tid | Commit del giro 1-bis (2026-11-09) | §11.9 | 5-octies |
 | 5-decies | **Tid** ⏭️ | Via al giro 2 coi suoi numeri; le scelte di §10.3 da guardare | §7, §10.3 | 5-nonies |
 | 6 | sessione DB | Giri 2-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-decies |
-| 7 | **team BE** ⏭️ | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), tutti e due applicati; le altre quando il giro corrispondente lo è | §5, §11.6 | — |
+| 7 | team BE ✅ (giri 1 e 1-bis) | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis) fatte il 2026-11-09 (§11.10); le altre quando il giro corrispondente lo è | §5, §11.6, §11.10 | — |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
 
 **Decisioni aperte di Tid:** nessuna nel giro 1-bis; le scelte dentro il giro 1 (§10.3), da guardare. **Da committare:**
@@ -513,11 +513,11 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | BE5 | 5 | Se la vista perde i `*_ref_id` (R7), la proiezione del repository li prende dalle FK |
 | BE6 | — | `offerte_service.py:1178,1209,1273` e `RigheEccezioniDrawer.vue:668` decidono su `is_composito`: verificare se ricopiano una regola del DB (R8) |
 | BE7 | 3 | Se il cambio d'IVA diventa un verbo del kit (Q6), il form dell'articolo lo chiama |
-| BE8 | 1 | I due codici nuovi `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO, campo `valido_al`) ed `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO, campo `valido_al`): mappa degli errori generata (`error_policies_generated.py`) e i18n. `E_ARTICOLO_NON_COMPOSITO` ora porta `campo = prodotto_id` e un bersaglio `ARTICOLO` |
-| BE9 | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE |
-| BE10 | 1 | Il form dell'articolo: `is_composito` e `is_solo_componente` insieme li rifiuta ora un CHECK (23514, `chk_articoli_composito_non_solo_componente`). Il form spegne l'uno quando l'altro è acceso, e il servizio mappa il vincolo a un messaggio |
-| BE11 | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi» |
-| BE12 | 1 | Il picker degli articoli ammessi per la distinta (`catalogo.fn_articoli_ammessi` con `ARTICOLO`) su un padre non composito solleva `E_ARTICOLO_NON_COMPOSITO` invece di restituire una lista vuota: il FE apre il picker solo con `puo_gestire_bom` |
+| BE8 ✅ (2026-11-09) | 1 | I due codici nuovi `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO, campo `valido_al`) ed `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO, campo `valido_al`): mappa degli errori generata (`error_policies_generated.py`) e i18n. `E_ARTICOLO_NON_COMPOSITO` ora porta `campo = prodotto_id` e un bersaglio `ARTICOLO` |
+| BE9 ✅ (2026-11-09) | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE |
+| BE10 ✅ (2026-11-09) | 1 | Il form dell'articolo: `is_composito` e `is_solo_componente` insieme li rifiuta ora un CHECK (23514, `chk_articoli_composito_non_solo_componente`). Il form spegne l'uno quando l'altro è acceso, e il servizio mappa il vincolo a un messaggio |
+| BE11 ✅ (2026-11-09) | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi» |
+| BE12 ✅ (2026-11-09) | 1 | Il picker degli articoli ammessi per la distinta (`catalogo.fn_articoli_ammessi` con `ARTICOLO`) su un padre non composito solleva `E_ARTICOLO_NON_COMPOSITO` invece di restituire una lista vuota: il FE apre il picker solo con `puo_gestire_bom` |
 
 ## 6. Le decisioni di Tid
 
@@ -838,9 +838,9 @@ prima. Prima di riscrivere `vw_articoli_dettaglio` si confronta il suo corpo col
 
 | # | Che cosa |
 | --- | --- |
-| BE13 | `listini_repository.list_bundle_preview` (`:1238`) ricopia il filtro della distinta alla data: legge da `catalogo.fn_distinta_alla_data(%s, %s)` e tiene il `LEFT JOIN` sui prezzi del listino |
-| BE14 | Un kit con la sola distinta passata non compare più fra gli articoli ammessi (Q15). Il FE non ha niente da fare: legge i motivi dalla check |
-| BE15 | Il messaggio di `E_ARTICOLO_KIT_SENZA_COMPONENTI` cambia («non ha componenti in vigore da oggi in poi»): va allineata la frase di riserva in `backend/apps/core/services/error_messages_fallback.py:82`, e l'i18n se la ripete |
+| BE13 ✅ (2026-11-09) | `listini_repository.list_bundle_preview` (`:1238`) ricopia il filtro della distinta alla data: legge da `catalogo.fn_distinta_alla_data(%s, %s)` e tiene il `LEFT JOIN` sui prezzi del listino |
+| BE14 ✅ (2026-11-09) | Un kit con la sola distinta passata non compare più fra gli articoli ammessi (Q15). Il FE non ha niente da fare: legge i motivi dalla check |
+| BE15 ✅ (2026-11-09) | Il messaggio di `E_ARTICOLO_KIT_SENZA_COMPONENTI` cambia («non ha componenti in vigore da oggi in poi»): va allineata la frase di riserva in `backend/apps/core/services/error_messages_fallback.py:82`, e l'i18n se la ripete |
 
 ### 11.7 Che cosa è scritto (2026-11-09)
 
@@ -903,3 +903,27 @@ anche il motivo `SOLO_COMPONENTE` è scritto in più rami: anche questo è giro 
 * **Applicato** da Tid su dbdev e sullo scratch, pgTAP come app verdi (2026-11-09). **Committato** lo stesso giorno, con le
   schede auto-generate rigenerate dei soli oggetti del giro; delle modifiche dell'altra sessione ai due CSV non è entrato
   niente.
+
+### 11.10 Il giro BE dei giri 1 e 1-bis (team BE, 2026-11-09, da committare)
+
+* **BE8, BE15.** `error_policies_generated.py` rigenerato: `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO),
+  `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO), più `E_CONTATTI_SOGGETTO_OBBLIGATORIO` del giro 12 di `dbops`; le altre
+  differenze sono solo note. Ripieghi senza segnaposto per i tre codici nuovi; quello di
+  `E_ARTICOLO_KIT_SENZA_COMPONENTI` ora dice «in vigore da oggi in poi». L'i18n FE non ripete nessuna delle frasi.
+* **BE13.** `list_bundle_preview` legge da `catalogo.fn_distinta_alla_data(padre, data)`, col `LEFT JOIN` sui prezzi
+  della versione; il filtro ricopiato è uscito. Prova sul DB vero:
+  `vendite/tests/db/test_listino_kit_periodicita_db.py` test 8 (un legame futuro, una data prima della distinta).
+  ⚠️ Un legame che ha prezzi bundle non si chiude: lo vieta la FK temporale
+  `fk_listrighe_comp_articoli_comp_temporal`. È il modello, non un difetto; il test usa un legame futuro.
+* **BE11** (decisione di Tid, 2026-11-09: si ritira). Tolti il `DELETE` di
+  `/catalogo/articoli/<id>/componenti/<comp_id>/`, `fn_delete_componente`, `CatalogoBomRepository.delete_componente`,
+  `deleteArticoloComponente` del FE (senza chiamanti) e il loro test. Un legame si chiude con la PATCH su `valido_al`.
+* **BE10.** Il CHECK `chk_articoli_composito_non_solo_componente` passa da `map_integrity_error` (che sostituisce il
+  traduttore locale a testo degli articoli, compreso il duplicato del codice, ora col campo `codice`): 400
+  `E_CATALOGO_VALIDATION` con la frase, senza campo (è la coppia a essere incoerente). Provato sul DB vero. Il form
+  spegne l'interruttore dell'uno finché l'altro è acceso, col perché; nessun valore cambia da solo.
+* **BE12.** Nel drawer dell'articolo la sezione della distinta (e «Gestisci distinta») la apre `puo_gestire_bom` del
+  dettaglio, non il `form.is_composito` non ancora salvato. La lista lo faceva già.
+* **BE9.** La data la legge già la vista; corretti i tre commenti di `ArticoloBomDrawer.vue` che dicevano
+  «= `valido_dal`».
+* **BE14.** Niente da fare.

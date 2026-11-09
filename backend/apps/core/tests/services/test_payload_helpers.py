@@ -92,6 +92,7 @@ Indice test eseguiti:
 79) test_optional_upper                         — 2026-10-09 (regola del 2): strip + upper, vuoto -> None; non-stringa -> VALIDATION col campo
 80) test_require_campi_da_aggiornare_*          — 2026-10-14 (regola del 2, ~45 copie): vuoto -> VALIDATION col codice del dominio; un None e' un reset e conta; un sotto-oggetto conta solo se ha chiavi
 81) test_solo_chiavi_ammesse_*                 — 2026-10-20 (regola del 2, 11 copie): chiave ignota -> VALIDATION; ritorna il dict con vuoti a None; `colonne` tiene le sole colonne
+82) test_map_integrity_error_function_name_e_log_to_db — 2026-11-09: il chiamante li passa, il diario li riceve su match e fallback; senza, nessun log
 """
 
 from decimal import Decimal
@@ -917,6 +918,30 @@ class TestMapIntegrityError(TestCase):
             )
         # Il constraint esatto vince (word boundary esclude fk_foo).
         self.assertEqual(ctx.exception.code, "E_FK_SPECIFIC")
+
+    # Scopo: `function_name` e `log_to_db` arrivano al diario sia sul vincolo
+    #        che ha fatto match sia sul fallback; senza, nessuna scrittura
+    #        (i default di `ErrorManager.raise_error`).
+    def test_map_integrity_error_function_name_e_log_to_db(self):
+        from unittest.mock import patch
+
+        mappa = {"uq_foo": ("E_FOO", "Foo.")}
+        for testo, codice in (('unique constraint "uq_foo"', "E_FOO"), ("altro", "E_FALLBACK")):
+            with self.subTest(codice=codice), patch(
+                "apps.core.services.error_manager.ErrorManager.log_error_only"
+            ) as mock_log:
+                with self.assertRaises(ServiceError) as ctx:
+                    map_integrity_error(
+                        IntegrityError(testo), unique_constraints=mappa,
+                        fallback_code="E_FALLBACK", function_name="dominio.fn_x", log_to_db=True,
+                    )
+                self.assertEqual(ctx.exception.code, codice)
+                mock_log.assert_called_once()
+                self.assertEqual(mock_log.call_args.kwargs["function_name"], "dominio.fn_x")
+        with patch("apps.core.services.error_manager.ErrorManager.log_error_only") as mock_log:
+            with self.assertRaises(ServiceError):
+                map_integrity_error(IntegrityError("altro"), fallback_code="E_FALLBACK")
+            mock_log.assert_not_called()
 
 
 from apps.core.services.payload_helpers import make_db_errors_translator
