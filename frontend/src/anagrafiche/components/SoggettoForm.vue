@@ -62,18 +62,14 @@ const sessoOptions = [
   { label: t('common.sesso_x'), value: 'X' }
 ]
 
-// CF/PIVA bloccati: regola backend-driven via non_editable_fields (Fase 6 B4).
-// nonEditableFields === null → fallback al cablato (create o legacy);
-// nonEditableFields === [] → backend ha risposto, niente bloccato;
-// nonEditableFields === [...] → backend ha indicato i campi bloccati.
-const cfDisabled = computed(() => {
-  if (props.nonEditableFields !== null) return props.nonEditableFields.includes('codice_fiscale')
-  return props.isEdit && !!form.value.codice_fiscale?.trim()
-})
-const pivaDisabled = computed(() => {
-  if (props.nonEditableFields !== null) return props.nonEditableFields.includes('partita_iva')
-  return props.isEdit && !!form.value.partita_iva?.trim()
-})
+// CF/PIVA bloccati: lo dice SOLO il backend, via non_editable_fields (Fase 6 B4).
+// `null` = nessun dettaglio letto (creazione): niente bloccato.
+// ⛔ Fino al 2026-11-09 con `null` il form rifaceva da sé la regola «bloccati
+//    se valorizzati»: una seconda copia, che il giorno in cui la regola passa
+//    al DB (S-BE-3 di brief-db-revisione-dbops) avrebbe continuato a dire la
+//    sua. In modifica il drawer passa sempre la lista del dettaglio.
+const cfDisabled = computed(() => !!props.nonEditableFields?.includes('codice_fiscale'))
+const pivaDisabled = computed(() => !!props.nonEditableFields?.includes('partita_iva'))
 
 // Tipo soggetto filtrato: per ids ammessi (resolver) o tipi_modificabili_ids (edit, backend-driven).
 const tipiSoggettoFiltrati = computed(() => {

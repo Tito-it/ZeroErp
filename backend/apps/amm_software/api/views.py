@@ -444,7 +444,14 @@ class ProcessiListView(AdminAPIView):
         parameters=[
             OpenApiParameter(name="classe", type=str, required=False),
             OpenApiParameter(name="canale", type=str, required=False),
-            OpenApiParameter(name="attivo", type=bool, required=False),
+            OpenApiParameter(
+                name="vivo", type=bool, required=False,
+                description=(
+                    "true = ritiro non raggiunto (obsoleto_dal vuota o futura), "
+                    "false = ritirato. Lo decide il DB (script.fn_e_obsoleto), "
+                    "non la colonna `attivo`."
+                ),
+            ),
             param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
@@ -462,7 +469,7 @@ class ProcessiListView(AdminAPIView):
         return success_response(ProcessiService().list_processi(
             classe=qp_str_upper(qp.get("classe")),
             canale=qp_str_upper(qp.get("canale")),
-            attivo=qp_bool_optional(qp.get("attivo"), "attivo"),
+            vivo=qp_bool_optional(qp.get("vivo"), "vivo"),
             search=qp_str(qp.get("search")),
             limit=limit,
             offset=offset,
@@ -535,6 +542,32 @@ class ProcessiPresidiConteggiView(AdminAPIView):
     # Scopo: I tre numeri della testata, senza righe.
     def get(self, request: Request) -> JsonResponse:
         return success_response(ProcessiService().conteggi_presidi())
+
+
+class ProcessiVocabolariView(AdminAPIView):
+    """GET i vocabolari dei filtri del pannello processi: classi e canali.
+
+    ⭐ Statico, senza DB: sono le costanti con cui la lista rifiuta un filtro
+    (il loro guardrail le confronta coi CHECK di `dbops.processi`). Il client
+    costruisce le tendine da qui invece di ricopiarle.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ProcessiVocabolariResp",
+            fields={"data": inline_serializer(
+                name="ProcessiVocabolariData",
+                fields={
+                    "classi": serializers.ListField(child=serializers.CharField()),
+                    "canali": serializers.ListField(child=serializers.CharField()),
+                },
+            )},
+        )},
+    )
+    # Scopo: Classi e canali ammessi dai filtri della lista.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response(ProcessiService().vocabolari_filtri())
 
 
 class ProcessiDetailView(AdminAPIView):

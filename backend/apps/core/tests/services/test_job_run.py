@@ -134,8 +134,10 @@ class RegisteredJobTests(TestCase):
 
 class RegisteredJobAttoreTests(TestCase):
     # ⭐ Scopo: l'attore (`processo_codice`) e l'utente tecnico arrivano a
-    #    `fn_job_run_start` nelle posizioni giuste. E' il pezzo che rende il
-    #    presidio `dbops.vw_run_senza_attore` capace di svuotarsi.
+    #    `fn_job_run_start` nelle posizioni giuste: e' cio' che lega una corsa
+    #    del giornale al suo processo, che il CHECK
+    #    `chk_job_run_log_processo_dichiarato` pretende. (Il presidio
+    #    `dbops.vw_run_senza_attore` e' ritirato: D42 di brief-db-revisione-dbops.)
     def test_attore_e_utente_arrivano_alla_funzione(self):
         conn, cursor = _mock_connection(start_row=(7, "uuid-7", True))
         with patch(_CONN, conn):

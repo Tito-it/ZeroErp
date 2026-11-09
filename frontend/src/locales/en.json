@@ -1777,7 +1777,12 @@
         "non_abilitata": "The process is switched off on this installation: switch it back on before running it.",
         "non_decidibile": "It is not known whether the process is on: the environment of this installation has not been declared.",
         "gia_in_coda": "Already queued (job #{job_id}): it can be pressed again once that job has finished."
-      }
+      },
+      "vivo_tutti": "Live and retired",
+      "vivo_si": "Live only",
+      "vivo_no": "Retired only",
+      "ritirato_dal": "Retired since {data}",
+      "ritiro_programmato": "Retirement scheduled on {data}"
     },
     "error_log": {
       "titolo": "Technical error log",
