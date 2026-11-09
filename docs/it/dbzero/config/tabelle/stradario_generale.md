@@ -35,8 +35,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_stradario_generale_a10_toponomastica_require_attivo__cb898e | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'toponomastica', 'attivo', 'toponomastica_id', 'id')` |
-| trg_stradario_generale_a10_toponomastica_require_attivo__cb898e | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'toponomastica', 'attivo', 'toponomastica_id', 'id')` |
+| trg_stradario_generale_a10_toponomastica_require_attivo_cb898e | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'toponomastica', 'attivo', 'toponomastica_id', 'id')` |
+| trg_stradario_generale_a10_toponomastica_require_attivo_cb898e | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'toponomastica', 'attivo', 'toponomastica_id', 'id')` |
 | trg_stradario_generale_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_stradario_generale_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_stradario_generale_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stradario_generale_normalize()` |

@@ -31,7 +31,7 @@ CREATE TEMP TABLE tmp_fx AS
 SELECT 'pgtap_sparita_' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSUS') AS tabella;
 
 INSERT INTO dbops.automazione_overlap (target_schema, target_table, key_columns, active, exec_mode, note)
-SELECT 'dbops', f.tabella, ARRAY['id'], true, 'AUTO', 'Fixture pgTAP: tabella che non esiste'
+SELECT 'dbops', f.tabella, '["id"]'::jsonb, true, 'AUTO', 'Fixture pgTAP: tabella che non esiste'
   FROM tmp_fx f;
 
 SELECT lives_ok(

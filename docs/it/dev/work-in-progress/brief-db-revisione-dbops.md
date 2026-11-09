@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 10c applicato e committato; blocco 10c-4 in attesa del via)
+## ⏭️ Chi riparte — aggiornato al 2026-11-09 (blocco 10c-4 applicato, pgTAP verdi, da committare)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -70,7 +70,12 @@ ancora l'EXECUTE sulla procedura nuova: manca la fase post del provisioning.
 §28.6 tutte ok, tranne due che aprono lavoro: `p_cleanup_column` esce dalla firma, `fn_name_from_template` si corregge ora.
 Fase post del provisioning su dbdev **fatta** (Tid, 2026-11-08): `zeroerp_job` ha l'EXECUTE sulla procedura nuova.
 Giro 10c **committato** (2026-11-08, su richiesta di Tid; non pushato).
-**Riparte: Tid**, quando dà il via al blocco 10c-4 (§28.11). La sessione DB è ferma. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+**Via al blocco 10c-4** (Tid, 2026-11-08: «ok procedi, l'altro cantiere è fermo»). **Scritto e provato** su scratch e
+dbdev (§28.12): `20261110-34` … `-41`, il CSV dell'overlap, un pgTAP nuovo e sei riscritti; trovato e curato un difetto
+del riconciliatore ATTIVO sulle partizioni (`-41`).
+**Applicato** da Tid (2026-11-09): migrazione su dbdev e scratch, pgTAP verdi. Le dieci righe dell'overlap solo di dbdev
+**cancellate** (decisione di Tid, §28.12 punto 2).
+**Riparte: Tid** col commit del blocco 10c-4, quando lo chiede. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -178,7 +183,8 @@ ancora le tabelle).
 | 9-sexagies-septdecies | ✅ Tid | Apply del giro 10c su dbdev e scratch, pgTAP verdi (2026-11-08) | §28.10 | 9-sexagies-sexdecies |
 | 9-sexagies-novodecies | ✅ Tid | Fase post del provisioning su dbdev: `zeroerp_job` ha l'EXECUTE sulla procedura nuova (2026-11-08) | §28.11 | 9-sexagies-septdecies |
 | 9-sexagies-vicies-semel | ✅ Tid | N7-bis (a); le scelte di §27.4 e §28.6 (2026-11-08) | §28.11 | 9-sexagies-septdecies |
-| 9-sexagies-vicies-bis | sessione DB, **in attesa del via di Tid** | Blocco 10c-4: overlap in `jsonb` con il CSV; via `p_cleanup_column` dalla firma; `fn_name_from_template` idempotente, col censimento dei nomi vivi | §28.11 | 9-sexagies-vicies-semel |
+| 9-sexagies-vicies-bis | ✅ sessione DB | Blocco 10c-4 scritto e provato (`20261110-34` … `-41`): overlap in `jsonb` con il CSV; via `p_cleanup_column` dalla firma; `fn_name_from_template` idempotente, col censimento dei nomi vivi | §28.11 | 9-sexagies-vicies-semel |
+| 9-sexagies-vicies-ter | ✅ Tid | Apply del blocco 10c-4, pgTAP come app verdi (2026-11-09); le dieci righe dell'overlap solo di dbdev cancellate dalla sessione DB su decisione di Tid | §28.12 | 9-sexagies-vicies-bis |
 | 9-sexagies-vicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 10c (2026-11-08, non pushato) | §28 | 9-sexagies-septdecies |
 | 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
@@ -191,8 +197,8 @@ ancora le tabelle).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** nessuna (§28.11, 2026-11-08).
-**Da committare:** nulla del giro 10c: committato (2026-11-08). I blocchi 10b-3 e 10b-4 sono in `148ec4eb20`. I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
+**Decisioni aperte di Tid:** nessuna sul giro 10c (le righe dell'overlap solo di dbdev: cancellate, §28.12).
+**Da committare:** il blocco 10c-4 (applicato, pgTAP verdi, 2026-11-09). Il giro 10c (blocchi 1-3) è committato (`6a9fec9a44`). I blocchi 10b-3 e 10b-4 sono committati (`148ec4eb20`). Nulla dei blocchi 10b-1 e 10b-2: committati e pushati
 (`cdc563dedb`, 2026-11-08). Sul giro 10a nessuna: le scelte di §25.7 e la forma di N5 (§25.8) sono confermate (2026-11-08). **Da committare:** nulla del giro 10a:
 è committato (`d8492eeb77`, 2026-11-08), `-65` compreso, che è ancora da applicare. Del giro 9 nulla: è committato dal 2026-11-08. ⚠️ Nel working tree restano
 file dell'altro cantiere (`20261109-25` … `-27`, i suoi pgTAP, il suo brief e le sue righe di `codici_errore.csv` e
@@ -4270,3 +4276,77 @@ N7-bis (il CSV dell'overlap, §28.9), da committare.
   database da zero, e la CI si fermerebbe; riscrivere quel file sarebbe un'eccezione, scartata) ✅; 7 `E_GUARD_UTILITY` ✅.
 * **Il blocco 10c-4** porta quindi tre lavori: l'overlap in `jsonb` col CSV; il ritiro di `p_cleanup_column` (DROP e
   CREATE delle due funzioni, il runner del cleanup e i pgTAP che le chiamano); `fn_name_from_template` idempotente.
+
+### 28.12 Blocco 10c-4 — nomi idempotenti, firma del cleanup, overlap in jsonb (2026-11-08/09)
+
+Via di Tid: «ok procedi, ora l'altro cantiere è fermo» (2026-11-08). **Numeri:** l'altro cantiere aveva preso
+`20261110-07` … `-33`; i primi YAML di questo blocco, scritti con `-07` … `-13`, sono stati tolti dall'albero prima che un
+migrate potesse vederli (nessuno era nei `databasechangelog`) e rinumerati dal primo libero: `20261110-34` … `-41`.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261110-34` | `fn_name_from_template` idempotente: il taglio oltre i 63 caratteri non lascia un `_` in coda (decisione §28.11) |
+| `20_code/config/20261110-35` | rinomina del trigger di audit di `config.forme_giuridiche_tipi_soggetto_dettaglio` (`…audit_data__eaaf9f` → `…audit_data_eaaf9f`), changeSet a sé con preCondition `MARK_RAN` sul nome vecchio (§11.5): il runner dell'audit riconosce dalla funzione e non rinomina |
+| `20_code/dbops/20261110-36` | `fn_apply_cleanup_at` e `fn_purge_cleanup_expired` senza `p_cleanup_column` (decisione §28.11), DROP e CREATE, e il runner del cleanup con le chiamate nuove |
+| `20_code/dbops/20261110-37` | `fn_apply_automazione_overlap` legge le chiavi come array JSON; nasce `dbops.fn_jsonb_array_di_testi` per il CHECK |
+| `20_code/dbops/20261110-41` | `fn_drop_triggers_by_function_args`: toglie i trigger montati su una partizione (`tgparentid = 0`), lascia i cloni (§28.12 punto 3) |
+| `80_data/changelog/20261110-38` | `key_columns` e `key_expressions` da `text[]` a `jsonb`, in 80_data perché su un database da zero giri dopo i changeSet vecchi che scrivono il registro con letterali `text[]` (come il `20261109-74`) |
+| `80_data/changelog/20261110-39` | il mirror del CSV `automazione_overlap.csv` (runOnChange; `primaryKey` sulla coppia schema-tabella; `nullValue: NULL`) |
+| `90_end/20261110-40` | CHECK `chk_automazione_overlap_chiavi` sulla forma delle chiavi |
+
+pgTAP nuovo: `dbops/test-nomi-e-chiavi-registri-v1` (9: tipi jsonb, il CHECK, l'idempotenza, nessun trigger vivo con
+`__`, le due firme, nessun doppione ATTIVO). Riscritti: `dbops/test-cleanup-framework`,
+`vendite/test-registri-fatturazione-scadenza-alla-nascita` (le firme), `dbops/test-overlap-tabella-sparita-v1`,
+`test-overlap-regola-e-vincolo-v1`, `test-fn-apply-automazione-overlap-key-expressions-v1`,
+`test-fn-apply-automazione-overlap-where-predicate-v1` (le chiavi come jsonb).
+
+**Le scelte dentro il blocco (da guardare, Tid):**
+
+1. **Il censimento dei nomi** (fatto datato, scratch e dbdev, 2026-11-08): 59 trigger vivi avevano `__` nel nome, 58 della
+   famiglia ATTIVO e uno di audit. I primi li rigenera il runner ATTIVO al primo giro (riconosce dagli argomenti), il
+   secondo lo rinomina il `-35`. Nessun file del repo li nomina, salvo un commento in
+   `catalogo/test-articoli-approvvigionamento-v1`. Gli indici e i vincoli `not_null` con `__` hanno nomi dati da PostgreSQL,
+   non dal template: fuori dal perimetro.
+2. **Il CSV dell'overlap ha le sette righe che nascono dai changelog** (lo scratch). **Su dbdev ce ne sono dieci in più**,
+   tutte spente (`active = false`, note come `non_versionata_o_non_rilevabile` o `exclude_constraint_detected`), scritte
+   dal vecchio seed dell'overlap ritirato: il mirror non le cancella. Sono righe di una macchina sola: **domanda per Tid**
+   — si tolgono a mano da dbdev (sono un difetto di dati, non di codice), o si lasciano? **Deciso** (Tid, 2026-11-09):
+   si tolgono. Cancellate dalla sessione DB su dbdev, in una transazione che pretendeva esattamente dieci righe spente
+   fuori dal CSV; due delle tabelle hanno un EXCLUDE, ma dichiarato a mano (`ex_scb_…`, `ex_src_…`), non della regola.
+   Il registro di dbdev ora ha le sette righe del CSV.
+3. **Un difetto nuovo, trovato provando:** il ramo che riconcilia il nome nel runner ATTIVO, su `vendite.note_preventivo`
+   (una partizione di `vendite.note` con la FK dichiarata sulla partizione), non toglieva il trigger vivo e ne creava un
+   secondo, perché `fn_drop_triggers_by_function_args` escludeva ogni partizione. Il `-41` lo cura (tocca i trigger della
+   partizione stessa, lascia i cloni del padre); il test 9 del pgTAP nuovo presidia i doppioni. È un prerequisito del
+   `-34`: senza, il cambio di nome avrebbe lasciato due REQUIRE sulla stessa riga.
+4. **La rinomina del trigger di audit** è l'unica DDL su un trigger generato del giro, nella forma condizionale di §11.5.
+
+**Le prove** (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML nell'ordine di Liquibase: i `20_code`, il
+`-38`, il mirror simulato sulle sette righe, il `-40`; `BEGIN … ROLLBACK`): andata e ritorno passano su tutti e due; con il
+runner ATTIVO dopo l'SQL, verdi il pgTAP nuovo, i quattro dei trigger ATTIVO, quello dell'overlap e quello del cleanup;
+tutta `dbops/` e i pgTAP che nominano overlap, cleanup, i nomi o le note: sette rossi, uguali senza il blocco (si lanciano
+come app). Guardrail verdi.
+
+**Per Tid:**
+1. **Apply** di `20261110-34` … `-41` e del CSV `automazione_overlap.csv`, su dbdev e scratch.
+2. **`make db-ci-apply`**: il runner ATTIVO rigenera i 58 trigger col nome nuovo (sui due database).
+3. **pgTAP come app:** `dbops/test-nomi-e-chiavi-registri-v1`, `dbops/test-cleanup-framework`,
+   `vendite/test-registri-fatturazione-scadenza-alla-nascita`, `dbops/test-overlap-tabella-sparita-v1`,
+   `dbops/test-overlap-regola-e-vincolo-v1`, `dbops/test-fn-apply-automazione-overlap-key-expressions-v1`,
+   `dbops/test-fn-apply-automazione-overlap-where-predicate-v1`, `dbops/test-anti-overlap-enforcement-gate-v1`,
+   `dbops/test-attivo-due-fk-stessa-coppia-v1`, `dbops/test-trigger-attivo-orfani-v1`,
+   `dbops/test-trigger-attivo-riconoscimento-per-funzione-v1`.
+4. La domanda del punto 2 (le dieci righe di dbdev).
+
+**Applicato** da Tid (2026-11-09) su dbdev e scratch, pgTAP verdi. Resta il commit, quando Tid lo chiede.
+
+Ricadute BE: nessuna (`backend/` non nomina le due funzioni del cleanup né le colonne dell'overlap; grep, 2026-11-08).
+
+**Doc (2026-11-09):** scritta da un agente su brief della sessione DB, riletta dalla sessione. Nuova:
+`dbops/manual/fn_jsonb_array_di_testi.md`. Riscritte: `dbops/manual/fn_name_from_template.md` (ora idempotente),
+`fn_nome_oggetto_dichiarato.md`, `fn_drop_triggers_by_function_args.md` (le partizioni), `fn_apply_cleanup_at.md`,
+`fn_purge_cleanup_expired.md`, `fn_run_automations_cleanup.md` (le firme), `automazione_overlap.md` (chiavi jsonb, il
+CSV), `fn_apply_automazione_overlap.md`; `guide/automazione-db.md` (§4.3, §5.4, la checklist); `linee-guida-sql.md`
+(fuori perimetro, falsa: diceva che un vincolo parziale non lo gestisce il framework, ma lo fa con `where_predicate`).
+La scheda auto-generata di `forme_giuridiche_tipi_soggetto_dettaglio` porta il nome vecchio del trigger fino alla
+rigenerazione dopo l'apply.

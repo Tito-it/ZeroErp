@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -343,8 +343,8 @@ Per tabelle **versionate** (con colonne `valido_dal`/`valido_al` o `valid_from`/
 
 **Componenti:**
 
-* **Config**: `dbops.automazione_overlap` — definisce chiavi logiche (`key_columns` + `key_expressions`), colonne periodo, flag `active` e (opzionale) `where_predicate` per vincoli parziali
-* **Righe**: le scrive a mano chi migra, con changeSet di `80_data`, quando un vincolo nasce o cambia forma: è l'unica sorgente del registro, non c'è una rilevazione automatica dallo schema (vedi [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap))
+* **Config**: `dbops.automazione_overlap` — definisce chiavi logiche (`key_columns` + `key_expressions`, due elenchi di testi), colonne periodo, flag `active` e (opzionale) `where_predicate` per vincoli parziali
+* **Righe**: stanno nel CSV `80_data/sql/dbops/automazione_overlap.csv`, ricaricato a ogni migrate come gli altri registri delle automazioni. Un vincolo che nasce o cambia forma si dichiara lì, a mano: è l'unica sorgente del registro, non c'è una rilevazione automatica dallo schema. Le due chiavi si scrivono come elenchi in formato JSON, e il registro rifiuta un valore di forma diversa (vedi [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap))
 * **Apply**: `dbops.fn_apply_automazione_overlap()` — crea i vincoli EXCLUDE (totali o parziali)
 * **Runner schedulato**: `maintenance.proc_automations_overlap_job()` + job pgAgent `automations_overlap` (ogni giorno alle 21:00) — esegue l'apply periodicamente
 * **Nome del vincolo**: quello della riga o il template `ex_<tabella>_no_overlap`, risolti da [dbops.fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato)
@@ -360,7 +360,8 @@ che combina `NOT abortito AND NOT draft` → esclusività solo all'attivazione);
 **Chiavi su espressione (`key_expressions`):** oltre alle colonne semplici
 (`key_columns`), una chiave può essere un'espressione (es.
 `COALESCE(classe_utenza_id, -1)` per trattare i NULL come uguali). Si valorizza la
-colonna `key_expressions`; le due liste si combinano nella chiave del constraint.
+colonna `key_expressions`; le due liste si combinano nella chiave del constraint,
+prima le colonne e poi le espressioni, ciascuna nell'ordine in cui è scritta.
 
 > ⚠️ `where_predicate` e `key_expressions` sono **frammenti DDL di fiducia**:
 > iniettati as-is nel constraint (espressioni, non quotabili). Vanno scritti **solo
@@ -379,7 +380,7 @@ EXCLUDE viene droppato per errore (es. da un refactor), la passata notturna lo
 * L'apply è idempotente: la regola è applicata se la tabella ha **il suo** vincolo, col nome della riga, o un `UNIQUE … WITHOUT OVERLAPS` sul periodo. Un altro `EXCLUDE` della tabella non conta. **Cambiare** un
   `where_predicate` richiede prima di togliere il vincolo vecchio (il framework non fa `ALTER`)
 * ⭐ Un difetto ferma la regola, non il giro: righe già sovrapposte (`DATI_SOVRAPPOSTI`, con la prima coppia in conflitto nell'audit) o un nome già preso (`NOME_OCCUPATO`) lasciano la tabella senza vincolo e un `WARN`, e le altre regole ricevono il loro
-* ⚠️ Spegnere una regola **non** toglie il suo vincolo: togliere un vincolo d'integrità è una decisione, e la prende chi spegne la riga, con un DROP CONSTRAINT esplicito, e il presidio del vincolo la ricorda finché non è presa
+* ⚠️ Spegnere una regola **non** toglie il suo vincolo: togliere un vincolo d'integrità è una decisione, e la prende chi spegne la riga nel CSV, con un DROP CONSTRAINT esplicito, e il presidio del vincolo la ricorda finché non è presa
 
 Il comportamento completo, con tutti i salti, sta nella pagina di
 [fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap).
@@ -597,13 +598,13 @@ Override disponibili: `ATTIVO_COL`, `STORICO_FK`, `STORICIZZA_COL`, `CODICE_COL`
 
 I template supportano i placeholder: `{schema}`, `{table}`, `{parent}`, `{child}`, `{fk}`, `{op}`, più `{fkhash6}` (sei caratteri ricavati dal nome della FK, sempre) e `{fkhash6_if_long}` (gli stessi, **solo se** senza di loro il nome supererebbe i 63 caratteri). Il motore ATTIVO tratta `{fkhash6_if_long}` come `{fkhash6}` quando due FK darebbero lo stesso nome sulla stessa tabella.
 
-PostgreSQL impone un limite di **63 caratteri** per i nomi degli oggetti. L'helper [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) non abbrevia: un nome entro i 63 caratteri esce così com'è, senza hash. Solo se il nome supera ancora i 63 caratteri viene troncato e completato con un'impronta di sei caratteri: il risultato è stabile, ma non è il nome che si legge nel template, e un trigger così si cerca per funzione e argomenti.
+PostgreSQL impone un limite di **63 caratteri** per i nomi degli oggetti. L'helper [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) non abbrevia: un nome entro i 63 caratteri esce così com'è, senza hash. Solo se il nome supera ancora i 63 caratteri viene troncato e completato con un'impronta di sei caratteri: il risultato è stabile, ma non è il nome che si legge nel template, e un trigger così si cerca per funzione e argomenti. Il nome accorciato è anche **idempotente**: ripassato all'helper, esce uguale.
 
 I registri che dichiarano il nome **riga per riga** — blocco delle cancellazioni, guard
 utility/tipo ruolo, vincoli di non sovrapposizione — lo risolvono con
 [dbops.fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato): il nome
 della riga se c'è e sta nei 63 caratteri, altrimenti il template accorciato come sopra. Un nome
-già risolto, ripassato, esce uguale, cosa che il solo helper dei template non garantisce.
+già risolto, ripassato, esce uguale.
 
 ---
 
@@ -987,7 +988,7 @@ Questa checklist accompagna un lotto che crea o cambia tabelle governate dal fra
 * [ ] Le tabelle nuove hanno le colonne standard che servono (§2, [linee-guida-sql §7](/linee-guida-sql))
 * [ ] Schema nuovo o tabella nuova di `dbops` → riga in `automation_scope.csv`
 * [ ] Tabella storicizzata → riga in `storico_scope_policy.csv`
-* [ ] Colonne extra da bloccare, eccezioni ATTIVO, override, indici FK → righe nei rispettivi CSV
+* [ ] Colonne extra da bloccare, eccezioni ATTIVO, override, indici FK, vincoli di non sovrapposizione → righe nei rispettivi CSV
 * [ ] Nessun changeSet scrive, rinomina o conta i trigger generati (§9.1)
 
 ### Simulazione (facoltativa)

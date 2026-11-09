@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_automazione_overlap`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -71,8 +71,9 @@ sempre `WARN`, e portano lo SQLSTATE:
 
 ### Come nasce il vincolo
 
-* **La chiave**: le colonne di `key_columns`, quotate, e le espressioni di `key_expressions` così
-  come sono scritte, tutte con l'uguaglianza.
+* **La chiave**: le colonne di `key_columns`, quotate, e poi le espressioni di `key_expressions`
+  così come sono scritte, tutte con l'uguaglianza. Le due liste sono array JSON di testi, e
+  entrano nel vincolo nell'ordine dell'array.
 * **Il periodo**, con la sovrapposizione: la colonna range nativa (`range_col`), se c'è; altrimenti
   l'intervallo costruito dalle due date, con gli estremi di `range_bounds` e una fine vuota che
   vale «per sempre».
@@ -128,6 +129,8 @@ SQLSTATE di PostgreSQL e ferma il giro.
 * `db/pgtap/dbops/test-fn-apply-automazione-overlap-key-expressions-v1.sql` — un'espressione di
   chiave entra nel vincolo: due righe con la colonna facoltativa vuota si escludono, una vuota e
   una valorizzata no.
+* `db/pgtap/dbops/test-nomi-e-chiavi-registri-v1.sql` — le chiavi del registro sono `jsonb` e il
+  CHECK ne garantisce la forma.
 * `db/pgtap/dbops/test-overlap-tabella-sparita-v1.sql` — una riga su una tabella inesistente non
   ferma il giro, ed è un salto `TABLE_NOT_FOUND` nell'audit.
 * `db/pgtap/pratiche/test-sospensioni-anti-overlap-data-futura.sql` — il vincolo delle sospensioni,
@@ -157,6 +160,9 @@ SQLSTATE di PostgreSQL e ferma il giro.
   occupato sono salti `DATI_SOVRAPPOSTI` e `NOME_OCCUPATO` (prima i dati sovrapposti fermavano il
   giro e la catena di `ci_apply`); il nome viene da `fn_nome_oggetto_dichiarato`, ed esce il
   ripiego col suffisso `_c` (`20261110-06`, `brief-db-revisione-dbops`, giro 10c).
+* 2026-11-09 — legge `key_columns` e `key_expressions` come array JSON, nell'ordine dell'array
+  (`20261110-37`, brief-db-revisione-dbops, giro 10c): il registro le ha cambiate di tipo per
+  potersi caricare dal suo CSV. Il vincolo che nasce è lo stesso di prima.
 
 ---
 

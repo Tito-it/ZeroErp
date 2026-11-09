@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automazione_overlap: CHECK sulla forma delle chiavi (NULL o array JSON di testi). In 90_end perche' guarda
+#   le righe del seed, che il CSV di 80_data carica prima. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261110-40-alter-automazione-overlap-chk-chiavi-mctit.yaml
+
+  - changeSet:
+      id: 20261110-40-alter-automazione-overlap-chk-chiavi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        automazione_overlap: CHECK sulla forma delle chiavi. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_constraint WHERE conname = 'chk_automazione_overlap_chiavi'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_jsonb_array_di_testi(jsonb)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_overlap
+                  ADD CONSTRAINT chk_automazione_overlap_chiavi
+                      CHECK (dbops.fn_jsonb_array_di_testi(key_columns) AND dbops.fn_jsonb_array_di_testi(key_expressions));
+
+              COMMENT ON CONSTRAINT chk_automazione_overlap_chiavi ON dbops.automazione_overlap IS
+                  'key_columns e key_expressions sono NULL o array JSON di testi (dbops.fn_jsonb_array_di_testi): la forma che dbops.fn_apply_automazione_overlap legge.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_overlap DROP CONSTRAINT IF EXISTS chk_automazione_overlap_chiavi;

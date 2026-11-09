@@ -67,7 +67,7 @@ INSERT INTO dbops.automazione_overlap
   (target_schema, target_table, key_columns, valido_dal_col, valido_al_col,
    range_bounds, constraint_name, active, exec_mode, where_predicate)
 VALUES
-  ('dbops', '_test_overlap_wp', ARRAY['chiave_id'], 'valido_dal', 'valido_al',
+  ('dbops', '_test_overlap_wp', '["chiave_id"]'::jsonb, 'valido_dal', 'valido_al',
    '[]', 'ex__test_overlap_wp_no_overlap', true, 'AUTO', 'attivo IS TRUE');
 
 SELECT dbops.fn_apply_automazione_overlap('AUTO', false);
@@ -129,7 +129,7 @@ INSERT INTO dbops.automazione_overlap
   (target_schema, target_table, key_columns, valido_dal_col, valido_al_col,
    range_bounds, constraint_name, active, exec_mode, where_predicate)
 VALUES
-  ('dbops', '_test_overlap_tot', ARRAY['chiave_id'], 'valido_dal', 'valido_al',
+  ('dbops', '_test_overlap_tot', '["chiave_id"]'::jsonb, 'valido_dal', 'valido_al',
    '[]', 'ex__test_overlap_tot_no_overlap', true, 'AUTO', NULL);
 
 SELECT dbops.fn_apply_automazione_overlap('AUTO', false);

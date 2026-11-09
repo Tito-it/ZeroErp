@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_cleanup`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -68,7 +68,8 @@ del giro finisce solo nell'audit.
   che sceglie anche la colonna base quando la regola non la dichiara.
 * **`CLEANUP_PURGE`**: la dimensione del lotto (di default 5000).
 
-La colonna della scadenza non è un parametro: è sempre `cleanup_at`.
+La colonna della scadenza non è un parametro: è sempre `cleanup_at`, e nemmeno i due passi la
+ricevono.
 
 ⭐ **La colonna di base si dichiara solo dove serve.** È una proprietà della tabella, mentre i
 parametri sono della regola: sulla regola generica, che copre ogni tabella, un valore unico sarebbe
@@ -184,6 +185,9 @@ l'annullamento.
   compresa la generica, e una regola successiva che ricalcolava le scadenze sovrascriveva quella
   più specifica. Escono il parametro `cleanup_column` (la colonna è sempre `cleanup_at`) e il salto
   `MISSING_TTL_DAYS`, che il CHECK del registro rende impossibile.
+* 2026-11-09 — chiama `fn_apply_cleanup_at` e `fn_purge_cleanup_expired` con le firme nuove,
+  senza la colonna della scadenza (`20261110-36`, brief-db-revisione-dbops, giro 10c). Il
+  comportamento del giro non cambia.
 
 ---
 

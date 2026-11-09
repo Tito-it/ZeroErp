@@ -41,16 +41,16 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_resi_riconsegne_a10_guard_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_riconsegne_guard()` |
 | trg_resi_riconsegne_a10_guard_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_riconsegne_guard()` |
+| trg_resi_riconsegne_a10_guard_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_riconsegne_guard()` |
 | trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA')` |
 | trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA')` |
-| trg_resi_righe_riconsegne_a05_guard_legame_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_riga_legame_guard('qta', 'resi_riga_id')` |
 | trg_resi_righe_riconsegne_a05_guard_legame_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_ddt_riga_legame_guard('qta', 'resi_riga_id')` |
+| trg_resi_righe_riconsegne_a05_guard_legame_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_riga_legame_guard('qta', 'resi_riga_id')` |
 | trg_resi_righe_riconsegne_a10_ddt_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ddt_righe', 'attivo', 'ddt_riga_id', 'id')` |
 | trg_resi_righe_riconsegne_a10_ddt_righe_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ddt_righe', 'attivo', 'ddt_riga_id', 'id')` |
-| trg_resi_righe_riconsegne_a10_resi_righe_require_attivo__329762 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'resi_righe', 'attivo', 'resi_riga_id', 'id')` |
-| trg_resi_righe_riconsegne_a10_resi_righe_require_attivo__329762 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'resi_righe', 'attivo', 'resi_riga_id', 'id')` |
+| trg_resi_righe_riconsegne_a10_resi_righe_require_attivo_329762 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'resi_righe', 'attivo', 'resi_riga_id', 'id')` |
+| trg_resi_righe_riconsegne_a10_resi_righe_require_attivo_329762 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'resi_righe', 'attivo', 'resi_riga_id', 'id')` |
 | trg_resi_righe_riconsegne_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_resi_righe_riconsegne_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_resi_righe_riconsegne_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

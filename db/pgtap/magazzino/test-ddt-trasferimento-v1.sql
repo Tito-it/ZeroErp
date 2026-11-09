@@ -148,13 +148,17 @@ SELECT is(
     '10) giacenze: A 6, B 4');
 
 -- 11) niente reso da una bolla di trasferimento
+-- rev 2026-11-09 (brief-db-sorgente-documento-e-riga §7.3, G-3; 20261110-20): la bolla
+--   ha chiave id, quindi il reso la porta in sorgente_id e sorgente_uid resta vuota.
+--   Con l'uid il guard non trovava la bolla e rispondeva «non CONSEGNATO»: il test
+--   non arrivava piu' alla regola del trasferimento.
 SELECT throws_like(
-    format($q$INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
+    format($q$INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_id,
                                         destinatario_soggetto_ruolo_id, emittente_fiscale_id)
               SELECT (SELECT id FROM config.stati_doc_reso WHERE codice_interno = 'DRAFT'),
                      (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA'),
-                     %L::uuid, %s, %s$q$,
-           (SELECT uid FROM _d1), (SELECT cliente_soggetto_ruolo_id FROM _m), (SELECT emittente_fiscale_id FROM _m)),
+                     %s, %s, %s$q$,
+           (SELECT ddt FROM _d1), (SELECT cliente_soggetto_ruolo_id FROM _m), (SELECT emittente_fiscale_id FROM _m)),
     '%trasferimento fra depositi%',
     '11) un reso da una bolla di trasferimento: E_RESO_DA_DDT_TRASFERIMENTO');
 

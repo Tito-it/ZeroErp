@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_name_from_template`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -59,10 +59,12 @@ sei caratteri ricavata dal nome intero. Il risultato è stabile — rigenerare d
 **non è il nome che si legge nel modello**: chi cerca un trigger generato lo cerca per funzione e
 argomenti, non per il nome scritto per esteso, che sul database non esiste.
 
-⚠️ **Non è idempotente sul suo risultato.** Il nome accorciato contiene un doppio trattino basso:
-ripassato dalla funzione come modello, quel trattino si riduce a uno e il nome cambia. Chi deve
-risolvere un nome che può essere già risolto — il nome dichiarato da una riga di un registro, che
-il runner calcola e poi passa a chi crea l'oggetto — usa
+⭐ **È idempotente sul suo risultato.** Il taglio non lascia un trattino basso in coda prima
+dell'impronta, quindi nel nome accorciato non c'è un doppio trattino: un nome già risolto,
+ripassato alla funzione come modello, esce uguale.
+
+Per i nomi che un registro dichiara riga per riga (il nome della riga, oppure il template del
+registro) la porta resta
 [fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato), che lascia
 intatto un nome già nei 63 caratteri e chiama questa funzione solo per il resto.
 
@@ -73,6 +75,20 @@ intatto un nome già nei 63 caratteri e chiama questa funzione solo per il resto
 * `db/pgtap/dbops/test-storico-salto-trigger-presente-v1.sql` — calcola con questa funzione, dal
   modello della regola, il nome del trigger di storicizzazione che il runner deve trovare già
   presente.
+* `db/pgtap/dbops/test-nomi-e-chiavi-registri-v1.sql` — un nome accorciato, ripassato alla
+  funzione, esce uguale; e nessun trigger vivo ha un doppio trattino basso nel nome.
+
+---
+
+### Note di migrazione
+
+* 2026-11-09 — diventa idempotente: prima il taglio a 56 caratteri poteva finire con un trattino
+  basso, e col separatore dell'impronta nasceva un doppio `__`; ripassato al modello, quel trattino
+  si riduceva a uno e il nome cambiava. Cambiano i nomi lunghi dei trigger che avevano il doppio
+  trattino: quelli della regola ATTIVO li rigenera il loro runner, che li riconosce dalla funzione e
+  dagli argomenti; quello di audit di `config.forme_giuridiche_tipi_soggetto_dettaglio` lo rinomina
+  un changeSet a sé, che si salta dove il nome vecchio non c'è (`20261110-34`, `20261110-35`,
+  brief-db-revisione-dbops, giro 10c).
 
 ---
 

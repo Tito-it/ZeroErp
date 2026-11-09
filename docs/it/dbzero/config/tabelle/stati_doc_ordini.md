@@ -59,8 +59,8 @@
 | trg_stati_doc_ordini_a10_ordini_block_deact_upd_fddd2f | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini', 'stato_doc_ordine_id', 'id', 'attivo')` |
 | trg_stati_doc_ordini_a10_ordini_righe_block_deact_upd_79f04e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe', 'stato_doc_ordine_id', 'id', 'attivo')` |
 | trg_stati_doc_ordini_a10_ordini_righe_block_deact_upd_80a7ed | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'stato_doc_ordine_id', 'id', 'attivo')` |
-| trg_stati_doc_ordini_a10_transizioni_stati_ordini_block__46935b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ordini', 'stato_a_id', 'id', 'attivo')` |
-| trg_stati_doc_ordini_a10_transizioni_stati_ordini_block__ad7ffa | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ordini', 'stato_da_id', 'id', 'attivo')` |
+| trg_stati_doc_ordini_a10_transizioni_stati_ordini_block_46935b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ordini', 'stato_a_id', 'id', 'attivo')` |
+| trg_stati_doc_ordini_a10_transizioni_stati_ordini_block_ad7ffa | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ordini', 'stato_da_id', 'id', 'attivo')` |
 | trg_stati_doc_ordini_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_stati_doc_ordini_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 

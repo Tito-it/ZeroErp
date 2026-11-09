@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -768,8 +768,8 @@ ALTER TABLE schema.tabella
 ```
 
 Righe abortite escluse dal predicato `WHERE`: non partecipano al check di overlap.
-`dbops.automazione_overlap` deve restare `active = false` per la tabella
-(il constraint parziale non e' gestibile dal framework standard).
+Il vincolo parziale lo genera il framework: la regola di `dbops.automazione_overlap` della
+tabella porta il predicato in `where_predicate` (vedi la pagina della tabella).
 
 > Prima applicazione: `vendite.contratti`, migration `20260521-01..03`.
 

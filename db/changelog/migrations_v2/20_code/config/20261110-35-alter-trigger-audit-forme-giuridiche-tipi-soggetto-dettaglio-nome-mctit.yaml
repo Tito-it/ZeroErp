@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il trigger di audit di config.forme_giuridiche_tipi_soggetto_dettaglio prende il nome che il template da' dopo il
+#   -34 (un trattino basso in meno). Il runner dell'audit riconosce il trigger dalla funzione e non lo rinomina: senza
+#   questo changeSet il nome vecchio resterebbe. Un trigger generato da ci_apply: changeSet a se', con la sola
+#   rinomina e una preCondition MARK_RAN sul nome vecchio (linee-guida-sql §11.5), quindi su un database da zero
+#   (dove il trigger nasce dopo, gia' col nome nuovo) si salta. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261110-35-alter-trigger-audit-forme-giuridiche-tipi-soggetto-dettaglio-nome-mctit.yaml
+
+  - changeSet:
+      id: 20261110-35-alter-trigger-audit-forme-giuridiche-tipi-soggetto-dettaglio-nome
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rinomina del trigger di audit col nome nuovo del template, solo dove c'e' il vecchio. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_trigger
+               WHERE tgrelid = to_regclass('config.forme_giuridiche_tipi_soggetto_dettaglio')
+                 AND tgname = 'trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data__eaaf9f'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TRIGGER trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data__eaaf9f ON config.forme_giuridiche_tipi_soggetto_dettaglio RENAME TO trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data_eaaf9f;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TRIGGER trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data_eaaf9f ON config.forme_giuridiche_tipi_soggetto_dettaglio RENAME TO trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data__eaaf9f;

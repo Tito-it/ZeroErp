@@ -19,8 +19,8 @@ AS $function$
 -- Scopo: applica vincoli EXCLUDE GiST su tabelle configurate in
 --   dbops.automazione_overlap (active=true). Dual codepath periodo:
 --   colonna daterange nativa (range_col) o espressione calcolata
---   (valido_dal/al). Chiavi: colonne semplici (key_columns, validate e
---   quotate) + espressioni (key_expressions, as-is). EXCLUDE parziali
+--   (valido_dal/al). Chiavi: colonne semplici (key_columns, array JSON, validate e
+--   quotate) + espressioni (key_expressions, array JSON, as-is). EXCLUDE parziali
 --   via where_predicate (NULL = totale). Idempotente: salta se esiste
 --   gia' il SUO vincolo (per nome) o un temporal UNIQUE sulla colonna periodo.
 DECLARE
@@ -74,8 +74,9 @@ BEGIN
     END IF;
 
     -- Serve almeno una chiave: colonna semplice o espressione
-    IF (rconf.key_columns IS NULL OR array_length(rconf.key_columns, 1) IS NULL)
-       AND (rconf.key_expressions IS NULL OR array_length(rconf.key_expressions, 1) IS NULL) THEN
+    -- key_columns e key_expressions sono array JSON di testi (chk_automazione_overlap_chiavi).
+    IF COALESCE(jsonb_array_length(rconf.key_columns), 0) = 0
+       AND COALESCE(jsonb_array_length(rconf.key_expressions), 0) = 0 THEN
       PERFORM dbops.fn_audit_log_once(
         p_function_name => 'dbops.fn_apply_automazione_overlap',
         p_status        => v_skip_status,
@@ -137,7 +138,7 @@ BEGIN
     v_cols := ARRAY[]::text[];
     v_mancanti := ARRAY[]::text[];
     IF rconf.key_columns IS NOT NULL THEN
-      FOREACH v_col IN ARRAY rconf.key_columns
+      FOR v_col IN SELECT k.v FROM jsonb_array_elements_text(rconf.key_columns) WITH ORDINALITY AS k(v, i) ORDER BY k.i
       LOOP
         IF dbops.fn_col_exists(rconf.target_schema, rconf.target_table, v_col) THEN
           v_cols := array_append(v_cols, quote_ident(v_col) || ' WITH =');
@@ -171,7 +172,7 @@ BEGIN
 
     -- 2) espressioni (key_expressions): iniettate as-is (DDL di fiducia)
     IF rconf.key_expressions IS NOT NULL THEN
-      FOREACH v_col IN ARRAY rconf.key_expressions
+      FOR v_col IN SELECT k.v FROM jsonb_array_elements_text(rconf.key_expressions) WITH ORDINALITY AS k(v, i) ORDER BY k.i
       LOOP
         IF COALESCE(btrim(v_col), '') <> '' THEN
           v_cols := array_append(v_cols, v_col || ' WITH =');
@@ -356,7 +357,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
-IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap (righe active, exec_mode AUTO o uguale a p_exec_mode). Chiavi: key_columns (colonne quotate, devono esistere tutte) + key_expressions (espressioni as-is). EXCLUDE parziali via where_predicate (NULL = totale). Periodo da range_col o da valido_dal/al. Nome del vincolo: constraint_name o il template ex_<tabella>_no_overlap (dbops.fn_nome_oggetto_dichiarato). La regola e'' applicata solo col suo vincolo (per nome) o con un UNIQUE WITHOUT OVERLAPS sul periodo: un altro EXCLUDE della tabella non conta. Salti dichiarati, che non fermano il giro: TABLE_NOT_FOUND, NO_KEY_COLUMNS, RANGE_COL_MISSING, PERIOD_COLUMNS_MISSING, KEY_COLUMN_MISSING (una colonna della chiave non c''e'': il vincolo nascerebbe piu'' severo), DATI_SOVRAPPOSTI (righe gia'' sovrapposte, 23P01: il vincolo non nasce, l''audit WARN porta il dettaglio della prima coppia), NOME_OCCUPATO. Su una regola spenta il vincolo non si toglie da solo: togliere un vincolo d''integrita'' e'' una decisione. key_expressions e where_predicate sono DDL di fiducia, solo DBA.';
+IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap (righe active, exec_mode AUTO o uguale a p_exec_mode). Chiavi: key_columns (array JSON di nomi di colonna, quotati, devono esistere tutti) + key_expressions (array JSON di espressioni, as-is), nell''ordine dell''array. EXCLUDE parziali via where_predicate (NULL = totale). Periodo da range_col o da valido_dal/al. Nome del vincolo: constraint_name o il template ex_<tabella>_no_overlap (dbops.fn_nome_oggetto_dichiarato). La regola e'' applicata solo col suo vincolo (per nome) o con un UNIQUE WITHOUT OVERLAPS sul periodo: un altro EXCLUDE della tabella non conta. Salti dichiarati, che non fermano il giro: TABLE_NOT_FOUND, NO_KEY_COLUMNS, RANGE_COL_MISSING, PERIOD_COLUMNS_MISSING, KEY_COLUMN_MISSING (una colonna della chiave non c''e'': il vincolo nascerebbe piu'' severo), DATI_SOVRAPPOSTI (righe gia'' sovrapposte, 23P01: il vincolo non nasce, l''audit WARN porta il dettaglio della prima coppia), NOME_OCCUPATO. Su una regola spenta il vincolo non si toglie da solo: togliere un vincolo d''integrita'' e'' una decisione. key_expressions e where_predicate sono DDL di fiducia, solo DBA.';
 ```
 
 </div>
