@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | target_schema | text | NO |  |
 | target_table | text | NO |  |
-| key_columns | text[] | YES |  |
+| key_columns | jsonb | YES |  |
 | valido_dal_col | text | NO | 'valido_dal'::text |
 | valido_al_col | text | NO | 'valido_al'::text |
 | range_bounds | text | NO | '[]'::text |
@@ -22,11 +22,12 @@
 | user_insert | text | NO | CURRENT_USER |
 | range_col | text | YES |  |
 | where_predicate | text | YES |  |
-| key_expressions | text[] | YES |  |
+| key_expressions | jsonb | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_automazione_overlap_chiavi |  |
 | PRIMARY KEY | pk_automazione_overlap | target_schema, target_table |
 
 ## 📑 Indici

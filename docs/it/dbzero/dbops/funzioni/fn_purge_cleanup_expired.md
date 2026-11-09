@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_purge_cleanup_expired`
 
 ```sql
-CREATE FUNCTION fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_column text, p_batch_limit integer, p_dry_run boolean)
+CREATE FUNCTION fn_purge_cleanup_expired(p_schema text, p_table text, p_batch_limit integer, p_dry_run boolean)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_column text DEFAULT 'cleanup_at'::text, p_batch_limit integer DEFAULT 5000, p_dry_run boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION dbops.fn_purge_cleanup_expired(p_schema text, p_table text, p_batch_limit integer DEFAULT 5000, p_dry_run boolean DEFAULT false)
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
@@ -27,8 +27,7 @@ BEGIN
   --   Elimina record con cleanup_at scaduto, a batch.
   --
   -- Regole:
-  --   - cleanup_at deve esistere; e' il nome fisso del framework:
-  --     p_cleanup_column puo' solo confermarlo (NULL o 'cleanup_at')
+  --   - cleanup_at deve esistere; e' il nome fisso del framework
   --   - p_batch_limit default 5000
   --   - se p_dry_run=true ritorna il numero record eleggibili
   -- =========================================================
@@ -39,14 +38,6 @@ BEGIN
       NULL::uuid,
       'p_schema e p_table obbligatori'
     );
-  END IF;
-
-  IF NULLIF(btrim(p_cleanup_column), '') IS DISTINCT FROM NULL
-     AND btrim(p_cleanup_column) <> 'cleanup_at' THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'dbops.fn_purge_cleanup_expired', 'E_PARAMETRO_INVALIDO',
-      jsonb_build_object('parametro', 'p_cleanup_column', 'valore', p_cleanup_column),
-      NULL::uuid, 'la colonna della scadenza e'' cleanup_at');
   END IF;
 
   IF v_limit < 1 THEN
@@ -92,8 +83,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_column text, p_batch_limit integer, p_dry_run boolean)
-IS 'Cancella a batch le righe di p_schema.p_table con cleanup_at scaduto (cleanup_at <= now()); cleanup_at NULL non scade. p_cleanup_column puo'' solo confermare cleanup_at, nome fisso del framework (NULL o ''cleanup_at'', altro → E_PARAMETRO_INVALIDO). p_batch_limit: righe per batch (default 5000, 0 o negativo = 5000). p_dry_run: conta senza cancellare. Tabella senza cleanup_at: 0. Ritorna le righe cancellate (o contate). La chiama dbops.fn_run_automations_cleanup per le regole CLEANUP_PURGE.';
+COMMENT ON FUNCTION dbops.fn_purge_cleanup_expired(p_schema text, p_table text, p_batch_limit integer, p_dry_run boolean)
+IS 'Cancella a batch le righe di p_schema.p_table con cleanup_at scaduto (cleanup_at <= now()); cleanup_at NULL non scade. La colonna e'' cleanup_at, nome fisso del framework. p_batch_limit: righe per batch (default 5000, 0 o negativo = 5000). p_dry_run: conta senza cancellare. Tabella senza cleanup_at: 0. Ritorna le righe cancellate (o contate). La chiama dbops.fn_run_automations_cleanup per le regole CLEANUP_PURGE.';
 ```
 
 </div>

@@ -237,8 +237,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- 🟡 **La provenienza ha un modello solo: in chiusura (giro finale bis, BE-G4-a, archiviazione)**
-  (`work-in-progress/brief-db-sorgente-documento-e-riga.md`): una riga che «nasce da» un documento lo dice
+- ✅ **La provenienza ha un modello solo: chiuso il 2026-11-08**
+  (`work-done/brief-db-sorgente-documento-e-riga.md`): una riga che «nasce da» un documento lo dice
   con il tipo (`sorgente_tipo_id`), **una** chiave del documento (`sorgente_id` o `sorgente_uid`, secondo il
   `key_selector` del tipo: K-1 resta) e la riga a parte (`sorgente_riga`); `CHECK` di forma per tabella, il BB
   che scrive (`script.fn_sorgente_chiave`), il guard unico (`script.trgfn_guard_sorgente`), i lettori trasversali
@@ -247,8 +247,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   nelle sue attività); lo scope `MAGAZZINO` e il parametro `attivita_fatturabili_require_commessa` sono ritirati. La regola è in `linee-guida-sql.md` §6e, il meccanismo
   nella guida `sorgente-polimorfa`, il presidio in CI `dbops/test-sorgenti-struttura-v1`. Fuori: gli acquisti
   (le quattro tabelle restano nella grammatica precedente, elenco dichiarato del presidio, col cantiere
-  `acquisti`). Restano: l'apply del giro finale bis (il ritiro di G-4 dopo BE-G4-a), BE-Z.6-a, BE-G3-a,
-  l'archiviazione. Aperto a parte: `work-in-progress/brief-db-stati-documento-dal-vocabolario.md` (decisioni prese,
+  `acquisti`). DB, BE/FE, smoke e documentazione chiusi; BE fino al merge #71. Aperto a parte: `work-in-progress/brief-db-stati-documento-dal-vocabolario.md` (decisioni prese,
   aspetta il via).
 - ✅ **Liste ancora su `DataTable` grezza, secondo giro: chiuso il 2026-11-03**
   (`work-done/brief-db-liste-datatable-grezze-secondo-giro.md`): sette liste a catalogo (107-113), la

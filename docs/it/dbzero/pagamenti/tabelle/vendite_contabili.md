@@ -72,8 +72,8 @@
 | trg_vendite_contabili_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_transizione()` |
 | trg_vendite_contabili_a10_guard_validazione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_validazione()` |
 | trg_vendite_contabili_a10_guard_verifica_chiusura_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_chiusura()` |
-| trg_vendite_contabili_a10_registri_fatturazione_require__eb4fe3 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
-| trg_vendite_contabili_a10_registri_fatturazione_require__eb4fe3 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
+| trg_vendite_contabili_a10_registri_fatturazione_require_eb4fe3 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
+| trg_vendite_contabili_a10_registri_fatturazione_require_eb4fe3 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
 | trg_vendite_contabili_a10_sorgente_in_uscita_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_sorgente_in_uscita()` |
 | trg_vendite_contabili_a10_vendite_contabili_stati_requir_c1cc51 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_stati', 'attivo', 'stato_id', 'id')` |
 | trg_vendite_contabili_a10_vendite_contabili_stati_requir_c1cc51 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_stati', 'attivo', 'stato_id', 'id')` |

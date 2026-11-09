@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_purge_cleanup_expired`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -65,9 +65,9 @@ la funzione fallisce, e il runner registra la tabella come bloccata e va avanti.
 
 ### La colonna è sempre `cleanup_at`
 
-La scadenza sta in `cleanup_at`, nome fisso del framework. Il parametro `p_cleanup_column` resta
-nella firma ma può solo confermarlo: vuoto o `cleanup_at`; un altro nome è un errore. Se la tabella
-non ha `cleanup_at`, la funzione non fa niente e restituisce zero.
+La scadenza sta in `cleanup_at`, nome fisso del framework, e non è un parametro: la funzione
+riceve schema, tabella, dimensione del lotto e simulazione. Se la tabella non ha `cleanup_at`, la
+funzione non fa niente e restituisce zero.
 
 ⚠️ La funzione non legge le esclusioni del cleanup: chi la chiama a mano su una tabella esclusa
 la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
@@ -77,7 +77,6 @@ la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
 ### Codici errore
 
 * `E_GENERICO` — schema o tabella mancanti.
-* `E_PARAMETRO_INVALIDO` — una colonna di scadenza diversa da `cleanup_at`.
 
 ---
 
@@ -88,6 +87,7 @@ la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
 * `db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql` — su un registro dei log
   di fatturazione la simulazione vede la riga scaduta e il guard la lascia cancellare; su
   `fatture_log` il purge di un critico scaduto spegne il critico della fattura.
+* `db/pgtap/dbops/test-nomi-e-chiavi-registri-v1.sql` — la firma non ha più `p_cleanup_column`.
 
 ---
 
@@ -95,6 +95,10 @@ la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
 
 * 2026-11-08 — la colonna della scadenza è sempre `cleanup_at` (`20261109-88`,
   brief-db-revisione-dbops, giro 10b): prima il parametro la poteva cambiare.
+* 2026-11-09 — il parametro `p_cleanup_column` esce dalla firma, che diventa schema, tabella,
+  dimensione del lotto e simulazione; la funzione è stata ricreata e il runner la chiama così
+  (`20261110-36`, brief-db-revisione-dbops, giro 10c). Esce anche l'errore
+  `E_PARAMETRO_INVALIDO`, che scattava solo su quel parametro.
 
 ---
 

@@ -264,7 +264,7 @@ WITH ins AS (
 SELECT * FROM ins;
 
 SELECT cmp_ok(
-    dbops.fn_purge_cleanup_expired('vendite', 'fatturazione_lotti_log', 'cleanup_at', 5000, true),
+    dbops.fn_purge_cleanup_expired('vendite', 'fatturazione_lotti_log', 5000, true),
     '>=', 1,
     '11. il purge (dry-run) vede la riga scaduta: e'' lui che la ritirera'''
 );

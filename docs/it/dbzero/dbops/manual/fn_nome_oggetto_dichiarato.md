@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_nome_oggetto_dichiarato`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -58,10 +58,9 @@ Un nome vuoto o fatto di soli spazi vale come assente.
 Un nome già risolto, ripassato alla funzione, esce **uguale**. Serve perché il runner calcola il
 nome atteso e lo passa a chi crea l'oggetto, che lo ricalcola.
 
-[fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) da sola non lo è: il nome
-accorciato contiene un doppio trattino basso, e ripassandolo dal template quel trattino verrebbe
-ridotto a uno, dando un nome diverso. Per questo un nome che sta già nei 63 caratteri non passa dal
-template.
+Lo è anche [fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template), che non lascia
+più un doppio trattino basso nel nome accorciato. Un nome che sta già nei 63 caratteri, comunque,
+non passa dal template: esce come la riga lo scrive.
 
 ---
 
@@ -97,6 +96,8 @@ coincidere.
   `brief-db-revisione-dbops`, giro 10c). Prima il blocco delle cancellazioni componeva il nome
   senza accorciarlo, e il vincolo di non sovrapposizione aveva una variante col suffisso `_c`,
   ritirata.
+* 2026-11-09 — l'idempotenza non dipende più solo da questa funzione: anche
+  `fn_name_from_template` lo è (`20261110-34`, brief-db-revisione-dbops, giro 10c).
 
 ---
 

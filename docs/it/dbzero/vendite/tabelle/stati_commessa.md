@@ -47,8 +47,8 @@
 |------|--------|--------|--------|
 | trg_stati_commessa_a10_commesse_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse', 'stato_commessa_id', 'id', 'attivo')` |
 | trg_stati_commessa_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
-| trg_stati_commessa_a10_transizioni_stati_commessa_block__a15bfb | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'transizioni_stati_commessa', 'stato_a_id', 'id', 'attivo')` |
-| trg_stati_commessa_a10_transizioni_stati_commessa_block__f860d1 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'transizioni_stati_commessa', 'stato_da_id', 'id', 'attivo')` |
+| trg_stati_commessa_a10_transizioni_stati_commessa_block_a15bfb | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'transizioni_stati_commessa', 'stato_a_id', 'id', 'attivo')` |
+| trg_stati_commessa_a10_transizioni_stati_commessa_block_f860d1 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'transizioni_stati_commessa', 'stato_da_id', 'id', 'attivo')` |
 | trg_stati_commessa_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_stati_commessa_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 

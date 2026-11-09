@@ -35,12 +35,12 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_tipi_fondi_fattura_a10_fatture_fondi_fattura_block_d_5495a3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_fondi_fattura', 'tipo_fondo_fattura_id', 'id', 'attivo')` |
-| trg_tipi_fondi_fattura_a10_fatture_fondi_fattura_source__e5a0fb | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_fondi_fattura_source', 'tipo_fondo_fattura_id', 'id', 'attivo')` |
+| trg_tipi_fondi_fattura_a10_fatture_fondi_fattura_source_e5a0fb | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_fondi_fattura_source', 'tipo_fondo_fattura_id', 'id', 'attivo')` |
 | trg_tipi_fondi_fattura_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_tipi_fondi_fattura_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_tipi_fondi_fattura_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_tipi_fondi_fattura_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_fondi_fattura_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tipi_fondi_fattura_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

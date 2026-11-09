@@ -61,7 +61,7 @@ INSERT INTO dbops.automazione_overlap
   (target_schema, target_table, key_columns, key_expressions, valido_dal_col,
    valido_al_col, range_bounds, constraint_name, active, exec_mode, where_predicate)
 VALUES
-  ('dbops', '_test_overlap_kx', ARRAY['k1'], ARRAY['COALESCE(classe, ''-1''::integer)'],
+  ('dbops', '_test_overlap_kx', '["k1"]'::jsonb, '["COALESCE(classe, ''-1''::integer)"]'::jsonb,
    'valido_dal', 'valido_al', '[]', 'ex__test_overlap_kx_no_overlap', true, 'AUTO', NULL);
 
 SELECT dbops.fn_apply_automazione_overlap('AUTO', false);

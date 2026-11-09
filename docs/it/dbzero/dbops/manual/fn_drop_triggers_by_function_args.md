@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_drop_triggers_by_function_args`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -36,8 +36,10 @@ con la stessa funzione e gli stessi argomenti, poi crea.
 ### Che cosa toglie
 
 * Solo i trigger **utente** della tabella indicata; i trigger interni di PostgreSQL restano.
-* Se la tabella indicata è una **partizione**, non toglie niente: i trigger di una tabella
-  partizionata si governano sul padre.
+* Su una **partizione** toglie i trigger montati sulla partizione stessa — il caso delle note dei
+  documenti, dove la chiave esterna sta sulla partizione e il runner ATTIVO monta lì i suoi
+  trigger. Lascia stare solo i **cloni** dei trigger di un padre partizionato, che si governano sul
+  padre.
 * La funzione si indica con schema e nome, e si riconosce per **identità**: la risposta è la stessa
   con qualunque `search_path` di chi chiama. Una funzione che non esiste non ha trigger da togliere,
   e la risposta è zero.
@@ -63,6 +65,18 @@ com'è.
 `dbops/test-trigger-attivo-riconoscimento-per-funzione-v1`: toglie il solo trigger con gli
 argomenti chiesti e lascia gli altri sulla stessa tabella, anche col `search_path`
 dell'applicazione; per una funzione che non esiste risponde zero.
+
+`dbops/test-nomi-e-chiavi-registri-v1`: nessuna tabella ha due trigger ATTIVO con la stessa
+funzione e gli stessi argomenti.
+
+---
+
+### Note di migrazione
+
+* 2026-11-09 — tocca anche i trigger montati su una partizione. Prima escludeva ogni partizione:
+  sulle tabelle con la chiave esterna dichiarata sulla partizione il runner ATTIVO, riconciliando
+  un nome cambiato, non toglieva il trigger vivo e ne creava un secondo accanto
+  (`20261110-41`, brief-db-revisione-dbops, giro 10c).
 
 ---
 

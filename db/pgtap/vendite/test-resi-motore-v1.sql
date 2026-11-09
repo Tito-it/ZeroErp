@@ -321,9 +321,12 @@ SELECT b.ddt_id FROM dbops.fn_pgtap_crea_ddt_da_ordine('resi motore C', 'DRAFT',
            p_articolo_id          => (SELECT articolo_id FROM tmp_refs),
            p_fatturazione_trigger => 'SPEDITO') b;
 
+-- rev 2026-11-09 (brief-db-sorgente-documento-e-riga §7.3, G-3; 20261110-20): la bolla
+--   va in sorgente_id. Con sorgente_uid il guard non trovava la bolla e dava lo stesso
+--   P0001: il test era verde per la ragione sbagliata (bolla assente, non in DRAFT).
 SELECT throws_ok(
-  format($q$INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-             SELECT %s, %s, (SELECT uid FROM vendite.ddt WHERE id=%s), false, '{}'::jsonb$q$,
+  format($q$INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_id, storicizza, meta)
+             SELECT %s, %s, %s, false, '{}'::jsonb$q$,
          (SELECT stato_reso_draft_id FROM tmp_refs), (SELECT sorgente_ddt_id FROM tmp_refs),
          (SELECT ddt_id FROM tmp_ddt_c)),
   'P0001', NULL, '24) reso da DDT non CONSEGNATO -> E_RESO_DDT_NON_CONSEGNATO');

@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_apply_cleanup_at`
 
 ```sql
-CREATE FUNCTION fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_column text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean, p_dry_run boolean)
+CREATE FUNCTION fn_apply_cleanup_at(p_schema text, p_table text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean, p_dry_run boolean)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_colum
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_column text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean DEFAULT false, p_dry_run boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION dbops.fn_apply_cleanup_at(p_schema text, p_table text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean DEFAULT false, p_dry_run boolean DEFAULT false)
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
@@ -30,8 +30,7 @@ BEGIN
   --   - p_ttl_days obbligatorio (>= 0)
   --   - p_base_ts_column obbligatoria: la sceglie chi chiama, con
   --     dbops.fn_cleanup_at_regola (il runner); qui non si indovina
-  --   - la colonna e' cleanup_at, nome fisso del framework:
-  --     p_cleanup_column puo' solo confermarlo (NULL o 'cleanup_at')
+  --   - la colonna e' cleanup_at, nome fisso del framework
   --   - se p_dry_run=true ritorna il conteggio righe potenziali
   --   - se apply_on_update=false aggiorna solo righe senza cleanup_at
   --   - righe con la base NULL: non si toccano (non scadono)
@@ -44,14 +43,6 @@ BEGIN
       NULL::uuid,
       'p_schema e p_table obbligatori'
     );
-  END IF;
-
-  IF NULLIF(btrim(p_cleanup_column), '') IS DISTINCT FROM NULL
-     AND btrim(p_cleanup_column) <> 'cleanup_at' THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'dbops.fn_apply_cleanup_at', 'E_PARAMETRO_INVALIDO',
-      jsonb_build_object('parametro', 'p_cleanup_column', 'valore', p_cleanup_column),
-      NULL::uuid, 'la colonna della scadenza e'' cleanup_at');
   END IF;
 
   IF v_base_col IS NULL THEN
@@ -114,8 +105,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_column text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean, p_dry_run boolean)
-IS 'Scrive cleanup_at = colonna base + p_ttl_days sulle righe di p_schema.p_table: il pregresso del cleanup, chiamato da dbops.fn_run_automations_cleanup con la regola di dbops.fn_cleanup_at_regola. p_base_ts_column obbligatoria (la sceglie il chiamante, qui non si indovina); p_cleanup_column puo'' solo confermare cleanup_at, nome fisso del framework (NULL o ''cleanup_at'', altro → E_PARAMETRO_INVALIDO). p_apply_on_update false: solo le righe con cleanup_at NULL; true: anche quelle con una scadenza diversa. Le righe con la base NULL non si toccano. p_dry_run: conta senza scrivere. Tabella senza cleanup_at o senza la colonna base: 0. Ritorna le righe scritte (o contate).';
+COMMENT ON FUNCTION dbops.fn_apply_cleanup_at(p_schema text, p_table text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean, p_dry_run boolean)
+IS 'Scrive cleanup_at = colonna base + p_ttl_days sulle righe di p_schema.p_table: il pregresso del cleanup, chiamato da dbops.fn_run_automations_cleanup con la regola di dbops.fn_cleanup_at_regola. La colonna e'' cleanup_at, nome fisso del framework. p_base_ts_column obbligatoria (la sceglie il chiamante, qui non si indovina). p_apply_on_update false: solo le righe con cleanup_at NULL; true: anche quelle con una scadenza diversa. Le righe con la base NULL non si toccano. p_dry_run: conta senza scrivere. Tabella senza cleanup_at o senza la colonna base: 0. Ritorna le righe scritte (o contate).';
 ```
 
 </div>

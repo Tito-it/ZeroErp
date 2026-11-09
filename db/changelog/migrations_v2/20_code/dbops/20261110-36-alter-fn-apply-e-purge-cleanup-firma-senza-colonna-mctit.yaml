@@ -1,0 +1,1032 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_apply_cleanup_at e dbops.fn_purge_cleanup_expired: p_cleanup_column esce dalla firma (decisione di Tid,
+#   §28.11: un parametro che rappresenta una manopola ritirata non resta). DROP e CREATE delle due funzioni, e
+#   dbops.fn_run_automations_cleanup, l'unico chiamante, con le chiamate nuove. Corpi di partenza dal catalogo dello
+#   scratch (2026-11-08); rollback = le firme, i corpi e i COMMENT di prima. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-36-alter-fn-apply-e-purge-cleanup-firma-senza-colonna-mctit.yaml
+
+  - changeSet:
+      id: 20261110-36-alter-fn-apply-e-purge-cleanup-firma-senza-colonna
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_apply_cleanup_at e fn_purge_cleanup_expired senza p_cleanup_column. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_apply_cleanup_at(text,text,text,text,integer,boolean,boolean)')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_purge_cleanup_expired(text,text,text,integer,boolean)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION dbops.fn_apply_cleanup_at(text, text, text, text, integer, boolean, boolean);
+              DROP FUNCTION dbops.fn_purge_cleanup_expired(text, text, text, integer, boolean);
+
+              CREATE FUNCTION dbops.fn_apply_cleanup_at(p_schema text, p_table text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean DEFAULT false, p_dry_run boolean DEFAULT false)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_base_col text := NULLIF(btrim(p_base_ts_column), '');
+                v_sql text;
+                v_count integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Scrive cleanup_at = <colonna base> + ttl_days sulle righe
+                --   di una tabella (il pregresso del cleanup).
+                --
+                -- Regole:
+                --   - p_ttl_days obbligatorio (>= 0)
+                --   - p_base_ts_column obbligatoria: la sceglie chi chiama, con
+                --     dbops.fn_cleanup_at_regola (il runner); qui non si indovina
+                --   - la colonna e' cleanup_at, nome fisso del framework
+                --   - se p_dry_run=true ritorna il conteggio righe potenziali
+                --   - se apply_on_update=false aggiorna solo righe senza cleanup_at
+                --   - righe con la base NULL: non si toccano (non scadono)
+                -- =========================================================
+
+                IF p_schema IS NULL OR p_table IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_apply_cleanup_at', 'E_GENERICO',
+                    jsonb_build_object('detail','schema/table obbligatori'),
+                    NULL::uuid,
+                    'p_schema e p_table obbligatori'
+                  );
+                END IF;
+
+                IF v_base_col IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_apply_cleanup_at', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'p_base_ts_column'),
+                    NULL::uuid, 'p_base_ts_column obbligatoria');
+                END IF;
+
+                IF p_ttl_days IS NULL OR p_ttl_days < 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_apply_cleanup_at', 'E_GENERICO',
+                    jsonb_build_object('detail','ttl_days non valido'),
+                    NULL::uuid,
+                    'p_ttl_days deve essere >= 0'
+                  );
+                END IF;
+
+                IF NOT dbops.fn_col_exists(p_schema, p_table, 'cleanup_at') THEN
+                  RETURN 0;
+                END IF;
+
+                IF NOT dbops.fn_col_exists(p_schema, p_table, v_base_col) THEN
+                  RETURN 0;
+                END IF;
+
+                IF p_apply_on_update THEN
+                  v_sql := format(
+                    'SELECT count(*) FROM %I.%I WHERE %I IS NOT NULL AND (cleanup_at IS NULL OR cleanup_at <> (%I + make_interval(days => %s)))',
+                    p_schema, p_table, v_base_col, v_base_col, p_ttl_days
+                  );
+                ELSE
+                  v_sql := format(
+                    'SELECT count(*) FROM %I.%I WHERE cleanup_at IS NULL AND %I IS NOT NULL',
+                    p_schema, p_table, v_base_col
+                  );
+                END IF;
+
+                IF p_dry_run THEN
+                  EXECUTE v_sql INTO v_count;
+                  RETURN v_count;
+                END IF;
+
+                IF p_apply_on_update THEN
+                  v_sql := format(
+                    'UPDATE %I.%I SET cleanup_at = %I + make_interval(days => %s) WHERE %I IS NOT NULL AND (cleanup_at IS NULL OR cleanup_at <> (%I + make_interval(days => %s)))',
+                    p_schema, p_table, v_base_col, p_ttl_days,
+                    v_base_col, v_base_col, p_ttl_days
+                  );
+                ELSE
+                  v_sql := format(
+                    'UPDATE %I.%I SET cleanup_at = %I + make_interval(days => %s) WHERE cleanup_at IS NULL AND %I IS NOT NULL',
+                    p_schema, p_table, v_base_col, p_ttl_days, v_base_col
+                  );
+                END IF;
+
+                EXECUTE v_sql;
+                GET DIAGNOSTICS v_count = ROW_COUNT;
+                RETURN v_count;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_apply_cleanup_at(text, text, text, integer, boolean, boolean) IS
+              'Scrive cleanup_at = colonna base + p_ttl_days sulle righe di p_schema.p_table: il pregresso del cleanup, chiamato da dbops.fn_run_automations_cleanup con la regola di dbops.fn_cleanup_at_regola. La colonna e'' cleanup_at, nome fisso del framework. p_base_ts_column obbligatoria (la sceglie il chiamante, qui non si indovina). p_apply_on_update false: solo le righe con cleanup_at NULL; true: anche quelle con una scadenza diversa. Le righe con la base NULL non si toccano. p_dry_run: conta senza scrivere. Tabella senza cleanup_at o senza la colonna base: 0. Ritorna le righe scritte (o contate).';
+
+              CREATE FUNCTION dbops.fn_purge_cleanup_expired(p_schema text, p_table text, p_batch_limit integer DEFAULT 5000, p_dry_run boolean DEFAULT false)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_limit integer := COALESCE(NULLIF(p_batch_limit, 0), 5000);
+                v_sql text;
+                v_deleted integer := 0;
+                v_total integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elimina record con cleanup_at scaduto, a batch.
+                --
+                -- Regole:
+                --   - cleanup_at deve esistere; e' il nome fisso del framework
+                --   - p_batch_limit default 5000
+                --   - se p_dry_run=true ritorna il numero record eleggibili
+                -- =========================================================
+                IF p_schema IS NULL OR p_table IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_purge_cleanup_expired', 'E_GENERICO',
+                    jsonb_build_object('detail','schema/table obbligatori'),
+                    NULL::uuid,
+                    'p_schema e p_table obbligatori'
+                  );
+                END IF;
+
+                IF v_limit < 1 THEN
+                  v_limit := 5000;
+                END IF;
+
+                IF NOT dbops.fn_col_exists(p_schema, p_table, 'cleanup_at') THEN
+                  RETURN 0;
+                END IF;
+
+                IF p_dry_run THEN
+                  v_sql := format(
+                    'SELECT count(*) FROM %I.%I WHERE cleanup_at IS NOT NULL AND cleanup_at <= now()',
+                    p_schema, p_table
+                  );
+                  EXECUTE v_sql INTO v_total;
+                  RETURN v_total;
+                END IF;
+
+                LOOP
+                  v_sql := format($f$
+                    WITH del AS (
+                      DELETE FROM %I.%I
+                      WHERE ctid IN (
+                        SELECT ctid
+                        FROM %I.%I
+                        WHERE cleanup_at IS NOT NULL AND cleanup_at <= now()
+                        ORDER BY cleanup_at
+                        LIMIT %s
+                      )
+                      RETURNING 1
+                    )
+                    SELECT count(*) FROM del
+                  $f$, p_schema, p_table, p_schema, p_table, v_limit);
+
+                  EXECUTE v_sql INTO v_deleted;
+                  v_total := v_total + COALESCE(v_deleted, 0);
+
+                  EXIT WHEN v_deleted IS NULL OR v_deleted = 0;
+                END LOOP;
+
+                RETURN v_total;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_purge_cleanup_expired(text, text, integer, boolean) IS
+              'Cancella a batch le righe di p_schema.p_table con cleanup_at scaduto (cleanup_at <= now()); cleanup_at NULL non scade. La colonna e'' cleanup_at, nome fisso del framework. p_batch_limit: righe per batch (default 5000, 0 o negativo = 5000). p_dry_run: conta senza cancellare. Tabella senza cleanup_at: 0. Ritorna le righe cancellate (o contate). La chiama dbops.fn_run_automations_cleanup per le regole CLEANUP_PURGE.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- text[]: %TYPE non fa array
+                v_schemas text[];
+                rtab record;
+                rrule record;
+                -- la regola di scadenza della tabella (dbops.fn_cleanup_at_regola)
+                rreg record;
+                -- integer: valore letto dai params jsonb della regola, nessuna colonna lo porta
+                v_batch_limit integer;
+                v_rows dbops.audit_log.rows_affected%TYPE;
+                v_rule_type dbops.automation_rules_tbl.rule_type%TYPE;
+                -- ⭐ Le tre variabili del rifiuto: una tabella che si oppone non ferma il
+                --   giro, ma non sparisce nemmeno — il suo SQLSTATE e il suo messaggio
+                --   finiscono nell'audit, e la tabella nel riepilogo.
+                v_sqlstate dbops.audit_log.sqlstate%TYPE;
+                v_errmsg dbops.audit_log.message%TYPE;
+                v_errctx dbops.audit_log.error_context%TYPE;
+                -- ⭐ Il riepilogo che il job legge (contatori locali).
+                v_applicate integer := 0;
+                v_saltate   integer := 0;
+                v_falliti   integer := 0;
+                v_righe     bigint  := 0;
+                -- i salti dichiarati si CONTANO per motivo: una regola *ALL ne fa
+                -- uno per ogni tabella senza la colonna, e il dettaglio di ognuno
+                -- finirebbe a ogni corsa nel giornale del job
+                v_saltate_motivi jsonb := '{}'::jsonb;
+                -- i rifiuti, uno per uno: sono cio' che va guardato
+                v_dettaglio jsonb   := '[]'::jsonb;
+              BEGIN
+
+              /*
+                Scopo
+                -----
+                Orchestratore per il framework di cleanup basato su cleanup_at.
+                Su ogni tabella in scope:
+                - CLEANUP_AT   : scrive cleanup_at sul pregresso, con la regola di
+                                 dbops.fn_cleanup_at_regola (la stessa del trigger alla nascita)
+                - CLEANUP_PURGE: elimina record scaduti in batch, per ogni regola che la copre
+
+                Logica
+                ------
+                1) risolve lo scope (dbops.fn_resolve_scope)
+                2) itera le tabelle fisiche nello scope (dbops.fn_table_in_scope)
+                3) salta le tabelle escluse (dbops.fn_cleanup_esclusa): niente scadenza, niente purge
+                4) CLEANUP_AT: una regola sola, la piu' specifica; se non si applica, il motivo
+                   del risolutore e' il motivo del salto
+                5) CLEANUP_PURGE: le regole che coprono la tabella, per priorita'
+                6) logga sempre su dbops.audit_log tramite fn_audit_log_once
+                7) restituisce il riepilogo: _falliti > 0 rende rossa la corsa del job
+
+                Le regole CLEANUP_* valgono in ogni giro (exec_mode AUTO, lo garantisce
+                chk_automation_rules_tbl_regola_valida): p_exec_mode va solo nell'audit.
+              */
+
+                v_schemas := dbops.fn_resolve_scope(p_schemas);
+
+                FOR rtab IN
+                  SELECT n.nspname AS schema_name,
+                         c.relname AS table_name
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid=c.relnamespace
+                   WHERE c.relkind='r'
+                     AND n.nspname = ANY(v_schemas)
+                     AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                LOOP
+                  IF dbops.fn_cleanup_esclusa(rtab.schema_name, rtab.table_name) THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_cleanup',
+                      p_status        => 'WARN',
+                      p_rule_type     => 'CLEANUP',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['CLEANUP'],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'table', rtab.schema_name||'.'||rtab.table_name,
+                                          'skip_reason', 'EXCLUDED'
+                                        ),
+                      p_message       => 'Tabella esclusa da automation_cleanup_exclusions'
+                    );
+                    v_saltate := v_saltate + 1;
+                    v_saltate_motivi := jsonb_set(v_saltate_motivi, '{EXCLUDED}',
+                        to_jsonb(COALESCE((v_saltate_motivi ->> 'EXCLUDED')::integer, 0) + 1));
+                    CONTINUE;
+                  END IF;
+
+                  -- ---------------------------------------------------------
+                  -- CLEANUP_AT: la regola del risolutore, una sola per tabella
+                  -- ---------------------------------------------------------
+                  v_rule_type := 'CLEANUP_AT';
+                  SELECT r.regola_id, r.ttl_days, r.base_ts_column, r.apply_on_update, r.motivo_salto
+                    INTO rreg
+                    FROM dbops.fn_cleanup_at_regola(rtab.schema_name::text, rtab.table_name::text) r;
+
+                  IF FOUND AND rreg.motivo_salto IS NOT NULL THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_cleanup',
+                      p_status        => 'WARN',
+                      p_rule_type     => v_rule_type,
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY[v_rule_type],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'table', rtab.schema_name||'.'||rtab.table_name,
+                                          'rule_id', rreg.regola_id,
+                                          'base_ts_column', rreg.base_ts_column,
+                                          'skip_reason', rreg.motivo_salto
+                                        ),
+                      p_message       => CASE rreg.motivo_salto
+                                           WHEN 'NO_CLEANUP_COLUMN' THEN 'Colonna cleanup non presente'
+                                           WHEN 'MISSING_BASE_TS_COLUMN' THEN 'Colonna base_ts non presente'
+                                           ELSE 'Regola CLEANUP_AT non applicabile'
+                                         END
+                    );
+                    v_saltate := v_saltate + 1;
+                    v_saltate_motivi := jsonb_set(v_saltate_motivi, ARRAY[rreg.motivo_salto],
+                        to_jsonb(COALESCE((v_saltate_motivi ->> rreg.motivo_salto)::integer, 0) + 1));
+
+                  ELSIF FOUND THEN
+                    BEGIN
+                      v_rows := dbops.fn_apply_cleanup_at(
+                        rtab.schema_name,
+                        rtab.table_name,
+                        rreg.base_ts_column,
+                        rreg.ttl_days,
+                        rreg.apply_on_update,
+                        p_dry_run
+                      );
+
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_run_automations_cleanup',
+                        p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'OK' END,
+                        p_rule_type     => v_rule_type,
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY[v_rule_type],
+                        p_dry_run       => p_dry_run,
+                        p_rows_affected => v_rows,
+                        p_params        => jsonb_build_object(
+                                            'table', rtab.schema_name||'.'||rtab.table_name,
+                                            'rule_id', rreg.regola_id,
+                                            'base_ts_column', rreg.base_ts_column,
+                                            'ttl_days', rreg.ttl_days,
+                                            'apply_on_update', rreg.apply_on_update
+                                          ),
+                        p_message       => 'cleanup_at calcolato'
+                      );
+                      v_applicate := v_applicate + 1;
+                      v_righe := v_righe + COALESCE(v_rows, 0);
+                    EXCEPTION
+                      -- ⛔ Un annullamento resta un annullamento: se qualcuno ferma il job,
+                      --    il job si ferma. Non e' una tabella che rifiuta.
+                      WHEN query_canceled THEN
+                        RAISE;
+                      -- ⭐ Tutto il resto: la tabella viene SALTATA, non subita. Un solo veto
+                      --    (un trigger append-only, un guard sul DELETE dei log) non deve far
+                      --    morire l'INTERO giro: le tabelle che vengono dopo vanno pulite.
+                      --    ⚠️ Lo status e' ERROR e non WARN di proposito: i WARN di questa
+                      --    funzione sono salti DICHIARATI (esclusa, senza colonna, senza
+                      --    base). Questo non e' dichiarato — e' una tabella che si e'
+                      --    opposta, e va distinta a colpo d'occhio. Per questo conta in
+                      --    _falliti, e la corsa del job diventa rossa.
+                      WHEN OTHERS THEN
+                        GET STACKED DIAGNOSTICS
+                          v_sqlstate = RETURNED_SQLSTATE,
+                          v_errmsg   = MESSAGE_TEXT,
+                          v_errctx   = PG_EXCEPTION_CONTEXT;
+                        PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'dbops.fn_run_automations_cleanup',
+                          p_status        => 'ERROR',
+                          p_rule_type     => v_rule_type,
+                          p_exec_mode     => p_exec_mode,
+                          p_parts         => ARRAY[v_rule_type],
+                          p_dry_run       => p_dry_run,
+                          p_sqlstate      => v_sqlstate,
+                          p_error_context => v_errctx,
+                          p_params        => jsonb_build_object(
+                                              'table', rtab.schema_name||'.'||rtab.table_name,
+                                              'rule_id', rreg.regola_id,
+                                              'skip_reason', 'BLOCKED_BY_TABLE'
+                                            ),
+                          p_message       => v_errmsg
+                        );
+                        v_falliti := v_falliti + 1;
+                        v_dettaglio := v_dettaglio || jsonb_build_object(
+                            'tabella',   rtab.schema_name||'.'||rtab.table_name,
+                            'regola',    v_rule_type,
+                            'motivo',    'BLOCKED_BY_TABLE',
+                            'sqlstate',  v_sqlstate,
+                            'messaggio', v_errmsg);
+                    END;
+                  END IF;
+
+                  -- ---------------------------------------------------------
+                  -- CLEANUP_PURGE: le regole che coprono la tabella
+                  -- ---------------------------------------------------------
+                  v_rule_type := 'CLEANUP_PURGE';
+                  FOR rrule IN
+                    SELECT r.id, r.params
+                      FROM dbops.automation_rules_tbl r
+                     WHERE r.enabled
+                       AND r.rule_type = 'CLEANUP_PURGE'
+                       AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+                       AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+                     ORDER BY r.priority, r.id
+                  LOOP
+                    IF NOT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'cleanup_at') THEN
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_run_automations_cleanup',
+                        p_status        => 'WARN',
+                        p_rule_type     => v_rule_type,
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY[v_rule_type],
+                        p_dry_run       => p_dry_run,
+                        p_params        => jsonb_build_object(
+                                            'table', rtab.schema_name||'.'||rtab.table_name,
+                                            'rule_id', rrule.id,
+                                            'skip_reason', 'NO_CLEANUP_COLUMN'
+                                          ),
+                        p_message       => 'Colonna cleanup non presente'
+                      );
+                      v_saltate := v_saltate + 1;
+                      v_saltate_motivi := jsonb_set(v_saltate_motivi, '{NO_CLEANUP_COLUMN}',
+                          to_jsonb(COALESCE((v_saltate_motivi ->> 'NO_CLEANUP_COLUMN')::integer, 0) + 1));
+                      CONTINUE;
+                    END IF;
+
+                    -- La forma la garantisce chk_automation_rules_tbl_regola_valida:
+                    -- batch_limit, se c'e', e' un intero >= 1.
+                    v_batch_limit := COALESCE((rrule.params->>'batch_limit')::integer, 5000);
+
+                    BEGIN
+                      v_rows := dbops.fn_purge_cleanup_expired(
+                        rtab.schema_name,
+                        rtab.table_name,
+                        v_batch_limit,
+                        p_dry_run
+                      );
+
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_run_automations_cleanup',
+                        p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'OK' END,
+                        p_rule_type     => v_rule_type,
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY[v_rule_type],
+                        p_dry_run       => p_dry_run,
+                        p_rows_affected => v_rows,
+                        p_params        => jsonb_build_object(
+                                            'table', rtab.schema_name||'.'||rtab.table_name,
+                                            'rule_id', rrule.id,
+                                            'batch_limit', v_batch_limit
+                                          ),
+                        p_message       => 'cleanup eseguito'
+                      );
+                      v_applicate := v_applicate + 1;
+                      v_righe := v_righe + COALESCE(v_rows, 0);
+                    EXCEPTION
+                      -- ⛔ Un annullamento resta un annullamento (vedi sopra).
+                      WHEN query_canceled THEN
+                        RAISE;
+                      -- ⭐ Il rifiuto: tabella saltata, riga ERROR, conta in _falliti
+                      --    (vedi sopra).
+                      WHEN OTHERS THEN
+                        GET STACKED DIAGNOSTICS
+                          v_sqlstate = RETURNED_SQLSTATE,
+                          v_errmsg   = MESSAGE_TEXT,
+                          v_errctx   = PG_EXCEPTION_CONTEXT;
+                        PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'dbops.fn_run_automations_cleanup',
+                          p_status        => 'ERROR',
+                          p_rule_type     => v_rule_type,
+                          p_exec_mode     => p_exec_mode,
+                          p_parts         => ARRAY[v_rule_type],
+                          p_dry_run       => p_dry_run,
+                          p_sqlstate      => v_sqlstate,
+                          p_error_context => v_errctx,
+                          p_params        => jsonb_build_object(
+                                              'table', rtab.schema_name||'.'||rtab.table_name,
+                                              'rule_id', rrule.id,
+                                              'skip_reason', 'BLOCKED_BY_TABLE'
+                                            ),
+                          p_message       => v_errmsg
+                        );
+                        v_falliti := v_falliti + 1;
+                        v_dettaglio := v_dettaglio || jsonb_build_object(
+                            'tabella',   rtab.schema_name||'.'||rtab.table_name,
+                            'regola',    v_rule_type,
+                            'motivo',    'BLOCKED_BY_TABLE',
+                            'sqlstate',  v_sqlstate,
+                            'messaggio', v_errmsg);
+                    END;
+                  END LOOP;
+                END LOOP;
+
+                RETURN jsonb_build_object(
+                    '_applicate', v_applicate,
+                    '_saltate',   v_saltate,
+                    '_saltate_motivi', v_saltate_motivi,
+                    '_falliti',   v_falliti,
+                    '_righe',     v_righe,
+                    '_dettaglio', v_dettaglio);
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_cleanup(text, text[], boolean) IS 'Orchestratore del framework di cleanup, sulle tabelle in scope: CLEANUP_AT scrive cleanup_at sul pregresso con la regola di dbops.fn_cleanup_at_regola (una sola per tabella, la stessa del trigger alla nascita dbops.trgfn_cleanup_at_alla_nascita), CLEANUP_PURGE cancella a batch le righe scadute per ogni regola di dbops.automation_rules_tbl che copre la tabella. Una tabella esclusa (dbops.fn_cleanup_esclusa) si salta intera. Parametri: p_exec_mode (va solo nell''audit: le regole CLEANUP_* valgono in ogni giro), p_schemas (gli schemi; NULL = dbops.automation_scope), p_dry_run. Ogni regola gira in una sottotransazione: una tabella che RIFIUTA (un guard sul DELETE, un trigger append-only) viene saltata e non ferma il giro, e lascia in dbops.audit_log una riga ERROR con SQLSTATE e contesto (skip_reason = BLOCKED_BY_TABLE); status ERROR e non WARN, perche'' i WARN sono i salti dichiarati (EXCLUDED, NO_CLEANUP_COLUMN, MISSING_BASE_TS_COLUMN). query_canceled si ri-solleva: un annullamento resta un annullamento. Restituisce il riepilogo jsonb: _applicate, _saltate (i salti dichiarati), _falliti (le tabelle che hanno rifiutato), _saltate_motivi (i salti contati per motivo), _righe, _dettaglio (i rifiuti uno per uno, con tabella, regola, SQLSTATE e messaggio; i salti non ci vanno, si contano). Il job automations_cleanup la chiama con una SELECT dentro maintenance.fn_run_and_log: _falliti > 0 rende la corsa rossa (E_JOB_ESITO_CON_SCARTI) senza annullare le tabelle pulite.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_apply_cleanup_at(text, text, text, integer, boolean, boolean);
+              DROP FUNCTION IF EXISTS dbops.fn_purge_cleanup_expired(text, text, integer, boolean);
+
+              CREATE FUNCTION dbops.fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_column text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean DEFAULT false, p_dry_run boolean DEFAULT false)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_base_col text := NULLIF(btrim(p_base_ts_column), '');
+                v_sql text;
+                v_count integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Scrive cleanup_at = <colonna base> + ttl_days sulle righe
+                --   di una tabella (il pregresso del cleanup).
+                --
+                -- Regole:
+                --   - p_ttl_days obbligatorio (>= 0)
+                --   - p_base_ts_column obbligatoria: la sceglie chi chiama, con
+                --     dbops.fn_cleanup_at_regola (il runner); qui non si indovina
+                --   - la colonna e' cleanup_at, nome fisso del framework:
+                --     p_cleanup_column puo' solo confermarlo (NULL o 'cleanup_at')
+                --   - se p_dry_run=true ritorna il conteggio righe potenziali
+                --   - se apply_on_update=false aggiorna solo righe senza cleanup_at
+                --   - righe con la base NULL: non si toccano (non scadono)
+                -- =========================================================
+
+                IF p_schema IS NULL OR p_table IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_apply_cleanup_at', 'E_GENERICO',
+                    jsonb_build_object('detail','schema/table obbligatori'),
+                    NULL::uuid,
+                    'p_schema e p_table obbligatori'
+                  );
+                END IF;
+
+                IF NULLIF(btrim(p_cleanup_column), '') IS DISTINCT FROM NULL
+                   AND btrim(p_cleanup_column) <> 'cleanup_at' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_apply_cleanup_at', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'p_cleanup_column', 'valore', p_cleanup_column),
+                    NULL::uuid, 'la colonna della scadenza e'' cleanup_at');
+                END IF;
+
+                IF v_base_col IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_apply_cleanup_at', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'p_base_ts_column'),
+                    NULL::uuid, 'p_base_ts_column obbligatoria');
+                END IF;
+
+                IF p_ttl_days IS NULL OR p_ttl_days < 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_apply_cleanup_at', 'E_GENERICO',
+                    jsonb_build_object('detail','ttl_days non valido'),
+                    NULL::uuid,
+                    'p_ttl_days deve essere >= 0'
+                  );
+                END IF;
+
+                IF NOT dbops.fn_col_exists(p_schema, p_table, 'cleanup_at') THEN
+                  RETURN 0;
+                END IF;
+
+                IF NOT dbops.fn_col_exists(p_schema, p_table, v_base_col) THEN
+                  RETURN 0;
+                END IF;
+
+                IF p_apply_on_update THEN
+                  v_sql := format(
+                    'SELECT count(*) FROM %I.%I WHERE %I IS NOT NULL AND (cleanup_at IS NULL OR cleanup_at <> (%I + make_interval(days => %s)))',
+                    p_schema, p_table, v_base_col, v_base_col, p_ttl_days
+                  );
+                ELSE
+                  v_sql := format(
+                    'SELECT count(*) FROM %I.%I WHERE cleanup_at IS NULL AND %I IS NOT NULL',
+                    p_schema, p_table, v_base_col
+                  );
+                END IF;
+
+                IF p_dry_run THEN
+                  EXECUTE v_sql INTO v_count;
+                  RETURN v_count;
+                END IF;
+
+                IF p_apply_on_update THEN
+                  v_sql := format(
+                    'UPDATE %I.%I SET cleanup_at = %I + make_interval(days => %s) WHERE %I IS NOT NULL AND (cleanup_at IS NULL OR cleanup_at <> (%I + make_interval(days => %s)))',
+                    p_schema, p_table, v_base_col, p_ttl_days,
+                    v_base_col, v_base_col, p_ttl_days
+                  );
+                ELSE
+                  v_sql := format(
+                    'UPDATE %I.%I SET cleanup_at = %I + make_interval(days => %s) WHERE cleanup_at IS NULL AND %I IS NOT NULL',
+                    p_schema, p_table, v_base_col, p_ttl_days, v_base_col
+                  );
+                END IF;
+
+                EXECUTE v_sql;
+                GET DIAGNOSTICS v_count = ROW_COUNT;
+                RETURN v_count;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_apply_cleanup_at(text,text,text,text,integer,boolean,boolean) IS 'Scrive cleanup_at = colonna base + p_ttl_days sulle righe di p_schema.p_table: il pregresso del cleanup, chiamato da dbops.fn_run_automations_cleanup con la regola di dbops.fn_cleanup_at_regola. p_base_ts_column obbligatoria (la sceglie il chiamante, qui non si indovina); p_cleanup_column puo'' solo confermare cleanup_at, nome fisso del framework (NULL o ''cleanup_at'', altro → E_PARAMETRO_INVALIDO). p_apply_on_update false: solo le righe con cleanup_at NULL; true: anche quelle con una scadenza diversa. Le righe con la base NULL non si toccano. p_dry_run: conta senza scrivere. Tabella senza cleanup_at o senza la colonna base: 0. Ritorna le righe scritte (o contate).';
+
+              CREATE FUNCTION dbops.fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_column text DEFAULT 'cleanup_at'::text, p_batch_limit integer DEFAULT 5000, p_dry_run boolean DEFAULT false)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_limit integer := COALESCE(NULLIF(p_batch_limit, 0), 5000);
+                v_sql text;
+                v_deleted integer := 0;
+                v_total integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elimina record con cleanup_at scaduto, a batch.
+                --
+                -- Regole:
+                --   - cleanup_at deve esistere; e' il nome fisso del framework:
+                --     p_cleanup_column puo' solo confermarlo (NULL o 'cleanup_at')
+                --   - p_batch_limit default 5000
+                --   - se p_dry_run=true ritorna il numero record eleggibili
+                -- =========================================================
+                IF p_schema IS NULL OR p_table IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_purge_cleanup_expired', 'E_GENERICO',
+                    jsonb_build_object('detail','schema/table obbligatori'),
+                    NULL::uuid,
+                    'p_schema e p_table obbligatori'
+                  );
+                END IF;
+
+                IF NULLIF(btrim(p_cleanup_column), '') IS DISTINCT FROM NULL
+                   AND btrim(p_cleanup_column) <> 'cleanup_at' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_purge_cleanup_expired', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'p_cleanup_column', 'valore', p_cleanup_column),
+                    NULL::uuid, 'la colonna della scadenza e'' cleanup_at');
+                END IF;
+
+                IF v_limit < 1 THEN
+                  v_limit := 5000;
+                END IF;
+
+                IF NOT dbops.fn_col_exists(p_schema, p_table, 'cleanup_at') THEN
+                  RETURN 0;
+                END IF;
+
+                IF p_dry_run THEN
+                  v_sql := format(
+                    'SELECT count(*) FROM %I.%I WHERE cleanup_at IS NOT NULL AND cleanup_at <= now()',
+                    p_schema, p_table
+                  );
+                  EXECUTE v_sql INTO v_total;
+                  RETURN v_total;
+                END IF;
+
+                LOOP
+                  v_sql := format($f$
+                    WITH del AS (
+                      DELETE FROM %I.%I
+                      WHERE ctid IN (
+                        SELECT ctid
+                        FROM %I.%I
+                        WHERE cleanup_at IS NOT NULL AND cleanup_at <= now()
+                        ORDER BY cleanup_at
+                        LIMIT %s
+                      )
+                      RETURNING 1
+                    )
+                    SELECT count(*) FROM del
+                  $f$, p_schema, p_table, p_schema, p_table, v_limit);
+
+                  EXECUTE v_sql INTO v_deleted;
+                  v_total := v_total + COALESCE(v_deleted, 0);
+
+                  EXIT WHEN v_deleted IS NULL OR v_deleted = 0;
+                END LOOP;
+
+                RETURN v_total;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_purge_cleanup_expired(text,text,text,integer,boolean) IS 'Cancella a batch le righe di p_schema.p_table con cleanup_at scaduto (cleanup_at <= now()); cleanup_at NULL non scade. p_cleanup_column puo'' solo confermare cleanup_at, nome fisso del framework (NULL o ''cleanup_at'', altro → E_PARAMETRO_INVALIDO). p_batch_limit: righe per batch (default 5000, 0 o negativo = 5000). p_dry_run: conta senza cancellare. Tabella senza cleanup_at: 0. Ritorna le righe cancellate (o contate). La chiama dbops.fn_run_automations_cleanup per le regole CLEANUP_PURGE.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- text[]: %TYPE non fa array
+                v_schemas text[];
+                rtab record;
+                rrule record;
+                -- la regola di scadenza della tabella (dbops.fn_cleanup_at_regola)
+                rreg record;
+                -- integer: valore letto dai params jsonb della regola, nessuna colonna lo porta
+                v_batch_limit integer;
+                v_rows dbops.audit_log.rows_affected%TYPE;
+                v_rule_type dbops.automation_rules_tbl.rule_type%TYPE;
+                -- ⭐ Le tre variabili del rifiuto: una tabella che si oppone non ferma il
+                --   giro, ma non sparisce nemmeno — il suo SQLSTATE e il suo messaggio
+                --   finiscono nell'audit, e la tabella nel riepilogo.
+                v_sqlstate dbops.audit_log.sqlstate%TYPE;
+                v_errmsg dbops.audit_log.message%TYPE;
+                v_errctx dbops.audit_log.error_context%TYPE;
+                -- ⭐ Il riepilogo che il job legge (contatori locali).
+                v_applicate integer := 0;
+                v_saltate   integer := 0;
+                v_falliti   integer := 0;
+                v_righe     bigint  := 0;
+                -- i salti dichiarati si CONTANO per motivo: una regola *ALL ne fa
+                -- uno per ogni tabella senza la colonna, e il dettaglio di ognuno
+                -- finirebbe a ogni corsa nel giornale del job
+                v_saltate_motivi jsonb := '{}'::jsonb;
+                -- i rifiuti, uno per uno: sono cio' che va guardato
+                v_dettaglio jsonb   := '[]'::jsonb;
+              BEGIN
+
+              /*
+                Scopo
+                -----
+                Orchestratore per il framework di cleanup basato su cleanup_at.
+                Su ogni tabella in scope:
+                - CLEANUP_AT   : scrive cleanup_at sul pregresso, con la regola di
+                                 dbops.fn_cleanup_at_regola (la stessa del trigger alla nascita)
+                - CLEANUP_PURGE: elimina record scaduti in batch, per ogni regola che la copre
+
+                Logica
+                ------
+                1) risolve lo scope (dbops.fn_resolve_scope)
+                2) itera le tabelle fisiche nello scope (dbops.fn_table_in_scope)
+                3) salta le tabelle escluse (dbops.fn_cleanup_esclusa): niente scadenza, niente purge
+                4) CLEANUP_AT: una regola sola, la piu' specifica; se non si applica, il motivo
+                   del risolutore e' il motivo del salto
+                5) CLEANUP_PURGE: le regole che coprono la tabella, per priorita'
+                6) logga sempre su dbops.audit_log tramite fn_audit_log_once
+                7) restituisce il riepilogo: _falliti > 0 rende rossa la corsa del job
+
+                Le regole CLEANUP_* valgono in ogni giro (exec_mode AUTO, lo garantisce
+                chk_automation_rules_tbl_regola_valida): p_exec_mode va solo nell'audit.
+              */
+
+                v_schemas := dbops.fn_resolve_scope(p_schemas);
+
+                FOR rtab IN
+                  SELECT n.nspname AS schema_name,
+                         c.relname AS table_name
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid=c.relnamespace
+                   WHERE c.relkind='r'
+                     AND n.nspname = ANY(v_schemas)
+                     AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                LOOP
+                  IF dbops.fn_cleanup_esclusa(rtab.schema_name, rtab.table_name) THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_cleanup',
+                      p_status        => 'WARN',
+                      p_rule_type     => 'CLEANUP',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['CLEANUP'],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'table', rtab.schema_name||'.'||rtab.table_name,
+                                          'skip_reason', 'EXCLUDED'
+                                        ),
+                      p_message       => 'Tabella esclusa da automation_cleanup_exclusions'
+                    );
+                    v_saltate := v_saltate + 1;
+                    v_saltate_motivi := jsonb_set(v_saltate_motivi, '{EXCLUDED}',
+                        to_jsonb(COALESCE((v_saltate_motivi ->> 'EXCLUDED')::integer, 0) + 1));
+                    CONTINUE;
+                  END IF;
+
+                  -- ---------------------------------------------------------
+                  -- CLEANUP_AT: la regola del risolutore, una sola per tabella
+                  -- ---------------------------------------------------------
+                  v_rule_type := 'CLEANUP_AT';
+                  SELECT r.regola_id, r.ttl_days, r.base_ts_column, r.apply_on_update, r.motivo_salto
+                    INTO rreg
+                    FROM dbops.fn_cleanup_at_regola(rtab.schema_name::text, rtab.table_name::text) r;
+
+                  IF FOUND AND rreg.motivo_salto IS NOT NULL THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_run_automations_cleanup',
+                      p_status        => 'WARN',
+                      p_rule_type     => v_rule_type,
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY[v_rule_type],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'table', rtab.schema_name||'.'||rtab.table_name,
+                                          'rule_id', rreg.regola_id,
+                                          'base_ts_column', rreg.base_ts_column,
+                                          'skip_reason', rreg.motivo_salto
+                                        ),
+                      p_message       => CASE rreg.motivo_salto
+                                           WHEN 'NO_CLEANUP_COLUMN' THEN 'Colonna cleanup non presente'
+                                           WHEN 'MISSING_BASE_TS_COLUMN' THEN 'Colonna base_ts non presente'
+                                           ELSE 'Regola CLEANUP_AT non applicabile'
+                                         END
+                    );
+                    v_saltate := v_saltate + 1;
+                    v_saltate_motivi := jsonb_set(v_saltate_motivi, ARRAY[rreg.motivo_salto],
+                        to_jsonb(COALESCE((v_saltate_motivi ->> rreg.motivo_salto)::integer, 0) + 1));
+
+                  ELSIF FOUND THEN
+                    BEGIN
+                      v_rows := dbops.fn_apply_cleanup_at(
+                        rtab.schema_name,
+                        rtab.table_name,
+                        NULL,
+                        rreg.base_ts_column,
+                        rreg.ttl_days,
+                        rreg.apply_on_update,
+                        p_dry_run
+                      );
+
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_run_automations_cleanup',
+                        p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'OK' END,
+                        p_rule_type     => v_rule_type,
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY[v_rule_type],
+                        p_dry_run       => p_dry_run,
+                        p_rows_affected => v_rows,
+                        p_params        => jsonb_build_object(
+                                            'table', rtab.schema_name||'.'||rtab.table_name,
+                                            'rule_id', rreg.regola_id,
+                                            'base_ts_column', rreg.base_ts_column,
+                                            'ttl_days', rreg.ttl_days,
+                                            'apply_on_update', rreg.apply_on_update
+                                          ),
+                        p_message       => 'cleanup_at calcolato'
+                      );
+                      v_applicate := v_applicate + 1;
+                      v_righe := v_righe + COALESCE(v_rows, 0);
+                    EXCEPTION
+                      -- ⛔ Un annullamento resta un annullamento: se qualcuno ferma il job,
+                      --    il job si ferma. Non e' una tabella che rifiuta.
+                      WHEN query_canceled THEN
+                        RAISE;
+                      -- ⭐ Tutto il resto: la tabella viene SALTATA, non subita. Un solo veto
+                      --    (un trigger append-only, un guard sul DELETE dei log) non deve far
+                      --    morire l'INTERO giro: le tabelle che vengono dopo vanno pulite.
+                      --    ⚠️ Lo status e' ERROR e non WARN di proposito: i WARN di questa
+                      --    funzione sono salti DICHIARATI (esclusa, senza colonna, senza
+                      --    base). Questo non e' dichiarato — e' una tabella che si e'
+                      --    opposta, e va distinta a colpo d'occhio. Per questo conta in
+                      --    _falliti, e la corsa del job diventa rossa.
+                      WHEN OTHERS THEN
+                        GET STACKED DIAGNOSTICS
+                          v_sqlstate = RETURNED_SQLSTATE,
+                          v_errmsg   = MESSAGE_TEXT,
+                          v_errctx   = PG_EXCEPTION_CONTEXT;
+                        PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'dbops.fn_run_automations_cleanup',
+                          p_status        => 'ERROR',
+                          p_rule_type     => v_rule_type,
+                          p_exec_mode     => p_exec_mode,
+                          p_parts         => ARRAY[v_rule_type],
+                          p_dry_run       => p_dry_run,
+                          p_sqlstate      => v_sqlstate,
+                          p_error_context => v_errctx,
+                          p_params        => jsonb_build_object(
+                                              'table', rtab.schema_name||'.'||rtab.table_name,
+                                              'rule_id', rreg.regola_id,
+                                              'skip_reason', 'BLOCKED_BY_TABLE'
+                                            ),
+                          p_message       => v_errmsg
+                        );
+                        v_falliti := v_falliti + 1;
+                        v_dettaglio := v_dettaglio || jsonb_build_object(
+                            'tabella',   rtab.schema_name||'.'||rtab.table_name,
+                            'regola',    v_rule_type,
+                            'motivo',    'BLOCKED_BY_TABLE',
+                            'sqlstate',  v_sqlstate,
+                            'messaggio', v_errmsg);
+                    END;
+                  END IF;
+
+                  -- ---------------------------------------------------------
+                  -- CLEANUP_PURGE: le regole che coprono la tabella
+                  -- ---------------------------------------------------------
+                  v_rule_type := 'CLEANUP_PURGE';
+                  FOR rrule IN
+                    SELECT r.id, r.params
+                      FROM dbops.automation_rules_tbl r
+                     WHERE r.enabled
+                       AND r.rule_type = 'CLEANUP_PURGE'
+                       AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+                       AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+                     ORDER BY r.priority, r.id
+                  LOOP
+                    IF NOT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'cleanup_at') THEN
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_run_automations_cleanup',
+                        p_status        => 'WARN',
+                        p_rule_type     => v_rule_type,
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY[v_rule_type],
+                        p_dry_run       => p_dry_run,
+                        p_params        => jsonb_build_object(
+                                            'table', rtab.schema_name||'.'||rtab.table_name,
+                                            'rule_id', rrule.id,
+                                            'skip_reason', 'NO_CLEANUP_COLUMN'
+                                          ),
+                        p_message       => 'Colonna cleanup non presente'
+                      );
+                      v_saltate := v_saltate + 1;
+                      v_saltate_motivi := jsonb_set(v_saltate_motivi, '{NO_CLEANUP_COLUMN}',
+                          to_jsonb(COALESCE((v_saltate_motivi ->> 'NO_CLEANUP_COLUMN')::integer, 0) + 1));
+                      CONTINUE;
+                    END IF;
+
+                    -- La forma la garantisce chk_automation_rules_tbl_regola_valida:
+                    -- batch_limit, se c'e', e' un intero >= 1.
+                    v_batch_limit := COALESCE((rrule.params->>'batch_limit')::integer, 5000);
+
+                    BEGIN
+                      v_rows := dbops.fn_purge_cleanup_expired(
+                        rtab.schema_name,
+                        rtab.table_name,
+                        NULL,
+                        v_batch_limit,
+                        p_dry_run
+                      );
+
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_run_automations_cleanup',
+                        p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'OK' END,
+                        p_rule_type     => v_rule_type,
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY[v_rule_type],
+                        p_dry_run       => p_dry_run,
+                        p_rows_affected => v_rows,
+                        p_params        => jsonb_build_object(
+                                            'table', rtab.schema_name||'.'||rtab.table_name,
+                                            'rule_id', rrule.id,
+                                            'batch_limit', v_batch_limit
+                                          ),
+                        p_message       => 'cleanup eseguito'
+                      );
+                      v_applicate := v_applicate + 1;
+                      v_righe := v_righe + COALESCE(v_rows, 0);
+                    EXCEPTION
+                      -- ⛔ Un annullamento resta un annullamento (vedi sopra).
+                      WHEN query_canceled THEN
+                        RAISE;
+                      -- ⭐ Il rifiuto: tabella saltata, riga ERROR, conta in _falliti
+                      --    (vedi sopra).
+                      WHEN OTHERS THEN
+                        GET STACKED DIAGNOSTICS
+                          v_sqlstate = RETURNED_SQLSTATE,
+                          v_errmsg   = MESSAGE_TEXT,
+                          v_errctx   = PG_EXCEPTION_CONTEXT;
+                        PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'dbops.fn_run_automations_cleanup',
+                          p_status        => 'ERROR',
+                          p_rule_type     => v_rule_type,
+                          p_exec_mode     => p_exec_mode,
+                          p_parts         => ARRAY[v_rule_type],
+                          p_dry_run       => p_dry_run,
+                          p_sqlstate      => v_sqlstate,
+                          p_error_context => v_errctx,
+                          p_params        => jsonb_build_object(
+                                              'table', rtab.schema_name||'.'||rtab.table_name,
+                                              'rule_id', rrule.id,
+                                              'skip_reason', 'BLOCKED_BY_TABLE'
+                                            ),
+                          p_message       => v_errmsg
+                        );
+                        v_falliti := v_falliti + 1;
+                        v_dettaglio := v_dettaglio || jsonb_build_object(
+                            'tabella',   rtab.schema_name||'.'||rtab.table_name,
+                            'regola',    v_rule_type,
+                            'motivo',    'BLOCKED_BY_TABLE',
+                            'sqlstate',  v_sqlstate,
+                            'messaggio', v_errmsg);
+                    END;
+                  END LOOP;
+                END LOOP;
+
+                RETURN jsonb_build_object(
+                    '_applicate', v_applicate,
+                    '_saltate',   v_saltate,
+                    '_saltate_motivi', v_saltate_motivi,
+                    '_falliti',   v_falliti,
+                    '_righe',     v_righe,
+                    '_dettaglio', v_dettaglio);
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_cleanup(text,text[],boolean) IS 'Orchestratore del framework di cleanup, sulle tabelle in scope: CLEANUP_AT scrive cleanup_at sul pregresso con la regola di dbops.fn_cleanup_at_regola (una sola per tabella, la stessa del trigger alla nascita dbops.trgfn_cleanup_at_alla_nascita), CLEANUP_PURGE cancella a batch le righe scadute per ogni regola di dbops.automation_rules_tbl che copre la tabella. Una tabella esclusa (dbops.fn_cleanup_esclusa) si salta intera. Parametri: p_exec_mode (va solo nell''audit: le regole CLEANUP_* valgono in ogni giro), p_schemas (gli schemi; NULL = dbops.automation_scope), p_dry_run. Ogni regola gira in una sottotransazione: una tabella che RIFIUTA (un guard sul DELETE, un trigger append-only) viene saltata e non ferma il giro, e lascia in dbops.audit_log una riga ERROR con SQLSTATE e contesto (skip_reason = BLOCKED_BY_TABLE); status ERROR e non WARN, perche'' i WARN sono i salti dichiarati (EXCLUDED, NO_CLEANUP_COLUMN, MISSING_BASE_TS_COLUMN). query_canceled si ri-solleva: un annullamento resta un annullamento. Restituisce il riepilogo jsonb: _applicate, _saltate (i salti dichiarati), _falliti (le tabelle che hanno rifiutato), _saltate_motivi (i salti contati per motivo), _righe, _dettaglio (i rifiuti uno per uno, con tabella, regola, SQLSTATE e messaggio; i salti non ci vanno, si contano). Il job automations_cleanup la chiama con una SELECT dentro maintenance.fn_run_and_log: _falliti > 0 rende la corsa rossa (E_JOB_ESITO_CON_SCARTI) senza annullare le tabelle pulite.';

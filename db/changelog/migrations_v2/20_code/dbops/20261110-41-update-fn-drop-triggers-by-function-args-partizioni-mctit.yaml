@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_drop_triggers_by_function_args: tocca anche i trigger montati su una partizione (tgparentid = 0),
+#   e lascia stare solo i cloni dei trigger di un padre partizionato. Prima escludeva ogni partizione: sulle tabelle
+#   con la FK dichiarata sulla partizione (le note dei documenti, fatto datato 2026-11-08: nove trigger ATTIVO) il
+#   ramo che riconcilia il nome del runner ATTIVO non toglieva il vivo e ne creava un secondo accanto. Trovato col
+#   -34, che cambia il nome di uno di loro. Corpo di partenza dal catalogo dello scratch; il ritorno = corpo e COMMENT
+#   di prima. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-41-update-fn-drop-triggers-by-function-args-partizioni-mctit.yaml
+
+  - changeSet:
+      id: 20261110-41-update-fn-drop-triggers-by-function-args-partizioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_drop_triggers_by_function_args: i trigger sulle partizioni si tolgono, i cloni no. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_drop_triggers_by_function_args(regclass,name,name,text[])')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_drop_triggers_by_function_args(p_rel regclass, p_func_schema name, p_func_name name, VARIADIC p_args text[])
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- la funzione trigger risolta per schema e nome
+                v_funzione pg_catalog.pg_trigger.tgfoid%TYPE;
+                r          record;
+                -- un conteggio: nessuna colonna di cui sia il riflesso
+                n          integer := 0;
+              BEGIN
+                -- Scopo: togliere da una tabella i trigger che chiamano questa
+                --   funzione con esattamente questi argomenti; restituisce quanti.
+                v_funzione := pg_catalog.to_regprocedure(
+                                format('%I.%I()', p_func_schema, p_func_name));
+                IF v_funzione IS NULL THEN
+                  RETURN 0;
+                END IF;
+
+                FOR r IN
+                  SELECT t.tgname, ns.nspname, c.relname
+                    FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class c      ON c.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace ns ON ns.oid = c.relnamespace
+                   WHERE t.tgrelid = p_rel
+                     AND NOT t.tgisinternal
+                     -- Un clone del trigger di un padre partizionato (tgparentid) si governa sul padre: un
+                     -- DROP sulla partizione lo rifiuterebbe. Un trigger montato sulla partizione stessa
+                     -- (tgparentid = 0, il caso di una FK dichiarata sulla partizione) si toglie qui.
+                     AND t.tgparentid = 0
+                     AND t.tgfoid = v_funzione
+                     AND dbops.fn_trigger_argomenti(t.tgargs) = p_args
+                LOOP
+                  EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', r.tgname, r.nspname, r.relname);
+                  n := n + 1;
+                END LOOP;
+
+                RETURN n;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_drop_triggers_by_function_args(regclass, name, name, text[]) IS
+              'Toglie da una tabella i trigger che chiamano la funzione indicata (schema e nome) con esattamente questi argomenti, e restituisce quanti ne ha tolti. Riconosce la funzione per OID (to_regprocedure di schema.nome(), quindi con qualunque search_path) e confronta gli argomenti di pg_trigger.tgargs (dbops.fn_trigger_argomenti) con l''array chiesto: stesso numero, stesso ordine, stesso testo. Generica: la grammatica di una famiglia di trigger la applica chi chiama. Una funzione che non esiste risponde 0. Non tocca i cloni dei trigger di un padre partizionato (tgparentid), che si governano sul padre; un trigger montato su una partizione stessa si toglie. La chiama dbops.fn_run_automations_attivo per riconciliare block e require prima di montarli.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_drop_triggers_by_function_args(p_rel regclass, p_func_schema name, p_func_name name, VARIADIC p_args text[])
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- la funzione trigger risolta per schema e nome
+                v_funzione pg_catalog.pg_trigger.tgfoid%TYPE;
+                r          record;
+                -- un conteggio: nessuna colonna di cui sia il riflesso
+                n          integer := 0;
+              BEGIN
+                -- Scopo: togliere da una tabella i trigger che chiamano questa
+                --   funzione con esattamente questi argomenti; restituisce quanti.
+                v_funzione := pg_catalog.to_regprocedure(
+                                format('%I.%I()', p_func_schema, p_func_name));
+                IF v_funzione IS NULL THEN
+                  RETURN 0;
+                END IF;
+
+                FOR r IN
+                  SELECT t.tgname, ns.nspname, c.relname
+                    FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class c      ON c.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace ns ON ns.oid = c.relnamespace
+                   WHERE t.tgrelid = p_rel
+                     AND NOT t.tgisinternal
+                     AND NOT c.relispartition
+                     AND t.tgfoid = v_funzione
+                     AND dbops.fn_trigger_argomenti(t.tgargs) = p_args
+                LOOP
+                  EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', r.tgname, r.nspname, r.relname);
+                  n := n + 1;
+                END LOOP;
+
+                RETURN n;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION dbops.fn_drop_triggers_by_function_args(regclass,name,name,text[]) IS 'Toglie da una tabella i trigger che chiamano la funzione indicata (schema e nome) con esattamente questi argomenti, e restituisce quanti ne ha tolti. Riconosce la funzione per OID (to_regprocedure di schema.nome(), quindi con qualunque search_path) e confronta gli argomenti di pg_trigger.tgargs (dbops.fn_trigger_argomenti) con l''array chiesto: stesso numero, stesso ordine, stesso testo. Generica: la grammatica di una famiglia di trigger la applica chi chiama. Una funzione che non esiste risponde 0. Esclude le partizioni. La chiama dbops.fn_run_automations_attivo per riconciliare block e require prima di montarli.';

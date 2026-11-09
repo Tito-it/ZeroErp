@@ -138,7 +138,6 @@ BEGIN
         v_rows := dbops.fn_apply_cleanup_at(
           rtab.schema_name,
           rtab.table_name,
-          NULL,
           rreg.base_ts_column,
           rreg.ttl_days,
           rreg.apply_on_update,
@@ -250,7 +249,6 @@ BEGIN
         v_rows := dbops.fn_purge_cleanup_expired(
           rtab.schema_name,
           rtab.table_name,
-          NULL,
           v_batch_limit,
           p_dry_run
         );
