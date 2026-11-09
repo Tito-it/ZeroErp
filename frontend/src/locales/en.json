@@ -2043,6 +2043,7 @@
     "field_requires_lotto": "Requires lot",
     "hint_requires_lotto": "The item is tracked by batches: every movement names a lot",
     "hint_onere_struttura": "This is a charge, not goods: no stock, kit, batches or serial numbers",
+    "hint_composito_solo_componente": "Composite and component-only exclude each other: switch the other off to turn this one on",
     "field_desc_fattura": "Invoice description",
     "field_fattore": "Factor",
     "field_vendita": "Sale",

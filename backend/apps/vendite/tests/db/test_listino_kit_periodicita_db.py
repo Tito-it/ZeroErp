@@ -25,11 +25,12 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 5) ListinoKitPeriodicitaDbTests.test_fuori_vocabolario_e_un_errore_sul_campo
 6) ListinoKitPeriodicitaDbTests.test_fuori_bozza_e_rifiutato
 7) ListinoKitPeriodicitaDbTests.test_il_lettore_dell_espansore_si_lega_alla_funzione
+8) ListinoKitPeriodicitaDbTests.test_il_preview_bundle_legge_la_distinta_alla_data
 """
 from __future__ import annotations
 
 import unittest
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -206,3 +207,39 @@ class ListinoKitPeriodicitaDbTests(unittest.TestCase):
                 sorgente_tipo_id=tipo_id, contratto_chiave=str(uuid4()),
                 articolo_padre_id=self.kit, data=self.v2_dal,
             )
+
+    # 8. Il preview dei prezzi bundle legge la distinta dalla sua sede,
+    #    `catalogo.fn_distinta_alla_data` (brief-db-revisione-catalogo, BE13):
+    #    un legame che comincia fra dieci giorni oggi non c'e' e quel giorno
+    #    si', il giorno prima della distinta non da' righe, e il prezzo bundle
+    #    della versione arriva sulla riga che ce l'ha.
+    def test_il_preview_bundle_legge_la_distinta_alla_data(self) -> None:
+        repo = ListiniRepository()
+        with connection.cursor() as cur:
+            cur.execute("SELECT script.fn_data_operativa()")
+            oggi = cur.fetchone()[0]
+            cur.execute(
+                "SELECT dbops.fn_pgtap_crea_articolo(%s)::text",
+                [f"LSKIT-F3-{uuid4().hex[:8].upper()}"],
+            )
+            futuro = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)"
+                " VALUES (%s, %s, 3, %s)",
+                [self.kit, futuro, oggi + timedelta(days=10)],
+            )
+
+        def _preview(data: Any) -> list[dict[str, Any]]:
+            return repo.list_bundle_preview(
+                versione_id=self.v2, articolo_padre_id=self.kit, data_riferimento=data,
+            )
+
+        oggi_righe = _preview(oggi)
+        self.assertEqual(sorted(r["coeff_qta"] for r in oggi_righe), [1, 2])
+        self.assertTrue(all(r["prezzo_suggerito"] == 10 for r in oggi_righe))
+        poi = {str(r["componente_id"]): r for r in _preview(oggi + timedelta(days=10))}
+        self.assertEqual(len(poi), 3)
+        self.assertIsNone(poi[futuro]["prezzo_suggerito"])
+        # Il giorno prima che la distinta del setUp cominci (2020-01-01): data
+        # fissa, non `oggi.replace(year=...)`, che il 29 febbraio solleva.
+        self.assertEqual(_preview(date(2019, 12, 31)), [])

@@ -32,12 +32,11 @@ Indice test eseguiti:
 20) CatalogoApiTests.test_patch_articolo_uom_not_found
 21) CatalogoApiTests.test_get_articolo_componenti_ok
 22) CatalogoApiTests.test_post_articolo_componente_ok
-23) CatalogoApiTests.test_delete_articolo_componente_not_found
-24) CatalogoApiTests.test_get_articolo_note_ok
-25) CatalogoApiTests.test_post_articolo_nota_ok
-26) CatalogoApiTests.test_patch_nota_not_found
-27) CatalogoApiTests.test_lookup_uom_rounding_modes_ok
-28) CatalogoApiTests.test_get_articolo_componenti_capability_ok
+23) CatalogoApiTests.test_get_articolo_note_ok
+24) CatalogoApiTests.test_post_articolo_nota_ok
+25) CatalogoApiTests.test_patch_nota_not_found
+26) CatalogoApiTests.test_lookup_uom_rounding_modes_ok
+27) CatalogoApiTests.test_get_articolo_componenti_capability_ok
 """
 
 import json
@@ -548,24 +547,6 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["id"], _COMPONENTE_UUID)
         self.assertEqual(str(mocked_create.call_args.args[0]), _ARTICOLO_UUID)
-
-    # Scopo: DELETE componente assente -> 404 via policy catalogo.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.catalogo.api.views.fn_delete_componente")
-    def test_delete_articolo_componente_not_found(self, mocked_delete, _mock_auth):
-        from apps.core.services.service_errors import ServiceError
-
-        mocked_delete.side_effect = ServiceError(
-            code="E_CATALOGO_COMPONENTE_NOT_FOUND",
-            message="Componente non trovato.",
-        )
-
-        response = self.client.delete(
-            f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/componenti/{_COMPONENTE_UUID}/"
-        )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json()["error"]["code"], "E_CATALOGO_COMPONENTE_NOT_FOUND")
 
     # Scopo: GET note articolo -> 200 con envelope count/results.
     # Shape allineata al pattern partizionato vendite (2026-05-22):

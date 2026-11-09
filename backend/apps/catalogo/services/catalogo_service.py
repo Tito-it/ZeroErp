@@ -55,6 +55,7 @@ from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
     MissingType as _MissingType,
     PayloadValidator,
+    map_integrity_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -658,30 +659,33 @@ def _extract_articolo_payload(
     return data
 
 
+# I vincoli di `catalogo.articoli` che l'operatore puo' violare, coi nomi
+# della doc auto-generata. Il riconoscimento e la traduzione sono del BB
+# `map_integrity_error`.
+_ARTICOLO_UNIQUE: dict[str, tuple] = {
+    "uq_articoli_codice": ("E_CATALOGO_VALIDATION", "Codice articolo gia' esistente.", "codice"),
+}
+# ⚠️ Il CHECK su composito/solo componente (brief-db-revisione-catalogo, BE10)
+#    non ha UN campo: e' la coppia a essere incoerente, e il form spegne
+#    l'uno quando l'altro e' acceso.
+_ARTICOLO_CHECK: dict[str, tuple] = {
+    "chk_articoli_composito_non_solo_componente": (
+        "E_CATALOGO_VALIDATION",
+        "Un articolo composito non puo' essere solo componente: spegnere uno dei due.",
+    ),
+}
+
+
 # Scopo: Converte IntegrityError su articoli in errore applicativo leggibile.
-def _translate_articolo_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
-    detail = str(exc)
-    lowered = detail.lower()
-    if (
-        "uq_articoli_codice" in lowered
-        or "articoli_codice_key" in lowered
-        or "key (codice)=" in lowered
-    ):
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Codice articolo gia' esistente.",
-            detail=detail,
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    ErrorManager.raise_error(
-        code="E_CATALOGO_VALIDATION",
-        message="Violazione vincoli articolo.",
-        detail=detail,
+def _translate_articolo_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
+    map_integrity_error(
+        exc,
+        unique_constraints=_ARTICOLO_UNIQUE,
+        check_constraints=_ARTICOLO_CHECK,
+        fallback_code="E_CATALOGO_VALIDATION",
+        fallback_message="Violazione vincoli articolo.",
         function_name=function_name,
         log_to_db=True,
-        cause=exc,
     )
 
 
@@ -1189,39 +1193,62 @@ def _extract_nota_payload(
     return data
 
 
-# Scopo: Traduce IntegrityError su UoM operative in errore applicativo uniforme.
-def _translate_uom_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
-    ErrorManager.raise_error(
-        code="E_CATALOGO_VALIDATION",
-        message="Violazione vincoli UoM operativa.",
-        detail=str(exc),
+# I vincoli di `catalogo.articoli_uom_operativa` e `catalogo.articoli_componenti`
+# che l'operatore puo' violare scegliendo, coi nomi della doc auto-generata. Il
+# resto (CHECK di forma, FK) lo ferma prima la validazione del payload, e cade
+# sul ripiego del BB `map_integrity_error`.
+# ⚠️ Il campo solo dove e' vero: l'articolo della UoM e' nella rotta, quindi
+#    il doppione e' la UoM scelta; nel legame contano componente E periodo,
+#    due scelte dell'operatore, e la tupla resta a due.
+_UOM_OPERATIVA_UNIQUE: dict[str, tuple] = {
+    "uq_artuomop_articolo_uom": (
+        "E_CATALOGO_VALIDATION", "L'articolo ha gia' questa unita' di misura operativa.", "uom_id",
+    ),
+}
+_COMPONENTE_UNIQUE: dict[str, tuple] = {
+    "uq_articoli_componenti_no_overlap": (
+        "E_CATALOGO_VALIDATION",
+        "Il componente e' gia' nella distinta in un periodo che si sovrappone: chiudere il legame in vigore prima di aprirne uno nuovo.",
+    ),
+    "uq_articoli_componenti_prodotto_componente_from": (
+        "E_CATALOGO_VALIDATION",
+        "Il componente ha gia' un legame che comincia lo stesso giorno.",
+    ),
+}
+
+
+# Scopo: Converte IntegrityError su UoM operative in errore applicativo leggibile.
+def _translate_uom_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
+    map_integrity_error(
+        exc,
+        unique_constraints=_UOM_OPERATIVA_UNIQUE,
+        fallback_code="E_CATALOGO_VALIDATION",
+        fallback_message="Violazione vincoli UoM operativa.",
         function_name=function_name,
         log_to_db=True,
-        cause=exc,
     )
 
 
-# Scopo: Traduce IntegrityError su componenti BoM in errore applicativo uniforme.
-def _translate_componente_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
-    ErrorManager.raise_error(
-        code="E_CATALOGO_VALIDATION",
-        message="Violazione vincoli componente.",
-        detail=str(exc),
+# Scopo: Converte IntegrityError su componenti BoM in errore applicativo leggibile.
+def _translate_componente_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
+    map_integrity_error(
+        exc,
+        unique_constraints=_COMPONENTE_UNIQUE,
+        fallback_code="E_CATALOGO_VALIDATION",
+        fallback_message="Violazione vincoli componente.",
         function_name=function_name,
         log_to_db=True,
-        cause=exc,
     )
 
 
-# Scopo: Traduce IntegrityError su note catalogo in errore applicativo uniforme.
+# Scopo: Converte IntegrityError su note catalogo in errore applicativo leggibile.
 def _translate_nota_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
-    ErrorManager.raise_error(
-        code="E_CATALOGO_VALIDATION",
-        message="Violazione vincoli nota.",
-        detail=str(exc),
+    map_integrity_error(
+        exc,
+        fallback_code="E_CATALOGO_VALIDATION",
+        fallback_message="Violazione vincoli nota.",
         function_name=function_name,
         log_to_db=True,
-        cause=exc,
     )
 
 
@@ -1792,27 +1819,6 @@ def fn_update_componente(
     result = repository.get_componente(articolo_id, componente_row_id)
     assert result is not None
     return result
-
-
-# Scopo: Elimina un componente BoM con ownership check sul prodotto.
-def fn_delete_componente(articolo_id: UUID | str, componente_row_id: UUID | str) -> dict[str, Any]:
-    function_name = "catalogo.catalogo_service.fn_delete_componente"
-    _get_articolo_base(articolo_id)
-    repository = CatalogoBomRepository()
-    try:
-        deleted = repository.delete_componente(articolo_id, componente_row_id)
-    except IntegrityError as exc:
-        _translate_componente_integrity_error(exc, function_name=function_name)
-    ErrorManager.require(
-        deleted,
-        code="E_CATALOGO_COMPONENTE_NOT_FOUND",
-        message="Componente non trovato.",
-        detail=f"Nessun componente id={componente_row_id} per articolo id={articolo_id}.",
-        context={"articolo_id": articolo_id, "componente_row_id": str(componente_row_id)},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    return {"deleted": True}
 
 
 # Scopo: La PAGINA delle note dell'articolo (lista `catalogo.note`, dal

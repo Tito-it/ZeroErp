@@ -166,6 +166,9 @@ const tutteLeVersioni = computed({
 // Min-date e default-date arrivano DAL BE come capability di riga
 // (`data_min_chiusura`, `data_default_chiusura` su vw_articoli_componenti_dettaglio,
 // sede unica dal 2026-09-28). Niente ricalcolo lato FE.
+// ⚠️ Dal 2026-11-09 la prima fine ammessa e' la piu' tarda fra `valido_dal` e
+// IERI: la fine di un legame non cambia i giorni gia' passati
+// (brief-db-revisione-catalogo, BE9; il DB rifiuta con E_BOM_CHIUSURA_RETROATTIVA).
 const chiudiDialogVisible = ref(false)
 const chiudiDialogRow = ref(null)
 const chiudiDialogData = ref(null)
@@ -178,7 +181,8 @@ const chiudiDialogIsImmediata = computed(() => isOggi(chiudiDialogData.value))
 // "Aggiungi componente" pre-compilato dai valori della sorgente, con
 // `valido_dal = chiudi_al + 1`. L'utente puo' modificare i campi prima
 // di salvare, e il save fa l'INSERT della nuova versione.
-// Min-date dialog: BE espone `data_min_chiusura` (= valido_dal della sorgente).
+// Min-date dialog: BE espone `data_min_chiusura` (la piu' tarda fra
+// valido_dal della sorgente e ieri: vedi il dialog di chiusura sopra).
 const duplicaDialogVisible = ref(false)
 const duplicaDialogRow = ref(null)
 const duplicaDialogChiudiAl = ref(null)
@@ -697,7 +701,8 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
        Sceglie chiudi_al e su conferma fa PATCH valido_al sulla sorgente.
        Subito dopo il drawer apre il form add pre-compilato con
        valido_dal = chiudi_al + 1 (step 2 in confermaDuplicaVersione).
-       min-date = valido_dal sorgente (dal BE come data_min_chiusura). -->
+       min-date = data_min_chiusura del BE (la piu' tarda fra valido_dal
+       della sorgente e ieri). -->
   <AppDialog
     :conferma-uscita="fotoDuplica.chiudiConConferma"
     :visible="duplicaDialogVisible"
