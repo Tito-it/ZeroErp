@@ -211,7 +211,7 @@ FROM script.fn_get_contatti(
   `ERRORE_PARAMETRI`, obsoleto dal 2026-08-05, e la rinomina dei codici non l'aveva visto perché i
   presidi sui codici leggevano il solo PL/pgSQL. Ora la funzione è PL/pgSQL, rifiuta il soggetto
   `NULL` con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, e con un soggetto valido restituisce le stesse righe
-  di prima; firma, colonne restituite e permessi non cambiano (`20261110-99`,
+  di prima; firma, colonne restituite e permessi non cambiano (`20261110-94`,
   `brief-db-revisione-dbops`, giro 12).
 
 ---

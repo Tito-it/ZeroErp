@@ -7,14 +7,18 @@
 --       Migration: 20260515-08
 --
 -- Cascata testata: user -> categoria_cliente -> group -> emittente
---                  -> session -> function -> default
+--                  -> function -> default
+-- ⚠️ Dal 2026-11-09 (brief-db-revisione-dbops, giro 13, Q10) il livello «sessione»
+--   e' uscito dal modello: niente colonna session_key, niente p_session_key. I test
+--   4 e 5 che lo provavano ora provano emittente su function e che il livello
+--   non c'e' piu'.
 --
 -- Indice test (1..9):
 --   1) user vince su tutto (user + categoria + group + emittente presenti)
 --   2) categoria_cliente vince su group (CASO CHIAVE del refactor)
 --   3) group vince su emittente
---   4) emittente vince su session
---   5) session vince su function
+--   4) emittente vince su function
+--   5) il livello sessione non c'e' piu': ne' la colonna ne' il parametro della firma
 --   6) function vince su default
 --   7) fallback a default (nessun override)
 --   8) p_categoria_cliente_id=NULL skippa il livello (cade su group)
@@ -88,13 +92,6 @@ SELECT param_id, 'LIVELLO_GROUP', group_id FROM tmp_cascata_ctx
 INSERT INTO config.parameter_overrides (parameter_id, overridden_value, emittente_fiscale_id)
 SELECT param_id, 'LIVELLO_EMITTENTE', emittente_id FROM tmp_cascata_ctx;
 
-INSERT INTO config.parameter_overrides (parameter_id, overridden_value, session_key)
-VALUES (
-    (SELECT param_id FROM tmp_cascata_ctx),
-    'LIVELLO_SESSION',
-    'test_session_cascata_20260515'
-);
-
 INSERT INTO config.parameter_overrides (parameter_id, overridden_value, function_name)
 VALUES (
     (SELECT param_id FROM tmp_cascata_ctx),
@@ -150,31 +147,31 @@ SELECT CASE
 END;
 
 -- ============================================================
--- 4) emittente vince su session
+-- 4) emittente vince su function
 -- ============================================================
 SELECT is(
     script.fn_get_parameter_full(
         'TEST_FN_CASCATA_CAT_CLI_20260515',
         p_emittente_fiscale_id => (SELECT emittente_id FROM tmp_cascata_ctx),
-        p_session_key          => 'test_session_cascata_20260515',
-        p_categoria_cliente_id => NULL
-    ),
-    'LIVELLO_EMITTENTE',
-    '4) emittente vince su session (nessun user/categoria/group)'
-);
-
--- ============================================================
--- 5) session vince su function
--- ============================================================
-SELECT is(
-    script.fn_get_parameter_full(
-        'TEST_FN_CASCATA_CAT_CLI_20260515',
-        p_session_key          => 'test_session_cascata_20260515',
         p_function_name        => 'test_function_cascata_20260515',
         p_categoria_cliente_id => NULL
     ),
-    'LIVELLO_SESSION',
-    '5) session vince su function'
+    'LIVELLO_EMITTENTE',
+    '4) emittente vince su function (nessun user/categoria/group)'
+);
+
+-- ============================================================
+-- 5) il livello sessione non c'e' piu' (Q10)
+-- ============================================================
+SELECT is(
+    (SELECT count(*)::integer FROM pg_attribute a
+      WHERE a.attrelid = 'config.parameter_overrides'::regclass
+        AND a.attname = 'session_key' AND NOT a.attisdropped)
+    + (SELECT count(*)::integer FROM pg_proc p
+        WHERE p.oid = 'script.fn_get_parameter_full'::regproc
+          AND pg_get_function_identity_arguments(p.oid) ~ 'session'),
+    0,
+    '5) il livello sessione non c''e'' piu'': ne'' la colonna ne'' il parametro della firma'
 );
 
 -- ============================================================

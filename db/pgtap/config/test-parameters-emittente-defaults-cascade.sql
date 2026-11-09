@@ -142,7 +142,7 @@ WHERE r.emittente_id IS NOT NULL
 -- esiste gia' un override puro per questo parametro e questo ambito, lo si
 -- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
 -- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
-ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6
 DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 
 SELECT is(
@@ -173,7 +173,7 @@ WHERE r.user_id IS NOT NULL
 -- esiste gia' un override puro per questo parametro e questo ambito, lo si
 -- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
 -- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
-ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6
 DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 
 SELECT is(

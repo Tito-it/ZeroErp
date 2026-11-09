@@ -1,5 +1,7 @@
 ## Documentazione Concettuale — Funzione `script.fn_get_parameter_full()`
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+
 > **Vedi anche**
 >
 > [config.parameters](/dbzero/config/tabelle/parameters)
@@ -19,54 +21,34 @@ o `config.parameter_overrides` per ottenere il valore finale.
 
 ---
 
-### Overload disponibili
+### Firma
 
-La funzione esiste in **due overload** con firma distinta:
-
-#### Overload originale — 6 parametri (backward compatible)
+La funzione ha **una firma sola**, e deve restare così:
 
 ```sql
 script.fn_get_parameter_full(
-    p_code                  text,
-    p_emittente_fiscale_id  bigint    DEFAULT NULL,
-    p_django_user_id        integer   DEFAULT NULL,
-    p_group_ids             integer[] DEFAULT NULL,
-    p_session_key           text      DEFAULT NULL,
-    p_function_name         text      DEFAULT NULL
-) RETURNS text
-```
-
-Cascata: `user → group → emittente → session → function → default`
-
-Tutti i caller esistenti che non passano `categoria_cliente_id` continuano
-a usare questo overload senza modifiche.
-
-#### Overload esteso — 7 parametri (con categoria cliente)
-
-```sql
-script.fn_get_parameter_full(
-    p_code                  text,
+    p_code                  config.parameters.code%TYPE,
     p_emittente_fiscale_id  config.parameter_overrides.emittente_fiscale_id%TYPE  DEFAULT NULL,
     p_django_user_id        config.parameter_overrides.django_user_id%TYPE        DEFAULT NULL,
     p_group_ids             integer[]                                              DEFAULT NULL,
-    p_session_key           config.parameter_overrides.session_key%TYPE           DEFAULT NULL,
     p_function_name         config.parameter_overrides.function_name%TYPE         DEFAULT NULL,
     p_categoria_cliente_id  config.parameter_overrides.categoria_cliente_id%TYPE  DEFAULT NULL
-) RETURNS text
+) RETURNS config.parameter_overrides.overridden_value%TYPE
 ```
 
-Cascata: `user → categoria_cliente → group → emittente → session → function → default`
+Cascata: `user → categoria_cliente → group → emittente → function → default`
 
-`p_categoria_cliente_id` è l'**ultimo parametro** per garantire backward compatibility:
-i caller posizionali con 6 argomenti usano il vecchio overload automaticamente.
 `p_group_ids` rimane `integer[]` esplicito — `%TYPE[]` non è sintassi valida in PostgreSQL.
 
-Per invocare l'overload esteso, passare esplicitamente il 7° argomento o usare
-named arg: `p_categoria_cliente_id => val`.
+⚠️ **Niente overload.** Due overload con i DEFAULT su tutti i parametri tranne il
+primo rendono ambigua ogni chiamata corta, cast compreso. Per aggiungere un livello si
+estende questa firma con un parametro opzionale in coda e si aggiornano i chiamanti.
+Conviene chiamare la funzione **per nome** (`p_categoria_cliente_id => val`): la
+posizione degli argomenti è cambiata il 2026-11-09, quando è uscito `p_session_key`.
 
 ---
 
-### Cascata di risoluzione (overload esteso)
+### Cascata di risoluzione
 
 La funzione usa `COALESCE` su subquery indipendenti, valutate in cortocircuito:
 appena un livello restituisce un valore non-NULL, i livelli successivi non vengono
@@ -78,9 +60,13 @@ eseguiti.
 | 2 | categoria_cliente | `p_categoria_cliente_id` | `categoria_cliente_id = p_categoria_cliente_id` |
 | 3 | group | `p_group_ids` | `django_group_id = ANY(p_group_ids)` |
 | 4 | emittente | `p_emittente_fiscale_id` | `emittente_fiscale_id = p_emittente_fiscale_id` |
-| 5 | session | `p_session_key` | `session_key = p_session_key` |
-| 6 | function | `p_function_name` | `function_name = p_function_name` |
-| 7 | default | — | `config.parameters.default_value` |
+| 5 | function | `p_function_name` | `function_name = p_function_name` |
+| 6 | default | — | `config.parameters.default_value` |
+
+Ogni livello legge solo gli override con `attivo = true`.
+
+Non esiste un livello «sessione»: un override è configurazione che resta, una sessione
+di login scade. È uscito dal modello il 2026-11-09.
 
 **Gestione NULL dei parametri di scope**: se un parametro di scope è `NULL`,
 la condizione `col = NULL` è sempre FALSE in SQL → il livello viene saltato
@@ -97,19 +83,18 @@ categoria PREMIUM max sconto 5%) deve vincere sul seniority dell'operatore
 
 | Nome | Tipo | Default | Descrizione |
 |---|---|---|---|
-| `p_code` | `text` | obbligatorio | Codice parametro (`config.parameters.code`) |
+| `p_code` | `varchar` | obbligatorio | Codice parametro (`config.parameters.code`) |
 | `p_emittente_fiscale_id` | `bigint NULL` | `NULL` | Override per emittente fiscale specifico |
 | `p_django_user_id` | `integer NULL` | `NULL` | Override per utente Django |
 | `p_group_ids` | `integer[] NULL` | `NULL` | Override per gruppi Django (array di id) |
-| `p_session_key` | `text NULL` | `NULL` | Override per sessione web |
 | `p_function_name` | `text NULL` | `NULL` | Override per funzione chiamante |
-| `p_categoria_cliente_id` | `smallint NULL` | `NULL` | Override per categoria cliente (solo overload 7-param) |
+| `p_categoria_cliente_id` | `smallint NULL` | `NULL` | Override per categoria cliente |
 
 ---
 
 ### Valore di ritorno
 
-`TEXT` — il valore override più specifico trovato nella cascata, oppure
+`TEXT` (il tipo di `config.parameter_overrides.overridden_value`) — il valore override più specifico trovato nella cascata, oppure
 `config.parameters.default_value` se nessun override applicabile.
 
 ---
@@ -146,7 +131,7 @@ SELECT script.fn_get_parameter_full('VENDITE_MAX_SCONTO_PCT');
 -- ritorna: '0' (default sicuro)
 ```
 
-#### Con utente e categoria cliente (overload esteso)
+#### Con utente e categoria cliente
 
 ```sql
 SELECT script.fn_get_parameter_full(
@@ -160,20 +145,6 @@ SELECT script.fn_get_parameter_full(
 -- altrimenti categoria (PREMIUM), poi group, poi emittente, poi default.
 ```
 
-#### Chiamata dall'overload originale (6 parametri)
-
-```sql
--- Chiamata posizionale a 6 arg: usa il vecchio overload, no categoria_cliente
-SELECT script.fn_get_parameter_full(
-    'VENDITE_MAX_SCONTO_PCT',
-    1,      -- emittente_fiscale_id
-    42,     -- django_user_id
-    ARRAY[10, 15],  -- group_ids
-    NULL,   -- session_key
-    NULL    -- function_name
-);
-```
-
 ---
 
 ### Cronologia modifiche
@@ -183,3 +154,4 @@ SELECT script.fn_get_parameter_full(
 | 2025-09-26 | v1 | Prima versione (user → group → session → function → default) |
 | 2026-04-03 | v2 | Aggiunto livello emittente_fiscale_id (migrazione da tenant_id) |
 | 2026-05-15 | v3 | Nuovo overload 7-param con livello categoria_cliente (priorità 2, tra user e group) |
+| 2026-11-09 | v4 | Esce il livello sessione: via `p_session_key` (DROP + CREATE), cascata a 6 livelli, firma unica. ChangeSet `20261111-14-update-fn-get-parameter-full-senza-sessione`, `brief-db-revisione-dbops`, giro 13 |

@@ -28,8 +28,8 @@
 --   4)  FK: ON UPDATE CASCADE
 --   5)  FK: ON DELETE RESTRICT
 --   6)  Indice ix_overrides_param_categoria_cliente presente
---   7)  UNIQUE v5 presente (uq_overrides_full_scope_v5), NULLS NOT DISTINCT
---   8)  UNIQUE v3 e v4 rimossi
+--   7)  UNIQUE v6 presente (uq_overrides_full_scope_v6), NULLS NOT DISTINCT
+--   8)  UNIQUE v3, v4 e v5 rimossi
 --   9)  Trigger guard categoria attiva presente
 --  10)  INSERT override con categoria attiva -> ok
 --  11)  INSERT override senza nessun ambito -> 23514
@@ -147,7 +147,7 @@ SELECT has_index(
 );
 
 -- ============================================================
--- 7) UNIQUE v5 presente, e NULLS NOT DISTINCT
+-- 7) UNIQUE v6 presente, e NULLS NOT DISTINCT (v6 dal 2026-11-09: senza la sessione, giro 13 Q10)
 --    Il nome da solo non basta: e' la clausola sui NULL a far valere il
 --    vincolo sulle righe reali, che hanno sempre qualche dimensione NULL.
 -- ============================================================
@@ -159,15 +159,15 @@ SELECT ok(
           JOIN pg_index i      ON i.indexrelid = c.conindid
          WHERE ns.nspname = 'config'
            AND t.relname  = 'parameter_overrides'
-           AND c.conname  = 'uq_overrides_full_scope_v5'
+           AND c.conname  = 'uq_overrides_full_scope_v6'
            AND c.contype  = 'u'
            AND i.indnullsnotdistinct
     ),
-    '7) UNIQUE uq_overrides_full_scope_v5 presente, NULLS NOT DISTINCT'
+    '7) UNIQUE uq_overrides_full_scope_v6 presente, NULLS NOT DISTINCT'
 );
 
 -- ============================================================
--- 8) UNIQUE v3 e v4 rimossi
+-- 8) UNIQUE v3, v4 e v5 rimossi
 -- ============================================================
 SELECT ok(
     NOT EXISTS (
@@ -176,9 +176,9 @@ SELECT ok(
           JOIN pg_namespace ns ON ns.oid = t.relnamespace
          WHERE ns.nspname = 'config'
            AND t.relname  = 'parameter_overrides'
-           AND c.conname  IN ('uq_overrides_full_scope_v3', 'uq_overrides_full_scope_v4')
+           AND c.conname  IN ('uq_overrides_full_scope_v3', 'uq_overrides_full_scope_v4', 'uq_overrides_full_scope_v5')
     ),
-    '8) UNIQUE uq_overrides_full_scope_v3 e _v4 rimossi'
+    '8) UNIQUE uq_overrides_full_scope_v3, _v4 e _v5 rimossi'
 );
 
 -- ============================================================

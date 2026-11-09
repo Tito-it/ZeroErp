@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile: CF e P.IVA
+#   valorizzati non si cambiano e non si svuotano, salvo il SUPER_ADMIN.
+#   Brief: brief-db-revisione-dbops, S-BE-3 (§32).
+#
+# Prima la regola viveva solo nel form (una promessa senza esecutore): una
+# PATCH diretta cambiava un CF valorizzato. Il guard la fa valere nel DB, con
+# la regola di anagrafiche.fn_id_fiscale_bloccato (-95) letta sul valore OLD.
+#   BEFORE UPDATE OF codice_fiscale, partita_iva, FOR EACH ROW. Nome a10, come
+#   gli altri guard dei soggetti. Nessuna normalizzazione dei due campi nel DB
+#   (trgfn_soggetti_normalize non li tocca): il confronto e' sul valore scritto.
+#   Il codice E_SOGGETTO_ID_FISCALE_IMMUTABILE porta 'campo' = la colonna, per
+#   il form; il messaggio nomina il dato con il segnaposto.
+#   Chi svuota un CF obbligatorio era gia' fermato da E_CF_OBBLIGATORIO /
+#   E_PIVA_OBBLIGATORIA; qui si ferma anche lo svuotamento del dato facoltativo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261110-96-create-trgfn-soggetti-guard-id-fiscale-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20261110-96-create-trgfn-soggetti-guard-id-fiscale-immutabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile e il trigger su anagrafiche.soggetti:
+        CF e P.IVA valorizzati non si cambiano, salvo il SUPER_ADMIN. Brief: brief-db-revisione-dbops, S-BE-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_id_fiscale_bloccato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  IF NEW.codice_fiscale IS DISTINCT FROM OLD.codice_fiscale
+                     AND anagrafiche.fn_id_fiscale_bloccato(OLD.codice_fiscale) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'trgfn_soggetti_guard_id_fiscale_immutabile',
+                          'E_SOGGETTO_ID_FISCALE_IMMUTABILE',
+                          jsonb_build_object('campo', 'codice_fiscale', 'soggetto_id', NEW.id),
+                          NEW.tx_id,
+                          'codice fiscale');
+                  END IF;
+
+                  IF NEW.partita_iva IS DISTINCT FROM OLD.partita_iva
+                     AND anagrafiche.fn_id_fiscale_bloccato(OLD.partita_iva) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'trgfn_soggetti_guard_id_fiscale_immutabile',
+                          'E_SOGGETTO_ID_FISCALE_IMMUTABILE',
+                          jsonb_build_object('campo', 'partita_iva', 'soggetto_id', NEW.id),
+                          NEW.tx_id,
+                          'partita IVA');
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile() IS
+                  'Guard di anagrafiche.soggetti (BEFORE UPDATE OF codice_fiscale, partita_iva): un codice fiscale o una partita IVA gia'' scritti non si cambiano e non si svuotano, salvo il SUPER_ADMIN; un campo vuoto si puo'' riempire. La regola e'' anagrafiche.fn_id_fiscale_bloccato, letta sul valore OLD; la stessa regola spegne i due campi nel form (dbops.lock_columns_conditional, anagrafiche.fn_soggetto_id_fiscale_bloccato). Rifiuto: E_SOGGETTO_ID_FISCALE_IMMUTABILE, con campo = la colonna.';
+
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_guard_id_fiscale_immutabile_upd ON anagrafiche.soggetti;
+              CREATE TRIGGER trg_soggetti_a10_guard_id_fiscale_immutabile_upd
+                  BEFORE UPDATE OF codice_fiscale, partita_iva ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_guard_id_fiscale_immutabile_upd ON anagrafiche.soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile();

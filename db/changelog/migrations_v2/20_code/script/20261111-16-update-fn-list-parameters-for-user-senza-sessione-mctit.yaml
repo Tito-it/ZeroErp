@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_list_parameters_for_user: chiama la firma nuova della cascata.
+#   Brief: brief-db-revisione-dbops, giro 13 (Q10).
+#
+# resolved_value chiedeva script.fn_get_parameter_full con 7 argomenti
+# posizionali (sessione e funzione NULL). La firma nuova (-14) non ha
+# p_session_key: la chiamata passa per nome, con i soli ambiti della lista.
+# Le colonne e la firma non cambiano: CREATE OR REPLACE. COMMENT: via la
+# sessione, il nome nuovo del vincolo d'unicita' (-17), via marcatori e brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261111-16-update-fn-list-parameters-for-user-senza-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261111-16-update-fn-list-parameters-for-user-senza-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_list_parameters_for_user chiama fn_get_parameter_full per nome, senza la sessione.
+        Brief: brief-db-revisione-dbops, giro 13 (Q10).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_parameter_full'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid) !~ 'session';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_list_parameters_for_user(
+                  p_django_user_id       integer,
+                  p_group_ids            integer[] DEFAULT NULL::integer[],
+                  p_emittente_fiscale_id bigint DEFAULT NULL::bigint,
+                  p_categoria_cliente_id smallint DEFAULT NULL::smallint
+              )
+               RETURNS TABLE(code character varying, description text, default_value text, emittente_value text,
+                             emittente_override_id bigint, group_value text, user_value text, user_override_id bigint,
+                             categoria_cliente_value text, categoria_cliente_override_id bigint, resolved_value text,
+                             ammette_override boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  -- Scopo: tutti i parametri di config.parameters con, per ciascun
+                  -- livello mostrato (emittente, gruppo, utente, categoria_cliente),
+                  -- l'override di quel livello e il valore risolto dal runtime.
+                  -- Destinata alla UI admin: gli id servono alla DELETE del backend.
+                  --
+                  -- Ogni override ha esattamente un ambito
+                  -- (chk_parameter_overrides_un_ambito) e ce n'e' al piu' uno per
+                  -- parametro e ambito (uq_overrides_full_scope_v6, NULLS NOT
+                  -- DISTINCT): ogni LEFT JOIN trova al piu' una riga, e la lista ha
+                  -- una riga per parametro. Le regole stanno nei vincoli, qui non si
+                  -- ripetono.
+                  --
+                  -- ammette_override dice la famiglia: dove e' false il FE non offre
+                  -- l'override. Su quelle righe i livelli sono NULL e resolved_value
+                  -- e' il default per costruzione (i guard sugli override): qui non
+                  -- si ripete.
+                  --
+                  -- resolved_value NON ricopia la cascata: la chiede alla sua sede,
+                  -- script.fn_get_parameter_full, per nome e con i soli ambiti della
+                  -- lista (la funzione resta NULL: la lista non la gestisce, e a
+                  -- NULL quel livello si salta da solo).
+                  --
+                  -- p_categoria_cliente_id NULL: NULL = NULL e' falso, il livello
+                  -- categoria non trova righe e le sue colonne restano NULL.
+                  RETURN QUERY
+                  SELECT
+                      p.code,
+                      p.description,
+                      p.default_value,
+                      po_em.overridden_value,
+                      po_em.id,
+                      po_gr.overridden_value,
+                      po_us.overridden_value,
+                      po_us.id,
+                      po_cat.overridden_value,
+                      po_cat.id,
+                      script.fn_get_parameter_full(
+                          p_code                 => p.code,
+                          p_emittente_fiscale_id => p_emittente_fiscale_id,
+                          p_django_user_id       => p_django_user_id,
+                          p_group_ids            => p_group_ids,
+                          p_categoria_cliente_id => p_categoria_cliente_id
+                      ),
+                      p.ammette_override
+                    FROM config.parameters p
+
+                    LEFT JOIN config.parameter_overrides po_em
+                      ON  po_em.parameter_id         = p.id
+                      AND po_em.emittente_fiscale_id = p_emittente_fiscale_id
+                      AND po_em.attivo               = true
+
+                    -- LATERAL: l'utente puo' stare in piu' gruppi
+                    -- (tie-break per id, lo stesso della cascata)
+                    LEFT JOIN LATERAL (
+                        SELECT o.overridden_value
+                          FROM config.parameter_overrides o
+                         WHERE o.parameter_id    = p.id
+                           AND o.django_group_id = ANY(p_group_ids)
+                           AND o.attivo          = true
+                         ORDER BY o.id
+                         LIMIT 1
+                    ) po_gr ON p_group_ids IS NOT NULL
+
+                    LEFT JOIN config.parameter_overrides po_us
+                      ON  po_us.parameter_id   = p.id
+                      AND po_us.django_user_id = p_django_user_id
+                      AND po_us.attivo         = true
+
+                    LEFT JOIN config.parameter_overrides po_cat
+                      ON  po_cat.parameter_id         = p.id
+                      AND po_cat.categoria_cliente_id = p_categoria_cliente_id
+                      AND po_cat.attivo               = true
+
+                   ORDER BY p.code;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_list_parameters_for_user(integer, integer[], bigint, smallint) IS
+                  'Lista tutti i parametri con l''override di ciascun livello mostrato (emittente, gruppo, utente, categoria_cliente), gli id (emittente_override_id, user_override_id, categoria_cliente_override_id) per la DELETE del backend e la famiglia del parametro (ammette_override: dove e'' false il FE non offre l''override). Una riga per parametro per costruzione del modello: ogni override ha esattamente un ambito (chk_parameter_overrides_un_ambito) e ce n''e'' al piu'' uno per parametro e ambito (uq_overrides_full_scope_v6, NULLS NOT DISTINCT). Sui parametri senza override i livelli sono NULL e resolved_value e'' il default per costruzione: i guard trgfn_parameter_overrides_guard_ammette_override e trgfn_parameters_guard_ammette_override impediscono che vi esista un override. resolved_value e'' script.fn_get_parameter_full con gli stessi ambiti (funzione NULL): il valore del runtime, non una sua copia. p_categoria_cliente_id NULL: livello categoria saltato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di prima.
+              SELECT 1;

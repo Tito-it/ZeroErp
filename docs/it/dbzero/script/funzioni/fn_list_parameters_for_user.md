@@ -25,7 +25,7 @@ BEGIN
     --
     -- Ogni override ha esattamente un ambito
     -- (chk_parameter_overrides_un_ambito) e ce n'e' al piu' uno per
-    -- parametro e ambito (uq_overrides_full_scope_v5, NULLS NOT
+    -- parametro e ambito (uq_overrides_full_scope_v6, NULLS NOT
     -- DISTINCT): ogni LEFT JOIN trova al piu' una riga, e la lista ha
     -- una riga per parametro. Le regole stanno nei vincoli, qui non si
     -- ripetono.
@@ -36,8 +36,9 @@ BEGIN
     -- si ripete.
     --
     -- resolved_value NON ricopia la cascata: la chiede alla sua sede,
-    -- script.fn_get_parameter_full (sessione e funzione NULL: la lista
-    -- non li gestisce, e a NULL quei livelli si saltano da soli).
+    -- script.fn_get_parameter_full, per nome e con i soli ambiti della
+    -- lista (la funzione resta NULL: la lista non la gestisce, e a
+    -- NULL quel livello si salta da solo).
     --
     -- p_categoria_cliente_id NULL: NULL = NULL e' falso, il livello
     -- categoria non trova righe e le sue colonne restano NULL.
@@ -54,13 +55,11 @@ BEGIN
         po_cat.overridden_value,
         po_cat.id,
         script.fn_get_parameter_full(
-            p.code,
-            p_emittente_fiscale_id,
-            p_django_user_id,
-            p_group_ids,
-            NULL,
-            NULL,
-            p_categoria_cliente_id
+            p_code                 => p.code,
+            p_emittente_fiscale_id => p_emittente_fiscale_id,
+            p_django_user_id       => p_django_user_id,
+            p_group_ids            => p_group_ids,
+            p_categoria_cliente_id => p_categoria_cliente_id
         ),
         p.ammette_override
       FROM config.parameters p
@@ -97,7 +96,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_list_parameters_for_user(p_django_user_id integer, p_group_ids integer[], p_emittente_fiscale_id bigint, p_categoria_cliente_id smallint)
-IS 'Lista tutti i parametri con l''override di ciascun livello mostrato (emittente, gruppo, utente, categoria_cliente), gli id (emittente_override_id, user_override_id, categoria_cliente_override_id) per la DELETE del backend e la famiglia del parametro (ammette_override: dove e'' false il FE non offre l''override). Una riga per parametro per costruzione del modello: ogni override ha esattamente un ambito (chk_parameter_overrides_un_ambito) e ce n''e'' al piu'' uno per parametro e ambito (uq_overrides_full_scope_v5, NULLS NOT DISTINCT). Sui parametri senza override i livelli sono NULL e resolved_value e'' il default per costruzione: i guard trgfn_parameter_overrides_guard_ammette_override e trgfn_parameters_guard_ammette_override impediscono che vi esista un override. resolved_value e'' script.fn_get_parameter_full con gli stessi ambiti (sessione e funzione NULL): il valore del runtime, non una sua copia. p_categoria_cliente_id NULL: livello categoria saltato. Rev 20261007-71 (brief-db-codici-sfilati-e-lista-parametri §3): livelli puri e cascata delegata (prima ricopiata). Rev 20261007-73 (§7.6): i filtri «puri» escono, li dicono i vincoli. Rev 20261025-86 (brief-db-parametri-senza-override §3): ammette_override in coda.';
+IS 'Lista tutti i parametri con l''override di ciascun livello mostrato (emittente, gruppo, utente, categoria_cliente), gli id (emittente_override_id, user_override_id, categoria_cliente_override_id) per la DELETE del backend e la famiglia del parametro (ammette_override: dove e'' false il FE non offre l''override). Una riga per parametro per costruzione del modello: ogni override ha esattamente un ambito (chk_parameter_overrides_un_ambito) e ce n''e'' al piu'' uno per parametro e ambito (uq_overrides_full_scope_v6, NULLS NOT DISTINCT). Sui parametri senza override i livelli sono NULL e resolved_value e'' il default per costruzione: i guard trgfn_parameter_overrides_guard_ammette_override e trgfn_parameters_guard_ammette_override impediscono che vi esista un override. resolved_value e'' script.fn_get_parameter_full con gli stessi ambiti (funzione NULL): il valore del runtime, non una sua copia. p_categoria_cliente_id NULL: livello categoria saltato.';
 ```
 
 </div>

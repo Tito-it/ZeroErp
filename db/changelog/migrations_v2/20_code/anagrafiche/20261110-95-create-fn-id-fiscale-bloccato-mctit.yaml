@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La regola «CF e P.IVA valorizzati non si cambiano», in un posto solo.
+#   Brief: brief-db-revisione-dbops, S-BE-3 (§32).
+#
+# Decisione di Tid (2026-11-09): CF e P.IVA sono la chiave d'unicita' del
+# soggetto (uq_soggetto_idstato_id_fiscale_univoco, sulla colonna generata
+# id_fiscale_univoco_cf_piva): un valore scritto non si cambia e non si
+# svuota; un campo vuoto si puo' riempire (l'identita' passa da incompleta a
+# completa, non da un soggetto a un altro); l'errore di battitura lo corregge
+# solo il SUPER_ADMIN.
+#
+#   anagrafiche.fn_id_fiscale_bloccato(valore): la regola sul VALORE attuale.
+#     La legge il guard (-96) con OLD.<colonna>.
+#   anagrafiche.fn_soggetto_id_fiscale_bloccato(soggetto, colonna): la stessa
+#     regola letta sulla riga. La legge dbops.fn_non_editable_fields dal
+#     registro dbops.lock_columns_conditional (-97), cosi' il form spegne
+#     esattamente cio' che il guard rifiuta.
+#
+#   Il SUPER_ADMIN si chiede a script.fn_is_super_admin (la regola del backend)
+#   sull'utente della richiesta (app.current_user_id); senza utente vale no.
+#   %TYPE in firma: si risolve al CREATE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261110-95-create-fn-id-fiscale-bloccato-mctit.yaml
+
+  - changeSet:
+      id: 20261110-95-create-fn-id-fiscale-bloccato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_id_fiscale_bloccato e anagrafiche.fn_soggetto_id_fiscale_bloccato: CF e P.IVA
+        valorizzati non si cambiano, salvo il SUPER_ADMIN. Brief: brief-db-revisione-dbops, S-BE-3.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: anagrafiche, tableName: soggetti }
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_is_super_admin';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_id_fiscale_bloccato(
+                  p_valore anagrafiche.soggetti.codice_fiscale%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                SELECT p_valore IS NOT NULL
+                   AND NOT COALESCE(
+                         script.fn_is_super_admin(
+                           NULLIF(current_setting('app.current_user_id', true), '')::integer),
+                         false);
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_id_fiscale_bloccato(text) IS
+                  'Vero se un codice fiscale o una partita IVA con questo valore attuale non si possono cambiare: il valore e'' scritto e chi agisce non e'' SUPER_ADMIN (script.fn_is_super_admin sull''utente della richiesta, app.current_user_id; senza utente vale no). Un valore NULL si puo'' riempire. CF e P.IVA sono la chiave d''unicita'' del soggetto (uq_soggetto_idstato_id_fiscale_univoco): cambiarli farebbe di un soggetto un altro. La leggono anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile (con il valore OLD) e anagrafiche.fn_soggetto_id_fiscale_bloccato (sulla riga, per il form).';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_soggetto_id_fiscale_bloccato(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_colonna     text
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                SELECT COALESCE(
+                         (SELECT anagrafiche.fn_id_fiscale_bloccato(
+                                   CASE p_colonna
+                                       WHEN 'codice_fiscale' THEN s.codice_fiscale
+                                       WHEN 'partita_iva'    THEN s.partita_iva
+                                   END)
+                            FROM anagrafiche.soggetti s
+                           WHERE s.id = p_soggetto_id),
+                         false);
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_soggetto_id_fiscale_bloccato(uuid, text) IS
+                  'La regola di anagrafiche.fn_id_fiscale_bloccato letta sulla riga del soggetto, per la colonna codice_fiscale o partita_iva. E'' la condizione delle due righe di dbops.lock_columns_conditional su anagrafiche.soggetti, che dbops.fn_non_editable_fields valuta per il form: il form spegne esattamente cio'' che il guard rifiuta. Soggetto inesistente o colonna diversa: falso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_soggetto_id_fiscale_bloccato(uuid, text);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_id_fiscale_bloccato(text);

@@ -1,0 +1,146 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_parameter_full: il livello «sessione» esce dalla cascata.
+#   Brief: brief-db-revisione-dbops, giro 13 (Q10).
+#
+# Decisione di Tid (2026-11-05, Q10): il livello «sessione» esce dal modello, da
+# tutte e due le catene. Un override e' configurazione che resta; una sessione
+# di login scade, e nessuna porta crea o pulisce un override di sessione.
+#   Cascata: user -> categoria_cliente -> group -> emittente -> function -> default.
+#
+# ⚠️ La firma perde p_session_key, che stava IN MEZZO (fra p_group_ids e
+# p_function_name): cambia l'identita', quindi DROP + CREATE. Resta UNA firma
+# sola (il COMMENT spiega perche' due overload con i DEFAULT sono ambigui). Un
+# chiamante a 7 argomenti posizionali fallisce subito («la funzione non
+# esiste»), non legge in silenzio il valore sbagliato: e' il comportamento
+# voluto. I chiamanti del database si aggiornano in questo giro (-15, -16); il
+# backend con BE8 (§5).
+#   %TYPE in firma e nel risultato (le colonne di config.parameters e
+#   config.parameter_overrides); p_group_ids resta integer[] (%TYPE[] non
+#   esiste). Il GRANT all'app si ripete: un DROP lo perde.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261111-14-update-fn-get-parameter-full-senza-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261111-14-update-fn-get-parameter-full-senza-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_parameter_full senza il livello sessione: firma senza p_session_key (DROP + CREATE),
+        cascata a sei livelli. Brief: brief-db-revisione-dbops, giro 13 (Q10).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: parameter_overrides }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_parameter_full(text, bigint, integer, integer[], text, text, smallint);
+
+              CREATE FUNCTION script.fn_get_parameter_full(
+                  p_code                 config.parameters.code%TYPE,
+                  p_emittente_fiscale_id config.parameter_overrides.emittente_fiscale_id%TYPE DEFAULT NULL,
+                  p_django_user_id       config.parameter_overrides.django_user_id%TYPE DEFAULT NULL,
+                  p_group_ids            integer[] DEFAULT NULL,
+                  p_function_name        config.parameter_overrides.function_name%TYPE DEFAULT NULL,
+                  p_categoria_cliente_id config.parameter_overrides.categoria_cliente_id%TYPE DEFAULT NULL
+              )
+               RETURNS config.parameter_overrides.overridden_value%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Cascata: user -> categoria_cliente -> group -> emittente -> function -> default.
+              -- Ogni livello usa l'uguaglianza: se il suo ambito e' NULL non trova righe
+              -- e si salta da solo.
+              -- p_group_ids resta integer[] esplicito: %TYPE[] non e' sintassi valida in PG.
+              DECLARE
+                  v_param_id  config.parameters.id%TYPE;
+                  v_default   config.parameters.default_value%TYPE;
+                  v_result    config.parameter_overrides.overridden_value%TYPE;
+              BEGIN
+                  SELECT id, default_value
+                    INTO v_param_id, v_default
+                    FROM config.parameters
+                   WHERE code = p_code;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_get_parameter_full',
+                          'E_ERRORE_PARAMETRI_TABELLA',
+                          jsonb_build_object(
+                              'codice_parametro', p_code,
+                              'nome_tabella',      'config.parameters'
+                          ),
+                          NULL::uuid,
+                          'config.parameters',
+                          p_code::text
+                      );
+                  END IF;
+
+                  SELECT COALESCE(
+                      -- 1. user (massima priorita')
+                      (SELECT po.overridden_value
+                         FROM config.parameter_overrides po
+                        WHERE po.parameter_id    = v_param_id
+                          AND po.django_user_id  = p_django_user_id
+                          AND po.attivo          = true
+                        LIMIT 1),
+                      -- 2. categoria_cliente (vince su group ed emittente)
+                      (SELECT po.overridden_value
+                         FROM config.parameter_overrides po
+                        WHERE po.parameter_id         = v_param_id
+                          AND po.categoria_cliente_id = p_categoria_cliente_id
+                          AND po.attivo               = true
+                        LIMIT 1),
+                      -- 3. group (tie-break per id)
+                      (SELECT po.overridden_value
+                         FROM config.parameter_overrides po
+                        WHERE po.parameter_id    = v_param_id
+                          AND po.django_group_id = ANY(p_group_ids)
+                          AND po.attivo          = true
+                        ORDER BY po.id
+                        LIMIT 1),
+                      -- 4. emittente
+                      (SELECT po.overridden_value
+                         FROM config.parameter_overrides po
+                        WHERE po.parameter_id          = v_param_id
+                          AND po.emittente_fiscale_id  = p_emittente_fiscale_id
+                          AND po.attivo                = true
+                        LIMIT 1),
+                      -- 5. function
+                      (SELECT po.overridden_value
+                         FROM config.parameter_overrides po
+                        WHERE po.parameter_id  = v_param_id
+                          AND po.function_name = p_function_name
+                          AND po.attivo        = true
+                        LIMIT 1),
+                      -- 6. default
+                      v_default
+                  ) INTO v_result;
+
+                  RETURN v_result;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_parameter_full(character varying, bigint, integer, integer[], text, smallint) IS
+                  'Cascata a 6 livelli: user -> categoria_cliente -> group -> emittente -> function -> default. Ogni livello si salta da solo quando il suo ambito e'' NULL (uguaglianza). p_group_ids integer[] esplicito (%%TYPE[] non valido in PG). Legge config.parameter_overrides con attivo = true. Il livello «sessione» e'' uscito dal modello il 2026-11-09 (decisione di Tid): un override e'' configurazione che resta, una sessione di login scade. ⚠️ FIRMA UNICA, e deve restare tale: due overload con i DEFAULT su tutti i parametri tranne il primo rendono ambigua ogni chiamata corta, cast compreso (successo fino al 2026-07-27). Per aggiungere un livello si estende questa firma con un parametro opzionale in coda e si aggiornano i chiamanti, mai un overload «compatibile».';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_parameter_full(character varying, bigint, integer, integer[], text, smallint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di prima (con p_session_key).
+              SELECT 1;

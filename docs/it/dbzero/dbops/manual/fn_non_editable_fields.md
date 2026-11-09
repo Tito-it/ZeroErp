@@ -18,6 +18,8 @@
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — il confronto fra il lock vivo e il registro
 > * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi), [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — i predicati che le regole dell'articolo condividono coi guard
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — un guard che rifiuta il salvataggio che la funzione annuncia
+> * [anagrafiche.fn_id_fiscale_bloccato](/dbzero/anagrafiche/manual/fn_id_fiscale_bloccato) — la regola di CF e P.IVA di un soggetto, condivisa con il guard
+> * [anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile](/dbzero/anagrafiche/manual/trgfn_soggetti_guard_id_fiscale_immutabile) — il guard che rifiuta il cambio di CF e P.IVA già scritti
 
 ---
 
@@ -59,7 +61,9 @@ stesso.
 vengono dai trigger stessi (`dbops.vw_non_editable_fields`), quindi coincidono con ciò che l'UPDATE
 rifiuta. Un blocco condizionale chiama lo **stesso predicato** del guard che rifiuterebbe la
 modifica: per l'articolo, i predicati della distinta (`catalogo.fn_articolo_padre_di_distinta_da_oggi`,
-`…_componente_di_distinta_in_vigore`, `…_primo_padre_da_oggi`) e `catalogo.fn_articolo_usato`.
+`…_componente_di_distinta_in_vigore`, `…_primo_padre_da_oggi`) e `catalogo.fn_articolo_usato`;
+per il soggetto (dal 2026-11-09), `anagrafiche.fn_soggetto_id_fiscale_bloccato`, che chiede a
+`anagrafiche.fn_id_fiscale_bloccato` se CF e P.IVA sono già scritti e chi agisce non è SUPER_ADMIN.
 Una regola che ricopiasse la condizione del guard prima o poi risponderebbe in un altro modo.
 
 ---
@@ -84,6 +88,9 @@ chiamate nella stessa transazione possono rispondere diversamente se i dati camb
 * `db/pgtap/catalogo/test-articolo-usato-struttura-v1.sql`,
   `test-distinta-un-livello-e-onere-natura-v1.sql` e `db/pgtap/vendite/test-righe-articolo-ammesso-v1.sql`
   — le regole condizionali dell'articolo e delle righe, lette come le legge il backend.
+* `db/pgtap/anagrafiche/test-soggetti-id-fiscale-immutabile-v1.sql` — per CF e P.IVA di un soggetto
+  il form e il guard rispondono uguale: spenti per l'operatore se scritti, accesi per il SUPER_ADMIN,
+  acceso un campo vuoto.
 
 ---
 
@@ -94,6 +101,8 @@ chiamate nella stessa transazione possono rispondere diversamente se i dati camb
 * 2026-11-08 — i blocchi incondizionati vengono dai trigger vivi, `codice_interno` compreso, e le
   regole della distinta chiamano i predicati del guard (`20261109-61`, `-64`,
   brief-db-revisione-dbops D25 e D28).
+* 2026-11-09 — le regole condizionali non riguardano più solo l'articolo: entrano `codice_fiscale` e
+  `partita_iva` di `anagrafiche.soggetti` (`20261110-97`, `brief-db-revisione-dbops`, S-BE-3).
 
 ---
 

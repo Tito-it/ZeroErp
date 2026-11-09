@@ -262,7 +262,7 @@ Permette di recuperare, ad esempio, il **referente amministrativo predefinito** 
 
 * 2026-11-09 — la funzione non cambia, ma col soggetto `NULL` riceve il rifiuto di
   `fn_get_contatti`, `E_CONTATTI_SOGGETTO_OBBLIGATORIO`. Prima la validazione di `fn_get_contatti`
-  non girava, e anche questa funzione restituiva zero righe in silenzio (`20261110-99`,
+  non girava, e anche questa funzione restituiva zero righe in silenzio (`20261110-94`,
   `brief-db-revisione-dbops`, giro 12).
 
 ---

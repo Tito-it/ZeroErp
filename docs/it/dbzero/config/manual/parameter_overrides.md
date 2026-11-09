@@ -1,5 +1,7 @@
 ## Documentazione Concettuale — Tabella `config.parameter_overrides`
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+
 > **Vedi anche**
 >
 > [config.parameters](/dbzero/config/tabelle/parameters)
@@ -10,12 +12,13 @@
 
 ### Scopo
 
-(ultima revisione 25-10-2026)
-
 La tabella `config.parameter_overrides` contiene gli override dei parametri di sistema
 definiti in `config.parameters`. Ogni riga rappresenta un override valido per una
 specifica **dimensione di scope**: utente Django, gruppo Django, emittente fiscale,
-categoria cliente, sessione o funzione chiamante.
+categoria cliente o funzione chiamante.
+
+Un override è **configurazione che resta**: non esiste un livello di sessione. Una
+sessione di login scade, e nessuna porta creerebbe o pulirebbe un override legato a lei.
 
 Lo scope è espresso con colonne dedicate (non con scope_type/scope_id generici):
 ogni colonna è nullable e la combinazione valorizzata determina a quale livello
@@ -33,9 +36,8 @@ applicando gli override in ordine di priorità decrescente:
 2. categoria_cliente (categoria_cliente_id)
 3. group         (django_group_id)
 4. emittente     (emittente_fiscale_id)
-5. session       (session_key)
-6. function      (function_name)
-7. default       (config.parameters.default_value)
+5. function      (function_name)
+6. default       (config.parameters.default_value)
 ```
 
 Un override scatta solo quando il parametro di scope passato alla funzione
@@ -52,8 +54,7 @@ il livello viene saltato (NULL-equality è sempre FALSE in SQL).
 | `categoria_cliente_id` | `smallint NULL` | 2 — categoria | FK a `anagrafiche.categorie_clienti(id)`. Regola commerciale per categoria (es. PREMIUM max sconto 5%). Vince sul gruppo. |
 | `django_group_id` | `integer NULL` | 3 — group | FK a `django.auth_group(id)` via surrogate. Override per ruolo/seniority operatore. |
 | `emittente_fiscale_id` | `bigint NULL` | 4 — emittente | FK a `anagrafiche.emittenti_fiscali(id)`. Override per persona giuridica emittente. |
-| `session_key` | `text NULL` | 5 — session | Override temporaneo legato alla sessione web. |
-| `function_name` | `text NULL` | 6 — function | Override per specifica funzione applicativa chiamante. |
+| `function_name` | `text NULL` | 5 — function | Override per specifica funzione applicativa chiamante. |
 
 **Regola:** ogni riga ha esattamente UNA dimensione valorizzata e le restanti a
 NULL. Dal 2026-10-07 è un vincolo, `chk_parameter_overrides_un_ambito`
@@ -61,7 +62,7 @@ NULL. Dal 2026-10-07 è un vincolo, `chk_parameter_overrides_un_ambito`
 senza nessun ambito è rifiutata (`23514`). Il perché: fra due ambiti la cascata
 sceglie **un** valore, non li combina — se Mario ha il 15% e la categoria PREMIUM
 il 5%, per Mario su un cliente PREMIUM vale il 15%; un override «Mario + PREMIUM»
-non ha un significato commerciale. La UNIQUE `uq_overrides_full_scope_v5` garantisce che non
+non ha un significato commerciale. La UNIQUE `uq_overrides_full_scope_v6` garantisce che non
 esistano due override con la stessa combinazione completa di scope, **NULL
 compresi**: due override personali puri per lo stesso parametro e lo stesso utente
 sono la stessa riga, e la seconda è rifiutata (`23505`).
@@ -77,15 +78,16 @@ per Mario sempre, anche fuori da PREMIUM (`brief-db-codici-sfilati-e-lista-param
 | Tipo | Nome | Colonne | Note |
 |---|---|---|---|
 | PRIMARY KEY | `parameter_overrides_pkey` | `id` | |
-| UNIQUE | `uq_overrides_full_scope_v5` | `parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, session_key, function_name` | `NULLS NOT DISTINCT`: un ambito, un override, anche quando l'ambito ha dei NULL (cioè sempre). `attivo` è fuori: una riga spenta occupa il suo ambito. |
-| CHECK | `chk_parameter_overrides_un_ambito` | le sei dimensioni | `num_nonnulls(...) = 1`: esattamente un ambito per override |
+| UNIQUE | `uq_overrides_full_scope_v6` | `parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, function_name` | `NULLS NOT DISTINCT`: un ambito, un override, anche quando l'ambito ha dei NULL (cioè sempre). `attivo` è fuori: una riga spenta occupa il suo ambito. |
+| CHECK | `chk_parameter_overrides_un_ambito` | le cinque dimensioni | `num_nonnulls(...) = 1`: esattamente un ambito per override |
 | FOREIGN KEY | `fk_overrides_parameter` | `parameter_id` | `ON UPDATE CASCADE ON DELETE RESTRICT` |
 | FOREIGN KEY | `fk_overrides_emittente_fiscale` | `emittente_fiscale_id` | `ON UPDATE CASCADE ON DELETE RESTRICT` |
 | FOREIGN KEY | `fk_overrides_categoria_cliente` | `categoria_cliente_id` | `ON UPDATE CASCADE ON DELETE RESTRICT` |
 | FOREIGN KEY | `fk_overrides_django_user` | `django_user_id` | surrogate tramite trigger |
 | FOREIGN KEY | `fk_overrides_django_group` | `django_group_id` | surrogate tramite trigger |
 
-> **Nota**: la UNIQUE è alla versione v5 (`20261007-70`): stesse colonne della v4,
+> **Nota**: la UNIQUE è alla versione v6 (`20261111-17`): come la v5, senza
+> `session_key`. La v5 (`20261007-70`) aveva le stesse colonne della v4,
 > ma `NULLS NOT DISTINCT`. La v4 (2026-05-15, aggiunta `categoria_cliente_id`) era
 > `NULLS DISTINCT`, il default di PostgreSQL: non scattava su nessuna riga con una
 > dimensione NULL, cioè su nessun override reale, e due override puri per lo stesso
@@ -119,7 +121,7 @@ per la subquery COALESCE in `fn_get_parameter_full`:
 | `ix_overrides_param_group` | `(parameter_id, django_group_id)` | 3 — group |
 | `ix_parameter_overrides_emittente` | `(parameter_id, emittente_fiscale_id)` | 4 — emittente |
 
-I livelli session e function non hanno indice dedicato (uso raro; la tabella
+Il livello function non ha indice dedicato (uso raro; la tabella
 config è tipicamente piccola).
 
 ---
@@ -153,3 +155,16 @@ SELECT p.id, '20', au.id
 
 Grazie alla cascata, il livello user (priorità 1) sovrascrive il livello
 categoria (priorità 2): Maria ottiene sempre 20%, anche su clienti PREMIUM.
+
+---
+
+### Storia
+
+* 2026-11-09 — esce il livello sessione degli override, da tutte e due le catene: via la
+  colonna `session_key`. La UNIQUE diventa `uq_overrides_full_scope_v6` (`NULLS NOT DISTINCT`,
+  `parameter_id` più le cinque dimensioni); `chk_parameter_overrides_un_ambito` tiene il nome e
+  conta cinque dimensioni. Commento della tabella riscritto. ChangeSet
+  `20261111-17-alter-parameter-overrides-drop-session-key`, `brief-db-revisione-dbops`, giro 13.
+  Cancellato anche il CSV orfano `80_data/sql/config/parameter_overrides.csv`: aveva solo
+  l'intestazione, con colonne che non esistono più (`tenant_id`, `session_key`), e nessun
+  changeSet lo caricava.
