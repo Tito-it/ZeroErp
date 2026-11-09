@@ -6,22 +6,25 @@
 -- (catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva) e il form
 -- (dbops.fn_non_editable_fields, regole di dbops.lock_columns_conditional)
 -- chiamano gli STESSI tre predicati catalogo.fn_*, e quindi rispondono uguale.
--- Brief: brief-db-revisione-dbops, giro 10a (D28, N3)
+-- Brief: brief-db-revisione-dbops, giro 10a (D28, N3); brief-db-revisione-catalogo,
+--   giro 1 (D9: il padre guarda anche la distinta futura)
 --
 -- Elenco test (plan 7):
---  1-3) i tre predicati esistono
+--  1-3) i tre predicati esistono (il padre: da oggi in poi)
 --  4)   ⭐ nessuna regola del form su catalogo.articoli ricopia la distinta
 --       (nessuna condition_expr legge catalogo.articoli_componenti)
 --  5)   ⭐ nemmeno il guard: chiama i predicati
 --  6)   ⭐ per quattro articoli costruiti e i tre flag, il form spegne la colonna
 --       se e solo se il guard rifiuterebbe la modifica (l'elenco dei disaccordi
 --       e' vuoto)
---  7)   controllo: le colonne spente sono cinque, quelle attese (il 6 non e'
+--  7)   controllo: le colonne spente sono sette, quelle attese (il 6 non e'
 --       verde perche' nessuno rifiuta niente)
 --
 -- Fixture (ROLLBACK finale):
 --   DPG_X  semplice, fuori da ogni distinta
 --   DPG_W  composito, padre di W->Z (in vigore) e W->Y (futura)
+--   DPG_V  composito, padre di una sola distinta futura V->Y: anche lui non
+--          cambia is_composito ne' requires_serial (prima passava)
 --   DPG_Z  semplice, componente in vigore
 --   DPG_Y  semplice, componente di una distinta futura
 -- Il guard si prova cambiando il flag in un blocco che si annulla sempre: un
@@ -37,8 +40,8 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(7);
 
-SELECT has_function('catalogo', 'fn_articolo_padre_di_distinta_in_vigore', ARRAY['uuid'],
-    '1) catalogo.fn_articolo_padre_di_distinta_in_vigore(uuid) esiste');
+SELECT has_function('catalogo', 'fn_articolo_padre_di_distinta_da_oggi', ARRAY['uuid'],
+    '1) catalogo.fn_articolo_padre_di_distinta_da_oggi(uuid) esiste');
 SELECT has_function('catalogo', 'fn_articolo_componente_di_distinta_in_vigore', ARRAY['uuid'],
     '2) catalogo.fn_articolo_componente_di_distinta_in_vigore(uuid) esiste');
 SELECT has_function('catalogo', 'fn_articolo_primo_padre_da_oggi', ARRAY['uuid'],
@@ -66,6 +69,7 @@ DECLARE
     v_w_id   uuid;
     v_y_id   uuid;
     v_z_id   uuid;
+    v_v_id   uuid;
 BEGIN
     SELECT id INTO v_uom_id FROM catalogo.unita_misura WHERE attivo = TRUE LIMIT 1;
     IF v_uom_id IS NULL THEN
@@ -76,15 +80,18 @@ BEGIN
     VALUES ('DPG_X', 'pgTAP predicati: semplice',              v_uom_id, TRUE, FALSE),
            ('DPG_W', 'pgTAP predicati: padre',                 v_uom_id, TRUE, TRUE),
            ('DPG_Y', 'pgTAP predicati: componente futuro',     v_uom_id, TRUE, FALSE),
-           ('DPG_Z', 'pgTAP predicati: componente in vigore',  v_uom_id, TRUE, FALSE);
+           ('DPG_Z', 'pgTAP predicati: componente in vigore',  v_uom_id, TRUE, FALSE),
+           ('DPG_V', 'pgTAP predicati: padre solo futuro',     v_uom_id, TRUE, TRUE);
 
     SELECT id INTO v_w_id FROM catalogo.articoli WHERE codice = 'DPG_W';
     SELECT id INTO v_y_id FROM catalogo.articoli WHERE codice = 'DPG_Y';
     SELECT id INTO v_z_id FROM catalogo.articoli WHERE codice = 'DPG_Z';
+    SELECT id INTO v_v_id FROM catalogo.articoli WHERE codice = 'DPG_V';
 
     INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal, attivo)
     VALUES (v_w_id, v_z_id, 1, script.fn_data_operativa(), TRUE),
-           (v_w_id, v_y_id, 1, script.fn_data_operativa() + 10, TRUE);
+           (v_w_id, v_y_id, 1, script.fn_data_operativa() + 10, TRUE),
+           (v_v_id, v_y_id, 1, script.fn_data_operativa() + 10, TRUE);
 END;
 $$;
 
@@ -102,6 +109,12 @@ BEGIN
         IF SQLERRM = 'PGTAP_UPDATE_PASSATO' THEN
             RETURN false;
         END IF;
+        -- Un kit che diventa solo componente lo ferma il CHECK della tabella
+        -- (chk_articoli_composito_non_solo_componente), non la distinta: per la
+        -- distinta la modifica passa, e qui conta solo la distinta.
+        IF SQLSTATE = '23514' AND SQLERRM LIKE '%chk_articoli_composito_non_solo_componente%' THEN
+            RETURN false;
+        END IF;
         IF SQLERRM LIKE '%Struttura BoM immutabile%' OR SQLERRM LIKE '%diventare composito%' THEN
             RETURN true;
         END IF;
@@ -116,7 +129,7 @@ SELECT a.codice, c.col,
        pg_temp.guard_rifiuta(a.id, c.col) AS guard_rifiuta
   FROM catalogo.articoli a
  CROSS JOIN unnest(ARRAY['is_composito', 'requires_serial', 'is_solo_componente']) AS c(col)
- WHERE a.codice IN ('DPG_X', 'DPG_W', 'DPG_Y', 'DPG_Z');
+ WHERE a.codice IN ('DPG_V', 'DPG_X', 'DPG_W', 'DPG_Y', 'DPG_Z');
 
 SELECT is(
     (SELECT COALESCE(array_agg(codice || '.' || col || ' form=' || form_spenta || ' guard=' || guard_rifiuta
@@ -128,10 +141,11 @@ SELECT is(
 
 SELECT is(
     (SELECT array_agg(codice || '.' || col ORDER BY codice, col) FROM _dpg WHERE guard_rifiuta),
-    ARRAY['DPG_W.is_composito', 'DPG_W.requires_serial',
+    ARRAY['DPG_V.is_composito', 'DPG_V.requires_serial',
+          'DPG_W.is_composito', 'DPG_W.requires_serial',
           'DPG_Y.is_composito',
           'DPG_Z.is_composito', 'DPG_Z.is_solo_componente'],
-    '7) i rifiuti sono quelli della distinta: padre (check 1), componente in vigore (check 2), componente in vigore o futuro (check 3)');
+    '7) i rifiuti sono quelli della distinta: padre in vigore o futuro (check 1), componente in vigore (check 2), componente in vigore o futuro (check 3)');
 
 SELECT * FROM finish();
 ROLLBACK;

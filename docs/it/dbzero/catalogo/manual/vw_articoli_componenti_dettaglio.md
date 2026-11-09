@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_componenti_dettaglio`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale della data di chiusura proposta
+> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale delle date di chiusura
+> * [catalogo.trgfn_articoli_componenti_block_modifica_struttura](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_block_modifica_struttura) — la regola della fine che la data minima ripete
 >
 > Guide:
 >
@@ -50,7 +51,9 @@ Chiudere è l'unica modifica di struttura ammessa su un legame, e la vista dice 
 
 * `puo_chiudersi` è vero solo se `valido_al` è vuoto. Un legame che ha già una data di fine, anche futura, conta
   come chiuso, e `motivo_non_chiudibile` vale `RIGA_GIA_CHIUSA`.
-* `data_min_chiusura` è `valido_dal`: un legame si chiude al più presto il giorno in cui comincia.
+* `data_min_chiusura` è la più tarda fra `valido_dal` e ieri: la fine di un legame non cambia i giorni già passati,
+  e il trigger d'immutabilità rifiuta una fine prima di ieri. Chiudere a ieri è ammesso, ed è il modo di far valere
+  da oggi la versione nuova. Un legame che comincia nel futuro si chiude al più presto il giorno in cui comincia.
 * `data_default_chiusura` è il giorno aziendale, oppure `valido_dal` se il legame comincia nel futuro.
 
 `attivo` non entra nel calcolo: un legame spento si può chiudere come uno acceso.
@@ -59,18 +62,18 @@ Chiudere è l'unica modifica di struttura ammessa su un legame, e la vista dice 
 
 ### ⚠️ Che cosa oggi non copre
 
-* **La chiusura proposta può stare nel passato.** La data minima è l'inizio del legame, non il giorno aziendale:
-  la capability offre la chiusura all'indietro di un legame già usato, e il database la accetta.
 * **La data proposta e la nuova versione.** La chiusura proposta è oggi, e il periodo comprende l'ultimo giorno:
-  la nuova versione deve partire da domani, non da oggi, o si sovrappone alla vecchia. Le capability non danno la
-  data d'inizio della versione successiva.
+  la nuova versione deve partire da domani, non da oggi, o si sovrappone alla vecchia. Chi vuole la versione nuova
+  da oggi deve scegliere ieri, la data minima. Le capability non danno la data d'inizio della versione successiva.
 
 ---
 
 ### Test
 
 * `db/pgtap/catalogo/test-vw-articoli-componenti-dettaglio-capabilities-v1.sql` — le quattro capability su un
-  legame aperto, uno chiuso e uno futuro.
+  legame aperto, uno chiuso e uno futuro; la data minima è ieri per un legame nato nel passato.
+* `db/pgtap/catalogo/test-distinta-storia-e-ritorni-v1.sql` — la prima fine proposta è ieri per un legame nato nel
+  passato, `valido_dal` per uno che nasce domani.
 * `db/pgtap/vendite/test-vw-righe-dettaglio-sorgente-lista-v1.sql` — come le viste delle righe dei documenti, non
   ordina nel corpo; porta l'esposizione e le quattro capability, e non più le due colonne ritirate.
 
@@ -83,6 +86,8 @@ Chiudere è l'unica modifica di struttura ammessa su un legame, e la vista dice 
   leggono, e il backend ritira la sua copia della capability di chiusura.
 * 2026-10-01 — `esposto_in_fattura` lascia il posto a `esposizione_in_fattura`, con codice ed etichetta in coda.
 * 2026-10-02 — escono `partecipa_qta` e `determina_qta_padre`, ritirate dalla tabella.
+* 2026-11-09 — `data_min_chiusura` passa da `valido_dal` alla più tarda fra `valido_dal` e ieri, come la regola
+  della fine nella tabella (brief-db-revisione-catalogo, giro 1).
 
 ---
 

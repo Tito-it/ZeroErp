@@ -104,7 +104,7 @@ $f$;
 --   KIT A: un componente OBBLIGATORIO e uno FACOLTATIVO (che si spegne);
 --   KIT B: un componente obbligatorio.
 -- I due kit nascono compositi dal builder:
--- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
+-- la check della distinta (script.fn_articolo_riga_contesto) rifiuta la distinta
 -- di un articolo semplice.
 -- =========================================================
 CREATE TEMP TABLE _m AS

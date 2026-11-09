@@ -76,7 +76,7 @@ SELECT plan(16);
 --   …102). Su un database ricostruito non esistono, e il file moriva nella
 --   fixture — copertura zero, non parziale.
 -- Il prodotto nasce is_composito=true: senza, il trigger
--- trgfn_articoli_componenti_guard_is_composito rifiuta l'INSERT.
+-- la check della distinta (script.fn_articolo_riga_contesto) rifiuta l'INSERT.
 CREATE TEMP TABLE _t_bom AS
 SELECT
     dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-PRODOTTO',

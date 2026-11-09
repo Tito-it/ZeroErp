@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_dettaglio`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,7 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto) — la regola «ritirato alla data operativa» dietro `e_obsoleto`
-> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore) — la stessa domanda di `has_componenti_alla_data`, per i guard
+> * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi) — la domanda dei guard sul padre, che guarda anche la distinta futura
 > * [catalogo.fn_articoli_ammessi](/dbzero/catalogo/funzioni/fn_articoli_ammessi) — il picker, a cui la vista aggiunge le colonne dell'articolo
 >
 > Guide:
@@ -95,9 +95,10 @@ non ha RLS, e la vista non attraversa tabelle protette.
   solo aggiungere colonne alla fine; chi legge le colonne per nome (il backend) vede una
   colonna nuova solo quando la nomina. Oggi `obsoleto_dal` ed `e_obsoleto` non sono ancora nella
   proiezione del backend.
-* **`has_componenti_alla_data` riscrive la regola a mano.** È la stessa domanda di
-  `catalogo.fn_articolo_padre_di_distinta_in_vigore` (legame attivo, in vigore alla data
-  operativa), ma scritta di nuovo nella vista.
+* **`has_componenti_alla_data` riscrive la regola a mano.** «Il kit ha una distinta in vigore
+  alla data operativa» è scritto di nuovo nella vista, accanto ai predicati della distinta di
+  catalogo, invece di stare in una funzione condivisa. I guard sul padre guardano anche la
+  distinta futura (`catalogo.fn_articolo_padre_di_distinta_da_oggi`): la vista no.
 * **Gli `*_ref_id` ripetono le FK.** `uom_ref_id`, `tipologia_ref_id`, `gruppo_ref_id`,
   `spesa_ref_id` e `iva_ref_id` valgono quanto la FK dell'articolo, quando la voce esiste.
 

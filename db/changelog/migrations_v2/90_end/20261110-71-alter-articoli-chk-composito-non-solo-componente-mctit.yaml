@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.articoli: un articolo non e' insieme composito e solo componente (Q2,
+#   D11).
+#   Brief: brief-db-revisione-catalogo, giro 1.
+#
+#   Un articolo cosi' non serve a niente: non fa da padre (un solo componente non ha
+#   una distinta) e non fa da componente (la distinta ha un livello solo, e un
+#   composito non ci entra). Prima la combinazione era ammessa, e la regola del padre
+#   la diceva solo trgfn_articoli_componenti_guard_solo_componente, sul legame
+#   (ritirato in 20_code -67): da questo CHECK in poi un padre solo componente e'
+#   gia' un padre non composito, e lo rifiuta la check condivisa (-64).
+#   In 90_end, come vuole il caso del CHECK che puo' toccare righe di seed: da zero
+#   gira dopo tutto 80_data. Nessun seed di 80_data scrive articoli con i due flag.
+#   Dati di dbdev e scratch letti il 2026-11-09: nessuna riga viola il vincolo.
+#   Il pgTAP che costruiva un padre composito e solo componente insieme e' riscritto
+#   nello stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261110-71-alter-articoli-chk-composito-non-solo-componente-mctit.yaml
+
+  - changeSet:
+      id: 20261110-71-alter-articoli-chk-composito-non-solo-componente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.articoli: CHECK, un articolo non e' insieme composito e solo componente. Brief: brief-db-revisione-catalogo, giro 1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'catalogo.articoli'::regclass
+                 AND conname = 'chk_articoli_composito_non_solo_componente'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  ADD CONSTRAINT chk_articoli_composito_non_solo_componente
+                  CHECK (NOT (is_composito AND is_solo_componente));
+
+              COMMENT ON CONSTRAINT chk_articoli_composito_non_solo_componente ON catalogo.articoli IS
+                  'Un articolo non e'' insieme composito e solo componente: un solo componente non ha una distinta, e un composito non entra in una distinta (la distinta ha un livello solo).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli DROP CONSTRAINT IF EXISTS chk_articoli_composito_non_solo_componente;

@@ -87,7 +87,7 @@ $f$;
 --   P: kit. F obbligatorio, G e R opzionali (G si spegne in attesa, R si
 --      spegne rifiutato).
 -- P nasce composito dal builder:
--- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
+-- la check della distinta (script.fn_articolo_riga_contesto) rifiuta la distinta
 -- di un articolo semplice.
 -- =========================================================
 CREATE TEMP TABLE _m AS

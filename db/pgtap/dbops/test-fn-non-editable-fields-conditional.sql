@@ -82,7 +82,7 @@ BEGIN
     -- con seed permanenti (ART_TEST_BASE/FALLBACK usati da altri test).
     --
     -- is_composito = TRUE obbligatorio sul padre (W): guard
-    -- trgfn_articoli_componenti_guard_is_composito lo richiede su prodotto_id.
+    -- la check della distinta (script.fn_articolo_riga_contesto) lo richiede al padre.
     -- I figli (Y, Z) restano semplici: la distinta ha un livello solo
     -- (trgfn_articoli_componenti_guard_un_livello).
     -- fn_non_editable_fields flagga is_solo_componente su Z in base alla

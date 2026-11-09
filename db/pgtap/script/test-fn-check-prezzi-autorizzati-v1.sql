@@ -142,7 +142,7 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP prezzi autorizzati');
 
 -- Due articoli costruiti: un KIT composito e il suo COMPONENTE, con una
 -- distinta base valida oggi. Il KIT nasce composito:
--- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
+-- la check della distinta (script.fn_articolo_riga_contesto) rifiuta la distinta
 -- di un articolo semplice.
 CREATE TEMP TABLE _a AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-PZA-KIT', false, p_is_composito => true) AS kit_id,

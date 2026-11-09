@@ -1,195 +1,69 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Regola: articoli "solo componente" non possono essere prodotti
+-- Regola: un articolo «solo componente» non e' il padre di una distinta.
+--
+-- La regola ha due sedi, che qui si provano insieme:
+--   - il CHECK chk_articoli_composito_non_solo_componente di catalogo.articoli:
+--     un articolo non e' insieme composito e solo componente;
+--   - il lato documento della check della distinta (script.fn_articolo_riga_contesto,
+--     chiamata dal guard del legame): il padre deve essere composito
+--     (E_ARTICOLO_NON_COMPOSITO). Un solo componente, che composito non e', e'
+--     quindi rifiutato come padre.
+-- Il componente «solo componente» e' invece il caso normale.
+-- Brief: brief-db-revisione-catalogo, giro 1 (Q2, Q5). Fino al 2026-11-09 la regola
+--   la diceva catalogo.trgfn_articoli_componenti_guard_solo_componente, ritirato.
+--
+-- Elenco test (plan 5):
+--  1) il CHECK esiste
+--  2) un kit non diventa solo componente: CHECK (23514)
+--  3) un solo componente come padre: E_ARTICOLO_NON_COMPOSITO
+--  4) kit con un componente semplice: ammesso
+--  5) kit con un componente solo componente: ammesso
 -- ------------------------------------------------------------
 
--- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
---   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a
---   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
---   la corsa successiva — che vede un rosso non suo.
---   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
 BEGIN;
 
--- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
---   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
---   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
---   file diventerebbe verde per sottrazione. Nel DB ce ne sono 365.
---   IMMEDIATE li riporta a scattare a fine di OGNI istruzione — cioe' esatta-
---   mente come si comportavano prima, quando il file girava in autocommit e
---   ogni istruzione era una transazione a se'. In testa e non in coda apposta:
---   in coda scatterebbero tutti insieme DOPO il cleanup, su righe ormai
---   cancellate. Brief: brief-db-pgtap-runner-rls-baseline §17.
+-- Vincoli differiti a fine istruzione: senza, al ROLLBACK non scatterebbero mai.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
--- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(5);
 
--- 🔴 ARTICOLI PROPRI invece dei condivisi ART_TEST_* — 2026-08-18.
---   `ART_TEST_BASE` non e' composito, quindi il guard rifiutava di appendergli
---   un componente e i test 4 e 5 non potevano riuscire. Non e' un difetto del
---   guard: e' la fixture che assume su un articolo CONDIVISO una proprieta'
---   che quell'articolo non ha — e non deve avere, essendo la base di mezza
---   suite. Stessa radice degli altri quattro test di questa cartella.
-CREATE OR REPLACE FUNCTION pg_temp.mk_articolo(p_codice text, p_composito boolean,
-                                               p_solo_componente boolean)
-RETURNS uuid AS $mk$
-DECLARE v_id uuid;
-BEGIN
-    -- Riferimenti CLONATI da un articolo esistente (ORDER BY id: deterministico):
-    -- la fixture non deve conoscere il dominio ne' inseguirlo quando cambia.
-    INSERT INTO catalogo.articoli (codice, descrizione, uom_id, tipo_voce_id,
-                                   gruppo_voce_id, spesa_id, iva_id,
-                                   is_composito, is_solo_componente)
-    SELECT p_codice, 'pgTAP solo componente',
-           a.uom_id, a.tipo_voce_id, a.gruppo_voce_id, a.spesa_id, a.iva_id,
-           p_composito, p_solo_componente
-      FROM catalogo.articoli a ORDER BY a.id LIMIT 1
-    RETURNING id INTO v_id;
-    RETURN v_id;
-END $mk$ LANGUAGE plpgsql;
-
-CREATE TEMP TABLE tmp_seed AS
-SELECT pg_temp.mk_articolo('PGTAP_SOLOCOMP_PADRE', true,  false) AS prodotto_id,
-       pg_temp.mk_articolo('PGTAP_SOLOCOMP_FIGLIO', false, true) AS componente_id,
-       false AS prodotto_solo,
-       true  AS componente_solo;
+CREATE TEMP TABLE _t_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-SOLOC-KIT', p_is_composito => true)          AS kit,
+       dbops.fn_pgtap_crea_articolo('PGT-SOLOC-SEMPLICE')                             AS semplice,
+       dbops.fn_pgtap_crea_articolo('PGT-SOLOC-SOLO', p_is_solo_componente => true)   AS solo;
 
 SELECT ok(
-  (SELECT prodotto_id IS NOT NULL FROM tmp_seed),
-  'Seed prodotto presente'
-);
-
-SELECT ok(
-  (SELECT componente_id IS NOT NULL FROM tmp_seed),
-  'Seed componente presente'
-);
-
-UPDATE catalogo.articoli
-SET is_solo_componente = true
-WHERE id = (SELECT prodotto_id FROM tmp_seed);
+    EXISTS (SELECT 1 FROM pg_constraint
+             WHERE conrelid = 'catalogo.articoli'::regclass
+               AND conname  = 'chk_articoli_composito_non_solo_componente'
+               AND contype  = 'c'),
+    '1) catalogo.articoli ha il CHECK composito / solo componente');
 
 SELECT throws_ok(
-  $$
-  INSERT INTO catalogo.articoli_componenti (
-    prodotto_id,
-    componente_id,
-    coeff_qta,
-    obbligatorio,
-    valido_dal,
-    valido_al,
-    attivo
-  )
-  VALUES (
-    (SELECT prodotto_id FROM tmp_seed),
-    (SELECT componente_id FROM tmp_seed),
-    1,
-    true,
-    DATE '2026-03-01',
-    DATE '2026-03-31',
-    true
-  );
-  $$,
-  NULL,
-  NULL,
-  'Prodotto solo componente: inserimento bloccato'
-);
+    $$ UPDATE catalogo.articoli SET is_solo_componente = true
+        WHERE id = (SELECT kit FROM _t_art) $$,
+    '23514', NULL,
+    '2) un kit non diventa solo componente: lo rifiuta il CHECK');
 
-UPDATE catalogo.articoli
-SET is_solo_componente = (SELECT prodotto_solo FROM tmp_seed)
-WHERE id = (SELECT prodotto_id FROM tmp_seed);
-
-UPDATE catalogo.articoli
-SET is_solo_componente = (SELECT componente_solo FROM tmp_seed)
-WHERE id = (SELECT componente_id FROM tmp_seed);
+SELECT throws_like(
+    $$ INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, obbligatorio, valido_dal, attivo)
+       VALUES ((SELECT solo FROM _t_art), (SELECT semplice FROM _t_art), 1, true, script.fn_data_operativa(), true) $$,
+    '%indicato non _ composito%',
+    '3) un solo componente come padre: E_ARTICOLO_NON_COMPOSITO (non ha una distinta)');
 
 SELECT lives_ok(
-  $$
-  DO $do$
-  DECLARE v_id uuid;
-  BEGIN
-    INSERT INTO catalogo.articoli_componenti (
-      prodotto_id,
-      componente_id,
-      coeff_qta,
-      obbligatorio,
-      valido_dal,
-      valido_al,
-      attivo
-    )
-    VALUES (
-      (SELECT prodotto_id FROM tmp_seed),
-      (SELECT componente_id FROM tmp_seed),
-      1,
-      true,
-      DATE '2026-04-01',
-      DATE '2026-04-30',
-      true
-    )
-    RETURNING id INTO v_id;
-
-    -- 🔴 DELETE rimossa il 2026-08-18: `articoli_componenti` e' protetta da un
-    -- guard di IMMUTABILITA' della struttura BoM, arrivato dopo questo file.
-    -- Cancellare non e' piu' lecito per nessuno, e non serve: il ROLLBACK
-    -- toglie la riga insieme all'articolo che la porta.
-  END $do$;
-  $$,
-  'Prodotto valido: inserimento consentito'
-);
-
-UPDATE catalogo.articoli
-SET is_solo_componente = true
-WHERE id = (SELECT componente_id FROM tmp_seed);
+    $$ INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, obbligatorio, valido_dal, attivo)
+       VALUES ((SELECT kit FROM _t_art), (SELECT semplice FROM _t_art), 1, true, script.fn_data_operativa(), true) $$,
+    '4) kit con un componente semplice: ammesso');
 
 SELECT lives_ok(
-  $$
-  DO $do$
-  DECLARE v_id uuid;
-  BEGIN
-    INSERT INTO catalogo.articoli_componenti (
-      prodotto_id,
-      componente_id,
-      coeff_qta,
-      obbligatorio,
-      valido_dal,
-      valido_al,
-      attivo
-    )
-    VALUES (
-      (SELECT prodotto_id FROM tmp_seed),
-      (SELECT componente_id FROM tmp_seed),
-      1,
-      true,
-      DATE '2026-05-01',
-      DATE '2026-05-31',
-      true
-    )
-    RETURNING id INTO v_id;
+    $$ INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, obbligatorio, valido_dal, attivo)
+       VALUES ((SELECT kit FROM _t_art), (SELECT solo FROM _t_art), 1, true, script.fn_data_operativa(), true) $$,
+    '5) kit con un componente solo componente: ammesso, e'' il caso normale');
 
-    -- 🔴 DELETE rimossa il 2026-08-18: `articoli_componenti` e' protetta da un
-    -- guard di IMMUTABILITA' della struttura BoM, arrivato dopo questo file.
-    -- Cancellare non e' piu' lecito per nessuno, e non serve: il ROLLBACK
-    -- toglie la riga insieme all'articolo che la porta.
-  END $do$;
-  $$,
-  'Componente solo componente: inserimento consentito'
-);
-
--- Restore flags
-UPDATE catalogo.articoli
-SET is_solo_componente = (SELECT prodotto_solo FROM tmp_seed)
-WHERE id = (SELECT prodotto_id FROM tmp_seed);
-
-UPDATE catalogo.articoli
-SET is_solo_componente = (SELECT componente_solo FROM tmp_seed)
-WHERE id = (SELECT componente_id FROM tmp_seed);
-
--- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
--- questo file non lascia nulla dietro di se'. Le DELETE del cleanup restano
--- perche' dove sono un'asserzione devono girare davvero.
+SELECT * FROM finish();
 ROLLBACK;

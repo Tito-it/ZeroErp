@@ -92,12 +92,14 @@ SELECT
     WHERE n.nspname = 'catalogo'
       AND c.relname = 'articoli_componenti'
       AND NOT t.tgisinternal
-      AND pg_get_triggerdef(t.oid) ILIKE '%trgfn_articoli_componenti_guard_is_composito%'
+      -- Il padre non composito lo rifiuta il lato documento della check della
+      -- distinta (script.fn_articolo_riga_contesto), chiamata dal guard del legame.
+      AND pg_get_triggerdef(t.oid) ILIKE '%trgfn_articoli_componenti_guard_componente%'
   ) AS has_guard_composito;
 
 SELECT diag(
   format(
-    'Trigger check: req_prodotto=%s req_componente=%s guard_is_composito=%s',
+    'Trigger check: req_prodotto=%s req_componente=%s guard_componente=%s',
     CASE WHEN (SELECT has_req_prodotto FROM tmp_trg) THEN 'true' ELSE 'false' END,
     CASE WHEN (SELECT has_req_componente FROM tmp_trg) THEN 'true' ELSE 'false' END,
     CASE WHEN (SELECT has_guard_composito FROM tmp_trg) THEN 'true' ELSE 'false' END
@@ -325,7 +327,7 @@ WHERE id = (SELECT prodotto_id FROM tmp_art);
 SELECT diag('Skip prodotto non composito: prerequisiti mancanti')
 WHERE NOT (SELECT can_run FROM tmp_can_run);
 
-SELECT diag('Skip prodotto non composito: trigger is_composito assente')
+SELECT diag('Skip prodotto non composito: guard del legame assente')
 WHERE (SELECT can_run FROM tmp_can_run)
   AND NOT (SELECT has_guard_composito FROM tmp_trg);
 

@@ -7,7 +7,9 @@
 --
 -- Capability esposte:
 --   puo_chiudersi          BOOLEAN  = (valido_al IS NULL)
---   data_min_chiusura      DATE     = valido_dal      [NULL se non chiudibile]
+--   data_min_chiusura      DATE     = GREATEST(valido_dal, script.fn_data_operativa() - 1)
+--                                                    [NULL se non chiudibile]: la fine
+--                                                    non cambia i giorni gia' passati
 --   data_default_chiusura  DATE     = GREATEST(valido_dal, script.fn_data_operativa())
 --                                                    [NULL se non chiudibile]
 --   motivo_non_chiudibile  TEXT     = 'RIGA_GIA_CHIUSA' [NULL se chiudibile]
@@ -31,7 +33,7 @@
 -- Indice test (1..12):
 --   Riga APERTA (BASE/FALLBACK, [oggi-30, +inf)):
 --     1. puo_chiudersi          = true
---     2. data_min_chiusura      = oggi-30
+--     2. data_min_chiusura      = ieri (valido_dal e' oggi-30)
 --     3. data_default_chiusura  = oggi (GREATEST con valido_dal passato)
 --     4. motivo_non_chiudibile  = NULL
 --   Riga CHIUSA (BASE/FALLBACK, [oggi-100, oggi-50]):
@@ -144,8 +146,8 @@ SELECT is(
     (SELECT data_min_chiusura
        FROM catalogo.vw_articoli_componenti_dettaglio
       WHERE id = (SELECT riga_id FROM _t_righe WHERE scenario = 'aperta')),
-    (script.fn_data_operativa() - INTERVAL '30 days')::date,
-    '2) APERTA: data_min_chiusura = valido_dal (oggi-30)'
+    script.fn_data_operativa() - 1,
+    '2) APERTA: data_min_chiusura = ieri, non valido_dal (oggi-30): la fine non cambia i giorni passati'
 );
 SELECT is(
     (SELECT data_default_chiusura

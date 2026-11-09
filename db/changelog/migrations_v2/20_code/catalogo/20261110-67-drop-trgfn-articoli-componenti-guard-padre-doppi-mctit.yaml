@@ -1,0 +1,163 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo: si ritirano trgfn_articoli_componenti_guard_is_composito e
+#   trgfn_articoli_componenti_guard_solo_componente, coi loro trigger (Q5, R3).
+#   Brief: brief-db-revisione-catalogo, giro 1.
+#
+#   Erano due copie della stessa forma (leggere un flag del padre e sollevare),
+#   montate solo su INSERT e UPDATE OF prodotto_id: la riattivazione e la riapertura
+#   di un legame non li attraversavano. La regola ha ora una sede sola:
+#   - il padre non composito lo rifiuta il lato documento della check condivisa
+#     (script.fn_articolo_riga_contesto, -64), che il guard del legame chiama a ogni
+#     composizione nuova (-65);
+#   - il padre «solo componente» non e' piu' un caso: col CHECK di 90_end -71 un
+#     articolo solo componente non e' composito, e quindi e' gia' un padre non
+#     composito.
+#   Censiti i lettori: nessun changeSet di 80_data, 85_pgagent o 90_end li nomina;
+#   nessun registro di dbops. I pgTAP che li cercavano per nome sono aggiornati
+#   nello stesso giro. Le pagine manual/ dei due si cancellano.
+#   Rollback = funzioni, COMMENT e trigger di prima, da pg_get_functiondef e
+#   pg_get_triggerdef su dbdev (2026-11-09).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261110-67-drop-trgfn-articoli-componenti-guard-padre-doppi-mctit.yaml
+
+  - changeSet:
+      id: 20261110-67-drop-trgfn-articoli-componenti-guard-padre-doppi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo: ritirati i due guard del padre della distinta, la regola sta nella check condivisa e nel CHECK degli articoli. Brief: brief-db-revisione-catalogo, giro 1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_trigger
+               WHERE tgrelid = 'catalogo.articoli_componenti'::regclass
+                 AND tgname IN ('trg_articoli_componenti_a10_guard_is_composito_ins_upd', 'trg_articoli_componenti_a10_block_solo_componente_ins_upd')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_articoli_componenti_a10_guard_is_composito_ins_upd ON catalogo.articoli_componenti;
+              DROP TRIGGER trg_articoli_componenti_a10_block_solo_componente_ins_upd ON catalogo.articoli_componenti;
+              DROP FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito();
+              DROP FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_prodotto_id catalogo.articoli.id%TYPE;
+                v_is_composito catalogo.articoli.is_composito%TYPE;
+              BEGIN
+                IF NOT (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
+                  RETURN NEW;
+                END IF;
+
+                v_prodotto_id := NEW.prodotto_id;
+
+                IF v_prodotto_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                SELECT a.is_composito
+                  INTO v_is_composito
+                FROM catalogo.articoli a
+                WHERE a.id = v_prodotto_id;
+
+                IF COALESCE(v_is_composito, false) IS NOT TRUE THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ARTICOLO_NON_COMPOSITO',
+                    jsonb_build_object(
+                      'prodotto_id', v_prodotto_id,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito() IS
+                  'Blocca articoli non compositi come prodotto in distinta base.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_prodotto_id catalogo.articoli.id%TYPE;
+                v_is_solo_componente catalogo.articoli.is_solo_componente%TYPE;
+              BEGIN
+                IF NOT (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
+                  RETURN NEW;
+                END IF;
+
+                v_prodotto_id := NEW.prodotto_id;
+
+                IF v_prodotto_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                SELECT a.is_solo_componente
+                  INTO v_is_solo_componente
+                FROM catalogo.articoli a
+                WHERE a.id = v_prodotto_id;
+
+                IF COALESCE(v_is_solo_componente, false) IS TRUE THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ARTICOLO_SOLO_COMPONENTE',
+                    jsonb_build_object(
+                      'prodotto_id', v_prodotto_id,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente() IS
+                  'Blocca articoli marcati is_solo_componente come prodotto in distinta base.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_articoli_componenti_a10_guard_is_composito_ins_upd BEFORE INSERT OR UPDATE OF prodotto_id ON catalogo.articoli_componenti FOR EACH ROW EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito();
+              CREATE TRIGGER trg_articoli_componenti_a10_block_solo_componente_ins_upd BEFORE INSERT OR UPDATE OF prodotto_id ON catalogo.articoli_componenti FOR EACH ROW EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente();
+
+              COMMENT ON TRIGGER trg_articoli_componenti_a10_guard_is_composito_ins_upd ON catalogo.articoli_componenti IS
+                  'Impedisce che un articolo con is_composito = false sia usato come prodotto in catalogo.articoli_componenti.';
