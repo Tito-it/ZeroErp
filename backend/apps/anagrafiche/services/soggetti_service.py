@@ -15,6 +15,7 @@ from typing import Any
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.non_editable_fields_helper import compute_non_editable_fields
 from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import (
@@ -217,19 +218,30 @@ class SoggettiService:
         soggetto["non_editable_fields"] = self._compute_non_editable_fields(soggetto)
         return soggetto
 
-    # Scopo: Computa la lista dei campi non modificabili per il soggetto
-    # in edit. Regola di immutabilita': CF/PIVA bloccati se gia' valorizzati
-    # (analogo Profilo A contratti/listini-versioni). La lista cresce se
-    # in futuro arrivano altri campi immutabili (es. tipo_soggetto post stato
-    # avanzato). Frontend deriva cfDisabled/pivaDisabled da questa lista.
+    # Scopo: Computa la lista dei campi non modificabili per il soggetto in
+    #        edit. Il BB `compute_non_editable_fields` porta i lock che il DB
+    #        dichiara (`codice`, dal trigger di lock del soggetto: fino al
+    #        2026-11-09 questa lista non lo diceva); qui si aggiungono come GAP
+    #        CF e P.IVA gia' valorizzati. Il frontend deriva
+    #        cfDisabled/pivaDisabled da questa lista.
+    # ⭐ La regola (Tid, 2026-11-09): CF e P.IVA sono immutabili una volta
+    #    valorizzati perche' formano la chiave d'unicita' fiscale — la colonna
+    #    generata `id_fiscale_univoco_cf_piva` li contiene TUTTI E DUE quando
+    #    ci sono entrambi (`uq_soggetto_idstato_id_fiscale_univoco`). Un campo
+    #    vuoto resta riempibile (il privato che apre la partita IVA).
+    # ⛔ E' un GAP, non la sede: oggi la regola la vede solo il form, e una
+    #    PATCH che cambia un CF valorizzato passa. La sede e' il DB — lock
+    #    condizionale + trigger, S-BE-3 di brief-db-revisione-dbops. Quando il
+    #    DB la dichiara, il gap si toglie e qui si passa `record_id`.
     @staticmethod
     def _compute_non_editable_fields(soggetto: dict[str, Any]) -> list[str]:
-        non_editable: list[str] = []
-        if (soggetto.get("codice_fiscale") or "").strip():
-            non_editable.append("codice_fiscale")
-        if (soggetto.get("partita_iva") or "").strip():
-            non_editable.append("partita_iva")
-        return non_editable
+        valorizzati = [
+            campo for campo in ("codice_fiscale", "partita_iva")
+            if (soggetto.get(campo) or "").strip()
+        ]
+        return compute_non_editable_fields(
+            "anagrafiche", "soggetti", gaps=valorizzati,
+        )
 
     # =================================================================
     # Creazione soggetto (orchestratore)

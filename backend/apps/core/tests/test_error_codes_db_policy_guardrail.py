@@ -54,8 +54,10 @@
        verso 3 — una voce del registro che nessuna funzione viva nomina piu'
        (codice ritirato o rinominato): riga orfana, va tolta dal CSV.
  4) test_la_misura_non_e_degradata
-       sanity — vista e registro non vuoti, dizionario policy non vuoto: senza,
-       una misura che si rompe rende il cancello silenziosamente verde.
+       sanity — vista non vuota, dizionario policy non vuoto: senza, una
+       misura che si rompe rende il cancello silenziosamente verde. Il
+       registro del debito puo' essere vuoto (e' l'obiettivo): se ne
+       controlla solo che ogni voce sia un codice conforme.
 """
 
 from __future__ import annotations

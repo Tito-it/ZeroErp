@@ -44,10 +44,14 @@ from apps.core.services.payload_helpers import (
 )
 
 
-# Gap rispetto al registro DB `dbops.vw_non_editable_fields` (Fase 4 — A9).
-# `codice` e `soggetto_id` sono semanticamente immutabili sull'emittente
-# fiscale: cambiarli equivale a creare un altro emittente.
-_EMITTENTE_NON_EDITABLE_GAPS: tuple[str, ...] = ("codice", "soggetto_id")
+# Gap rispetto a `dbops.vw_non_editable_fields` (Fase 4 — A9).
+# `soggetto_id` e' semanticamente immutabile sull'emittente fiscale (cambiarlo
+# equivale a creare un altro emittente), ma il DB non lo blocca con un trigger
+# di lock: resta qui finche' il DB non lo dichiara.
+# ⛔ `codice` e' uscito (BE2 di brief-db-revisione-dbops, 2026-11-09): lo blocca
+#    il trigger di lock dell'emittente e la vista, che dal giro 10a legge il
+#    lock vivo, lo elenca gia'. Ripeterlo qui era una seconda sede.
+_EMITTENTE_NON_EDITABLE_GAPS: tuple[str, ...] = ("soggetto_id",)
 
 # Contratti delle PATCH, validati QUI con 400 `E_ANAG_VALIDAZIONE` (2026-09-26):
 # dal passaggio ai BB di scrittura il repository rifiuta con `RuntimeError`

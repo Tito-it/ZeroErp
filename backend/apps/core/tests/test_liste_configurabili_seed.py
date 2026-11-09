@@ -658,7 +658,7 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # operatore»). ⚠️ La lista non nasce da una vista: la compone
     # `ProcessiRepository.list_processi` con le sue colonne derivate, e la
     # whitelist di ordinamento e' la costante di modulo del repository.
-    ("amm.processi", _da_costante("apps.core.db.processi_repository", "_ORDER_COLS_PROCESSI")),
+    ("amm.processi", _da_costante("apps.core.db.processi_repository", "PROCESSI_SORT_COLUMNS")),
     # La consultazione di `dbops.error_log` (pezzo E dell'osservabilita',
     # 2026-09-19): il diario degli errori tecnici col catalogo dei messaggi per
     # JOIN. Le frasi (`messaggio`, `causa`, `soluzione`) sono `ordinabile = f`

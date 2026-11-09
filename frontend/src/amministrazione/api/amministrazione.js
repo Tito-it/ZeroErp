@@ -182,6 +182,13 @@ export function getProcessiPresidi() {
 }
 
 
+// Scopo: i vocabolari dei filtri del pannello processi `{ classi, canali }`.
+//        ⛔ Le tendine li leggono da qui, non da una copia: quella che c'era
+//        non aveva `CODA_AUTOMATICA` (2026-11-09).
+export function getProcessiVocabolari() {
+  return api.get(`${BASE}/processi/vocabolari/`)
+}
+
 // Scopo: dettaglio di un processo (bersagli dichiarati + identità tecniche).
 export function getProcesso(codice) {
   return api.get(`${BASE}/processi/${encodeURIComponent(codice)}/`)
