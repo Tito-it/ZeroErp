@@ -376,7 +376,7 @@ search:
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md) — La trigger function `script.trgfn_note_validate_generic` valida le note ancorate a una riga di documento (`anchor_tipo = 'RIGA'`): la riga indicata da `target_riga_id` deve appartenere davvero alla testata indicata da `target_id`.
 - [trgfn_notify_permessi_catalogo](funzioni/trgfn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
 - [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
-- [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
+- [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcola la quantità base di una riga di documento di vendita: la quantità operativa, scritta nell'unità che l'operatore ha scelto, per il fattore verso l'unità base dell'articolo. `quantita` è una colonna calcolata: la scrive solo questo trigger.
 - [trgfn_righe_default_erogazione_da_articolo](funzioni/trgfn_righe_default_erogazione_da_articolo.md)
 - [trgfn_righe_default_fonte_qta](funzioni/trgfn_righe_default_fonte_qta.md) — > **Ultimo aggiornamento**: 31 ottobre 2026
 - [trgfn_righe_default_periodicita_da_listino](funzioni/trgfn_righe_default_periodicita_da_listino.md)

@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_uom_operativa_alla_data: la mappatura di un'unita' per un articolo a una
+#   data (D13, D22; Q3, Q13).
+#
+#   La mappatura era letta a mano due volte, nel trigger della quantita' e in
+#   fn_get_uom_factor, e tutte e due alla data di oggi. Ora la legge una funzione, alla
+#   data che le si passa; i due chiamanti passano la data del documento.
+#   BEGIN ATOMIC (linee-guida-sql §5c): la funzione da sola nel suo change, il COMMENT
+#   nel secondo. Colonne nominate, non la riga della tabella (§11.2 del brief).
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-05-create-fn-uom-operativa-alla-data-mctit.yaml
+
+  - changeSet:
+      id: 20261111-05-create-fn-uom-operativa-alla-data
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo: la mappatura dell'unita' operativa alla data, sede unica. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'catalogo' AND p.proname = 'fn_uom_operativa_alla_data'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_uom_operativa_alla_data(
+                  p_articolo_id catalogo.articoli_uom_operativa.articolo_id%TYPE,
+                  p_uom_id      catalogo.articoli_uom_operativa.uom_id%TYPE,
+                  p_data        date)
+               RETURNS TABLE(
+                  factor_to_base  catalogo.articoli_uom_operativa.factor_to_base%TYPE,
+                  qty_step        catalogo.articoli_uom_operativa.qty_step%TYPE,
+                  max_decimals    catalogo.articoli_uom_operativa.max_decimals%TYPE,
+                  forbid_fraction catalogo.articoli_uom_operativa.forbid_fraction%TYPE)
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT o.factor_to_base, o.qty_step, o.max_decimals, o.forbid_fraction
+                 FROM catalogo.articoli_uom_operativa o
+                WHERE o.articolo_id = p_articolo_id
+                  AND o.uom_id = p_uom_id
+                  AND o.attivo IS TRUE
+                  AND o.validita @> p_data;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_uom_operativa_alla_data(catalogo.articoli_uom_operativa.articolo_id%TYPE, catalogo.articoli_uom_operativa.uom_id%TYPE, date) IS
+                  'La mappatura dell''unita'' p_uom_id per l''articolo p_articolo_id alla data p_data: il fattore verso l''unita'' base e le regole della quantita'' (qty_step, max_decimals, forbid_fraction) della riga attiva di catalogo.articoli_uom_operativa la cui validita contiene p_data. Al piu'' una riga (uq_articoli_uom_operativa_no_overlap); nessuna se l''unita'' non e'' mappata a quella data, o se p_data e'' NULL. La riga base vale a ogni data. Sede unica della lettura della mappatura: la chiamano catalogo.fn_get_uom_factor (il fattore) e script.trgfn_qta_from_operativa (le regole). SECURITY INVOKER: la tabella non ha RLS.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_uom_operativa_alla_data(uuid, bigint, date);

@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_get_uom_factor`
 
 ```sql
-CREATE FUNCTION fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
+CREATE FUNCTION fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint, p_data date)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,98 +12,60 @@ CREATE FUNCTION fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
+CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint, p_data date)
  RETURNS numeric
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
-  v_uom_base_id catalogo.unita_misura.id%TYPE;
-  v_factor      catalogo.articoli_uom_operativa.factor_to_base%TYPE;
-  v_conv        catalogo.unita_misura_conversioni.fattore%TYPE;
+    v_base   catalogo.articoli.uom_id%TYPE;
+    v_factor catalogo.articoli_uom_operativa.factor_to_base%TYPE;
+    -- numeric nudo DICHIARATO: l'inversa 1/fattore non sta in numeric(18,6).
+    v_conv   numeric;
 BEGIN
+    IF p_uom_id IS NULL THEN
+        RETURN NULL;
+    END IF;
 
-  /*
-  Restituisce il fattore di conversione tra l''UoM base dell''articolo e l''UoM richiesta.
-   Cerca prima nella mappatura operativa attiva e valida temporalmente.
-   Se non trovata, cerca nella tabella di conversioni globali tra UoM (catalogo.unita_misura_conversioni).
-   Se non trovata, cerca la conversione inversa e restituisce il reciproco.
-   Restituisce NULL se non trovata.
+    v_base := catalogo.fn_get_uom_base(p_articolo_id);
+    IF v_base IS NULL THEN
+        RETURN NULL;
+    END IF;
 
-  Parametri:
-    p_articolo_id: UUID dell'articolo
-    p_uom_id:     ID della unita' di misura richiesta (bigint)    
-  */  
+    -- 1) L'unita' base: 1, a ogni data.
+    IF p_uom_id = v_base THEN
+        RETURN 1;
+    END IF;
 
-  -- Base dall'articolo
-  v_uom_base_id := catalogo.fn_get_uom_base(p_articolo_id);
+    -- Per le altre la data non si sottintende: senza data, nessun fattore.
+    IF p_data IS NULL THEN
+        RETURN NULL;
+    END IF;
 
-  IF v_uom_base_id IS NULL THEN
-    RETURN NULL; -- chiamante/trigger gestira' fallback/errore
-  END IF;
+    -- 2) La mappatura dell'articolo alla data.
+    SELECT m.factor_to_base INTO v_factor
+      FROM catalogo.fn_uom_operativa_alla_data(p_articolo_id, p_uom_id, p_data) m;
+    IF v_factor IS NOT NULL THEN
+        RETURN v_factor;
+    END IF;
 
-  -- Se la UoM richiesta e' la base, fattore 1
-  IF p_uom_id = v_uom_base_id THEN
-    RETURN 1;
-  END IF;
+    -- 3) La conversione generale alla data: una sola per coppia di unita', in
+    --    un verso o nell'altro (ex_unita_misura_conversioni_coppia_no_overlap).
+    --    fattore = quante uom_to vale una uom_from.
+    SELECT CASE WHEN c.uom_from_id = p_uom_id THEN c.fattore ELSE 1 / c.fattore END
+      INTO v_conv
+      FROM catalogo.unita_misura_conversioni c
+     WHERE c.attivo IS TRUE
+       AND c.validita @> p_data
+       AND ((c.uom_from_id = p_uom_id AND c.uom_to_id = v_base)
+         OR (c.uom_from_id = v_base   AND c.uom_to_id = p_uom_id));
 
-  -- 1) Cerca fattore nella mappatura operativa attiva e valida temporalmente
-  SELECT auo.factor_to_base
-    INTO v_factor
-  FROM catalogo.articoli_uom_operativa auo
-  WHERE auo.articolo_id = p_articolo_id
-    AND auo.uom_id      = p_uom_id
-    AND auo.attivo      = TRUE
-    AND (auo.valido_dal IS NULL OR auo.valido_dal <= (SELECT script.fn_data_operativa()))
-    AND (auo.valido_al  IS NULL OR auo.valido_al  >= (SELECT script.fn_data_operativa()))
-  LIMIT 1;
-
-  IF v_factor IS NOT NULL AND v_factor > 0 THEN
-    RETURN v_factor;
-  END IF;
-
-  -- 2) Fallback: conversione globale UoM (p_uom_id -> base)
-  SELECT c.fattore
-    INTO v_conv
-  FROM catalogo.unita_misura_conversioni c
-  WHERE c.uom_from_id = p_uom_id
-    AND c.uom_to_id   = v_uom_base_id
-    AND c.attivo      = TRUE
-    AND c.fattore     > 0
-    AND (c.valido_dal IS NULL OR c.valido_dal <= (SELECT script.fn_data_operativa()))
-    AND (c.valido_al   IS NULL OR c.valido_al   >= (SELECT script.fn_data_operativa()))
-  LIMIT 1;
-
-  IF v_conv IS NOT NULL THEN
     RETURN v_conv;
-  END IF;
-
-  -- 3) Fallback inverso (base -> p_uom_id)
-  SELECT c.fattore
-    INTO v_conv
-  FROM catalogo.unita_misura_conversioni c
-  WHERE c.uom_from_id = v_uom_base_id
-    AND c.uom_to_id   = p_uom_id
-    AND c.attivo      = TRUE
-    AND c.fattore     > 0
-    AND (c.valido_dal IS NULL OR c.valido_dal <= (SELECT script.fn_data_operativa()))
-    AND (c.valido_al   IS NULL OR c.valido_al   >= (SELECT script.fn_data_operativa()))
-  LIMIT 1;
-
-  IF v_conv IS NOT NULL THEN
-    RETURN 1 / v_conv;
-  END IF;
-
-  RETURN NULL;
 END;
 $function$
 
-COMMENT ON FUNCTION catalogo.fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
-IS 'Restituisce il fattore di conversione tra l''UoM base dell''articolo e l''UoM richiesta.
-   Cerca prima nella mappatura operativa attiva e valida temporalmente.
-   Se non trovata, cerca nella tabella di conversioni globali tra UoM (catalogo.unita_misura_conversioni).
-   Se non trovata, cerca la conversione inversa e restituisce il reciproco.
-   Restituisce NULL se non trovata.';
+COMMENT ON FUNCTION catalogo.fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint, p_data date)
+IS 'Quante unita'' base dell''articolo p_articolo_id vale una unita'' p_uom_id, alla data p_data. L''unita'' base vale 1; poi la mappatura dell''articolo (catalogo.fn_uom_operativa_alla_data); poi la conversione generale di catalogo.unita_misura_conversioni fra le due unita'', in vigore a p_data, nel verso in cui e'' scritta o nell''inverso (1/fattore). NULL se non c''e'' nessuna delle tre, o se p_data e'' NULL per un''unita'' che non e'' la base: la data non si sottintende. Sede unica del fattore: la chiama script.trgfn_qta_from_operativa, che con NULL rifiuta la riga (E_UOM_MISSING).';
 ```
 
 </div>

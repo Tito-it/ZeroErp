@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -126,6 +126,17 @@ In pratica:
 - il fattore di conversione (6) viene "fotografato" sulla riga al momento
   dell'inserimento, così resta stabile anche se in futuro cambia a catalogo.
 
+Il fattore il sistema lo cerca **alla data del documento**: prima fra le unità operative
+dell'articolo (il cartone da 6 di quell'articolo), poi fra le conversioni generali fra unità
+dello stesso tipo (un chilogrammo è mille grammi). Se il fattore di un articolo cambia nel
+tempo, un preventivo con una data passata usa quello che valeva in quel giorno. Se non c'è
+né l'una né l'altra, la riga **non si salva**: il messaggio dice quale conversione manca, e
+la si aggiunge in anagrafica articoli. Se si cambia l'unità di una riga già scritta, il
+fattore si ricalcola per l'unità nuova.
+
+Le unità operative dell'articolo possono anche limitare la quantità: solo numeri interi, un
+numero massimo di decimali, o multipli di un passo (per esempio mezzo metro).
+
 La quantità **può essere negativa** (per gestire resi o storni); non può essere
 zero. Questa conversione funziona allo stesso identico modo su preventivi, offerte
 e contratti.
@@ -175,7 +186,7 @@ Sul preventivo puoi mettere **merce** e **servizi una tantum**. **Non** puoi
 inserire articoli a **servizio ricorrente** (canone/abbonamento): nella ricerca
 dell'articolo compaiono in grigio, col motivo sotto, e non si possono scegliere; il
 motivo ti invita a usare l'**offerta commerciale**. Lo stesso vale per un articolo
-che si vende solo dentro un kit e per un kit senza componenti. La ricerca e il
+che si vende solo dentro un kit e per un kit senza componenti in vigore da oggi in poi. La ricerca e il
 rifiuto al salvataggio usano la stessa regola. Il motivo è semplice — la ricorrenza ha un suo ciclo di vita
 ([offerta → contratto → fatturazione periodica](gestione-offerte-commerciali.md))
 che non passa dal preventivo. Ogni articolo porta con sé questa "natura" dal
@@ -190,7 +201,7 @@ catalogo, e l'operatore non può cambiarla sulla riga.
 > Se la destinazione è `CONTRATTO`, l'inserimento è bloccato subito con l'errore
 > `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`; lo stesso vale per un articolo «solo
 > componente», che si vende solo dentro il suo kit, e per un kit senza componenti
-> (dal 2026-10-14), che va prima completato. Le regole stanno in un controllo
+> in vigore da oggi in poi, che va prima completato. Le regole stanno in un controllo
 > unico ([`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga)),
 > sono *data-driven* (valgono per qualunque natura mappata a contratto) e scattano
 > all'inserimento, non alla conferma. Le destinazioni operative del preventivo

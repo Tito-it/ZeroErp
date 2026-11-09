@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_uom_operativa_dettaglio`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -39,6 +39,9 @@ spente e quelle fuori periodo ci sono.
 `UOM_BASE_NON_ELIMINABILE` sulla riga base ed è vuoto quando l'eliminazione è permessa. È la
 stessa forma della vista della distinta: il motivo c'è solo quando il blocco c'è.
 
+La capability dice in anticipo ciò che il database comunque rifiuta: la riga base non si
+cancella e non si sposta (`E_UOM_RIGA_BASE_IMMUTABILE`, dal guard della riga base).
+
 ⭐ La regola guarda solo `is_base`, perché nessuna tabella punta a una riga di mappatura: i
 documenti, i listini e i movimenti puntano all'unità di misura, non alla mappatura, e una riga
 di vendita conserva il fattore che ha fotografato. Togliere una mappatura non base non rompe
@@ -48,12 +51,10 @@ quindi nessun riferimento.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **La capability è solo un'indicazione.** Nel database nessun vincolo vieta di cancellare o
-  modificare la riga base: lo rispetta solo l'interfaccia che legge `puo_eliminarsi`.
 * **Togliere una mappatura cambia le righe future.** Le righe già scritte tengono il loro
-  fattore, ma una riga nuova nella stessa unità, senza più la mappatura, prende il fattore 1.
-  La capability non lo dice.
-* La vista e le sue colonne non hanno COMMENT.
+  fattore; una riga nuova nella stessa unità, senza più la mappatura, prende il fattore della
+  conversione generale o è rifiutata. La capability non lo dice.
+* Le colonne della vista non hanno COMMENT: ce l'ha la vista.
 
 ---
 
@@ -69,6 +70,8 @@ quindi nessun riferimento.
 
 * 2026-04-28 — nasce per il pannello delle unità operative di un articolo, sullo schema della
   vista della distinta.
+* 2026-11-09 — ricreata senza `rounding_mode` e `require_lot`, ritirate dalla tabella, e con il
+  suo COMMENT (brief-db-revisione-catalogo, giro 2).
 
 ---
 

@@ -46,33 +46,28 @@ SELECT plan(9);
 --   fra tipologie diverse le rifiuta `trgfn_uom_conversioni_guard_tipo`. E la
 --   base si sceglie alla nascita dell'articolo (`uom_id` e' loccata), da cui
 --   il quinto parametro di `fn_pgtap_crea_articolo` (rev 20260923-01).
-CREATE TEMP TABLE tmp_uom AS
-WITH famiglia AS (
-    SELECT u.tipo_uom_id
-      FROM catalogo.unita_misura u
-     WHERE u.attivo
-     GROUP BY u.tipo_uom_id
-    HAVING count(*) >= 3
-     ORDER BY u.tipo_uom_id
-     LIMIT 1
-), scelte AS (
-    SELECT u.id, ROW_NUMBER() OVER (ORDER BY u.id) AS rn
-      FROM catalogo.unita_misura u
-      JOIN famiglia f ON f.tipo_uom_id = u.tipo_uom_id
-     WHERE u.attivo
-)
-SELECT (SELECT id FROM scelte WHERE rn = 1) AS uom_base_id,
-       (SELECT id FROM scelte WHERE rn = 2) AS uom_operativa_id,
-       (SELECT id FROM scelte WHERE rn = 3) AS uom_conv_id;
+-- ⛔ Fino al 2026-11-09 le tre unita' si sceglievano fra quelle esistenti
+--   (la prima tipologia con tre unita' attive). Su una macchina che fra due di
+--   loro ha gia' una conversione, la fixture non si scrive piu': dal
+--   2026-11-09 le conversioni sono una per coppia di unita' nei due versi
+--   (ex_unita_misura_conversioni_coppia_no_overlap, brief-db-revisione-catalogo
+--   giro 2). Le unita' ora le costruisce il test, nella tipologia MASSA (scelta
+--   per codice_interno, bloccato).
+CREATE FUNCTION pg_temp.uom(p_codice text)
+ RETURNS bigint
+ LANGUAGE sql
+AS $f$
+    INSERT INTO catalogo.unita_misura (codice, descrizione, tipo_uom_id)
+    SELECT p_codice, p_codice, t.id
+      FROM catalogo.uom_tipi t
+     WHERE t.codice_interno = 'MASSA'
+    RETURNING id;
+$f$;
 
-DO $pgtap$
-BEGIN
-    IF (SELECT uom_base_id IS NULL OR uom_operativa_id IS NULL OR uom_conv_id IS NULL
-          FROM tmp_uom) THEN
-        RAISE EXCEPTION 'Il seed di catalogo.unita_misura non ha nessuna tipologia con tre unita'' attive: questo test misura le conversioni, e il guard le ammette solo dentro la stessa tipologia';
-    END IF;
-END
-$pgtap$;
+CREATE TEMP TABLE tmp_uom AS
+SELECT pg_temp.uom('PGTU-GU-BASE') AS uom_base_id,
+       pg_temp.uom('PGTU-GU-OPER') AS uom_operativa_id,
+       pg_temp.uom('PGTU-GU-CONV') AS uom_conv_id;
 
 CREATE TEMP TABLE tmp_seed AS
 SELECT
@@ -118,21 +113,21 @@ SELECT is(
 -- =========================================================
 SELECT is(
   catalogo.fn_get_uom_factor((SELECT art_base_id FROM tmp_seed),
-                             (SELECT uom_base_id FROM tmp_uom)),
+                             (SELECT uom_base_id FROM tmp_uom), script.fn_data_operativa()),
   1::numeric,
   'Fattore base = 1'
 );
 
 SELECT is(
   catalogo.fn_get_uom_factor((SELECT art_base_id FROM tmp_seed),
-                             (SELECT uom_operativa_id FROM tmp_uom)),
+                             (SELECT uom_operativa_id FROM tmp_uom), script.fn_data_operativa()),
   6::numeric,
   'Fattore da articoli_uom_operativa'
 );
 
 SELECT is(
   catalogo.fn_get_uom_factor((SELECT art_fallback_id FROM tmp_seed),
-                             (SELECT uom_conv_id FROM tmp_uom)),
+                             (SELECT uom_conv_id FROM tmp_uom), script.fn_data_operativa()),
   2::numeric,
   'Fallback conversione diretta'
 );
@@ -143,13 +138,13 @@ SELECT is(
 --   la ragione per cui i due articoli sono due.
 SELECT is(
   catalogo.fn_get_uom_factor((SELECT art_fallback_id FROM tmp_seed),
-                             (SELECT uom_operativa_id FROM tmp_uom)),
+                             (SELECT uom_operativa_id FROM tmp_uom), script.fn_data_operativa()),
   0.25::numeric,
   'Fallback conversione inversa'
 );
 
 SELECT is(
-  catalogo.fn_get_uom_factor((SELECT art_fallback_id FROM tmp_seed), 9999),
+  catalogo.fn_get_uom_factor((SELECT art_fallback_id FROM tmp_seed), 9999, script.fn_data_operativa()),
   NULL,
   'Nessuna conversione trovata: NULL'
 );
@@ -169,7 +164,7 @@ $$, 'La mappatura operativa si puo'' disattivare');
 
 SELECT is(
   catalogo.fn_get_uom_factor((SELECT art_base_id FROM tmp_seed),
-                             (SELECT uom_operativa_id FROM tmp_uom)),
+                             (SELECT uom_operativa_id FROM tmp_uom), script.fn_data_operativa()),
   0.25::numeric,
   'Mappatura operativa spenta: la funzione ricade sulla conversione globale inversa'
 );

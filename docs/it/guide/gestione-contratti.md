@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -136,7 +136,8 @@ componenti si inizializzano solo per OVERRIDE e AGGIUNTA su articolo composito.
 di preventivi e offerte (vedi [Gestione preventivi §2.2](gestione-preventivi.md)).
 L'operatore la inserisce **nell'unità di misura operativa scelta** (`qta_operativa`);
 il sistema deriva da sé il valore nell'unità base (`quantita = qta_operativa ×
-factor_to_base`, fattore "fotografato" sulla riga). La quantità **può essere negativa**
+factor_to_base`, fattore "fotografato" sulla riga). Il fattore è quello dell'articolo o
+della conversione generale alla data del contratto; senza, la riga non si salva. La quantità **può essere negativa**
 (resi/storni), **non può essere zero**. La quantità la porta la **fonte**: quando è
 *fissa* è obbligatoria; quando è *derivata dai componenti* la scrive il sistema; con
 ogni altra fonte (letture, timesheet, inserimento manuale a ogni periodo) arriva a

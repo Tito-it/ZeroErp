@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Conversioni globali tra unita di misura con validita temporale.
+> Le conversioni generali fra due unita' della stessa tipologia (catalogo.trgfn_uom_conversioni_guard_tipo), con validita': una uom_from vale fattore uom_to. Una conversione per coppia di unita', in un verso o nell'altro, per ogni periodo (ex_unita_misura_conversioni_coppia_no_overlap): l'inversa la calcola catalogo.fn_get_uom_factor. La legge quella funzione quando l'articolo non ha una mappatura per l'unita' (catalogo.articoli_uom_operativa).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -31,15 +31,14 @@
 | FOREIGN KEY | fk_uom_conv_from | uom_from_id |
 | FOREIGN KEY | fk_uom_conv_to | uom_to_id |
 | PRIMARY KEY | pk_unita_misura_conversioni | id |
-| UNIQUE | uq_uom_conv_no_overlap | uom_from_id, uom_to_id, validita |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ex_unita_misura_conversioni_coppia_no_overlap | `CREATE INDEX ex_unita_misura_conversioni_coppia_no_overlap ON catalogo.unita_misura_conversioni USING gist (LEAST(uom_from_id, uom_to_id), GREATEST(uom_from_id, uom_to_id), validita)` |
 | ix_uom_conv_from_to | `CREATE INDEX ix_uom_conv_from_to ON catalogo.unita_misura_conversioni USING btree (uom_from_id, uom_to_id, valido_dal, valido_al)` |
 | ix_uom_conv_to_from | `CREATE INDEX ix_uom_conv_to_from ON catalogo.unita_misura_conversioni USING btree (uom_to_id, uom_from_id, valido_dal, valido_al)` |
 | pk_unita_misura_conversioni | `CREATE UNIQUE INDEX pk_unita_misura_conversioni ON catalogo.unita_misura_conversioni USING btree (id)` |
-| uq_uom_conv_no_overlap | `CREATE UNIQUE INDEX uq_uom_conv_no_overlap ON catalogo.unita_misura_conversioni USING gist (uom_from_id, uom_to_id, validita)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

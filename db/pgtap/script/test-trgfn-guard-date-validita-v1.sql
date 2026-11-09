@@ -119,19 +119,31 @@ SELECT is(
 CREATE TEMP TABLE tmp_gdv_op AS
 SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('guard date');
 
--- Articolo NON gestito: il caso e' la sua riga di UoM base, che nasce da un
--- trigger alla creazione dell'articolo.
+-- Articolo NON gestito: il caso e' una sua mappatura dell'unita' operativa.
 CREATE TEMP TABLE tmp_gdv_art AS
 SELECT dbops.fn_pgtap_crea_articolo('PGTAP-GDV-' || o.auth_user_id, p_gestito := false) AS articolo_id
   FROM tmp_gdv_op o;
 
+-- Una mappatura che non e' la base: la riga base non ha date (le vieta
+--   chk_articoli_uom_operativa_base_fissa, brief-db-revisione-catalogo giro 2).
+--   L'unita' si sceglie dal catalogo di sistema, col suo ORDER BY.
 -- ⚠️ In un'istruzione separata dal builder: nella stessa leggerebbe la
---   snapshot di prima e non troverebbe la riga.
-CREATE TEMP TABLE tmp_gdv_uom AS
-SELECT u.id
-  FROM catalogo.articoli_uom_operativa u
- WHERE u.articolo_id = (SELECT articolo_id FROM tmp_gdv_art)
-   AND u.is_base;
+--   snapshot di prima e non troverebbe l'articolo.
+CREATE FUNCTION pg_temp.gdv_mappatura()
+ RETURNS bigint
+ LANGUAGE sql
+AS $f$
+    INSERT INTO catalogo.articoli_uom_operativa (articolo_id, uom_id, factor_to_base)
+    SELECT a.id, u.id, 2
+      FROM catalogo.articoli a
+      JOIN catalogo.unita_misura u ON u.attivo AND u.id <> a.uom_id
+     WHERE a.id = (SELECT articolo_id FROM tmp_gdv_art)
+     ORDER BY u.id
+     LIMIT 1
+    RETURNING id;
+$f$;
+
+CREATE TEMP TABLE tmp_gdv_uom AS SELECT pg_temp.gdv_mappatura() AS id;
 
 -- ============================================================
 -- 5-7) risorse_umane: validita generata + CHECK
