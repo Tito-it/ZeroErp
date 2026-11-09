@@ -67,7 +67,10 @@ class ContrattoLiveness(TypedDict):
 
 # Whitelist ORDER BY della lista processi: chiave = nome esposto al frontend,
 # valore = espressione SQL. ⛔ Si ordina la colonna che si VEDE.
-_ORDER_COLS_PROCESSI: dict[str, str] = {
+# ⭐ Pubblica perche' la legge anche il service (`validate_order_params`): una
+#    sola sede per «su cosa si puo' ordinare». Fino al 2026-11-09 il service ne
+#    teneva una copia a mano (`_ORDER_AMMESSI`), senza presidio.
+PROCESSI_SORT_COLUMNS: dict[str, str] = {
     "codice": "p.codice",
     "descrizione": "p.descrizione",
     "classe": "p.classe",
@@ -123,6 +126,20 @@ _CANALI_CON_IDENTITA = ("PGAGENT", "COMMAND", "CODA_AUTOMATICA")
 #    drawer arrivano a dire due cose diverse dello stesso processo: e' successo
 #    col client (vedi sopra), e una seconda sede qui lo rifarebbe lato server.
 _SQL_VUOLE_IDENTITA = "(p.classe = %s AND p.canale = ANY(%s))"
+
+
+# ⭐ L'ESPRESSIONE «questo processo e' vivo», scritta UNA volta per il filtro
+#    della lista e per le due letture che la proiettano (lista e dettaglio).
+#    ⛔ «Vivo» NON e' `p.attivo` (D11, Q2 di brief-db-revisione-dbops, giro 9):
+#    il ritiro ha una sede sola, `obsoleto_dal`, e un processo con la data
+#    raggiunta e' ritirato anche con `attivo = true`. La regola si CHIEDE al
+#    DB, al BB che leggono sveglia, roster e panorama, e non si ricalcola qui:
+#    una data futura (ritiro programmato) e' ancora vivo, e «raggiunta» si
+#    legge alla data operativa del DB, non a quella del server applicativo.
+#    ⚠️ Fino al 2026-11-09 il filtro chiedeva il DB e la proiezione no: la
+#    lista filtrava sul ritiro e il drawer mostrava `attivo`, cioe' due
+#    risposte diverse alla stessa domanda sullo stesso processo.
+_SQL_VIVO = "(NOT script.fn_e_obsoleto(p.obsoleto_dal))"
 
 
 # Scopo: i parametri di `_SQL_VUOLE_IDENTITA`, nell'ordine dei segnaposto.
@@ -220,7 +237,7 @@ class ProcessiRepository:
         *,
         classe: str | None = None,
         canale: str | None = None,
-        attivo: bool | None = None,
+        vivo: bool | None = None,
         search: str | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
@@ -235,16 +252,16 @@ class ProcessiRepository:
         if canale:
             conditions.append("p.canale = %s")
             params.append(canale)
-        if attivo is not None:
-            conditions.append("p.attivo = %s")
-            params.append(attivo)
+        # «Vivo» e' `_SQL_VIVO`, la stessa espressione che la SELECT proietta.
+        if vivo is not None:
+            conditions.append(_SQL_VIVO if vivo else f"NOT {_SQL_VIVO}")
         # Soglia della ricerca: la dichiara il catalogo della lista
         # (`ricerca_min_caratteri`), non questo modulo.
         add_ricerca_full_condition(conditions, params, search, _RICERCA_PROCESSI, alias="p")
 
         ordinamento = sql_order_clause(
             order_by, order_dir,
-            colonne=_ORDER_COLS_PROCESSI,
+            colonne=PROCESSI_SORT_COLUMNS,
             # ⚠️ `default_clause` e non `default`: l'ordine di partenza ha DUE
             #    criteri (prima il canale, poi il codice) e porta le direzioni
             #    dentro di se'. Trattarlo come una colonna gli appiccicherebbe
@@ -266,6 +283,7 @@ class ProcessiRepository:
                    p.canale,
                    p.attivo,
                    p.obsoleto_dal::text AS obsoleto_dal,
+                   {_SQL_VIVO} AS vivo,
                    -- ⭐ Un processo di CODA non deve avere un utente tecnico:
                    --    gira con l'identita' di chi lo accoda. Dirlo qui evita
                    --    che a video sembri «manca qualcosa». Stessa espressione
@@ -373,6 +391,7 @@ class ProcessiRepository:
                 f"""
                 SELECT p.id, p.codice, p.descrizione, p.classe, p.canale, p.attivo,
                        p.obsoleto_dal::text AS obsoleto_dal, p.meta,
+                       {_SQL_VIVO} AS vivo,
                        {_SQL_VUOLE_IDENTITA} AS vuole_identita
                   FROM dbops.processi p
                  WHERE p.codice = %s

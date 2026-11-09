@@ -27,7 +27,7 @@ from django.db import connection
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import limiti_pagina
 from apps.core.db.presidi_repository import PresidiRepository
-from apps.core.db.processi_repository import ProcessiRepository
+from apps.core.db.processi_repository import PROCESSI_SORT_COLUMNS, ProcessiRepository
 from apps.core.services.avvio_manuale import (
     JOB_TYPE_ESEGUI_PROCESSO,
     chiave_idempotenza,
@@ -88,9 +88,6 @@ _CLASSI = ("MANUTENZIONE", "AMMINISTRAZIONE", "DOMINIO")
 #    la schermata non saprebbe mostrare i processi svegliati da una macchina.
 _CANALI = ("PGAGENT", "COMMAND", "CODA", "CODA_AUTOMATICA")
 
-_ORDER_AMMESSI = (
-    "codice", "descrizione", "classe", "canale", "attivo", "ultimo_run",
-)
 
 # ⭐ Non c'e' nessun elenco dei codici che la fabbrica puo' sollevare, ed e'
 #    voluto: `translate_db_errors` legge il codice dal campo STRUTTURATO
@@ -148,7 +145,7 @@ class ProcessiService:
         *,
         classe: str | None = None,
         canale: str | None = None,
-        attivo: bool | None = None,
+        vivo: bool | None = None,
         search: str | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
@@ -170,15 +167,26 @@ class ProcessiService:
             function_name=fn, param_name="canale",
         )
         validate_order_params(
-            order_by, order_dir, allowed_columns=_ORDER_AMMESSI, nullable=True,
+            order_by, order_dir, allowed_columns=frozenset(PROCESSI_SORT_COLUMNS), nullable=True,
             error_code=E_VALIDATION, function_name=fn,
         )
         righe, totale = self._repo.list_processi(
-            classe=classe, canale=canale, attivo=attivo, search=search,
+            classe=classe, canale=canale, vivo=vivo, search=search,
             limit=limit, offset=offset,
             order_by=order_by, order_dir=order_dir,
         )
         return {"count": totale, "results": righe}
+
+    # Scopo: I vocabolari dei filtri del pannello (classe, canale), per il
+    #        client. Sono `_CLASSI` e `_CANALI`, cioe' le stesse costanti con
+    #        cui `list_processi` rifiuta un filtro: il guardrail
+    #        `test_coda_lavori_tipi_handler_guardrail` le tiene uguali ai CHECK
+    #        di `dbops.processi`.
+    # ⛔ Esiste perche' il frontend NON ne tenga una terza copia (2026-11-09):
+    #    la sua, scritta a mano e senza presidio, non aveva `CODA_AUTOMATICA`,
+    #    e i processi svegliati da una macchina non si potevano filtrare.
+    def vocabolari_filtri(self) -> dict[str, list[str]]:
+        return {"classi": list(_CLASSI), "canali": list(_CANALI)}
 
     # Scopo: Dettaglio di un processo: la riga, i bersagli dichiarati, le
     #        identita' con cui lavora. 404 parlante se il codice non esiste.

@@ -39,16 +39,23 @@ class TestGetEmittenteNonEditable(TestCase):
             EmittentiFiscaliService,
         )
 
-        mock_list_locks.return_value = ()
         mock_repo_cls.return_value.get_emittente.return_value = {
             "id": 7, "codice": "EF001", "soggetto_id": "uuid-x",
         }
 
-        result = EmittentiFiscaliService().get_emittente(7)
-
-        self.assertEqual(result["id"], 7)
-        self.assertIn("non_editable_fields", result)
-        self.assertEqual(set(result["non_editable_fields"]), {"codice", "soggetto_id"})
+        # `codice` lo dichiara il DB (trigger di lock dell'emittente, letto
+        # vivo dal giro 10a: BE2); `soggetto_id` resta il solo gap Python.
+        # Che la vista lo dichiari davvero lo prova `test_lock_columns_vivo_db`.
+        for db_locked, attesi in (
+            (("codice",), ["codice", "soggetto_id"]),
+            # ⛔ Senza il lock del DB `codice` non compare: il gap non lo ripete.
+            ((), ["soggetto_id"]),
+        ):
+            with self.subTest(db_locked=db_locked):
+                mock_list_locks.return_value = db_locked
+                result = EmittentiFiscaliService().get_emittente(7)
+                self.assertEqual(result["id"], 7)
+                self.assertEqual(result["non_editable_fields"], attesi)
 
 
 class TestUtilitiesCapability(TestCase):

@@ -43,11 +43,11 @@ from apps.catalogo.db.catalogo_uom_repository import (
     CatalogoUomRepository,
 )
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
-from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.db_error_fields import db_error_code
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
+from apps.core.services.non_editable_fields_helper import compute_non_editable_fields
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.partitioned_note_service import ordine_note_valido
 from apps.core.services.testata_guard import o_not_found, pagina_dopo_testata
@@ -123,43 +123,38 @@ _ROUNDING_MODE_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
 _NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 _NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
 
-# Gap conosciuti rispetto a `dbops.vw_non_editable_fields` (Fase 5 BE).
-# La vista DB oggi copre solo i lock_columns AUTO registrati nel CSV
-# `dbops.automation_lock_columns`. Mancano alcune colonne effettivamente
-# immutabili lato dominio (lock condizionali o non ancora registrati):
-#   - catalogo.articoli.codice (gestito da trgfn_articoli_protect_codice)
+# Gap conosciuti rispetto a `dbops.vw_non_editable_fields`.
+# Dal giro 10a di brief-db-revisione-dbops (D25, BE2) la vista legge il lock
+# VIVO: ogni colonna che un trigger di lock blocca davvero, `codice_interno`
+# compreso. Qui restano solo le colonne immutabili per il dominio che il DB
+# NON dichiara ancora come lock:
 #   - catalogo.articoli_uom_operativa.uom_id (immutabile per coppia)
 #   - catalogo.unita_misura_conversioni.uom_from_id / uom_to_id
-# Questo dict copre il gap fornendo al FE la lista completa. Quando il
-# team DB completera' il registro, le entries qui vanno rimosse: la lista
-# tornera' DB-driven al 100%. Drift visibile = self-documenting.
+# ⛔ Un gap che ripete una colonna gia' bloccata dal DB e' una seconda sede
+#    della stessa regola: quando il DB la dichiara, la voce qui si toglie
+#    (cosi' e' uscito `catalogo.articoli.codice`, 2026-11-09).
 _NON_EDITABLE_DB_GAPS: dict[tuple[str, str], tuple[str, ...]] = {
-    ("catalogo", "articoli"): ("codice",),
     ("catalogo", "articoli_uom_operativa"): ("uom_id",),
     ("catalogo", "unita_misura_conversioni"): ("uom_from_id", "uom_to_id"),
 }
 
 
-# Scopo: Calcola la lista `non_editable_fields` per (schema, tabella).
-# Unisce:
-#   - lock statici da `dbops.vw_non_editable_fields` (automation_lock_columns)
-#   - gap Python `_NON_EDITABLE_DB_GAPS` (immutabili non registrati lato DB)
-#   - se passato `record_id`: lock condizionali da `dbops.lock_columns_conditional`
-#     valutati sul record (es. `catalogo.articoli` con BoM attiva blocca
-#     is_composito/is_solo_componente/requires_serial — migration 20260522-04).
-# Senza record_id ritorna i soli lock statici (backward-compat, usato dove
-# il record non e' ancora disponibile o non e' rilevante).
-def _compute_non_editable_fields(
+# Scopo: `non_editable_fields` di una tabella di catalogo: il BB
+#        `compute_non_editable_fields` coi gap di `_NON_EDITABLE_DB_GAPS`.
+#        Con `record_id` aggiunge i lock condizionali valutati sul record
+#        (es. `catalogo.articoli` usato o con distinta in vigore).
+# ⛔ Non e' piu' una copia (2026-11-09, regola del 2, ok Tid): fino a quel
+#    giorno qui si riscriveva l'unione lock DB + gap + ordinamento, e il ramo
+#    per record esisteva solo in questa copia. Ora la logica sta nel BB, e qui
+#    resta solo cio' che e' di catalogo: quali gap per quale tabella.
+def _non_editable_fields_catalogo(
     schema: str, table: str, *, record_id: str | int | None = None,
 ) -> list[str]:
-    if record_id is not None:
-        db_locked = set(
-            LockColumnsRepository.list_non_editable_for_record(schema, table, record_id),
-        )
-    else:
-        db_locked = set(LockColumnsRepository.list_non_editable(schema, table))
-    db_locked.update(_NON_EDITABLE_DB_GAPS.get((schema, table), ()))
-    return sorted(db_locked)
+    return compute_non_editable_fields(
+        schema, table,
+        gaps=_NON_EDITABLE_DB_GAPS.get((schema, table), ()),
+        record_id=record_id,
+    )
 
 
 # Scopo: in create, applica il default `valido_dal=today` se il campo manca
@@ -1326,8 +1321,8 @@ def fn_get_articolo(articolo_id: UUID | str) -> dict[str, Any]:
     # immutabili quando BoM attiva, seed 20260522-04). Senza record_id
     # avremmo solo i lock statici e l'UX non saprebbe del vincolo finche'
     # il trigger DB non rifiuta al save.
-    articolo["non_editable_fields"] = _compute_non_editable_fields(
-        # `str(...)`: lo fa comunque `LockColumnsRepository`; qui rende il tipo
+    articolo["non_editable_fields"] = _non_editable_fields_catalogo(
+        # `str(...)`: lo fa comunque il repository dei lock; qui rende il tipo
         # coerente con la firma (`UUID | str` -> `str`).
         "catalogo", "articoli", record_id=str(articolo_id),
     )
@@ -1623,7 +1618,7 @@ def fn_list_uom_operative_pagina(
     results, total = CatalogoUomRepository().list_uom_operative_pagina(
         articolo_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return results, total, _compute_non_editable_fields("catalogo", "articoli_uom_operativa")
+    return results, total, _non_editable_fields_catalogo("catalogo", "articoli_uom_operativa")
 
 
 # Scopo: Tutte le UoM operative dell'articolo, coi campi non modificabili:
@@ -1632,7 +1627,7 @@ def fn_list_uom_operative(articolo_id: UUID | str) -> dict[str, Any]:
     _get_articolo_base(articolo_id)
     repository = CatalogoUomRepository()
     response = collezione_completa(repository.list_uom_operative(articolo_id))
-    response["non_editable_fields"] = _compute_non_editable_fields(
+    response["non_editable_fields"] = _non_editable_fields_catalogo(
         "catalogo", "articoli_uom_operativa",
     )
     return response
@@ -1653,7 +1648,7 @@ def fn_create_uom_operativa(articolo_id: UUID | str, payload: dict[str, Any]) ->
         _translate_uom_integrity_error(exc, function_name=function_name)
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
-    result["non_editable_fields"] = _compute_non_editable_fields(
+    result["non_editable_fields"] = _non_editable_fields_catalogo(
         "catalogo", "articoli_uom_operativa",
     )
     return result
@@ -1690,7 +1685,7 @@ def fn_update_uom_operativa(
     )
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
-    result["non_editable_fields"] = _compute_non_editable_fields(
+    result["non_editable_fields"] = _non_editable_fields_catalogo(
         "catalogo", "articoli_uom_operativa",
     )
     return result
@@ -2387,7 +2382,7 @@ def fn_get_conversione(conv_id: int) -> dict[str, Any]:
     assert result is not None
     # Fase 5: arricchisce il detail coi campi non editabili (uom_from_id,
     # uom_to_id immutabili dopo create per coerenza con exclude daterange).
-    result["non_editable_fields"] = _compute_non_editable_fields(
+    result["non_editable_fields"] = _non_editable_fields_catalogo(
         "catalogo", "unita_misura_conversioni",
     )
     return result

@@ -166,7 +166,7 @@ ancora le tabelle).
 | 9-quadragies-ter | ✅ Tid | Le quattro decisioni del 7-bis-c: tutte come da proposta (2026-11-08) | §23.12 | 9-quadragies-bis |
 | 9-quadragies-quater | ✅ sessione DB | Blocco 7-bis-c scritto e provato (`20261109-32` … `-39`, due CSV, quattro pgTAP); N2 precisato sulle righe di composizione | §23.12.1-23.12.3 | 9-quadragies-ter |
 | 9-quadragies-quinquies | ✅ Tid | Apply del blocco 7-bis-c, convergenza, pgTAP come app verdi (2026-11-08); commit e push dalla sessione DB. Il giro 7-bis è chiuso | §23.12.5 | 9-quadragies-quater |
-| 9-quadragies-sexies | **team BE** ⏭️ | BE11: lo snapshot rinominato, la data del contenuto, l'audit a mano che si ritira, i rifiuti nuovi del guard | §5 | 9-quadragies-quinquies |
+| 9-quadragies-sexies | **team BE** ✅ (2026-11-08, committato su `dev/backend-tid`) | BE11: lo snapshot rinominato, la data del contenuto, l'audit a mano che si ritira, i rifiuti nuovi del guard | §5 | 9-quadragies-quinquies |
 | 9-quadragies-septies | ✅ sessione DB | Giro 9 preparato: riverifica sulla struttura, sei nodi, due blocchi (2026-11-08) | §24 | 9-quadragies-quinquies |
 | 9-quadragies-octies | ✅ Tid | Decisioni N1-N6 come da proposta, via al giro 9 dal primo libero (2026-11-08) | §24.4 | 9-quadragies-septies |
 | 9-quadragies-nonies | ✅ sessione DB | Giro 9, blocchi 9a e 9b: scritti e provati sullo scratch (`20261109-40` … `-57`) | §24.5-24.7 | 9-quadragies-octies |
@@ -221,10 +221,14 @@ ancora le tabelle).
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
+| 9-sexagies-octodecies | team BE ✅ (2026-11-09) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore: già in policy, `genera_error_policies --check` pulito | §28.8 | 9-sexagies-septdecies |
+| 9-quinquagies-octies | **team BE** ✅ (2026-11-09, da committare su `dev/backend-tid`) | BE2: i due gap che ripetevano un lock del DB ritirati, `DISTINCT`, commenti riscritti | §5 | 9-quinquagies-septies |
+| 9-quinquagies-semel | **team BE** ✅ (2026-11-09, da committare su `dev/backend-tid`) | BE12 (il filtro «vivo» dei processi) ✅; BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`) già in policy | §5, §24.9 | 9-quinquagies |
+| 9-tricies-decies | **team BE** ✅ (riga doppia della 136) | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
-| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3, BE6 e BE10 ✅ (2026-11-07, mergiati); BE9 ✅ (2026-11-07, committato su `dev/backend-tid`), BE4 ✅ (da committare); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
+| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3, BE6, BE9, BE10, BE11 ✅ (mergiati o committati); BE4 ✅; BE2, BE5, BE7, BE12 ✅ (2026-11-09, da committare). Resta BE8, dopo il giro 13 | §5 | 10 |
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
@@ -672,16 +676,19 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | # | Che cosa | Dove | Legata a |
 | --- | --- | --- | --- |
 | ~~BE1~~ | ~~L'handler della chiusura per scadenza passa `p_classe = 'DOMINIO'`~~ — ritirata (Q5, 2026-11-05): il cancello è il CHECK nel DB | `backend/apps/core/services/coda_lavori/chiusura_scadenze_handler.py:51-60` | D38 (Q5) |
-| BE2 ⏭️ (giro 10a, dopo l'apply) | `dbops.vw_non_editable_fields` legge il lock **vivo** (§25.4): elenca ogni colonna che un trigger di lock blocca, `codice_interno` compreso, e non piu' le righe del registro che nessun trigger applica. ① I `gaps` che ripetono una colonna gia' bloccata dal DB si ritirano: al 2026-11-08 `("catalogo", "articoli"): ("codice",)` in `catalogo_service.py` e `codice` di `_EMITTENTE_NON_EDITABLE_GAPS` in `emittenti_fiscali_service.py` (tutte e due bloccate da `automation_lock_columns`); gli altri restano finche' il DB non li dichiara. Il controllo si fa colonna per colonna sulla vista dopo l'apply. ② Le colonne della vista cambiano: escono `exec_mode` e `note`, entra `trigger_name`. `LockColumnsRepository` legge solo `column_name`: nessuna rottura, ma il commento di testata del repository («alias semantico su `automation_lock_columns`») e quello di `non_editable_fields_helper.py` vanno riscritti. ③ Una colonna bloccata da due trigger compare due volte: `list_non_editable` restituisce una tupla, e un `DISTINCT` (o un `set`) evita il doppio | `backend/apps/catalogo/services/catalogo_service.py:126-140`, `backend/apps/anagrafiche/services/emittenti_fiscali_service.py:47-50`, `backend/apps/core/db/lock_columns_repository.py:8-50`, `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
+| BE2 ✅ (2026-11-09) | `dbops.vw_non_editable_fields` legge il lock **vivo** (§25.4): elenca ogni colonna che un trigger di lock blocca, `codice_interno` compreso, e non piu' le righe del registro che nessun trigger applica. ① I `gaps` che ripetono una colonna gia' bloccata dal DB si ritirano: al 2026-11-08 `("catalogo", "articoli"): ("codice",)` in `catalogo_service.py` e `codice` di `_EMITTENTE_NON_EDITABLE_GAPS` in `emittenti_fiscali_service.py` (tutte e due bloccate da `automation_lock_columns`); gli altri restano finche' il DB non li dichiara. Il controllo si fa colonna per colonna sulla vista dopo l'apply. ② Le colonne della vista cambiano: escono `exec_mode` e `note`, entra `trigger_name`. `LockColumnsRepository` legge solo `column_name`: nessuna rottura, ma il commento di testata del repository («alias semantico su `automation_lock_columns`») e quello di `non_editable_fields_helper.py` vanno riscritti. ③ Una colonna bloccata da due trigger compare due volte: `list_non_editable` restituisce una tupla, e un `DISTINCT` (o un `set`) evita il doppio | `backend/apps/catalogo/services/catalogo_service.py:126-140`, `backend/apps/anagrafiche/services/emittenti_fiscali_service.py:47-50`, `backend/apps/core/db/lock_columns_repository.py:8-50`, `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
 | BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 ✅ (2026-11-07) | **Decisione di Tid (2026-11-07): cade il tetto.** `list_lookup_codici` chiama `dbops.fn_get_lookup_codici` con `p_limit` NULL al posto di `LOOKUP_MAX_SOURCE_ROWS` (la costante e il commento «il limit interno è una guardia» si ritirano); la ricerca `ILIKE` e la paginazione con `sql_order_clause` e `fetch_paged_with_total` restano come sono. Da riscrivere la docstring («chiama con limit ampio…, obiettivo: evitare di modificare la funzione DB»). Non dipende dall'apply: lo spareggio DB del giro 7 non cambia il risultato per il backend, che riordina fuori | `backend/apps/core/db/dbops_repository.py:52-55, 378-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
 | BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) **Giro 12 (2026-11-09):** `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (§31.5). | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
+| BE5 ✅ (2026-11-09) | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
+| BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
+| BE7 ✅ (2026-11-09) | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 ✅ (2026-11-07) | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
-| BE11 ⏭️ (2026-11-08) | **Insieme all'apply del blocco 7-bis-c (§23.12); prima si rompe il salvataggio delle preferenze.** (a) Lo snapshot della preferenza si rinomina: `preset_base_data_update` → `preset_base_contenuto_aggiornato_il` in `ui.lista_preferenza_utente` e `ui.dashboard_preferenza_utente` (le SELECT e gli upsert dei due repository, i kwargs dei due service e dei test). (b) `get_preset_base_snapshot` legge `contenuto_aggiornato_il` del preset, non `data_update`: oggi `data_update` è l'audit. (c) ⛔ Gli UPDATE di `ui_admin_repository.py` (`update_definizione`, `update_colonna`, `update_preset` e gli upsert dei permessi) non scrivono più `user_update` né `data_update = now()` (`extra_set`): lo fa il trigger di audit dal JWT (`app.jwt_user`). È la stessa regola su due livelli; sui preset l'`extra_set` spostava anche la data del contenuto quando l'admin cambiava solo `attivo`. (d) Rifiuti nuovi dal guard ATTIVO, da mappare se il BE li fa scattare: non si spegne una lista che ha colonne o preset attivi, né una dashboard che ha preset attivi (BLOCK); non nasce né si riattiva una colonna o un preset su una lista spenta, né un widget su un'area o un'azione spenta (REQUIRE). I codici sono `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (BLOCK) ed `E_ATTIVO_PADRE_NON_ATTIVO` (REQUIRE), già in policy. Il commento di `ListaConfigurabile.vue:743` («`preset.data_update` corrente») va riscritto | `backend/apps/ui/db/ui_repository.py:285-360`, `backend/apps/ui/db/dashboard_repository.py:85-150`, `backend/apps/ui/services/lista_preferenza_service.py`, `dashboard_preferenza_service.py`, `backend/apps/ui/db/ui_admin_repository.py:232-260, 469-510, 662-700, 843-880`, i test in `backend/apps/ui/tests/` | §23.12 |
-| BE12 (giro 9) | Dopo l'apply del giro 9: il filtro `attivo` della lista dei processi non dice piu' se un processo e' vivo (la data del ritiro e' l'unica sede). Il filtro «vivo» si chiede al DB (`NOT script.fn_e_obsoleto(p.obsoleto_dal)`), non si ricalcola; `attivo` resta una colonna del catalogo. Con BE6 per `W_TXID_BYPASS_PARAMETRO_ASSENTE` | `backend/apps/core/db/processi_repository.py:75, 238-240` | D11 (Q2) |
+| BE11 ✅ (2026-11-08) | **Insieme all'apply del blocco 7-bis-c (§23.12); prima si rompe il salvataggio delle preferenze.** (a) Lo snapshot della preferenza si rinomina: `preset_base_data_update` → `preset_base_contenuto_aggiornato_il` in `ui.lista_preferenza_utente` e `ui.dashboard_preferenza_utente` (le SELECT e gli upsert dei due repository, i kwargs dei due service e dei test). (b) `get_preset_base_snapshot` legge `contenuto_aggiornato_il` del preset, non `data_update`: oggi `data_update` è l'audit. (c) ⛔ Gli UPDATE di `ui_admin_repository.py` (`update_definizione`, `update_colonna`, `update_preset` e gli upsert dei permessi) non scrivono più `user_update` né `data_update = now()` (`extra_set`): lo fa il trigger di audit dal JWT (`app.jwt_user`). È la stessa regola su due livelli; sui preset l'`extra_set` spostava anche la data del contenuto quando l'admin cambiava solo `attivo`. (d) Rifiuti nuovi dal guard ATTIVO, da mappare se il BE li fa scattare: non si spegne una lista che ha colonne o preset attivi, né una dashboard che ha preset attivi (BLOCK); non nasce né si riattiva una colonna o un preset su una lista spenta, né un widget su un'area o un'azione spenta (REQUIRE). I codici sono `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (BLOCK) ed `E_ATTIVO_PADRE_NON_ATTIVO` (REQUIRE), già in policy. Il commento di `ListaConfigurabile.vue:743` («`preset.data_update` corrente») va riscritto | `backend/apps/ui/db/ui_repository.py:285-360`, `backend/apps/ui/db/dashboard_repository.py:85-150`, `backend/apps/ui/services/lista_preferenza_service.py`, `dashboard_preferenza_service.py`, `backend/apps/ui/db/ui_admin_repository.py:232-260, 469-510, 662-700, 843-880`, i test in `backend/apps/ui/tests/` | §23.12 |
+| BE12 ✅ (2026-11-09) | Dopo l'apply del giro 9: il filtro `attivo` della lista dei processi non dice piu' se un processo e' vivo (la data del ritiro e' l'unica sede). Il filtro «vivo» si chiede al DB (`NOT script.fn_e_obsoleto(p.obsoleto_dal)`), non si ricalcola; `attivo` resta una colonna del catalogo. Con BE6 per `W_TXID_BYPASS_PARAMETRO_ASSENTE` | `backend/apps/core/db/processi_repository.py:75, 238-240` | D11 (Q2) |
 | BE10 ✅ (2026-11-07) | **Prima della RLS (blocco 5b), dal 5a.** (a) ⛔ Un lavoro OPERATORE nasce dentro un'azienda: in modalità globale si accoda un lavoro per azienda, o si chiede di sceglierla. Dall'apply del 5a la porta rifiuta un lavoro senza emittente attivo nello scope (`E_CODA_LAVORO_SENZA_EMITTENTE`): oggi lo accodano il giro di fatturazione dal cockpit in modalità globale (FATTURAZIONE_GIRO/NUMERA, dbdev, ultimo 2026-10-26) e chiunque catturi uno scope senza emittente attivo. (b) Il drenatore della coda lavori prende, recupera e chiude i lavori **un'azienda alla volta**, con l'utente tecnico di `draina_coda_lavori` di quell'azienda (`dbops.vw_processi_roster`), come `draina_coda_stampa`; i lavori SISTEMA li vede ogni utente tecnico del drenatore (`claim` con `SKIP LOCKED`). Claim, reaper, `mark_done`/`mark_error` sotto quell'identità; l'esecuzione del lavoro resta con l'identità dello scope. Un'azienda senza utente tecnico non viene drenata, e lo dice `vw_processi_dominio_senza_identita`. (c) La porta, da una sessione dell'applicazione, accoda un lavoro OPERATORE solo a nome di chi è in sessione e nel suo perimetro (`E_CODA_SCOPE_ALTRUI`), e la chiave di un lavoro OPERATORE deve contenere la sua azienda (`E_CODA_CHIAVE_ALTRUI`): da censire i punti che accodano a nome d'altri | `backend/apps/core/services/coda_lavori/drainer_service.py`, `repository.py` (`claim`, `reap_stale`, `mark_*`), `scope.py`, i chiamanti di `CodaLavoriRepository.accoda` | Q14.3, §18 |
 
 Nessuna ricaduta FE diretta: D25 si vede nel form quando BE2 è fatto.
@@ -890,6 +897,93 @@ team BE all'apply.
   l'audit come esempio di `extra_set`. Un test era verde a vuoto e dichiarava una prova che non poteva fare:
   `core/tests/db/test_scritture_email_note_db` portava indietro `data_update` con un UPDATE (che il trigger rimetteva
   a `now()`) e poi lo trovava «aggiornato»; il controllo esce, col motivo nel commento.
+
+
+**Stato al 2026-11-09, BE2, BE5, BE7, BE12 (team BE, da committare su `dev/backend-tid`): fatte.** BE6 per i codici
+dei giri 9 e 10c era già in policy (`W_TXID_BYPASS_PARAMETRO_ASSENTE`, `E_GUARD_UTILITY`, con i ripieghi):
+`genera_error_policies --check` pulito sul dbdev.
+
+* **BE12.** Il filtro della lista dei processi si chiama **`vivo`** (query param, service, repository, store FE)
+  e chiede al DB `NOT script.fn_e_obsoleto(p.obsoleto_dal)` (`false` = ritirato); `attivo` resta colonna e
+  ordinamento. Il nome cambia perché un filtro `attivo` che risponde «vivo» direbbe il falso. (Il filtro ha
+  un comando a video dalla rilettura critica, sotto.) Controesempio datato, non motivo
+  (dbdev, 2026-11-09): `sync_auth_user_active` ha `attivo = true` e il ritiro raggiunto, e col filtro vecchio
+  usciva fra i vivi. Presidio sul DB vero, coi tre casi costruiti su un processo del seed (data vuota, futura,
+  raggiunta con `attivo` true): `core/tests/db/test_processi_filtro_vivo_db`, rosso per mutazione.
+  ⚠️ Fuori dal BE: la pagina auto-generata di `script.fn_e_obsoleto` ha ancora il COMMENT del 2026-11-06
+  («⛔ Non è la regola dei processi»), smentito dal giro 9 (N2): va rigenerata con le altre schede di §24.8 punto 4.
+* **BE2.** Ritirati i gap `catalogo.articoli.codice` (`catalogo_service._NON_EDITABLE_DB_GAPS`) e `codice`
+  dell'emittente (`_EMITTENTE_NON_EDITABLE_GAPS`): la vista li dichiara (letto su dbdev, anche dal ramo per
+  record `fn_non_editable_fields`). Gli altri gap restano, controllati colonna per colonna: il DB non li blocca
+  (`articoli_uom_operativa.uom_id`, `unita_misura_conversioni.uom_from_id/uom_to_id`, `emittenti_fiscali.soggetto_id`,
+  le dimensioni delle due matrici). `LockColumnsRepository.list_non_editable` legge `DISTINCT`; riscritti i
+  commenti del repository, dell'helper e dei due service. I due test unitari che pretendevano `codice` dal gap
+  con la vista mockata vuota ora provano il contrario; presidio sul DB vero che le colonne uscite dai gap le
+  dichiari la vista: `core/tests/db/test_lock_columns_vivo_db`.
+  ✅ ~~Segnalazione: `soggetti_service._compute_non_editable_fields` non legge la vista~~ — chiusa il 2026-11-09
+  con S-BE-3 (sotto): la lista del soggetto passa dal BB e porta `codice` dalla vista.
+* **BE5, BE7.** Commenti riallineati: in `presidi_repository.py` a attraversare la RLS è
+  `fn_conta_presidio_per_variante` (DEFINER), non `fn_conta_presidio` (INVOKER dal 2026-10-10); la docstring del
+  guardrail dei codici ammette il registro vuoto; il test del giornale non nomina più il presidio ritirato come scopo.
+
+**Rilettura critica del giro BE (2026-11-09, team BE, da committare su `dev/backend-tid`).**
+
+* **BE12, la proiezione.** Il filtro chiedeva il DB ma lista e drawer mostravano `attivo`: un processo col ritiro
+  raggiunto e `attivo = true` usciva dal filtro «vivi» e il drawer non diceva che era ritirato. L'espressione è
+  ora una sola, `_SQL_VIVO` in `processi_repository.py`, usata dal filtro e proiettata come `vivo` da lista e
+  dettaglio; il drawer legge `vivo` («Ritirato dal …», o «Ritiro programmato al …» con la data futura). Il
+  filtro ha la sua tendina (vivi / ritirati / tutti). Presidio esteso: `test_processi_filtro_vivo_db` prova anche
+  la colonna proiettata.
+* **Classi e canali del pannello.** La tendina dei canali era una copia a mano senza presidio, e le mancava
+  `CODA_AUTOMATICA`. Ora le tendine leggono `GET /amm-software/processi/vocabolari/`, che consegna le costanti di
+  validazione del service (`_CLASSI`, `_CANALI`, già confrontate coi CHECK dal loro guardrail).
+* **Lock di colonna.** La cache di `LockColumnsRepository.list_non_editable` conservava anche il fallback vuoto
+  di un errore DB, fino al riavvio del worker: col BE2 il form avrebbe lasciato modificare `codice`. Ora in cache
+  va solo la lettura riuscita. Il ramo per record (`record_id`) è entrato nel BB `compute_non_editable_fields`,
+  e la copia privata di catalogo è ritirata (regola del 2, ok Tid). `test_lock_columns_vivo_db` non legge più
+  una riga con `LIMIT 1` (passava saltando su un DB vuoto) e fallisce se il ramo per record ripiega sugli statici.
+* **Ordinamento dei processi.** `_ORDER_AMMESSI` del service era una copia a mano delle chiavi del repository:
+  ora il service legge `PROCESSI_SORT_COLUMNS`.
+
+**⏭️ Segnalazione al team DB (S-BE-2, 2026-11-09): la colonna `vivo` nel catalogo della lista `amm.processi`.**
+Il backend la proietta già (booleano, `NOT script.fn_e_obsoleto(p.obsoleto_dal)`), ma il catalogo della lista ha
+solo `attivo`, che non dice se un processo è ritirato. Serve la colonna `vivo` nel seed della lista (ordinabile).
+Dopo l'apply il team BE aggiunge `"vivo": _SQL_VIVO` a `PROCESSI_SORT_COLUMNS` (il presidio
+`test_liste_configurabili_seed` lo chiede nei due versi) e la cella col tag nella tab. Se `attivo` debba restare a
+video accanto a `vivo` lo decide Tid.
+
+**⏭️ Segnalazione al team DB (S-BE-3, 2026-11-09): CF e P.IVA valorizzati sono immutabili, e oggi non lo
+impone nessuno.**
+
+*Il difetto.* La regola «CF e P.IVA bloccati se valorizzati» esisteva solo come metadato del form
+(`soggetti_service._compute_non_editable_fields`, più una copia nel FE). La PATCH del soggetto accetta
+`codice_fiscale` e `partita_iva` (sono in `SOGGETTO_UPDATE_COLS`), e il DB non ha né un trigger di lock né una
+riga in `dbops.lock_columns_conditional` su quelle colonne: una PATCH diretta cambia un CF valorizzato con un 200.
+Una promessa senza esecutore.
+
+*Decisione di Tid (2026-11-09).* CF e P.IVA sono immutabili: si blocca ciò che fa l'unicità. La chiave è la
+colonna generata `id_fiscale_univoco_cf_piva` (`uq_soggetto_idstato_id_fiscale_univoco`, con `stato_id`), che
+contiene **tutti e due** quando ci sono entrambi e diversi, altrimenti quello presente. Quindi:
+* un CF o una P.IVA **valorizzati** non si cambiano e non si svuotano;
+* un campo **vuoto** resta riempibile (il privato che apre la partita IVA, la società senza CF distinto): la
+  chiave cambia, ma da un'identità incompleta a una completa, non da un soggetto a un altro. *(Lettura della
+  sessione BE da confermare con Tid nel giro.)*
+
+*Cosa serve al DB.*
+1. Il guard: un trigger `BEFORE UPDATE OF codice_fiscale, partita_iva` su `anagrafiche.soggetti` che rifiuta
+   `OLD.x IS NOT NULL AND NEW.x IS DISTINCT FROM OLD.x`, con un codice a catalogo (campo strutturato per il
+   form). Se il meccanismo giusto è il trigger di lock generico esteso ai condizionali, lo decide il team DB.
+2. La dichiarazione: le due righe in `dbops.lock_columns_conditional` (condizione «valorizzato sul record
+   `$1::uuid`»), così `fn_non_editable_fields` le restituisce. ⚠️ Oggi il registro lo **applica** solo il guard
+   degli articoli: una riga senza il guard del punto 1 rifarebbe lo stesso difetto, in un altro posto.
+3. pgTAP: cambio e svuotamento rifiutati, riempimento di un vuoto ammesso, per CF e per P.IVA.
+
+*Fatto lato BE e FE (2026-11-09, da committare).* La lista del soggetto passa dal BB
+`compute_non_editable_fields`: porta `codice` dalla vista (il DB lo blocca, la lista non lo diceva), e CF e P.IVA
+valorizzati restano come **gap** dichiarato. Il FE non rifà più la regola: disabilita solo ciò che la lista dice.
+Presidio sul DB vero: `codice` del soggetto in `test_lock_columns_vivo_db`.
+*Dopo l'apply.* Il team BE toglie il gap e passa `record_id` al BB (la lista arriva da `fn_non_editable_fields`),
+e mappa il codice nuovo sul campo nella PATCH.
 
 ## 6. Difetti fuori schema trovati leggendo i chiamanti
 

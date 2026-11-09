@@ -1777,7 +1777,12 @@
         "non_abilitata": "Il processo è spento su questa installazione: riaccendilo prima di eseguirlo.",
         "non_decidibile": "Non si sa se il processo sia acceso: l'ambiente di questa installazione non è dichiarato.",
         "gia_in_coda": "È già in coda (lavoro #{job_id}): si potrà premere di nuovo quando quel lavoro sarà finito."
-      }
+      },
+      "vivo_tutti": "Vivi e ritirati",
+      "vivo_si": "Solo vivi",
+      "vivo_no": "Solo ritirati",
+      "ritirato_dal": "Ritirato dal {data}",
+      "ritiro_programmato": "Ritiro programmato al {data}"
     },
     "error_log": {
       "titolo": "Registro degli errori tecnici",

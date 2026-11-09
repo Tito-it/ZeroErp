@@ -105,11 +105,11 @@ class ProcessiServiceFiltriTests(unittest.TestCase):
 
     def test_filtri_validi_arrivano_al_repository(self):
         svc, repo = _service()
-        svc.list_processi(classe="DOMINIO", canale="COMMAND", attivo=True)
+        svc.list_processi(classe="DOMINIO", canale="COMMAND", vivo=True)
         kwargs = repo.list_processi.call_args.kwargs
         self.assertEqual(kwargs["classe"], "DOMINIO")
         self.assertEqual(kwargs["canale"], "COMMAND")
-        self.assertIs(kwargs["attivo"], True)
+        self.assertIs(kwargs["vivo"], True)
 
     # 2-3. Il cap e il pavimento: un `limit` enorme non diventa una query che
     #      porta via il database, e un `offset` negativo non arriva all'SQL.

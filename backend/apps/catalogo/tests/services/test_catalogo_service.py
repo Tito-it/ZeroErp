@@ -76,6 +76,10 @@ from django.db import IntegrityError
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 
+# Dal 2026-11-09 i lock li legge il BB `compute_non_editable_fields`: si
+# sostituisce il repository dove lo importa il BB, non piu' in catalogo.
+_LOCK_REPO = "apps.core.services.non_editable_fields_helper.LockColumnsRepository"
+
 
 class CatalogoServiceTests(TestCase):
     # Scopo: Lista articoli valida -> envelope paginato coerente.
@@ -102,11 +106,19 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: Dettaglio articolo trovato -> dict ritornato senza trasformazioni.
+    # ⚠️ Anche `LockColumnsRepository` e' mockato (2026-11-09): senza, il test
+    #    andava al DB vero con un id intero su una PK uuid, e passava solo
+    #    perche' il repository ricade sui lock statici e logga un warning.
+    @patch(_LOCK_REPO, autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
-    def test_fn_get_articolo_ok(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
+    def test_fn_get_articolo_ok(
+        self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls, mock_lock_cls,
+    ):
         from apps.catalogo.services.catalogo_service import fn_get_articolo
+
+        mock_lock_cls.list_non_editable_for_record.return_value = ()
 
         mock_repo_cls.return_value.get_articolo.return_value = {
             "id": 7,
@@ -1157,10 +1169,12 @@ class CatalogoServiceTests(TestCase):
     # Fase 5 — non_editable_fields nei detail (cross-vista DB + gap Python)
     # =================================================================
 
-    # Scopo: detail articolo include non_editable_fields. Almeno "codice" e
-    # "uom_id" devono essere presenti (dal gap Python; DB potrebbe arricchire).
-    # Mock LockColumnsRepository per evitare query DB reali sul testbed.
-    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository", autospec=True)
+    # Scopo: detail articolo include non_editable_fields, e `codice` arriva
+    # dal DB, non da un gap Python (BE2 di brief-db-revisione-dbops: dal giro
+    # 10a la vista legge il lock vivo, e il gap che lo ripeteva e' uscito).
+    # Il dettaglio legge il ramo PER RECORD (lock statici + condizionali).
+    # Che la vista lo dichiari davvero lo prova `test_lock_columns_vivo_db`.
+    @patch(_LOCK_REPO, autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
@@ -1172,17 +1186,20 @@ class CatalogoServiceTests(TestCase):
         mock_repo_cls.return_value.get_articolo.return_value = {"id": 1, "is_composito": False}
         mock_uom_cls.return_value.list_uom_operative.return_value = []
         mock_bom_cls.return_value.list_note_articolo.return_value = []
-        # DB vuoto: il gap Python e' l'unica fonte.
-        mock_lock_cls.list_non_editable.return_value = ()
 
-        result = fn_get_articolo(1)
-
-        self.assertIn("non_editable_fields", result)
-        # Gap Python copre "codice"; DB esprime "uom_id" via vista (qui mock vuoto).
-        self.assertIn("codice", result["non_editable_fields"])
+        for db_locked, attesi in (
+            (("codice", "uom_id"), ["codice", "uom_id"]),
+            # ⛔ Senza il lock del DB `codice` NON compare: nessun gap Python
+            #    lo ripete piu'. Se torna, e' rinata la seconda sede.
+            ((), []),
+        ):
+            with self.subTest(db_locked=db_locked):
+                mock_lock_cls.list_non_editable_for_record.return_value = db_locked
+                result = fn_get_articolo(1)
+                self.assertEqual(result["non_editable_fields"], attesi)
 
     # Scopo: lista UoM operative espone non_editable_fields envelope-level.
-    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository", autospec=True)
+    @patch(_LOCK_REPO, autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_list_uom_operative_envelope_non_editable_fields(
@@ -1199,7 +1216,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["non_editable_fields"], ["uom_id"])
 
     # Scopo: detail conversione UoM include non_editable_fields (uom_from_id, uom_to_id).
-    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository", autospec=True)
+    @patch(_LOCK_REPO, autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_get_conversione_includes_non_editable_fields(self, mock_repo_cls, mock_lock_cls):
         from apps.catalogo.services.catalogo_service import fn_get_conversione
@@ -1247,7 +1264,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(results[1]["motivo_non_gestibile_bom"], "ARTICOLO_NON_COMPOSITO")
 
     # Scopo: lista UoM operative propaga capability eliminazione dalla vista DB (Fase 6).
-    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository", autospec=True)
+    @patch(_LOCK_REPO, autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_list_uom_operative_proietta_capability_eliminabile(
