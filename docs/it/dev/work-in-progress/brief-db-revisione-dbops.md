@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 14 chiuso; S-BE-1 scritto e provato, da applicare; BE8 fatto)
+## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro 14 chiuso, `-18` corretto per il migrate da zero §34.6.7; S-BE-1 scritto e provato, da applicare; BE8 fatto)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -5445,6 +5445,24 @@ no, per non rifare il prestito (stesso criterio di `20260929-09`).
   `'E_…'`, che non danno righe; stesso risultato, guadagno atteso intorno alla meta'. Si fa solo con il via di Tid,
   cronometrando vecchio e nuovo e confrontando i risultati riga per riga.
 * **Doc auto-generata e commit:** Tid, `fe388dbfdf` (2026-11-10). Giro 14 chiuso.
+
+#### 34.6.7 Correzione: il `-18` da zero (2026-11-11)
+
+* **Il guasto.** Su un database ricostruito da zero il migrate si ferma sul `20261111-18`: «constraint
+  `chk_presidi_chi_agisce_se_allarma` for table `presidi` does not exist». Il vincolo nasce in `90_end` (`20261006-07`,
+  dopo il mirror del CSV dei presidi), e `20_code` gira prima. Su dbdev e scratch non si vedeva: il vincolo c'era gia'.
+  L'intestazione del `-18` diceva «nessuno degli oggetti nasce dopo 20_code», e per questo oggetto era falso.
+* **Censimento:** dei 108 bersagli dei COMMENT del `-18`, questo e' l'**unico** che nasce in `80_data` o in `90_end`.
+* **Correzione:**
+  * dal `-18` esce il COMMENT sul vincolo, in `changes` e in `rollback`; il changeSet prende `validCheckSums: ANY`,
+    perche' dove e' gia' girato il checksum e' quello del testo di prima (`runOnChange: false`: non ri-esegue);
+  * nuovo `90_end/20261111-66-update-comment-chk-presidi-chi-agisce-se-allarma`: lo stesso testo al presente, con
+    preCondition HALT sull'esistenza del vincolo. Su dbdev e scratch riscrive il testo che c'e' gia'.
+* **Provato:** l'SQL estratto del `-18` (change e rollback) e del `-66` su dbdev, in ROLLBACK, senza errori. **Non provato:**
+  il migrate da zero, che e' il caso del guasto.
+* **Per Tid:** rilanciare il migrate (da zero dove si era fermato, l'update su dbdev e scratch).
+* **Lezione:** «nessun oggetto nasce dopo 20_code» si verifica, non si scrive: un COMMENT, come un DROP, va cercato anche
+  nei changeSet di `80_data` e `90_end`.
 
 ## 35. S-BE-1 — le frasi della famiglia ATTIVO senza tabelle: censimento (2026-11-10)
 
