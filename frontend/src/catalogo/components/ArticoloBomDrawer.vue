@@ -21,11 +21,10 @@
 //     Per questo il click su una riga apre il form in SOLA LETTURA (il modo
 //     `edit` del BB e' qui la consultazione).
 //   - "Duplica versione" (workflow 2 step, dal 2026-05-10): step 1 chiude la
-//     sorgente con PATCH valido_al (stessa via di "Chiudi riga"), step 2
+//     sorgente (stessa via di "Chiudi riga"), step 2
 //     apre il form add pre-compilato dai valori della sorgente con
 //     valido_dal = chiudi_al + 1. L'utente puo' modificare i campi prima
-//     di salvare. Niente DB function dedicata: tutto su endpoint esistenti
-//     (PATCH valido_al + POST create), con perdita di atomicita' DB-side
+//     di salvare. Due endpoint (chiusura + POST create), con perdita di atomicita' DB-side
 //     accettata (eventuale annullo dello step 2 lascia la sorgente chiusa
 //     senza nuova versione, recuperabile manualmente con "+").
 //   - delete BoM bloccato dal trigger: il pattern di "rimozione" è chiusura
@@ -33,6 +32,16 @@
 //     unica via via dialog dedicato dal kebab "Chiudi riga" (pattern
 //     simmetrico a ChiudiVersioneDialog dei listini, vedi
 //     feedback_stato_terminale_con_data).
+//   - ⭐ LA CHIUSURA PASSA DAL VERBO DEL DB (2026-11-10, BE19 di
+//     brief-db-revisione-catalogo, giro 3): `POST …/componenti/<id>/chiudi/`
+//     (`catalogo.fn_chiudi_legame_distinta`). Un legame coi prezzi bundle
+//     oltre la fine non si chiude in silenzio: il primo tentativo e' rifiutato
+//     in modo CONFERMABILE (E_BOM_CHIUSURA_CON_PREZZI, `confirm_and_retry`),
+//     `ChiusuraLegamePrezziDialog` elenca i prezzi e la conferma ripete la
+//     stessa chiamata dichiarando quanti ne ha visti. Fino a quel giorno era
+//     un PATCH su `valido_al`, che su un kit prezzato moriva sulla FK
+//     temporale. Le due vie (Chiudi riga, Duplica) hanno UNA sede:
+//     `chiudiLegame`.
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -44,9 +53,10 @@ import { useFormInline } from '../../core/composables/useFormInline'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
+import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import {
+  chiudiArticoloComponente,
   createArticoloComponente,
-  updateArticoloComponente,
   exportArticoloComponentiLista,
   makeComponenteNotesApi,
 } from '../api/catalogo'
@@ -55,6 +65,7 @@ import { useEsposizioniComponente, ESPOSIZIONE_NASCOSTO } from '../composables/u
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { addDaysToToday, displayDate, parseIsoDate, toDateString, giornoDi, oggiAziendale } from '../../core/utils/date'
 import ArticoloLookup from './ArticoloLookup.vue'
+import ChiusuraLegamePrezziDialog from './ChiusuraLegamePrezziDialog.vue'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
@@ -176,8 +187,8 @@ const chiudiDialogMinDate = computed(() => parseIsoDate(chiudiDialogRow.value?.d
 const chiudiDialogIsImmediata = computed(() => isOggi(chiudiDialogData.value))
 
 // Dialog "Duplica versione": l'admin sceglie chiudi_al, alla conferma il
-// BE chiude SOLO la sorgente (PATCH valido_al, stessa path di "Chiudi
-// riga", trigger BoM lo permette). Subito dopo il drawer apre il form
+// BE chiude SOLO la sorgente (`chiudiLegame`, la stessa via di "Chiudi
+// riga"). Subito dopo il drawer apre il form
 // "Aggiungi componente" pre-compilato dai valori della sorgente, con
 // `valido_dal = chiudi_al + 1`. L'utente puo' modificare i campi prima
 // di salvare, e il save fa l'INSERT della nuova versione.
@@ -316,12 +327,64 @@ function annullaDuplicaVersione() {
   duplicaDialogChiudiAl.value = null
 }
 
-// Scopo: step 1 del flow duplica-versione. Chiude SOLO la sorgente con
-// PATCH valido_al (endpoint esistente updateArticoloComponente, stesso
-// path di "Chiudi riga"). Su successo apre il form add pre-compilato
-// dai valori della sorgente, con valido_dal = chiudi_al + 1. L'utente
-// modifica i campi se serve e su Save l'endpoint create inserisce la
-// nuova versione (step 2).
+// ⭐ LA CHIUSURA DI UN LEGAME, una sede per «Chiudi riga» e per lo step 1 del
+//    Duplica. `useForzaturaConfermata` manda il primo tentativo SENZA
+//    dichiarazione; se il legame ha prezzi bundle il DB chiede, la finestra
+//    dei prezzi si apre (`domandaPrezzi`) e la conferma ripete la stessa
+//    chiamata con `prezzi_confermati`. `dopo` e' cio' che il gesto fa a
+//    chiusura avvenuta, al primo colpo o dopo la conferma.
+const {
+  esegui: eseguiChiusura,
+  conferma: confermaChiusuraPrezzi,
+  annulla: annullaChiusuraPrezzi,
+  richiestaConferma: domandaPrezzi,
+  loading: chiudendo,
+} = useForzaturaConfermata()
+// La chiusura in sospeso: `{ componenteId, validoAl, header, dopo }`.
+const chiusuraInSospeso = ref(null)
+
+async function chiudiLegame(row, validoAlIso, { header, dopo }) {
+  const sospeso = { componenteId: row.id, validoAl: validoAlIso, header, dopo }
+  chiusuraInSospeso.value = sospeso
+  const esito = await eseguiChiusura(
+    (dichiarazione) => chiudiArticoloComponente(props.articoloId, row.id, {
+      valido_al: validoAlIso,
+      ...dichiarazione,
+    }),
+    { successMessage: t('catalogo.componente_chiuso') },
+  )
+  if (esito !== null) await concludiChiusura(sospeso)
+  // Rifiuto vero (non una domanda): il toast l'ha gia' mostrato l'handler.
+  else if (!domandaPrezzi.value) chiusuraInSospeso.value = null
+}
+
+// ⚠️ La chiusura in sospeso si prende PRIMA dell'attesa: «Annulla» della
+//    finestra resta cliccabile a conferma in volo (FormFooter non lo spegne)
+//    e azzera `chiusuraInSospeso`. Se intanto il DB ha chiuso, il legame E' chiuso:
+//    la lista si rilegge e il gesto si conclude lo stesso, invece di morire su
+//    un `null` lasciando a video il legame aperto.
+async function onConfermaPrezzi(dichiarazione) {
+  const sospeso = chiusuraInSospeso.value
+  const esito = await confermaChiusuraPrezzi(dichiarazione)
+  if (esito !== null) await concludiChiusura(sospeso)
+}
+
+function onAnnullaPrezzi() {
+  annullaChiusuraPrezzi()
+  chiusuraInSospeso.value = null
+}
+
+async function concludiChiusura(sospeso) {
+  chiusuraInSospeso.value = null
+  reloadAll()
+  emit('saved')
+  await sospeso?.dopo()
+}
+
+// Scopo: step 1 del flow duplica-versione. Chiude SOLO la sorgente
+// (`chiudiLegame`). Su successo apre il form add pre-compilato dai valori
+// della sorgente, con valido_dal = chiudi_al + 1. L'utente modifica i campi
+// se serve e su Save l'endpoint create inserisce la nuova versione (step 2).
 async function confermaDuplicaVersione() {
   if (!duplicaDialogRow.value || !duplicaDialogChiudiAl.value) return
   const chiudiAlDate = giornoDi(duplicaDialogChiudiAl.value)
@@ -330,16 +393,16 @@ async function confermaDuplicaVersione() {
   // pre-compilare il form quando duplicaDialogRow viene azzerata.
   const sourceRow = { ...duplicaDialogRow.value }
 
-  const result = await execute(
-    () => updateArticoloComponente(props.articoloId, sourceRow.id, {
-      valido_al: chiudiAlIso,
-    }),
-    { successMessage: t('catalogo.componente_chiuso') },
-  )
-  if (result === null) return
+  await chiudiLegame(sourceRow, chiudiAlIso, {
+    header: t('catalogo.duplica_versione_conferma'),
+    dopo: () => apriDuplicato(sourceRow, chiudiAlDate, chiudiAlIso),
+  })
+}
+
+// Scopo: step 2 del Duplica, a sorgente chiusa: il form «nuovo componente»
+//        pre-compilato.
+function apriDuplicato(sourceRow, chiudiAlDate, chiudiAlIso) {
   annullaDuplicaVersione()
-  reloadAll()
-  emit('saved')
 
   // Apre il form add pre-compilato. valido_dal default = chiudi_al + 1
   // (la nuova versione apre il giorno successivo alla chiusura, evita
@@ -399,17 +462,10 @@ function annullaChiusura() {
 
 async function confermaChiusura() {
   if (!chiudiDialogRow.value || !chiudiDialogData.value) return
-  const result = await execute(
-    () => updateArticoloComponente(props.articoloId, chiudiDialogRow.value.id, {
-      valido_al: toDateString(chiudiDialogData.value),
-    }),
-    { successMessage: t('catalogo.componente_chiuso') }
-  )
-  if (result !== null) {
-    annullaChiusura()
-    reloadAll()
-    emit('saved')
-  }
+  await chiudiLegame(chiudiDialogRow.value, toDateString(chiudiDialogData.value), {
+    header: t('catalogo.chiudi_riga_conferma'),
+    dopo: annullaChiusura,
+  })
 }
 
 // Scopo: azioni di riga del componente BoM (note + duplica + chiudi).
@@ -665,8 +721,8 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
     @update:visible="v => { if (!v) annullaChiusura() }"
     :header="t('catalogo.chiudi_riga_dialog_titolo')"
     width="sm"
-    :loading="loading"
-    :save-disabled="!chiudiDialogData || loading"
+    :loading="loading || chiudendo"
+    :save-disabled="!chiudiDialogData || loading || chiudendo"
     :save-label="t('catalogo.chiudi_riga_conferma')"
     save-severity="warn"
     @save="confermaChiusura"
@@ -698,7 +754,7 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
   </AppDialog>
 
   <!-- Dialog "Duplica versione": step 1 del flow (chiusura sorgente).
-       Sceglie chiudi_al e su conferma fa PATCH valido_al sulla sorgente.
+       Sceglie chiudi_al e su conferma chiude la sorgente (`chiudiLegame`).
        Subito dopo il drawer apre il form add pre-compilato con
        valido_dal = chiudi_al + 1 (step 2 in confermaDuplicaVersione).
        min-date = data_min_chiusura del BE (la piu' tarda fra valido_dal
@@ -709,8 +765,8 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
     @update:visible="v => { if (!v) annullaDuplicaVersione() }"
     :header="t('catalogo.duplica_versione_dialog_titolo')"
     width="sm"
-    :loading="loading"
-    :save-disabled="!duplicaDialogChiudiAl || loading"
+    :loading="loading || chiudendo"
+    :save-disabled="!duplicaDialogChiudiAl || loading || chiudendo"
     :save-label="t('catalogo.duplica_versione_conferma')"
     @save="confermaDuplicaVersione"
   >
@@ -742,6 +798,20 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
       </div>
     </div>
   </AppDialog>
+
+  <!-- La conferma dei prezzi bundle: si apre sopra il dialog della data,
+       che resta aperto (rinunciando si puo' scegliere un'altra data). -->
+  <ChiusuraLegamePrezziDialog
+    :visible="!!domandaPrezzi"
+    :articolo-id="articoloId"
+    :componente-id="chiusuraInSospeso?.componenteId ?? null"
+    :valido-al="chiusuraInSospeso?.validoAl ?? null"
+    :header="chiusuraInSospeso?.header ?? ''"
+    :domanda="domandaPrezzi"
+    :loading="chiudendo"
+    @conferma="onConfermaPrezzi"
+    @cancel="onAnnullaPrezzi"
+  />
 </template>
 
 <style scoped>

@@ -28,7 +28,7 @@ Indice test eseguiti:
 19) CatalogoServiceTests.test_fn_create_uom_operativa_ok
 20) CatalogoServiceTests.test_fn_update_uom_operativa_not_found
 21) CatalogoServiceTests.test_fn_create_componente_ok
-22) CatalogoServiceTests.test_fn_update_componente_immutabile
+22) (ritirato il 2026-11-10 con la PATCH del legame: test_fn_update_componente_immutabile)
 23) CatalogoServiceTests.test_fn_create_nota_articolo_ok
 24) CatalogoServiceTests.test_fn_create_nota_articolo_default_documento_header
 25) CatalogoServiceTests.test_fn_create_nota_componente_default_riga_after
@@ -834,20 +834,6 @@ class CatalogoServiceTests(TestCase):
             fn_create_conversione({"uom_from_id": 1, "uom_to_id": 2, "fattore": "1000"})
         self.assertIs(ctx.exception, errore)
 
-    # Scopo: tentativo di update componente_id -> errore per immutabilita'.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
-    def test_fn_update_componente_immutabile(self, mock_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_update_componente
-
-        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
-        with self.assertRaises(ServiceError) as ctx:
-            fn_update_componente(
-                "art-1",
-                "019bbee2-5f6a-704f-bbd0-34ed84db252d",
-                {"componente_id": "00000000-0000-0000-0000-000000000000"},
-            )
-        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
-
     # Scopo: create nota articolo -> insert e rilettura nota arricchita.
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
@@ -1449,7 +1435,6 @@ class CatalogoServiceTests(TestCase):
             ("create_componente", lambda: svc.fn_create_componente(
                 "art-1", {"componente_id": comp, "coeff_qta": "1", "prodotto_id": "altro"},
             )),
-            ("update_componente", lambda: svc.fn_update_componente("art-1", comp, {"coeff_qta": "2", "estranea": 1})),
             ("create_nota", lambda: svc.fn_create_nota_articolo(
                 "art-1", {"testo": "t", "id_stile": 1, "target_tipo": "ARTICOLO_COMPONENTE"},
             )),

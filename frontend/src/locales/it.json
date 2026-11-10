@@ -2155,6 +2155,17 @@
         "prezzi_altre_aziende": "Ha prezzi bundle in listini di altre aziende, che non puoi vedere: il legame non si chiude finché quei prezzi restano aperti.",
         "prezzi_dopo_la_fine": "Ha prezzi bundle in listini già attivi che cominciano dopo questa data: il legame si chiude al più presto dal loro inizio."
       }
+    },
+    "chiusura_prezzi": {
+      "prezzi": "Prezzi bundle che la chiusura tocca",
+      "riga": "Listino {listino}, versione {versione} ({stato}) · dal {dal} al {al} · {prezzo}, sul kit {kit}",
+      "senza_fine": "senza fine",
+      "esito_chiude": "si chiude alla stessa data",
+      "esito_toglie": "si toglie (bozza)",
+      "esito_blocca": "impedisce la chiusura",
+      "fuori_perimetro": "{n} prezzi in listini che non puoi vedere",
+      "nessun_prezzo": "Nel frattempo i prezzi bundle di questo componente non ci sono più: il legame si chiude senza toccare listini.",
+      "spiegazione": "Un prezzo bundle vale solo finché il componente è nel kit: confermando, i prezzi elencati finiscono insieme al legame, e da quella data il prezzo del kit in quei listini non comprende più il componente."
     }
   },
   "billing_account": {

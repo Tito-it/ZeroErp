@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -242,31 +243,49 @@ class CatalogoBomRepository(RigheListaCompletaMixin):
         )
         return riga["id"]
 
-    # Scopo: Aggiorna un componente BoM soltanto se appartiene al prodotto indicato.
-    #        Il WHERE (perimetro del padre) lo scrive il metodo: SET dal BB
-    #        `sql_set_clause`, whitelist RIGIDA. Payload vuoto -> False.
-    def update_componente(
-        self,
-        articolo_id: UUID | str,
-        componente_row_id: UUID | str,
-        data: dict[str, Any],
-    ) -> bool:
-        if not data:
-            return False
-        set_clause, params = sql_set_clause(data, allowed=COMPONENTE_WRITE_COLUMNS)
-        params.extend([articolo_id, componente_row_id])
+    # ⛔ Nessun UPDATE di un legame (2026-11-10): la distinta e' una storia, e
+    #    la sua fine passa dal verbo (`chiudi_legame`). `update_componente` e la
+    #    PATCH che lo chiamava sono ritirati.
 
+    # Scopo: I prezzi bundle del legame che vanno oltre la fine `valido_al`, per
+    #        la finestra di conferma della chiusura (BE19 di
+    #        brief-db-revisione-catalogo, giro 3): listino, versione, stato,
+    #        periodo, prezzo, `importo_per_kit` ed `esito` (CHIUDE, TOGLIE,
+    #        BLOCCA), dal lettore del DB `vendite.fn_prezzi_legame_oltre_la_fine`.
+    # ⭐ Il perimetro lo applica il lettore: un prezzo di un listino che chi
+    #    chiama non vede esce con `nel_perimetro = false` e le altre colonne
+    #    vuote. Si sa solo che c'e', e la chiusura lo rifiuta.
+    # ⚠️ Il lettore e' di `vendite`, ma la domanda e' della distinta: sta qui,
+    #    accanto al verbo che la conferma, e non in un repository dei listini.
+    def prezzi_legame_oltre_la_fine(
+        self, legame_id: UUID | str, valido_al: date,
+    ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"""
-                UPDATE catalogo.articoli_componenti
-                SET {set_clause}
-                WHERE prodotto_id = %s
-                  AND id = %s
-                """,  # noqa: S608 — SET da sql_set_clause (colonne verificate sulla whitelist COMPONENTE_WRITE_COLUMNS), valori come parametri
-                params,
+                "SELECT * FROM vendite.fn_prezzi_legame_oltre_la_fine(%s::uuid, %s::date)",
+                [legame_id, valido_al],
             )
-            return cursor.rowcount > 0
+            return rows_to_list(cursor)
+
+    # Scopo: Chiude il legame alla data `valido_al` insieme ai suoi prezzi
+    #        bundle, col verbo del DB `catalogo.fn_chiudi_legame_distinta`.
+    #        `prezzi_confermati` e' la dichiarazione della conferma (quanti
+    #        prezzi l'operatore ha visto): None al primo tentativo.
+    # ⛔ Il backend non giudica niente: permessi (catalogo e listini), prezzi di
+    #    altre aziende, prezzi che cominciano dopo, conferma che manca o non
+    #    corrisponde (`E_BOM_CHIUSURA_CON_PREZZI`, `confirm_and_retry`) e i
+    #    guard della distinta parlano dal verbo, coi loro codici.
+    def chiudi_legame(
+        self, legame_id: UUID | str, valido_al: date, prezzi_confermati: int | None,
+    ) -> dict[str, Any]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM catalogo.fn_chiudi_legame_distinta(%s::uuid, %s::date, %s::integer)",
+                [legame_id, valido_al, prezzi_confermati],
+            )
+            riga = row_to_dict(cursor)
+        assert riga is not None
+        return riga
 
     # Scopo: Lista le note articolo con dati arricchiti di stile e lingua.
     #        Ordine di partenza delle note (`NOTE_ORDINE_DEFAULT`), lo stesso
