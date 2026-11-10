@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_prevent_deactivate_if_children`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -79,12 +79,15 @@ I due rami non sono due modi di dire la stessa cosa: hanno **rimedi diversi**.
 | con la colonna attivo | le righe attive | spegnerle: prima i figli, poi il padre | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` |
 | senza la colonna attivo | qualunque riga | toglierle, perché spegnerle non si può | `E_ATTIVO_BLOCK_CHILDREN_EXIST` |
 
-La funzione sceglie il **codice**, non compone la frase: il testo sta a catalogo e qui viaggiano
-solo i dati, nell'ordine che il messaggio consuma — padre, colonna referenziata, suo valore,
-figlia — più la colonna FK, passata in più perché arricchire il messaggio non costi una modifica
-di codice. ⛔ I due messaggi condividono la stessa lista di valori: devono avere gli stessi
-segnaposti nello stesso ordine, altrimenti due nomi di tabella si scambiano in una frase che resta
-grammaticalmente perfetta.
+La funzione sceglie il **codice**, non compone la frase: il testo sta a catalogo e **non nomina
+tabelle**, perché a un operatore `anagrafiche.pdp` non dice niente, e su un portale o uno shop è
+un'informazione sulla struttura del database. Padre, figlia, colonna FK, colonna referenziata e
+suo valore viaggiano nel contesto del registro errori, per chi ripara il dato. ⛔ I due messaggi
+condividono la stessa chiamata: devono avere gli stessi segnaposti (oggi nessuno, come i valori
+passati), altrimenti l'errore di dominio sparirebbe in un errore tecnico.
+
+Il rifiuto non porta un bersaglio: la riga in causa è quella che l'operatore sta spegnendo, e le
+righe da indicare sarebbero le figlie, che possono essere molte.
 
 ---
 
@@ -104,7 +107,9 @@ grammaticalmente perfetta.
 
 * `db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql` — il ramo della figlia con
   la colonna attivo (`config.stati_pdp` → `anagrafiche.pdp`): bloccano solo i figli attivi, col
-  codice del ramo; il test 13 presidia l'ordine dei valori del messaggio.
+  codice del ramo; il test 13 presidia che i due messaggi abbiano gli stessi segnaposti.
+* `db/pgtap/dbops/test-bersaglio-guard-attivo-v1.sql` — i due rami con la frase del catalogo, senza
+  bersaglio.
 * `db/pgtap/config/test-trgfn-prevent-deactivate-if-children-toponomastica.sql` — il ramo della
   figlia senza colonna attivo (`config.toponomastica` → `config.stradario_generale`).
 * `db/pgtap/dbops/test-guard-attivo-occhi-del-proprietario-v1.sql` — come applicazione: una
@@ -128,6 +133,8 @@ grammaticalmente perfetta.
 * 2026-11-07 — i figli si cercano fuori dalla row level security (prima, sotto quella di chi
   spegneva il padre, che non vedeva i figli fuori perimetro); quarto e quinto argomento obbligatori
   (prima i ripieghi su `id` e `attivo` scrivevano nel registro errori a ogni scatto).
+* 2026-11-10 — le due frasi non nominano più tabelle: padre e figlia restano nel contesto del
+  registro errori.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.unita_misura_conversioni`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,10 @@
 >
 > Approfondimento funzioni:
 >
-> * [catalogo.fn_get_uom_factor](/dbzero/catalogo/funzioni/fn_get_uom_factor) — l'unica funzione che legge questa tabella
+> * [catalogo.fn_uom_fonti_conversione](/dbzero/catalogo/funzioni/fn_uom_fonti_conversione) — l'unica funzione che legge questa tabella: le fonti del fattore coi loro periodi
+> * [catalogo.fn_get_uom_factor](/dbzero/catalogo/funzioni/fn_get_uom_factor) — il fattore a una data, dalle fonti
+> * [catalogo.trgfn_uom_guard_storia](/dbzero/catalogo/funzioni/trgfn_uom_guard_storia) — la conversione è storia: cosa si cambia e cosa no
+> * [catalogo.trgfn_uom_guard_listini_attivi](/dbzero/catalogo/funzioni/trgfn_uom_guard_listini_attivi) — una conversione non si chiude sotto un listino attivo che la usa
 > * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — il calcolo della quantità sulle righe di vendita, che la legge attraverso il fattore
 > * [catalogo.trgfn_uom_conversioni_guard_tipo](/dbzero/catalogo/funzioni/trgfn_uom_conversioni_guard_tipo) — rifiuta una conversione fra due famiglie
 
@@ -40,14 +43,31 @@ non stanno qui ma in `articoli_uom_operativa`, dove il fattore è per articolo.
   in un dato giorno c'è al più una conversione fra A e B, scritta da A a B oppure da B ad A.
   L'inversa non si scrive, la calcola la funzione. Quando il fattore cambia, si chiude la riga
   vecchia e se ne scrive una nuova. Anche una riga spenta conta nella sovrapposizione.
-* Una conversione attiva vuole le due unità attive, e un'unità che ha conversioni attive
-  non si spegne.
+
+---
+
+### La conversione è storia
+
+Le regole sono quelle della mappatura di un articolo (`trgfn_uom_guard_storia`):
+
+* **le due unità, il fattore e l'inizio** non si cambiano mai (`E_UOM_STORIA_IMMUTABILE`): un
+  fattore nuovo è una riga nuova, dal giorno dopo la chiusura della vecchia;
+* **la fine** si sposta, ma non prima di ieri (`E_UOM_STORIA_CHIUSURA_RETROATTIVA`); una
+  conversione già finita non si riapre né si accorcia (`E_UOM_STORIA_CHIUSA`);
+* **spegnere, riaccendere o cancellare** si può solo finché la conversione non ha giorni
+  passati; una già in vigore si chiude (`E_UOM_STORIA_IN_VIGORE`);
+* chiudere o spegnere una conversione che un listino attivo usa ancora, oltre la nuova fine,
+  è rifiutato a fine transazione (`E_UOM_CHIUSURA_CON_LISTINI_ATTIVI`).
+
+Per lo stesso motivo la conversione **non è legata all'attivo** delle sue unità (le due FK
+sono fra le eccezioni dell'automazione ATTIVO): un'unità si spegne anche se ha conversioni, e
+si riaccende trovandole come le aveva lasciate.
 
 ---
 
 ### Chi la legge
 
-La legge solo `catalogo.fn_get_uom_factor`, come ripiego quando l'articolo non ha una sua
+La legge solo `catalogo.fn_uom_fonti_conversione`, e attraverso di lei `fn_get_uom_factor`, come ripiego quando l'articolo non ha una sua
 mappatura per l'unità richiesta: la conversione fra l'unità richiesta e la base
 dell'articolo, attiva e in vigore alla data che la funzione riceve. Se è scritta dall'unità
 richiesta verso la base vale il suo fattore, se è scritta al contrario il suo reciproco.
@@ -70,8 +90,10 @@ l'articolo non mappa. Le righe già scritte tengono il fattore che hanno fotogra
 
 * `E_UOM_CONVERSIONE_TIPO_DIVERSO` — le due unità sono di famiglie diverse (dal guard di tipologia).
 * `E_DATA_AL_MINORE_DAL` — `valido_al` prima di `valido_dal`.
-* `E_ATTIVO_PADRE_NON_ATTIVO` — una conversione attiva su un'unità spenta, alla fine della
-  transazione.
+* `E_UOM_STORIA_IMMUTABILE`, `E_UOM_STORIA_IN_VIGORE`, `E_UOM_STORIA_CHIUSURA_RETROATTIVA`,
+  `E_UOM_STORIA_CHIUSA` — le regole della storia, qui sopra.
+* `E_UOM_CHIUSURA_CON_LISTINI_ATTIVI` — una conversione chiusa o spenta mentre un listino
+  attivo ne usa le unità oltre la nuova fine, alla fine della transazione.
 
 ---
 
@@ -83,6 +105,10 @@ l'articolo non mappa. Le righe già scritte tengono il fattore che hanno fotogra
   quella inversa.
 * `db/pgtap/catalogo/test-uom-fattore-e-regole-v1.sql` — la conversione nei due versi, il verso
   opposto sovrapposto rifiutato, il codice della famiglia diversa.
+* `db/pgtap/catalogo/test-uom-storia-v1.sql` — cosa si cambia e cosa no, la chiusura a ieri,
+  l'unità che si spegne con le sue conversioni.
+* `db/pgtap/vendite/test-listino-uom-periodo-v1.sql` — una conversione non si chiude sotto un
+  listino attivo che la usa.
 * `db/pgtap/dbops/test-anti-overlap-enforcement-gate-v1.sql` — la tabella ha il vincolo che
   esclude le sovrapposizioni.
 
@@ -96,6 +122,8 @@ l'articolo non mappa. Le righe già scritte tengono il fattore che hanno fotogra
   `valido_al`.
 * 2026-11-09 — una conversione per coppia, nei due versi; la legge il calcolo delle quantità,
   alla data del documento (brief-db-revisione-catalogo, giro 2).
+* 2026-11-10 — la conversione è storia, come la mappatura; non si chiude sotto un listino
+  attivo; esce dal legame ATTIVO con le sue unità (brief-db-revisione-catalogo, giro 2-bis).
 
 ---
 

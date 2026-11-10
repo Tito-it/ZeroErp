@@ -171,6 +171,12 @@ SELECT a.uom_id AS u1,
   FROM catalogo.articoli a
  WHERE a.id = (SELECT a1 FROM t_art);
 
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D25/Q24): un prezzo vale in
+--   un'unita' che si converte per l'articolo per tutto il periodo della versione
+--   (vendite.trgfn_listini_righe_guard_uom_periodo). La seconda unita' si mappa.
+INSERT INTO catalogo.articoli_uom_operativa (articolo_id, uom_id, factor_to_base)
+SELECT (SELECT a1 FROM t_art), u2, 2 FROM t_uom;
+
 -- R1 e R2: stesso articolo, stessa versione, UoM diverse.
 CREATE TEMP TABLE t_r AS
 WITH ins AS (

@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_listini_attivi_uom_non_convertibili: i prezzi delle versioni di listino
+#   ATTIVE in un'unita' che non si converte piu' per tutto il periodo (D25, Q27).
+#
+#   Il terzo lato di D25: chiudere, spegnere o togliere una mappatura o una conversione
+#   generale non lascia un listino attivo con un prezzo in un'unita' scoperta. Il
+#   catalogo e' di tutte le aziende, i listini no: la lettura e' DEFINER, e fuori dal
+#   perimetro di chi chiude esce solo il conteggio (Q27, come i prezzi bundle del
+#   giro 3). Funzione nuova, rollback: DROP.
+#   Brief: brief-db-revisione-catalogo, giro 2-bis.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261111-53-create-fn-listini-attivi-uom-non-convertibili-mctit.yaml
+
+  - changeSet:
+      id: 20261111-53-create-fn-listini-attivi-uom-non-convertibili
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_listini_attivi_uom_non_convertibili: i prezzi di versioni ATTIVE in un'unita' che non si converte per tutto il periodo; il terzo lato di D25 (Q27). Brief: brief-db-revisione-catalogo, giro 2-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE (p.proname = 'fn_listini_attivi_uom_non_convertibili' AND p.pronamespace = 'vendite'::regnamespace)
+                  OR (p.proname = 'fn_uom_primo_giorno_non_convertibile' AND p.pronamespace = 'catalogo'::regnamespace)
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_listini_attivi_uom_non_convertibili(
+                  p_articolo_id  catalogo.articoli.id%TYPE,
+                  p_uom_id       catalogo.unita_misura.id%TYPE,
+                  p_uom_altra_id catalogo.unita_misura.id%TYPE)
+               RETURNS TABLE(
+                  riga_id             vendite.listini_righe.id%TYPE,
+                  listino_versione_id vendite.listini_righe.listino_versione_id%TYPE,
+                  listino_id          vendite.listini_versioni.listino_id%TYPE,
+                  articolo_id         vendite.listini_righe.articolo_id%TYPE,
+                  primo_giorno        date,
+                  nel_perimetro       boolean)
+               LANGUAGE sql
+               STABLE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              BEGIN ATOMIC
+                  WITH r AS (
+                      SELECT lr.id,
+                             lr.listino_versione_id,
+                             lv.listino_id,
+                             lr.articolo_id,
+                             catalogo.fn_uom_primo_giorno_non_convertibile(lr.articolo_id, lr.uom_id, lv.validita) AS primo,
+                             script.fn_scope_ef_whitelist_via_listino_versione(
+                                 NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                 lr.listino_versione_id) AS visibile
+                        FROM vendite.listini_righe lr
+                        JOIN catalogo.articoli a
+                          ON a.id = lr.articolo_id
+                        JOIN vendite.listini_versioni lv
+                          ON lv.id = lr.listino_versione_id
+                        JOIN config.stati_doc_listino_versioni s
+                          ON s.id = lv.stato_doc_listino_versione_id
+                       WHERE s.codice_interno = 'ATTIVA'
+                         AND lv.attivo IS TRUE
+                         AND lr.attivo IS TRUE
+                         AND CASE
+                                 WHEN p_articolo_id IS NOT NULL THEN
+                                     lr.articolo_id = p_articolo_id AND lr.uom_id = p_uom_id
+                                 ELSE
+                                     (lr.uom_id = p_uom_id AND a.uom_id = p_uom_altra_id)
+                                     OR (lr.uom_id = p_uom_altra_id AND a.uom_id = p_uom_id)
+                             END
+                  )
+                  SELECT CASE WHEN r.visibile THEN r.id END,
+                         CASE WHEN r.visibile THEN r.listino_versione_id END,
+                         CASE WHEN r.visibile THEN r.listino_id END,
+                         CASE WHEN r.visibile THEN r.articolo_id END,
+                         r.primo,
+                         COALESCE(r.visibile, false)
+                    FROM r
+                   WHERE r.primo IS NOT NULL
+                   ORDER BY COALESCE(r.visibile, false) DESC, r.primo, r.listino_id, r.id;
+              END
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              REVOKE EXECUTE ON FUNCTION vendite.fn_listini_attivi_uom_non_convertibili(uuid, bigint, bigint) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_listini_attivi_uom_non_convertibili(uuid, bigint, bigint) TO zeroerp_app;
+              COMMENT ON FUNCTION vendite.fn_listini_attivi_uom_non_convertibili(uuid, bigint, bigint) IS
+                  'I prezzi di listino delle versioni ATTIVE che, con le conversioni di adesso, sono in un''unita'' che in un giorno del periodo della versione non si converte per l''articolo (catalogo.fn_uom_primo_giorno_non_convertibile): quelli che una mappatura o una conversione generale lascerebbe scoperti chiudendosi. Filtro: p_articolo_id valorizzato = la mappatura di quell''articolo, righe dell''articolo nell''unita'' p_uom_id; p_articolo_id NULL = la conversione generale fra p_uom_id e p_uom_altra_id, righe in una delle due unita'' di articoli la cui base e'' l''altra. Solo righe e versioni attive (attivo); una BOZZA la giudica l''attivazione (script.fn_check_versione_listino_attivabile), una CHIUSA non vende piu''. primo_giorno: il primo giorno scoperto. nel_perimetro: la riga sta nel perimetro di chi chiama (script.fn_scope_ef_whitelist_via_listino_versione, la regola della policy delle righe); fuori perimetro escono solo primo_giorno e nel_perimetro = false, gli altri campi sono NULL. Lettore: catalogo.trgfn_uom_guard_listini_attivi. SECURITY DEFINER con search_path bloccato: il catalogo e'' comune a tutte le aziende, i listini no. EXECUTE solo all''applicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_listini_attivi_uom_non_convertibili(uuid, bigint, bigint);

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.commesse_attivita`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,6 +14,7 @@
 >
 > Approfondimento funzioni:
 >
+> * [vendite.trgfn_attivita_fattore_alla_data](/dbzero/vendite/funzioni/trgfn_attivita_fattore_alla_data) — il fattore alla data dell'attività, quando la riga non lo porta
 > * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita) — la madre che scrive la riga
 > * [script.fn_sorgente_chiave](/dbzero/script/funzioni/fn_sorgente_chiave) — il BB che dà la chiave del documento da scrivere
 > * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della provenienza
@@ -56,6 +57,24 @@ segmentazione idempotente (`segment_key`) e stato approvazione/emissione.
   * `NORMALE`
   * `ONERE`
   * `RETTIFICA`
+
+---
+
+### Il fattore verso la base
+
+`factor_to_base` dice quante unità base vale un'unità della riga. Non ha più un default: un
+«1 quando non so» faceva passare 3 cartoni come 3 pezzi.
+
+* **Il fattore scritto si rispetta**: è la fotografia copiata dal documento sorgente o dalla
+  riga che si rettifica.
+* **Senza fattore** lo legge `vendite.trgfn_attivita_fattore_alla_data`, alla data
+  dell'attività (`data_attivita`), per l'unità operativa, o per l'unità della riga se
+  l'operativa non c'è, o per l'unità base se non c'è nessuna delle due: 1 per la base, la
+  mappatura dell'articolo o la conversione generale in vigore quel giorno per le altre.
+* **Senza neanche quello** la riga è rifiutata con `E_UOM_MISSING`, sul campo dell'unità.
+* Se un aggiornamento cambia l'unità e non il fattore, il fattore si rilegge per l'unità nuova.
+
+La quantità base (`quantita`) la porta chi scrive: la tabella non la ricalcola.
 
 ---
 
@@ -228,6 +247,9 @@ ogni colonna generata: lo snapshot storico la porta a `null`.
   `sorgente_uid`, che portava sempre l'uid del documento anche per i tipi a chiave `id` e
   restava fuori dal guard; montati il guard unico `script.trgfn_guard_sorgente` e quello della
   `segment_key` (brief-db-sorgente-documento-e-riga).
+* 2026-11-10 — `factor_to_base` perde il `DEFAULT 1`: senza fattore lo legge il trigger alla
+  data dell'attività, e senza mappatura la riga è rifiutata (brief-db-revisione-catalogo,
+  giro 2-bis).
 
 ---
 

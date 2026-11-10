@@ -76,6 +76,12 @@ le righe **non hanno date proprie**. Per cambiare i prezzi in un nuovo periodo s
   restano fuori: si preparano in anticipo accanto alla versione in uso. La domanda «quale
   versione vale in questa data» ha una sede sola:
   [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore).
+* il periodo non si allunga né si sposta su giorni in cui l'unità di un suo prezzo attivo non si
+  converte per l'articolo (rev 2026-11-10): lo controlla
+  [vendite.trgfn_listini_versioni_guard_uom_periodo](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_uom_periodo)
+  a ogni cambio di `valido_dal` o `valido_al`, anche dai verbi, con
+  `E_LISTINO_UOM_NON_CONVERTIBILE` sul campo cambiato. Accorciare non scopre niente e passa. La
+  regola intera sta in [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe).
 
 ---
 

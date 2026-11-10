@@ -24,7 +24,7 @@
 -- 7) ⭐ Con una DISTINTA collegata: HA_DISTINTE arriva DOPO HA_PROGRESSIVI
 --       (l'ordine e' quello dei trigger, e la figlia e' di un ALTRO schema)
 -- 8) ⛔ Spento il contatore, resta la distinta: la check nomina solo HA_DISTINTE
--- 9) ⭐ ...e il rifiuto nomina `pagamenti.vendite_contabili`, con lo schema
+-- 9) ⭐ ...e il rifiuto e' E_ATTIVO_BLOCK_CHILDREN_EXIST, come il motivo della check
 --
 -- Scopo:
 --   ⛔ Su vendite.registri_fatturazione i guard di disattivazione sono OTTO, ed
@@ -153,12 +153,18 @@ SELECT throws_ok(
     NULL,
     '4) ...e la disattivazione viene rifiutata');
 
--- ⭐ Il punto: il tooltip e il rifiuto devono dire LA STESSA COSA. La check
---   nomina la tabella figlia nei `valori`, e il trigger la mette nella frase.
-SELECT throws_like(
+-- ⭐ Il punto: il tooltip e il rifiuto devono dire LA STESSA COSA. Il rifiuto porta la
+--   frase del codice che il primo motivo della check nomina. La frase non nomina
+--   tabelle (brief-db-revisione-dbops, S-BE-1): quale figlia blocca lo dice la
+--   reason del motivo, e nel rifiuto il contesto del diario.
+SELECT throws_ok(
     'EXECUTE crd_disattiva',
-    '%registri_fatturazione_progressivi%',
-    '5) La frase del rifiuto nomina la stessa figlia che la check dichiara');
+    'P0001',
+    (SELECT me.messaggio
+       FROM tmp_crd t
+       CROSS JOIN LATERAL script.fn_check_registro_disattivabile(t.registro_id) c(motivi)
+       JOIN config.messaggi_errore me ON me.codice = c.motivi -> 0 ->> 'codice' AND me.lingua = 'it'),
+    '5) Il rifiuto porta la frase del codice che il primo motivo della check nomina');
 
 -- ============================================================
 -- 6) ⭐⭐ La check copre TUTTI i guard montati — derivato da pg_trigger
@@ -262,13 +268,14 @@ SELECT is(
     'HA_DISTINTE',
     '8) Spento il contatore, la check nomina HA_DISTINTE e solo quello');
 
--- ⭐ La frase del rifiuto porta la figlia CON LO SCHEMA (child_schema.child_table):
---   e' il valore che la check mette al quarto posto, ed e' l'unico punto in cui
---   «prima figlia fuori da vendite» puo' andare storto.
-SELECT throws_like(
+-- ⭐ La prima figlia fuori da vendite (pagamenti.vendite_contabili, senza colonna
+--   attivo): il rifiuto e' quello del ramo dell'esistenza, lo stesso codice della check.
+SELECT throws_ok(
     'EXECUTE crd_disattiva',
-    '%pagamenti.vendite_contabili%',
-    '9) ...e il rifiuto nomina pagamenti.vendite_contabili, con lo schema');
+    'P0001',
+    (SELECT me.messaggio FROM config.messaggi_errore me
+      WHERE me.codice = 'E_ATTIVO_BLOCK_CHILDREN_EXIST' AND me.lingua = 'it'),
+    '9) ...e il rifiuto e'' E_ATTIVO_BLOCK_CHILDREN_EXIST, come il motivo HA_DISTINTE della check');
 
 SELECT * FROM finish();
 ROLLBACK;

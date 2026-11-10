@@ -71,6 +71,13 @@ SELECT (SELECT billing_account_id FROM tmp_cmm_rit) AS billing_account_id,
          WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
          ORDER BY sc.id LIMIT 1)           AS stato_commessa_id;
 
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D26/Q30): un'attivita'
+--   senza fattore prende quello alla data, e un'unita' che per l'articolo non si
+--   converte si rifiuta (E_UOM_MISSING). «Un'unita' qualunque» accanto a «un
+--   articolo qualunque» passava col fattore 1 per difetto: l'unita' e' la base
+--   dell'articolo scelto.
+UPDATE tmp_refs_rit SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = tmp_refs_rit.articolo_id);
+
 CREATE TEMP TABLE tmp_commessa_rit AS
 SELECT commessa_id AS id FROM tmp_cmm_rit;
 

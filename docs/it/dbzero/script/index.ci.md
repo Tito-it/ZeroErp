@@ -24,6 +24,7 @@ search:
 - [fn_available_actions_reso](manual/fn_available_actions_reso.md) — (rev 2026-07-13)
 - [fn_available_actions_rettifica](manual/fn_available_actions_rettifica.md) — (scritta il 22-09-2026)
 - [fn_azzera_tentativi_credenziale](manual/fn_azzera_tentativi_credenziale.md) — (scritta il 25-09-2026)
+- [fn_bersaglio_di_riga](manual/fn_bersaglio_di_riga.md) — Dato un errore che riguarda una riga di una tabella, dice **quale cosa** è quella riga, nella forma che il frontend sa leggere: un **bersaglio**, cioè il tipo (un codice di `config.tipi_entita`) e l'id. Il frontend lo mostra col nome tradotto del tipo e, dove può, con un pulsante che apre la riga. Così la frase dell'errore non deve nominare la tabella, che all'operatore non dice niente.
 - [fn_blocca_credenziale](manual/fn_blocca_credenziale.md) — (scritta il 25-09-2026)
 - [fn_canale_log_stringa](manual/fn_canale_log_stringa.md) — Dice se il **canale di log fuori transazione** (la connessione `dblink` dei registri) è acceso, e con quale stringa di connessione: restituisce la stringa se il canale è acceso, `NULL` se è spento o non configurato. È la regola unica per chi deve scrivere sul canale.
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
@@ -117,6 +118,7 @@ search:
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — Apre la connessione `dblink` persistente di nome **`logconn`** verso il canale di log, se il canale è acceso e la connessione non è già aperta. Su quella connessione i registri fuori transazione scrivono righe che sopravvivono all'annullamento della transazione di chi le scrive.
 - [fn_esigibilita_iva](manual/fn_esigibilita_iva.md)
 - [fn_esigibilita_iva_documento](manual/fn_esigibilita_iva_documento.md)
+- [fn_fattore_uom_alla_data](manual/fn_fattore_uom_alla_data.md) — Dà il fattore di un'unità per un articolo a una data, o rifiuta: senza fattore la riga non passa (`E_UOM_MISSING`), perché una quantità base inventata è peggio di nessuna.
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_auth_user_id_for_email](manual/fn_get_auth_user_id_for_email.md)
 - [fn_get_auth_user_id_for_risorsa_umana](manual/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)

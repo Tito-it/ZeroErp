@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_get_uom_factor`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,8 +12,8 @@
 > Approfondimento funzioni:
 >
 > * [catalogo.fn_get_uom_base](/dbzero/catalogo/funzioni/fn_get_uom_base) — l'unità base dell'articolo, il primo passo
-> * [catalogo.fn_uom_operativa_alla_data](/dbzero/catalogo/funzioni/fn_uom_operativa_alla_data) — la mappatura dell'articolo a una data
-> * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — il calcolo della quantità sulle righe di vendita, che la chiama
+> * [catalogo.fn_uom_fonti_conversione](/dbzero/catalogo/funzioni/fn_uom_fonti_conversione) — le fonti della conversione, col loro periodo
+> * [script.fn_fattore_uom_alla_data](/dbzero/script/funzioni/fn_fattore_uom_alla_data) — il fattore alla data o il rifiuto, che la chiama
 
 ---
 
@@ -32,12 +32,12 @@ trova un fattore restituisce NULL.
 2. **L'unità base.** La legge con `fn_get_uom_base`; se l'articolo non esiste, restituisce
    NULL.
 3. **La base stessa.** Se l'unità richiesta è la base, il fattore è 1, a ogni data.
-4. **La mappatura dell'articolo** alla data, letta da `fn_uom_operativa_alla_data`: la riga
-   attiva di `articoli_uom_operativa` la cui validità contiene quel giorno.
-5. **La conversione generale** fra le due unità, attiva e in vigore quel giorno. Ce n'è al più
-   una per coppia di unità, in un verso o nell'altro: se è scritta dall'unità richiesta verso
-   la base vale il suo fattore, se è scritta al contrario il suo reciproco.
-6. **Niente**: NULL.
+4. **La prima fonte in vigore quel giorno** fra quelle di `fn_uom_fonti_conversione`: prima la
+   mappatura dell'articolo (la riga attiva di `articoli_uom_operativa` la cui validità contiene
+   quel giorno), poi la conversione generale fra le due unità, attiva e in vigore. Di conversioni
+   ce n'è al più una per coppia di unità, in un verso o nell'altro: se è scritta dall'unità
+   richiesta verso la base vale il suo fattore, se è scritta al contrario il suo reciproco.
+5. **Niente**: NULL.
 
 Le conversioni generali valgono solo fra unità della stessa tipologia: lo garantisce la
 tabella stessa, e la funzione non lo ricontrolla.
@@ -46,18 +46,17 @@ tabella stessa, e la funzione non lo ricontrolla.
 
 ### ⭐ Una sede per il fattore
 
-La chiama il trigger della quantità delle righe di vendita, alla data del documento. Quando
-la funzione risponde NULL il trigger rifiuta la riga: una quantità base inventata è peggio di
-nessuna.
+La chiama `script.fn_fattore_uom_alla_data`, per le righe di vendita (alla data del documento) e
+per le attività di commessa (alla data dell'attività). Quando la funzione risponde NULL la riga si
+rifiuta: una quantità base inventata è peggio di nessuna. Da dove si converte lo dicono le fonti
+(`fn_uom_fonti_conversione`), che leggono anche la regola dei listini sui periodi.
 
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
 * Un NULL non dice perché manca il fattore (articolo inesistente, data mancante o nessuna
-  conversione). Il trigger della quantità lo spiega da sé nell'errore.
-* Fuori dal database la chiamano due metodi del repository del backend, scritti per la firma
-  senza data e senza chiamanti: con la firma nuova non funzionano più, e vanno ritirati.
+  conversione). Lo spiega nell'errore `fn_fattore_uom_alla_data`.
 
 ---
 
@@ -79,6 +78,8 @@ nessuna.
 * 2026-10-09 — «oggi» diventa la data nel fuso dell'azienda invece della data della sessione.
 * 2026-11-09 — prende la data in coda alla firma e la chiama il trigger della quantità; la
   conversione generale è una per coppia (brief-db-revisione-catalogo, giro 2).
+* 2026-11-10 — legge le fonti di `fn_uom_fonti_conversione` (brief-db-revisione-catalogo,
+  giro 2-bis).
 
 ---
 

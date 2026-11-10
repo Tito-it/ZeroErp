@@ -409,7 +409,9 @@ SELECT is(
             ('script.trgfn_qta_from_operativa',                                   'E_QTA_MISSING'),
             ('script.trgfn_qta_from_operativa',                                   'E_QTA_OPERATIVA_NON_INTERA'),
             ('script.trgfn_qta_from_operativa',                                   'E_QTA_OPER_STEP_INVALIDO'),
-            ('script.trgfn_qta_from_operativa',                                   'E_UOM_MISSING'),
+            -- 2026-11-10: E_UOM_MISSING lo solleva il BB del fattore alla data, che
+            --   trgfn_qta_from_operativa chiama (brief-db-revisione-catalogo, giro 2-bis).
+            ('script.fn_fattore_uom_alla_data',                                   'E_UOM_MISSING'),
             -- rev 2026-10-13 (sera, Lotto 3c): vendite.trgfn_listini_righe_guard_tipologia
             --   ritirato (20261013-61); E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE e' un motivo di
             --   script.fn_check_articolo_riga, col campo nel dettaglio.

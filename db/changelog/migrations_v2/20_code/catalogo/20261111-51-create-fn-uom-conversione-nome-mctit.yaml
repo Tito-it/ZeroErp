@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_uom_conversione_nome: il nome di una conversione (mappatura di un articolo
+#   o conversione generale) nei valori dei messaggi.
+#
+#   Due guard nuovi del giro (la storia, -52, e i listini attivi, -54) nominano la
+#   stessa cosa allo stesso modo: il nome si costruisce qui. Forma delle unita'
+#   («CRT → PZ (ART-1)»), non una frase: la lingua sta nel messaggio. Funzione
+#   nuova, rollback: DROP.
+#   Brief: brief-db-revisione-catalogo, giro 2-bis.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-51-create-fn-uom-conversione-nome-mctit.yaml
+
+  - changeSet:
+      id: 20261111-51-create-fn-uom-conversione-nome
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.fn_uom_conversione_nome: il nome di una conversione nei valori dei messaggi, per i due guard nuovi (D24, D25, D27). Brief: brief-db-revisione-catalogo, giro 2-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.proname = 'fn_uom_conversione_nome'
+                 AND p.pronamespace = 'catalogo'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_uom_conversione_nome(
+                  p_articolo_id catalogo.articoli.id%TYPE,
+                  p_uom_from_id catalogo.unita_misura.id%TYPE,
+                  p_uom_to_id   catalogo.unita_misura.id%TYPE)
+               RETURNS text
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+                  SELECT CASE
+                             WHEN p_articolo_id IS NOT NULL THEN
+                                 (SELECT format('%s → %s (%s)', u.codice, ub.codice, a.codice)
+                                    FROM catalogo.articoli a
+                                    JOIN catalogo.unita_misura ub ON ub.id = a.uom_id
+                                    JOIN catalogo.unita_misura u  ON u.id  = p_uom_from_id
+                                   WHERE a.id = p_articolo_id)
+                             ELSE
+                                 (SELECT format('%s → %s', uf.codice, ut.codice)
+                                    FROM catalogo.unita_misura uf
+                                    JOIN catalogo.unita_misura ut ON ut.id = p_uom_to_id
+                                   WHERE uf.id = p_uom_from_id)
+                         END;
+              END
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_uom_conversione_nome(uuid, bigint, bigint) IS
+                  'Il nome di una conversione nei valori dei messaggi, nella forma delle unita'' e non in una lingua: per la mappatura di un articolo (p_articolo_id valorizzato) «unita'' → unita'' base (codice articolo)», con p_uom_from_id l''unita'' della mappatura; per la conversione generale (p_articolo_id NULL) «unita'' → unita''», da p_uom_from_id a p_uom_to_id. NULL se l''articolo o un''unita'' non c''e'' (la riga se ne va con lui). La leggono i guard catalogo.trgfn_uom_guard_storia e catalogo.trgfn_uom_guard_listini_attivi. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_uom_conversione_nome(uuid, bigint, bigint);

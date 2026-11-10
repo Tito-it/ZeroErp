@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_aggiungi_onere_commessa`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -44,6 +44,8 @@ Usabile da un endpoint interattivo **o** da un processo automatico autorizzato.
   (`sorgente_tipo_id`, `sorgente_id` / `sorgente_uid`, `sorgente_riga`) restano tutti vuoti;
   il discriminatore portante è `tipo_movimento = 'ONERE'` (+ causale + `segment_key` `MAN:`).
 * **`quantita = 1`, importo solo positivo**: il prezzo È l'importo dell'onere.
+* **Il fattore non lo scrive la porta**: lo legge la tabella alla data dell'onere, per l'unità
+  dell'articolo-onere (1 se è la sua base). Prima la porta scriveva 1 a qualunque unità.
 * **`segment_key`** dedicata: `MAN:<commessa>:<progressivo>` (non si incrocia con i segment di
   push, che cominciano col codice del tipo del documento: `ORDINE_VENDITA:`, `DDT_VENDITA:`…).
 * **`istanza_utility_id` e `tipo_doc_fiscale_id` obbligatori** (contesto reale): la riga nasce
@@ -122,6 +124,8 @@ La funzione restituisce l'`id` della riga di commessa creata.
 * 2026-11-07 — la riga di commessa passa alla provenienza del modello (tipo, chiave tipizzata,
   riga): la porta le lascia tutte vuote, come lasciava vuota la chiave testuale `sorgente_uid`
   (brief-db-sorgente-documento-e-riga).
+* 2026-11-10 — la porta non scrive più il fattore 1: lo legge la tabella alla data
+  dell'onere (brief-db-revisione-catalogo, giro 2-bis).
 
 ---
 

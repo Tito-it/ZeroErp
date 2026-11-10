@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_child_requires_active_parent`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,6 +16,7 @@
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — il gemello sul padre, il *block*
 > * [dbops.trgfn_child_requires_non_obsolete_parent](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent) — la stessa forma sull'asse `obsoleto_dal`
 > * [dbops.fn_trigger_attivo_orfani](/dbzero/dbops/funzioni/fn_trigger_attivo_orfani) — riconosce i require che nominano oggetti spariti
+> * [script.fn_bersaglio_di_riga](/dbzero/script/funzioni/fn_bersaglio_di_riga) — il bersaglio del padre, dal catalogo dei tipi
 >
 > Guide:
 >
@@ -67,12 +68,16 @@ montaggio.
 
 ### Codici errore
 
-Per l'operatore, con padre, colonna referenziata, valore e figlia nella frase e la colonna FK nel
-campo:
+Per l'operatore, con la colonna FK nel campo e una frase che **non nomina tabelle**:
 
-* `E_ATTIVO_PADRE_NON_ATTIVO` (conflitto di stato) — il padre esiste ed è spento;
+* `E_ATTIVO_PADRE_NON_ATTIVO` (conflitto di stato) — il padre esiste ed è spento. Porta anche il
+  **bersaglio** del padre (tipo e id), quando il catalogo dei tipi ne dichiara la tabella;
 * `E_PADRE_INESISTENTE` (dato errato) — nessuna riga del padre ha quella chiave. Con una FK la
-  parola l'ha prima il vincolo; succede sulle chiavi polimorfe.
+  parola l'ha prima il vincolo; succede sulle chiavi polimorfe. Niente bersaglio: punterebbe a una
+  riga che non c'è.
+
+Padre, figlia, colonna referenziata e valore stanno nel contesto del registro errori, per chi
+ripara il dato.
 
 Per chi monta il trigger:
 
@@ -84,8 +89,23 @@ riesce a montare il trigger.
 
 ---
 
+### ⭐ Quale riga, senza nominare la tabella
+
+Per l'operatore un nome come `anagrafiche.risorse_umane` non vuol dire niente, e su un portale o
+uno shop è un'informazione sulla struttura del database che non deve uscire. La frase quindi dice
+solo che cosa è successo; **quale** riga lo dice il bersaglio, che il frontend mostra col nome
+tradotto del tipo e, dove può, con un pulsante che la apre.
+
+Il bersaglio lo compone `script.fn_bersaglio_di_riga`, solo sul ramo del rifiuto. Un padre senza
+tipo (un catalogo come `config.iva`) non ne ha: la frase basta da sola, e il campo evidenziato
+dice già quale scelta correggere.
+
+---
+
 ### Test
 
+* `db/pgtap/dbops/test-bersaglio-guard-attivo-v1.sql` — la frase del catalogo e il bersaglio del
+  padre, con e senza un tipo; il padre assente senza bersaglio.
 * `db/pgtap/dbops/test-guard-attivo-grammatica-e-codici-v1.sql` — su tabelle temporanee: il padre
   spento, la frase, il figlio spento che passa, il padre assente su una chiave polimorfa, i
   montaggi sbagliati.
@@ -106,6 +126,8 @@ riesce a montare il trigger.
   «non attivo»); il padre si legge fuori dalla row level security (prima, sotto quella di chi
   chiudeva la transazione); il quinto argomento è obbligatorio (prima il ripiego su `id` scriveva
   nel registro errori a ogni scatto).
+* 2026-11-10 — le due frasi non nominano più tabelle (prima: padre, chiave, valore e figlia come
+  `schema.tabella`); il padre spento porta il bersaglio.
 
 ---
 

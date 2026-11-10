@@ -42,7 +42,7 @@
 --  20) riga base: unita' spostata rifiutata (E_UOM_RIGA_BASE_IMMUTABILE)
 --  21) riga base: cancellazione rifiutata
 --  22) riga base nuova su un'altra unita': rifiutata
---  23) riga non base: si cancella
+--  23) riga non base senza giorni passati: si cancella
 --  24) la cancellazione dell'articolo porta via la riga base
 --  25) articolo creato spento: nasce, con la riga base spenta
 --  26) conversione fra tipologie diverse: E_UOM_CONVERSIONE_TIPO_DIVERSO
@@ -266,11 +266,14 @@ SELECT throws_like(
     '%non si cambia e non si toglie%',
     '22) una riga base su un''unita'' diversa da quella dell''articolo: rifiutata');
 
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, Q28): si cancella solo
+--   una mappatura senza giorni passati (catalogo.trgfn_uom_guard_storia); quella
+--   «da sempre» si chiude. Si cancella la riga che comincia oggi.
 SELECT lives_ok(
     $$ DELETE FROM catalogo.articoli_uom_operativa
         WHERE articolo_id = (SELECT a FROM _t_art) AND uom_id = (SELECT crt FROM _t_u)
-          AND valido_dal IS NULL $$,
-    '23) una riga che non e'' la base si cancella');
+          AND valido_dal = script.fn_data_operativa() $$,
+    '23) una riga che non e'' la base, senza giorni passati, si cancella');
 
 CREATE TEMP TABLE _t_art_via AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-UOM2-VIA', true, false, false, (SELECT g FROM _t_u)) AS id;

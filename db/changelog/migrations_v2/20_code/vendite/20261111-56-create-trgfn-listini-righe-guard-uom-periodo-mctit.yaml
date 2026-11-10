@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_listini_righe_guard_uom_periodo: l'unita' di un prezzo di listino si
+#   converte per tutto il periodo della versione (D25, Q24, il primo lato).
+#
+#   Prima la regola stava solo nel backend (BE17), e alla sola decorrenza della
+#   versione: una mappatura che finiva durante la versione passava, e da quel giorno
+#   il listino dava un prezzo in un'unita' che per l'articolo non si converte. Ora la
+#   regola e' a DB, sul periodo intero. BEFORE INSERT e UPDATE OF attivo, per una riga
+#   attiva. Rollback: DROP del trigger e della funzione.
+#   Brief: brief-db-revisione-catalogo, giro 2-bis.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261111-56-create-trgfn-listini-righe-guard-uom-periodo-mctit.yaml
+
+  - changeSet:
+      id: 20261111-56-create-trgfn-listini-righe-guard-uom-periodo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_listini_righe_guard_uom_periodo: l'unita' di un prezzo si converte per tutto il periodo della versione (D25, Q24). Brief: brief-db-revisione-catalogo, giro 2-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE (p.proname = 'trgfn_listini_righe_guard_uom_periodo' AND p.pronamespace = 'vendite'::regnamespace)
+                  OR (p.proname = 'fn_uom_primo_giorno_non_convertibile' AND p.pronamespace = 'catalogo'::regnamespace)
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.trgfn_listini_righe_guard_uom_periodo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_validita vendite.listini_versioni.validita%TYPE;
+                  v_versione vendite.listini_versioni.codice_versione%TYPE;
+                  v_primo    date;
+                  v_articolo catalogo.articoli.codice%TYPE;
+                  v_uom      catalogo.unita_misura.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: l'unita' di un prezzo si converte per l'articolo in
+                  --   ogni giorno del periodo della versione.
+                  -- Eventi: INSERT, UPDATE OF attivo; WHEN NEW.attivo.
+                  -- =========================================================
+                  SELECT lv.validita, lv.codice_versione
+                    INTO v_validita, v_versione
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = NEW.listino_versione_id;
+                  -- Versione assente o fuori perimetro: parlano la FK o la RLS.
+                  IF NOT FOUND THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_primo := catalogo.fn_uom_primo_giorno_non_convertibile(NEW.articolo_id, NEW.uom_id, v_validita);
+                  IF v_primo IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT a.codice INTO v_articolo FROM catalogo.articoli a     WHERE a.id = NEW.articolo_id;
+                  SELECT u.codice INTO v_uom      FROM catalogo.unita_misura u WHERE u.id = NEW.uom_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'vendite.trgfn_listini_righe_guard_uom_periodo', 'E_LISTINO_UOM_NON_CONVERTIBILE',
+                      jsonb_build_object(
+                          'campo',               'uom_id',
+                          'listino_versione_id', NEW.listino_versione_id,
+                          'articolo_id',         NEW.articolo_id,
+                          'uom_id',              NEW.uom_id,
+                          'primo_giorno',        v_primo,
+                          'bersaglio',           jsonb_build_array(
+                                                     jsonb_build_object('tipo', 'LISTINO_VERSIONE',
+                                                                        'id', NEW.listino_versione_id::text))),
+                      NEW.tx_id,
+                      v_versione::text,
+                      COALESCE(v_uom, '—'),
+                      COALESCE(v_articolo, '—'),
+                      to_char(v_primo, 'DD/MM/YYYY'));
+                  RETURN NULL;
+              END;
+              $function$;
+
+              CREATE TRIGGER trg_listini_righe_a10_guard_uom_periodo_ins_upd
+                  BEFORE INSERT OR UPDATE OF attivo ON vendite.listini_righe
+                  FOR EACH ROW
+                  WHEN (NEW.attivo IS TRUE)
+                  EXECUTE FUNCTION vendite.trgfn_listini_righe_guard_uom_periodo();
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_listini_righe_guard_uom_periodo() IS
+                  'Guard dell''unita'' delle righe di listino (vendite.listini_righe): l''unita'' di un prezzo si converte per l''articolo in ogni giorno del periodo della versione (catalogo.fn_uom_primo_giorno_non_convertibile sulla validita della versione). BEFORE INSERT e UPDATE OF attivo, per una riga attiva: un prezzo nuovo (in BOZZA, o in ATTIVA come rettifica) e un prezzo riacceso. Articolo, unita'' e versione di una riga non cambiano (E_LISTINO_RIGA_IDENTITA_IMMUTABILE). Scoperto -> E_LISTINO_UOM_NON_CONVERTIBILE (campo uom_id; valori: versione, unita'', articolo, primo giorno scoperto; bersaglio LISTINO_VERSIONE). Gli altri due lati della regola: il periodo della versione (vendite.trgfn_listini_versioni_guard_uom_periodo) e il catalogo che cambia (catalogo.trgfn_uom_guard_listini_attivi); per una BOZZA, l''attivazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_guard_uom_periodo_ins_upd ON vendite.listini_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_righe_guard_uom_periodo();

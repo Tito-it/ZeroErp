@@ -181,10 +181,19 @@ SELECT throws_like(
     '8) articoli_uom_operativa (nessun CHECK), date invertite: parla il guard'
 );
 
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, Q26): l'inizio di una
+--   mappatura scritta non si sposta (catalogo.trgfn_uom_guard_storia). Il periodo di
+--   un giorno si prova su una mappatura nuova, in un'altra unita' dello stesso articolo:
+--   la regola delle date vale anche all'inserimento.
 SELECT lives_ok(
-    format($q$UPDATE catalogo.articoli_uom_operativa
-                 SET valido_dal = DATE '2026-03-10', valido_al = DATE '2026-03-10'
-               WHERE id = %s$q$, (SELECT id FROM tmp_gdv_uom)),
+    format($q$INSERT INTO catalogo.articoli_uom_operativa (articolo_id, uom_id, factor_to_base, valido_dal, valido_al)
+              SELECT o.articolo_id, u.id, 3, DATE '2026-03-10', DATE '2026-03-10'
+                FROM catalogo.articoli_uom_operativa o
+                JOIN catalogo.articoli a ON a.id = o.articolo_id
+                JOIN catalogo.unita_misura u ON u.attivo AND u.id NOT IN (o.uom_id, a.uom_id)
+               WHERE o.id = %s
+               ORDER BY u.id
+               LIMIT 1$q$, (SELECT id FROM tmp_gdv_uom)),
     '9) articoli_uom_operativa, stesso giorno: passa'
 );
 
