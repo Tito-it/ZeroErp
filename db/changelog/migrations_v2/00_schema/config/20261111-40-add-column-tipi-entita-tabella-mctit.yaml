@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.tipi_entita.tabella: la tabella le cui righe sono, per chiave, entita' di quel tipo.
+#   Brief: brief-db-revisione-dbops, S-BE-1 (§35, nodo N2).
+#
+# ⭐ PERCHE'. Un rifiuto dei guard ATTIVO deve poter dire QUALE cosa e' in causa con un bersaglio
+#   (tipo + id), non con il nome della tabella nella frase. Il guard sa la tabella del padre; il
+#   passo «tabella -> tipo» oggi c'e' solo per i tipi sorgente (config.sorgenti.target_table), per
+#   gli altri la tabella sta in una nota. Il fatto e' del tipo, uno per tabella: si scrive qui, una
+#   volta, e non per montaggio.
+#
+# ⭐ UNA SEDE. Per un tipo sorgente la tabella resta in config.sorgenti.target_table: qui e' NULL
+#   (chk_tipi_entita_tabella_non_sorgente). Il risolutore unico e' script.fn_bersaglio_di_riga.
+#
+# ⛔ text con CHECK di forma, non regclass: un regclass segue un RENAME in silenzio e stampa un OID
+#   morto dopo un DROP, e in un CSV di seed un OID dipende dalla macchina. Che la tabella esista lo
+#   presidia il pgTAP dbops/test-bersaglio-guard-attivo-v1.
+#
+# ⚠️ I CHECK non legano la colonna a una riga di seed (NULL passa): possono nascere qui, prima del
+#   mirror 80_data/20260822-55, che scrive i valori.
+#
+# ⭐ Il COMMENT della tabella si riscrive al presente (linee-guida-sql §5d: la famiglia si riapre).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261111-40-add-column-tipi-entita-tabella-mctit.yaml
+
+  - changeSet:
+      id: 20261111-40-add-column-tipi-entita-tabella
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.tipi_entita.tabella (text, schema.tabella, univoca, NULL per i tipi sorgente): la
+        tabella le cui righe sono entita' del tipo, letta dal bersaglio dei guard ATTIVO.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tipi_entita
+        - not:
+            - columnExists:
+                schemaName: config
+                tableName: tipi_entita
+                columnName: tabella
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_entita
+                ADD COLUMN tabella text,
+                ADD CONSTRAINT chk_tipi_entita_tabella_forma
+                  CHECK (tabella IS NULL OR tabella ~ '^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$'),
+                ADD CONSTRAINT chk_tipi_entita_tabella_non_sorgente
+                  CHECK (NOT is_sorgente OR tabella IS NULL),
+                ADD CONSTRAINT uq_tipi_entita_tabella UNIQUE (tabella);
+
+              COMMENT ON COLUMN config.tipi_entita.tabella IS
+                'La tabella (schema.tabella) le cui righe sono, per la chiave key_selector, entita'' di questo tipo raggiungibili dal frontend. NULL per un tipo senza una tabella propria, o la cui rotta non si apre col solo id. Per un tipo sorgente e'' sempre NULL: la sua tabella sta in config.sorgenti.target_table (chk_tipi_entita_tabella_non_sorgente). Una tabella ha al piu'' un tipo (uq_tipi_entita_tabella). La legge script.fn_bersaglio_di_riga, che compone il bersaglio dei rifiuti dei guard ATTIVO.';
+
+              COMMENT ON TABLE config.tipi_entita IS
+                'Catalogo di «che cosa e'' questa entita''», condiviso dal perimetro del giornale (vendite.event_log.entity_type), dal bersaglio degli errori e dalle note. Senza colonna attivo, per scelta: una FK verso un padre con attivo farebbe generare a dbops.fn_run_automations_attivo un lucchetto require, e il giornale smetterebbe di scrivere per una voce di elenco disattivata; la deprecazione si fa con obsoleto_dal. Il tipo di un documento ha un nome solo, il codice_interno di config.sorgenti: un''entita'' che e'' anche una sorgente lo dichiara (is_sorgente) e fk_tipi_entita_sorgenti lega il codice; le altre (LOTTO, TASK_RUN, FLUSSO, ARTICOLO, ...) stanno solo qui. Da quale tabella vengono le righe di un tipo lo dice tabella, o config.sorgenti.target_table per un tipo sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE config.tipi_entita DROP COLUMN IF EXISTS tabella;
+              COMMENT ON TABLE config.tipi_entita IS
+                'Catalogo di «che cosa e'' questa entita''», condiviso dal perimetro del giornale (vendite.event_log.entity_type), dal bersaglio degli errori e, col lotto 3 della grammatica unica, dalle note (G-7). ⛔ SENZA colonna attivo, e non e'' una dimenticanza: una FK verso un padre con attivo fa generare a dbops.fn_run_automations_attivo un lucchetto require_attivo, e il diario smetterebbe di scrivere per una voce di elenco disattivata — la D-12 violata da un''automazione, alle 21:00. La deprecazione si fa con obsoleto_dal. ⭐ Rev 2026-10-19 (20261019-15, brief-db-grammatica-unica-documenti G-1): il tipo di documento ha UN nome, il codice_interno di config.sorgenti. Un''entita'' che e'' anche una sorgente lo dichiara (is_sorgente) e la FK fk_tipi_entita_sorgenti lega il codice; le entita'' che non sono sorgenti (LOTTO, TASK_RUN, FLUSSO, ARTICOLO...) restano solo qui. Fino a questa revisione il commento diceva «non ci si aggancia»: era la scelta di prima, superata da G-1.';

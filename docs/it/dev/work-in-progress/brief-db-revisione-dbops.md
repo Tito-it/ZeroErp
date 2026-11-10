@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 14 chiuso; S-BE-1 censito, sei nodi a Tid; BE8 ancora aperto)
+## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 14 chiuso; S-BE-1 scritto e provato, da applicare; BE8 fatto)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -98,9 +98,8 @@ Rosso dopo il merge, `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1` (`
 viene dal giro 2 di `brief-db-revisione-catalogo` (§13.4), dove è registrato; corretta la fixture, verde (Tid, 2026-11-09).
 **Giro BE di §33.7 fatto** dal team BE (BE8, S-BE-2 e S-BE-3 lato BE, BE6 dei due codici nuovi; `2af6d986f5`, PR #81):
 al team BE non resta niente dei giri applicati.
-**Giro 14 censito** (§34), nodi N1-N5 decisi come da proposta, numeri `20261111-18` … `-24` (Tid, 2026-11-09). **Giro 14 scritto e provato** su dbdev (§34.6): sette changeSet, il presidio pgTAP, il guardrail in CI, i CSV e le intestazioni. **Giro 14 applicato** da Tid su dbdev e scratch, pgTAP verdi (2026-11-10, §34.6.6). Doc auto-generata e **commit** (Tid, `fe388dbfdf`): **giro 14 chiuso**, e con lui i giri di §8. Le scelte di §34.6.3 sono applicate così. **S-BE-1 censito** (§35, 2026-11-10): **Riparte: Tid**, con i nodi N1-N6 di §35.4.
-Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
-ancora le tabelle).
+**Giro 14 censito** (§34), nodi N1-N5 decisi come da proposta, numeri `20261111-18` … `-24` (Tid, 2026-11-09). **Giro 14 scritto e provato** su dbdev (§34.6): sette changeSet, il presidio pgTAP, il guardrail in CI, i CSV e le intestazioni. **Giro 14 applicato** da Tid su dbdev e scratch, pgTAP verdi (2026-11-10, §34.6.6). Doc auto-generata e **commit** (Tid, `fe388dbfdf`): **giro 14 chiuso**, e con lui i giri di §8. Le scelte di §34.6.3 sono applicate così. **S-BE-1 censito** (§35), nodi N1-N6 come da proposta (Tid, 2026-11-10), **scritto e provato** su dbdev (§35.6): `20261111-40` … `-46`, due CSV, un loader esteso, il pgTAP nuovo e sette pgTAP riallineati. **Riparte: Tid**, con l'apply e i pgTAP di §35.6.5.
+S-BE-1 (§5, passo 11-bis) è scritto e provato (§35.6); le frasi nuove arrivano con l'apply.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -145,7 +144,7 @@ ancora le tabelle).
 | 9-vicies-septies | ✅ Tid | Via al giro 5, coi numeri `20261107-51` … `-58` e `%TYPE`; decisioni del giro: drenatore per azienda, porta DEFINER, `draina_coda_lavori` di DOMINIO, un lavoro un'azienda (2026-11-07) | §18.1 | 9-vicies-semel-bis |
 | 9-vicies-octies | ✅ sessione DB | Giro 5, blocco 5a (Q14 ③, D9): scritto e provato sullo scratch, prima e dopo l'apply | §18 | 9-vicies-septies |
 | 9-vicies-nonies | ✅ Tid | Correzione dei dati su dbdev (§18.6 punto 1), apply del 5a su dbdev e scratch, pgTAP di §18.6 verdi (2026-11-07); commit del 5a dalla sessione DB | §18.6 | 9-vicies-octies |
-| 9-tricies | team BE ✅, **Tid** ⏭️ | BE10 ✅: (a) un lavoro per azienda dal cockpit, con ownership per azienda (anticipo di BE9), (b) drenatore per azienda, (c) chi accoda, «Esegui ora» SISTEMA; BE6 per i tre codici nuovi ✅ (2026-11-07, mergiati con la PR #40). Utenti tecnici creati da Tid, **manca EMITEST** | §5 | 9-vicies-nonies |
+| 9-tricies | team BE ✅, Tid ✅ (EMITEST servita, 2026-11-07, §18.9) | BE10 ✅: (a) un lavoro per azienda dal cockpit, con ownership per azienda (anticipo di BE9), (b) drenatore per azienda, (c) chi accoda, «Esegui ora» SISTEMA; BE6 per i tre codici nuovi ✅ (2026-11-07, mergiati con la PR #40). Utenti tecnici creati da Tid, **manca EMITEST** | §5 | 9-vicies-nonies |
 | 9-tricies-semel | ✅ sessione DB | Blocco 5b: l'`ENABLE` della RLS, il debito tolto, la decisione dell'indice della FK, S-BE-2, la guida; scritto e provato sullo scratch (2026-11-07) | §18.9 | 9-tricies |
 | 9-tricies-bis | ✅ Tid | Apply del 5b (`20261107-57`, `-58`, `20261108-08`, quattro CSV) su dbdev e scratch; pgTAP di §18.9.2 verdi (2026-11-07); commit dalla sessione DB. Il giro 5 è chiuso | §18.9.2 | 9-tricies-semel |
 | 9-tricies-ter | **team BE** ✅ (2026-11-07, committato su `dev/backend-tid`) | Il test di S-BE-2 a SISTEMA (`test_avvio_manuale_catalogo`), BE9 (il filtro di perimetro si ritira, lo fa la RLS) | §18.9.2, §5 | 9-tricies-bis |
@@ -155,8 +154,7 @@ ancora le tabelle).
 | 9-tricies-septies | ✅ Tid | Il via al giro 7, coi numeri dal `20261108-25` e `%TYPE`; nel giro il perimetro del presidio (`tx_id`, `storicizza`, `cleanup_at`) e il tetto dei lookup che cade, con lo spareggio (2026-11-07) | §20.1 | 9-tricies-sexies |
 | 9-tricies-octies | ✅ sessione DB | Giro 7 (D35, D36, D37, D57): scritto e provato sullo scratch | §20 | 9-tricies-septies |
 | 9-tricies-nonies | ✅ Tid | Apply del giro 7 (`20261108-25` … `-31`, sette CSV e il loader `20260429-08`) e convergenza; pgTAP di §20.5 verdi (2026-11-07) | §20.9 | 9-tricies-octies |
-| 9-tricies-undecies | **Tid** ⏭️ | Commit del giro 7 e via al giro 8 | §8 | 9-tricies-nonies |
-| 9-tricies-decies | **team BE** ✅ (2026-11-07, da committare su `dev/backend-tid`) | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano — fatto, §5 | §5 | — |
+| 9-tricies-decies | **team BE** ✅ (2026-11-07, `aeb59a08e6`) | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano — fatto, §5 | §5 | — |
 | 9-tricies-undecies | ✅ Tid | Commit del giro 7 (`11203bab2e`). Il giro 7 è chiuso | §20.9 | 9-tricies-nonies |
 | 9-tricies-duodecies | ✅ sessione DB | Giro 8 preparato: difetti riverificati sulla scheda del 2026-11-07, D68 passato all'altro cantiere | §21 | 9-tricies-undecies |
 | 9-tricies-terdecies | ✅ Tid | Via al giro 8: dal `20261108-41` (dato da Tid), D68 fuori, D63 come da proposta (2026-11-07) | §21.3 | 9-tricies-duodecies |
@@ -211,7 +209,7 @@ ancora le tabelle).
 | 9-sexagies-vicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 10c (2026-11-08, non pushato) | §28 | 9-sexagies-septdecies |
 | 9-sexagies-vicies-quater | ✅ Tid | Commit del blocco 10c-4 (`48b5d39354`, 2026-11-09). Il giro 10c è chiuso | §28.12 | 9-sexagies-vicies-ter |
 | 9-sexagies-vicies-quinquies | ✅ sessione DB | Giro 10d preparato: riverifica, nove nodi, tre blocchi (2026-11-09) | §29 | 9-sexagies-vicies-quater |
-| 9-sexagies-vicies-sexies | ✅ Tid, **Tid** ⏭️ | Decisioni N1-N9 ✅ e numeri `20261110-42` … `-61` ✅ (2026-11-09); restano le tre FK di N2 e il via | §29.4 | 9-sexagies-vicies-quinquies |
+| 9-sexagies-vicies-sexies | ✅ Tid | Decisioni N1-N9 ✅ e numeri `20261110-42` … `-61` ✅ (2026-11-09); le tre FK di N2 `CON_INDICE` (§29.6) e il via ✅ | §29.4 | 9-sexagies-vicies-quinquies |
 | 9-sexagies-vicies-septies | ✅ sessione DB | Giro 10d, blocchi 10d-1 … 10d-3: scritti e provati (`20261110-42` … `-54`) | §29.5-29.7 | 9-sexagies-vicies-sexies |
 | 9-sexagies-vicies-octies | ✅ Tid | Apply del giro 10d su dbdev e scratch, pgTAP come app verdi (2026-11-09) | §29.10 | 9-sexagies-vicies-septies |
 | 9-sexagies-vicies-nonies | ✅ Tid | Le scelte di §29.6: righe di prova fuori, tre FK `CON_INDICE`, il resto ok (2026-11-09) | §29.11 | 9-sexagies-vicies-octies |
@@ -221,16 +219,16 @@ ancora le tabelle).
 | 9-septuagies-ter | ✅ Tid | N1 del giro 11: strada (b), l'etichetta va con la credenziale (2026-11-09) | §30.2 | 9-septuagies-bis |
 | 9-septuagies-quater | ✅ sessione DB | Giro 11 scritto e provato (`20261110-56` … `-58`) | §30.4 | 9-septuagies-ter |
 | 9-septuagies-quinquies | ✅ Tid | Apply del giro 11, pgTAP come app verdi (2026-11-09) | §30.5 | 9-septuagies-quater |
-| 9-septuagies-sexies | **Tid** ⏭️ | Commit del giro 11 (solo i file del giro) | §30.5 | 9-septuagies-quinquies |
+| 9-septuagies-sexies | ✅ Tid | Commit del giro 11 (`df2fc72b53`) | §30.5 | 9-septuagies-quinquies |
 | 9-septuagies-septies | ✅ sessione DB | Giro 12 (Q15): censimento, nodi N1-N3 decisi da Tid, scritto e provato | §31 | 9-septuagies-quinquies |
-| 9-septuagies-octies | **Tid** ⏭️ | Apply del giro 12, pgTAP di §31.6, commit | §31.6 | 9-septuagies-septies |
+| 9-septuagies-octies | ✅ Tid | Apply del giro 12, pgTAP di §31.6 verdi, commit (`df2fc72b53`) | §31.6 | 9-septuagies-septies |
 | 9-septuagies-nonies | team BE | BE6 del giro 12: `E_CONTATTI_SOGGETTO_OBBLIGATORIO` nelle politiche d'errore, dopo l'apply | §31.5 | 9-septuagies-octies |
 | 9-octogies | ✅ sessione DB | S-BE-2 e S-BE-3 verificati, N4 deciso (a), scritti e provati (`20261110-95` … `-98`) | §32 | 9-septuagies-octies |
 | 9-octogies-semel | ✅ sessione DB | Giro 13 (Q10) scritto e provato (`20261111-14` … `-17`) | §33 | 9-octogies |
 | 9-octogies-bis | ✅ Tid | Apply di S-BE-2, S-BE-3 e giro 13, pgTAP verdi (2026-11-09) | §33.6 | 9-octogies-semel |
-| 9-octogies-ter | **team BE** ⏭️ | BE8 (giro 13), S-BE-2 e S-BE-3 lato BE, BE6 dei codici `E_CONTATTI_SOGGETTO_OBBLIGATORIO` e `E_SOGGETTO_ID_FISCALE_IMMUTABILE` | §32.4, §33.4 | 9-octogies-bis |
+| 9-octogies-ter | **team BE** ✅ (`2af6d986f5`, PR #81, §33.7) | BE8 (giro 13), S-BE-2 e S-BE-3 lato BE, BE6 dei codici `E_CONTATTI_SOGGETTO_OBBLIGATORIO` e `E_SOGGETTO_ID_FISCALE_IMMUTABILE` | §32.4, §33.4 | 9-octogies-bis |
 | 9-octogies-quater | ✅ Tid | Commit di §32 e §33 (`aaa12df0ef`, PR #79) | §8 | 9-octogies-bis |
-| 9-octogies-quinquies | **team BE** ⏭️ | BE8: `session_key` esce da `parameter_repository.py` (non fatto nella PR #77) | §5, §33.4 | 9-octogies-bis |
+| 9-octogies-quinquies | **team BE** ✅ (`2af6d986f5`, PR #81) | BE8: `session_key` esce da `parameter_repository.py` (non fatto nella PR #77; fatto con la PR #81) | §5, §33.4 | 9-octogies-bis |
 | 9-octogies-sexies | ✅ Tid | Via al censimento del giro 14 (2026-11-09) | §8 | 9-octogies-quater |
 | 9-octogies-septies | ✅ sessione DB | Giro 14 censito: marche per schema, §3.2 e §3.1 riverificate, cinque nodi | §34 | 9-octogies-sexies |
 | 9-octogies-octies | ✅ Tid | Nodi N1-N5 come da proposta; numeri dal primo libero: `20261111-18` … `-24`, le altre sessioni dal `-25` (2026-11-09) | §34.5 | 9-octogies-septies |
@@ -238,20 +236,18 @@ ancora le tabelle).
 | 9-octogies-decies | ✅ Tid | Apply del giro 14 su dbdev e scratch, pgTAP di §34.6.5 verdi (2026-11-10) | §34.6.6 | 9-octogies-nonies |
 | 9-octogies-undecies | ✅ Tid | Doc auto-generata e commit del giro 14 (`fe388dbfdf`, 2026-11-10) | §34.6.6 | 9-octogies-decies |
 | 9-nonagies | ✅ sessione DB | S-BE-1 censito: montaggi, padri, tipi, storia del bersaglio, sei nodi | §35 | 9-octogies-undecies |
-| 9-nonagies-semel | **Tid** ⏭️ | Nodi N1-N6 di S-BE-1 e numeri | §35.4 | 9-nonagies |
-| 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
-| 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
-| 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
-| 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
+| 9-nonagies-semel | ✅ Tid | Nodi N1-N6 di S-BE-1 come da proposta, e il via (2026-11-10) | §35.5 | 9-nonagies |
+| 9-nonagies-bis | ✅ sessione DB | S-BE-1 scritto e provato su dbdev (`20261111-40` … `-46`) | §35.6 | 9-nonagies-semel |
+| 9-nonagies-ter | **Tid** ⏭️ | Apply di S-BE-1 su dbdev e scratch, pgTAP di §35.6.5, commit | §35.6 | 9-nonagies-bis |
+| 9-nonagies-quater | **team FE** ⏭️ | Conferma di N5: quali tipi il frontend apre col solo id (ASSET, ARTICOLO_COMPONENTE, LISTINO_VERSIONE, le righe) | §35.6.3 | 9-nonagies-bis |
 | 9-sexagies-octodecies | team BE ✅ (2026-11-09) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore: già in policy, `genera_error_policies --check` pulito | §28.8 | 9-sexagies-septdecies |
-| 9-quinquagies-octies | **team BE** ✅ (2026-11-09, da committare su `dev/backend-tid`) | BE2: i due gap che ripetevano un lock del DB ritirati, `DISTINCT`, commenti riscritti | §5 | 9-quinquagies-septies |
-| 9-quinquagies-semel | **team BE** ✅ (2026-11-09, da committare su `dev/backend-tid`) | BE12 (il filtro «vivo» dei processi) ✅; BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`) già in policy | §5, §24.9 | 9-quinquagies |
-| 9-tricies-decies | **team BE** ✅ (riga doppia della 136) | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
+| 9-quinquagies-octies | **team BE** ✅ (2026-11-09, `9f540bea72`) | BE2: i due gap che ripetevano un lock del DB ritirati, `DISTINCT`, commenti riscritti | §5 | 9-quinquagies-septies |
+| 9-quinquagies-semel | **team BE** ✅ (2026-11-09, `9f540bea72`) | BE12 (il filtro «vivo» dei processi) ✅; BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`) già in policy | §5, §24.9 | 9-quinquagies |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
-| 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
+| 10 | sessione DB ✅ | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply: tutti chiusi (giro 14, `fe388dbfdf`) | §8 | 9-vicies-septies |
 | 11 | team BE ✅ | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3, BE6, BE9, BE10, BE11 ✅ (mergiati o committati); BE4 ✅; BE2, BE5, BE7, BE12 ✅ (committati, `9f540bea7`); BE8, S-BE-2 e S-BE-3 lato BE ✅ (2026-11-09, §33.7, da committare) | §5, §33.7 | 10 |
-| 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
+| 11-bis | sessione DB, **Tid** ⏭️ | S-BE-1 (censito, deciso, scritto e provato: §35; l'apply e' il passo 9-nonagies-ter): la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
 **Decisioni aperte di Tid:** nessuna; le scelte dentro il giro 12 sono in §31.3, da guardare. Nessuna sul giro 10c.
@@ -703,11 +699,8 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE2 ✅ (2026-11-09) | `dbops.vw_non_editable_fields` legge il lock **vivo** (§25.4): elenca ogni colonna che un trigger di lock blocca, `codice_interno` compreso, e non piu' le righe del registro che nessun trigger applica. ① I `gaps` che ripetono una colonna gia' bloccata dal DB si ritirano: al 2026-11-08 `("catalogo", "articoli"): ("codice",)` in `catalogo_service.py` e `codice` di `_EMITTENTE_NON_EDITABLE_GAPS` in `emittenti_fiscali_service.py` (tutte e due bloccate da `automation_lock_columns`); gli altri restano finche' il DB non li dichiara. Il controllo si fa colonna per colonna sulla vista dopo l'apply. ② Le colonne della vista cambiano: escono `exec_mode` e `note`, entra `trigger_name`. `LockColumnsRepository` legge solo `column_name`: nessuna rottura, ma il commento di testata del repository («alias semantico su `automation_lock_columns`») e quello di `non_editable_fields_helper.py` vanno riscritti. ③ Una colonna bloccata da due trigger compare due volte: `list_non_editable` restituisce una tupla, e un `DISTINCT` (o un `set`) evita il doppio | `backend/apps/catalogo/services/catalogo_service.py:126-140`, `backend/apps/anagrafiche/services/emittenti_fiscali_service.py:47-50`, `backend/apps/core/db/lock_columns_repository.py:8-50`, `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
 | BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 ✅ (2026-11-07) | **Decisione di Tid (2026-11-07): cade il tetto.** `list_lookup_codici` chiama `dbops.fn_get_lookup_codici` con `p_limit` NULL al posto di `LOOKUP_MAX_SOURCE_ROWS` (la costante e il commento «il limit interno è una guardia» si ritirano); la ricerca `ILIKE` e la paginazione con `sql_order_clause` e `fetch_paged_with_total` restano come sono. Da riscrivere la docstring («chiama con limit ampio…, obiettivo: evitare di modificare la funzione DB»). Non dipende dall'apply: lo spareggio DB del giro 7 non cambia il risultato per il backend, che riordina fuori | `backend/apps/core/db/dbops_repository.py:52-55, 378-470` | D57 |
-| BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
-| BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) **Giro 12 ✅ (2026-11-09):** `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (§31.5): policy rigenerata, ripiego scritto. **S-BE-3 ✅ (2026-11-09, §33.7):** `E_SOGGETTO_ID_FISCALE_IMMUTABILE`, policy e ripiego. | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
-| BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE5 ✅ (2026-11-09) | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
-| BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
+| BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) **Giro 12 ✅ (2026-11-09):** `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (§31.5): policy rigenerata, ripiego scritto. **S-BE-3 ✅ (2026-11-09, §33.7):** `E_SOGGETTO_ID_FISCALE_IMMUTABILE`, policy e ripiego. | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 ✅ (2026-11-09) | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 ✅ (2026-11-09, §33.7) | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 ✅ (2026-11-07) | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
@@ -5203,7 +5196,7 @@ orfano tolto) applicati da Tid su dbdev e scratch; pgTAP di §32.4 e §33.5 verd
 BE8 (§33.4), S-BE-2 e S-BE-3 lato BE (§32.4 punto 3) e BE6 dei due codici nuovi. Il giro 13 si chiude col commit;
 poi il giro 14 (§8), al via di Tid.
 
-### 33.7 Il giro BE (team BE, 2026-11-09, da committare su `dev/backend-tid`)
+### 33.7 Il giro BE (team BE, 2026-11-09, `2af6d986f5`, PR #81)
 
 | # | Che cosa |
 | --- | --- |
@@ -5537,3 +5530,91 @@ argomenti rompe chi li conta, e viceversa); padre, figlia, colonna e valore rest
 **Ricaduta BE prevista:** nessuna obbligatoria (frase e `targets` dai canali che legge); un test sul DB che porti
 `targets` fino all'envelope per un rifiuto vero (§5); i 4 file del frontend su `E_ATTIVO_BLOCK_CHILDREN_EXIST` sono da
 guardare solo se leggono la frase.
+
+### 35.5 Le decisioni di Tid (2026-11-10)
+
+**N1-N6 come da proposta**, e il via allo sviluppo. Numeri: `20261111-40` … `-46` (il catalogo era a `-37`; `-38` e
+`-39` lasciati di margine all'altra sessione).
+
+### 35.6 Scritto e provato (2026-11-10)
+
+#### 35.6.1 I changeSet
+
+| changeSet | Che cosa |
+| --- | --- |
+| `00_schema/config/20261111-40` | `config.tipi_entita.tabella` (text, CHECK di forma, `NULL` per un tipo sorgente, univoca); COMMENT della tabella al presente |
+| `20_code/script/20261111-41` | `script.fn_bersaglio_di_riga(schema, tabella, colonna, valore)`: il bersaglio dal catalogo, o NULL. `BEGIN ATOMIC`, DEFINER |
+| `20_code/dbops/20261111-42` | `trgfn_child_requires_active_parent`: variadico vuoto; il padre spento porta il bersaglio |
+| `20_code/dbops/20261111-43` | `trgfn_child_requires_non_obsolete_parent`: variadico vuoto (prima una frase composta col catalogo); il ritirato porta il bersaglio |
+| `20_code/dbops/20261111-44` | `trgfn_prevent_deactivate_if_children`: variadico vuoto, nessun bersaglio |
+| `20_code/script/20261111-45` | `fn_check_registro_disattivabile`: gli otto motivi senza `valori`; COMMENT al presente |
+| `20_code/script/20261111-46` | `fn_check_famiglia_documento_disattivabile`: i due motivi senza `valori`; COMMENT al presente |
+
+I tre trigger e le due check ripartono dal loro ultimo changeSet, verificato uguale al vivo; il rollback rimette corpo e
+COMMENT di prima.
+
+#### 35.6.2 Fuori dai changeSet
+
+* **CSV:** `messaggi_errore.csv`, le cinque frasi senza segnaposti e le cause che dicevano «la tabella nominata nel
+  messaggio»; la grafia di ogni riga resta la sua (`puo'` nelle due BLOCK, come il ripiego del backend).
+  `tipi_entita.csv`, colonna `tabella` per cinque tipi: ARTICOLO, PROMO_ARTICOLO, LOTTO, DEFINIZIONE_WORKFLOW, FLUSSO.
+* **Loader esteso sul posto:** `80_data/changelog/20260822-55` (mirror `runOnChange`, `validCheckSums: ANY`), una colonna
+  in piu', come nel 2026-08 e nel 2026-10. Prima di toccarlo, CSV e DB confrontati riga per riga (`tipi_entita` 39/39,
+  `eventi_dominio` 6/6): la riesecuzione scrive solo `tabella`.
+* **pgTAP nuovo** `dbops/test-bersaglio-guard-attivo-v1` (21 test).
+* **pgTAP riallineati** (asserivano «la frase nomina la tabella»): `catalogo/test-articoli-approvvigionamento-v1` (10),
+  `catalogo/test-fn-riattiva-articolo-v1` (1), `dbops/test-guard-attivo-grammatica-e-codici-v1` (10),
+  `dbops/test-guard-attivo-occhi-del-proprietario-v1` (5), `dbops/test-trgfn-prevent-deactivate-if-children-pdp` (8, 13),
+  `script/test-fn-check-registro-disattivabile-v1` (5, 9), `vendite/test-registri-per-emittente-v1` (6). Ora asseriscono la
+  frase del catalogo del codice giusto, cioè il ramo. `config/test-grammatica-catalogo-sorgenti-entita-v1` test 4 passa da
+  LOTTO a TASK_RUN: LOTTO dichiara una tabella, e il CHECK nuovo rifiuterebbe prima della FK che il test prova.
+* **Doc:** `manual/` dei tre trigger e di `fn_check_famiglia_documento_disattivabile`, pagina nuova
+  `script/manual/fn_bersaglio_di_riga.md`, la guida `automazione-db.md` (§ la regola ATTIVO), `fn_riattiva_articolo.md`.
+
+#### 35.6.3 Le scelte che non si vedono dal titolo (da guardare, Tid)
+
+1. **`-41` DEFINER, eseguibile da `PUBLIC`.** I trigger girano come chi scrive, e `config.tipi_entita` la legge solo
+   owner e app: un altro ruolo perderebbe il rifiuto di dominio per un permesso negato sul bersaglio. Stessa forma degli
+   altri aiutanti dei guard (`fn_trigger_padre_stato`, `fn_trigger_attivo_argomenti`).
+2. **Il tipo sorgente vale solo se `apribile`.** È lo stesso criterio di N5 («ha una pagina»), gia' scritto in
+   `config.sorgenti`: EVENTO_ASSET (non apribile) non da' bersaglio.
+3. **N5, i tipi scritti:** solo quelli con una rotta da id gia' provata (usati come bersaglio altrove, o dichiarata nella
+   nota): ARTICOLO, PROMO_ARTICOLO, LOTTO, DEFINIZIONE_WORKFLOW, FLUSSO. **Da confermare col team FE** (passo
+   9-nonagies-quater): ASSET, ARTICOLO_COMPONENTE, LISTINO_VERSIONE (la nota dice che l'id non basta), le righe.
+   Aggiungerli e' una riga di CSV, senza toccare i trigger.
+4. **Il contesto del diario** (padre, figlia, colonna, valore) non e' provato dal pgTAP: `dbops.error_log` si scrive via
+   dblink solo col canale acceso, e il test non dipende dalla macchina. I trigger lo costruiscono come prima.
+
+#### 35.6.4 Trovato per strada (non corretto)
+
+* **`key_selector` diverso nei due cataloghi** per lo stesso tipo: PREVENTIVO e OFFERTA_COMMERCIALE sono `id` in
+  `config.tipi_entita` e `uid` in `config.sorgenti`, mentre il COMMENT di `tipi_entita.key_selector` dice «stessi valori di
+  config.sorgenti.key_selector, di proposito». Il bersaglio usa `tipi_entita` (come `vendite.fn_push_preventivo_a_ordine`,
+  che punta PREVENTIVO per id). Oggi non tocca S-BE-1: nessuno dei due e' padre di un montaggio ATTIVO. Da decidere quale
+  dei due dice il vero.
+* **Doc del backend:** `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (riga del guard di disattivazione)
+  dice che il messaggio «nomina la tabella che sta bloccando»: da riscrivere dal team BE.
+
+#### 35.6.5 La prova, e che cosa resta a Tid
+
+* **Prova** su dbdev, SQL estratto da `-40` … `-46` nell'ordine del migrate piu' i valori dei due CSV (UPDATE per chiave,
+  come il mirror), in transazione annullata come `zeroerp_owner`: il pgTAP nuovo 21/21; i trenta pgTAP che nominano i
+  cinque codici, le due check o `tipi_entita`, con e senza l'estratto: cambiano solo i test riallineati di §35.6.2, tutti
+  verdi con l'estratto. **Corsa larga**, i 353 pgTAP di `dbops`, `script`, `config` e `rls`, con e senza: cambiano solo
+  quelli di §35.6.2 e il nuovo.
+* ⚠️ **Trovato dalla corsa larga, e corretto:** `-45` e `-46` ricopiavano dall'ultimo YAML `SET search_path TO
+  'pg_catalog', 'public'`, ma sul vivo c'e' anche `pg_temp` (aggiunto dopo da un `ALTER FUNCTION`, D6-bis): il CREATE OR
+  REPLACE l'avrebbe tolto, e `dbops/test-security-definer-search-path-v1` (test 4) era rosso. Ora `pg_temp` c'e', anche
+  nel rollback. Confrontati poi tutti gli attributi delle cinque funzioni prima e dopo l'estratto (sicurezza,
+  volatilita', costo, `search_path`, proprietario, permessi, risultato): nessuna differenza.
+* **Guardrail** verdi: `run_on_change`, `v1_congelato`, `pgtap_preambolo`, `comment_al_presente`, `sql_letterali`,
+  `timestamp_senza_fuso`, `precondition_seed`, `ddl_su_trigger_automazione`, `grant_ruolo_batch`.
+* **Non provato:** il migrate vero (pgjdbc, la `BEGIN ATOMIC` del `-41` sta da sola nel suo `sql:`), il caricamento dei
+  CSV dal loader, la corsa come app, la CI da zero.
+* **Per Tid:**
+  1. apply di `20261111-40` … `-46` e dei due CSV su dbdev e scratch;
+  2. pgTAP: `dbops/test-bersaglio-guard-attivo-v1` (nuovo), i sette riallineati,
+     `config/test-grammatica-catalogo-sorgenti-entita-v1` e `dbops/test-security-definer-search-path-v1`;
+  3. la doc auto-generata dopo l'apply.
+* **Ricadute BE:** nessuna obbligatoria: il backend legge frase e `targets` dai canali che ha gia', e i suoi test controllano
+  i codici, non le frasi. Resta la doc di §35.6.4.

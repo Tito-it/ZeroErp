@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_riattiva_articolo`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -64,8 +64,9 @@ codice vero è `E_ATTIVO_PADRE_NON_ATTIVO`.
 ### La disattivazione
 
 Spegnere un articolo è un UPDATE diretto di `attivo` a falso. I trigger generati
-`block_deact` lo rifiutano finché una tabella figlia ha righe attive che lo puntano, e il
-messaggio nomina la tabella figlia. Chi vuole spegnere l'articolo spegne prima i figli.
+`block_deact` lo rifiutano finché una tabella figlia ha righe attive che lo puntano. Il
+messaggio non nomina la tabella figlia, che sta nel contesto del registro errori. Chi vuole
+spegnere l'articolo spegne prima i figli.
 
 ---
 

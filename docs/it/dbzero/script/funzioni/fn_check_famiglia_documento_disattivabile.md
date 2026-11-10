@@ -41,7 +41,7 @@ BEGIN
     --   del CRUD, che tiene il cestino spento e dice PERCHE'.
     --
     -- Ritorna: [] se si puo' spegnere; altrimenti array ORDINATO
-    --   di {codice, reason, reason_key, dettaglio, valori}
+    --   di {codice, reason, reason_key, dettaglio}
     --   (§12.5.1).
     --
     -- ⛔ PERCHE' ESISTE: anagrafiche.fn_ba_ha_storia_emittente
@@ -107,14 +107,7 @@ BEGIN
             'reason_key', 'amministrazione.famiglie_documento.disattiva_blocco.ha_registri_attivi',
             'dettaglio',  jsonb_build_object('famiglia_id',    p_famiglia_id,
                                              'codice_interno', v_fam.codice_interno,
-                                             'registri',       v_registri),
-            -- ⭐ I quattro valori riempiono i quattro %s del
-            --   messaggio a catalogo, nell'ordine: tabella padre,
-            --   colonna chiave, valore, tabella figlia.
-            'valori',     jsonb_build_array('vendite.famiglie_documento',
-                                            'codice_interno',
-                                            v_fam.codice_interno,
-                                            'vendite.registri_fatturazione'));
+                                             'registri',       v_registri));
     END IF;
 
     -- ---- MOTIVO 2 — documenti gia' numerati ----------------
@@ -146,11 +139,7 @@ BEGIN
                 'dettaglio',  jsonb_build_object('famiglia_id',    p_famiglia_id,
                                                  'codice_interno', v_fam.codice_interno,
                                                  'documenti',      v_docs,
-                                                 'tabella',        v_schema || '.' || v_nome),
-                'valori',     jsonb_build_array('vendite.famiglie_documento',
-                                                'codice_interno',
-                                                v_fam.codice_interno,
-                                                v_schema || '.' || v_nome));
+                                                 'tabella',        v_schema || '.' || v_nome));
         END IF;
     END IF;
 
@@ -159,7 +148,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_famiglia_documento_disattivabile(p_famiglia_id integer)
-IS 'Pure check (§12.5.1): i motivi che impediscono di SPEGNERE una famiglia di documento. Torna [] se si puo'', altrimenti l''array ORDINATO dei motivi — prima HA_REGISTRI_ATTIVI (E_ATTIVO_BLOCK_CHILDREN_ACTIVE), poi HA_DOCUMENTI_NUMERATI (E_ATTIVO_BLOCK_CHILDREN_EXIST). ⛔ PERCHE'' ESISTE: anagrafiche.fn_ba_ha_storia_emittente e fn_get_storia_emittente_ba iterano `WHERE fd.attivo`, quindi spegnere una famiglia non nasconde una voce di catalogo — la fa USCIRE dal presidio sul cambio emittente del billing account, e i suoi documenti smettono di trattenere il BA dove sono stati numerati. ⭐ L''ORDINE E'' IL CONTRATTO: la madre solleva il PRIMO motivo, e per primo va quello RIMEDIABILE (spegnere i registri); i numeri gia'' usciti non si disfano. ⚠️ SECURITY DEFINER e non INVOKER: le cinque tabelle dei documenti hanno la RLS attiva (verificato 2026-09-01) e un conteggio invoker tornerebbe ZERO a chi non le vede — cioe'' «si puo'' spegnere». Uno zero sotto RLS non e'' un dato, e'' una risposta troncata: stessa scelta di anagrafiche.fn_get_storia_emittente_ba. ⭐ Le tabelle dei documenti NON sono elencate qui: si compongono dalla famiglia stessa in SQL dinamico, cosi'' una famiglia nuova entra nel controllo il giorno che nasce; to_regclass e non un cast, perche'' una famiglia ritirata puo'' nominare una tabella che non esiste piu''. ⚠️ La reason_key e'' un debito verso il FE (§12.3). Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2). Rev 2026-10-20 (20261020-38, brief-db-grammatica-unica-documenti 2c, G-5): la tabella dei documenti e'' la target_table della sorgente (config.fn_sorgente_tabella).';
+IS 'Pure check: i motivi che impediscono di spegnere una famiglia di documento (vendite.famiglie_documento). Ritorna [] se si puo'', altrimenti l''array ordinato dei motivi {codice, reason, reason_key, dettaglio}: prima HA_REGISTRI_ATTIVI (E_ATTIVO_BLOCK_CHILDREN_ACTIVE), poi HA_DOCUMENTI_NUMERATI (E_ATTIVO_BLOCK_CHILDREN_EXIST). Solleva solo E_VENDITE_CHIAMATA_NON_VALIDA, per un identificativo non valido o una famiglia che non esiste. La consumano il guard che rifiuta lo spegnimento (vendite.trgfn_famiglie_documento_guard_disattivazione), che solleva il primo motivo, e la lista del CRUD, che tiene il cestino spento e dice perche''. Esiste perche'' anagrafiche.fn_ba_ha_storia_emittente e anagrafiche.fn_get_storia_emittente_ba leggono solo le famiglie attive: spegnerne una la toglierebbe dal presidio sul cambio emittente del billing account, e i suoi documenti smetterebbero di trattenere il billing account dove sono stati numerati. Il primo motivo e'' quello rimediabile (spegnere i registri); i numeri gia'' usciti non si disfano. La tabella dei documenti e'' la target_table della sorgente della famiglia (config.fn_sorgente_tabella), contata in SQL dinamico sui soli documenti che portano un numero: una famiglia nuova entra nel controllo il giorno che nasce, e una sorgente senza tabella non conta niente. Le frasi dei due codici non hanno valori; il dettaglio porta la famiglia, i registri o i documenti e la tabella. SECURITY DEFINER: le tabelle dei documenti hanno la RLS, e un conteggio sotto RLS risponderebbe zero a chi non le vede, cioe'' «si puo'' spegnere».';
 ```
 
 </div>

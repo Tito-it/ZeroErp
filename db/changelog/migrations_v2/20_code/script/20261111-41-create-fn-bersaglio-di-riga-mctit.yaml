@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_bersaglio_di_riga: il bersaglio di un errore che riguarda una riga di una tabella.
+#   Brief: brief-db-revisione-dbops, S-BE-1 (§35, nodi N2, N3, N5).
+#
+# ⭐ COSA FA. Data una tabella, la colonna con cui la si raggiunge e il valore, restituisce il
+#   bersaglio nella forma del canale (jsonb_build_array(jsonb_build_object('tipo', …, 'id', …))),
+#   oppure NULL. Un tipo c'e' solo se il catalogo lo dichiara:
+#   * un tipo NON sorgente con config.tipi_entita.tabella uguale alla tabella;
+#   * un tipo sorgente la cui config.sorgenti.target_table e' la tabella e che ha una pagina
+#     (apribile): un tipo senza pagina darebbe un pulsante che non porta da nessuna parte.
+#   E solo se la colonna e' la chiave del tipo (key_selector), e il tipo non e' ritirato.
+#   Zero o piu' di un tipo: NULL (un bersaglio ambiguo e' un bersaglio sbagliato, e un bersaglio
+#   sbagliato porta l'operatore altrove).
+#
+# ⭐ PERCHE' UN BB. Lo chiamano i tre guard ATTIVO, sul solo ramo del rifiuto (N3): la regola
+#   «tabella -> tipo» sta in un posto. Non e' una derivazione dal contesto (L5 del brief del
+#   bersaglio, respinta): legge una dichiarazione del catalogo.
+#
+# ⭐ BEGIN ATOMIC (linee-guida-sql §5c): legge due tabelle di catalogo, e le dipendenze stanno in
+#   pg_depend. Il COMMENT in un secondo sql:, perche' pgjdbc non spezza dopo un END;.
+#
+# ⛔ SECURITY DEFINER, eseguibile da PUBLIC come gli altri helper dei guard
+#   (dbops.fn_trigger_padre_stato, dbops.fn_trigger_attivo_argomenti): il guard gira come chi
+#   scrive, e config.tipi_entita e' leggibile solo da owner e applicazione. Un ruolo senza SELECT
+#   perderebbe il rifiuto di dominio per un permesso negato sul bersaglio: il bersaglio e' un'offerta
+#   e non deve mai rompere l'errore. Legge solo i due cataloghi, che non hanno righe riservate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261111-41-create-fn-bersaglio-di-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261111-41-create-fn-bersaglio-di-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_bersaglio_di_riga(schema, tabella, colonna, valore): il bersaglio (tipo + id) di
+        una riga, se il catalogo dei tipi dichiara la tabella e la colonna e' la chiave del tipo;
+        altrimenti NULL.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_bersaglio_di_riga(
+                  p_schema  name,
+                  p_tabella name,
+                  p_colonna name,
+                  p_valore  text)
+              RETURNS jsonb
+              LANGUAGE sql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              BEGIN ATOMIC
+                  SELECT CASE
+                           WHEN p_valore IS NOT NULL AND count(*) = 1
+                           THEN jsonb_build_array(
+                                  jsonb_build_object('tipo', min(te.codice), 'id', p_valore))
+                         END
+                    FROM config.tipi_entita te
+                    LEFT JOIN config.sorgenti s ON s.codice_interno = te.sorgente_codice_interno
+                   WHERE CASE WHEN te.is_sorgente
+                              THEN s.apribile AND s.target_table = to_regclass(format('%I.%I', p_schema, p_tabella))
+                              ELSE to_regclass(te.tabella) = to_regclass(format('%I.%I', p_schema, p_tabella))
+                         END
+                     AND te.key_selector = p_colonna
+                     AND NOT script.fn_e_obsoleto(te.obsoleto_dal);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_bersaglio_di_riga(name, name, name, text) IS
+                'Building block: il bersaglio di un errore che riguarda una riga, nella forma del canale (un array con un oggetto tipo + id), o NULL. Il tipo lo dichiara il catalogo: config.tipi_entita.tabella per un tipo non sorgente; config.sorgenti.target_table, se la sorgente ha una pagina (apribile), per un tipo sorgente. Vale solo se la colonna e'' la chiave del tipo (key_selector) e il tipo non e'' ritirato; con nessun tipo, o con piu'' di uno, restituisce NULL. Lo chiamano i guard ATTIVO sul ramo del rifiuto (dbops.trgfn_child_requires_active_parent, dbops.trgfn_child_requires_non_obsolete_parent). SECURITY DEFINER, eseguibile da tutti come gli altri helper dei guard: il bersaglio non deve mai togliere il rifiuto a chi scrive. STABLE.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_bersaglio_di_riga(name, name, name, text);

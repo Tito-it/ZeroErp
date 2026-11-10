@@ -99,6 +99,11 @@ databaseChangeLog:
               #   che qui NON si elenca: non si scrive). Questo mirror gira dopo quello
               #   delle sorgenti (20251002-21), quindi la riga puntata c'e' gia'.
               - column: { name: is_sorgente,                type: BOOLEAN }
+              # ⭐ Aggiunta il 2026-11-10 (20261111-40, brief-db-revisione-dbops S-BE-1): la tabella
+              #   le cui righe sono entita' del tipo, per il bersaglio dei guard ATTIVO. NULL per i
+              #   tipi sorgente (la loro sta in config.sorgenti.target_table) e per i tipi senza
+              #   una rotta da id. Nessuna FK: l'ordine dei mirror non conta.
+              - column: { name: tabella,                    type: STRING }
 
         - loadUpdateData:
             relativeToChangelogFile: true

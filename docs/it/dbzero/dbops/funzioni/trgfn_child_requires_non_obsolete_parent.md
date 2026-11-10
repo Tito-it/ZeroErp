@@ -136,7 +136,7 @@ BEGIN
         'campo',        v_g.fk_col
       ),
       NULL::uuid,
-      v_padre, v_g.ref_col, v_fk_val_text, v_figlia
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -154,10 +154,11 @@ BEGIN
         'ref_val',       v_fk_val_text,
         'obsoleto_dal',  v_obsoleto_dal,
         'campo',         v_g.fk_col
-      ),
+      ) || jsonb_strip_nulls(jsonb_build_object(
+        'bersaglio', script.fn_bersaglio_di_riga(v_g.padre_schema, v_g.padre_tabella,
+                                                 v_g.ref_col, v_fk_val_text))),
       NULL::uuid,
-      format('Catalogo %s.%s obsoleto dal %s: non utilizzabile per nuove istanze',
-             v_g.padre_schema, v_g.padre_tabella, v_obsoleto_dal)
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -166,7 +167,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_child_requires_non_obsolete_parent()
-IS 'Trigger function OBSOLETO/REQUIRE, sulla figlia, montata a mano: una riga nuova, o una riga che cambia la FK, non si collega a una voce di catalogo ritirata (script.fn_e_obsoleto: obsoleto_dal raggiunta alla data operativa), con E_CATALOGO_OBSOLETO_NUOVA_ISTANZA (CONFLITTO_STATO, colonna FK in campo). Gemella di dbops.trgfn_child_requires_active_parent sull''asse obsoleto_dal: le voci ritirate restano attivo = true. Su UPDATE controlla solo se la FK cambia, cosi'' il ciclo di vita delle istanze storiche non si blocca; FK NULL e obsoleto_dal NULL o futura passano. Un padre assente (possibile dove il collegamento non e'' una FK) solleva E_PADRE_INESISTENTE; un montaggio sbagliato (argomenti fuori grammatica, una colonna FK o di esenzione che la figlia non ha, una tabella o una colonna del padre che non esiste) E_TRIGGER_ARGOMENTI_INVALIDI. TG_ARGV nella grammatica di dbops.fn_trigger_attivo_argomenti: padre_schema, padre_tabella, stato_col (obsoleto_dal del padre), fk_col, ref_col, obbligatori; esenzione_col facoltativo, una colonna della figlia che, valorizzata all''INSERT, dice che la riga e'' derivata da un altro documento e la lascia passare (sull''UPDATE non vale). Il padre lo legge dbops.fn_trigger_padre_stato, fuori dalla row security, come la gemella.';
+IS 'Trigger function OBSOLETO/REQUIRE, sulla figlia, montata a mano: una riga nuova, o una riga che cambia la FK, non si collega a una voce di catalogo ritirata (script.fn_e_obsoleto: obsoleto_dal raggiunta alla data operativa), con E_CATALOGO_OBSOLETO_NUOVA_ISTANZA (CONFLITTO_STATO, colonna FK in campo), con una frase che non nomina tabelle e il bersaglio del padre (script.fn_bersaglio_di_riga) quando il catalogo dei tipi ne dichiara la tabella; la data del ritiro, il padre, la colonna e il valore stanno nel contesto del diario. Gemella di dbops.trgfn_child_requires_active_parent sull''asse obsoleto_dal: le voci ritirate restano attivo = true. Su UPDATE controlla solo se la FK cambia, cosi'' il ciclo di vita delle istanze storiche non si blocca; FK NULL e obsoleto_dal NULL o futura passano. Un padre assente (possibile dove il collegamento non e'' una FK) solleva E_PADRE_INESISTENTE, senza bersaglio; un montaggio sbagliato (argomenti fuori grammatica, una colonna FK o di esenzione che la figlia non ha, una tabella o una colonna del padre che non esiste) E_TRIGGER_ARGOMENTI_INVALIDI. TG_ARGV nella grammatica di dbops.fn_trigger_attivo_argomenti: padre_schema, padre_tabella, stato_col (obsoleto_dal del padre), fk_col, ref_col, obbligatori; esenzione_col facoltativo, una colonna della figlia che, valorizzata all''INSERT, dice che la riga e'' derivata da un altro documento e la lascia passare (sull''UPDATE non vale). Il padre lo legge dbops.fn_trigger_padre_stato, fuori dalla row security, come la gemella.';
 ```
 
 </div>

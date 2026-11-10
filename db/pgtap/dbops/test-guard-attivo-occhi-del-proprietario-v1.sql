@@ -171,11 +171,13 @@ SELECT is(
     '4) D51: MIA non spegne la tipologia usata da un listino attivo di ALTRUI (prima: si spegneva)'
 );
 
-SELECT throws_like(
+SELECT throws_ok(
     format($$UPDATE config.listini_tipologie SET attivo = false WHERE id = %s$$,
            current_setting('pgtap.d51_tipologia')),
-    '%righe collegate attive in vendite.listini.',
-    '5) la frase nomina la tabella che blocca'
+    'P0001',
+    (SELECT m.messaggio FROM config.messaggi_errore m
+      WHERE m.codice = 'E_ATTIVO_BLOCK_CHILDREN_ACTIVE' AND m.lingua = 'it'),
+    '5) la frase e'' quella del ramo ATTIVE, senza nomi di tabelle (la tabella che blocca sta nel contesto del diario)'
 );
 
 -- ============================================================

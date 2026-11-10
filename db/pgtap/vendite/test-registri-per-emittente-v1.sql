@@ -49,7 +49,7 @@
 --   5) ⭐ EM-1 CHIUSA: la catena reale passa l'emittente — l'emittente di un
 --      billing account arriva fino alla scelta del registro
 --   6) ⭐ il guard di D-P6-1 morde: disattivare un emittente con billing
---      account mappati fallisce, e il messaggio NOMINA la tabella che blocca
+--      account mappati fallisce, con la frase del ramo B (figlia senza attivo)
 --   7) ⛔ il trigger generato che tiene quella regola esiste — e' il costo
 --      dichiarato di 20260820-02, reso misurabile
 --
@@ -229,18 +229,12 @@ SELECT is(
 --    disattivano) e' presidiato da
 --    db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql (test 4)
 --    e da db/pgtap/catalogo/test-fn-riattiva-articolo-v1.sql (test 1).
---    ⚠️ I due pattern si escludono a vicenda per costruzione: «righe collegate
---    attive in X» non contiene «righe collegate in X». Se il guard sbagliasse
---    ramo, questo test diventerebbe rosso — ed e' il suo secondo mestiere.
---
--- ⚠️ IL DISCRIMINANTE NON E' PIU' LA FRASE, E' IL NOME DELLA TABELLA.
---    Prima bastava «mapping billing_account presente», che era una frase
---    scritta apposta per questo guard. Il messaggio generico invece si compone
---    dai valori che il trigger passa, e padre e figlia sono ENTRAMBI
---    `schema.tabella`: se il loro ordine si scambiasse rispetto ai segnaposti
---    del catalogo (20260820-01), la frase resterebbe grammaticalmente perfetta
---    e nominerebbe la tabella SBAGLIATA. Asserire la tabella FIGLIA e' l'unico
---    modo di accorgersene — un throws_ok sul solo SQLSTATE passerebbe.
+--    ⚠️ Si asserisce la frase ESATTA del ramo B: le due frasi si escludono
+--    («righe collegate attive» contro «righe collegate»), quindi se il guard
+--    sbagliasse ramo questo test diventerebbe rosso — ed e' il suo secondo
+--    mestiere. La frase non nomina tabelle (brief-db-revisione-dbops, S-BE-1):
+--    quale tabella blocca sta nel contesto del diario, e l'emittente costruito
+--    qui ha un solo figlio, il billing account.
 -- ============================================================
 -- L'emittente del test 6: costruito, con un solo figlio — il billing account
 -- che gli si lega qui (vedi la nota in testa, rev 2026-10-13).
@@ -253,12 +247,14 @@ DO $t6$ BEGIN
     'pgTAP registri t6', NULL, (SELECT soggetto_ruolo_id FROM tmp_ef_t6));
 END $t6$;
 
-SELECT throws_like(
+SELECT throws_ok(
   format($$ UPDATE anagrafiche.emittenti_fiscali SET attivo = false
              WHERE id = %s $$,
          (SELECT emittente_fiscale_id FROM tmp_ef_t6)),
-  '%righe collegate in anagrafiche.emittenti_fiscali_billing_account%',
-  '6) il guard morde, e il messaggio NOMINA la tabella che sta bloccando'
+  'P0001',
+  (SELECT m.messaggio FROM config.messaggi_errore m
+    WHERE m.codice = 'E_ATTIVO_BLOCK_CHILDREN_EXIST' AND m.lingua = 'it'),
+  '6) il guard morde, col ramo B: la frase di E_ATTIVO_BLOCK_CHILDREN_EXIST (figlia senza colonna attivo)'
 );
 
 -- ============================================================

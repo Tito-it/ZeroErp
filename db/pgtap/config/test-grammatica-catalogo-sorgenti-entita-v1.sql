@@ -68,9 +68,9 @@ SELECT fk_ok('config', 'tipi_entita', 'sorgente_codice_interno',
 -- 4) un'entita' che non e' una sorgente non si dichiara tale
 SAVEPOINT t4;
 SELECT throws_ok(
-    $$UPDATE config.tipi_entita SET is_sorgente = true WHERE codice = 'LOTTO'$$,
+    $$UPDATE config.tipi_entita SET is_sorgente = true WHERE codice = 'TASK_RUN'$$,
     '23503', NULL,
-    '4) LOTTO dichiarato sorgente: la FK lo rifiuta');
+    '4) TASK_RUN dichiarato sorgente: la FK lo rifiuta (TASK_RUN e non LOTTO: LOTTO dichiara una tabella, e il CHECK chk_tipi_entita_tabella_non_sorgente rifiuterebbe prima della FK)');
 ROLLBACK TO SAVEPOINT t4;
 
 -- 5) la colonna generata non si scrive
