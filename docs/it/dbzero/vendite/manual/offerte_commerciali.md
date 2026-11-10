@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.offerte_commerciali` (testata)
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -163,8 +163,10 @@ Le eccezioni puntuali articolo per articolo risiedono in `offerte_commerciali_ec
   e' gia' risolto e viene mappato a `soggetto_ruolo_id` per la fn.
 - Se la catena non risolve alcuna valuta, `fn_get_valuta_id` solleva
   `E_CONFIG_MANCANTE` (id 205) via `script.fn_log_and_raise_error`.
-- L'indice FK e' gestito dalla policy centralizzata (`dbops.fk_index_policy`,
-  `consentito=false` come `fk_preventivi_valuta`): nessun indice manuale.
+- L'indice FK lo governa la politica centralizzata (`dbops.fk_index_policy`): nessun
+  indice manuale. Nel CSV della politica la FK non ha una decisione, come
+  `fk_preventivi_valuta`: finché resta scoperta e senza decisione la mostra il presidio
+  `dbops.vw_fk_da_decidere`.
 
 ---
 

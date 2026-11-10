@@ -27,8 +27,8 @@ sanare chiede quando una credenziale non entra da nessuna parte.
    arriva nello stesso istante non può darle una veste alle spalle.
 3. Chiede alla regola se si può eliminare, e se no **rifiuta col primo motivo**.
 4. **Scrive la traccia** (quale credenziale, chi, quando) e poi la elimina. Le
-   cose che le appartengono (stato del login, preferenze, secondo fattore) se ne
-   vanno con lei.
+   cose che le appartengono (stato del login, preferenze, secondo fattore, e
+   l'etichetta di una credenziale di prova) se ne vanno con lei.
 
 ---
 

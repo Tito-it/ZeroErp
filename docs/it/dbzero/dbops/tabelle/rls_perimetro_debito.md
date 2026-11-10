@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Registro del debito del perimetro RLS: le tabelle che il criterio di dbops.vw_rls_perimetro_scoperto trova scoperte e che restano tali per una DECISIONE. Una riga zittisce il presidio su quella tabella e su quel criterio soltanto. ⚠️ Dichiarare un debito non lo assolve: dice «sappiamo perche' e' qui», non «va bene che ci sia». E' un registro e DEVE calare — il presidio pretende che una riga rientrata venga tolta (stato DEBITO_ESTINTO). Brief: brief-db-perimetro-emittente-righe-documento §8.
+> Registro del debito del perimetro RLS: le tabelle che il criterio di dbops.vw_rls_perimetro_scoperto trova scoperte e che restano tali per una decisione. Una riga zittisce il presidio su quella tabella e su quel criterio soltanto. Dichiarare un debito non lo assolve: dice perche' e' qui, non che va bene che ci sia. E' un registro e deve calare: il presidio pretende che una riga rientrata venga tolta (stato DEBITO_ESTINTO).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

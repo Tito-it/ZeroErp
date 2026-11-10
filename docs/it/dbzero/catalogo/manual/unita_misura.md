@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.unita_misura`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [catalogo.trgfn_unita_misura_guard_tipo_update](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo_update) — vieta di cambiare famiglia a un'unità che ha conversioni
+> * [catalogo.trgfn_unita_misura_guard_tipo](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo) — vieta di cambiare famiglia a un'unità che ha conversioni, e lega il calendario al tempo
 > * [vendite.fn_articolo_erogazioni](/dbzero/vendite/funzioni/fn_articolo_erogazioni) — il lettore di `conta_dal_calendario`
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — il blocco della disattivazione di un'unità ancora usata
 
@@ -64,7 +64,12 @@ contando il calendario in questa unità:
 * vuoto: l'unità non si conta dal calendario.
 
 Lo legge `vendite.fn_articolo_erogazioni`: un canone a durata si propone e si ammette solo
-per un articolo la cui unità si conta dal calendario. Nel seed lo hanno `GG` (giorno) e
+per un articolo la cui unità si conta dal calendario.
+
+Contare dal calendario ha senso solo per un'unità di tempo: il valore è ammesso solo se la
+famiglia dell'unità è `TEMPO` (codice interno di `uom_tipi`), altrimenti
+`E_UOM_CALENDARIO_NON_TEMPO`. Il controllo scatta alla creazione dell'unità e quando cambiano
+la famiglia o il conteggio. Nel seed lo hanno `GG` (giorno) e
 `MESE`; le ore (`HH`) no, perché un pacchetto di ore è un canone a quantità fissa.
 
 ---
@@ -81,18 +86,10 @@ il controllo scatta alla fine della transazione.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **`conta_dal_calendario` non è legato alla famiglia.** Il valore è ammesso su qualunque
-  unità: un'unità di massa può dire di contarsi in giorni, e nessun controllo lo ferma.
-* **Il rifiuto del cambio di famiglia esce come errore tecnico** (`E_GENERICO`), non come
-  errore di dato: la pagina del guard dice che cosa comporta.
-
----
-
 ### Codici errore
 
-* `E_GENERICO` — cambio di `tipo_uom_id` su un'unità che compare in una conversione globale.
+* `E_UOM_TIPO_IN_USO` — cambio di `tipo_uom_id` su un'unità che compare in una conversione globale.
+* `E_UOM_CALENDARIO_NON_TEMPO` — `conta_dal_calendario` su un'unità che non è di famiglia `TEMPO`.
 * `E_ATTIVO_PADRE_NON_ATTIVO` — un'unità attiva in una famiglia non attiva, alla fine della
   transazione.
 * `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` — spegnimento di un'unità che ha ancora righe attive che
@@ -109,7 +106,9 @@ il controllo scatta alla fine della transazione.
   canone a durata che ne dipende.
 * `db/pgtap/script/test-fn-codice-normalizzato-v1.sql` — la normalizzazione del codice.
 
-Il cambio di famiglia rifiutato non ha un test.
+* `db/pgtap/catalogo/test-uom-fattore-e-regole-v1.sql` — il cambio di famiglia rifiutato con
+  una conversione e ammesso senza, il calendario rifiutato su un'unità di massa e ammesso su
+  una di tempo.
 
 ---
 
@@ -119,6 +118,8 @@ Il cambio di famiglia rifiutato non ha un test.
   ricevono la loro famiglia con un riempimento iniziale.
 * 2026-10-29 — nasce `conta_dal_calendario`, per i canoni a durata (brief
   `brief-db-contratto-righe-periodiche-in-commessa`).
+* 2026-11-09 — i due controlli sulla famiglia escono con codici registrati, e il calendario si
+  lega alla famiglia `TEMPO` (brief-db-revisione-catalogo, giro 2).
 
 ---
 

@@ -939,8 +939,18 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Verifica in un solo round-trip articolo attivo, UoM attiva e coerenza articolo/UoM.
-    def get_articolo_uom_validation(self, articolo_id: UUID | str, uom_id: int) -> dict[str, bool]:
+    # Scopo: Verifica in un solo round-trip articolo attivo, UoM attiva e coerenza
+    #        articolo/UoM ALLA DATA indicata (la decorrenza della versione).
+    # ⭐ «L'unita' vale per l'articolo» la dice il DB, `catalogo.fn_get_uom_factor`:
+    #    l'unita' base, la mappatura dell'articolo alla data, o una conversione
+    #    generale alla data (BE17 di brief-db-revisione-catalogo, 2026-11-09).
+    # ⛔ Fino al 2026-11-09 qui c'era una copia della regola, gia' DIVERGENTE:
+    #    base o mappatura attiva, senza le conversioni generali e senza la data
+    #    — una riga in chilogrammi su un articolo in grammi veniva rifiutata, e
+    #    una mappatura chiusa ammessa.
+    def get_articolo_uom_validation(
+        self, articolo_id: UUID | str, uom_id: int, alla_data: date,
+    ) -> dict[str, bool]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -957,21 +967,10 @@ class ListiniRepository:
                          WHERE u.id = %s
                            AND u.attivo IS TRUE
                     ) AS uom_attiva,
-                    EXISTS(
-                        SELECT 1
-                          FROM catalogo.articoli a
-                         WHERE a.id = %s
-                           AND a.attivo IS TRUE
-                           AND a.uom_id = %s
-                        UNION ALL
-                        SELECT 1
-                          FROM catalogo.articoli_uom_operativa uo
-                         WHERE uo.articolo_id = %s
-                           AND uo.uom_id = %s
-                           AND uo.attivo IS TRUE
-                    ) AS uom_compatibile
+                    catalogo.fn_get_uom_factor(%s::uuid, %s::bigint, %s::date) IS NOT NULL
+                        AS uom_compatibile
                 """,
-                [articolo_id, uom_id, articolo_id, uom_id, articolo_id, uom_id],
+                [articolo_id, uom_id, articolo_id, uom_id, alla_data],
             )
             row = cursor.fetchone()
 
@@ -1196,8 +1195,13 @@ class ListiniRepository:
     # listino target. Restituisce 1 riga per ogni `articoli_componenti`
     # valida alla data; `prezzo_listino_bundle` NULL se non ancora
     # definito (l'admin lo valorizza nel Dialog).
-    # `data_riferimento`: data per filtrare BoM corrente (validita @>).
-    # Tipicamente = oggi o = validita versione listino (lower bound).
+    # `data_riferimento`: la data della distinta. Tipicamente = oggi o =
+    # validita versione listino (lower bound).
+    # ⛔ Quali legami stanno nella distinta a quella data lo dice
+    #    `catalogo.fn_distinta_alla_data` (sede unica: init e preview dei
+    #    documenti, guard dei componenti, vista articoli). Il filtro
+    #    `attivo` + `validita @>` non si ricopia qui: una copia diverge
+    #    (brief-db-revisione-catalogo, BE13). Data NULL -> nessuna riga.
     def list_bundle_preview(
         self,
         *,
@@ -1235,7 +1239,7 @@ class ListiniRepository:
                 -- 10K"). Se servira' al FE, castarla a testo con
                 -- `to_char(...)` o estrarre lower/upper come date guardate.
                 lrc.prezzo                         AS prezzo_suggerito
-              FROM catalogo.articoli_componenti ac
+              FROM catalogo.fn_distinta_alla_data(%s, %s) ac
               JOIN catalogo.articoli a            ON a.id = ac.componente_id
               LEFT JOIN catalogo.unita_misura um   ON um.id = a.uom_id
               LEFT JOIN config.iva iva             ON iva.id = a.iva_id
@@ -1243,13 +1247,10 @@ class ListiniRepository:
                 ON lrc.listino_versione_id = %s
                AND lrc.articolo_componente_id = ac.id
                AND lrc.attivo = TRUE
-             WHERE ac.prodotto_id = %s
-               AND COALESCE(ac.attivo, TRUE) = TRUE
-               AND ac.validita @> %s
              ORDER BY a.codice NULLS LAST, ac.id
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [versione_id, str(articolo_padre_id), data_riferimento])
+            cursor.execute(sql, [str(articolo_padre_id), data_riferimento, versione_id])
             return rows_to_list(cursor)
 
     # Scopo: Batch upsert dei prezzi bundle di un padre composito su

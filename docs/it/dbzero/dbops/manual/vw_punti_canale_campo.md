@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_punti_canale_campo`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -21,12 +21,13 @@
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il meccanismo che legge il nome del campo
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — l'helper che solleva il primo motivo di una check
 > * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti da cui la vista legge le funzioni
+> * [dbops.fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile) — quali funzioni hanno un corpo da leggere: il perimetro
 
 ---
 
 ### 🎯 Scopo Principale
 
-Per ogni coppia (funzione PL/pgSQL, codice d'errore): **come** la funzione solleva il codice e
+Per ogni coppia (funzione dal corpo leggibile, PL/pgSQL o SQL, codice d'errore): **come** la funzione solleva il codice e
 **se** gli allega il nome del campo da correggere. È la metà «database» del controllo che fa
 accendere in rosso l'input giusto sullo schermo.
 
@@ -111,11 +112,17 @@ Che il nome scritto sia **quello giusto**. Dice che un nome c'è, nel posto gius
 dell'input che l'operatore ha davanti, e non un identificativo interno, è un giudizio che si prende
 codice per codice.
 
-E legge il **testo** delle funzioni PL/pgSQL, dal corpo senza commenti di
-[fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione), che rispetta i letterali: una chiamata è il testo fino al primo
-punto e virgola, quindi un punto e virgola dentro una stringa la tronca; una chiave scritta dentro un
-blocco JSON letterale non la vede; i rifiuti sollevati senza passare dal meccanismo centrale non
-passano di qui; le funzioni scritte in SQL non sono lette. I due helper del meccanismo sono esclusi.
+E legge il **testo** delle funzioni dal corpo leggibile, PL/pgSQL e SQL (comprese le SQL `BEGIN
+ATOMIC`), come le decide [fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile), dal corpo
+senza commenti di [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione), che rispetta i
+letterali: una chiamata è il testo fino al primo punto e virgola, quindi un punto e virgola dentro
+una stringa la tronca; una chiave scritta dentro un blocco JSON letterale non la vede; i rifiuti
+sollevati senza passare dal meccanismo centrale non passano di qui. Le funzioni in C o `internal`
+non hanno un corpo da leggere. I due helper del meccanismo sono esclusi.
+
+Le letture che conoscono solo il PL/pgSQL (il nome del campo preparato in una variabile con `:=`)
+su un corpo SQL non trovano niente: il canale di una chiamata SQL si legge nella chiamata stessa,
+come `IN_CHIAMATA`.
 
 ---
 
@@ -144,6 +151,8 @@ eccezione per un codice che ora rispetta la regola è rossa. Per questo a catalo
   sanature già fatte che non si disfano quando un corpo viene riemesso da un file più vecchio.
 * `db/pgtap/dbops/test-vw-funzioni-check-codici-sotto-jit-v1.sql` — il costo stimato della vista
   resta sotto la soglia del JIT.
+* `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql` — legge il canale delle chiamate di una
+  funzione SQL e di una SQL `BEGIN ATOMIC` (casi costruiti).
 
 ---
 
@@ -160,6 +169,9 @@ eccezione per un codice che ora rispetta la regola è rossa. Per questo a catalo
   `migliorie-generali-da-test-valutazione`).
 * 2026-11-04 — il corpo si legge da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`): la copia
   di prima toglieva un commento, di riga o a blocco, anche dentro un letterale.
+* 2026-11-09 — il perimetro passa dal solo PL/pgSQL ai corpi leggibili, PL/pgSQL e SQL, letti da
+  `fn_corpo_leggibile`: prima un codice sollevato da una funzione SQL non aveva un sito qui
+  (`20261110-61`, `brief-db-revisione-dbops`, giro 12).
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_seed_automazione_guard_utility_tipo_ruolo`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -49,8 +49,8 @@ registro dichiara.
 
 Quando scriveva, inseriva solo le righe mancanti e non correggeva mai una riga già scritta: il
 catalogo raccontava lo schema del giorno in cui l'aveva visto, e mentre lo schema cambiava restava
-fermo. Rilevare dallo schema resta utile; decidere che una tabella va protetta è un opt-in
-esplicito, che passa dal CSV, come per `dbops.fk_index_policy`.
+fermo. Rilevare dallo schema resta utile; decidere che una tabella va protetta è una scelta
+esplicita, che passa dal CSV, come le decisioni di `dbops.fk_index_policy`.
 
 ⚠️ Il limite della forma: un `NOTICE` nell'output della passata `ci_apply` si legge solo se lo si
 cerca. Una tabella nuova che qualifica non ferma niente, perché non è un guasto ma una decisione

@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,registri_fatturazione,fk_registri_fatturazione_famiglia,false,CREATE INDEX IF NOT EXISTS ix_registri_fatturazione_famiglia_documento ON vendite.registri_fatturazione(famiglia_documento);,false,mctit,2026-08-30 00:00:00+02

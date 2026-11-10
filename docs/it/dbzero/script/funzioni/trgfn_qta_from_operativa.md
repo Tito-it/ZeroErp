@@ -17,60 +17,52 @@ CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  -- Parametri. Tipi nudi DICHIARATI: un interruttore del trigger e il NOME
-  -- di una colonna, nessuna colonna di cui siano il riflesso.
+  -- Parametri. Tipi nudi DICHIARATI: un interruttore del trigger e i NOMI di
+  -- colonne e tabelle, nessuna colonna di cui siano il riflesso.
   v_fill_factor_to_base boolean := false;
   v_fonte_col           text    := NULL;
   -- Il valore della fonte: la colonna fonte_quantita_attesa (gemella su
   -- offerte_commerciali_eccezioni, stesso tipo).
   v_fonte_val           vendite.contratti_righe.fonte_quantita_attesa%TYPE := NULL;
 
-  -- Mapping/policy
-  v_factor_map   catalogo.articoli_uom_operativa.factor_to_base%TYPE;
+  -- La data del documento, letta dalla testata.
+  v_data_doc     date;
+
+  -- Le regole della quantita' della mappatura alla data.
   v_qty_step     catalogo.articoli_uom_operativa.qty_step%TYPE;
   v_max_dec      catalogo.articoli_uom_operativa.max_decimals%TYPE;
   v_forbid_frac  catalogo.articoli_uom_operativa.forbid_fraction%TYPE;
 
-  -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente).
-  -- numeric nudo DICHIARATO: arriva dal factor_to_base della riga, che su
-  -- sei tabelle ha scale diverse (resi_righe e' numeric senza scala): un
-  -- ancoraggio a numeric(18,6) lo arrotonderebbe in silenzio.
-  v_factor_used  numeric := 1;
+  -- Il fattore usato. numeric nudo DICHIARATO: arriva dal factor_to_base della
+  -- riga, che su sei tabelle ha scale diverse (resi_righe e' numeric senza
+  -- scala), o dall'inversa di una conversione: un ancoraggio a numeric(18,6)
+  -- lo arrotonderebbe in silenzio.
+  v_factor_used  numeric;
 
-  BEGIN
-
+  -- Per le frasi degli errori.
+  v_art_codice   catalogo.articoli.codice%TYPE;
+  v_uom_codice   catalogo.unita_misura.codice%TYPE;
+  v_base_codice  catalogo.unita_misura.codice%TYPE;
+BEGIN
   -- ------------------------------------------------------------
   -- script.trgfn_qta_from_operativa()
-  -- Sorgente unica: UoM/quantità OPERATIVA.
-  -- Su INSERT: calcola sempre quantita da qta_operativa.
-  -- Su UPDATE: short-circuit se nessun input operativo è cambiato.
+  -- quantita (unita' base) = qta_operativa x fattore. La scrive solo lui.
   --
-  -- TG_ARGV (opzionali):
-  --   [0] fill_factor_to_base :: boolean  (default FALSE)
-  --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
-  --   [1] fonte_nullability_col :: text   (default NULL)
-  --       Nome colonna della fonte della quantita' (fonte_quantita_attesa,
-  --       su contratti_righe e offerte_commerciali_eccezioni), letta via
-  --       to_jsonb(NEW). Con una fonte a valle (fn_fonte_porta_quantita =
-  --       false) quantita := NULL, sempre. Con la fonte che la porta
-  --       (FISSA) qta_operativa e' obbligatoria (E_QTA_MISSING).
-  --
-  -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
-  --   e i due parametri che li governavano:
-  --     · [1] fill_uom_id_base -> scriveva NEW.uom_id. Nessuna delle sei
-  --       tabelle agganciate ha una colonna `uom_id`, e tutti e sei i
-  --       trigger passavano 'false': il ramo non era raggiungibile, e se
-  --       lo si fosse acceso avrebbe fatto fallire ogni riga.
-  --     · [2] target_col = 'quantita_fissa' -> `quantita_fissa` non
-  --       esiste in **nessuna** tabella del database, e tutti e sei i
-  --       trigger passavano 'quantita'. Un parametro con un solo valore
-  --       lecito e' una bugia nella firma.
-  --   Gli argomenti scalano: fonte_nullability_col era [3], ora e' [1].
-  --   Precedente: 20260804-29 (stesso ragionamento su p_scope).
+  -- TG_ARGV:
+  --   [0] fill_factor_to_base :: boolean (default FALSE): se la riga non ha
+  --       il fattore, ci scrive quello usato (la fotografia).
+  --   [1] la colonna della fonte della quantita' (fonte_quantita_attesa, su
+  --       contratti_righe e offerte_commerciali_eccezioni), letta via
+  --       to_jsonb(NEW); vuota sulle altre tabelle. Con una fonte a valle
+  --       (script.fn_fonte_porta_quantita = false) quantita := NULL.
+  --   [2] la tabella della testata (stesso schema della riga),
+  --   [3] la colonna della riga che la punta,
+  --   [4] la colonna data della testata: la data del documento, a cui si
+  --       leggono il fattore e le regole della mappatura.
   -- ------------------------------------------------------------
 
-  -- 0) Parametri. Letti PRIMA del short-circuit (rev 2026-10-08): la fonte
-  --    serve anche su un UPDATE che non tocca gli input operativi.
+  -- 0) Parametri. Letti PRIMA del short-circuit: la fonte serve anche su un
+  --    UPDATE che non tocca gli input operativi.
   IF TG_NARGS >= 1 THEN
     v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
   END IF;
@@ -80,14 +72,11 @@ DECLARE
   END IF;
 
   --------------------------------------------------------------------
-  -- Fonte a valle: quantita e' calcolata, e qui vale NULL (rev 2026-10-08,
-  -- brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).
+  -- Fonte a valle: quantita e' calcolata, e qui vale NULL.
   -- Con una fonte che non porta la quantita' (script.fn_fonte_porta_quantita:
   -- MANUALE, LETTURE, TIMESHEET) la quantita' arriva a valle: il DB porta
   -- quantita a NULL a ogni INSERT e a ogni UPDATE, anche quando gli input
-  -- operativi non cambiano (un cambio di sola fonte con qta_operativa gia'
-  -- vuota: il short-circuit qui sotto la lascerebbe). qta_operativa e'
-  -- l'input: se e' valorizzata la rifiuta il guard
+  -- operativi non cambiano. qta_operativa valorizzata la rifiuta il guard
   -- trgfn_righe_guard_quantita_per_fonte, che gira prima di questo trigger.
   --------------------------------------------------------------------
   IF v_fonte_val IS NOT NULL
@@ -97,8 +86,7 @@ DECLARE
   END IF;
 
   --------------------------------------------------------------------
-  -- short-circuit: solo su UPDATE dove nessun input operativo è cambiato.
-  -- Su INSERT: calcola sempre (qta_operativa + uom → quantita).
+  -- short-circuit: solo su UPDATE dove nessun input operativo e' cambiato.
   --------------------------------------------------------------------
   IF TG_OP = 'UPDATE'
      AND NEW.qta_operativa    IS NOT DISTINCT FROM OLD.qta_operativa
@@ -109,10 +97,6 @@ DECLARE
 
   -- Verifica qta_operativa: obbligatoria. Le fonti a valle sono gia' uscite
   -- sopra; qui arrivano la FISSA e le tabelle senza fonte.
-  -- Rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.1, I-D1):
-  -- tolta l'eccezione per DERIVATA_COMPONENTI, ritirata. Era la sola fonte
-  -- che portava la quantita' senza che la scrivesse l'operatore, e nessuno
-  -- la calcolava: i componenti seguono la quantita' del padre.
   IF NEW.qta_operativa IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'application',
@@ -133,54 +117,95 @@ DECLARE
   END IF;
 
   --------------------------------------------------------------------
-  -- 1) UoM operativa: se manca, fallback a UoM base articolo
+  -- 1) Unita' operativa: se manca, l'unita' base dell'articolo.
+  --    articolo_id e catalogo.articoli.uom_id sono NOT NULL: c'e' sempre.
   --------------------------------------------------------------------
   IF NEW.uom_operativa_id IS NULL THEN
-    SELECT a.uom_id
-      INTO NEW.uom_operativa_id
-    FROM catalogo.articoli a
-    WHERE a.id = NEW.articolo_id;
+    NEW.uom_operativa_id := catalogo.fn_get_uom_base(NEW.articolo_id);
   END IF;
 
-  IF NEW.uom_operativa_id IS NULL THEN
+  --------------------------------------------------------------------
+  -- 2) La data del documento, dalla testata (argomenti [2]-[4]).
+  --------------------------------------------------------------------
+  IF TG_NARGS < 5
+     OR coalesce(TG_ARGV[2], '') = ''
+     OR coalesce(TG_ARGV[3], '') = ''
+     OR coalesce(TG_ARGV[4], '') = '' THEN
     PERFORM script.fn_log_and_raise_error(
-      'application','script.trgfn_qta_from_operativa',
-      'E_UOM_MISSING',
-      jsonb_build_object('campo', 'uom_operativa_id', 'articolo_id', NEW.articolo_id),
+      'script', 'script.trgfn_qta_from_operativa',
+      'E_SCRIPT_CHIAMATA_NON_VALIDA',
+      jsonb_build_object('tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME, 'trigger', TG_NAME),
       NULL::uuid,
-      'articolo_id', COALESCE(NEW.articolo_id::text, 'NULL')
-    );
+      'script.trgfn_qta_from_operativa',
+      'montaggio senza la testata e la sua data (argomenti 3-5)');
+  END IF;
+
+  EXECUTE format('SELECT t.%I FROM %I.%I t WHERE t.id = $1',
+                 TG_ARGV[4], TG_TABLE_SCHEMA, TG_ARGV[2])
+     INTO v_data_doc
+    USING (to_jsonb(NEW) ->> TG_ARGV[3])::bigint;
+
+  -- La data e' NOT NULL su tutte le testate: se manca, la testata non c'e' o
+  -- chi scrive non la vede. Qui non si decide niente: parlano la FK o la RLS,
+  -- che girano dopo questo trigger. Un errore sul fattore sarebbe falso.
+  IF v_data_doc IS NULL THEN
+    RETURN NEW;
   END IF;
 
   --------------------------------------------------------------------
-  -- 2) Mapping factor/policy
+  -- 3) Il fattore.
+  --    Un UPDATE che cambia l'unita' e non il fattore: il fattore di prima
+  --    era dell'altra unita', e non vale piu'.
+  --    Il fattore scritto sulla riga e' la fotografia (anche quella copiata
+  --    da un documento sorgente) e si rispetta; altrimenti
+  --    catalogo.fn_get_uom_factor alla data del documento, e senza fattore
+  --    la riga si rifiuta: una quantita' base inventata e' peggio di nessuna.
   --------------------------------------------------------------------
-  SELECT aum.factor_to_base,
-        aum.qty_step,
-        COALESCE(aum.max_decimals,6),
-        aum.forbid_fraction
-    INTO v_factor_map, v_qty_step, v_max_dec, v_forbid_frac
-  FROM catalogo.articoli_uom_operativa aum
-  WHERE aum.articolo_id = NEW.articolo_id
-    AND aum.uom_id      = NEW.uom_operativa_id
-    AND aum.attivo      = TRUE
-    AND (aum.valido_dal IS NULL OR aum.valido_dal <= (SELECT script.fn_data_operativa()))
-    AND (aum.valido_al  IS NULL OR aum.valido_al  >= (SELECT script.fn_data_operativa()))
-  LIMIT 1;
+  IF TG_OP = 'UPDATE'
+     AND NEW.uom_operativa_id IS DISTINCT FROM OLD.uom_operativa_id
+     AND NEW.factor_to_base   IS NOT DISTINCT FROM OLD.factor_to_base THEN
+    NEW.factor_to_base := NULL;
+  END IF;
 
-  v_factor_map := COALESCE(v_factor_map, 1);
+  v_factor_used := COALESCE(
+      NEW.factor_to_base,
+      catalogo.fn_get_uom_factor(NEW.articolo_id, NEW.uom_operativa_id, v_data_doc));
 
-  v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
+  IF v_factor_used IS NULL THEN
+    SELECT a.codice, ub.codice INTO v_art_codice, v_base_codice
+      FROM catalogo.articoli a
+      LEFT JOIN catalogo.unita_misura ub ON ub.id = a.uom_id
+     WHERE a.id = NEW.articolo_id;
+    SELECT u.codice INTO v_uom_codice
+      FROM catalogo.unita_misura u
+     WHERE u.id = NEW.uom_operativa_id;
+    PERFORM script.fn_log_and_raise_error(
+      'script', 'script.trgfn_qta_from_operativa',
+      'E_UOM_MISSING',
+      jsonb_build_object(
+        'campo', 'uom_operativa_id',
+        'articolo_id', NEW.articolo_id,
+        'uom_operativa_id', NEW.uom_operativa_id,
+        'data_documento', v_data_doc,
+        'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME),
+      NULL::uuid,
+      COALESCE(v_uom_codice, '—'), COALESCE(v_base_codice, '—'),
+      COALESCE(v_art_codice, '—'), COALESCE(to_char(v_data_doc, 'DD/MM/YYYY'), '—'));
+  END IF;
 
-  IF v_fill_factor_to_base THEN
-    IF NEW.factor_to_base IS NULL THEN
-      NEW.factor_to_base := v_factor_used;
-    END IF;
+  IF v_fill_factor_to_base AND NEW.factor_to_base IS NULL THEN
+    NEW.factor_to_base := v_factor_used;
   END IF;
 
   --------------------------------------------------------------------
-  -- 3) Policy su quantità operativa
+  -- 4) Le regole della quantita': quelle della mappatura alla data.
+  --    Un'unita' senza mappatura (convertita dalle conversioni generali)
+  --    non ne ha.
   --------------------------------------------------------------------
+  SELECT m.qty_step, m.max_decimals, m.forbid_fraction
+    INTO v_qty_step, v_max_dec, v_forbid_frac
+    FROM catalogo.fn_uom_operativa_alla_data(NEW.articolo_id, NEW.uom_operativa_id, v_data_doc) m;
+
   IF v_forbid_frac IS TRUE AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
     PERFORM script.fn_log_and_raise_error(
       'database','script.trgfn_qta_from_operativa',
@@ -195,6 +220,25 @@ DECLARE
       'articolo_id', NEW.articolo_id::text,
       'uom_operativa_id', NEW.uom_operativa_id::text
     );
+  END IF;
+
+  -- I decimali che contano: trim_scale toglie gli zeri in coda (2,50 ha un
+  -- decimale, non due).
+  IF v_max_dec IS NOT NULL AND scale(trim_scale(NEW.qta_operativa)) > v_max_dec THEN
+    SELECT a.codice INTO v_art_codice FROM catalogo.articoli a WHERE a.id = NEW.articolo_id;
+    SELECT u.codice INTO v_uom_codice FROM catalogo.unita_misura u WHERE u.id = NEW.uom_operativa_id;
+    PERFORM script.fn_log_and_raise_error(
+      'script', 'script.trgfn_qta_from_operativa',
+      'E_QTA_OPERATIVA_DECIMALI',
+      jsonb_build_object(
+        'campo', 'qta_operativa',
+        'articolo_id', NEW.articolo_id,
+        'uom_operativa_id', NEW.uom_operativa_id,
+        'qta_operativa', NEW.qta_operativa,
+        'max_decimals', v_max_dec),
+      NULL::uuid,
+      NEW.qta_operativa::text, COALESCE(v_uom_codice, '—'),
+      COALESCE(v_art_codice, '—'), v_max_dec::text);
   END IF;
 
   IF v_qty_step IS NOT NULL AND v_qty_step > 0 THEN
@@ -217,7 +261,7 @@ DECLARE
   END IF;
 
   --------------------------------------------------------------------
-  -- 4) Calcolo finale della quantita' base
+  -- 5) La quantita' base.
   --------------------------------------------------------------------
   NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
 
@@ -226,7 +270,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
-IS 'Calcola quantita (UoM base) da qta_operativa * fattore: quantita è una colonna CALCOLATA, la scrive solo questo trigger. TG_ARGV[0] = fill_factor_to_base (snapshot del fattore in factor_to_base se NULL); TG_ARGV[1] = colonna della fonte della quantità (fonte_quantita_attesa, su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni). Con una fonte a valle (script.fn_fonte_porta_quantita = false: MANUALE, LETTURE, TIMESHEET) porta quantita a NULL a ogni INSERT e UPDATE, anche se gli input operativi non cambiano; qta_operativa valorizzata la rifiuta prima il guard script.trgfn_righe_guard_quantita_per_fonte. Con qta_operativa NULL: E_QTA_MISSING. Short-circuit su UPDATE senza variazioni agli input operativi; su INSERT calcola sempre. Rev 2026-05-27 (short-circuit), 2026-08-04 (rami morti), 2026-10-08 (fonte a valle: brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1), 2026-10-21 (20261021-46, §I.1: ritirata DERIVATA_COMPONENTI, che era l''eccezione a E_QTA_MISSING).';
+IS 'Calcola quantita (unita'' base) da qta_operativa per il fattore: quantita e'' una colonna calcolata, la scrive solo questo trigger. Il fattore e'' quello scritto sulla riga (factor_to_base: la fotografia, anche quella copiata da un documento sorgente), altrimenti catalogo.fn_get_uom_factor alla data del documento; senza fattore la riga e'' rifiutata (E_UOM_MISSING). Se un UPDATE cambia l''unita'' e non il fattore, il fattore si rilegge. Le regole della quantita'' della mappatura alla data (catalogo.fn_uom_operativa_alla_data): intera (E_QTA_OPERATIVA_NON_INTERA), al massimo max_decimals decimali (E_QTA_OPERATIVA_DECIMALI), a passi di qty_step (E_QTA_OPER_STEP_INVALIDO). Unita'' operativa NULL = l''unita'' base dell''articolo. Con qta_operativa NULL: E_QTA_MISSING. TG_ARGV: [0] fill_factor_to_base (scrive il fattore usato se la riga non l''ha); [1] la colonna della fonte della quantita'' (vuota se la tabella non ce l''ha): con una fonte a valle (script.fn_fonte_porta_quantita = false) quantita vale NULL; [2] la tabella della testata, [3] la colonna della riga che la punta, [4] la colonna data della testata (la data del documento). Senza [2]-[4]: E_SCRIPT_CHIAMATA_NON_VALIDA. Se la testata non si vede (o non c''e'') non calcola niente: parlano la RLS o la FK. Su UPDATE non fa niente se qta_operativa, unita'' e fattore non cambiano.';
 ```
 
 </div>

@@ -10,7 +10,11 @@
 --     (pg_constraint.contype='x') — mai mancante/declassato;
 --  2) NESSUN oggetto ex_*_no_overlap e' un indice semplice (decoy) non sostenuto
 --     da un constraint x/u/p;
---  3) i due vincoli temporali (UNIQUE WITHOUT OVERLAPS) restano contype='u'.
+--  3) i vincoli temporali scritti a mano restano: i due UNIQUE WITHOUT OVERLAPS
+--     (distinta, mappature delle unita') contype='u', e l'EXCLUDE delle conversioni
+--     sulla coppia non orientata contype='x' (una conversione per coppia di unita',
+--     al posto del UNIQUE sulla coppia orientata: brief-db-revisione-catalogo,
+--     giro 2, D14).
 --
 -- Read-only: nessuna sandbox, nessun cleanup.
 -- ------------------------------------------------------------
@@ -39,7 +43,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(4);
+SELECT plan(5);
 
 -- 1) Tutte le righe active con constraint_name -> esistono come EXCLUDE (contype x)
 SELECT is(
@@ -85,8 +89,14 @@ SELECT ok(
 
 SELECT ok(
   EXISTS (SELECT 1 FROM pg_constraint
-           WHERE conname = 'uq_uom_conv_no_overlap' AND contype = 'u'),
-  'catalogo.unita_misura_conversioni ha il temporal UNIQUE (contype u)'
+           WHERE conname = 'ex_unita_misura_conversioni_coppia_no_overlap' AND contype = 'x'),
+  'catalogo.unita_misura_conversioni ha l''EXCLUDE sulla coppia non orientata (contype x)'
+);
+
+SELECT ok(
+  EXISTS (SELECT 1 FROM pg_constraint
+           WHERE conname = 'uq_articoli_uom_operativa_no_overlap' AND contype = 'u'),
+  'catalogo.articoli_uom_operativa ha il temporal UNIQUE (contype u)'
 );
 
 SELECT * FROM finish();

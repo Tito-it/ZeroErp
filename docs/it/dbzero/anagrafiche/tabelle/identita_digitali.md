@@ -44,14 +44,14 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_identita_digitali_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_identita_digitali_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
-| trg_identita_digitali_a10_guard_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()` |
+| trg_identita_digitali_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_identita_digitali_a10_guard_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()` |
-| trg_identita_digitali_a10_guard_natura_credenziale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale()` |
+| trg_identita_digitali_a10_guard_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()` |
 | trg_identita_digitali_a10_guard_natura_credenziale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale()` |
+| trg_identita_digitali_a10_guard_natura_credenziale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale()` |
 | trg_identita_digitali_a10_guard_ultimo_super_admin_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()` |
-| trg_identita_digitali_a10_identita_scope_bindings_block__ef3f5e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'identita_scope_bindings', 'identita_digitale_id', 'id', 'attivo')` |
+| trg_identita_digitali_a10_identita_scope_bindings_block_ef3f5e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'identita_scope_bindings', 'identita_digitale_id', 'id', 'attivo')` |
 | trg_identita_digitali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_identita_digitali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_identita_digitali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

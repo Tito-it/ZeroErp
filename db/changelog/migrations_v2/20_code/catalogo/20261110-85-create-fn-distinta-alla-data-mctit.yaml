@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_distinta_alla_data: i legami della distinta di un padre a una data (R2).
+#   Brief: brief-db-revisione-catalogo, giro 1-bis.
+#
+#   Il filtro «prodotto_id = padre, attivo, validita @> data» era ricopiato a mano
+#   nei cinque init e nei cinque preview dei componenti dei documenti di vendita
+#   (-86 … -90), e a oggi nella vista degli articoli (-92); il guard dei componenti
+#   di documento ne aveva una terza forma, senza attivo (-91). Ora la domanda ha
+#   una sede sola.
+#   RETURNS TABLE con le colonne nominate, non SETOF catalogo.articoli_componenti:
+#   provato in BEGIN … ROLLBACK, una BEGIN ATOMIC che restituisce la riga della
+#   tabella muore («troppe poche colonne») appena la tabella prende una colonna.
+#   BEGIN ATOMIC (linee-guida-sql §5c): la funzione da sola nel suo change
+#   (pgjdbc), il COMMENT nel secondo.
+#   Provato anche che il planner la espande nel chiamante (nessun Function Scan)
+#   quando la data non e' una sottoquery.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261110-85-create-fn-distinta-alla-data-mctit.yaml
+
+  - changeSet:
+      id: 20261110-85-create-fn-distinta-alla-data
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo: il BB della distinta di un padre alla data, sede unica del filtro dei legami. Brief: brief-db-revisione-catalogo, giro 1-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'catalogo'
+                 AND p.proname = 'fn_distinta_alla_data'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_distinta_alla_data(
+                  p_prodotto_id catalogo.articoli_componenti.prodotto_id%TYPE,
+                  p_data        date)
+               RETURNS TABLE(
+                  id                     catalogo.articoli_componenti.id%TYPE,
+                  componente_id          catalogo.articoli_componenti.componente_id%TYPE,
+                  coeff_qta              catalogo.articoli_componenti.coeff_qta%TYPE,
+                  obbligatorio           catalogo.articoli_componenti.obbligatorio%TYPE,
+                  esposizione_in_fattura catalogo.articoli_componenti.esposizione_in_fattura%TYPE)
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT ac.id, ac.componente_id, ac.coeff_qta, ac.obbligatorio, ac.esposizione_in_fattura
+                 FROM catalogo.articoli_componenti ac
+                WHERE ac.prodotto_id = p_prodotto_id
+                  AND ac.attivo IS TRUE
+                  AND ac.validita @> p_data;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_distinta_alla_data(catalogo.articoli_componenti.prodotto_id%TYPE, date) IS
+                  'I legami della distinta del padre p_prodotto_id alla data p_data: le righe attive di catalogo.articoli_componenti con quel prodotto_id e una validita che contiene p_data (i due estremi compresi). p_data NULL -> nessuna riga: la data non si sottintende, e per oggi si passa script.fn_data_operativa(). Sede unica della domanda «di quali componenti e'' fatto il kit a quella data»: la chiamano gli init e i preview dei componenti dei documenti di vendita (vendite.fn_*_riga_componenti_init, vendite.fn_*_riga_componenti_preview, vendite.fn_offerta_eccezione_componenti_init e _preview), il guard script.trgfn_componenti_guard_coerenza_bom e la colonna has_componenti_alla_data di catalogo.vw_articoli_dettaglio. «Il kit ha una distinta da oggi in poi» e'' un''altra domanda: catalogo.fn_articolo_padre_di_distinta_da_oggi. Le colonne sono quelle della struttura del legame; il resto si legge da catalogo.articoli_componenti per id. Il planner la espande nel chiamante quando p_data e'' una colonna, un parametro o una chiamata diretta, non una sottoquery: chi la chiama per riga calcola la data una volta sola. SECURITY INVOKER: catalogo.articoli_componenti non ha RLS.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_distinta_alla_data(uuid, date);

@@ -36,8 +36,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_template_flussi_avanzamento_proiezione_a10_template__99560a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
-| trg_template_flussi_avanzamento_proiezione_a10_template__99560a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+| trg_template_flussi_avanzamento_proiezione_a10_template_99560a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+| trg_template_flussi_avanzamento_proiezione_a10_template_99560a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
 | trg_template_flussi_avanzamento_proiezione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_flussi_avanzamento_proiezione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tfap_a10_guard_compatibilita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_tfap_guard_compatibilita()` |

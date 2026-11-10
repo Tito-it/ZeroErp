@@ -82,13 +82,19 @@ SELECT throws_ok(
 ROLLBACK TO SAVEPOINT t5;
 
 -- 6) le sette sorgenti nuove
+-- rev 2026-11-09 (brief-db-sorgente-documento-e-riga §7.3, G-2; 20261110-19): le sette
+--   si scelgono per CODICE, non per scope. Lo scope CATALOGO non e' «le sorgenti di G-2»:
+--   dice solo che nessun meccanismo legge il tipo per scope, e dal ritiro di MAGAZZINO ci
+--   sta anche EVENTO_ASSET (categoria EVENTO). Col filtro sullo scope ogni tipo nuovo a
+--   catalogo avrebbe fatto diventare rosso un test che parla d'altro.
 SELECT results_eq(
     $$SELECT s.codice_interno::text, (n.nspname::text || '.' || c.relname::text) COLLATE "default",
              s.categoria::text, s.scope::text, s.key_selector
         FROM config.sorgenti s
         JOIN pg_class c     ON c.oid = s.target_table
         JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE s.scope = 'CATALOGO'
+       WHERE s.codice_interno IN ('DDT_ACQUISTO', 'DISTINTA_INCASSO', 'EMAIL', 'INVENTARIO',
+                                  'ORDINE_ACQUISTO', 'RETTIFICA', 'TRASFERIMENTO')
        ORDER BY s.codice_interno$$,
     $$VALUES ('DDT_ACQUISTO',     'acquisti.ddt',                'DOCUMENTO', 'CATALOGO', 'id'),
              ('DISTINTA_INCASSO', 'pagamenti.vendite_contabili', 'DOCUMENTO', 'CATALOGO', 'id'),

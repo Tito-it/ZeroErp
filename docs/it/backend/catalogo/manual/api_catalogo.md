@@ -405,34 +405,13 @@ tipologie, `?rel=catalogo.uom_tipi`. E' la regola di questo repository: le tabel
 codice/descrizione passano dalla whitelist del lookup generico, non da un endpoint
 per tabella (vedi `api_lookup_codici.md`).
 
-### 2.3 Lookup modi di arrotondamento UoM (Fase 1)
+### 2.3 Lookup modi di arrotondamento UoM — RITIRATO (2026-11-09)
 
-| | |
-|---|---|
-| **Metodo** | `GET` |
-| **URL** | `/api/v1/catalogo/lookup/rounding-modes/` |
-
-Lookup statico dei 5 modi di arrotondamento ammessi su UoM operativa.
-Single source of truth: `_ROUNDING_MODE_VALIDI` + `_ROUNDING_MODE_DESCRIZIONI`
-in `catalogo_service` (no DB query, no paginazione).
-
-#### Risposta lookup rounding modes (200)
-
-```json
-{
-  "data": [
-    {"codice": "HALF_UP",   "descrizione": "Arrotondamento meta' su (5 va su)",       "ordering": 1},
-    {"codice": "HALF_DOWN", "descrizione": "Arrotondamento meta' giu' (5 va giu')",   "ordering": 2},
-    {"codice": "HALF_EVEN", "descrizione": "Arrotondamento bancario (5 al pari piu' vicino)", "ordering": 3},
-    {"codice": "UP",        "descrizione": "Arrotondamento sempre su (verso infinito)", "ordering": 4},
-    {"codice": "DOWN",      "descrizione": "Arrotondamento sempre giu' (verso zero)",   "ordering": 5}
-  ]
-}
-```
-
-L'ordine e' "default-first" (HALF_UP). Consumato dal FE
-`RoundingModeSelect` con cache `useGlobalLookup` chiave
-`catalogo.uom_rounding_modes`.
+`GET /api/v1/catalogo/lookup/rounding-modes/` non esiste piu': il modo di
+arrotondamento delle unita' operative e' uscito dal modello (Q4 di
+brief-db-revisione-catalogo, giro 2). La quantita' operativa rispetta
+`max_decimals`, e una quantita' con piu' decimali la rifiuta il DB
+(`E_QTA_OPERATIVA_DECIMALI`), non la arrotonda.
 
 ---
 
@@ -524,21 +503,36 @@ Articolo inesistente: `404` `E_CATALOGO_ARTICOLO_NOT_FOUND`.
 Campi principali:
 
 - `uom_id` (obbligatorio in create, immutabile dopo)
-- `is_base`
 - `factor_to_base`
 - `is_sell_uom`
 - `is_purchase_uom`
 - `is_logistic_uom`
 - `qty_step`
-- `rounding_mode` (uno tra `HALF_UP`, `HALF_DOWN`, `HALF_EVEN`, `UP`, `DOWN`)
 - `max_decimals`
 - `forbid_fraction`
-- `require_lot`
 - `gtin`
 - `valido_dal` (Fase 4: opzionale, fallback `today` se omesso/null)
 - `valido_al`
 - `attivo`
 - `meta`
+
+⛔ **Fuori contratto (400) dal 2026-11-09** (giro 2 di brief-db-revisione-catalogo):
+`is_base` — la riga dell'unita' base nasce con l'articolo e non si crea, non
+si sposta, non si toglie (`E_UOM_RIGA_BASE_IMMUTABILE`); `rounding_mode` e
+`require_lot` — colonne ritirate.
+
+#### Regole dal DB (giro 2)
+
+- **La mappatura si versiona**: la stessa unita' puo' stare su piu' righe, in
+  periodi che non si sovrappongono (`uq_articoli_uom_operativa_no_overlap`,
+  `UNIQUE … WITHOUT OVERLAPS`). Per cambiare il fattore da una data: chiudere
+  la mappatura in vigore (`valido_al`) e aggiungerne una nuova dal giorno
+  dopo. Un periodo sovrapposto e' un 400 `E_CATALOGO_VALIDATION`, senza campo.
+- **La riga base e' fissa**: fattore 1 e nessuna data
+  (`chk_articoli_uom_operativa_base_fissa`, 400 `E_CATALOGO_VALIDATION`).
+- Il fattore di una riga di documento lo legge il DB alla data del documento
+  (`catalogo.fn_get_uom_factor`: base, mappatura alla data, conversione
+  generale); senza nessuno dei tre la riga si rifiuta (`E_UOM_MISSING`).
 
 #### Defaults Fase 1
 
@@ -549,7 +543,6 @@ emittente disponibile):
 |---|---|
 | `CATALOGO_UOM_OP_DEFAULT_FACTOR_TO_BASE` | `1` |
 | `CATALOGO_UOM_OP_DEFAULT_QTY_STEP` | `1` |
-| `CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE` | `HALF_UP` |
 | `CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS` | `6` |
 | `CATALOGO_UOM_OP_DEFAULT_FORBID_FRACTION` | `false` |
 
@@ -575,7 +568,8 @@ Singola riga arricchita con `non_editable_fields: ["uom_id"]` (Fase 5).
 
 #### Regole specifiche
 
-- L'unicita` `articolo + uom` resta governata dal DB
+- La riga dell'unita' base non si elimina: la rifiuta il DB con
+  `E_UOM_RIGA_BASE_IMMUTABILE` (capability `puo_eliminarsi = false` in lista).
 - Guard d'uso e blocchi delete restano nel DB
 
 ---
@@ -838,6 +832,11 @@ Risposta: envelope paginato standard (`count`, `page`, `page_size`,
 | `fattore` | decimal | Si | Fattore di conversione `> 0` |
 | `valido_dal` | date | No | Fase 4: opzionale, fallback `today` se omesso/null |
 | `valido_al` | date | No | Limite superiore validita' (default `null`) |
+
+Una conversione vale per la **coppia non orientata** e il periodo: kg→g e g→kg
+in periodi che si sovrappongono sono la stessa conversione, e la rifiuta
+`ex_unita_misura_conversioni_coppia_no_overlap` (400 `E_CATALOGO_VALIDATION`).
+Fra unita' di tipologia diversa: `E_UOM_CONVERSIONE_TIPO_DIVERSO` dal DB.
 
 ### 6.4 Aggiorna conversione
 

@@ -43,11 +43,11 @@ from apps.catalogo.db.catalogo_uom_repository import (
     CatalogoUomRepository,
 )
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
-from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.db_error_fields import db_error_code
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
+from apps.core.services.non_editable_fields_helper import compute_non_editable_fields
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.partitioned_note_service import ordine_note_valido
 from apps.core.services.testata_guard import o_not_found, pagina_dopo_testata
@@ -55,6 +55,7 @@ from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
     MissingType as _MissingType,
     PayloadValidator,
+    map_integrity_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,57 +110,41 @@ _COMPONENTE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(
     key for key in COMPONENTE_WRITE_COLUMNS if key != "componente_id"
 )
 _NOTA_ALLOWED_KEYS: frozenset[str] = NOTA_WRITE_COLUMNS
-_ROUNDING_MODE_VALIDI: frozenset[str] = frozenset({"UP", "DOWN", "HALF_UP", "HALF_DOWN", "HALF_EVEN"})
-
-# Scopo: Mappa codice -> (descrizione, ordering) per lookup statico rounding modes UoM operative.
-# Ordering segue la convenzione "default-first" (HALF_UP banker's rounding standard, poi varianti).
-_ROUNDING_MODE_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
-    ("HALF_UP", "Arrotondamento meta' su (5 va su)", 1),
-    ("HALF_DOWN", "Arrotondamento meta' giu' (5 va giu')", 2),
-    ("HALF_EVEN", "Arrotondamento bancario (5 al pari piu' vicino)", 3),
-    ("UP", "Arrotondamento sempre su (verso infinito)", 4),
-    ("DOWN", "Arrotondamento sempre giu' (verso zero)", 5),
-)
 _NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 _NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
 
-# Gap conosciuti rispetto a `dbops.vw_non_editable_fields` (Fase 5 BE).
-# La vista DB oggi copre solo i lock_columns AUTO registrati nel CSV
-# `dbops.automation_lock_columns`. Mancano alcune colonne effettivamente
-# immutabili lato dominio (lock condizionali o non ancora registrati):
-#   - catalogo.articoli.codice (gestito da trgfn_articoli_protect_codice)
+# Gap conosciuti rispetto a `dbops.vw_non_editable_fields`.
+# Dal giro 10a di brief-db-revisione-dbops (D25, BE2) la vista legge il lock
+# VIVO: ogni colonna che un trigger di lock blocca davvero, `codice_interno`
+# compreso. Qui restano solo le colonne immutabili per il dominio che il DB
+# NON dichiara ancora come lock:
 #   - catalogo.articoli_uom_operativa.uom_id (immutabile per coppia)
 #   - catalogo.unita_misura_conversioni.uom_from_id / uom_to_id
-# Questo dict copre il gap fornendo al FE la lista completa. Quando il
-# team DB completera' il registro, le entries qui vanno rimosse: la lista
-# tornera' DB-driven al 100%. Drift visibile = self-documenting.
+# ⛔ Un gap che ripete una colonna gia' bloccata dal DB e' una seconda sede
+#    della stessa regola: quando il DB la dichiara, la voce qui si toglie
+#    (cosi' e' uscito `catalogo.articoli.codice`, 2026-11-09).
 _NON_EDITABLE_DB_GAPS: dict[tuple[str, str], tuple[str, ...]] = {
-    ("catalogo", "articoli"): ("codice",),
     ("catalogo", "articoli_uom_operativa"): ("uom_id",),
     ("catalogo", "unita_misura_conversioni"): ("uom_from_id", "uom_to_id"),
 }
 
 
-# Scopo: Calcola la lista `non_editable_fields` per (schema, tabella).
-# Unisce:
-#   - lock statici da `dbops.vw_non_editable_fields` (automation_lock_columns)
-#   - gap Python `_NON_EDITABLE_DB_GAPS` (immutabili non registrati lato DB)
-#   - se passato `record_id`: lock condizionali da `dbops.lock_columns_conditional`
-#     valutati sul record (es. `catalogo.articoli` con BoM attiva blocca
-#     is_composito/is_solo_componente/requires_serial — migration 20260522-04).
-# Senza record_id ritorna i soli lock statici (backward-compat, usato dove
-# il record non e' ancora disponibile o non e' rilevante).
-def _compute_non_editable_fields(
+# Scopo: `non_editable_fields` di una tabella di catalogo: il BB
+#        `compute_non_editable_fields` coi gap di `_NON_EDITABLE_DB_GAPS`.
+#        Con `record_id` aggiunge i lock condizionali valutati sul record
+#        (es. `catalogo.articoli` usato o con distinta in vigore).
+# ⛔ Non e' piu' una copia (2026-11-09, regola del 2, ok Tid): fino a quel
+#    giorno qui si riscriveva l'unione lock DB + gap + ordinamento, e il ramo
+#    per record esisteva solo in questa copia. Ora la logica sta nel BB, e qui
+#    resta solo cio' che e' di catalogo: quali gap per quale tabella.
+def _non_editable_fields_catalogo(
     schema: str, table: str, *, record_id: str | int | None = None,
 ) -> list[str]:
-    if record_id is not None:
-        db_locked = set(
-            LockColumnsRepository.list_non_editable_for_record(schema, table, record_id),
-        )
-    else:
-        db_locked = set(LockColumnsRepository.list_non_editable(schema, table))
-    db_locked.update(_NON_EDITABLE_DB_GAPS.get((schema, table), ()))
-    return sorted(db_locked)
+    return compute_non_editable_fields(
+        schema, table,
+        gaps=_NON_EDITABLE_DB_GAPS.get((schema, table), ()),
+        record_id=record_id,
+    )
 
 
 # Scopo: in create, applica il default `valido_dal=today` se il campo manca
@@ -663,30 +648,33 @@ def _extract_articolo_payload(
     return data
 
 
+# I vincoli di `catalogo.articoli` che l'operatore puo' violare, coi nomi
+# della doc auto-generata. Il riconoscimento e la traduzione sono del BB
+# `map_integrity_error`.
+_ARTICOLO_UNIQUE: dict[str, tuple] = {
+    "uq_articoli_codice": ("E_CATALOGO_VALIDATION", "Codice articolo gia' esistente.", "codice"),
+}
+# ⚠️ Il CHECK su composito/solo componente (brief-db-revisione-catalogo, BE10)
+#    non ha UN campo: e' la coppia a essere incoerente, e il form spegne
+#    l'uno quando l'altro e' acceso.
+_ARTICOLO_CHECK: dict[str, tuple] = {
+    "chk_articoli_composito_non_solo_componente": (
+        "E_CATALOGO_VALIDATION",
+        "Un articolo composito non puo' essere solo componente: spegnere uno dei due.",
+    ),
+}
+
+
 # Scopo: Converte IntegrityError su articoli in errore applicativo leggibile.
-def _translate_articolo_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
-    detail = str(exc)
-    lowered = detail.lower()
-    if (
-        "uq_articoli_codice" in lowered
-        or "articoli_codice_key" in lowered
-        or "key (codice)=" in lowered
-    ):
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Codice articolo gia' esistente.",
-            detail=detail,
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    ErrorManager.raise_error(
-        code="E_CATALOGO_VALIDATION",
-        message="Violazione vincoli articolo.",
-        detail=detail,
+def _translate_articolo_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
+    map_integrity_error(
+        exc,
+        unique_constraints=_ARTICOLO_UNIQUE,
+        check_constraints=_ARTICOLO_CHECK,
+        fallback_code="E_CATALOGO_VALIDATION",
+        fallback_message="Violazione vincoli articolo.",
         function_name=function_name,
         log_to_db=True,
-        cause=exc,
     )
 
 
@@ -740,12 +728,10 @@ def _extract_uom_operativa_payload(
         )
 
     for field_name in (
-        "is_base",
         "is_sell_uom",
         "is_purchase_uom",
         "is_logistic_uom",
         "forbid_fraction",
-        "require_lot",
         "attivo",
     ):
         field_value = _extract_present_bool(
@@ -790,17 +776,6 @@ def _extract_uom_operativa_payload(
         )
         data["max_decimals"] = max_decimals
 
-    rounding_mode = _extract_enum_string(
-        payload,
-        "rounding_mode",
-        function_name=function_name,
-        allowed_values=_ROUNDING_MODE_VALIDI,
-        nullable=False,
-        message=payload_message,
-    )
-    if rounding_mode is not _MISSING:
-        data["rounding_mode"] = rounding_mode
-
     gtin = _extract_string(
         payload,
         "gtin",
@@ -841,16 +816,11 @@ def _extract_uom_operativa_payload(
     if meta is not _MISSING:
         data["meta"] = meta
 
-    if data.get("is_base") is True and "factor_to_base" in data:
-        ErrorManager.require(
-            data["factor_to_base"] == Decimal("1"),
-            code="E_CATALOGO_VALIDATION",
-            message="Payload UoM operativa non valido.",
-            detail="La UoM base deve avere factor_to_base = 1.",
-            context={"field": "factor_to_base"},
-            function_name=function_name,
-            log_to_db=True,
-        )
+    # La riga base (fattore 1, nessuna data) la tiene il DB:
+    # `chk_articoli_uom_operativa_base_fissa`, tradotto in
+    # `_UOM_OPERATIVA_CHECK`. ⛔ Fino al 2026-11-09 qui c'era una copia
+    # PARZIALE della regola: scattava solo se il payload portava insieme
+    # `is_base` e il fattore (D12, BE1 di brief-db-revisione-catalogo).
 
     forbid_fraction = data.get("forbid_fraction")
     if forbid_fraction is True:
@@ -1194,39 +1164,78 @@ def _extract_nota_payload(
     return data
 
 
-# Scopo: Traduce IntegrityError su UoM operative in errore applicativo uniforme.
-def _translate_uom_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
-    ErrorManager.raise_error(
-        code="E_CATALOGO_VALIDATION",
-        message="Violazione vincoli UoM operativa.",
-        detail=str(exc),
+# I vincoli di `catalogo.articoli_uom_operativa` e `catalogo.articoli_componenti`
+# che l'operatore puo' violare scegliendo, coi nomi della doc auto-generata. Il
+# resto (CHECK di forma, FK) lo ferma prima la validazione del payload, e cade
+# sul ripiego del BB `map_integrity_error`.
+# ⚠️ Il campo solo dove e' vero: l'articolo della UoM e' nella rotta, quindi
+#    il doppione e' la UoM scelta; nel legame contano componente E periodo,
+#    due scelte dell'operatore, e la tupla resta a due.
+# ⭐ La mappatura si versiona (2026-11-09, D13/Q3, BE18): «cambiare» una
+#    mappatura e' chiuderla e inserirne una nuova dal giorno dopo. La stessa
+#    unita' torna quindi su piu' righe, e il doppione vero e' il PERIODO che si
+#    sovrappone (`UNIQUE … WITHOUT OVERLAPS`, 23P01). Unita' e periodo sono due
+#    scelte dell'operatore: la tupla resta a due, senza campo.
+_UOM_OPERATIVA_UNIQUE: dict[str, tuple] = {
+    "uq_articoli_uom_operativa_no_overlap": (
+        "E_CATALOGO_VALIDATION",
+        "L'unita' ha gia' una mappatura in un periodo che si sovrappone: chiudere quella in vigore "
+        "prima di aprirne una nuova.",
+    ),
+}
+# La riga base ha fattore 1 e nessuna data (D12): e' la coppia fattore/date a
+# essere incoerente, nessun campo da solo.
+_UOM_OPERATIVA_CHECK: dict[str, tuple] = {
+    "chk_articoli_uom_operativa_base_fissa": (
+        "E_CATALOGO_VALIDATION",
+        "La riga dell'unita' base ha sempre fattore 1 e nessuna data di validita'.",
+    ),
+}
+_COMPONENTE_UNIQUE: dict[str, tuple] = {
+    "uq_articoli_componenti_no_overlap": (
+        "E_CATALOGO_VALIDATION",
+        "Il componente e' gia' nella distinta in un periodo che si sovrappone: chiudere il legame in vigore prima di aprirne uno nuovo.",
+    ),
+    "uq_articoli_componenti_prodotto_componente_from": (
+        "E_CATALOGO_VALIDATION",
+        "Il componente ha gia' un legame che comincia lo stesso giorno.",
+    ),
+}
+
+
+# Scopo: Converte IntegrityError su UoM operative in errore applicativo leggibile.
+def _translate_uom_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
+    map_integrity_error(
+        exc,
+        unique_constraints=_UOM_OPERATIVA_UNIQUE,
+        check_constraints=_UOM_OPERATIVA_CHECK,
+        fallback_code="E_CATALOGO_VALIDATION",
+        fallback_message="Violazione vincoli UoM operativa.",
         function_name=function_name,
         log_to_db=True,
-        cause=exc,
     )
 
 
-# Scopo: Traduce IntegrityError su componenti BoM in errore applicativo uniforme.
-def _translate_componente_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
-    ErrorManager.raise_error(
-        code="E_CATALOGO_VALIDATION",
-        message="Violazione vincoli componente.",
-        detail=str(exc),
+# Scopo: Converte IntegrityError su componenti BoM in errore applicativo leggibile.
+def _translate_componente_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
+    map_integrity_error(
+        exc,
+        unique_constraints=_COMPONENTE_UNIQUE,
+        fallback_code="E_CATALOGO_VALIDATION",
+        fallback_message="Violazione vincoli componente.",
         function_name=function_name,
         log_to_db=True,
-        cause=exc,
     )
 
 
-# Scopo: Traduce IntegrityError su note catalogo in errore applicativo uniforme.
+# Scopo: Converte IntegrityError su note catalogo in errore applicativo leggibile.
 def _translate_nota_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
-    ErrorManager.raise_error(
-        code="E_CATALOGO_VALIDATION",
-        message="Violazione vincoli nota.",
-        detail=str(exc),
+    map_integrity_error(
+        exc,
+        fallback_code="E_CATALOGO_VALIDATION",
+        fallback_message="Violazione vincoli nota.",
         function_name=function_name,
         log_to_db=True,
-        cause=exc,
     )
 
 
@@ -1326,8 +1335,8 @@ def fn_get_articolo(articolo_id: UUID | str) -> dict[str, Any]:
     # immutabili quando BoM attiva, seed 20260522-04). Senza record_id
     # avremmo solo i lock statici e l'UX non saprebbe del vincolo finche'
     # il trigger DB non rifiuta al save.
-    articolo["non_editable_fields"] = _compute_non_editable_fields(
-        # `str(...)`: lo fa comunque `LockColumnsRepository`; qui rende il tipo
+    articolo["non_editable_fields"] = _non_editable_fields_catalogo(
+        # `str(...)`: lo fa comunque il repository dei lock; qui rende il tipo
         # coerente con la firma (`UUID | str` -> `str`).
         "catalogo", "articoli", record_id=str(articolo_id),
     )
@@ -1583,19 +1592,6 @@ def fn_lookup_articoli_ammessi(
     return _lookup_response(results, troncato=troncato)
 
 
-# Scopo: Lista statica dei modi di arrotondamento UoM operativa (lookup dedicato).
-#        Single source of truth = `_ROUNDING_MODE_VALIDI` + `_ROUNDING_MODE_DESCRIZIONI`.
-#        Niente DB: i 5 modi sono enum tecnici matematici fissi (IEEE 754 like),
-#        non gestiti dall'admin. Restituisce lista nell'ordine "default-first".
-#        L'invariante "descrizioni copre l'enum" e' garantita dal test
-#        `test_fn_list_uom_rounding_modes_coverage` (CI), non a runtime.
-def fn_list_uom_rounding_modes() -> list[dict[str, Any]]:
-    return [
-        {"codice": codice, "descrizione": descrizione, "ordering": ordering}
-        for codice, descrizione, ordering in _ROUNDING_MODE_DESCRIZIONI
-    ]
-
-
 # Scopo: La PAGINA delle UoM operative dell'articolo (lista
 #        `catalogo.articolo_uom`), previa verifica esistenza articolo: righe,
 #        totale e `non_editable_fields` (il FE costruisce il form di edit da
@@ -1623,7 +1619,7 @@ def fn_list_uom_operative_pagina(
     results, total = CatalogoUomRepository().list_uom_operative_pagina(
         articolo_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return results, total, _compute_non_editable_fields("catalogo", "articoli_uom_operativa")
+    return results, total, _non_editable_fields_catalogo("catalogo", "articoli_uom_operativa")
 
 
 # Scopo: Tutte le UoM operative dell'articolo, coi campi non modificabili:
@@ -1632,7 +1628,7 @@ def fn_list_uom_operative(articolo_id: UUID | str) -> dict[str, Any]:
     _get_articolo_base(articolo_id)
     repository = CatalogoUomRepository()
     response = collezione_completa(repository.list_uom_operative(articolo_id))
-    response["non_editable_fields"] = _compute_non_editable_fields(
+    response["non_editable_fields"] = _non_editable_fields_catalogo(
         "catalogo", "articoli_uom_operativa",
     )
     return response
@@ -1653,7 +1649,7 @@ def fn_create_uom_operativa(articolo_id: UUID | str, payload: dict[str, Any]) ->
         _translate_uom_integrity_error(exc, function_name=function_name)
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
-    result["non_editable_fields"] = _compute_non_editable_fields(
+    result["non_editable_fields"] = _non_editable_fields_catalogo(
         "catalogo", "articoli_uom_operativa",
     )
     return result
@@ -1690,7 +1686,7 @@ def fn_update_uom_operativa(
     )
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
-    result["non_editable_fields"] = _compute_non_editable_fields(
+    result["non_editable_fields"] = _non_editable_fields_catalogo(
         "catalogo", "articoli_uom_operativa",
     )
     return result
@@ -1797,27 +1793,6 @@ def fn_update_componente(
     result = repository.get_componente(articolo_id, componente_row_id)
     assert result is not None
     return result
-
-
-# Scopo: Elimina un componente BoM con ownership check sul prodotto.
-def fn_delete_componente(articolo_id: UUID | str, componente_row_id: UUID | str) -> dict[str, Any]:
-    function_name = "catalogo.catalogo_service.fn_delete_componente"
-    _get_articolo_base(articolo_id)
-    repository = CatalogoBomRepository()
-    try:
-        deleted = repository.delete_componente(articolo_id, componente_row_id)
-    except IntegrityError as exc:
-        _translate_componente_integrity_error(exc, function_name=function_name)
-    ErrorManager.require(
-        deleted,
-        code="E_CATALOGO_COMPONENTE_NOT_FOUND",
-        message="Componente non trovato.",
-        detail=f"Nessun componente id={componente_row_id} per articolo id={articolo_id}.",
-        context={"articolo_id": articolo_id, "componente_row_id": str(componente_row_id)},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    return {"deleted": True}
 
 
 # Scopo: La PAGINA delle note dell'articolo (lista `catalogo.note`, dal
@@ -2387,7 +2362,7 @@ def fn_get_conversione(conv_id: int) -> dict[str, Any]:
     assert result is not None
     # Fase 5: arricchisce il detail coi campi non editabili (uom_from_id,
     # uom_to_id immutabili dopo create per coerenza con exclude daterange).
-    result["non_editable_fields"] = _compute_non_editable_fields(
+    result["non_editable_fields"] = _non_editable_fields_catalogo(
         "catalogo", "unita_misura_conversioni",
     )
     return result
@@ -2503,7 +2478,32 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, An
     return fn_get_conversione(conv_id)
 
 
-# Scopo: Traduce errori di integrita' DB per conversioni in messaggi utente.
+# I vincoli di `catalogo.unita_misura_conversioni` che l'operatore puo'
+# violare, coi nomi del catalogo (riconosciuti dal BB `map_integrity_error`).
+# ⭐ Una conversione per coppia NON orientata e periodo (2026-11-09, D14, BE18):
+#    kg→g e g→kg nello stesso periodo sono la stessa conversione detta due
+#    volte, e l'EXCLUDE la rifiuta (23P01). Coppia e periodo sono scelte
+#    dell'operatore: niente campo.
+_CONVERSIONE_EXCLUDE: dict[str, tuple] = {
+    "ex_unita_misura_conversioni_coppia_no_overlap": (
+        "E_CATALOGO_VALIDATION",
+        "Esiste gia' una conversione fra queste due unita' (in uno dei due versi) in un periodo che "
+        "si sovrappone: chiudere quella in vigore prima di aprirne una nuova.",
+    ),
+}
+# La frase di ripiego, una volta: la usano il BB (vincolo senza nome in mappa)
+# e il ramo dei DatabaseError che non sono violazioni d'integrita'.
+_CONVERSIONE_MSG_GENERICO = "Dati conversione non validi."
+_CONVERSIONE_CHECK: dict[str, tuple] = {
+    "chk_uom_conv_no_self": ("E_CATALOGO_VALIDATION", "UoM Da e UoM A devono essere diverse."),
+}
+_CONVERSIONE_FK: dict[str, tuple] = {
+    "fk_uom_conv_from": ("E_CATALOGO_VALIDATION", "Unita' di misura non trovata.", "uom_from_id"),
+    "fk_uom_conv_to": ("E_CATALOGO_VALIDATION", "Unita' di misura non trovata.", "uom_to_id"),
+}
+
+
+# Scopo: Traduce gli errori DB delle conversioni in messaggi utente.
 def _translate_conversione_integrity_error(exc: DatabaseError, *, function_name: str) -> None:
     # ⭐ Un rifiuto del DB col suo codice di catalogo PASSA INTATTO: il
     #    chiamante rilancia l'eccezione (`raise`), e il traduttore del middleware
@@ -2513,52 +2513,26 @@ def _translate_conversione_integrity_error(exc: DatabaseError, *, function_name:
     #    «Dati conversione non validi.» senza campo da evidenziare — trovato
     #    togliendo la copia della regola dal service
     #    (`test_date_validita_guard_comune_db` 7).
-    #    ⚠️ `E_GENERICO` resta qui: non distingue niente, ed e' cio' che solleva
-    #    il guard delle tipologie, a cui il ramo sotto da' una frase propria.
-    codice = db_error_code(exc)
-    if codice is not None and codice != "E_GENERICO":
+    #    Dal 2026-11-09 il guard delle tipologie solleva il suo codice
+    #    (`E_UOM_CONVERSIONE_TIPO_DIVERSO`, D6): il ramo che riconosceva la sua
+    #    frase dentro `E_GENERICO` e' uscito, e con lui il riconoscimento dei
+    #    vincoli dal testo («overlap», «foreign»): ora per nome, dal BB.
+    if db_error_code(exc) is not None:
         return
-    msg = str(exc).lower()
-    if "tipologia diversa" in msg or "same-type" in msg:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Conversione UoM non ammessa.",
-            detail="Le conversioni globali sono consentite solo tra UoM della stessa tipologia.",
+    if isinstance(exc, IntegrityError):
+        map_integrity_error(
+            exc,
+            unique_constraints=_CONVERSIONE_EXCLUDE,
+            fk_constraints=_CONVERSIONE_FK,
+            check_constraints=_CONVERSIONE_CHECK,
+            fallback_code="E_CATALOGO_VALIDATION",
+            fallback_message=_CONVERSIONE_MSG_GENERICO,
             function_name=function_name,
             log_to_db=True,
-            cause=exc,
         )
-    if "overlap" in msg or "exclude" in msg:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Esiste gia' una conversione attiva per questa coppia UoM nel periodo indicato.",
-            detail=str(exc),
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    if "self" in msg or ("uom_from" in msg and "uom_to" in msg and "check" in msg):
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="UoM Da e UoM A devono essere diverse.",
-            detail=str(exc),
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    if "fk" in msg or "foreign" in msg:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Unita' di misura non trovata o non attiva.",
-            detail=str(exc),
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    # Catch-all: qualsiasi altro vincolo DB non riconosciuto
     ErrorManager.raise_error(
         code="E_CATALOGO_VALIDATION",
-        message="Dati conversione non validi.",
+        message=_CONVERSIONE_MSG_GENERICO,
         detail=str(exc),
         function_name=function_name,
         log_to_db=True,

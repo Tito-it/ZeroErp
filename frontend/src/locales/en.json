@@ -1777,7 +1777,14 @@
         "non_abilitata": "The process is switched off on this installation: switch it back on before running it.",
         "non_decidibile": "It is not known whether the process is on: the environment of this installation has not been declared.",
         "gia_in_coda": "Already queued (job #{job_id}): it can be pressed again once that job has finished."
-      }
+      },
+      "vivo_tutti": "Live and retired",
+      "vivo_si": "Live only",
+      "vivo_no": "Retired only",
+      "stato_vivo": "Live",
+      "stato_ritirato": "Retired",
+      "ritirato_dal": "Retired since {data}",
+      "ritiro_programmato": "Retirement scheduled on {data}"
     },
     "error_log": {
       "titolo": "Technical error log",
@@ -2038,6 +2045,7 @@
     "field_requires_lotto": "Requires lot",
     "hint_requires_lotto": "The item is tracked by batches: every movement names a lot",
     "hint_onere_struttura": "This is a charge, not goods: no stock, kit, batches or serial numbers",
+    "hint_composito_solo_componente": "Composite and component-only exclude each other: switch the other off to turn this one on",
     "field_desc_fattura": "Invoice description",
     "field_fattore": "Factor",
     "field_vendita": "Sale",
@@ -2118,6 +2126,7 @@
     "col_uom_da": "UoM From",
     "col_uom_a": "UoM To",
     "tag_base": "Base",
+    "hint_uom_base_fissa": "The base unit always applies: factor 1 and no dates. To sell in another unit, add a new one.",
     "tag_logistica": "Logistics",
     "conv_search_placeholder": "Search conversion (UoM code)...",
     "conv_mostra_non_attive": "Show inactive",
@@ -2129,21 +2138,22 @@
     "col_desc_a": "Description To",
     "field_uom_da": "UoM From",
     "field_logistica": "Logistics",
-    "field_require_lot": "Requires Lot",
     "field_forbid_fraction": "Integers Only",
     "field_qty_step": "Qty Step",
     "field_max_decimals": "Max Decimals",
-    "field_rounding_mode": "Rounding",
     "field_gtin": "GTIN",
     "section_uso": "Usage",
     "section_regole_input": "Input Rules",
     "section_extra": "Other",
-    "select_rounding_mode": "Select rounding mode",
     "distinta": {
       "componente_reason": {
         "componente_padre": "It is the item itself: it cannot be a component of its own bill of materials.",
         "componente_composito": "It is a kit itself: a bill of materials contains simple items only.",
         "iva_discordante": "Its VAT rate differs from the kit's: components carry the parent's VAT."
+      },
+      "azione_reason": {
+        "prezzi_altre_aziende": "It has bundle prices in other companies' price lists, which you cannot see: the link cannot be closed while those prices stay open.",
+        "prezzi_dopo_la_fine": "It has bundle prices in active price lists that start after this date: the link can be closed from their start at the earliest."
       }
     }
   },

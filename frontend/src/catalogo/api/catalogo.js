@@ -116,10 +116,6 @@ export function updateArticoloComponente(articoloId, compId, payload) {
   return api.patch(`${BASE}/articoli/${articoloId}/componenti/${compId}/`, payload)
 }
 
-export function deleteArticoloComponente(articoloId, compId) {
-  return api.delete(`${BASE}/articoli/${articoloId}/componenti/${compId}/`)
-}
-
 // --- Unita' di misura (CRUD) ---
 
 export function listUomTipi(params = {}) {
@@ -159,15 +155,6 @@ export function disattivaUnitaMisura(id) {
 }
 
 // Nota: il lookup UoM usa l'endpoint generico lookupCodici('catalogo.unita_misura') da core/apiCore.js
-
-// --- Lookup statici ---
-
-// Scopo: Lookup statico modi di arrotondamento UoM operativa.
-//        Ritorna lista di {codice, descrizione, ordering}. Single source of truth
-//        nel BE (catalogo_service._ROUNDING_MODE_VALIDI). Nessuna paginazione.
-export function lookupUomRoundingModes() {
-  return api.get(`${BASE}/lookup/rounding-modes/`)
-}
 
 // --- Conversioni UoM ---
 

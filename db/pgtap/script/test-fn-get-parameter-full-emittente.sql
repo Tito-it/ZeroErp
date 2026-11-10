@@ -5,7 +5,7 @@
 -- Test: script.fn_get_parameter_full (firma con emittente_fiscale_id)
 --
 -- Elenco test:
---  1) Funzione presente con la firma VIVA a 7 argomenti
+--  1) Funzione presente con la firma VIVA a 6 argomenti
 --  2) Vecchia firma (integer) non esiste piu'
 --  3) Riferimenti minimi: tabelle parameters e parameter_overrides
 --  4) Setup parametro test e emittente fiscale di riferimento
@@ -24,6 +24,8 @@
 --   (ai_assistant/tool_registry.py con 1 arg, script.fn_get_default_by_param
 --   con 6). La firma a 6 argomenti e' stata droppata (20260727-25) e il caso 1
 --   ora punta a quella viva. Il caso 9 e' il presidio perche' non ricapiti.
+-- rev 2026-11-09 (brief-db-revisione-dbops, giro 13, Q10): il livello «sessione» esce;
+--   la firma viva e' a 6 argomenti, senza p_session_key (p_code a %TYPE: character varying).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -50,8 +52,8 @@ SELECT plan(9);
 -- ============================================================
 SELECT has_function(
     'script', 'fn_get_parameter_full',
-    ARRAY['text', 'bigint', 'integer', 'integer[]', 'text', 'text', 'smallint'],
-    '1) fn_get_parameter_full presente con firma a 7 argomenti (categoria_cliente)'
+    ARRAY['character varying', 'bigint', 'integer', 'integer[]', 'text', 'smallint'],
+    '1) fn_get_parameter_full presente con la firma viva a 6 argomenti (senza la sessione)'
 );
 
 -- ============================================================

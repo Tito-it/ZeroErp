@@ -18,8 +18,10 @@
 #        `security_invoker` su tabelle in row level security: da un percorso
 #        senza le GUC (un management command) tornano ZERO per CECITA', e su una
 #        vista che deve restare vuota «zero righe» e «non ho potuto vedere» si
-#        scrivono uguale. La funzione e' `SECURITY DEFINER` del proprietario e
-#        risponde un numero, mai le righe.
+#        scrivono uguale. Risponde un numero, mai le righe. ⚠️ Dal 2026-10-10
+#        `fn_conta_presidio` e' `SECURITY INVOKER` (la somma dei gruppi): ad
+#        attraversare la RLS e' la sua sede, `fn_conta_presidio_per_variante`,
+#        `SECURITY DEFINER` del proprietario.
 #        ⚠️ E la colonna `perimetro` dice un'ALTRA cosa: se chi legge puo' anche
 #        ELENCARE le righe. Su `DEFINER` il conteggio si mostra e le righe no.
 #

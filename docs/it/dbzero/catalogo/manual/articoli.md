@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.articoli`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -65,8 +65,10 @@ stesso per tutte le aziende, i documenti che lo usano no.
 
 Dopo l'inserimento di un articolo, `catalogo.trgfn_articoli_seed_uom_base` scrive in
 `catalogo.articoli_uom_operativa` la riga base: l'unità principale dell'articolo, con fattore
-uno. Così l'unità principale è subito usabile nei documenti, senza un secondo passo. Se la coppia
-articolo-unità esiste già, la scrittura non fa niente.
+uno, senza date, attiva o spenta come l'articolo. Così l'unità principale è subito usabile nei
+documenti, senza un secondo passo. La riga base poi resta fissa: non si sposta, non si cancella
+finché c'è l'articolo, e va via con lui
+([catalogo.trgfn_articoli_uom_operativa_guard_base](/dbzero/catalogo/funzioni/trgfn_articoli_uom_operativa_guard_base)).
 
 ---
 
@@ -179,13 +181,21 @@ il guard dell'IVA (sezione sotto).
 
 Valgono anche per un articolo non ancora usato.
 
-* `catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva`: `is_composito`,
-  `requires_serial` e `is_solo_componente` non cambiano mentre l'articolo è padre o componente
-  di una distinta in vigore, e un componente non diventa composito (la distinta ha un livello).
+* **Un articolo non è insieme composito e solo componente** (CHECK
+  `chk_articoli_composito_non_solo_componente`). Un articolo così non servirebbe a niente: non fa
+  da padre, perché un solo componente non ha una distinta, e non fa da componente, perché la
+  distinta ha un livello solo e un composito non ci entra. Il vincolo vale su ogni scrittura,
+  anche dalla porta amministratore.
+* `catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva`: `is_composito` e
+  `requires_serial` non cambiano mentre l'articolo è padre di una distinta in vigore o futura,
+  `is_solo_componente` mentre è componente di una distinta in vigore, e un componente di una
+  distinta in vigore o futura non diventa composito (la distinta ha un livello).
 * `catalogo.trgfn_articoli_guard_iva_bom_attiva`: un kit e i suoi componenti hanno la stessa
-  IVA.
-* `catalogo.trgfn_articoli_guard_listino_se_composito`: un articolo con righe di listino attive
-  non diventa composito.
+  IVA, sui legami da oggi in poi; si giudica a fine transazione.
+
+Un articolo in listino non diventa composito per via di un'altra regola: un articolo in listino è
+usato, e il guard dell'uso non lo lascia cambiare. Le righe di listino di un composito le rifiuta
+il lato riga (`E_LISTINO_RIGA_COMPOSITO_VIETATO`).
 
 ---
 
@@ -235,14 +245,6 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Un articolo creato non attivo non si salva.** La riga base dell'unità operativa nasce
-  sempre attiva, e le unità operative pretendono un articolo attivo. Il controllo è differito:
-  l'inserimento di un articolo con `attivo = false` fallisce al COMMIT con
-  `E_ATTIVO_PADRE_NON_ATTIVO`.
-* **La riga base dell'unità operativa non è protetta.** Nessun vincolo impone fattore 1 sulla
-  riga base, né impedisce di cambiarne l'unità o di cancellarla.
-* **Un articolo può essere composito e solo componente insieme.** Nessun vincolo lo esclude, e
-  un articolo così non fa da padre né da componente.
 * **Una nota impedisce di spegnere l'articolo.** La partizione delle note di articolo non ha
   `attivo`, quindi per il trigger `block_deact` ogni nota è un figlio vivo
   (`E_ATTIVO_BLOCK_CHILDREN_EXIST`).
@@ -259,9 +261,9 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
   articolo usato.
 * `E_BOM_MODIFICA_VIETATA`, `E_BOM_COMPONENTE_DIVENTA_COMPOSITO`: i flag di struttura contro la
   distinta.
+* Il CHECK `chk_articoli_composito_non_solo_componente` non ha un codice suo: il rifiuto è la
+  violazione di vincolo di PostgreSQL.
 * `E_BOM_IVA_DISCORDANTE`: l'IVA del kit e quella di un componente divergono.
-* `E_LISTINO_RIGA_COMPOSITO_VIETATO`: un articolo con righe di listino attive diventa
-  composito.
 * `E_ARTICOLO_ONERE_NATURA_MERCE`, `E_ARTICOLO_ONERE_STRUTTURA`: un onere con natura di merce o
   con una caratteristica da bene.
 * `E_ATTIVO_PADRE_NON_ATTIVO`: un vocabolario puntato è spento (al COMMIT).
@@ -284,6 +286,8 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
   struttura, anche se l'uso è di un'altra azienda; `iva_id` e descrizione restano libere.
 * `db/pgtap/catalogo/test-articolo-onere-struttura-v1.sql` — un onere non nasce né diventa un
   bene.
+* `db/pgtap/catalogo/test-articoli-componenti-solo-componente.sql` — il CHECK c'è, e un kit
+  non diventa solo componente.
 * `db/pgtap/vendite/test-articolo-ritirato-v1.sql` — l'articolo ritirato sulla riga nuova, sulla
   copia di listino e sugli oneri.
 
@@ -306,6 +310,11 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
 * 2026-10-25 — `note_target_tipo` vale `ARTICOLO` (prima `ARTICOLI`).
 * 2026-11-03 — un onere non è nemmeno un bene (brief-db-addebito-trasporto-ordine).
 * 2026-11-05 — nasce `obsoleto_dal` (brief-db-articoli-obsoleto-dal).
+* 2026-11-09 — nasce il CHECK `chk_articoli_composito_non_solo_componente`: prima la
+  combinazione era ammessa, e solo un guard sul legame impediva a un solo componente di fare da
+  padre (brief-db-revisione-catalogo, giro 1).
+* 2026-11-09 — la riga base dell'unità operativa nasce attiva o spenta come l'articolo, ed è
+  protetta (brief-db-revisione-catalogo, giro 2).
 
 ---
 

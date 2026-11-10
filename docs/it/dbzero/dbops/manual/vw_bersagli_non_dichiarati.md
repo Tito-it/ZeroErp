@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_bersagli_non_dichiarati`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -19,13 +19,14 @@
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — porta il bersaglio di un errore nel suo canale
 > * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno da cui una voce ritirata conta come ritirata
 > * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti da cui la vista legge i tipi
+> * [dbops.fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile) — quali funzioni hanno un corpo da leggere: il perimetro
 
 ---
 
 ### 🎯 Scopo Principale
 
-Il cancello del vocabolario dei bersagli: ogni tipo di entità scritto in un corpo PL/pgSQL vivo che
-costruisce il bersaglio di un errore, e che `config.tipi_entita` non dichiara (`ASSENTE`) o dichiara
+Il cancello del vocabolario dei bersagli: ogni tipo di entità scritto in un corpo vivo leggibile, PL/pgSQL
+o SQL, che costruisce il bersaglio di un errore, e che `config.tipi_entita` non dichiara (`ASSENTE`) o dichiara
 ritirato (`OBSOLETO`). Deve essere vuota.
 
 Il bersaglio è l'entità a cui un errore si riferisce, e il frontend lo trasforma in un gesto che
@@ -55,12 +56,18 @@ scrive il backend e si guardano nei dati, mentre il bersaglio lo scrive il datab
 giusta è il testo delle funzioni. Una vista sui dati sarebbe cieca su un ambiente senza traffico, e
 da una misura cieca non si può far dipendere una build.
 
-Entrano solo le funzioni PL/pgSQL che nominano un bersaglio, e un tipo conta quando è scritto come
-valore della chiave `tipo` (maiuscole, cifre e trattini bassi). Il corpo si legge da
-[fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione): senza i commenti, di riga e a blocco,
-e con i letterali intatti, così un tipo citato in una nota non conta e uno scritto dopo una stringa
-che contiene un doppio trattino non sparisce. Davanti resta un prefiltro economico sul sorgente
-testuale, che per il PL/pgSQL non è mai vuoto.
+Entrano le funzioni dal corpo leggibile, PL/pgSQL e SQL (comprese le SQL `BEGIN ATOMIC`), come le
+decide [fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile), che nominano un bersaglio: il
+bersaglio viaggia con la chiamata a `fn_log_and_raise_error`, e una funzione SQL la può fare come una
+PL/pgSQL. Un tipo conta quando è scritto come valore della chiave `tipo` (maiuscole, cifre e trattini
+bassi). Il corpo si legge da [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione): senza i
+commenti, di riga e a blocco, e con i letterali intatti, così un tipo citato in una nota non conta e
+uno scritto dopo una stringa che contiene un doppio trattino non sparisce.
+
+Davanti resta un prefiltro economico sul sorgente testuale: lascia passare solo i testi che nominano
+un bersaglio. Una funzione SQL `BEGIN ATOMIC` però non ha un sorgente testuale (il suo è vuoto), e il
+prefiltro da solo la terrebbe fuori: per questo la lascia passare sempre, e la decide il filtro vero,
+sul corpo ricostruito.
 
 ⚠️ **Che cosa non vede**: i tipi costruiti per concatenazione o passati in una variabile. È lo stesso
 limite della gemella e la stessa scelta: fra i due errori si preferisce quello che si corregge
@@ -86,6 +93,8 @@ già bloccato.
   tipo non dichiarato o ritirato. Su funzioni finte costruite nel test: la vista distingue `ASSENTE`
   da `OBSOLETO`, ignora i tipi nominati solo in un commento di riga, e non prende una funzione che
   nomina un tipo senza costruire un bersaglio.
+* `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql` — vede il tipo di un bersaglio
+  costruito da una funzione SQL `BEGIN ATOMIC`, che il prefiltro lascia passare (caso costruito).
 
 ---
 
@@ -98,6 +107,9 @@ già bloccato.
 * 2026-11-04 — il corpo si legge da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`): prima si
   toglievano i soli commenti di riga, quindi un tipo citato in un commento a blocco contava come
   scritto, e uno scritto dopo un letterale che conteneva un doppio trattino spariva.
+* 2026-11-09 — il perimetro passa dal solo PL/pgSQL ai corpi leggibili, PL/pgSQL e SQL, letti da
+  `fn_corpo_leggibile`; il prefiltro lascia passare le SQL `BEGIN ATOMIC`, che non hanno un sorgente
+  testuale (`20261110-82`, `brief-db-revisione-dbops`, giro 12).
 
 ---
 

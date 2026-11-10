@@ -1,0 +1,221 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_chiudi_legame_distinta: il verbo che chiude un legame di distinta insieme
+#   ai suoi prezzi bundle, con la conferma di chi ne ha i diritti (Q19-Q22).
+#
+#   Un prezzo bundle sta dentro il periodo del suo legame (FK temporale). Chiudendo il
+#   legame, i prezzi che vanno oltre la fine si chiudono alla stessa data (esito CHIUDE)
+#   o, se cominciano dopo ed e' una bozza, si tolgono (TOGLIE). Mai in silenzio:
+#     1. parametri; permesso sul catalogo (script.fn_guard_livello, catalogo.articolo);
+#     2. il legame e i suoi prezzi FOR UPDATE (la conferma vale per i prezzi di adesso);
+#     3. prima cio' che vieta: il primo motivo di script.fn_check_legame_distinta_chiudibile
+#        (prezzi in un'altra azienda; prezzi di una versione non in bozza che cominciano
+#        dopo la fine);
+#     4. se ci sono prezzi da chiudere o togliere: il permesso sui listini
+#        (vendite.listino; Q21: servono tutti e due), poi la conferma: chi conferma
+#        dichiara quanti prezzi ha visto (p_prezzi_confermati, un conteggio, come
+#        l'annullo con legami). Se non corrisponde: E_BOM_CHIUSURA_CON_PREZZI, l'avviso;
+#     5. con la porta aperta (GUC zeroerp.legame_distinta_chiudi = id del legame, che il
+#        guard d'immutabilita' dei prezzi onora col proprietario): CHIUDE -> valido_al,
+#        TOGLIE -> DELETE (in bozza);
+#     6. il legame: valido_al. I guard della distinta parlano come sempre (fine passata,
+#        retroattiva); i prezzi oltre la fine non ci sono piu'.
+#   Il diritto sui listini si chiede solo se ci sono prezzi: un legame senza prezzi non
+#   tocca nessun listino.
+#   SECURITY DEFINER, search_path bloccato: legge e chiude i prezzi di tutte le versioni
+#   (la check rifiuta prima quelli fuori perimetro) e apre la porta del proprietario.
+#   Rollback: DROP.
+#   Brief: brief-db-revisione-catalogo, giro 3 (Q19-Q22).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-29-create-fn-chiudi-legame-distinta-mctit.yaml
+
+  - changeSet:
+      id: 20261111-29-create-fn-chiudi-legame-distinta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.fn_chiudi_legame_distinta: chiude un legame di distinta coi suoi prezzi bundle, col permesso e la conferma. Brief: brief-db-revisione-catalogo, giro 3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('vendite.fn_prezzi_legame_oltre_la_fine(uuid, date)'),
+                             to_regprocedure('script.fn_check_legame_distinta_chiudibile(uuid, date)'),
+                             to_regprocedure('script.fn_guard_livello(integer, character varying, character varying, config.livello_accesso)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_chiudi_legame_distinta(
+                  p_legame_id          catalogo.articoli_componenti.id%TYPE,
+                  p_valido_al          catalogo.articoli_componenti.valido_al%TYPE,
+                  p_prezzi_confermati  integer DEFAULT NULL)
+               RETURNS TABLE(
+                  legame_id        catalogo.articoli_componenti.id%TYPE,
+                  valido_al_prima  catalogo.articoli_componenti.valido_al%TYPE,
+                  valido_al_dopo   catalogo.articoli_componenti.valido_al%TYPE,
+                  prezzi_chiusi    integer,
+                  prezzi_tolti     integer)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              DECLARE
+                  v_utente     config.user_override_azioni.auth_user_id%TYPE;
+                  v_prima      catalogo.articoli_componenti.valido_al%TYPE;
+                  v_prodotto   catalogo.articoli_componenti.prodotto_id%TYPE;
+                  v_kit        catalogo.articoli.codice%TYPE;
+                  v_componente catalogo.articoli.codice%TYPE;
+                  -- Conteggi di righe: nessuna colonna dietro.
+                  v_prezzi     integer;
+                  v_versioni   integer;
+                  v_chiusi     integer := 0;
+                  v_tolti      integer := 0;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: chiudere il legame p_legame_id alla data p_valido_al
+                  --   insieme ai suoi prezzi bundle che vanno oltre, col permesso
+                  --   e la conferma. p_prezzi_confermati e' un CONTEGGIO: tipo
+                  --   nudo. Vedi l'intestazione del changeSet.
+                  -- Ritorna: il legame, la fine di prima e di adesso, i prezzi
+                  --   chiusi e quelli tolti.
+                  -- =========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri e permesso sul catalogo.
+                  IF p_legame_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_chiudi_legame_distinta', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_legame_id'),
+                          NULL::uuid,
+                          'il legame di distinta da chiudere');
+                  END IF;
+                  IF p_valido_al IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_chiudi_legame_distinta', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_valido_al', 'campo', 'valido_al'),
+                          NULL::uuid,
+                          'la data di fine del legame');
+                  END IF;
+
+                  PERFORM script.fn_guard_livello(v_utente, 'catalogo', 'articolo', 'TUTTO');
+
+                  -- 2. Il legame e i suoi prezzi, fermi fino alla fine.
+                  SELECT ac.valido_al, ac.prodotto_id
+                    INTO v_prima, v_prodotto
+                    FROM catalogo.articoli_componenti ac
+                   WHERE ac.id = p_legame_id
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_chiudi_legame_distinta', 'E_BOM_LEGAME_NOT_FOUND',
+                          jsonb_build_object('legame_id', p_legame_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  PERFORM 1
+                     FROM vendite.listini_righe_componenti lrc
+                    WHERE lrc.articolo_componente_id = p_legame_id
+                      FOR UPDATE;
+
+                  -- 3. Prima cio' che vieta.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'catalogo', 'catalogo.fn_chiudi_legame_distinta',
+                      script.fn_check_legame_distinta_chiudibile(p_legame_id, p_valido_al),
+                      'valido_al',
+                      NULL::uuid,
+                      jsonb_build_object('legame_id', p_legame_id));
+
+                  -- 4. I prezzi da chiudere o togliere: permesso sui listini e conferma.
+                  SELECT count(*)::integer,
+                         count(DISTINCT r.listino_versione_id)::integer
+                    INTO v_prezzi, v_versioni
+                    FROM vendite.fn_prezzi_legame_oltre_la_fine(p_legame_id, p_valido_al) r
+                   WHERE r.esito IN ('CHIUDE', 'TOGLIE');
+
+                  IF v_prezzi > 0 THEN
+                      PERFORM script.fn_guard_livello(v_utente, 'vendite', 'listino', 'TUTTO');
+
+                      IF p_prezzi_confermati IS DISTINCT FROM v_prezzi THEN
+                          SELECT p.codice, c.codice
+                            INTO v_kit, v_componente
+                            FROM catalogo.articoli_componenti ac
+                            JOIN catalogo.articoli p ON p.id = ac.prodotto_id
+                            JOIN catalogo.articoli c ON c.id = ac.componente_id
+                           WHERE ac.id = p_legame_id;
+
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.fn_chiudi_legame_distinta', 'E_BOM_CHIUSURA_CON_PREZZI',
+                              jsonb_build_object(
+                                  'campo',              'valido_al',
+                                  'legame_id',          p_legame_id,
+                                  'valido_al',          p_valido_al,
+                                  'prezzi',             v_prezzi,
+                                  'versioni',           v_versioni,
+                                  'prezzi_confermati',  p_prezzi_confermati,
+                                  'bersaglio', jsonb_build_array(
+                                      jsonb_build_object('tipo', 'ARTICOLO', 'id', v_prodotto::text))),
+                              NULL::uuid,
+                              v_componente,
+                              v_kit,
+                              v_prezzi::text,
+                              v_versioni::text);
+                      END IF;
+
+                      -- 5. I prezzi, con la porta aperta per questo legame.
+                      PERFORM set_config('zeroerp.legame_distinta_chiudi', p_legame_id::text, true);
+
+                      UPDATE vendite.listini_righe_componenti lrc
+                         SET valido_al = p_valido_al
+                       WHERE lrc.id IN (SELECT r.riga_id
+                                          FROM vendite.fn_prezzi_legame_oltre_la_fine(p_legame_id, p_valido_al) r
+                                         WHERE r.esito = 'CHIUDE');
+                      GET DIAGNOSTICS v_chiusi = ROW_COUNT;
+
+                      DELETE FROM vendite.listini_righe_componenti lrc
+                       WHERE lrc.id IN (SELECT r.riga_id
+                                          FROM vendite.fn_prezzi_legame_oltre_la_fine(p_legame_id, p_valido_al) r
+                                         WHERE r.esito = 'TOGLIE');
+                      GET DIAGNOSTICS v_tolti = ROW_COUNT;
+
+                      PERFORM set_config('zeroerp.legame_distinta_chiudi', '', true);
+                  END IF;
+
+                  -- 6. Il legame. I guard della distinta parlano come sempre.
+                  UPDATE catalogo.articoli_componenti ac
+                     SET valido_al = p_valido_al
+                   WHERE ac.id = p_legame_id;
+
+                  RETURN QUERY SELECT p_legame_id, v_prima, p_valido_al, v_chiusi, v_tolti;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              REVOKE EXECUTE ON FUNCTION catalogo.fn_chiudi_legame_distinta(uuid, date, integer) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION catalogo.fn_chiudi_legame_distinta(uuid, date, integer) TO zeroerp_app;
+              COMMENT ON FUNCTION catalogo.fn_chiudi_legame_distinta(uuid, date, integer) IS
+                  'VERBO «Chiudi» di un legame di distinta (catalogo.articoli_componenti) insieme ai suoi prezzi bundle: il prezzo sta dentro il periodo del legame (FK temporale fk_listrighe_comp_articoli_comp_temporal), e chiudendo il legame i prezzi che vanno oltre la fine (vendite.fn_prezzi_legame_oltre_la_fine) si chiudono alla stessa data (esito CHIUDE) o, se cominciano dopo in una versione in bozza, si tolgono (TOGLIE). Prezzo, IVA e inizio restano quelli; la versione e le altre righe non si toccano. Ordine: parametri (E_PARAMETRO_INVALIDO); permesso sul catalogo (script.fn_guard_livello su catalogo.articolo, livello TUTTO; E_PERMESSO_NEGATO); il legame (E_BOM_LEGAME_NOT_FOUND) e i suoi prezzi FOR UPDATE; prima cio'' che vieta, il primo motivo di script.fn_check_legame_distinta_chiudibile sul campo valido_al (E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE, E_BOM_CHIUSURA_PRIMA_DEI_PREZZI); se ci sono prezzi da chiudere o togliere, il permesso sui listini (vendite.listino, TUTTO) e la conferma: p_prezzi_confermati e'' il numero di prezzi che chi conferma ha visto, e se non e'' quello di adesso -> E_BOM_CHIUSURA_CON_PREZZI (l''avviso, coi numeri). Poi i prezzi, con la porta della GUC transazionale zeroerp.legame_distinta_chiudi = id del legame (la onora vendite.trgfn_listini_righe_comp_guard_immutabilita_v5 col proprietario della tabella, anche fuori dalla bozza, per la sola fine), e infine valido_al del legame, coi guard della distinta (catalogo.trgfn_articoli_componenti_block_modifica_struttura: E_BOM_LEGAME_CHIUSO, E_BOM_CHIUSURA_RETROATTIVA). Senza prezzi da toccare non serve il diritto sui listini, e la conferma non si chiede. Ritorna il legame, la fine di prima e di adesso, i prezzi chiusi e quelli tolti. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''applicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_chiudi_legame_distinta(uuid, date, integer);

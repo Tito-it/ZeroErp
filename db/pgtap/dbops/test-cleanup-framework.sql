@@ -127,7 +127,6 @@ SELECT is(
   dbops.fn_apply_cleanup_at(
     'dbops',
     'tst_cleanup_framework',
-    'cleanup_at',
     'data_insert',
     10,
     false,
@@ -141,7 +140,6 @@ SELECT is(
   dbops.fn_apply_cleanup_at(
     'dbops',
     'tst_cleanup_framework',
-    'cleanup_at',
     'data_insert',
     10,
     false,
@@ -161,7 +159,6 @@ SELECT is(
   dbops.fn_purge_cleanup_expired(
     'dbops',
     'tst_cleanup_framework',
-    'cleanup_at',
     5000,
     true
   ),
@@ -173,7 +170,6 @@ SELECT is(
   dbops.fn_purge_cleanup_expired(
     'dbops',
     'tst_cleanup_framework',
-    'cleanup_at',
     5000,
     false
   ),

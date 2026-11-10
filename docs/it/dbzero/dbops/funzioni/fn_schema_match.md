@@ -28,6 +28,9 @@ AS $function$
     RETURN lower(p_rule_target)=lower(p_schema);
   END;
   $function$
+
+COMMENT ON FUNCTION dbops.fn_schema_match(p_rule_target text, p_schema text)
+IS 'Il target di schema di una regola delle automazioni (dbops.automation_rules_tbl.target_schema) vale per lo schema p_schema? *all vale per qualunque schema; altrimenti il nome deve coincidere (confronto senza maiuscole). Target NULL: false. ⚠️ Qui *all significa «qualunque schema»; in dbops.fn_resolve_scope lo stesso *all nell''elenco degli schemi significa «usa l''ambito di dbops.automation_scope, o il ripiego». IMMUTABLE. La usano i generatori delle automazioni per scegliere le regole di una tabella.';
 ```
 
 </div>

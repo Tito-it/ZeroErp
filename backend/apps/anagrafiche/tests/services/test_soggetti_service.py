@@ -73,6 +73,8 @@ from apps.core.services.service_errors import ServiceError
 
 
 SOGG_REPO = "apps.anagrafiche.services.soggetti_service.SoggettiRepository"
+# I lock del DB li legge il BB `compute_non_editable_fields` (2026-11-09).
+_LOCK_REPO = "apps.core.services.non_editable_fields_helper.LockColumnsRepository"
 IND_REPO = "apps.anagrafiche.services.soggetti_service.IndirizziRepository"
 
 FAKE_UUID = "019bac81-3f96-7ce8-a086-7e0bd0a2fec1"
@@ -92,11 +94,13 @@ class TestSoggettiListDetail(TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(results[0]["ragione_sociale_completa"], "Rossi Mario")
 
+    @patch(_LOCK_REPO, autospec=True)
     @patch(SOGG_REPO, autospec=True)
-    def test_get_soggetto_ok(self, mock_repo):
+    def test_get_soggetto_ok(self, mock_repo, mock_lock):
         """Dettaglio soggetto con contatti, indirizzi, ruoli."""
         repo = mock_repo.return_value
         repo.get_soggetto.return_value = {"id": FAKE_UUID, "cognome": "Rossi"}
+        mock_lock.list_non_editable_for_record.return_value = ()
         repo.get_soggetto_contatti.return_value = [{"id": 1, "nominativo": "Mario Rossi"}]
         repo.get_soggetto_indirizzi.return_value = []
         repo.get_soggetto_ruoli.return_value = []
@@ -105,43 +109,49 @@ class TestSoggettiListDetail(TestCase):
         result = SoggettiService().get_soggetto(FAKE_UUID)
         self.assertEqual(result["cognome"], "Rossi")
         self.assertEqual(len(result["contatti"]), 1)
-        # Fase 6 B4: campo non_editable_fields presente, vuoto se senza CF/PIVA
+        # Fase 6 B4: campo non_editable_fields presente, vuoto senza lock dal DB.
         self.assertEqual(result["non_editable_fields"], [])
 
+    @patch(_LOCK_REPO, autospec=True)
     @patch(SOGG_REPO, autospec=True)
-    def test_get_soggetto_non_editable_fields_with_cf_and_piva(self, mock_repo):
-        """Fase 6 B4: CF e PIVA valorizzati → entrambi non editabili."""
+    def test_get_soggetto_non_editable_fields_with_cf_and_piva(self, mock_repo, mock_lock):
+        """S-BE-3 (2026-11-09): la lista viene dal DB, letta SUL RECORD — CF e
+        P.IVA scritti sono lock condizionali di `fn_non_editable_fields`."""
         repo = mock_repo.return_value
         repo.get_soggetto.return_value = {
             "id": FAKE_UUID, "codice_fiscale": "RSSMRA80A01H501Z",
             "partita_iva": "12345678901",
         }
+        mock_lock.list_non_editable_for_record.return_value = ("codice", "codice_fiscale", "partita_iva")
         repo.get_soggetto_contatti.return_value = []
         repo.get_soggetto_indirizzi.return_value = []
         repo.get_soggetto_ruoli.return_value = []
         repo.get_dati_societari.return_value = None
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().get_soggetto(FAKE_UUID)
-        self.assertEqual(
-            sorted(result["non_editable_fields"]),
-            ["codice_fiscale", "partita_iva"],
+        self.assertEqual(result["non_editable_fields"], ["codice", "codice_fiscale", "partita_iva"])
+        mock_lock.list_non_editable_for_record.assert_called_once_with(
+            "anagrafiche", "soggetti", FAKE_UUID,
         )
 
+    @patch(_LOCK_REPO, autospec=True)
     @patch(SOGG_REPO, autospec=True)
-    def test_get_soggetto_non_editable_fields_only_piva(self, mock_repo):
-        """Solo PIVA valorizzata → solo PIVA non editabile (CF resta editable)."""
+    def test_get_soggetto_dato_scritto_che_il_db_non_blocca(self, mock_repo, mock_lock):
+        """Il backend non ripete la regola: un CF scritto che il DB non blocca
+        (il SUPER_ADMIN lo puo' correggere) resta modificabile."""
         repo = mock_repo.return_value
         repo.get_soggetto.return_value = {
-            "id": FAKE_UUID, "codice_fiscale": "  ",  # whitespace = non valorizzato
+            "id": FAKE_UUID, "codice_fiscale": "RSSMRA80A01H501Z",
             "partita_iva": "12345678901",
         }
+        mock_lock.list_non_editable_for_record.return_value = ("codice",)
         repo.get_soggetto_contatti.return_value = []
         repo.get_soggetto_indirizzi.return_value = []
         repo.get_soggetto_ruoli.return_value = []
         repo.get_dati_societari.return_value = None
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().get_soggetto(FAKE_UUID)
-        self.assertEqual(result["non_editable_fields"], ["partita_iva"])
+        self.assertEqual(result["non_editable_fields"], ["codice"])
 
     @patch(SOGG_REPO, autospec=True)
     def test_get_soggetto_not_found(self, mock_repo):

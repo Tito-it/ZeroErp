@@ -1,6 +1,10 @@
 # trgfn_listini_righe_comp_guard_immutabilita_v5
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+>
 > **Vedi anche**
+>
+> - [catalogo.fn_chiudi_legame_distinta](/dbzero/catalogo/funzioni/fn_chiudi_legame_distinta) — l'unico verbo che apre la porta della fine
 >
 > - [vendite.listini_righe_componenti](/dbzero/vendite/manual/listini_righe_componenti) — tabella su cui il trigger opera
 > - [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) — fonte dello stato versione
@@ -80,6 +84,21 @@ IF TG_OP = 'UPDATE' AND COALESCE(v_stato, 'BOZZA') <> 'BOZZA' THEN
 
 Gli altri campi (es. `attivo`, `meta`) rimangono modificabili anche su versioni non-BOZZA.
 
+### ⭐ La porta della chiusura del legame
+
+Un prezzo bundle sta dentro il periodo del suo legame di distinta (chiave esterna temporale). Se la fine del prezzo
+non si potesse mai toccare, un kit prezzato in una versione già attiva non potrebbe perdere un componente finché
+quella versione esiste. Per questo c'è una sola eccezione, stretta:
+
+* si apre con la GUC transazionale `zeroerp.legame_distinta_chiudi` uguale all'id del legame della riga
+  (`articolo_componente_id`), **e** solo per il proprietario della tabella (`script.fn_is_proprietario_tabella`):
+  dall'applicazione non si apre, nemmeno impostando la GUC;
+* cambia **solo `valido_al`**, e solo per accorciarla (mai vuota, mai più avanti); prezzo, IVA e inizio devono
+  restare uguali, altrimenti il rifiuto è quello di sempre.
+
+La apre solo il verbo `catalogo.fn_chiudi_legame_distinta` (`SECURITY DEFINER`), che chiede il permesso sul catalogo
+e sui listini e la conferma dell'operatore, e la richiude dopo aver scritto i prezzi.
+
 ---
 
 ## Campi core protetti su UPDATE
@@ -123,4 +142,4 @@ Questo trigger replica la policy di `trgfn_listini_righe_guard_stato` applicata 
 
 - Su INSERT e UPDATE il `COALESCE(v_stato, 'BOZZA')` lascia passare: se la versione non viene trovata (improbabile per vincolo FK), il trigger non blocca l'operazione. Sul DELETE no: una versione che non si legge non è una bozza.
 - Per modificare una riga bundle in una versione attiva o chiusa, è necessario creare una nuova versione listino in stato `BOZZA` e replicare la riga con i nuovi valori.
-- Migration di riferimento: `20260513-20`; stato dal vocabolario `20261028-22`; DELETE in BOZZA `20261028-38`.
+- Migration di riferimento: `20260513-20`; stato dal vocabolario `20261028-22`; DELETE in BOZZA `20261028-38`; la porta della chiusura del legame `20261111-27` (2026-11-09, brief-db-revisione-catalogo, giro 3).

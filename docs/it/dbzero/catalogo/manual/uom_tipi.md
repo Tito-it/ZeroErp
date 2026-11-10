@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.uom_tipi`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 > Approfondimento funzioni:
 >
 > * [catalogo.trgfn_uom_conversioni_guard_tipo](/dbzero/catalogo/funzioni/trgfn_uom_conversioni_guard_tipo) — rifiuta una conversione fra due famiglie
-> * [catalogo.trgfn_unita_misura_guard_tipo_update](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo_update) — rifiuta il cambio di famiglia di un'unità che ha conversioni
+> * [catalogo.trgfn_unita_misura_guard_tipo](/dbzero/catalogo/funzioni/trgfn_unita_misura_guard_tipo) — rifiuta il cambio di famiglia di un'unità che ha conversioni, e lega il calendario al tempo
 > * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — il blocco di `codice_interno`
 
 ---
@@ -39,6 +39,8 @@ Il seed porta `LUNGHEZZA`, `MASSA`, `VOLUME`, `AREA`, `ENERGIA`, `POTENZA`, `TEM
 * `IMBALLAGGIO` classifica pallet, colli, scatole. Non vuol dire che esista un fattore
   universale fra loro: quanti pezzi stanno in una scatola dipende dall'articolo.
 * `GENERICO` è un ripiego controllato, da non usare come contenitore di unità eterogenee.
+* `TEMPO` ha una regola sua: solo un'unità di questa famiglia si può contare dal calendario
+  (`unita_misura.conta_dal_calendario`). Il guard delle unità la riconosce dal codice interno.
 * `SMC` (standard metro cubo di gas) sta in `ENERGIA` con `KWH` e `MJ`, non in `VOLUME`:
   così una sua conversione verso le unità di energia è ammessa. Il seed delle conversioni
   però è vuoto: nessuna conversione è scritta.

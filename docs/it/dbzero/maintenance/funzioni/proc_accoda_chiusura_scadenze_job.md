@@ -30,7 +30,7 @@ END
 $procedure$
 
 COMMENT ON PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job()
-IS 'Wrapper del job chiusura_scadenze_daily: sveglia la chiusura scadenze PASSANDO dal giornale. ⛔ Esiste perche'' il changeSet 20260905-25, trasformando quel job da esecutore a sveglia, ha sostituito lo step con una SELECT diretta e ha perso il wrapper — e con lui la registrazione della corsa. Il lavoro veniva accodato correttamente, ma della sveglia non restava traccia: nessun test poteva prenderlo, perche'' tutti guardavano che il lavoro fosse accodato. L''ha trovato dbops.vw_processi_programmazione confrontando pgAgent col giornale.';
+IS 'Wrapper del job chiusura_scadenze_daily: sveglia la chiusura per scadenza (dbops.fn_accoda_chiusura_scadenze, che accoda i lavori) PASSANDO dal giornale, con maintenance.fn_run_and_log sotto il codice del processo. Il giornale e'' cio'' che rende visibile la sveglia: senza, il lavoro verrebbe accodato ma della corsa non resterebbe traccia, e dbops.vw_processi_programmazione non potrebbe confrontare pgAgent col giornale. SECURITY DEFINER.';
 ```
 
 </div>

@@ -48,7 +48,7 @@
 --   18) kit_uom_id fuori da un kit e' respinta (CHECK di coerenza)
 --   19) le competenze sono NOT NULL e senza default
 --   20) uom_operativa_id NOT NULL sui cinque *_componenti
---   21) il trigger di immutabilita' ricreato ascolta ancora i campi di struttura
+--   21) il trigger di immutabilita' ascolta i campi di struttura (padre compreso) e la fine
 --   22) la distinta non ha piu' partecipa_qta
 --   23) la distinta non ha piu' determina_qta_padre
 --   24) i due parametri di default ritirati non ci sono piu'
@@ -301,8 +301,8 @@ SELECT is(
       WHERE t.tgrelid = 'catalogo.articoli_componenti'::regclass
         AND t.tgname = 'trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt'),
     ARRAY['coeff_qta', 'componente_id', 'esposizione_in_fattura', 'obbligatorio',
-          'valido_al', 'valido_dal'],
-    '21) il guard di immutabilita'' della distinta ascolta ancora i sei campi di struttura');
+          'prodotto_id', 'valido_al', 'valido_dal'],
+    '21) il guard di immutabilita'' della distinta ascolta i campi di struttura, padre compreso, e la fine');
 
 -- ============================================================
 -- 22..24 — la distinta senza i due flag

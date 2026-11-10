@@ -1,5 +1,8 @@
 # Qualità del database — indicatori e lezioni
 
+> **Ultimo aggiornamento**: 9 novembre 2026 — l'indicatore delle FK legge il presidio della politica degli indici
+> (`vw_fk_da_decidere`).
+>
 > **Ultima rilettura**: 27 ottobre 2026 — la suite pgTAP coi numeri del 27-10 (D7, lotti 3 e 4:
 > scratch da 147 a 24 rossi) e la scorecard rivista (Copertura test 4,5 → 5,5, Gestione del debito
 > 6 → 6,5; la Catena di verifica ferma, col rischio del registro CI riscritto); corretta la lettura di
@@ -170,7 +173,7 @@ I messaggi per lingua li legge il gemello BE/FE: un numero, una sede.
 | Indicatore | Verso | Chi lo presidia | 23-10 |
 | --- | --- | --- | --- |
 | codici nominabili dal DB (`vw_codici_errore_da_dichiarare`) — ⛔ **misura, non debito** | colore: cresce col dominio | — (il debito è `codici_errore_senza_policy`, a **0**, presidiato da `test_error_codes_db_policy_guardrail`) | 702 |
-| FK senza indice fuori policy | ↓ | `vw_fk_con_indice_missing_policy` | 57 |
+| FK da decidere, o decise e non applicate | ↓ | `vw_fk_da_decidere` (dal 9-11: la vista di prima, `vw_fk_con_indice_missing_policy`, contava le FK già coperte ed è ritirata) | — |
 | indici ridondanti per prefisso | = 0 | `vw_indici_ridondanti_prefisso` | 1 |
 | processi che bypassano la RLS | = 0 | `vw_processi_che_bypassano` | 0 |
 | tabelle con RLS / con `FORCE` | `FORCE` = 0 (invariante dell'owner, Q-3) | presidio di postura (D17) | 174 / 0 |

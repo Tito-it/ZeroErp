@@ -1,18 +1,20 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_duplicate_indexes`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — gli schemi in cui la vista cerca
 > * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — da guardare prima di togliere un indice governato dall'automazione
 >
 > Approfondimento viste:
 >
 > * [dbops.vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso) — la sorella: la ridondanza per prefisso, che qui non si vede
-> * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy) — gli indici dedicati alle chiavi esterne ancora senza policy
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_indici_schema_nell_ambito](/dbzero/dbops/funzioni/fn_indici_schema_nell_ambito) — gli schemi in cui la vista cerca
 >
 > Guide:
 >
@@ -22,7 +24,8 @@
 
 ### 🎯 Scopo Principale
 
-Gli **indici duplicati esatti** degli schemi di `dbops.automation_scope`: gruppi di indici sulla
+Gli **indici duplicati esatti** degli schemi governati dalla politica degli indici
+(`dbops.fn_indici_schema_nell_ambito`): gruppi di indici sulla
 stessa tabella che, a parità di tutto ciò che conta, sono intercambiabili. Per ogni gruppo dice
 quale tenere (`indice_da_tenere`) e quali togliere (`indici_da_droppare`).
 
@@ -86,8 +89,8 @@ due vincoli si sovrappongono, ed è una scelta di progetto, non una pulizia.
 ### ⚠️ Prima di togliere un indice del gruppo
 
 * Se l'indice è governato dall'automazione delle chiavi esterne (`origine = 'AUTOMAZIONE_FK'` nella
-  vista per prefisso), un `DROP` secco viene annullato al primo `migrate`: prima si spegne il flag in
-  `dbops.fk_index_policy`.
+  vista per prefisso), un `DROP` secco viene annullato al primo `migrate` se la sua riga è
+  `CON_INDICE`: la riga si porta a `SENZA_INDICE` nel CSV di `dbops.fk_index_policy`.
 
 ---
 
@@ -110,6 +113,9 @@ due vincoli si sovrappongono, ed è una scelta di progetto, non una pulizia.
   un altro UNIQUE, viene tolto a mano: è il caso di equivalenza che la vista non vede.
 * 2026-11-08 — gli indici che reggono un vincolo o la replica identity si tengono per primi e non
   si propongono mai per il `DROP`: prima la vista poteva proporre di togliere la UNIQUE di un vincolo.
+* 2026-11-09 — il perimetro viene da `fn_indici_schema_nell_ambito`, il building block della politica
+  degli indici, al posto della stessa lettura scritta in linea (`20261110-46`,
+  brief-db-revisione-dbops, giro 10d). Il significato non cambia.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_articolo_colonne_struttura`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -24,18 +24,15 @@ Restituisce le colonne strutturali di un articolo: quelle che non cambiano più 
 
 ---
 
-### Da dove legge
+### ⭐ È la dichiarazione
 
-L'elenco non è scritto qui. Sono le regole **accese** del form in
-`dbops.lock_columns_conditional` su `catalogo.articoli` che hanno come condizione il predicato
-dell'uso, `catalogo.fn_articolo_usato`. Le colonne che il form spegne quando l'articolo è usato
-sono le stesse che la correzione deve poter riaprire.
+L'elenco è scritto qui, e solo qui: le otto colonne, nell'ordine in cui il guard dell'uso cerca la
+prima cambiata (composito, solo componente, natura di vendita, causale onere, tipologia di
+listino, gestito a magazzino, a lotti, a matricola). La funzione è una costante, `IMMUTABLE`.
 
-* L'ordine è quello della dichiarazione nel registro.
-* Se il registro non ha regole su quel predicato, l'elenco è vuoto.
-* Una regola spenta esce dall'elenco.
-
-La funzione è SECURITY INVOKER: il registro lo legge anche l'app.
+Le regole del form in `dbops.lock_columns_conditional` non decidono più niente per la porta: se
+una regola si spegne o se ne aggiunge una, le colonne correggibili restano queste. Il nome
+leggibile di ogni colonna lo dà `catalogo.fn_articolo_flag_etichetta`.
 
 ---
 
@@ -45,17 +42,12 @@ La funzione è SECURITY INVOKER: il registro lo legge anche l'app.
   quelle che scrive.
 * Il backend, per i campi che la scheda dell'articolo riapre in correzione.
 
-Il guard `catalogo.trgfn_articoli_guard_struttura_se_usato` non la può leggere: un trigger non
-prende le sue colonne da una funzione, e l'elenco lì è scritto. Un pgTAP confronta le due copie.
+* Il guard `catalogo.trgfn_articoli_guard_struttura_se_usato`, nel corpo, per cercare la prima
+  colonna cambiata.
 
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **La porta dipende dalle regole del form.** La regola si riconosce confrontando il testo della
-  condizione. Se si spegne una regola del form, il guard continua a bloccare la colonna, ma la
-  colonna esce da questo elenco e il verbo di correzione la rifiuta: non si corregge più da
-  nessuna parte. Oggi lo segnala solo un pgTAP.
+Due copie non si possono leggere da qui, e le confronta un pgTAP: l'elenco `UPDATE OF` del
+trigger del guard (un trigger non prende le sue colonne da una funzione) e le regole del form sul
+predicato dell'uso.
 
 ---
 
@@ -71,6 +63,8 @@ prende le sue colonne da una funzione, e l'elenco lì è scritto. Un pgTAP confr
 
 * 2026-10-18 — nasce: prima l'elenco era una costante del verbo di correzione, e la scheda
   dell'articolo lo ricopiava (brief-db-articoli-ammessi-per-documento).
+* 2026-11-09 — diventa la dichiarazione: non legge più le regole del form, e spegnerne una non
+  toglie la colonna alla porta (brief-db-revisione-catalogo, giro 3).
 
 ---
 

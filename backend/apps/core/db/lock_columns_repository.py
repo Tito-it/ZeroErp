@@ -5,12 +5,17 @@
 # Scopo: Repository per esporre i lock_columns DDL come metadata API.
 # ------------------------------------------------------------
 
-# La vista `dbops.vw_non_editable_fields` (alias semantico su
-# `dbops.automation_lock_columns` filtrato `enabled=true`) elenca i campi
-# resi immutabili da trigger lock_columns AUTO. Il repository legge la
-# vista e restituisce la lista colonna per (schema, tabella) per essere
-# inclusa nei detail come `non_editable_fields: list[str]`. Il FE costruisce
-# whitelist PATCH e disabled UI dai metadata invece di cablare le regole.
+# La vista `dbops.vw_non_editable_fields` legge il lock VIVO (dal giro 10a di
+# brief-db-revisione-dbops, D25): una riga per ogni colonna che un trigger di
+# lock montato blocca davvero, `codice_interno` compreso, col nome del
+# trigger (`trigger_name`). Non e' piu' il registro
+# `dbops.automation_lock_columns`, che poteva dichiarare lock che nessun
+# trigger applicava. Il repository legge la vista e restituisce la lista
+# colonna per (schema, tabella) per essere inclusa nei detail come
+# `non_editable_fields: list[str]`. Il FE costruisce whitelist PATCH e
+# disabled UI dai metadata invece di cablare le regole.
+# ⚠️ Una colonna bloccata da DUE trigger compare due volte nella vista: qui si
+#    legge `DISTINCT`, perche' il contratto verso il FE e' un elenco di colonne.
 
 from __future__ import annotations
 
@@ -22,35 +27,52 @@ from django.db import DatabaseError, connection
 logger = logging.getLogger(__name__)
 
 
+# Scopo: la lettura dei lock statici, in cache per processo: la vista cambia
+#        solo con le migrazioni, quindi la cache toglie l'N+1 sui detail senza
+#        rischio di stale.
+# ⛔ La cache sta QUI, sulla lettura che RIUSCITA, e non sul metodo pubblico
+#    col fallback (2026-11-09). Prima l'`lru_cache` avvolgeva anche il ramo
+#    `except`: un errore transitorio del DB alla prima lettura metteva in cache
+#    la tupla VUOTA per tutta la vita del worker, e il form tornava a lasciar
+#    modificare `codice` di articoli ed emittenti — che dal BE2 nessun gap
+#    Python ripete piu' — finche' nessuno riavviava il processo. Un'eccezione
+#    non entra nella cache di `lru_cache`: la lettura successiva ci riprova.
+@lru_cache(maxsize=128)
+def _leggi_lock_statici(schema: str, table: str) -> tuple[str, ...]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT column_name
+              FROM dbops.vw_non_editable_fields
+             WHERE target_schema = %s
+               AND target_table = %s
+             ORDER BY column_name
+            """,
+            [schema, table],
+        )
+        rows = cursor.fetchall()
+    return tuple(row[0] for row in rows)
+
+
 class LockColumnsRepository:
     """Repository riusabile per leggere `dbops.vw_non_editable_fields`."""
 
-    # Scopo: Lista colonne lock per (target_schema, target_table). Cache
-    #        modulo-level: la vista cambia solo con migrazioni Liquibase
-    #        (no mutazioni runtime), quindi una cache statica per processo
-    #        riduce N+1 sui detail-arricchiti senza rischio di stale.
-    #        Per invalidazione manuale (test, hot reload) usare `cache_clear`.
+    # Scopo: Lista colonne lock per (target_schema, target_table), dalla
+    #        cache di `_leggi_lock_statici`. Per invalidarla (test, hot
+    #        reload) `LockColumnsRepository.cache_clear()`.
     #        Defensive: se la vista non esiste o il DB non e' raggiungibile
-    #        (testbed isolato, pre-migration), ritorna tupla vuota e logga.
-    #        Il chiamante (`_compute_non_editable_fields`) ha comunque un
-    #        gap Python che copre i lock condizionali non registrati.
+    #        (testbed isolato, pre-migration), ritorna tupla vuota e logga —
+    #        SENZA metterla in cache. Il chiamante ha comunque un gap Python
+    #        per le colonne immutabili che il DB non blocca ancora con un
+    #        trigger di lock.
     @staticmethod
-    @lru_cache(maxsize=128)
+    def cache_clear() -> None:
+        _leggi_lock_statici.cache_clear()
+
+    @staticmethod
     def list_non_editable(schema: str, table: str) -> tuple[str, ...]:
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT column_name
-                      FROM dbops.vw_non_editable_fields
-                     WHERE target_schema = %s
-                       AND target_table = %s
-                     ORDER BY column_name
-                    """,
-                    [schema, table],
-                )
-                rows = cursor.fetchall()
-            return tuple(row[0] for row in rows)
+            return _leggi_lock_statici(schema, table)
         except DatabaseError as exc:
             logger.warning(
                 "LockColumnsRepository.list_non_editable: query fallita per "

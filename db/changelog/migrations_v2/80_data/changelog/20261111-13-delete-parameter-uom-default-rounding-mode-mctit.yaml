@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE (config.parameters id 19), il default
+#   di catalogo.articoli_uom_operativa.rounding_mode, colonna ritirata in -02 (D3, Q4).
+#   La riga e' tolta anche da parameters.csv: il mirror (loadUpdateData) non cancella,
+#   quindi il DELETE e' l'unica eccezione ammessa (linee-guida-sql §11.2). Gli override,
+#   se ce ne sono, vanno con lei. Su un database da zero la riga non nasce: il DELETE
+#   non trova niente.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261111-13-delete-parameter-uom-default-rounding-mode-mctit.yaml
+
+  - changeSet:
+      id: 20261111-13-delete-parameter-uom-default-rounding-mode
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirato il parametro CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE con la sua colonna. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM information_schema.tables WHERE table_schema = 'config' AND table_name IN ('parameters', 'parameter_overrides')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.parameter_overrides o
+               USING config.parameters p
+               WHERE p.id = o.parameter_id
+                 AND p.code = 'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE';
+
+              DELETE FROM config.parameters
+               WHERE code = 'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il parametro torna col mirror di parameters.csv, se la riga si rimette nel CSV.
+              SELECT 1;

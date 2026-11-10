@@ -25,7 +25,8 @@ export const useProcessiAutomaticiStore = createListaStore(
     fetchPage: listProcessi,
     startsEmpty: false,
     // I filtri di pannello: sempre inviati quando valorizzati.
-    filterDefaults: { classe: null, canale: null, attivo: null },
+    // `vivo` e non `attivo`: il ritiro e' `obsoleto_dal`, lo decide il DB (BE12).
+    filterDefaults: { classe: null, canale: null, vivo: null },
     // ⭐ L'ordine di partenza lo decide il backend (canale, poi codice): qui non
     //    si dichiara, così non ci sono due ordinamenti di default da tenere
     //    allineati.

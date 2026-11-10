@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_etichette_di_prova_guard`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -25,8 +25,8 @@
 ### 🎯 Scopo Principale
 
 **Il guard delle etichette di prova**: un'etichetta nasce solo in un'installazione di
-sviluppo, e poi non cambia e non si toglie. È agganciato alle due tabelle delle etichette,
-le credenziali e i soggetti di prova.
+sviluppo, poi non cambia, e si toglie solo insieme a ciò che etichetta. È agganciato alle
+due tabelle delle etichette, le credenziali e i soggetti di prova.
 
 ---
 
@@ -43,11 +43,18 @@ lettore dell'ambiente.
 
 ---
 
-### ⛔ Dopo la nascita: niente modifiche, niente cancellazioni
+### ⛔ Dopo la nascita: niente modifiche, e via solo con la radice
 
-Modifica e cancellazione di una riga, e svuotamento di tutta la tabella, sono sempre
-rifiutati. Togliere un'etichetta nasconderebbe la sua radice al presidio che cerca i dati di
-prova in produzione.
+Modifica di una riga e svuotamento di tutta la tabella sono sempre rifiutati. La cancellazione
+di una riga è rifiutata finché la sua **radice** c'è: la credenziale di Django per
+un'etichetta di credenziale, il soggetto per un'etichetta di soggetto. Togliere l'etichetta di
+una radice viva la nasconderebbe al presidio che cerca i dati di prova in produzione.
+
+Quando la radice non c'è più la cancellazione passa: è il caso della cascata della chiave
+esterna, che toglie l'etichetta di una credenziale eliminata. Se la tabella delle credenziali
+non si può leggere (un database prima dell'installazione di Django) la radice vale viva, e il
+rifiuto resta. Per i soggetti la regola è la stessa, ma un soggetto con un'etichetta non si
+cancella comunque: il suo legame non è in cascata.
 
 Lo svuotamento non attraversa i trigger di riga: per questo su ogni tabella c'è un secondo
 trigger, di istruzione, che chiama la stessa funzione.
@@ -63,8 +70,8 @@ difesa sono i ruoli, non il guard. Ciò che sfugge così lo vede il presidio.
   sviluppo.
 * `E_CONFIG_MANCANTE` — un'etichetta nuova su un'installazione senza ambiente dichiarato; lo
   solleva il lettore dell'ambiente.
-* `E_ETICHETTA_DI_PROVA_IMMUTABILE` — modifica, cancellazione o svuotamento di una delle due
-  tabelle.
+* `E_ETICHETTA_DI_PROVA_IMMUTABILE` — modifica, svuotamento, o cancellazione con la radice
+  ancora viva, su una delle due tabelle.
 
 ---
 
@@ -74,12 +81,16 @@ difesa sono i ruoli, non il guard. Ciò che sfugge così lo vede il presidio.
   una di credenziale nascono, poi modifica, cancellazione e svuotamento sono rifiutati; in
   produzione (costruita) un'etichetta nuova è rifiutata; con l'ambiente non dichiarato
   (costruito) il rifiuto è quello del lettore.
+* `db/pgtap/dbops/test-credenziale-di-prova-fk-v1.sql` — cancellare la credenziale toglie la sua
+  etichetta; la cancellazione diretta, con la radice viva, resta rifiutata, anche per un soggetto.
 
 ---
 
 ### Note di migrazione
 
 * 2026-10-18 — nasce con le due tabelle delle etichette (`brief-db-processi-accensione-per-ambiente`, R-4).
+* 2026-11-09 — la cancellazione è ammessa quando la radice non c'è più (`20261110-56`,
+  `brief-db-revisione-dbops`, giro 11): serve alla cascata della chiave esterna delle credenziali.
 
 ---
 

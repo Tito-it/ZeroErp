@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_get_limite_emissione_default`
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [vendite.fn_get_pavimento_emissione](/dbzero/vendite/funzioni/fn_get_pavimento_emissione)
@@ -38,8 +40,8 @@ Una sede sola invece di due blocchi gemelli che possono divergere.
 
 ### ⛔ Legge il `default_value` NUDO, e la cascata di override si scavalca
 
-`script.fn_get_parameter_full` risolve la cascata utente → gruppo → sessione →
-emittente. **Qui quella cascata sarebbe il difetto**: darebbe **allo stesso
+`script.fn_get_parameter_full` risolve la cascata utente → categoria cliente →
+gruppo → emittente → funzione → default. **Qui quella cascata sarebbe il difetto**: darebbe **allo stesso
 documento** limiti diversi a seconda di **chi lo genera**, cioè esattamente la
 classe di problema che il limite di emissione chiude.
 

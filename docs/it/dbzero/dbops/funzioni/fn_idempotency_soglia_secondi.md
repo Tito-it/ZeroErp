@@ -40,7 +40,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_idempotency_soglia_secondi()
-IS 'La soglia in secondi oltre cui una Idempotency-Key rimasta in_progress conta come abbandonata e si puo'' riprendere (D6): il default nudo di SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI, senza override, validato da script.fn_intero_positivo_da_testo (E_CONFIG_MANCANTE se assente, vuoto o non intero positivo). La sede unica della lettura: la usano dbops.fn_idempotency_prenota e il presidio di BE-5 all''avvio del backend, che rifiuta di partire se la soglia non supera il timeout di gunicorn. SECURITY INVOKER. Brief: brief-be-verifica-documentazione-api §I.11.';
+IS 'La soglia in secondi oltre cui una Idempotency-Key rimasta in_progress conta come abbandonata e si puo'' riprendere: il default nudo del parametro SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI, senza override, validato da script.fn_intero_positivo_da_testo (E_CONFIG_MANCANTE se assente, vuoto o non intero positivo). Sede unica della lettura: la usano dbops.fn_idempotency_prenota e il controllo del backend all''avvio, che rifiuta di partire se la soglia non supera il timeout di gunicorn. SECURITY INVOKER.';
 ```
 
 </div>

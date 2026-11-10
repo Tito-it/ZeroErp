@@ -27,12 +27,14 @@ DECLARE
     v_tip_listino  vendite.listini.tipologia_id%TYPE;
     v_padre_codice catalogo.articoli.codice%TYPE;
     v_padre_iva    catalogo.articoli.iva_id%TYPE;
+    v_padre_comp   catalogo.articoli.is_composito%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Il lato DOCUMENTO di script.fn_check_articolo_riga: cio'
     --   che i motivi leggono e che non dipende dall'articolo,
-    --   letto una volta. Valida i parametri.
+    --   letto una volta. Valida i parametri e, per la distinta,
+    --   che il padre sia composito.
     -- Ritorna: il contesto (jsonb) che riceve
     --   script.fn_check_articolo_riga_su_contesto.
     -- =========================================================
@@ -90,11 +92,28 @@ BEGIN
         RETURN v_contesto || jsonb_build_object('listino_tipologia_id', v_tip_listino);
     END IF;
 
-    -- Distinta: il padre.
+    -- Distinta: il padre. La «testata» della distinta e' un articolo
+    -- composito: un padre che non lo e' (o che non esiste) non ha una
+    -- distinta, e nessun componente ci puo' stare.
     IF p_documento = 'ARTICOLO' THEN
-        SELECT a.codice, a.iva_id INTO v_padre_codice, v_padre_iva
+        SELECT a.codice, a.iva_id, a.is_composito
+          INTO v_padre_codice, v_padre_iva, v_padre_comp
           FROM catalogo.articoli a
          WHERE a.id = p_articolo_padre_id;
+
+        IF v_padre_comp IS NOT TRUE THEN
+            PERFORM script.fn_log_and_raise_error(
+                'catalogo',
+                'script.fn_articolo_riga_contesto',
+                'E_ARTICOLO_NON_COMPOSITO',
+                jsonb_build_object(
+                    'campo',       'prodotto_id',
+                    'prodotto_id', p_articolo_padre_id,
+                    'bersaglio',   jsonb_build_array(
+                        jsonb_build_object('tipo', 'ARTICOLO', 'id', p_articolo_padre_id::text))),
+                NULL::uuid,
+                VARIADIC ARRAY[]::text[]);
+        END IF;
 
         RETURN v_contesto || jsonb_build_object(
             'padre_codice',   v_padre_codice,
@@ -134,7 +153,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_articolo_riga_contesto(p_documento text, p_documento_id bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_articolo_padre_id uuid)
-IS 'Il lato DOCUMENTO di script.fn_check_articolo_riga, letto una volta: valida i parametri (p_documento fra PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | LISTINO_VERSIONE | ARTICOLO | PROMO_ARTICOLO, altrimenti E_DOC_TIPO_NON_GESTITO; p_tipo_eccezione obbligatorio per offerta e contratto e p_articolo_padre_id per ARTICOLO, altrimenti E_PARAMETRO_INVALIDO) e restituisce il contesto jsonb che riceve script.fn_check_articolo_riga_su_contesto. Sempre: documento, documento_id, tipo_eccezione, articolo_padre_id. LISTINO_VERSIONE: listino_tipologia_id. ARTICOLO (la distinta): padre_codice, padre_iva_id, padre_aliquota. OFFERTA_COMMERCIALE e CONTRATTO: listino_id, listino_versione_id, etichetta, articoli_listino (gli articolo_id di vendite.fn_espandi_listino_versione, standalone e bundle; [] senza versione). documento_id non e'' obbligatorio: preventivo, ordine, bolla e promo non leggono il documento (l''obbligo di A-1 e'' del picker catalogo.fn_articoli_ammessi). Nasce per R-5: il picker valuta molti articoli sullo stesso documento, e rileggere il listino espanso per ognuno costava piu'' del giudizio. Sotto RLS (SECURITY INVOKER): un documento che l''operatore non vede da'' un contesto senza listino. Nasce il 2026-10-14, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-31, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Il ponte A-8 si restringe: il listino operativo riceve il codice com''e'' (OFFERTA_COMMERCIALE), e la chiave doc_listino esce dal contesto (era una copia di documento). Traduce ancora, in un punto solo, verso script.fn_get_stato_testata_documento (l''etichetta): grammatica delle testate, lotto 2. ⭐ rev 2026-10-19 (20261019-53, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. Il ponte A-8 non c''e'' piu'': nessuna traduzione fra il vocabolario delle entita'' e quello delle testate.';
+IS 'Il lato DOCUMENTO di script.fn_check_articolo_riga, letto una volta: valida i parametri e restituisce il contesto jsonb che riceve script.fn_check_articolo_riga_su_contesto (mai costruito a mano). p_documento e'' uno fra PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | LISTINO_VERSIONE | ARTICOLO | PROMO_ARTICOLO, altrimenti E_DOC_TIPO_NON_GESTITO; p_tipo_eccezione e'' obbligatorio per offerta e contratto, p_articolo_padre_id per ARTICOLO, altrimenti E_PARAMETRO_INVALIDO. ARTICOLO e'' la distinta: la sua testata e'' il padre, che deve esistere ed essere composito, altrimenti E_ARTICOLO_NON_COMPOSITO (campo prodotto_id, bersaglio l''articolo padre): e'' la sede unica della regola «solo un composito ha una distinta». Il contesto porta sempre documento, documento_id, tipo_eccezione, articolo_padre_id; in piu'' LISTINO_VERSIONE: listino_tipologia_id; ARTICOLO: padre_codice, padre_iva_id, padre_aliquota; OFFERTA_COMMERCIALE e CONTRATTO: listino_id, listino_versione_id, etichetta, articoli_listino (gli articolo_id della versione espansa da vendite.fn_espandi_listino_versione, standalone e bundle; [] senza versione). documento_id non e'' obbligatorio: preventivo, ordine, bolla e promo non leggono il documento. Esiste perche'' il picker catalogo.fn_articoli_ammessi giudica molti articoli sullo stesso documento e legge il documento una volta. SECURITY INVOKER, sotto RLS: un documento che l''operatore non vede da'' un contesto senza listino.';
 ```
 
 </div>

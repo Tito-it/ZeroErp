@@ -1,7 +1,7 @@
 ## Row Level Security (RLS) in PostgreSQL
 
 >
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Vedi anche**
 >
@@ -301,8 +301,9 @@ ottenendo lo stesso piano di una WHERE scritta a mano.
 
 Se la policy filtra su una colonna con funzione (es. `lower(email)`), serve un indice
 funzionale corrispondente. Per colonne scope tipiche (`billing_account_id`,
-`emittente_soggetto_ruolo_id`) basta un indice B-tree standard, gia' coperto dalla policy
-FK automatica ZeroErp (`dbops.fk_index_policy`).
+`emittente_soggetto_ruolo_id`) basta un indice B-tree standard: per una colonna FK lo governa
+la politica degli indici delle FK (`dbops.fk_index_policy`), con una decisione `CON_INDICE` o
+`SENZA_INDICE` nel suo CSV, presa sulla query dell'applicazione che entra da quella colonna.
 
 #### Misurare l'effetto di una policy
 

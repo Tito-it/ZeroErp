@@ -10,7 +10,7 @@ search:
 - [fn_area_consente_azione](manual/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](manual/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](manual/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
-- [fn_articolo_riga_contesto](manual/fn_articolo_riga_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: R-5)
+- [fn_articolo_riga_contesto](manual/fn_articolo_riga_contesto.md) — È **il lato documento** della regola sugli articoli di una riga: ciò che i motivi leggono e che non dipende dall'articolo. Lo legge una volta e lo restituisce come contesto `jsonb`.
 - [fn_audit_summary](manual/fn_audit_summary.md)
 - [fn_available_actions_commessa](manual/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
 - [fn_available_actions_contratto](manual/fn_available_actions_contratto.md)
@@ -32,7 +32,7 @@ search:
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](manual/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
-- [fn_check_articolo_riga](manual/fn_check_articolo_riga.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta; Lotto 4, `20261014-03`: due metà, e la promo; `20261014-06`: il kit senza componenti, D-7)
+- [fn_check_articolo_riga](manual/fn_check_articolo_riga.md) — Dice **perché un articolo non può stare in una riga** di un documento. `[]` vuol dire ammesso; altrimenti un array **ordinato** di motivi `{codice, reason, reason_key, dettaglio, valori}`.
 - [fn_check_articolo_riga_su_contesto](manual/fn_check_articolo_riga_su_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: A-2, D-6)
 - [fn_check_attivita_riportabile_da_emettere](manual/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
@@ -57,6 +57,7 @@ search:
 - [fn_check_fattura_emettibile](manual/fn_check_fattura_emettibile.md) — (rev 2026-10-22, D-3 di Tid)
 - [fn_check_fatture_con_plafond_consumato](manual/fn_check_fatture_con_plafond_consumato.md) — (funzione nata il 2026-10-04, `20261004-07`)
 - [fn_check_indirizzo_duplicato](manual/fn_check_indirizzo_duplicato.md)
+- [fn_check_legame_distinta_chiudibile](manual/fn_check_legame_distinta_chiudibile.md) — Dice **perché un legame di distinta non si chiude a una data**, per via dei suoi prezzi bundle. Restituisce un array di motivi; vuoto vuol dire che, per i prezzi, il legame si chiude (con la conferma, se ce ne sono da chiudere o da togliere). Non solleva: il primo motivo lo sollevano il guard della distinta e il verbo di chiusura, sul campo `valido_al`.
 - [fn_check_listino_cambiabile](manual/fn_check_listino_cambiabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4 e D-11 di Tid)
 - [fn_check_lotto_annullabile](manual/fn_check_lotto_annullabile.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono l'annullamento** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando l'annullamento è lecito.
 - [fn_check_lotto_fatture_pre_fiscali](manual/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 04-08-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
@@ -302,7 +303,7 @@ search:
 - [trgfn_note_validate_generic](manual/trgfn_note_validate_generic.md) — La trigger function `script.trgfn_note_validate_generic` valida le note ancorate a una riga di documento (`anchor_tipo = 'RIGA'`): la riga indicata da `target_riga_id` deve appartenere davvero alla testata indicata da `target_id`.
 - [trgfn_notify_permessi_catalogo](manual/trgfn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
 - [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
-- [trgfn_qta_from_operativa](manual/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
+- [trgfn_qta_from_operativa](manual/trgfn_qta_from_operativa.md) — Calcola la quantità base di una riga di documento di vendita: la quantità operativa, scritta nell'unità che l'operatore ha scelto, per il fattore verso l'unità base dell'articolo. `quantita` è una colonna calcolata: la scrive solo questo trigger.
 - [trgfn_righe_default_fonte_qta](manual/trgfn_righe_default_fonte_qta.md) — > **Ultimo aggiornamento**: 31 ottobre 2026
 - [trgfn_righe_guard_articolo_ammesso](manual/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2, A-6, D-6; Lotti 3b e 3c, `20261013-56/-57/-61`; Lotto 4, `20261014-05`: la promo)
 - [trgfn_righe_guard_erogazione_obbligatoria](manual/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)

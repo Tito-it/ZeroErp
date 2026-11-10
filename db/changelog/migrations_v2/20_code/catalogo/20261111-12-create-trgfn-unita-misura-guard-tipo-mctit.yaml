@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_unita_misura_guard_tipo: la tipologia di un'unita' non cambia se e'
+#   in una conversione, e un'unita' a calendario e' di tipo TEMPO (D6, D17). Prende il
+#   posto di catalogo.trgfn_unita_misura_guard_tipo_update, che si ritira col suo
+#   trigger.
+#
+#   D6: la funzione di prima sollevava E_GENERICO con una frase libera, col trigger al
+#   posto della funzione nel log, e contava con COUNT(*). Ora E_UOM_TIPO_IN_USO, il
+#   nome della funzione, EXISTS. D17: conta_dal_calendario (GIORNO, MESE) non era legato
+#   alla tipologia: un'unita' di massa poteva contare i giorni. Le due regole sono della
+#   stessa colonna (la tipologia) e della stessa tabella: un guard solo, montato anche
+#   su INSERT e su conta_dal_calendario; per questo il nome perde «_update».
+#   Rollback: il guard e il trigger di prima, col COMMENT di prima.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-12-create-trgfn-unita-misura-guard-tipo-mctit.yaml
+
+  - changeSet:
+      id: 20261111-12-create-trgfn-unita-misura-guard-tipo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        unita_misura: un guard per la tipologia (E_UOM_TIPO_IN_USO, E_UOM_CALENDARIO_NON_TEMPO). Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('catalogo.trgfn_unita_misura_guard_tipo_update()'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.trgfn_unita_misura_guard_tipo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_tipo_codice catalogo.uom_tipi.codice_interno%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la tipologia di un'unita' di misura.
+                  --   1) non cambia se l'unita' compare in una conversione generale:
+                  --      la conversione vale solo fra unita' della stessa tipologia
+                  --      (catalogo.trgfn_uom_conversioni_guard_tipo, che legge le
+                  --      unita' FOR SHARE contro questo cambio);
+                  --   2) un'unita' che si conta dal calendario (conta_dal_calendario)
+                  --      e' di tipologia TEMPO.
+                  -- =========================================================
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.tipo_uom_id IS DISTINCT FROM OLD.tipo_uom_id
+                     AND EXISTS (SELECT 1
+                                   FROM catalogo.unita_misura_conversioni c
+                                  WHERE c.uom_from_id = NEW.id
+                                     OR c.uom_to_id   = NEW.id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.trgfn_unita_misura_guard_tipo',
+                          'E_UOM_TIPO_IN_USO',
+                          jsonb_build_object(
+                              'campo',           'tipo_uom_id',
+                              'uom_id',          NEW.id,
+                              'tipo_uom_old_id', OLD.tipo_uom_id,
+                              'tipo_uom_new_id', NEW.tipo_uom_id),
+                          NULL::uuid,
+                          NEW.codice);
+                  END IF;
+
+                  IF NEW.conta_dal_calendario IS NOT NULL THEN
+                      SELECT t.codice_interno INTO v_tipo_codice
+                        FROM catalogo.uom_tipi t
+                       WHERE t.id = NEW.tipo_uom_id;
+                      -- Tipologia inesistente: parla la FK.
+                      IF FOUND AND v_tipo_codice IS DISTINCT FROM 'TEMPO' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.trgfn_unita_misura_guard_tipo',
+                              'E_UOM_CALENDARIO_NON_TEMPO',
+                              jsonb_build_object(
+                                  'campo',                'conta_dal_calendario',
+                                  'uom_id',               NEW.id,
+                                  'tipo_uom_id',          NEW.tipo_uom_id,
+                                  'conta_dal_calendario', NEW.conta_dal_calendario),
+                              NULL::uuid,
+                              NEW.codice);
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.trgfn_unita_misura_guard_tipo() IS
+                  'Guard BEFORE INSERT e UPDATE OF tipo_uom_id, conta_dal_calendario su catalogo.unita_misura. La tipologia non cambia se l''unita'' compare in una conversione generale di catalogo.unita_misura_conversioni (E_UOM_TIPO_IN_USO): la conversione vale solo fra unita'' della stessa tipologia, e il guard delle conversioni legge le unita'' FOR SHARE contro questo cambio. Un''unita'' che si conta dal calendario (conta_dal_calendario GIORNO o MESE) e'' di tipologia TEMPO (codice_interno di catalogo.uom_tipi), altrimenti E_UOM_CALENDARIO_NON_TEMPO.';
+              DROP TRIGGER trg_unita_misura_a10_guard_tipo_uom_upd ON catalogo.unita_misura;
+              DROP FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update();
+              CREATE TRIGGER trg_unita_misura_a10_guard_tipo_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_uom_id, conta_dal_calendario
+                  ON catalogo.unita_misura
+                  FOR EACH ROW EXECUTE FUNCTION catalogo.trgfn_unita_misura_guard_tipo();
+              COMMENT ON TRIGGER trg_unita_misura_a10_guard_tipo_ins_upd ON catalogo.unita_misura IS
+                  'La tipologia di un''unita'' di misura: non cambia se e'' in una conversione, TEMPO se si conta dal calendario (catalogo.trgfn_unita_misura_guard_tipo).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_unita_misura_a10_guard_tipo_ins_upd ON catalogo.unita_misura;
+              DROP FUNCTION IF EXISTS catalogo.trgfn_unita_misura_guard_tipo();
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_count bigint;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Evitare che il cambio di tipo su una UoM gia' usata in
+                --   conversioni globali aggiri il vincolo same-type.
+                -- ==========================================================
+                SELECT COUNT(*)
+                  INTO v_count
+                  FROM catalogo.unita_misura_conversioni c
+                 WHERE c.uom_from_id = NEW.id
+                    OR c.uom_to_id   = NEW.id;
+
+                IF COALESCE(v_count, 0) > 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'catalogo',
+                    TG_NAME,
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'uom_id', NEW.id,
+                      'tipo_uom_old_id', OLD.tipo_uom_id,
+                      'tipo_uom_new_id', NEW.tipo_uom_id,
+                      'conversioni_collegate', v_count,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    'Cambio tipo UoM non ammesso: la UoM partecipa a conversioni globali.'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update() IS
+                  'Blocca il cambio di tipo_uom_id su UoM gia'' coinvolte in conversioni globali.';
+              CREATE TRIGGER trg_unita_misura_a10_guard_tipo_uom_upd BEFORE UPDATE OF tipo_uom_id ON catalogo.unita_misura FOR EACH ROW WHEN ((old.tipo_uom_id IS DISTINCT FROM new.tipo_uom_id)) EXECUTE FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update();

@@ -16,43 +16,49 @@ CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_str
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+    v_oggi     date := script.fn_data_operativa();
+    v_min_al   catalogo.articoli_componenti.valido_al%TYPE;
+    -- I motivi: il valore di ritorno di una fn_check_*, nessuna colonna dietro.
+    v_motivi   jsonb;
+    -- Conteggi di righe: nessuna colonna dietro.
+    v_prezzi   integer;
+    v_versioni integer;
+    v_kit        catalogo.articoli.codice%TYPE;
+    v_componente catalogo.articoli.codice%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Garantire che la struttura di una BoM sia immutabile
-    --   una volta inserita. Pattern admin "chiudi+inserisci":
-    --   per correggere si chiude la riga esistente (UPDATE
-    --   valido_al alla data di fine) e si inserisce una
-    --   nuova riga con valido_dal successivo. Il temporal UNIQUE
-    --   constraint uq_articoli_componenti_no_overlap (PG 18)
-    --   garantisce non-overlap sul triplo (prodotto, componente,
-    --   validita WITHOUT OVERLAPS).
-    --
+    --   La distinta e' una storia: un legame non si cancella e la sua
+    --   struttura non cambia (si chiude e se ne inserisce uno nuovo),
+    --   e la sua fine non cambia i giorni gia' passati.
     -- Regole:
-    --   1. DELETE -> bloccato sempre (E_BOM_MODIFICA_VIETATA).
-    --   2. UPDATE dei campi di struttura -> bloccato
-    --      (coeff_qta, componente_id, obbligatorio,
-    --      esposizione_in_fattura, valido_dal).
-    --      Rev 20261002-61: partecipa_qta e determina_qta_padre
-    --      ritirate (20261002-60), nessuna logica le leggeva.
-    --      Nota: validita rimossa dalla lista perche' e' ora
-    --      STORED generated: PostgreSQL rifiuta scritture dirette
-    --      prima che il trigger venga eseguito; in BEFORE trigger
-    --      NEW.validita e' NULL e non puo' essere usata per check.
-    --   3. UPDATE di valido_al ammesso (chiusura della riga).
-    --      L'ordine delle date NON si giudica qui: lo giudica il
-    --      guard comune script.trgfn_guard_date_validita, montato
-    --      dall'automazione DATE_VALIDITA su ogni tabella con la
-    --      coppia valido_dal/valido_al (rev 20260924-01: ritirato
-    --      il ramo E_BOM_VALIDO_AL_INVALIDO, che ne era una copia).
-    --   4. UPDATE di campi note/meta/attivo + audit
-    --      (user_update/data_update/tx_id) -> ammesso.
+    --   1. DELETE -> E_BOM_MODIFICA_VIETATA, sempre.
+    --   2. UPDATE di prodotto_id, componente_id, coeff_qta, obbligatorio,
+    --      esposizione_in_fattura, valido_dal -> E_BOM_MODIFICA_VIETATA.
+    --      validita e' generata: PostgreSQL rifiuta da se' la scrittura.
+    --   3. UPDATE di valido_al:
+    --      a. legame la cui fine e' gia' passata (valido_al < oggi): la
+    --         fine non si cambia piu' -> E_BOM_LEGAME_CHIUSO. Rimettere
+    --         il componente nella distinta e' un legame nuovo;
+    --      b. altrimenti la fine nuova e' vuota oppure da ieri in avanti:
+    --         prima di ieri toglierebbe al legame giorni gia' passati ->
+    --         E_BOM_CHIUSURA_RETROATTIVA. Chiudere a ieri lascia la storia
+    --         com'era, e permette a una versione nuova di valere da oggi;
+    --      c. una fine che lascia fuori dei prezzi bundle del legame: prima
+    --         cio' che vieta (script.fn_check_legame_distinta_chiudibile);
+    --      d. poi l'avviso E_BOM_CHIUSURA_CON_PREZZI: i prezzi si chiudono
+    --         col legame, con la conferma, dal verbo
+    --         catalogo.fn_chiudi_legame_distinta.
+    --      Una fine che precede valido_dal non si giudica qui: e' la regola
+    --      del periodo (script.trgfn_guard_date_validita, E_DATA_AL_MINORE_DAL).
+    --   4. UPDATE di attivo, note, meta, audit -> ammesso.
     -- =========================================================
 
     IF TG_OP = 'DELETE' THEN
         PERFORM script.fn_log_and_raise_error(
-            'database',
-            TG_NAME,
+            'catalogo',
+            TG_NAME::text,
             'E_BOM_MODIFICA_VIETATA',
             jsonb_build_object(
                 'operazione',    'DELETE',
@@ -61,44 +67,125 @@ BEGIN
                 'componente_id', OLD.componente_id,
                 'riga_id',       OLD.id
             ),
-            NULL::uuid,
+            OLD.tx_id,
             VARIADIC ARRAY[]::text[]
         );
     END IF;
 
-    IF TG_OP = 'UPDATE' THEN
-        -- Blocca modifiche ai campi di struttura.
-        -- validita non inclusa: e' STORED generated, scritture dirette
-        -- sono gia' rifiutate da PostgreSQL prima che il trigger esegua.
-        IF NEW.coeff_qta              IS DISTINCT FROM OLD.coeff_qta
-           OR NEW.componente_id       IS DISTINCT FROM OLD.componente_id
-           OR NEW.obbligatorio        IS DISTINCT FROM OLD.obbligatorio
-           OR NEW.esposizione_in_fattura IS DISTINCT FROM OLD.esposizione_in_fattura
-           OR NEW.valido_dal          IS DISTINCT FROM OLD.valido_dal
-        THEN
+    IF NEW.prodotto_id               IS DISTINCT FROM OLD.prodotto_id
+       OR NEW.componente_id          IS DISTINCT FROM OLD.componente_id
+       OR NEW.coeff_qta              IS DISTINCT FROM OLD.coeff_qta
+       OR NEW.obbligatorio           IS DISTINCT FROM OLD.obbligatorio
+       OR NEW.esposizione_in_fattura IS DISTINCT FROM OLD.esposizione_in_fattura
+       OR NEW.valido_dal             IS DISTINCT FROM OLD.valido_dal
+    THEN
+        PERFORM script.fn_log_and_raise_error(
+            'catalogo',
+            TG_NAME::text,
+            'E_BOM_MODIFICA_VIETATA',
+            jsonb_build_object(
+                'operazione',    'UPDATE_STRUTTURA',
+                'hint',          'Chiudi questa riga (imposta valido_al) e inserisci una nuova riga con i valori aggiornati.',
+                'prodotto_id',   OLD.prodotto_id,
+                'componente_id', OLD.componente_id,
+                'riga_id',       OLD.id
+            ),
+            NEW.tx_id,
+            VARIADIC ARRAY[]::text[]
+        );
+    END IF;
+
+    IF NEW.valido_al IS DISTINCT FROM OLD.valido_al
+       AND (NEW.valido_al IS NULL OR NEW.valido_al >= NEW.valido_dal) THEN
+
+        IF OLD.valido_al < v_oggi THEN
             PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME,
-                'E_BOM_MODIFICA_VIETATA',
+                'catalogo',
+                TG_NAME::text,
+                'E_BOM_LEGAME_CHIUSO',
                 jsonb_build_object(
-                    'operazione',    'UPDATE_STRUTTURA',
-                    'hint',          'Chiudi questa riga (imposta valido_al) e inserisci una nuova riga con i valori aggiornati.',
+                    'campo',         'valido_al',
                     'prodotto_id',   OLD.prodotto_id,
                     'componente_id', OLD.componente_id,
-                    'riga_id',       OLD.id
+                    'riga_id',       OLD.id,
+                    'valido_al',     OLD.valido_al
                 ),
-                NULL::uuid,
-                VARIADIC ARRAY[]::text[]
+                NEW.tx_id,
+                to_char(OLD.valido_al, 'DD/MM/YYYY')
             );
+        END IF;
+
+        v_min_al := v_oggi - 1;
+        IF NEW.valido_al < v_min_al THEN
+            PERFORM script.fn_log_and_raise_error(
+                'catalogo',
+                TG_NAME::text,
+                'E_BOM_CHIUSURA_RETROATTIVA',
+                jsonb_build_object(
+                    'campo',         'valido_al',
+                    'prodotto_id',   OLD.prodotto_id,
+                    'componente_id', OLD.componente_id,
+                    'riga_id',       OLD.id,
+                    'valido_al',     NEW.valido_al,
+                    'valido_al_min', v_min_al
+                ),
+                NEW.tx_id,
+                to_char(v_min_al, 'DD/MM/YYYY')
+            );
+        END IF;
+
+        IF NEW.valido_al IS NOT NULL THEN
+            -- 3c. Prima cio' che vieta.
+            v_motivi := script.fn_check_legame_distinta_chiudibile(OLD.id, NEW.valido_al);
+            PERFORM script.fn_raise_primo_motivo_se_presente(
+                'catalogo', 'catalogo.trgfn_articoli_componenti_block_modifica_struttura',
+                v_motivi,
+                'valido_al',
+                NEW.tx_id,
+                jsonb_build_object('legame_id', OLD.id));
+
+            -- 3d. Poi l'avviso: i prezzi che la chiusura chiude o toglie.
+            SELECT count(*)::integer,
+                   count(DISTINCT r.listino_versione_id)::integer
+              INTO v_prezzi, v_versioni
+              FROM vendite.fn_prezzi_legame_oltre_la_fine(OLD.id, NEW.valido_al) r
+             WHERE r.esito IN ('CHIUDE', 'TOGLIE');
+
+            IF v_prezzi > 0 THEN
+                SELECT p.codice, c.codice
+                  INTO v_kit, v_componente
+                  FROM catalogo.articoli p, catalogo.articoli c
+                 WHERE p.id = OLD.prodotto_id
+                   AND c.id = OLD.componente_id;
+
+                PERFORM script.fn_log_and_raise_error(
+                    'catalogo',
+                    'catalogo.trgfn_articoli_componenti_block_modifica_struttura',
+                    'E_BOM_CHIUSURA_CON_PREZZI',
+                    jsonb_build_object(
+                        'campo',     'valido_al',
+                        'legame_id', OLD.id,
+                        'valido_al', NEW.valido_al,
+                        'prezzi',    v_prezzi,
+                        'versioni',  v_versioni,
+                        'bersaglio', jsonb_build_array(
+                            jsonb_build_object('tipo', 'ARTICOLO', 'id', OLD.prodotto_id::text))),
+                    NEW.tx_id,
+                    v_componente,
+                    v_kit,
+                    v_prezzi::text,
+                    v_versioni::text
+                );
+            END IF;
         END IF;
     END IF;
 
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
-IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci): coeff_qta, componente_id, obbligatorio, esposizione_in_fattura, valido_dal. Ammette UPDATE di valido_al (chiusura), attivo, note, meta, audit. validita e'' STORED generated: scritture dirette rifiutate da PG. Error code: E_BOM_MODIFICA_VIETATA (387). Rev 20260924-01: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA); E_BOM_VALIDO_AL_INVALIDO ritirato. Rev 20261001-43: il campo di struttura esposto_in_fattura e'' ora esposizione_in_fattura (tre modi, brief-db-esposizione-componenti-kit-in-fattura). Rev 20261002-61: partecipa_qta e determina_qta_padre ritirate dalla tabella (20261002-60): nessuna logica le leggeva (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1).';
+IS 'Guard d''immutabilita'' di catalogo.articoli_componenti, BEFORE DELETE OR UPDATE OF prodotto_id, componente_id, coeff_qta, obbligatorio, esposizione_in_fattura, valido_dal, valido_al. La distinta e'' una storia: un legame non si cancella (E_BOM_MODIFICA_VIETATA) e la sua struttura non cambia (prodotto_id, componente_id, coeff_qta, obbligatorio, esposizione_in_fattura, valido_dal: E_BOM_MODIFICA_VIETATA); per cambiarla si chiude il legame e se ne inserisce uno nuovo. La fine (valido_al) non cambia i giorni gia'' passati, al giorno aziendale (script.fn_data_operativa): un legame la cui fine e'' gia'' passata non si tocca piu'' (E_BOM_LEGAME_CHIUSO, campo valido_al: rimettere il componente e'' un legame nuovo); negli altri la fine nuova e'' vuota oppure da ieri in avanti (E_BOM_CHIUSURA_RETROATTIVA, campo valido_al, con la prima data ammessa). Chiudere a ieri permette a una versione nuova di valere da oggi. Una fine che lascia fuori dei prezzi bundle del legame (vendite.fn_prezzi_legame_oltre_la_fine): prima cio'' che vieta, il primo motivo di script.fn_check_legame_distinta_chiudibile sul campo valido_al (E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE, E_BOM_CHIUSURA_PRIMA_DEI_PREZZI); poi l''avviso E_BOM_CHIUSURA_CON_PREZZI (campo valido_al; valori componente, kit, prezzi, versioni; bersaglio il kit): i prezzi si chiudono col legame, con la conferma, dal verbo catalogo.fn_chiudi_legame_distinta, che li chiude prima di arrivare qui. Una fine che precede valido_dal la giudica la regola del periodo (script.trgfn_guard_date_validita, E_DATA_AL_MINORE_DAL). validita e'' generata. attivo, note, meta e audit si cambiano.';
 ```
 
 </div>

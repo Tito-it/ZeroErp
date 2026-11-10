@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: La SQL che il repository manda per OGNI livello che il backend scrive
 #        e cancella (utente, emittente, categoria cliente): l'upsert passa dal
-#        vincolo d'ambito (`ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5`)
+#        vincolo d'ambito (`ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6`)
 #        e scrive la sola colonna del suo scope; la delete filtra id e scope.
 #        Senza DB. La giuntura col DB vero la prova
 #        `tests/db/test_parameter_overrides_db.py`.
@@ -63,7 +63,7 @@ class DimensioniOverrideTests(TestCase):
                 self.assertEqual(getattr(ParameterRepository(), metodo)("P", 5, "v"), 1)
                 sql = _sql_mandata(mock_conn)
                 self.assertIn(f"(parameter_id, {scope}, overridden_value)", sql)
-                self.assertIn("ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE", sql)
+                self.assertIn("ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6 DO UPDATE", sql)
                 self.assertIn("attivo = true", sql)
                 for dim in _DIMENSIONI_OVERRIDE:
                     if dim != scope:

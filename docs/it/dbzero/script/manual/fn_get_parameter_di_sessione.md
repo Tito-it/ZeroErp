@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_parameter_di_sessione()`
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+
 > 👀 **Vedi anche**
 >
 [script.fn_get_parameter_full](/dbzero/script/manual/fn_get_parameter_full) — la cascata degli override
@@ -12,8 +14,11 @@
 `brief-db-processi-accensione-per-ambiente` §6.12)
 
 **Il valore di un parametro, con la cascata degli override e il contesto preso dalla
-sessione.** È la stessa cascata di `fn_get_parameter_full` (utente, gruppo, azienda, sessione,
-funzione, valore di default); cambia chi fornisce il contesto.
+sessione.** È la stessa cascata di `fn_get_parameter_full` (utente, categoria cliente, gruppo,
+azienda, funzione, valore di default); cambia chi fornisce il contesto.
+
+«Di sessione» vuol dire questo: il contesto (utente, gruppi, azienda) viene dalle variabili
+della sessione, non dal chiamante. Non esiste un livello «sessione» degli override.
 
 Quando il backend legge un parametro, passa lui chi è l'utente, i suoi gruppi e l'azienda.
 Un lettore **dentro il database** (un trigger che completa una riga, una funzione che crea un
@@ -29,7 +34,6 @@ lei gli override per utente, gruppo e azienda non scatterebbero mai.
 | utente | `app.current_user_id` (l'utente Django autenticato) | il livello salta |
 | gruppo | i gruppi Django dell'utente | il livello salta |
 | azienda | `app.current_emittente_id` (l'azienda attiva della sessione) | il livello salta |
-| sessione | `app.session_key` | il livello salta |
 | funzione | il secondo argomento: chi chiede (il nome del trigger o della funzione) | il livello salta |
 | categoria cliente | — non fa parte della sessione: dipende dal documento | sempre saltato |
 
@@ -52,6 +56,16 @@ dichiarato, l'errore è quello di `fn_get_parameter_full`.
 ### Chi la usa
 
 * `script.fn_stato_proposto_id`, lo stato che si propone quando chi scrive non lo dice.
+
+---
+
+### Storia
+
+* 2026-11-09 — esce il livello sessione degli override: la funzione non legge più
+  `app.session_key` e chiama `fn_get_parameter_full` per nome, sulla firma nuova senza
+  `p_session_key`. Il nome e la firma non cambiano. ChangeSet
+  `20261111-15-update-fn-get-parameter-di-sessione-senza-sessione`, `brief-db-revisione-dbops`,
+  giro 13.
 
 ---
 

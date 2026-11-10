@@ -102,9 +102,14 @@ BEGIN
         );
     END IF;
 
-    -- Guard 4: BoM deve essere valida alla data documento
-    -- (skip se data non disponibile: v_data_rif IS NULL)
-    IF v_data_rif IS NOT NULL AND NOT (v_bom.validita @> v_data_rif) THEN
+    -- Guard 4: il legame sta nella distinta del padre alla data della testata,
+    --   cioe' e' attivo e in vigore quel giorno. La domanda e' di
+    --   catalogo.fn_distinta_alla_data, sede unica. La data della testata e'
+    --   NOT NULL; se mancasse, il BB non darebbe nessun legame e il guard rifiuta.
+    IF NOT EXISTS (
+           SELECT 1
+             FROM catalogo.fn_distinta_alla_data(v_articolo_id_padre, v_data_rif) d
+            WHERE d.id = NEW.articolo_componente_id) THEN
         PERFORM script.fn_log_and_raise_error(
             'script', TG_NAME, 'E_DOC_COMPONENTE_BOM_NON_VALIDA',
             jsonb_build_object(
@@ -123,7 +128,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_componenti_guard_coerenza_bom()
-IS 'Guard BEFORE INSERT OR UPDATE, riga per riga, fascia _a10_, sui componenti delle righe di documento: la riga componente corrisponde a una voce valida della distinta base dell''articolo della riga padre. Quattro controlli: (1) l''articolo della riga padre e'' composito (is_composito; una riga padre che non si trova vale come non composita) -> E_DOC_RIGA_NON_COMPOSITO; (2) articolo_componente_id e'' una voce di catalogo.articoli_componenti dell''articolo padre -> E_DOC_COMPONENTE_NON_BOM; (3) componente_id e'' il componente di quella voce -> E_DOC_COMPONENTE_ID_INCOERENTE; (4) la validita della voce contiene la data di riferimento della testata -> E_DOC_COMPONENTE_BOM_NON_VALIDA, saltato se la data e'' NULL. Non guarda l''esposizione in fattura. TG_ARGV[0..5]: schema, tabella della riga padre, colonna FK componente -> riga padre, tabella della testata, colonna FK riga padre -> testata, colonna data della testata; articolo_componente_id e componente_id hanno lo stesso nome su ogni tabella e si leggono diretti. Montata su vendite.preventivi_righe_componenti, vendite.ordini_righe_componenti, vendite.ddt_righe_componenti e vendite.contratti_righe_componenti (data della testata) e su vendite.offerte_commerciali_eccezioni_componenti (validita_dal dell''offerta). vendite.listini_righe_componenti ha il suo guard, script.trgfn_listini_righe_comp_guard_coerenza_bom. SECURITY INVOKER.';
+IS 'Guard BEFORE INSERT OR UPDATE, riga per riga, fascia _a10_, sui componenti delle righe di documento: la riga componente corrisponde a una voce valida della distinta base dell''articolo della riga padre. Quattro controlli: (1) l''articolo della riga padre e'' composito (is_composito; una riga padre che non si trova vale come non composita) -> E_DOC_RIGA_NON_COMPOSITO; (2) articolo_componente_id e'' una voce di catalogo.articoli_componenti dell''articolo padre -> E_DOC_COMPONENTE_NON_BOM; (3) componente_id e'' il componente di quella voce -> E_DOC_COMPONENTE_ID_INCOERENTE; (4) la voce sta nella distinta dell''articolo padre alla data di riferimento della testata, cioe'' e'' attiva e la sua validita contiene quella data (catalogo.fn_distinta_alla_data) -> E_DOC_COMPONENTE_BOM_NON_VALIDA. Non guarda l''esposizione in fattura. TG_ARGV[0..5]: schema, tabella della riga padre, colonna FK componente -> riga padre, tabella della testata, colonna FK riga padre -> testata, colonna data della testata; articolo_componente_id e componente_id hanno lo stesso nome su ogni tabella e si leggono diretti. Montata su vendite.preventivi_righe_componenti, vendite.ordini_righe_componenti, vendite.ddt_righe_componenti e vendite.contratti_righe_componenti (data della testata) e su vendite.offerte_commerciali_eccezioni_componenti (validita_dal dell''offerta). vendite.listini_righe_componenti ha il suo guard, script.trgfn_listini_righe_comp_guard_coerenza_bom. SECURITY INVOKER.';
 ```
 
 </div>

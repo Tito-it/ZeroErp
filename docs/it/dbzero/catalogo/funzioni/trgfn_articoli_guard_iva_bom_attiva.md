@@ -16,90 +16,105 @@ CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: BEFORE UPDATE OF iva_id su articoli — blocca modifiche che
---   renderebbero incoerente la BoM. Caso A: padre composito con figli
---   aventi IVA diversa da NEW.iva_id. Caso B: figlio in BoM attive
---   con padre avente IVA diversa da NEW.iva_id.
---   Messaggio parlante: mostra aliquota % invece dell''id numerico interno.
 DECLARE
-    v_codice_altro   catalogo.articoli.codice%TYPE;
-    v_iva_altro      catalogo.articoli.iva_id%TYPE;
-    v_iva_altro_pct  text;
-    v_iva_nuovo_pct  text;
+    v_oggi         date := script.fn_data_operativa();
+    v_codice       catalogo.articoli.codice%TYPE;
+    v_iva          catalogo.articoli.iva_id%TYPE;
+    v_iva_pct      text;
+    v_codice_altro catalogo.articoli.codice%TYPE;
+    v_iva_altro    catalogo.articoli.iva_id%TYPE;
+    v_altro_pct    text;
 BEGIN
-    -- Lookup aliquota IVA nuova (NEW.iva_id) — usata in entrambi i casi
-    SELECT COALESCE(aliquota_iva::text, '—') INTO v_iva_nuovo_pct
-      FROM config.iva WHERE id = NEW.iva_id;
-
-    -- Caso A: articolo e' padre composito — cerca figlio attivo con IVA diversa
-    IF COALESCE(NEW.is_composito, FALSE) THEN
-        SELECT a.codice, a.iva_id, COALESCE(iva.aliquota_iva::text, '—')
-          INTO v_codice_altro, v_iva_altro, v_iva_altro_pct
-          FROM catalogo.articoli_componenti ac
-          JOIN catalogo.articoli a ON a.id = ac.componente_id
-          LEFT JOIN config.iva iva ON iva.id = a.iva_id
-         WHERE ac.prodotto_id = NEW.id
-           AND ac.attivo      = TRUE
-           AND a.iva_id IS DISTINCT FROM NEW.iva_id
-         LIMIT 1;
-
-        IF FOUND THEN
-            PERFORM script.fn_log_and_raise_error(
-                'catalogo', TG_NAME, 'E_BOM_IVA_DISCORDANTE',
-                jsonb_build_object(
-                    'prodotto_id',     NEW.id,
-                    'iva_padre_nuova', NEW.iva_id,
-                    'iva_padre_pct',   v_iva_nuovo_pct,
-                    'codice_figlio',   v_codice_altro,
-                    'iva_figlio',      v_iva_altro,
-                    'iva_figlio_pct',  v_iva_altro_pct
-                ),
-                NULL::uuid,
-                NEW.codice,
-                v_iva_nuovo_pct,
-                v_codice_altro,
-                v_iva_altro_pct
-            );
-        END IF;
+    -- =========================================================
+    -- Scopo: un kit e i suoi componenti hanno la stessa IVA, sui
+    --   legami attivi da oggi in poi. CONSTRAINT TRIGGER AFTER
+    --   UPDATE OF iva_id, differito: si giudica lo stato di fine
+    --   transazione, quindi l'IVA di adesso dell'articolo e dei
+    --   partner (non NEW, che puo' essere stato superato).
+    --   A: l'articolo e' padre -> un componente con IVA diversa.
+    --   B: l'articolo e' componente -> un padre con IVA diversa.
+    -- =========================================================
+    SELECT a.codice, a.iva_id
+      INTO v_codice, v_iva
+      FROM catalogo.articoli a
+     WHERE a.id = NEW.id;
+    IF NOT FOUND THEN
+        RETURN NULL;
     END IF;
 
-    -- Caso B: articolo e' figlio — cerca padre attivo con IVA diversa
-    SELECT a.codice, a.iva_id, COALESCE(iva.aliquota_iva::text, '—')
-      INTO v_codice_altro, v_iva_altro, v_iva_altro_pct
+    v_iva_pct := COALESCE((SELECT i.aliquota_iva::text
+                             FROM config.iva i WHERE i.id = v_iva), '—');
+
+    -- A: l'articolo e' il padre.
+    SELECT a.codice, a.iva_id
+      INTO v_codice_altro, v_iva_altro
       FROM catalogo.articoli_componenti ac
-      JOIN catalogo.articoli a ON a.id = ac.prodotto_id
-      LEFT JOIN config.iva iva ON iva.id = a.iva_id
-     WHERE ac.componente_id = NEW.id
-       AND ac.attivo        = TRUE
-       AND a.iva_id IS DISTINCT FROM NEW.iva_id
+      JOIN catalogo.articoli a ON a.id = ac.componente_id
+     WHERE ac.prodotto_id = NEW.id
+       AND ac.attivo
+       AND ac.validita && daterange(v_oggi, NULL, '[]')
+       AND a.iva_id IS DISTINCT FROM v_iva
+     ORDER BY a.codice
      LIMIT 1;
 
     IF FOUND THEN
-        -- Caso B: padre = v_codice_altro, figlio = NEW.codice
+        v_altro_pct := COALESCE((SELECT i.aliquota_iva::text
+                                   FROM config.iva i WHERE i.id = v_iva_altro), '—');
         PERFORM script.fn_log_and_raise_error(
-            'catalogo', TG_NAME, 'E_BOM_IVA_DISCORDANTE',
+            'catalogo', 'catalogo.trgfn_articoli_guard_iva_bom_attiva', 'E_BOM_IVA_DISCORDANTE',
             jsonb_build_object(
-                'componente_id',   NEW.id,
-                'iva_figlio_nuova', NEW.iva_id,
-                'iva_figlio_pct',   v_iva_nuovo_pct,
-                'codice_padre',     v_codice_altro,
-                'iva_padre',        v_iva_altro,
-                'iva_padre_pct',    v_iva_altro_pct
-            ),
-            NULL::uuid,
+                'campo',           'iva_id',
+                'prodotto_id',     NEW.id,
+                'iva_padre',       v_iva,
+                'iva_padre_pct',   v_iva_pct,
+                'codice_figlio',   v_codice_altro,
+                'iva_figlio',      v_iva_altro,
+                'iva_figlio_pct',  v_altro_pct),
+            NEW.tx_id,
+            v_codice,
+            v_iva_pct,
             v_codice_altro,
-            v_iva_altro_pct,
-            NEW.codice,
-            v_iva_nuovo_pct
-        );
+            v_altro_pct);
     END IF;
 
-    RETURN NEW;
+    -- B: l'articolo e' un componente.
+    SELECT a.codice, a.iva_id
+      INTO v_codice_altro, v_iva_altro
+      FROM catalogo.articoli_componenti ac
+      JOIN catalogo.articoli a ON a.id = ac.prodotto_id
+     WHERE ac.componente_id = NEW.id
+       AND ac.attivo
+       AND ac.validita && daterange(v_oggi, NULL, '[]')
+       AND a.iva_id IS DISTINCT FROM v_iva
+     ORDER BY a.codice
+     LIMIT 1;
+
+    IF FOUND THEN
+        v_altro_pct := COALESCE((SELECT i.aliquota_iva::text
+                                   FROM config.iva i WHERE i.id = v_iva_altro), '—');
+        PERFORM script.fn_log_and_raise_error(
+            'catalogo', 'catalogo.trgfn_articoli_guard_iva_bom_attiva', 'E_BOM_IVA_DISCORDANTE',
+            jsonb_build_object(
+                'campo',            'iva_id',
+                'componente_id',    NEW.id,
+                'iva_figlio',       v_iva,
+                'iva_figlio_pct',   v_iva_pct,
+                'codice_padre',     v_codice_altro,
+                'iva_padre',        v_iva_altro,
+                'iva_padre_pct',    v_altro_pct),
+            NEW.tx_id,
+            v_codice_altro,
+            v_altro_pct,
+            v_codice,
+            v_iva_pct);
+    END IF;
+
+    RETURN NULL;
 END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva()
-IS 'Trigger BEFORE UPDATE OF iva_id su articoli: caso A padre composito -> figli attivi devono avere stessa IVA; caso B figlio -> padre attivo deve avere stessa IVA. Messaggio mostra aliquota % (non id numerico). Raise E_BOM_IVA_DISCORDANTE (445). rev 2026-05-13.';
+IS 'Guard dell''IVA della distinta su catalogo.articoli: un kit e i suoi componenti hanno la stessa IVA, sui legami attivi da oggi in poi (catalogo.articoli_componenti, validita che arriva almeno al giorno aziendale, script.fn_data_operativa). CONSTRAINT TRIGGER AFTER UPDATE OF iva_id, DEFERRABLE INITIALLY DEFERRED, quando l''IVA cambia: si giudica lo stato di fine transazione, con l''IVA di adesso dell''articolo e dei partner, cosi'' l''IVA di un kit e dei suoi componenti si cambia in una transazione, in qualunque ordine. Un legame gia'' finito non blocca. Caso A, l''articolo e'' padre: un componente con IVA diversa; caso B, l''articolo e'' componente: un padre con IVA diversa -> E_BOM_IVA_DISCORDANTE (campo iva_id; valori codice e aliquota del padre, codice e aliquota del componente; aliquota assente: ''—''). Un legame nuovo con IVA diversa lo rifiuta il guard del legame.';
 ```
 
 </div>

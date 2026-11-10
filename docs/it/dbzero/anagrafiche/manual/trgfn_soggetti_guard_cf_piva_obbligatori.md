@@ -1,5 +1,7 @@
 ## 📘 Documentazione Funzione – `anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 **Tabelle anagrafiche / config:**
@@ -10,6 +12,7 @@
 **Funzioni / trigger correlati:**
 >
 [`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch) — valida il **formato** di CF/P.IVA
+> [`anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile`](/dbzero/anagrafiche/manual/trgfn_soggetti_guard_id_fiscale_immutabile) — impedisce il **cambio** di CF/P.IVA già scritti
 > [`script.fn_validate_cf_piva_it`](/dbzero/script/funzioni/fn_validate_cf_piva_it) — validazione formato italiano
 > [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
 
@@ -30,8 +33,9 @@ Questa funzione complementa la validazione di **formato** effettuata da
 | ------------------------------------------- | -------------- |
 | `trgfn_soggetti_valida_cf_piva_dispatch`    | **Formato** (struttura alfanumerica, check digit) |
 | `trgfn_soggetti_guard_cf_piva_obbligatori`  | **Presenza** (campo non NULL quando obbligatorio) |
+| [`trgfn_soggetti_guard_id_fiscale_immutabile`](/dbzero/anagrafiche/manual/trgfn_soggetti_guard_id_fiscale_immutabile) | **Cambio** (un valore già scritto non si cambia né si svuota, salvo il SUPER_ADMIN; dal 2026-11-09) |
 
-I due concern sono separati → trigger separati.
+I concern sono separati → trigger separati. La presenza la controlla questo guard, il cambio di un valore già scritto il guard sull'immutabilità.
 
 ---
 

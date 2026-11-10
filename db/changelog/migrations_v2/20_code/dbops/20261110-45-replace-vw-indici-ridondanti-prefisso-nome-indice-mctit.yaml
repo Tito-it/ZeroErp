@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_indici_ridondanti_prefisso: la riga di politica si aggancia per NOME
+#   ESATTO dell'indice (D23), e la colonna dice la decisione (Q14 ②).
+#   Brief: brief-db-revisione-dbops, giro 10d, blocco 10d-2 (§29).
+#
+#   Prima: p.dll_command ILIKE '%' || a.index_name || ' ON%'. Un nome che e' il
+#   suffisso di un altro (ix_a_b_id dentro ix_x_a_b_id), o che contiene `_`
+#   (jolly di LIKE), agganciava la riga sbagliata, e la vista diceva
+#   AUTOMAZIONE_FK su un indice che la politica non governa. Ora:
+#   p.indice_nome = a.index_name, la colonna generata dalla grammatica del CHECK
+#   (-42), la stessa che legge l'apply.
+#
+#   policy_consentito (boolean) diventa policy_decisione (text): una colonna che
+#   cambia nome e tipo non si fa con CREATE OR REPLACE, quindi DROP e CREATE.
+#   Nessun oggetto dipende dalla vista (pg_depend, scratch e dbdev, 2026-11-09);
+#   i grant li rimette il loop dei grant, come per le viste rinominate del
+#   giro 6. Lettori del nome della colonna: nessuno nel repo (grep 2026-11-09).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261110-45-replace-vw-indici-ridondanti-prefisso-nome-indice-mctit.yaml
+
+  - changeSet:
+      id: 20261110-45-replace-vw-indici-ridondanti-prefisso-nome-indice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_indici_ridondanti_prefisso: la politica per nome esatto dell'indice, policy_decisione
+        al posto di policy_consentito. Brief: brief-db-revisione-dbops, giro 10d.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'fk_index_policy'
+                 AND column_name = 'indice_nome'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_indici_ridondanti_prefisso;
+
+              CREATE VIEW dbops.vw_indici_ridondanti_prefisso AS
+              WITH idx AS (
+                  SELECT ix.indexrelid,
+                         ix.indrelid,
+                         n.nspname AS schema_name,
+                         t.relname AS table_name,
+                         i.relname::text AS index_name,
+                         ix.indisunique,
+                         ix.indisprimary,
+                         ix.indisreplident,
+                         ix.indnkeyatts,
+                         ix.indnatts,
+                         pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
+                         (SELECT array_agg(pg_get_indexdef(ix.indexrelid, k.k, false)
+                                           || '|' || ix.indclass[k.k - 1]::text
+                                           || '|' || ix.indcollation[k.k - 1]::text
+                                           || '|' || ix.indoption[k.k - 1]::text
+                                           ORDER BY k.k)
+                            FROM generate_series(1, ix.indnkeyatts::integer) k(k)) AS colsig
+                    FROM pg_index ix
+                    JOIN pg_class i     ON i.oid = ix.indexrelid
+                    JOIN pg_class t     ON t.oid = ix.indrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    JOIN pg_am am       ON am.oid = i.relam
+                   WHERE i.relkind = 'i'
+                     AND am.amname = 'btree'
+                     AND ix.indisvalid
+                     AND ix.indisready
+                     AND dbops.fn_indici_schema_nell_ambito(n.nspname)
+              )
+              SELECT DISTINCT ON (a.indexrelid)
+                     a.schema_name,
+                     a.table_name,
+                     a.index_name AS indice_ridondante,
+                     b.index_name AS coperto_da,
+                     CASE WHEN a.indnkeyatts = b.indnkeyatts THEN 'DUPLICATO_ESATTO' ELSE 'PREFISSO' END AS motivo,
+                     pg_relation_size(a.indexrelid::regclass) AS peso_byte,
+                     pg_size_pretty(pg_relation_size(a.indexrelid::regclass)) AS peso,
+                     st.idx_scan,
+                     CASE WHEN p.constraint_name IS NULL THEN 'MANUALE' ELSE 'AUTOMAZIONE_FK' END AS origine,
+                     p.constraint_name AS policy_constraint_name,
+                     p.decisione AS policy_decisione
+                FROM idx a
+                JOIN idx b
+                  ON b.indrelid = a.indrelid
+                 AND b.indexrelid <> a.indexrelid
+                 AND b.colsig[1:array_length(a.colsig, 1)] = a.colsig
+                 AND NOT (a.predicato IS DISTINCT FROM b.predicato)
+                 AND (b.indnkeyatts > a.indnkeyatts OR b.indisunique)
+                LEFT JOIN dbops.fk_index_policy p
+                  ON p.schema_name = a.schema_name
+                 AND p.table_name = a.table_name
+                 AND p.indice_nome = a.index_name
+                LEFT JOIN pg_stat_user_indexes st ON st.indexrelid = a.indexrelid
+               WHERE a.indisunique = false
+                 AND NOT a.indisprimary
+                 AND NOT a.indisreplident
+                 AND a.indnatts = a.indnkeyatts
+                 AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = a.indexrelid)
+               ORDER BY a.indexrelid, b.indisunique DESC, b.indnkeyatts, b.indexrelid;
+
+              COMMENT ON VIEW dbops.vw_indici_ridondanti_prefisso IS
+                  'Indici btree ridondanti PER PREFISSO negli schemi governati dalla politica degli indici (dbops.fn_indici_schema_nell_ambito): le colonne chiave di indice_ridondante sono la testa di quelle di coperto_da, con stessi opclass, collation, ordinamento e stesso predicato. PostgreSQL usa gia'' coperto_da per ogni ricerca sulle colonne di indice_ridondante, controllo referenziale delle FK compreso. Complementare a dbops.vw_duplicate_indexes, che vede solo i duplicati esatti. Esclude PK, UNIQUE, REPLICA IDENTITY e indici a supporto di un constraint: non si suggerisce di togliere cio'' che impone integrita''. origine dice COME si toglie: AUTOMAZIONE_FK = una riga di dbops.fk_index_policy nomina proprio quell''indice (indice_nome, per uguaglianza) e la si porta a SENZA_INDICE nel CSV (un DROP secco lo rifarebbe l''apply se la riga e'' CON_INDICE); MANUALE = DROP in un changeSet. policy_decisione e'' la decisione di quella riga.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La versione precedente leggeva il flag consentito, che dopo il giro non c'e' piu':
+              -- si torna indietro col rollback dell'intero giro.
+              SELECT 1;

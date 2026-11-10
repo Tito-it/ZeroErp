@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-dbops,coda_lavori,fk_coda_lavori_emittente_fiscale,false,"CREATE INDEX IF NOT EXISTS ix_coda_lavori_emittente_fiscale_id ON dbops.coda_lavori(emittente_fiscale_id);",false,mctit,2026-11-07 00:00:00+01

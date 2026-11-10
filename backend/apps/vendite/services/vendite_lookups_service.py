@@ -9,7 +9,7 @@
 #        del frontend (TipoVariazioneSelect, AmbitoContrattoSelect,
 #        ModalitaPricingSelect).
 #
-#        Pattern modello: catalogo_service.fn_list_uom_rounding_modes
+#        Pattern modello: amm_software_service.list_emittente_rounding_modes
 #        (lookup statico dedicato, niente DB, non gestiti dall'admin).
 # ------------------------------------------------------------
 
@@ -58,7 +58,7 @@ _AMBITI_CONTRATTO: tuple[tuple[str, str, int], ...] = (
 
 def _to_payload(rows: tuple[tuple[str, str, int], ...]) -> list[dict[str, Any]]:
     # Scopo: trasforma tuple (codice, descrizione, ordering) in dict pronti
-    #        per success_response, allineato a fn_list_uom_rounding_modes.
+    #        per success_response, allineato a list_emittente_rounding_modes.
     return [
         {"codice": codice, "descrizione": descrizione, "ordering": ordering}
         for codice, descrizione, ordering in rows

@@ -87,6 +87,6 @@ Contesto JSON: `articolo_componente_id`, `componente_id`.
 ## Note operative
 
 - La distinzione obbligatorio/opzionale è definita a livello di BoM catalogo (`catalogo.articoli_componenti.obbligatorio`) e non può essere sovrascritta nel documento.
-- Per escludere un componente obbligatorio da tutti i nuovi documenti, la modifica corretta è: aggiornare `catalogo.articoli_componenti` disattivando la riga BoM o cambiandone il flag `obbligatorio`.
+- Per escludere un componente obbligatorio dai nuovi documenti si cambia la distinta, non il documento: si chiude il legame (`valido_al`, al più presto ieri) e, se il componente deve restare come opzionale, si inserisce un legame nuovo con `obbligatorio = FALSE` che parte dal giorno dopo. `obbligatorio` è un campo di struttura e non si modifica sul legame esistente, e un legame citato da un documento non si spegne (`attivo`): li rifiutano i trigger della distinta.
 - I componenti opzionali (`obbligatorio = FALSE`) non sono soggetti a questo guard e possono essere attivati/disattivati liberamente.
 - Migration di riferimento: `20260513-17`.

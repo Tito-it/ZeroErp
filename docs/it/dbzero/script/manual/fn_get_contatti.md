@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_contatti`
 
+> **Ultimo aggiornamento**: 9 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
@@ -40,7 +42,7 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
   A parità di `priority`, la funzione privilegia i contatti con **`is_default = TRUE`**, lasciando comunque la possibilità di avere contatti non di default per lo stesso tipo.
 
 * **Validazione e logging centralizzato**
-  `p_soggetto_id` è **obbligatorio**: se `NULL`, la funzione demanda a `script.fn_log_and_raise_error` la registrazione dell’errore (`ERRORE_PARAMETRI`) e il lancio dell’eccezione.
+  `p_soggetto_id` è **obbligatorio**: se `NULL`, la funzione rifiuta la chiamata prima di leggere un dato, con il codice `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (classe `DATO_ERRATO`, messaggio «Indicare il soggetto di cui leggere i contatti.»), sollevato da `script.fn_log_and_raise_error` col canale `parametro` = `p_soggetto_id`.
 
 * **Base per funzioni specializzate**
   Il risultato di `fn_get_contatti` può essere ulteriormente filtrato (es. solo default, solo un `tipo_contatto_id` specifico) da altre funzioni, evitando di duplicare la logica di fallback in più punti.
@@ -51,7 +53,7 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 
 | Nome                  | Tipo     | Default | Obbligatorio | Descrizione                                                                                                                        |
 | --------------------- | -------- | ------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `p_soggetto_id`       | `UUID`   | —       | ✅ Sì         | Identificativo del soggetto. Se `NULL`, viene generato un errore tramite `fn_log_and_raise_error`.                                 |
+| `p_soggetto_id`       | `UUID`   | —       | ✅ Sì         | Identificativo del soggetto. Se `NULL`, la chiamata è rifiutata con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`.                           |
 | `p_soggetto_ruolo_id` | `BIGINT` | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti legati a uno specifico ruolo del soggetto.                            |
 | `p_istanza_utility_id` | `BIGINT` | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti associati a una determinata istanza utility.                         |
 | `p_tipo_contatto_id`  | `INT`    | `NULL`  | ❌ No         | Se valorizzato, limita il risultato ai contatti di uno specifico `tipo_contatto`. |
@@ -86,12 +88,13 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
 ### Flusso Logico Interno
 
 1. **Validazione di `p_soggetto_id`**
-   Se `p_soggetto_id` è `NULL`, il CTE `validate` invoca `script.fn_log_and_raise_error` con:
+   Se `p_soggetto_id` è `NULL`, un `IF` prima della query invoca `script.fn_log_and_raise_error` con:
 
    * origine: `database`
    * funzione chiamante: `fn_get_contatti`
-   * codice errore: `ERRORE_PARAMETRI`
-   * payload JSON dei parametri ricevuti
+   * codice errore: `E_CONTATTI_SOGGETTO_OBBLIGATORIO`
+   * contesto: la chiave `parametro` = `p_soggetto_id` (il canale che indica il dato mancante) e gli
+     altri parametri ricevuti
 
    In questo modo tutte le chiamate errate vengono tracciate in modo uniforme.
 
@@ -114,8 +117,10 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
      ```sql
      CASE
        WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
-        AND c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id THEN 1  -- ruolo + istanza
-       WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id THEN 2  -- solo ruolo
+        AND c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id
+        AND c.istanza_utility_id IS NOT NULL THEN 1                              -- ruolo + istanza
+       WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
+        AND c.istanza_utility_id IS NULL THEN 2                                  -- ruolo generico
        ELSE 3  -- solo soggetto
      END AS priority
      ```
@@ -188,6 +193,26 @@ FROM script.fn_get_contatti(
 * **Chiarezza del contesto**: la colonna `default_context` permette di capire rapidamente se un contatto è default per soggetto, ruolo o istanza.
 * **Estendibilità**: ulteriori funzioni (es. `script.fn_get_contatto_default`) possono basarsi su `fn_get_contatti`, limitandosi a filtrare ulteriormente i risultati.
 * **Compatibilità evolutiva**: l’uso di una funzione dedicata permette di cambiare la strategia di priorità o di aggiungere nuovi contesti senza impattare direttamente le query applicative.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql`, test 9 — la chiamata col soggetto
+  `NULL` è rifiutata con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`.
+
+---
+
+### Note di migrazione
+
+* 2026-11-09 — il soggetto obbligatorio lo è davvero. Prima la funzione era scritta in SQL e la
+  validazione di `p_soggetto_id` stava in un passo della query che nessuno leggeva, quindi non girava:
+  con il soggetto `NULL` la funzione restituiva zero righe in silenzio. Il codice era
+  `ERRORE_PARAMETRI`, obsoleto dal 2026-08-05, e la rinomina dei codici non l'aveva visto perché i
+  presidi sui codici leggevano il solo PL/pgSQL. Ora la funzione è PL/pgSQL, rifiuta il soggetto
+  `NULL` con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, e con un soggetto valido restituisce le stesse righe
+  di prima; firma, colonne restituite e permessi non cambiano (`20261110-94`,
+  `brief-db-revisione-dbops`, giro 12).
 
 ---
 

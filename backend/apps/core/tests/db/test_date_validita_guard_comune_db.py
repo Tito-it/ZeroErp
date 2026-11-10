@@ -396,15 +396,15 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
 
             giorno = {"valido_dal": _DAL.isoformat(), "valido_al": _DAL.isoformat()}
 
-            # UoM operativa: la riga base che il DB semina alla nascita dell'articolo.
+            # UoM operativa: una mappatura costruita, non la riga base. Dal giro 2
+            # di brief-db-revisione-catalogo (2026-11-09) la riga base non porta
+            # date (`chk_articoli_uom_operativa_base_fissa`), come nel pgTAP
+            # `script/test-trgfn-guard-date-validita-v1`.
             # Il padre della distinta nasce composito: e' struttura (guard A-10).
             padre = _articolo("P", composito=True)
-            cur.execute(
-                "SELECT id FROM catalogo.articoli_uom_operativa WHERE articolo_id = %s",
-                [padre],
-            )
-            uom_op = int(cur.fetchone()[0])
-            svc.fn_update_uom_operativa(padre, uom_op, {"valido_dal": _DAL.isoformat()})
+            uom_op = int(svc.fn_create_uom_operativa(
+                padre, {"uom_id": _uom(), "factor_to_base": "10", "valido_dal": _DAL.isoformat()},
+            )["id"])
             self._rifiuto_del_periodo(
                 "catalogo.uom_operativa.update",
                 lambda: svc.fn_update_uom_operativa(

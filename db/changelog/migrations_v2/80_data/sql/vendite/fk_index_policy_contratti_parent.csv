@@ -1,2 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,contratti,fk_contratti_parent,true,"CREATE INDEX IF NOT EXISTS ix_contratti_parent_contratto_id ON vendite.contratti(parent_contratto_id) WHERE parent_contratto_id IS NOT NULL;",false,mctit,2026-11-07 00:00:00+01

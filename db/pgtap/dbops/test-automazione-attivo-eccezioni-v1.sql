@@ -20,7 +20,10 @@
 --   pgTAP: i test 2-4 sono veri anche li' (il 4 in particolare dice che il
 --   motore ha continuato a generare le coppie non eccettuate).
 --
--- Elenco test (plan 8):
+-- rev 2026-11-09 (brief-db-revisione-dbops, giro 14, M37): i test 1-4 guardano la
+--   prima eccezione; il 9 guarda TUTTE le righe del registro.
+--
+-- Elenco test (plan 9):
 --   Il registro e il framework
 --    1) la riga di registro c'e', col suo motivo
 --    2) nessun require su profili_accesso_bindings per identita_digitale_id
@@ -35,12 +38,15 @@
 --    7) invito accettato (veste accesa): e' super admin
 --    8) spegnere la veste di un SUPER_ADMIN (non l'ultimo) si puo', e il
 --       binding resta: il reinvito lo riaccende uguale (D-3)
+--   Il registro intero
+--    9) ⭐ per OGNI riga di dbops.automazione_attivo_eccezioni nessun require
+--       sulla figlia e nessun block sul padre per quella FK
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
+SELECT plan(9);
 
 -- I trigger ATTIVO, con gli argomenti decodificati (tgargs: bytea separato da NUL).
 -- ⛔ Il nome della tabella si compone dal catalogo, NON con tgrelid::regclass::text:
@@ -90,6 +96,23 @@ SELECT is(
         AND rel = 'config.profili_accesso_bindings'),
     'profilo_accesso_id,unita_organizzativa_id',
     '4) le altre coppie di profili_accesso_bindings restano legate: l''eccezione e'' per FK, non per tabella');
+
+-- 9) Il registro intero: un'eccezione che ha ancora un trigger ATTIVO e' un registro
+--    che mente (fn_run_automations_attivo non doveva generarlo, fn_ritira_attivo_eccezioni
+--    doveva toglierlo). Si scrive qui, prima della parte che costruisce, perche' _trg e'
+--    la fotografia dei trigger presa in testa.
+SELECT is(
+    (SELECT COALESCE(array_agg(DISTINCT e.schema_figlia || '.' || e.tabella_figlia || '.' || e.colonna_fk
+                               ORDER BY e.schema_figlia || '.' || e.tabella_figlia || '.' || e.colonna_fk),
+                     ARRAY[]::text[])
+       FROM dbops.automazione_attivo_eccezioni e
+       JOIN _trg t
+         ON (t.proname = 'trgfn_child_requires_active_parent'
+             AND t.rel = e.schema_figlia || '.' || e.tabella_figlia AND t.a[4] = e.colonna_fk)
+         OR (t.proname = 'trgfn_prevent_deactivate_if_children'
+             AND t.a[1] = e.schema_figlia AND t.a[2] = e.tabella_figlia AND t.a[3] = e.colonna_fk)),
+    ARRAY[]::text[],
+    '9) nessuna eccezione del registro ha ancora un require o un block');
 
 -- ============================================================
 -- 5-8) Il comportamento

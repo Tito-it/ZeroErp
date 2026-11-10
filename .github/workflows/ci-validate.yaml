@@ -292,6 +292,19 @@ jobs:
         # Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
         run: python scripts/guardrail_pgtap_preambolo.py
 
+      - name: Guardrail COMMENT al presente nei changeSet nuovi
+        # Cosa presidia: un `COMMENT ON … IS '…'` scritto in un changeSet nuovo
+        # (dal 20261111-18) non porta il nome di un brief, un marcatore di
+        # revisione, l'id di un changeSet o l'hash di un commit
+        # (linee-guida-sql §5d). Il COMMENT e' il primo paragrafo della scheda
+        # auto-generata: una cronaca li' invecchia il giorno dopo.
+        #
+        # Il pregresso non blocca: si riscrive per famiglia, quando un lavoro
+        # riapre gli oggetti. Per dbops e maintenance il database vivo lo guarda
+        # il pgTAP dbops/test-comment-al-presente-v1, con le stesse marche.
+        # Statico e senza database; solo `changes`, mai `rollback`.
+        run: python scripts/guardrail_comment_al_presente.py
+
       - name: Guardrail letterali SQL nei changeSet
         # Presidia una classe sola, e basta quella: un apostrofo singolo dentro
         # una stringa SQL la CHIUDE, e il changeSet smette di essere quello che

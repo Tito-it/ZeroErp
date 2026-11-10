@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_cleanup_at`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -55,9 +55,8 @@ e questa funzione resta per le righe nate prima del trigger.
 * **La colonna base è obbligatoria.** La sceglie chi chiama: il runner la prende da
   [fn_cleanup_at_regola](/dbzero/dbops/funzioni/fn_cleanup_at_regola), la dichiarata o la prima
   della catena. La funzione non la indovina.
-* **La colonna della scadenza è sempre `cleanup_at`**, nome fisso del framework. Il parametro
-  `p_cleanup_column` resta nella firma ma può solo confermarlo: vuoto o `cleanup_at`; un altro nome
-  è un errore.
+* **La colonna della scadenza è sempre `cleanup_at`**, nome fisso del framework, e non è un
+  parametro.
 * Se la tabella non ha `cleanup_at` o non ha la colonna base, la funzione non fa niente e
   restituisce zero.
 * In simulazione (`p_dry_run`) conta le righe che aggiornerebbe, senza scrivere.
@@ -70,8 +69,7 @@ la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
 ### Codici errore
 
 * `E_GENERICO` — schema o tabella mancanti, oppure termine mancante o negativo.
-* `E_PARAMETRO_INVALIDO` — colonna base mancante, oppure una colonna di scadenza diversa da
-  `cleanup_at`.
+* `E_PARAMETRO_INVALIDO` — colonna base mancante.
 
 ---
 
@@ -81,6 +79,7 @@ la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
   l'esecuzione le valorizza tutte (test 5-7), e il runner la usa sulle tabelle in ambito.
 * `db/pgtap/dbops/test-cleanup-at-regola-unica-v1.sql` — la scadenza che il runner scrive con lei
   è quella che il trigger alla nascita aveva scritto; una riga con la base vuota non si tocca.
+* `db/pgtap/dbops/test-nomi-e-chiavi-registri-v1.sql` — la firma non ha più `p_cleanup_column`.
 
 ---
 
@@ -90,6 +89,10 @@ la tratta comunque. Il runner salta le tabelle escluse prima di chiamarla.
   (`20261109-88`, brief-db-revisione-dbops, giro 10b). Prima la base, se mancava, era
   `data_insert` — una terza regola accanto a quelle del trigger e del runner — e la colonna della
   scadenza si poteva cambiare col parametro.
+* 2026-11-09 — il parametro `p_cleanup_column` esce dalla firma: poteva solo confermare
+  `cleanup_at`. La firma è ora schema, tabella, colonna base, termine in giorni, ricalcolo e
+  simulazione; la funzione è stata ricreata e il runner la chiama così (`20261110-36`,
+  brief-db-revisione-dbops, giro 10c).
 
 ---
 

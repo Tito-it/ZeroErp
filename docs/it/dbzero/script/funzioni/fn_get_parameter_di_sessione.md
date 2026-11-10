@@ -22,8 +22,6 @@ DECLARE
         NULLIF(current_setting('app.current_user_id', true), '')::integer;
     v_emittente  config.parameter_overrides.emittente_fiscale_id%TYPE :=
         NULLIF(current_setting('app.current_emittente_id', true), '')::bigint;
-    v_session    config.parameter_overrides.session_key%TYPE :=
-        NULLIF(current_setting('app.session_key', true), '');
     -- %TYPE[] non esiste: tipo esplicito, come in fn_get_parameter_full
     -- (django_group_id e' integer).
     v_group_ids  integer[];
@@ -33,9 +31,9 @@ BEGIN
     -- =========================================================
     -- Scopo:
     --   Il valore di p_code con la cascata degli override
-    --   (utente, gruppo, emittente, sessione, funzione,
-    --   default), col contesto preso dalla sessione. p_chi:
-    --   chi lo chiede, per il livello «function» e per il log.
+    --   (utente, gruppo, emittente, funzione, default), col
+    --   contesto preso dalla sessione. p_chi: chi lo chiede,
+    --   per il livello «function» e per il log.
     --
     -- Regole:
     --   - GUC vuota o assente = NULL: il livello salta;
@@ -65,17 +63,16 @@ BEGIN
     END IF;
 
     RETURN script.fn_get_parameter_full(
-        p_code,
-        v_emittente,
-        v_user_id,
-        v_group_ids,
-        v_session,
-        p_chi);
+        p_code                 => p_code,
+        p_emittente_fiscale_id => v_emittente,
+        p_django_user_id       => v_user_id,
+        p_group_ids            => v_group_ids,
+        p_function_name        => p_chi);
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_parameter_di_sessione(p_code character varying, p_chi text)
-IS 'BB (2026-10-18): il valore di un parametro con la cascata degli override di script.fn_get_parameter_full, col contesto preso dalla SESSIONE invece che dal chiamante. Per i lettori dentro il database (trigger, madri), che non ricevono utente, gruppi ed emittente: il backend li passa da se''. Utente da app.current_user_id (auth_user.id = parameter_overrides.django_user_id); gruppi da django.auth_user_groups, letti solo se la tabella esiste e il ruolo la legge (cercata per OID nel catalogo), altrimenti il livello gruppo resta spento senza errore: e'' una proposta, non apre accessi (zeroerp_job non ha USAGE su django; su un database senza le tabelle di Django la tabella non c''e''); emittente da app.current_emittente_id; session key da app.session_key; funzione da p_chi (chi chiede). La categoria cliente non fa parte della sessione: resta NULL. GUC vuota o assente = livello saltato. Non valida il valore: e'' compito del lettore. Primo lettore: script.fn_stato_proposto_id. D-13a e D-13b di Tid, R-BE-13 in brief-db-processi-accensione-per-ambiente §6.12.';
+IS 'BB: il valore di un parametro con la cascata degli override di script.fn_get_parameter_full, col contesto preso dalla SESSIONE invece che dal chiamante. Per i lettori dentro il database (trigger, madri), che non ricevono utente, gruppi ed emittente: il backend li passa da se''. Utente da app.current_user_id (auth_user.id = parameter_overrides.django_user_id); gruppi da django.auth_user_groups, letti solo se la tabella esiste e il ruolo la legge (cercata per OID nel catalogo), altrimenti il livello gruppo resta spento senza errore: e'' una proposta, non apre accessi (zeroerp_job non ha USAGE su django; su un database senza le tabelle di Django la tabella non c''e''); emittente da app.current_emittente_id; funzione da p_chi (chi chiede). La categoria cliente non fa parte della sessione: resta NULL. Il livello «sessione» degli override non c''e'' piu'' (2026-11-09): la GUC app.session_key non si legge. GUC vuota o assente = livello saltato. Non valida il valore: e'' compito del lettore. Primo lettore: script.fn_stato_proposto_id.';
 ```
 
 </div>

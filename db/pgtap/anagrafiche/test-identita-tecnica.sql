@@ -27,9 +27,12 @@
 --  - fissare la decisione del test 4, che oggi e' un'ASSENZA: senza questo
 --    test, aggiungere una riga di matrice sembrerebbe una svista da correggere
 --    invece di una scelta gia' presa;
---  - fissare che il presidio guarda nei DUE sensi (5 e 7): «processo senza
---    identita'» da solo lascerebbe passare il residuo opposto, un utente
---    tecnico che nessun processo rivendica piu'. ⭐ L'altro abuso temuto —
+--  - fissare che il presidio guarda in TRE versi (dbops.vw_processi_dominio_senza_identita):
+--    processo senza utente tecnico (5), utente tecnico senza identita'
+--    OPERATORE col flag, identita' col flag che nessun processo rivendica (7).
+--    Il secondo verso nessun file lo costruisce. «Processo senza identita'» da
+--    solo lascerebbe passare il residuo opposto, un utente tecnico che nessun
+--    processo rivendica piu'. ⭐ L'altro abuso temuto —
 --    marcare tecnica=true su una persona — non e' piu' costruibile: dal
 --    changeSet -28 il guard di coerenza lo rifiuta (nota al test 7);
 --  - fissare l'esclusione dei processi di coda (6), che e' la correzione di

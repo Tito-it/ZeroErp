@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automazione_overlap: key_columns e key_expressions da text[] a jsonb (N7-bis, strada a): Liquibase non sa
+#   caricare un array da un CSV, e il registro prende il suo CSV (-39). In 80_data e non in 00_schema: il registro lo
+#   scrivono anche changeSet vecchi di 00_schema e 80_data con letterali text[], e su un database da zero devono
+#   girare prima del cambio (80_data va per nome, dopo tutto 00_schema e 20_code). Stessa ragione del 20261109-74.
+#   rollback: di nuovo text[]. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-38-alter-automazione-overlap-chiavi-jsonb-mctit.yaml
+
+  - changeSet:
+      id: 20261110-38-alter-automazione-overlap-chiavi-jsonb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        automazione_overlap: le chiavi in jsonb. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'automazione_overlap'
+                 AND column_name = 'key_columns' AND data_type = 'ARRAY'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_overlap
+                  ALTER COLUMN key_columns     TYPE jsonb USING to_jsonb(key_columns),
+                  ALTER COLUMN key_expressions TYPE jsonb USING to_jsonb(key_expressions);
+
+              COMMENT ON COLUMN dbops.automazione_overlap.key_columns IS
+                  'Le colonne della chiave del vincolo, array JSON di nomi (devono esistere tutte sulla tabella), nell''ordine del vincolo.';
+              COMMENT ON COLUMN dbops.automazione_overlap.key_expressions IS
+                  'Le espressioni della chiave del vincolo, array JSON di testi SQL iniettati as-is dopo le colonne (DDL di fiducia, solo DBA).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Una subquery non puo' stare in USING: la conversione passa da una funzione temporanea.
+              CREATE FUNCTION pg_temp.fn_jsonb_a_testi(p jsonb) RETURNS text[] LANGUAGE sql IMMUTABLE
+              AS $f$ SELECT CASE WHEN p IS NULL THEN NULL ELSE ARRAY(SELECT jsonb_array_elements_text(p)) END $f$;
+              ALTER TABLE dbops.automazione_overlap
+                  ALTER COLUMN key_columns     TYPE text[] USING pg_temp.fn_jsonb_a_testi(key_columns),
+                  ALTER COLUMN key_expressions TYPE text[] USING pg_temp.fn_jsonb_a_testi(key_expressions);

@@ -55,7 +55,7 @@ vendite.fn_offerta_eccezione_componenti_init(
 5. **No-op quantita NULL** — se `offerte_commerciali_eccezioni.quantita IS NULL` (eccezione a consumo), ritorna 0. Non è possibile calcolare `coeff_qta × NULL`.
 6. **Idempotenza** — se esistono già righe in `offerte_commerciali_eccezioni_componenti`, ritorna 0.
 7. **Lettura parametri offerta** — `billing_account_id`, `utility_id`, `istanza_utility_id` da `offerte_commerciali`.
-8. **Loop per-componente** — itera su `catalogo.articoli_componenti` con filtro `attivo = TRUE`, `validita @> p_data_riferimento` (tutti i componenti, **senza** filtro sull'esposizione in fattura):
+8. **Loop per-componente** — itera sulla distinta a `p_data_riferimento`, letta da `catalogo.fn_distinta_alla_data` (legami attivi e in vigore quel giorno) (tutti i componenti, **senza** filtro sull'esposizione in fattura):
    - **Path override**: se `p_componenti_overrides ? componente_id::text` → prezzo = valore della mappa, `origine_prezzo = 'MANUALE'`. Override = 0 → raise `E_PARAMETRO_INVALIDO` solo sui componenti obbligatori.
    - **Path resolver**: chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto := v_articolo_id`. Se esiste una riga in `listini_righe_componenti` per (listino_versione, padre, figlio, data), ritorna `origine = 'LISTINO_BUNDLE'`.
    - **Fallback individuale P0001**: se il resolver fallisce per un componente, inserisce prezzo=0, `origine_prezzo='MANUALE'`, `prezzo_resolver_context.error = 'resolver_not_found'`. Gli altri componenti non sono influenzati.

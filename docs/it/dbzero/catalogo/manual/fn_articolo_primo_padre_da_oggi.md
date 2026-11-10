@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_articolo_primo_padre_da_oggi`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,6 +12,7 @@
 > Approfondimento funzioni:
 >
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che la chiama
+> * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi) — la stessa finestra, dal lato del padre
 > * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale
 
 ---
@@ -32,6 +33,8 @@ Il **codice del primo padre**, in ordine di codice, di una distinta in vigore o 
 Il guard rifiuta il salvataggio, la regola spegne il campo prima che l'operatore ci provi. Poiché
 chiamano la stessa funzione, rispondono uguale: prima la condizione stava scritta due volte, e le
 due copie erano già divergite una volta sul giorno di riferimento.
+
+La stessa finestra, dal giorno aziendale in poi, la usa il lato del padre: `catalogo.fn_articolo_padre_di_distinta_da_oggi`, il predicato del check 1. I due lati della distinta guardano lo stesso tempo.
 
 Restituisce un codice e non un sì o un no perché il guard ne ha bisogno nel messaggio: un predicato booleano accanto a questa funzione ripeterebbe lo stesso filtro, e le due copie potrebbero divergere.
 

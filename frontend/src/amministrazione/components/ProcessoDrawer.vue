@@ -61,7 +61,7 @@ import {
   eseguiOraProcesso,
   impostaAccensioneProcesso,
 } from '../api/amministrazione'
-import { displayTimestamp } from '../../core/utils/date'
+import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { descriviDovuto as descriviDovutoSveglia } from '../dovutoSveglia'
 
 
@@ -400,10 +400,20 @@ async function eseguiOra(sveglia) {
       <div class="app-proc-testa">
         <Tag :value="dettaglio.classe" severity="info" />
         <Tag :value="dettaglio.canale" severity="secondary" />
+        <!-- ⛔ Il ritiro si legge da `vivo` (il DB: `script.fn_e_obsoleto`
+             sulla data del ritiro), non da `attivo`: un processo con la data
+             raggiunta è ritirato anche con `attivo = true`. Fino al
+             2026-11-09 qui c'era `!dettaglio.attivo`, e la lista filtrava
+             già sul ritiro: le due schermate rispondevano diverso. -->
         <Tag
-          v-if="!dettaglio.attivo"
-          :value="t('amministrazione.stato_inattivo')"
+          v-if="!dettaglio.vivo"
+          :value="t('amministrazione.processi.ritirato_dal', { data: displayDate(dettaglio.obsoleto_dal) })"
           severity="danger"
+        />
+        <Tag
+          v-else-if="dettaglio.obsoleto_dal"
+          :value="t('amministrazione.processi.ritiro_programmato', { data: displayDate(dettaglio.obsoleto_dal) })"
+          severity="warn"
         />
         <span class="app-proc-descrizione">{{ dettaglio.descrizione }}</span>
       </div>

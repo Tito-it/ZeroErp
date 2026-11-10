@@ -1,4 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-vendite,ddt,fk_ddt_registro,false,CREATE INDEX IF NOT EXISTS ix_ddt_registro_id ON vendite.ddt(registro_id);,false,mctit,2026-08-31 00:00:00+02
-vendite,ordini,fk_ordini_registro,false,CREATE INDEX IF NOT EXISTS ix_ordini_registro_id ON vendite.ordini(registro_id);,false,mctit,2026-08-31 00:00:00+02
-vendite,resi,fk_resi_registro,false,CREATE INDEX IF NOT EXISTS ix_resi_registro_id ON vendite.resi(registro_id);,false,mctit,2026-08-31 00:00:00+02

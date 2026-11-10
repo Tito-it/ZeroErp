@@ -31,7 +31,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION dbops.fn_sessione_del_migratore()
-IS 'La sessione e'' di chi amministra il database? true se il ruolo di LOGIN (session_user) e'' membro del proprietario dello schema dbops — il migratore, in ogni ambiente — o un superuser. session_user e non current_user perche'' dentro una SECURITY DEFINER current_user e'' il proprietario; limite dichiarato: un SET ROLE non cambia session_user. Fail-closed (NULL = false), non solleva: rifiuta il chiamante. La chiamano dbops.fn_sync_functions_owner (RAISE nudo, canale di log protetto) e script.fn_totp_disabilita_device (lo sblocco del secondo fattore dal server). Estratta il 2026-09-29 (regola del 2). INVOKER, STABLE. Brief: brief-db-secondo-fattore-totp §3.';
+IS 'La sessione e'' di chi amministra il database? true se il ruolo di LOGIN (session_user) e'' membro del proprietario dello schema dbops (il migratore, in ogni ambiente) o un superuser. session_user e non current_user perche'' dentro una SECURITY DEFINER current_user e'' il proprietario; limite dichiarato: un SET ROLE non cambia session_user. Fail-closed (NULL = false), non solleva: rifiuta il chiamante. La chiamano dbops.fn_sync_functions_owner (RAISE nudo, canale di log protetto), script.fn_blocca_credenziale e script.fn_totp_disabilita_device (lo sblocco del secondo fattore dal server). INVOKER, STABLE.';
 ```
 
 </div>

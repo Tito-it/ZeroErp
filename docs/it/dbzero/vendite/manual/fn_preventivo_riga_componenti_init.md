@@ -52,7 +52,7 @@ vendite.fn_preventivo_riga_componenti_init(
 3. **No-op CASO B** — se `articoli.is_composito = FALSE`, ritorna 0 silenziosamente.
 4. **Idempotenza** — se esistono già righe in `preventivi_righe_componenti` con `riga_preventivo_id = p_riga_id`, ritorna 0 senza modifiche.
 5. **Lettura parametri preventivo** — `billing_account_id`, `utility_id` da `preventivi`.
-6. **Loop per-componente** — per ogni componente attivo della BoM (`attivo = TRUE`, `validita @> p_data_riferimento`), senza filtro sull'esposizione in fattura (`esposizione_in_fattura`, fino al 2026-10-01 il booleano `esposto_in_fattura`):
+6. **Loop per-componente** — per ogni legame della distinta a `p_data_riferimento`, letto da `catalogo.fn_distinta_alla_data` (attivo e in vigore quel giorno), senza filtro sull'esposizione in fattura (`esposizione_in_fattura`, fino al 2026-10-01 il booleano `esposto_in_fattura`):
    - **Path override**: se `p_componenti_overrides ? componente_id::text` → prezzo = valore della mappa, `origine_prezzo = 'MANUALE'`. Prezzo = 0 → raise `E_PARAMETRO_INVALIDO` **solo** se `v_comp.obbligatorio = TRUE`; per i componenti opzionali, prezzo = 0 è ammesso.
    - **Path resolver**: chiama `fn_resolve_prezzo_listino_v2(componente_id, uom, data, ba_id, utility_id, emittente_sr_id, NULL, p_articolo_padre_contesto := v_articolo_id)`. Se esiste una riga in `vendite.listini_righe_componenti` per (listino_versione, padre, figlio, data), il resolver ritorna `origine = 'LISTINO_BUNDLE'`. Se il resolver fallisce (`SQLSTATE 'P0001'`) → raise `E_DOC_COMPONENTE_LISTINO_MANCANTE`.
    - **INSERT**: `attivo` = `v_comp.obbligatorio` — TRUE per i componenti obbligatori, FALSE per i componenti opzionali (attivabili dall'operatore nel drawer).

@@ -1,6 +1,6 @@
 ## 📚 Documentazione Concettuale – Tabella `config.parameters`  
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 
 > 👀 **Vedi anche**  
 >
@@ -97,8 +97,8 @@ I valori si seminano da `80_data/sql/config/parameters.csv`; i parametri di sist
 
 ### Vantaggi Operativi
 
-1. **Override multi-livello** (tenant → user → session → function → default) garantito dallo schema.
-2. **Nessuna ripetizione di logica**: l’applicazione chiama una funzione centralizzata (es. `get_parameter_full`) che applica la catena di priorità.
+1. **Override multi-livello** (user → categoria_cliente → group → emittente → function → default) garantito dallo schema. Non esiste un livello «sessione»: un override è configurazione che resta, una sessione di login scade.
+2. **Nessuna ripetizione di logica**: l’applicazione chiama una funzione centralizzata (`script.fn_get_parameter_full`) che applica la catena di priorità.
 3. **Config runtime**: il tenant o utente può cambiare comportamenti senza toccare file YAML.
 4. **Audit**: possibili trigger su overrides per tracciare chi modifica cosa.
 5. **Best practice**: separare i secrets (es. password) in un Vault, usare Liquibase e caching lato applicazione per performance.
@@ -116,39 +116,37 @@ INSERT INTO config.parameters(code, default_value, description)
 VALUES ('DEFAULT_CURRENCY', 'EUR', 'Valuta di default per le transazioni');
 ```
 
-Un tenant specifico (tenant\_id = 100) vuole usare USD:
+Un'azienda (emittente fiscale id = 100) vuole usare USD:
 
 ```sql
 INSERT INTO config.parameter_overrides
-  (parameter_id, scope_type, scope_id, overridden_value)
+  (parameter_id, emittente_fiscale_id, overridden_value)
 VALUES
   ((SELECT id FROM config.parameters WHERE code='DEFAULT_CURRENCY'),
-   'tenant', '100', 'USD');
+   100, 'USD');
 ```
 
 Per un utente VIP (user\_id = 42) si preferisce GBP:
 
 ```sql
 INSERT INTO config.parameter_overrides
-  (parameter_id, scope_type, scope_id, overridden_value)
+  (parameter_id, django_user_id, overridden_value)
 VALUES
   ((SELECT id FROM config.parameters WHERE code='DEFAULT_CURRENCY'),
-   'user', '42', 'GBP');
+   42, 'GBP');
 ```
 
 Chiamando:
 
 ```sql
-SELECT config.get_parameter_full(
+SELECT script.fn_get_parameter_full(
   'DEFAULT_CURRENCY',
-  p_tenant_id   := 100,
-  p_user_id     := 42,
-  p_session_key := NULL,
-  p_function    := NULL
+  p_emittente_fiscale_id => 100,
+  p_django_user_id       => 42
 );
 ```
 
-otterremo **’GBP’**, in quanto l’override utente ha priorità su quello tenant.
+otterremo **’GBP’**, in quanto l’override utente ha priorità su quello dell'azienda.
 
 ### Esempio: Override Parametro “Stato”
 
@@ -163,21 +161,18 @@ Durante l’elaborazione di una particolare funzione `invoice_process`, vogliamo
 
 ```sql
 INSERT INTO config.parameter_overrides
-  (parameter_id, scope_type, scope_id, overridden_value)
+  (parameter_id, function_name, overridden_value)
 VALUES
   ((SELECT id FROM config.parameters WHERE code='INITIAL_STATE'),
-   'function', 'invoice_process', 'PENDING_APPROVAL');
+   'invoice_process', 'PENDING_APPROVAL');
 ```
 
 La chiamata:
 
 ```sql
-SELECT config.get_parameter_full(
+SELECT script.fn_get_parameter_full(
   'INITIAL_STATE',
-  p_tenant_id   := NULL,
-  p_user_id     := NULL,
-  p_session_key := NULL,
-  p_function    := 'invoice_process'
+  p_function_name => 'invoice_process'
 );
 ```
 
@@ -188,7 +183,7 @@ restituirà **’PENDING\_APPROVAL’**, senza impattare la configurazione globa
 
 | Caratteristica              | GUC PostgreSQL                                      | Tabella Override (`config.parameters` + `config.parameter_overrides`)              |
 | --------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Livelli di applicazione** | `database`, `role`, `session`, **statici**          | `global → tenant → user → session → function` (dinamici)                           |
+| **Livelli di applicazione** | `database`, `role`, `session`, **statici**          | `user → categoria_cliente → group → emittente → function → default` (dinamici)     |
 | **Flessibilità**            | Rigido (solo livelli predefiniti)                   | Altamente estendibile a nuovi ambiti (es. ruolo, feature, modulo)                  |
 | **Versioning**              | No (config file o DDL)                              | Sì (versionato con Liquibase in script SQL)                                        |
 | **Audit**                   | Limitato (no audit built‑in)                        | Sì (campi `data_insert`, `user_insert`, trigger di audit)                          |
@@ -198,10 +193,19 @@ restituirà **’PENDING\_APPROVAL’**, senza impattare la configurazione globa
 > **Quando scegliere...**
 >
 **GUC PostgreSQL**: per configurazioni strettamente tecniche o performance‑oriented, con requisiti statici o legati al ruolo DB.
-> **Tabella Override**: per impostazioni dinamiche, multi‑tenant e variabili in base a user/session/function, con tracciamento e versioning completo.
+> **Tabella Override**: per impostazioni dinamiche, multi‑tenant e variabili in base a utente, categoria cliente, gruppo, azienda e funzione, con tracciamento e versioning completo.
 
 ---
 
 
 
 > **“Questi esempi mostrano come il modello a due tabelle gestisca override precisi per valuta, stato o qualunque parametro, mantenendo la scalabilità e la manutenibilità.”**
+
+---
+
+### Storia
+
+* 2026-11-09 — esce il livello sessione degli override: la cascata ha sei livelli e gli esempi
+  chiamano `script.fn_get_parameter_full` per nome, senza `p_session_key`. ChangeSet
+  `20261111-14-update-fn-get-parameter-full-senza-sessione` e
+  `20261111-17-alter-parameter-overrides-drop-session-key`, `brief-db-revisione-dbops`, giro 13.

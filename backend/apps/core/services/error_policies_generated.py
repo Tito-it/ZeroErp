@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1197, di cui 128 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1206, di cui 128 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -114,7 +114,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # script.trgfn_lock_columns: il trigger e' stato dichiarato con un · numero dispari di argomenti. Se ne accorge chi lo monta, mai · l'operatore.
     "E_ARGOMENTI_A_COPPIE": "TECNICO",
     "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": "NON_ESEGUIBILE",
-    # Motivo 2 di script.fn_check_articolo_riga_su_contesto per PREVENTIVO, ORDINE_VENDITA, DDT_VENDITA e per AGGIUNTA e OVERRIDE di OFFERTA_COMMERCIALE e CONTRATTO (D-7 di Tid, 2026-10-14, brief-db-articoli-ammessi-per-documento; 20261014-06): l'articolo e' un composito senza NESSUN legame attivo in catalogo.articoli_componenti. Prima lo rifiutava solo l'init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA), dopo la scelta: ora lo dice il picker catalogo.fn_articoli_ammessi e lo solleva il guard script.trgfn_righe_guard_articolo_ammesso. Non si e' riusato E_DOC_COMPOSITO_BOM_VUOTA: quella frase porta la data, ed e' il caso date-dipendente (componenti che ci sono ma non sono validi alla data del documento), che resta all'init. I VALORI: codice dell'articolo; campo articolo_id.
+    # Motivo 2 di script.fn_check_articolo_riga_su_contesto per PREVENTIVO, ORDINE_VENDITA, DDT_VENDITA e per AGGIUNTA e OVERRIDE di OFFERTA_COMMERCIALE e CONTRATTO: l'articolo e' un composito senza una distinta da oggi in poi (catalogo.fn_articolo_padre_di_distinta_da_oggi, la finestra dei guard della distinta). Lo dice il picker catalogo.fn_articoli_ammessi e lo solleva il guard script.trgfn_righe_guard_articolo_ammesso. Non e' E_DOC_COMPOSITO_BOM_VUOTA: quella frase porta la data, ed e' il caso della distinta alla data del documento, che giudica l'init dei componenti. I VALORI: codice dell'articolo; campo articolo_id.
     "E_ARTICOLO_KIT_SENZA_COMPONENTI": "DATO_ERRATO",
     # Sono i codici che CAMBIANO comportamento: oggi la pagina evidenzia · un campo (400) dove invece deve ricaricare e mostrare lo stato vero. · Le due righe esistono entrambe e non vanno d'accordo: non c'e' un · campo da correggere, va scelto un altro abbinamento.
     "E_ARTICOLO_MISMATCH": "CONFLITTO_STATO",
@@ -213,6 +213,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Difetto di programmazione, non condizione di dominio: 500.
     "E_BATCH_ARRAY_DISALLINEATI": "TECNICO",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "DATO_ERRATO",
+    # La fine nuova di un legame di distinta (catalogo.articoli_componenti.valido_al) e' prima di ieri, al giorno aziendale: toglierebbe al legame giorni gia' passati, e la distinta di un documento gia' emesso non tornerebbe piu'. La solleva catalogo.trgfn_articoli_componenti_block_modifica_struttura, campo valido_al, col primo giorno ammesso nel messaggio. DATO_ERRATO: l'operatore sceglie un'altra data. Nasce il 2026-11-09 (brief-db-revisione-catalogo, Q1 di Tid).
+    "E_BOM_CHIUSURA_RETROATTIVA": "DATO_ERRATO",
     # Il componente di un legame attivo di catalogo.articoli_componenti e' a sua volta un articolo composito (2026-10-13, brief-db-articoli-ammessi-per-documento D-4 di Tid): la distinta base ha un livello solo, perche' il resto del modello lavora su un livello (le fn_*_riga_componenti_init leggono i figli diretti, le tabelle dei componenti di riga sono piatte, il bundle di listino e' la somma di un livello) e con un livello solo un ciclo non si costruisce. Lo solleva catalogo.trgfn_articoli_componenti_guard_un_livello, BEFORE INSERT OR UPDATE OF attivo. DATO_ERRATO: l'operatore ha scelto un componente che non puo' starci. I VALORI: codice del componente, codice del padre; campo componente_id.
     "E_BOM_COMPONENTE_COMPOSITO": "DATO_ERRATO",
     # Si e' tentato di marcare composito un articolo che e' componente di una distinta in vigore o futura (2026-10-13, brief-db-articoli-ammessi-per-documento D-4): e' il lato articolo di E_BOM_COMPONENTE_COMPOSITO, check 3 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva. CONFLITTO_STATO e non DATO_ERRATO: il flag puo' essere giusto, e' la distinta che lo contiene a non ammetterlo. Il form spegne il campo con la regola gemella di dbops.lock_columns_conditional. I VALORI: codice dell'articolo, codice del primo padre per codice; campo is_composito.
@@ -220,7 +222,9 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Motivo 1 di script.fn_check_articolo_riga per ARTICOLO (la distinta, Lotto 3c di brief-db-articoli-ammessi-per-documento, 2026-10-13): il componente e' l'articolo padre stesso. Prima lo diceva solo il CHECK chk_articoli_componenti_no_selfref, senza codice (23514): ora lo dice anche il picker, con lo stesso motivo del guard catalogo.trgfn_articoli_componenti_guard_componente. Il CHECK resta la rete. I VALORI: codice dell'articolo; campo componente_id.
     "E_BOM_COMPONENTE_PADRE": "DATO_ERRATO",
     "E_BOM_IVA_DISCORDANTE": "DATO_ERRATO",
-    # E_BOM_MODIFICA_VIETATA è sollevato · dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura · come defense-in-depth oltre lo schema (pattern chiudi+inserisci). L'ordine delle date lo giudica il guard comune (E_DATA_AL_MINORE_DAL).
+    # Si e' cambiata la fine di un legame di distinta che e' gia' finito (catalogo.articoli_componenti.valido_al prima del giorno aziendale): la sua storia e' chiusa, e rimettere il componente nella distinta e' un legame nuovo. La solleva catalogo.trgfn_articoli_componenti_block_modifica_struttura, campo valido_al, con la data di fine nel messaggio. CONFLITTO_STATO: non c'e' un valore giusto da scegliere, e' lo stato del legame a impedirlo. Nasce il 2026-11-09 (brief-db-revisione-catalogo, Q1 di Tid).
+    "E_BOM_LEGAME_CHIUSO": "CONFLITTO_STATO",
+    # E_BOM_MODIFICA_VIETATA è sollevato · dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura, per il DELETE di un legame e per l'UPDATE dei suoi campi di struttura (prodotto_id, componente_id, coeff_qta, obbligatorio, esposizione_in_fattura, valido_dal): la distinta si cambia chiudendo il legame e inserendone uno nuovo · dai check 1 e 2 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva, per un flag di struttura dell'articolo che una distinta rende immutabile. La fine di un legame ha i suoi codici (E_BOM_LEGAME_CHIUSO, E_BOM_CHIUSURA_RETROATTIVA); l'ordine delle date lo giudica il guard comune (E_DATA_AL_MINORE_DAL).
     "E_BOM_MODIFICA_VIETATA": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_BOM_PRODOTTO_MISMATCH": "DATO_ERRATO",
@@ -400,6 +404,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTABILE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     # script.fn_check_contabile_validabile, motivo 1 (RIGHE_NON_LAVORATE), sollevato da pagamenti.trgfn_vendite_contabili_guard_validazione via fn_raise_primo_motivo_se_presente entrando in VALIDATA. La distinta ha righe attive in uno stato con lavorata = false (IMPORTATA, DA_ABBINARE: la bandiera sta nel catalogo, D20-a). VALIDATA e' «ho finito di inserire»: una riga che nessuno ha guardato e' lavoro non finito, e dopo la registrazione non avrebbe piu' nessuno che la guardi. CONFLITTO_STATO: il rimedio e' decidere che cosa sono quelle righe (abbinare, sospendere, scartare), non correggere un campo. Il dettaglio porta quante e gli id. Nasce il 2026-09-18 col terzo collaudo in-app (brief-db-validata-e-registrazione-tardiva §2.1).
     "E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE": "CONFLITTO_STATO",
+    # script.fn_get_contatti (e il suo chiamante script.fn_get_contatto_default): p_soggetto_id NULL. Canale parametro = p_soggetto_id. Prima di questo codice la validazione non scattava, e la lettura restituiva zero contatti in silenzio.
+    "E_CONTATTI_SOGGETTO_OBBLIGATORIO": "DATO_ERRATO",
     "E_CONTATTO_INCOMPLETO": "DATO_ERRATO",
     "E_CONTO_BANCARIO": "DATO_ERRATO",
     # script.trgfn_righe_guard_aggiunta_fuori_listino (trigger _a10_ BEFORE INSERT OR UPDATE WHEN AGGIUNTA su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni): un'AGGIUNTA e' un articolo fuori dal listino, e l'articolo sta nella versione operativa del listino del documento. Il nome dice CONTRATTO per storia: dal 2026-10-04 vale anche sull'offerta (brief-db-righe-esclusione-solo-non-si-vende R5b, R8: si riusano i codici in servizio), e il messaggio nomina il documento con la sua etichetta (secondo valore) invece dell'id del contratto. Prima: vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino, ritirata.
@@ -626,7 +632,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_CLIENTE_DIVERSO_DA_SORGENTE": "DATO_ERRATO",
     # Il cliente (billing account, istanza, utility) di preventivo, offerta e contratto, e la utility dell'ordine, non cambiano fuori bozza (D-6 di Tid, 2026-10-10, brief-db-testata-dopo-emissione). Bolla e reso tengono i loro codici (E_DDT_CLIENTE_IMMUTABILE, il guard del cliente dal DDT); il billing account dell'ordine ha il lock assoluto (E_ORD_CLIENTE_IMMUTABILE). VARIADIC lo stato.
     "E_DOC_CLIENTE_FUORI_BOZZA": "CONFLITTO_STATO",
-    # ── 400 · il problema non e' un campo del form (`show_error_banner`) ── · La riga di distinta base esiste ma non e' valida alla data · documento: si sceglie un altro componente, non si corregge un campo.
+    # ── 400 · il problema non e' un campo del form (`show_error_banner`) ── · Il legame di distinta base esiste ma non sta nella distinta alla data · documento (spento, o non in vigore quel giorno; catalogo.fn_distinta_alla_data): si sceglie un altro componente, non si corregge un campo.
     "E_DOC_COMPONENTE_BOM_NON_VALIDA": "DATO_ERRATO",
     "E_DOC_COMPONENTE_ID_INCOERENTE": "DATO_ERRATO",
     # Cross-dominio (script.fn_<sorgente>_riga_componenti_init): sollevato · quando il pricing resolver non trova un listino mappato per uno dei · componenti BoM CASO A. Decisione di dominio 2026-05-12 (opzione A): · blocco esplicito invece di fallback prezzo=0 (vincolo dominio · `chk_prevrighe_comp_prezzo_nonneg = <> 0`). L'operatore deve · configurare il listino del componente prima di creare la riga. · Detail context (jsonb) contiene `componente_codice` / `componente_id` · / `data_riferimento` + dettaglio dal resolver per il log.
@@ -1486,6 +1492,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PUSH_SORGENTE_ID_INVALIDO": "DATO_ERRATO",
     "E_QTA_MISSING": "DATO_ERRATO",
     "E_QTA_NON_POSITIVA": "DATO_ERRATO",
+    # La quantita' operativa ha piu' decimali di quelli che la mappatura dell'unita' ammette (catalogo.articoli_uom_operativa.max_decimals, alla data del documento). La solleva script.trgfn_qta_from_operativa. I VALORI: quantita', codice dell'unita', codice dell'articolo, decimali ammessi; campo qta_operativa.
+    "E_QTA_OPERATIVA_DECIMALI": "DATO_ERRATO",
     "E_QTA_OPERATIVA_NON_INTERA": "DATO_ERRATO",
     "E_QTA_OPER_STEP_INVALIDO": "DATO_ERRATO",
     # Over-shipping: la quantita' da evadere supera il residuo dell'ordine. · Sollevato dal guard fulfillment DB (trgfn_ordini_ful_guard_consistenza) · in evasione multi-DDT (brief DB C2).
@@ -1713,6 +1721,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SOGGETTI_RUOLI_RACE": "TECNICO",
     # anagrafiche.fn_crea_soggetto_pf (20261009-26) rifiuta una natura base diversa da PF, anagrafiche.fn_crea_soggetto_pg (20261009-28) una natura PF: la ditta individuale ha una porta sola, quella che riceve nome, cognome e sesso. TECNICO e non DATO_ERRATO: la funzione la sceglie il chiamante dalla natura, non l'operatore, quindi chi la sbaglia e' un chiamante rotto. Il VARIADIC porta descrizione e natura base. Brief: brief-db-sesso-senza-default.
     "E_SOGGETTO_CREAZIONE_NATURA_ERRATA": "TECNICO",
+    # anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile: cambio o svuotamento di un codice_fiscale / partita_iva gia' scritti da chi non e' SUPER_ADMIN. Campo = la colonna. La stessa regola spegne i due campi nel form (dbops.lock_columns_conditional).
+    "E_SOGGETTO_ID_FISCALE_IMMUTABILE": "CONFLITTO_STATO",
     "E_SOGGETTO_NO_CONTATTI": "DATO_ERRATO",
     "E_SOGGETTO_NOT_FOUND": "NON_TROVATO",
     "E_SOGGETTO_NULL": "DATO_ERRATO",
@@ -1918,8 +1928,17 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_PRESET_NON_TROVATO": "NON_TROVATO",
     "E_UI_PRESET_VALIDAZIONE": "DATO_ERRATO",
     "E_UI_VISTA_SQL_NON_TROVATA": "DATO_ERRATO",
+    # catalogo.unita_misura.conta_dal_calendario valorizzato su un'unita' che non e' di tipologia TEMPO. La solleva catalogo.trgfn_unita_misura_guard_tipo. I VALORI: codice dell'unita'; campo conta_dal_calendario.
+    "E_UOM_CALENDARIO_NON_TEMPO": "DATO_ERRATO",
+    # Conversione generale (catalogo.unita_misura_conversioni) fra due unita' di tipologia diversa. La solleva catalogo.trgfn_uom_conversioni_guard_tipo. I VALORI: codice dell'unita' di partenza, di arrivo, e le descrizioni delle due tipologie; campo uom_to_id.
+    "E_UOM_CONVERSIONE_TIPO_DIVERSO": "DATO_ERRATO",
     "E_UOM_MISMATCH": "CONFLITTO_STATO",
+    # L'unita' operativa di una riga di documento non si converte nell'unita' base dell'articolo alla data del documento: nessuna mappatura dell'articolo (catalogo.articoli_uom_operativa) e nessuna conversione generale (catalogo.unita_misura_conversioni), cioe' catalogo.fn_get_uom_factor e' NULL. La solleva script.trgfn_qta_from_operativa, che non usa piu' fattore 1 quando non sa. I VALORI: codice dell'unita', codice dell'unita' base, codice dell'articolo, data del documento; campo uom_operativa_id.
     "E_UOM_MISSING": "DATO_ERRATO",
+    # Si e' cercato di spostare, togliere o cambiare la riga dell'unita' base di un articolo (catalogo.articoli_uom_operativa con is_base), o di crearne una su un'unita' diversa da quella dell'articolo. La solleva catalogo.trgfn_articoli_uom_operativa_guard_base. I VALORI: codice dell'unita' base, codice dell'articolo; campo uom_id; bersaglio l'articolo.
+    "E_UOM_RIGA_BASE_IMMUTABILE": "CONFLITTO_STATO",
+    # Cambio di catalogo.unita_misura.tipo_uom_id su un'unita' che compare in una conversione generale. La solleva catalogo.trgfn_unita_misura_guard_tipo. I VALORI: codice dell'unita'; campo tipo_uom_id.
+    "E_UOM_TIPO_IN_USO": "CONFLITTO_STATO",
     # Gemello di E_DELETE_NOT_ALLOWED per i registri append-only · (vendite.trgfn_event_log_append_only). La storia non si modifica, e non · dipende dallo stato della riga: non cambia riprovando piu' tardi, quindi · NON_PERMESSO e non CONFLITTO_STATO. ⭐ Ed e' proprio questo veto a rendere · immutabile cleanup_at, cioe' la scadenza di retention della riga stessa.
     "E_UPDATE_NOT_ALLOWED": "NON_PERMESSO",
     # RITIRATO il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri D-1, decisione di Tid): dal 2026-10-02 nessuno lo solleva. Col ritiro del tipo DISABILITATO (R-DB-1 del brief area Accessi) una veste spenta e' attivo = false col suo tipo, e chi ha solo vesti spente lo nega il livello d'area. Verificato per nome: nessuna funzione DB, nessun punto del backend o del frontend lo solleva (lo nominano solo le copie del catalogo nel backend: policy generate e frasi di ripiego). Non si riusa per «nessuna veste accesa»: una condizione nuova vuole un codice suo (api.md, il rubinetto degli accumulatori). Il messaggio resta perche' il diario deve restare leggibile.

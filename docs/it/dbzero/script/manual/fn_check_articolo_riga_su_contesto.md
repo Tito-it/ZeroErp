@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_articolo_riga_su_contesto`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -34,8 +34,11 @@ trovato. Una regola, due chiamanti (A-2).
 * Articolo `NULL` o inesistente: nessun motivo, parla la FK.
 * Qui è nato il documento `PROMO_ARTICOLO` (D-6): un solo componente non può avere una promo
   (`E_PROMO_ARTICOLO_SOLO_COMPONENTE`).
-* Rev 2026-10-14 (`20261014-06`, D-7): il kit senza nessun componente attivo è il motivo 2 di
-  preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE (`E_ARTICOLO_KIT_SENZA_COMPONENTI`).
+* Il kit senza una distinta da oggi in poi
+  ([catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi))
+  è il motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE
+  (`E_ARTICOLO_KIT_SENZA_COMPONENTI`). Nel corpo il motivo si costruisce una volta, e i due rami
+  lo aggiungono ognuno al suo posto.
 * ⭐ Rev 2026-11-03 (`20261103-17`, brief-db-addebito-trasporto-ordine §8.1): **ordine e bolla
   ammettono la merce e l'articolo-onere** (`causale_onere_id` valorizzato). Un servizio che non
   è un onere resta fuori con `E_RIGA_NATURA_NON_AMMESSA`. «È merce» è il building block

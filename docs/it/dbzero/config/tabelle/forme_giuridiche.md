@@ -45,7 +45,7 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_forme_giuridiche_a10_dati_societari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'dati_societari', 'forma_giuridica_id', 'id', 'attivo')` |
-| trg_forme_giuridiche_a10_forme_giuridiche_tipi_soggetto__2335ce | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'forme_giuridiche_tipi_soggetto_dettaglio', 'forma_giuridica_id', 'id', 'attivo')` |
+| trg_forme_giuridiche_a10_forme_giuridiche_tipi_soggetto_2335ce | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'forme_giuridiche_tipi_soggetto_dettaglio', 'forma_giuridica_id', 'id', 'attivo')` |
 | trg_forme_giuridiche_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_forme_giuridiche_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_forme_giuridiche_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

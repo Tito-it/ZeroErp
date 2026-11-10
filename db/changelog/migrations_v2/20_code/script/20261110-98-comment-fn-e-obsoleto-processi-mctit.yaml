@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_e_obsoleto: il COMMENT diceva il falso sui processi.
+#   Brief: brief-db-revisione-dbops (§32, segnalazione del team BE del 2026-11-09).
+#
+# Il COMMENT diceva «⛔ Non e' la regola dei processi (qualunque data spegne
+# subito)». Dal giro 9 (N2) il ritiro dei processi e' proprio questo predicato:
+# il COMMENT di dbops.processi.obsoleto_dal lo nomina come regola, e lo leggono
+# il processo vivo, la sveglia, l'accensione, i presidi, il panorama e il
+# roster. La funzione non cambia.
+#   L'elenco dei lettori per nome esce dal COMMENT: era gia' incompleto (i
+#   lettori dei processi mancavano), e un elenco scritto a mano invecchia da
+#   solo; si rimanda allo strumento che li trova. Esce anche il nome del brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261110-98-comment-fn-e-obsoleto-processi-mctit.yaml
+
+  - changeSet:
+      id: 20261110-98-comment-fn-e-obsoleto-processi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il COMMENT di script.fn_e_obsoleto non dice piu' che non e' la regola dei processi: lo e' dal giro 9.
+        Brief: brief-db-revisione-dbops.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_e_obsoleto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_e_obsoleto(date) IS
+                  'Building block: la voce di catalogo e'' RITIRATA oggi, cioe'' obsoleto_dal e'' valorizzata e raggiunta alla data operativa (script.fn_data_operativa). Falso se NULL (mai ritirata) o futura (ritiro programmato): mai NULL, quindi NOT script.fn_e_obsoleto(x) e'' il filtro «si sceglie per il nuovo». Sede unica del predicato (regola del 2), anche per il ritiro dei processi (dbops.processi.obsoleto_dal): lo leggono il processo vivo, la sveglia, l''accensione, i presidi, il panorama e il roster. I lettori si trovano con dbops.fn_find_function_usage. BEGIN ATOMIC (linee-guida-sql §5c).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo con il COMMENT di prima.
+              SELECT 1;

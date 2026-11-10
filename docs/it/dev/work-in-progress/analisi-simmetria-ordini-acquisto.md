@@ -311,7 +311,7 @@ Lo segnala già il brief magazzino in D-7.
 
 ### 4.6-bis ⭐ La provenienza nel modello (passata qui il 2026-11-08)
 
-**Da dove viene.** Il cantiere [brief-db-sorgente-documento-e-riga](brief-db-sorgente-documento-e-riga.md) porta tutte
+**Da dove viene.** Il cantiere [brief-db-sorgente-documento-e-riga](../work-done/brief-db-sorgente-documento-e-riga.md) porta tutte
 le provenienze («questo record nasce da quel documento, e da quella sua riga») a una grammatica sola: il tipo del
 documento (`config.sorgenti`), la sua chiave in `sorgente_id` o `sorgente_uid` secondo il `key_selector`, la riga in
 `sorgente_riga`; un BB che la scrive (`script.fn_sorgente_provenienza`), un guard unico che la verifica

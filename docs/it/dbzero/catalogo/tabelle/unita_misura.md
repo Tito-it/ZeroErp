@@ -52,7 +52,8 @@
 | trg_unita_misura_a10_ddt_righe_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt_righe_componenti', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_fatture_righe_block_deact_upd_10b94e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_fatture_righe_block_deact_upd_876cd3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'kit_uom_id', 'id', 'attivo')` |
-| trg_unita_misura_a10_guard_tipo_uom_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update()` |
+| trg_unita_misura_a10_guard_tipo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_unita_misura_guard_tipo()` |
+| trg_unita_misura_a10_guard_tipo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_unita_misura_guard_tipo()` |
 | trg_unita_misura_a10_listini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_righe', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_offerte_commerciali_eccezioni_block_ce1c7b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_offerte_commerciali_eccezioni_compo_1ae18e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni_componenti', 'uom_operativa_id', 'id', 'attivo')` |
@@ -69,8 +70,8 @@
 | trg_unita_misura_a10_uom_tipi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'uom_tipi', 'attivo', 'tipo_uom_id', 'id')` |
 | trg_unita_misura_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_unita_misura_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_unita_misura_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_unita_misura_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_unita_misura_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

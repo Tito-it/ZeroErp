@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DELLE DUE FUNZIONI DI dbops CHE SONO DI postgres
+#   Brief: brief-db-revisione-dbops, giro 14.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   dbops.fn_generate_tx_id e dbops.fn_sync_functions_owner sono SECURITY
+#   DEFINER di postgres, e un COMMENT ON lo scrive solo il proprietario: il
+#   migratore riceve «bisogna essere proprietari della funzione». I loro
+#   COMMENT portavano un brief, date e id di changeSet (linee-guida-sql §5d):
+#   senza riscriverli il presidio dbops/test-comment-al-presente-v1 resta rosso.
+#
+# ── COME: LA PROPRIETA' IN PRESTITO, NELLA FORMA DI CASA ────────────
+#   * fn_generate_tx_id ha la sua riga in dbops.sec_functions_owner: si presta
+#     cambiando la riga e chiamando la sync, si restituisce allo stesso modo
+#     (come 20_code/script/20260807-19).
+#   * fn_sync_functions_owner non e' nel registro ed e' lo strumento del
+#     prestito: non si presta a se' stessa. La copia di servizio _boot
+#     (dalla definizione viva) fa prestito e restituzione, come 20260929-09.
+#   * Il prestito non solleva mai (la sync degrada a WARNING): un DO controlla
+#     che sia riuscito prima dei COMMENT. Da zero (CI) le due funzioni sono
+#     gia' del migratore e il controllo passa uguale; a postgres le riporta la
+#     fase post del provisioning.
+#   ⛔ Nessuna preCondition sul registro: la riga di fn_generate_tx_id arriva
+#     dal CSV di 80_data (linee-guida-sql §11.4), quindi da zero a 20_code non
+#     c'e'. Li' i due UPDATE della sua riga toccano zero righe, e va bene: la
+#     funzione e' gia' del migratore. Le righe temporanee prendono max(id)+1
+#     sopra la riga seminata in 00_schema (20251123-02) e si cancellano qui,
+#     prima che il CSV carichi i suoi id.
+#   Nessun corpo cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261111-24-update-comment-funzioni-di-postgres-mctit.yaml
+
+  - changeSet:
+      id: 20261111-24-update-comment-funzioni-di-postgres
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente di dbops.fn_generate_tx_id e dbops.fn_sync_functions_owner, con la proprieta' in prestito. Brief: brief-db-revisione-dbops, giro 14.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) La copia di servizio, dalla definizione viva.
+              DO $boot$
+              DECLARE
+                  v_def text;
+              BEGIN
+                  v_def := pg_get_functiondef('dbops.fn_sync_functions_owner()'::regprocedure);
+                  v_def := replace(v_def,
+                                   'FUNCTION dbops.fn_sync_functions_owner()',
+                                   'FUNCTION dbops.fn_sync_functions_owner_boot()');
+                  EXECUTE v_def;
+              END
+              $boot$;
+
+              -- 2) La copia passa a postgres attraverso la sync viva.
+              INSERT INTO dbops.sec_functions_owner
+                  (id, schema_name, function_name, arg_types, required_owner, note)
+              SELECT max(s.id) + 1, 'dbops', 'fn_sync_functions_owner_boot', '', 'postgres',
+                     'temporanea: 20261111-24'
+                FROM dbops.sec_functions_owner s;
+              SELECT dbops.fn_sync_functions_owner();
+
+              -- 3) Prestito delle due funzioni al migratore, attraverso la copia.
+              INSERT INTO dbops.sec_functions_owner
+                  (id, schema_name, function_name, arg_types, required_owner, note)
+              SELECT max(s.id) + 1, 'dbops', 'fn_sync_functions_owner', '', current_user,
+                     'temporanea: 20261111-24'
+                FROM dbops.sec_functions_owner s;
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name = 'dbops' AND function_name = 'fn_generate_tx_id'
+                 AND arg_types = 'text,jsonb';
+              SELECT dbops.fn_sync_functions_owner_boot();
+
+              DO $prestito$
+              DECLARE
+                  v_fuori text;
+              BEGIN
+                  SELECT string_agg(p.oid::regprocedure::text, ', ') INTO v_fuori
+                    FROM pg_catalog.pg_proc p
+                   WHERE p.oid IN ('dbops.fn_sync_functions_owner()'::regprocedure,
+                                   'dbops.fn_generate_tx_id(text, jsonb)'::regprocedure)
+                     AND pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM current_user;
+                  IF v_fuori IS NOT NULL THEN
+                      RAISE EXCEPTION USING
+                          ERRCODE = 'insufficient_privilege',
+                          MESSAGE = format('20261111-24: il prestito a %s non e'' riuscito per %s (vedi i WARNING della copia di servizio).',
+                                           current_user, v_fuori);
+                  END IF;
+              END
+              $prestito$;
+
+              -- 4) I COMMENT.
+              COMMENT ON FUNCTION dbops.fn_generate_tx_id(text, jsonb) IS
+                'Genera un nuovo tx_id UUID, lo inserisce in dbops.transaction_ids con generating_function e session_info, e lo restituisce. SECURITY DEFINER di postgres (registro dbops.sec_functions_owner), con search_path fissato a pg_catalog, public, pg_temp nella definizione: un CREATE OR REPLACE che lo dimentica lo azzera.';
+
+              COMMENT ON FUNCTION dbops.fn_sync_functions_owner() IS
+                'Allinea il proprietario delle funzioni elencate in dbops.sec_functions_owner al ruolo richiesto (ALTER FUNCTION ... OWNER TO). Non solleva su un singolo cambio non riuscito: lo segnala con un WARNING e prosegue. Eseguita a ogni migrate (90_end) e dalla passata post del provisioning come postgres. SECURITY DEFINER di postgres, con search_path fissato a pg_catalog, public, pg_temp nella definizione: un CREATE OR REPLACE che lo dimentica lo azzera. Riservata al migratore con una guardia nel corpo: la esegue solo chi e'' membro del proprietario dello schema dbops, o un superuser; gli altri ricevono 42501 (RAISE nudo, fuori dal canale di log che la sync protegge). La domanda la fa dbops.fn_sessione_del_migratore, che legge session_user perche'' dentro una DEFINER current_user e'' il proprietario: limite dichiarato, session_user e'' il ruolo di login e un SET ROLE non lo cambia. EXECUTE a PUBLIC resta per scelta: la difesa non e'' nell''ACL, che il loop dei grant riscrive e il cambio di proprietario rimappa. Il registro e'' in sola lettura per l''applicazione. Per cambiare una funzione di postgres un changeSet la prende in prestito: cambia required_owner, chiama la sync, fa il suo lavoro e la restituisce; la sync stessa, che non si presta a se'' stessa, passa da una copia di servizio temporanea.';
+
+              -- 5) Restituzione a postgres, attraverso la copia.
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name = 'dbops' AND function_name = 'fn_sync_functions_owner'
+                 AND arg_types = '' AND note = 'temporanea: 20261111-24';
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name = 'dbops' AND function_name = 'fn_generate_tx_id'
+                 AND arg_types = 'text,jsonb';
+              SELECT dbops.fn_sync_functions_owner_boot();
+
+              -- 6) L'originale, di nuovo di postgres, riprende la copia al
+              --    migratore, che la toglie; via le righe temporanee.
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name = 'dbops' AND function_name = 'fn_sync_functions_owner_boot'
+                 AND note = 'temporanea: 20261111-24';
+              SELECT dbops.fn_sync_functions_owner();
+
+              DROP FUNCTION dbops.fn_sync_functions_owner_boot();
+
+              DELETE FROM dbops.sec_functions_owner
+               WHERE note = 'temporanea: 20261111-24';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Solo testi: i COMMENT precedenti sono nella scheda auto-generata
+              -- alla revisione prima di questa, e rimetterli vorrebbe di nuovo il
+              -- prestito. Non si riscrive una cronaca.
+              SELECT 1;

@@ -37,7 +37,7 @@ END
 $function$
 
 COMMENT ON FUNCTION dbops.fn_conta_presidio(p_vista text)
-IS 'Conta le righe che CHIEDONO UN INTERVENTO su una vista di presidio dichiarata in dbops.presidi: la SOMMA dei gruppi di dbops.fn_conta_presidio_per_variante, che e'' la sede unica del perimetro (una vista non a catalogo solleva E_PRESIDIO_NON_A_CATALOGO, non torna zero) e del filtro (colonna_stato, stato_atteso) letto dal catalogo. Dal 2026-10-10 e'' SECURITY INVOKER: non legge piu'' le viste da se'', e l''attraversamento della row level security (tre viste security_invoker su tabelle protette, che da un percorso senza GUC — un management command — tornerebbero ZERO per cecita'') lo fa la sede, DEFINER del proprietario. ⛔ Torna un bigint e MAI le righe. ⚠️ La colonna dbops.presidi.perimetro dice un''altra cosa, cioe'' se il chiamante puo'' anche ELENCARE le righe. Brief: brief-db-un-destinatario-per-i-presidi §4.1, brief-db-presidio-processi-testo-per-causa §6.2.';
+IS 'Conta le righe che CHIEDONO UN INTERVENTO su una vista di presidio dichiarata in dbops.presidi: la somma dei gruppi di dbops.fn_conta_presidio_per_variante, che e'' la sede unica del perimetro (una vista non a catalogo solleva E_PRESIDIO_NON_A_CATALOGO, non torna zero) e del filtro (colonna_stato, stato_atteso) letto dal catalogo. SECURITY INVOKER: non legge le viste da se''; l''attraversamento della row level security (viste security_invoker su tabelle protette, che da un percorso senza GUC tornerebbero zero per cecita'') lo fa la sede, DEFINER del proprietario. ⛔ Torna un bigint e mai le righe. ⚠️ La colonna dbops.presidi.perimetro dice un''altra cosa, cioe'' se il chiamante puo'' anche ELENCARE le righe.';
 ```
 
 </div>

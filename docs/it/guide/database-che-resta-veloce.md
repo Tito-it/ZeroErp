@@ -1,6 +1,6 @@
 # Guida — Un database che resta veloce
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, e chiunque debba capire perché
 > una schermata o un test è diventato lento
@@ -9,6 +9,7 @@
 >
 > * [maintenance.vw_statistiche_mancanti](/dbzero/maintenance/views/vw_statistiche_mancanti) — le tabelle senza statistiche
 > * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — quali chiavi esterne hanno un indice, e perché
+> * [dbops.vw_fk_da_decidere](/dbzero/dbops/views/vw_fk_da_decidere) — le chiavi esterne senza indice su cui nessuno ha ancora deciso
 >
 > **Vedi anche** — regole e guide correlate:
 >
@@ -39,7 +40,7 @@ economica. Ogni scelta poggia su tre cose:
 | | Che cos'è | Chi se ne occupa |
 | --- | --- | --- |
 | **La fotografia** | quante righe ha una tabella, quali valori sono frequenti: le statistiche | il lavoro notturno e l'autovacuum — [Le statistiche del planner](/guide/statistiche-del-planner) |
-| **Le strade** | gli indici, che permettono di arrivare a poche righe senza leggere tutte le altre | le regole di [§8](/linee-guida-sql#8-indici) e la policy automatica degli indici sulle chiavi esterne |
+| **Le strade** | gli indici, che permettono di arrivare a poche righe senza leggere tutte le altre | le regole di [§8](/linee-guida-sql#8-indici) e la politica degli indici sulle chiavi esterne, che li crea o li toglie secondo una decisione per ognuna |
 | **La forma** | come è scritta la query o la funzione: che cosa calcola, quante volte, con quali condizioni | chi scrive il codice — [§13](/linee-guida-sql#13-prestazioni-la-forma-di-funzioni-e-query) |
 
 Quando una di queste manca il planner sbaglia la stima, e una stima sbagliata di
@@ -145,14 +146,14 @@ test che la pretende per nome.
 | --- | --- | --- |
 | Rifà le statistiche di tutte le tabelle, e fallisce se ne salta una | ogni notte, e in CI prima dei test | [Le statistiche del planner](/guide/statistiche-del-planner) |
 | Rianalizza e ripulisce le tabelle che cambiano molto (autovacuum) | di continuo, secondo quanto cambiano | impostazioni di PostgreSQL, non nostre |
-| Crea o toglie gli indici sulle chiavi esterne, secondo la policy | a ogni migrazione | [§8.7](/linee-guida-sql#87-automazione-indici-fk) |
+| Crea o toglie gli indici sulle chiavi esterne, secondo le decisioni della politica, e registra come da decidere le chiavi esterne nuove senza indice | a ogni migrazione | [§8.7](/linee-guida-sql#87-automazione-indici-fk) |
 
 ### Con un controllo a disposizione
 
 | Che cosa | Dove |
 | --- | --- |
 | Indici doppi o coperti da un altro più largo | due viste, [§8.6](/linee-guida-sql#86-gestione-indici-ridondanti) |
-| Chiavi esterne senza indice | [§8.7](/linee-guida-sql#87-automazione-indici-fk) |
+| Chiavi esterne senza indice su cui nessuno ha deciso | [vw_fk_da_decidere](/dbzero/dbops/views/vw_fk_da_decidere), [§8.7](/linee-guida-sql#87-automazione-indici-fk) |
 | Tabelle senza statistiche | [vw_statistiche_mancanti](/dbzero/maintenance/views/vw_statistiche_mancanti) |
 
 ### Fuori perimetro, oggi

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.contratti`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -267,8 +267,10 @@ Qualsiasi combinazione di listino e variazione globale è ammessa.
   viene mappato a `soggetto_ruolo_id` per la fn.
 * Se la catena non risolve, `fn_get_valuta_id` solleva `E_CONFIG_MANCANTE` (id 205)
   via `script.fn_log_and_raise_error`.
-* Indice FK gestito dalla policy centralizzata (`consentito=false` come
-  `fk_preventivi_valuta`): nessun indice manuale.
+* Indice FK governato dalla politica centralizzata (`dbops.fk_index_policy`): nessun
+  indice manuale. Nel CSV della politica la FK non ha una decisione, come
+  `fk_preventivi_valuta`: finché resta scoperta e senza decisione la mostra il presidio
+  `dbops.vw_fk_da_decidere`.
 
 ---
 

@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.vw_articoli_uom_operativa_dettaglio: ricreata senza rounding_mode e
+#   require_lot, ritirate in -02 (D3, Q4).
+#
+#   Il resto della definizione e' quello di prima, preso da pg_get_viewdef su dbdev con
+#   search_path = pg_catalog (2026-11-09). GRANT ripetuto: si azzera con la vista. La
+#   vista non aveva COMMENT (§3.2 del brief): lo prende qui.
+#   Rollback: la vista si toglie; la ricrea com'era il rollback di -02, che rimette le
+#   colonne (Liquibase annulla in ordine inverso: prima -03, poi -02). Per questo il
+#   rollback di -03 non la ricrea: le colonne non ci sono ancora.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-03-recreate-vw-articoli-uom-operativa-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20261111-03-recreate-vw-articoli-uom-operativa-dettaglio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vw_articoli_uom_operativa_dettaglio ricreata senza le due colonne ritirate. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid = to_regclass('catalogo.vw_articoli_uom_operativa_dettaglio')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW catalogo.vw_articoli_uom_operativa_dettaglio AS
+               SELECT auo.id,
+                  auo.articolo_id,
+                  auo.uom_id,
+                  auo.is_base,
+                  auo.factor_to_base,
+                  auo.is_sell_uom,
+                  auo.is_purchase_uom,
+                  auo.is_logistic_uom,
+                  auo.qty_step,
+                  auo.max_decimals,
+                  auo.forbid_fraction,
+                  auo.gtin,
+                  auo.valido_dal,
+                  auo.valido_al,
+                  auo.validita,
+                  auo.attivo,
+                  auo.meta,
+                  auo.user_insert,
+                  auo.user_update,
+                  auo.data_insert,
+                  auo.data_update,
+                  auo.tx_id,
+                  auo.storicizza,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  NOT auo.is_base AS puo_eliminarsi,
+                      CASE
+                          WHEN auo.is_base THEN 'UOM_BASE_NON_ELIMINABILE'::text
+                          ELSE NULL::text
+                      END AS motivo_non_eliminabile
+                 FROM catalogo.articoli_uom_operativa auo
+                   LEFT JOIN catalogo.unita_misura u ON u.id = auo.uom_id
+                   LEFT JOIN catalogo.articoli a ON a.id = auo.articolo_id;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_uom_operativa_dettaglio TO zeroerp_app;
+              COMMENT ON VIEW catalogo.vw_articoli_uom_operativa_dettaglio IS
+                  'Le unita'' operative di un articolo per la lista e il drawer: le righe di catalogo.articoli_uom_operativa con codice e descrizione dell''unita'' e dell''articolo, e la capability della cancellazione: puo_eliminarsi e'' falsa sulla riga dell''unita'' base (motivo_non_eliminabile UOM_BASE_NON_ELIMINABILE), che il database non lascia togliere (catalogo.trgfn_articoli_uom_operativa_guard_base). Nessuna security_invoker: le tabelle lette non hanno RLS.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW catalogo.vw_articoli_uom_operativa_dettaglio;

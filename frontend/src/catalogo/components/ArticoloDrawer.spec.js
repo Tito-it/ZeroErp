@@ -25,6 +25,12 @@
 //      non ha porta amministratore); il solo componente resta libero
 //   5) la merce non usata ha i quattro interruttori accesi: lo spegnimento
 //      viene da `e_onere`, non da un lucchetto qualunque
+//   6) composito e solo componente si escludono (CHECK
+//      `chk_articoli_composito_non_solo_componente`, BE10 di
+//      brief-db-revisione-catalogo): acceso l'uno, l'altro e' spento, col
+//      perche'; nessun valore cambia da solo
+//   7) la sezione della distinta la apre `puo_gestire_bom` del dettaglio, non
+//      il composito acceso nel form e non ancora salvato (BE12)
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -208,5 +214,51 @@ describe('ArticoloDrawer — articolo-onere', () => {
     }
     expect(w.text()).not.toContain('catalogo.hint_onere_struttura')
     expect(w.text()).toContain('catalogo.hint_gestito_a_magazzino')
+  })
+})
+
+describe('ArticoloDrawer — composito e solo componente', () => {
+  const libero = { non_editable_fields: [], struttura_correggibile: [] }
+
+  beforeEach(() => {
+    getArticolo.mockReset()
+    updateArticolo.mockReset()
+  })
+
+  it('6) acceso l\'uno, l\'altro e\' spento col perche\'', async () => {
+    const w = await apri(articolo({ ...libero, is_composito: true }))
+    expect(toggle(w, 'catalogo.field_solo_componente').props('disabled')).toBe(true)
+    expect(toggle(w, 'catalogo.field_composito').props('disabled')).toBe(false)
+    expect(w.text()).toContain('catalogo.hint_composito_solo_componente')
+
+    await toggle(w, 'catalogo.field_composito').vm.$emit('update:modelValue', false)
+    await flushPromises()
+    expect(toggle(w, 'catalogo.field_solo_componente').props('disabled')).toBe(false)
+    expect(toggle(w, 'catalogo.field_solo_componente').props('modelValue')).toBe(false)
+    expect(w.text()).not.toContain('catalogo.hint_composito_solo_componente')
+
+    await toggle(w, 'catalogo.field_solo_componente').vm.$emit('update:modelValue', true)
+    await flushPromises()
+    expect(toggle(w, 'catalogo.field_composito').props('disabled')).toBe(true)
+    expect(toggle(w, 'catalogo.field_composito').props('modelValue')).toBe(false)
+  })
+})
+
+describe('ArticoloDrawer — la sezione della distinta', () => {
+  beforeEach(() => {
+    getArticolo.mockReset()
+    updateArticolo.mockReset()
+  })
+
+  it('7) la apre il dettaglio salvato, non il form', async () => {
+    const libero = { non_editable_fields: [], struttura_correggibile: [] }
+    const w = await apri(articolo({ ...libero, puo_gestire_bom: false }))
+    expect(w.text()).not.toContain('catalogo.tab_bom')
+    await toggle(w, 'catalogo.field_composito').vm.$emit('update:modelValue', true)
+    await flushPromises()
+    expect(w.text()).not.toContain('catalogo.tab_bom')
+
+    const k = await apri(articolo({ ...libero, is_composito: true, puo_gestire_bom: true }))
+    expect(k.text()).toContain('catalogo.tab_bom')
   })
 })

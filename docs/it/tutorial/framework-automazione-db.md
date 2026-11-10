@@ -1,6 +1,6 @@
 # Tutorial — Portare una tabella nuova nel framework di automazione DB
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > **Destinatari**: sviluppatori database che creano una tabella nuova e vogliono che il framework la governi
 >
@@ -129,7 +129,7 @@ presidio `db/pgtap/dbops/test-storico-scope-policy-v1.sql` diventa rosso.
 | bloccare altre colonne oltre a `codice_interno`                 | `automation_lock_columns.csv`           |
 | che una FK **non** sia legata dalla regola ATTIVO (con il motivo) | `automazione_attivo_eccezioni.csv`      |
 | colonne con nomi diversi dallo standard                         | `automation_overrides_cols.csv`         |
-| l'indice su una FK nuova (la policy è opt-in)                   | `fk_index_policy*.csv`, `consentito = true` |
+| decidere l'indice di una FK nuova senza copertura (fino ad allora è `DA_DECIDERE` nel presidio `vw_fk_da_decidere`) | `fk_index_policy.csv`, `CON_INDICE` o `SENZA_INDICE` |
 | bloccare la DELETE                                              | `automation_delete_block_ruoli.csv`     |
 
 Il dettaglio di ognuno è nella [guida](/guide/automazione-db), §1.3, §4 e §6.

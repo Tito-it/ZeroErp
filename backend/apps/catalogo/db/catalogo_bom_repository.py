@@ -268,19 +268,6 @@ class CatalogoBomRepository(RigheListaCompletaMixin):
             )
             return cursor.rowcount > 0
 
-    # Scopo: Elimina un componente BoM con ownership check sul prodotto.
-    def delete_componente(self, articolo_id: UUID | str, componente_row_id: UUID | str) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                DELETE FROM catalogo.articoli_componenti
-                WHERE prodotto_id = %s
-                  AND id = %s
-                """,
-                [articolo_id, componente_row_id],
-            )
-            return cursor.rowcount > 0
-
     # Scopo: Lista le note articolo con dati arricchiti di stile e lingua.
     #        Ordine di partenza delle note (`NOTE_ORDINE_DEFAULT`), lo stesso
     #        della pagina (`pagina_note`): fino al 2026-10-31 il dettaglio

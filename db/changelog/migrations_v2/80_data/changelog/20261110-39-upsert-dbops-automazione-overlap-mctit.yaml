@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automazione_overlap prende il suo CSV, come gli altri registri delle automazioni (N7,
+#   N7-bis). Prima era l'unica tabella di configurazione senza: le righe le scrivevano INSERT e
+#   UPDATE sparsi in 00_schema e 80_data (linee-guida-sql §11.2), perche' Liquibase non sa caricare
+#   un text[] da un CSV. Le chiavi sono jsonb dal 20261110-38, che su un database da zero gira dopo
+#   quei changeSet e prima di questo (80_data va per nome).
+#   Le righe del CSV sono quelle che i changelog scrivono su un database da zero (lo scratch,
+#   2026-11-08). Il mirror non cancella: le righe che ci sono solo su una macchina restano.
+#   Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4 (§28.11-28.13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-39-upsert-dbops-automazione-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20261110-39-upsert-dbops-automazione-overlap
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Upsert di dbops.automazione_overlap dal suo CSV. Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'dbops' AND table_name = 'automazione_overlap'
+                 AND column_name = 'key_columns' AND data_type = 'jsonb'
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/automazione_overlap.csv
+            tableName: automazione_overlap
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "target_schema,target_table"
+            columns:
+              - column: { name: target_schema,   type: STRING }
+              - column: { name: target_table,    type: STRING }
+              - column: { name: key_columns,     type: JSON }
+              - column: { name: valido_dal_col,  type: STRING }
+              - column: { name: valido_al_col,   type: STRING }
+              - column: { name: range_bounds,    type: STRING }
+              - column: { name: constraint_name, type: STRING }
+              - column: { name: active,          type: BOOLEAN }
+              - column: { name: exec_mode,       type: STRING }
+              - column: { name: note,            type: STRING }
+              - column: { name: range_col,       type: STRING }
+              - column: { name: where_predicate, type: STRING }
+              - column: { name: key_expressions, type: JSON }

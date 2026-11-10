@@ -21,25 +21,34 @@ DECLARE
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Rifiutare un componente che la distinta non ammette: solleva
-    --   il primo motivo di script.fn_check_articolo_riga
-    --   (documento ARTICOLO, padre = prodotto_id). BEFORE INSERT OR
-    --   UPDATE OF componente_id, prodotto_id, attivo.
+    --   Rifiutare una composizione che la distinta non ammette:
+    --   solleva il primo motivo di script.fn_check_articolo_riga
+    --   (documento ARTICOLO, padre = prodotto_id). Il lato documento
+    --   della check rifiuta un padre non composito
+    --   (E_ARTICOLO_NON_COMPOSITO); i motivi giudicano il componente.
+    --   BEFORE INSERT OR UPDATE OF componente_id, prodotto_id,
+    --   attivo, valido_al.
+    -- Una composizione nuova e': un legame attivo che nasce, che si
+    --   attiva, che cambia componente o padre, o la cui fine si
+    --   allontana (valido_al tolto o spostato in avanti). Chiudere
+    --   un legame, o anticiparne la fine, non compone niente e non
+    --   si giudica: un legame si chiude sempre.
     -- =========================================================
-    IF NOT COALESCE(NEW.attivo, FALSE) THEN
+    IF NOT NEW.attivo THEN
         RETURN NEW;
     END IF;
 
     IF TG_OP = 'UPDATE'
-       AND COALESCE(OLD.attivo, FALSE)
+       AND OLD.attivo
        AND NEW.componente_id IS NOT DISTINCT FROM OLD.componente_id
-       AND NEW.prodotto_id   IS NOT DISTINCT FROM OLD.prodotto_id THEN
+       AND NEW.prodotto_id   IS NOT DISTINCT FROM OLD.prodotto_id
+       AND NOT (OLD.valido_al IS NOT NULL
+                AND (NEW.valido_al IS NULL OR NEW.valido_al > OLD.valido_al)) THEN
         RETURN NEW;
     END IF;
 
-    -- p_scelta_nuova = true: qui arriva solo un legame nuovo, cambiato
-    -- o riattivato, cioe' una composizione nuova (O-4): il componente
-    -- ritirato e' un motivo (brief-db-articoli-obsoleto-dal).
+    -- p_scelta_nuova = true: qui arriva solo una composizione nuova,
+    -- quindi un componente ritirato e' un motivo.
     v_motivi := script.fn_check_articolo_riga(
         'ARTICOLO', NULL, NEW.componente_id, NULL, NULL, NEW.prodotto_id, true);
 
@@ -54,7 +63,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_componente()
-IS 'Guard BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo su catalogo.articoli_componenti (Lotto 3c di brief-db-articoli-ammessi-per-documento, 2026-10-13): solleva il primo motivo di script.fn_check_articolo_riga per il componente (documento ARTICOLO, padre = prodotto_id): componente uguale al padre (E_BOM_COMPONENTE_PADRE), composito (E_BOM_COMPONENTE_COMPOSITO, D-4), IVA diversa dal padre (E_BOM_IVA_DISCORDANTE). Giudica un legame attivo quando nasce, quando si attiva e quando cambia componente o padre; un legame spento no. Guard suo perche'' qui articolo e padre sono componente_id e prodotto_id (uuid), non articolo_id e un id di documento; la regola resta una, nella check. Sostituisce catalogo.trgfn_articoli_componenti_guard_un_livello e catalogo.trgfn_articoli_componenti_guard_iva (ritirati da 20261013-61). ⭐ rev 2026-11-05 (20261105-13, brief-db-articoli-obsoleto-dal O-4): il guard arriva alla check solo per un legame nuovo, cambiato o riattivato, che e'' sempre una composizione nuova: passa p_scelta_nuova = true, e un componente ritirato (script.fn_e_obsoleto) e'' respinto con E_ARTICOLO_OBSOLETO, campo componente_id. Le righe-componente dei documenti espanse da una distinta esistente sono derivate e non passano di qui. Il prodotto ritirato non conta: la sua distinta si continua a mantenere.';
+IS 'Guard BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo, valido_al su catalogo.articoli_componenti: giudica ogni composizione nuova con script.fn_check_articolo_riga (documento ARTICOLO, padre = prodotto_id, p_scelta_nuova = true) e solleva il primo motivo. Il lato documento della check rifiuta un padre inesistente o non composito (E_ARTICOLO_NON_COMPOSITO, campo prodotto_id); i motivi giudicano il componente: ritirato (E_ARTICOLO_OBSOLETO), uguale al padre (E_BOM_COMPONENTE_PADRE), composito, perche'' la distinta ha un livello solo (E_BOM_COMPONENTE_COMPOSITO), con un''IVA diversa dal padre (E_BOM_IVA_DISCORDANTE). Composizione nuova = un legame attivo che nasce, che si attiva, che cambia componente o padre, o la cui fine si allontana (valido_al tolto o spostato in avanti). Un legame spento, o che si chiude, non si giudica. Le righe-componente dei documenti espanse da una distinta esistente sono derivate e non passano di qui; il prodotto ritirato non conta, perche'' la sua distinta si continua a mantenere.';
 ```
 
 </div>

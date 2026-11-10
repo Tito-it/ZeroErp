@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_stati_check_scrittori`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,6 +16,7 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti degli scrittori, anche delle `BEGIN ATOMIC`
+> * [dbops.fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile) — quali funzioni hanno un corpo da leggere: il perimetro degli scrittori
 >
 > Guide:
 >
@@ -59,10 +60,12 @@ configurazione non ancora esercitata, non un fallimento muto.
 | Scrittore | Come si vede |
 | --- | --- |
 | il **valore predefinito** della colonna | lo scrive ogni inserimento che non lo nomina, e rende raggiungibile **solo** quel valore |
-| una **funzione che scrive la tabella**, PL/pgSQL o SQL | il valore compare nel suo corpo come letterale |
+| una **funzione che scrive la tabella**, dal corpo leggibile (PL/pgSQL o SQL) | il valore compare nel suo corpo come letterale |
 | una funzione che **chiama** uno scrittore | il valore compare dentro la chiamata: è il caso delle funzioni che ricevono lo stato come parametro |
 
-Il corpo di ogni funzione si legge da [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione):
+Quali funzioni hanno un corpo da leggere lo decide
+[fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile), lo stesso perimetro degli altri
+presidi sul corpo. Il corpo di ogni funzione si legge da [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione):
 senza commenti, con i letterali intatti, e anche per le funzioni SQL scritte con `BEGIN ATOMIC`, il
 cui sorgente testuale è vuoto. Uno scrittore così conta come gli altri, e un letterale che contiene un
 doppio trattino sulla riga dello scrittore non gli taglia il valore.
@@ -136,6 +139,9 @@ senza sapere come un valore risulta scritto non si capisce perché un altro no. 
   prima la vista guardava PL/pgSQL e SQL ma leggeva il sorgente testuale, vuoto per le
   `BEGIN ATOMIC`. Un valore scritto solo da una di loro usciva `NON_DICHIARATO`, e una riga `ESENTE`
   su quel valore non diventava mai `DEBITO_ESTINTO`.
+* 2026-11-09 — il perimetro, PL/pgSQL e SQL, si legge da `fn_corpo_leggibile` invece che da un elenco
+  scritto nella vista: il perimetro non cambia, ed è lo stesso degli altri presidi sul corpo
+  (`20261110-83`, `brief-db-revisione-dbops`, giro 12).
 
 ---
 

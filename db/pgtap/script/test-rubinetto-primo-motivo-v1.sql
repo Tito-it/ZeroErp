@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    48,
+    50,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -342,7 +342,12 @@ SELECT is(
     --   vendite.fn_programma_chiusura_versione_listino (20261029-02) e
     --   vendite.fn_clona_versione_listino (20261029-04). Aggiornato dalla sessione
     --   di brief-db-contratto-righe-periodiche-in-commessa, che ha visto il rosso.
-    'le quarantotto funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-11-09: da 48 a 50. Due siti NUOVI nati sull'helper col giro 3 di
+    --   brief-db-revisione-catalogo (la chiusura del legame coi prezzi bundle):
+    --   catalogo.trgfn_articoli_componenti_block_modifica_struttura (20261111-28)
+    --   e il verbo catalogo.fn_chiudi_legame_distinta (20261111-29), che
+    --   sollevano il primo motivo di script.fn_check_legame_distinta_chiudibile.
+    'le cinquanta funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

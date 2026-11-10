@@ -6,16 +6,14 @@
 -- (Fase 1 brief BE 28-04-2026) + scenario read parametro con cascata
 -- override (default -> emittente -> user).
 --
--- 5 parametri seedati (id 17-21):
+-- 4 parametri seedati (id 17, 18, 20, 21; il 19, il default di rounding_mode,
+-- e' ritirato con la colonna il 2026-11-09, brief-db-revisione-catalogo giro 2):
 --   CATALOGO_UOM_OP_DEFAULT_FACTOR_TO_BASE   = 1
 --   CATALOGO_UOM_OP_DEFAULT_QTY_STEP         = 1
---   CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE    = HALF_UP
 --   CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS     = 6
 --   CATALOGO_UOM_OP_DEFAULT_FORBID_FRACTION  = false
 --
--- I rounding_mode restano enum tecnici Python (_ROUNDING_MODE_VALIDI):
--- nessuna tabella di lookup uom_rounding_modes, nessun guard FK-surrogato
--- (decisione BE 28-04-2026). Il test si limita a presenza+default+cascata.
+-- Il test si limita a presenza, default e cascata degli override.
 --
 -- La meccanica generale di fn_get_parameter_full e' gia' coperta da
 -- db/pgtap/script/test-fn-get-parameter-full-emittente.sql; qui validiamo
@@ -24,17 +22,17 @@
 -- Indice test (1..13):
 --    1. CATALOGO_UOM_OP_DEFAULT_FACTOR_TO_BASE   presente
 --    2. CATALOGO_UOM_OP_DEFAULT_QTY_STEP         presente
---    3. CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE    presente
+--    3. CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE    ritirato
 --    4. CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS     presente
 --    5. CATALOGO_UOM_OP_DEFAULT_FORBID_FRACTION  presente
 --    6. default_value FACTOR_TO_BASE   = '1'
 --    7. default_value QTY_STEP         = '1'
---    8. default_value ROUNDING_MODE    = 'HALF_UP'
+--    8. la colonna rounding_mode non c'e' piu'
 --    9. default_value MAX_DECIMALS     = '6'
 --   10. default_value FORBID_FRACTION  = 'false'
---   11. fn_get_parameter_full ROUNDING_MODE no-override -> 'HALF_UP'
---   12. cascata: override emittente ROUNDING_MODE -> 'HALF_DOWN' vince su default
---   13. cascata: override user ROUNDING_MODE -> 'HALF_EVEN' vince su emittente
+--   11. fn_get_parameter_full MAX_DECIMALS no-override -> '6'
+--   12. cascata: override emittente MAX_DECIMALS -> '2' vince su default
+--   13. cascata: override user MAX_DECIMALS -> '0' vince su emittente
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -68,8 +66,8 @@ SELECT ok(
     '2) CATALOGO_UOM_OP_DEFAULT_QTY_STEP presente in config.parameters'
 );
 SELECT ok(
-    EXISTS(SELECT 1 FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE'),
-    '3) CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE presente in config.parameters'
+    NOT EXISTS(SELECT 1 FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE'),
+    '3) CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE ritirato con la colonna rounding_mode'
 );
 SELECT ok(
     EXISTS(SELECT 1 FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS'),
@@ -93,10 +91,11 @@ SELECT is(
     '1'::text,
     '7) Default QTY_STEP = 1 (granularita unitaria)'
 );
-SELECT is(
-    (SELECT default_value FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE'),
-    'HALF_UP'::text,
-    '8) Default ROUNDING_MODE = HALF_UP'
+SELECT ok(
+    NOT EXISTS(SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'catalogo' AND table_name = 'articoli_uom_operativa'
+                  AND column_name = 'rounding_mode'),
+    '8) la colonna di cui ROUNDING_MODE era il default non c''e'' piu'''
 );
 SELECT is(
     (SELECT default_value FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS'),
@@ -113,9 +112,9 @@ SELECT is(
 -- 11) fn_get_parameter_full senza override -> default puro
 -- =========================================================
 SELECT is(
-    script.fn_get_parameter_full('CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE'),
-    'HALF_UP'::text,
-    '11) fn_get_parameter_full ROUNDING_MODE no-override = HALF_UP (default)'
+    script.fn_get_parameter_full('CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS'),
+    '6'::text,
+    '11) fn_get_parameter_full MAX_DECIMALS no-override = 6 (default)'
 );
 
 -- =========================================================
@@ -134,7 +133,7 @@ ORDER BY ef.id
 LIMIT 1;
 
 -- =========================================================
--- 12) Override emittente ROUNDING_MODE = 'HALF_DOWN' vince su default
+-- 12) Override emittente MAX_DECIMALS = '2' vince su default
 -- =========================================================
 INSERT INTO config.parameter_overrides (
     parameter_id,
@@ -142,8 +141,8 @@ INSERT INTO config.parameter_overrides (
     emittente_fiscale_id
 )
 SELECT
-    (SELECT id FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE'),
-    'HALF_DOWN',
+    (SELECT id FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS'),
+    '2',
     r.emittente_id
 FROM _t_uom_refs r
 WHERE r.emittente_id IS NOT NULL
@@ -151,20 +150,20 @@ WHERE r.emittente_id IS NOT NULL
 -- esiste gia' un override puro per questo parametro e questo ambito, lo si
 -- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
 -- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
-ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6
 DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 
 SELECT is(
     script.fn_get_parameter_full(
-        'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE',
+        'CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS',
         p_emittente_fiscale_id := (SELECT emittente_id FROM _t_uom_refs)
     ),
-    'HALF_DOWN'::text,
-    '12) Cascata: override emittente HALF_DOWN vince su default HALF_UP'
+    '2'::text,
+    '12) Cascata: override emittente 2 vince su default 6'
 );
 
 -- =========================================================
--- 13) Override user ROUNDING_MODE = 'HALF_EVEN' vince su emittente
+-- 13) Override user MAX_DECIMALS = '0' vince su emittente
 -- (priorita' user > group > emittente > default)
 -- =========================================================
 INSERT INTO config.parameter_overrides (
@@ -173,8 +172,8 @@ INSERT INTO config.parameter_overrides (
     django_user_id
 )
 SELECT
-    (SELECT id FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE'),
-    'HALF_EVEN',
+    (SELECT id FROM config.parameters WHERE code = 'CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS'),
+    '0',
     r.user_id
 FROM _t_uom_refs r
 WHERE r.user_id IS NOT NULL
@@ -182,17 +181,17 @@ WHERE r.user_id IS NOT NULL
 -- esiste gia' un override puro per questo parametro e questo ambito, lo si
 -- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
 -- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
-ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6
 DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 
 SELECT is(
     script.fn_get_parameter_full(
-        'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE',
+        'CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS',
         p_emittente_fiscale_id := (SELECT emittente_id FROM _t_uom_refs),
         p_django_user_id := (SELECT user_id FROM _t_uom_refs)::integer
     ),
-    'HALF_EVEN'::text,
-    '13) Cascata: override user HALF_EVEN vince su emittente HALF_DOWN'
+    '0'::text,
+    '13) Cascata: override user 0 vince su emittente 2'
 );
 
 SELECT * FROM finish();

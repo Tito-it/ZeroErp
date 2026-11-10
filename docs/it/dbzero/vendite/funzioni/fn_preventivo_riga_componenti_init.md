@@ -90,11 +90,8 @@ BEGIN
                ac.obbligatorio,
                a.uom_id       AS componente_uom_id,
                a.iva_id       AS componente_iva_id
-          FROM catalogo.articoli_componenti ac
+          FROM catalogo.fn_distinta_alla_data(v_articolo_id, p_data_riferimento) ac
           JOIN catalogo.articoli a ON a.id = ac.componente_id
-         WHERE ac.prodotto_id        = v_articolo_id
-           AND COALESCE(ac.attivo, TRUE) = TRUE
-           AND ac.validita           @> p_data_riferimento
     LOOP
         IF p_componenti_overrides IS NOT NULL
            AND p_componenti_overrides ? v_comp.componente_id::text THEN

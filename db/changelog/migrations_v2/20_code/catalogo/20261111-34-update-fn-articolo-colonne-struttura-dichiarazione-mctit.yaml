@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_articolo_colonne_struttura: le colonne strutturali dell'articolo si
+#   dichiarano qui (D20, Q10).
+#
+#   Prima la funzione le leggeva dalle regole ACCESE del form in
+#   dbops.lock_columns_conditional, confrontando condition_expr come testo. Spegnere una
+#   regola del form la toglieva dalla porta catalogo.fn_articolo_correggi_struttura,
+#   mentre il guard dell'uso continuava a bloccare la colonna: la colonna non si
+#   correggeva piu' da nessuna parte. Q10 di Tid: la porta non dipende dalle regole del
+#   form; le colonne si dichiarano in un posto, che leggono guard, form e porta.
+#   Ora la funzione E' la dichiarazione: le otto colonne, nell'ordine in cui il guard
+#   cerca la prima cambiata. La leggono il guard (il corpo, -35) e la porta. Le due copie
+#   che non si derivano a runtime, l'elenco UPDATE OF del trigger e le regole del form, le
+#   confronta il pgTAP catalogo/test-articolo-colonne-struttura-v1.
+#   IMMUTABLE: una costante.
+#   Rollback: il corpo e il COMMENT di prima.
+#   Brief: brief-db-revisione-catalogo, giro 3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-34-update-fn-articolo-colonne-struttura-dichiarazione-mctit.yaml
+
+  - changeSet:
+      id: 20261111-34-update-fn-articolo-colonne-struttura-dichiarazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.fn_articolo_colonne_struttura: la dichiarazione delle colonne strutturali, senza le regole del form (D20, Q10). Brief: brief-db-revisione-catalogo, giro 3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('catalogo.fn_articolo_colonne_struttura()'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_articolo_colonne_struttura()
+               RETURNS text[]
+               LANGUAGE sql
+               IMMUTABLE
+              AS $function$
+                  -- La dichiarazione: le colonne che un articolo usato non cambia, e che
+                  -- la porta della struttura corregge. L'ordine e' quello in cui il guard
+                  -- cerca la prima cambiata.
+                  SELECT ARRAY['is_composito', 'is_solo_componente', 'natura_vendita_id',
+                               'causale_onere_id', 'listino_tipologia_id',
+                               'gestito_a_magazzino', 'requires_lotto', 'requires_serial']::text[];
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_articolo_colonne_struttura() IS
+                  'La dichiarazione delle colonne strutturali di un articolo: quelle che non cambiano quando l''articolo e'' usato (catalogo.fn_articolo_usato) e che il SUPER_ADMIN corregge con catalogo.fn_articolo_correggi_struttura. Otto colonne, nell''ordine in cui il guard cerca la prima cambiata: is_composito, is_solo_componente, natura_vendita_id, causale_onere_id, listino_tipologia_id, gestito_a_magazzino, requires_lotto, requires_serial. La leggono il guard catalogo.trgfn_articoli_guard_struttura_se_usato (nel corpo), la porta (le colonne ammesse in p_campi) e il backend (i campi che la scheda articolo riapre in correzione). Le due copie che non si leggono a runtime, l''elenco UPDATE OF del trigger del guard e le regole del form in dbops.lock_columns_conditional sul predicato dell''uso, le confronta il pgTAP catalogo/test-articolo-colonne-struttura-v1: una regola del form spenta non toglie la colonna alla porta. IMMUTABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo e il COMMENT del 20261018-70.
+              CREATE OR REPLACE FUNCTION catalogo.fn_articolo_colonne_struttura()
+               RETURNS text[]
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  SELECT COALESCE(array_agg(l.column_name::text ORDER BY l.id), '{}'::text[])
+                    FROM dbops.lock_columns_conditional l
+                   WHERE l.schema_name    = 'catalogo'
+                     AND l.table_name     = 'articoli'
+                     AND l.condition_expr = 'catalogo.fn_articolo_usato($1::uuid)'
+                     AND l.enabled;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_articolo_colonne_struttura() IS
+                  'Le colonne strutturali di un articolo (A-10 di brief-db-articoli-ammessi-per-documento): quelle che non cambiano quando l''articolo e'' usato e che il SUPER_ADMIN corregge con catalogo.fn_articolo_correggi_struttura. Lette, non scritte qui: sono le regole ACCESE del form in dbops.lock_columns_conditional su catalogo.articoli con condition_expr = ''catalogo.fn_articolo_usato($1::uuid)'' (seed 20261013-51), nell''ordine della dichiarazione (id). Array vuoto se il registro non ne ha. Lettori: il verbo catalogo.fn_articolo_correggi_struttura (colonne ammesse in p_campi) e il backend (i campi che la scheda articolo riapre in correzione, al posto della sua lista). Il guard catalogo.trgfn_articoli_guard_struttura_se_usato ha l''elenco scritto (UPDATE OF e CASE: non si derivano a runtime): lo confronta con questa il pgTAP catalogo/test-articolo-colonne-struttura-v1. INVOKER. Nasce il 2026-10-18 (R-DB-3, §9.7.3).';

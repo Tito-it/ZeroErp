@@ -1,26 +1,47 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 0 committato, decisioni prese)
+## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 3 applicato e committato)
 
-**Riparte: la sessione DB** col giro 1 (la distinta), quando **Tid** dà il via e i numeri dei changeSet. Il giro 1
-va coordinato con D28 del brief `dbops`. Tutte le decisioni di §6 sono prese (Tid, 2026-11-08).
+**Riparte: Tid**, col via ai giri 4-5 (§7) e i loro numeri; le scelte dentro i giri 3, 2 e 1 (§14.2, §14.6, §13.3,
+§10.3) da guardare. In parallelo il **team BE**, con BE19 e BE20 del giro 3 (§14.4, §14.8), BE1-BE4 e BE16-BE18 del
+giro 2 (§13.5) e la doc API di BE9 e BE11.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Censimento in sola lettura dei 37 oggetti: doc, codice, metadati, doppioni, pgTAP | §1-§5 | — |
 | 2 | ✅ Tid | Le decisioni Q1-Q14, tutte come da proposta (2026-11-08) | §6 | 1 |
-| 2-bis | **Tid** ⏭️ | Il via al giro 1, con i numeri dei changeSet | §7 | 2 |
 | 3 | ✅ Tid | Il via al giro 0 (2026-11-08) | §7 | 1 |
 | 4 | ✅ sessione DB | Giro 0: le 35 pagine `manual/` allo standard, il blocco comune delle note, la doc fuori schema | §9 | 3 |
 | 4-bis | ✅ sessione DB, su richiesta di Tid | Commit del giro 0 (2026-11-08) | §9.5 | 4 |
-| 5 | sessione DB | Giri 1-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 2 |
-| 6 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato | §5 | 5 |
-| 7 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 5 |
+| 5 | ✅ Tid | Via al giro 1, dal `20261110-62` (2026-11-09) | §10 | 2 |
+| 5-bis | ✅ sessione DB | Giro 1 (la distinta): `20261110-62` … `-71`, due codici, pgTAP; provato sullo scratch | §10 | 5 |
+| 5-ter | ✅ Tid | Apply del giro 1 su dbdev e scratch; pgTAP come app verdi (2026-11-09) | §10.6 | 5-bis |
+| 5-quater | ✅ Tid | Commit del giro 1 (`eef662024d`, 2026-11-09) | §10.6 | 5-ter |
+| 5-quinquies | ✅ sessione DB | Censimento del giro 1-bis in sola lettura: i lettori della distinta, il piano | §11 | 5-quater |
+| 5-sexies | ✅ Tid | Q15-Q18 come da proposta; via al giro 1-bis dal `-85` (2026-11-09) | §11.4 | 5-quinquies |
+| 5-septies | ✅ sessione DB | Giro 1-bis: nove changeSet, CSV dei codici, pgTAP, doc; provato sullo scratch | §11.7, §11.8 | 5-sexies |
+| 5-octies | ✅ Tid | Apply del giro 1-bis su dbdev e scratch, pgTAP come app verdi (2026-11-09) | §11.9 | 5-septies |
+| 5-nonies | ✅ sessione DB, su richiesta di Tid | Commit del giro 1-bis (2026-11-09) | §11.9 | 5-octies |
+| 5-decies | ✅ Tid | Via al giro 2, dal `20261111-01` (2026-11-09) | §13 | 5-nonies |
+| 5-undecies | ✅ sessione DB | Giro 2 (le unità): tredici changeSet, sei codici, pgTAP, doc; provato sullo scratch | §13 | 5-decies |
+| 5-duodecies | ✅ Tid | La riga di prova corretta; apply del giro 2 su dbdev e scratch, pgTAP come app verdi (2026-11-09) | §13.6 | 5-undecies |
+| 5-terdecies | ✅ sessione DB, su richiesta di Tid | Commit del giro 2 (2026-11-09) | §13.6 | 5-duodecies |
+| 5-quaterdecies | ✅ Tid | Via al giro 3, dal `20261111-25` (2026-11-09) | §14 | 5-terdecies |
+| 5-quindecies | ✅ sessione DB | Giro 3: tredici changeSet, quattro codici, tre pgTAP nuovi, doc; provato sullo scratch | §14 | 5-quaterdecies |
+| 5-sexdecies | ✅ Tid | Apply del giro 3 su dbdev e scratch, pgTAP come app verdi (2026-11-10) | §14.9 | 5-quindecies |
+| 5-septdecies | ✅ sessione DB, su richiesta di Tid | Commit del giro 3 (2026-11-10) | §14.9 | 5-sexdecies |
+| 5-octodecies | **Tid** ⏭️ | Il via ai giri 4-5 e i loro numeri; le scelte di §14.2, §14.6, §13.3, §10.3 da guardare | §7 | 5-septdecies |
+| 6 | sessione DB | Giri 4-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-octodecies |
+| 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
+| 7-bis | **team BE** ⏭️ | La doc API di BE9 e BE11 (`api_catalogo.md`), rimasta indietro; BE1-BE4 e BE16-BE18 (giro 2, applicato); BE19 e BE20 (giro 3, applicato); le altre quando il giro corrispondente lo è | §5, §13.5, §14.8 | — |
+| 7-ter | ✅ Tid | Il legame con prezzi bundle: (b) con conferma dell'operatore, tutti e due i diritti, avviso sul prezzo del kit (Q19-Q22, 2026-11-09) | §11.10.1 | — |
+| 7-quater | ✅ Tid | La chiusura del legame coi prezzi va nel giro 3 (2026-11-09) | §14 | 7-ter |
+| 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
 
-**Decisioni aperte di Tid:** nessuna; manca il via al giro 1. **Da committare:** le decisioni registrate in §6 (questo
-brief) e il rimando di D-C in `brief-db-articoli-obsoleto-dal`.
-⚠️ **Numerazione:** nessun changeSet scritto. I numeri si concordano con Tid al via di ogni giro (sono aperte
-altre sessioni DB).
+**Decisioni aperte di Tid:** le scelte dentro i giri 3 (§14.2, §14.6), 2 (§13.3) e 1 (§10.3), da guardare. **Da
+committare:** niente (giro 3 committato il 2026-11-10).
+⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93`, il giro 3 `20261111-25` … `-37` (dati da Tid). Messaggi
+d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid e team DB; §5 al team BE.
 > **Origine:** richiesta di Tid del 2026-11-08: una revisione di `catalogo` sullo stile di
@@ -504,6 +525,12 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | BE5 | 5 | Se la vista perde i `*_ref_id` (R7), la proiezione del repository li prende dalle FK |
 | BE6 | — | `offerte_service.py:1178,1209,1273` e `RigheEccezioniDrawer.vue:668` decidono su `is_composito`: verificare se ricopiano una regola del DB (R8) |
 | BE7 | 3 | Se il cambio d'IVA diventa un verbo del kit (Q6), il form dell'articolo lo chiama |
+| BE16 | 2 | Q4 ritira `rounding_mode` e `require_lot`: il lookup `GET /api/v1/catalogo/lookup/rounding-modes/` (`api_catalogo.md` §2.3, `_ROUNDING_MODE_VALIDI` in `catalogo_service`) e i campi del form dell'unità operativa si ritirano nello stesso giro BE |
+| BE8 ✅ (2026-11-09) | 1 | I due codici nuovi `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO, campo `valido_al`) ed `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO, campo `valido_al`): mappa degli errori generata (`error_policies_generated.py`) e i18n. `E_ARTICOLO_NON_COMPOSITO` ora porta `campo = prodotto_id` e un bersaglio `ARTICOLO` |
+| BE9 ✅ (2026-11-09), doc ⏭️ | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE. ⏭️ **Resta la doc** (verificato il 2026-11-09 dopo `9f540bea72`): `docs/it/backend/catalogo/manual/api_catalogo.md:601` dice ancora «`valido_dal` se chiudibile», e §4.3 (`valido_al` «unico campo modificabile») non dice che la fine non cambia i giorni passati e che una fine già passata non si tocca |
+| BE10 ✅ (2026-11-09) | 1 | Il form dell'articolo: `is_composito` e `is_solo_componente` insieme li rifiuta ora un CHECK (23514, `chk_articoli_composito_non_solo_componente`). Il form spegne l'uno quando l'altro è acceso, e il servizio mappa il vincolo a un messaggio |
+| BE11 ✅ (2026-11-09), doc ⏭️ | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi». ⏭️ **Resta la doc**: l'endpoint è ritirato, ma `api_catalogo.md` §4.4 «Elimina componente» documenta ancora il `DELETE` |
+| BE12 ✅ (2026-11-09) | 1 | Il picker degli articoli ammessi per la distinta (`catalogo.fn_articoli_ammessi` con `ARTICOLO`) su un padre non composito solleva `E_ARTICOLO_NON_COMPOSITO` invece di restituire una lista vuota: il FE apre il picker solo con `puo_gestire_bom` |
 
 ## 6. Le decisioni di Tid
 
@@ -523,6 +550,9 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | Q12 ✅ | D16: le note di catalogo prendono `tx_id` e `user_* text` come le altre? E un articolo con una nota si deve poter disattivare? | Sì alla forma comune; sì alla disattivazione (la nota non è un figlio vivo: va esclusa dal `block_deact`) — **✅ Tid, 2026-11-08: come da proposta** |
 | Q13 ✅ | D22: il fattore della mappatura si legge alla data del documento? | Sì, se Q3 versiona la mappatura; altrimenti la domanda cade — **✅ Tid, 2026-11-08: il fattore si legge alla data del documento** |
 | Q14 ✅ | §2.4: si ritirano gli indici che ripetono un vincolo? | `uq_articoli_componenti_prodotto_componente_from` sì; `ix_uom_tipi_codice_interno_upper` e `ix_artuomop_art_isbase` solo dopo la verifica dei lettori e dei piani — **✅ Tid, 2026-11-08: come da proposta** |
+| Q19 ✅ | D24 (§13.7.3, domanda 1): il fattore di una mappatura già scritta si cambia sul posto? | No: **bloccato**. Un fattore nuovo è una riga nuova (chiudi e inserisci, Q3) — **✅ Tid, 2026-11-10** |
+| Q20 ✅ | D25 (§13.7.3, domanda 2): l'unità della riga di listino deve valere alla decorrenza della versione o per tutto il suo periodo? | **Per tutto il periodo** della versione, regola a DB — **✅ Tid, 2026-11-10** |
+| Q21 ✅ | D26 (§13.7.3, domanda 3): il fattore 1 per difetto delle commesse va in un brief nuovo? | No, **in questo brief** — **✅ Tid, 2026-11-10** |
 
 ## 7. I giri, nell'ordine in cui si fanno
 
@@ -536,6 +566,7 @@ giro dopo.
 | 1 | A + B | **La distinta.** D1, D9, D10 (Q1), D11 (Q2), R3 (Q5); pgTAP di §2.6 sulla distinta | Gli stessi trigger di `articoli_componenti` e il guard flags. Dopo D28 di `dbops`, o con D28 |
 | 1-bis | B | **Il BB della distinta alla data** (R2, Q8) | Tocca vendite e `script`: un giro a parte, con l'ok di Tid |
 | 2 | A + B | **Le quantità e le unità.** D2 (Q7), D3 (Q4), D8, D12, D13 (Q3), D22 (Q13), D14, D15, D6, D17; BE1-BE4 | `trgfn_qta_from_operativa`, `articoli_uom_operativa` e i due guard di tipologia |
+| 2-bis | A + B | **Le tre decisioni del giro BE.** D24 (Q19), D25 (Q20), D26 (Q21); BE19-BE21 (§14) | Nascono dal giro BE del giro 2; tocca anche `vendite` (listini, commesse) |
 | 3 | A + B | **I guard degli articoli.** D4 (Q6) + D21, D5 (R4), D7, D18, D19, D20 (Q10), R5 | Gli oggetti di `catalogo.articoli` |
 | 4 | B | **Le note.** D16 (Q12), R6 | Tabella `note`, partizioni e due viste |
 | 5 | C | **Pulizia e metadati.** §3 (Q11), §2.4 (indici ridondanti, rami irraggiungibili, `uom_tipi.codice` con Q9), §2.5, pgTAP deboli di §2.6, R7 | Quello che nessun giro precedente ha già aperto |
@@ -610,3 +641,779 @@ non è stata lanciata, quindi l'include del blocco comune non è provato al rend
 * Le schede auto-generate di `catalogo` modificate nel working tree (`tabelle/`, `funzioni/`, `index*.md`)
   sono di altre sessioni e restano fuori.
 
+## 10. Giro 1 — la distinta, 2026-11-09
+
+Via di Tid il 2026-11-09, coi numeri dal `20261110-62`. Difetti del giro: D1, D9, D10 (Q1), D11 (Q2), R3 (Q5). D28 del
+brief `dbops` è già chiuso (giro 10a): il giro parte dai suoi predicati.
+
+### 10.1 Che cosa è scritto
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/catalogo/20261110-62` | `catalogo.fn_articolo_padre_di_distinta_da_oggi`: padre di una distinta in vigore o futura, la stessa finestra del lato componente |
+| `20_code/catalogo/20261110-63` | Guard flags: il check 1 chiede il predicato da oggi (D9); area di log `catalogo`; COMMENT secondo §5d |
+| `20_code/script/20261110-64` | `script.fn_articolo_riga_contesto`: la testata della distinta è un composito, altrimenti `E_ARTICOLO_NON_COMPOSITO` (Q5). Sede unica della regola del padre |
+| `20_code/catalogo/20261110-65` | `trgfn_articoli_componenti_guard_componente` e il suo trigger: `UPDATE OF` anche `valido_al`; giudica la riattivazione e l'allungamento della fine; la chiusura no (D9) |
+| `20_code/catalogo/20261110-66` | `trgfn_articoli_componenti_block_modifica_struttura` e il suo trigger: `prodotto_id` immutabile (D1); la fine non cambia i giorni già passati (Q1, D10) |
+| `20_code/catalogo/20261110-67` | Ritirati `trgfn_articoli_componenti_guard_is_composito` e `…_guard_solo_componente`, coi trigger (R3, Q5) |
+| `20_code/catalogo/20261110-68` | `vw_articoli_componenti_dettaglio`: `data_min_chiusura` = la più tarda fra `valido_dal` e ieri (Q1) |
+| `80_data/changelog/20261110-69` | `lock_columns_conditional`: le regole 1-2 del form chiamano il predicato da oggi, come il guard |
+| `90_end/20261110-70` | Ritirata `catalogo.fn_articolo_padre_di_distinta_in_vigore` (dopo le regole del form) |
+| `90_end/20261110-71` | CHECK `chk_articoli_composito_non_solo_componente` su `catalogo.articoli` (Q2) |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_BOM_CHIUSURA_RETROATTIVA` (1462), `E_BOM_LEGAME_CHIUSO` (1463); note e causa di `E_BOM_MODIFICA_VIETATA` riscritte |
+
+`%TYPE` in firma, `DECLARE` e nelle firme di `COMMENT`/`DROP`; i corpi di partenza da `pg_get_functiondef` su dbdev;
+rollback = corpi, COMMENT e trigger di prima.
+
+### 10.2 La forma della regola di Q1
+
+Q1 (Tid, 2026-11-08) dice: la fine di un legame in vigore non si sposta nel passato e non si toglie. Scritta sul
+modello, la regola è **«la fine non cambia i giorni già passati»**, al giorno aziendale:
+
+* una fine **già passata** non si tocca più: né spostata, né tolta (`E_BOM_LEGAME_CHIUSO`). Per rimettere il componente
+  si inserisce un legame nuovo;
+* le altre fini vanno **a vuoto o da ieri in avanti** (`E_BOM_CHIUSURA_RETROATTIVA`, con la prima data ammessa);
+* **chiudere a ieri** è ammesso, perché la storia resta com'era, ed è il modo di far valere da oggi la versione nuova
+  (la `validita` comprende i due estremi);
+* **togliere una fine futura** è ammesso, perché il passato non cambia; lo giudica il guard del legame come composizione
+  nuova (componente ritirato o composito, padre non composito).
+
+### 10.3 Le scelte dentro il giro (da guardare, Tid)
+
+1. **Il padre non composito è un controllo del documento, non un motivo.** L'ho messo in `fn_articolo_riga_contesto`,
+   come il padre mancante, e non fra i motivi del componente. Ne segue che il picker della distinta su un padre non
+   composito solleva invece di proporre una lista vuota (BE12). In compenso la regola ha una sede sola, ed è il lato
+   documento della stessa check che già giudicava il componente.
+2. **Il check 2 del guard flags non cambia finestra.** Resta «componente di una distinta in vigore»: D9 parla
+   del padre, e la regola del check 2 (un componente non cambia `is_solo_componente`) è sospetta di suo (§2.2, D11).
+   Il suo predicato `fn_articolo_componente_di_distinta_in_vigore` resta.
+3. **Una fine prima di `valido_dal` resta alla regola del periodo.** Il trigger d'immutabilità non la giudica, così
+   l'operatore legge la frase della regola del periodo, come prima.
+4. **L'area di log `database` diventa `catalogo`** nei corpi che il giro riscrive (guard flags, immutabilità), e
+   l'immutabilità registra il `tx_id` della riga.
+
+### 10.4 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di Liquibase, `BEGIN … ROLLBACK`)
+
+* **Estratto e preCondition.** Le dieci `changes` in ordine di fase e numero, con le `preConditions` come asserzioni
+  dopo i changeSet precedenti, più le righe nuove dei CSV: passano tutte in una transazione. Dopo il `ROLLBACK` lo
+  scratch è com'era (il predicato vecchio c'è, il nuovo no). Le `preConditions` lette anche su dbdev, prima: stesse
+  risposte dello scratch.
+* **I pgTAP che toccano gli oggetti del giro**: tutti quelli di `catalogo/`, più quelli che nominano la distinta, la
+  check, le regole del form o il picker, cioè 73 file, con e senza l'estratto in testa.
+  * Verdi con l'estratto, tranne `catalogo/test-articolo-usato-struttura-v1` test 17, rosso uguale anche senza: il file
+    stesso lo dichiara «rosso da owner, verde come app».
+  * Cambiati nel giro, perché asserivano la regola di prima: `catalogo/test-distinta-predicati-guard-e-form-v1` (il
+    predicato nuovo, un padre con distinta solo futura), `catalogo/test-vw-articoli-componenti-dettaglio-capabilities-v1`
+    (la prima fine è ieri), `vendite/test-fatture-righe-kit-qta-periodo-v1` test 21 (`prodotto_id` fra i campi bloccati),
+    `catalogo/test-vw-articoli-dettaglio-bom-capability-v1` (la fixture costruiva un kit solo componente),
+    `catalogo/test-articoli-componenti-solo-componente` (riscritto sulle due sedi della regola).
+  * ⚠️ `catalogo/test-articoli-componenti-guard-attivo-composito` cercava per nome il guard ritirato: senza correzione il
+    caso «padre non composito» sarebbe diventato uno skip verde. Ora cerca il guard del legame.
+  * Nuovo: `catalogo/test-distinta-storia-e-ritorni-v1` (15 test: padre immutabile, le regole della fine, riattivazione
+    e allungamento giudicati, padre con distinta solo futura, la capability della vista). Senza l'estratto: 9 rossi
+    su 15, cioè prova davvero la regola nuova.
+  * Commenti che nominavano il guard ritirato in sette pgTAP: ripuntati alla check della distinta.
+* **Deadlock.** Una prima corsa ha incontrato una corsa pgTAP di un'altra sessione sullo scratch: sei file in
+  deadlock. Rilanciati a scratch libero, verdi.
+* **Non provato:** la corsa come app (la fa Tid dopo l'apply), e il migrate vero (pgjdbc, ordine reale).
+
+### 10.5 Doc
+
+Pagine `manual/` riallineate al giro: cancellate quelle dei tre oggetti ritirati, creata quella del predicato nuovo,
+aggiornate le pagine della distinta, del guard flags, degli articoli, del contesto e della check, la guida dei listini
+§5.3 e il modello della distinta. Le sezioni «⚠️ Che cosa oggi non copre» perdono i punti che il giro chiude. La scheda
+auto-generata del predicato nuovo nasce alla rigenerazione della doc, dopo l'apply.
+
+### 10.6 Chiusura (2026-11-09)
+
+* **Applicato** da Tid su dbdev e sullo scratch: `20261110-62` … `-71` e le due righe nuove dei CSV dei codici. Su dbdev
+  i dieci changeSet sono nel `databasechangelog` (letto il 2026-11-09). pgTAP come app verdi.
+* **Da committare** (il giro 1 intero):
+  * i changeSet `20_code/catalogo/20261110-62`, `-63`, `-65` … `-68`, `20_code/script/20261110-64`,
+    `80_data/changelog/20261110-69`, `90_end/20261110-70`, `-71`;
+  * `80_data/sql/config/codici_errore.csv` e `messaggi_errore.csv` (solo le righe di questo giro);
+  * i pgTAP: `catalogo/test-distinta-storia-e-ritorni-v1.sql` (nuovo), `test-articoli-componenti-solo-componente.sql`,
+    `test-distinta-predicati-guard-e-form-v1.sql`, `test-vw-articoli-componenti-dettaglio-capabilities-v1.sql`,
+    `test-vw-articoli-dettaglio-bom-capability-v1.sql`, `test-articoli-componenti-guard-attivo-composito.sql`,
+    `test-articoli-componenti-immutabilita.sql`, `vendite/test-fatture-righe-kit-qta-periodo-v1.sql`, e i commenti
+    in `vendite/test-righe-e-componenti-le-altre-famiglie-v1.sql`, `vendite/test-righe-e-componenti-debiti-residui-v1.sql`,
+    `vendite/test-componenti-propaga-qta-da-operativa-v1.sql`, `vendite/test-ddt-componenti-senza-prezzo-v1.sql`,
+    `script/test-fn-check-prezzi-autorizzati-v1.sql`, `dbops/test-fn-non-editable-fields-conditional.sql`;
+  * `scripts/guardrail_pgtap_preambolo.py`: la soglia dei `throws_ok` senza discriminante da 110 a 109;
+  * la doc di §10.5 (le pagine `manual/` di `catalogo`, `script/manual/fn_articolo_riga_contesto.md` e
+    `fn_check_articolo_riga.md`, `dbops/manual/fn_non_editable_fields.md` e `lock_columns_conditional.md`,
+    `guide/gestione-listini.md`, `dev/manual/modello-componenti-bom.md`), con le tre pagine cancellate;
+  * questo brief e `brief-db-articoli-obsoleto-dal` (il rimando di D-C).
+* ⚠️ Nel working tree ci sono file di altre sessioni (fra cui i `fk_index_policy_*.csv` cancellati, schede auto-generate e
+  pagine `dbops/manual/`): non entrano nel commit del giro.
+* **Doc auto-generata:** alla prossima rigenerazione nasce la scheda di `catalogo.fn_articolo_padre_di_distinta_da_oggi`
+  e spariscono quelle dei tre oggetti ritirati. Fino ad allora tre pagine `manual/` hanno un link a una scheda che non
+  c'è ancora.
+* **Il giro 1 è chiuso** per la parte DB. Restano BE8-BE12 al team BE e le scelte di §10.3 da guardare.
+* **Committato** da Tid il 2026-11-09: `eef662024d`.
+
+## 11. Giro 1-bis — il BB della distinta alla data: il censimento e il piano, 2026-11-09
+
+Il giro chiude R2 (Q8). Questa sezione è stata scritta **in sola lettura**, prima del via: nessun changeSet, nessun pgTAP.
+I corpi vengono da `pg_get_functiondef` e `pg_get_viewdef` su dbdev, letti il 2026-11-09, dopo l'apply del giro 1.
+
+### 11.1 Chi legge la distinta, e che cosa chiede
+
+R2 elencava i 5 `*_riga_componenti_init`, i 5 `*_preview`, i due guard di coerenza e la vista. Il censimento ha preso
+tutte le funzioni e le viste che nominano `catalogo.articoli_componenti`. Le domande che fanno sono di quattro forme, e
+solo la prima è R2:
+
+| Forma | Chi la fa | Filtro oggi | Nel giro |
+| --- | --- | --- | --- |
+| **L'insieme dei legami di un padre alla data D** | `vendite.fn_{preventivo,ordine,ddt,contratto}_riga_componenti_init`, `fn_offerta_eccezione_componenti_init` e i cinque `_preview` gemelli | `prodotto_id = padre AND COALESCE(attivo, TRUE) AND validita @> D`, ricopiato dieci volte | ✅ chiamano il BB |
+| | `catalogo.vw_articoli_dettaglio.has_componenti_alla_data` | `EXISTS (… validita @> fn_data_operativa() AND attivo)`: è il BB a oggi | ✅ `EXISTS` sul BB, cronometrata |
+| | ⚠️ BE `vendite/db/listini_repository.py` `list_bundle_preview` (`:1238`) | lo stesso filtro, scritto in Python | ➡️ BE13 (§11.6) |
+| **Questo legame sta nella distinta del padre alla data D?** | `script.trgfn_componenti_guard_coerenza_bom`, sulle cinque tabelle `*_righe_componenti` dei documenti | il guard 2 legge il legame per `id` e `prodotto_id`; il guard 4 chiede `validita @> D` e **non guarda `attivo`** | ✅ il guard 4 chiede il BB (Q16) |
+| **Il kit ha una distinta?** (senza data) | `script.fn_check_articolo_riga_su_contesto`, motivo `KIT_SENZA_COMPONENTI`, scritto due volte nello stesso corpo | `COALESCE(attivo, TRUE)`, nessuna validità | Q15 |
+| | `catalogo.trgfn_articoli_guard_iva_bom_attiva` | solo `attivo` | ⛔ giro 3 (D4) |
+| **Altro** (non è la distinta del catalogo alla data) | `fn_espandi_listino_versione`, `fn_contratto_kit_componenti`, `fn_documento_righe_preview`: leggono la distinta **del listino** o del documento e vanno sul legame solo per gli attributi. `fn_clona_versione_listino`: sovrapposizione del legame con il periodo della versione. `trgfn_listini_righe_comp_guard_coerenza_bom`: il periodo sta alla FK temporale. `trgfn_componenti_check_prezzo_obbligatorio`, `…_guard_obbligatorio`: leggono `obbligatorio` per `id`. I tre predicati di catalogo, il trigger d'immutabilità e il guard del legame | — | restano |
+
+Fatti emersi:
+
+* **Il guard dei documenti non guarda `attivo`.** Un componente di documento può puntare un legame spento, mentre gli
+  init non lo scriverebbero mai. È una seconda risposta alla stessa domanda, e diverge già.
+* **Rami irraggiungibili.** `COALESCE(ac.attivo, TRUE)` nei dieci init e preview (`attivo` è NOT NULL). Lo skip del guard
+  4 con `v_data_rif IS NULL`: la colonna data delle cinque testate (`data`, e `validita_dal` per l'offerta) è NOT NULL.
+  Si tolgono nello stesso giro, perché il giro apre quegli oggetti (§2.4).
+* **Il futuro consumatore.** `analisi-simmetria-ordini-acquisto` (D-9, chiusa) prevede in `acquisti` i gemelli di
+  `fn_ordine_riga_componenti_init` e `_preview`. Con il BB nascono senza copiare il filtro.
+* **Fuori perimetro**, come osservazione: i cinque init sono gemelli interi, non solo nel filtro (il commento nel corpo
+  lo dice: «Gemello di `fn_contratto_riga_componenti_init`»). Unirli è un altro tema. Il giro tocca solo il filtro.
+
+### 11.2 Il BB
+
+`catalogo.fn_distinta_alla_data(p_prodotto_id, p_data) RETURNS TABLE(id, componente_id, coeff_qta, obbligatorio,
+esposizione_in_fattura)`, `LANGUAGE sql STABLE`, `BEGIN ATOMIC` (le dipendenze stanno in `pg_depend`, come i tre predicati
+di catalogo). Risponde: i legami **attivi** del padre la cui `validita` contiene `p_data`.
+
+* Con `p_data` NULL **non** risponde «la distinta di oggi»: risponde zero righe. Chi vuole oggi passa
+  `fn_data_operativa()`, come la vista. Un NULL che vale «oggi» renderebbe la data implicita (Regola zero: un parametro
+  non è un filtro nascosto).
+* ⚠️ **Non `SETOF catalogo.articoli_componenti`**, come proposto nel censimento. Provato sullo scratch in `BEGIN …
+  ROLLBACK`: una `BEGIN ATOMIC` che restituisce la riga della tabella muore («troppe poche colonne») appena la tabella
+  prende una colonna. Con le colonne nominate l'`ADD COLUMN` non la tocca. Le colonne sono quelle di struttura che i
+  chiamanti leggono; il resto si legge per `id`.
+* **Espansione nel chiamante, provata:** con la data passata come colonna, parametro o chiamata diretta, `EXPLAIN` non ha
+  `Function Scan`. Con la data in una sottoquery (`(SELECT script.fn_data_operativa())`) invece no.
+* **La vista, cronometrata su dbdev** (811 articoli, letto il 2026-11-09, in `BEGIN … ROLLBACK`). Con
+  `fn_data_operativa()` passata direttamente, la colonna costava circa 3,4 volte tanto (6,7 ms contro 2,0 ms), perché il
+  giorno aziendale si ricalcola per ogni legame. Con il giorno calcolato una volta, in una sottoquery recintata
+  (`CROSS JOIN (SELECT script.fn_data_operativa() AS data_operativa OFFSET 0) oggi`), il tempo torna quello di prima
+  (2,0 ms). Stessi valori su tutti gli articoli.
+* Il predicato «da oggi in poi» per i guard **c'è già**: `fn_articolo_padre_di_distinta_da_oggi` (giro 1). Il giro
+  1-bis non ne fa un secondo.
+
+### 11.3 Che cosa cambia nei chiamanti
+
+| Oggetto | Cambio | Comportamento |
+| --- | --- | --- |
+| 5 init + 5 preview | `FROM catalogo.fn_distinta_alla_data(padre, p_data_riferimento) ac JOIN catalogo.articoli a …` al posto del filtro; via il `COALESCE` | Uguale |
+| `vw_articoli_dettaglio` | `has_componenti_alla_data` = `EXISTS (SELECT 1 FROM catalogo.fn_distinta_alla_data(a.id, oggi.data_operativa))`, con il giorno in una sottoquery recintata (§11.2) | Uguale; la vista oggi non ha opzioni (`reloptions` vuoto, letto il 2026-11-09): il `CREATE OR REPLACE` non ne perde |
+| `script.trgfn_componenti_guard_coerenza_bom` | Il guard 4 chiede se il legame è nell'insieme del BB alla data della testata; via lo skip su data NULL | **Cambia** (Q16): un legame spento è rifiutato dal guard con `E_DOC_COMPONENTE_BOM_NON_VALIDA`. Prima lo rifiutava comunque, a fine istruzione, il vincolo differito generato `…_a10_articoli_componenti_…` (`dbops.trgfn_child_requires_active_parent`, `E_ATTIVO_PADRE_NON_ATTIVO`): il rifiuto non è nuovo, lo sono il momento e il codice |
+| `script.fn_check_articolo_riga_su_contesto` | Solo se Q15 dice di cambiare la finestra; le due copie del motivo nello stesso corpo diventano una | Secondo Q15 |
+
+### 11.4 Le decisioni di Tid
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| Q15 ✅ | Il motivo `KIT_SENZA_COMPONENTI` della check guarda «almeno un legame attivo, in qualunque periodo». Un kit con la distinta tutta chiusa nel passato passa la check, e poi l'init lo rifiuta a ogni data da oggi in poi. La check non ha la data del documento. Che finestra prende? | **«Da oggi in poi»** (`fn_articolo_padre_di_distinta_da_oggi`), la stessa del guard flags (D9, «una finestra sola per i guard»). Il caso del documento con data passata resta all'init, alla sua data, come dice già il commento del corpo. ⚠️ Un kit con la sola distinta passata non si propone più nel picker — **✅ Tid, 2026-11-09: come da proposta** |
+| Q16 ✅ | Il guard dei componenti di documento deve rifiutare un legame spento? | **Sì.** «Il legame sta nella distinta alla data» è una regola sola, e la risponde il BB. Oggi un legame citato da un documento non si spegne (`trgfn_prevent_deactivate_if_children`), quindi le righe esistenti non sono toccate. Il guard scatta su ogni UPDATE della riga componente: va provato che un UPDATE di prezzo su una riga valida passi — **✅ Tid, 2026-11-09: come da proposta** |
+| Q17 ✅ | Il guard 1 di `trgfn_componenti_guard_coerenza_bom` («la riga padre è un composito», `E_DOC_RIGA_NON_COMPOSITO`). R3 lo contava come copia della regola del padre | **Resta.** Giudica la riga del **documento**, non la testata della distinta: dopo il giro 1 la regola del padre della distinta ha la sua sede in `fn_articolo_riga_contesto`. Sono due domande diverse. R3 si corregge così — **✅ Tid, 2026-11-09: come da proposta** |
+| Q18 ✅ | ChangeSet: uno per documento (init e preview insieme) o uno per funzione? | **Uno per documento**: è lo stesso cambio sullo stesso documento, e il rollback rimette i due corpi insieme. Totale in §11.5 — **✅ Tid, 2026-11-09: come da proposta** |
+
+### 11.5 I changeSet
+
+Nove (Q15 cambia la finestra). Il BB prende il numero più basso, perché la vista lo chiama al CREATE.
+
+| # | Fase / schema | Che cosa |
+| --- | --- | --- |
+| 1 | `20_code/catalogo` | `fn_distinta_alla_data`; COMMENT in un secondo `- sql:` (pgjdbc e `BEGIN ATOMIC`) |
+| 2-6 | `20_code/vendite` | Preventivo, ordine, DDT, contratto, eccezione d'offerta: init e preview |
+| 7 | `20_code/script` | `trgfn_componenti_guard_coerenza_bom` (Q16) |
+| 8 | `20_code/catalogo` | `vw_articoli_dettaglio.has_componenti_alla_data` |
+| 9 | `20_code/script` | `fn_check_articolo_riga_su_contesto` (solo con Q15) |
+
+Corpi di partenza da `pg_get_functiondef`/`pg_get_viewdef` del giorno, `%TYPE` in firma e `DECLARE`, rollback = corpi di
+prima. Prima di riscrivere `vw_articoli_dettaglio` si confronta il suo corpo col brief vicino
+`brief-db-addebito-trasporto-ordine`, che tocca la stessa vista (`causale_onere_id`, `e_onere`).
+
+**pgTAP previsti:**
+
+* nuovo `catalogo/test-distinta-alla-data-v1`: un kit costruito con legami passati, in vigore, futuri e spenti; il BB a
+  più date (compresi i due estremi chiusi della `validita`) e con `p_data` NULL; init e preview di un documento seguono
+  il BB; il guard rifiuta il legame spento e lascia passare l'UPDATE di prezzo; Q15, se cambia;
+* un presidio statico: nessun corpo di `vendite`/`script` ripete `articoli_componenti` con `validita @>` su
+  `prodotto_id`. Così la copia non rientra;
+* i pgTAP esistenti che toccano init, preview, guard e vista, con e senza l'SQL estratto in testa (come al §10.4).
+
+### 11.6 Ricadute su BE e FE
+
+| # | Che cosa |
+| --- | --- |
+| BE13 ✅ (2026-11-09) | `listini_repository.list_bundle_preview` (`:1238`) ricopia il filtro della distinta alla data: legge da `catalogo.fn_distinta_alla_data(%s, %s)` e tiene il `LEFT JOIN` sui prezzi del listino |
+| BE14 ✅ (2026-11-09) | Un kit con la sola distinta passata non compare più fra gli articoli ammessi (Q15). Il FE non ha niente da fare: legge i motivi dalla check |
+| BE15 ✅ (2026-11-09) | Il messaggio di `E_ARTICOLO_KIT_SENZA_COMPONENTI` cambia («non ha componenti in vigore da oggi in poi»): va allineata la frase di riserva in `backend/apps/core/services/error_messages_fallback.py:82`, e l'i18n se la ripete |
+
+### 11.7 Che cosa è scritto (2026-11-09)
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/catalogo/20261110-85` | `catalogo.fn_distinta_alla_data`, il BB (§11.2) |
+| `20_code/vendite/20261110-86` … `-90` | Preventivo, ordine, DDT, contratto, eccezione d'offerta: init e preview leggono la distinta dal BB. Cambia solo il `FROM`: via il filtro e il `COALESCE` su `attivo` |
+| `20_code/script/20261110-91` | `trgfn_componenti_guard_coerenza_bom`: il guard 4 chiede il BB (Q16); via lo skip con la data NULL; COMMENT, punto (4) |
+| `20_code/catalogo/20261110-92` | `vw_articoli_dettaglio.has_componenti_alla_data` dal BB, col giorno calcolato una volta (§11.2). Colonne, ordine e COMMENT invariati |
+| `20_code/script/20261110-93` | `fn_check_articolo_riga_su_contesto`: `KIT_SENZA_COMPONENTI` con `fn_articolo_padre_di_distinta_da_oggi` (Q15), un motivo costruito una volta e aggiunto dai due rami. COMMENT di questa funzione e di `fn_check_articolo_riga` riscritti secondo §5d |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_ARTICOLO_KIT_SENZA_COMPONENTI`: messaggio, causa e nota sulla finestra nuova. `E_DOC_COMPONENTE_BOM_NON_VALIDA`: causa e nota col legame spento |
+
+I corpi di partenza vengono da `pg_get_functiondef` e `pg_get_viewdef` (`search_path = pg_catalog`) su dbdev, letti il
+2026-11-09. Un generatore li ha cambiati con sostituzioni che dovevano trovare **esattamente un** punto, altrimenti si
+fermava. Il rollback è il corpo di prima, con i COMMENT di prima dove cambiano.
+
+**Residuo, non toccato:** negli init restano `COALESCE(v_is_composito, FALSE)` e `COALESCE(v_comp.obbligatorio, TRUE)`
+su valori che non possono essere NULL, e i marcatori `rev …` nei commenti dei corpi. Va col giro 5 (§2.4). Nella check
+anche il motivo `SOLO_COMPONENTE` è scritto in più rami: anche questo è giro 5.
+
+### 11.8 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di numero, `BEGIN … ROLLBACK`)
+
+* **Estratto e preCondition.** I nove changeSet, con le `preConditions` trasformate in asserzioni, passano in una
+  transazione.
+* **Il pgTAP nuovo** `catalogo/test-distinta-alla-data-v1` (17 test): verde con l'estratto. Con il solo BB e i chiamanti
+  di prima sono rossi esattamente i tre test dei cambi (11 legame spento, 14 kit con la sola distinta passata, 17 il
+  presidio). Gli altri sono uguali per costruzione. Il presidio 17, sullo scratch di oggi, trova le undici copie: i dieci
+  init e preview e la vista.
+* **I pgTAP che toccano gli oggetti del giro** (55 file: init, preview, guard, check, picker, vista, componenti delle
+  righe) con e senza l'estratto: stesse risposte, a parte il file nuovo. L'unico rosso,
+  `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1` test 2, è uguale senza l'estratto ed è già nelle due
+  baseline (`ASSERZIONE`).
+* **Cambiato:** `catalogo/test-articoli-ammessi-picker-v1` test 24 cercava la frase vecchia del messaggio del kit; ora
+  cerca quella nuova. Era verde nella prova solo perché l'estratto non ricarica i CSV: provato con la riga del messaggio
+  aggiornata a mano nella stessa transazione, 26/26.
+* **Guardrail:** `run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`, `grant_ruolo_batch`,
+  `sql_letterali`, `timestamp_senza_fuso` verdi; `pgtap_preambolo` segnala solo un file dell'altra sessione
+  (`dbops/test-presidi-codici-corpo-leggibile-v1`). La soglia dei `throws_ok` senza discriminante resta 109: il test nuovo
+  usa `throws_like`.
+* **Non provato:** la corsa come app (la fa Tid dopo l'apply), il caricamento dei CSV e il migrate vero (pgjdbc). Il
+  COMMENT del BB è in un `- sql:` separato dalla `BEGIN ATOMIC`, come vuole pgjdbc.
+
+### 11.9 Doc e chiusura
+
+* **Doc:** nuova `catalogo/manual/fn_distinta_alla_data.md`. Aggiornate `catalogo/manual/vw_articoli_dettaglio.md` (tolto
+  il punto «riscrive la regola a mano») e `fn_articolo_padre_di_distinta_da_oggi.md` (il terzo lettore), poi
+  `script/manual/trgfn_componenti_guard_coerenza_bom.md`, `fn_check_articolo_riga.md` e
+  `fn_check_articolo_riga_su_contesto.md`. Nelle sei pagine `vendite/manual/` degli init e del preview del preventivo è
+  cambiata solo la frase sul filtro: sono in formato vecchio, senza data, e restano così. La scheda auto-generata del BB
+  nasce alla rigenerazione della doc dopo l'apply: fino ad allora i link `/dbzero/catalogo/funzioni/fn_distinta_alla_data`
+  non hanno una pagina.
+* **Da committare** (il giro 1-bis):
+  * `20_code/catalogo/20261110-85`, `-92`; `20_code/vendite/20261110-86` … `-90`; `20_code/script/20261110-91`, `-93`;
+  * `80_data/sql/config/codici_errore.csv` e `messaggi_errore.csv` (solo le quattro righe di questo giro: i due file hanno
+    anche modifiche dell'altra sessione);
+  * i pgTAP `catalogo/test-distinta-alla-data-v1.sql` (nuovo) e `catalogo/test-articoli-ammessi-picker-v1.sql`;
+  * la doc del punto sopra e questo brief.
+* **Numeri:** mentre il giro si scriveva, un file dell'altra sessione aveva anche lui il `-85`; è stato spostato al `-99`,
+  poi Tid l'ha rinumerato `-94`. Nessun numero del giorno `20261110` è doppio.
+* **Applicato** da Tid su dbdev e sullo scratch, pgTAP come app verdi (2026-11-09). **Committato** lo stesso giorno, con le
+  schede auto-generate rigenerate dei soli oggetti del giro; delle modifiche dell'altra sessione ai due CSV non è entrato
+  niente.
+
+### 11.10 Il giro BE dei giri 1 e 1-bis (team BE, 2026-11-09, `9f540bea72`, PR #77)
+
+> Scritta dal team BE nel suo commit; il merge `909e048c32` l'aveva persa, ripristinata dalla sessione DB il 2026-11-09.
+
+* **BE8, BE15.** `error_policies_generated.py` rigenerato: `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO),
+  `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO), più `E_CONTATTI_SOGGETTO_OBBLIGATORIO` del giro 12 di `dbops`; le altre
+  differenze sono solo note. Ripieghi senza segnaposto per i tre codici nuovi; quello di
+  `E_ARTICOLO_KIT_SENZA_COMPONENTI` ora dice «in vigore da oggi in poi». L'i18n FE non ripete nessuna delle frasi.
+* **BE13.** `list_bundle_preview` legge da `catalogo.fn_distinta_alla_data(padre, data)`, col `LEFT JOIN` sui prezzi
+  della versione; il filtro ricopiato è uscito. Prova sul DB vero:
+  `vendite/tests/db/test_listino_kit_periodicita_db.py` test 8 (un legame futuro, una data prima della distinta).
+  ⚠️ Un legame che ha prezzi bundle non si chiude: lo vieta la FK temporale
+  `fk_listrighe_comp_articoli_comp_temporal`. Il team BE lo legge come modello, non come difetto; il test usa un legame
+  futuro. La domanda è in §11.10.1.
+* **BE11** (decisione di Tid, 2026-11-09: si ritira). Tolti il `DELETE` di
+  `/catalogo/articoli/<id>/componenti/<comp_id>/`, `fn_delete_componente`, `CatalogoBomRepository.delete_componente`,
+  `deleteArticoloComponente` del FE (senza chiamanti) e il loro test. Un legame si chiude con la PATCH su `valido_al`.
+* **BE10.** Il CHECK `chk_articoli_composito_non_solo_componente` passa da `map_integrity_error` (che sostituisce il
+  traduttore locale a testo degli articoli, compreso il duplicato del codice, ora col campo `codice`): 400
+  `E_CATALOGO_VALIDATION` con la frase, senza campo (è la coppia a essere incoerente). Provato sul DB vero. Il form
+  spegne l'interruttore dell'uno finché l'altro è acceso, col perché; nessun valore cambia da solo.
+* **BE12.** Nel drawer dell'articolo la sezione della distinta (e «Gestisci distinta») la apre `puo_gestire_bom` del
+  dettaglio, non il `form.is_composito` non ancora salvato. La lista lo faceva già.
+* **BE9.** La data la legge già la vista; corretti i tre commenti di `ArticoloBomDrawer.vue` che dicevano
+  «= `valido_dal`».
+* **BE14.** Niente da fare.
+* ⏭️ **Resta al team BE** (verifica della sessione DB, 2026-11-09): la doc API di BE9 e BE11 in
+  `docs/it/backend/catalogo/manual/api_catalogo.md` (riga 601 e §4.4), vedi §5. Nessuna richiesta al DB nel commit.
+
+#### 11.10.1 Per Tid: il legame con prezzi bundle non si chiude
+
+`listini_righe_componenti` ha la FK temporale `fk_listrighe_comp_articoli_comp_temporal` (`articolo_componente_id`,
+`PERIOD validita`) verso `articoli_componenti`: il periodo del prezzo bundle sta dentro quello del legame. Chiudere un
+legame (giro 1: la fine da ieri in poi) mentre una riga di prezzo resta aperta oltre quella data si rifiuta, quindi prima
+vanno chiusi i prezzi del componente in **tutte** le versioni di listino che lo prezzano. Sul modello la regola è
+coerente (un prezzo non sopravvive al componente), ma incontra l'immutabilità della versione: fuori dalla BOZZA
+`vendite.trgfn_listini_righe_comp_guard_immutabilita_v5` rifiuta l'UPDATE di `valido_al` e il DELETE, e lascia solo
+`attivo = false`, che la FK temporale non guarda (letto dal corpo il 2026-11-09). Quindi un legame prezzato da una
+versione non in bozza, con la riga di prezzo aperta oltre la data di chiusura, **non si chiude finché quella versione
+esiste**: la fonte (la distinta) resta ferma per colpa di chi la legge (il listino).
+Le strade: (a) è voluto, si chiude o sostituisce prima la versione di listino (ma la fine della versione non accorcia le
+date delle sue righe: andrebbe verificato che basti); (b) il verbo di chiusura del legame chiude anche i prezzi bundle
+aperti oltre quella data, in tutte le versioni, con conferma, come eccezione dichiarata all'immutabilità (la fine segue
+la fonte, il prezzo non cambia); (c) altro, per esempio la FK sostituita da un giudizio alla data dei lettori.
+Proposta della sessione DB: (b), perché la distinta è la fonte e `fn_distinta_alla_data` già ignora il componente fuori
+distinta.
+
+**Decisioni di Tid (2026-11-09): (b), con la conferma esplicita dell'operatore.**
+
+* **Q19 — Che cosa si chiude.** Solo le righe di `listini_righe_componenti` del legame chiuso (`articolo_componente_id`)
+  la cui fine va oltre la data di chiusura, in ogni versione che le prezza: prendono la stessa `valido_al` del legame.
+  Né la versione né le altre righe si toccano; prezzo e IVA restano quelli. L'eccezione all'immutabilità della versione
+  è di una colonna (la fine) e di una porta sola (il verbo di chiusura del legame).
+* **Q20 — Mai in silenzio.** Lo schema dell'annullo con legami (D29, `E_DOC_ANNULLO_CON_LEGAMI`): al primo tentativo il
+  verbo non chiude niente e risponde con un avviso e l'elenco delle righe di prezzo coinvolte (listino, versione, prezzo,
+  fine che prenderebbero); l'operatore conferma richiamando il verbo con la dichiarazione delle righe viste; il DB
+  chiude legame e prezzi nella stessa transazione, e rifiuta se l'elenco non è più quello dichiarato.
+* **Q21 — Chi può.** Il verbo pretende **tutti e due** i diritti: la gestione della distinta e la modifica dei listini
+  (guard nella prima riga del verbo). Chi non può toccare un listino non lo tocca nemmeno dalla distinta.
+* **Q22 — Il prezzo del kit.** Il prezzo del padre è sempre la somma dei suoi componenti (non ha riga in
+  `listini_righe`: `vendite/manual/listini_righe_componenti.md`), quindi da quella data il kit in quel listino scende del
+  prezzo del componente tolto. Non blocca: lo dice la finestra di conferma, versione per versione.
+
+Ricadute BE (al giro che la prende): il codice d'avviso nuovo nella mappa e la finestra di conferma, sul modello di quella
+comune dell'annullo; la PATCH su `valido_al` del legame passa la dichiarazione. Il giro che la prende lo sceglie Tid.
+
+## 12. Verifica di coerenza con guide e documenti, 2026-11-09
+
+Richiesta di Tid dopo il giro 1-bis: c'è qualche guida o documento che contraddice i giri 1 e 1-bis, o il giro 2 che
+viene? Ho cercato le regole una per una (non le parole), in `guide/`, `dev/manual/`, `backend/*/manual/`,
+`dev/frontend/` e nelle pagine `manual/` di `vendite`, `script`, `magazzino` e `acquisti`. Ho escluso `work-done/`, che è
+storia.
+
+**Contraddizioni vere, corrette nello stesso giorno:**
+
+* `dbzero/script/manual/trgfn_componenti_guard_obbligatorio.md`: per togliere un componente obbligatorio diceva di
+  «disattivare la riga BoM o cambiarne il flag `obbligatorio`». Il database rifiuta tutte e due le cose: `obbligatorio` è
+  un campo di struttura, e un legame citato da un documento non si spegne. Ora dice «chiudi il legame e inseriscine uno
+  nuovo».
+* `guide/gestione-ordini.md`, `gestione-ddt.md`, `gestione-preventivi.md`, `gestione-offerte-commerciali.md`: «kit senza
+  componenti» ora è «kit senza componenti in vigore da oggi in poi» (Q15). Prima non era falso, ma era impreciso.
+
+**Contraddizioni nella doc del backend** (`docs/it/backend/`, sede del team BE): `api_catalogo.md` su
+`data_min_chiusura`, sulle regole della fine (§4.3) e sul `DELETE` (§4.4). Sono aggiunte a BE9 e BE11 (§5).
+
+**Nessuna contraddizione** con:
+
+* `linee-guida-sql.md` §7b (validità, `'[]'`), `dev/manual/modello-componenti-bom.md` (già riallineato nel giro 1) e
+  `guide/gestione-listini.md` §5.3;
+* il fermo dei temi trasversali sui documenti di vendita (`.codex/PROJECT_CONTEXT.md`): il giro 1-bis tocca tutti i
+  documenti, ma lo fa con un building block comune, ed è il caso ammesso. Tid ha dato l'ok in Q8.
+
+**Per il giro 2** (le unità): nessuna guida promette il «fattore 1 quando manca la conversione». Però le guide che
+descrivono la quantità operativa (`gestione-preventivi.md` §2.2, `gestione-contratti.md`, `gestione-ordini.md`,
+`gestione-ddt.md`) dicono solo «fattore fotografato sulla riga». Col giro 2 vanno completate con tre regole: il fattore
+viene dalla mappatura dell'articolo o dalla conversione generale, alla data del documento, e senza nessuna delle due la
+riga si rifiuta (Q7, Q13). `api_catalogo.md` documenta il lookup dei modi di arrotondamento, che Q4 ritira: è BE16.
+
+## 13. Giro 2 — le unità di misura, 2026-11-09
+
+Via di Tid il 2026-11-09, coi numeri dal `20261111-01`. Difetti del giro: D2 (Q7), D3 (Q4), D6, D8, D12, D13 (Q3), D14,
+D15, D17, D22 (Q13); in più D7, che era del giro 3 ma vive nella funzione che questo giro apre, e D23, nuovo (§13.2).
+
+### 13.1 Che cosa è scritto
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/catalogo/20261111-01` | `trgfn_articoli_seed_uom_base`: la riga base nasce attiva o spenta come l'articolo (D7), senza `ON CONFLICT` (nominava il vincolo che `-02` sostituisce) |
+| `00_schema/catalogo/20261111-02` | `articoli_uom_operativa`: `UNIQUE (articolo_id, uom_id, validita WITHOUT OVERLAPS)` al posto di quello senza tempo (D13); `chk_articoli_uom_operativa_base_fissa`, cioè riga base con fattore 1 e senza date (D12); ritirate `rounding_mode` e `require_lot` (D3, Q4); COMMENT di tabella e colonne |
+| `20_code/catalogo/20261111-03` | `vw_articoli_uom_operativa_dettaglio` ricreata senza le due colonne, col GRANT e un COMMENT |
+| `20_code/catalogo/20261111-04` | `trgfn_articoli_uom_operativa_guard_base` (nuovo) e il suo trigger: la riga base non cambia unità né articolo, non smette di essere la base, non si toglie, e non se ne crea una su un'altra unità (`E_UOM_RIGA_BASE_IMMUTABILE`). La cancellazione dell'articolo la porta via (D12) |
+| `20_code/catalogo/20261111-05` | `fn_uom_operativa_alla_data` (nuovo, BB): la mappatura di un'unità per un articolo alla data, col fattore e le regole della quantità |
+| `20_code/catalogo/20261111-06` | `fn_get_uom_factor(articolo, unità, data)`: base, mappatura alla data, conversione generale nei due versi; NULL senza data. Firma nuova (R1, D22) |
+| `20_code/script/20261111-07` | `trgfn_qta_from_operativa`: fattore della riga, altrimenti `fn_get_uom_factor` alla data del documento; senza fattore `E_UOM_MISSING` (D2, Q7); `max_decimals` applicato (`E_QTA_OPERATIVA_DECIMALI`, D3); un UPDATE che cambia solo l'unità rilegge il fattore (D8) |
+| `20_code/vendite/20261111-08` | I sei montaggi del trigger prendono la testata e la sua data (argomenti [2]-[4]) |
+| `00_schema/vendite/20261111-09` | `factor_to_base` di `ordini_righe`, `ddt_righe`, `resi_righe` senza `DEFAULT 1` (D23) |
+| `00_schema/catalogo/20261111-10` | `unita_misura_conversioni`: `ex_unita_misura_conversioni_coppia_no_overlap`, una conversione per coppia non orientata e periodo, al posto di `uq_uom_conv_no_overlap` (D14) |
+| `20_code/catalogo/20261111-11` | `trgfn_uom_conversioni_guard_tipo`: `E_UOM_CONVERSIONE_TIPO_DIVERSO`, il nome della funzione nel log, le unità lette `FOR SHARE` (D6, D15) |
+| `20_code/catalogo/20261111-12` | `trgfn_unita_misura_guard_tipo` (nuovo) al posto di `trgfn_unita_misura_guard_tipo_update`, ritirato col suo trigger: `E_UOM_TIPO_IN_USO` (D6) e `E_UOM_CALENDARIO_NON_TEMPO` (D17) |
+| `80_data/changelog/20261111-13` | Ritirato il parametro `CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE` (anche da `parameters.csv`) |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_UOM_MISSING` riscritto («l'unità … non si converte nell'unità base … alla data …»); nuovi `E_QTA_OPERATIVA_DECIMALI`, `E_UOM_RIGA_BASE_IMMUTABILE`, `E_UOM_CONVERSIONE_TIPO_DIVERSO`, `E_UOM_TIPO_IN_USO`, `E_UOM_CALENDARIO_NON_TEMPO` (id 1466-1470) |
+
+Corpi di partenza da `pg_get_functiondef`, `pg_get_viewdef` (`search_path = pg_catalog`) e `pg_get_triggerdef` su dbdev,
+2026-11-09; rollback = gli oggetti di prima. I COMMENT nuovi o riscritti seguono §5d.
+
+### 13.2 Fatti emersi
+
+* **D23, nuovo: il `DEFAULT 1` del fattore.** Su `ordini_righe`, `ddt_righe` e `resi_righe` `factor_to_base` è NOT NULL
+  con `DEFAULT 1`. Il default si applica prima dei trigger BEFORE: una riga inserita senza fattore arrivava al trigger
+  con 1 già scritto, e la mappatura non si leggeva mai. È la regola di D2 («quando non so, 1») su altre tre tabelle. Il
+  NOT NULL resta, perché lo soddisfa il trigger.
+* **La data del documento.** Il trigger è montato su sei tabelle di righe, ognuna con la sua testata. In un BEFORE INSERT
+  la riga non esiste ancora, quindi i risolutori per id (`script.fn_get_testata_id_di_riga`) non servono. Il montaggio
+  dichiara tabella, colonna FK e colonna data, come fa il guard dei componenti di documento. L'offerta usa la decorrenza
+  (`validita_dal`).
+* **Le commesse non calcolano la quantità**: `commesse_attivita` la riceve dal documento sorgente, col suo fattore. Non
+  c'è un trigger da cambiare, e restano fuori dal giro.
+* **Il backend ha una copia della regola «unità ammessa per l'articolo»** (`listini_repository.py:968`: base o mappatura,
+  senza le conversioni generali). È BE17.
+* **`fn_get_uom_factor` aveva solo chiamanti BE** (due wrapper senza chiamanti): con la firma nuova smettono di
+  funzionare. BE2 li ritira.
+
+### 13.3 Le scelte dentro il giro (da guardare, Tid)
+
+1. **`E_UOM_MISSING` riusato (Q7), con la frase riscritta.** Il suo secondo uso nel trigger non poteva scattare
+   (`articolo_id` e `catalogo.articoli.uom_id` sono NOT NULL), quindi il codice ora ha un significato solo: «manca la
+   conversione». La frase vecchia era tecnica («Unità misura mancante.(%s %s)»).
+2. **D7 anticipato dal giro 3.** La funzione si apriva comunque per D13. Il fix è una riga.
+3. **La riga base vale sempre**: il CHECK vieta anche le date sulla riga base, non solo il fattore diverso da 1. Una
+   base con validità lascerebbe l'articolo senza base fuori dal periodo.
+4. **Un guard solo per la tipologia di un'unità** (in uso nelle conversioni; TEMPO se si conta dal calendario): sono
+   regole della stessa colonna. Per questo cambia nome (`_guard_tipo` invece di `_guard_tipo_update`).
+5. **Il fattore scritto sulla riga si rispetta** anche all'INSERT: è la fotografia che i documenti derivati copiano dalla
+   sorgente (ordine da preventivo, bolla da ordine). Il trigger non lo ricontrolla contro la mappatura.
+6. **La conversione generale spenta occupa il periodo**: l'EXCLUDE non filtra `attivo`, come il vincolo che sostituisce.
+7. **Testata che non si vede: il trigger non decide.** Il trigger gira prima della RLS e legge la testata con i diritti di
+   chi scrive. Se non la vede (documento di un altro perimetro) o non c'è, la data è NULL e il trigger esce senza
+   calcolare: rifiutano la RLS o la FK, che vengono dopo. La prima versione sollevava `E_UOM_MISSING` («… alla data —»),
+   e i sei `rls/test-rls-*-satelliti` lo hanno visto (§13.4).
+8. **L'unità base vale 1 anche senza data**: il suo fattore non dipende dal giorno. Per le altre unità
+   `fn_get_uom_factor` senza data risponde NULL.
+
+### 13.4 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di numero, `BEGIN … ROLLBACK`)
+
+* **Estratto e preCondition.** I tredici changeSet, con le `preConditions` come asserzioni, passano in una transazione.
+  Nella prova sono state aggiunte a mano anche le righe nuove dei CSV dei codici, che nel migrate vero carica il mirror.
+* **Il pgTAP nuovo** `catalogo/test-uom-fattore-e-regole-v1` (31 test): verde con l'estratto. Senza, la fixture muore al
+  primo passo, sulla mappatura versionata che il vincolo di prima rifiuta (D13).
+* **I pgTAP che toccano unità e quantità** (221 file) con e senza l'estratto. La prima corsa ha trovato:
+  * i sei `rls/test-rls-*-satelliti`: la scrittura su un documento altrui si fermava sul trigger della quantità invece
+    che sulla RLS. Corretto nel trigger (§13.3, scelta 7): verdi;
+  * cambiati nel giro perché asserivano la regola di prima: `catalogo/test-fn-get-uom` (la firma con la data),
+    `catalogo/test-articoli-vincoli-note-uom-overlap` 17-18 (il doppione è 23P01 del vincolo temporale; la seconda riga
+    base la rifiuta il guard), `script/test-trgfn-guard-date-validita-v1` (le date stavano sulla riga base: ora su una
+    mappatura costruita), `config/test-parameters-uom-defaults-cascade-v1` (la cascata degli override provata su
+    `MAX_DECIMALS`, il parametro di `rounding_mode` è ritirato), `dbops/test-anti-overlap-enforcement-gate-v1` (i vincoli
+    temporali nuovi);
+  * seconda corsa, con le correzioni: rispetto alla corsa senza estratto cambiano solo i quattro file che provano le regole
+    nuove (verdi con l'estratto, rossi o fermi senza). Tutti gli altri rossi sono uguali con e senza: quelli già noti
+    alle baseline.
+* **D15, a due sessioni.** Il guard nuovo non si può provare a due sessioni senza applicarlo, quindi si è provato il
+  meccanismo su una riga vera di `catalogo.unita_misura`, sempre in `ROLLBACK`. Con un `UPDATE` della riga in volo, una
+  lettura `FOR SHARE` aspetta (`lock_timeout` di 2 s scaduto: 2054 ms); nel verso opposto, lo stesso. Una lettura
+  semplice, come quella del guard di prima, passa subito (38 ms).
+* **Guardrail** verdi; `pgtap_preambolo` segnala solo un file dell'altra sessione.
+* **Non provato:** la corsa come app, il caricamento dei CSV, il migrate vero (pgjdbc).
+* **Dopo l'apply (Tid, 2026-11-09), come app:** `catalogo/test-articoli-vincoli-note-uom-overlap` arrivava a 20/20 e poi
+  moriva nel cleanup in coda, una `DELETE` delle righe di unità operativa dell'articolo, riga base compresa, che il guard
+  nuovo rifiuta. Nella prova come owner l'esito dei test non lo mostrava: il rosso era dopo l'ultimo `ok`. Tolta la `DELETE`,
+  come quelle della distinta nel 2026-08: il file finisce in `ROLLBACK`, che toglie tutto. Nessun altro pgTAP cancella
+  righe di unità operativa fuori da un'asserzione.
+* **Dopo l'apply, su dbdev:** `catalogo/test-fn-get-uom` sceglieva tre unità fra quelle esistenti e ci scriveva delle
+  conversioni; su dbdev fra due di loro c'è già una conversione nel verso opposto, che il vincolo nuovo (una per coppia)
+  non lascia affiancare. Sullo scratch era verde perché la conversione non c'è: misurava la macchina. Ora il test
+  costruisce le sue unità. Verde su dbdev e scratch; gli altri due pgTAP che scrivono conversioni le costruiscono già.
+* **Chiusura:** Tid, 2026-11-09 — migrate applicato su dbdev e scratch, pgTAP come app verdi.
+* **Trovato dopo la chiusura (Tid, 2026-11-09):** `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1` moriva prima
+  del `plan` con `E_UOM_MISSING` («PZ non si converte in SMC per ART_TEST_FALLBACK»). La fixture dava a tutte le righe la
+  prima unità attiva del catalogo, qualunque fosse l'articolo; prima del giro 2 il trigger lo lasciava passare, ora la
+  riga FISSA senza fattore alla data si rifiuta (D2, Q7): la regola è giusta, la fixture misurava la macchina. Le baseline lo
+  davano già rosso (`ASSERZIONE`, test 2), e quel rosso ha nascosto il nuovo nella corsa del giro. Corretto il pgTAP: ogni
+  riga usa l'unità base del suo articolo (`catalogo.fn_get_uom_base`, fattore 1 a ogni data). Censiti gli altri pgTAP che
+  prendono «la prima unità attiva» e stanno in baseline: solo `vendite/test-offerta-righe-espanse`, che la usa sulle sole
+  righe di listino, dove il trigger non passa. Da rilanciare (Tid).
+
+### 13.5 Ricadute su BE e FE
+
+| # | Che cosa |
+| --- | --- |
+| BE1-BE4 ✅ (2026-11-09, §13.7; BE4 resta aperta per D19, giro 3) | Come in §5, ora sul giro applicato. BE4: i sei codici di §13.1 nella mappa degli errori generata e nell'i18n; `E_UOM_MISSING` ha una frase nuova |
+| BE16 ✅ (2026-11-09) | `rounding_mode` e `require_lot` non ci sono più: il form e il servizio delle unità operative (`ArticoloUomForm.vue`, `RoundingModeSelect.vue`, `catalogo_service`, il lookup `rounding-modes` di `api_catalogo.md` §2.3) non le scrivono e non le leggono più. Fino ad allora un salvataggio che le nomina fallisce |
+| BE17 ✅ (2026-11-09) | `listini_repository.py:968` (`uom_compatibile`) ricopia «l'unità vale per l'articolo» senza le conversioni generali: legge `catalogo.fn_get_uom_factor(articolo, unità, data) IS NOT NULL` |
+| BE18 ✅ (2026-11-09) | Le mappature si versionano: «cambiare il fattore» di un'unità operativa diventa «chiudi e inserisci», e due periodi sovrapposti li rifiuta `uq_articoli_uom_operativa_no_overlap` (23P01). Anche una conversione generale nei due versi sovrapposta (`ex_unita_misura_conversioni_coppia_no_overlap`, 23P01): il servizio mappa i due vincoli a un messaggio |
+
+### 13.6 Chiusura
+
+* ⚠️ **Prima dell'apply su dbdev**: la riga base dell'articolo di prova `ART_TEST_BASE` (`catalogo.articoli_uom_operativa`
+  id 9001) ha `valido_dal = 2026-01-01`, e `chk_articoli_uom_operativa_base_fissa` farebbe fallire `-02`. Va corretta a
+  mano (`valido_dal` a NULL). Sullo scratch non ci sono righe così (letto il 2026-11-09). Come fatto datato: su dbdev 20
+  articoli di prova non hanno nessuna riga base; il fattore della loro unità base resta 1, e il guard nuovo non lo
+  cambia.
+* **Doc** (scritta il 2026-11-09): nuove `catalogo/manual/fn_uom_operativa_alla_data.md`,
+  `trgfn_articoli_uom_operativa_guard_base.md`, `trgfn_unita_misura_guard_tipo.md`; cancellata
+  `trgfn_unita_misura_guard_tipo_update.md`; aggiornate in `catalogo/manual/` `fn_get_uom_factor`, `fn_get_uom_base`,
+  `articoli_uom_operativa`, `unita_misura_conversioni`, `unita_misura`, `uom_tipi`, `trgfn_uom_conversioni_guard_tipo`,
+  `trgfn_articoli_seed_uom_base`, `vw_articoli_uom_operativa_dettaglio`, `articoli`; riscritta allo standard
+  `script/manual/trgfn_qta_from_operativa.md`; nelle guide `gestione-preventivi`, `gestione-ordini`, `gestione-ddt`,
+  `gestione-contratti` la regola del fattore. Le schede auto-generate dei tre oggetti nuovi nascono dopo l'apply.
+  ⚠️ Trovata e lasciata: `guide/gestione-contratti.md` (verso la riga 141) dice ancora che con la fonte «derivata dai
+  componenti» la quantità la scrive il sistema, ma quella fonte è ritirata dal 2026-10-21. Va col giro 5.
+* **Committato** (2026-11-09, su richiesta di Tid): i tredici changeSet; `codici_errore.csv`, `messaggi_errore.csv` e `parameters.csv` (solo le righe di
+  questo giro); i pgTAP `catalogo/test-uom-fattore-e-regole-v1.sql` (nuovo), `catalogo/test-fn-get-uom.sql`,
+  `config/test-parameters-uom-defaults-cascade-v1.sql`, `dbops/test-anti-overlap-enforcement-gate-v1.sql`,
+  `catalogo/test-articoli-vincoli-note-uom-overlap.sql`, `script/test-trgfn-guard-date-validita-v1.sql`; la doc del punto
+  sopra; la verifica di coerenza di §12 con le sue correzioni;
+  questo brief.
+
+### 13.7 Giro BE del giro 2 (team BE, 2026-11-09, da committare su `dev/backend-tid`)
+
+#### 13.7.1 Che cosa è fatto
+
+| # | Che cosa |
+| --- | --- |
+| BE16 | `rounding_mode` e `require_lot` fuori da repository (scrittura e proiezione), service, schema OpenAPI e form. Ritirati il lookup `GET /catalogo/lookup/rounding-modes/` (view, rotta, `fn_list_uom_rounding_modes`, `_ROUNDING_MODE_*`), `lookupUomRoundingModes` e `RoundingModeSelect.vue` (file cancellato, nel piano approvato da Tid), le chiavi i18n e il parametro letto dal form. Una PATCH o una POST che li nomina è un 400. `api_catalogo.md` §2.3 e §3.2 riscritti |
+| BE1 | `is_base` **non si scrive più**: fuori dalla whitelist di repository e service (400 se arriva). La riga base nasce con l'articolo e il guard rifiuta ogni altra strada, quindi offrirla voleva dire offrire solo un rifiuto. Ritirato il controllo parziale di `:844`; il CHECK `chk_articoli_uom_operativa_base_fissa` ha la sua frase (`_UOM_OPERATIVA_CHECK`). La DELETE della riga base riceve `E_UOM_RIGA_BASE_IMMUTABILE` dal DB, intatto fino al middleware |
+| BE1, form | ⚠️ **Difetto trovato nel form**: un `watch` ricavava `is_base` dal fattore (`fattore 1 → base`). Un'unità con fattore 1 che base non è (una confezione da uno, un sinonimo) finiva marcata base, e col guard nuovo il salvataggio veniva rifiutato. Ritirato: il form mostra «Base» in sola lettura sulla riga base, e lì spegne fattore e date (il CHECK) |
+| BE2 | Ritirati `get_uom_base` / `get_uom_factor` del repository: nessun chiamante, e il secondo chiamava la firma vecchia |
+| BE3 | Verificato: nessun service delle righe azzera `factor_to_base` al cambio d'unità. `contratti_service` accetta `factor_to_base: null`, che il trigger ora riempie alla data (D8). Niente da ritirare |
+| BE4 | Policy rigenerata (`genera_error_policies`: le sole sette voci dei giri, nessun codice del DB oltre git) e ripieghi senza `%s` per i sei codici di §13.1 e per `E_SOGGETTO_ID_FISCALE_IMMUTABILE`; `E_UOM_MISSING` riscritto. Il FE non ha i18n per codice: la frase arriva dal DB |
+| BE17 | `get_articolo_uom_validation` legge `catalogo.fn_get_uom_factor(articolo, unità, data) IS NOT NULL` alla **decorrenza della versione** (`listini_versioni.valido_dal`, NOT NULL); il rifiuto accende `uom_id` |
+| BE18 | `_UOM_OPERATIVA_UNIQUE` su `uq_articoli_uom_operativa_no_overlap` (frase «chiudere quella in vigore prima di aprirne una nuova», senza campo). Le conversioni passano dal BB `map_integrity_error` per nome (`ex_unita_misura_conversioni_coppia_no_overlap`, `chk_uom_conv_no_self`, le due FK col campo): via il riconoscimento dal testo («overlap», «foreign») e il ramo `E_GENERICO` della tipologia, che ora ha il suo codice |
+
+#### 13.7.2 Le prove
+
+* **Sul DB vero** (`ZEROERP_TEST_DB_E2E=1`, casi costruiti, transazione annullata):
+  `catalogo/tests/db/test_vincoli_catalogo_db` da 3 a 8 test (mappatura doppia e versionata, chiudi e inserisci, riga base
+  fissa, riga base che non si toglie, conversione nel verso opposto, tipologie diverse);
+  `vendite/tests/db/test_listino_uom_compatibile_db` (nuovo, 4 test: base, nessuna conversione, conversione generale,
+  mappatura chiusa prima della decorrenza: gli ultimi due sono i casi che la copia vecchia sbagliava).
+* Test unitari: `test_catalogo_service` (rounding ritirati; 4 nuovi), `test_catalogo_api`, `test_listini_service`.
+* **Suite backend intera sul DB vero** (7221 test): tre rossi, tutti fixture che scrivevano ciò che i giri 1 e 2 ora
+  rifiutano, corretti nello stesso giro. `catalogo/tests/db/test_articoli_ammessi_db` 1 e 2 aprivano il picker della
+  distinta su un padre non composito (BE12); il test 1 per di più leggeva «un articolo attivo qualunque», una popolazione:
+  ora il padre composito si costruisce. `core/tests/db/test_date_validita_guard_comune_db` 7 metteva le date sulla riga
+  base: ora su una mappatura costruita, come il pgTAP gemello. Rilanciati: verdi.
+* `genera_error_policies --check` pulito, presidi delle policy verdi, ruff, mypy (0 rilievi), vitest 1104/1104, build FE.
+
+#### 13.7.3 Domande per Tid — ✅ risposte il 2026-11-10 (Q19-Q21, §6): il lavoro è in §14
+
+1. **Il fattore di una mappatura si cambia sul posto?** Il DB lo lascia fare (nessun lock su `factor_to_base` delle righe
+   non base), e il form lo lascia modificabile. Col modello «chiudi e inserisci» (D13, Q3) il cambio sul posto riscrive il
+   passato di `fn_uom_operativa_alla_data`. Se il fattore di una mappatura va fermato, serve il lock a DB (o la riga in
+   `lock_columns_conditional`, con il suo guard): allora il form lo spegne da `non_editable_fields`, senza copia.
+2. **BE17, la data.** La compatibilità della riga di listino si chiede alla decorrenza della versione. Una mappatura che
+   comincia dopo la decorrenza, o che finisce durante la versione, non è vista: è il giorno da cui il prezzo vale. Se la
+   regola deve essere «per tutto il periodo della versione», va scritta a DB.
+3. **Fuori dal giro, da guardare:** `commesse_repository._map_pushable_row` mette `factor_to_base = 1` quando la riga
+   sorgente lo ha NULL. Le colonne nullable sono quelle di `contratti_righe`, `preventivi_righe`,
+   `offerte_commerciali_eccezioni`, e lì NULL vuol dire «quantità già nella base», quindi 1 è giusto. È però la forma di
+   D2 («quando non so, 1») in un posto del backend, e `commesse_attivita.factor_to_base` ha ancora `DEFAULT 1` (la forma
+   di D23). §13.2 tiene le commesse fuori dal giro: lo segnalo, non lo tocco.
+
+## 14. Giro 2-bis — le tre decisioni del giro BE, 2026-11-10
+
+Le tre domande di §13.7.3 hanno risposta (Q19-Q21, §6). Diventano D24-D26: lavoro **DB**, con le ricadute BE in §14.4.
+Il giro aspetta il via di Tid e i suoi numeri.
+
+### 14.1 D24 — Il fattore di una mappatura si cambia sul posto (Q19: bloccato)
+
+* **Fatto.** `articoli_uom_operativa` non ha lock su `factor_to_base` delle righe non base: un UPDATE lo cambia, e
+  `fn_uom_operativa_alla_data` / `fn_get_uom_factor` rispondono il valore nuovo **anche per le date passate**. Il modello
+  di Q3 (versionata, chiudi e inserisci) ha già la strada per cambiare il fattore: la riga nuova.
+* **Correzione.** Il fattore di una mappatura scritta non si cambia: `script.trgfn_lock_columns`, con un codice suo
+  (proposta: `E_UOM_FATTORE_IMMUTABILE`, la frase dice «chiudere la mappatura e aprirne una nuova»). La riga base è già
+  ferma dal CHECK `chk_articoli_uom_operativa_base_fissa`: il lock non la cambia.
+* **Da guardare nella stessa colonna di ragionamento (proposta della sessione DB, poi Tid):**
+  * **`uom_id`** oggi non è bloccato neppure lui: cambiare l'unità di una mappatura sul posto riscrive il passato come il
+    fattore. Proposta: bloccato insieme, stesso codice o uno gemello.
+  * **Le date.** `valido_al` resta modificabile, perché chiudere è la strada. Spostare `valido_dal`, o chiudere nel
+    passato una mappatura già in vigore, riscrive il passato come il fattore: è la stessa domanda di Q1 per la distinta.
+    Proposta: la stessa risposta di Q1.
+* **Prova (pgTAP):** UPDATE del fattore su una mappatura costruita → il codice; chiudi e inserisci → passa; la riga base
+  resta del CHECK.
+
+### 14.2 D25 — L'unità della riga di listino deve valere per tutto il periodo della versione (Q20)
+
+* **Fatto.** Oggi la regola sta solo nel backend (BE17, §13.7.1), alla **decorrenza** della versione: una mappatura che
+  finisce durante la versione passa, e da quel giorno il listino dà un prezzo in un'unità che per l'articolo non si
+  converte. Una regola del modello non sta nel backend.
+* **Correzione.** Regola a DB: l'unità della riga è convertibile per l'articolo **in ogni giorno** del periodo della
+  versione (`valido_dal` … `valido_al`; `valido_al` NULL vuol dire «senza fine»). «Convertibile» è quello che dice
+  `catalogo.fn_get_uom_factor` (base, mappatura dell'articolo, conversione generale): la regola si scrive **sul BB del
+  periodo**, non come copia — la sessione DB valuta se serve un BB «unità convertibile per tutto il periodo», da
+  `fn_get_uom_factor` o accanto a lui (regola del 2: lo leggono il guard del listino e, oggi, il backend).
+* **Tutte e due le direzioni (simmetria).** La regola si rompe da tre lati, e ognuno va presidiato:
+  1. la riga di listino scritta o cambiata (il guard della riga);
+  2. il periodo della versione allungato o riaperto (`valido_al` spostato o tolto);
+  3. il catalogo che cambia sotto: una mappatura chiusa, una conversione generale chiusa o spenta, mentre un listino
+     vivo la usa.
+  Il terzo lato è il più facile da dimenticare: va deciso se rifiutare la chiusura o no, e la sessione DB lo propone a
+  Tid con le alternative.
+* **Prova (pgTAP):** i tre lati, con articolo, unità, mappature e versione costruiti; versione senza fine; unità base
+  sempre valida.
+
+### 14.3 D26 — Le commesse: il fattore 1 per difetto (Q21)
+
+* **Fatto.** `commesse_attivita.factor_to_base` ha `DEFAULT 1`: la forma di D23, che il giro 2 ha tolto da `ordini_righe`,
+  `ddt_righe` e `resi_righe`. In più il backend (`vendite/db/commesse_repository.py`, `_map_pushable_row`) scrive 1 quando
+  la riga sorgente ha il fattore NULL. Oggi è giusto, perché NULL sulla sorgente vuol dire «quantità già nella base»; ma
+  se arriva una riga senza fattore in un'unità che base non è, l'1 la fa passare come se lo fosse (3 cartoni → 3 pezzi),
+  senza rifiuto. È D2 («quando non so, 1»).
+* **Correzione (DB).** Via il `DEFAULT 1`. La regola «senza fattore la quantità è nella base» si scrive a DB, in un posto:
+  una riga di `commesse_attivita` senza fattore prende 1 **solo se** l'unità è la base dell'articolo, altrimenti si
+  rifiuta (codice del giro 2, `E_UOM_MISSING`, se il significato coincide; la sessione DB lo verifica). La sessione DB
+  censisce prima chi scrive in `commesse_attivita` (push dal documento sorgente e altre porte), perché ognuno lo
+  attraversa.
+* **Prova (pgTAP):** riga senza fattore nella base → 1; riga senza fattore in un'altra unità → il rifiuto; riga col
+  fattore → quello scritto, come la fotografia di §13.3 punto 5.
+
+### 14.4 Ricadute su BE e FE (team BE, quando il giro è applicato)
+
+| # | Che cosa |
+| --- | --- |
+| BE19 | D24: il lock entra in `vw_non_editable_fields`. Verificare che il dettaglio delle unità operative passi `non_editable_fields` al form (la prop `nonEditableFields` di `ArticoloUomForm.vue` c'è; va provato chi la riempie). Policy e ripiego del codice nuovo. Test sul DB vero: UPDATE del fattore → il codice col campo |
+| BE20 | D25: `ListiniRepository.get_articolo_uom_validation` (BE17) si ritira, o legge il BB del periodo se ne nasce uno. Il rifiuto del guard arriva col campo `uom_id`. Policy e ripiego dei codici nuovi. `test_listino_uom_compatibile_db` riscritto sui tre lati |
+| BE21 | D26: `_map_pushable_row` smette di scrivere 1: il NULL passa al DB, che decide. Il test delle commesse prova il rifiuto per una riga senza fattore fuori dalla base |
+
+## 14. Giro 3 — i guard degli articoli e la chiusura del legame coi prezzi, 2026-11-09
+
+Via di Tid il 2026-11-09, numeri dal `20261111-25`; dentro il giro anche Q19-Q22 (§11.10.1, 7-quater). Due parti:
+**A**, la chiusura del legame coi prezzi bundle (scritta e provata, §14.1-§14.4); **B**, i difetti del giro come da §7
+(D4 + D21, D5, D18, D19, D20, R5: §14.5).
+
+### 14.1 Parte A — che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261111-25` | `vendite.fn_prezzi_legame_oltre_la_fine(legame, fine)`: i prezzi bundle oltre la fine, con l'esito (`CHIUDE`, `TOGLIE`, `BLOCCA`), `importo_per_kit` e `nel_perimetro`. `SECURITY DEFINER`, `BEGIN ATOMIC`: fuori perimetro esce solo che il prezzo c'è |
+| `20_code/script/20261111-26` | `script.fn_check_legame_distinta_chiudibile`: i due motivi che vietano (`E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE`, `E_BOM_CHIUSURA_PRIMA_DEI_PREZZI`) |
+| `20_code/vendite/20261111-27` | `vendite.trgfn_listini_righe_comp_guard_immutabilita_v5`: la porta della chiusura del legame (GUC `zeroerp.legame_distinta_chiudi` = id del legame, col proprietario), sulla sola `valido_al` e solo per accorciarla |
+| `20_code/catalogo/20261111-28` | `catalogo.trgfn_articoli_componenti_block_modifica_struttura`: una fine che lascia fuori dei prezzi, prima ciò che vieta, poi l'avviso `E_BOM_CHIUSURA_CON_PREZZI` (prima moriva sulla FK temporale con un 23503 grezzo) |
+| `20_code/catalogo/20261111-29` | `catalogo.fn_chiudi_legame_distinta(legame, fine, prezzi_confermati)`: il verbo (permesso, blocco, ciò che vieta, permesso sui listini, conferma, prezzi, legame) |
+
+Codici nuovi (`codici_errore.csv`, `messaggi_errore.csv`, id `1471` … `1474`): `E_BOM_CHIUSURA_CON_PREZZI`
+(CONFLITTO_STATO), `E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE` (CONFLITTO_STATO), `E_BOM_CHIUSURA_PRIMA_DEI_PREZZI`
+(DATO_ERRATO), `E_BOM_LEGAME_NOT_FOUND` (NON_TROVATO).
+
+### 14.2 Le scelte dentro la parte A (da guardare, Tid)
+
+1. **Prezzi in listini di un'altra azienda: la chiusura si rifiuta.** Fatto emerso nel censimento: la distinta è comune
+   a tutte le aziende, i listini hanno la RLS per emittente. Q19 diceva «in ogni versione che le prezza»; la lettura
+   che ne dà Q21 («chi non può toccare un listino non lo tocca nemmeno dalla distinta») è il rifiuto, col numero dei
+   prezzi e senza dire quali. Lo sblocca chi vede quei listini.
+2. **Prezzi di una versione non in bozza che cominciano dopo la fine: la chiusura si rifiuta** e dice la prima fine
+   ammessa (l'inizio più tardo). Non si accorciano (periodo vuoto) e non si cancellano (la versione non è in bozza). In
+   bozza invece si tolgono, e la finestra lo dice (esito `TOGLIE`).
+3. **Il diritto sui listini si chiede solo se ci sono prezzi da toccare.** Un legame senza prezzi chiede solo quello
+   sul catalogo, e nessuna conferma. I due diritti sono il livello TUTTO su `catalogo.articolo` e su `vendite.listino`
+   (gli oggetti che il backend usa per gli stessi endpoint), dal guard `script.fn_guard_livello`.
+4. **La conferma è un conteggio**, come l'annullo con legami (`p_prezzi_confermati`): il verbo blocca legame e prezzi
+   `FOR UPDATE` e la confronta col numero di adesso.
+5. **L'avviso parte anche dall'UPDATE diretto** (il PATCH di oggi su `valido_al`): il guard della distinta è il primo
+   tentativo, il verbo è la conferma. Così il contratto del backend cambia poco: sull'avviso apre la finestra, alla
+   conferma chiama il verbo.
+6. **`importo_per_kit` = prezzo per il coefficiente del legame**: quanto il componente pesa su un kit, al prezzo della
+   riga. È la cifra che la finestra mostra per versione (Q22).
+
+### 14.3 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di numero, `BEGIN … ROLLBACK`)
+
+* Tutte e cinque compilano; le preCondition tornano (`0`, `1`, `1`, `2`, `3`). `plpgsql_check` non segnala niente
+  sulle quattro plpgsql.
+* pgTAP nuovo `catalogo/test-chiudi-legame-con-prezzi-v1.sql` (21 test), col seed delle sole quattro righe dei codici:
+  **20/21**. Il test 10 («la porta senza il proprietario non apre») è rosso da owner per costruzione, perché la
+  porta si apre proprio al proprietario: è dichiarato nel file, verde atteso come app.
+* Regressione: 53 pgTAP che nominano `articoli_componenti`, `listini_righe_componenti` o un `E_BOM_`, più 14 presidi
+  trasversali (riferimenti morti, `search_path` delle DEFINER, catalogo dei messaggi, codici, bersagli, COMMENT al
+  presente…), ciascuno senza e con l'SQL estratto: tutti uguali, tranne `script/test-rubinetto-primo-motivo-v1`
+  test 5, il conteggio esatto delle funzioni che chiamano l'helper del primo motivo: da 48 a 50 (il guard e il verbo),
+  aggiornato con la nota. ⚠️ Fino all'apply quel test è rosso sullo scratch (vede 48).
+
+### 14.4 Parte A — doc e ricadute
+
+* **Doc:** nuove `catalogo/manual/fn_chiudi_legame_distinta.md`, `vendite/manual/fn_prezzi_legame_oltre_la_fine.md`,
+  `script/manual/fn_check_legame_distinta_chiudibile.md`; aggiornate
+  `catalogo/manual/trgfn_articoli_componenti_block_modifica_struttura.md` e
+  `vendite/manual/trgfn_listini_righe_comp_guard_immutabilita_v5.md`. Le schede auto-generate dei tre oggetti nuovi
+  nascono dopo l'apply.
+* **BE19** (al team BE, dopo l'apply): «Chiudi riga» della distinta. Il PATCH su `valido_al` resta il primo tentativo;
+  sull'avviso `E_BOM_CHIUSURA_CON_PREZZI` (CONFLITTO_STATO, campo `valido_al`, contesto `prezzi` e `versioni`) il FE apre
+  una finestra di conferma che elenca i prezzi da `vendite.fn_prezzi_legame_oltre_la_fine(legame, fine)` (listino,
+  versione, stato, inizio, fine, prezzo, `importo_per_kit`, esito: «si chiude» / «si toglie»), e alla conferma il BE
+  chiama `catalogo.fn_chiudi_legame_distinta(legame, fine, numero di prezzi visti)`. I quattro codici nuovi nella mappa
+  generata e nei ripieghi. `E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE` e `E_BOM_CHIUSURA_PRIMA_DEI_PREZZI` sono rifiuti sul
+  campo, senza finestra.
+
+### 14.5 Parte B — che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/catalogo/20261111-30` | D4 + D21 (Q6): `trgfn_articoli_guard_iva_bom_attiva` diventa un CONSTRAINT TRIGGER `AFTER UPDATE OF iva_id`, `DEFERRABLE INITIALLY DEFERRED`, `WHEN` l'IVA cambia; giudica l'IVA di adesso dell'articolo e dei partner sui legami attivi da oggi in poi; aliquota vuota «—»; il contesto porta `campo` e il `tx_id` |
+| `20_code/catalogo/20261111-31` | D5 (R4, Q5): si ritirano `trgfn_articoli_guard_listino_se_composito` e il suo trigger |
+| `20_code/catalogo/20261111-32` | D18: `fn_articolo_usato` confronta ogni FK sulla chiave a cui punta (su `id` come prima; verso un'altra chiave o composita col join sull'articolo; la colonna PERIOD fuori) |
+| `20_code/catalogo/20261111-33` | R5: `catalogo.fn_articolo_flag_etichetta(colonna)`, il nome leggibile delle otto colonne strutturali |
+| `20_code/catalogo/20261111-34` | D20 (Q10): `fn_articolo_colonne_struttura` è la dichiarazione (costante, `IMMUTABLE`), non legge più le regole del form |
+| `20_code/catalogo/20261111-35` | D20, R5: il guard dell'uso cerca la prima colonna cambiata nella dichiarazione, l'etichetta dal BB |
+| `20_code/catalogo/20261111-36` | R5: il guard degli oneri prende l'etichetta dal BB; COMMENT al presente |
+| `20_code/catalogo/20261111-37` | D19: la porta della struttura valida NOT NULL e tipo di ogni valore prima di scrivere (`E_PARAMETRO_INVALIDO` col nome leggibile); COMMENT al presente |
+
+Nessun codice nuovo nella parte B.
+
+### 14.6 Le scelte dentro la parte B (da guardare, Tid)
+
+1. **D20: la dichiarazione è una funzione costante**, e le regole del form restano righe di
+   `dbops.lock_columns_conditional`, confrontate col pgTAP. Il form non può leggere una funzione per colonna (il
+   registro è per colonna), quindi «un posto» vuol dire: la porta e il guard leggono la dichiarazione, l'elenco
+   `UPDATE OF` e il form sono copie presidiate. Una regola del form spenta ora non tocca la porta.
+2. **D4: «legami da oggi in poi»** è scritto nel guard come `validita && [oggi, ∞)`. Le tre funzioni di D28
+   (`fn_articolo_*_di_distinta_*`) rispondono un boolean e non danno i partner con la loro IVA: per questo il filtro
+   resta nella query, come in `fn_check_articolo_riga`.
+3. **D4, i pgTAP:** girano con i vincoli `IMMEDIATE`, quindi lì il guard scatta a fine istruzione. Il cambio in due
+   istruzioni si prova differendo il solo vincolo (`SET CONSTRAINTS catalogo.trg_articoli_a10_guard_iva_bom_attiva_upd`,
+   col nome qualificato).
+4. **D19: la frase di `E_PARAMETRO_INVALIDO` porta il nome leggibile** («gestito a lotti»), non il nome della
+   colonna, che resta nel contesto (`campo`). La frase della colonna estranea («non correggibili da qui: …») non è
+   del giro e resta com'è.
+5. **D5:** il codice `E_LISTINO_RIGA_COMPOSITO_VIETATO` resta: lo solleva il lato riga.
+
+### 14.7 Le prove della parte B
+
+* SQL estratto `-30` … `-37` sopra quello della parte A: compila, preCondition tutte come attese, `plpgsql_check`
+  pulito sulle cinque plpgsql toccate.
+* pgTAP nuovi: `catalogo/test-iva-kit-a-fine-transazione-v1.sql` (7/7) e `catalogo/test-articolo-usato-chiave-fk-v1.sql`
+  (3/3, dichiarato `pgtap-runner: owner`: crea una tabella con una FK verso il codice, e una tabella temporanea non
+  può avere una FK verso una permanente).
+* Riscritto `catalogo/test-articolo-colonne-struttura-v1.sql` (13/13): 10-12 rovesciati (presidiavano proprio il
+  legame fra porta e form che Q10 ritira), il 4 chiede che il guard legga la dichiarazione, l'8 diventa
+  `E_PARAMETRO_INVALIDO`, nuovo l'8-bis (NOT NULL).
+* Regressione con A + B: tutti i pgTAP di `catalogo`, quelli che scrivono `catalogo.articoli` o nominano i codici e
+  le funzioni del giro, la lista della parte A e i 14 presidi trasversali: **88 uguali** con e senza; diverge solo il
+  rubinetto, che col conteggio aggiornato passa da rosso a verde.
+
+### 14.8 Doc, ricadute, chiusura
+
+* **Doc (parte B):** nuova `catalogo/manual/fn_articolo_flag_etichetta.md`; cancellata
+  `catalogo/manual/trgfn_articoli_guard_listino_se_composito.md` (oggetto ritirato); aggiornate
+  `fn_articolo_colonne_struttura`, `fn_articolo_correggi_struttura`, `fn_articolo_usato`,
+  `trgfn_articoli_guard_iva_bom_attiva`, `trgfn_articoli_guard_struttura_se_usato`,
+  `trgfn_articoli_guard_onere_natura`, `articoli` (sezioni «che cosa oggi non copre» chiuse, note di migrazione).
+  Gli indici `catalogo/index.md` e `index.ci.md` nominano ancora il guard ritirato: sono generati, si allineano alla
+  rigenerazione dopo l'apply.
+* **BE7 → BE20** (al team BE, dopo l'apply): il rifiuto `E_BOM_IVA_DISCORDANTE` arriva **a fine transazione**. In
+  autocommit è l'UPDATE stesso; dentro un `transaction.atomic()` arriva all'uscita del blocco, non sull'istruzione:
+  il servizio dell'articolo lo mappa lì. Il form può ora cambiare l'IVA di un kit e dei suoi componenti in una
+  transazione.
+* **BE4** (già in §5): `E_PARAMETRO_INVALIDO` dalla correzione della struttura ha ora il `campo` nel contesto.
+* **Da committare:** i tredici changeSet `20261111-25` … `-37`; le quattro righe nuove dei due CSV dei codici; i
+  pgTAP nuovi `catalogo/test-chiudi-legame-con-prezzi-v1`, `test-iva-kit-a-fine-transazione-v1`,
+  `test-articolo-usato-chiave-fk-v1`; i pgTAP toccati `catalogo/test-articolo-colonne-struttura-v1` e
+  `script/test-rubinetto-primo-motivo-v1`; la doc di §14.4 e §14.8; questo brief.
+* **Prima dell'apply:** niente da correggere a mano. Dopo: i pgTAP come app (il test 10 di
+  `test-chiudi-legame-con-prezzi-v1` verde solo così), la rigenerazione delle schede dei sei oggetti nuovi o
+  ritirati.
+
+### 14.9 Apply e commit, 2026-11-10
+
+* Tid ha applicato il giro 3 su dbdev e scratch; i pgTAP come app sono verdi, compreso il test 10 di
+  `test-chiudi-legame-con-prezzi-v1` e il rubinetto col conteggio 50.
+* Corretto prima della corsa: `test-articolo-usato-chiave-fk-v1` dichiarava `pgtap-runner: owner` senza la riga
+  `pgtap-runner-motivo`, che `scripts/testpgtap.sh` pretende.
+* Commit del giro 3 su `dev/db-tid` (2026-11-10), coi file di §14.8. Restano: la rigenerazione delle schede
+  auto-generate (indici di `catalogo` col guard ritirato), BE19 e BE20 al team BE.
+* CI-Validate rossa sul push (2026-11-10), controllo i18n: le due `reason_key` di
+  `script.fn_check_legame_distinta_chiudibile` (`catalogo.distinta.azione_reason.prezzi_altre_aziende`,
+  `….prezzi_dopo_la_fine`) non erano nei locales. Andavano chieste al FE nello stesso giro (linee-guida-sql §12.3);
+  aggiunte dalla sessione DB in `frontend/src/locales/it.json` ed `en.json`, accanto a
+  `catalogo.distinta.componente_reason.*`. Il team BE/FE ne riveda il testo con BE19.

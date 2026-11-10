@@ -1777,7 +1777,14 @@
         "non_abilitata": "Il processo è spento su questa installazione: riaccendilo prima di eseguirlo.",
         "non_decidibile": "Non si sa se il processo sia acceso: l'ambiente di questa installazione non è dichiarato.",
         "gia_in_coda": "È già in coda (lavoro #{job_id}): si potrà premere di nuovo quando quel lavoro sarà finito."
-      }
+      },
+      "vivo_tutti": "Vivi e ritirati",
+      "vivo_si": "Solo vivi",
+      "vivo_no": "Solo ritirati",
+      "stato_vivo": "Vivo",
+      "stato_ritirato": "Ritirato",
+      "ritirato_dal": "Ritirato dal {data}",
+      "ritiro_programmato": "Ritiro programmato al {data}"
     },
     "error_log": {
       "titolo": "Registro degli errori tecnici",
@@ -2038,6 +2045,7 @@
     "field_requires_lotto": "Richiede lotto",
     "hint_requires_lotto": "L'articolo si movimenta per partite: ogni movimento nomina un lotto",
     "hint_onere_struttura": "E' un onere: un addebito, non un bene. Niente magazzino, composito, lotti o matricola",
+    "hint_composito_solo_componente": "Composito e solo componente si escludono: per accendere questo, spegnere l'altro",
     "field_desc_fattura": "Descrizione Fattura",
     "field_fattore": "Fattore",
     "field_vendita": "Vendita",
@@ -2118,6 +2126,7 @@
     "col_uom_da": "UoM Da",
     "col_uom_a": "UoM A",
     "tag_base": "Base",
+    "hint_uom_base_fissa": "L'unità base vale sempre: fattore 1 e nessuna data. Per vendere in un'altra unità, aggiungine una nuova.",
     "tag_logistica": "Logistica",
     "conv_search_placeholder": "Cerca conversione (codice UoM)...",
     "conv_mostra_non_attive": "Mostra non attive",
@@ -2129,21 +2138,22 @@
     "col_desc_a": "Descrizione A",
     "field_uom_da": "UoM Da",
     "field_logistica": "Logistica",
-    "field_require_lot": "Richiede Lotto",
     "field_forbid_fraction": "Solo Interi",
     "field_qty_step": "Step Quantita'",
     "field_max_decimals": "Max Decimali",
-    "field_rounding_mode": "Arrotondamento",
     "field_gtin": "GTIN",
     "section_uso": "Utilizzo",
     "section_regole_input": "Regole Input",
     "section_extra": "Altro",
-    "select_rounding_mode": "Seleziona modo arrotondamento",
     "distinta": {
       "componente_reason": {
         "componente_padre": "È l'articolo stesso: non può essere componente della propria distinta.",
         "componente_composito": "È a sua volta un kit: una distinta contiene solo articoli semplici.",
         "iva_discordante": "Ha un'aliquota IVA diversa dal kit: i componenti hanno l'IVA del padre."
+      },
+      "azione_reason": {
+        "prezzi_altre_aziende": "Ha prezzi bundle in listini di altre aziende, che non puoi vedere: il legame non si chiude finché quei prezzi restano aperti.",
+        "prezzi_dopo_la_fine": "Ha prezzi bundle in listini già attivi che cominciano dopo questa data: il legame si chiude al più presto dal loro inizio."
       }
     }
   },

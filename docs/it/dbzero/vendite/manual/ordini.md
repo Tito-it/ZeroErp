@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.ordini`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -236,8 +236,9 @@ l'agente/venditore associato all'ordine, per provvigioni e reporting commerciale
 * **Nullable**: non tutti gli ordini hanno un agente.
 * **FK semplice**, simmetrica al cliente (`fk_ordini_v_cliente_ruolo`): nessun guard
   `child_requires_active_parent` dedicato sulla testata (l'attivo del soggetto è già
-  garantito a monte da `soggetti_ruoli`). Indice FK delegato a
-  `dbops.apply_fk_index_policy()`.
+  garantito a monte da `soggetti_ruoli`). Indice FK delegato alla politica degli
+  indici delle FK (`dbops.fk_index_policy`): nel suo CSV la FK non ha una decisione, e
+  finché resta scoperta la mostra il presidio `dbops.vw_fk_da_decidere`.
 * **Display**: nella vista `vw_ordini_lista` come `agente_denominazione` (via
   `soggetti_ruoli` → `soggetti`).
 

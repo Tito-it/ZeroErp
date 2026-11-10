@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I sei montaggi di script.trgfn_qta_from_operativa prendono la testata e la sua data
+#   (D22, Q13).
+#
+#   Argomenti nuovi [2] tabella della testata, [3] colonna FK della riga, [4] colonna
+#   data: la data del documento a cui si legge il fattore (-07). Le tabelle senza fonte
+#   della quantita' passano [1] vuoto. L'offerta usa la sua decorrenza (validita_dal),
+#   come il guard dei componenti. Eventi, WHEN e nomi invariati; COMMENT riscritti
+#   secondo linee-guida-sql §5d (il DROP li porta via).
+#   Trigger scritti a mano, non generati da ci_apply (§11.5).
+#   Rollback: i montaggi e i COMMENT di prima, da pg_get_triggerdef su dbdev.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261111-08-update-trigger-qta-from-operativa-data-documento-mctit.yaml
+
+  - changeSet:
+      id: 20261111-08-update-trigger-qta-from-operativa-data-documento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Montaggi di trgfn_qta_from_operativa con testata e data del documento. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 6
+            sql: >
+              SELECT count(*) FROM pg_trigger
+               WHERE tgfoid = to_regprocedure('script.trgfn_qta_from_operativa()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                  FOR EACH ROW WHEN ((new.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)) EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa', 'contratti', 'contratto_id', 'data');
+              COMMENT ON TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd ON vendite.contratti_righe IS
+                  'Quantita'' base da qta_operativa e unita'' operativa, col fattore alla data del contratto (script.trgfn_qta_from_operativa). Salta l''ESCLUSIONE (WHEN): un''esclusione non ha quantita'', unita'' ne'' fattore.';
+
+              DROP TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW WHEN ((new.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)) EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa', 'offerte_commerciali', 'offerta_id', 'validita_dal');
+              COMMENT ON TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd ON vendite.offerte_commerciali_eccezioni IS
+                  'Quantita'' base da qta_operativa e unita'' operativa, col fattore alla decorrenza dell''offerta (script.trgfn_qta_from_operativa). Salta l''ESCLUSIONE (WHEN), come sul contratto.';
+
+              DROP TRIGGER trg_preventivi_righe_a10_qta_from_operativa_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.preventivi_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', '', 'preventivi', 'preventivo_id', 'data');
+              COMMENT ON TRIGGER trg_preventivi_righe_a10_qta_from_operativa_ins_upd ON vendite.preventivi_righe IS
+                  'Quantita'' base da qta_operativa e unita'' operativa, col fattore alla data del preventivo (script.trgfn_qta_from_operativa).';
+
+              DROP TRIGGER trg_ordini_righe_a10_qta_from_operativa_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ordini_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', '', 'ordini', 'ordine_id', 'data');
+              COMMENT ON TRIGGER trg_ordini_righe_a10_qta_from_operativa_ins_upd ON vendite.ordini_righe IS
+                  'Quantita'' base da qta_operativa e unita'' operativa, col fattore alla data dell''ordine (script.trgfn_qta_from_operativa).';
+
+              DROP TRIGGER trg_ddt_righe_a10_qta_from_operativa_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ddt_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', '', 'ddt', 'ddt_id', 'data');
+              COMMENT ON TRIGGER trg_ddt_righe_a10_qta_from_operativa_ins_upd ON vendite.ddt_righe IS
+                  'Quantita'' base da qta_operativa e unita'' operativa, col fattore alla data della bolla (script.trgfn_qta_from_operativa).';
+
+              DROP TRIGGER trg_resi_righe_a10_qta_from_operativa_ins_upd ON vendite.resi_righe;
+              CREATE TRIGGER trg_resi_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.resi_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', '', 'resi', 'reso_id', 'data');
+              COMMENT ON TRIGGER trg_resi_righe_a10_qta_from_operativa_ins_upd ON vendite.resi_righe IS
+                  'Quantita'' base da qta_operativa e unita'' operativa, col fattore alla data del reso (script.trgfn_qta_from_operativa).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd BEFORE INSERT OR UPDATE ON vendite.contratti_righe FOR EACH ROW WHEN ((new.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)) EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa');
+              COMMENT ON TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd ON vendite.contratti_righe IS
+                  'Quantita'' base da qta_operativa e UdM operativa (script.trgfn_qta_from_operativa). Salta l''ESCLUSIONE (WHEN): un''esclusione non ha quantita'', UdM ne'' fattore. La deroga sta qui e non nella funzione, che serve sei tabelle. Brief: brief-db-righe-esclusione-solo-non-si-vende (R2).';
+
+              DROP TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni FOR EACH ROW WHEN ((new.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)) EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa');
+              COMMENT ON TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd ON vendite.offerte_commerciali_eccezioni IS
+                  'Quantita'' base da qta_operativa e UdM operativa (script.trgfn_qta_from_operativa). Salta l''ESCLUSIONE (WHEN), come sul contratto. Brief: brief-db-righe-esclusione-solo-non-si-vende (R2).';
+
+              DROP TRIGGER trg_preventivi_righe_a10_qta_from_operativa_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_qta_from_operativa_ins_upd BEFORE INSERT OR UPDATE ON vendite.preventivi_righe FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true');
+
+              DROP TRIGGER trg_ordini_righe_a10_qta_from_operativa_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_qta_from_operativa_ins_upd BEFORE INSERT OR UPDATE ON vendite.ordini_righe FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true');
+
+              DROP TRIGGER trg_ddt_righe_a10_qta_from_operativa_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a10_qta_from_operativa_ins_upd BEFORE INSERT OR UPDATE ON vendite.ddt_righe FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true');
+
+              DROP TRIGGER trg_resi_righe_a10_qta_from_operativa_ins_upd ON vendite.resi_righe;
+              CREATE TRIGGER trg_resi_righe_a10_qta_from_operativa_ins_upd BEFORE INSERT OR UPDATE ON vendite.resi_righe FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true');

@@ -50,7 +50,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_cf_libero()
-IS 'Restituisce un codice fiscale VALIDO secondo script.fn_valida_codice_fiscale e non ancora presente in anagrafiche.soggetti, per le fixture pgTAP. Sorella di dbops.fn_pgtap_piva_libera: stesso problema (uq_soggetto_idstato_id_fiscale_univoco contro identificativi inchiodati nel codice e residui non cancellabili), stessa soluzione. ⭐ Il carattere di controllo non lo calcola, lo CERCA provando l''alfabeto e chiedendo al validatore di dominio: reimplementare l''algoritmo qui vorrebbe dire tenerne due copie e vederle divergere. ⚠️ Non e'' un generatore di codici fiscali reali — il corpo e'' fittizio e serve solo a superare validatore e unicita'' in un test. Vede anche le righe non ancora committate. Brief: brief-db-bonifica-baseline-pgtap-vendite.md';
+IS 'Fixture pgTAP: un codice fiscale VALIDO secondo script.fn_valida_codice_fiscale e non ancora presente in anagrafiche.soggetti. Sorella di dbops.fn_pgtap_piva_libera: stesso problema (uq_soggetto_idstato_id_fiscale_univoco contro identificativi gia'' scritti), stessa soluzione. Il carattere di controllo non lo calcola, lo CERCA provando l''alfabeto e chiedendo al validatore di dominio: reimplementare l''algoritmo qui vorrebbe dire tenerne due copie. ⚠️ Non e'' un generatore di codici fiscali reali: il corpo e'' fittizio e serve solo a superare validatore e unicita'' in un test. Vede anche le righe non ancora committate.';
 ```
 
 </div>

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Configurazione del framework di chiusura automatica per scadenza. Ogni riga descrive una tabella target con ciclo stato + valido_al. Letta da dbops.fn_apply_chiusura_scadenze() chiamata dal job notturno chiusura_scadenze_daily (85_pgagent).
+> Il registro del framework di chiusura per scadenza: una riga per tabella con un ciclo di stato e un valido_al, che dice come si chiude una riga scaduta (lo stato chiuso, quelli che si chiudono, il verbo di chiusura se la testata e' sotto la porta degli stati). La legge dbops.fn_apply_chiusura_scadenze, chiamata dall'handler della coda dei lavori una volta per azienda, con l'identita' e la RLS di quell'azienda: per questo i bersagli sono solo processi di DOMINIO.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

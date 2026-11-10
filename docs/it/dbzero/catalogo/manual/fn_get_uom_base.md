@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_get_uom_base`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,8 +11,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [catalogo.fn_get_uom_factor](/dbzero/catalogo/funzioni/fn_get_uom_factor) — il suo unico chiamante nel database
-> * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — legge l'unità base da sé, senza passare di qui
+> * [catalogo.fn_get_uom_factor](/dbzero/catalogo/funzioni/fn_get_uom_factor) — la chiama come primo passo del fattore
+> * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — la chiama quando la riga non dice l'unità
 
 ---
 
@@ -36,10 +36,10 @@ L'unità base di un articolo non cambia dopo la creazione: `articoli.uom_id` è 
 
 ### Chi la usa
 
-Nel database la chiama solo `fn_get_uom_factor`, come primo passo. Il calcolo della
-quantità sulle righe di vendita (`script.trgfn_qta_from_operativa`) l'unità base la legge
-direttamente da `articoli`, quando la riga non dice l'unità. Fuori dal database la chiama
-solo un metodo del repository del backend, che a sua volta non ha chiamanti.
+Nel database la chiamano `fn_get_uom_factor`, come primo passo, e il calcolo della quantità
+sulle righe di vendita (`script.trgfn_qta_from_operativa`), quando la riga non dice l'unità.
+Fuori dal database la chiama solo un metodo del repository del backend, che a sua volta non ha
+chiamanti.
 
 ---
 
@@ -53,6 +53,8 @@ solo un metodo del repository del backend, che a sua volta non ha chiamanti.
 ### Note di migrazione
 
 * 2025-11-03 — nasce insieme a `fn_get_uom_factor`.
+* 2026-11-09 — la chiama anche il calcolo della quantità sulle righe di vendita
+  (brief-db-revisione-catalogo, giro 2).
 
 ---
 

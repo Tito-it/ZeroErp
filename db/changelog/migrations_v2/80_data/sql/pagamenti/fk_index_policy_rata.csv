@@ -1,3 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-pagamenti,vendite_contabili_righe,fk_vendite_contabili_righe_scadenza,true,"CREATE INDEX IF NOT EXISTS ix_vendite_contabili_righe_scadenza_id ON pagamenti.vendite_contabili_righe(scadenza_id) WHERE scadenza_id IS NOT NULL;",false,titodb,2026-08-22 00:00:00+02
-pagamenti,vendite_movimenti,fk_vendite_movimenti_scadenza,true,"CREATE INDEX IF NOT EXISTS ix_vendite_movimenti_scadenza_id ON pagamenti.vendite_movimenti(scadenza_id) WHERE scadenza_id IS NOT NULL;",false,titodb,2026-08-22 00:00:00+02

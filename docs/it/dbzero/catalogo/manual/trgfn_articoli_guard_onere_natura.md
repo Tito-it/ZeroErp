@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_articoli_guard_onere_natura`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -52,7 +52,8 @@ Il guard è `BEFORE INSERT` e `BEFORE UPDATE` delle sei colonne in gioco: natura
   descrizione della natura.
 * **Poi la struttura.** Se l'onere è gestito a magazzino, composito, a lotti o a matricola, il
   guard rifiuta (`E_ARTICOLO_ONERE_STRUTTURA`). Il campo è la prima caratteristica in
-  quest'ordine, e il messaggio ne porta il nome leggibile.
+  quest'ordine, e il messaggio ne porta il nome leggibile
+  (`catalogo.fn_articolo_flag_etichetta`, lo stesso del guard dell'uso).
 
 Un articolo merce che riceve una causale si sente dire della natura, perché la natura parla per
 prima.
@@ -105,6 +106,8 @@ guard «usato», non questo.
 * 2026-10-19 — la destinazione della merce si chiama `ORDINE_VENDITA` (prima `ORDINE`).
 * 2026-11-03 — si aggiunge la regola della struttura, e «è merce» passa al building block
   comune (brief-db-addebito-trasporto-ordine).
+* 2026-11-09 — il nome leggibile della caratteristica dal building block
+  `catalogo.fn_articolo_flag_etichetta` (brief-db-revisione-catalogo, giro 3).
 
 ---
 

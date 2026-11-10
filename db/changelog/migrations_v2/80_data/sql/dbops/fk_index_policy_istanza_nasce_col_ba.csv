@@ -1,4 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-anagrafiche,clienti,fk_clienti_istanze_utilities,true,"CREATE INDEX IF NOT EXISTS ix_anagrafiche_clienti_istanza_utility_id ON anagrafiche.clienti(istanza_utility_id);",false,mctit,2026-10-08 00:00:00+02
-pratiche,pratiche,fk_pratiche_billing_account_istanza,true,"CREATE INDEX IF NOT EXISTS ix_pratiche_billing_account_id_istanza_utility_id ON pratiche.pratiche(billing_account_id, istanza_utility_id) WHERE billing_account_id IS NOT NULL;",false,mctit,2026-10-08 00:00:00+02
-anagrafiche,gestori,fk_soggetti_ruoli_anagrafiche,false,"CREATE INDEX IF NOT EXISTS ix_anagrafiche_gestori_soggetto_ruolo_id ON anagrafiche.gestori(soggetto_ruolo_id);",true,titodb,2026-01-16 11:59:34.020049+01

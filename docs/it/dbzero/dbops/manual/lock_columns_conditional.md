@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.lock_columns_conditional`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,9 +17,11 @@
 > * [dbops.fn_non_editable_fields](/dbzero/dbops/funzioni/fn_non_editable_fields) — valuta le regole su una riga e dice al form quali campi spegnere
 > * [catalogo.fn_articolo_colonne_struttura](/dbzero/catalogo/funzioni/fn_articolo_colonne_struttura) — legge da qui le colonne strutturali di un articolo
 > * [catalogo.fn_articolo_usato](/dbzero/catalogo/funzioni/fn_articolo_usato) — il predicato condiviso dalla regola del form e dal guard
-> * [catalogo.fn_articolo_padre_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_in_vigore), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi) — i predicati della distinta, condivisi con il guard
+> * [catalogo.fn_articolo_padre_di_distinta_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_padre_di_distinta_da_oggi), [catalogo.fn_articolo_componente_di_distinta_in_vigore](/dbzero/catalogo/funzioni/fn_articolo_componente_di_distinta_in_vigore), [catalogo.fn_articolo_primo_padre_da_oggi](/dbzero/catalogo/funzioni/fn_articolo_primo_padre_da_oggi) — i predicati della distinta, condivisi con il guard
 > * [catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva](/dbzero/catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva) — il guard che rifiuta, gemello delle regole sulla distinta
 > * [catalogo.trgfn_articoli_guard_struttura_se_usato](/dbzero/catalogo/funzioni/trgfn_articoli_guard_struttura_se_usato) — il guard che rifiuta, gemello delle regole sull'uso
+> * [anagrafiche.fn_id_fiscale_bloccato](/dbzero/anagrafiche/manual/fn_id_fiscale_bloccato) — la regola di CF e P.IVA di un soggetto, condivisa dal form e dal guard
+> * [anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile](/dbzero/anagrafiche/manual/trgfn_soggetti_guard_id_fiscale_immutabile) — il guard che rifiuta, gemello delle regole sui soggetti
 
 ---
 
@@ -27,8 +29,11 @@
 
 Il registro dei **lock condizionali**: colonne che non si possono modificare solo quando una
 condizione sulla riga è vera — per esempio un flag di struttura di un articolo che è padre di una
-distinta in vigore, o una colonna strutturale di un articolo già usato. Serve al **form**: dice
-quali campi spegnere per quella riga.
+distinta in vigore, una colonna strutturale di un articolo già usato, o il codice fiscale di un
+soggetto già scritto. Serve al **form**: dice quali campi spegnere per quella riga.
+
+Le regole stanno su due tabelle: `catalogo.articoli` e, dal 2026-11-09,
+`anagrafiche.soggetti`.
 
 È il complemento dei lock statici di `dbops.automation_lock_columns`, che valgono sempre. Le due
 fonti arrivano insieme al form attraverso `dbops.fn_non_editable_fields`.
@@ -50,10 +55,16 @@ passato da quello del server a quello aziendale in una sola delle due). Per ques
 
 | Regole su `catalogo.articoli` | Predicato | Guard |
 | --- | --- | --- |
-| `is_composito`, `requires_serial`: padre di una distinta in vigore | `catalogo.fn_articolo_padre_di_distinta_in_vigore` | check 1 di `trgfn_articoli_guard_flags_struttura_bom_attiva` |
+| `is_composito`, `requires_serial`: padre di una distinta in vigore o futura | `catalogo.fn_articolo_padre_di_distinta_da_oggi` | check 1 di `trgfn_articoli_guard_flags_struttura_bom_attiva` |
 | `is_solo_componente`: componente di una distinta in vigore | `catalogo.fn_articolo_componente_di_distinta_in_vigore` | check 2 dello stesso |
 | `is_composito`: componente di una distinta in vigore o futura | `catalogo.fn_articolo_primo_padre_da_oggi` (non NULL) | check 3 dello stesso |
 | le otto colonne strutturali: articolo usato | `catalogo.fn_articolo_usato` | `trgfn_articoli_guard_struttura_se_usato` |
+
+| Regole su `anagrafiche.soggetti` | Predicato | Guard |
+| --- | --- | --- |
+| `codice_fiscale`, `partita_iva`: valore già scritto, e chi agisce non è SUPER_ADMIN | `anagrafiche.fn_soggetto_id_fiscale_bloccato($1::uuid, '<colonna>')`, che chiama `anagrafiche.fn_id_fiscale_bloccato` | `trgfn_soggetti_guard_id_fiscale_immutabile` |
+
+Sui soggetti un campo vuoto resta acceso: si può riempire.
 
 La regola del check 3 aggiunge la sua metà di stato, «l'articolo non è già composito»: nel guard
 la stessa condizione è la transizione da falso a vero. Il presidio è
@@ -93,7 +104,7 @@ che la condizione chiama.
 ### Test
 
 * `db/pgtap/dbops/test-fn-non-editable-fields-conditional.sql` — le regole sulla distinta: i flag
-  spenti per il padre di una distinta in vigore, per il figlio in vigore e per il figlio di una
+  spenti per il padre di una distinta in vigore o futura, per il figlio in vigore e per il figlio di una
   distinta futura.
 * `db/pgtap/catalogo/test-distinta-predicati-guard-e-form-v1.sql` — le regole sulla distinta chiamano i
   predicati del guard, e per i tre flag form e guard rispondono uguale.
@@ -104,6 +115,9 @@ che la condizione chiama.
 * `db/pgtap/catalogo/test-distinta-un-livello-e-onere-natura-v1.sql`,
   `db/pgtap/vendite/test-righe-articolo-ammesso-v1.sql` — le regole gemelle dei guard sulla
   distinta a un livello e sul solo componente.
+* `db/pgtap/anagrafiche/test-soggetti-id-fiscale-immutabile-v1.sql` — sui soggetti il form spegne
+  CF e P.IVA scritti per l'operatore, li lascia accesi al SUPER_ADMIN e lascia acceso un campo
+  vuoto; il guard rifiuta gli stessi cambi.
 
 ---
 
@@ -121,6 +135,9 @@ che la condizione chiama.
   `brief-db-revisione-dbops`, giro 7-bis).
 * 2026-11-08 — le quattro regole sulla distinta chiamano i predicati del guard invece di
   ricopiarne la condizione (`20261109-64`, brief-db-revisione-dbops D28).
+* 2026-11-09 — entrano le prime regole fuori da `catalogo.articoli`: `codice_fiscale` e
+  `partita_iva` di `anagrafiche.soggetti`, gemelle del guard sull'immutabilità (`20261110-97`,
+  `brief-db-revisione-dbops`, S-BE-3).
 
 ---
 

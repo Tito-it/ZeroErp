@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.lock_columns_conditional: CF e P.IVA di anagrafiche.soggetti spenti nel
+#   form quando il guard li rifiuterebbe.
+#   Brief: brief-db-revisione-dbops, S-BE-3 (§32).
+#
+# La condizione e' anagrafiche.fn_soggetto_id_fiscale_bloccato (-95), la stessa
+# regola che il guard (-96) legge sul valore OLD: il form e il DB non possono
+# dire due cose diverse. Il registro, da solo, non blocca niente (lo valuta
+# dbops.fn_non_editable_fields per il form): chi blocca e' il guard.
+# Forma come 20_code/.../20261013-51: INSERT ... ON CONFLICT sulla chiave.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261110-97-seed-lock-columns-conditional-soggetti-id-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20261110-97-seed-lock-columns-conditional-soggetti-id-fiscale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.lock_columns_conditional (anagrafiche.soggetti): codice_fiscale e partita_iva spenti nel
+        form se anagrafiche.fn_soggetto_id_fiscale_bloccato. Brief: brief-db-revisione-dbops, S-BE-3.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: lock_columns_conditional
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_soggetto_id_fiscale_bloccato';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.lock_columns_conditional
+                  (schema_name, table_name, column_name, condition_expr, descrizione)
+              SELECT 'anagrafiche', 'soggetti', c.colonna,
+                     'anagrafiche.fn_soggetto_id_fiscale_bloccato($1::uuid, ''' || c.colonna || ''')',
+                     c.colonna || ' non modificabile se gia'' scritto, salvo il SUPER_ADMIN; un campo vuoto si riempie. Simmetrico a trg_soggetti_a10_guard_id_fiscale_immutabile_upd'
+                FROM unnest(ARRAY['codice_fiscale', 'partita_iva']) AS c(colonna)
+              ON CONFLICT ON CONSTRAINT uq_lock_columns_conditional DO UPDATE
+                  SET condition_expr = EXCLUDED.condition_expr,
+                      descrizione    = EXCLUDED.descrizione;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.lock_columns_conditional
+               WHERE schema_name = 'anagrafiche'
+                 AND table_name  = 'soggetti'
+                 AND column_name IN ('codice_fiscale', 'partita_iva');

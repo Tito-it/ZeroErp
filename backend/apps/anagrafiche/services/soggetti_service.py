@@ -15,6 +15,7 @@ from typing import Any
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.non_editable_fields_helper import compute_non_editable_fields
 from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import (
@@ -217,19 +218,25 @@ class SoggettiService:
         soggetto["non_editable_fields"] = self._compute_non_editable_fields(soggetto)
         return soggetto
 
-    # Scopo: Computa la lista dei campi non modificabili per il soggetto
-    # in edit. Regola di immutabilita': CF/PIVA bloccati se gia' valorizzati
-    # (analogo Profilo A contratti/listini-versioni). La lista cresce se
-    # in futuro arrivano altri campi immutabili (es. tipo_soggetto post stato
-    # avanzato). Frontend deriva cfDisabled/pivaDisabled da questa lista.
+    # Scopo: Computa la lista dei campi non modificabili per il soggetto in
+    #        edit, tutta dal DB: il BB `compute_non_editable_fields` con il
+    #        record porta i lock statici (`codice`) e quelli condizionali
+    #        valutati sul soggetto (`dbops.fn_non_editable_fields`). Il
+    #        frontend deriva cfDisabled/pivaDisabled da questa lista.
+    # ⭐ CF e P.IVA gia' scritti non si cambiano e non si svuotano, salvo il
+    #    SUPER_ADMIN (Tid, 2026-11-09, S-BE-3 di brief-db-revisione-dbops §32):
+    #    la regola sta in `anagrafiche.fn_soggetto_id_fiscale_bloccato`, la
+    #    applica il guard `trgfn_soggetti_guard_id_fiscale_immutabile`
+    #    (`E_SOGGETTO_ID_FISCALE_IMMUTABILE`, campo = la colonna) e la dichiara
+    #    `dbops.lock_columns_conditional`. Un campo vuoto resta riempibile.
+    # ⛔ Fino al 2026-11-09 qui c'era un GAP («valorizzato → bloccato»): una
+    #    seconda sede della regola, che per di piu' bloccava anche il
+    #    SUPER_ADMIN, a cui il DB lascia la correzione.
     @staticmethod
     def _compute_non_editable_fields(soggetto: dict[str, Any]) -> list[str]:
-        non_editable: list[str] = []
-        if (soggetto.get("codice_fiscale") or "").strip():
-            non_editable.append("codice_fiscale")
-        if (soggetto.get("partita_iva") or "").strip():
-            non_editable.append("partita_iva")
-        return non_editable
+        return compute_non_editable_fields(
+            "anagrafiche", "soggetti", record_id=soggetto["id"],
+        )
 
     # =================================================================
     # Creazione soggetto (orchestratore)

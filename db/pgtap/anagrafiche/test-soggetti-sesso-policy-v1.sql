@@ -45,6 +45,9 @@ BEGIN;
 -- Contesto applicativo: il test gira come l'applicazione (RLS attiva).
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- Il SUPER_ADMIN del test 15 (S-BE-3): costruito qui, con le fixture.
+CREATE TEMP TABLE _sa AS SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-SA-sesso', true);
+
 -- La finestra differita la dichiara il file (vedi l'esenzione in testa).
 SET CONSTRAINTS ALL DEFERRED;
 
@@ -179,6 +182,13 @@ SELECT throws_ok(
     '23514', NULL,
     '14. ''S'' su una ditta individuale -> CHECK chk_soggetti_sesso (fuori vocabolario)');
 
+-- ⚠️ Dal 2026-11-09 (brief-db-revisione-dbops, S-BE-3, N4 deciso da Tid: strada a) una P.IVA gia'
+--   scritta la toglie solo il SUPER_ADMIN (anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile):
+--   il passaggio da ditta individuale a privato lo fa lui, e il test prova il sesso; poi si torna
+--   all'operatore di prima.
+CREATE TEMP TABLE _op_prima AS SELECT current_setting('app.current_user_id', true)::integer AS auth_user_id;
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _sa));
+
 SELECT throws_like(
     $$UPDATE anagrafiche.soggetti
          SET tipo_soggetto_dettaglio_id = (SELECT id FROM config.tipi_soggetto_dettaglio
@@ -187,6 +197,8 @@ SELECT throws_like(
        WHERE id = (SELECT id FROM _di)$$,
     '%sesso e'' obbligatorio%',
     '15. la ditta individuale diventa privato senza sesso -> E_SESSO_OBBLIGATORIO');
+
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _op_prima));
 
 -- ============================================================
 -- Porte e chiamanti

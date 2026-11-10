@@ -31,6 +31,9 @@ AS $function$
       AND (p_table IS NULL OR tbl.relname = p_table)
     ORDER BY tbl.relname, idx.relname;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_list_indices(p_schema text, p_table text)
+IS 'Strumento DBA: gli indici di uno schema, o di una sola tabella se p_table non e'' NULL, con tabella, nome, unicita'', chiave primaria e definizione (pg_get_indexdef), in ordine di tabella e di indice. Legge solo i cataloghi di sistema; nessun chiamante nel database ne'' nel backend.';
 ```
 
 </div>

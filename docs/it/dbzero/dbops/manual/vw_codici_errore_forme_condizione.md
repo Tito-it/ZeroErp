@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_codici_errore_forme_condizione`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,6 +18,7 @@
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la chiamata che segna un punto che solleva
 > * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti che la vista taglia a righe
 > * [dbops.fn_regexp_occorrenze](/dbzero/dbops/funzioni/fn_regexp_occorrenze) — l'estrazione dei codici di una riga
+> * [dbops.fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile) — il perimetro delle viste sorelle, che questa non usa
 
 ---
 
@@ -33,6 +34,26 @@ che è proprio il caso su cui la risposta è «va bene così»: un codice di val
 per definizione, ed è la forma del controllo a dire se sta accumulando significati diversi.
 
 La vista **non filtra di proposito**: chi filtra decide che cosa non vedere.
+
+---
+
+### ⚠️ Il perimetro: il solo PL/pgSQL, per decisione
+
+Le viste sorelle sui codici
+([vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare),
+[vw_punti_canale_campo](/dbzero/dbops/views/vw_punti_canale_campo),
+[vw_funzioni_check_codici](/dbzero/dbops/views/vw_funzioni_check_codici),
+[vw_punti_primo_motivo](/dbzero/dbops/views/vw_punti_primo_motivo),
+[vw_bersagli_non_dichiarati](/dbzero/dbops/views/vw_bersagli_non_dichiarati)) leggono ogni corpo
+leggibile, PL/pgSQL e SQL, come lo decide
+[fn_corpo_leggibile](/dbzero/dbops/funzioni/fn_corpo_leggibile). Questa no: resta sul solo PL/pgSQL,
+di proposito (decisione di Tid, 2026-11-09).
+
+Il motivo è la sua grammatica. La vista riconosce la guardia dalle righe `IF`, `ELSIF`, `ELSE`,
+`EXCEPTION WHEN`, e una funzione SQL non le ha: la sua condizione sta in un `WHERE` o in un `CASE`.
+Letta con questa grammatica non darebbe punti, né giusti né sbagliati. Una funzione SQL che solleva
+un codice resta visibile nella misura dei codici,
+[vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare).
 
 ---
 
@@ -135,8 +156,8 @@ materia del cancello, e il verdetto lo dà la build.
 
 Condivide i punti ciechi di
 [vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare): legge
-letterali in corpi PL/pgSQL, e non vede i codici costruiti per concatenazione né i `RAISE EXCEPTION`
-diretti. I commenti, di riga e a blocco, non entrano: un codice citato in un commento non è un
+letterali, e non vede i codici costruiti per concatenazione né i `RAISE EXCEPTION` diretti. In più
+legge i soli corpi PL/pgSQL, dove la sorella legge anche le funzioni SQL. I commenti, di riga e a blocco, non entrano: un codice citato in un commento non è un
 punto.
 
 La vista è `security_invoker` e legge i cataloghi di sistema.
@@ -153,6 +174,8 @@ La vista è `security_invoker` e legge i cataloghi di sistema.
   per forma; un parametro nullo resta `PARAMETRO`, un campo di un record no; due codici sulla stessa
   riga sono due punti con la stessa guardia (test 9); un codice in un commento a blocco non è un
   punto (test 10).
+* `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql`, test 8 — la vista resta sul
+  PL/pgSQL per decisione: i codici sollevati dalle funzioni SQL costruite nel test non ci sono.
 
 ---
 
@@ -182,6 +205,9 @@ La vista è `security_invoker` e legge i cataloghi di sistema.
 
 * 2026-11-07 — nel catalogo dei presidi passa da `LAVORAZIONE` a `CANCELLO`, presidiata dal
   passo B-7 (`brief-db-revisione-dbops`, giro 6).
+* 2026-11-09 — la vista non cambia: il `COMMENT` dichiara il perimetro, il solo PL/pgSQL, e perché,
+  ora che le viste sorelle leggono anche le funzioni SQL (`20261110-84`, `brief-db-revisione-dbops`,
+  giro 12).
 
 ---
 

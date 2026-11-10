@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_storico_arma_scope`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -50,7 +50,9 @@ convergenza, sulle shadow che ci sono già.
    accesa e tre policy — una di lettura per la veste operatore sull'emittente congelato, e due di
    scrittura, inserimento e aggiornamento, senza filtro.
 
-Le colonne nascono con il loro commento, scritto qui.
+5. **Il commento delle due colonne**, il cui testo sta qui e solo qui. Si riporta a quel testo ogni
+   volta che manca o è diverso, anche su una shadow già armata: un testo corretto arriva a tutte le
+   shadow alla prossima convergenza, senza un changeSet che lo ricopi shadow per shadow.
 
 ---
 
@@ -72,7 +74,7 @@ riga per riga, con l'emittente congelato.
 
 È una rete che converge, non una migrazione:
 
-* non registra niente su una shadow già allineata;
+* non registra niente su una shadow già allineata (commenti compresi);
 * **non disarma mai**: una shadow condivisa fra una madre protetta e una `NESSUNO` resta armata, e
   una riga di mappa che torna a `NESSUNO` non spegne la RLS;
 * una policy si crea **se manca il nome**: una policy che esiste già con un'espressione diversa non
@@ -111,6 +113,8 @@ non scrive niente, nemmeno il `WARN` del salto.
   armata se tutte le sue madri sono `NESSUNO`; la policy di lettura è quella del perimetro per
   istruzione; le policy di scrittura sono senza filtro; una shadow di prova nasce armata e il trigger
   scrive attraverso la RLS; l'applicazione non ha `DELETE` su nessuna shadow.
+* `db/pgtap/dbops/test-comment-al-presente-v1.sql` (test 5) — il commento delle due colonne, su
+  ogni shadow, non porta brief, marcatori di revisione, id di changeSet o hash.
 
 ---
 
@@ -122,6 +126,8 @@ non scrive niente, nemmeno il `WARN` del salto.
   riscritte un changeSet a parte, perché la funzione non le tocca.
 * 2026-11-08 — il proprietario si riconosce dai privilegi (appartenenza con `INHERIT`, o superuser),
   non più dal nome del ruolo.
+* 2026-11-09 — il commento delle due colonne si descrive al presente e converge anche sulle shadow
+  già armate; prima si scriveva solo quando la colonna nasceva.
 
 ---
 

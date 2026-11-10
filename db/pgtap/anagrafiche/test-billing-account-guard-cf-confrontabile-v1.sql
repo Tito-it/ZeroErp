@@ -186,9 +186,18 @@ $$, '%id fiscale diverso%',
 --   configurato oggi li ammette entrambi nulli — esce in testa solo se il tipo
 --   non e' dichiarato. E' anche la configurazione dell'unico soggetto senza CF
 --   presente nell'istanza.
+-- ⚠️ Dal 2026-11-09 (brief-db-revisione-dbops, S-BE-3) un CF o una P.IVA gia' scritti li
+--   cambia o li svuota solo il SUPER_ADMIN (anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile):
+--   la preparazione la fa lui, poi si torna all'operatore del mondo.
+CREATE TEMP TABLE _t_sa ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-SA-P3', true);
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _t_sa));
+
 UPDATE anagrafiche.soggetti
    SET tipo_soggetto_dettaglio_id = NULL, codice_fiscale = NULL, partita_iva = NULL
  WHERE id IN ((SELECT sog_a FROM _t_ref), (SELECT sog_b FROM _t_ref));
+
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _t_mondo));
 
 SELECT throws_like($$
     UPDATE anagrafiche.billing_account

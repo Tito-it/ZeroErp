@@ -18,7 +18,7 @@
 //    mount, quindi il caricamento sta in `onMounted` (§Pattern Tab-View). Il
 //    drawer di dettaglio resta nella vista, fuori dai `Tabs`: qui si emette
 //    solo la riga cliccata.
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -32,6 +32,8 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import { displayTimestamp } from '../../core/utils/date'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { getProcessiVocabolari } from '../api/amministrazione'
 
 const emit = defineEmits(['apri'])
 
@@ -57,19 +59,33 @@ const {
 const { bindSelect } = useStoreFilterBindings(store, applyFilters)
 const { value: classeFilter, onChange: onClasseChange } = bindSelect('classe')
 const { value: canaleFilter, onChange: onCanaleChange } = bindSelect('canale')
+const { value: vivoFilter, onChange: onVivoChange } = bindSelect('vivo')
 
-const classeOptions = [
-  { label: t('amministrazione.processi.classe_tutte'), value: null },
-  { label: 'MANUTENZIONE', value: 'MANUTENZIONE' },
-  { label: 'AMMINISTRAZIONE', value: 'AMMINISTRAZIONE' },
-  { label: 'DOMINIO', value: 'DOMINIO' },
+// ⛔ Classi e canali NON si scrivono qui: arrivano dal backend
+//    (`GET processi/vocabolari/`), che li legge dalle stesse costanti con cui
+//    rifiuta un filtro — e quelle hanno il loro guardrail sui CHECK di
+//    `dbops.processi`. Fino al 2026-11-09 c'era una copia a mano senza
+//    presidio, e le mancava `CODA_AUTOMATICA` (nel CHECK dal 05-09): i
+//    processi svegliati da una macchina non si potevano filtrare, senza errore.
+const vocabolari = useGlobalLookup('amm.processi.vocabolari', getProcessiVocabolari, {
+  immediate: true, transform: (r) => r.data.data,
+})
+const opzioni = (tutti, codici) => [
+  { label: tutti, value: null },
+  ...(codici ?? []).map((c) => ({ label: c, value: c })),
 ]
-const canaleOptions = [
-  { label: t('amministrazione.processi.canale_tutti'), value: null },
-  { label: 'PGAGENT', value: 'PGAGENT' },
-  { label: 'COMMAND', value: 'COMMAND' },
-  { label: 'CODA', value: 'CODA' },
-]
+const classeOptions = computed(() => opzioni(
+  t('amministrazione.processi.classe_tutte'), vocabolari.items.value.classi,
+))
+const canaleOptions = computed(() => opzioni(
+  t('amministrazione.processi.canale_tutti'), vocabolari.items.value.canali,
+))
+// «Vivo» lo decide il DB sulla data del ritiro (`obsoleto_dal`), non `attivo`.
+const vivoOptions = computed(() => [
+  { label: t('amministrazione.processi.vivo_tutti'), value: null },
+  { label: t('amministrazione.processi.vivo_si'), value: true },
+  { label: t('amministrazione.processi.vivo_no'), value: false },
+])
 
 // La LISTA al mount: il rientro lo rinfresca gia' lo scaffolding
 // (`useListaConfigurabilePage` → `useSearchTable`).
@@ -107,6 +123,15 @@ onMounted(() => {
           :placeholder="t('amministrazione.processi.canale_tutti')"
           @change="onCanaleChange"
         />
+        <Select
+          v-model="vivoFilter"
+          class="app-filter-w-sm"
+          :options="vivoOptions"
+          option-label="label"
+          option-value="value"
+          :placeholder="t('amministrazione.processi.vivo_tutti')"
+          @change="onVivoChange"
+        />
       </FiltriLista>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
@@ -138,6 +163,15 @@ onMounted(() => {
     >
       <template #cell-classe="{ data }">
         <Tag :value="data.classe" severity="info" />
+      </template>
+
+      <template #cell-vivo="{ data }">
+        <!-- «Vivo» lo proietta il BE dal DB (`fn_e_obsoleto` sulla data del
+             ritiro): non `attivo`, che non dice se il processo è ritirato. -->
+        <Tag
+          :value="t(data.vivo ? 'amministrazione.processi.stato_vivo' : 'amministrazione.processi.stato_ritirato')"
+          :severity="data.vivo ? 'success' : 'secondary'"
+        />
       </template>
 
       <template #cell-identita_attive="{ data }">

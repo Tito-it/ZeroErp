@@ -36,7 +36,7 @@
 | trg_area_geografica_fatturazione_a10_area_geografica_fat_ac8b7b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'area_geografica_fatturazione_comuni', 'area_geografica_id', 'id', 'attivo')` |
 | trg_area_geografica_fatturazione_a10_attivita_fatturabil_736ee0 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili', 'area_geografica_id', 'id', 'attivo')` |
 | trg_area_geografica_fatturazione_a10_commesse_attivita_b_717fad | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_attivita', 'area_geografica_id', 'id', 'attivo')` |
-| trg_area_geografica_fatturazione_a10_fatturazione_lotti__ea0fab | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti', 'area_geografica_id', 'id', 'attivo')` |
+| trg_area_geografica_fatturazione_a10_fatturazione_lotti_ea0fab | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti', 'area_geografica_id', 'id', 'attivo')` |
 | trg_area_geografica_fatturazione_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_area_geografica_fatturazione_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_area_geografica_fatturazione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

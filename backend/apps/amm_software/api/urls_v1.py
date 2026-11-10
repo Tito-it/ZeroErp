@@ -37,12 +37,14 @@ urlpatterns = [
     path("error-log/", views.ErrorLogListView.as_view(), name="amm-error-log"),
     path("error-log/export/", views.ErrorLogExportView.as_view(), name="amm-error-log-export"),
     # Processi automatici (registro + presidi + utenti tecnici).
-    # ⚠️ `presidi/` PRIMA di `<str:codice>/`, o Django lo leggerebbe come il
-    #    codice di un processo che si chiama "presidi".
+    # ⚠️ `presidi/` e `vocabolari/` PRIMA di `<str:codice>/`, o Django li
+    #    leggerebbe come il codice di un processo che si chiama cosi'.
     path("processi/", views.ProcessiListView.as_view(), name="amm-processi-list"),
     path("processi/presidi/", views.ProcessiPresidiView.as_view(), name="amm-processi-presidi"),
     # La testata sola, per il pallino della topbar: stessa regola d'ordine.
     path("processi/presidi/conteggi/", views.ProcessiPresidiConteggiView.as_view(), name="amm-processi-presidi-conteggi"),
+    # I vocabolari dei filtri del pannello: stessa regola d'ordine.
+    path("processi/vocabolari/", views.ProcessiVocabolariView.as_view(), name="amm-processi-vocabolari"),
     path("processi/<str:codice>/", views.ProcessiDetailView.as_view(), name="amm-processi-detail"),
     path("processi/<str:codice>/run/", views.ProcessiRunView.as_view(), name="amm-processi-run"),
     path("processi/<str:codice>/identita/", views.ProcessiIdentitaView.as_view(), name="amm-processi-identita"),

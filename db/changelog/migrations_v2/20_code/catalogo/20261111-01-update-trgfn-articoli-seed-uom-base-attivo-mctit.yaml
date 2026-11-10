@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_articoli_seed_uom_base: la riga base nasce attiva o spenta come
+#   l'articolo (D7), e senza ON CONFLICT (D13).
+#
+#   D7: la riga base nasceva sempre attiva, e un articolo creato spento falliva al
+#   COMMIT sul vincolo generato che pretende un padre attivo. D13: l'ON CONFLICT
+#   nominava uq_artuomop_articolo_uom, che -02 sostituisce col vincolo temporale;
+#   all'INSERT di un articolo nuovo la riga non esiste mai, e il ramo non serviva.
+#   Numerato prima di -02: il corpo nuovo non nomina nessun vincolo.
+#   D7 era del giro 3; sta qui perche' il giro 2 apre gia' questa funzione.
+#   Corpo di partenza da pg_get_functiondef su dbdev (2026-11-09); rollback = corpo e
+#   COMMENT di prima.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-01-update-trgfn-articoli-seed-uom-base-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20261111-01-update-trgfn-articoli-seed-uom-base-attivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_articoli_seed_uom_base: la riga base segue attivo dell'articolo, senza ON CONFLICT. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('catalogo.trgfn_articoli_seed_uom_base()'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_seed_uom_base()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- La riga dell'unita' base nasce con l'articolo: unita' dell'articolo,
+                  -- fattore 1, nessuna data (vale sempre), attiva o spenta come l'articolo.
+                  -- Un articolo che nasce spento ha la riga base spenta: una figlia attiva
+                  -- sotto un padre spento la rifiuterebbe il vincolo generato
+                  -- ..._articoli_require_attivo. L'articolo e' nuovo, quindi la riga non c'e'
+                  -- ancora: niente ON CONFLICT.
+                  INSERT INTO catalogo.articoli_uom_operativa (
+                      articolo_id, uom_id, is_base, factor_to_base, attivo)
+                  VALUES (NEW.id, NEW.uom_id, TRUE, 1, NEW.attivo);
+
+                  RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_seed_uom_base() IS
+                  'Trigger AFTER INSERT su catalogo.articoli: crea la riga dell''unita'' base in catalogo.articoli_uom_operativa (is_base, l''unita'' dell''articolo, factor_to_base = 1, senza date di validita''), attiva o spenta come l''articolo. E'' la strada della riga base: catalogo.trgfn_articoli_uom_operativa_guard_base impedisce di spostarla, di toglierla e di crearne una su un''altra unita''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_seed_uom_base()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  INSERT INTO catalogo.articoli_uom_operativa (
+                      articolo_id,
+                      uom_id,
+                      is_base,
+                      factor_to_base,
+                      attivo
+                  )
+                  VALUES (
+                      NEW.id,
+                      NEW.uom_id,
+                      TRUE,
+                      1,
+                      TRUE
+                  )
+                  ON CONFLICT ON CONSTRAINT uq_artuomop_articolo_uom DO NOTHING;
+
+                  RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_seed_uom_base() IS
+                  'Trigger AFTER INSERT su catalogo.articoli: crea automaticamente la riga is_base=true in articoli_uom_operativa con factor_to_base=1. Idempotente.';

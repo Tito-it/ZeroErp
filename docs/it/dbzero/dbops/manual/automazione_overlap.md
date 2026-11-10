@@ -1,12 +1,13 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_overlap`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento funzioni:
 >
 > * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — legge il registro e crea i vincoli che mancano
+> * [dbops.fn_jsonb_array_di_testi](/dbzero/dbops/funzioni/fn_jsonb_array_di_testi) — la forma delle due liste di chiave, letta dal CHECK
 > * [maintenance.proc_automations_overlap_job](/dbzero/maintenance/funzioni/proc_automations_overlap_job) — il giro che esegue l'apply, a orario e nella convergenza del rilascio
 >
 > Guide:
@@ -36,7 +37,10 @@ identico a quello registrato.
 * **La chiave logica**, cioè le righe che non possono sovrapporsi fra loro: `key_columns` sono
   colonne semplici, che l'apply verifica e quota; `key_expressions` sono **espressioni** (per
   esempio un `COALESCE` che rende uguali fra loro i NULL di una colonna facoltativa), che l'apply
-  usa così come sono scritte. Le due liste si sommano; serve almeno una chiave.
+  usa così come sono scritte. Le due liste si sommano, colonne prima ed espressioni dopo, ciascuna
+  nell'ordine in cui è scritta; serve almeno una chiave. Entrambe sono **array JSON di testi**
+  (per esempio `["listino_id"]`), oppure vuote: il CHECK `chk_automazione_overlap_chiavi`
+  rifiuta un valore che non è un array o un array con un elemento che non è un testo.
 * **Il periodo**, in due forme: una colonna range nativa (`range_col`, per esempio una
   `validita` generata) oppure la coppia di date `valido_dal_col` / `valido_al_col`, da cui
   l'apply costruisce l'intervallo con gli estremi di `range_bounds` (di norma inclusi entrambi) e
@@ -51,7 +55,7 @@ identico a quello registrato.
 * **L'interruttore**: `active` vero rende la riga eleggibile; `exec_mode` (`AUTO`, `CI`,
   `SCHEDULED`) la limita a un contesto d'esecuzione, e `AUTO` vale per tutti. ⚠️ Spegnere una
   riga non toglie il vincolo già creato: togliere un vincolo d'integrità è una decisione, e la
-  prende lo stesso changeSet che spegne la riga. Un presidio pgTAP è rosso se una regola spenta ha
+  prende un changeSet esplicito, nello stesso cantiere che spegne la riga nel CSV. Un presidio pgTAP è rosso se una regola spenta ha
   ancora il suo vincolo.
 * `note` racconta perché la riga è com'è.
 
@@ -60,20 +64,26 @@ identico a quello registrato.
 ### ⛔ `key_expressions` e `where_predicate` sono DDL di fiducia
 
 I due campi entrano nel vincolo come testo, senza essere quotati né verificati: sono frammenti
-di DDL. Li scrive solo chi migra, con un changeSet di `80_data`; mai un input applicativo.
+di DDL. Li scrive solo chi migra, nel CSV del registro; mai un input applicativo.
 
 ---
 
-### Chi scrive il registro
+### ⭐ È un mirror del CSV
 
-Le righe si registrano a mano, con changeSet di `80_data`, quando un vincolo di non
-sovrapposizione nasce o cambia forma. È l'unica sorgente del registro: non c'è una rilevazione
-automatica che le deduca dallo schema.
+Le righe vengono dal CSV `80_data/sql/dbops/automazione_overlap.csv`, ricaricato a ogni migrate,
+come le altre tabelle `automazione_*` di `dbops`. Un vincolo di non sovrapposizione che nasce o
+cambia forma si registra lì, a mano: è l'unica sorgente del registro, e non c'è una rilevazione
+automatica che deduca le righe dallo schema. Nel CSV le due liste di chiave si scrivono come array
+JSON.
+
+Il caricamento aggiorna e aggiunge, non cancella: una riga che c'è solo sul database di una
+macchina resta. Per ritirare una regola la si spegne nel CSV (`active` falso).
 
 ⚠️ Cambiare `where_predicate` o la chiave di una riga **non** cambia un vincolo già creato:
 l'apply salta la tabella se ci trova già il vincolo col nome della riga (o un
 `UNIQUE … WITHOUT OVERLAPS` sul periodo), senza confrontarne la forma. Il vincolo vecchio si toglie
-nello stesso changeSet che cambia la riga, e il giro successivo lo ricrea nella forma nuova.
+con un changeSet, nello stesso cantiere che cambia la riga nel CSV, e il giro successivo lo ricrea
+nella forma nuova.
 Un altro `EXCLUDE` della tabella, con un altro nome, non conta: la regola riceve comunque il suo.
 
 ---
@@ -85,6 +95,8 @@ Un altro `EXCLUDE` della tabella, con un altro nome, non conta: la regola riceve
 * `db/pgtap/dbops/test-overlap-regola-e-vincolo-v1.sql` — ogni regola attiva su una tabella che
   esiste ha il suo vincolo, per nome, o un `UNIQUE … WITHOUT OVERLAPS` sul periodo; nessuna regola
   spenta ha ancora il suo vincolo vivo.
+* `db/pgtap/dbops/test-nomi-e-chiavi-registri-v1.sql` — le due liste di chiave sono `jsonb`, e il
+  CHECK rifiuta una chiave che non è un array e un array con un elemento che non è un testo.
 * `db/pgtap/vendite/test-listino-versione-in-vigore-v1.sql` — la riga del registro delle versioni
   di listino dice lo stesso predicato del vincolo vivo.
 * I test del comportamento dell'apply sono nella scheda di
@@ -108,6 +120,13 @@ Un altro `EXCLUDE` della tabella, con un altro nome, non conta: la regola riceve
 * 2026-11-08 — l'apply riconosce il vincolo della riga per nome, non da un qualsiasi `EXCLUDE`
   che nomini la colonna del periodo; il nome viene da `fn_nome_oggetto_dichiarato`, e sparisce la
   variante col suffisso `_c` (`brief-db-revisione-dbops`, giro 10c).
+* 2026-11-09 — `key_columns` e `key_expressions` passano da array di testo nativi a `jsonb`
+  (array JSON di testi), col CHECK `chk_automazione_overlap_chiavi`; il registro prende il suo CSV,
+  come gli altri `automazione_*` (`20261110-38`, `-39`, `-40`, brief-db-revisione-dbops, giro 10c).
+  Prima era l'unica tabella di configurazione senza CSV, perché Liquibase non carica un array
+  nativo da un CSV, e le righe le scrivevano `INSERT` e `UPDATE` sparsi nei changelog. Il cambio
+  di tipo sta in `80_data`, dopo quei changeSet vecchi, che su un database da zero scrivono ancora
+  le chiavi nella forma di prima.
 
 ---
 

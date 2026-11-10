@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_uom_conversioni_guard_tipo: un codice registrato, il nome della
+#   funzione nel log, le unita' lette FOR SHARE (D6, D15).
+#
+#   D6: sollevava E_GENERICO (classe TECNICO) con una frase libera, e registrava il
+#   trigger al posto della funzione. Ora E_UOM_CONVERSIONE_TIPO_DIVERSO, coi codici
+#   delle unita' e le tipologie. Tolto il ramo su tipo_uom_id NULL (la colonna e' NOT
+#   NULL): resta solo l'unita' inesistente, che rifiuta la FK.
+#   D15: le due unita' si leggono FOR SHARE, contro un cambio di tipologia concorrente
+#   (provato a due sessioni sullo scratch, §13 del brief).
+#   Corpo di partenza da pg_get_functiondef su dbdev (2026-11-09); rollback = corpo e
+#   COMMENT di prima.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-11-update-trgfn-uom-conversioni-guard-tipo-codice-mctit.yaml
+
+  - changeSet:
+      id: 20261111-11-update-trgfn-uom-conversioni-guard-tipo-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_uom_conversioni_guard_tipo: E_UOM_CONVERSIONE_TIPO_DIVERSO, unita' lette FOR SHARE. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('catalogo.trgfn_uom_conversioni_guard_tipo()'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_from_tipo   catalogo.unita_misura.tipo_uom_id%TYPE;
+                  v_to_tipo     catalogo.unita_misura.tipo_uom_id%TYPE;
+                  v_from_codice catalogo.unita_misura.codice%TYPE;
+                  v_to_codice   catalogo.unita_misura.codice%TYPE;
+                  v_from_tdesc  catalogo.uom_tipi.descrizione%TYPE;
+                  v_to_tdesc    catalogo.uom_tipi.descrizione%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Una conversione generale vale solo fra unita' della stessa
+                  --   tipologia (massa con massa, tempo con tempo). Le conversioni
+                  --   fra tipologie diverse (il cartone di pezzi) sono dell'articolo:
+                  --   catalogo.articoli_uom_operativa.
+                  -- FOR SHARE: la tipologia letta non cambia finche' la conversione
+                  --   non e' scritta. Senza, una transazione che cambia la tipologia
+                  --   dell'unita' (e conta zero conversioni) e una che scrive la
+                  --   conversione (e legge la tipologia vecchia) passerebbero tutte e
+                  --   due. FOR SHARE aspetta il NO KEY UPDATE dell'altra, e viceversa.
+                  -- =========================================================
+                  SELECT u.tipo_uom_id, u.codice INTO v_from_tipo, v_from_codice
+                    FROM catalogo.unita_misura u
+                   WHERE u.id = NEW.uom_from_id
+                     FOR SHARE;
+
+                  SELECT u.tipo_uom_id, u.codice INTO v_to_tipo, v_to_codice
+                    FROM catalogo.unita_misura u
+                   WHERE u.id = NEW.uom_to_id
+                     FOR SHARE;
+
+                  -- Un'unita' che non c'e': parla la FK.
+                  IF v_from_codice IS NULL OR v_to_codice IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_from_tipo IS DISTINCT FROM v_to_tipo THEN
+                      SELECT t.descrizione INTO v_from_tdesc FROM catalogo.uom_tipi t WHERE t.id = v_from_tipo;
+                      SELECT t.descrizione INTO v_to_tdesc   FROM catalogo.uom_tipi t WHERE t.id = v_to_tipo;
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.trgfn_uom_conversioni_guard_tipo',
+                          'E_UOM_CONVERSIONE_TIPO_DIVERSO',
+                          jsonb_build_object(
+                              'campo',       'uom_to_id',
+                              'uom_from_id', NEW.uom_from_id,
+                              'uom_to_id',   NEW.uom_to_id,
+                              'tipo_from',   v_from_tipo,
+                              'tipo_to',     v_to_tipo),
+                          NULL::uuid,
+                          v_from_codice, v_to_codice,
+                          COALESCE(v_from_tdesc, '—'), COALESCE(v_to_tdesc, '—'));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo() IS
+                  'Guard BEFORE INSERT e UPDATE OF uom_from_id, uom_to_id su catalogo.unita_misura_conversioni: una conversione generale vale solo fra unita'' della stessa tipologia (catalogo.unita_misura.tipo_uom_id), altrimenti E_UOM_CONVERSIONE_TIPO_DIVERSO. Le conversioni fra tipologie diverse (il cartone di pezzi) stanno nella mappatura dell''articolo, catalogo.articoli_uom_operativa. Legge le due unita'' FOR SHARE, cosi'' un cambio di tipologia concorrente (catalogo.trgfn_unita_misura_guard_tipo) aspetta la conversione, o la conversione aspetta lui. Un''unita'' che non esiste la rifiuta la FK.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_from_tipo_id catalogo.uom_tipi.id%TYPE;
+                v_to_tipo_id   catalogo.uom_tipi.id%TYPE;
+                v_from_tipo    catalogo.uom_tipi.codice%TYPE;
+                v_to_tipo      catalogo.uom_tipi.codice%TYPE;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Bloccare conversioni globali tra UoM di tipologia diversa.
+                --
+                -- Regole:
+                --   - packaging e conversioni articolo-specifiche restano in
+                --     catalogo.articoli_uom_operativa
+                --   - qui si ammettono solo conversioni globali same-type
+                -- ==========================================================
+                SELECT ut.id, ut.codice
+                  INTO v_from_tipo_id, v_from_tipo
+                  FROM catalogo.unita_misura u
+                  JOIN catalogo.uom_tipi ut
+                    ON ut.id = u.tipo_uom_id
+                 WHERE u.id = NEW.uom_from_id;
+
+                SELECT ut.id, ut.codice
+                  INTO v_to_tipo_id, v_to_tipo
+                  FROM catalogo.unita_misura u
+                  JOIN catalogo.uom_tipi ut
+                    ON ut.id = u.tipo_uom_id
+                 WHERE u.id = NEW.uom_to_id;
+
+                IF v_from_tipo_id IS NULL OR v_to_tipo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                IF v_from_tipo_id IS DISTINCT FROM v_to_tipo_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'catalogo',
+                    TG_NAME,
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'uom_from_id', NEW.uom_from_id,
+                      'uom_to_id', NEW.uom_to_id,
+                      'tipo_from', v_from_tipo,
+                      'tipo_to', v_to_tipo,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    'Conversione globale non ammessa tra UoM di tipologia diversa.'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo() IS
+                  'Blocca conversioni globali tra UoM di tipologia diversa in catalogo.unita_misura_conversioni.';

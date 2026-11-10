@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Indici DUPLICATI ESATTI negli schemi in dbops.automation_scope. Raggruppa per firma normalizzata (pg_get_indexdef senza nome, senza WITH(...) e senza TABLESPACE): due indici nello stesso gruppo sono intercambiabili (la chiave primaria non entra nel confronto). Il primo dell'ordinamento si tiene (indice_da_tenere), gli altri sono proposti in indici_da_droppare. L'ordinamento mette prima gli indici che reggono un vincolo (UNIQUE, EXCLUDE, o il riferito di una FK: pg_constraint.conindid) o la replica identity, poi gli UNIQUE: un indice di vincolo non e' mai proposto per il DROP, anche quando nel gruppo ce n'e' piu' d'uno. Il flag UNIQUE non e' nella chiave di raggruppamento: un btree non-unique identico a un UNIQUE e' ridondante e deve restare visibile. Non copre la ridondanza per prefisso: per quella c'e' dbops.vw_indici_ridondanti_prefisso.
+> Indici DUPLICATI ESATTI negli schemi governati dalla politica degli indici (dbops.fn_indici_schema_nell_ambito). Raggruppa per firma normalizzata (pg_get_indexdef senza nome, senza WITH(...) e senza TABLESPACE): due indici nello stesso gruppo sono intercambiabili (la chiave primaria non entra nel confronto). Il primo dell'ordinamento si tiene (indice_da_tenere), gli altri sono proposti in indici_da_droppare. L'ordinamento mette prima gli indici che reggono un vincolo (UNIQUE, EXCLUDE, o il riferito di una FK: pg_constraint.conindid) o la replica identity, poi gli UNIQUE: un indice di vincolo non e' mai proposto per il DROP, anche quando nel gruppo ce n'e' piu' d'uno. Il flag UNIQUE non e' nella chiave di raggruppamento: un btree non-unique identico a un UNIQUE e' ridondante e deve restare visibile. Non copre la ridondanza per prefisso: per quella c'e' dbops.vw_indici_ridondanti_prefisso.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -30,9 +30,7 @@ WITH idx AS (
              JOIN pg_class t ON ((t.oid = ix.indrelid)))
              JOIN pg_namespace n ON ((n.oid = t.relnamespace)))
              JOIN pg_am am ON ((am.oid = i.relam)))
-          WHERE ((i.relkind = 'i'::"char") AND (NOT ix.indisprimary) AND ix.indisvalid AND (EXISTS ( SELECT 1
-                   FROM dbops.automation_scope sc
-                  WHERE (sc.schema_name = n.nspname))))
+          WHERE ((i.relkind = 'i'::"char") AND (NOT ix.indisprimary) AND ix.indisvalid AND dbops.fn_indici_schema_nell_ambito((n.nspname)::text))
         )
  SELECT schema_name,
     table_name,

@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_articoli_uom_operativa_guard_base e il suo trigger: la riga
+#   dell'unita' base non si sposta, non si toglie, non se ne crea una su un'altra
+#   unita' (D12).
+#
+#   Prima la riga base la proteggeva solo il frontend (la capability puo_eliminarsi):
+#   uom_id, is_base e factor_to_base erano scrivibili, e il DELETE passava. Ne usciva un
+#   articolo senza base, o con la base su un'unita' diversa da catalogo.articoli.uom_id,
+#   o con un fattore diverso da 1. Il fattore e le date li tiene il CHECK di -02; qui
+#   unita', articolo, is_base e cancellazione. La cancellazione dell'articolo passa.
+#   Brief: brief-db-revisione-catalogo, giro 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-04-create-trgfn-articoli-uom-operativa-guard-base-mctit.yaml
+
+  - changeSet:
+      id: 20261111-04-create-trgfn-articoli-uom-operativa-guard-base
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard della riga base di articoli_uom_operativa: E_UOM_RIGA_BASE_IMMUTABILE. Brief: brief-db-revisione-catalogo, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('catalogo.trgfn_articoli_uom_operativa_guard_base()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.trgfn_articoli_uom_operativa_guard_base()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_uom_articolo  catalogo.articoli.uom_id%TYPE;
+                  v_codice        catalogo.articoli.codice%TYPE;
+                  v_uom_codice    catalogo.unita_misura.codice%TYPE;
+                  v_riga          catalogo.articoli_uom_operativa%ROWTYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La riga dell'unita' base segue l'articolo: sta sull'unita'
+                  --   dell'articolo, non si sposta, non smette di essere la base,
+                  --   non si toglie. Fattore 1 e nessuna data li tiene il CHECK
+                  --   chk_articoli_uom_operativa_base_fissa.
+                  -- Eventi: INSERT; UPDATE OF articolo_id, uom_id, is_base; DELETE.
+                  -- =========================================================
+                  IF TG_OP = 'DELETE' THEN
+                      IF NOT OLD.is_base THEN
+                          RETURN OLD;
+                      END IF;
+                      SELECT a.codice INTO v_codice
+                        FROM catalogo.articoli a
+                       WHERE a.id = OLD.articolo_id;
+                      -- Articolo che non c'e' piu': e' la sua cancellazione, e la riga
+                      -- base va con lui (ON DELETE CASCADE).
+                      IF NOT FOUND THEN
+                          RETURN OLD;
+                      END IF;
+                      v_riga := OLD;
+                  ELSIF TG_OP = 'UPDATE' THEN
+                      IF NEW.is_base IS NOT DISTINCT FROM OLD.is_base
+                         AND NOT (OLD.is_base AND (NEW.uom_id IS DISTINCT FROM OLD.uom_id
+                                                   OR NEW.articolo_id IS DISTINCT FROM OLD.articolo_id)) THEN
+                          RETURN NEW;
+                      END IF;
+                      v_riga := OLD;
+                  ELSE
+                      IF NOT NEW.is_base THEN
+                          RETURN NEW;
+                      END IF;
+                      SELECT a.uom_id INTO v_uom_articolo
+                        FROM catalogo.articoli a
+                       WHERE a.id = NEW.articolo_id;
+                      -- Articolo inesistente: parla la FK.
+                      IF NOT FOUND OR NEW.uom_id IS NOT DISTINCT FROM v_uom_articolo THEN
+                          RETURN NEW;
+                      END IF;
+                      v_riga := NEW;
+                  END IF;
+
+                  SELECT a.codice, u.codice INTO v_codice, v_uom_codice
+                    FROM catalogo.articoli a
+                    LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
+                   WHERE a.id = v_riga.articolo_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'catalogo', 'catalogo.trgfn_articoli_uom_operativa_guard_base',
+                      'E_UOM_RIGA_BASE_IMMUTABILE',
+                      jsonb_build_object(
+                          'campo',       'uom_id',
+                          'operazione',  TG_OP,
+                          'articolo_id', v_riga.articolo_id,
+                          'riga_id',     v_riga.id,
+                          'bersaglio',   jsonb_build_array(
+                                             jsonb_build_object('tipo', 'ARTICOLO', 'id', v_riga.articolo_id::text))),
+                      v_riga.tx_id,
+                      COALESCE(v_uom_codice, '—'), COALESCE(v_codice, '—'));
+                  RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_uom_operativa_guard_base() IS
+                  'Guard BEFORE INSERT, UPDATE OF articolo_id, uom_id, is_base e DELETE su catalogo.articoli_uom_operativa: la riga dell''unita'' base segue l''articolo. Nasce sull''unita'' dell''articolo (catalogo.articoli.uom_id), non cambia unita'' ne'' articolo, non smette e non diventa base, e non si toglie: E_UOM_RIGA_BASE_IMMUTABILE. Passa la sua cancellazione quando l''articolo non c''e'' piu'' (ON DELETE CASCADE). Fattore 1 e nessuna data li tiene il CHECK chk_articoli_uom_operativa_base_fissa; la riga la crea catalogo.trgfn_articoli_seed_uom_base.';
+              CREATE TRIGGER trg_articoli_uom_operativa_a10_guard_base_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OF articolo_id, uom_id, is_base OR DELETE
+                  ON catalogo.articoli_uom_operativa
+                  FOR EACH ROW EXECUTE FUNCTION catalogo.trgfn_articoli_uom_operativa_guard_base();
+              COMMENT ON TRIGGER trg_articoli_uom_operativa_a10_guard_base_ins_upd_dlt ON catalogo.articoli_uom_operativa IS
+                  'La riga dell''unita'' base segue l''articolo (catalogo.trgfn_articoli_uom_operativa_guard_base).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_uom_operativa_a10_guard_base_ins_upd_dlt ON catalogo.articoli_uom_operativa;
+              DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_uom_operativa_guard_base();

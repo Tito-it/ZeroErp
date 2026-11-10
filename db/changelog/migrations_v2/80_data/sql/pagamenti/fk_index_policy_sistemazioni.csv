@@ -1,5 +1,0 @@
-schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
-pagamenti,sistemazioni,fk_sistemazioni_fattura_origine,true,"CREATE INDEX IF NOT EXISTS ix_sistemazioni_fattura_origine_id ON pagamenti.sistemazioni(fattura_origine_id);",false,titodb,2026-08-22 00:00:00+02
-pagamenti,sistemazioni,fk_sistemazioni_fattura_destinazione,false,"CREATE INDEX IF NOT EXISTS ix_sistemazioni_fattura_destinazione_id ON pagamenti.sistemazioni(fattura_destinazione_id) WHERE fattura_destinazione_id IS NOT NULL;",false,titodb,2026-08-22 00:00:00+02
-pagamenti,sistemazioni,fk_sistemazioni_cliente,false,"CREATE INDEX IF NOT EXISTS ix_sistemazioni_cliente_soggetto_ruolo_id ON pagamenti.sistemazioni(cliente_soggetto_ruolo_id);",false,titodb,2026-08-22 00:00:00+02
-pagamenti,sistemazioni,fk_sistemazioni_emittente,false,"CREATE INDEX IF NOT EXISTS ix_sistemazioni_emittente_soggetto_ruolo_id ON pagamenti.sistemazioni(emittente_soggetto_ruolo_id);",false,titodb,2026-08-22 00:00:00+02

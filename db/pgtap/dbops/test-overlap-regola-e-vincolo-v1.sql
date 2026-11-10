@@ -77,10 +77,10 @@ INSERT INTO dbops.tst_ov_sovrapposte VALUES
     (2, 7, daterange('2026-03-01', '2026-12-31', '[]'));
 
 INSERT INTO dbops.automazione_overlap (target_schema, target_table, key_columns, range_col, active, exec_mode, note)
-VALUES ('dbops', 'tst_ov_chiave',      ARRAY['articolo_id', 'colonna_che_non_ce'], 'validita', true, 'AUTO', 'pgTAP'),
-       ('dbops', 'tst_ov_sovrapposte', ARRAY['articolo_id'],                       'validita', true, 'AUTO', 'pgTAP'),
-       ('dbops', 'tst_ov_pulita',      ARRAY['articolo_id'],                       'validita', true, 'AUTO', 'pgTAP'),
-       ('dbops', 'tst_ov_estraneo',    ARRAY['articolo_id'],                       'validita', true, 'AUTO', 'pgTAP');
+VALUES ('dbops', 'tst_ov_chiave',      '["articolo_id", "colonna_che_non_ce"]'::jsonb, 'validita', true, 'AUTO', 'pgTAP'),
+       ('dbops', 'tst_ov_sovrapposte', '["articolo_id"]'::jsonb,                    'validita', true, 'AUTO', 'pgTAP'),
+       ('dbops', 'tst_ov_pulita',      '["articolo_id"]'::jsonb,                    'validita', true, 'AUTO', 'pgTAP'),
+       ('dbops', 'tst_ov_estraneo',    '["articolo_id"]'::jsonb,                    'validita', true, 'AUTO', 'pgTAP');
 
 CREATE TEMP TABLE _prima AS SELECT COALESCE(max(id), 0) AS ultimo_id FROM dbops.audit_log;
 

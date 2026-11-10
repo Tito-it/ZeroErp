@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Indici btree ridondanti PER PREFISSO negli schemi in dbops.automation_scope: le colonne chiave di indice_ridondante sono la testa di quelle di coperto_da, con stessi opclass, collation, ordinamento e stesso predicato. PostgreSQL usa gia' coperto_da per ogni ricerca sulle colonne di indice_ridondante, controllo referenziale delle FK compreso. Complementare a dbops.vw_duplicate_indexes, che vede solo i duplicati esatti e per costruzione non puo' vedere questi. Esclude PK, UNIQUE, REPLICA IDENTITY e indici a supporto di un constraint: sono candidati al DROP, non si suggerisce di rimuovere cio' che impone integrita'. origine dice COME si rimuove: AUTOMAZIONE_FK = agire su dbops.fk_index_policy (un DROP secco verrebbe rifatto dal job settimanale), MANUALE = DROP in changeSet.
+> Indici btree ridondanti PER PREFISSO negli schemi governati dalla politica degli indici (dbops.fn_indici_schema_nell_ambito): le colonne chiave di indice_ridondante sono la testa di quelle di coperto_da, con stessi opclass, collation, ordinamento e stesso predicato. PostgreSQL usa gia' coperto_da per ogni ricerca sulle colonne di indice_ridondante, controllo referenziale delle FK compreso. Complementare a dbops.vw_duplicate_indexes, che vede solo i duplicati esatti. Esclude PK, UNIQUE, REPLICA IDENTITY e indici a supporto di un constraint: non si suggerisce di togliere cio' che impone integrita'. origine dice COME si toglie: AUTOMAZIONE_FK = una riga di dbops.fk_index_policy nomina proprio quell'indice (indice_nome, per uguaglianza) e la si porta a SENZA_INDICE nel CSV (un DROP secco lo rifarebbe l'apply se la riga e' CON_INDICE); MANUALE = DROP in un changeSet. policy_decisione e' la decisione di quella riga.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -30,9 +30,7 @@ WITH idx AS (
              JOIN pg_class t ON ((t.oid = ix.indrelid)))
              JOIN pg_namespace n ON ((n.oid = t.relnamespace)))
              JOIN pg_am am ON ((am.oid = i.relam)))
-          WHERE ((i.relkind = 'i'::"char") AND (am.amname = 'btree'::name) AND ix.indisvalid AND ix.indisready AND (EXISTS ( SELECT 1
-                   FROM dbops.automation_scope sc
-                  WHERE (sc.schema_name = n.nspname))))
+          WHERE ((i.relkind = 'i'::"char") AND (am.amname = 'btree'::name) AND ix.indisvalid AND ix.indisready AND dbops.fn_indici_schema_nell_ambito((n.nspname)::text))
         )
  SELECT DISTINCT ON (a.indexrelid) a.schema_name,
     a.table_name,
@@ -50,10 +48,10 @@ WITH idx AS (
             ELSE 'AUTOMAZIONE_FK'::text
         END AS origine,
     p.constraint_name AS policy_constraint_name,
-    p.consentito AS policy_consentito
+    p.decisione AS policy_decisione
    FROM (((idx a
      JOIN idx b ON (((b.indrelid = a.indrelid) AND (b.indexrelid <> a.indexrelid) AND (b.colsig[1:array_length(a.colsig, 1)] = a.colsig) AND (NOT (a.predicato IS DISTINCT FROM b.predicato)) AND ((b.indnkeyatts > a.indnkeyatts) OR b.indisunique))))
-     LEFT JOIN dbops.fk_index_policy p ON (((p.schema_name = a.schema_name) AND (p.table_name = a.table_name) AND (p.dll_command ~~* (('%'::text || a.index_name) || ' ON%'::text)))))
+     LEFT JOIN dbops.fk_index_policy p ON (((p.schema_name = a.schema_name) AND (p.table_name = a.table_name) AND (p.indice_nome = a.index_name))))
      LEFT JOIN pg_stat_user_indexes st ON ((st.indexrelid = a.indexrelid)))
   WHERE ((a.indisunique = false) AND (NOT a.indisprimary) AND (NOT a.indisreplident) AND (a.indnatts = a.indnkeyatts) AND (NOT (EXISTS ( SELECT 1
            FROM pg_constraint c

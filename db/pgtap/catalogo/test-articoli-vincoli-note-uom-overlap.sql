@@ -462,9 +462,9 @@ SELECT CASE
             true
         );
         $$,
-        '23505',
+        '23P01',
         NULL,
-        'UOM operativa duplicata (articolo_id, uom_id): bloccata'
+        'UOM operativa duplicata nello stesso periodo (articolo_id, uom_id, validita): bloccata'
     )
     ELSE ok(true, 'Test duplicato uom operativa skipped: riferimenti mancanti')
 END;
@@ -488,9 +488,9 @@ SELECT CASE
             true
         );
         $$,
-        '23505',
+        'P0001',
         NULL,
-        'Seconda UOM base per articolo: bloccata'
+        'Seconda UOM base per articolo, su un''altra unita'': bloccata (E_UOM_RIGA_BASE_IMMUTABILE)'
     )
     ELSE ok(true, 'Test seconda UOM base skipped: riferimenti mancanti')
 END;
@@ -583,8 +583,10 @@ END;
 --   eliminazione di righe non ammesse»), arrivato dopo questo file. Non e'
 --   un'operazione lecita per nessuno, e non serve: il ROLLBACK toglie la riga
 --   insieme all'articolo che la porta. Terza occorrenza in questa cartella.
-DELETE FROM catalogo.articoli_uom_operativa
-WHERE articolo_id = (SELECT id FROM tmp_art_base);
+-- 🔴 DELETE su articoli_uom_operativa RIMOSSA il 2026-11-09, per la stessa
+--   ragione: la riga dell'unita' base non si toglie (guard
+--   catalogo.trgfn_articoli_uom_operativa_guard_base, brief-db-revisione-catalogo
+--   giro 2), e il ROLLBACK la toglie con l'articolo. Quarta occorrenza.
 
 DELETE FROM catalogo.note
 WHERE target_tipo = 'ARTICOLO'
