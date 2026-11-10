@@ -42,7 +42,6 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_unita_misura,
     fn_lookup_articoli,
     fn_lookup_articoli_ammessi,
-    fn_update_componente,
     fn_update_nota,
     fn_update_articolo,
     fn_update_uom_tipo,
@@ -54,6 +53,8 @@ from apps.catalogo.services.catalogo_service import (
     fn_update_conversione,
     fn_list_note_componente,
     fn_create_nota_componente,
+    fn_get_chiusura_componente,
+    fn_chiudi_componente,
 )
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
@@ -127,8 +128,11 @@ def _uom_write_fields(*, include_uom_id: bool) -> dict[str, serializers.Field]:
 
 
 # Scopo: Definisce i campi write componente BoM per schema API.
-def _componente_write_fields(*, include_componente_id: bool) -> dict[str, serializers.Field]:
-    fields: dict[str, serializers.Field] = {
+# ⚠️ Solo la CREATE: dal 2026-11-10 un legame non si aggiorna (la PATCH e'
+#    ritirata, la fine passa dal verbo `…/chiudi/`).
+def _componente_write_fields() -> dict[str, serializers.Field]:
+    return {
+        "componente_id": serializers.UUIDField(required=True),
         "coeff_qta": serializers.DecimalField(required=False, max_digits=18, decimal_places=6),
         "obbligatorio": serializers.BooleanField(required=False),
         "valido_dal": serializers.DateField(required=False),
@@ -136,9 +140,6 @@ def _componente_write_fields(*, include_componente_id: bool) -> dict[str, serial
         "attivo": serializers.BooleanField(required=False),
         "meta": serializers.JSONField(required=False, allow_null=True),
     }
-    if include_componente_id:
-        fields = {"componente_id": serializers.UUIDField(required=True), **fields}
-    return fields
 
 
 # Scopo: Definisce i campi write nota catalogo per schema API.
@@ -191,12 +192,7 @@ _UOM_PATCH_REQUEST = inline_serializer(
 
 _COMPONENTE_CREATE_REQUEST = inline_serializer(
     name="CatalogoComponenteCreateRequest",
-    fields=_componente_write_fields(include_componente_id=True),
-)
-
-_COMPONENTE_PATCH_REQUEST = inline_serializer(
-    name="CatalogoComponentePatchRequest",
-    fields=_componente_write_fields(include_componente_id=False),
+    fields=_componente_write_fields(),
 )
 
 _NOTA_CREATE_REQUEST = inline_serializer(
@@ -561,26 +557,65 @@ class ApiArticoloComponentiListaExport(_ComponentiListaExport):  # type: ignore[
     lista_codice = "catalogo.articolo_componenti"
 
 
-class ApiArticoloComponenteDetail(DomainAPIView):
+# ⛔ Un legame NON si aggiorna e NON si cancella (2026-11-10): la rotta
+#    `…/componenti/<id>/` e' ritirata. La distinta e' una storia (trigger
+#    d'immutabilita', BE11 di brief-db-revisione-catalogo), e l'unica cosa che di
+#    un legame cambia, la fine, passa dal verbo qui sotto: la PATCH su
+#    `valido_al` era una seconda strada per la stessa scrittura, e su un legame
+#    con prezzi bundle riceveva un avviso che non sapeva confermare.
+
+
+# ⭐ La chiusura di un legame coi suoi prezzi bundle (BE19 di
+#    brief-db-revisione-catalogo, giro 3): il lettore della finestra di
+#    conferma e il verbo, l'UNICA strada per chiudere un legame: la conferma
+#    ripete la STESSA chiamata con la dichiarazione (`useForzaturaConfermata`).
+class ApiArticoloComponenteChiusura(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
 
     @extend_schema(
-        request=_COMPONENTE_PATCH_REQUEST,
+        parameters=[
+            OpenApiParameter(name="valido_al", type=str, location=OpenApiParameter.QUERY, required=True),
+        ],
         responses={
             200: inline_serializer(
-                name="CatalogoArticoloComponenteUpdateResponse",
+                name="CatalogoArticoloComponenteChiusuraResponse",
                 fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
             )
         },
     )
-    # Scopo: Aggiorna un componente BoM dell'articolo.
-    def patch(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        return success_response(fn_update_componente(articolo_id, comp_id, corpo_oggetto(request)))
+    # Scopo: I prezzi bundle che la chiusura alla data `valido_al` tocca, e il
+    #        loro numero da dichiarare nella conferma.
+    def get(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
+        return success_response(
+            fn_get_chiusura_componente(articolo_id, comp_id, dict(request.query_params.items())),
+        )
 
-    # ⛔ Nessun DELETE: la distinta e' una storia e il DB rifiuta ogni
-    #    cancellazione di un legame (trigger d'immutabilita'). Un legame si
-    #    chiude con la PATCH su `valido_al` (brief-db-revisione-catalogo, BE11).
+
+class ApiArticoloComponenteChiudi(DomainAPIView):
+    area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
+
+    @extend_schema(
+        request=inline_serializer(
+            name="CatalogoArticoloComponenteChiudiRequest",
+            fields={
+                "valido_al": serializers.DateField(),
+                "prezzi_confermati": serializers.IntegerField(required=False, allow_null=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="CatalogoArticoloComponenteChiudiResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Chiude il legame alla data, coi suoi prezzi bundle, dal verbo del DB.
+    def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
+        return handle_post_json(
+            request, handler=lambda payload: fn_chiudi_componente(articolo_id, comp_id, payload),
+        )
 
 
 # Endpoint atomico Fase 3: chiusura sorgente + apertura nuova versione in

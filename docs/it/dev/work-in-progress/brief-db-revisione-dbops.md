@@ -236,10 +236,14 @@ S-BE-1 (§5, passo 11-bis) è scritto e provato (§35.6); le frasi nuove arrivan
 | 9-octogies-decies | ✅ Tid | Apply del giro 14 su dbdev e scratch, pgTAP di §34.6.5 verdi (2026-11-10) | §34.6.6 | 9-octogies-nonies |
 | 9-octogies-undecies | ✅ Tid | Doc auto-generata e commit del giro 14 (`fe388dbfdf`, 2026-11-10) | §34.6.6 | 9-octogies-decies |
 | 9-nonagies | ✅ sessione DB | S-BE-1 censito: montaggi, padri, tipi, storia del bersaglio, sei nodi | §35 | 9-octogies-undecies |
-| 9-nonagies-semel | ✅ Tid | Nodi N1-N6 di S-BE-1 come da proposta, e il via (2026-11-10) | §35.5 | 9-nonagies |
 | 9-nonagies-bis | ✅ sessione DB | S-BE-1 scritto e provato su dbdev (`20261111-40` … `-46`) | §35.6 | 9-nonagies-semel |
 | 9-nonagies-ter | **Tid** ⏭️ | Apply di S-BE-1 su dbdev e scratch, pgTAP di §35.6.5, commit | §35.6 | 9-nonagies-bis |
 | 9-nonagies-quater | **team FE** ⏭️ | Conferma di N5: quali tipi il frontend apre col solo id (ASSET, ARTICOLO_COMPONENTE, LISTINO_VERSIONE, le righe) | §35.6.3 | 9-nonagies-bis |
+| 9-nonagies-semel | **Tid** ⏭️ | Nodi N1-N6 di S-BE-1 e numeri | §35.4 | 9-nonagies |
+| 9-sexagies-octodecies | ✅ team BE (policy e ripiego presenti, verificato il 2026-11-10) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
+| 9-quinquagies-octies | ✅ team BE (BE2, §5; riga chiusa il 2026-11-10) | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
+| 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
+| 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-sexagies-octodecies | team BE ✅ (2026-11-09) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore: già in policy, `genera_error_policies --check` pulito | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | **team BE** ✅ (2026-11-09, `9f540bea72`) | BE2: i due gap che ripetevano un lock del DB ritirati, `DISTINCT`, commenti riscritti | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ✅ (2026-11-09, `9f540bea72`) | BE12 (il filtro «vivo» dei processi) ✅; BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`) già in policy | §5, §24.9 | 9-quinquagies |

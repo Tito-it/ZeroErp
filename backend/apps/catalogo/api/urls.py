@@ -1,7 +1,8 @@
 from django.urls import path
 
 from apps.catalogo.api.views import (
-    ApiArticoloComponenteDetail,
+    ApiArticoloComponenteChiudi,
+    ApiArticoloComponenteChiusura,
     ApiArticoloComponentiList,
     ApiArticoloComponentiLista,
     ApiArticoloComponentiListaExport,
@@ -38,7 +39,8 @@ urlpatterns = [
     path("articoli/<uuid:articolo_id>/componenti/lista/", ApiArticoloComponentiLista.as_view(), name="catalogo-articolo-componenti-lista"),
     path("articoli/<uuid:articolo_id>/componenti/lista/export/", ApiArticoloComponentiListaExport.as_view(), name="catalogo-articolo-componenti-lista-export"),
     path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/note/", ApiComponenteNoteList.as_view(), name="catalogo-componente-note-list"),
-    path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/", ApiArticoloComponenteDetail.as_view(), name="catalogo-articolo-componente-detail"),
+    path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/chiusura/", ApiArticoloComponenteChiusura.as_view(), name="catalogo-articolo-componente-chiusura"),
+    path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/chiudi/", ApiArticoloComponenteChiudi.as_view(), name="catalogo-articolo-componente-chiudi"),
     path("articoli/<uuid:articolo_id>/componenti/", ApiArticoloComponentiList.as_view(), name="catalogo-articolo-componenti-list"),
     path("articoli/<uuid:articolo_id>/note/", ApiArticoloNoteList.as_view(), name="catalogo-articolo-note-list"),
     path("articoli/<uuid:articolo_id>/disattiva/", ApiArticoloDisattiva.as_view(), name="catalogo-articolo-disattiva"),

@@ -38,7 +38,8 @@ giri 3, 2 e 1 (§14.2, §14.6, §13.3, §10.3) da guardare. In parallelo il **te
 | 5-unvicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 2-bis (2026-11-11) | §15.10 | 5-vicies |
 | 6 | sessione DB | Giri 4-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-unvicies |
 | 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
-| 7-bis | **team BE** ⏭️ | La doc API di BE9 e BE11 (`api_catalogo.md` §4.2 `data_min_chiusura` e §4.4 DELETE: al 2026-11-10 ancora la forma vecchia); BE4 per D19 e BE19-BE20 (giro 3, applicato); le altre quando il giro corrispondente lo è | §5, §14.8 | — |
+| 7-bis | ✅ team BE (2026-11-10, da committare su `dev/backend-tid`) | La doc API di BE9 e BE11 (`api_catalogo.md`); BE19 e BE20 del giro 3 e BE4 (campo di `E_PARAMETRO_INVALIDO`). BE1-BE4 e BE16-BE18 del giro 2 erano già fatti (PR #81) | §13.5, §14.10 | — |
+| 7-ter-bis | team BE | BE19-BE21 del **giro 2-bis** (D24-D26, §14.4 della prima «§14»), quando quel giro è applicato | §14.4 | 6 |
 | 7-ter | ✅ Tid | Il legame con prezzi bundle: (b) con conferma dell'operatore, tutti e due i diritti, avviso sul prezzo del kit (Q19-Q22, 2026-11-09) | §11.10.1 | — |
 | 7-quater | ✅ Tid | La chiusura del legame coi prezzi va nel giro 3 (2026-11-09) | §14 | 7-ter |
 | 7-quinquies | ✅ team BE | Giro BE del giro 2: BE1-BE4, BE16-BE18 (BE4 resta aperta per D19); committato (`2af6d986f5`, PR #81) | §13.7 | — |
@@ -1613,3 +1614,44 @@ elencava le sedici righe di `ui` del giro 7-bis di brief-db-revisione-dbops.
 brief-db-revisione-dbops) restano fuori; i cinque file che le due sessioni hanno toccato tutte e due
 (`messaggi_errore.csv`, `test-fn-riattiva-articolo-v1`, i due indici di `script`, `automazione-db.md`) entrano interi,
 anche con le righe dell'altra sessione (decisione di Tid). Restano al team BE le voci BE21-BE25.
+### 14.10 Giro BE del giro 3 (team BE, 2026-11-10, da committare su `dev/backend-tid`)
+
+#### 14.10.1 Che cosa è fatto
+
+| # | Che cosa |
+| --- | --- |
+| codici ✅ | Policy rigenerata (`manage.py genera_error_policies`: entrano i soli quattro codici del giro, più una `note` aggiornata a catalogo) e i quattro ripieghi senza `%s` in `error_messages_fallback.py`. `E_BOM_CHIUSURA_CON_PREZZI` ha l'override `confirm_and_retry` in `error_ui_overrides.py`, come `E_DOC_ANNULLO_CON_LEGAMI`: col banner della classe il legame di un kit prezzato non si chiuderebbe mai |
+| BE19 ✅ | La chiusura passa dal **verbo**: `POST …/componenti/<id>/chiudi/` (`catalogo.fn_chiudi_legame_distinta`) e `GET …/componenti/<id>/chiusura/?valido_al=` (`vendite.fn_prezzi_legame_oltre_la_fine`, coi prezzi e il numero da dichiarare). Il service controlla solo che il legame sia dell'articolo del percorso e la forma dei due campi. FE: «Chiudi riga» e lo step 1 di «Duplica versione» hanno una sede, `chiudiLegame` in `ArticoloBomDrawer.vue`, su `useForzaturaConfermata`; la finestra nuova è `ChiusuraLegamePrezziDialog.vue`. Il wrapper FE del PATCH (`updateArticoloComponente`) è ritirato: non aveva più consumatori |
+| BE20 ✅ | Nessun codice da cambiare. Il rifiuto al COMMIT del PATCH dell'articolo lo rende il traduttore generale, con codice, `400` e campo `iva_id`: l'ha provato il test sul DB vero |
+| BE4 ✅ | `E_PARAMETRO_INVALIDO` della correzione di struttura arriva col campo = la colonna. Anche qui nessun codice: la prova è sul DB vero |
+| doc ✅ | `api_catalogo.md`: §4.1 (`data_min_chiusura` è la più tarda fra `valido_dal` e ieri, BE9), §4.3 (le regole della fine), §4.4 (il `DELETE` ritirato, BE11), §4.5 nuovo (la chiusura coi prezzi), §1.4 (l'IVA a fine transazione), §1.6-bis (il campo di D19). Catalogo BB FE: `ArticoloBomDrawer` fra i consumatori di `useForzaturaConfermata` |
+| i18n ✅ | Le due `reason_key` della sessione DB rilette: il testo va bene così. Nuovo il blocco `catalogo.chiusura_prezzi.*` della finestra |
+
+#### 14.10.2 Le prove
+
+* `apps/catalogo/tests/db/test_chiusura_legame_prezzi_db.py`, sette test sul DB vero col mondo costruito: la
+  finestra, il rifiuto confermabile (409, `confirm_and_retry`, campo `valido_al`), la conferma giusta, quella che
+  non corrisponde, il legame di un altro articolo, la dichiarazione non intera, il legame senza prezzi.
+* `apps/catalogo/tests/db/test_errori_articolo_giro3_db.py`, tre test: BE20 (il rifiuto al giudizio del vincolo, e
+  kit più componente nella stessa transazione che passano) e BE4.
+* `ChiusuraLegamePrezziDialog.spec.js`, cinque test. Suite `apps.catalogo` + `apps.core` verde (2189 test), vitest
+  `src/catalogo` verde, `check_i18n_keys` pulito, build FE verde.
+
+#### 14.10.3 Il PATCH del legame — ritirato (decisione di Tid, 2026-11-10)
+
+Il §14.4 diceva «il PATCH su `valido_al` resta il primo tentativo». Il FE invece chiude **sempre dal verbo**, perché
+`useForzaturaConfermata` ripete la **stessa** chiamata con la dichiarazione, e il PATCH non sa portarla. Su un legame
+senza prezzi il verbo chiude al primo colpo, come il PATCH. Restato nell'API, il PATCH era una seconda strada per la
+stessa scrittura, e su un legame con prezzi riceveva l'avviso senza poterlo confermare.
+
+✅ **Tid ha accettato di toglierlo** (2026-11-10). Ritirati: la rotta `…/componenti/<id>/` (view
+`ApiArticoloComponenteDetail`, schema `CatalogoComponentePatchRequest`), `fn_update_componente`, il ramo `for_update`
+di `_extract_componente_payload`, `CatalogoBomRepository.update_componente` e i loro test (`api_catalogo.md` §4.3).
+⚠️ Il PATCH accettava anche `meta` e `attivo` di un legame: nessun consumatore li usava, e un legame non ha più una
+scrittura oltre alla fine. Se servisse annotare un legame, è un verbo nuovo, non il ritorno del PATCH.
+
+#### 14.10.4 Alla sessione DB: le sigle doppie
+
+Questo brief ha due sezioni numerate «§14», «Giro 2-bis» e «Giro 3». Ognuna definisce un BE19 e un BE20 con un
+significato diverso (D24/D25 nella prima, la chiusura coi prezzi e l'IVA differita nella seconda), e la prima ha anche
+un BE21. Chi legge «BE20 fatto» non sa quale dei due. Proposta: rinumerare il giro 2-bis (§15, e BE22-BE24).
