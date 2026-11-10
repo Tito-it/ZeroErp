@@ -1,10 +1,11 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 3 applicato e committato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro 2-bis applicato e committato)
 
-**Riparte: Tid**, col via ai giri 4-5 (§7) e i loro numeri; le scelte dentro i giri 3, 2 e 1 (§14.2, §14.6, §13.3,
-§10.3) da guardare. In parallelo il **team BE**, con BE19 e BE20 del giro 3 (§14.4, §14.8), BE1-BE4 e BE16-BE18 del
-giro 2 (§13.5) e la doc API di BE9 e BE11.
+**Riparte: Tid**, col via ai giri 4-5 (§7) e le scelte del giro 2-bis da guardare (§15.7). In parallelo il **team BE**
+con BE21-BE25 (§15.4, §15.9). Le scelte dentro i
+giri 3, 2 e 1 (§14.2, §14.6, §13.3, §10.3) da guardare. In parallelo il **team BE**, con BE19 e BE20 del giro 3 (§14.4,
+§14.8), BE4 per D19 (giro 3, applicato) e la doc API di BE9 e BE11; BE21-BE23 a giro 2-bis applicato (§15.4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -30,16 +31,23 @@ giro 2 (§13.5) e la doc API di BE9 e BE11.
 | 5-quindecies | ✅ sessione DB | Giro 3: tredici changeSet, quattro codici, tre pgTAP nuovi, doc; provato sullo scratch | §14 | 5-quaterdecies |
 | 5-sexdecies | ✅ Tid | Apply del giro 3 su dbdev e scratch, pgTAP come app verdi (2026-11-10) | §14.9 | 5-quindecies |
 | 5-septdecies | ✅ sessione DB, su richiesta di Tid | Commit del giro 3 (2026-11-10) | §14.9 | 5-sexdecies |
-| 5-octodecies | **Tid** ⏭️ | Il via ai giri 4-5 e i loro numeri; le scelte di §14.2, §14.6, §13.3, §10.3 da guardare | §7 | 5-septdecies |
-| 6 | sessione DB | Giri 4-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-octodecies |
+| 5-octodecies | ✅ Tid | Numeri del giro 2-bis dal `20261111-47` (l'altra sessione finisce al `-46`); Q26 (2026-11-10) | §15 | 5-septdecies |
+| 5-octodecies-bis | **Tid** ⏭️ | Q27 ✅ (rifiuto, 2026-11-10); il via ai giri 4-5; le scelte di §14.2, §14.6, §13.3, §10.3 da guardare | §7, §15 | 5-octodecies |
+| 5-novodecies | ✅ sessione DB | Giro 2-bis: D24-D27 (Q23-Q31), `20261111-47` … `-65`, sei codici, quattro eccezioni ATTIVO, tre pgTAP nuovi, doc; provato sullo scratch | §15.6-§15.9 | 5-octodecies-bis |
+| 5-vicies | ✅ Tid | Apply del giro 2-bis su dbdev e scratch, pgTAP come app verdi (2026-11-11) | §15.10 | 5-novodecies |
+| 5-unvicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 2-bis (2026-11-11) | §15.10 | 5-vicies |
+| 6 | sessione DB | Giri 4-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-unvicies |
 | 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
-| 7-bis | **team BE** ⏭️ | La doc API di BE9 e BE11 (`api_catalogo.md`), rimasta indietro; BE1-BE4 e BE16-BE18 (giro 2, applicato); BE19 e BE20 (giro 3, applicato); le altre quando il giro corrispondente lo è | §5, §13.5, §14.8 | — |
+| 7-bis | **team BE** ⏭️ | La doc API di BE9 e BE11 (`api_catalogo.md` §4.2 `data_min_chiusura` e §4.4 DELETE: al 2026-11-10 ancora la forma vecchia); BE4 per D19 e BE19-BE20 (giro 3, applicato); le altre quando il giro corrispondente lo è | §5, §14.8 | — |
 | 7-ter | ✅ Tid | Il legame con prezzi bundle: (b) con conferma dell'operatore, tutti e due i diritti, avviso sul prezzo del kit (Q19-Q22, 2026-11-09) | §11.10.1 | — |
 | 7-quater | ✅ Tid | La chiusura del legame coi prezzi va nel giro 3 (2026-11-09) | §14 | 7-ter |
+| 7-quinquies | ✅ team BE | Giro BE del giro 2: BE1-BE4, BE16-BE18 (BE4 resta aperta per D19); committato (`2af6d986f5`, PR #81) | §13.7 | — |
+| 7-sexies | ✅ Tid | Le tre domande di §13.7.3: Q23 bloccato, Q24 per tutto il periodo, Q25 in questo brief (2026-11-10) | §6, §15 | 7-quinquies |
+| 7-septies | **team BE** ⏭️ | BE21-BE25: giro 2-bis applicato (2026-11-11) | §15.4, §15.9 | 5-vicies |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
 
-**Decisioni aperte di Tid:** le scelte dentro i giri 3 (§14.2, §14.6), 2 (§13.3) e 1 (§10.3), da guardare. **Da
-committare:** niente (giro 3 committato il 2026-11-10).
+**Decisioni aperte di Tid:** le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2 (§13.3) e 1 (§10.3), da
+guardare. **Da committare:** niente (giro 2-bis committato il 2026-11-11).
 ⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93`, il giro 3 `20261111-25` … `-37` (dati da Tid). Messaggi
 d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 
@@ -550,9 +558,15 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | Q12 ✅ | D16: le note di catalogo prendono `tx_id` e `user_* text` come le altre? E un articolo con una nota si deve poter disattivare? | Sì alla forma comune; sì alla disattivazione (la nota non è un figlio vivo: va esclusa dal `block_deact`) — **✅ Tid, 2026-11-08: come da proposta** |
 | Q13 ✅ | D22: il fattore della mappatura si legge alla data del documento? | Sì, se Q3 versiona la mappatura; altrimenti la domanda cade — **✅ Tid, 2026-11-08: il fattore si legge alla data del documento** |
 | Q14 ✅ | §2.4: si ritirano gli indici che ripetono un vincolo? | `uq_articoli_componenti_prodotto_componente_from` sì; `ix_uom_tipi_codice_interno_upper` e `ix_artuomop_art_isbase` solo dopo la verifica dei lettori e dei piani — **✅ Tid, 2026-11-08: come da proposta** |
-| Q19 ✅ | D24 (§13.7.3, domanda 1): il fattore di una mappatura già scritta si cambia sul posto? | No: **bloccato**. Un fattore nuovo è una riga nuova (chiudi e inserisci, Q3) — **✅ Tid, 2026-11-10** |
-| Q20 ✅ | D25 (§13.7.3, domanda 2): l'unità della riga di listino deve valere alla decorrenza della versione o per tutto il suo periodo? | **Per tutto il periodo** della versione, regola a DB — **✅ Tid, 2026-11-10** |
-| Q21 ✅ | D26 (§13.7.3, domanda 3): il fattore 1 per difetto delle commesse va in un brief nuovo? | No, **in questo brief** — **✅ Tid, 2026-11-10** |
+| Q23 ✅ | D24 (§13.7.3, domanda 1): il fattore di una mappatura già scritta si cambia sul posto? | No: **bloccato**. Un fattore nuovo è una riga nuova (chiudi e inserisci, Q3) — **✅ Tid, 2026-11-10** |
+| Q24 ✅ | D25 (§13.7.3, domanda 2): l'unità della riga di listino deve valere alla decorrenza della versione o per tutto il suo periodo? | **Per tutto il periodo** della versione, regola a DB — **✅ Tid, 2026-11-10** |
+| Q25 ✅ | D26 (§13.7.3, domanda 3): il fattore 1 per difetto delle commesse va in un brief nuovo? | No, **in questo brief** — **✅ Tid, 2026-11-10** |
+| Q26 ✅ | D24 (§15.1): con il fattore si bloccano anche `uom_id` e le date della mappatura? | Sì: `uom_id` bloccato; le date come Q1 (si chiude da oggi in poi, `valido_dal` di una mappatura in vigore non si sposta) — **✅ Tid, 2026-11-10** |
+| Q27 ✅ | D25 (§15.2): il terzo lato, il catalogo che cambia sotto un listino vivo | (a) **rifiuto**: una mappatura o una conversione generale non si chiude né si spegne se una versione ATTIVA ne usa l'unità oltre la nuova fine; giudizio a fine transazione (chiudi e inserisci); listini di altre aziende contati, non nominati. Scartate (b) avviso e conferma (la riga di listino non ha un periodo suo) e (c) presidio a valle (contraddice Q24) — **✅ Tid, 2026-11-10** |
+| Q28 ✅ | D24, D27 (§15.5): lo spegnimento e la cancellazione di una mappatura o di una conversione riscrivono il passato come il fattore | Ammessi solo se non ha giorni passati (comincia oggi o dopo: quella inserita per errore); una già in vigore si chiude — **✅ Tid, 2026-11-10** |
+| Q29 ✅ | D27 (§15.5): le conversioni generali hanno lo stesso difetto di D24 | Stesse regole della mappatura (Q23, Q26, Q28), nello stesso giro — **✅ Tid, 2026-11-10** |
+| Q30 ✅ | D26 (§15.5): il fattore delle commesse senza «1 per difetto» | La regola del giro 2 per le righe dei documenti: senza fattore, `fn_get_uom_factor` alla data dell'attività; senza neanche quello, `E_UOM_MISSING`. Via il default 1 dalle due colonne, dal parametro e dalle tre funzioni; la regola in un trigger sulla tabella — **✅ Tid, 2026-11-10** |
+| Q31 ✅ | D24, D27 (§15.7): con Q28 una mappatura o una conversione con giorni passati non si spegne più, e il block dell'automazione ATTIVO impedisce di spegnere l'articolo o l'unità finché ne hanno una attiva: un articolo o un'unità con una storia non si spegnerebbero mai | (a) **eccezione**: le FK `articoli_uom_operativa.articolo_id`, `.uom_id` e `unita_misura_conversioni.uom_from_id`, `.uom_to_id` in `dbops.automazione_attivo_eccezioni`, come la nota di Q12: la mappatura è storia, non un figlio vivo. Scartata (b) spegnerle insieme al padre nella stessa transazione (più codice, e la riaccensione resta a parte) — **✅ Tid, 2026-11-10** (proposta per la mappatura; la sessione DB l'ha estesa alle conversioni, §15.7 punto 1) |
 
 ## 7. I giri, nell'ordine in cui si fanno
 
@@ -566,7 +580,7 @@ giro dopo.
 | 1 | A + B | **La distinta.** D1, D9, D10 (Q1), D11 (Q2), R3 (Q5); pgTAP di §2.6 sulla distinta | Gli stessi trigger di `articoli_componenti` e il guard flags. Dopo D28 di `dbops`, o con D28 |
 | 1-bis | B | **Il BB della distinta alla data** (R2, Q8) | Tocca vendite e `script`: un giro a parte, con l'ok di Tid |
 | 2 | A + B | **Le quantità e le unità.** D2 (Q7), D3 (Q4), D8, D12, D13 (Q3), D22 (Q13), D14, D15, D6, D17; BE1-BE4 | `trgfn_qta_from_operativa`, `articoli_uom_operativa` e i due guard di tipologia |
-| 2-bis | A + B | **Le tre decisioni del giro BE.** D24 (Q19), D25 (Q20), D26 (Q21); BE19-BE21 (§14) | Nascono dal giro BE del giro 2; tocca anche `vendite` (listini, commesse) |
+| 2-bis | A + B | **Le tre decisioni del giro BE.** D24 (Q23), D25 (Q24), D26 (Q25); BE21-BE23 (§15) | Nascono dal giro BE del giro 2; tocca anche `vendite` (listini, commesse) |
 | 3 | A + B | **I guard degli articoli.** D4 (Q6) + D21, D5 (R4), D7, D18, D19, D20 (Q10), R5 | Gli oggetti di `catalogo.articoli` |
 | 4 | B | **Le note.** D16 (Q12), R6 | Tabella `note`, partizioni e due viste |
 | 5 | C | **Pulizia e metadati.** §3 (Q11), §2.4 (indici ridondanti, rami irraggiungibili, `uom_tipi.codice` con Q9), §2.5, pgTAP deboli di §2.6, R7 | Quello che nessun giro precedente ha già aperto |
@@ -1188,7 +1202,7 @@ Corpi di partenza da `pg_get_functiondef`, `pg_get_viewdef` (`search_path = pg_c
   base: ora su una mappatura costruita, come il pgTAP gemello. Rilanciati: verdi.
 * `genera_error_policies --check` pulito, presidi delle policy verdi, ruff, mypy (0 rilievi), vitest 1104/1104, build FE.
 
-#### 13.7.3 Domande per Tid — ✅ risposte il 2026-11-10 (Q19-Q21, §6): il lavoro è in §14
+#### 13.7.3 Domande per Tid — ✅ risposte il 2026-11-10 (Q23-Q25, §6): il lavoro è in §15
 
 1. **Il fattore di una mappatura si cambia sul posto?** Il DB lo lascia fare (nessun lock su `factor_to_base` delle righe
    non base), e il form lo lascia modificabile. Col modello «chiudi e inserisci» (D13, Q3) il cambio sul posto riscrive il
@@ -1202,71 +1216,6 @@ Corpi di partenza da `pg_get_functiondef`, `pg_get_viewdef` (`search_path = pg_c
    `offerte_commerciali_eccezioni`, e lì NULL vuol dire «quantità già nella base», quindi 1 è giusto. È però la forma di
    D2 («quando non so, 1») in un posto del backend, e `commesse_attivita.factor_to_base` ha ancora `DEFAULT 1` (la forma
    di D23). §13.2 tiene le commesse fuori dal giro: lo segnalo, non lo tocco.
-
-## 14. Giro 2-bis — le tre decisioni del giro BE, 2026-11-10
-
-Le tre domande di §13.7.3 hanno risposta (Q19-Q21, §6). Diventano D24-D26: lavoro **DB**, con le ricadute BE in §14.4.
-Il giro aspetta il via di Tid e i suoi numeri.
-
-### 14.1 D24 — Il fattore di una mappatura si cambia sul posto (Q19: bloccato)
-
-* **Fatto.** `articoli_uom_operativa` non ha lock su `factor_to_base` delle righe non base: un UPDATE lo cambia, e
-  `fn_uom_operativa_alla_data` / `fn_get_uom_factor` rispondono il valore nuovo **anche per le date passate**. Il modello
-  di Q3 (versionata, chiudi e inserisci) ha già la strada per cambiare il fattore: la riga nuova.
-* **Correzione.** Il fattore di una mappatura scritta non si cambia: `script.trgfn_lock_columns`, con un codice suo
-  (proposta: `E_UOM_FATTORE_IMMUTABILE`, la frase dice «chiudere la mappatura e aprirne una nuova»). La riga base è già
-  ferma dal CHECK `chk_articoli_uom_operativa_base_fissa`: il lock non la cambia.
-* **Da guardare nella stessa colonna di ragionamento (proposta della sessione DB, poi Tid):**
-  * **`uom_id`** oggi non è bloccato neppure lui: cambiare l'unità di una mappatura sul posto riscrive il passato come il
-    fattore. Proposta: bloccato insieme, stesso codice o uno gemello.
-  * **Le date.** `valido_al` resta modificabile, perché chiudere è la strada. Spostare `valido_dal`, o chiudere nel
-    passato una mappatura già in vigore, riscrive il passato come il fattore: è la stessa domanda di Q1 per la distinta.
-    Proposta: la stessa risposta di Q1.
-* **Prova (pgTAP):** UPDATE del fattore su una mappatura costruita → il codice; chiudi e inserisci → passa; la riga base
-  resta del CHECK.
-
-### 14.2 D25 — L'unità della riga di listino deve valere per tutto il periodo della versione (Q20)
-
-* **Fatto.** Oggi la regola sta solo nel backend (BE17, §13.7.1), alla **decorrenza** della versione: una mappatura che
-  finisce durante la versione passa, e da quel giorno il listino dà un prezzo in un'unità che per l'articolo non si
-  converte. Una regola del modello non sta nel backend.
-* **Correzione.** Regola a DB: l'unità della riga è convertibile per l'articolo **in ogni giorno** del periodo della
-  versione (`valido_dal` … `valido_al`; `valido_al` NULL vuol dire «senza fine»). «Convertibile» è quello che dice
-  `catalogo.fn_get_uom_factor` (base, mappatura dell'articolo, conversione generale): la regola si scrive **sul BB del
-  periodo**, non come copia — la sessione DB valuta se serve un BB «unità convertibile per tutto il periodo», da
-  `fn_get_uom_factor` o accanto a lui (regola del 2: lo leggono il guard del listino e, oggi, il backend).
-* **Tutte e due le direzioni (simmetria).** La regola si rompe da tre lati, e ognuno va presidiato:
-  1. la riga di listino scritta o cambiata (il guard della riga);
-  2. il periodo della versione allungato o riaperto (`valido_al` spostato o tolto);
-  3. il catalogo che cambia sotto: una mappatura chiusa, una conversione generale chiusa o spenta, mentre un listino
-     vivo la usa.
-  Il terzo lato è il più facile da dimenticare: va deciso se rifiutare la chiusura o no, e la sessione DB lo propone a
-  Tid con le alternative.
-* **Prova (pgTAP):** i tre lati, con articolo, unità, mappature e versione costruiti; versione senza fine; unità base
-  sempre valida.
-
-### 14.3 D26 — Le commesse: il fattore 1 per difetto (Q21)
-
-* **Fatto.** `commesse_attivita.factor_to_base` ha `DEFAULT 1`: la forma di D23, che il giro 2 ha tolto da `ordini_righe`,
-  `ddt_righe` e `resi_righe`. In più il backend (`vendite/db/commesse_repository.py`, `_map_pushable_row`) scrive 1 quando
-  la riga sorgente ha il fattore NULL. Oggi è giusto, perché NULL sulla sorgente vuol dire «quantità già nella base»; ma
-  se arriva una riga senza fattore in un'unità che base non è, l'1 la fa passare come se lo fosse (3 cartoni → 3 pezzi),
-  senza rifiuto. È D2 («quando non so, 1»).
-* **Correzione (DB).** Via il `DEFAULT 1`. La regola «senza fattore la quantità è nella base» si scrive a DB, in un posto:
-  una riga di `commesse_attivita` senza fattore prende 1 **solo se** l'unità è la base dell'articolo, altrimenti si
-  rifiuta (codice del giro 2, `E_UOM_MISSING`, se il significato coincide; la sessione DB lo verifica). La sessione DB
-  censisce prima chi scrive in `commesse_attivita` (push dal documento sorgente e altre porte), perché ognuno lo
-  attraversa.
-* **Prova (pgTAP):** riga senza fattore nella base → 1; riga senza fattore in un'altra unità → il rifiuto; riga col
-  fattore → quello scritto, come la fotografia di §13.3 punto 5.
-
-### 14.4 Ricadute su BE e FE (team BE, quando il giro è applicato)
-
-| # | Che cosa |
-| --- | --- |
-| BE19 | D24: il lock entra in `vw_non_editable_fields`. Verificare che il dettaglio delle unità operative passi `non_editable_fields` al form (la prop `nonEditableFields` di `ArticoloUomForm.vue` c'è; va provato chi la riempie). Policy e ripiego del codice nuovo. Test sul DB vero: UPDATE del fattore → il codice col campo |
-| BE20 | D25: `ListiniRepository.get_articolo_uom_validation` (BE17) si ritira, o legge il BB del periodo se ne nasce uno. Il rifiuto del guard arriva col campo `uom_id`. Policy e ripiego dei codici nuovi. `test_listino_uom_compatibile_db` riscritto sui tre lati |
-| BE21 | D26: `_map_pushable_row` smette di scrivere 1: il NULL passa al DB, che decide. Il test delle commesse prova il rifiuto per una riga senza fattore fuori dalla base |
 
 ## 14. Giro 3 — i guard degli articoli e la chiusura del legame coi prezzi, 2026-11-09
 
@@ -1417,3 +1366,250 @@ Nessun codice nuovo nella parte B.
   `….prezzi_dopo_la_fine`) non erano nei locales. Andavano chieste al FE nello stesso giro (linee-guida-sql §12.3);
   aggiunte dalla sessione DB in `frontend/src/locales/it.json` ed `en.json`, accanto a
   `catalogo.distinta.componente_reason.*`. Il team BE/FE ne riveda il testo con BE19.
+
+## 15. Giro 2-bis — le tre decisioni del giro BE, 2026-11-10
+
+Le tre domande di §13.7.3 hanno risposta (Q23-Q25, §6). Diventano D24-D26: lavoro **DB**, con le ricadute BE in §15.4.
+Numeri dal `20261111-47` (Tid, 2026-11-10). Q26-Q31 decise (§6); via allo sviluppo (Tid, 2026-11-10). D27 nasce dal censimento (§15.5).
+
+> ⚠️ **Rinumerato dalla sessione DB il 2026-11-10.** Scritto dal team BE come §14, Q19-Q21 e BE19-BE21 mentre il
+> giro 3 (§14) usava già §14, Q19-Q22 (§11.10.1) e BE19-BE20: qui diventano §15, Q23-Q25 e BE21-BE23. D24-D26 restano.
+
+### 15.1 D24 — Il fattore di una mappatura si cambia sul posto (Q23: bloccato)
+
+* **Fatto.** `articoli_uom_operativa` non ha lock su `factor_to_base` delle righe non base: un UPDATE lo cambia, e
+  `fn_uom_operativa_alla_data` / `fn_get_uom_factor` rispondono il valore nuovo **anche per le date passate**. Il modello
+  di Q3 (versionata, chiudi e inserisci) ha già la strada per cambiare il fattore: la riga nuova.
+* **Correzione.** Il fattore di una mappatura scritta non si cambia: `script.trgfn_lock_columns`, con un codice suo
+  (proposta: `E_UOM_FATTORE_IMMUTABILE`, la frase dice «chiudere la mappatura e aprirne una nuova»). La riga base è già
+  ferma dal CHECK `chk_articoli_uom_operativa_base_fissa`: il lock non la cambia.
+* **Da guardare nella stessa colonna di ragionamento (proposta della sessione DB, poi Tid):**
+  * **`uom_id`** oggi non è bloccato neppure lui: cambiare l'unità di una mappatura sul posto riscrive il passato come il
+    fattore. Proposta: bloccato insieme, stesso codice o uno gemello.
+  * **Le date.** `valido_al` resta modificabile, perché chiudere è la strada. Spostare `valido_dal`, o chiudere nel
+    passato una mappatura già in vigore, riscrive il passato come il fattore: è la stessa domanda di Q1 per la distinta.
+    Proposta: la stessa risposta di Q1.
+* **Prova (pgTAP):** UPDATE del fattore su una mappatura costruita → il codice; chiudi e inserisci → passa; la riga base
+  resta del CHECK.
+
+### 15.2 D25 — L'unità della riga di listino deve valere per tutto il periodo della versione (Q24)
+
+* **Fatto.** Oggi la regola sta solo nel backend (BE17, §13.7.1), alla **decorrenza** della versione: una mappatura che
+  finisce durante la versione passa, e da quel giorno il listino dà un prezzo in un'unità che per l'articolo non si
+  converte. Una regola del modello non sta nel backend.
+* **Correzione.** Regola a DB: l'unità della riga è convertibile per l'articolo **in ogni giorno** del periodo della
+  versione (`valido_dal` … `valido_al`; `valido_al` NULL vuol dire «senza fine»). «Convertibile» è quello che dice
+  `catalogo.fn_get_uom_factor` (base, mappatura dell'articolo, conversione generale): la regola si scrive **sul BB del
+  periodo**, non come copia — la sessione DB valuta se serve un BB «unità convertibile per tutto il periodo», da
+  `fn_get_uom_factor` o accanto a lui (regola del 2: lo leggono il guard del listino e, oggi, il backend).
+* **Tutte e due le direzioni (simmetria).** La regola si rompe da tre lati, e ognuno va presidiato:
+  1. la riga di listino scritta o cambiata (il guard della riga);
+  2. il periodo della versione allungato o riaperto (`valido_al` spostato o tolto);
+  3. il catalogo che cambia sotto: una mappatura chiusa, una conversione generale chiusa o spenta, mentre un listino
+     vivo la usa.
+  Il terzo lato è il più facile da dimenticare: va deciso se rifiutare la chiusura o no, e la sessione DB lo propone a
+  Tid con le alternative.
+* **Prova (pgTAP):** i tre lati, con articolo, unità, mappature e versione costruiti; versione senza fine; unità base
+  sempre valida.
+
+### 15.3 D26 — Le commesse: il fattore 1 per difetto (Q25)
+
+* **Fatto.** `commesse_attivita.factor_to_base` ha `DEFAULT 1`: la forma di D23, che il giro 2 ha tolto da `ordini_righe`,
+  `ddt_righe` e `resi_righe`. In più il backend (`vendite/db/commesse_repository.py`, `_map_pushable_row`) scrive 1 quando
+  la riga sorgente ha il fattore NULL. Oggi è giusto, perché NULL sulla sorgente vuol dire «quantità già nella base»; ma
+  se arriva una riga senza fattore in un'unità che base non è, l'1 la fa passare come se lo fosse (3 cartoni → 3 pezzi),
+  senza rifiuto. È D2 («quando non so, 1»).
+* **Correzione (DB).** Via il `DEFAULT 1`. La regola «senza fattore la quantità è nella base» si scrive a DB, in un posto:
+  una riga di `commesse_attivita` senza fattore prende 1 **solo se** l'unità è la base dell'articolo, altrimenti si
+  rifiuta (codice del giro 2, `E_UOM_MISSING`, se il significato coincide; la sessione DB lo verifica). La sessione DB
+  censisce prima chi scrive in `commesse_attivita` (push dal documento sorgente e altre porte), perché ognuno lo
+  attraversa.
+* **Prova (pgTAP):** riga senza fattore nella base → 1; riga senza fattore in un'altra unità → il rifiuto; riga col
+  fattore → quello scritto, come la fotografia di §13.3 punto 5.
+
+### 15.4 Ricadute su BE e FE (team BE, quando il giro è applicato)
+
+| # | Che cosa |
+| --- | --- |
+| BE21 | D24: il lock entra in `vw_non_editable_fields`. Verificare che il dettaglio delle unità operative passi `non_editable_fields` al form (la prop `nonEditableFields` di `ArticoloUomForm.vue` c'è; va provato chi la riempie). Policy e ripiego del codice nuovo. Test sul DB vero: UPDATE del fattore → il codice col campo |
+| BE22 | D25: `ListiniRepository.get_articolo_uom_validation` (BE17) si ritira, o legge il BB del periodo se ne nasce uno. Il rifiuto del guard arriva col campo `uom_id`. Policy e ripiego dei codici nuovi. `test_listino_uom_compatibile_db` riscritto sui tre lati |
+| BE23 | D26: `_map_pushable_row` smette di scrivere 1: il NULL passa al DB, che decide. Il test delle commesse prova il rifiuto per una riga senza fattore fuori dalla base |
+
+### 15.5 Censimento in sola lettura (sessione DB, 2026-11-10, scratch `zeroerp_ruoli` col giro 3 applicato)
+
+**Le fonti del fattore.** `catalogo.fn_get_uom_factor(articolo, unità, data)`: 1 per l'unità base a ogni data; poi la
+mappatura dell'articolo alla data (`fn_uom_operativa_alla_data`, `attivo` e `validita @> data`); poi la conversione
+generale alla data, nei due versi (`attivo` e `validita @> data`). L'unità base dell'articolo (`articoli.uom_id`) è già
+bloccata (`trgfn_lock_columns`): non c'è un quarto lato.
+
+**D24 — le porte della mappatura oggi.** `articoli_uom_operativa` ha il guard della riga base, la regola del periodo e
+nient'altro: `factor_to_base`, `uom_id`, `valido_dal`, `attivo` si cambiano sul posto, e la riga si cancella. Il BE le
+usa tutte: `catalogo_uom_repository.update_uom_operativa` e `delete_uom_operativa`. Fuori da Q23 e Q26 restano due
+porte che riscrivono il passato nello stesso modo: lo **spegnimento** (`attivo = false`: `fn_uom_operativa_alla_data` non
+la vede più, a nessuna data) e la **cancellazione**.
+
+**Le conversioni generali hanno lo stesso difetto.** `unita_misura_conversioni` non ha lock: il BE ne aggiorna sul
+posto `fattore`, `valido_dal`, `valido_al`, `attivo` (`CONVERSIONI_UPDATE_COLUMNS`). Cambiare il fattore di «cartone →
+pezzo» riscrive il passato di tutti gli articoli che non hanno una mappatura loro.
+
+**D25 — i tre lati.**
+
+1. *La riga.* `listini_righe` ha `articolo_id`, `uom_id` e `listino_versione_id` già bloccati
+   (`E_LISTINO_RIGA_IDENTITA_IMMUTABILE`). Restano l'INSERT, in BOZZA e in ATTIVA (la rettifica), e la riaccensione
+   (`attivo` da false a true). Nessun guard di unità oggi.
+2. *Il periodo.* `valido_dal` e `valido_al` si cambiano in BOZZA; in ATTIVA solo `valido_al`, e solo dalla porta dei
+   verbi (`zeroerp.listino_versione_fine`); in CHIUSA niente. In più, l'attivazione
+   (`script.fn_check_versione_listino_attivabile`): una BOZZA scritta bene si può rompere sotto, dal catalogo, prima di
+   essere attivata (il terzo lato conta solo le ATTIVE, Q27). Va un motivo nuovo lì.
+3. *Il catalogo.* Mappatura e conversione: chiusura, spegnimento, cancellazione; giudizio a fine transazione.
+
+Le righe bundle (`listini_righe_componenti`) non hanno un'unità: fuori.
+
+**D26 — chi scrive il fattore.** Il «quando non so, 1» non è in un posto, è in cinque:
+
+| Dove | Che cosa |
+| --- | --- |
+| `commesse_attivita.factor_to_base` | `NOT NULL DEFAULT 1` |
+| `attivita_fatturabili.factor_to_base` | `NOT NULL DEFAULT 1`. L'unico writer, `fn_emit_attivita_fatturabili_da_commessa`, copia il fattore della commessa: il default non serve a nessuno |
+| `vendite.fn_upsert_commessa_attivita` | parametro `p_factor_to_base DEFAULT 1` e `COALESCE(p_factor_to_base, 1)` nell'INSERT |
+| `vendite.fn_aggiungi_onere_commessa` | passa `p_factor_to_base => 1`, a qualunque unità |
+| `vendite.fn_accredita_riga_reso` | `COALESCE(v_cmp.factor_to_base, 1)` |
+| BE `commesse_repository._map_pushable_row` | `Decimal(1)` se la sorgente non ha il fattore (BE23) |
+
+`commesse_attivita` non ha `script.trgfn_qta_from_operativa`: la quantità base (`quantita`, NOT NULL) la porta chi
+scrive, e il fattore è una fotografia. La regola del giro 2 per le righe dei documenti è già scritta in quel trigger:
+senza fattore, `fn_get_uom_factor` alla data del documento; senza neanche quello, `E_UOM_MISSING`.
+
+### 15.6 Che cosa è scritto (sessione DB, 2026-11-10)
+
+Diciannove changeSet, `20261111-47` … `-65`; nulla applicato.
+
+| # | Schema | Che cosa |
+| --- | --- | --- |
+| `-47` | catalogo | **BB nuovo** `fn_uom_fonti_conversione(articolo, unità)`: le fonti del fattore coi loro periodi (base, mappatura, conversione generale nei due versi), con la priorità. È la regola del 2: la leggono le due letture qui sotto e i lettori di periodo di D25 |
+| `-48`, `-49` | catalogo | `fn_uom_operativa_alla_data` e `fn_get_uom_factor` leggono il BB; il comportamento non cambia |
+| `-50` | catalogo | `fn_uom_primo_giorno_non_convertibile(articolo, unità, periodo)`: il primo giorno del periodo senza una fonte, per differenza di multirange |
+| `-51` | catalogo | `fn_uom_conversione_nome`: il nome leggibile di una mappatura o di una conversione, per i messaggi |
+| `-52` | catalogo | **D24, D27** `trgfn_uom_guard_storia`, montato sulle due tabelle: identità (unità, articolo, fattore, inizio) mai (`E_UOM_STORIA_IMMUTABILE`); la fine non prima di ieri (`…_CHIUSURA_RETROATTIVA`) e non su una già finita (`…_CHIUSA`); spegnere, riaccendere, cancellare solo senza giorni passati (`…_IN_VIGORE`). La riga base resta del suo guard |
+| `-53` | vendite | lettore DEFINER `fn_listini_attivi_uom_non_convertibili`: le righe delle versioni ATTIVE scoperte da un cambio di catalogo, con `nel_perimetro` (Q27: le altre aziende contate, non nominate) |
+| `-54` | catalogo | **D25 terzo lato** `trgfn_uom_guard_listini_attivi`, constraint trigger differiti su chiusura, spegnimento e cancellazione (`E_UOM_CHIUSURA_CON_LISTINI_ATTIVI`) |
+| `-55`, `-56` | vendite | **D25 primo lato**: il lettore della riga e il guard della riga di listino, su INSERT e riaccensione (`E_LISTINO_UOM_NON_CONVERTIBILE`, campo `uom_id`) |
+| `-57` | vendite | **D25 secondo lato**: il guard del periodo della versione, quando il periodo nuovo non sta dentro il vecchio |
+| `-58` | script | `fn_check_versione_listino_attivabile`, motivo 4: una bozza rotta dal catalogo non si attiva (`reason_key` `vendite.listini.azione_reason.uom_non_convertibile`, nei locales) |
+| `-59`, `-60` | script | **BB nuovo** `fn_fattore_uom_alla_data` (fattore o `E_UOM_MISSING`, con porta e campo del chiamante); `trgfn_qta_from_operativa` lo usa al posto della sua copia |
+| `-61` | vendite | **D26** `trgfn_attivita_fattore_alla_data` su `commesse_attivita` e `attivita_fatturabili`: il fattore scritto si rispetta, senza lo legge alla data dell'attività, senza neanche quello `E_UOM_MISSING` |
+| `-62` | vendite (00_schema) | via il `DEFAULT 1` dalle due colonne |
+| `-63` … `-65` | vendite | `fn_upsert_commessa_attivita` (`p_factor_to_base DEFAULT NULL`), `fn_aggiungi_onere_commessa`, `fn_accredita_riga_reso`: nessun 1 al posto del fattore |
+
+Fuori dai changeSet:
+
+* **Codici**: sei nuovi, id 1475-1480 (`E_UOM_STORIA_IMMUTABILE`, `…_CHIUSA`, `…_CHIUSURA_RETROATTIVA`, `…_IN_VIGORE`,
+  `E_LISTINO_UOM_NON_CONVERTIBILE`, `E_UOM_CHIUSURA_CON_LISTINI_ATTIVI`), e la nota di `E_UOM_MISSING` aggiornata.
+* **Q31**: quattro righe in `80_data/sql/dbops/automazione_attivo_eccezioni.csv`. Il mirror le carica al migrate;
+  i trigger già generati li toglie il motore in testa al giro successivo (§15.10).
+* **Locales**: `vendite.listini.azione_reason.uom_non_convertibile` in `it.json` ed `en.json`. Il FE ne riveda il
+  testo con BE22.
+
+### 15.7 Le scelte dentro il giro (da guardare, Tid)
+
+1. **Q31 esteso alle conversioni generali.** Nel proporre Q31 avevo scritto che le conversioni non bloccano lo
+   spegnimento delle unità: era sbagliato. Lo scratch ha il block su `uom_from_id` e su `uom_to_id`, e con Q29 il
+   problema è identico. Le due FK sono in eccezione con lo stesso motivo. Se preferisci tenerle legate, si tolgono
+   due righe dal CSV prima dell'apply.
+2. **D26 anche su `attivita_fatturabili`.** Q30 nominava le due colonne. Il trigger è montato su tutte e due:
+   l'emissione copia il fattore, ma senza il trigger il default tolto lascerebbe un NOT NULL secco come rifiuto.
+3. **L'inizio di una mappatura futura è fermo anch'esso.** Q26 diceva «di una mappatura in vigore». Il guard tratta
+   l'inizio come identità, come il fattore. Una mappatura futura sbagliata si cancella e si riscrive: si può, perché
+   non ha giorni passati.
+4. **La riaccensione di una mappatura con giorni passati è rifiutata**, come lo spegnimento (Q28). Riaccenderla
+   cambierebbe il fattore delle date passate.
+5. **Un INSERT con `valido_dal` passato non è giudicato.** Scrivere oggi una mappatura che vale da un mese è una
+   correzione del passato. Oggi passa, come per la distinta (giro 1). Se va chiuso, è un giro a parte.
+6. **Il cambio dell'id di un'unità in cascata (`ON UPDATE CASCADE`) è rifiutato** dal guard della storia, perché
+   cambia l'unità della riga. Gli id non si cambiano, quindi non ha effetti pratici; è annotato qui.
+7. **Le righe che cancellano l'articolo o l'unità passano**: il guard lascia andare la riga se il padre non c'è più
+   (la cascata).
+
+### 15.8 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di numero, `BEGIN … ROLLBACK`)
+
+**Compilazione.** I diciannove changeSet compilano, e i rollback rimettono i corpi vivi.
+
+**Q31.** Le quattro righe del registro, con `fn_ritira_attivo_eccezioni()`, ritirano otto trigger. Dopo, un
+articolo con una mappatura chiusa si spegne e si riaccende, e un'unità con mappature si spegne, con le mappature
+intatte.
+
+**pgTAP nuovi**, tutti verdi:
+
+* `catalogo/test-uom-storia-v1`: 21/21;
+* `vendite/test-listino-uom-periodo-v1`: 18/18, su due aziende;
+* `vendite/test-commesse-attivita-fattore-alla-data-v1`: 7/7.
+
+**Regressione.** 269 file pgTAP, ognuno corso senza e con il giro: il seed dei codici, l'SQL estratto e le righe di
+Q31. Diverge solo dove ci si aspetta:
+
+* `dbops/test-punti-canale-campo-v1`: rosso senza il giro (la voce nuova) e verde con.
+* `catalogo/test-fn-riattiva-articolo-v1`: senza il giro muore allo spegnimento, perché ora conta su Q31; con il
+  giro resta rosso il test 1, rosso anche prima. Il file è nel cantiere dell'altra sessione (la frase senza tabella,
+  S-BE-1). La sessione DB ha cambiato solo il figlio che blocca, da mappatura a descrizione aggiuntiva, con una nota
+  datata.
+
+Diciotto file sono rossi allo stesso modo con e senza il giro: preesistenti sullo scratch, nessuno toccato dal giro.
+
+**Le fixture corrette nella regressione** (27 file, con nota datata 2026-11-10):
+
+* quasi tutte scrivevano un'unità a caso accanto a un articolo a caso, e passavano grazie all'1 per difetto: ora
+  usano l'unità della base, o una mappatura per la seconda unità;
+* in più, i test che spegnevano o spostavano mappature (`test-fn-get-uom`, `test-uom-fattore-e-regole-v1`,
+  `test-trgfn-guard-date-validita-v1`) e il test 29 di `test-attivita-fatturabili` (fattore 1 esplicito).
+
+**Guardrail.** Verdi sui diciannove YAML: COMMENT al presente, letterali SQL, timestamp senza fuso, DDL su trigger
+generati, preCondition su seed, runOnChange, GRANT batch, preambolo pgTAP, v1 congelato, i18n.
+
+### 15.9 Doc e ricadute
+
+**Pagine `manual/`.**
+
+* Nuove, undici:
+  * catalogo: `fn_uom_fonti_conversione`, `fn_uom_primo_giorno_non_convertibile`, `fn_uom_conversione_nome`,
+    `trgfn_uom_guard_storia`, `trgfn_uom_guard_listini_attivi`;
+  * vendite: `fn_listini_attivi_uom_non_convertibili`, `fn_listino_versione_riga_uom_non_convertibile`,
+    `trgfn_listini_righe_guard_uom_periodo`, `trgfn_listini_versioni_guard_uom_periodo`,
+    `trgfn_attivita_fattore_alla_data`;
+  * script: `fn_fattore_uom_alla_data`.
+* Riallineate:
+  * catalogo: `articoli_uom_operativa`, `unita_misura_conversioni`, `fn_get_uom_factor`, `fn_uom_operativa_alla_data`;
+  * script: `trgfn_qta_from_operativa`, `fn_check_versione_listino_attivabile`;
+  * vendite: `commesse_attivita`, `attivita_fatturabili`, `listini_righe`, `listini_versioni`,
+    `fn_upsert_commessa_attivita`, `fn_aggiungi_onere_commessa`, `fn_accredita_riga_reso`;
+  * dbops: `automazione_attivo_eccezioni`;
+  * la guida `automazione-db.md` (§4.2, la tabella delle eccezioni).
+* Da rigenerare dopo l'apply: le schede auto-generate.
+
+**Debito documentale notato, fuori giro.** La tabella delle eccezioni, nella pagina `manual/` e nella guida, non
+elencava le sedici righe di `ui` del giro 7-bis di brief-db-revisione-dbops.
+
+**Ricadute BE e FE**, oltre a §15.4:
+
+| # | Che cosa |
+| --- | --- |
+| BE21 | In più: `delete_uom_operativa` e lo spegnimento di una mappatura in vigore ora sono rifiutati (`E_UOM_STORIA_IN_VIGORE`). L'interfaccia propone la chiusura. Lo stesso vale per le conversioni generali (`CONVERSIONI_UPDATE_COLUMNS`): fattore, unità e inizio non si cambiano più |
+| BE22 | Il rifiuto della riga ha campo `uom_id`. Quello del periodo ha campo `valido_al` o `valido_dal`. Quello del catalogo arriva al commit, con codice `E_UOM_CHIUSURA_CON_LISTINI_ATTIVI`. Il motivo 4 di attivazione ha la sua `reason_key` |
+| BE23 | `fn_upsert_commessa_attivita` ha `p_factor_to_base` vuoto per difetto: il backend non deve più passare 1 |
+| BE24 | Q31: articolo e unità si spengono anche con mappature e conversioni. Se il backend spegneva le mappature prima dell'articolo, quel passo va tolto: ora, su una mappatura in vigore, sarebbe rifiutato |
+| BE25 | Policy e ripiego dei sei codici nuovi |
+
+### 15.10 Apply e commit
+
+* **Apply (Tid)**: il migrate su dbdev e scratch. Poi la **convergenza dell'automazione ATTIVO**
+  (`dbops.fn_run_automations_attivo`, o il job serale). È lei che toglie i quattro block e i quattro require delle FK
+  in eccezione. Fino ad allora `test-uom-storia-v1` (test 19-21) e `test-automazione-attivo-eccezioni-v1` (test 9)
+  restano rossi.
+* **Presidio rosso fino all'apply**: `test-punti-canale-campo-v1` sullo scratch, perché la voce è passata a
+  `script.fn_fattore_uom_alla_data`.
+* **Commit** su richiesta di Tid, dopo l'apply.
+
+**Esito (2026-11-11).** Tid ha applicato il giro 2-bis su dbdev e scratch, e i pgTAP come app sono verdi. Il commit
+è su `dev/db-tid`, coi file del giro. I file dell'altra sessione (`20261111-40` … `-46`, il bersaglio del guard ATTIVO,
+brief-db-revisione-dbops) restano fuori; i cinque file che le due sessioni hanno toccato tutte e due
+(`messaggi_errore.csv`, `test-fn-riattiva-articolo-v1`, i due indici di `script`, `automazione-db.md`) entrano interi,
+anche con le righe dell'altra sessione (decisione di Tid). Restano al team BE le voci BE21-BE25.

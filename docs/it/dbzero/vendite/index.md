@@ -260,12 +260,14 @@ search:
 - [fn_list_lotto_task_runs](funzioni/fn_list_lotto_task_runs.md) — Elenca i task run di un lotto, con filtri opzionali per step e task.
 - [fn_list_ordini_da_pushare](funzioni/fn_list_ordini_da_pushare.md) — `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_list_preventivi_da_pushare](funzioni/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
+- [fn_listini_attivi_uom_non_convertibili](funzioni/fn_listini_attivi_uom_non_convertibili.md) — Elenca i prezzi delle versioni di listino ATTIVE in un'unità che, con le conversioni di adesso, in un giorno del periodo non si converte per l'articolo: quelli che una chiusura nel catalogo lascia scoperti. Per la mappatura si filtra su articolo e unità; per la conversione generale su una delle due unità, per gli articoli la cui base è l'altra.
 - [fn_listini_in_scadenza_senza_successore](funzioni/fn_listini_in_scadenza_senza_successore.md)
 - [fn_listini_selezionabili](funzioni/fn_listini_selezionabili.md)
 - [fn_listino_ha_storia](funzioni/fn_listino_ha_storia.md) — (rev 2026-10-22, decisione di Tid del 2026-10-21 e D-1 del 2026-10-22)
 - [fn_listino_periodicita_articolo](funzioni/fn_listino_periodicita_articolo.md)
 - [fn_listino_versione_in_vigore](funzioni/fn_listino_versione_in_vigore.md) — (funzione nata il 2026-09-28, `20260928-35`)
 - [fn_listino_versione_operativa](funzioni/fn_listino_versione_operativa.md)
+- [fn_listino_versione_riga_uom_non_convertibile](funzioni/fn_listino_versione_riga_uom_non_convertibile.md) — Dice la prima riga attiva di una versione di listino con un'unità che, in un giorno del periodo della versione, non si converte per l'articolo: la riga, l'articolo, i codici, il primo giorno scoperto. Nessuna riga se la versione è coperta.
 - [fn_log_event](funzioni/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 - [fn_log_lotto_esito_fatture](funzioni/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
 - [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 2026-09-08)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
@@ -356,6 +358,7 @@ search:
 - [fn_sync_lotto_fatture_stato](funzioni/fn_sync_lotto_fatture_stato.md) — (latest review 30-01-2026)   La funzione **`vendite.fn_sync_lotto_fatture_stato()`** allinea lo stato documentale delle fatture collegate a un lotto.
 - [fn_upsert_commessa_attivita](funzioni/fn_upsert_commessa_attivita.md) — Scrive, o riscrive, una riga di `vendite.commesse_attivita` sulla chiave `(commessa_id, segment_key)`: è la porta da cui il lavoro entra in commessa, dal push di un documento, dalla porta degli oneri o da una rettifica. Restituisce l'id della riga e se è nata ora o è stata aggiornata.
 - [fn_versioni_listino_da_chiudere](funzioni/fn_versioni_listino_da_chiudere.md)
+- [trgfn_attivita_fattore_alla_data](funzioni/trgfn_attivita_fattore_alla_data.md) — Un'attività senza fattore, di commessa o fatturabile, prende quello **alla data dell'attività**, non 1. Il fattore scritto è la fotografia (copiato da un documento sorgente, dalla riga che si rettifica, dall'attività di commessa che si emette) e si rispetta.
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 10-09-2026)
 - [trgfn_attivita_fatturabili_guard_commessa](funzioni/trgfn_attivita_fatturabili_guard_commessa.md) — Il guard che tiene coerente un'attività fatturabile con la sua commessa: la riga di commessa da cui l'attività nasce esiste e appartiene alla commessa che l'attività dichiara.
 - [trgfn_attivita_fatturabili_guard_fatturato](funzioni/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
@@ -440,8 +443,10 @@ search:
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](funzioni/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
 - [trgfn_listini_righe_guard_periodicita_quota_fissa](funzioni/trgfn_listini_righe_guard_periodicita_quota_fissa.md)
 - [trgfn_listini_righe_guard_stato](funzioni/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
+- [trgfn_listini_righe_guard_uom_periodo](funzioni/trgfn_listini_righe_guard_uom_periodo.md) — L'unità di un prezzo di listino si converte per l'articolo in **ogni giorno** del periodo della versione. Lo guarda su un prezzo nuovo (in bozza, o in una versione attiva come rettifica) e su un prezzo riacceso.
 - [trgfn_listini_versioni_guard_per_stato](funzioni/trgfn_listini_versioni_guard_per_stato.md)
 - [trgfn_listini_versioni_guard_transizione_stato](funzioni/trgfn_listini_versioni_guard_transizione_stato.md)
+- [trgfn_listini_versioni_guard_uom_periodo](funzioni/trgfn_listini_versioni_guard_uom_periodo.md) — Il periodo di una versione di listino **non si allunga** su giorni in cui l'unità di un suo prezzo non si converte per l'articolo.
 - [trgfn_logs_guard_delete](funzioni/trgfn_logs_guard_delete.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** protegge i log funzionali (`fatture_log`, `fatturazione_lotti_log`) dalla cancellazione **accidentale**, distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto**.
 - [trgfn_lotto_fatture_guard_stato_coerente](funzioni/trgfn_lotto_fatture_guard_stato_coerente.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_default_revisione_radice](funzioni/trgfn_offerte_commerciali_default_revisione_radice.md)

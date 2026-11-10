@@ -42,7 +42,6 @@ DECLARE
   -- Per le frasi degli errori.
   v_art_codice   catalogo.articoli.codice%TYPE;
   v_uom_codice   catalogo.unita_misura.codice%TYPE;
-  v_base_codice  catalogo.unita_misura.codice%TYPE;
 BEGIN
   -- ------------------------------------------------------------
   -- script.trgfn_qta_from_operativa()
@@ -158,8 +157,8 @@ BEGIN
   --    era dell'altra unita', e non vale piu'.
   --    Il fattore scritto sulla riga e' la fotografia (anche quella copiata
   --    da un documento sorgente) e si rispetta; altrimenti
-  --    catalogo.fn_get_uom_factor alla data del documento, e senza fattore
-  --    la riga si rifiuta: una quantita' base inventata e' peggio di nessuna.
+  --    il fattore alla data del documento, e senza fattore la riga si
+  --    rifiuta (script.fn_fattore_uom_alla_data).
   --------------------------------------------------------------------
   IF TG_OP = 'UPDATE'
      AND NEW.uom_operativa_id IS DISTINCT FROM OLD.uom_operativa_id
@@ -167,31 +166,12 @@ BEGIN
     NEW.factor_to_base := NULL;
   END IF;
 
+  -- Il fattore alla data, o il rifiuto: script.fn_fattore_uom_alla_data.
   v_factor_used := COALESCE(
       NEW.factor_to_base,
-      catalogo.fn_get_uom_factor(NEW.articolo_id, NEW.uom_operativa_id, v_data_doc));
-
-  IF v_factor_used IS NULL THEN
-    SELECT a.codice, ub.codice INTO v_art_codice, v_base_codice
-      FROM catalogo.articoli a
-      LEFT JOIN catalogo.unita_misura ub ON ub.id = a.uom_id
-     WHERE a.id = NEW.articolo_id;
-    SELECT u.codice INTO v_uom_codice
-      FROM catalogo.unita_misura u
-     WHERE u.id = NEW.uom_operativa_id;
-    PERFORM script.fn_log_and_raise_error(
-      'script', 'script.trgfn_qta_from_operativa',
-      'E_UOM_MISSING',
-      jsonb_build_object(
-        'campo', 'uom_operativa_id',
-        'articolo_id', NEW.articolo_id,
-        'uom_operativa_id', NEW.uom_operativa_id,
-        'data_documento', v_data_doc,
-        'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME),
-      NULL::uuid,
-      COALESCE(v_uom_codice, '—'), COALESCE(v_base_codice, '—'),
-      COALESCE(v_art_codice, '—'), COALESCE(to_char(v_data_doc, 'DD/MM/YYYY'), '—'));
-  END IF;
+      script.fn_fattore_uom_alla_data(NEW.articolo_id, NEW.uom_operativa_id, v_data_doc,
+                                      'script.trgfn_qta_from_operativa', 'uom_operativa_id',
+                                      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME));
 
   IF v_fill_factor_to_base AND NEW.factor_to_base IS NULL THEN
     NEW.factor_to_base := v_factor_used;
@@ -270,7 +250,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
-IS 'Calcola quantita (unita'' base) da qta_operativa per il fattore: quantita e'' una colonna calcolata, la scrive solo questo trigger. Il fattore e'' quello scritto sulla riga (factor_to_base: la fotografia, anche quella copiata da un documento sorgente), altrimenti catalogo.fn_get_uom_factor alla data del documento; senza fattore la riga e'' rifiutata (E_UOM_MISSING). Se un UPDATE cambia l''unita'' e non il fattore, il fattore si rilegge. Le regole della quantita'' della mappatura alla data (catalogo.fn_uom_operativa_alla_data): intera (E_QTA_OPERATIVA_NON_INTERA), al massimo max_decimals decimali (E_QTA_OPERATIVA_DECIMALI), a passi di qty_step (E_QTA_OPER_STEP_INVALIDO). Unita'' operativa NULL = l''unita'' base dell''articolo. Con qta_operativa NULL: E_QTA_MISSING. TG_ARGV: [0] fill_factor_to_base (scrive il fattore usato se la riga non l''ha); [1] la colonna della fonte della quantita'' (vuota se la tabella non ce l''ha): con una fonte a valle (script.fn_fonte_porta_quantita = false) quantita vale NULL; [2] la tabella della testata, [3] la colonna della riga che la punta, [4] la colonna data della testata (la data del documento). Senza [2]-[4]: E_SCRIPT_CHIAMATA_NON_VALIDA. Se la testata non si vede (o non c''e'') non calcola niente: parlano la RLS o la FK. Su UPDATE non fa niente se qta_operativa, unita'' e fattore non cambiano.';
+IS 'Calcola quantita (unita'' base) da qta_operativa per il fattore: quantita e'' una colonna calcolata, la scrive solo questo trigger. Il fattore e'' quello scritto sulla riga (factor_to_base: la fotografia, anche quella copiata da un documento sorgente), altrimenti il fattore alla data del documento, e senza fattore la riga e'' rifiutata (script.fn_fattore_uom_alla_data, E_UOM_MISSING). Se un UPDATE cambia l''unita'' e non il fattore, il fattore si rilegge. Le regole della quantita'' della mappatura alla data (catalogo.fn_uom_operativa_alla_data): intera (E_QTA_OPERATIVA_NON_INTERA), al massimo max_decimals decimali (E_QTA_OPERATIVA_DECIMALI), a passi di qty_step (E_QTA_OPER_STEP_INVALIDO). Unita'' operativa NULL = l''unita'' base dell''articolo. Con qta_operativa NULL: E_QTA_MISSING. TG_ARGV: [0] fill_factor_to_base (scrive il fattore usato se la riga non l''ha); [1] la colonna della fonte della quantita'' (vuota se la tabella non ce l''ha): con una fonte a valle (script.fn_fonte_porta_quantita = false) quantita vale NULL; [2] la tabella della testata, [3] la colonna della riga che la punta, [4] la colonna data della testata (la data del documento). Senza [2]-[4]: E_SCRIPT_CHIAMATA_NON_VALIDA. Se la testata non si vede (o non c''e'') non calcola niente: parlano la RLS o la FK. Su UPDATE non fa niente se qta_operativa, unita'' e fattore non cambiano.';
 ```
 
 </div>

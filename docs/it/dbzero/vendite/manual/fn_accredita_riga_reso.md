@@ -241,6 +241,17 @@ test 16 (forma) e test 15 (la corsia ORD, costruita). Misura:
 
 ---
 
+### 🔄 rev 2026-11-10 — il fattore si copia, senza «1 se manca»
+
+La rettifica copia il fattore verso la base dall'attività che rettifica, com'è. Prima lo
+scriveva con un «1 se manca»; l'1 non scattava, perché l'attività ha sempre il fattore, ma era la
+forma che faceva passare 3 cartoni come 3 pezzi. Se il fattore mancasse, lo leggerebbe la
+tabella alla data dell'attività
+([`trgfn_attivita_fattore_alla_data`](/dbzero/vendite/funzioni/trgfn_attivita_fattore_alla_data)).
+(brief-db-revisione-catalogo, giro 2-bis)
+
+---
+
 ### I due tetti, e perché non stanno nello stesso posto
 
 ```text

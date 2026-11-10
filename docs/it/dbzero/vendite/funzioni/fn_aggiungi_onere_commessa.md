@@ -169,7 +169,7 @@ BEGIN
       p_classe_utenza_id_snapshot   => NULL,
       p_qta_operativa               => NULL,
       p_uom_operativa_id            => NULL,
-      p_factor_to_base              => 1,
+      p_factor_to_base              => NULL,
       p_posticipa_al                => NULL,
       p_tipo_doc_fiscale_id         => p_tipo_doc_fiscale_id,
       p_valuta_id                   => NULL,

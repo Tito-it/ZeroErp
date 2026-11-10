@@ -16,15 +16,20 @@
 -- figli noti via UPDATE ad-hoc + ROLLBACK ripristina il seed.
 --
 -- Indice test (1..6):
---   1. UPDATE attivo=false su articolo con figlio attivo -> raise, e il
---      messaggio NOMINA la figlia (verifica trigger
---      trgfn_prevent_deactivate_if_children + messaggio parlante 20260820-01)
+--   1. UPDATE attivo=false su articolo con figlio attivo -> raise con la
+--      frase del ramo ATTIVE (trgfn_prevent_deactivate_if_children, figlia
+--      con la colonna attivo)
 --   2. fn_riattiva_articolo su articolo disattivato esegue senza errori
 --   3. dopo (2): articolo padre attivo=true
---   4. dopo (2): figli (articoli_uom_operativa) restano attivo=false
+--   4. dopo (2): figli (articoli_descrizioni_aggiuntive) restano attivo=false
 --      (pattern "padre prima, figli poi")
 --   5. fn_riattiva_articolo su UUID inesistente -> raise E_ARTICOLO_NOT_FOUND
 --   6. fn_riattiva_articolo idempotente su articolo gia' attivo -> no error
+--
+-- 🔄 2026-11-10 — il figlio attivo e' una descrizione aggiuntiva, non piu' la
+--   mappatura di base. La mappatura e' storia (brief-db-revisione-catalogo Q31):
+--   articoli_uom_operativa e' in dbops.automazione_attivo_eccezioni e non blocca
+--   piu' lo spegnimento dell'articolo. Serviva un figlio che lo blocca davvero.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -85,60 +90,42 @@ CREATE TEMP TABLE _t_ctx AS
 SELECT pg_temp.mk_articolo('PGTAP_RIATT_A') AS art_a,
        pg_temp.mk_articolo('PGTAP_RIATT_B') AS art_b;
 
--- ⭐ Nessun figlio da creare a mano: l'articolo nasce gia' con la propria
---   `articoli_uom_operativa` di base (la crea un trigger). E' esattamente il
---   figlio attivo che il test 1 pretende — uno solo, e sappiamo quale, che e'
---   il punto di tutta questa correzione.
+-- ⭐ Un figlio attivo, uno solo e sappiamo quale: una descrizione aggiuntiva.
+--   La mappatura di base che nasce dal trigger non conta piu': dal 2026-11-10
+--   e' in eccezione (Q31), e non blocca lo spegnimento.
+INSERT INTO vendite.articoli_descrizioni_aggiuntive (articolo_id, descrizione)
+SELECT art_a, 'pgTAP riattiva articolo' FROM _t_ctx;
 
 -- =========================================================
 -- 1) Disattivazione bloccata da figlio attivo
--- ART_TEST_BASE ha articoli_uom_operativa (seed id 9002) attivo=true
+-- L'articolo ha una descrizione aggiuntiva attiva.
 --
--- ⚠️ rev 2026-08-20 — IL DISCRIMINANTE E' CAMBIATO, e vale la pena sapere
---    perche'. Fino a ieri era la parola «attive», presa dalla frase che
---    dbops.trgfn_prevent_deactivate_if_children passava come primo valore a
---    fn_log_and_raise_error. Quella frase non esiste piu' (20260820-01): il
---    messaggio sta a catalogo e NOMINA la tabella collegata, che prima non
---    diceva mai.
---    ⭐ E la parola «attive» e' TORNATA il 2026-08-20 con 20260820-08, ma per
---    un altro motivo: non e' piu' nella frase unica (dove era falsa ogni volta
---    che la figlia NON ha la colonna attivo), e' in un CODICE SUO —
---    E_ATTIVO_BLOCK_CHILDREN_ACTIVE (934), che il guard sceglie quando la
---    figlia la colonna ce l'ha. `catalogo.articoli_uom_operativa` e' proprio
---    quel caso (ed e' la stessa colonna che il test 4 rilegge), quindi questo
---    file e' il testimone del RAMO A. Il ramo B — figlia senza colonna attivo,
---    codice 125 — e' presidiato da
---    db/pgtap/vendite/test-registri-per-emittente-v1.sql (test 6).
---    ⛔ I due rami non sono due sfumature: hanno due RIMEDI diversi
---    (disattivare le righe qui, toglierle la'), ed e' per questo che sono due
---    codici e non un messaggio con un forse.
---
--- ⭐ Il discriminante nuovo e' PIU' FORTE del vecchio: «attive» sarebbe
---    passata con qualunque figlia: qui si asserisce PROPRIO
---    catalogo.articoli_uom_operativa — che e' l'unico figlio che questa
---    fixture crea, come dice il commento qui sopra («uno solo, e sappiamo
---    quale»). Nel messaggio nuovo padre e figlia sono entrambi
---    `schema.tabella`: se il loro ordine si scambiasse rispetto ai segnaposti
---    del catalogo, la frase resterebbe perfetta e nominerebbe la tabella
---    sbagliata — e questo e' il test che se ne accorge.
+-- ⭐ Il discriminante e' il RAMO: vendite.articoli_descrizioni_aggiuntive ha la colonna attivo,
+--    quindi il guard sceglie E_ATTIVO_BLOCK_CHILDREN_ACTIVE (934) e la sua frase, non
+--    E_ATTIVO_BLOCK_CHILDREN_EXIST (125). Questo file e' il testimone del ramo A; il ramo B,
+--    figlia senza colonna attivo, lo presidia db/pgtap/vendite/test-registri-per-emittente-v1.sql
+--    (test 6). I due rami hanno due rimedi diversi (disattivare le righe, o toglierle).
+-- ⛔ La frase NON nomina la figlia: le frasi della famiglia ATTIVO non nominano tabelle
+--    (brief-db-revisione-dbops, S-BE-1). Quale tabella blocca sta nel contesto del diario.
+--    Che la frase non porti nomi di tabelle lo presidia dbops/test-bersaglio-guard-attivo-v1.
 -- =========================================================
-SELECT throws_like(
+SELECT throws_ok(
     format(
         $sql$ UPDATE catalogo.articoli SET attivo = false WHERE id = %L::uuid $sql$,
         (SELECT art_a FROM _t_ctx)
     ),
-    '%righe collegate attive in catalogo.articoli_uom_operativa%',
-    '1) UPDATE attivo=false con figlio attivo -> raise: messaggio del ramo ATTIVE, e NOMINA la figlia'
+    'P0001',
+    (SELECT m.messaggio FROM config.messaggi_errore m
+      WHERE m.codice = 'E_ATTIVO_BLOCK_CHILDREN_ACTIVE' AND m.lingua = 'it'),
+    '1) UPDATE attivo=false con figlio attivo -> raise con la frase del ramo ATTIVE (E_ATTIVO_BLOCK_CHILDREN_ACTIVE)'
 );
 
 -- =========================================================
 -- Setup scenario 2/3: disattivazione padre+figli ordinata
 -- "Figli prima" (per superare il trigger), poi padre.
--- I figli noti per ART_TEST_BASE: articoli_uom_operativa.
--- Disattiviamo TUTTI i figli attivi su ART_TEST_BASE per evitare
--- side-effect da altre relazioni seedate.
+-- Il figlio noto: la descrizione aggiuntiva creata sopra.
 -- =========================================================
-UPDATE catalogo.articoli_uom_operativa
+UPDATE vendite.articoli_descrizioni_aggiuntive
    SET attivo = false
  WHERE articolo_id = (SELECT art_a FROM _t_ctx)
    AND attivo = true;
@@ -170,11 +157,11 @@ SELECT is(
 -- =========================================================
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM catalogo.articoli_uom_operativa
+        SELECT 1 FROM vendite.articoli_descrizioni_aggiuntive
          WHERE articolo_id = (SELECT art_a FROM _t_ctx)
            AND attivo = true
     ),
-    '4) Dopo fn_riattiva_articolo: figli (articoli_uom_operativa) restano attivo=false'
+    '4) Dopo fn_riattiva_articolo: figli (articoli_descrizioni_aggiuntive) restano attivo=false'
 );
 
 -- =========================================================

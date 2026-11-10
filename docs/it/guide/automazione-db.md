@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -324,7 +324,7 @@ Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il n
 
 **Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e il padre ha figli attivi → operazione **bloccata con errore**; un figlio attivo che punta a un padre spento → **rifiutato** al commit.
 
-**I rifiuti, e a chi parlano.** Il block solleva `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (figli da spegnere) o `E_ATTIVO_BLOCK_CHILDREN_EXIST` (figli da togliere, se la figlia non ha `attivo`); il require `E_ATTIVO_PADRE_NON_ATTIVO`, e `E_PADRE_INESISTENTE` quando la chiave non riferisce nessuna riga (succede solo su un require montato a mano su una chiave polimorfa). Sono codici per l'operatore: la frase nomina padre, chiave e figlia. Un trigger montato male parla a chi l'ha montato: `E_ATTIVO_BLOCK_ARGS` e `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` per il block, `E_TRIGGER_ARGOMENTI_INVALIDI` per il require.
+**I rifiuti, e a chi parlano.** Il block solleva `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (figli da spegnere) o `E_ATTIVO_BLOCK_CHILDREN_EXIST` (figli da togliere, se la figlia non ha `attivo`); il require `E_ATTIVO_PADRE_NON_ATTIVO`, e `E_PADRE_INESISTENTE` quando la chiave non riferisce nessuna riga (succede solo su un require montato a mano su una chiave polimorfa). Sono codici per l'operatore, e la frase non nomina tabelle: a un operatore `anagrafiche.risorse_umane` non dice niente, e su un portale o uno shop è un'informazione sulla struttura del database. Quale riga è in causa lo dice il **bersaglio** (tipo e id), che il require mette sul padre spento quando il catalogo dei tipi ne dichiara la tabella (`script.fn_bersaglio_di_riga`); padre, figlia, colonna e valore restano nel contesto del registro errori, per chi ripara il dato. Un trigger montato male parla a chi l'ha montato: `E_ATTIVO_BLOCK_ARGS` e `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` per il block, `E_TRIGGER_ARGOMENTI_INVALIDI` per il require.
 
 **⭐ Padre e figli si guardano con gli occhi del proprietario.** Che un padre sia spento, o ancora usato, non dipende da chi guarda: le due funzioni trigger leggono il padre ([`dbops.fn_trigger_padre_stato`](/dbzero/dbops/funzioni/fn_trigger_padre_stato)) e cercano i figli ([`dbops.fn_trigger_figlie_presenti`](/dbzero/dbops/funzioni/fn_trigger_figlie_presenti)) fuori dalla row level security. Un catalogo visibile a tutti non si spegne se lo usa un'altra azienda, e un require differito si chiude allo stesso modo qualunque sia il contesto al commit. Le due letture rispondono solo per trigger montati su tabelle del proprietario del database: gli argomenti li hanno scritti le migrazioni.
 
@@ -336,6 +336,8 @@ Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il n
 | --- | --- |
 | `config.profili_accesso_bindings.identita_digitale_id` | **porta e profili**: la veste attiva dice se la porta è aperta, il binding cosa si può fare una volta dentro. La veste OPERATORE nasce spenta (regola unica dell'invito) e deve poter avere i suoi profili prima di essere accesa; i lettori dei permessi chiedono già entrambe le cose |
 | `vendite.fatture_stampa_coda.tipo_documento_output_id` | la coda di stampa è un **outbox**: il worker aggiorna la riga a ogni passaggio, e il require scatterebbe su ogni aggiornamento; con un tipo di documento spento si fermerebbe il lotto intero, e il block impedirebbe di spegnere un tipo finché una riga storica lo nomina. Se un tipo può stampare lo decide la risoluzione del modello al drenaggio |
+| `catalogo.articoli_uom_operativa.articolo_id` e `.uom_id` | la mappatura di un'unità operativa è **storia**: si chiude con `valido_al` e dal primo giorno in vigore non si spegne più. Col block un articolo o un'unità che hanno avuto una mappatura non si spegnerebbero mai; l'articolo si spegne e si riaccende con le sue mappature intatte |
+| `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | la conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai |
 
 **Gli orfani: quando la figlia non c'è più.** Il trigger nomina la figlia per testo, e PostgreSQL non lo collega alla tabella: eliminare la figlia toglie la FK ma lascia il block sul padre, che da quel momento rifiuta ogni disattivazione (`E_ATTIVO_BLOCK_FKCOL_NOT_FOUND`). Non serve ricordarsene quando si elimina una tabella: in testa a ogni giro il motore chiama anche [`dbops.fn_ritira_attivo_orfani`](/dbzero/dbops/funzioni/fn_ritira_attivo_orfani), che toglie i trigger ATTIVO che nominano una tabella o una colonna che non esiste più. Orfano vuol dire **nome morto**, non «FK assente»: i require scritti a mano su chiavi polimorfe non hanno FK e restano. L'elenco lo dà [`dbops.fn_trigger_attivo_orfani`](/dbzero/dbops/funzioni/fn_trigger_attivo_orfani); il presidio è `db/pgtap/dbops/test-trigger-attivo-orfani-v1.sql`.
 

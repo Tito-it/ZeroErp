@@ -142,6 +142,13 @@ WITH a AS (
 )
 SELECT id AS articolo_id, uom_id FROM a;
 
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D26/Q30): un'attivita'
+--   senza fattore prende quello alla data, e un'unita' che per l'articolo non si
+--   converte si rifiuta (E_UOM_MISSING). «Un'unita' qualunque» accanto a «un
+--   articolo qualunque» passava col fattore 1 per difetto: l'unita' e' la base
+--   dell'articolo scelto.
+UPDATE _articolo SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = _articolo.articolo_id);
+
 -- ⭐ `emittente_soggetto_ruolo_id` NON si passa: lo deriva dal BA il trigger
 --   `trgfn_commesse_default_emittente`. Passarlo a mano proverebbe la fixture,
 --   non il modello.

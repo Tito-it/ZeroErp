@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_attivita_fattore_alla_data: un'attivita' (di commessa o fatturabile)
+#   senza fattore prende quello alla data, non 1 (D26, Q30).
+#
+#   Prima commesse_attivita.factor_to_base aveva DEFAULT 1, e lo stesso 1 lo mettevano
+#   la madre vendite.fn_upsert_commessa_attivita (parametro e COALESCE), l'onere e
+#   l'accredito: una riga senza fattore in un'unita' che base non e' passava come se lo
+#   fosse (3 cartoni -> 3 pezzi). Ora la regola del giro 2 per le righe dei documenti,
+#   con lo stesso BB (-59). Su vendite.attivita_fatturabili, che ha lo stesso fattore
+#   obbligatorio e perde lo stesso default, lo stesso trigger: chi la scrive senza il
+#   fattore della commessa (l'unico writer lo copia) lo riceve alla data. Unita'
+#   mancante = unita' base dell'articolo, come sulle righe dei documenti. Il default e
+#   gli 1 si ritirano dopo (-62 … -65).
+#   Rollback: DROP del trigger e della funzione.
+#   Brief: brief-db-revisione-catalogo, giro 2-bis.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261111-61-create-trgfn-attivita-fattore-alla-data-mctit.yaml
+
+  - changeSet:
+      id: 20261111-61-create-trgfn-attivita-fattore-alla-data
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_attivita_fattore_alla_data, su commesse_attivita e attivita_fatturabili: senza fattore, quello alla data dell'attivita' o E_UOM_MISSING (D26, Q30). Brief: brief-db-revisione-catalogo, giro 2-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE (p.proname = 'trgfn_attivita_fattore_alla_data' AND p.pronamespace = 'vendite'::regnamespace)
+                  OR (p.proname = 'fn_fattore_uom_alla_data' AND p.pronamespace = 'script'::regnamespace)
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.trgfn_attivita_fattore_alla_data()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: un'attivita' senza fattore prende quello alla data
+                  --   dell'attivita', o si rifiuta (E_UOM_MISSING).
+                  -- Eventi: INSERT; UPDATE OF factor_to_base, uom_operativa_id, uom_id.
+                  -- =========================================================
+                  IF TG_OP = 'UPDATE'
+                     AND (NEW.uom_operativa_id IS DISTINCT FROM OLD.uom_operativa_id
+                          OR NEW.uom_id IS DISTINCT FROM OLD.uom_id)
+                     AND NEW.factor_to_base IS NOT DISTINCT FROM OLD.factor_to_base THEN
+                      NEW.factor_to_base := NULL;
+                  END IF;
+
+                  IF NEW.factor_to_base IS NULL THEN
+                      NEW.factor_to_base := script.fn_fattore_uom_alla_data(
+                          NEW.articolo_id,
+                          COALESCE(NEW.uom_operativa_id, NEW.uom_id, catalogo.fn_get_uom_base(NEW.articolo_id)),
+                          NEW.data_attivita,
+                          'vendite.trgfn_attivita_fattore_alla_data',
+                          CASE WHEN NEW.uom_operativa_id IS NULL THEN 'uom_id' ELSE 'uom_operativa_id' END,
+                          TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME);
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              CREATE TRIGGER trg_commesse_attivita_a10_fattore_alla_data_ins_upd
+                  BEFORE INSERT OR UPDATE OF factor_to_base, uom_operativa_id, uom_id ON vendite.commesse_attivita
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_attivita_fattore_alla_data();
+
+              CREATE TRIGGER trg_attivita_fatturabili_a10_fattore_alla_data_ins_upd
+                  BEFORE INSERT OR UPDATE OF factor_to_base, uom_operativa_id, uom_id ON vendite.attivita_fatturabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_attivita_fattore_alla_data();
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fattore_alla_data() IS
+                  'Il fattore di un''attivita'' (vendite.commesse_attivita, vendite.attivita_fatturabili: factor_to_base), quante unita'' base vale un''unita'' dell''attivita''. Quello scritto e'' la fotografia (copiato da un documento sorgente, dalla riga che si rettifica, dall''attivita'' di commessa che si emette) e si rispetta; senza, il fattore alla data dell''attivita'' (data_attivita) dell''unita'' operativa, o dell''unita'' della riga se l''operativa non c''e'', o dell''unita'' base dell''articolo se non c''e'' nessuna delle due (script.fn_fattore_uom_alla_data): 1 per l''unita'' base, la mappatura o la conversione generale in vigore quel giorno per le altre; senza neanche quello, E_UOM_MISSING. Un UPDATE che cambia l''unita'' e non il fattore: il fattore era dell''altra unita'', e si rilegge. BEFORE INSERT e UPDATE OF factor_to_base, uom_operativa_id, uom_id. La quantita'' base (quantita) la porta chi scrive.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_fattore_alla_data_ins_upd ON vendite.commesse_attivita;
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_a10_fattore_alla_data_ins_upd ON vendite.attivita_fatturabili;
+              DROP FUNCTION IF EXISTS vendite.trgfn_attivita_fattore_alla_data();

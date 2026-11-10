@@ -3436,7 +3436,8 @@
         "versione_citata": "The version is used by other documents: remove it from those documents before deleting it.",
         "versione_non_attiva": "Only an active version can be closed: change a draft's dates instead; a closed version no longer changes.",
         "fine_nel_passato": "The end cannot be before today: choose today or a future date.",
-        "clone_prima_della_sorgente": "The new version cannot start before the version it is copied from."
+        "clone_prima_della_sorgente": "The new version cannot start before the version it is copied from.",
+        "uom_non_convertibile": "A price is in a unit that, on a day of the period, does not convert for the item: add the conversion or change the unit before activating it."
       },
       "elimina_versione": "Delete version",
       "versione_eliminata": "Version deleted",

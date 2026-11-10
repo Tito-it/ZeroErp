@@ -140,6 +140,13 @@ SELECT
     ORDER BY sc.id LIMIT 1)           AS stato_commessa_id,
   script.fn_pgtap_registro_fattura((SELECT emittente_sr_id FROM tmp_cost_mnf))            AS registro_id;
 
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D26/Q30): un'attivita'
+--   senza fattore prende quello alla data, e un'unita' che per l'articolo non si
+--   converte si rifiuta (E_UOM_MISSING). «Un'unita' qualunque» accanto a «un
+--   articolo qualunque» passava col fattore 1 per difetto: l'unita' e' la base
+--   dell'articolo scelto.
+UPDATE tmp_refs_mnf SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = tmp_refs_mnf.articolo_id);
+
 SELECT ok(
   (SELECT r.stato_draft_id IS NOT NULL
       AND r.stato_annullata_id IS NOT NULL

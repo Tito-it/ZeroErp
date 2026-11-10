@@ -76,10 +76,13 @@ SELECT
   dbops.fn_pgtap_crea_articolo('PGT-UOM-FALLBACK', true, false, false,
                                (SELECT uom_base_id FROM tmp_uom))     AS art_fallback_id;
 
--- La mappatura operativa del solo articolo BASE: fattore 6.
+-- La mappatura operativa del solo articolo BASE: fattore 6, da oggi.
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, Q28): una mappatura con
+--   giorni passati non si spegne piu' (catalogo.trgfn_uom_guard_storia). I test 8-9
+--   la spengono: comincia oggi, cioe' non ha giorni passati.
 INSERT INTO catalogo.articoli_uom_operativa
-    (articolo_id, uom_id, is_base, factor_to_base, attivo)
-SELECT (SELECT art_base_id FROM tmp_seed), uom_operativa_id, false, 6, true
+    (articolo_id, uom_id, is_base, factor_to_base, valido_dal, attivo)
+SELECT (SELECT art_base_id FROM tmp_seed), uom_operativa_id, false, 6, script.fn_data_operativa(), true
   FROM tmp_uom;
 
 -- Le due conversioni globali, nei due VERSI: la diretta (uom_conv -> base,
@@ -160,7 +163,7 @@ SELECT lives_ok($$
     UPDATE catalogo.articoli_uom_operativa
        SET attivo = false
      WHERE articolo_id = (SELECT art_base_id FROM tmp_seed)
-$$, 'La mappatura operativa si puo'' disattivare');
+$$, 'La mappatura operativa che comincia oggi si puo'' disattivare');
 
 SELECT is(
   catalogo.fn_get_uom_factor((SELECT art_base_id FROM tmp_seed),

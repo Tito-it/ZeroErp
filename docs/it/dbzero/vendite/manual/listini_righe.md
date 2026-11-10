@@ -8,7 +8,7 @@
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)  
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)  
 >
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 
 ### 🎯 Scopo Principale
 La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM,
@@ -50,6 +50,20 @@ specifico rispetto al contesto operativo.
   rettifica, come il prezzo. È l'altra metà del controllo all'attivazione
   ([script.fn_check_versione_listino_attivabile](/dbzero/script/manual/fn_check_versione_listino_attivabile),
   motivo 3): senza, la quota la perdeva dopo.
+* ⭐ **L'unità di un prezzo si converte per tutto il periodo della versione** (rev 2026-11-10,
+  decisione di Tid): in ogni giorno da `valido_dal` a `valido_al` della versione (senza fine se
+  vuota), l'unità della riga deve avere un fattore per l'articolo, cioè la base, una mappatura o una
+  conversione generale in vigore quel giorno. Lo controlla
+  [vendite.trgfn_listini_righe_guard_uom_periodo](/dbzero/vendite/funzioni/trgfn_listini_righe_guard_uom_periodo)
+  su un prezzo nuovo e su uno riacceso (`E_LISTINO_UOM_NON_CONVERTIBILE`, sul campo `uom_id`, col
+  primo giorno scoperto). La regola si rompe anche da altri due lati, e lì è presidiata: il periodo
+  della versione che si allunga
+  ([vendite.trgfn_listini_versioni_guard_uom_periodo](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_uom_periodo))
+  e il catalogo che cambia sotto una versione attiva
+  ([catalogo.trgfn_uom_guard_listini_attivi](/dbzero/catalogo/funzioni/trgfn_uom_guard_listini_attivi)).
+  Una bozza rotta dal catalogo non si attiva
+  ([script.fn_check_versione_listino_attivabile](/dbzero/script/manual/fn_check_versione_listino_attivabile),
+  motivo 4).
 
 ---
 

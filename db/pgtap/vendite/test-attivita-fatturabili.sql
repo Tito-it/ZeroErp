@@ -619,6 +619,10 @@ SELECT throws_ok(
 -- ============================================================
 -- 5) FK articolo_id inesistente
 -- ============================================================
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D26/Q30): senza fattore
+--   il trigger lo legge alla data per l'articolo, e un articolo che non c'e' non
+--   ne ha (E_UOM_MISSING). Il soggetto e' la FK: la riga porta il fattore, come
+--   quella copiata dall'attivita' di commessa.
 SELECT throws_ok(
     $$
     INSERT INTO vendite.attivita_fatturabili (
@@ -629,6 +633,7 @@ SELECT throws_ok(
         commessa_attivita_id,
         data_attivita,
         quantita,
+        factor_to_base,
         competenza_mese,
         competenza_dal,
         competenza_al,
@@ -642,6 +647,7 @@ SELECT throws_ok(
         (SELECT id FROM tmp_commessa_af),
         (SELECT attivita_id FROM tmp_ca_af WHERE slot = 6),
         script.fn_data_operativa(),
+        1,
         1,
         date_trunc('month', script.fn_data_operativa())::date,
         date_trunc('month', script.fn_data_operativa())::date,

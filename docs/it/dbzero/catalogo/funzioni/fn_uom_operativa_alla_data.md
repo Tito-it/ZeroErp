@@ -21,12 +21,13 @@ BEGIN ATOMIC
      o.qty_step,
      o.max_decimals,
      o.forbid_fraction
-    FROM catalogo.articoli_uom_operativa o
-   WHERE ((o.articolo_id = fn_uom_operativa_alla_data.p_articolo_id) AND (o.uom_id = fn_uom_operativa_alla_data.p_uom_id) AND (o.attivo IS TRUE) AND (o.validita @> fn_uom_operativa_alla_data.p_data));
+    FROM (catalogo.fn_uom_fonti_conversione(fn_uom_operativa_alla_data.p_articolo_id, fn_uom_operativa_alla_data.p_uom_id) f(priorita, fonte_id, fattore, validita)
+      JOIN catalogo.articoli_uom_operativa o ON ((o.id = f.fonte_id)))
+   WHERE ((f.priorita = 1) AND (f.validita @> fn_uom_operativa_alla_data.p_data));
 END
 
 COMMENT ON FUNCTION catalogo.fn_uom_operativa_alla_data(p_articolo_id uuid, p_uom_id bigint, p_data date)
-IS 'La mappatura dell''unita'' p_uom_id per l''articolo p_articolo_id alla data p_data: il fattore verso l''unita'' base e le regole della quantita'' (qty_step, max_decimals, forbid_fraction) della riga attiva di catalogo.articoli_uom_operativa la cui validita contiene p_data. Al piu'' una riga (uq_articoli_uom_operativa_no_overlap); nessuna se l''unita'' non e'' mappata a quella data, o se p_data e'' NULL. La riga base vale a ogni data. Sede unica della lettura della mappatura: la chiamano catalogo.fn_get_uom_factor (il fattore) e script.trgfn_qta_from_operativa (le regole). SECURITY INVOKER: la tabella non ha RLS.';
+IS 'La mappatura dell''unita'' p_uom_id per l''articolo p_articolo_id alla data p_data: il fattore verso l''unita'' base e le regole della quantita'' (qty_step, max_decimals, forbid_fraction) della riga di catalogo.articoli_uom_operativa che e'' la fonte di priorita'' 1 di catalogo.fn_uom_fonti_conversione e la cui validita contiene p_data. Al piu'' una riga (uq_articoli_uom_operativa_no_overlap); nessuna se l''unita'' non e'' mappata a quella data, o se p_data e'' NULL. La riga base vale a ogni data. Quale mappatura vale lo dice fn_uom_fonti_conversione, sede unica del predicato; qui si leggono le regole della quantita'', che chiama script.trgfn_qta_from_operativa. SECURITY INVOKER: la tabella non ha RLS.';
 ```
 
 </div>

@@ -95,6 +95,13 @@ SELECT
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE
     ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id;
 
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D26/Q30): un'attivita'
+--   senza fattore prende quello alla data, e un'unita' che per l'articolo non si
+--   converte si rifiuta (E_UOM_MISSING). «Un'unita' qualunque» accanto a «un
+--   articolo qualunque» passava col fattore 1 per difetto: l'unita' e' la base
+--   dell'articolo scelto.
+UPDATE tmp_refs_lcf SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = tmp_refs_lcf.articolo_id);
+
 -- Commessa isolata (force_new), nasce in BOZZA.
 CREATE TEMP TABLE tmp_commessa_lcf AS
 SELECT vendite.fn_get_or_create_commessa(
