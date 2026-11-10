@@ -1781,6 +1781,8 @@
       "vivo_tutti": "Vivi e ritirati",
       "vivo_si": "Solo vivi",
       "vivo_no": "Solo ritirati",
+      "stato_vivo": "Vivo",
+      "stato_ritirato": "Ritirato",
       "ritirato_dal": "Ritirato dal {data}",
       "ritiro_programmato": "Ritiro programmato al {data}"
     },
@@ -2124,6 +2126,7 @@
     "col_uom_da": "UoM Da",
     "col_uom_a": "UoM A",
     "tag_base": "Base",
+    "hint_uom_base_fissa": "L'unità base vale sempre: fattore 1 e nessuna data. Per vendere in un'altra unità, aggiungine una nuova.",
     "tag_logistica": "Logistica",
     "conv_search_placeholder": "Cerca conversione (codice UoM)...",
     "conv_mostra_non_attive": "Mostra non attive",
@@ -2135,16 +2138,13 @@
     "col_desc_a": "Descrizione A",
     "field_uom_da": "UoM Da",
     "field_logistica": "Logistica",
-    "field_require_lot": "Richiede Lotto",
     "field_forbid_fraction": "Solo Interi",
     "field_qty_step": "Step Quantita'",
     "field_max_decimals": "Max Decimali",
-    "field_rounding_mode": "Arrotondamento",
     "field_gtin": "GTIN",
     "section_uso": "Utilizzo",
     "section_regole_input": "Regole Input",
     "section_extra": "Altro",
-    "select_rounding_mode": "Seleziona modo arrotondamento",
     "distinta": {
       "componente_reason": {
         "componente_padre": "È l'articolo stesso: non può essere componente della propria distinta.",

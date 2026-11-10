@@ -45,7 +45,9 @@ _USCITE_DAI_GAP: tuple[tuple[str, str, str, str | None], ...] = (
     ("anagrafiche", "emittenti_fiscali", "codice", None),
     # Il soggetto non ha mai avuto il gap: la sua lista non lo diceva affatto
     # fino al 2026-11-09, quando e' passata dal BB (S-BE-3). Stesso presidio.
-    ("anagrafiche", "soggetti", "codice", None),
+    # Dal 2026-11-09 il dettaglio legge PER RECORD (CF e P.IVA sono lock
+    # condizionali del DB): il ramo per record deve portare anche `codice`.
+    ("anagrafiche", "soggetti", "codice", "00000000-0000-0000-0000-000000000000"),
 )
 
 

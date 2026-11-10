@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1200, di cui 128 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1206, di cui 128 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1492,6 +1492,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PUSH_SORGENTE_ID_INVALIDO": "DATO_ERRATO",
     "E_QTA_MISSING": "DATO_ERRATO",
     "E_QTA_NON_POSITIVA": "DATO_ERRATO",
+    # La quantita' operativa ha piu' decimali di quelli che la mappatura dell'unita' ammette (catalogo.articoli_uom_operativa.max_decimals, alla data del documento). La solleva script.trgfn_qta_from_operativa. I VALORI: quantita', codice dell'unita', codice dell'articolo, decimali ammessi; campo qta_operativa.
+    "E_QTA_OPERATIVA_DECIMALI": "DATO_ERRATO",
     "E_QTA_OPERATIVA_NON_INTERA": "DATO_ERRATO",
     "E_QTA_OPER_STEP_INVALIDO": "DATO_ERRATO",
     # Over-shipping: la quantita' da evadere supera il residuo dell'ordine. · Sollevato dal guard fulfillment DB (trgfn_ordini_ful_guard_consistenza) · in evasione multi-DDT (brief DB C2).
@@ -1719,6 +1721,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SOGGETTI_RUOLI_RACE": "TECNICO",
     # anagrafiche.fn_crea_soggetto_pf (20261009-26) rifiuta una natura base diversa da PF, anagrafiche.fn_crea_soggetto_pg (20261009-28) una natura PF: la ditta individuale ha una porta sola, quella che riceve nome, cognome e sesso. TECNICO e non DATO_ERRATO: la funzione la sceglie il chiamante dalla natura, non l'operatore, quindi chi la sbaglia e' un chiamante rotto. Il VARIADIC porta descrizione e natura base. Brief: brief-db-sesso-senza-default.
     "E_SOGGETTO_CREAZIONE_NATURA_ERRATA": "TECNICO",
+    # anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile: cambio o svuotamento di un codice_fiscale / partita_iva gia' scritti da chi non e' SUPER_ADMIN. Campo = la colonna. La stessa regola spegne i due campi nel form (dbops.lock_columns_conditional).
+    "E_SOGGETTO_ID_FISCALE_IMMUTABILE": "CONFLITTO_STATO",
     "E_SOGGETTO_NO_CONTATTI": "DATO_ERRATO",
     "E_SOGGETTO_NOT_FOUND": "NON_TROVATO",
     "E_SOGGETTO_NULL": "DATO_ERRATO",
@@ -1924,8 +1928,17 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_PRESET_NON_TROVATO": "NON_TROVATO",
     "E_UI_PRESET_VALIDAZIONE": "DATO_ERRATO",
     "E_UI_VISTA_SQL_NON_TROVATA": "DATO_ERRATO",
+    # catalogo.unita_misura.conta_dal_calendario valorizzato su un'unita' che non e' di tipologia TEMPO. La solleva catalogo.trgfn_unita_misura_guard_tipo. I VALORI: codice dell'unita'; campo conta_dal_calendario.
+    "E_UOM_CALENDARIO_NON_TEMPO": "DATO_ERRATO",
+    # Conversione generale (catalogo.unita_misura_conversioni) fra due unita' di tipologia diversa. La solleva catalogo.trgfn_uom_conversioni_guard_tipo. I VALORI: codice dell'unita' di partenza, di arrivo, e le descrizioni delle due tipologie; campo uom_to_id.
+    "E_UOM_CONVERSIONE_TIPO_DIVERSO": "DATO_ERRATO",
     "E_UOM_MISMATCH": "CONFLITTO_STATO",
+    # L'unita' operativa di una riga di documento non si converte nell'unita' base dell'articolo alla data del documento: nessuna mappatura dell'articolo (catalogo.articoli_uom_operativa) e nessuna conversione generale (catalogo.unita_misura_conversioni), cioe' catalogo.fn_get_uom_factor e' NULL. La solleva script.trgfn_qta_from_operativa, che non usa piu' fattore 1 quando non sa. I VALORI: codice dell'unita', codice dell'unita' base, codice dell'articolo, data del documento; campo uom_operativa_id.
     "E_UOM_MISSING": "DATO_ERRATO",
+    # Si e' cercato di spostare, togliere o cambiare la riga dell'unita' base di un articolo (catalogo.articoli_uom_operativa con is_base), o di crearne una su un'unita' diversa da quella dell'articolo. La solleva catalogo.trgfn_articoli_uom_operativa_guard_base. I VALORI: codice dell'unita' base, codice dell'articolo; campo uom_id; bersaglio l'articolo.
+    "E_UOM_RIGA_BASE_IMMUTABILE": "CONFLITTO_STATO",
+    # Cambio di catalogo.unita_misura.tipo_uom_id su un'unita' che compare in una conversione generale. La solleva catalogo.trgfn_unita_misura_guard_tipo. I VALORI: codice dell'unita'; campo tipo_uom_id.
+    "E_UOM_TIPO_IN_USO": "CONFLITTO_STATO",
     # Gemello di E_DELETE_NOT_ALLOWED per i registri append-only · (vendite.trgfn_event_log_append_only). La storia non si modifica, e non · dipende dallo stato della riga: non cambia riprovando piu' tardi, quindi · NON_PERMESSO e non CONFLITTO_STATO. ⭐ Ed e' proprio questo veto a rendere · immutabile cleanup_at, cioe' la scadenza di retention della riga stessa.
     "E_UPDATE_NOT_ALLOWED": "NON_PERMESSO",
     # RITIRATO il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri D-1, decisione di Tid): dal 2026-10-02 nessuno lo solleva. Col ritiro del tipo DISABILITATO (R-DB-1 del brief area Accessi) una veste spenta e' attivo = false col suo tipo, e chi ha solo vesti spente lo nega il livello d'area. Verificato per nome: nessuna funzione DB, nessun punto del backend o del frontend lo solleva (lo nominano solo le copie del catalogo nel backend: policy generate e frasi di ripiego). Non si riusa per «nessuna veste accesa»: una condizione nuova vuole un codice suo (api.md, il rubinetto degli accumulatori). Il messaggio resta perche' il diario deve restare leggibile.

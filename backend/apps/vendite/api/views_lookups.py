@@ -6,7 +6,8 @@
 #        frontend vendite). Esposti come `GET /api/v1/vendite/lookup/<nome>/`,
 #        senza paginazione, area_funzionale=vendite (livello LETTURA).
 #
-#        Pattern modello: catalogo.api.views.ApiUomRoundingModesLookup.
+#        Pattern modello: amm_software.api.views.EmittenteRoundingModesLookupView
+#        (quello di catalogo, sulle UoM, e' ritirato il 2026-11-09 col campo).
 #        Single source of truth: vendite_lookups_service._TIPI_VARIAZIONE_*
 #        + _AMBITI_CONTRATTO.
 #

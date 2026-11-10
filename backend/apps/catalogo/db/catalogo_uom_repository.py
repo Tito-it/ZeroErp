@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -28,18 +27,21 @@ from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_claus
 # scrittura (2026-09-26 — prima mappa nome -> tipo per `sql_placeholder`/
 # `to_write_param`, ritirati). `meta` (jsonb) arriva dal service come dict o
 # None: il BB lo casta da solo. `articolo_id` NON e' qui: viene dal path.
+# ⛔ `is_base` non si scrive (2026-11-09, giro 2 di brief-db-revisione-catalogo,
+#    D12): la riga base nasce con l'articolo (`trgfn_articoli_seed_uom_base`) e
+#    non cambia piu' (`trgfn_articoli_uom_operativa_guard_base`,
+#    `E_UOM_RIGA_BASE_IMMUTABILE`). Nessuna scrittura dall'app la puo' creare,
+#    spostare o togliere: offrirla vorrebbe dire offrire solo un rifiuto.
+# ⛔ `rounding_mode` e `require_lot` sono ritirate dalla tabella (Q4, BE16).
 UOM_OPERATIVA_WRITE_COLUMNS: frozenset[str] = frozenset({
     "uom_id",
-    "is_base",
     "factor_to_base",
     "is_sell_uom",
     "is_purchase_uom",
     "is_logistic_uom",
     "qty_step",
-    "rounding_mode",
     "max_decimals",
     "forbid_fraction",
-    "require_lot",
     "gtin",
     "valido_dal",
     "valido_al",
@@ -79,10 +81,8 @@ UOM_OPERATIVA_DETAIL_COLUMNS: tuple[str, ...] = (
     "auo.is_purchase_uom",
     "auo.is_logistic_uom",
     "auo.qty_step",
-    "auo.rounding_mode",
     "auo.max_decimals",
     "auo.forbid_fraction",
-    "auo.require_lot",
     "auo.gtin",
     "auo.valido_dal",
     "auo.valido_al",
@@ -225,17 +225,3 @@ class CatalogoUomRepository:
                 [articolo_id, uom_operativa_id],
             )
             return cursor.rowcount > 0
-
-    # Scopo: Wrappa la funzione DB per la UoM base dell'articolo.
-    def get_uom_base(self, articolo_id: UUID | str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT catalogo.fn_get_uom_base(%s)", [articolo_id])
-            row = cursor.fetchone()
-        return None if row is None or row[0] is None else int(row[0])
-
-    # Scopo: Wrappa la funzione DB per il fattore di conversione alla base.
-    def get_uom_factor(self, articolo_id: UUID | str, uom_id: int) -> Decimal | None:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT catalogo.fn_get_uom_factor(%s, %s)", [articolo_id, uom_id])
-            row = cursor.fetchone()
-        return None if row is None else row[0]

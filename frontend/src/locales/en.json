@@ -1781,6 +1781,8 @@
       "vivo_tutti": "Live and retired",
       "vivo_si": "Live only",
       "vivo_no": "Retired only",
+      "stato_vivo": "Live",
+      "stato_ritirato": "Retired",
       "ritirato_dal": "Retired since {data}",
       "ritiro_programmato": "Retirement scheduled on {data}"
     },
@@ -2124,6 +2126,7 @@
     "col_uom_da": "UoM From",
     "col_uom_a": "UoM To",
     "tag_base": "Base",
+    "hint_uom_base_fissa": "The base unit always applies: factor 1 and no dates. To sell in another unit, add a new one.",
     "tag_logistica": "Logistics",
     "conv_search_placeholder": "Search conversion (UoM code)...",
     "conv_mostra_non_attive": "Show inactive",
@@ -2135,16 +2138,13 @@
     "col_desc_a": "Description To",
     "field_uom_da": "UoM From",
     "field_logistica": "Logistics",
-    "field_require_lot": "Requires Lot",
     "field_forbid_fraction": "Integers Only",
     "field_qty_step": "Qty Step",
     "field_max_decimals": "Max Decimals",
-    "field_rounding_mode": "Rounding",
     "field_gtin": "GTIN",
     "section_uso": "Usage",
     "section_regole_input": "Input Rules",
     "section_extra": "Other",
-    "select_rounding_mode": "Select rounding mode",
     "distinta": {
       "componente_reason": {
         "componente_padre": "It is the item itself: it cannot be a component of its own bill of materials.",

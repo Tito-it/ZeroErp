@@ -91,7 +91,7 @@ class TestEmittenteRoundingModesLookupView(TestCase):
 
     def test_rounding_modes_lookup_response_shape(self) -> None:
         # Scopo: l'envelope `data` e' una lista nuda (non `{count, results}`).
-        # Allineato al lookup catalogo `/catalogo/lookup/rounding-modes/`.
+        # Stessa forma degli altri lookup statici (es. `/vendite/lookup/`).
         # Il FE EmittenteRoundingModeSelect.vue dipende da questa shape per
         # il transform `(r) => r.data.data` su useGlobalLookup.
         view = EmittenteRoundingModesLookupView()

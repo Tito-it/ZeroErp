@@ -9,12 +9,17 @@
 //        quando la lista e' passata al BB (brief-db-liste-datatable-grezze-
 //        secondo-giro riga 4): campi, default e salvataggio sono quelli di
 //        prima, spostati.
-// Campi completi: is_base, factor_to_base, flags vendita/acquisto/logistica,
-// qty_step, max_decimals, rounding_mode, forbid_fraction, require_lot, gtin,
-// valido_dal/al, attivo.
+// Campi: factor_to_base, flags vendita/acquisto/logistica, qty_step,
+// max_decimals, forbid_fraction, gtin, valido_dal/al, attivo.
+// ⛔ `is_base` NON si scrive (2026-11-09, giro 2 di brief-db-revisione-catalogo):
+//    la riga base nasce con l'articolo e non cambia piu' (guard
+//    `trgfn_articoli_uom_operativa_guard_base`). Qui si mostra soltanto.
+//    Fino a quel giorno un `watch` la ricavava dal fattore (`fattore 1 → base`):
+//    un'unita' con fattore 1 che base non e' finiva marcata base.
+// ⛔ `rounding_mode` e `require_lot` sono ritirate dal DB (Q4, BE16).
 // ⭐ Espone la sua fotografia (`modificato`, `chiudiConConferma`): il BB la
 //    registra (D-13).
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
@@ -25,7 +30,7 @@ import { DATE_FORMAT } from '../../core/constants'
 import { createArticoloUom, updateArticoloUom } from '../api/catalogo'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import RoundingModeSelect from './RoundingModeSelect.vue'
+import Tag from 'primevue/tag'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -44,6 +49,9 @@ const { t } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
 
 const inModifica = computed(() => props.riga != null)
+// La riga base ha sempre fattore 1 e nessuna data (CHECK
+// `chk_articoli_uom_operativa_base_fissa`): i tre campi non si toccano.
+const isBase = computed(() => props.riga?.is_base === true)
 function isFieldLocked(name) {
   return inModifica.value && props.nonEditableFields.includes(name)
 }
@@ -54,7 +62,6 @@ function isFieldLocked(name) {
 const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults([
   'CATALOGO_UOM_OP_DEFAULT_FACTOR_TO_BASE',
   'CATALOGO_UOM_OP_DEFAULT_QTY_STEP',
-  'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE',
   'CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS',
   'CATALOGO_UOM_OP_DEFAULT_FORBID_FRACTION',
 ])
@@ -63,16 +70,13 @@ function defaultForm() {
   const p = paramDefaults.value
   return {
     uom_id: null,
-    is_base: false,
     factor_to_base: paramNumber(p.CATALOGO_UOM_OP_DEFAULT_FACTOR_TO_BASE, 1),
     is_sell_uom: false,
     is_purchase_uom: false,
     is_logistic_uom: false,
     qty_step: paramNumber(p.CATALOGO_UOM_OP_DEFAULT_QTY_STEP, 1),
-    rounding_mode: p.CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE || 'HALF_UP',
     max_decimals: paramNumber(p.CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS, 6),
     forbid_fraction: paramBool(p.CATALOGO_UOM_OP_DEFAULT_FORBID_FRACTION, false),
-    require_lot: false,
     gtin: '',
     valido_dal: null,
     valido_al: null,
@@ -83,16 +87,13 @@ function defaultForm() {
 function formDa(row) {
   return {
     uom_id: row.uom_id,
-    is_base: row.is_base || false,
     factor_to_base: row.factor_to_base ?? 1,
     is_sell_uom: row.is_sell_uom || false,
     is_purchase_uom: row.is_purchase_uom || false,
     is_logistic_uom: row.is_logistic_uom || false,
     qty_step: row.qty_step ?? 1,
-    rounding_mode: row.rounding_mode || 'HALF_UP',
     max_decimals: row.max_decimals ?? 6,
     forbid_fraction: row.forbid_fraction || false,
-    require_lot: row.require_lot || false,
     gtin: row.gtin || '',
     valido_dal: parseIsoDate(row.valido_dal),
     valido_al: parseIsoDate(row.valido_al),
@@ -103,18 +104,11 @@ function formDa(row) {
 const form = ref(props.riga ? formDa(props.riga) : defaultForm())
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => true })
 
-// Scopo: Sincronizza is_base con factor_to_base.
-//        factor=1 → base=true, factor≠1 → base=false.
-watch(() => form.value.factor_to_base, (val) => {
-  form.value.is_base = val === 1
-})
-
 onMounted(async () => {
   if (!inModifica.value) {
     await loadDefaults()
     form.value = defaultForm()
   }
-  // Dopo il giro di watch: `is_base` e' riscritto da `factor_to_base`.
   await nextTick()
   fissa()
 })
@@ -125,20 +119,20 @@ const canSave = computed(() => form.value.uom_id != null && form.value.factor_to
 async function onSave() {
   const f = form.value
   const payload = {
-    is_base: f.is_base,
     factor_to_base: f.factor_to_base,
     is_sell_uom: f.is_sell_uom,
     is_purchase_uom: f.is_purchase_uom,
     is_logistic_uom: f.is_logistic_uom,
     qty_step: f.qty_step,
-    rounding_mode: f.rounding_mode,
     max_decimals: f.max_decimals,
     forbid_fraction: f.forbid_fraction,
-    require_lot: f.require_lot,
     gtin: f.gtin?.trim() || null,
-    valido_dal: toDateString(f.valido_dal),
-    valido_al: toDateString(f.valido_al),
     attivo: f.attivo,
+  }
+  // La riga base non porta date (CHECK): non si mandano nemmeno vuote.
+  if (!isBase.value) {
+    payload.valido_dal = toDateString(f.valido_dal)
+    payload.valido_al = toDateString(f.valido_al)
   }
   const result = inModifica.value
     ? await execute(
@@ -171,14 +165,15 @@ defineExpose({ modificato, chiudiConConferma })
   </div>
 
   <div class="form-grid-2col">
-    <div class="form-field">
+    <div v-if="isBase" class="form-field">
       <label>{{ t('catalogo.col_base') }}</label>
-      <ToggleSwitch v-model="form.is_base" />
+      <Tag :value="t('catalogo.tag_base')" severity="info" />
+      <small>{{ t('catalogo.hint_uom_base_fissa') }}</small>
     </div>
     <div class="form-field">
       <label>{{ t('catalogo.field_fattore') }} *</label>
       <InputNumber v-model="form.factor_to_base" :min="0" :min-fraction-digits="2"
-        :max-fraction-digits="6" :disabled="form.is_base"
+        :max-fraction-digits="6" :disabled="isBase"
         :invalid="campiErrati.includes('factor_to_base')"
       />
     </div>
@@ -198,10 +193,6 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('catalogo.field_logistica') }}</label>
       <ToggleSwitch v-model="form.is_logistic_uom" />
-    </div>
-    <div class="form-field">
-      <label>{{ t('catalogo.field_require_lot') }}</label>
-      <ToggleSwitch v-model="form.require_lot" />
     </div>
   </div>
 
@@ -226,10 +217,6 @@ defineExpose({ modificato, chiudiConConferma })
         :invalid="campiErrati.includes('max_decimals')"
       />
     </div>
-    <div class="form-field">
-      <label>{{ t('catalogo.field_rounding_mode') }}</label>
-      <RoundingModeSelect v-model="form.rounding_mode" />
-    </div>
   </div>
 
   <!-- GTIN + Validita' + Attivo -->
@@ -244,12 +231,14 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('catalogo.field_valido_dal') }}</label>
       <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+        :disabled="isBase"
         :invalid="campiErrati.includes('valido_dal')"
       />
     </div>
     <div class="form-field">
       <label>{{ t('catalogo.field_valido_al') }}</label>
       <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+        :disabled="isBase"
         :invalid="campiErrati.includes('valido_al')"
       />
     </div>

@@ -51,16 +51,6 @@ from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 
-# Scopo: un articolo attivo qualunque (id, codice), o None se non ce n'e'.
-def _un_articolo_attivo() -> tuple[str, str] | None:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT id::text, codice FROM catalogo.articoli WHERE attivo ORDER BY codice LIMIT 1"
-        )
-        row = cursor.fetchone()
-        return (row[0], row[1]) if row else None
-
-
 class ArticoliAmmessiDbTests(unittest.TestCase):
 
     @classmethod
@@ -73,23 +63,34 @@ class ArticoliAmmessiDbTests(unittest.TestCase):
 
     # 1. Il motivo arriva DECODIFICATO: un articolo cercato come componente di
     #    se' stesso e' escluso dalla distinta per costruzione.
+    # ⚠️ Il padre si COSTRUISCE, composito (2026-11-09): dal giro 1 di
+    #    brief-db-revisione-catalogo (BE12) il picker della distinta su un padre
+    #    non composito rifiuta (`E_ARTICOLO_NON_COMPOSITO`). Fino a quel giorno
+    #    il test prendeva «un articolo attivo qualunque»: una popolazione, che
+    #    su un DB vuoto lo saltava.
     def test_un_escluso_porta_il_motivo_come_oggetto(self):
-        articolo = _un_articolo_attivo()
-        if articolo is None:
-            self.skipTest("serve almeno un articolo attivo: qui non ce n'e'")
-        articolo_id, codice = articolo
+        codice = f"PYAMM-{uuid.uuid4().hex[:10].upper()}-P"
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                cur.execute(
+                    "SELECT dbops.fn_pgtap_crea_articolo(%s, p_is_composito => true)::text", [codice],
+                )
+                articolo_id = cur.fetchone()[0]
 
-        righe, _troncato = self.repo.lookup_articoli_ammessi(
-            documento="ARTICOLO", documento_id=None, search=codice,
-            tipo_eccezione=None, articolo_padre_id=articolo_id, limit=50,
-        )
+                righe, _troncato = self.repo.lookup_articoli_ammessi(
+                    documento="ARTICOLO", documento_id=None, search=codice,
+                    tipo_eccezione=None, articolo_padre_id=articolo_id, limit=50,
+                )
 
-        se_stesso = [r for r in righe if str(r["id"]) == articolo_id]
-        self.assertEqual(len(se_stesso), 1, "il padre cercato per codice non e' fra i trovati")
-        motivo = se_stesso[0]["motivo"]
-        self.assertIsInstance(motivo, dict, "motivo arriva come stringa: il FE lo leggerebbe come ammesso")
-        self.assertEqual(motivo["reason"], "COMPONENTE_PADRE")
-        self.assertTrue(motivo["reason_key"])
+                se_stesso = [r for r in righe if str(r["id"]) == articolo_id]
+                self.assertEqual(len(se_stesso), 1, "il padre cercato per codice non e' fra i trovati")
+                motivo = se_stesso[0]["motivo"]
+                self.assertIsInstance(motivo, dict, "motivo arriva come stringa: il FE lo leggerebbe come ammesso")
+                self.assertEqual(motivo["reason"], "COMPONENTE_PADRE")
+                self.assertTrue(motivo["reason_key"])
+                raise Annulla
+        except Annulla:
+            pass
 
     # 2. L'ammesso porta None, e l'ordine della funzione arriva intatto: prima
     #    gli ammessi (A-7). Il caso si COSTRUISCE: due articoli con un segno
@@ -101,7 +102,11 @@ class ArticoliAmmessiDbTests(unittest.TestCase):
         segno = uuid.uuid4().hex[:10].upper()
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                cur.execute("SELECT dbops.fn_pgtap_crea_articolo(%s)", [f"PYAMM-{segno}-A"])
+                # Il padre e' composito: e' il solo che ha una distinta (BE12).
+                cur.execute(
+                    "SELECT dbops.fn_pgtap_crea_articolo(%s, p_is_composito => true)",
+                    [f"PYAMM-{segno}-A"],
+                )
                 padre = cur.fetchone()[0]
                 cur.execute("SELECT dbops.fn_pgtap_crea_articolo(%s)", [f"PYAMM-{segno}-Z"])
                 cur.fetchone()

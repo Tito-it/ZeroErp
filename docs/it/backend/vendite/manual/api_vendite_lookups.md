@@ -26,8 +26,8 @@ I valori sono allineati ai CHECK constraint DB di `vendite.contratti`,
 `vendite.promo_articoli`. Aggiungere/cambiare un codice senza propagarlo
 al DB rompe il salvataggio: i lookup sono solo UI.
 
-Pattern modello: `catalogo.api.views.ApiUomRoundingModesLookup` /
-`fn_list_uom_rounding_modes`.
+Pattern modello: `amm_software.api.views.EmittenteRoundingModesLookupView` /
+`list_emittente_rounding_modes`.
 
 ## Endpoints
 

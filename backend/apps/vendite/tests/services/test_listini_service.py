@@ -371,7 +371,9 @@ class ListiniServiceTests(TestCase):
         from apps.vendite.services.listini_service import fn_create_riga
 
         repo = mock_repo_cls.return_value
-        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "BOZZA"}
+        repo.get_versione.return_value = {
+            "id": 101, "listino_id": 10, "stato": "BOZZA", "valido_dal": date(2026, 1, 1),
+        }
         repo.get_articolo_uom_validation.return_value = {
             "articolo_attivo": True,
             "uom_attiva": True,
@@ -389,6 +391,11 @@ class ListiniServiceTests(TestCase):
                 },
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "uom_id")
+        # BE17: la compatibilita' si chiede al DB alla decorrenza della versione.
+        repo.get_articolo_uom_validation.assert_called_once_with(
+            "019bbee2-5f6a-704f-bbd0-34ed84db252d", 1, date(2026, 1, 1),
+        )
 
     # Scopo: F1 - create_riga deve fallire se la versione non e' BOZZA.
     @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
@@ -421,7 +428,9 @@ class ListiniServiceTests(TestCase):
         from apps.vendite.services.listini_service import fn_create_riga
 
         repo = mock_repo_cls.return_value
-        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "BOZZA"}
+        repo.get_versione.return_value = {
+            "id": 101, "listino_id": 10, "stato": "BOZZA", "valido_dal": date(2026, 1, 1),
+        }
         repo.get_articolo_uom_validation.return_value = {
             "articolo_attivo": True, "uom_attiva": True, "uom_compatibile": True,
         }

@@ -165,6 +165,15 @@ onMounted(() => {
         <Tag :value="data.classe" severity="info" />
       </template>
 
+      <template #cell-vivo="{ data }">
+        <!-- «Vivo» lo proietta il BE dal DB (`fn_e_obsoleto` sulla data del
+             ritiro): non `attivo`, che non dice se il processo è ritirato. -->
+        <Tag
+          :value="t(data.vivo ? 'amministrazione.processi.stato_vivo' : 'amministrazione.processi.stato_ritirato')"
+          :severity="data.vivo ? 'success' : 'secondary'"
+        />
+      </template>
+
       <template #cell-identita_attive="{ data }">
         <!-- ⭐ Tre stati, non due: «non ne vuole» non è «gliene manca una».
              Un processo di coda gira con l'identità di chi lo accoda, e
