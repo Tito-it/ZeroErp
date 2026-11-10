@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro 14 chiuso, `-18` corretto per il migrate da zero §34.6.7; S-BE-1 scritto e provato, da applicare; BE8 fatto)
+## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro 14 chiuso, `-18` corretto per il migrate da zero §34.6.7; S-BE-1 applicato e committato; N5 risposto; passa al BE)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -98,7 +98,7 @@ Rosso dopo il merge, `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1` (`
 viene dal giro 2 di `brief-db-revisione-catalogo` (§13.4), dove è registrato; corretta la fixture, verde (Tid, 2026-11-09).
 **Giro BE di §33.7 fatto** dal team BE (BE8, S-BE-2 e S-BE-3 lato BE, BE6 dei due codici nuovi; `2af6d986f5`, PR #81):
 al team BE non resta niente dei giri applicati.
-**Giro 14 censito** (§34), nodi N1-N5 decisi come da proposta, numeri `20261111-18` … `-24` (Tid, 2026-11-09). **Giro 14 scritto e provato** su dbdev (§34.6): sette changeSet, il presidio pgTAP, il guardrail in CI, i CSV e le intestazioni. **Giro 14 applicato** da Tid su dbdev e scratch, pgTAP verdi (2026-11-10, §34.6.6). Doc auto-generata e **commit** (Tid, `fe388dbfdf`): **giro 14 chiuso**, e con lui i giri di §8. Le scelte di §34.6.3 sono applicate così. **S-BE-1 censito** (§35), nodi N1-N6 come da proposta (Tid, 2026-11-10), **scritto e provato** su dbdev (§35.6): `20261111-40` … `-46`, due CSV, un loader esteso, il pgTAP nuovo e sette pgTAP riallineati. **Riparte: Tid**, con l'apply e i pgTAP di §35.6.5.
+**Giro 14 censito** (§34), nodi N1-N5 decisi come da proposta, numeri `20261111-18` … `-24` (Tid, 2026-11-09). **Giro 14 scritto e provato** su dbdev (§34.6): sette changeSet, il presidio pgTAP, il guardrail in CI, i CSV e le intestazioni. **Giro 14 applicato** da Tid su dbdev e scratch, pgTAP verdi (2026-11-10, §34.6.6). Doc auto-generata e **commit** (Tid, `fe388dbfdf`): **giro 14 chiuso**, e con lui i giri di §8. Le scelte di §34.6.3 sono applicate così. **S-BE-1 censito** (§35), nodi N1-N6 come da proposta (Tid, 2026-11-10), **scritto e provato** su dbdev (§35.6): `20261111-40` … `-46`, due CSV, un loader esteso, il pgTAP nuovo e sette pgTAP riallineati. **Applicato** e committato (Tid, `67df18ad8d`, 2026-11-11, §35.6.6). Il `-18` corretto per il migrate da zero (§34.6.7, `53e14938ef`). **Riparte: team BE/FE** (2026-11-11): le destinazioni ARTICOLO e PROMO_ARTICOLO (passo 9-nonagies-quinquies) e i facoltativi di 9-nonagies-sexies. **Resta lato DB:** il passo 12 (chiusura del brief, dopo che il BE ha finito); il COMMENT di `config.tipi_entita.key_selector` corretto in `20261111-67`, da applicare (Tid, §35.6.4); facoltativo, le viste di presidio piu' veloci (§34.6.6: le leggono solo pgTAP, CI e un test del backend, non l'applicazione).
 S-BE-1 (§5, passo 11-bis) è scritto e provato (§35.6); le frasi nuove arrivano con l'apply.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -222,7 +222,7 @@ S-BE-1 (§5, passo 11-bis) è scritto e provato (§35.6); le frasi nuove arrivan
 | 9-septuagies-sexies | ✅ Tid | Commit del giro 11 (`df2fc72b53`) | §30.5 | 9-septuagies-quinquies |
 | 9-septuagies-septies | ✅ sessione DB | Giro 12 (Q15): censimento, nodi N1-N3 decisi da Tid, scritto e provato | §31 | 9-septuagies-quinquies |
 | 9-septuagies-octies | ✅ Tid | Apply del giro 12, pgTAP di §31.6 verdi, commit (`df2fc72b53`) | §31.6 | 9-septuagies-septies |
-| 9-septuagies-nonies | team BE | BE6 del giro 12: `E_CONTATTI_SOGGETTO_OBBLIGATORIO` nelle politiche d'errore, dopo l'apply | §31.5 | 9-septuagies-octies |
+| 9-septuagies-nonies | ✅ team BE (policy e ripiego presenti, verificato il 2026-11-10) | BE6 del giro 12: `E_CONTATTI_SOGGETTO_OBBLIGATORIO` nelle politiche d'errore, dopo l'apply | §31.5 | 9-septuagies-octies |
 | 9-octogies | ✅ sessione DB | S-BE-2 e S-BE-3 verificati, N4 deciso (a), scritti e provati (`20261110-95` … `-98`) | §32 | 9-septuagies-octies |
 | 9-octogies-semel | ✅ sessione DB | Giro 13 (Q10) scritto e provato (`20261111-14` … `-17`) | §33 | 9-octogies |
 | 9-octogies-bis | ✅ Tid | Apply di S-BE-2, S-BE-3 e giro 13, pgTAP verdi (2026-11-09) | §33.6 | 9-octogies-semel |
@@ -237,13 +237,13 @@ S-BE-1 (§5, passo 11-bis) è scritto e provato (§35.6); le frasi nuove arrivan
 | 9-octogies-undecies | ✅ Tid | Doc auto-generata e commit del giro 14 (`fe388dbfdf`, 2026-11-10) | §34.6.6 | 9-octogies-decies |
 | 9-nonagies | ✅ sessione DB | S-BE-1 censito: montaggi, padri, tipi, storia del bersaglio, sei nodi | §35 | 9-octogies-undecies |
 | 9-nonagies-bis | ✅ sessione DB | S-BE-1 scritto e provato su dbdev (`20261111-40` … `-46`) | §35.6 | 9-nonagies-semel |
-| 9-nonagies-ter | **Tid** ⏭️ | Apply di S-BE-1 su dbdev e scratch, pgTAP di §35.6.5, commit | §35.6 | 9-nonagies-bis |
-| 9-nonagies-quater | **team FE** ⏭️ | Conferma di N5: quali tipi il frontend apre col solo id (ASSET, ARTICOLO_COMPONENTE, LISTINO_VERSIONE, le righe) | §35.6.3 | 9-nonagies-bis |
-| 9-nonagies-semel | **Tid** ⏭️ | Nodi N1-N6 di S-BE-1 e numeri | §35.4 | 9-nonagies |
+| 9-nonagies-ter | ✅ Tid (`67df18ad8d`, 2026-11-11) | Apply di S-BE-1 su dbdev e scratch, pgTAP di §35.6.5, commit | §35.6 | 9-nonagies-bis |
+| 9-nonagies-quater | ✅ team BE/FE (2026-11-11) | Conferma di N5: quali tipi il frontend apre col solo id (ASSET, ARTICOLO_COMPONENTE, LISTINO_VERSIONE, le righe). Risposta: **nessuno dei quattro**, la scelta del DB regge | §35.6.7 | 9-nonagies-bis |
+| 9-nonagies-quinquies | **team FE** ⏭️ | Le destinazioni ARTICOLO e PROMO_ARTICOLO in `frontend/src/core/bersagli.js`: il DB le manda come bersaglio, il pulsante «Apri» oggi non compare | §35.6.7 | 9-nonagies-quater |
+| 9-nonagies-sexies | team BE (facoltativo) | Un test sul DB vero che porti `targets` fino all'envelope per un rifiuto ATTIVO reale; la frase «il messaggio nomina la tabella» in `api_emittenti_fiscali.md` | §35.4, §35.6.4 | 9-nonagies-ter |
+| 9-nonagies-semel | ✅ Tid (2026-11-10) | Nodi N1-N6 di S-BE-1 e numeri | §35.4 | 9-nonagies |
 | 9-sexagies-octodecies | ✅ team BE (policy e ripiego presenti, verificato il 2026-11-10) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | ✅ team BE (BE2, §5; riga chiusa il 2026-11-10) | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
-| 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
-| 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-sexagies-octodecies | team BE ✅ (2026-11-09) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore: già in policy, `genera_error_policies --check` pulito | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | **team BE** ✅ (2026-11-09, `9f540bea72`) | BE2: i due gap che ripetevano un lock del DB ritirati, `DISTINCT`, commenti riscritti | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ✅ (2026-11-09, `9f540bea72`) | BE12 (il filtro «vivo» dei processi) ✅; BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`) già in policy | §5, §24.9 | 9-quinquagies |
@@ -251,7 +251,7 @@ S-BE-1 (§5, passo 11-bis) è scritto e provato (§35.6); le frasi nuove arrivan
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB ✅ | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply: tutti chiusi (giro 14, `fe388dbfdf`) | §8 | 9-vicies-septies |
 | 11 | team BE ✅ | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3, BE6, BE9, BE10, BE11 ✅ (mergiati o committati); BE4 ✅; BE2, BE5, BE7, BE12 ✅ (committati, `9f540bea7`); BE8, S-BE-2 e S-BE-3 lato BE ✅ (2026-11-09, §33.7, da committare) | §5, §33.7 | 10 |
-| 11-bis | sessione DB, **Tid** ⏭️ | S-BE-1 (censito, deciso, scritto e provato: §35; l'apply e' il passo 9-nonagies-ter): la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
+| 11-bis | ✅ sessione DB, Tid | S-BE-1 (censito, deciso, scritto, provato e applicato: §35, `67df18ad8d`): la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
 **Decisioni aperte di Tid:** nessuna; le scelte dentro il giro 12 sono in §31.3, da guardare. Nessuna sul giro 10c.
@@ -5612,8 +5612,15 @@ COMMENT di prima.
 * **`key_selector` diverso nei due cataloghi** per lo stesso tipo: PREVENTIVO e OFFERTA_COMMERCIALE sono `id` in
   `config.tipi_entita` e `uid` in `config.sorgenti`, mentre il COMMENT di `tipi_entita.key_selector` dice «stessi valori di
   config.sorgenti.key_selector, di proposito». Il bersaglio usa `tipi_entita` (come `vendite.fn_push_preventivo_a_ordine`,
-  che punta PREVENTIVO per id). Oggi non tocca S-BE-1: nessuno dei due e' padre di un montaggio ATTIVO. Da decidere quale
-  dei due dice il vero.
+  che punta PREVENTIVO per id). Oggi non tocca S-BE-1: nessuno dei due e' padre di un montaggio ATTIVO.
+  ⚠️ **Rettifica (2026-11-11): non si allinea niente.** I due valori rispondono a domande diverse: `sorgenti.key_selector`
+  e' la chiave con cui un documento cita la sua provenienza (la chiave mista id/uid, decisione definitiva di Tid del
+  2026-10-19, guida `sorgente-polimorfa` §3), `tipi_entita.key_selector` quella con cui si apre la cosa a video. A essere
+  falso e' solo il COMMENT di `tipi_entita.key_selector` («stessi valori … di proposito»): stesso vocabolario, valori
+  che possono differire. **Scritto** (via di Tid, 2026-11-11): `00_schema/config/20261111-67-update-comment-tipi-entita-key-selector`,
+  solo il COMMENT, valori invariati. Provato su dbdev (SQL estratto in ROLLBACK; il rollback rimette il testo di oggi,
+  identico); guardrail `comment_al_presente`, `run_on_change`, `sql_letterali`, `v1_congelato`, `precondition_seed` verdi.
+  Nessun pgTAP ne' codice BE legge quel testo. **Per Tid:** apply su dbdev e scratch, doc auto-generata.
 * **Doc del backend:** `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (riga del guard di disattivazione)
   dice che il messaggio «nomina la tabella che sta bloccando»: da riscrivere dal team BE.
 
@@ -5640,3 +5647,24 @@ COMMENT di prima.
   3. la doc auto-generata dopo l'apply.
 * **Ricadute BE:** nessuna obbligatoria: il backend legge frase e `targets` dai canali che ha gia', e i suoi test controllano
   i codici, non le frasi. Resta la doc di §35.6.4.
+
+#### 35.6.6 Applicato (2026-11-11)
+
+* **Apply** di `20261111-40` … `-46` e dei due CSV su dbdev e scratch (Tid), pgTAP verdi, doc auto-generata e **commit**
+  (`67df18ad8d`). Riscontrato sul `databasechangelog` e sui dati di entrambi: cinque tipi con la `tabella`, le frasi nuove
+  in `config.messaggi_errore`. **S-BE-1 chiuso.**
+* Aperti fuori dal perimetro DB: N5 (team FE, passo 9-nonagies-quater) e la doc BE di §35.6.4.
+
+#### 35.6.7 La risposta su N5 (team BE/FE, 2026-11-11)
+
+* **Verificato in `frontend/src/core/bersagli.js`:** il frontend apre come bersaglio i documenti di `DOCUMENTO_DRAWER_TIPI`
+  (FATTURA, COMMESSA, CONTRATTO, ORDINE_VENDITA, PREVENTIVO) piu' LOTTO, FLUSSO e DEFINIZIONE_WORKFLOW. ASSET,
+  ARTICOLO_COMPONENTE, LISTINO_VERSIONE e le righe non hanno una destinazione: **nessuno dei quattro** va dichiarato, e
+  `config.tipi_entita.tabella` resta NULL per loro come scritto in §35.6.3.
+* ⚠️ **Trovato dal team BE:** nemmeno ARTICOLO e PROMO_ARTICOLO hanno una destinazione, e il DB ora li manda come bersaglio.
+  Non si rompe niente (un tipo che il frontend non conosce non mostra il pulsante), ma il rifiuto piu' frequente, il padre
+  articolo spento, arriva senza «Apri l'articolo». Non e' un difetto del DB: il catalogo dichiara la tabella di un tipo
+  che si apre col solo id, e l'articolo si apre col solo id. Si chiude aggiungendo le due destinazioni (lavoro FE, passo
+  9-nonagies-quinquies).
+* **Facoltativo, team BE** (§35.4): un test sul DB vero che porti `targets` fino all'envelope per un rifiuto reale; la
+  frase di `api_emittenti_fiscali.md` (passo 9-nonagies-sexies).
