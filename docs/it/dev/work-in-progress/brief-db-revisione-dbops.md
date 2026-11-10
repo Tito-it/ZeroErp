@@ -93,12 +93,12 @@ un pgTAP nuovo. **Giro 11 applicato** (Tid, 2026-11-09): migrazione su dbdev e s
 **Giri 11 e 12 applicati e committati** da Tid (`df2fc72b53`, PR #75). **S-BE-2 e S-BE-3 scritti e provati**
 (§32, `20261110-95` … `-98`). N4 deciso (strada a). **Giro 13 scritto e provato** (§33, `20261111-14` … `-17`).
 **Applicati** da Tid (2026-11-09): S-BE-2, S-BE-3 e giro 13 su dbdev e scratch, pgTAP di §32.4 e §33.5 verdi (§33.6).
-**Giro 13 committato** (`aaa12df0ef`, PR #79). Il push BE della PR #77 (`9f540bea72`) chiude BE6 del giro 12, **non BE8**:
-al 2026-11-09 `parameter_repository.py` (righe 102, 128, 175) passa ancora `session_key`.
+**Giro 13 committato** (`aaa12df0ef`, PR #79).
 Rosso dopo il merge, `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1` (`E_UOM_MISSING`): non è di questo cantiere,
 viene dal giro 2 di `brief-db-revisione-catalogo` (§13.4), dove è registrato; corretta la fixture, verde (Tid, 2026-11-09).
-**Riparte: team BE** con BE8 (§33.4, subito: il backend chiama una firma che non c'è più), S-BE-2 e S-BE-3 lato BE
-(§32.4 punto 3). **Giro 14 censito** (§34), nodi N1-N5 decisi come da proposta, numeri `20261111-18` … `-24` (Tid, 2026-11-09). **Giro 14 scritto e provato** su dbdev (§34.6): sette changeSet, il presidio pgTAP, il guardrail in CI, i CSV e le intestazioni. **Giro 14 applicato** da Tid su dbdev e scratch, pgTAP verdi (2026-11-10, §34.6.6). Doc auto-generata e **commit** (Tid, `fe388dbfdf`): **giro 14 chiuso**, e con lui i giri di §8. Le scelte di §34.6.3 sono applicate così. **S-BE-1 censito** (§35, 2026-11-10): **Riparte: Tid**, con i nodi N1-N6 di §35.4. **Team BE** con BE12 e BE6, poi BE2 dopo l'apply (§5). In parallelo il team BE con BE11. **Team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+**Giro BE di §33.7 fatto** dal team BE (BE8, S-BE-2 e S-BE-3 lato BE, BE6 dei due codici nuovi; `2af6d986f5`, PR #81):
+al team BE non resta niente dei giri applicati.
+**Giro 14 censito** (§34), nodi N1-N5 decisi come da proposta, numeri `20261111-18` … `-24` (Tid, 2026-11-09). **Giro 14 scritto e provato** su dbdev (§34.6): sette changeSet, il presidio pgTAP, il guardrail in CI, i CSV e le intestazioni. **Giro 14 applicato** da Tid su dbdev e scratch, pgTAP verdi (2026-11-10, §34.6.6). Doc auto-generata e **commit** (Tid, `fe388dbfdf`): **giro 14 chiuso**, e con lui i giri di §8. Le scelte di §34.6.3 sono applicate così. **S-BE-1 censito** (§35, 2026-11-10): **Riparte: Tid**, con i nodi N1-N6 di §35.4.
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
