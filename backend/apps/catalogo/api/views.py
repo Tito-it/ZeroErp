@@ -38,7 +38,6 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_note_articolo,
     fn_list_uom_operative,
     fn_list_uom_operative_pagina,
-    fn_list_uom_rounding_modes,
     fn_list_uom_tipi,
     fn_list_unita_misura,
     fn_lookup_articoli,
@@ -109,16 +108,13 @@ def _articolo_write_fields(*, for_create: bool) -> dict[str, serializers.Field]:
 # Scopo: Definisce i campi write UoM operativa per schema API.
 def _uom_write_fields(*, include_uom_id: bool) -> dict[str, serializers.Field]:
     fields: dict[str, serializers.Field] = {
-        "is_base": serializers.BooleanField(required=False),
         "factor_to_base": serializers.DecimalField(required=False, max_digits=18, decimal_places=6),
         "is_sell_uom": serializers.BooleanField(required=False),
         "is_purchase_uom": serializers.BooleanField(required=False),
         "is_logistic_uom": serializers.BooleanField(required=False),
         "qty_step": serializers.DecimalField(required=False, max_digits=18, decimal_places=6, allow_null=True),
-        "rounding_mode": serializers.CharField(required=False),
         "max_decimals": serializers.IntegerField(required=False, allow_null=True),
         "forbid_fraction": serializers.BooleanField(required=False),
-        "require_lot": serializers.BooleanField(required=False),
         "gtin": serializers.CharField(required=False, allow_blank=True, allow_null=True),
         "valido_dal": serializers.DateField(required=False, allow_null=True),
         "valido_al": serializers.DateField(required=False, allow_null=True),
@@ -1128,30 +1124,3 @@ class ApiConversioneDetail(DomainAPIView):
     # Scopo: Aggiorna una conversione UoM.
     def patch(self, request: Request, conv_id: int) -> JsonResponse:
         return success_response(fn_update_conversione(conv_id, corpo_oggetto(request)))
-
-
-# =================================================================
-# Lookup statici catalogo
-# =================================================================
-
-
-class ApiUomRoundingModesLookup(DomainAPIView):
-    # Scopo: Lookup dedicato per i modi di arrotondamento UoM operativa.
-    # Single source of truth in `catalogo_service._ROUNDING_MODE_VALIDI` +
-    # `_ROUNDING_MODE_DESCRIZIONI`. Niente DB: enum tecnici fissi.
-    # Sostituisce il `roundingOptions` hardcoded nel FE.
-    area_funzionale = "catalogo"
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="CatalogoUomRoundingModesLookupResponse",
-            fields={
-                "data": serializers.ListField(child=serializers.DictField()),
-                "meta": serializers.DictField(required=False),
-            },
-        )},
-    )
-    # Scopo: Restituisce la lista statica dei modi di arrotondamento.
-    def get(self, request: Request) -> JsonResponse:
-        del request
-        return success_response(fn_list_uom_rounding_modes())

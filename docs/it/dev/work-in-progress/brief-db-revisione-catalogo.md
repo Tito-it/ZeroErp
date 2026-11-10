@@ -550,6 +550,9 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | Q12 ✅ | D16: le note di catalogo prendono `tx_id` e `user_* text` come le altre? E un articolo con una nota si deve poter disattivare? | Sì alla forma comune; sì alla disattivazione (la nota non è un figlio vivo: va esclusa dal `block_deact`) — **✅ Tid, 2026-11-08: come da proposta** |
 | Q13 ✅ | D22: il fattore della mappatura si legge alla data del documento? | Sì, se Q3 versiona la mappatura; altrimenti la domanda cade — **✅ Tid, 2026-11-08: il fattore si legge alla data del documento** |
 | Q14 ✅ | §2.4: si ritirano gli indici che ripetono un vincolo? | `uq_articoli_componenti_prodotto_componente_from` sì; `ix_uom_tipi_codice_interno_upper` e `ix_artuomop_art_isbase` solo dopo la verifica dei lettori e dei piani — **✅ Tid, 2026-11-08: come da proposta** |
+| Q19 ✅ | D24 (§13.7.3, domanda 1): il fattore di una mappatura già scritta si cambia sul posto? | No: **bloccato**. Un fattore nuovo è una riga nuova (chiudi e inserisci, Q3) — **✅ Tid, 2026-11-10** |
+| Q20 ✅ | D25 (§13.7.3, domanda 2): l'unità della riga di listino deve valere alla decorrenza della versione o per tutto il suo periodo? | **Per tutto il periodo** della versione, regola a DB — **✅ Tid, 2026-11-10** |
+| Q21 ✅ | D26 (§13.7.3, domanda 3): il fattore 1 per difetto delle commesse va in un brief nuovo? | No, **in questo brief** — **✅ Tid, 2026-11-10** |
 
 ## 7. I giri, nell'ordine in cui si fanno
 
@@ -563,6 +566,7 @@ giro dopo.
 | 1 | A + B | **La distinta.** D1, D9, D10 (Q1), D11 (Q2), R3 (Q5); pgTAP di §2.6 sulla distinta | Gli stessi trigger di `articoli_componenti` e il guard flags. Dopo D28 di `dbops`, o con D28 |
 | 1-bis | B | **Il BB della distinta alla data** (R2, Q8) | Tocca vendite e `script`: un giro a parte, con l'ok di Tid |
 | 2 | A + B | **Le quantità e le unità.** D2 (Q7), D3 (Q4), D8, D12, D13 (Q3), D22 (Q13), D14, D15, D6, D17; BE1-BE4 | `trgfn_qta_from_operativa`, `articoli_uom_operativa` e i due guard di tipologia |
+| 2-bis | A + B | **Le tre decisioni del giro BE.** D24 (Q19), D25 (Q20), D26 (Q21); BE19-BE21 (§14) | Nascono dal giro BE del giro 2; tocca anche `vendite` (listini, commesse) |
 | 3 | A + B | **I guard degli articoli.** D4 (Q6) + D21, D5 (R4), D7, D18, D19, D20 (Q10), R5 | Gli oggetti di `catalogo.articoli` |
 | 4 | B | **Le note.** D16 (Q12), R6 | Tabella `note`, partizioni e due viste |
 | 5 | C | **Pulizia e metadati.** §3 (Q11), §2.4 (indici ridondanti, rami irraggiungibili, `uom_tipi.codice` con Q9), §2.5, pgTAP deboli di §2.6, R7 | Quello che nessun giro precedente ha già aperto |
@@ -1126,10 +1130,10 @@ Corpi di partenza da `pg_get_functiondef`, `pg_get_viewdef` (`search_path = pg_c
 
 | # | Che cosa |
 | --- | --- |
-| BE1-BE4 | Come in §5, ora sul giro applicato. BE4: i sei codici di §13.1 nella mappa degli errori generata e nell'i18n; `E_UOM_MISSING` ha una frase nuova |
-| BE16 | `rounding_mode` e `require_lot` non ci sono più: il form e il servizio delle unità operative (`ArticoloUomForm.vue`, `RoundingModeSelect.vue`, `catalogo_service`, il lookup `rounding-modes` di `api_catalogo.md` §2.3) non le scrivono e non le leggono più. Fino ad allora un salvataggio che le nomina fallisce |
-| BE17 | `listini_repository.py:968` (`uom_compatibile`) ricopia «l'unità vale per l'articolo» senza le conversioni generali: legge `catalogo.fn_get_uom_factor(articolo, unità, data) IS NOT NULL` |
-| BE18 | Le mappature si versionano: «cambiare il fattore» di un'unità operativa diventa «chiudi e inserisci», e due periodi sovrapposti li rifiuta `uq_articoli_uom_operativa_no_overlap` (23P01). Anche una conversione generale nei due versi sovrapposta (`ex_unita_misura_conversioni_coppia_no_overlap`, 23P01): il servizio mappa i due vincoli a un messaggio |
+| BE1-BE4 ✅ (2026-11-09, §13.7; BE4 resta aperta per D19, giro 3) | Come in §5, ora sul giro applicato. BE4: i sei codici di §13.1 nella mappa degli errori generata e nell'i18n; `E_UOM_MISSING` ha una frase nuova |
+| BE16 ✅ (2026-11-09) | `rounding_mode` e `require_lot` non ci sono più: il form e il servizio delle unità operative (`ArticoloUomForm.vue`, `RoundingModeSelect.vue`, `catalogo_service`, il lookup `rounding-modes` di `api_catalogo.md` §2.3) non le scrivono e non le leggono più. Fino ad allora un salvataggio che le nomina fallisce |
+| BE17 ✅ (2026-11-09) | `listini_repository.py:968` (`uom_compatibile`) ricopia «l'unità vale per l'articolo» senza le conversioni generali: legge `catalogo.fn_get_uom_factor(articolo, unità, data) IS NOT NULL` |
+| BE18 ✅ (2026-11-09) | Le mappature si versionano: «cambiare il fattore» di un'unità operativa diventa «chiudi e inserisci», e due periodi sovrapposti li rifiuta `uq_articoli_uom_operativa_no_overlap` (23P01). Anche una conversione generale nei due versi sovrapposta (`ex_unita_misura_conversioni_coppia_no_overlap`, 23P01): il servizio mappa i due vincoli a un messaggio |
 
 ### 13.6 Chiusura
 
@@ -1154,6 +1158,115 @@ Corpi di partenza da `pg_get_functiondef`, `pg_get_viewdef` (`search_path = pg_c
   sopra; la verifica di coerenza di §12 con le sue correzioni;
   questo brief.
 
+### 13.7 Giro BE del giro 2 (team BE, 2026-11-09, da committare su `dev/backend-tid`)
+
+#### 13.7.1 Che cosa è fatto
+
+| # | Che cosa |
+| --- | --- |
+| BE16 | `rounding_mode` e `require_lot` fuori da repository (scrittura e proiezione), service, schema OpenAPI e form. Ritirati il lookup `GET /catalogo/lookup/rounding-modes/` (view, rotta, `fn_list_uom_rounding_modes`, `_ROUNDING_MODE_*`), `lookupUomRoundingModes` e `RoundingModeSelect.vue` (file cancellato, nel piano approvato da Tid), le chiavi i18n e il parametro letto dal form. Una PATCH o una POST che li nomina è un 400. `api_catalogo.md` §2.3 e §3.2 riscritti |
+| BE1 | `is_base` **non si scrive più**: fuori dalla whitelist di repository e service (400 se arriva). La riga base nasce con l'articolo e il guard rifiuta ogni altra strada, quindi offrirla voleva dire offrire solo un rifiuto. Ritirato il controllo parziale di `:844`; il CHECK `chk_articoli_uom_operativa_base_fissa` ha la sua frase (`_UOM_OPERATIVA_CHECK`). La DELETE della riga base riceve `E_UOM_RIGA_BASE_IMMUTABILE` dal DB, intatto fino al middleware |
+| BE1, form | ⚠️ **Difetto trovato nel form**: un `watch` ricavava `is_base` dal fattore (`fattore 1 → base`). Un'unità con fattore 1 che base non è (una confezione da uno, un sinonimo) finiva marcata base, e col guard nuovo il salvataggio veniva rifiutato. Ritirato: il form mostra «Base» in sola lettura sulla riga base, e lì spegne fattore e date (il CHECK) |
+| BE2 | Ritirati `get_uom_base` / `get_uom_factor` del repository: nessun chiamante, e il secondo chiamava la firma vecchia |
+| BE3 | Verificato: nessun service delle righe azzera `factor_to_base` al cambio d'unità. `contratti_service` accetta `factor_to_base: null`, che il trigger ora riempie alla data (D8). Niente da ritirare |
+| BE4 | Policy rigenerata (`genera_error_policies`: le sole sette voci dei giri, nessun codice del DB oltre git) e ripieghi senza `%s` per i sei codici di §13.1 e per `E_SOGGETTO_ID_FISCALE_IMMUTABILE`; `E_UOM_MISSING` riscritto. Il FE non ha i18n per codice: la frase arriva dal DB |
+| BE17 | `get_articolo_uom_validation` legge `catalogo.fn_get_uom_factor(articolo, unità, data) IS NOT NULL` alla **decorrenza della versione** (`listini_versioni.valido_dal`, NOT NULL); il rifiuto accende `uom_id` |
+| BE18 | `_UOM_OPERATIVA_UNIQUE` su `uq_articoli_uom_operativa_no_overlap` (frase «chiudere quella in vigore prima di aprirne una nuova», senza campo). Le conversioni passano dal BB `map_integrity_error` per nome (`ex_unita_misura_conversioni_coppia_no_overlap`, `chk_uom_conv_no_self`, le due FK col campo): via il riconoscimento dal testo («overlap», «foreign») e il ramo `E_GENERICO` della tipologia, che ora ha il suo codice |
+
+#### 13.7.2 Le prove
+
+* **Sul DB vero** (`ZEROERP_TEST_DB_E2E=1`, casi costruiti, transazione annullata):
+  `catalogo/tests/db/test_vincoli_catalogo_db` da 3 a 8 test (mappatura doppia e versionata, chiudi e inserisci, riga base
+  fissa, riga base che non si toglie, conversione nel verso opposto, tipologie diverse);
+  `vendite/tests/db/test_listino_uom_compatibile_db` (nuovo, 4 test: base, nessuna conversione, conversione generale,
+  mappatura chiusa prima della decorrenza: gli ultimi due sono i casi che la copia vecchia sbagliava).
+* Test unitari: `test_catalogo_service` (rounding ritirati; 4 nuovi), `test_catalogo_api`, `test_listini_service`.
+* **Suite backend intera sul DB vero** (7221 test): tre rossi, tutti fixture che scrivevano ciò che i giri 1 e 2 ora
+  rifiutano, corretti nello stesso giro. `catalogo/tests/db/test_articoli_ammessi_db` 1 e 2 aprivano il picker della
+  distinta su un padre non composito (BE12); il test 1 per di più leggeva «un articolo attivo qualunque», una popolazione:
+  ora il padre composito si costruisce. `core/tests/db/test_date_validita_guard_comune_db` 7 metteva le date sulla riga
+  base: ora su una mappatura costruita, come il pgTAP gemello. Rilanciati: verdi.
+* `genera_error_policies --check` pulito, presidi delle policy verdi, ruff, mypy (0 rilievi), vitest 1104/1104, build FE.
+
+#### 13.7.3 Domande per Tid — ✅ risposte il 2026-11-10 (Q19-Q21, §6): il lavoro è in §14
+
+1. **Il fattore di una mappatura si cambia sul posto?** Il DB lo lascia fare (nessun lock su `factor_to_base` delle righe
+   non base), e il form lo lascia modificabile. Col modello «chiudi e inserisci» (D13, Q3) il cambio sul posto riscrive il
+   passato di `fn_uom_operativa_alla_data`. Se il fattore di una mappatura va fermato, serve il lock a DB (o la riga in
+   `lock_columns_conditional`, con il suo guard): allora il form lo spegne da `non_editable_fields`, senza copia.
+2. **BE17, la data.** La compatibilità della riga di listino si chiede alla decorrenza della versione. Una mappatura che
+   comincia dopo la decorrenza, o che finisce durante la versione, non è vista: è il giorno da cui il prezzo vale. Se la
+   regola deve essere «per tutto il periodo della versione», va scritta a DB.
+3. **Fuori dal giro, da guardare:** `commesse_repository._map_pushable_row` mette `factor_to_base = 1` quando la riga
+   sorgente lo ha NULL. Le colonne nullable sono quelle di `contratti_righe`, `preventivi_righe`,
+   `offerte_commerciali_eccezioni`, e lì NULL vuol dire «quantità già nella base», quindi 1 è giusto. È però la forma di
+   D2 («quando non so, 1») in un posto del backend, e `commesse_attivita.factor_to_base` ha ancora `DEFAULT 1` (la forma
+   di D23). §13.2 tiene le commesse fuori dal giro: lo segnalo, non lo tocco.
+
+## 14. Giro 2-bis — le tre decisioni del giro BE, 2026-11-10
+
+Le tre domande di §13.7.3 hanno risposta (Q19-Q21, §6). Diventano D24-D26: lavoro **DB**, con le ricadute BE in §14.4.
+Il giro aspetta il via di Tid e i suoi numeri.
+
+### 14.1 D24 — Il fattore di una mappatura si cambia sul posto (Q19: bloccato)
+
+* **Fatto.** `articoli_uom_operativa` non ha lock su `factor_to_base` delle righe non base: un UPDATE lo cambia, e
+  `fn_uom_operativa_alla_data` / `fn_get_uom_factor` rispondono il valore nuovo **anche per le date passate**. Il modello
+  di Q3 (versionata, chiudi e inserisci) ha già la strada per cambiare il fattore: la riga nuova.
+* **Correzione.** Il fattore di una mappatura scritta non si cambia: `script.trgfn_lock_columns`, con un codice suo
+  (proposta: `E_UOM_FATTORE_IMMUTABILE`, la frase dice «chiudere la mappatura e aprirne una nuova»). La riga base è già
+  ferma dal CHECK `chk_articoli_uom_operativa_base_fissa`: il lock non la cambia.
+* **Da guardare nella stessa colonna di ragionamento (proposta della sessione DB, poi Tid):**
+  * **`uom_id`** oggi non è bloccato neppure lui: cambiare l'unità di una mappatura sul posto riscrive il passato come il
+    fattore. Proposta: bloccato insieme, stesso codice o uno gemello.
+  * **Le date.** `valido_al` resta modificabile, perché chiudere è la strada. Spostare `valido_dal`, o chiudere nel
+    passato una mappatura già in vigore, riscrive il passato come il fattore: è la stessa domanda di Q1 per la distinta.
+    Proposta: la stessa risposta di Q1.
+* **Prova (pgTAP):** UPDATE del fattore su una mappatura costruita → il codice; chiudi e inserisci → passa; la riga base
+  resta del CHECK.
+
+### 14.2 D25 — L'unità della riga di listino deve valere per tutto il periodo della versione (Q20)
+
+* **Fatto.** Oggi la regola sta solo nel backend (BE17, §13.7.1), alla **decorrenza** della versione: una mappatura che
+  finisce durante la versione passa, e da quel giorno il listino dà un prezzo in un'unità che per l'articolo non si
+  converte. Una regola del modello non sta nel backend.
+* **Correzione.** Regola a DB: l'unità della riga è convertibile per l'articolo **in ogni giorno** del periodo della
+  versione (`valido_dal` … `valido_al`; `valido_al` NULL vuol dire «senza fine»). «Convertibile» è quello che dice
+  `catalogo.fn_get_uom_factor` (base, mappatura dell'articolo, conversione generale): la regola si scrive **sul BB del
+  periodo**, non come copia — la sessione DB valuta se serve un BB «unità convertibile per tutto il periodo», da
+  `fn_get_uom_factor` o accanto a lui (regola del 2: lo leggono il guard del listino e, oggi, il backend).
+* **Tutte e due le direzioni (simmetria).** La regola si rompe da tre lati, e ognuno va presidiato:
+  1. la riga di listino scritta o cambiata (il guard della riga);
+  2. il periodo della versione allungato o riaperto (`valido_al` spostato o tolto);
+  3. il catalogo che cambia sotto: una mappatura chiusa, una conversione generale chiusa o spenta, mentre un listino
+     vivo la usa.
+  Il terzo lato è il più facile da dimenticare: va deciso se rifiutare la chiusura o no, e la sessione DB lo propone a
+  Tid con le alternative.
+* **Prova (pgTAP):** i tre lati, con articolo, unità, mappature e versione costruiti; versione senza fine; unità base
+  sempre valida.
+
+### 14.3 D26 — Le commesse: il fattore 1 per difetto (Q21)
+
+* **Fatto.** `commesse_attivita.factor_to_base` ha `DEFAULT 1`: la forma di D23, che il giro 2 ha tolto da `ordini_righe`,
+  `ddt_righe` e `resi_righe`. In più il backend (`vendite/db/commesse_repository.py`, `_map_pushable_row`) scrive 1 quando
+  la riga sorgente ha il fattore NULL. Oggi è giusto, perché NULL sulla sorgente vuol dire «quantità già nella base»; ma
+  se arriva una riga senza fattore in un'unità che base non è, l'1 la fa passare come se lo fosse (3 cartoni → 3 pezzi),
+  senza rifiuto. È D2 («quando non so, 1»).
+* **Correzione (DB).** Via il `DEFAULT 1`. La regola «senza fattore la quantità è nella base» si scrive a DB, in un posto:
+  una riga di `commesse_attivita` senza fattore prende 1 **solo se** l'unità è la base dell'articolo, altrimenti si
+  rifiuta (codice del giro 2, `E_UOM_MISSING`, se il significato coincide; la sessione DB lo verifica). La sessione DB
+  censisce prima chi scrive in `commesse_attivita` (push dal documento sorgente e altre porte), perché ognuno lo
+  attraversa.
+* **Prova (pgTAP):** riga senza fattore nella base → 1; riga senza fattore in un'altra unità → il rifiuto; riga col
+  fattore → quello scritto, come la fotografia di §13.3 punto 5.
+
+### 14.4 Ricadute su BE e FE (team BE, quando il giro è applicato)
+
+| # | Che cosa |
+| --- | --- |
+| BE19 | D24: il lock entra in `vw_non_editable_fields`. Verificare che il dettaglio delle unità operative passi `non_editable_fields` al form (la prop `nonEditableFields` di `ArticoloUomForm.vue` c'è; va provato chi la riempie). Policy e ripiego del codice nuovo. Test sul DB vero: UPDATE del fattore → il codice col campo |
+| BE20 | D25: `ListiniRepository.get_articolo_uom_validation` (BE17) si ritira, o legge il BB del periodo se ne nasce uno. Il rifiuto del guard arriva col campo `uom_id`. Policy e ripiego dei codici nuovi. `test_listino_uom_compatibile_db` riscritto sui tre lati |
+| BE21 | D26: `_map_pushable_row` smette di scrivere 1: il NULL passa al DB, che decide. Il test delle commesse prova il rifiuto per una riga senza fattore fuori dalla base |
 
 ## 14. Giro 3 — i guard degli articoli e la chiusura del legame coi prezzi, 2026-11-09
 

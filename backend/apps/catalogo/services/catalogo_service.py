@@ -110,17 +110,6 @@ _COMPONENTE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(
     key for key in COMPONENTE_WRITE_COLUMNS if key != "componente_id"
 )
 _NOTA_ALLOWED_KEYS: frozenset[str] = NOTA_WRITE_COLUMNS
-_ROUNDING_MODE_VALIDI: frozenset[str] = frozenset({"UP", "DOWN", "HALF_UP", "HALF_DOWN", "HALF_EVEN"})
-
-# Scopo: Mappa codice -> (descrizione, ordering) per lookup statico rounding modes UoM operative.
-# Ordering segue la convenzione "default-first" (HALF_UP banker's rounding standard, poi varianti).
-_ROUNDING_MODE_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
-    ("HALF_UP", "Arrotondamento meta' su (5 va su)", 1),
-    ("HALF_DOWN", "Arrotondamento meta' giu' (5 va giu')", 2),
-    ("HALF_EVEN", "Arrotondamento bancario (5 al pari piu' vicino)", 3),
-    ("UP", "Arrotondamento sempre su (verso infinito)", 4),
-    ("DOWN", "Arrotondamento sempre giu' (verso zero)", 5),
-)
 _NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 _NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
 
@@ -739,12 +728,10 @@ def _extract_uom_operativa_payload(
         )
 
     for field_name in (
-        "is_base",
         "is_sell_uom",
         "is_purchase_uom",
         "is_logistic_uom",
         "forbid_fraction",
-        "require_lot",
         "attivo",
     ):
         field_value = _extract_present_bool(
@@ -789,17 +776,6 @@ def _extract_uom_operativa_payload(
         )
         data["max_decimals"] = max_decimals
 
-    rounding_mode = _extract_enum_string(
-        payload,
-        "rounding_mode",
-        function_name=function_name,
-        allowed_values=_ROUNDING_MODE_VALIDI,
-        nullable=False,
-        message=payload_message,
-    )
-    if rounding_mode is not _MISSING:
-        data["rounding_mode"] = rounding_mode
-
     gtin = _extract_string(
         payload,
         "gtin",
@@ -840,16 +816,11 @@ def _extract_uom_operativa_payload(
     if meta is not _MISSING:
         data["meta"] = meta
 
-    if data.get("is_base") is True and "factor_to_base" in data:
-        ErrorManager.require(
-            data["factor_to_base"] == Decimal("1"),
-            code="E_CATALOGO_VALIDATION",
-            message="Payload UoM operativa non valido.",
-            detail="La UoM base deve avere factor_to_base = 1.",
-            context={"field": "factor_to_base"},
-            function_name=function_name,
-            log_to_db=True,
-        )
+    # La riga base (fattore 1, nessuna data) la tiene il DB:
+    # `chk_articoli_uom_operativa_base_fissa`, tradotto in
+    # `_UOM_OPERATIVA_CHECK`. ⛔ Fino al 2026-11-09 qui c'era una copia
+    # PARZIALE della regola: scattava solo se il payload portava insieme
+    # `is_base` e il fattore (D12, BE1 di brief-db-revisione-catalogo).
 
     forbid_fraction = data.get("forbid_fraction")
     if forbid_fraction is True:
@@ -1200,9 +1171,24 @@ def _extract_nota_payload(
 # ⚠️ Il campo solo dove e' vero: l'articolo della UoM e' nella rotta, quindi
 #    il doppione e' la UoM scelta; nel legame contano componente E periodo,
 #    due scelte dell'operatore, e la tupla resta a due.
+# ⭐ La mappatura si versiona (2026-11-09, D13/Q3, BE18): «cambiare» una
+#    mappatura e' chiuderla e inserirne una nuova dal giorno dopo. La stessa
+#    unita' torna quindi su piu' righe, e il doppione vero e' il PERIODO che si
+#    sovrappone (`UNIQUE … WITHOUT OVERLAPS`, 23P01). Unita' e periodo sono due
+#    scelte dell'operatore: la tupla resta a due, senza campo.
 _UOM_OPERATIVA_UNIQUE: dict[str, tuple] = {
-    "uq_artuomop_articolo_uom": (
-        "E_CATALOGO_VALIDATION", "L'articolo ha gia' questa unita' di misura operativa.", "uom_id",
+    "uq_articoli_uom_operativa_no_overlap": (
+        "E_CATALOGO_VALIDATION",
+        "L'unita' ha gia' una mappatura in un periodo che si sovrappone: chiudere quella in vigore "
+        "prima di aprirne una nuova.",
+    ),
+}
+# La riga base ha fattore 1 e nessuna data (D12): e' la coppia fattore/date a
+# essere incoerente, nessun campo da solo.
+_UOM_OPERATIVA_CHECK: dict[str, tuple] = {
+    "chk_articoli_uom_operativa_base_fissa": (
+        "E_CATALOGO_VALIDATION",
+        "La riga dell'unita' base ha sempre fattore 1 e nessuna data di validita'.",
     ),
 }
 _COMPONENTE_UNIQUE: dict[str, tuple] = {
@@ -1222,6 +1208,7 @@ def _translate_uom_integrity_error(exc: IntegrityError, *, function_name: str) -
     map_integrity_error(
         exc,
         unique_constraints=_UOM_OPERATIVA_UNIQUE,
+        check_constraints=_UOM_OPERATIVA_CHECK,
         fallback_code="E_CATALOGO_VALIDATION",
         fallback_message="Violazione vincoli UoM operativa.",
         function_name=function_name,
@@ -1603,19 +1590,6 @@ def fn_lookup_articoli_ammessi(
         limit=limit,
     )
     return _lookup_response(results, troncato=troncato)
-
-
-# Scopo: Lista statica dei modi di arrotondamento UoM operativa (lookup dedicato).
-#        Single source of truth = `_ROUNDING_MODE_VALIDI` + `_ROUNDING_MODE_DESCRIZIONI`.
-#        Niente DB: i 5 modi sono enum tecnici matematici fissi (IEEE 754 like),
-#        non gestiti dall'admin. Restituisce lista nell'ordine "default-first".
-#        L'invariante "descrizioni copre l'enum" e' garantita dal test
-#        `test_fn_list_uom_rounding_modes_coverage` (CI), non a runtime.
-def fn_list_uom_rounding_modes() -> list[dict[str, Any]]:
-    return [
-        {"codice": codice, "descrizione": descrizione, "ordering": ordering}
-        for codice, descrizione, ordering in _ROUNDING_MODE_DESCRIZIONI
-    ]
 
 
 # Scopo: La PAGINA delle UoM operative dell'articolo (lista
@@ -2504,7 +2478,32 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, An
     return fn_get_conversione(conv_id)
 
 
-# Scopo: Traduce errori di integrita' DB per conversioni in messaggi utente.
+# I vincoli di `catalogo.unita_misura_conversioni` che l'operatore puo'
+# violare, coi nomi del catalogo (riconosciuti dal BB `map_integrity_error`).
+# ⭐ Una conversione per coppia NON orientata e periodo (2026-11-09, D14, BE18):
+#    kg→g e g→kg nello stesso periodo sono la stessa conversione detta due
+#    volte, e l'EXCLUDE la rifiuta (23P01). Coppia e periodo sono scelte
+#    dell'operatore: niente campo.
+_CONVERSIONE_EXCLUDE: dict[str, tuple] = {
+    "ex_unita_misura_conversioni_coppia_no_overlap": (
+        "E_CATALOGO_VALIDATION",
+        "Esiste gia' una conversione fra queste due unita' (in uno dei due versi) in un periodo che "
+        "si sovrappone: chiudere quella in vigore prima di aprirne una nuova.",
+    ),
+}
+# La frase di ripiego, una volta: la usano il BB (vincolo senza nome in mappa)
+# e il ramo dei DatabaseError che non sono violazioni d'integrita'.
+_CONVERSIONE_MSG_GENERICO = "Dati conversione non validi."
+_CONVERSIONE_CHECK: dict[str, tuple] = {
+    "chk_uom_conv_no_self": ("E_CATALOGO_VALIDATION", "UoM Da e UoM A devono essere diverse."),
+}
+_CONVERSIONE_FK: dict[str, tuple] = {
+    "fk_uom_conv_from": ("E_CATALOGO_VALIDATION", "Unita' di misura non trovata.", "uom_from_id"),
+    "fk_uom_conv_to": ("E_CATALOGO_VALIDATION", "Unita' di misura non trovata.", "uom_to_id"),
+}
+
+
+# Scopo: Traduce gli errori DB delle conversioni in messaggi utente.
 def _translate_conversione_integrity_error(exc: DatabaseError, *, function_name: str) -> None:
     # ⭐ Un rifiuto del DB col suo codice di catalogo PASSA INTATTO: il
     #    chiamante rilancia l'eccezione (`raise`), e il traduttore del middleware
@@ -2514,52 +2513,26 @@ def _translate_conversione_integrity_error(exc: DatabaseError, *, function_name:
     #    «Dati conversione non validi.» senza campo da evidenziare — trovato
     #    togliendo la copia della regola dal service
     #    (`test_date_validita_guard_comune_db` 7).
-    #    ⚠️ `E_GENERICO` resta qui: non distingue niente, ed e' cio' che solleva
-    #    il guard delle tipologie, a cui il ramo sotto da' una frase propria.
-    codice = db_error_code(exc)
-    if codice is not None and codice != "E_GENERICO":
+    #    Dal 2026-11-09 il guard delle tipologie solleva il suo codice
+    #    (`E_UOM_CONVERSIONE_TIPO_DIVERSO`, D6): il ramo che riconosceva la sua
+    #    frase dentro `E_GENERICO` e' uscito, e con lui il riconoscimento dei
+    #    vincoli dal testo («overlap», «foreign»): ora per nome, dal BB.
+    if db_error_code(exc) is not None:
         return
-    msg = str(exc).lower()
-    if "tipologia diversa" in msg or "same-type" in msg:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Conversione UoM non ammessa.",
-            detail="Le conversioni globali sono consentite solo tra UoM della stessa tipologia.",
+    if isinstance(exc, IntegrityError):
+        map_integrity_error(
+            exc,
+            unique_constraints=_CONVERSIONE_EXCLUDE,
+            fk_constraints=_CONVERSIONE_FK,
+            check_constraints=_CONVERSIONE_CHECK,
+            fallback_code="E_CATALOGO_VALIDATION",
+            fallback_message=_CONVERSIONE_MSG_GENERICO,
             function_name=function_name,
             log_to_db=True,
-            cause=exc,
         )
-    if "overlap" in msg or "exclude" in msg:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Esiste gia' una conversione attiva per questa coppia UoM nel periodo indicato.",
-            detail=str(exc),
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    if "self" in msg or ("uom_from" in msg and "uom_to" in msg and "check" in msg):
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="UoM Da e UoM A devono essere diverse.",
-            detail=str(exc),
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    if "fk" in msg or "foreign" in msg:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Unita' di misura non trovata o non attiva.",
-            detail=str(exc),
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    # Catch-all: qualsiasi altro vincolo DB non riconosciuto
     ErrorManager.raise_error(
         code="E_CATALOGO_VALIDATION",
-        message="Dati conversione non validi.",
+        message=_CONVERSIONE_MSG_GENERICO,
         detail=str(exc),
         function_name=function_name,
         log_to_db=True,

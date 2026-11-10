@@ -20,6 +20,9 @@
      i tre casi del modello, con `vivo=True`, `vivo=False` e senza filtro;
      e la colonna `vivo` che lista e dettaglio proiettano dice lo stesso del
      filtro (una espressione sola, `_SQL_VIVO`).
+2. test_si_ordina_per_vivo
+     `vivo` e' colonna del catalogo della lista (S-BE-2): l'ordinamento gira
+     sul DB vero e mette i ritirati dopo i vivi in ordine discendente.
 """
 
 from __future__ import annotations
@@ -81,3 +84,10 @@ class FiltroVivoProcessiDbTests(TestCase):
                 riga = next(r for r in righe if r["codice"] == _PROCESSO)
                 self.assertIs(riga["vivo"], vivo_atteso)
                 self.assertIs(self.repo.get_processo(_PROCESSO)["vivo"], vivo_atteso)
+
+    def test_si_ordina_per_vivo(self) -> None:
+        self._ritira("script.fn_data_operativa()")
+        righe, _ = self.repo.list_processi(order_by="vivo", order_dir="desc", limit=500)
+        valori = [r["vivo"] for r in righe]
+        self.assertIn(False, valori, f"{_PROCESSO} ritirato deve comparire")
+        self.assertEqual(valori, sorted(valori, reverse=True))

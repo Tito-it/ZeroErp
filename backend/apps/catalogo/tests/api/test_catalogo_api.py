@@ -35,7 +35,6 @@ Indice test eseguiti:
 23) CatalogoApiTests.test_get_articolo_note_ok
 24) CatalogoApiTests.test_post_articolo_nota_ok
 25) CatalogoApiTests.test_patch_nota_not_found
-26) CatalogoApiTests.test_lookup_uom_rounding_modes_ok
 27) CatalogoApiTests.test_get_articolo_componenti_capability_ok
 """
 
@@ -298,25 +297,6 @@ class CatalogoApiTests(JwtMockedApiTest):
 
     # Nota: il lookup UoM usa l'endpoint generico /core/lookup/codici/?rel=catalogo.unita_misura
     # I test del lookup generico sono in apps.core.tests.api.test_lookup_codici_api
-
-    # Scopo: lookup statico rounding modes -> 200 con i 5 codici dal service.
-    # La view non ha logica propria oltre a inoltrare il risultato; basta verificare
-    # che l'envelope sia rispettato e i codici giusti finiscano in `data`.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_lookup_uom_rounding_modes_ok(self, _mock_auth):
-        response = self.client.get("/api/v1/catalogo/lookup/rounding-modes/")
-
-        self.assertEqual(response.status_code, 200)
-        rows = response.json()["data"]
-        self.assertEqual(len(rows), 5)
-        codici = {r["codice"] for r in rows}
-        self.assertEqual(
-            codici,
-            {"HALF_UP", "HALF_DOWN", "HALF_EVEN", "UP", "DOWN"},
-        )
-        for row in rows:
-            self.assertIn("descrizione", row)
-            self.assertIn("ordering", row)
 
     # Scopo: POST create articolo -> 200 e payload inoltrato al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

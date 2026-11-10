@@ -1096,9 +1096,8 @@ class EmittenteRoundingModesLookupView(AdminAPIView):
     `amm_software_service._ROUNDING_MODE_VALIDI_EMITTENTE` +
     `_ROUNDING_MODE_DESCRIZIONI_EMITTENTE`. Niente DB: 4 codici fissi
     (UP/DOWN/HALF_UP/HALF_DOWN) allineati al CHECK
-    `chk_emittenti_fiscali_rounding_policy`. Pattern simmetrico a
-    `ApiUomRoundingModesLookup` di catalogo (che ha 5 codici, include
-    HALF_EVEN — quello e' un altro enum).
+    `chk_emittenti_fiscali_rounding_policy`. (Il gemello di catalogo, sulle
+    UoM operative, e' ritirato il 2026-11-09 insieme al campo.)
     """
 
     @extend_schema(

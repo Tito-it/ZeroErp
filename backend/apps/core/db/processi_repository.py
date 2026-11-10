@@ -65,6 +65,20 @@ class ContrattoLiveness(TypedDict):
     segno_di_vita: str
 
 
+# ⭐ L'ESPRESSIONE «questo processo e' vivo», scritta UNA volta per il filtro
+#    della lista e per le due letture che la proiettano (lista e dettaglio).
+#    ⛔ «Vivo» NON e' `p.attivo` (D11, Q2 di brief-db-revisione-dbops, giro 9):
+#    il ritiro ha una sede sola, `obsoleto_dal`, e un processo con la data
+#    raggiunta e' ritirato anche con `attivo = true`. La regola si CHIEDE al
+#    DB, al BB che leggono sveglia, roster e panorama, e non si ricalcola qui:
+#    una data futura (ritiro programmato) e' ancora vivo, e «raggiunta» si
+#    legge alla data operativa del DB, non a quella del server applicativo.
+#    ⚠️ Fino al 2026-11-09 il filtro chiedeva il DB e la proiezione no: la
+#    lista filtrava sul ritiro e il drawer mostrava `attivo`, cioe' due
+#    risposte diverse alla stessa domanda sullo stesso processo.
+_SQL_VIVO = "(NOT script.fn_e_obsoleto(p.obsoleto_dal))"
+
+
 # Whitelist ORDER BY della lista processi: chiave = nome esposto al frontend,
 # valore = espressione SQL. ⛔ Si ordina la colonna che si VEDE.
 # ⭐ Pubblica perche' la legge anche il service (`validate_order_params`): una
@@ -76,6 +90,10 @@ PROCESSI_SORT_COLUMNS: dict[str, str] = {
     "classe": "p.classe",
     "canale": "p.canale",
     "attivo": "p.attivo",
+    # `vivo` e' una colonna del catalogo della lista dal 2026-11-09 (S-BE-2,
+    # giro di brief-db-revisione-dbops §32): si ordina sulla stessa espressione
+    # che la lista proietta e il filtro usa.
+    "vivo": _SQL_VIVO,
     "ultimo_run": "ur.ultimo_run",
 }
 
@@ -127,19 +145,6 @@ _CANALI_CON_IDENTITA = ("PGAGENT", "COMMAND", "CODA_AUTOMATICA")
 #    col client (vedi sopra), e una seconda sede qui lo rifarebbe lato server.
 _SQL_VUOLE_IDENTITA = "(p.classe = %s AND p.canale = ANY(%s))"
 
-
-# ⭐ L'ESPRESSIONE «questo processo e' vivo», scritta UNA volta per il filtro
-#    della lista e per le due letture che la proiettano (lista e dettaglio).
-#    ⛔ «Vivo» NON e' `p.attivo` (D11, Q2 di brief-db-revisione-dbops, giro 9):
-#    il ritiro ha una sede sola, `obsoleto_dal`, e un processo con la data
-#    raggiunta e' ritirato anche con `attivo = true`. La regola si CHIEDE al
-#    DB, al BB che leggono sveglia, roster e panorama, e non si ricalcola qui:
-#    una data futura (ritiro programmato) e' ancora vivo, e «raggiunta» si
-#    legge alla data operativa del DB, non a quella del server applicativo.
-#    ⚠️ Fino al 2026-11-09 il filtro chiedeva il DB e la proiezione no: la
-#    lista filtrava sul ritiro e il drawer mostrava `attivo`, cioe' due
-#    risposte diverse alla stessa domanda sullo stesso processo.
-_SQL_VIVO = "(NOT script.fn_e_obsoleto(p.obsoleto_dal))"
 
 
 # Scopo: i parametri di `_SQL_VUOLE_IDENTITA`, nell'ordine dei segnaposto.
