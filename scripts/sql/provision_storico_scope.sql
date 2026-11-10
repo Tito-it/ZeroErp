@@ -3,7 +3,7 @@
 -- ============================================================================
 -- ZeroErp — Provisioning dello SCOPE CONGELATO sulle shadow di storico
 -- ----------------------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-db-rls-storico-scope-congelato.md §4b
+-- Brief: docs/it/dev/work-done/brief-db-rls-storico-scope-congelato.md §4b
 --
 -- PERCHÉ ESISTE. Le shadow `storico.*` nascono dall'automazione, e su dev il job
 -- pgAgent le crea come `postgres`: 68 su 121 (2026-09-11) non appartengono al

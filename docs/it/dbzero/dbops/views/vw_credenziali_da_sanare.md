@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Presidio ZERO delle credenziali. NESSUNA_VESTE: la credenziale non ha alcuna veste, nemmeno spenta (anagrafiche.vw_accessi_altri.nessun_accesso: una regola sola); una credenziale con sole vesti spente e' una persona disattivata e non entra (V-3). PERSONA_E_SISTEMA: vesti di persona e di macchina sulla stessa credenziale (script.fn_veste_di_sistema), che il guard trgfn_identita_digitali_guard_natura_credenziale rifiuta: escono le righe nate prima del guard e quelle di una gara fra transazioni. NESSUNA_VESTE si sana dando una veste alla credenziale o cancellandola (spegnerla in Django non basta: resta una credenziale senza veste); PERSONA_E_SISTEMA separando le due nature su due credenziali. Brief: brief-db-be-fe-area-accessi (R-DB-2).
+> Presidio ZERO delle credenziali. NESSUNA_VESTE: la credenziale non ha alcuna veste, nemmeno spenta (anagrafiche.vw_accessi_altri.nessun_accesso: una regola sola); una credenziale con sole vesti spente e' una persona disattivata e non entra. PERSONA_E_SISTEMA: vesti di persona e di macchina sulla stessa credenziale (script.fn_veste_di_sistema), che il guard trgfn_identita_digitali_guard_natura_credenziale rifiuta: escono le righe scritte prima del guard e quelle di una gara fra transazioni. NESSUNA_VESTE si sana dando una veste alla credenziale o cancellandola (spegnerla in Django non basta: resta una credenziale senza veste); PERSONA_E_SISTEMA separando le due nature su due credenziali.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 

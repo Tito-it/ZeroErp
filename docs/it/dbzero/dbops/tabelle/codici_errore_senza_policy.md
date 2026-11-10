@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Registro del debito del "terzo lato": i codici errore che una funzione plpgsql viva puo' nominare e che NON hanno una voce in backend/apps/core/services/error_policies.py. Effetto del difetto: l'operatore legge comunque la frase giusta (viene dal catalogo), ma il TIPO di risposta HTTP resta appiattito su 400 anche quando la verita' e' 404 o 403. UNA sola decisione (brief-db-be-terzo-lato-presidio-codici, 2026-08-05): non e' una regressione, si chiude a lotti per dominio partendo dai da_trigger. Esiste per permettere di accendere il cancello SUBITO invece che a bonifica finita: un cancello rosso dal primo giorno viene disattivato. E' un debito: DEVE calare, e il cancello deve pretendere che una voce che ha ottenuto la sua policy venga tolta. Misura canonica: dbops.vw_codici_errore_da_dichiarare.
+> Registro del debito del terzo lato: i codici errore che una funzione viva puo' nominare e che non hanno una voce nella mappa generata delle politiche d'errore del backend (backend/apps/core/services/error_policies_generated.py). Effetto del difetto: l'operatore legge comunque la frase giusta (viene dal catalogo), ma il tipo di risposta HTTP resta appiattito su 400 anche quando la verita' e' 404 o 403. Si chiude a lotti per dominio, partendo dai da_trigger. Esiste per tenere acceso il cancello mentre il debito si salda: e' un debito, deve calare, e il cancello pretende che una voce che ha ottenuto la sua politica venga tolta. La misura e' dbops.vw_codici_errore_da_dichiarare.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Registry dei tipi di job della coda lavori generica (dbops.coda_lavori). codice = job_type; handler_code = chiave di dispatch verso il handler_registry Python (no dynamic import); default per-tipo run_as/max_tentativi. Brief: brief-db-coda-lavori-generica §2.
+> Il catalogo dei tipi di lavoro della coda dei lavori (dbops.coda_lavori). codice e' il job_type; handler_code la chiave di dispatch verso il registro degli handler del backend (nessun import dinamico); processo_codice il processo di dbops.processi a cui il tipo appartiene; run_as_default e max_tentativi_default i valori che un lavoro prende se chi accoda non li passa. Un tipo spento (attivo = false) non si accoda.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

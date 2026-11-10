@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> L'etichetta di un soggetto di prova: una riga per ogni soggetto creato dal verbo dei dati di sviluppo (anagrafiche.fn_provisiona_dati_di_sviluppo), nella stessa transazione: gli emittenti, i clienti, il fornitore, le persone dietro le credenziali. Si etichettano le radici, non le righe: contratti, BA e documenti si ritrovano dalla radice a cui sono legati. Non cambia e non si toglie; in un'installazione PRODUZIONE non nasce (guard dbops.trgfn_etichette_di_prova_guard). L'app la legge e non la scrive. Il presidio dbops.vw_radici_di_prova_in_produzione la guarda. Brief: brief-db-processi-accensione-per-ambiente (R-4).
+> L'etichetta di un soggetto di prova: una riga per ogni soggetto creato dal verbo dei dati di sviluppo (anagrafiche.fn_provisiona_dati_di_sviluppo), nella stessa transazione: gli emittenti, i clienti, il fornitore, le persone dietro le credenziali. Si etichettano le radici, non le righe: contratti, BA e documenti si ritrovano dalla radice a cui sono legati. Non cambia e non si toglie; in un'installazione PRODUZIONE non nasce (guard dbops.trgfn_etichette_di_prova_guard). L'app la legge e non la scrive. Il presidio dbops.vw_radici_di_prova_in_produzione la guarda.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

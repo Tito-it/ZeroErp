@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Configurazione trigger delete-block per tabelle sensibili (ruoli).
+> Il registro del blocco delle DELETE: una riga per tabella (uq_automation_delete_block_table) su cui una DELETE passa solo se la GUC guc_key e' accesa nella sessione. dbops.fn_run_automations_delete_block porta i trigger (script.trgfn_delete_block_by_guc, BEFORE DELETE FOR EACH ROW) allo stato del registro: crea quello atteso, rigenera quello diverso, toglie quello di una riga spenta (enabled = false); il nome e' trigger_name o il template di dbops.fn_nome_oggetto_dichiarato. Un trigger della funzione su una tabella che il registro non nomina ferma il giro (E_DELETE_BLOCK). Il confronto fra registro e trigger vivi e' dbops.fn_delete_block_divergenze.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

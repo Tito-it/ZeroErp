@@ -3,6 +3,11 @@
 -- pgTAP test per Zero ERP
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione nasce
 --   senza stato (BOZZA), riceve le righe e diventa ATTIVA da dbops.fn_pgtap_porta_a_stato.
+-- rev 2026-11-09 (brief-db-revisione-catalogo, giro 2, D2/Q7): ogni riga usa l'unita'
+--   base del SUO articolo (catalogo.fn_get_uom_base), non la prima unita' attiva del
+--   catalogo. trgfn_qta_from_operativa rifiuta un'unita' senza fattore alla data del
+--   documento (E_UOM_MISSING): la riga OVERRIDE FISSA con PZ su un articolo a SMC moriva
+--   prima del plan. Il fattore dell'unita' base e' 1 a ogni data.
 --
 -- Test: vendite.fn_contratto_righe_preview — 4 nuove colonne output
 --       Migration: 20260519-07
@@ -78,8 +83,7 @@ SELECT
     c.billing_account_id    AS ba_id,
     c.istanza_utility_id,
     c.utility_id,
-    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT' LIMIT 1) AS id_draft,
-    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
+    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT' LIMIT 1) AS id_draft
 FROM tmp_prv_cli c;
 
 -- 4 articoli standalone distinti (non compositi)
@@ -141,8 +145,8 @@ SELECT id FROM ins;
 -- 2 righe listino: articoli seq=1 (nessuna eccezione → DA_LISTINO)
 --                               seq=2 (avrà OVERRIDE)
 INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.id, a.articolo_id, ctx.uom_id, 100.00
-  FROM tmp_prv_ver v, tmp_prv_arts a, tmp_prv_ctx ctx
+SELECT v.id, a.articolo_id, catalogo.fn_get_uom_base(a.articolo_id), 100.00
+  FROM tmp_prv_ver v, tmp_prv_arts a
  WHERE a.seq IN (1, 2);
 
 -- FROM tmp_prv_ver: senza un listino da copiare la versione non nasce, e il test 2 lo dice.
@@ -166,8 +170,8 @@ WITH ins AS (
 SELECT id FROM ins;
 
 -- OVERRIDE per articolo seq=2: valori noti per i test 5 e 6.
--- Entrambi qta_operativa e uom_operativa_id valorizzati → trigger early return,
--- quantita resta 3 come inserita.
+-- FISSA: trgfn_qta_from_operativa calcola quantita = qta_operativa x fattore alla
+-- data del contratto. Con l'unita' base dell'articolo il fattore e' 1: quantita 3.
 INSERT INTO vendite.contratti_righe (
     contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
     tipo_erogazione, fonte_quantita_attesa,
@@ -175,13 +179,13 @@ INSERT INTO vendite.contratti_righe (
 )
 SELECT c.id, a.articolo_id, 'OVERRIDE', 80.00,
        'UNA_TANTUM', 'FISSA',
-       3, 3, ctx.uom_id
-  FROM tmp_prv_contratto c, tmp_prv_arts a, tmp_prv_ctx ctx
+       3, 3, catalogo.fn_get_uom_base(a.articolo_id)
+  FROM tmp_prv_contratto c, tmp_prv_arts a
  WHERE a.seq = 2 AND c.id IS NOT NULL;
 
 -- AGGIUNTA standalone: articolo seq=3, CONSUMO + MANUALE (test 7; rev 2026-10-07: le LETTURE
 --   le ammette solo una tipologia a contatore)
--- qta_operativa e uom_operativa_id NON NULL → trigger early return.
+-- MANUALE e' a valle: il trigger porta quantita a NULL ed esce prima del fattore.
 INSERT INTO vendite.contratti_righe (
     contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
     tipo_erogazione, fonte_quantita_attesa,
@@ -189,8 +193,8 @@ INSERT INTO vendite.contratti_righe (
 )
 SELECT c.id, a.articolo_id, 'AGGIUNTA', 50.00,
        'CONSUMO', 'MANUALE',
-       NULL, ctx.uom_id
-  FROM tmp_prv_contratto c, tmp_prv_arts a, tmp_prv_ctx ctx
+       NULL, catalogo.fn_get_uom_base(a.articolo_id)
+  FROM tmp_prv_contratto c, tmp_prv_arts a
  WHERE a.seq = 3 AND c.id IS NOT NULL;
 
 -- AGGIUNTA standalone: articolo seq=4 (test 8)
@@ -209,8 +213,8 @@ INSERT INTO vendite.contratti_righe (
 )
 SELECT c.id, a.articolo_id, 'AGGIUNTA', 100.00,
        'UNA_TANTUM', 'MANUALE',
-       NULL, NULL, ctx.uom_id
-  FROM tmp_prv_contratto c, tmp_prv_arts a, tmp_prv_ctx ctx
+       NULL, NULL, catalogo.fn_get_uom_base(a.articolo_id)
+  FROM tmp_prv_contratto c, tmp_prv_arts a
  WHERE a.seq = 4 AND c.id IS NOT NULL;
 
 -- Cattura i risultati della preview per i test comportamentali.

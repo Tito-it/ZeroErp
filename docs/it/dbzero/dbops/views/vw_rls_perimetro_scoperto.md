@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le tabelle che dovrebbero filtrare e non filtrano, per due criteri indipendenti letti dal catalogo di PostgreSQL: FIGLIA_DI_TABELLA_PROTETTA (ha una FK verso una tabella con la row level security accesa) e POLICY_INERTE (porta una policy e la row level security spenta). ⛔ L'invariante NON e' «la vista e' vuota»: e' «nessuna riga fuori da DEBITO_DICHIARATO» — un debito dichiarato in dbops.rls_perimetro_debito e' una riga attesa, un NON_DICHIARATO e' un allarme, un DEBITO_ESTINTO e' una riga di registro da togliere. ⚠️ FORCE ROW LEVEL SECURITY non entra nel criterio: in questo database nessuna tabella lo usa, e l'applicazione non e' owner. Presidio: db/pgtap/rls/test-rls-perimetro-scoperto.sql. Brief: brief-db-perimetro-emittente-righe-documento §8.
+> Le tabelle che dovrebbero filtrare e non filtrano, per due criteri indipendenti letti dal catalogo di PostgreSQL: FIGLIA_DI_TABELLA_PROTETTA (ha una FK verso una tabella con la row level security accesa) e POLICY_INERTE (porta una policy e la row level security spenta). L'invariante NON e' «la vista e' vuota»: e' «nessuna riga fuori da DEBITO_DICHIARATO» (in dbops.presidi colonna_stato = stato, stato_atteso = DEBITO_DICHIARATO): un debito dichiarato in dbops.rls_perimetro_debito e' una riga attesa, un NON_DICHIARATO e' un allarme, un DEBITO_ESTINTO e' una riga di registro da togliere. FORCE ROW LEVEL SECURITY non entra nel criterio: nessuna tabella lo usa, e l'applicazione non e' proprietaria. Presidio: db/pgtap/rls/test-rls-perimetro-scoperto.sql.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 

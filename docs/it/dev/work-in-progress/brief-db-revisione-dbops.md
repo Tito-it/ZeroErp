@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-09 (S-BE-2, S-BE-3 e giro 13 applicati e committati; giro BE fatto, da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 14 applicato, pgTAP verdi; BE8 ancora aperto)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -225,7 +225,14 @@ ancora le tabelle).
 | 9-octogies-semel | ✅ sessione DB | Giro 13 (Q10) scritto e provato (`20261111-14` … `-17`) | §33 | 9-octogies |
 | 9-octogies-bis | ✅ Tid | Apply di S-BE-2, S-BE-3 e giro 13, pgTAP verdi (2026-11-09) | §33.6 | 9-octogies-semel |
 | 9-octogies-ter | **team BE** ⏭️ | BE8 (giro 13), S-BE-2 e S-BE-3 lato BE, BE6 dei codici `E_CONTATTI_SOGGETTO_OBBLIGATORIO` e `E_SOGGETTO_ID_FISCALE_IMMUTABILE` | §32.4, §33.4 | 9-octogies-bis |
-| 9-octogies-quater | **Tid** ⏭️ | Commit di §32 e §33; via al giro 14 | §8 | 9-octogies-bis |
+| 9-octogies-quater | ✅ Tid | Commit di §32 e §33 (`aaa12df0ef`, PR #79) | §8 | 9-octogies-bis |
+| 9-octogies-quinquies | **team BE** ⏭️ | BE8: `session_key` esce da `parameter_repository.py` (non fatto nella PR #77) | §5, §33.4 | 9-octogies-bis |
+| 9-octogies-sexies | ✅ Tid | Via al censimento del giro 14 (2026-11-09) | §8 | 9-octogies-quater |
+| 9-octogies-septies | ✅ sessione DB | Giro 14 censito: marche per schema, §3.2 e §3.1 riverificate, cinque nodi | §34 | 9-octogies-sexies |
+| 9-octogies-octies | ✅ Tid | Nodi N1-N5 come da proposta; numeri dal primo libero: `20261111-18` … `-24`, le altre sessioni dal `-25` (2026-11-09) | §34.5 | 9-octogies-septies |
+| 9-octogies-nonies | ✅ sessione DB | Giro 14 scritto e provato su dbdev (`20261111-18` … `-24`) | §34.6 | 9-octogies-octies |
+| 9-octogies-decies | ✅ Tid | Apply del giro 14 su dbdev e scratch, pgTAP di §34.6.5 verdi (2026-11-10) | §34.6.6 | 9-octogies-nonies |
+| 9-octogies-undecies | **Tid** ⏭️ | Doc auto-generata e commit del giro 14 | §34.6.6 | 9-octogies-decies |
 | 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
@@ -5207,3 +5214,232 @@ col campo). ⚠️ I due ruoli si costruiscono (`dbops.fn_pgtap_crea_operatore_u
 un `is_superuser`, che può essere anche SUPER_ADMIN, e il test sarebbe passato a vuoto.
 `core/tests/db/test_lock_columns_vivo_db`: il soggetto passa al ramo per record. `test_liste_configurabili_seed` verde.
 
+## 34. Giro 14 — i COMMENT rimasti e il presidio di testo: censimento (2026-11-09)
+
+Censimento in sola lettura su dbdev, dopo l'apply del giro 13 e il commit `aaa12df0ef`. Il metro è
+`linee-guida-sql.md` §5d. I numeri sono fatti datati (dbdev, 2026-11-09), non argomenti: servono a sapere che cosa
+c'è da riscrivere, non a decidere il perimetro.
+
+### 34.1 Le marche vietate nei COMMENT, per schema
+
+Ricerca meccanica su `pg_description` (ogni oggetto: tabella, colonna, vista, funzione, procedura, trigger, vincolo,
+indice). Marche: nome o percorso di brief, marcatore di revisione (`rev …`, `⭐`), id di changeSet, hash di commit,
+data, sigla di cantiere (`§n`, `D-n`, `Qn`, «di Tid»), misura («n su m»). Le ultime tre danno falsi positivi: si
+rileggono a mano.
+
+| Schema | COMMENT | con almeno una marca | di cui con un brief |
+| --- | ---: | ---: | ---: |
+| vendite | 1720 | 575 | 480 |
+| script | 397 | 302 | 248 |
+| storico | 554 | 236 | 236 |
+| config | 1004 | 215 | 156 |
+| anagrafiche | 632 | 159 | 130 |
+| **dbops** | 582 | **144** | 111 |
+| pagamenti | 197 | 62 | 26 |
+| magazzino | 203 | 39 | 31 |
+| catalogo | 150 | 29 | 25 |
+| documenti | 74 | 28 | 24 |
+| ui | 77 | 23 | 21 |
+| pratiche | 277 | 23 | 8 |
+| **maintenance** | 37 | **12** | 10 |
+| acquisti | 158 | 6 | 5 |
+| shop | 20 | 0 | 0 |
+
+* **`storico` non è debito a sé.** Le 236 righe sono **due** testi, ripetuti sulle 118 shadow: i COMMENT delle colonne
+  `origine_schema` e `scope_emittente_fiscale_id` («Brief: brief-db-rls-storico-scope-congelato §4b (D1/D2)», più una
+  data nel secondo). Li scrive il generatore `dbops.fn_storico_arma_scope`: si correggono **lì**, e si riemettono
+  sulle shadow esistenti.
+* **Il perimetro di questo brief** è `dbops` + `maintenance` + il generatore di `storico`: 156 oggetti più i due testi
+  generati. L'elenco, oggetto per oggetto con le marche trovate, è nello scratchpad della sessione (`marche.tsv`); va
+  nel changeSet, non qui.
+* **Fuori perimetro**, gli altri schemi: circa 1.700 COMMENT. La §5d dice che quel debito si riscrive per famiglia,
+  quando un lavoro riapre gli oggetti, non con una riscrittura di massa. Da qui il nodo N1.
+
+### 34.2 Gli oggetti senza COMMENT (§3.2)
+
+Restano: `dbops.audit_log`, `dbops.fn_list_indices`, `dbops.fn_schema_in_scope`, `dbops.fn_schema_match`,
+`dbops.fn_table_in_scope`, `maintenance.job_run_log`. Gli altri di §3.2 sono stati scritti o ritirati nei giri.
+In più `maintenance.test_pgagent_log`: residuo del bootstrap dell'albero v1 (congelato, §11.11), nessuno la scrive né la
+legge, il pgTAP `maintenance/test-app-postura-job-run-log-v1` (test 11) presidia che l'app non ci abbia privilegi. Nodo N4.
+
+### 34.3 Le M di §3.1, riverificate sul testo di oggi
+
+**Chiuse dai giri** (frase falsa non più presente): M3, M7 (corpo, già nel giro 2), M10, M12 (oggetto
+ritirato), M13, M14, M15, M16, M18, M22 (COMMENT e `presidi.csv`), M23 (COMMENT; resta la marca), M24 (vista
+ritirata), M28 (COMMENT della funzione, `coda_lavori_tipi.csv`, pgTAP), M29 (`fn_sessione_del_migratore`,
+`sessioni_utente`), M30, M31 (`fn_get_lookup_codici`; `trgfn_child_requires_non_obsolete_parent` ritirata), M33
+(`fn_find_function_usage`), M34 (`fn_apply_delete_block_trigger`, `fn_seed_automazione_guard_utility_tipo_ruolo`,
+`trgfn_cleanup_at_alla_nascita`, `fn_trigger_exists_*_by_args`; `fn_cleanup_at_params` e `fn_seed_automazione_overlap`
+ritirate), M36 (`_cliente_ba_del_mondo`, `_crea_mondo_cliente`, `_crea_fattura`, `_crea_ordine`,
+`_crea_commessa_attivita`), M39 (`fn_crea_utente_tecnico`), M9, M21, M35 (`codici_errore.csv`), M37
+(`test-cleanup-framework`, il file dello scope congelato non c'è più).
+
+**Ancora aperte:**
+
+| # | Dove | Che cosa resta |
+| --- | --- | --- |
+| M1 | COMMENT `dbops.automation_scope` | «Scope opzionale per rollout filtrato» |
+| M2 | COMMENT `dbops.storico_scope_policy` | «Cinque modi»: il CHECK ne ammette sei, manca `COPPIA`; più «Brief: …» |
+| M4 | COMMENT `dbops.fn_grant_storico_shadows` | test 19 e ruolo batch ritirati, «audit SKIP», l'eredità del proprietario, una misura datata |
+| M5 | COMMENT `dbops.fn_run_automations_storico_provision` | apici raddoppiati, «creare/aggiornare», `MANUAL` |
+| M6 | COMMENT `dbops.fn_storico_backfill_scope` | «il pgTAP le conta come debito» |
+| M8 | COMMENT `dbops.audit_sources.storico_table` | «NON esposto dalla vista pubblica» |
+| M11 | COMMENT `dbops.trgfn_tx_id_managed` | «assegna script.uuid_nil()» nel ramo dell'id non registrato |
+| M17 | COMMENT `dbops.vw_processi_programmazione_da_guardare` | «12 righe OK al 2026-09-06», «rev 2026-09-07», la cronaca dei sei mesi, «R-12» |
+| M20 | `presidi.csv` righe di `vw_riferimenti_morti_da_sanare` (CHECK-KO → REALE, «779 su 780»), `vw_bersagli_non_dichiarati` («ci-validate.yaml»), `vw_codici_errore_forme_condizione` (cronaca «fino al 2026-11-07») | nota stantia o cronaca |
+| M25 | COMMENT `dbops.fn_guardiano_digest` | «Finche' NOTIFICA_DIGEST_MUTO e' attivo = false» |
+| M26 | COMMENT `dbops.fn_conta_presidio_per_variante`; `codici_errore.csv` (`E_PRESIDIO_NON_A_CATALOGO`) | «per la stessa ragione di fn_conta_presidio» (INVOKER); il codice lo solleva `fn_conta_presidio_per_variante` |
+| M27 | COMMENT `dbops.fn_check_funzioni_riferimenti_morti` | «solo il test 7» |
+| M28 | COMMENT tabella `dbops.automazione_chiusura_scadenze` | «chiamata dal job notturno chiusura_scadenze_daily» |
+| M29 | COMMENT `dbops.fn_idempotency_prenota` | «la prenotazione committa da sola» |
+| M31 | `messaggi_errore.csv` (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`) | nomina il guard ritirato, `CURRENT_DATE` e un brief |
+| M32 | COMMENT `dbops.vw_emittenti_regime_non_confermato` | «o di un cambio senza conferma», «(D-1)» |
+| M33 | COMMENT `dbops.fn_get_override_col`, `dbops.fn_get_child_fk_col` | `dbops._col_exists`; «di fatto STABLE» |
+| M34 | COMMENT `dbops.lock_columns_conditional`, `dbops.automation_delete_block`, `dbops.automazione_overlap`, `dbops.automazione_attivo_eccezioni` | «colonne immutabili» e «rev 2026-05-22»; «tabelle sensibili (ruoli)»; manca `range_col` (da rileggere sulla forma jsonb del 10c-4); «Prima riga il 2026-09-25» e un brief |
+| M35 | `automation_rules_tbl.csv` (regola `CLEANUP_AT` di `vendite.event_log`) | «il trigger a10 all'INSERT» |
+| M36 | COMMENT `_cliente_del_builder` («cinque builder»), `_crea_commessa` e `_crea_contratto` (il cliente da `_crea_mondo_cliente`), `_crea_operatore_umano` («lo stesso UPDATE»), `_piva_libera()`, `_porta_a_stato` («testate senza la porta») | da riscrivere sul corpo di oggi |
+| M37 | intestazioni di `test-fn-pgtap-crea-fattura-v1` («quattro anelli»), `test-audit-sources-seed` («3 colonne»), `test-fn-pgtap-crea-preventivo-v1`, `test-automazione-attivo-eccezioni-v1` | da rileggere |
+| M19 | `db/pgtap/anagrafiche/test-identita-tecnica.sql:28-30` | «nei DUE sensi» |
+| M38 | `scripts/sql/provision_storico_scope.sql:6` | rimanda a `work-in-progress/` |
+| M39 | COMMENT `script.fn_check_versione_listino_attivabile` | due motivi; il corpo ne ha tre (`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA`) |
+| §3.3 | `dbops.fn_provisiona_dati_di_sviluppo` (§14), `trgfn_prevent_deactivate_if_children` | chiusi: la prima non ha più COMMENT da correggere, la seconda non ha più la misura |
+
+Le aperte di §3.1 cadono quasi tutte su oggetti che portano anche le marche di §34.1: si riscrivono nella stessa
+riga.
+
+### 34.4 I nodi
+
+* **N1 — il perimetro del presidio di testo.** Acceso su tutto il database sarebbe rosso per ~1.700 COMMENT di altri
+  schemi, che la §5d lascia alla riscrittura per famiglia. Proposta: **due presidi**. (a) Un pgTAP su
+  `obj_description` per `dbops`, `maintenance` e le colonne generate di `storico`: verde dopo questo giro, e da lì
+  nessuna marca nuova nel perimetro. (b) Un **guardrail sui changeSet aggiunti** (come `check_license.py` sui file
+  nuovi): un `COMMENT ON` in un file nuovo non contiene brief, marcatore di revisione, id di changeSet né hash. Ferma il
+  debito nuovo in tutto il database senza un registro di 1.700 righe; il vecchio si riscrive quando la famiglia si
+  riapre. Alternativa scartata: un registro del debito per oggetto (andrebbe tenuto a mano a ogni riscrittura).
+* **N2 — che cosa controlla il presidio.** Solo le marche meccaniche e senza falsi positivi: brief, marcatore di
+  revisione, id di changeSet, hash. Le date, le sigle e le misure si leggono a mano in questo giro, ma non entrano
+  nel presidio: «D-1» e una data possono stare in una frase lecita, e un presidio che sbaglia insegna a ignorarlo.
+* **N3 — le shadow di `storico`.** Si corregge il testo nel generatore `dbops.fn_storico_arma_scope` e lo stesso
+  changeSet riemette i due COMMENT sulle shadow esistenti (un ciclo sulle shadow armate), senza riarmarle.
+* **N4 — `maintenance.test_pgagent_log`.** Proposta: si ritira con un `DROP` in v2 (l'albero v1 non si tocca, la
+  ricrea, il changeSet v2 la toglie), e il test 11 del pgTAP di postura diventa «la tabella non c'è». In alternativa
+  un COMMENT che dica che cos'è.
+* **N5 — la forma dei changeSet** (come detto in sessione): un changeSet di COMMENT per schema (`dbops`, `maintenance`,
+  `script` per M39; il generatore di `storico` col suo changeSet), il presidio pgTAP e il guardrail per ultimi; i
+  CSV (`presidi.csv`, `codici_errore.csv`, `messaggi_errore.csv`, `automation_rules_tbl.csv`) e le intestazioni dei
+  file (M19, M37, M38) fuori dai changeSet. Stima: sei o sette changeSet.
+
+### 34.5 Le decisioni di Tid (2026-11-09)
+
+N1-N5 come da proposta. Numeri dal primo libero: `20261111-18` … `-24` per questo giro; **le altre sessioni dal
+`20261111-25`**.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `-18` | `dbops`: COMMENT di tabelle, colonne, viste, vincoli e indici |
+| `-19` | `dbops`: COMMENT di funzioni e procedure (fixture comprese) |
+| `-20` | `maintenance`: COMMENT, `job_run_log` compresa |
+| `-21` | `script`: il COMMENT di `fn_check_versione_listino_attivabile` (M39) |
+| `-22` | `storico`: il generatore `dbops.fn_storico_arma_scope` e i due COMMENT riemessi sulle shadow (N3) |
+| `-23` | `maintenance.test_pgagent_log` ritirata (N4) |
+| `-24` | riserva |
+
+Fuori dai changeSet: i CSV, le intestazioni di M19, M37, M38, il pgTAP del presidio e il guardrail sui changeSet
+aggiunti (N1).
+
+### 34.6 Scritto e provato (2026-11-09)
+
+#### 34.6.1 I changeSet
+
+| changeSet | Che cosa | Istruzioni |
+| --- | --- | --- |
+| `20_code/dbops/20261111-18` | COMMENT di tabelle, colonne, viste, vincoli, indici di `dbops`; nuovi `audit_log` e le due colonne di `automation_scope` | 108 |
+| `20_code/dbops/20261111-19` | COMMENT di funzioni e procedure di `dbops`, fixture comprese; nuove le quattro funzioni di ambito (§3.2) | 55 |
+| `20_code/maintenance/20261111-20` | COMMENT di `maintenance`; nuova `job_run_log` | 13 |
+| `20_code/script/20261111-21` | `fn_check_versione_listino_attivabile`: i tre motivi (M39) | 1 |
+| `20_code/dbops/20261111-22` | `fn_storico_arma_scope`: i due testi in una sede, e convergono su ogni shadow (N3) | 1 funzione |
+| `00_schema/maintenance/20261111-23` | `DROP TABLE IF EXISTS maintenance.test_pgagent_log` (N4) | 1 |
+| `20_code/dbops/20261111-24` | COMMENT di `fn_generate_tx_id` e `fn_sync_functions_owner`, di `postgres`, con la proprieta' in prestito | 2 |
+
+Nei changeSet di soli COMMENT il rollback rimette i testi di oggi, letti da dbdev (`IS NULL` dove mancava); nel `-24`
+no, per non rifare il prestito (stesso criterio di `20260929-09`).
+
+#### 34.6.2 Fuori dai changeSet
+
+* **Presidio pgTAP** `dbops/test-comment-al-presente-v1` (5 test, nuovo): le quattro marche su `dbops`, `maintenance` e le
+  due colonne generate di `storico` (N1-a, N2).
+* **Guardrail** `scripts/guardrail_comment_al_presente.py` (nuovo), passo in `ci-validate.yaml` prima dei letterali SQL:
+  le quattro marche nei `COMMENT ON … IS '…'` dei changeSet dal `20261111-18`, solo `changes` (N1-b). Al 2026-11-09 guarda
+  dodici changelog, cinque dell'altra sessione (`-25` … `-29`): nessuna marca.
+* **CSV:** `presidi.csv` (M20: tre righe), `codici_errore.csv` (M26), `messaggi_errore.csv` (M31: la causa diceva
+  `CURRENT_DATE` e nominava un brief), `automation_rules_tbl.csv` (M35: il trigger m50, non a10). ⚠️ `codici_errore.csv` e
+  `messaggi_errore.csv` li sta cambiando anche la sessione `catalogo` (codici `E_BOM_*`): una riga mia per file.
+* **Intestazioni:** M19 (`anagrafiche/test-identita-tecnica`: tre versi), M37 (`test-fn-pgtap-crea-fattura-v1`,
+  `test-audit-sources-seed`, `test-fn-pgtap-crea-preventivo-v1`, `storico/test-storico-scope-congelato-v1`), M38
+  (`scripts/sql/provision_storico_scope.sql`).
+* **pgTAP cambiati nel merito:** `maintenance/test-app-postura-job-run-log-v1` test 11 (`hasnt_table`, N4);
+  `dbops/test-automazione-attivo-eccezioni-v1` test 9 nuovo (M37: ogni riga del registro, non solo la prima, plan 9).
+* **Debito del giro 12 chiuso:** `dbops/test-presidi-codici-corpo-leggibile-v1` non aveva `SET CONSTRAINTS ALL IMMEDIATE`
+  (il guardrail del preambolo lo segnalava); ora il preambolo e' verde su tutti i file.
+* **Doc:** `linee-guida-sql.md` §5d (i due presidi), `dbops/manual/fn_storico_arma_scope.md` (la convergenza dei
+  commenti); `maintenance/manual/test_pgagent_log.md` cancellata (oggetto ritirato).
+
+#### 34.6.3 Le scelte che non si vedono dal titolo (da guardare, Tid)
+
+1. **`-22`, la convergenza dei commenti.** Il generatore scriveva i due COMMENT solo quando aggiungeva la colonna: un testo
+   corretto non sarebbe mai arrivato alle 118 shadow gia' armate. Ora un passo 2c li riporta al testo quando sono diversi.
+   Le shadow si allineano al migrate stesso, perche' `90_end/20260911-29` (runAlways) chiama `fn_storico_arma_scope_tutte`:
+   alla prima passata 118 «ALLINEATA» e 118 righe `OK` in `dbops.audit_log`, alla seconda nessuna. L'alternativa (un blocco
+   che riscrive i COMMENT sulle shadow) avrebbe ricopiato il testo in un secondo posto.
+2. **`-24`, il prestito per due COMMENT.** E' il meccanismo di casa (`20260807-19`, `20260929-09`), pesante per un testo.
+   L'alternativa era lasciare le due funzioni fuori dal presidio con un'eccezione per nome.
+3. **Il guardrail vale per tutte le sessioni dal `20261111-18`**: anche per i changeSet di `catalogo` da qui in poi.
+4. **Le frasi false trovate rileggendo**, oltre le M (dettaglio nelle testate dei changeSet): `vw_processi_che_bypassano`
+   («pgAgent bypassa perche' e' superuser»: `zeroerp_job` non lo e'); `vw_af_senza_giro` («deve restare vuota», ma il
+   catalogo la dice LAVORAZIONE); `vw_codici_errore_forme_condizione` («non e' un cancello», ma il catalogo la dice
+   CANCELLO); i quattro flag di accensione di `processi` («NULL per CODA e ritirati»: solo CODA); `fn_get_override_col`
+   (i ruoli `AUDIT_TS`/`AUDIT_USER` non esistono); `fn_pgtap_cliente_del_builder` (sei builder, non cinque).
+
+#### 34.6.4 Correzioni al censimento di §34.3
+
+* **M31:** `trgfn_child_requires_non_obsolete_parent` non e' ritirata: sta in `dbops`, non in `script` (cercata nello schema
+  sbagliato). Il suo COMMENT era gia' giusto; restava la causa in `messaggi_errore.csv`, corretta.
+* **M37:** il pgTAP dello scope congelato c'e', in `db/pgtap/storico/`; la frase su `titodb` e il SET ROLE era stantia,
+  corretta.
+
+#### 34.6.5 La prova, e che cosa resta a Tid
+
+* **Prova** su dbdev, SQL estratto dai sette changeSet nell'ordine del migrate, in transazione annullata come
+  `zeroerp_owner`, piu' la convergenza di `90_end/20260911-29`: tutto passa; il presidio nuovo 5/5. Con e senza l'estratto,
+  stesse risposte per `test-builder-pgtap-vincoli-immediate-v1`, `test-vw-processi-programmazione-da-guardare`,
+  `test-storico-scope-proprietario-membership-v1`, `storico/test-storico-scope-congelato-v1`,
+  `test-storico-scope-policy-v1`, `test-sec-functions-owner-migratore-passa-v1`, `test-security-definer-search-path-v1`
+  (tutti verdi) e `test-sec-functions-owner-riservato-v1` (5 rossi da owner, test «come app», uguali senza).
+  `maintenance/test-app-postura-job-run-log-v1`: l'11 verde con l'estratto; il 9 e' rosso da owner anche senza (verde come
+  app). Il `-24` da solo: proprietari tornati a `postgres`, copia di servizio sparita, nessuna riga temporanea.
+* **Guardrail** verdi: `comment_al_presente`, `sql_letterali`, `run_on_change`, `timestamp_senza_fuso`,
+  `precondition_seed` (ha preso una preCondition del `-24` sul registro, che da zero arriva da `80_data`: tolta),
+  `ddl_su_trigger_automazione`, `grant_ruolo_batch`, `v1_congelato`, `pgtap_preambolo`.
+* **Non provato:** il migrate vero (pgjdbc), il caricamento dei CSV, la corsa come app, la CI da zero (dove le due funzioni
+  di `postgres` sono ancora del migratore: il `-24` lo regge come il `20260929-09`).
+* **Per Tid:**
+  1. apply di `20261111-18` … `-24` e dei quattro CSV su dbdev e scratch;
+  2. pgTAP: `dbops/test-comment-al-presente-v1` (nuovo), `maintenance/test-app-postura-job-run-log-v1`,
+     `dbops/test-automazione-attivo-eccezioni-v1`, `dbops/test-presidi-codici-corpo-leggibile-v1`, quelli dello storico e
+     del registro dei proprietari elencati sopra, `dbops/test-catalogo-presidi-v1` (il CSV dei presidi);
+  3. la doc auto-generata dopo l'apply.
+* **Ricadute BE:** nessuna. Cambiano testi che il pannello dei presidi mostra (`obj_description`), non colonne ne' codici.
+
+#### 34.6.6 Applicato (2026-11-10)
+
+* **Apply** di `20261111-18` … `-24` e dei quattro CSV su dbdev e scratch (Tid), **pgTAP di §34.6.5 verdi**. Le scelte di
+  §34.6.3 restano come sono state scritte.
+* **Osservazione, non un difetto:** `dbops/test-presidi-codici-corpo-leggibile-v1` dura circa 3 s. Il tempo e' delle viste
+  di presidio che legge, non del test: ognuna lavora su ogni corpo di funzione del database e il filtro sulle funzioni di
+  prova arriva solo alla fine (`vw_codici_errore_forme_condizione` circa 0,9 s nel test, 7,9 s letta intera;
+  `vw_punti_canale_campo` circa 0,8 s; misure su dbdev del 2026-11-10). Il test non si accorcia senza indebolirlo. Un
+  intervento possibile, **non deciso**, e' sulle viste: scartare prima di ogni regex le funzioni senza un letterale
+  `'E_…'`, che non danno righe; stesso risultato, guadagno atteso intorno alla meta'. Si fa solo con il via di Tid,
+  cronometrando vecchio e nuovo e confrontando i risultati riga per riga.
+* **Resta a Tid:** la doc auto-generata e il commit (con `codici_errore.csv` e `messaggi_errore.csv` condivisi con la
+  sessione `catalogo`).

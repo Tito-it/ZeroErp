@@ -299,6 +299,7 @@ search:
 - [fn_preventivo_proietta_stato_smistamento](funzioni/fn_preventivo_proietta_stato_smistamento.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-1 e D-10)
 - [fn_preventivo_riga_componenti_init](funzioni/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](funzioni/fn_preventivo_riga_componenti_preview.md)
+- [fn_prezzi_legame_oltre_la_fine](funzioni/fn_prezzi_legame_oltre_la_fine.md) — Dice **quali prezzi bundle di un legame di distinta vanno oltre una data di fine**, cioè quelli che una chiusura del legame a quella data tocca, e che cosa ne fa la chiusura. Lo leggono la check e il guard della distinta, il verbo di chiusura e la finestra di conferma.
 - [fn_programma_chiusura_versione_listino](funzioni/fn_programma_chiusura_versione_listino.md)
 - [fn_provision_registri](funzioni/fn_provision_registri.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_provision_registri_emittente](funzioni/fn_provision_registri_emittente.md) — (latest review 31-08-2026)

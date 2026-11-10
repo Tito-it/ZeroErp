@@ -73,7 +73,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_storico_arma_scope_tutte(p_dry_run boolean)
-IS 'Applica dbops.fn_storico_arma_scope a ogni madre che porta il trigger di storico (il marcatore è il trigger, non un elenco) e registra un riepilogo nell''audit: madri viste, shadow allineate, armate, saltate perché di un altro proprietario, senza shadow. Rete che converge: la chiamano il 90_end runAlways a ogni migrate e il provisioning da superuser. Brief: brief-db-rls-storico-scope-congelato §4b.';
+IS 'Applica dbops.fn_storico_arma_scope a ogni madre che porta il trigger di storico (il marcatore e'' il trigger, non un elenco) e registra un riepilogo nell''audit: madri viste, shadow allineate, armate, saltate perche'' di un altro proprietario, senza shadow. Rete che converge: la chiamano il 90_end runAlways a ogni migrate e il provisioning da superuser.';
 ```
 
 </div>

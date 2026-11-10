@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> PRESIDIO — deve restare VUOTA. I ruoli APPLICATIVI (con login, non superuser) che hanno BYPASSRLS: un ruolo cosi' scavalca la separazione dei dati fra aziende emittenti. ⚠️ Non dice «nessuno bypassa la RLS»: pgAgent bypassa perche' e' superuser e il proprietario delle tabelle per proprieta', e devono, perche' fanno DDL. Fino al 2026-11-04 la vista ammetteva un debito dichiarato per nome (zeroerp_batch_fatturazione, ritirato il 2026-10-15) e il presidio contava solo le righe non dichiarate: un ruolo tornato con quel nome sarebbe passato muto. Un debito nuovo si dichiara con un changeSet sulla vista e sul presidio, non con una lista di nomi. A catalogo in dbops.presidi, soglia ZERO; lo prova db/pgtap/dbops/test-processi-registro.sql. security_invoker: legge solo pg_roles.
+> PRESIDIO, deve restare VUOTA. I ruoli APPLICATIVI (con login, non superuser) che hanno BYPASSRLS: un ruolo cosi' scavalca la separazione dei dati fra aziende emittenti. Non dice «nessuno scavalca la RLS»: il superuser la scavalca per definizione, e il proprietario delle tabelle non la subisce (nessuna ha FORCE ROW LEVEL SECURITY); i job di pgAgent passano di li', con le procedure SECURITY DEFINER del proprietario. Nessun debito dichiarato per nome: un ruolo che torna con BYPASSRLS e' una riga, e un debito nuovo si dichiara con un changeSet sulla vista e sul presidio, non con una lista di nomi. A catalogo in dbops.presidi, soglia ZERO; lo prova db/pgtap/dbops/test-processi-registro.sql. security_invoker: legge solo pg_roles.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 

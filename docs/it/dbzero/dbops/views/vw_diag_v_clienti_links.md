@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Diagnostica dei legami di un cliente: billing account, istanza utility, soggetto e tipo ruolo, con i tre flag ba_match_* che dicono dove il legame si rompe. security_invoker=on: legge nel perimetro di chi interroga. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I0-B): fuori il blocco IVA (iva_id/iva_codice/iva_descrizione e il LEFT JOIN su config.iva). Era l'unica vista del database che leggeva anagrafiche.clienti.iva_id, colonna rimossa da 20260829-17 perché non aveva più un lavoro: l'aliquota la decide la merce, e il regime del soggetto passa da un titolo documentato. Il blocco non viene sostituito perché non rispondeva alla domanda di questa vista.
+> Diagnostica dei legami di un cliente: billing account, istanza utility, soggetto e tipo ruolo, con i tre flag ba_match_istanza, ba_match_soggetto_ruolo e ba_match_utility che dicono dove il legame si rompe. Inventario (dbops.presidi), non un presidio. security_invoker=on: legge nel perimetro di chi interroga.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 

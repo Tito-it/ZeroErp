@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_articolo_usato: una FK si conta confrontando la chiave a cui punta (D18).
+#
+#   Prima filtrava le FK a una colonna sola e confrontava la colonna con l'uuid
+#   dell'articolo, senza guardare a quale colonna di catalogo.articoli puntasse. Il
+#   modello ammette una FK verso un'altra chiave (uq_articoli_codice): il confronto
+#   falliva con un errore di tipo, e con lui il guard dell'uso e il form. Una FK composita
+#   veniva saltata in silenzio, contro il «fail-closed» del COMMENT.
+#   Ora: una FK verso id a una colonna si confronta con l'id, come prima; ogni altra (verso
+#   un'altra chiave, o composita) si conta confrontando le sue colonne con quelle
+#   dell'articolo a cui punta. La colonna PERIOD di una FK temporale non entra nel
+#   confronto: dice quando, non chi.
+#   Rollback: il corpo e il COMMENT di prima.
+#   Brief: brief-db-revisione-catalogo, giro 3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-32-update-fn-articolo-usato-chiave-della-fk-mctit.yaml
+
+  - changeSet:
+      id: 20261111-32-update-fn-articolo-usato-chiave-della-fk
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.fn_articolo_usato: ogni FK verso l'articolo si conta sulla chiave a cui punta (D18). Brief: brief-db-revisione-catalogo, giro 3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('catalogo.fn_articolo_usato(uuid)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_articolo_usato(p_articolo_id uuid)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  -- Anagrafica dell'articolo, non un suo uso (vedi il COMMENT).
+                  c_escluse CONSTANT regclass[] := ARRAY[
+                      'catalogo.articoli_componenti'::regclass,
+                      'catalogo.articoli_uom_operativa'::regclass,
+                      'catalogo.note_articoli'::regclass,
+                      'vendite.articoli_descrizioni_aggiuntive'::regclass,
+                      'vendite.articolo_regole_fatturazione'::regclass,
+                      'anagrafiche.soggetti_titoli_iva_ambiti'::regclass];
+                  v_fk    record;
+                  v_usato boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   true se l'articolo compare in una tabella che lo punta con
+                  --   una FK (escluse le tabelle di anagrafica dell'articolo),
+                  --   in qualunque stato. NULL -> false. Ogni FK si confronta
+                  --   sulla chiave a cui punta.
+                  -- =========================================================
+                  IF p_articolo_id IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  FOR v_fk IN
+                      SELECT c.conrelid::regclass AS tabella,
+                             -- Le coppie colonna figlia = colonna dell'articolo, senza
+                             -- la colonna PERIOD (l'ultima) di una FK temporale.
+                             array_agg(format('%I', fa.attname) ORDER BY k.ord) AS figlie,
+                             array_agg(format('%I', pa.attname) ORDER BY k.ord) AS padri,
+                             bool_and(pa.attname = 'id') AND count(*) = 1 AS su_id
+                        FROM pg_catalog.pg_constraint c
+                        CROSS JOIN LATERAL unnest(c.conkey, c.confkey)
+                                   WITH ORDINALITY AS k(figlia, padre, ord)
+                        JOIN pg_catalog.pg_attribute fa
+                          ON fa.attrelid = c.conrelid AND fa.attnum = k.figlia
+                        JOIN pg_catalog.pg_attribute pa
+                          ON pa.attrelid = c.confrelid AND pa.attnum = k.padre
+                       WHERE c.contype = 'f'
+                         AND c.confrelid = 'catalogo.articoli'::regclass
+                         AND c.conrelid <> ALL (c_escluse)
+                         AND NOT (c.conperiod AND k.ord = array_length(c.conkey, 1))
+                       GROUP BY c.oid, c.conrelid
+                       ORDER BY c.conrelid::regclass::text, c.oid
+                  LOOP
+                      IF v_fk.su_id THEN
+                          EXECUTE format('SELECT EXISTS (SELECT 1 FROM %s WHERE %s = $1)',
+                                         v_fk.tabella, v_fk.figlie[1])
+                             INTO v_usato
+                            USING p_articolo_id;
+                      ELSE
+                          EXECUTE format(
+                              'SELECT EXISTS (SELECT 1 FROM %s f JOIN catalogo.articoli a ON (%s) WHERE a.id = $1)',
+                              v_fk.tabella,
+                              (SELECT string_agg(format('f.%s = a.%s', v_fk.figlie[i], v_fk.padri[i]), ' AND ')
+                                 FROM generate_subscripts(v_fk.figlie, 1) i))
+                             INTO v_usato
+                            USING p_articolo_id;
+                      END IF;
+                      IF v_usato THEN
+                          RETURN true;
+                      END IF;
+                  END LOOP;
+
+                  RETURN false;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_articolo_usato(uuid) IS
+                  'Predicato: true se l''articolo e'' USATO, cioe'' compare in una tabella che lo punta con una FK, in qualunque stato (anche chiusa, annullata o attivo = false). Le tabelle si leggono da pg_constraint: una tabella nuova che punta all''articolo conta da sola (fail-closed). Ogni FK si confronta sulla chiave a cui punta: verso id a una colonna con l''id, verso un''altra chiave (per esempio il codice) o composita confrontando le sue colonne con quelle dell''articolo; la colonna PERIOD di una FK temporale non entra nel confronto. Escluse, perche'' anagrafica dell''articolo e non un suo uso: catalogo.articoli_componenti (la distinta ha i suoi guard), catalogo.articoli_uom_operativa, catalogo.note_articoli, vendite.articoli_descrizioni_aggiuntive, vendite.articolo_regole_fatturazione, anagrafiche.soggetti_titoli_iva_ambiti. SECURITY DEFINER: gli articoli sono unici per tutte le aziende, i documenti hanno la RLS per emittente; letto con la RLS di chi modifica l''articolo il predicato non vedrebbe i documenti delle altre aziende. Ritorna solo un boolean. Lo leggono catalogo.trgfn_articoli_guard_struttura_se_usato e dbops.lock_columns_conditional (il form). NULL -> false.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo e il COMMENT del 20261013-47.
+              CREATE OR REPLACE FUNCTION catalogo.fn_articolo_usato(p_articolo_id uuid)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  c_escluse CONSTANT regclass[] := ARRAY[
+                      'catalogo.articoli_componenti'::regclass,
+                      'catalogo.articoli_uom_operativa'::regclass,
+                      'catalogo.note_articoli'::regclass,
+                      'vendite.articoli_descrizioni_aggiuntive'::regclass,
+                      'vendite.articolo_regole_fatturazione'::regclass,
+                      'anagrafiche.soggetti_titoli_iva_ambiti'::regclass];
+                  v_fk    record;
+                  v_usato boolean;
+              BEGIN
+                  IF p_articolo_id IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  FOR v_fk IN
+                      SELECT c.conrelid::regclass AS tabella, a.attname AS colonna
+                        FROM pg_catalog.pg_constraint c
+                        JOIN pg_catalog.pg_attribute a
+                          ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+                       WHERE c.contype = 'f'
+                         AND c.confrelid = 'catalogo.articoli'::regclass
+                         AND array_length(c.conkey, 1) = 1
+                         AND c.conrelid <> ALL (c_escluse)
+                       ORDER BY c.conrelid::regclass::text, a.attname
+                  LOOP
+                      EXECUTE format('SELECT EXISTS (SELECT 1 FROM %s WHERE %I = $1)',
+                                     v_fk.tabella, v_fk.colonna)
+                         INTO v_usato
+                        USING p_articolo_id;
+                      IF v_usato THEN
+                          RETURN true;
+                      END IF;
+                  END LOOP;
+
+                  RETURN false;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_articolo_usato(uuid) IS
+                  'Predicato (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): true se l''articolo e'' USATO, cioe'' compare in una tabella che lo punta con una FK, in qualunque stato (anche chiusa, annullata o attivo = false). Le tabelle si leggono da pg_constraint: una tabella nuova che punta all''articolo conta da sola (fail-closed). Escluse, perche'' anagrafica dell''articolo e non un suo uso: catalogo.articoli_componenti (la distinta ha i suoi guard), catalogo.articoli_uom_operativa, catalogo.note_articoli, vendite.articoli_descrizioni_aggiuntive, vendite.articolo_regole_fatturazione, anagrafiche.soggetti_titoli_iva_ambiti. SECURITY DEFINER: gli articoli sono unici per tutte le aziende, i documenti hanno la RLS per emittente; letto con la RLS di chi modifica l''articolo il predicato non vedrebbe i documenti delle altre aziende. Ritorna solo un boolean. Lo leggono catalogo.trgfn_articoli_guard_struttura_se_usato e dbops.lock_columns_conditional (il form). NULL -> false.';

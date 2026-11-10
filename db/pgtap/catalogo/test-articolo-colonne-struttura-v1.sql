@@ -4,34 +4,45 @@
 --   la natura merce ha destinazione ORDINE_VENDITA, il codice della sorgente (era ORDINE).
 -- pgTAP test per Zero ERP
 --
--- Le colonne strutturali di un articolo hanno UNA sede leggibile,
--- catalogo.fn_articolo_colonne_struttura(), che le legge dalle regole del form
--- sul predicato dell'uso (dbops.lock_columns_conditional). Il verbo di
--- correzione la usa per le colonne ammesse E per quelle che scrive; il guard,
--- che l'elenco lo ha scritto (UPDATE OF e CASE), le deve avere tutte.
+-- Le colonne strutturali di un articolo si DICHIARANO in un posto,
+-- catalogo.fn_articolo_colonne_struttura(). La leggono il guard dell'uso (nel
+-- corpo) e il verbo di correzione (le colonne ammesse e quelle che scrive). Le
+-- due copie che non si leggono a runtime, l'elenco UPDATE OF del trigger e le
+-- regole del form sul predicato dell'uso (dbops.lock_columns_conditional), si
+-- confrontano qui con la dichiarazione. Una regola del form spenta o aggiunta
+-- non cambia la porta (Q10 di brief-db-revisione-catalogo).
 -- Brief: brief-db-articoli-ammessi-per-documento (§9.7.3, R-DB-3)
 -- ChangeSet: 20261018-70, 20261018-71
 -- ⚠️ rev 2026-10-18: dal 20261018-72 il verbo rifiuta una correzione che
 --   renderebbe non ammesse righe di documenti aperti; la riga di U si spegne
 --   nella fixture (U resta usato).
 --
--- Elenco test (plan 12):
+-- ⚠️ rev 2026-11-09 (brief-db-revisione-catalogo, giro 3, 20261111-34 … -37): la
+--   sede non legge piu' le regole del form, ne e' la dichiarazione (D20, Q10).
+--   Rovesciati 10-12 (prima: una regola del form cambiava la porta); il 2 resta e
+--   diventa il presidio della copia del form; il 4 chiede che il guard legga la
+--   dichiarazione; l'8 e' E_PARAMETRO_INVALIDO (D19), e nasce l'8-bis.
+--
+-- Elenco test (plan 13):
 --  La sede
 --   1) la funzione c'e', e l'app la puo' eseguire
---   2) restituisce le colonne delle regole accese sul predicato dell'uso,
---      nell'ordine della dichiarazione
 --  Le copie che non si derivano (presidi: alla nona colonna diventano rossi)
+--   2) le regole accese del form sul predicato dell'uso sono la dichiarazione,
+--      nello stesso ordine
 --   3) il trigger del guard scatta su UPDATE OF esattamente quelle colonne
---   4) il CASE del guard nomina ognuna (NEW.<colonna>)
+--   4) il guard legge la dichiarazione, senza un elenco suo (nessun NEW.<colonna>)
 --   5) il verbo legge la sede: nessuna costante c_ammessi nel corpo
 --  Il verbo segue la sede (SUPER_ADMIN)
 --   6) corregge due colonne di tipo diverso (boolean, bigint) di un articolo usato
 --   7) le colonne non passate restano come erano
---   8) un valore che non e' del tipo della colonna fallisce (22P02), come prima
+--   8) un valore che non e' del tipo della colonna: E_PARAMETRO_INVALIDO, col nome
+--      leggibile della colonna
+--   8-bis) un valore vuoto su una colonna NOT NULL: E_PARAMETRO_INVALIDO
 --   9) una colonna fuori dalla sede: E_PARAMETRO_INVALIDO col suo nome
---  10) una regola nuova nel registro: la sede la include e il verbo la scrive
---  11) una regola spenta (enabled = false) esce dalla sede
---  12) ... e il verbo non la accetta piu'
+--  10) una regola nuova nel registro del form non entra nella sede, e il verbo
+--      non la accetta
+--  11) una regola del form spenta (enabled = false) non esce dalla sede
+--  12) ... e il verbo la corregge ancora
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -40,7 +51,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- Fixture
@@ -89,9 +100,9 @@ SELECT ok(
     '1) catalogo.fn_articolo_colonne_struttura() c''e'' e l''app la esegue');
 
 SELECT is(
-    catalogo.fn_articolo_colonne_struttura(),
     (SELECT colonne FROM _registro),
-    '2) la sede = le regole accese del form sul predicato dell''uso, nell''ordine della dichiarazione');
+    catalogo.fn_articolo_colonne_struttura(),
+    '2) le regole accese del form sul predicato dell''uso sono la dichiarazione, nello stesso ordine');
 
 -- ============================================================
 -- Le copie che non si derivano (3-5)
@@ -106,14 +117,16 @@ SELECT is(
     (SELECT array_agg(c ORDER BY c) FROM unnest(catalogo.fn_articolo_colonne_struttura()) c),
     '3) il guard scatta su UPDATE OF esattamente le colonne della sede');
 
-SELECT is(
-    (SELECT array_agg(c ORDER BY c)
-       FROM unnest(catalogo.fn_articolo_colonne_struttura()) c
-      WHERE position('NEW.' || c || ' ' IN
-                     (SELECT p.prosrc FROM pg_proc p
-                       WHERE p.oid = 'catalogo.trgfn_articoli_guard_struttura_se_usato()'::regprocedure)) = 0),
-    NULL::text[],
-    '4) il CASE del guard nomina ogni colonna della sede (nessuna mancante)');
+SELECT ok(
+    (SELECT p.prosrc FROM pg_proc p
+      WHERE p.oid = 'catalogo.trgfn_articoli_guard_struttura_se_usato()'::regprocedure)
+        LIKE '%catalogo.fn_articolo_colonne_struttura()%'
+    AND NOT EXISTS (
+        SELECT 1 FROM unnest(catalogo.fn_articolo_colonne_struttura()) c
+         WHERE position('NEW.' || c IN
+                        (SELECT p.prosrc FROM pg_proc p
+                          WHERE p.oid = 'catalogo.trgfn_articoli_guard_struttura_se_usato()'::regprocedure)) > 0),
+    '4) il guard legge la dichiarazione, senza un elenco suo');
 
 SELECT ok(
     (SELECT p.prosrc FROM pg_proc p
@@ -156,12 +169,17 @@ SELECT is(
        FROM _prima p),
     '7) le colonne non passate restano come erano');
 
-SELECT throws_ok(
+SELECT throws_like(
     format($$SELECT catalogo.fn_articolo_correggi_struttura(%L, '{"requires_lotto": "forse"}'::jsonb)$$,
            (SELECT u FROM _art)),
-    '22P02',
-    NULL,
-    '8) un valore che non e'' del tipo della colonna: 22P02, come col cast scritto a mano');
+    '%gestito a lotti%non%valido%',
+    '8) un valore che non e'' del tipo della colonna: E_PARAMETRO_INVALIDO, col nome leggibile');
+
+SELECT throws_like(
+    format($$SELECT catalogo.fn_articolo_correggi_struttura(%L, '{"natura_vendita_id": null}'::jsonb)$$,
+           (SELECT u FROM _art)),
+    '%natura di vendita%vuoto%',
+    '8-bis) un valore vuoto su una colonna NOT NULL: E_PARAMETRO_INVALIDO');
 
 SELECT throws_like(
     format($$SELECT catalogo.fn_articolo_correggi_struttura(%L, '{"descrizione": "x"}'::jsonb)$$,
@@ -169,22 +187,20 @@ SELECT throws_like(
     '%non correggibili%descrizione%',
     '9) una colonna fuori dalla sede: E_PARAMETRO_INVALIDO, col suo nome');
 
--- Una nona regola, nel registro: la sede la vede e il verbo la scrive.
+-- Una nona regola, nel registro del form: la dichiarazione non cambia, e il
+-- verbo non accetta la colonna.
 INSERT INTO dbops.lock_columns_conditional
     (schema_name, table_name, column_name, condition_expr, descrizione)
 VALUES ('catalogo', 'articoli', 'descrizione', 'catalogo.fn_articolo_usato($1::uuid)',
         'pgTAP: una nona colonna');
 
-SELECT catalogo.fn_articolo_correggi_struttura(
-    (SELECT u FROM _art), '{"descrizione": "pgTAP corretta dal verbo"}'::jsonb);
+SELECT throws_like(
+    format($$SELECT catalogo.fn_articolo_correggi_struttura(%L, '{"descrizione": "x"}'::jsonb)$$,
+           (SELECT u FROM _art)),
+    '%non correggibili%descrizione%',
+    '10) una regola nuova nel registro del form non entra nella sede, e il verbo non la accetta');
 
-SELECT ok(
-    'descrizione' = ANY (catalogo.fn_articolo_colonne_struttura())
-    AND (SELECT a.descrizione FROM catalogo.articoli a WHERE a.id = (SELECT u FROM _art))
-        = 'pgTAP corretta dal verbo',
-    '10) una regola nuova nel registro: la sede la include e il verbo la scrive');
-
--- Una regola spenta esce dalla sede.
+-- Una regola del form spenta non esce dalla dichiarazione.
 UPDATE dbops.lock_columns_conditional
    SET enabled = false
  WHERE schema_name    = 'catalogo'
@@ -193,14 +209,13 @@ UPDATE dbops.lock_columns_conditional
    AND condition_expr = 'catalogo.fn_articolo_usato($1::uuid)';
 
 SELECT ok(
-    NOT ('requires_serial' = ANY (catalogo.fn_articolo_colonne_struttura())),
-    '11) una regola spenta esce dalla sede');
+    'requires_serial' = ANY (catalogo.fn_articolo_colonne_struttura()),
+    '11) una regola del form spenta non esce dalla sede');
 
-SELECT throws_like(
+SELECT lives_ok(
     format($$SELECT catalogo.fn_articolo_correggi_struttura(%L, '{"requires_serial": true}'::jsonb)$$,
            (SELECT u FROM _art)),
-    '%non correggibili%requires_serial%',
-    '12) ... e il verbo non la accetta piu''');
+    '12) ... e il verbo la corregge ancora');
 
 SELECT * FROM finish();
 ROLLBACK;

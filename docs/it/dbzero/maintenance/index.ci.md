@@ -7,7 +7,6 @@ search:
 
 ## 📚 Tabelle (manuale)
 - [job_run_log](manual/job_run_log.md) — Il giornale delle corse dei lavori automatici: una riga per corsa (o per passo) di qualunque lavoro schedulato o lanciato a mano, job del database o comando del backend. Dice di quale processo è, quando è partita e finita, con che esito, con che ruolo si è collegata e, se è fallita, perché.
-- [test_pgagent_log](manual/test_pgagent_log.md) — Una tabella di collaudo di pgAgent, nata con il primo impianto del database: serviva a vedere che lo scheduler si svegliasse e scrivesse. Oggi non la scrive e non la legge nessuno.
 
 ## ⚙️ Funzioni (manuale)
 - [fn_analyze_statistiche](manual/fn_analyze_statistiche.md) — Aggiorna le statistiche del pianificatore delle query (`ANALYZE` del database, o delle sole tabelle indicate) e poi verifica di esserci riuscito: se resta anche una tabella senza statistiche, solleva invece di dire «fatto».

@@ -29,7 +29,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_piva_libera()
-IS 'Fixture pgTAP: una partita IVA valida (cifra di controllo verificata da script.fn_valida_partita_iva) e non ancora presente in anagrafiche.soggetti, ne'' come partita IVA ne'' come codice fiscale o identificativo fiscale univoco. Delega a dbops.fn_pgtap_piva_libera(0). Due chiamate danno valori diversi solo se fra l''una e l''altra la prima e'' stata inserita: dentro una sola istruzione tornano lo stesso valore, e per due valori distinti si usa la sorella con p_skip (0, 1, …).';
+IS 'Fixture pgTAP: una partita IVA valida (cifra di controllo verificata da script.fn_valida_partita_iva) e non ancora presente in anagrafiche.soggetti, ne'' come partita IVA ne'' come codice fiscale o identificativo fiscale univoco. Delega a dbops.fn_pgtap_piva_libera(0). Dentro una sola istruzione due chiamate tornano lo stesso valore: un identificativo diventa occupato solo quando la riga e'' inserita. Per due valori distinti nella stessa istruzione si usa la sorella con p_skip (0, 1, …).';
 ```
 
 </div>
@@ -114,7 +114,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_piva_libera(p_skip integer)
-IS 'Come dbops.fn_pgtap_piva_libera(), ma salta le prime p_skip libere. ⚠️ Serve perche'' la sorella senza argomenti torna lo STESSO valore se la si chiama due volte nella stessa ISTRUZIONE: e'' l''insert della riga a rendere occupato un identificativo, e dentro una sola SELECT non c''e'' nessun insert in mezzo. Una fixture che vuole due partite IVA distinte usa fn(0) e fn(1). Firma separata e senza DEFAULT di proposito: un default renderebbe ambigue le chiamate a zero argomenti gia'' scritte.';
+IS 'Come dbops.fn_pgtap_piva_libera(), ma salta le prime p_skip libere. Serve perche'' la sorella senza argomenti torna lo STESSO valore se la si chiama due volte nella stessa istruzione: e'' l''insert della riga a rendere occupato un identificativo, e dentro una sola SELECT non c''e'' nessun insert in mezzo. Una fixture che vuole due partite IVA distinte usa fn(0) e fn(1). Firma separata e senza DEFAULT di proposito: un default renderebbe ambigue le chiamate a zero argomenti.';
 ```
 
 </div>

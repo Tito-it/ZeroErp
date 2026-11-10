@@ -21,7 +21,6 @@ DECLARE
     -- Il nome di una colonna di catalogo.articoli: nessuna colonna
     -- ne e' il riflesso (come in trgfn_articoli_guard_struttura_se_usato).
     v_campo         text;
-    v_etichetta     text;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -35,11 +34,6 @@ BEGIN
     --   requires_lotto, requires_serial su catalogo.articoli. Un
     --   UPDATE che non cambia nessuna delle sei colonne non si
     --   rigiudica.
-    -- rev 2026-10-19 (20261019-98, brief-db-grammatica-unica-
-    --   documenti lotto 2b): la destinazione e' il codice della
-    --   sorgente, ORDINE_VENDITA (era ORDINE).
-    -- rev 2026-11-03 (20261103-18, brief-db-addebito-trasporto-
-    --   ordine §8.1, decisione 10): «e' merce» dal BB; regola 2.
     -- =========================================================
     IF NEW.causale_onere_id IS NULL THEN
         RETURN NEW;
@@ -83,12 +77,6 @@ BEGIN
     END;
 
     IF v_campo IS NOT NULL THEN
-        v_etichetta := CASE v_campo
-            WHEN 'gestito_a_magazzino' THEN 'gestito a magazzino'
-            WHEN 'is_composito'        THEN 'composito'
-            WHEN 'requires_lotto'      THEN 'gestito a lotti'
-            WHEN 'requires_serial'     THEN 'gestito a matricola'
-        END;
         PERFORM script.fn_log_and_raise_error(
             'catalogo', TG_NAME::text, 'E_ARTICOLO_ONERE_STRUTTURA',
             jsonb_build_object(
@@ -97,7 +85,7 @@ BEGIN
                 'causale_onere_id', NEW.causale_onere_id),
             NEW.tx_id,
             NEW.codice,
-            v_etichetta);
+            catalogo.fn_articolo_flag_etichetta(v_campo));
     END IF;
 
     RETURN NEW;
@@ -105,7 +93,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_onere_natura()
-IS 'Guard BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id, gestito_a_magazzino, is_composito, requires_lotto, requires_serial su catalogo.articoli: un articolo-onere (causale_onere_id valorizzato) e'' un addebito, non un bene. 1. La sua natura non e'' merce (script.fn_natura_e_merce: destinazione ORDINE_VENDITA) -> E_ARTICOLO_ONERE_NATURA_MERCE, campo natura_vendita_id. Senza, un onere creato senza dire la natura prendeva il DEFAULT (MERCE): un addebito trattato come bene da evadere in ordine e in bolla, e come cessione di beni. 2. Non e'' gestito a magazzino, non e'' composito, non e'' a lotti ne'' a matricola -> E_ARTICOLO_ONERE_STRUTTURA, campo = la prima colonna in quest''ordine, valori codice dell''articolo e nome leggibile della caratteristica; nessuna porta amministratore. La 1 parla prima della 2. La regola legge la destinazione dal vocabolario (config.nature_vendita) attraverso il BB: segue la natura se cambia destinazione. Un UPDATE che non cambia nessuna delle sei colonne non rigiudica. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-9). ⭐ rev 2026-10-19 (20261019-98, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della merce e'' ORDINE_VENDITA, il codice della sorgente (era ORDINE). ⭐ rev 2026-11-03 (20261103-18, brief-db-addebito-trasporto-ordine §8.1, decisione 10 di Tid): con gli oneri sulle righe di ordine e bolla, la regola 2 fa si'' che magazzino, prelievi, scarico e distinta restino a posto per costruzione; «e'' merce» dal BB script.fn_natura_e_merce (ritirata la copia in linea); il contesto dell''errore 1 non porta piu'' destinazione_tipo. Montaggio allargato alle quattro colonne in 20261103-20.';
+IS 'Guard BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id, gestito_a_magazzino, is_composito, requires_lotto, requires_serial su catalogo.articoli: un articolo-onere (causale_onere_id valorizzato) e'' un addebito, non un bene. 1. La sua natura non e'' merce (script.fn_natura_e_merce, la destinazione ORDINE_VENDITA dal vocabolario config.nature_vendita) -> E_ARTICOLO_ONERE_NATURA_MERCE, campo natura_vendita_id: un onere creato senza dire la natura prenderebbe il DEFAULT, la merce. 2. Non e'' gestito a magazzino, non e'' composito, non e'' a lotti ne'' a matricola -> E_ARTICOLO_ONERE_STRUTTURA, campo = la prima colonna in quest''ordine, valori codice dell''articolo e nome leggibile della caratteristica (catalogo.fn_articolo_flag_etichetta); nessuna porta amministratore. Cosi'' magazzino, prelievi, scarico e distinta restano a posto per costruzione anche con gli oneri sulle righe di ordine e bolla. La 1 parla prima della 2. Un UPDATE che non cambia nessuna delle sei colonne non rigiudica.';
 ```
 
 </div>
