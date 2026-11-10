@@ -64,6 +64,7 @@ search:
 - [fn_check_fatture_con_rettifiche](funzioni/fn_check_fatture_con_rettifiche.md)
 - [fn_check_indirizzi_documento_cliente](funzioni/fn_check_indirizzi_documento_cliente.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
+- [fn_check_legame_distinta_chiudibile](funzioni/fn_check_legame_distinta_chiudibile.md) — Dice **perché un legame di distinta non si chiude a una data**, per via dei suoi prezzi bundle. Restituisce un array di motivi; vuoto vuol dire che, per i prezzi, il legame si chiude (con la conferma, se ce ne sono da chiudere o da togliere). Non solleva: il primo motivo lo sollevano il guard della distinta e il verbo di chiusura, sul campo `valido_al`.
 - [fn_check_listino_cambiabile](funzioni/fn_check_listino_cambiabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4 e D-11 di Tid)
 - [fn_check_listino_congelabile](funzioni/fn_check_listino_congelabile.md)
 - [fn_check_listino_documento](funzioni/fn_check_listino_documento.md)

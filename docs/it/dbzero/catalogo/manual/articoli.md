@@ -191,9 +191,11 @@ Valgono anche per un articolo non ancora usato.
   `is_solo_componente` mentre è componente di una distinta in vigore, e un componente di una
   distinta in vigore o futura non diventa composito (la distinta ha un livello).
 * `catalogo.trgfn_articoli_guard_iva_bom_attiva`: un kit e i suoi componenti hanno la stessa
-  IVA.
-* `catalogo.trgfn_articoli_guard_listino_se_composito`: un articolo con righe di listino attive
-  non diventa composito.
+  IVA, sui legami da oggi in poi; si giudica a fine transazione.
+
+Un articolo in listino non diventa composito per via di un'altra regola: un articolo in listino è
+usato, e il guard dell'uso non lo lascia cambiare. Le righe di listino di un composito le rifiuta
+il lato riga (`E_LISTINO_RIGA_COMPOSITO_VIETATO`).
 
 ---
 
@@ -262,8 +264,6 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
 * Il CHECK `chk_articoli_composito_non_solo_componente` non ha un codice suo: il rifiuto è la
   violazione di vincolo di PostgreSQL.
 * `E_BOM_IVA_DISCORDANTE`: l'IVA del kit e quella di un componente divergono.
-* `E_LISTINO_RIGA_COMPOSITO_VIETATO`: un articolo con righe di listino attive diventa
-  composito.
 * `E_ARTICOLO_ONERE_NATURA_MERCE`, `E_ARTICOLO_ONERE_STRUTTURA`: un onere con natura di merce o
   con una caratteristica da bene.
 * `E_ATTIVO_PADRE_NON_ATTIVO`: un vocabolario puntato è spento (al COMMIT).

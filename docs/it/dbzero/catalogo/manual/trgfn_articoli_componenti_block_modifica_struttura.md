@@ -18,6 +18,8 @@
 > * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — giudica l'ordine delle date, che qui non si guarda
 > * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno aziendale, a cui si misura «già passato»
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e solleva l'errore
+> * [catalogo.fn_chiudi_legame_distinta](/dbzero/catalogo/funzioni/fn_chiudi_legame_distinta) — il verbo che chiude un legame coi suoi prezzi bundle
+> * [script.fn_check_legame_distinta_chiudibile](/dbzero/script/funzioni/fn_check_legame_distinta_chiudibile) — perché un legame non si chiude, per i suoi prezzi
 >
 > Guide:
 >
@@ -69,6 +71,23 @@ Il trigger, per nome, parla prima del guard del legame: il rifiuto d'immutabilit
 
 ---
 
+### ⭐ Una fine che lascia fuori dei prezzi bundle
+
+Un prezzo bundle sta dentro il periodo del suo legame (chiave esterna temporale dei prezzi verso la distinta). Se la
+fine nuova lascia fuori dei prezzi del legame (`vendite.fn_prezzi_legame_oltre_la_fine`), la chiusura non passa in
+silenzio:
+
+* **prima ciò che vieta**, il primo motivo di `script.fn_check_legame_distinta_chiudibile`: prezzi in listini che
+  chi chiude non vede (`E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE`), o prezzi di una versione non in bozza che cominciano
+  dopo la fine (`E_BOM_CHIUSURA_PRIMA_DEI_PREZZI`, con la prima fine ammessa);
+* **poi l'avviso** `E_BOM_CHIUSURA_CON_PREZZI`, coi numeri dei prezzi e delle versioni. La chiusura si conferma col
+  verbo `catalogo.fn_chiudi_legame_distinta`, che chiude (o toglie) i prezzi prima di arrivare qui: a quel punto
+  non ne resta nessuno, e il guard lascia passare.
+
+Senza questi due passi la chiusura moriva sulla chiave esterna, con un errore grezzo.
+
+---
+
 ### ⭐ L'ordine delle date ha un'altra sede
 
 Che `valido_al` non preceda `valido_dal` lo giudica il guard comune delle date, montato su ogni tabella con la
@@ -86,6 +105,9 @@ Che due versioni della stessa coppia non si sovrappongano lo garantisce il vinco
 * `E_BOM_LEGAME_CHIUSO` — campo `valido_al`: si cambia la fine di un legame già finito.
 * `E_BOM_CHIUSURA_RETROATTIVA` — campo `valido_al`: la fine nuova è prima di ieri; il messaggio dice la prima data
   ammessa.
+* `E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE`, `E_BOM_CHIUSURA_PRIMA_DEI_PREZZI` — campo `valido_al`: i prezzi bundle che
+  vietano la chiusura.
+* `E_BOM_CHIUSURA_CON_PREZZI` — campo `valido_al`: l'avviso, coi numeri; bersaglio il kit.
 
 ---
 
@@ -98,6 +120,8 @@ Che due versioni della stessa coppia non si sovrappongano lo garantisce il vinco
 * `db/pgtap/catalogo/test-distinta-storia-e-ritorni-v1.sql` — il padre non cambia; la fine di un legame finito non
   si sposta né si toglie; la fine prima di ieri è rifiutata, quella a ieri passa; una fine futura si toglie; una
   fine prima dell'inizio la ferma la regola del periodo.
+* `db/pgtap/catalogo/test-chiudi-legame-con-prezzi-v1.sql` — la chiusura coi prezzi bundle aperti: l'avviso e i
+  due motivi che vietano, dall'UPDATE diretto.
 
 ---
 
@@ -110,6 +134,8 @@ Che due versioni della stessa coppia non si sovrappongano lo garantisce il vinco
 * 2026-10-02 — escono dall'elenco `partecipa_qta` e `determina_qta_padre`, ritirate dalla tabella.
 * 2026-11-09 — `prodotto_id` entra fra i campi di struttura, e la fine di un legame non cambia più i giorni già
   passati: nascono `E_BOM_LEGAME_CHIUSO` ed `E_BOM_CHIUSURA_RETROATTIVA` (brief-db-revisione-catalogo, giro 1).
+* 2026-11-09 — una fine che lascia fuori dei prezzi bundle non passa in silenzio: prima i motivi che vietano, poi
+  l'avviso `E_BOM_CHIUSURA_CON_PREZZI`, e la conferma dal verbo (brief-db-revisione-catalogo, giro 3).
 
 ---
 

@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_articoli_guard_listino_se_composito: si ritira, col suo trigger (D5, R4,
+#   Q5).
+#
+#   «Il composito non sta in listino» era scritto tre volte: questo guard (lato articolo),
+#   il motivo E_LISTINO_RIGA_COMPOSITO_VIETATO della check lato riga, e
+#   catalogo.fn_articolo_righe_vive_non_ammesse per la porta della struttura. Il guard
+#   era la copia gia' divergente:
+#     - suggeriva di «disattivare le righe listino prima di rendere composito»: dopo, il
+#       guard dell'uso (trgfn_articoli_guard_struttura_se_usato) rifiuta lo stesso,
+#       perche' un articolo in listino e' usato in qualunque stato;
+#     - fuori dalla porta parlava prima del guard dell'uso solo per l'ordine dei nomi;
+#     - dentro la porta (fn_articolo_correggi_struttura) bloccava anche le righe di una
+#       versione CHIUSA, che la regola della porta esclude per contratto.
+#   La regola resta lato riga (script.fn_check_articolo_riga_su_contesto) e, per la
+#   porta, nelle righe vive non ammesse.
+#   Rollback: la funzione e il trigger di prima.
+#   Brief: brief-db-revisione-catalogo, giro 3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-31-drop-trgfn-articoli-guard-listino-se-composito-mctit.yaml
+
+  - changeSet:
+      id: 20261111-31-drop-trgfn-articoli-guard-listino-se-composito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Si ritira il guard «composito in listino» lato articolo: la regola resta lato riga e nella porta (D5, R4). Brief: brief-db-revisione-catalogo, giro 3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('catalogo.trgfn_articoli_guard_listino_se_composito()'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_listino_se_composito_upd ON catalogo.articoli;
+              DROP FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE UPDATE OF is_composito — blocca la promozione di un
+              --   articolo a composito se ha gia' righe dirette in listini_righe.
+              BEGIN
+                  IF NOT COALESCE(OLD.is_composito, FALSE)
+                     AND COALESCE(NEW.is_composito, FALSE)
+                  THEN
+                      IF EXISTS (
+                          SELECT 1 FROM vendite.listini_righe lr
+                           WHERE lr.articolo_id = NEW.id
+                             AND lr.attivo = TRUE
+                           LIMIT 1
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', TG_NAME, 'E_LISTINO_RIGA_COMPOSITO_VIETATO',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'Disattivare le righe listino esistenti prima di rendere composito l''articolo.'
+                              ),
+                              NULL::uuid,
+                              NEW.codice
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito() IS
+                  'Trigger BEFORE UPDATE OF is_composito su articoli: blocca promozione a composito se esistono righe attive in listini_righe. Raise E_LISTINO_RIGA_COMPOSITO_VIETATO (446). rev 2026-05-13.';
+
+              CREATE TRIGGER trg_articoli_a10_guard_listino_se_composito_upd
+                  BEFORE UPDATE OF is_composito ON catalogo.articoli
+                  FOR EACH ROW EXECUTE FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito();

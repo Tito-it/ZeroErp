@@ -26,13 +26,18 @@ DECLARE
     v_righe     integer;
     v_documenti integer;
     v_elenco    jsonb;
+    -- Una coppia chiave/valore di p_campi: nessuna colonna dietro.
+    v_chiave    text;
+    v_valore    jsonb;
+    v_non_nullo boolean;
+    v_tipo_ok   boolean;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Correggere i flag strutturali di un articolo anche se
     --   usato. Solo SUPER_ADMIN. Ordine: permesso, parametri,
-    --   articolo, righe non ammesse prima, scrittura con la
-    --   porta aperta, righe rese non ammesse.
+    --   valori, articolo, righe non ammesse prima, scrittura con
+    --   la porta aperta, righe rese non ammesse.
     --   Le colonne ammesse: catalogo.fn_articolo_colonne_struttura().
     -- =========================================================
     PERFORM script.fn_guard_super_admin(
@@ -57,6 +62,39 @@ BEGIN
             NULL::uuid,
             'p_campi: colonne non correggibili da qui: ' || v_estranee);
     END IF;
+
+    -- I valori, prima di scrivere: vuoto su una colonna NOT NULL, o
+    -- di un tipo che la colonna non accetta (la stessa conversione
+    -- della scrittura, su quella sola colonna).
+    FOR v_chiave, v_valore IN SELECT e.key, e.value FROM jsonb_each(p_campi) e ORDER BY e.key LOOP
+        SELECT a.attnotnull INTO v_non_nullo
+          FROM pg_catalog.pg_attribute a
+         WHERE a.attrelid = 'catalogo.articoli'::regclass
+           AND a.attname  = v_chiave;
+
+        IF jsonb_typeof(v_valore) = 'null' AND v_non_nullo THEN
+            PERFORM script.fn_log_and_raise_error(
+                'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                jsonb_build_object('parametro', 'p_campi', 'campo', v_chiave, 'valore', v_valore),
+                NULL::uuid,
+                format('«%s» non può restare vuoto', catalogo.fn_articolo_flag_etichetta(v_chiave)));
+        END IF;
+
+        v_tipo_ok := true;
+        BEGIN
+            PERFORM jsonb_populate_record(NULL::catalogo.articoli,
+                                          jsonb_build_object(v_chiave, v_valore));
+        EXCEPTION WHEN data_exception THEN
+            v_tipo_ok := false;
+        END;
+        IF NOT v_tipo_ok THEN
+            PERFORM script.fn_log_and_raise_error(
+                'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                jsonb_build_object('parametro', 'p_campi', 'campo', v_chiave, 'valore', v_valore),
+                NULL::uuid,
+                format('il valore di «%s» non è valido', catalogo.fn_articolo_flag_etichetta(v_chiave)));
+        END IF;
+    END LOOP;
 
     SELECT a.codice INTO v_codice
       FROM catalogo.articoli a
@@ -125,7 +163,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.fn_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb)
-IS 'VERBO (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): la porta amministratore della regola «un articolo usato non cambia i flag strutturali» (catalogo.trgfn_articoli_guard_struttura_se_usato). Solo SUPER_ADMIN (script.fn_guard_super_admin su app.current_user_id; altrimenti E_PERMESSO_NEGATO). p_campi: oggetto jsonb con le sole colonne da cambiare fra quelle di catalogo.fn_articolo_colonne_struttura() (vuoto, non oggetto o chiavi estranee -> E_PARAMETRO_INVALIDO); articolo assente -> E_ARTICOLO_NOT_FOUND. Scrive le sole colonne passate, ciascuna col tipo della sua colonna (jsonb_populate_record), con la GUC transazionale zeroerp.articolo_correggi_struttura = id dell''articolo, che il guard onora solo insieme al proprietario della tabella (questo verbo e'' SECURITY DEFINER), e la richiude. Gli altri guard dell''articolo parlano lo stesso. Poi confronta le righe vive non ammesse (catalogo.fn_articolo_righe_vive_non_ammesse: attive, documento non chiuso, primo motivo di script.fn_check_articolo_riga) prima e dopo la scrittura, in tutte le aziende: se la correzione RENDE non ammessa almeno una riga -> E_ARTICOLO_STRUTTURA_RIGHE_APERTE (valori: codice, righe, documenti; dettaglio.righe: le prime 50, col codice del motivo) e la correzione si annulla. Una riga gia'' non ammessa prima non blocca. Le righe gia'' scritte non si toccano. La via normale resta un articolo nuovo. search_path bloccato; EXECUTE solo all''app. Rev 2026-10-18 (R-DB-3): le colonne dalla sede leggibile. Rev 2026-10-18 (A-11 di Tid): le righe vive (20261018-72), poi solo quelle che la correzione rende non ammesse (20261018-74).';
+IS 'VERBO: la porta amministratore della regola «un articolo usato non cambia le colonne strutturali» (catalogo.trgfn_articoli_guard_struttura_se_usato). Solo SUPER_ADMIN (script.fn_guard_super_admin su app.current_user_id; altrimenti E_PERMESSO_NEGATO). p_campi: oggetto jsonb con le sole colonne da cambiare fra quelle di catalogo.fn_articolo_colonne_struttura() (vuoto, non oggetto o chiavi estranee -> E_PARAMETRO_INVALIDO). Prima di scrivere ogni valore si valida: vuoto su una colonna NOT NULL, o di un tipo che la colonna non accetta -> E_PARAMETRO_INVALIDO, campo = la colonna, col nome leggibile nella frase (catalogo.fn_articolo_flag_etichetta). Articolo assente -> E_ARTICOLO_NOT_FOUND. Scrive le sole colonne passate, ciascuna col tipo della sua colonna (jsonb_populate_record), con la GUC transazionale zeroerp.articolo_correggi_struttura = id dell''articolo, che il guard onora solo insieme al proprietario della tabella (questo verbo e'' SECURITY DEFINER), e la richiude. Gli altri guard dell''articolo parlano lo stesso. Poi confronta le righe vive non ammesse (catalogo.fn_articolo_righe_vive_non_ammesse: attive, documento non chiuso, primo motivo della check di riga) prima e dopo la scrittura, in tutte le aziende: se la correzione RENDE non ammessa almeno una riga -> E_ARTICOLO_STRUTTURA_RIGHE_APERTE (valori: codice, righe, documenti; dettaglio.righe: le prime 50, col codice del motivo) e la correzione si annulla. Una riga gia'' non ammessa prima non blocca. Le righe gia'' scritte non si toccano. La via normale resta un articolo nuovo. search_path bloccato; EXECUTE solo all''app.';
 ```
 
 </div>
