@@ -2150,6 +2150,10 @@
         "componente_padre": "È l'articolo stesso: non può essere componente della propria distinta.",
         "componente_composito": "È a sua volta un kit: una distinta contiene solo articoli semplici.",
         "iva_discordante": "Ha un'aliquota IVA diversa dal kit: i componenti hanno l'IVA del padre."
+      },
+      "azione_reason": {
+        "prezzi_altre_aziende": "Ha prezzi bundle in listini di altre aziende, che non puoi vedere: il legame non si chiude finché quei prezzi restano aperti.",
+        "prezzi_dopo_la_fine": "Ha prezzi bundle in listini già attivi che cominciano dopo questa data: il legame si chiude al più presto dal loro inizio."
       }
     }
   },

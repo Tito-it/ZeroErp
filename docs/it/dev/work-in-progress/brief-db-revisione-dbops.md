@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 14 applicato, pgTAP verdi; BE8 ancora aperto)
+## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 14 chiuso; S-BE-1 censito, sei nodi a Tid; BE8 ancora aperto)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -93,8 +93,12 @@ un pgTAP nuovo. **Giro 11 applicato** (Tid, 2026-11-09): migrazione su dbdev e s
 **Giri 11 e 12 applicati e committati** da Tid (`df2fc72b53`, PR #75). **S-BE-2 e S-BE-3 scritti e provati**
 (§32, `20261110-95` … `-98`). N4 deciso (strada a). **Giro 13 scritto e provato** (§33, `20261111-14` … `-17`).
 **Applicati** da Tid (2026-11-09): S-BE-2, S-BE-3 e giro 13 su dbdev e scratch, pgTAP di §32.4 e §33.5 verdi (§33.6).
-**Riparte: Tid** col commit del giro BE (§33.7: BE8, S-BE-2 e S-BE-3 lato BE, BE6 dei due codici nuovi), poi la sessione
-DB col giro 14 (§8), al via di Tid. Al team BE non resta niente dei giri applicati.
+**Giro 13 committato** (`aaa12df0ef`, PR #79).
+Rosso dopo il merge, `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1` (`E_UOM_MISSING`): non è di questo cantiere,
+viene dal giro 2 di `brief-db-revisione-catalogo` (§13.4), dove è registrato; corretta la fixture, verde (Tid, 2026-11-09).
+**Giro BE di §33.7 fatto** dal team BE (BE8, S-BE-2 e S-BE-3 lato BE, BE6 dei due codici nuovi; `2af6d986f5`, PR #81):
+al team BE non resta niente dei giri applicati.
+**Giro 14 censito** (§34), nodi N1-N5 decisi come da proposta, numeri `20261111-18` … `-24` (Tid, 2026-11-09). **Giro 14 scritto e provato** su dbdev (§34.6): sette changeSet, il presidio pgTAP, il guardrail in CI, i CSV e le intestazioni. **Giro 14 applicato** da Tid su dbdev e scratch, pgTAP verdi (2026-11-10, §34.6.6). Doc auto-generata e **commit** (Tid, `fe388dbfdf`): **giro 14 chiuso**, e con lui i giri di §8. Le scelte di §34.6.3 sono applicate così. **S-BE-1 censito** (§35, 2026-11-10): **Riparte: Tid**, con i nodi N1-N6 di §35.4.
 Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
 ancora le tabelle).
 
@@ -232,7 +236,9 @@ ancora le tabelle).
 | 9-octogies-octies | ✅ Tid | Nodi N1-N5 come da proposta; numeri dal primo libero: `20261111-18` … `-24`, le altre sessioni dal `-25` (2026-11-09) | §34.5 | 9-octogies-septies |
 | 9-octogies-nonies | ✅ sessione DB | Giro 14 scritto e provato su dbdev (`20261111-18` … `-24`) | §34.6 | 9-octogies-octies |
 | 9-octogies-decies | ✅ Tid | Apply del giro 14 su dbdev e scratch, pgTAP di §34.6.5 verdi (2026-11-10) | §34.6.6 | 9-octogies-nonies |
-| 9-octogies-undecies | **Tid** ⏭️ | Doc auto-generata e commit del giro 14 | §34.6.6 | 9-octogies-decies |
+| 9-octogies-undecies | ✅ Tid | Doc auto-generata e commit del giro 14 (`fe388dbfdf`, 2026-11-10) | §34.6.6 | 9-octogies-decies |
+| 9-nonagies | ✅ sessione DB | S-BE-1 censito: montaggi, padri, tipi, storia del bersaglio, sei nodi | §35 | 9-octogies-undecies |
+| 9-nonagies-semel | **Tid** ⏭️ | Nodi N1-N6 di S-BE-1 e numeri | §35.4 | 9-nonagies |
 | 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
 | 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
@@ -5441,5 +5447,93 @@ no, per non rifare il prestito (stesso criterio di `20260929-09`).
   intervento possibile, **non deciso**, e' sulle viste: scartare prima di ogni regex le funzioni senza un letterale
   `'E_…'`, che non danno righe; stesso risultato, guadagno atteso intorno alla meta'. Si fa solo con il via di Tid,
   cronometrando vecchio e nuovo e confrontando i risultati riga per riga.
-* **Resta a Tid:** la doc auto-generata e il commit (con `codici_errore.csv` e `messaggi_errore.csv` condivisi con la
-  sessione `catalogo`).
+* **Doc auto-generata e commit:** Tid, `fe388dbfdf` (2026-11-10). Giro 14 chiuso.
+
+## 35. S-BE-1 — le frasi della famiglia ATTIVO senza tabelle: censimento (2026-11-10)
+
+Il modello l'ha deciso Tid il 2026-11-07 (§5, «Decisione di Tid su S-BE-1»): la frase non nomina tabelle, la riga in
+causa la dice il **bersaglio** (`config.tipi_entita` + id), un padre senza tipo non ha bersaglio e la frase regge da
+sola, i nomi tecnici restano nel contesto del diario. Restava al team DB **da dove il trigger sa il tipo**. Il
+censimento è su dbdev del 2026-11-10; le misure sono fatti datati, non motivi.
+
+### 35.1 Chi solleva, e che cosa dice oggi
+
+| Guard | Codici per l'operatore (classe) | Frase di oggi |
+| --- | --- | --- |
+| `dbops.trgfn_child_requires_active_parent` (REQUIRE) | `E_ATTIVO_PADRE_NON_ATTIVO` (CONFLITTO_STATO), `E_PADRE_INESISTENTE` (DATO_ERRATO) | «%s (%s = %s) non è attivo: non vi si può collegare una riga attiva di %s.» — «In %s non c'è nessuna riga con %s = %s: …» |
+| `dbops.trgfn_child_requires_non_obsolete_parent` | `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` (CONFLITTO_STATO), `E_PADRE_INESISTENTE` | «Catalogo non utilizzabile per nuove istanze (obsoleto): %s», con `%s` = «Catalogo schema.tabella obsoleto dal …» |
+| `dbops.trgfn_prevent_deactivate_if_children` (BLOCK) | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST` (CONFLITTO_STATO) | «Non si puo' disattivare %s (%s = %s): ci sono ancora righe collegate [attive] in %s.» |
+
+Tutte nominano `schema.tabella` all'operatore: S-BE-1 ne segnalava due, ma la malattia è della famiglia (N1). I codici
+tecnici (`E_TRIGGER_ARGOMENTI_INVALIDI`, `E_ATTIVO_BLOCK_ARGS`, `…_FKCOL_NOT_FOUND`, `…_REF_NULL`) restano come sono.
+
+### 35.2 I montaggi e i padri
+
+* REQUIRE: 437 montaggi su 105 tabelle padre; «non ritirato»: 5 montaggi su 4 padri; BLOCK: 437 montaggi (lo specchio
+  del REQUIRE). Ogni colonna montata è anche una FK vera verso il padre; `ref_col` è `id` dappertutto, tranne
+  `anagrafiche.emittenti_fiscali` (anche `soggetto_ruolo_id`).
+* **Padri con un tipo in `config.tipi_entita`**, letti dalle note dei tipi (la tabella del tipo non è una colonna):
+  `catalogo.articoli` (ARTICOLO, 39 montaggi), `catalogo.articoli_componenti` (ARTICOLO_COMPONENTE, 7),
+  `magazzino.assets` (ASSET, 8), `magazzino.eventi_assets` (EVENTO_ASSET, 1), `vendite.contratti_righe` (CONTRATTO_RIGA,
+  2), `vendite.ddt_righe` (DDT_VENDITA_RIGA, 6), `vendite.listini_versioni` (LISTINO_VERSIONE, 6), `vendite.ordini_righe`
+  (ORDINE_VENDITA_RIGA, 4), `vendite.preventivi_righe` (PREVENTIVO_RIGA, 3), `vendite.promo_articoli` (PROMO_ARTICOLO,
+  2), `vendite.resi_righe` (RESO_VENDITA_RIGA, 4). Gli altri 94 padri sono cataloghi (`config.iva`, gli stati,
+  `catalogo.unita_misura`, …) e anagrafiche senza tipo: per decisione, niente bersaglio.
+* ⚠️ `magazzino.lotti` **non** è LOTTO: LOTTO è il lotto di fatturazione. È l'esempio del bersaglio sbagliato che porta
+  l'operatore altrove (`brief-db-bersaglio-errore` L5: un bersaglio sbagliato è attivo, non inerte).
+
+### 35.3 Che cosa c'è già, e che cosa no
+
+* **Tabella → tipo:** oggi solo per i 17 tipi sorgente, attraverso `config.sorgenti.target_table`
+  (`tipi_entita.sorgente_codice_interno`); dei padri di §35.2 ne copre uno (EVENTO_ASSET). Per i 22 tipi non sorgente
+  la tabella sta solo nella nota. Nessuna funzione risolve una tabella nel suo tipo.
+* **Forma del bersaglio:** `'bersaglio', jsonb_build_array(jsonb_build_object('tipo', …, 'id', …::text))` nel contesto
+  di `fn_log_and_raise_error` (es. `vendite.fn_get_or_create_lotto`); il backend lo porta in `targets`.
+* **Le regole già decise** (`brief-db-bersaglio-errore`): il tipo è un'entità logica, non una tabella (§3); il bersaglio
+  va sui codici non TECNICO (§5.5): i cinque di §35.1 lo sono; non si punta al vuoto (§5.5, ragione 2); la derivazione
+  automatica dal contesto è respinta (L5): il bersaglio si scrive esplicito.
+* **Consumatori dei codici:** pgTAP 3/1/4/3/3 file (nell'ordine di §35.1: PADRE_NON_ATTIVO, PADRE_INESISTENTE,
+  BLOCK_ACTIVE, BLOCK_EXIST, CATALOGO_OBSOLETO); backend 7/2/3/4/2 file (`error_messages_fallback.py` ha già le frasi
+  senza tabelle), frontend 4 file per `E_ATTIVO_BLOCK_CHILDREN_EXIST`. Il backend legge frase e `targets` dai canali che
+  ha già.
+
+### 35.4 I nodi (da decidere, Tid)
+
+**N1 — Il perimetro.** S-BE-1 nominava due codici; i guard della famiglia ne hanno cinque con la stessa frase.
+**Proposta: tutti e cinque**, nello stesso giro: stessi tre guard, stesso catalogo, e un modello solo.
+
+**N2 — La sede «tabella → tipo».** È un fatto del tipo (dove vivono le sue righe), uno per padre: non si ripete per
+montaggio.
+* **(a) proposta:** una colonna `tabella regclass` in `config.tipi_entita`, univoca, nulla per i tipi senza una tabella
+  propria; per i tipi sorgente la tabella resta in `config.sorgenti.target_table` (una sede: `CHECK (NOT is_sorgente OR
+  tabella IS NULL)`), e **un solo risolutore**, `config.fn_tipo_entita_di_tabella(regclass)`, legge le due strade. Il
+  valore si scrive nel CSV di `tipi_entita` per gli 11 padri di §35.2 (dagli altri tipi solo dove la nota la dichiara).
+* (b) la forma suggerita dal backend: il codice del tipo come **argomento del trigger**, scritto dal generatore. Anche il
+  generatore dovrebbe però sapere il tipo della tabella: (b) non toglie (a), ci aggiunge una copia in 442 `tgargs`, e
+  cambia la grammatica di `dbops.fn_trigger_attivo_argomenti`, condivisa dai tre guard e dai loro lettori.
+
+**N3 — Quando si risolve il tipo.** Con (a): **proposta: nel guard, sul ramo del rifiuto** (`fn_tipo_entita_di_tabella`
+chiamata solo prima di sollevare): nessun costo sulla scrittura che passa, nessun rimontaggio quando un tipo nasce.
+
+**N4 — Quali rifiuti portano il bersaglio.**
+* `E_ATTIVO_PADRE_NON_ATTIVO`, `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`: **sì**, il padre (tipo + id), se ha un tipo e se
+  `ref_col` è la chiave del tipo (`key_selector`); altrimenti niente.
+* `E_PADRE_INESISTENTE`: **no**, punterebbe sempre al vuoto (§5.5 ragione 2). Solo la frase.
+* BLOCK (`…_CHILDREN_ACTIVE`, `…_CHILDREN_EXIST`): il padre è la riga che l'operatore sta spegnendo, il bersaglio utile
+  sarebbero le figlie (n). **Proposta: in questo giro solo la frase**; le figlie come bersaglio sono una scelta a parte.
+
+**N5 — I tipi che hanno una riga ma non una rotta.** `LISTINO_VERSIONE` dichiara nella nota che l'id da solo non basta
+come bersaglio (la rotta chiede anche il listino); i tipi `…_RIGA` sono nati per note e provenienza. Il catalogo vuole
+che un tipo da bersaglio abbia una rotta. **Proposta:** scrivere la tabella (N2) solo per i tipi che hanno una rotta
+da id, cioè **non** per LISTINO_VERSIONE e per le righe finché il frontend non le apre; da confermare col catalogo delle
+rotte del frontend (domanda al team FE, non lettura di `frontend/`).
+
+**N6 — Le frasi.** Senza valori: «La riga a cui si collega non è attiva: non vi si può collegare una riga attiva.»,
+«La riga a cui si collega non esiste.», «La riga a cui si collega è ritirata: non si può usare per una riga nuova.»,
+«Non si può disattivare: ci sono ancora righe collegate attive.» / «… righe collegate.» (le frasi di ripiego del
+backend, dove ci sono). Gli argomenti `VARIADIC` escono dai tre guard insieme alla frase (cambiare la frase senza gli
+argomenti rompe chi li conta, e viceversa); padre, figlia, colonna e valore restano nel contesto del diario.
+
+**Ricaduta BE prevista:** nessuna obbligatoria (frase e `targets` dai canali che legge); un test sul DB che porti
+`targets` fino all'envelope per un rifiuto vero (§5); i 4 file del frontend su `E_ATTIVO_BLOCK_CHILDREN_EXIST` sono da
+guardare solo se leggono la frase.

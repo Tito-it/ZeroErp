@@ -1412,3 +1412,8 @@ Nessun codice nuovo nella parte B.
   `pgtap-runner-motivo`, che `scripts/testpgtap.sh` pretende.
 * Commit del giro 3 su `dev/db-tid` (2026-11-10), coi file di §14.8. Restano: la rigenerazione delle schede
   auto-generate (indici di `catalogo` col guard ritirato), BE19 e BE20 al team BE.
+* CI-Validate rossa sul push (2026-11-10), controllo i18n: le due `reason_key` di
+  `script.fn_check_legame_distinta_chiudibile` (`catalogo.distinta.azione_reason.prezzi_altre_aziende`,
+  `….prezzi_dopo_la_fine`) non erano nei locales. Andavano chieste al FE nello stesso giro (linee-guida-sql §12.3);
+  aggiunte dalla sessione DB in `frontend/src/locales/it.json` ed `en.json`, accanto a
+  `catalogo.distinta.componente_reason.*`. Il team BE/FE ne riveda il testo con BE19.
