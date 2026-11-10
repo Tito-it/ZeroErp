@@ -29,7 +29,7 @@ END
 $procedure$
 
 COMMENT ON PROCEDURE maintenance.proc_analyze_statistiche_job()
-IS 'Wrapper del job analyze_statistiche: esegue maintenance.fn_analyze_statistiche() PASSANDO dal giornale, sotto il codice del processo. Lo chiamano il job pgAgent notturno e, in CI, la convergenza di 90_end/ci_apply/20260926-10 (dbops.processi.ci_procedura). ⭐ Il giornale e'' cio'' che rende visibile un''autoverifica rossa: fn_run_and_log scrive la riga del fallimento fuori transazione. Nessun COMMIT: in CI gira dentro la transazione del changeSet. Brief: brief-db-statistiche-tabelle-job-notturno (D15).';
+IS 'Wrapper del job analyze_statistiche: esegue maintenance.fn_analyze_statistiche() PASSANDO dal giornale, sotto il codice del processo. Lo chiamano il job pgAgent notturno e, in CI, la convergenza di ci_apply (dbops.processi.ci_procedura). Il giornale e'' cio'' che rende visibile un''autoverifica rossa: maintenance.fn_run_and_log scrive la riga del fallimento fuori transazione. Nessun COMMIT: in CI gira dentro la transazione del changeSet. SECURITY DEFINER.';
 ```
 
 </div>

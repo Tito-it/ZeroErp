@@ -425,6 +425,19 @@ prova) ci va: è un rimando a qualcosa che esiste, non alla sua storia. Gli apos
 che non la rispettano sono debito: si riscrivono **per famiglia**, quando un lavoro riapre quegli
 oggetti, e non con una riscrittura di massa.
 
+**I presidi.** Due, sulle quattro marche che si riconoscono senza sbagliare: il nome di un brief,
+un marcatore di revisione (`rev`), l'id di un changeSet, l'hash di un commit.
+
+* `scripts/guardrail_comment_al_presente.py`, in CI: un `COMMENT ON … IS '…'` dei changeSet nuovi
+  (dal `20261111-18`) non le porta, in nessuno schema. Ferma il debito **nuovo**; il pregresso non
+  blocca. Un'eccezione vera si dichiara in testa al file: `# comment-al-presente: ammesso — <perché>`.
+* `db/pgtap/dbops/test-comment-al-presente-v1.sql`, sul database vivo: nessun COMMENT di `dbops` e
+  `maintenance`, né quelli che `dbops.fn_storico_arma_scope` scrive sulle shadow di `storico`, le
+  porta. Gli altri schemi entrano nel perimetro quando la loro famiglia è stata riscritta.
+
+Date, sigle di decisione e misure non entrano nei presidi: possono stare in una frase lecita, e un
+presidio che sbaglia insegna a ignorarlo. Si leggono a mano quando si riscrive.
+
 ---
 
 ### 6. Viste (Views)

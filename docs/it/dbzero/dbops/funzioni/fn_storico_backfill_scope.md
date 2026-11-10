@@ -139,7 +139,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_storico_backfill_scope(p_schema_base text, p_table_base text)
-IS 'Backfill dello scope congelato sulle versioni gia'' scritte della shadow storico.<tabella> di una madre: alle righe con origine_schema NULL assegna lo schema della madre e scope_emittente_fiscale_id risolto da dbops.fn_storico_risolvi_scope sullo SNAPSHOT (per i modi PADRE risale al padre com''e'' oggi: e'' il limite dichiarato del backfill). Nelle shadow condivise fra due madri omonime attribuisce la versione alla madre di cui lo snapshot porta almeno una chiave ESCLUSIVA (jsonb_exists_any); le versioni senza chiavi esclusive restano NULL e il pgTAP le conta come debito. Porta origine_schema a NOT NULL quando nessuna riga resta NULL e il chiamante ha i privilegi del proprietario della shadow (pg_has_role USAGE: il proprietario, un suo membro con INHERIT, un superuser). Idempotente.';
+IS 'Backfill dello scope congelato sulle versioni gia'' scritte della shadow storico.<tabella> di una madre: alle righe con origine_schema NULL assegna lo schema della madre e scope_emittente_fiscale_id risolto da dbops.fn_storico_risolvi_scope sullo SNAPSHOT (per il modo PADRE risale al padre com''e'' oggi: e'' il limite dichiarato del backfill). Nelle shadow condivise fra due madri omonime attribuisce la versione alla madre di cui lo snapshot porta almeno una chiave ESCLUSIVA (jsonb_exists_any); le versioni senza chiavi esclusive restano NULL, e le conta il riepilogo di dbops.fn_storico_backfill_scope_tutte. Porta origine_schema a NOT NULL quando nessuna riga resta NULL e il chiamante ha i privilegi del proprietario della shadow (pg_has_role USAGE: il proprietario, un suo membro con INHERIT, un superuser). Idempotente.';
 ```
 
 </div>

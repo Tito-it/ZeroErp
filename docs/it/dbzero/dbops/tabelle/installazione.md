@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> L'ambiente di questa installazione: SVILUPPO o PRODUZIONE. Una riga sola (id = 1), vuota alla nascita: la scrive la fase post di scripts/sql/provision_zeroerp.sql col parametro -v ambiente=..., una volta, e poi non cambia piu' (guard trgfn_installazione_guard_immutabile, E_AMBIENTE_IMMUTABILE). Nessun default: un changeSet troverebbe database gia' esistenti e li dichiarerebbe al posto di chi li conosce. Fuori da config.parameters: il mirror CSV la riscriverebbe e l'app la potrebbe cambiare. L'app la legge e non la scrive. Si legge con script.fn_ambiente_installazione() (che fallisce se manca) o script.fn_ambiente_dichiarato() (che torna NULL, per i panorami). Brief: brief-db-processi-accensione-per-ambiente (A-1, R-1, R-2, R-3).
+> L'ambiente di questa installazione: SVILUPPO o PRODUZIONE. Una riga sola (id = 1), vuota alla nascita: la scrive la fase post di scripts/sql/provision_zeroerp.sql col parametro -v ambiente=..., una volta, e poi non cambia piu' (guard dbops.trgfn_installazione_guard_immutabile, E_AMBIENTE_IMMUTABILE). Nessun default: un changeSet troverebbe database gia' esistenti e li dichiarerebbe al posto di chi li conosce. Fuori da config.parameters: il mirror CSV la riscriverebbe e l'app la potrebbe cambiare. L'app la legge e non la scrive. Si legge con script.fn_ambiente_installazione() (che fallisce se manca) o script.fn_ambiente_dichiarato() (che torna NULL, per i panorami).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

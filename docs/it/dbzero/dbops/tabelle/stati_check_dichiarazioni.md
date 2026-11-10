@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Registro del presidio C1 (uno stato previsto dal modello e mai scritto): i valori ammessi dal CHECK di una colonna di stato che il criterio di dbops.vw_stati_check_scrittori non trova scritti da nessuna funzione ne' dal default, e che restano cosi' per una DICHIARAZIONE. Il canale dice CHI verifica la riga: APPLICAZIONE = lo scrive un repository Python, lo verifica il test del backend; ESENTE = esente dal criterio per la ragione scritta, lo verifica il pgTAP nel verso DEBITO_ESTINTO. ⚠️ ESENTE non vuol dire «non scritto»: vuol dire che il criterio testuale non lo vede (es. una copia colonna→colonna). E' un registro e DEVE calare: una riga rientrata va tolta. Brief: brief-db-presidio-stati-mai-scritti §2.4 e §3-bis.4.
+> Registro del presidio degli stati mai scritti (dbops.vw_stati_check_da_sanare): i valori ammessi dal CHECK di una colonna di stato che il criterio di dbops.vw_stati_check_scrittori non trova scritti da nessuna funzione ne' dal default, e che restano cosi' per una dichiarazione. Il canale dice chi verifica la riga: APPLICAZIONE = lo scrive un repository del backend, lo verifica il test del backend; ESENTE = esente dal criterio per la ragione scritta, lo verifica il pgTAP nel verso DEBITO_ESTINTO. ESENTE non vuol dire non scritto: vuol dire che il criterio testuale non lo vede (per esempio una copia colonna -&gt; colonna). E' un registro e deve calare: una riga rientrata va tolta.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

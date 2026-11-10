@@ -60,7 +60,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_filiale_bancaria(p_etichetta text)
-IS 'Fixture pgTAP: una filiale bancaria costruita — soggetto della banca, ruolo BANK_B coi suoi indirizzi obbligatori, e la filiale — dentro la finestra dei vincoli differiti, che e'' la trappola per cui questo builder esiste. ⚠️ anagrafiche.bank_branches e'' dato di MACCHINA, non seed di 80_data: su un database ricostruito e'' vuota, e i tre file di pagamenti che la pescavano morivano sul NOT NULL di bank_branch_id. ⛔ Il conto bancario NON lo scrive: IBAN e titolare sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2.';
+IS 'Fixture pgTAP: una filiale bancaria costruita (soggetto della banca, ruolo BANK_B coi suoi indirizzi obbligatori, e la filiale) dentro la finestra dei vincoli differiti, che e'' la trappola per cui questo builder esiste. ⚠️ anagrafiche.bank_branches e'' dato di MACCHINA, non seed di 80_data: su un database ricostruito e'' vuota, e un test che la pescasse morirebbe sul NOT NULL di bank_branch_id. ⛔ Il conto bancario non lo scrive: IBAN e titolare sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
 ```
 
 </div>

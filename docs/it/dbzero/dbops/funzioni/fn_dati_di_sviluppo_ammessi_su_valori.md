@@ -22,7 +22,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION dbops.fn_dati_di_sviluppo_ammessi_su_valori(p_ambiente text)
-IS 'La regola, pura sul valore (IMMUTABLE, sql): i dati di sviluppo (le etichette di prova, il verbo anagrafiche.fn_provisiona_dati_di_sviluppo) sono ammessi solo se l''ambiente e'' SVILUPPO. NULL resta NULL: l''ambiente mancante lo dice il lettore script.fn_ambiente_installazione (E_CONFIG_MANCANTE). La leggono il guard dbops.trgfn_etichette_di_prova_guard e il verbo, passando l''ambiente vero; i pgTAP la chiamano coi due valori (la CI e'' SVILUPPO e l''ambiente non cambia). Brief: brief-db-processi-accensione-per-ambiente (R-4, §5.5).';
+IS 'La regola, pura sul valore (IMMUTABLE, sql): i dati di sviluppo (le etichette di prova, il verbo anagrafiche.fn_provisiona_dati_di_sviluppo) sono ammessi solo se l''ambiente e'' SVILUPPO. NULL resta NULL: l''ambiente mancante lo dice il lettore script.fn_ambiente_installazione (E_CONFIG_MANCANTE). La leggono il guard dbops.trgfn_etichette_di_prova_guard e il verbo, passando l''ambiente vero; i pgTAP la chiamano coi due valori, perche'' la CI e'' SVILUPPO e l''ambiente non cambia.';
 ```
 
 </div>

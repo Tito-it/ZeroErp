@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Registro lock condizionali: colonne immutabili SE condition_expr valutata sul record indicato da $1 (id come text) ritorna TRUE. Complementare a dbops.automation_lock_columns (lock statici). Scrivibile solo via migration. rev 2026-05-22.
+> Il registro dei lock condizionali: una colonna di una tabella che non si modifica quando condition_expr, valutata sulla riga, e' vera. condition_expr riceve l'id della riga come $1 (il cast al tipo della chiave lo scrive l'espressione, per esempio $1::uuid). Complementare a dbops.automation_lock_columns, i lock senza condizione. Lo legge dbops.fn_non_editable_fields, che da' al form i campi non modificabili di una riga; il rifiuto della modifica lo fa il guard della tabella, con lo stesso predicato. Si scrive solo da migrazione.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

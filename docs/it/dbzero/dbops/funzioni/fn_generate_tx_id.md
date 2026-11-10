@@ -38,7 +38,7 @@ AS $function$
   $function$
 
 COMMENT ON FUNCTION dbops.fn_generate_tx_id(p_generating_function text, p_session_info jsonb)
-IS 'Genera un nuovo tx_id UUID, lo inserisce in dbops.transaction_ids con generating_function e session_info, e lo restituisce. SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera.';
+IS 'Genera un nuovo tx_id UUID, lo inserisce in dbops.transaction_ids con generating_function e session_info, e lo restituisce. SECURITY DEFINER di postgres (registro dbops.sec_functions_owner), con search_path fissato a pg_catalog, public, pg_temp nella definizione: un CREATE OR REPLACE che lo dimentica lo azzera.';
 ```
 
 </div>

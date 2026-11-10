@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Registro di CATALOGO dei processi automatici: quali esistono, di che classe e su quale canale. Il codice e' l'attore di un run (maintenance.job_run_log.processo_codice, hard FK). La classe e' una dichiarazione di chi progetta il processo, verificata dal DB in una direzione sola (DOMINIO senza percorso verso un emittente -&gt; dbops.vw_processi_dominio_senza_emittente). Il legame processo -&gt; utente tecnico e' dati di macchina e sta in dbops.processi_identita. Brief: brief-db-processi-automatici-identita-e-perimetro §2.2.
+> Registro di catalogo dei processi automatici: quali esistono, di che classe (MANUTENZIONE, AMMINISTRAZIONE, DOMINIO) e su quale canale. Il codice e' l'attore di una corsa (maintenance.job_run_log.processo_codice, FK). La classe e' una dichiarazione di chi progetta il processo, verificata dal DB in una direzione sola (DOMINIO senza percorso verso un emittente -&gt; dbops.vw_processi_dominio_senza_emittente). Qui stanno anche l'accensione di default per ambiente, il contratto di liveness e la convergenza in CI. Il legame processo -&gt; utente tecnico e' dato di macchina e sta in dbops.processi_identita; la scelta a mano dell'accensione in dbops.processi_accensione.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

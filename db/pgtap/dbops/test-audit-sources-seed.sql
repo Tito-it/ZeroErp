@@ -13,7 +13,8 @@
 --   - Le storico_table / storico_pk_col puntano a oggetti esistenti
 --     (catch tipo nel CSV).
 --   - Nessun residuo del modello legacy profili_reparto_*.
---   - La vista pubblica vw_audit_sources espone solo 3 colonne.
+--   - La vista pubblica script.vw_audit_sources espone esattamente quattro colonne
+--     (code, label_key, area_funzionale, storico_table).
 --
 -- Indice test (1..8):
 --    1. dbops.audit_sources contiene almeno 8 righe attive
@@ -51,7 +52,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(8);
 
 -- =========================================================
--- 1) Almeno 9 righe attive
+-- 1) Almeno 8 righe attive
 -- =========================================================
 -- ⚠️ Era `>= 9` fino al 2026-09-02: `risorse_umane_auth_user` (riga 5) e'
 --   stata dismessa quel giorno, quindi le attive sono 8. Vedi il test 2, che
@@ -165,7 +166,7 @@ SELECT is(
 );
 
 -- =========================================================
--- 7) Vista pubblica espone solo 3 colonne
+-- 7) La vista pubblica espone esattamente quattro colonne
 -- =========================================================
 SELECT bag_eq(
     $$

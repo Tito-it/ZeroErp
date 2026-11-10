@@ -34,6 +34,10 @@
 
 BEGIN;
 
+-- ⚠️ Vincoli DIFFERITI: il file non scrive dati di dominio, ma il preambolo e' uguale per tutti
+--   (guardrail_pgtap_preambolo): un vincolo differito scatterebbe al COMMIT, che qui non arriva.
+SET CONSTRAINTS ALL IMMEDIATE;
+
 SELECT plan(11);
 
 -- Il codice del rifiuto: fn_log_and_raise_error lo mette in CONSTRAINT_NAME; ogni altro errore

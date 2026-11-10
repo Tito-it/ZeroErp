@@ -21,8 +21,9 @@
 --   - l'emittente e' quello che il billing account pretende, l'istanza e la
 --     utility sono quelle del billing account;
 --   - il numero lo assegna il dominio, non la fixture;
---   - lo stato si sceglie alla nascita, e uno inesistente parla; uno oltre la
---     bozza chiede righe: il builder senza righe si ferma sull'emissione, e lo
+--   - lo stato si sceglie alla chiamata: il preventivo nasce nello stato
+--     iniziale e ci arriva per la matrice (dbops.fn_pgtap_porta_a_stato); uno
+--     inesistente parla; uno oltre la bozza chiede righe: il builder senza righe si ferma sull'emissione, e lo
 --     costruisce dbops.fn_pgtap_crea_preventivo_con_righe;
 --   - una seconda chiamata riusa l'azienda di chi agisce, con un cliente nuovo.
 --

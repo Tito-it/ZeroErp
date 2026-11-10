@@ -37,6 +37,9 @@ AS $function$
    RETURN false;
  END;
  $function$
+
+COMMENT ON FUNCTION dbops.fn_schema_in_scope(p_rule_target text, p_schemas text[])
+IS 'Il target di schema di una regola delle automazioni (dbops.automation_rules_tbl.target_schema) vale per l''elenco di schemi p_schemas? *all vale per qualunque schema; altrimenti il nome deve stare nell''elenco (confronto senza maiuscole). Target NULL, o elenco vuoto per un target che non e'' *all: false. ⚠️ Qui *all significa «qualunque schema»; in dbops.fn_resolve_scope lo stesso *all nell''elenco degli schemi significa «usa l''ambito di dbops.automation_scope, o il ripiego». IMMUTABLE. La usa dbops.fn_run_automations_attivo.';
 ```
 
 </div>

@@ -74,7 +74,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_azienda_di_chi_agisce(p_chiamante text)
-IS 'Fixture pgTAP (building block): l''azienda del contesto aperto — emittente (id, codice, soggetto_ruolo) e operatore (auth_user_id, identita) — risolta con la regola di produzione script.fn_resolve_emittente_for_user, la stessa del trigger z90 che lega il billing account. Estratta dal «ramo B» di dbops.fn_pgtap_crea_mondo_cliente; la usano il mondo e dbops.fn_pgtap_cliente_del_builder. Solleva, nominando il chiamante (p_chiamante), senza contesto, senza azienda o senza identita'' OPERATORE attiva. STABLE: non scrive. Brief: brief-modello-documento-vendita (§4-octies), 2026-10-24.';
+IS 'Fixture pgTAP, building block: l''azienda del contesto aperto, cioe'' emittente (id, codice, soggetto_ruolo) e operatore (auth_user_id, identita), risolta con la regola di produzione script.fn_resolve_emittente_for_user, la stessa del trigger z90 che lega il billing account. La usano dbops.fn_pgtap_crea_mondo_cliente, dbops.fn_pgtap_cliente_del_builder e script.fn_pgtap_emittente_operatore. Solleva, nominando il chiamante (p_chiamante), senza contesto, senza azienda o senza identita'' OPERATORE attiva. STABLE: non scrive.';
 ```
 
 </div>

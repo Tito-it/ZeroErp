@@ -36,6 +36,10 @@ DECLARE
     v_ix        text := left(format('ix_%s_scope_ef',           p_table_base), 63);
     v_sql       text;
     v_vuota     boolean;
+    -- I COMMENT delle due colonne: sede unica del testo. Il passo 2c li
+    -- riporta a questo testo su ogni shadow, nuova o gia' armata.
+    v_cmt_origine text := 'Lo schema della madre da cui viene questa versione (TG_TABLE_SCHEMA nel trigger). Serve perche'' il nome della shadow e'' il nome NUDO della madre e una shadow puo'' essere condivisa fra due schemi: senza, due documenti con lo stesso id si chiuderebbero a vicenda. Le versioni scritte prima che la colonna esistesse la ricevono dal backfill (dbops.fn_storico_backfill_scope); dove il backfill non sa attribuirle resta NULL.';
+    v_cmt_scope   text := 'L''emittente fiscale (anagrafiche.emittenti_fiscali.id) a cui apparteneva la riga QUANDO e'' stata fotografata: il trigger lo risolve con dbops.fn_storico_risolvi_scope seguendo la mappa dbops.storico_scope_policy e lo congela. Non si ricalcola mai: un archivio che cambia col presente non e'' un archivio. NULL = madre non protetta, o versione precedente al backfill non attribuibile: con la RLS della shadow accesa quella versione non si vede (fail-closed). La policy rls_sto_<tab>_ef_whitelist legge questa colonna.';
 BEGIN
     -- 0) Senza shadow non c'è niente da armare: la madre non è ancora
     --    storicizzata (o non lo sarà). Non è un errore.
@@ -81,9 +85,6 @@ BEGIN
                 v_azioni := array_append(v_azioni, 'SET_NOT_NULL origine_schema');
                 EXECUTE format('ALTER TABLE %s ALTER COLUMN origine_schema SET NOT NULL', v_full_sto);
             END IF;
-            EXECUTE format($c$COMMENT ON COLUMN %s.origine_schema IS
-                'Lo schema della madre da cui viene questa versione (TG_TABLE_SCHEMA nel trigger). Serve perché il nome della shadow è il nome NUDO della madre e sei shadow sono condivise fra due schemi: senza, due documenti con lo stesso id si chiuderebbero a vicenda. Le versioni scritte prima del 2026-09-11 lo ricevono dal backfill; dove il backfill non sa attribuirle resta NULL. Brief: brief-db-rls-storico-scope-congelato §4b (D2).'$c$,
-                v_full_sto);
         END IF;
     END IF;
 
@@ -93,9 +94,6 @@ BEGIN
         v_azioni := array_append(v_azioni, 'ADD_COLUMN scope_emittente_fiscale_id');
         IF NOT p_dry_run THEN
             EXECUTE format('ALTER TABLE %s ADD COLUMN scope_emittente_fiscale_id bigint', v_full_sto);
-            EXECUTE format($c$COMMENT ON COLUMN %s.scope_emittente_fiscale_id IS
-                'L''emittente fiscale (anagrafiche.emittenti_fiscali.id) a cui apparteneva la riga QUANDO è stata fotografata: il trigger lo risolve con dbops.fn_storico_risolvi_scope seguendo la mappa dbops.storico_scope_policy e lo congela. Non si ricalcola mai: un archivio che cambia col presente non è un archivio. NULL = madre non protetta, o versione precedente al backfill non attribuibile: con la RLS della shadow accesa quella versione non si vede (fail-closed). La policy rls_sto_<tab>_ef_whitelist legge questa colonna. Brief: brief-db-rls-storico-scope-congelato §4b (D1).'$c$,
-                v_full_sto);
         END IF;
     END IF;
 
@@ -105,6 +103,30 @@ BEGIN
         v_azioni := array_append(v_azioni, 'CREATE_INDEX ' || v_ix);
         IF NOT p_dry_run THEN
             EXECUTE format('CREATE INDEX %I ON %s (scope_emittente_fiscale_id)', v_ix, v_full_sto);
+        END IF;
+    END IF;
+
+    -- 2c) I COMMENT delle due colonne: si riportano al testo di sopra se
+    --     mancano o sono diversi, anche su una shadow gia' armata. Cosi' un
+    --     testo corretto arriva a tutte le shadow alla prossima convergenza.
+    --     In dry run la colonna appena «aggiunta» non c'e': si salta.
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                WHERE a.attrelid = v_sto_oid AND a.attname = 'origine_schema'
+                  AND NOT a.attisdropped
+                  AND pg_catalog.col_description(v_sto_oid, a.attnum) IS DISTINCT FROM v_cmt_origine) THEN
+        v_azioni := array_append(v_azioni, 'COMMENT origine_schema');
+        IF NOT p_dry_run THEN
+            EXECUTE format('COMMENT ON COLUMN %s.origine_schema IS %L', v_full_sto, v_cmt_origine);
+        END IF;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                WHERE a.attrelid = v_sto_oid AND a.attname = 'scope_emittente_fiscale_id'
+                  AND NOT a.attisdropped
+                  AND pg_catalog.col_description(v_sto_oid, a.attnum) IS DISTINCT FROM v_cmt_scope) THEN
+        v_azioni := array_append(v_azioni, 'COMMENT scope_emittente_fiscale_id');
+        IF NOT p_dry_run THEN
+            EXECUTE format('COMMENT ON COLUMN %s.scope_emittente_fiscale_id IS %L', v_full_sto, v_cmt_scope);
         END IF;
     END IF;
 
@@ -142,9 +164,9 @@ BEGIN
             IF NOT p_dry_run THEN
                 v_sql := format($p$CREATE POLICY %I ON %s FOR SELECT
                     USING ((current_setting('app.ruolo_applicativo', true) = 'OPERATORE')
-                           -- ⭐ rev 2026-10-18 (D-3b-2c, 20261018-27): il perimetro dell'operatore
-                           --    in UNA sottoquery non correlata, valutata una volta per istruzione;
-                           --    per riga resta fn_scope_ef_perimetro(perimetro, scope).
+                           -- Il perimetro dell'operatore in UNA sottoquery non correlata,
+                           -- valutata una volta per istruzione; per riga resta
+                           -- fn_scope_ef_perimetro(perimetro, scope).
                            AND script.fn_scope_ef_perimetro(
                                    (SELECT script.fn_get_emittenti_scope_pk_ids(
                                        NULLIF(current_setting('app.current_user_id', true), '')::integer)),
@@ -198,7 +220,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_storico_arma_scope(p_schema_base text, p_table_base text, p_dry_run boolean)
-IS 'Porta la shadow storico.<tabella> di una madre alla forma dello scope congelato: colonne origine_schema e scope_emittente_fiscale_id (con indice) e, se dbops.storico_scope_policy dice che la madre e'' protetta (modo diverso da NESSUNO), RLS accesa con tre policy: rls_sto_<tab>_ef_whitelist FOR SELECT sull''emittente congelato (veste OPERATORE; il perimetro da script.fn_scope_ef_perimetro, calcolato una volta per istruzione), rls_sto_<tab>_trg_ins e rls_sto_<tab>_trg_upd con «true», perche'' la shadow la scrive il trigger e filtrare la scrittura romperebbe o zittirebbe la storicizzazione. Idempotente e forward-only: aggiunge solo cio'' che manca e non disarma mai. Lavora solo chi ha i privilegi del proprietario della shadow (pg_has_role USAGE: il proprietario, un suo membro con INHERIT, un superuser), non chi ne porta il nome; altrimenti WARN nell''audit ed esito SKIP_OWNER (le allinea il provisioning da superuser). Torna un jsonb con esito e azioni. La chiamano il generatore fn_ensure_storico_table sulla shadow appena creata e fn_storico_arma_scope_tutte.';
+IS 'Porta la shadow storico.<tabella> di una madre alla forma dello scope congelato: colonne origine_schema e scope_emittente_fiscale_id (con indice) e i loro COMMENT, che la funzione riporta al testo che porta ogni volta che sono diversi, anche su una shadow gia'' armata; se dbops.storico_scope_policy dice che la madre e'' protetta (modo diverso da NESSUNO), RLS accesa con tre policy: rls_sto_<tab>_ef_whitelist FOR SELECT sull''emittente congelato (veste OPERATORE; il perimetro da script.fn_scope_ef_perimetro, calcolato una volta per istruzione), rls_sto_<tab>_trg_ins e rls_sto_<tab>_trg_upd con «true», perche'' la shadow la scrive il trigger e filtrare la scrittura romperebbe o zittirebbe la storicizzazione. Idempotente e forward-only: aggiunge solo cio'' che manca e non disarma mai. Lavora solo chi ha i privilegi del proprietario della shadow (pg_has_role USAGE: il proprietario, un suo membro con INHERIT, un superuser), non chi ne porta il nome; altrimenti WARN nell''audit ed esito SKIP_OWNER (le allinea il provisioning da superuser). Torna un jsonb con esito e azioni. La chiamano il generatore fn_ensure_storico_table sulla shadow appena creata e fn_storico_arma_scope_tutte, che la convergenza del migrate rilancia a ogni passata.';
 ```
 
 </div>

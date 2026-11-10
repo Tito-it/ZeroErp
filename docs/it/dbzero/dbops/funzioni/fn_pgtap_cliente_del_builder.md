@@ -50,7 +50,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_cliente_del_builder(p_etichetta text, p_billing_account_id bigint, p_chiamante text)
-IS 'Fixture pgTAP (building block dei builder di commessa, contratto, fattura, ordine e lotto): il cliente su cui il builder scrive. Senza billing account: il mondo (dbops.fn_pgtap_crea_mondo_cliente: azienda, operatore, contesto e un cliente nuovo). Col billing account di un''altra fixture: l''azienda di chi agisce (dbops.fn_pgtap_azienda_di_chi_agisce, serve un contesto aperto) e quel BA verificato (dbops.fn_pgtap_cliente_ba_del_mondo: uno di un''altra azienda solleva, nominando p_chiamante), SENZA costruire un cliente in piu''. Sostituisce il blocco che i cinque builder ricopiavano. Brief: brief-modello-documento-vendita (§4-octies), 2026-10-24.';
+IS 'Fixture pgTAP, building block dei builder di commessa, contratto, bolla senza ordine, fattura, lotto e ordine: il cliente su cui il builder scrive. Senza billing account: il mondo (dbops.fn_pgtap_crea_mondo_cliente: azienda, operatore, contesto e un cliente nuovo). Col billing account di un''altra fixture: l''azienda di chi agisce (dbops.fn_pgtap_azienda_di_chi_agisce, serve un contesto aperto) e quel BA verificato (dbops.fn_pgtap_cliente_ba_del_mondo: uno di un''altra azienda solleva, nominando p_chiamante), senza costruire un cliente in piu''.';
 ```
 
 </div>
