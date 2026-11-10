@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Legame processo -&gt; utente tecnico (django.auth_user.id). ⭐ Rev 2026-09-04: un processo ha un utente PER EMITTENTE, non uno in tutto — perche' config.user_emittenti_fiscali e' 1-a-1 sull'utente (UNIQUE(auth_user_id), changeSet 20260408-11) e in questo modello solo il super admin e' multi-emittente. Il vincolo qui e' quindi UNIQUE(auth_user_id): un utente tecnico serve un processo solo, un processo puo' averne N. ⛔ L'emittente NON si ripete in questa tabella: sta in config.user_emittenti_fiscali, e duplicarlo sarebbe una seconda sorgente di verita'. Meta' di MACCHINA del registro: il suo seed va marcato context: dati_macchina. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
+> Legame processo -&gt; utente tecnico (django.auth_user.id). Un processo ha un utente per emittente, non uno in tutto: config.user_emittenti_fiscali e' uno-a-uno sull'utente (uq_user_emittenti_fiscali_auth_user), e solo il super admin e' multi-emittente. Il vincolo qui e' quindi UNIQUE(auth_user_id) (uq_processi_identita_auth_user): un utente tecnico serve un processo solo, un processo puo' averne piu' d'uno. L'emittente non si ripete in questa tabella: sta in config.user_emittenti_fiscali, e duplicarlo sarebbe una seconda sorgente di verita'. Meta' di macchina del registro: il suo seed va marcato context: dati_macchina.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

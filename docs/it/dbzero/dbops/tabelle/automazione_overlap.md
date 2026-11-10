@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Configura anti-overlap temporale per tabelle con valido_dal/valido_al o valid_from/valid_to.
+> Il registro dei vincoli anti-sovrapposizione temporale: una riga per tabella (target_schema, target_table) da cui dbops.fn_apply_automazione_overlap genera un EXCLUDE GiST. La chiave di gruppo e' key_columns (array JSON di nomi di colonna) piu' key_expressions (array JSON di espressioni), nell'ordine dell'array (chk_automazione_overlap_chiavi); il periodo e' range_col, o in sua assenza valido_dal_col/valido_al_col con range_bounds; where_predicate rende il vincolo parziale. Il nome e' constraint_name o il template ex_&lt;tabella&gt;_no_overlap. Si applicano le righe active con exec_mode AUTO o uguale a quello della corsa. key_expressions e where_predicate sono DDL di fiducia: le scrive solo chi migra. Seed da 80_data (CSV dbops/automazione_overlap.csv).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

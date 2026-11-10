@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI maintenance, AL PRESENTE
+#   Brief: brief-db-revisione-dbops, giro 14 (§34).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   linee-guida-sql §5d: il COMMENT descrive l'oggetto al presente. Questi
+#   portavano nomi di brief, marcatori di revisione, id di changeSet, sigle di
+#   decisione, date di cronaca e misure; alcuni dicevano cose false (le M di
+#   §3.1 del brief, riverificate in §34.3 sulla struttura di oggi). Dopo questo
+#   giro il presidio dbops/test-comment-al-presente-v1 tiene il perimetro.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   * Riscritti al presente le colonne e i vincoli di job_run_log, i due
+#     presidi, fn_analyze_statistiche e i quattro wrapper dei job.
+#   * Nuovo: maintenance.job_run_log (la tabella non aveva COMMENT).
+#   Solo COMMENT ON (13 istruzioni), nessun corpo. Testi di partenza
+#   letti su dbdev; il rollback rimette quelli di oggi (IS NULL dove mancava).
+#   Nessuna preCondition: un COMMENT su un oggetto che non c'e' fallisce da
+#   se', e nessuno degli oggetti nasce dopo 20_code.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261111-20-update-comment-maintenance-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261111-20-update-comment-maintenance-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente (linee-guida-sql §5d) di maintenance, job_run_log compresa. Brief: brief-db-revisione-dbops, giro 14.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE maintenance.job_run_log IS
+                'Il giornale delle corse dei processi automatici: una riga per corsa, che sia di pgAgent, di un cron o di un management command (origine). Dice di quale processo e'' la corsa (processo_codice, FK verso dbops.processi), quando e'' partita e finita, se e'' riuscita (ok), le righe toccate, il messaggio, e per un fallimento il codice d''errore piu'' preciso disponibile (error_code) e lo SQLSTATE (sqlstate). Una corsa saltata per il lock occupato ha la sua riga, chiusa e senza esito (saltata). Lo scrivono solo maintenance.fn_run_and_log (le corse dei job), script.fn_job_run_start e script.fn_job_run_end (le corse headless) e maintenance.fn_job_run_log_failure (il verbale di un fallimento, scritto via dblink in un''altra sessione, cosi'' sopravvive al rollback della corsa). Lo leggono i presidi maintenance.vw_job_run_da_guardare e maintenance.vw_job_run_da_superuser e il panorama dbops.vw_processi_programmazione.';
+
+              COMMENT ON COLUMN maintenance.job_run_log.ruolo_sessione IS
+                'Il ruolo che si e'' COLLEGATO per la corsa (session_user): pgAgent (zeroerp_job), il migratore in ci_apply, il backend per le corse headless, una persona. Non quello con cui il lavoro gira: le funzioni del giornale e le procedure dei job sono SECURITY DEFINER. Lo valorizzano maintenance.fn_run_and_log (la corsa), script.fn_job_run_start (le corse headless: management command, cron, systemd) e maintenance.fn_job_run_log_failure (il verbale di un fallimento, che via dblink gira in un''altra sessione: per questo la colonna non ha default). NULL sulle corse registrate prima che la colonna esistesse. Lo legge maintenance.vw_job_run_da_superuser.';
+
+              COMMENT ON COLUMN maintenance.job_run_log.saltata IS
+                'TRUE sulla riga che registra una corsa SALTATA perche'' il lock della corsia era occupato: il timer si e'' svegliato, il lavoro non e'' partito. La scrivono solo script.fn_job_run_start e maintenance.fn_run_and_log, sul ramo del lock occupato. Una riga saltata e'' chiusa e SENZA esito (ok NULL, CHECK chk_job_run_log_saltata): la domanda «e'' riuscita?» (ok IS TRUE) la scarta da sola. Chi chiede «qual e'' l''ultima corsa VERA?» la esclude (maintenance.vw_job_run_da_guardare, ultimo_esito di dbops.vw_processi_programmazione); chi chiede «la sveglia e'' viva?» la conta, perche'' e'' un segno di vita della sveglia. ⛔ Il testo di message non e'' il marcatore. Le skip registrate prima che la colonna esistesse hanno saltata = false: non sono state bonificate.';
+
+              COMMENT ON COLUMN maintenance.job_run_log.sqlstate IS
+                'Lo SQLSTATE dell''errore che ha fatto fallire la corsa, quando l''errore e'' passato dal database (cinque caratteri, chk_job_run_log_sqlstate_forma). NULL per una corsa riuscita e per un errore che il database non ha visto (un''eccezione Python di un command). Separato da error_code, che resta «il codice piu'' preciso che chi scrive ha» (dominio, applicativo, o in mancanza SQLSTATE o classe Python): la classe SQLSTATE dice a maintenance.vw_job_run_da_guardare se il guasto e'' dell''ambiente (08, 53, 57, 58). Lo scrivono maintenance.fn_run_and_log, maintenance.fn_job_run_log_failure e script.fn_job_run_end.';
+
+              COMMENT ON CONSTRAINT chk_job_run_log_processo_dichiarato ON maintenance.job_run_log IS
+                'Una corsa NUOVA deve dichiarare di quale processo e''. ⛔ NOT VALID e non un NOT NULL: le righe scritte prima che la colonna esistesse non hanno un processo, e non si puo'' fornirlo a posteriori; riempirle per far passare il vincolo sarebbe inventare un attore per corse che non l''avevano. Per lo stesso motivo non si esegue VALIDATE CONSTRAINT: fallirebbe sulle righe storiche, ed e'' giusto che le nomini invece di accettarle. ⚠️ Chi non si dichiara vede fallire l''INSERT, quindi il job: un processo che non sa dire chi e'' non gira, e fallire rumorosamente e'' meglio di una riga muta.';
+
+              COMMENT ON CONSTRAINT chk_job_run_log_saltata ON maintenance.job_run_log IS
+                'Una corsa saltata e'' chiusa (ended_at valorizzato) e senza esito (ok NULL): non ha fatto lavoro, quindi non e'' ne'' riuscita ne'' fallita, e non e'' nemmeno aperta.';
+
+              COMMENT ON VIEW maintenance.vw_job_run_da_superuser IS
+                'PRESIDIO «nessun superuser al lavoro»: per ogni processo l''ULTIMA corsa del giornale, se il ruolo che si e'' collegato (ruolo_sessione) e'' un superuser. Deve restare vuota. Basta «superuser» e non «membro di zeroerp_job» perche'' le procedure dei job sono eseguibili solo dal proprietario, da zeroerp_job e dai superuser (EXECUTE tolto a PUBLIC), e il giornale non distingue pgAgent da ci_apply (origine PGAGENT di default, nessun application_name). Si giudica da pg_roles.rolsuper, mai dal nome. Esclusi ruolo_sessione NULL (non registrato) e i ruoli che non esistono piu''.';
+
+              COMMENT ON VIEW maintenance.vw_statistiche_mancanti IS
+                'Le tabelle che dopo un ANALYZE resterebbero senza statistiche per il ruolo CORRENTE. motivo: MAI_ANALIZZATA (pg_class.reltuples < 0: mai un ANALYZE ne'' un VACUUM; sta nel catalogo e sopravvive a un crash, i contatori di pg_stat_* no) oppure NON_ANALIZZABILE (niente MAINTAIN: ANALYZE la salterebbe con un WARNING, senza fallire). Perimetro per struttura: tabelle ordinarie e partizionate, esclusi gli schemi di sistema, le temporanee di altre sessioni e gli oggetti di un''estensione (pg_depend deptype e); esclusa anche la partizionata senza partizioni, che non ha dati da descrivere e resta a -1 dopo ANALYZE. ⚠️ Risponde per chi interroga: come zeroerp_app ogni tabella di progetto e'' NON_ANALIZZABILE, ed e'' giusto. La legge l''autoverifica di maintenance.fn_analyze_statistiche.';
+
+              COMMENT ON FUNCTION maintenance.fn_analyze_statistiche(regclass[]) IS
+                'ANALYZE del database (p_tabelle NULL: il job notturno analyze_statistiche e la convergenza in CI) o delle tabelle indicate, poi l''AUTOVERIFICA nella stessa transazione: se maintenance.vw_statistiche_mancanti ha ancora una tabella (nel perimetro, o fra quelle indicate) solleva E_STATISTICHE_MANCANTI con le tabelle nel contesto. ⛔ Senza, un ANALYZE che salta meta'' delle tabelle (lo fa con un WARNING, senza fallire) lascerebbe «done» nel giornale. La verifica sta qui e non in una vista guardata dal digest: subito dopo ANALYZE una tabella senza statistiche e'' un errore, in un''ora qualunque potrebbe essere solo nata da poco. Una transazione sola (la CI la chiama dentro un changeSet): SHARE UPDATE EXCLUSIVE su ogni tabella fino alla fine, che blocca DDL e autovacuum ma non letture e scritture. Il catalogo di sistema e'' analizzato se il ruolo e'' proprietario del database o superuser, e resta fuori dall''autoverifica.';
+
+              COMMENT ON PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job() IS
+                'Wrapper del job chiusura_scadenze_daily: sveglia la chiusura per scadenza (dbops.fn_accoda_chiusura_scadenze, che accoda i lavori) PASSANDO dal giornale, con maintenance.fn_run_and_log sotto il codice del processo. Il giornale e'' cio'' che rende visibile la sveglia: senza, il lavoro verrebbe accodato ma della corsa non resterebbe traccia, e dbops.vw_processi_programmazione non potrebbe confrontare pgAgent col giornale. SECURITY DEFINER.';
+
+              COMMENT ON PROCEDURE maintenance.proc_analyze_statistiche_job() IS
+                'Wrapper del job analyze_statistiche: esegue maintenance.fn_analyze_statistiche() PASSANDO dal giornale, sotto il codice del processo. Lo chiamano il job pgAgent notturno e, in CI, la convergenza di ci_apply (dbops.processi.ci_procedura). Il giornale e'' cio'' che rende visibile un''autoverifica rossa: maintenance.fn_run_and_log scrive la riga del fallimento fuori transazione. Nessun COMMIT: in CI gira dentro la transazione del changeSet. SECURITY DEFINER.';
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job() IS
+                'Wrapper del processo automations_lock_columns: in una sola corsa esegue in modo SCHEDULED dbops.fn_run_automations_lock_columns, poi dbops.fn_run_automations_date_validita e dbops.fn_run_automations_codice_maiuscolo su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il primo runner porta i trigger di lock di colonna al registro dichiarato: li crea, li rigenera, li toglie; se un lock vivo blocca una colonna che il registro non nomina, si ferma con E_LOCK_COLUMNS prima di ogni DDL. Il secondo monta, sulle tabelle con valido_dal e valido_al, il guard che rifiuta una fine precedente all''inizio. Il terzo porta il trigger che salva il codice in maiuscolo su ogni colonna codice dell''ambito, tranne le eccezioni di dbops.automazione_codice_eccezioni: lo crea, lo rigenera, lo toglie. Le tre istruzioni stanno nella stessa transazione e lasciano una riga sola nel giornale: se il lock si ferma, gli altri due quella volta non girano. Lo chiamano il job pgAgent automations_lock_columns e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+
+              COMMENT ON PROCEDURE maintenance.proc_guardiano_digest_job() IS
+                'Wrapper del job guardiano_digest: esegue dbops.fn_guardiano_digest() PASSANDO dal giornale, sotto il codice del processo. E'' cio'' che rende il guardiano un processo PGAGENT come gli altri, che dbops.vw_processi_programmazione guarda: il digest riporta il guardiano, il guardiano accoda per il digest, e ognuno vede la morte dell''altro. ⛔ Senza il giornale il guardiano sarebbe invisibile a tutti i presidi. SECURITY DEFINER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE maintenance.job_run_log IS
+                NULL;
+
+              COMMENT ON COLUMN maintenance.job_run_log.ruolo_sessione IS
+                'Il ruolo che si e'' COLLEGATO per la corsa (session_user): pgAgent (zeroerp_job), il migratore in ci_apply, il backend per le corse headless, una persona. Non quello con cui il lavoro gira: le funzioni del giornale e le procedure dei job sono SECURITY DEFINER. Lo valorizzano maintenance.fn_run_and_log (la corsa), script.fn_job_run_start (le corse headless: management command, cron, systemd) e maintenance.fn_job_run_log_failure (il verbale di un fallimento, che via dblink gira in un''altra sessione: per questo la colonna non ha default). NULL sulle corse registrate prima del 2026-10-15. Lo legge maintenance.vw_job_run_da_superuser. Brief: brief-db-ruoli-di-sistema D-5, §17.';
+
+              COMMENT ON COLUMN maintenance.job_run_log.saltata IS
+                'TRUE sulla riga che registra una corsa SALTATA perche'' il lock della corsia era occupato: il timer si e'' svegliato, il lavoro non e'' partito. La scrivono solo script.fn_job_run_start e maintenance.fn_run_and_log, sul ramo del lock occupato. ⭐ Una riga saltata e'' chiusa e SENZA esito (ok NULL, CHECK chk_job_run_log_saltata): la domanda «e'' riuscita?» (ok IS TRUE) la scarta da sola. ⚠️ Chi chiede «qual e'' l''ultima corsa VERA?» la esclude (maintenance.vw_job_run_da_guardare, ultimo_esito di dbops.vw_processi_programmazione); chi chiede «la sveglia e'' viva?» la conta, perche'' e'' un segno di vita della sveglia. ⛔ Il testo di message non e'' il marcatore. Le skip scritte prima del 2026-10-10 hanno saltata = false (nessuna bonifica, decisione di Tid). Brief: brief-db-corsa-saltata-non-e-una-corsa §8.';
+
+              COMMENT ON COLUMN maintenance.job_run_log.sqlstate IS
+                'Lo SQLSTATE dell''errore che ha fatto fallire la corsa, quando l''errore e'' passato dal database (cinque caratteri, chk_job_run_log_sqlstate_forma). NULL per una corsa riuscita e per un errore che il database non ha visto (un''eccezione Python di un command). Separato da error_code, che resta «il codice piu'' preciso che chi scrive ha» (dominio, applicativo, o in mancanza SQLSTATE o classe Python): la classe SQLSTATE dice a maintenance.vw_job_run_da_guardare se il guasto e'' dell''ambiente (08, 53, 57, 58). Lo scrivono maintenance.fn_run_and_log, maintenance.fn_job_run_log_failure e script.fn_job_run_end. Le righe di prima del 2026-10-16 sono state convertite dalla forma di error_code. Brief: brief-db-presidio-job-run-a-chi-tocca (D5).';
+
+              COMMENT ON CONSTRAINT chk_job_run_log_processo_dichiarato ON maintenance.job_run_log IS
+                'Un run NUOVO deve dichiarare di quale processo e''. ⛔ NOT VALID e non un NOT NULL: al 2026-09-05 la tabella ha 99.775 righe senza attore su 100.738, scritte prima che la colonna esistesse — il giornale di ieri, dove l''attore non si puo'' fornire e non si potra'' mai. Riempirle per far passare il vincolo sarebbe inventare un attore per corse che non l''avevano. ⚠️ Chi non si dichiara vede fallire l''INSERT, quindi il job: e'' la scelta, non un effetto collaterale — un processo che non sa dire chi e'' non deve girare, e fallire rumorosamente e'' meglio che lasciare una riga muta. ⛔ NON si esegue VALIDATE CONSTRAINT: fallirebbe sulle righe storiche, ed e'' giusto che le nomini invece di accettarle. Brief: brief-db-processi-automatici-residui-be, DB-5.';
+
+              COMMENT ON CONSTRAINT chk_job_run_log_saltata ON maintenance.job_run_log IS
+                'Una corsa saltata e'' chiusa (ended_at valorizzato) e senza esito (ok NULL): non ha fatto lavoro, quindi non e'' ne'' riuscita ne'' fallita, e non e'' nemmeno aperta. Brief: brief-db-corsa-saltata-non-e-una-corsa §8, D2.';
+
+              COMMENT ON VIEW maintenance.vw_job_run_da_superuser IS
+                'PRESIDIO «nessun superuser al lavoro»: per ogni processo l''ULTIMA corsa del giornale, se il ruolo che si e'' collegato (ruolo_sessione) e'' un superuser. Deve restare vuota. Basta «superuser» e non «membro di zeroerp_job» perche'' le procedure dei job sono chiamabili solo da proprietario, zeroerp_job e superuser (EXECUTE tolto a PUBLIC, 20261014-55), e il giornale non distingue pgAgent da ci_apply (origine PGAGENT di default, nessun application_name). Si giudica da pg_roles.rolsuper, mai dal nome. Esclusi ruolo_sessione NULL (non registrato) e ruoli che non esistono piu''. Brief: brief-db-ruoli-di-sistema D-5.';
+
+              COMMENT ON VIEW maintenance.vw_statistiche_mancanti IS
+                'Le tabelle che dopo un ANALYZE resterebbero senza statistiche per il ruolo CORRENTE. motivo: MAI_ANALIZZATA (pg_class.reltuples < 0: mai un ANALYZE ne'' un VACUUM; sta nel catalogo e sopravvive a un crash, i contatori di pg_stat_* no) oppure NON_ANALIZZABILE (niente MAINTAIN: ANALYZE la salterebbe con un WARNING, senza fallire). Perimetro per struttura: tabelle ordinarie e partizionate, esclusi gli schemi di sistema, le temporanee di altre sessioni e gli oggetti di un''estensione (pg_depend deptype e); esclusa anche la partizionata senza partizioni, che non ha dati da descrivere e resta a -1 dopo ANALYZE. ⚠️ Risponde per chi interroga: come zeroerp_app ogni tabella di progetto e'' NON_ANALIZZABILE, ed e'' giusto. La legge l''autoverifica di maintenance.fn_analyze_statistiche. Brief: brief-db-statistiche-tabelle-job-notturno (D15).';
+
+              COMMENT ON FUNCTION maintenance.fn_analyze_statistiche(regclass[]) IS
+                'ANALYZE del database (p_tabelle NULL, il job notturno analyze_statistiche e la convergenza in CI) o delle tabelle indicate, poi l''AUTOVERIFICA nella stessa transazione: se maintenance.vw_statistiche_mancanti ha ancora una tabella (nel perimetro, o fra quelle indicate) solleva E_STATISTICHE_MANCANTI con le tabelle nel contesto. ⛔ Senza, un ANALYZE che salta meta'' delle tabelle (lo fa con un WARNING, senza fallire) lascerebbe «done» nel giornale. ⭐ La verifica sta qui e non in una vista guardata dal digest: subito dopo ANALYZE una tabella senza statistiche e'' un errore, in un''ora qualunque potrebbe essere solo nata da poco. Una transazione sola (la CI la chiama dentro un changeSet): SHARE UPDATE EXCLUSIVE su ogni tabella fino alla fine, che blocca DDL e autovacuum ma non letture e scritture. Il catalogo di sistema e'' analizzato se il ruolo e'' proprietario del database o superuser, e resta fuori dall''autoverifica (D-1). Brief: brief-db-statistiche-tabelle-job-notturno (D15).';
+
+              COMMENT ON PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job() IS
+                'Wrapper del job chiusura_scadenze_daily: sveglia la chiusura scadenze PASSANDO dal giornale. ⛔ Esiste perche'' il changeSet 20260905-25, trasformando quel job da esecutore a sveglia, ha sostituito lo step con una SELECT diretta e ha perso il wrapper — e con lui la registrazione della corsa. Il lavoro veniva accodato correttamente, ma della sveglia non restava traccia: nessun test poteva prenderlo, perche'' tutti guardavano che il lavoro fosse accodato. L''ha trovato dbops.vw_processi_programmazione confrontando pgAgent col giornale.';
+
+              COMMENT ON PROCEDURE maintenance.proc_analyze_statistiche_job() IS
+                'Wrapper del job analyze_statistiche: esegue maintenance.fn_analyze_statistiche() PASSANDO dal giornale, sotto il codice del processo. Lo chiamano il job pgAgent notturno e, in CI, la convergenza di 90_end/ci_apply/20260926-10 (dbops.processi.ci_procedura). ⭐ Il giornale e'' cio'' che rende visibile un''autoverifica rossa: fn_run_and_log scrive la riga del fallimento fuori transazione. Nessun COMMIT: in CI gira dentro la transazione del changeSet. Brief: brief-db-statistiche-tabelle-job-notturno (D15).';
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job() IS
+                'Wrapper del processo automations_lock_columns: in una sola corsa esegue in modo SCHEDULED dbops.fn_run_automations_lock_columns, poi dbops.fn_run_automations_date_validita e dbops.fn_run_automations_codice_maiuscolo su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il primo runner porta i trigger di lock di colonna al registro dichiarato: li crea, li rigenera, li toglie; se un lock vivo blocca una colonna che il registro non nomina, si ferma con E_LOCK_COLUMNS prima di ogni DDL. Il secondo monta, sulle tabelle con valido_dal e valido_al, il guard che rifiuta una fine precedente all''inizio. Il terzo (rev 20261104-05) porta il trigger che salva il codice in maiuscolo su ogni colonna codice dell''ambito, tranne le eccezioni di dbops.automazione_codice_eccezioni: lo crea, lo rigenera, lo toglie. Le tre istruzioni stanno nella stessa transazione e lasciano una riga sola nel giornale: se il lock si ferma, gli altri due quella volta non girano. Lo chiamano il job pgAgent automations_lock_columns e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+
+              COMMENT ON PROCEDURE maintenance.proc_guardiano_digest_job() IS
+                'Wrapper del job guardiano_digest: esegue dbops.fn_guardiano_digest() PASSANDO dal giornale. ⭐ E'' cio'' che rende il guardiano un processo PGAGENT come gli altri, che dbops.vw_processi_programmazione guarda: il digest riporta il guardiano, il guardiano accoda per il digest — ognuno vede la morte dell''altro. ⛔ Senza il giornale il guardiano sarebbe invisibile a tutti i presidi, cioe'' il difetto che 20260906-06 ha chiuso su due job. Brief: brief-db-quattro-processi-senza-presidio §10.2.';

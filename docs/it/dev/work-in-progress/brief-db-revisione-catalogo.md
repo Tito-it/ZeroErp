@@ -1,10 +1,10 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-09 (giro 2 applicato e committato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-10 (giro 3 applicato e committato)
 
-**Riparte: Tid**, col via al giro 3 (i guard degli articoli, §7) e i suoi numeri. In parallelo il **team BE**, con
-BE8-BE15 e BE1-BE4, BE16-BE18 (§5, §13.5): i giri 1, 1-bis e 2 sono applicati, e il giro 2 ha ritirato due colonne che il
-form delle unità operative scrive ancora.
+**Riparte: Tid**, col via ai giri 4-5 (§7) e i loro numeri; le scelte dentro i giri 3, 2 e 1 (§14.2, §14.6, §13.3,
+§10.3) da guardare. In parallelo il **team BE**, con BE19 e BE20 del giro 3 (§14.4, §14.8), BE1-BE4 e BE16-BE18 del
+giro 2 (§13.5) e la doc API di BE9 e BE11.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -26,17 +26,21 @@ form delle unità operative scrive ancora.
 | 5-undecies | ✅ sessione DB | Giro 2 (le unità): tredici changeSet, sei codici, pgTAP, doc; provato sullo scratch | §13 | 5-decies |
 | 5-duodecies | ✅ Tid | La riga di prova corretta; apply del giro 2 su dbdev e scratch, pgTAP come app verdi (2026-11-09) | §13.6 | 5-undecies |
 | 5-terdecies | ✅ sessione DB, su richiesta di Tid | Commit del giro 2 (2026-11-09) | §13.6 | 5-duodecies |
-| 5-quaterdecies | **Tid** ⏭️ | Via al giro 3 coi suoi numeri; le scelte di §13.3 e §10.3 da guardare | §7, §13.3, §10.3 | 5-terdecies |
-| 6 | sessione DB | Giri 3-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-quaterdecies |
-| 7 | **team BE** ⏭️ | BE8-BE12 (giro 1), BE13-BE15 (giro 1-bis), BE1-BE4 e BE16-BE18 (giro 2), tutti applicati; le altre quando il giro corrispondente lo è | §5, §11.6, §13.5 | — |
-| 5-decies | **Tid** ⏭️ | Via al giro 2 coi suoi numeri; le scelte di §10.3 da guardare | §7, §10.3 | 5-nonies |
-| 6 | sessione DB | Giri 2-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-decies |
-| 7 | team BE ✅ (giri 1 e 1-bis) | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis) fatte il 2026-11-09 (§11.10); le altre quando il giro corrispondente lo è | §5, §11.6, §11.10 | — |
+| 5-quaterdecies | ✅ Tid | Via al giro 3, dal `20261111-25` (2026-11-09) | §14 | 5-terdecies |
+| 5-quindecies | ✅ sessione DB | Giro 3: tredici changeSet, quattro codici, tre pgTAP nuovi, doc; provato sullo scratch | §14 | 5-quaterdecies |
+| 5-sexdecies | ✅ Tid | Apply del giro 3 su dbdev e scratch, pgTAP come app verdi (2026-11-10) | §14.9 | 5-quindecies |
+| 5-septdecies | ✅ sessione DB, su richiesta di Tid | Commit del giro 3 (2026-11-10) | §14.9 | 5-sexdecies |
+| 5-octodecies | **Tid** ⏭️ | Il via ai giri 4-5 e i loro numeri; le scelte di §14.2, §14.6, §13.3, §10.3 da guardare | §7 | 5-septdecies |
+| 6 | sessione DB | Giri 4-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-octodecies |
+| 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
+| 7-bis | **team BE** ⏭️ | La doc API di BE9 e BE11 (`api_catalogo.md`), rimasta indietro; BE1-BE4 e BE16-BE18 (giro 2, applicato); BE19 e BE20 (giro 3, applicato); le altre quando il giro corrispondente lo è | §5, §13.5, §14.8 | — |
+| 7-ter | ✅ Tid | Il legame con prezzi bundle: (b) con conferma dell'operatore, tutti e due i diritti, avviso sul prezzo del kit (Q19-Q22, 2026-11-09) | §11.10.1 | — |
+| 7-quater | ✅ Tid | La chiusura del legame coi prezzi va nel giro 3 (2026-11-09) | §14 | 7-ter |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
 
-**Decisioni aperte di Tid:** le scelte dentro il giro 2 (§13.3) e il giro 1 (§10.3), da guardare. **Da committare:** niente
-di questo cantiere: i giri 1, 1-bis e 2 sono committati. Prossimi numeri: li dà Tid.
-⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93` (dato da Tid). Messaggi
+**Decisioni aperte di Tid:** le scelte dentro i giri 3 (§14.2, §14.6), 2 (§13.3) e 1 (§10.3), da guardare. **Da
+committare:** niente (giro 3 committato il 2026-11-10).
+⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93`, il giro 3 `20261111-25` … `-37` (dati da Tid). Messaggi
 d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid e team DB; §5 al team BE.
@@ -522,15 +526,10 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | BE6 | — | `offerte_service.py:1178,1209,1273` e `RigheEccezioniDrawer.vue:668` decidono su `is_composito`: verificare se ricopiano una regola del DB (R8) |
 | BE7 | 3 | Se il cambio d'IVA diventa un verbo del kit (Q6), il form dell'articolo lo chiama |
 | BE16 | 2 | Q4 ritira `rounding_mode` e `require_lot`: il lookup `GET /api/v1/catalogo/lookup/rounding-modes/` (`api_catalogo.md` §2.3, `_ROUNDING_MODE_VALIDI` in `catalogo_service`) e i campi del form dell'unità operativa si ritirano nello stesso giro BE |
-| BE8 | 1 | I due codici nuovi `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO, campo `valido_al`) ed `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO, campo `valido_al`): mappa degli errori generata (`error_policies_generated.py`) e i18n. `E_ARTICOLO_NON_COMPOSITO` ora porta `campo = prodotto_id` e un bersaglio `ARTICOLO` |
-| BE9 | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE. Da allineare anche `docs/it/backend/catalogo/manual/api_catalogo.md:601` (dice «`valido_dal` se chiudibile») e §4.3 (`valido_al` «unico campo modificabile»: va detto che la fine non cambia i giorni passati e che una fine già passata non si tocca) |
-| BE10 | 1 | Il form dell'articolo: `is_composito` e `is_solo_componente` insieme li rifiuta ora un CHECK (23514, `chk_articoli_composito_non_solo_componente`). Il form spegne l'uno quando l'altro è acceso, e il servizio mappa il vincolo a un messaggio |
-| BE11 | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi». `api_catalogo.md` §4.4 documenta ancora il `DELETE` |
-| BE12 | 1 | Il picker degli articoli ammessi per la distinta (`catalogo.fn_articoli_ammessi` con `ARTICOLO`) su un padre non composito solleva `E_ARTICOLO_NON_COMPOSITO` invece di restituire una lista vuota: il FE apre il picker solo con `puo_gestire_bom` |
 | BE8 ✅ (2026-11-09) | 1 | I due codici nuovi `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO, campo `valido_al`) ed `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO, campo `valido_al`): mappa degli errori generata (`error_policies_generated.py`) e i18n. `E_ARTICOLO_NON_COMPOSITO` ora porta `campo = prodotto_id` e un bersaglio `ARTICOLO` |
-| BE9 ✅ (2026-11-09) | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE |
+| BE9 ✅ (2026-11-09), doc ⏭️ | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE. ⏭️ **Resta la doc** (verificato il 2026-11-09 dopo `9f540bea72`): `docs/it/backend/catalogo/manual/api_catalogo.md:601` dice ancora «`valido_dal` se chiudibile», e §4.3 (`valido_al` «unico campo modificabile») non dice che la fine non cambia i giorni passati e che una fine già passata non si tocca |
 | BE10 ✅ (2026-11-09) | 1 | Il form dell'articolo: `is_composito` e `is_solo_componente` insieme li rifiuta ora un CHECK (23514, `chk_articoli_composito_non_solo_componente`). Il form spegne l'uno quando l'altro è acceso, e il servizio mappa il vincolo a un messaggio |
-| BE11 ✅ (2026-11-09) | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi» |
+| BE11 ✅ (2026-11-09), doc ⏭️ | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi». ⏭️ **Resta la doc**: l'endpoint è ritirato, ma `api_catalogo.md` §4.4 «Elimina componente» documenta ancora il `DELETE` |
 | BE12 ✅ (2026-11-09) | 1 | Il picker degli articoli ammessi per la distinta (`catalogo.fn_articoli_ammessi` con `ARTICOLO`) su un padre non composito solleva `E_ARTICOLO_NON_COMPOSITO` invece di restituire una lista vuota: il FE apre il picker solo con `puo_gestire_bom` |
 
 ## 6. Le decisioni di Tid
@@ -918,6 +917,72 @@ anche il motivo `SOLO_COMPONENTE` è scritto in più rami: anche questo è giro 
   schede auto-generate rigenerate dei soli oggetti del giro; delle modifiche dell'altra sessione ai due CSV non è entrato
   niente.
 
+### 11.10 Il giro BE dei giri 1 e 1-bis (team BE, 2026-11-09, `9f540bea72`, PR #77)
+
+> Scritta dal team BE nel suo commit; il merge `909e048c32` l'aveva persa, ripristinata dalla sessione DB il 2026-11-09.
+
+* **BE8, BE15.** `error_policies_generated.py` rigenerato: `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO),
+  `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO), più `E_CONTATTI_SOGGETTO_OBBLIGATORIO` del giro 12 di `dbops`; le altre
+  differenze sono solo note. Ripieghi senza segnaposto per i tre codici nuovi; quello di
+  `E_ARTICOLO_KIT_SENZA_COMPONENTI` ora dice «in vigore da oggi in poi». L'i18n FE non ripete nessuna delle frasi.
+* **BE13.** `list_bundle_preview` legge da `catalogo.fn_distinta_alla_data(padre, data)`, col `LEFT JOIN` sui prezzi
+  della versione; il filtro ricopiato è uscito. Prova sul DB vero:
+  `vendite/tests/db/test_listino_kit_periodicita_db.py` test 8 (un legame futuro, una data prima della distinta).
+  ⚠️ Un legame che ha prezzi bundle non si chiude: lo vieta la FK temporale
+  `fk_listrighe_comp_articoli_comp_temporal`. Il team BE lo legge come modello, non come difetto; il test usa un legame
+  futuro. La domanda è in §11.10.1.
+* **BE11** (decisione di Tid, 2026-11-09: si ritira). Tolti il `DELETE` di
+  `/catalogo/articoli/<id>/componenti/<comp_id>/`, `fn_delete_componente`, `CatalogoBomRepository.delete_componente`,
+  `deleteArticoloComponente` del FE (senza chiamanti) e il loro test. Un legame si chiude con la PATCH su `valido_al`.
+* **BE10.** Il CHECK `chk_articoli_composito_non_solo_componente` passa da `map_integrity_error` (che sostituisce il
+  traduttore locale a testo degli articoli, compreso il duplicato del codice, ora col campo `codice`): 400
+  `E_CATALOGO_VALIDATION` con la frase, senza campo (è la coppia a essere incoerente). Provato sul DB vero. Il form
+  spegne l'interruttore dell'uno finché l'altro è acceso, col perché; nessun valore cambia da solo.
+* **BE12.** Nel drawer dell'articolo la sezione della distinta (e «Gestisci distinta») la apre `puo_gestire_bom` del
+  dettaglio, non il `form.is_composito` non ancora salvato. La lista lo faceva già.
+* **BE9.** La data la legge già la vista; corretti i tre commenti di `ArticoloBomDrawer.vue` che dicevano
+  «= `valido_dal`».
+* **BE14.** Niente da fare.
+* ⏭️ **Resta al team BE** (verifica della sessione DB, 2026-11-09): la doc API di BE9 e BE11 in
+  `docs/it/backend/catalogo/manual/api_catalogo.md` (riga 601 e §4.4), vedi §5. Nessuna richiesta al DB nel commit.
+
+#### 11.10.1 Per Tid: il legame con prezzi bundle non si chiude
+
+`listini_righe_componenti` ha la FK temporale `fk_listrighe_comp_articoli_comp_temporal` (`articolo_componente_id`,
+`PERIOD validita`) verso `articoli_componenti`: il periodo del prezzo bundle sta dentro quello del legame. Chiudere un
+legame (giro 1: la fine da ieri in poi) mentre una riga di prezzo resta aperta oltre quella data si rifiuta, quindi prima
+vanno chiusi i prezzi del componente in **tutte** le versioni di listino che lo prezzano. Sul modello la regola è
+coerente (un prezzo non sopravvive al componente), ma incontra l'immutabilità della versione: fuori dalla BOZZA
+`vendite.trgfn_listini_righe_comp_guard_immutabilita_v5` rifiuta l'UPDATE di `valido_al` e il DELETE, e lascia solo
+`attivo = false`, che la FK temporale non guarda (letto dal corpo il 2026-11-09). Quindi un legame prezzato da una
+versione non in bozza, con la riga di prezzo aperta oltre la data di chiusura, **non si chiude finché quella versione
+esiste**: la fonte (la distinta) resta ferma per colpa di chi la legge (il listino).
+Le strade: (a) è voluto, si chiude o sostituisce prima la versione di listino (ma la fine della versione non accorcia le
+date delle sue righe: andrebbe verificato che basti); (b) il verbo di chiusura del legame chiude anche i prezzi bundle
+aperti oltre quella data, in tutte le versioni, con conferma, come eccezione dichiarata all'immutabilità (la fine segue
+la fonte, il prezzo non cambia); (c) altro, per esempio la FK sostituita da un giudizio alla data dei lettori.
+Proposta della sessione DB: (b), perché la distinta è la fonte e `fn_distinta_alla_data` già ignora il componente fuori
+distinta.
+
+**Decisioni di Tid (2026-11-09): (b), con la conferma esplicita dell'operatore.**
+
+* **Q19 — Che cosa si chiude.** Solo le righe di `listini_righe_componenti` del legame chiuso (`articolo_componente_id`)
+  la cui fine va oltre la data di chiusura, in ogni versione che le prezza: prendono la stessa `valido_al` del legame.
+  Né la versione né le altre righe si toccano; prezzo e IVA restano quelli. L'eccezione all'immutabilità della versione
+  è di una colonna (la fine) e di una porta sola (il verbo di chiusura del legame).
+* **Q20 — Mai in silenzio.** Lo schema dell'annullo con legami (D29, `E_DOC_ANNULLO_CON_LEGAMI`): al primo tentativo il
+  verbo non chiude niente e risponde con un avviso e l'elenco delle righe di prezzo coinvolte (listino, versione, prezzo,
+  fine che prenderebbero); l'operatore conferma richiamando il verbo con la dichiarazione delle righe viste; il DB
+  chiude legame e prezzi nella stessa transazione, e rifiuta se l'elenco non è più quello dichiarato.
+* **Q21 — Chi può.** Il verbo pretende **tutti e due** i diritti: la gestione della distinta e la modifica dei listini
+  (guard nella prima riga del verbo). Chi non può toccare un listino non lo tocca nemmeno dalla distinta.
+* **Q22 — Il prezzo del kit.** Il prezzo del padre è sempre la somma dei suoi componenti (non ha riga in
+  `listini_righe`: `vendite/manual/listini_righe_componenti.md`), quindi da quella data il kit in quel listino scende del
+  prezzo del componente tolto. Non blocca: lo dice la finestra di conferma, versione per versione.
+
+Ricadute BE (al giro che la prende): il codice d'avviso nuovo nella mappa e la finestra di conferma, sul modello di quella
+comune dell'annullo; la PATCH su `valido_al` del legame passa la dichiarazione. Il giro che la prende lo sceglie Tid.
+
 ## 12. Verifica di coerenza con guide e documenti, 2026-11-09
 
 Richiesta di Tid dopo il giro 1-bis: c'è qualche guida o documento che contraddice i giri 1 e 1-bis, o il giro 2 che
@@ -1048,6 +1113,14 @@ Corpi di partenza da `pg_get_functiondef`, `pg_get_viewdef` (`search_path = pg_c
   non lascia affiancare. Sullo scratch era verde perché la conversione non c'è: misurava la macchina. Ora il test
   costruisce le sue unità. Verde su dbdev e scratch; gli altri due pgTAP che scrivono conversioni le costruiscono già.
 * **Chiusura:** Tid, 2026-11-09 — migrate applicato su dbdev e scratch, pgTAP come app verdi.
+* **Trovato dopo la chiusura (Tid, 2026-11-09):** `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1` moriva prima
+  del `plan` con `E_UOM_MISSING` («PZ non si converte in SMC per ART_TEST_FALLBACK»). La fixture dava a tutte le righe la
+  prima unità attiva del catalogo, qualunque fosse l'articolo; prima del giro 2 il trigger lo lasciava passare, ora la
+  riga FISSA senza fattore alla data si rifiuta (D2, Q7): la regola è giusta, la fixture misurava la macchina. Le baseline lo
+  davano già rosso (`ASSERZIONE`, test 2), e quel rosso ha nascosto il nuovo nella corsa del giro. Corretto il pgTAP: ogni
+  riga usa l'unità base del suo articolo (`catalogo.fn_get_uom_base`, fattore 1 a ogni data). Censiti gli altri pgTAP che
+  prendono «la prima unità attiva» e stanno in baseline: solo `vendite/test-offerta-righe-espanse`, che la usa sulle sole
+  righe di listino, dove il trigger non passa. Da rilanciare (Tid).
 
 ### 13.5 Ricadute su BE e FE
 
@@ -1081,3 +1154,148 @@ Corpi di partenza da `pg_get_functiondef`, `pg_get_viewdef` (`search_path = pg_c
   sopra; la verifica di coerenza di §12 con le sue correzioni;
   questo brief.
 
+
+## 14. Giro 3 — i guard degli articoli e la chiusura del legame coi prezzi, 2026-11-09
+
+Via di Tid il 2026-11-09, numeri dal `20261111-25`; dentro il giro anche Q19-Q22 (§11.10.1, 7-quater). Due parti:
+**A**, la chiusura del legame coi prezzi bundle (scritta e provata, §14.1-§14.4); **B**, i difetti del giro come da §7
+(D4 + D21, D5, D18, D19, D20, R5: §14.5).
+
+### 14.1 Parte A — che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261111-25` | `vendite.fn_prezzi_legame_oltre_la_fine(legame, fine)`: i prezzi bundle oltre la fine, con l'esito (`CHIUDE`, `TOGLIE`, `BLOCCA`), `importo_per_kit` e `nel_perimetro`. `SECURITY DEFINER`, `BEGIN ATOMIC`: fuori perimetro esce solo che il prezzo c'è |
+| `20_code/script/20261111-26` | `script.fn_check_legame_distinta_chiudibile`: i due motivi che vietano (`E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE`, `E_BOM_CHIUSURA_PRIMA_DEI_PREZZI`) |
+| `20_code/vendite/20261111-27` | `vendite.trgfn_listini_righe_comp_guard_immutabilita_v5`: la porta della chiusura del legame (GUC `zeroerp.legame_distinta_chiudi` = id del legame, col proprietario), sulla sola `valido_al` e solo per accorciarla |
+| `20_code/catalogo/20261111-28` | `catalogo.trgfn_articoli_componenti_block_modifica_struttura`: una fine che lascia fuori dei prezzi, prima ciò che vieta, poi l'avviso `E_BOM_CHIUSURA_CON_PREZZI` (prima moriva sulla FK temporale con un 23503 grezzo) |
+| `20_code/catalogo/20261111-29` | `catalogo.fn_chiudi_legame_distinta(legame, fine, prezzi_confermati)`: il verbo (permesso, blocco, ciò che vieta, permesso sui listini, conferma, prezzi, legame) |
+
+Codici nuovi (`codici_errore.csv`, `messaggi_errore.csv`, id `1471` … `1474`): `E_BOM_CHIUSURA_CON_PREZZI`
+(CONFLITTO_STATO), `E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE` (CONFLITTO_STATO), `E_BOM_CHIUSURA_PRIMA_DEI_PREZZI`
+(DATO_ERRATO), `E_BOM_LEGAME_NOT_FOUND` (NON_TROVATO).
+
+### 14.2 Le scelte dentro la parte A (da guardare, Tid)
+
+1. **Prezzi in listini di un'altra azienda: la chiusura si rifiuta.** Fatto emerso nel censimento: la distinta è comune
+   a tutte le aziende, i listini hanno la RLS per emittente. Q19 diceva «in ogni versione che le prezza»; la lettura
+   che ne dà Q21 («chi non può toccare un listino non lo tocca nemmeno dalla distinta») è il rifiuto, col numero dei
+   prezzi e senza dire quali. Lo sblocca chi vede quei listini.
+2. **Prezzi di una versione non in bozza che cominciano dopo la fine: la chiusura si rifiuta** e dice la prima fine
+   ammessa (l'inizio più tardo). Non si accorciano (periodo vuoto) e non si cancellano (la versione non è in bozza). In
+   bozza invece si tolgono, e la finestra lo dice (esito `TOGLIE`).
+3. **Il diritto sui listini si chiede solo se ci sono prezzi da toccare.** Un legame senza prezzi chiede solo quello
+   sul catalogo, e nessuna conferma. I due diritti sono il livello TUTTO su `catalogo.articolo` e su `vendite.listino`
+   (gli oggetti che il backend usa per gli stessi endpoint), dal guard `script.fn_guard_livello`.
+4. **La conferma è un conteggio**, come l'annullo con legami (`p_prezzi_confermati`): il verbo blocca legame e prezzi
+   `FOR UPDATE` e la confronta col numero di adesso.
+5. **L'avviso parte anche dall'UPDATE diretto** (il PATCH di oggi su `valido_al`): il guard della distinta è il primo
+   tentativo, il verbo è la conferma. Così il contratto del backend cambia poco: sull'avviso apre la finestra, alla
+   conferma chiama il verbo.
+6. **`importo_per_kit` = prezzo per il coefficiente del legame**: quanto il componente pesa su un kit, al prezzo della
+   riga. È la cifra che la finestra mostra per versione (Q22).
+
+### 14.3 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di numero, `BEGIN … ROLLBACK`)
+
+* Tutte e cinque compilano; le preCondition tornano (`0`, `1`, `1`, `2`, `3`). `plpgsql_check` non segnala niente
+  sulle quattro plpgsql.
+* pgTAP nuovo `catalogo/test-chiudi-legame-con-prezzi-v1.sql` (21 test), col seed delle sole quattro righe dei codici:
+  **20/21**. Il test 10 («la porta senza il proprietario non apre») è rosso da owner per costruzione, perché la
+  porta si apre proprio al proprietario: è dichiarato nel file, verde atteso come app.
+* Regressione: 53 pgTAP che nominano `articoli_componenti`, `listini_righe_componenti` o un `E_BOM_`, più 14 presidi
+  trasversali (riferimenti morti, `search_path` delle DEFINER, catalogo dei messaggi, codici, bersagli, COMMENT al
+  presente…), ciascuno senza e con l'SQL estratto: tutti uguali, tranne `script/test-rubinetto-primo-motivo-v1`
+  test 5, il conteggio esatto delle funzioni che chiamano l'helper del primo motivo: da 48 a 50 (il guard e il verbo),
+  aggiornato con la nota. ⚠️ Fino all'apply quel test è rosso sullo scratch (vede 48).
+
+### 14.4 Parte A — doc e ricadute
+
+* **Doc:** nuove `catalogo/manual/fn_chiudi_legame_distinta.md`, `vendite/manual/fn_prezzi_legame_oltre_la_fine.md`,
+  `script/manual/fn_check_legame_distinta_chiudibile.md`; aggiornate
+  `catalogo/manual/trgfn_articoli_componenti_block_modifica_struttura.md` e
+  `vendite/manual/trgfn_listini_righe_comp_guard_immutabilita_v5.md`. Le schede auto-generate dei tre oggetti nuovi
+  nascono dopo l'apply.
+* **BE19** (al team BE, dopo l'apply): «Chiudi riga» della distinta. Il PATCH su `valido_al` resta il primo tentativo;
+  sull'avviso `E_BOM_CHIUSURA_CON_PREZZI` (CONFLITTO_STATO, campo `valido_al`, contesto `prezzi` e `versioni`) il FE apre
+  una finestra di conferma che elenca i prezzi da `vendite.fn_prezzi_legame_oltre_la_fine(legame, fine)` (listino,
+  versione, stato, inizio, fine, prezzo, `importo_per_kit`, esito: «si chiude» / «si toglie»), e alla conferma il BE
+  chiama `catalogo.fn_chiudi_legame_distinta(legame, fine, numero di prezzi visti)`. I quattro codici nuovi nella mappa
+  generata e nei ripieghi. `E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE` e `E_BOM_CHIUSURA_PRIMA_DEI_PREZZI` sono rifiuti sul
+  campo, senza finestra.
+
+### 14.5 Parte B — che cosa è scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/catalogo/20261111-30` | D4 + D21 (Q6): `trgfn_articoli_guard_iva_bom_attiva` diventa un CONSTRAINT TRIGGER `AFTER UPDATE OF iva_id`, `DEFERRABLE INITIALLY DEFERRED`, `WHEN` l'IVA cambia; giudica l'IVA di adesso dell'articolo e dei partner sui legami attivi da oggi in poi; aliquota vuota «—»; il contesto porta `campo` e il `tx_id` |
+| `20_code/catalogo/20261111-31` | D5 (R4, Q5): si ritirano `trgfn_articoli_guard_listino_se_composito` e il suo trigger |
+| `20_code/catalogo/20261111-32` | D18: `fn_articolo_usato` confronta ogni FK sulla chiave a cui punta (su `id` come prima; verso un'altra chiave o composita col join sull'articolo; la colonna PERIOD fuori) |
+| `20_code/catalogo/20261111-33` | R5: `catalogo.fn_articolo_flag_etichetta(colonna)`, il nome leggibile delle otto colonne strutturali |
+| `20_code/catalogo/20261111-34` | D20 (Q10): `fn_articolo_colonne_struttura` è la dichiarazione (costante, `IMMUTABLE`), non legge più le regole del form |
+| `20_code/catalogo/20261111-35` | D20, R5: il guard dell'uso cerca la prima colonna cambiata nella dichiarazione, l'etichetta dal BB |
+| `20_code/catalogo/20261111-36` | R5: il guard degli oneri prende l'etichetta dal BB; COMMENT al presente |
+| `20_code/catalogo/20261111-37` | D19: la porta della struttura valida NOT NULL e tipo di ogni valore prima di scrivere (`E_PARAMETRO_INVALIDO` col nome leggibile); COMMENT al presente |
+
+Nessun codice nuovo nella parte B.
+
+### 14.6 Le scelte dentro la parte B (da guardare, Tid)
+
+1. **D20: la dichiarazione è una funzione costante**, e le regole del form restano righe di
+   `dbops.lock_columns_conditional`, confrontate col pgTAP. Il form non può leggere una funzione per colonna (il
+   registro è per colonna), quindi «un posto» vuol dire: la porta e il guard leggono la dichiarazione, l'elenco
+   `UPDATE OF` e il form sono copie presidiate. Una regola del form spenta ora non tocca la porta.
+2. **D4: «legami da oggi in poi»** è scritto nel guard come `validita && [oggi, ∞)`. Le tre funzioni di D28
+   (`fn_articolo_*_di_distinta_*`) rispondono un boolean e non danno i partner con la loro IVA: per questo il filtro
+   resta nella query, come in `fn_check_articolo_riga`.
+3. **D4, i pgTAP:** girano con i vincoli `IMMEDIATE`, quindi lì il guard scatta a fine istruzione. Il cambio in due
+   istruzioni si prova differendo il solo vincolo (`SET CONSTRAINTS catalogo.trg_articoli_a10_guard_iva_bom_attiva_upd`,
+   col nome qualificato).
+4. **D19: la frase di `E_PARAMETRO_INVALIDO` porta il nome leggibile** («gestito a lotti»), non il nome della
+   colonna, che resta nel contesto (`campo`). La frase della colonna estranea («non correggibili da qui: …») non è
+   del giro e resta com'è.
+5. **D5:** il codice `E_LISTINO_RIGA_COMPOSITO_VIETATO` resta: lo solleva il lato riga.
+
+### 14.7 Le prove della parte B
+
+* SQL estratto `-30` … `-37` sopra quello della parte A: compila, preCondition tutte come attese, `plpgsql_check`
+  pulito sulle cinque plpgsql toccate.
+* pgTAP nuovi: `catalogo/test-iva-kit-a-fine-transazione-v1.sql` (7/7) e `catalogo/test-articolo-usato-chiave-fk-v1.sql`
+  (3/3, dichiarato `pgtap-runner: owner`: crea una tabella con una FK verso il codice, e una tabella temporanea non
+  può avere una FK verso una permanente).
+* Riscritto `catalogo/test-articolo-colonne-struttura-v1.sql` (13/13): 10-12 rovesciati (presidiavano proprio il
+  legame fra porta e form che Q10 ritira), il 4 chiede che il guard legga la dichiarazione, l'8 diventa
+  `E_PARAMETRO_INVALIDO`, nuovo l'8-bis (NOT NULL).
+* Regressione con A + B: tutti i pgTAP di `catalogo`, quelli che scrivono `catalogo.articoli` o nominano i codici e
+  le funzioni del giro, la lista della parte A e i 14 presidi trasversali: **88 uguali** con e senza; diverge solo il
+  rubinetto, che col conteggio aggiornato passa da rosso a verde.
+
+### 14.8 Doc, ricadute, chiusura
+
+* **Doc (parte B):** nuova `catalogo/manual/fn_articolo_flag_etichetta.md`; cancellata
+  `catalogo/manual/trgfn_articoli_guard_listino_se_composito.md` (oggetto ritirato); aggiornate
+  `fn_articolo_colonne_struttura`, `fn_articolo_correggi_struttura`, `fn_articolo_usato`,
+  `trgfn_articoli_guard_iva_bom_attiva`, `trgfn_articoli_guard_struttura_se_usato`,
+  `trgfn_articoli_guard_onere_natura`, `articoli` (sezioni «che cosa oggi non copre» chiuse, note di migrazione).
+  Gli indici `catalogo/index.md` e `index.ci.md` nominano ancora il guard ritirato: sono generati, si allineano alla
+  rigenerazione dopo l'apply.
+* **BE7 → BE20** (al team BE, dopo l'apply): il rifiuto `E_BOM_IVA_DISCORDANTE` arriva **a fine transazione**. In
+  autocommit è l'UPDATE stesso; dentro un `transaction.atomic()` arriva all'uscita del blocco, non sull'istruzione:
+  il servizio dell'articolo lo mappa lì. Il form può ora cambiare l'IVA di un kit e dei suoi componenti in una
+  transazione.
+* **BE4** (già in §5): `E_PARAMETRO_INVALIDO` dalla correzione della struttura ha ora il `campo` nel contesto.
+* **Da committare:** i tredici changeSet `20261111-25` … `-37`; le quattro righe nuove dei due CSV dei codici; i
+  pgTAP nuovi `catalogo/test-chiudi-legame-con-prezzi-v1`, `test-iva-kit-a-fine-transazione-v1`,
+  `test-articolo-usato-chiave-fk-v1`; i pgTAP toccati `catalogo/test-articolo-colonne-struttura-v1` e
+  `script/test-rubinetto-primo-motivo-v1`; la doc di §14.4 e §14.8; questo brief.
+* **Prima dell'apply:** niente da correggere a mano. Dopo: i pgTAP come app (il test 10 di
+  `test-chiudi-legame-con-prezzi-v1` verde solo così), la rigenerazione delle schede dei sei oggetti nuovi o
+  ritirati.
+
+### 14.9 Apply e commit, 2026-11-10
+
+* Tid ha applicato il giro 3 su dbdev e scratch; i pgTAP come app sono verdi, compreso il test 10 di
+  `test-chiudi-legame-con-prezzi-v1` e il rubinetto col conteggio 50.
+* Corretto prima della corsa: `test-articolo-usato-chiave-fk-v1` dichiarava `pgtap-runner: owner` senza la riga
+  `pgtap-runner-motivo`, che `scripts/testpgtap.sh` pretende.
+* Commit del giro 3 su `dev/db-tid` (2026-11-10), coi file di §14.8. Restano: la rigenerazione delle schede
+  auto-generate (indici di `catalogo` col guard ritirato), BE19 e BE20 al team BE.

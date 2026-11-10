@@ -79,7 +79,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_concedi_azione(p_auth_user_id integer, p_permission_codename character varying)
-IS 'Fixture pgTAP: concede un''azione di processo a un utente con un override (config.user_override_azioni, abilitata, valido da oggi senza scadenza), idempotente sulla UNIQUE (utente, azione), e la fa VALERE: dal tetto d''area (brief-db-permessi-tetto-area) se l''area dell''azione non arriva al suo livello_minimo_area (script.fn_area_consente_azione) scrive un override d''area AL MINIMO, valido da oggi. Un override d''area valido gia'' scritto dal test che chiude l''area -> RAISE (la fixture non scavalca la scelta del test). Serve ai pgTAP dei verbi che applicano un''azione con script.fn_guard_azione: l''operatore di fn_pgtap_crea_emittente_operatore non ha ne'' azioni ne'' aree. Azione inesistente -> RAISE. Solo per i pgTAP (brief-db-magazzino-verbi-con-permesso §3.2; rev 20261004-59).';
+IS 'Fixture pgTAP: concede un''azione di processo a un utente con un override (config.user_override_azioni, abilitata, valido da oggi senza scadenza), idempotente sulla UNIQUE (utente, azione), e la fa VALERE: se l''area dell''azione non arriva al suo livello_minimo_area (script.fn_area_consente_azione, il tetto d''area) scrive un override d''area al minimo, valido da oggi. Un override d''area valido gia'' scritto dal test che chiude l''area -> RAISE: la fixture non scavalca la scelta del test. Serve ai pgTAP dei verbi che applicano un''azione con script.fn_guard_azione: l''operatore di dbops.fn_pgtap_crea_emittente_operatore non ha ne'' azioni ne'' aree. Azione inesistente -> RAISE. Solo per i pgTAP.';
 ```
 
 </div>

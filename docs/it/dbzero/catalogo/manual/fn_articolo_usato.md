@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_articolo_usato`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -59,15 +59,12 @@ di sistema, con l'id dell'articolo come parametro.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### ⭐ Ogni FK si confronta sulla chiave a cui punta
 
-La funzione considera solo le FK a una colonna, e confronta quella colonna con l'id
-dell'articolo, senza guardare a quale colonna dell'articolo la FK punta.
-
-* **Una FK verso un'altra chiave rompe il predicato.** Una FK verso `codice`, che il modello
-  ammette, fa fallire la chiamata con un errore di tipo, e con lei il guard e il form.
-* **Una FK composita è saltata in silenzio.** Una tabella che punta all'articolo con una chiave
-  a più colonne non conta come uso: è l'opposto del «fail-closed» che il predicato promette.
+* Una FK verso `id`, a una colonna, si confronta con l'id dell'articolo.
+* Una FK verso un'altra chiave (per esempio il codice), o a più colonne, si confronta col valore
+  di quella chiave nell'articolo: nessuna FK si salta, e nessuna fallisce per il tipo.
+* La colonna del periodo di una FK temporale non entra nel confronto: dice quando, non chi.
 
 ---
 
@@ -78,12 +75,16 @@ dell'articolo, senza guardare a quale colonna dell'articolo la FK punta.
   un'altra azienda conta lo stesso.
 * `db/pgtap/catalogo/test-articolo-colonne-struttura-v1.sql` — le colonne che il predicato spegne
   nel form sono quelle che la porta amministratore riapre.
+* `db/pgtap/catalogo/test-articolo-usato-chiave-fk-v1.sql` — una FK verso il codice dell'articolo:
+  il predicato risponde senza errore, vuoto e con una riga (runner owner: è DDL).
 
 ---
 
 ### Note di migrazione
 
 * 2026-10-13 — nasce, insieme al guard «usato» (brief-db-articoli-ammessi-per-documento).
+* 2026-11-09 — ogni FK si confronta sulla chiave a cui punta: una FK verso il codice non rompe più
+  il predicato, e una composita non si salta (brief-db-revisione-catalogo, giro 3).
 
 ---
 

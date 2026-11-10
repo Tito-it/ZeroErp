@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_articolo_correggi_struttura`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 9 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -93,13 +93,9 @@ Restano fuori:
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Un valore nullo o del tipo sbagliato esce come errore grezzo.** Un valore vuoto su una
-  colonna obbligatoria dà l'errore di PostgreSQL `23502`, un testo su un flag dà `22P02`. Nessuno
-  dei due è un codice registrato.
-* **Le colonne correggibili dipendono dalle regole del form**: se una regola si spegne, la sua
-  colonna non si corregge più (vedi `catalogo.fn_articolo_colonne_struttura`).
-* **Il listino del composito non segue la regola delle righe vive.** Il guard del listino
-  rifiuta il passaggio a composito anche se le righe di listino stanno solo in versioni chiuse.
+* Nessun difetto noto. Prima di scrivere, ogni valore si valida: un valore vuoto su una colonna
+  obbligatoria, o di un tipo che la colonna non accetta, è `E_PARAMETRO_INVALIDO` col nome
+  leggibile della colonna (`catalogo.fn_articolo_flag_etichetta`), non un errore di PostgreSQL.
 
 ---
 
@@ -135,6 +131,9 @@ Restano fuori:
   correzione rigiudica le righe vive prima e dopo.
 * 2026-10-21 — le righe vive si giudicano sulla riga intera, con l'erogazione su offerta e
   contratto (brief-db-offerta-emissione-ed-erogazione).
+* 2026-11-09 — i valori si validano prima di scrivere; le colonne vengono dalla dichiarazione, non
+  più dalle regole del form; il guard del listino del composito è ritirato, e passa la regola delle
+  righe vive (brief-db-revisione-catalogo, giro 3).
 
 ---
 

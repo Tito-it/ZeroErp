@@ -7,9 +7,9 @@
 --   migliorie-generali-da-test-valutazione.md §3 D7.
 --
 -- Semantica attesa (il contratto, non l'implementazione):
---   - costruisce la catena intera: mondo, coppia (emittente, utility),
---     registro coerente, testata — e la testata e' SCRIVIBILE, che e' la
---     prova che i quattro anelli ci sono tutti;
+--   - costruisce la catena intera: il cliente (dbops.fn_pgtap_cliente_del_builder),
+--     il registro coerente con l'emittente di chi agisce, la testata — e la
+--     testata e' SCRIVIBILE, che e' la prova che gli anelli ci sono tutti;
 --   - il registro appartiene all'azienda di chi agisce, e il billing account
 --     pure: e' cio' che i guard del dominio pretendono;
 --   - il terzo parametro riusa un cliente gia' costruito invece di farne uno

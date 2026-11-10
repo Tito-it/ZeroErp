@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le colonne codice che l'automazione CODICE_MAIUSCOLO NON normalizza. La regola e' per esclusione (decisione Tid 2026-11-04): ogni colonna codice di una tabella dell'ambito si salva in upper(btrim(...)) (script.trgfn_codice_maiuscolo), e una tabella nuova nasce presidiata. Qui stanno le colonne codice che non sono un codice dell'operatore: una chiave tecnica letta dal codice per nome, o un codice esterno dove il maiuscolo conta. Il MOTIVO e' obbligatorio. Una riga toglie il trigger al giro successivo (dbops.fn_run_automations_codice_maiuscolo, azione TOGLIE). codice_interno non e' nel perimetro: lo scrive la migrazione. Seed da 80_data (CSV dbops/automazione_codice_eccezioni.csv).
+> Le colonne codice che l'automazione CODICE_MAIUSCOLO non normalizza. La regola e' per esclusione: ogni colonna codice di una tabella dell'ambito si salva in upper(btrim(...)) (script.trgfn_codice_maiuscolo), e una tabella nuova nasce presidiata. Qui stanno le colonne codice che non sono un codice dell'operatore: una chiave tecnica letta dal codice per nome, o un codice esterno dove il maiuscolo conta. Il motivo e' obbligatorio. Una riga toglie il trigger al giro successivo (dbops.fn_run_automations_codice_maiuscolo, azione TOGLIE). codice_interno non e' nel perimetro: lo scrive la migrazione. Seed da 80_data (CSV dbops/automazione_codice_eccezioni.csv).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

@@ -43,7 +43,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_roster_processo(p_processo_codice text, p_sigla character varying)
-IS 'Helper di fixture pgTAP: crea un''azienda e le aggancia l''utente tecnico di un processo automatico, cosi'' la coppia (processo, azienda) compare in dbops.vw_processi_roster. ⭐ Rev 2026-09-09: il corpo e'' passato a dbops.fn_pgtap_crea_emittente_operatore, di cui questa e'' il caso in cui il processo e'' il SOGGETTO del test e quindi non ha un default. ⚠️ Pretende django.auth_user, che costruisce manage.py migrate e non Liquibase.';
+IS 'Helper di fixture pgTAP: crea un''azienda e le aggancia l''utente tecnico di un processo automatico, cosi'' la coppia (processo, azienda) compare in dbops.vw_processi_roster. Delega a dbops.fn_pgtap_crea_emittente_operatore: e'' il suo caso in cui il processo e'' il SOGGETTO del test, e quindi non ha un default. ⚠️ Pretende django.auth_user, che costruisce manage.py migrate e non Liquibase.';
 ```
 
 </div>

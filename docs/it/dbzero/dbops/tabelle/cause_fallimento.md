@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Il vocabolario delle cause per cui un lavoro automatico fallisce: AMBIENTE (server, connessione, risorse, ruoli del database), PROGRAMMA (serve una modifica al codice o al database), CONFIGURAZIONE (si sistema dalle impostazioni dell'applicazione). Lo dichiarano dbops.processi.causa_fallimento (la natura dei fallimenti del processo quando l'ambiente e' sano) e config.codici_errore.causa_fallimento (la natura di un errore preciso, quando lo sa), con FK verso questa tabella. maintenance.vw_job_run_da_guardare ne ricava la causa di ogni riga, e dbops.presidi_cause dice a chi tocca: le cause di quel presidio coincidono con questo vocabolario (pgTAP maintenance/test-vw-job-run-da-guardare-causa-v1). Seed: 80_data/sql/dbops/cause_fallimento.csv. Brief: brief-db-presidio-job-run-a-chi-tocca (D4).
+> Il vocabolario delle cause per cui un lavoro automatico fallisce: AMBIENTE (server, connessione, risorse, ruoli del database), PROGRAMMA (serve una modifica al codice o al database), CONFIGURAZIONE (si sistema dalle impostazioni dell'applicazione). Lo dichiarano dbops.processi.causa_fallimento (la natura dei fallimenti del processo quando l'ambiente e' sano) e config.codici_errore.causa_fallimento (la natura di un errore preciso, quando lo sa), con FK verso questa tabella. maintenance.vw_job_run_da_guardare ne ricava la causa di ogni riga, e dbops.presidi_cause dice a chi tocca: le cause di quel presidio coincidono con questo vocabolario (pgTAP maintenance/test-vw-job-run-da-guardare-causa-v1). Seed: 80_data/sql/dbops/cause_fallimento.csv.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

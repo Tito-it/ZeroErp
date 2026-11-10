@@ -37,7 +37,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION dbops.fn_trigger_argomenti(p_tgargs bytea)
-IS 'Gli argomenti di un trigger (pg_trigger.tgargs) come text[], nell''ordine del CREATE TRIGGER; vuoto se non ne ha. Taglia sui byte NUL e riconverte con la codifica del server: la forma encode(tgargs,''escape'') + rtrim(…,''\000'') tronca un argomento finale che termina con zero (rtrim toglie l''insieme {\,0}) e storpia i caratteri non ASCII. Building block per chi riconosce un trigger generico dai suoi argomenti. Brief: brief-db-lock-di-colonna-fuori-registro §7.';
+IS 'Gli argomenti di un trigger (pg_trigger.tgargs) come text[], nell''ordine del CREATE TRIGGER; vuoto se non ne ha. Taglia sui byte NUL e riconverte con la codifica del server: la forma encode(tgargs,''escape'') + rtrim(…,''\000'') tronca un argomento finale che termina con zero (rtrim toglie l''insieme {\,0}) e storpia i caratteri non ASCII. Building block per chi riconosce un trigger generico dai suoi argomenti: i riconoscitori e i riconciliatori delle automazioni ATTIVO, DELETE_BLOCK e guard utility, i lock di colonna (script.fn_doc_lock_montaggi, dbops.vw_lock_columns_vivi) e i presidi dei codici d''errore.';
 ```
 
 </div>

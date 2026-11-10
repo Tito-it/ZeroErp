@@ -35,37 +35,7 @@ AS $function$
   $function$
 
 COMMENT ON FUNCTION dbops.fn_get_child_fk_col(p_conoid oid)
-IS '
-  Ritorna il **nome della colonna figlia** (lato *child*) coinvolta in un
-  vincolo di **foreign key** identificato dall’OID del vincolo
-  (`pg_constraint.oid`).
-
-  • **Ritorno**: `text` — Nome della colonna (`pg_attribute.attname`) sul
-    lato child. Restituisce **NULL** se l’OID non corrisponde ad alcun vincolo
-    o se non è possibile risalire alla colonna.
-
-  • **Parametro**
-    - `p_conoid oid`: OID del vincolo in `pg_constraint`.
-
-  • **Logica**
-    - Legge da `pg_constraint` il `conrelid` (tabella child) e l’indice della
-      prima colonna `conkey[1]`.
-    - Risale a `pg_attribute` per ottenere `attname` della colonna child.
-
-  • **Casi d’uso**
-    - Utility nei processi di automazione per derivare il nome della colonna
-      figlia partendo dal vincolo FK (es. generazione trigger/validation).
-
-  • **Note**
-    - La funzione considera **solo la prima colonna** della FK:
-      per vincoli **composti** restituisce la colonna in posizione 1.
-      Estensioni future potrebbero esporre **tutte** le colonne
-      (es. funzione che ritorna `text[]`).
-    - Non applica filtri su colonne “dropped”; qualora necessario, valutare
-      l’uso di `a.attisdropped = false`.
-    - La funzione è di fatto **STABLE** (consulta soli cataloghi di sistema).
-
-  ';
+IS 'Il nome della colonna figlia di un vincolo di foreign key, dato l''OID del vincolo (pg_constraint.oid): legge conrelid e la prima colonna (conkey[1]) e risale a pg_attribute. Per una FK composta restituisce solo la colonna in posizione 1; NULL se l''OID non e'' un vincolo. La chiama dbops.fn_run_automations_attivo, che lavora sulle FK a una colonna. Legge solo i cataloghi di sistema, ma e'' dichiarata VOLATILE.';
 ```
 
 </div>

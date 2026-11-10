@@ -57,12 +57,14 @@
 --          dei sedici test Django del 19-09
 --    9   : INSERT diretto respinto con 42501 (insufficient_privilege)
 --   10   : la SELECT della vista di presidio non solleva
---   POSTURA — il residuo del bootstrap
---   11   : NESSUN privilegio su maintenance.test_pgagent_log: nessuno la
---          scrive ne' la legge, rinasce a ogni ricostruzione da zero (albero
---          v1), e un SELECT dato per sbaglio non lo vedrebbe nessuno.
---          Brief: brief-db-privilegio-app-job-run-log §3.3, chiuso da
---          brief-db-revisione-maintenance §5 (2026-11-03).
+--   IL RESIDUO DEL BOOTSTRAP
+--   11   : maintenance.test_pgagent_log NON c'e': la tabella di collaudo
+--          dell'albero v1, senza lettori ne' scrittori, rinasce a ogni
+--          ricostruzione da zero e la ritira il changeSet
+--          00_schema/maintenance/20261111-23. Prima il test chiedeva che
+--          l'app non ci avesse privilegi; senza la tabella la domanda non
+--          ha piu' oggetto.
+--          rev 2026-11-09 (brief-db-revisione-dbops, giro 14, N4).
 --
 -- Read-only: tutto dentro BEGIN;/ROLLBACK;. Il test 9 non scrive niente:
 --   viene respinto prima di toccare la riga.
@@ -140,13 +142,10 @@ SELECT lives_ok(
   '10. la SELECT sulla vista di presidio non solleva');
 
 -- ============================================================
--- POSTURA — il residuo del bootstrap
+-- IL RESIDUO DEL BOOTSTRAP
 -- ============================================================
-SELECT ok(NOT (has_table_privilege('zeroerp_app', 'maintenance.test_pgagent_log', 'SELECT')
-            OR has_table_privilege('zeroerp_app', 'maintenance.test_pgagent_log', 'INSERT')
-            OR has_table_privilege('zeroerp_app', 'maintenance.test_pgagent_log', 'UPDATE')
-            OR has_table_privilege('zeroerp_app', 'maintenance.test_pgagent_log', 'DELETE')),
-          '11. zeroerp_app non ha privilegi su maintenance.test_pgagent_log');
+SELECT hasnt_table('maintenance', 'test_pgagent_log',
+          '11. maintenance.test_pgagent_log e'' ritirata');
 
 SELECT * FROM finish();
 ROLLBACK;

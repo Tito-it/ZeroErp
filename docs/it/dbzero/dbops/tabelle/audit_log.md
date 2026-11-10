@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/audit_log.md" %}
 # 📚 Tabella `audit_log`
 
+> 📝 **Descrizione**
+>
+> Il registro tecnico delle automazioni e degli strumenti DBA: una riga per esito di un lavoro (funzione, stato, durata, righe toccate, parametri e risultato, l'errore se c'e'). Lo stato e' OK, ERROR, DRYRUN o WARN (chk_audit_status). La porta di scrittura e' dbops.fn_audit_log_once; la riga nasce nella transazione del chiamante e si annulla con lei: un esito che deve sopravvivere a un errore sta in dbops.error_log. Ci scrivono solo funzioni di dbops e maintenance: lo presidia dbops.vw_audit_log_scrittori_fuori_perimetro, perche' il registro non deve contenere dati di dominio. La scadenza delle righe (cleanup_at) la governa la regola CLEANUP_AT di dbops.automation_rules_tbl.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

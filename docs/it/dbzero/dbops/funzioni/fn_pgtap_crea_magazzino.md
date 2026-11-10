@@ -40,7 +40,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_magazzino(p_codice character varying, p_usa_ubicazioni boolean)
-IS 'Fixture pgTAP: un magazzino dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore: il guard di scope lo pretende), con un indirizzo fabbricato (dbops.fn_pgtap_crea_indirizzo_dettaglio) e usa_ubicazioni scelto dal test. Da chiamare dopo fn_pgtap_set_contesto_operatore. Rev 20261018-41: la riga la scrive il BB magazzino.fn_crea_magazzino (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 7).';
+IS 'Fixture pgTAP: un magazzino dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore: il guard di scope lo pretende), con un indirizzo fabbricato (dbops.fn_pgtap_crea_indirizzo_dettaglio) e usa_ubicazioni scelto dal test. La riga la scrive il building block magazzino.fn_crea_magazzino. Da chiamare dopo script.fn_pgtap_set_contesto_operatore.';
 ```
 
 </div>

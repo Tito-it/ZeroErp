@@ -66,6 +66,9 @@ AS $function$
     RETURN v_like > 0;
   END;
   $function$
+
+COMMENT ON FUNCTION dbops.fn_table_in_scope(p_schema text, p_table text)
+IS 'La tabella p_schema.p_table e'' nell''ambito delle automazioni secondo dbops.automation_scope? true se la tabella di ambito non c''e'' o e'' vuota, se non ha righe per quello schema (lo schema intero), se una riga dello schema ha table_like = *all, o se p_table soddisfa il LIKE di una riga dello schema. Lo schema si confronta senza maiuscole, table_like cosi'' com''e''. Il filtro sugli schemi lo fa prima dbops.fn_resolve_scope: qui si decide solo la tabella. STABLE. La usano i generatori e i riconciliatori delle automazioni.';
 ```
 
 </div>

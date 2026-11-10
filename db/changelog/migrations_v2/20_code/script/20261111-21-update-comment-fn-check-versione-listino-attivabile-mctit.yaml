@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENT DI script.fn_check_versione_listino_attivabile: I TRE MOTIVI
+#   Brief: brief-db-revisione-dbops, giro 14 (§34).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il COMMENT elencava due motivi; il corpo ne ha tre (manca
+#   E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA). Portava anche un brief,
+#   una sigla e la cronaca di dove stava la regola prima (M39 del brief).
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   * I tre motivi, nell'ordine del corpo; tolta la cronaca.
+#   Solo COMMENT ON (1 istruzioni), nessun corpo. Testi di partenza
+#   letti su dbdev; il rollback rimette quelli di oggi (IS NULL dove mancava).
+#   Nessuna preCondition: un COMMENT su un oggetto che non c'e' fallisce da
+#   se', e nessuno degli oggetti nasce dopo 20_code.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261111-21-update-comment-fn-check-versione-listino-attivabile-mctit.yaml
+
+  - changeSet:
+      id: 20261111-21-update-comment-fn-check-versione-listino-attivabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di script.fn_check_versione_listino_attivabile con i tre motivi. Brief: brief-db-revisione-dbops, giro 14.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_check_versione_listino_attivabile(bigint) IS
+                'Perche'' una versione di listino NON si attiva: jsonb array di motivi (codice, reason, reason_key, dettaglio, valori), il primo e'' quello che si solleva; ''[]'' = si attiva. Motivi, nell''ordine: 1. E_LISTINO_VERSIONE_SPENTA (attivo = false); 2. E_LISTINO_VERSIONE_SENZA_RIGHE (nessuna riga attiva e nessun composito con prezzo bundle); 3. E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA (un articolo di una riga attiva o di un kit e'' una quota fissa a canone, vendite.fn_articolo_quota_fissa_a_canone, e la versione non gli da'' una periodicita'', vendite.fn_listino_periodicita_articolo; il primo per codice articolo). Lo stato non e'' un motivo: lo giudica la matrice delle transizioni. Versione inesistente o fuori perimetro: ''[]''. Non solleva. La chiamano il guard vendite.trgfn_listini_versioni_guard_transizione_stato (verso ATTIVA), il verbo vendite.fn_attiva_versione_listino (prima di chiudere le precedenti) e la superficie vendite.vw_listini_versioni_azioni (registro config.azioni_riga). SECURITY INVOKER, STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_check_versione_listino_attivabile(bigint) IS
+                'Perche'' una versione di listino NON si attiva: jsonb array di motivi (codice, reason, reason_key, dettaglio, valori), il primo e'' quello che si solleva; ''[]'' = si attiva. Motivi: 1. E_LISTINO_VERSIONE_SPENTA (attivo = false); 2. E_LISTINO_VERSIONE_SENZA_RIGHE (nessuna riga attiva e nessun composito con prezzo bundle). Lo stato non e'' un motivo: lo giudica la matrice. Versione inesistente o fuori perimetro: ''[]''. Non solleva. La chiamano il guard vendite.trgfn_listini_versioni_guard_transizione_stato (-> ATTIVA), il verbo vendite.fn_attiva_versione_listino (prima di chiudere le precedenti) e la superficie vendite.vw_listini_versioni_azioni (registro config.azioni_riga). Prima la regola stava solo nel backend (listini_service._plan_versione_state_change). SECURITY INVOKER, STABLE. Brief: brief-modello-documento-vendita §16 (L-4, Tid 2026-10-28).';

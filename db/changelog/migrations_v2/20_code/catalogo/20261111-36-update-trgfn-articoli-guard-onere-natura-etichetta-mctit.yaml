@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_articoli_guard_onere_natura: l'etichetta del flag dal BB (R5).
+#
+#   Il CASE «colonna -> nome leggibile» era la seconda copia di quello del guard dell'uso:
+#   ora lo da' catalogo.fn_articolo_flag_etichetta (-33). Il resto del corpo e' quello del
+#   20261103-18, preso dal vivo; i commenti nel corpo e il COMMENT al presente
+#   (linee-guida-sql §5d). Comportamento uguale.
+#   Rollback: il corpo e il COMMENT di prima.
+#   Brief: brief-db-revisione-catalogo, giro 3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-36-update-trgfn-articoli-guard-onere-natura-etichetta-mctit.yaml
+
+  - changeSet:
+      id: 20261111-36-update-trgfn-articoli-guard-onere-natura-etichetta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard degli oneri: l'etichetta del flag dal BB (R5). Brief: brief-db-revisione-catalogo, giro 3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('catalogo.trgfn_articoli_guard_onere_natura()'),
+                             to_regprocedure('catalogo.fn_articolo_flag_etichetta(text)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_onere_natura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_natura        config.nature_vendita.descrizione%TYPE;
+                  -- Il nome di una colonna di catalogo.articoli: nessuna colonna
+                  -- ne e' il riflesso (come in trgfn_articoli_guard_struttura_se_usato).
+                  v_campo         text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Un articolo-onere (causale_onere_id valorizzato) e' un
+                  --   addebito, non un bene:
+                  --   1. la sua natura non e' merce (script.fn_natura_e_merce);
+                  --   2. non e' gestito a magazzino, non e' composito, non e' a
+                  --      lotti ne' a matricola.
+                  --   BEFORE INSERT OR UPDATE OF natura_vendita_id,
+                  --   causale_onere_id, gestito_a_magazzino, is_composito,
+                  --   requires_lotto, requires_serial su catalogo.articoli. Un
+                  --   UPDATE che non cambia nessuna delle sei colonne non si
+                  --   rigiudica.
+                  -- =========================================================
+                  IF NEW.causale_onere_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.natura_vendita_id   IS NOT DISTINCT FROM OLD.natura_vendita_id
+                     AND NEW.causale_onere_id    IS NOT DISTINCT FROM OLD.causale_onere_id
+                     AND NEW.gestito_a_magazzino IS NOT DISTINCT FROM OLD.gestito_a_magazzino
+                     AND NEW.is_composito        IS NOT DISTINCT FROM OLD.is_composito
+                     AND NEW.requires_lotto      IS NOT DISTINCT FROM OLD.requires_lotto
+                     AND NEW.requires_serial     IS NOT DISTINCT FROM OLD.requires_serial THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 1. La natura. Natura assente: il BB da' NULL, parla la FK.
+                  IF script.fn_natura_e_merce(NEW.natura_vendita_id) IS TRUE THEN
+                      SELECT COALESCE(nv.descrizione, nv.codice)
+                        INTO v_natura
+                        FROM config.nature_vendita nv
+                       WHERE nv.id = NEW.natura_vendita_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME::text, 'E_ARTICOLO_ONERE_NATURA_MERCE',
+                          jsonb_build_object(
+                              'campo',             'natura_vendita_id',
+                              'articolo_id',       NEW.id,
+                              'causale_onere_id',  NEW.causale_onere_id,
+                              'natura_vendita_id', NEW.natura_vendita_id),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_natura);
+                  END IF;
+
+                  -- 2. La struttura: la prima caratteristica da bene, in
+                  --    quest'ordine (magazzino, distinta, lotto, matricola).
+                  v_campo := CASE
+                      WHEN NEW.gestito_a_magazzino IS TRUE THEN 'gestito_a_magazzino'
+                      WHEN NEW.is_composito        IS TRUE THEN 'is_composito'
+                      WHEN NEW.requires_lotto      IS TRUE THEN 'requires_lotto'
+                      WHEN NEW.requires_serial     IS TRUE THEN 'requires_serial'
+                  END;
+
+                  IF v_campo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME::text, 'E_ARTICOLO_ONERE_STRUTTURA',
+                          jsonb_build_object(
+                              'campo',            v_campo,
+                              'articolo_id',      NEW.id,
+                              'causale_onere_id', NEW.causale_onere_id),
+                          NEW.tx_id,
+                          NEW.codice,
+                          catalogo.fn_articolo_flag_etichetta(v_campo));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_onere_natura() IS
+                  'Guard BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id, gestito_a_magazzino, is_composito, requires_lotto, requires_serial su catalogo.articoli: un articolo-onere (causale_onere_id valorizzato) e'' un addebito, non un bene. 1. La sua natura non e'' merce (script.fn_natura_e_merce, la destinazione ORDINE_VENDITA dal vocabolario config.nature_vendita) -> E_ARTICOLO_ONERE_NATURA_MERCE, campo natura_vendita_id: un onere creato senza dire la natura prenderebbe il DEFAULT, la merce. 2. Non e'' gestito a magazzino, non e'' composito, non e'' a lotti ne'' a matricola -> E_ARTICOLO_ONERE_STRUTTURA, campo = la prima colonna in quest''ordine, valori codice dell''articolo e nome leggibile della caratteristica (catalogo.fn_articolo_flag_etichetta); nessuna porta amministratore. Cosi'' magazzino, prelievi, scarico e distinta restano a posto per costruzione anche con gli oneri sulle righe di ordine e bolla. La 1 parla prima della 2. Un UPDATE che non cambia nessuna delle sei colonne non rigiudica.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo e il COMMENT del 20261103-18.
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_onere_natura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_natura        config.nature_vendita.descrizione%TYPE;
+                  v_campo         text;
+                  v_etichetta     text;
+              BEGIN
+                  IF NEW.causale_onere_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.natura_vendita_id   IS NOT DISTINCT FROM OLD.natura_vendita_id
+                     AND NEW.causale_onere_id    IS NOT DISTINCT FROM OLD.causale_onere_id
+                     AND NEW.gestito_a_magazzino IS NOT DISTINCT FROM OLD.gestito_a_magazzino
+                     AND NEW.is_composito        IS NOT DISTINCT FROM OLD.is_composito
+                     AND NEW.requires_lotto      IS NOT DISTINCT FROM OLD.requires_lotto
+                     AND NEW.requires_serial     IS NOT DISTINCT FROM OLD.requires_serial THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF script.fn_natura_e_merce(NEW.natura_vendita_id) IS TRUE THEN
+                      SELECT COALESCE(nv.descrizione, nv.codice)
+                        INTO v_natura
+                        FROM config.nature_vendita nv
+                       WHERE nv.id = NEW.natura_vendita_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME::text, 'E_ARTICOLO_ONERE_NATURA_MERCE',
+                          jsonb_build_object(
+                              'campo',             'natura_vendita_id',
+                              'articolo_id',       NEW.id,
+                              'causale_onere_id',  NEW.causale_onere_id,
+                              'natura_vendita_id', NEW.natura_vendita_id),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_natura);
+                  END IF;
+
+                  v_campo := CASE
+                      WHEN NEW.gestito_a_magazzino IS TRUE THEN 'gestito_a_magazzino'
+                      WHEN NEW.is_composito        IS TRUE THEN 'is_composito'
+                      WHEN NEW.requires_lotto      IS TRUE THEN 'requires_lotto'
+                      WHEN NEW.requires_serial     IS TRUE THEN 'requires_serial'
+                  END;
+
+                  IF v_campo IS NOT NULL THEN
+                      v_etichetta := CASE v_campo
+                          WHEN 'gestito_a_magazzino' THEN 'gestito a magazzino'
+                          WHEN 'is_composito'        THEN 'composito'
+                          WHEN 'requires_lotto'      THEN 'gestito a lotti'
+                          WHEN 'requires_serial'     THEN 'gestito a matricola'
+                      END;
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME::text, 'E_ARTICOLO_ONERE_STRUTTURA',
+                          jsonb_build_object(
+                              'campo',            v_campo,
+                              'articolo_id',      NEW.id,
+                              'causale_onere_id', NEW.causale_onere_id),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_etichetta);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_onere_natura() IS
+                  'Guard BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id, gestito_a_magazzino, is_composito, requires_lotto, requires_serial su catalogo.articoli: un articolo-onere (causale_onere_id valorizzato) e'' un addebito, non un bene. 1. La sua natura non e'' merce (script.fn_natura_e_merce: destinazione ORDINE_VENDITA) -> E_ARTICOLO_ONERE_NATURA_MERCE, campo natura_vendita_id. 2. Non e'' gestito a magazzino, non e'' composito, non e'' a lotti ne'' a matricola -> E_ARTICOLO_ONERE_STRUTTURA, campo = la prima colonna in quest''ordine, valori codice dell''articolo e nome leggibile della caratteristica; nessuna porta amministratore. La 1 parla prima della 2. Un UPDATE che non cambia nessuna delle sei colonne non rigiudica.';

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le FK che l'automazione ATTIVO NON lega: per una riga qui, dbops.fn_run_automations_attivo non genera ne' il block sul padre ne' il require sul figlio, e dbops.fn_ritira_attivo_eccezioni toglie quelli gia' generati. Una FK per riga (schema e tabella del FIGLIO, colonna FK), col MOTIVO obbligatorio: un'eccezione senza perche' e' un buco nel framework. Prima riga il 2026-09-25: config.profili_accesso_bindings.identita_digitale_id — porta e profili si sganciano (brief-db-blocco-login-per-credenziale §12.3). Seed da 80_data (CSV dbops/automazione_attivo_eccezioni.csv).
+> Le FK che l'automazione ATTIVO non lega: per una riga qui, dbops.fn_run_automations_attivo non genera ne' il block sul padre ne' il require sul figlio, e dbops.fn_ritira_attivo_eccezioni toglie quelli gia' generati. Una FK per riga (schema e tabella del FIGLIO, colonna FK; uq_automazione_attivo_eccezioni_fk), col motivo obbligatorio e non vuoto (chk_automazione_attivo_eccezioni_motivo): un'eccezione senza perche' e' un buco nel framework. Seed da 80_data (CSV dbops/automazione_attivo_eccezioni.csv).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

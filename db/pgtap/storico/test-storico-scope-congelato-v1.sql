@@ -4,7 +4,9 @@
 -- pgtap-runner-motivo: il test fa DDL — crea madri di prova in vendite/acquisti
 --   con le loro shadow e i loro trigger, e mette FORCE ROW LEVEL SECURITY sulla
 --   shadow di prova: e' il FORCE a rendere l'owner soggetto alle policy, perche'
---   `titodb` non e' superuser e non puo' fare SET ROLE. E la fixture costruisce
+--   chi fa la DDL lavora come proprietario (zeroerp_owner) e non puo' diventare
+--   zeroerp_app nella stessa transazione: il ruolo di login non ne e' membro.
+--   rev 2026-11-09 (brief-db-revisione-dbops, giro 14, M37). E la fixture costruisce
 --   DUE aziende: un operatore dentro un perimetro non potrebbe crearle.
 -- pgTAP test — lo SCOPE CONGELATO delle shadow di storico
 --   fn_storico_arma_scope · fn_ensure_storico_table · trgfn_storico_generic ·
