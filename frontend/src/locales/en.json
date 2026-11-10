@@ -2150,6 +2150,10 @@
         "componente_padre": "It is the item itself: it cannot be a component of its own bill of materials.",
         "componente_composito": "It is a kit itself: a bill of materials contains simple items only.",
         "iva_discordante": "Its VAT rate differs from the kit's: components carry the parent's VAT."
+      },
+      "azione_reason": {
+        "prezzi_altre_aziende": "It has bundle prices in other companies' price lists, which you cannot see: the link cannot be closed while those prices stay open.",
+        "prezzi_dopo_la_fine": "It has bundle prices in active price lists that start after this date: the link can be closed from their start at the earliest."
       }
     }
   },
