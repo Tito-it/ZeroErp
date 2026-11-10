@@ -210,6 +210,14 @@ immutabilita' (Fase 5):
   dedicati (§1.5 e §1.6).
 - L'endpoint aggiorna solo i campi presenti nel payload.
 - In assenza di campi supportati, restituisce `400`.
+- ⭐ **L'IVA di un kit e dei suoi componenti** deve coincidere sui legami
+  attivi da oggi in poi (`E_BOM_IVA_DISCORDANTE`, `400`, campo `iva_id`). Dal
+  2026-11-10 la regola si giudica **a fine transazione**: il guard
+  `catalogo.trgfn_articoli_guard_iva_bom_attiva` è un vincolo differito (D4 e
+  D21 di brief-db-revisione-catalogo). Il PATCH apre una transazione sua, e il
+  rifiuto arriva al suo COMMIT, fuori dal punto in cui il service traduce gli
+  errori d'integrità: lo traduce il traduttore generale, con lo stesso codice
+  e lo stesso campo. Prova: `apps/catalogo/tests/db/test_errori_articolo_giro3_db.py`.
 
 ### 1.5 Disattiva articolo
 
@@ -270,7 +278,9 @@ l'aggiornamento, **in una transazione**: un aggiornamento rifiutato annulla anch
 aggiornato.
 
 * chi non è SUPER_ADMIN: `E_PERMESSO_NEGATO`; `correzione_struttura` vuota o non oggetto, o una
-  colonna fuori dalla sede: `400` `E_PARAMETRO_INVALIDO`; articolo inesistente:
+  colonna fuori dalla sede: `400` `E_PARAMETRO_INVALIDO`; un valore vuoto su una colonna NOT NULL,
+  o di un tipo che la colonna non accetta: `400` `E_PARAMETRO_INVALIDO` col **campo** = la colonna
+  e il nome leggibile nella frase (dal 2026-11-10, D19); articolo inesistente:
   `E_ARTICOLO_NOT_FOUND`; una correzione che renderebbe non valide righe di documenti ancora
   aperti: `409` `E_ARTICOLO_STRUTTURA_RIGHE_APERTE` (i documenti in `dettaglio.righe`) — li solleva
   tutti il verbo, l'unica porta (il backend non ripete nessuna di queste regole);
@@ -592,7 +602,7 @@ chiudibile finche' `valido_al IS NULL`):
 | Campo | Tipo | Significato |
 |---|---|---|
 | `puo_chiudersi` | bool | `true` se `valido_al IS NULL` (riga aperta) |
-| `data_min_chiusura` | date \| null | `valido_dal` se chiudibile, altrimenti `null` |
+| `data_min_chiusura` | date \| null | La prima fine ammessa: la più tarda fra `valido_dal` e **ieri** (la fine non cambia i giorni già passati), se chiudibile; altrimenti `null` |
 | `data_default_chiusura` | date \| null | `GREATEST(valido_dal, today)` se chiudibile, altrimenti `null` |
 | `motivo_non_chiudibile` | string \| null | `'RIGA_GIA_CHIUSA'` o `null` |
 
@@ -668,37 +678,99 @@ emittente disponibile):
 `CATALOGO_BOM_DEFAULT_PARTECIPA_QTA` e `CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE`
 sono stati ritirati con i loro due campi (`20261002-67`).
 
-### 4.3 Aggiorna componente
+### 4.3 Aggiorna componente — RITIRATO (2026-11-10)
+
+Il `PATCH` di un legame non esiste più, e con lui la rotta
+`/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/` (decisione di
+Tid, §14.10.3 di brief-db-revisione-catalogo). La distinta è una storia: i campi
+di struttura sono immutabili (`E_BOM_MODIFICA_VIETATA`), e l'unica cosa che di
+un legame cambia, la **fine**, passa dal verbo (§4.5), che sa portare la
+conferma dei prezzi bundle. Il PATCH su `valido_al` era una seconda strada per
+la stessa scrittura, e su un legame con prezzi riceveva un avviso
+(`E_BOM_CHIUSURA_CON_PREZZI`) che non poteva confermare.
+
+Per cambiare i valori: chiudere il legame (§4.5) e inserirne uno nuovo
+(POST §4.2). Sono due chiamate, senza un endpoint atomico. Le regole della fine
+(`E_BOM_CHIUSURA_RETROATTIVA`, `E_BOM_LEGAME_CHIUSO`) le dà il verbo, sul campo
+`valido_al`.
+
+### 4.4 Elimina componente — RITIRATO (2026-11-09)
+
+Il `DELETE` di un legame non esiste più (BE11 di brief-db-revisione-catalogo):
+la distinta è una storia, e il trigger d'immutabilità rifiuta ogni
+cancellazione. Un legame si **chiude** (§4.5). Dal 2026-11-10 la rotta non
+esiste più (§4.3).
+
+### 4.5 Chiudi un legame, coi suoi prezzi bundle (2026-11-10)
+
+Un prezzo bundle (`vendite.listini_righe_componenti`) vale solo finché il
+componente è nel kit. Chiudere il legame chiude anche i prezzi che vanno oltre
+la fine, o li toglie se stanno in una bozza e cominciano dopo, e da quella
+data il prezzo del kit in quei listini scende. Per decisione di Tid
+(Q19-Q22 di brief-db-revisione-catalogo) questo non succede in silenzio: la
+chiusura si **conferma**. Il giro è quello dell'annullo con legami:
+
+1. `POST …/chiudi/` senza `prezzi_confermati`. Se il legame non ha prezzi da
+   toccare, si chiude subito.
+2. Se ha prezzi: `409 E_BOM_CHIUSURA_CON_PREZZI`, con `ui_action =
+   confirm_and_retry` e campo `valido_al`. Il frontend apre la finestra.
+3. `GET …/chiusura/?valido_al=` elenca i prezzi e dà il numero (`prezzi`).
+4. `POST …/chiudi/` con `prezzi_confermati` = quel numero. Se nel frattempo
+   i prezzi sono cambiati, la risposta è di nuovo il passo 2, coi numeri
+   aggiornati.
+
+#### 4.5.1 I prezzi che la chiusura tocca
 
 | | |
 |---|---|
-| **Metodo** | `PATCH` |
-| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/` |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/chiusura/?valido_al=AAAA-MM-GG` |
+| **Sorgente** | `vendite.fn_prezzi_legame_oltre_la_fine` |
 
-#### Regole specifiche
+Risposta: `{ valido_al, prezzi, righe[] }`. Per ogni riga ci sono `riga_id`,
+`listino_versione_id`, `listino_id`, `listino_codice`, `codice_versione`,
+`stato_versione`, `valido_dal`, `valido_al`, `prezzo`, `importo_per_kit`
+(prezzo × coefficiente del legame), `attivo`, `nel_perimetro` ed `esito`:
 
-- I campi struttura (`componente_id`, `coeff_qta`, `obbligatorio`,
-  `esposizione_in_fattura`) sono
-  **immutabili** per design: il trigger DB
-  `trgfn_articoli_componenti_block_modifica_struttura` blocca le UPDATE.
-- L'unico campo struttura modificabile e' `valido_al` (per chiudere la
-  riga). Il pattern operativo per cambiare i valori e' "chiudi riga
-  (`valido_al`) + inserisci nuova versione" (POST §4.2): due chiamate,
-  nessun endpoint atomico.
+| `esito` | Il prezzo… |
+| --- | --- |
+| `CHIUDE` | comincia entro la fine: prende la stessa fine |
+| `TOGLIE` | comincia dopo la fine, in una bozza: si cancella |
+| `BLOCCA` | comincia dopo la fine, in una versione non in bozza: la chiusura si rifiuta |
 
-### 4.4 Elimina componente
+⚠️ Un prezzo in un listino che chi chiama non vede arriva con
+`nel_perimetro = false` e tutte le altre colonne vuote: si sa solo che c'è.
+`prezzi` è il numero delle righe, ed è quello da dichiarare. Se ci sono righe
+`BLOCCA` o fuori perimetro, il verbo rifiuta prima di confrontare il numero.
+
+#### 4.5.2 Chiudi
 
 | | |
 |---|---|
-| **Metodo** | `DELETE` |
-| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/` |
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/chiudi/` |
+| **Verbo DB** | `catalogo.fn_chiudi_legame_distinta` |
 
-#### Regole DELETE
+Body: `{ "valido_al": "AAAA-MM-GG", "prezzi_confermati": 2 }`
+(`prezzi_confermati` va omesso al primo tentativo). Risposta:
+`{ componente, prezzi_chiusi, prezzi_tolti }`: `componente` è la riga come la
+dà §4.1.
 
-- Un articolo non puo` essere componente di se stesso (guard create).
-- Le regole temporali e di coerenza strutturale restano governate dal DB.
-- Il delete struttura BoM e' bloccato dal trigger
-  `block_modifica_struttura`: usare 4.3 chiudere la riga (`valido_al`).
+Il backend non giudica niente: verifica solo che il legame sia dell'articolo
+del percorso (`404 E_CATALOGO_COMPONENTE_NOT_FOUND`) e che i due campi abbiano
+la forma giusta (`400 E_CATALOGO_VALIDATION`, col campo). Il resto lo dice il
+verbo:
+
+| Codice | Quando |
+| --- | --- |
+| `E_BOM_CHIUSURA_CON_PREZZI` (409, `confirm_and_retry`) | Ci sono prezzi da chiudere o togliere, e la conferma manca o non corrisponde |
+| `E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE` (409) | Ci sono prezzi in listini che chi chiude non vede |
+| `E_BOM_CHIUSURA_PRIMA_DEI_PREZZI` (400) | Un prezzo di una versione non in bozza comincia dopo la fine: il messaggio dice la prima fine ammessa |
+| `E_PERMESSO_NEGATO` | Manca il livello TUTTO sul catalogo, oppure sui listini quando ci sono prezzi |
+| `E_BOM_LEGAME_NOT_FOUND`, `E_BOM_LEGAME_CHIUSO`, `E_BOM_CHIUSURA_RETROATTIVA` | Il legame non c'è, è già finito, oppure la fine è prima di ieri |
+
+Prove: `apps/catalogo/tests/db/test_chiusura_legame_prezzi_db.py` (sul DB
+vero) e il pgTAP `catalogo/test-chiudi-legame-con-prezzi-v1`.
 
 ---
 

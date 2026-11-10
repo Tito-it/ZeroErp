@@ -2155,6 +2155,17 @@
         "prezzi_altre_aziende": "It has bundle prices in other companies' price lists, which you cannot see: the link cannot be closed while those prices stay open.",
         "prezzi_dopo_la_fine": "It has bundle prices in active price lists that start after this date: the link can be closed from their start at the earliest."
       }
+    },
+    "chiusura_prezzi": {
+      "prezzi": "Bundle prices affected by the closing",
+      "riga": "Price list {listino}, version {versione} ({stato}) · from {dal} to {al} · {prezzo}, on the kit {kit}",
+      "senza_fine": "no end",
+      "esito_chiude": "closes on the same date",
+      "esito_toglie": "is removed (draft)",
+      "esito_blocca": "prevents the closing",
+      "fuori_perimetro": "{n} prices in price lists you cannot see",
+      "nessun_prezzo": "In the meantime this component's bundle prices are gone: the link closes without touching any price list.",
+      "spiegazione": "A bundle price only applies while the component is in the kit: by confirming, the listed prices end together with the link, and from that date the kit price in those price lists no longer includes the component."
     }
   },
   "billing_account": {

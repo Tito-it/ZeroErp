@@ -106,9 +106,6 @@ _ARTICOLO_UPDATE_ALLOWED_KEYS: frozenset[str] = ARTICOLI_UPDATE_COLUMNS
 _UOM_CREATE_ALLOWED_KEYS: frozenset[str] = UOM_OPERATIVA_WRITE_COLUMNS
 _UOM_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(key for key in UOM_OPERATIVA_WRITE_COLUMNS if key != "uom_id")
 _COMPONENTE_CREATE_ALLOWED_KEYS: frozenset[str] = COMPONENTE_WRITE_COLUMNS
-_COMPONENTE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(
-    key for key in COMPONENTE_WRITE_COLUMNS if key != "componente_id"
-)
 _NOTA_ALLOWED_KEYS: frozenset[str] = NOTA_WRITE_COLUMNS
 _NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 _NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
@@ -850,56 +847,40 @@ def _extract_uom_operativa_payload(
     return data
 
 
-# Scopo: Estrae il payload scrivibile di un componente BoM con regole condivise.
+# Scopo: Estrae il payload scrivibile di un componente BoM nuovo.
+# ⚠️ Solo la CREATE: dal 2026-11-10 un legame non si aggiorna (la PATCH e'
+#    ritirata). La sua fine passa dal verbo (`fn_chiudi_componente`).
 def _extract_componente_payload(
     payload: dict[str, Any],
     *,
-    for_update: bool,
     function_name: str,
 ) -> dict[str, Any]:
     data: dict[str, Any] = {}
     payload_message = "Payload componente non valido."
 
-    if for_update:
-        ErrorManager.require(
-            "componente_id" not in payload,
-            code="E_CATALOGO_VALIDATION",
-            message="Payload componente non valido.",
-            detail="componente_id e' immutabile e non puo' essere aggiornato.",
-            context={"field": "componente_id"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        _V.validate_allowed_keys(
-            payload,
-            allowed=_COMPONENTE_UPDATE_ALLOWED_KEYS | {"componente_id"},
-            function_name=function_name,
-            message=payload_message,
-        )
-    else:
-        _V.validate_allowed_keys(
-            payload,
-            allowed=_COMPONENTE_CREATE_ALLOWED_KEYS,
-            function_name=function_name,
-            message=payload_message,
-        )
-        componente_id = _extract_payload_uuid(
-            payload,
-            "componente_id",
-            function_name=function_name,
-            nullable=False,
-            message=payload_message,
-        )
-        ErrorManager.require(
-            isinstance(componente_id, UUID),
-            code="E_CATALOGO_VALIDATION",
-            message="Payload componente non valido.",
-            detail="componente_id obbligatorio.",
-            context={"field": "componente_id"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        data["componente_id"] = componente_id
+    _V.validate_allowed_keys(
+        payload,
+        allowed=_COMPONENTE_CREATE_ALLOWED_KEYS,
+        function_name=function_name,
+        message=payload_message,
+    )
+    componente_id = _extract_payload_uuid(
+        payload,
+        "componente_id",
+        function_name=function_name,
+        nullable=False,
+        message=payload_message,
+    )
+    ErrorManager.require(
+        isinstance(componente_id, UUID),
+        code="E_CATALOGO_VALIDATION",
+        message="Payload componente non valido.",
+        detail="componente_id obbligatorio.",
+        context={"field": "componente_id"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    data["componente_id"] = componente_id
 
     coeff_qta = _V.extract_optional_decimal(
         payload,
@@ -911,7 +892,7 @@ def _extract_componente_payload(
     )
     if coeff_qta is not _MISSING:
         data["coeff_qta"] = coeff_qta
-    elif not for_update:
+    else:
         ErrorManager.raise_error(
             code="E_CATALOGO_VALIDATION",
             message="Payload componente non valido.",
@@ -936,7 +917,7 @@ def _extract_componente_payload(
         message=payload_message,
     )
     # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
-    valido_dal = _apply_valido_dal_default(valido_dal, for_create=not for_update)
+    valido_dal = _apply_valido_dal_default(valido_dal, for_create=True)
     if valido_dal is not _MISSING:
         data["valido_dal"] = valido_dal
     if valido_al is not _MISSING:
@@ -1739,7 +1720,7 @@ def fn_list_componenti_pagina(
 def fn_create_componente(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "catalogo.catalogo_service.fn_create_componente"
     articolo = _get_articolo_base(articolo_id)
-    data = _extract_componente_payload(payload, for_update=False, function_name=function_name)
+    data = _extract_componente_payload(payload, function_name=function_name)
     ErrorManager.require(
         str(data["componente_id"]) != str(articolo["id"]),
         code="E_CATALOGO_VALIDATION",
@@ -1756,40 +1737,6 @@ def fn_create_componente(articolo_id: UUID | str, payload: dict[str, Any]) -> di
         componente_row_id = repository.create_componente(articolo_id, data)
     except IntegrityError as exc:
         _translate_componente_integrity_error(exc, function_name=function_name)
-    result = repository.get_componente(articolo_id, componente_row_id)
-    assert result is not None
-    return result
-
-
-# Scopo: Aggiorna un componente BoM e restituisce la riga aggiornata.
-def fn_update_componente(
-    articolo_id: UUID | str,
-    componente_row_id: UUID | str,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    function_name = "catalogo.catalogo_service.fn_update_componente"
-    _get_articolo_base(articolo_id)
-    data = _extract_componente_payload(payload, for_update=True, function_name=function_name)
-    _V.require_campi_da_aggiornare(
-        data,
-        message="Payload componente non valido.",
-        detail="Nessun campo aggiornabile presente nel payload.",
-        function_name=function_name,
-    )
-    repository = CatalogoBomRepository()
-    try:
-        updated = repository.update_componente(articolo_id, componente_row_id, data)
-    except IntegrityError as exc:
-        _translate_componente_integrity_error(exc, function_name=function_name)
-    ErrorManager.require(
-        updated,
-        code="E_CATALOGO_COMPONENTE_NOT_FOUND",
-        message="Componente non trovato.",
-        detail=f"Nessun componente id={componente_row_id} per articolo id={articolo_id}.",
-        context={"articolo_id": articolo_id, "componente_row_id": str(componente_row_id)},
-        function_name=function_name,
-        log_to_db=False,
-    )
     result = repository.get_componente(articolo_id, componente_row_id)
     assert result is not None
     return result
@@ -1871,6 +1818,66 @@ def _componente_dell_articolo(
         detail=f"Nessun componente id={componente_id} per articolo id={articolo_id}.",
         function_name=function_name,
     )
+
+
+# ⭐ LA CHIUSURA DI UN LEGAME COI PREZZI BUNDLE (BE19 di
+#    brief-db-revisione-catalogo, giro 3, 2026-11-10). Un legame che ha prezzi
+#    bundle oltre la nuova fine non si chiude in silenzio: il verbo del DB
+#    `catalogo.fn_chiudi_legame_distinta` rifiuta il primo tentativo con
+#    `E_BOM_CHIUSURA_CON_PREZZI` (`confirm_and_retry`), la finestra elenca i
+#    prezzi (`fn_get_chiusura_componente`) e la conferma DICHIARA quanti ne ha
+#    visti (`prezzi_confermati`). E' lo stampo dell'annullo con legami
+#    (`_annullo_con_legami.py`); un legame senza prezzi si chiude al primo colpo.
+_CAMPO_PREZZI_CONFERMATI = "prezzi_confermati"
+
+
+# Scopo: I prezzi bundle che la chiusura del legame alla data `valido_al`
+#        tocca, per la finestra di conferma: le righe del lettore del DB e il
+#        loro numero (`prezzi`), che e' cio' che la conferma dichiara.
+# ⚠️ `prezzi` conta TUTTE le righe, come `legami` dell'annullo. Il verbo conta
+#    le sole CHIUDE e TOGLIE, ma una riga BLOCCA o fuori perimetro gli fa
+#    rifiutare la chiusura PRIMA del confronto: quando la conferma serve, i due
+#    numeri coincidono. Scegliere qui quali esiti contare sarebbe una copia
+#    della regola del verbo.
+def fn_get_chiusura_componente(
+    articolo_id: UUID | str, componente_id: UUID | str, params: dict[str, Any],
+) -> dict[str, Any]:
+    function_name = "catalogo.catalogo_service.fn_get_chiusura_componente"
+    _componente_dell_articolo(articolo_id, componente_id, function_name=function_name)
+    valido_al = _V.require_date(params, "valido_al", function_name=function_name)
+    righe = CatalogoBomRepository().prezzi_legame_oltre_la_fine(componente_id, valido_al)
+    return {"valido_al": valido_al, "prezzi": len(righe), "righe": righe}
+
+
+# Scopo: Chiude il legame della distinta alla data `valido_al`, coi suoi
+#        prezzi bundle, dal verbo del DB. Ritorna il legame come la lista lo
+#        mostra e quanti prezzi il verbo ha chiuso e tolto.
+# ⛔ Al primo tentativo `prezzi_confermati` NON c'e': dichiarare un numero mai
+#    letto svuoterebbe la conferma. Un valore non intero e' un 400 col campo.
+def fn_chiudi_componente(
+    articolo_id: UUID | str, componente_id: UUID | str, payload: dict[str, Any],
+) -> dict[str, Any]:
+    function_name = "catalogo.catalogo_service.fn_chiudi_componente"
+    _V.validate_allowed_keys(
+        payload,
+        allowed=frozenset({"valido_al", _CAMPO_PREZZI_CONFERMATI}),
+        function_name=function_name,
+        message="Payload chiusura componente non valido.",
+    )
+    _componente_dell_articolo(articolo_id, componente_id, function_name=function_name)
+    valido_al = _V.require_date(payload, "valido_al", function_name=function_name)
+    confermati = _V.optional_positive_int(
+        payload, _CAMPO_PREZZI_CONFERMATI, function_name=function_name,
+    )
+    repository = CatalogoBomRepository()
+    esito = repository.chiudi_legame(componente_id, valido_al, confermati)
+    componente = repository.get_componente(articolo_id, componente_id)
+    assert componente is not None
+    return {
+        "componente": componente,
+        "prezzi_chiusi": esito["prezzi_chiusi"],
+        "prezzi_tolti": esito["prezzi_tolti"],
+    }
 
 
 # Scopo: Crea una nota per un componente articolo.

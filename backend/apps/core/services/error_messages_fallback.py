@@ -151,11 +151,18 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_BOM_COMPONENTE_COMPOSITO": "Il componente e' a sua volta un articolo composito: una distinta contiene solo articoli semplici.",
     "E_BOM_COMPONENTE_DIVENTA_COMPOSITO": "L'articolo e' un componente di una distinta: non puo' diventare composito.",
     "E_BOM_COMPONENTE_PADRE": "L'articolo non puo' essere componente della propria distinta.",
+    # Brief-db-revisione-catalogo, giro 3 (2026-11-10): la chiusura di un
+    #    legame coi prezzi bundle. Il catalogo porta componente, kit e numeri
+    #    con dei `%s`; qui la regola senza argomenti.
+    "E_BOM_CHIUSURA_CON_PREZZI": "Chiudendo il componente si chiudono anche dei prezzi bundle nei listini: da quella data il prezzo del kit non comprende piu' il componente. Serve una conferma.",
+    "E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE": "Il componente ha prezzi bundle in listini che non puoi vedere: il legame non si chiude finche' quei prezzi restano aperti.",
+    "E_BOM_CHIUSURA_PRIMA_DEI_PREZZI": "Il componente ha prezzi bundle in listini gia' attivi che cominciano dopo questa data: scegliere una fine del legame da quel giorno in poi.",
     # Brief-db-revisione-catalogo, giro 1 (2026-11-09): la fine di un legame.
     #    Il catalogo porta la data con un `%s`; qui la frase senza argomenti.
     "E_BOM_CHIUSURA_RETROATTIVA": "La fine del legame non puo' cambiare i giorni gia' passati: scegliere una data da ieri in poi.",
     "E_BOM_IVA_DISCORDANTE": "Le aliquote IVA di articolo padre e componenti della distinta devono coincidere.",
     "E_BOM_LEGAME_CHIUSO": "Il legame e' gia' finito: la sua fine non si cambia piu'. Per rimettere il componente nella distinta, inserire un legame nuovo.",
+    "E_BOM_LEGAME_NOT_FOUND": "Il componente della distinta non c'e': ricaricare la distinta e riprovare.",
     "E_BOM_MODIFICA_VIETATA": "Struttura BoM immutabile: i campi di struttura non sono modificabili. Per correggere, chiudere la riga e inserirne una nuova versione.",
     "E_BOM_VALIDO_AL_INVALIDO": "Data di chiusura non valida: deve essere uguale o successiva alla data di inizio della riga.",
     "E_CAMBIO_PASSWORD_RICHIESTO": "Prima di continuare e' necessario cambiare la password.",

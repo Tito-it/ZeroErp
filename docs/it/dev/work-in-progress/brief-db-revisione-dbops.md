@@ -224,13 +224,13 @@ ancora le tabelle).
 | 9-septuagies-sexies | **Tid** ⏭️ | Commit del giro 11 (solo i file del giro) | §30.5 | 9-septuagies-quinquies |
 | 9-septuagies-septies | ✅ sessione DB | Giro 12 (Q15): censimento, nodi N1-N3 decisi da Tid, scritto e provato | §31 | 9-septuagies-quinquies |
 | 9-septuagies-octies | **Tid** ⏭️ | Apply del giro 12, pgTAP di §31.6, commit | §31.6 | 9-septuagies-septies |
-| 9-septuagies-nonies | team BE | BE6 del giro 12: `E_CONTATTI_SOGGETTO_OBBLIGATORIO` nelle politiche d'errore, dopo l'apply | §31.5 | 9-septuagies-octies |
+| 9-septuagies-nonies | ✅ team BE (policy e ripiego presenti, verificato il 2026-11-10) | BE6 del giro 12: `E_CONTATTI_SOGGETTO_OBBLIGATORIO` nelle politiche d'errore, dopo l'apply | §31.5 | 9-septuagies-octies |
 | 9-octogies | ✅ sessione DB | S-BE-2 e S-BE-3 verificati, N4 deciso (a), scritti e provati (`20261110-95` … `-98`) | §32 | 9-septuagies-octies |
 | 9-octogies-semel | ✅ sessione DB | Giro 13 (Q10) scritto e provato (`20261111-14` … `-17`) | §33 | 9-octogies |
 | 9-octogies-bis | ✅ Tid | Apply di S-BE-2, S-BE-3 e giro 13, pgTAP verdi (2026-11-09) | §33.6 | 9-octogies-semel |
-| 9-octogies-ter | **team BE** ⏭️ | BE8 (giro 13), S-BE-2 e S-BE-3 lato BE, BE6 dei codici `E_CONTATTI_SOGGETTO_OBBLIGATORIO` e `E_SOGGETTO_ID_FISCALE_IMMUTABILE` | §32.4, §33.4 | 9-octogies-bis |
+| 9-octogies-ter | ✅ team BE (PR #81, `2af6d986f5`; riga chiusa il 2026-11-10) | BE8 (giro 13), S-BE-2 e S-BE-3 lato BE, BE6 dei codici `E_CONTATTI_SOGGETTO_OBBLIGATORIO` e `E_SOGGETTO_ID_FISCALE_IMMUTABILE` | §32.4, §33.4 | 9-octogies-bis |
 | 9-octogies-quater | ✅ Tid | Commit di §32 e §33 (`aaa12df0ef`, PR #79) | §8 | 9-octogies-bis |
-| 9-octogies-quinquies | **team BE** ⏭️ | BE8: `session_key` esce da `parameter_repository.py` (non fatto nella PR #77) | §5, §33.4 | 9-octogies-bis |
+| 9-octogies-quinquies | ✅ team BE (PR #81: `session_key` fuori da `parameter_repository.py`; riga chiusa il 2026-11-10) | BE8: `session_key` esce da `parameter_repository.py` (non fatto nella PR #77) | §5, §33.4 | 9-octogies-bis |
 | 9-octogies-sexies | ✅ Tid | Via al censimento del giro 14 (2026-11-09) | §8 | 9-octogies-quater |
 | 9-octogies-septies | ✅ sessione DB | Giro 14 censito: marche per schema, §3.2 e §3.1 riverificate, cinque nodi | §34 | 9-octogies-sexies |
 | 9-octogies-octies | ✅ Tid | Nodi N1-N5 come da proposta; numeri dal primo libero: `20261111-18` … `-24`, le altre sessioni dal `-25` (2026-11-09) | §34.5 | 9-octogies-septies |
@@ -239,8 +239,8 @@ ancora le tabelle).
 | 9-octogies-undecies | ✅ Tid | Doc auto-generata e commit del giro 14 (`fe388dbfdf`, 2026-11-10) | §34.6.6 | 9-octogies-decies |
 | 9-nonagies | ✅ sessione DB | S-BE-1 censito: montaggi, padri, tipi, storia del bersaglio, sei nodi | §35 | 9-octogies-undecies |
 | 9-nonagies-semel | **Tid** ⏭️ | Nodi N1-N6 di S-BE-1 e numeri | §35.4 | 9-nonagies |
-| 9-sexagies-octodecies | team BE | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
-| 9-quinquagies-octies | team BE | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
+| 9-sexagies-octodecies | ✅ team BE (policy e ripiego presenti, verificato il 2026-11-10) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore, dopo l'apply | §28.8 | 9-sexagies-septdecies |
+| 9-quinquagies-octies | ✅ team BE (BE2, §5; riga chiusa il 2026-11-10) | BE2, dopo l'apply | §5 | 9-quinquagies-septies |
 | 9-quinquagies-semel | **team BE** ⏭️ | BE12 (il filtro «vivo» dei processi) e BE6 (`W_TXID_BYPASS_PARAMETRO_ASSENTE`), dopo l'apply | §5, §24.9 | 9-quinquagies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-sexagies-octodecies | team BE ✅ (2026-11-09) | `E_GUARD_UTILITY` nella rigenerazione delle politiche d'errore: già in policy, `genera_error_policies --check` pulito | §28.8 | 9-sexagies-septdecies |

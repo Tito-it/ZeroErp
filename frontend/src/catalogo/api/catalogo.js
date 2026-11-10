@@ -112,8 +112,28 @@ export function createArticoloComponente(articoloId, payload) {
   return api.post(`${BASE}/articoli/${articoloId}/componenti/`, payload)
 }
 
-export function updateArticoloComponente(articoloId, compId, payload) {
-  return api.patch(`${BASE}/articoli/${articoloId}/componenti/${compId}/`, payload)
+// ⚠️ Il PATCH del legame (`…/componenti/<id>/`) esiste ancora lato BE, ma il
+//    FE non lo usa piu' dal 2026-11-10: l'unica scrittura di un legame e' la
+//    sua fine, e passa dal verbo (`chiudiArticoloComponente`).
+
+// Scopo: La chiusura di un legame coi suoi prezzi bundle (BE19 di
+//        brief-db-revisione-catalogo, giro 3).
+// GET …/chiusura/?valido_al= -> { valido_al, prezzi, righe[] }: i prezzi che la
+//   chiusura tocca (listino_codice, codice_versione, stato_versione, valido_dal,
+//   valido_al, prezzo, importo_per_kit, nel_perimetro, esito CHIUDE/TOGLIE/
+//   BLOCCA). `prezzi` e' il numero da dichiarare nella conferma.
+export function getChiusuraArticoloComponente(articoloId, compId, validoAl) {
+  return api.get(`${BASE}/articoli/${articoloId}/componenti/${compId}/chiusura/`, {
+    params: { valido_al: validoAl },
+  })
+}
+
+// POST …/chiudi/ { valido_al, prezzi_confermati? } -> { componente,
+//   prezzi_chiusi, prezzi_tolti }. ⚠️ Al primo tentativo SENZA
+//   `prezzi_confermati`: con prezzi il DB chiede di confermare
+//   (E_BOM_CHIUSURA_CON_PREZZI, `confirm_and_retry`).
+export function chiudiArticoloComponente(articoloId, compId, payload) {
+  return api.post(`${BASE}/articoli/${articoloId}/componenti/${compId}/chiudi/`, payload)
 }
 
 // --- Unita' di misura (CRUD) ---
