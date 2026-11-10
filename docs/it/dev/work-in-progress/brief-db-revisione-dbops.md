@@ -5463,6 +5463,20 @@ no, per non rifare il prestito (stesso criterio di `20260929-09`).
 * **Per Tid:** rilanciare il migrate (da zero dove si era fermato, l'update su dbdev e scratch).
 * **Lezione:** «nessun oggetto nasce dopo 20_code» si verifica, non si scrive: un COMMENT, come un DROP, va cercato anche
   nei changeSet di `80_data` e `90_end`.
+* **Secondo guasto, stesso caso (2026-11-11):** rilanciato da zero, il migrate si ferma sul `20261111-20`: «constraint
+  `chk_job_run_log_processo_dichiarato` for table `job_run_log` does not exist». Il vincolo nasce in
+  `90_end/20260905-16`. La prima volta avevo censito solo il `-18`, non tutto il giro: errore mio.
+  * **Censimento esteso**, ora su tutti i changeSet di questa revisione dal `20261111-18` (`-18` … `-24`, `-40` … `-46`,
+    `-67`): ogni bersaglio di COMMENT cercato fra le creazioni di `70_dati_sistema`, `80_data`, `85_pgagent` e `90_end`.
+    Resta **solo** questo. Il censimento riconosce anche il caso del `-18`, quindi trova quello che cerca. Il `-23`
+    (DROP di `maintenance.test_pgagent_log`) non ha lettori nelle fasi successive. Il `-24` scrive in
+    `dbops.sec_functions_owner` prima del CSV, ma e' scritto per reggere da zero (lo dice la sua intestazione).
+  * **Correzione**, come per il `-18`: dal `-20` esce il COMMENT sul vincolo (in `changes` e in `rollback`) e il changeSet
+    prende `validCheckSums: ANY`. Nuovo `90_end/20261111-68-update-comment-chk-job-run-log-processo-dichiarato`, con lo
+    stesso testo e preCondition HALT.
+  * **Provato:** l'SQL estratto del `-20` e del `-68`, change e rollback, su dbdev in ROLLBACK, senza errori. Il testo
+    del `-68` e' identico a quello vivo. Guardrail verdi. **Non provato:** il migrate da zero.
+  * **Per Tid:** rilanciare il migrate da zero, poi l'update su dbdev e scratch (il `-68` riscrive un testo che c'e' gia').
 
 ## 35. S-BE-1 — le frasi della famiglia ATTIVO senza tabelle: censimento (2026-11-10)
 
