@@ -32,11 +32,12 @@ IMPOSTAZIONI_ORDER_COLUMNS: dict[str, str] = {
 # Cosa si PUO' cercare (cosa si cerca lo dice il catalogo).
 _RICERCA_IMPOSTAZIONI = RicercaFull("config.parametri_impostazioni", ("code", "description"))
 
-# Firma fn_get_parameter_full estesa (2026-05-15): aggiunto in coda
-# p_categoria_cliente_id (smallint) per gating soglie commerciali per
-# categoria cliente del BA destinatario.
-# Catena priorita':
-#   user -> categoria_cliente -> group -> emittente -> session -> function -> default
+# Firma di fn_get_parameter_full: codice, emittente, utente, gruppi, funzione,
+# categoria cliente. Il livello «sessione» e' uscito dal modello il 2026-11-09
+# (Q10, giro 13 di brief-db-revisione-dbops): non c'e' piu' il parametro, ne' la
+# colonna `session_key` degli override.
+# Catena priorita' (sei livelli):
+#   user -> categoria_cliente -> group -> emittente -> function -> default
 #
 # Cast espliciti obbligatori sui placeholder (fix 2026-05-20): psycopg
 # passa i Python int come `integer`, mentre la signature DB ha
@@ -55,7 +56,6 @@ _SQL_RESOLVE = """
         %s::integer,
         %s::integer[],
         %s::text,
-        %s::text,
         %s::smallint
     )
 """
@@ -73,7 +73,6 @@ _SQL_RESOLVE_SE_DICHIARATO = """
         %s::integer,
         %s::integer[],
         %s::text,
-        %s::text,
         %s::smallint
     )
       FROM config.parameters p
@@ -87,7 +86,7 @@ MAX_CODES = 20
 # ⭐ Un override vale per UN ambito: la sua dimensione valorizzata, tutte le
 #    altre NULL. Dal 2026-10-07 lo dice il DB (`chk_parameter_overrides_un_ambito`,
 #    `num_nonnulls(...) = 1`, decisione di Tid: le righe miste non esistono), e
-#    l'unicita' sull'ambito e' vera (`uq_overrides_full_scope_v5`, NULLS NOT
+#    l'unicita' sull'ambito e' vera (`uq_overrides_full_scope_v6`, NULLS NOT
 #    DISTINCT). Qui la tupla resta solo come elenco delle colonne ammesse come
 #    scope: i filtri «le altre dimensioni IS NULL» sarebbero una copia del CHECK
 #    (la stessa pulizia del 20261007-73 sulla lista).
@@ -99,7 +98,6 @@ _DIMENSIONI_OVERRIDE: tuple[str, ...] = (
     "django_group_id",
     "emittente_fiscale_id",
     "categoria_cliente_id",
-    "session_key",
     "function_name",
 )
 
@@ -118,21 +116,20 @@ class ParameterRepository:
 
     # Scopo: Risolve il valore di un singolo parametro applicando la catena di
     #        override:
-    #          user -> categoria_cliente -> group -> emittente -> session -> function -> default
+    #          user -> categoria_cliente -> group -> emittente -> function -> default
     def get_parameter(
         self,
         code: str,
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
-        session_key: str | None = None,
         function_name: str | None = None,
         categoria_cliente_id: int | None = None,
     ) -> str | None:
         with connection.cursor() as cursor:
             cursor.execute(_SQL_RESOLVE, [
                 code, emittente_fiscale_id, django_user_id,
-                group_ids, session_key, function_name,
+                group_ids, function_name,
                 categoria_cliente_id,
             ])
             row = cursor.fetchone()
@@ -172,14 +169,13 @@ class ParameterRepository:
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
-        session_key: str | None = None,
         function_name: str | None = None,
         categoria_cliente_id: int | None = None,
     ) -> str | None:
         with connection.cursor() as cursor:
             cursor.execute(_SQL_RESOLVE_SE_DICHIARATO, [
                 emittente_fiscale_id, django_user_id,
-                group_ids, session_key, function_name,
+                group_ids, function_name,
                 categoria_cliente_id, code,
             ])
             row = cursor.fetchone()
@@ -262,7 +258,7 @@ class ParameterRepository:
         return fetch_paged_with_total(sql, [*params, safe_limit, safe_offset])
 
     # Scopo: Upsert generico di un override su config.parameter_overrides, sul
-    #        vincolo che identifica l'ambito (`uq_overrides_full_scope_v5`, NULLS
+    #        vincolo che identifica l'ambito (`uq_overrides_full_scope_v6`, NULLS
     #        NOT DISTINCT: le dimensioni non scritte valgono NULL e collidono fra
     #        loro). Ritorna l'id dell'override, o None se il parametro NON ESISTE.
     # ⭐ Atomico: due upsert concorrenti sullo stesso ambito si serializzano sul
@@ -295,7 +291,7 @@ class ParameterRepository:
             SELECT p.id, %s, %s
               FROM config.parameters p
              WHERE p.code = %s
-            ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE
+            ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v6 DO UPDATE
                SET overridden_value = EXCLUDED.overridden_value,
                    attivo = true
             RETURNING id

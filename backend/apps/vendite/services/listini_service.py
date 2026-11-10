@@ -886,9 +886,14 @@ def _extract_riga_payload(
 
 
 # Scopo: Valida la coerenza articolo/UoM prima di creare o aggiornare righe prezzo.
-def _validate_riga_articolo_uom(articolo_id: UUID | str, uom_id: int, *, function_name: str) -> None:
+#        `alla_data` = la decorrenza della versione: da quel giorno il prezzo
+#        vale, e da quel giorno l'unita' deve convertirsi nella base
+#        dell'articolo (`catalogo.fn_get_uom_factor`, BE17).
+def _validate_riga_articolo_uom(
+    articolo_id: UUID | str, uom_id: int, *, alla_data: date, function_name: str,
+) -> None:
     repository = ListiniRepository()
-    validation = repository.get_articolo_uom_validation(articolo_id, uom_id)
+    validation = repository.get_articolo_uom_validation(articolo_id, uom_id, alla_data)
     ErrorManager.require(
         validation["articolo_attivo"],
         code="E_VENDITE_VALIDATION",
@@ -911,8 +916,11 @@ def _validate_riga_articolo_uom(articolo_id: UUID | str, uom_id: int, *, functio
         validation["uom_compatibile"],
         code="E_VENDITE_VALIDATION",
         message="Riga listino non valida.",
-        detail="La UoM non e' compatibile con l'articolo selezionato.",
-        context={"articolo_id": str(articolo_id), "uom_id": uom_id},
+        detail=(
+            "La UoM non si converte nell'unita' base dell'articolo alla decorrenza della versione "
+            f"({alla_data.isoformat()}): manca una mappatura dell'articolo o una conversione generale."
+        ),
+        context={"articolo_id": str(articolo_id), "uom_id": uom_id, "field": "uom_id"},
         function_name=function_name,
         log_to_db=True,
     )
@@ -1460,7 +1468,9 @@ def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -
     uom_id = data["uom_id"]
     assert isinstance(articolo_id, str)
     assert isinstance(uom_id, int)
-    _validate_riga_articolo_uom(articolo_id, uom_id, function_name=function_name)
+    _validate_riga_articolo_uom(
+        articolo_id, uom_id, alla_data=versione["valido_dal"], function_name=function_name,
+    )
 
     repository = ListiniRepository()
     try:
@@ -1486,7 +1496,9 @@ def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dic
     )
     articolo_id = str(current["articolo_id"])
     uom_id = int(current["uom_id"])
-    _validate_riga_articolo_uom(articolo_id, uom_id, function_name=function_name)
+    _validate_riga_articolo_uom(
+        articolo_id, uom_id, alla_data=versione["valido_dal"], function_name=function_name,
+    )
     repository = ListiniRepository()
     try:
         updated = repository.update_riga(listino_id, versione_id, riga_id, data)

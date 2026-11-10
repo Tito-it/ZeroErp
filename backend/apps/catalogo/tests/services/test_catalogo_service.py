@@ -42,8 +42,6 @@ Indice test eseguiti:
 28) CatalogoServiceTests.test_fn_create_componente_esposizione_in_fattura_ok
 28b) CatalogoServiceTests.test_fn_create_componente_booleano_ritirato_rifiutato
 28c) CatalogoServiceTests.test_fn_create_componente_esposizione_null_rifiutata
-29) CatalogoServiceTests.test_fn_list_uom_rounding_modes_ok
-30) CatalogoServiceTests.test_fn_list_uom_rounding_modes_coverage
 31) CatalogoServiceTests.test_fn_create_componente_valido_dal_fallback_today
 40) CatalogoServiceTests.test_fn_create_uom_operativa_valido_dal_fallback_today
 41) CatalogoServiceTests.test_fn_create_conversione_valido_dal_fallback_today
@@ -67,6 +65,10 @@ Indice test eseguiti:
 59) CatalogoServiceTests.test_fn_create_articolo_composito_e_solo_componente
 60) CatalogoServiceTests.test_fn_create_componente_periodo_sovrapposto
 61) CatalogoServiceTests.test_fn_create_uom_operativa_doppia
+62) CatalogoServiceTests.test_uom_operativa_campi_ritirati_sono_fuori_contratto
+63) CatalogoServiceTests.test_fn_update_uom_operativa_riga_base_fissa
+64) CatalogoServiceTests.test_fn_create_conversione_coppia_sovrapposta
+65) CatalogoServiceTests.test_fn_create_conversione_rifiuto_col_codice_passa_intatto
     (2026-09-26: il repository e' a whitelist RIGIDA, quindi il 400 del
     service e' l'unica risposta educata — per OGNI scrittura del dominio)
 """
@@ -736,8 +738,10 @@ class CatalogoServiceTests(TestCase):
             mock_log.call_args.kwargs["function_name"], "catalogo.catalogo_service.fn_create_componente",
         )
 
-    # Scopo: la stessa UoM due volte sull'articolo (`uq_artuomop_articolo_uom`)
-    #        -> 400 col campo `uom_id`: l'articolo e' nella rotta.
+    # Scopo: la stessa UoM in un periodo che si sovrappone a una mappatura
+    #        gia' scritta (`uq_articoli_uom_operativa_no_overlap`, 23P01: la
+    #        mappatura si versiona dal 2026-11-09) -> 400 parlante, senza campo:
+    #        contano unita' E periodo.
     @patch("apps.core.services.error_manager.ErrorManager.log_error_only")
     @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
@@ -746,13 +750,89 @@ class CatalogoServiceTests(TestCase):
 
         mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
         mock_uom_repo_cls.return_value.create_uom_operativa.side_effect = IntegrityError(
-            'duplicate key value violates unique constraint "uq_artuomop_articolo_uom"'
+            'conflicting key value violates exclusion constraint "uq_articoli_uom_operativa_no_overlap"'
         )
 
         with self.assertRaises(ServiceError) as ctx:
             fn_create_uom_operativa("art-1", {"uom_id": 3, "factor_to_base": "1"})
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
-        self.assertEqual(ctx.exception.context.get("field"), "uom_id")
+        self.assertIn("periodo che si sovrappone", ctx.exception.message)
+        self.assertNotIn("field", ctx.exception.context)
+
+    # Scopo: `is_base` (la base nasce con l'articolo, D12), `rounding_mode` e
+    #        `require_lot` (ritirate, Q4) sono fuori contratto: 400 prima del
+    #        repository, in creazione e in modifica.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    def test_uom_operativa_campi_ritirati_sono_fuori_contratto(self, mock_repo_cls, mock_uom_repo_cls):
+        from apps.catalogo.services.catalogo_service import (
+            fn_create_uom_operativa,
+            fn_update_uom_operativa,
+        )
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+        for campo, valore in (("is_base", True), ("rounding_mode", "HALF_UP"), ("require_lot", False)):
+            with self.subTest(campo=campo, verso="create"), self.assertRaises(ServiceError) as ctx:
+                fn_create_uom_operativa("art-1", {"uom_id": 3, "factor_to_base": "2", campo: valore})
+            self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+            with self.subTest(campo=campo, verso="update"), self.assertRaises(ServiceError) as ctx:
+                fn_update_uom_operativa("art-1", 10, {campo: valore})
+            self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        mock_uom_repo_cls.return_value.create_uom_operativa.assert_not_called()
+        mock_uom_repo_cls.return_value.update_uom_operativa.assert_not_called()
+
+    # Scopo: la riga base con un fattore diverso da 1 (o con date) la rifiuta il
+    #        CHECK `chk_articoli_uom_operativa_base_fissa` -> la frase del
+    #        dominio, senza campo (BE1: la copia parziale del service e' uscita).
+    @patch("apps.core.services.error_manager.ErrorManager.log_error_only")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    def test_fn_update_uom_operativa_riga_base_fissa(self, mock_repo_cls, mock_uom_repo_cls, _mock_log):
+        from apps.catalogo.services.catalogo_service import fn_update_uom_operativa
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+        mock_uom_repo_cls.return_value.update_uom_operativa.side_effect = IntegrityError(
+            'new row for relation "articoli_uom_operativa" violates check constraint '
+            '"chk_articoli_uom_operativa_base_fissa"'
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_uom_operativa("art-1", 10, {"factor_to_base": "2"})
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("unita' base", ctx.exception.message)
+        self.assertNotIn("field", ctx.exception.context)
+
+    # Scopo: una conversione fra le stesse due unita', anche nel verso opposto,
+    #        in un periodo che si sovrappone (`ex_unita_misura_conversioni_coppia_no_overlap`,
+    #        23P01) -> la frase del dominio, riconosciuta per NOME e non dal testo.
+    @patch("apps.core.services.error_manager.ErrorManager.log_error_only")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    def test_fn_create_conversione_coppia_sovrapposta(self, mock_repo_cls, _mock_log):
+        from apps.catalogo.services.catalogo_service import fn_create_conversione
+
+        mock_repo_cls.return_value.create_conversione.side_effect = IntegrityError(
+            'conflicting key value violates exclusion constraint "ex_unita_misura_conversioni_coppia_no_overlap"'
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_conversione({"uom_from_id": 1, "uom_to_id": 2, "fattore": "1000"})
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("in uno dei due versi", ctx.exception.message)
+        self.assertNotIn("field", ctx.exception.context)
+
+    # Scopo: un rifiuto del DB col suo codice (il guard delle tipologie,
+    #        `E_UOM_CONVERSIONE_TIPO_DIVERSO`) passa intatto al middleware: il
+    #        service non lo riveste col ripiego.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    def test_fn_create_conversione_rifiuto_col_codice_passa_intatto(self, mock_repo_cls):
+        from django.db import DatabaseError
+
+        from apps.catalogo.services.catalogo_service import fn_create_conversione
+
+        errore = DatabaseError("E_UOM_CONVERSIONE_TIPO_DIVERSO: le due unita' hanno tipologie diverse")
+        mock_repo_cls.return_value.create_conversione.side_effect = errore
+        with self.assertRaises(DatabaseError) as ctx:
+            fn_create_conversione({"uom_from_id": 1, "uom_to_id": 2, "fattore": "1000"})
+        self.assertIs(ctx.exception, errore)
 
     # Scopo: tentativo di update componente_id -> errore per immutabilita'.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
@@ -1148,29 +1228,6 @@ class CatalogoServiceTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         self.assertEqual(ctx.exception.context.get("field"), "esposizione_in_fattura")
-
-    # Scopo: lookup statico rounding modes -> 5 codici nell'ordine canonico
-    # con descrizione popolata. Niente DB: la funzione e' pura.
-    def test_fn_list_uom_rounding_modes_ok(self):
-        from apps.catalogo.services.catalogo_service import fn_list_uom_rounding_modes
-
-        result = fn_list_uom_rounding_modes()
-
-        self.assertEqual(len(result), 5)
-        codici = [r["codice"] for r in result]
-        self.assertEqual(codici, ["HALF_UP", "HALF_DOWN", "HALF_EVEN", "UP", "DOWN"])
-        for row in result:
-            self.assertTrue(row["descrizione"])
-            self.assertIsInstance(row["ordering"], int)
-
-    # Scopo: difesa coerenza enum/descrizioni. Se in futuro qualcuno aggiunge
-    # un codice a `_ROUNDING_MODE_VALIDI` senza aggiornare la mappa descrizioni,
-    # il test della funzione fallisce con messaggio chiaro (ErrorManager.require).
-    def test_fn_list_uom_rounding_modes_coverage(self):
-        from apps.catalogo.services import catalogo_service as svc
-
-        descritti = {codice for codice, _desc, _ord in svc._ROUNDING_MODE_DESCRIZIONI}
-        self.assertEqual(descritti, svc._ROUNDING_MODE_VALIDI)
 
     # =================================================================
     # Fase 4 — fallback valido_dal=today lato service (DB declined)

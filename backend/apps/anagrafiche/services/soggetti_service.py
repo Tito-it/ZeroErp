@@ -219,28 +219,23 @@ class SoggettiService:
         return soggetto
 
     # Scopo: Computa la lista dei campi non modificabili per il soggetto in
-    #        edit. Il BB `compute_non_editable_fields` porta i lock che il DB
-    #        dichiara (`codice`, dal trigger di lock del soggetto: fino al
-    #        2026-11-09 questa lista non lo diceva); qui si aggiungono come GAP
-    #        CF e P.IVA gia' valorizzati. Il frontend deriva
-    #        cfDisabled/pivaDisabled da questa lista.
-    # ⭐ La regola (Tid, 2026-11-09): CF e P.IVA sono immutabili una volta
-    #    valorizzati perche' formano la chiave d'unicita' fiscale — la colonna
-    #    generata `id_fiscale_univoco_cf_piva` li contiene TUTTI E DUE quando
-    #    ci sono entrambi (`uq_soggetto_idstato_id_fiscale_univoco`). Un campo
-    #    vuoto resta riempibile (il privato che apre la partita IVA).
-    # ⛔ E' un GAP, non la sede: oggi la regola la vede solo il form, e una
-    #    PATCH che cambia un CF valorizzato passa. La sede e' il DB — lock
-    #    condizionale + trigger, S-BE-3 di brief-db-revisione-dbops. Quando il
-    #    DB la dichiara, il gap si toglie e qui si passa `record_id`.
+    #        edit, tutta dal DB: il BB `compute_non_editable_fields` con il
+    #        record porta i lock statici (`codice`) e quelli condizionali
+    #        valutati sul soggetto (`dbops.fn_non_editable_fields`). Il
+    #        frontend deriva cfDisabled/pivaDisabled da questa lista.
+    # ⭐ CF e P.IVA gia' scritti non si cambiano e non si svuotano, salvo il
+    #    SUPER_ADMIN (Tid, 2026-11-09, S-BE-3 di brief-db-revisione-dbops §32):
+    #    la regola sta in `anagrafiche.fn_soggetto_id_fiscale_bloccato`, la
+    #    applica il guard `trgfn_soggetti_guard_id_fiscale_immutabile`
+    #    (`E_SOGGETTO_ID_FISCALE_IMMUTABILE`, campo = la colonna) e la dichiara
+    #    `dbops.lock_columns_conditional`. Un campo vuoto resta riempibile.
+    # ⛔ Fino al 2026-11-09 qui c'era un GAP («valorizzato → bloccato»): una
+    #    seconda sede della regola, che per di piu' bloccava anche il
+    #    SUPER_ADMIN, a cui il DB lascia la correzione.
     @staticmethod
     def _compute_non_editable_fields(soggetto: dict[str, Any]) -> list[str]:
-        valorizzati = [
-            campo for campo in ("codice_fiscale", "partita_iva")
-            if (soggetto.get(campo) or "").strip()
-        ]
         return compute_non_editable_fields(
-            "anagrafiche", "soggetti", gaps=valorizzati,
+            "anagrafiche", "soggetti", record_id=soggetto["id"],
         )
 
     # =================================================================

@@ -11,7 +11,7 @@
 #        categoria), un secondo utente, una riga SPENTA (`attivo` false o
 #        NULL, che il modello ammette). Dal 2026-10-07 le righe miste non
 #        nascono (`chk_parameter_overrides_un_ambito`, decisione di Tid) e
-#        l'unicita' d'ambito e' vera (`uq_overrides_full_scope_v5`, NULLS NOT
+#        l'unicita' d'ambito e' vera (`uq_overrides_full_scope_v6`, NULLS NOT
 #        DISTINCT): l'upsert ci si appoggia con `ON CONFLICT`. Prima il
 #        perimetro «puro» lo teneva il repository (F-5, 2026-09-28), e due
 #        upsert concorrenti potevano creare un doppione. Un codice inesistente
