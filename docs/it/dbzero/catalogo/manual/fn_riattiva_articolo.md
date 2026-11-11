@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_riattiva_articolo`
 
-> **Ultimo aggiornamento**: 10 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -56,9 +56,6 @@ di spesa, tipologia di listino, causale, modo di approvvigionamento. Il controll
 differito: se uno di loro è spento, la funzione termina senza errore, e la transazione fallisce
 al COMMIT con `E_ATTIVO_PADRE_NON_ATTIVO`.
 
-⚠️ Il commento nel corpo della funzione parla di un codice `E_PARENT_*`, che non esiste: il
-codice vero è `E_ATTIVO_PADRE_NON_ATTIVO`.
-
 ---
 
 ### La disattivazione
@@ -90,6 +87,9 @@ spegnere l'articolo spegne prima i figli.
 ### Note di migrazione
 
 * 2026-04-28 — nasce.
+* 2026-11-11 — l'area di log è `catalogo`, come le altre funzioni dello schema; il commento
+  del corpo e il COMMENT nominano il codice vero, `E_ATTIVO_PADRE_NON_ATTIVO`
+  (brief-db-revisione-catalogo, giro 5).
 
 ---
 

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_get_uom_base: via il LIMIT 1 su chiave primaria; il commento e il
+#   COMMENT non dicono piu' «senza UoM» (articoli.uom_id e' NOT NULL, M6).
+#
+#   Corpo di partenza: pg_get_functiondef su dbdev, 2026-11-11; la dichiarazione
+#   (firma, RETURNS, %TYPE, SECURITY) da scritta a m. Rollback = stessa dichiarazione,
+#   corpo e COMMENT di partenza.
+#   Brief: brief-db-revisione-catalogo, giro 5-A (§17).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261112-17-update-fn-get-uom-base-chiave-primaria-mctit.yaml
+
+  - changeSet:
+      id: 20261112-17-update-fn-get-uom-base-chiave-primaria
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_get_uom_base: via il LIMIT 1 su chiave primaria; COMMENT al presente (M6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid IN (to_regprocedure('catalogo.fn_get_uom_base(uuid)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_base(
+                  p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS catalogo.articoli.uom_id%TYPE
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+               AS $function$
+              DECLARE
+                v_uom_base_id bigint;
+              BEGIN
+                -- Ritorna la UoM BASE dell’articolo da catalogo.articoli.uom_id
+
+                SELECT a.uom_id
+                  INTO v_uom_base_id
+                FROM catalogo.articoli a
+                WHERE a.id = p_articolo_id;
+
+                -- Articolo inesistente: NULL; il chiamante decide se rifiutare.
+                RETURN v_uom_base_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_get_uom_base(uuid) IS
+                  'L''unita'' base dell''articolo, catalogo.articoli.uom_id (NOT NULL). NULL solo se l''articolo non esiste: il chiamante decide se rifiutare.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_base(
+                  p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS catalogo.articoli.uom_id%TYPE
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+               AS $function$
+              DECLARE
+                v_uom_base_id bigint;
+              BEGIN
+                -- Ritorna la UoM BASE dell’articolo da catalogo.articoli.uom_id
+
+                SELECT a.uom_id
+                  INTO v_uom_base_id
+                FROM catalogo.articoli a
+                WHERE a.id = p_articolo_id
+                LIMIT 1;
+
+                -- Se non presente, ritorna NULL; il chiamante decide se bloccare/loggare
+                RETURN v_uom_base_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_get_uom_base(uuid) IS
+                  'Ritorna la UoM BASE (uom_id) dell’articolo indicato. Se articolo non trovato o senza UoM, ritorna NULL.';

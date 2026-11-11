@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -139,8 +139,7 @@ il sistema deriva da sé il valore nell'unità base (`quantita = qta_operativa �
 factor_to_base`, fattore "fotografato" sulla riga). Il fattore è quello dell'articolo o
 della conversione generale alla data del contratto; senza, la riga non si salva. La quantità **può essere negativa**
 (resi/storni), **non può essere zero**. La quantità la porta la **fonte**: quando è
-*fissa* è obbligatoria; quando è *derivata dai componenti* la scrive il sistema; con
-ogni altra fonte (letture, timesheet, inserimento manuale a ogni periodo) arriva a
+*fissa* è obbligatoria; con ogni altra fonte (letture, timesheet, inserimento manuale a ogni periodo) arriva a
 valle, e sulla riga **deve restare vuota**: il database rifiuta una quantità scritta
 lì (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, sul campo). La regola è la stessa sulle righe
 dell'offerta.
