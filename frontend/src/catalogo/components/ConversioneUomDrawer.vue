@@ -1,7 +1,11 @@
 <script setup>
 // Scopo: Drawer crea/modifica conversione UoM.
 //        In create: seleziona UoM Da, UoM A, fattore, date validita'.
-//        In edit: UoM Da/A immutabili, modifica fattore, date, attivo.
+//        In edit: unita' Da/A, fattore e inizio immutabili (dal 2026-11-11,
+//        BE21: guard della storia, dai `non_editable_fields`) e non rimandati;
+//        si cambia la fine. ⚠️ `attivo` si cambia solo su una conversione che
+//        comincia oggi o dopo (`E_UOM_STORIA_IN_VIGORE`): il toggle resta
+//        acceso e giudica il DB.
 //        Contenuto deferito a dopo l'animazione per evitare rimbalzi visivi.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,6 +14,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString, oggiAziendale } from '../../core/utils/date'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
@@ -114,12 +119,17 @@ const canSave = computed(() =>
 async function handleSave() {
   const f = form.value
   if (isEdit.value) {
-    const payload = {
+    // ⛔ I campi fermi NON si rimandano (2026-11-11, BE21; BB
+    //    `senzaCampiFermi`). Il fattore arriva come stringa numeric(18,6) e il
+    //    form lo tiene come Number (`loadDetail`): oltre ~15 cifre
+    //    significative il valore rimandato non e' piu' quello scritto, e il
+    //    guard della storia rifiuterebbe una semplice chiusura.
+    const payload = senzaCampiFermi({
       fattore: f.fattore,
       valido_dal: toDateString(f.valido_dal),
       valido_al: toDateString(f.valido_al),
       attivo: f.attivo,
-    }
+    }, isFieldLocked)
     const result = await execute(
       () => store.update(props.convId, payload),
       { successMessage: t('catalogo.conv_salvata') }
@@ -178,7 +188,8 @@ function close() {
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_fattore') }} *</label>
-        <InputNumber v-model="form.fattore" :min-fraction-digits="2" :max-fraction-digits="6" :min="0" mode="decimal" />
+        <InputNumber v-model="form.fattore" :min-fraction-digits="2" :max-fraction-digits="6" :min="0" mode="decimal"
+          :disabled="isFieldLocked('fattore')" :invalid="campiErrati.includes('fattore')" />
       </div>
     </div>
 
@@ -190,7 +201,7 @@ function close() {
           :dateFormat="DATE_FORMAT"
           showIcon
           showButtonBar
-          :disabled="!isEdit && form.valido_dal_sempre"
+          :disabled="isFieldLocked('valido_dal') || (!isEdit && form.valido_dal_sempre)"
           :invalid="campiErrati.includes('valido_dal')"
         />
       </div>

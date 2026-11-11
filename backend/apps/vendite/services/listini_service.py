@@ -885,45 +885,14 @@ def _extract_riga_payload(
     return data
 
 
-# Scopo: Valida la coerenza articolo/UoM prima di creare o aggiornare righe prezzo.
-#        `alla_data` = la decorrenza della versione: da quel giorno il prezzo
-#        vale, e da quel giorno l'unita' deve convertirsi nella base
-#        dell'articolo (`catalogo.fn_get_uom_factor`, BE17).
-def _validate_riga_articolo_uom(
-    articolo_id: UUID | str, uom_id: int, *, alla_data: date, function_name: str,
-) -> None:
-    repository = ListiniRepository()
-    validation = repository.get_articolo_uom_validation(articolo_id, uom_id, alla_data)
-    ErrorManager.require(
-        validation["articolo_attivo"],
-        code="E_VENDITE_VALIDATION",
-        message="Riga listino non valida.",
-        detail=f"articolo_id={articolo_id} non trovato o non attivo.",
-        context={"articolo_id": str(articolo_id)},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        validation["uom_attiva"],
-        code="E_VENDITE_VALIDATION",
-        message="Riga listino non valida.",
-        detail=f"uom_id={uom_id} non trovata o non attiva.",
-        context={"uom_id": uom_id},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        validation["uom_compatibile"],
-        code="E_VENDITE_VALIDATION",
-        message="Riga listino non valida.",
-        detail=(
-            "La UoM non si converte nell'unita' base dell'articolo alla decorrenza della versione "
-            f"({alla_data.isoformat()}): manca una mappatura dell'articolo o una conversione generale."
-        ),
-        context={"articolo_id": str(articolo_id), "uom_id": uom_id, "field": "uom_id"},
-        function_name=function_name,
-        log_to_db=True,
-    )
+# ⛔ L'UNITA' DELLA RIGA LA GIUDICA IL DB (BE22 di brief-db-revisione-catalogo,
+#    D25, 2026-11-11). Fino a quel giorno qui c'era `_validate_riga_articolo_uom`:
+#    articolo attivo, unita' attiva e unita' convertibile, quest'ultima alla SOLA
+#    decorrenza della versione — una mappatura che finiva durante la versione
+#    passava. Le tre regole sono del DB: la famiglia ATTIVO su `articolo_id` e
+#    `uom_id`, e `vendite.trgfn_listini_righe_guard_uom_periodo` per tutto il
+#    periodo (`E_LISTINO_UOM_NON_CONVERTIBILE`, campo `uom_id`). Una copia qui
+#    sarebbe una seconda sede, e gia' divergente.
 
 
 # Scopo: Guard fail-fast che impedisce CRUD righe su versioni non in stato BOZZA.
@@ -1458,19 +1427,13 @@ def fn_list_righe(
     )
 
 
-# Scopo: Crea una nuova riga prezzo dopo validazione articolo/UoM e restituisce il dettaglio.
+# Scopo: Crea una nuova riga prezzo e restituisce il dettaglio. Articolo e unita' li
+#        giudica il DB (BE22).
 def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_create_riga"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
     data = _extract_riga_payload(payload, for_update=False, function_name=function_name)
-    articolo_id = data["articolo_id"]
-    uom_id = data["uom_id"]
-    assert isinstance(articolo_id, str)
-    assert isinstance(uom_id, int)
-    _validate_riga_articolo_uom(
-        articolo_id, uom_id, alla_data=versione["valido_dal"], function_name=function_name,
-    )
 
     repository = ListiniRepository()
     try:
@@ -1480,12 +1443,12 @@ def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -
     return _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
 
 
-# Scopo: Aggiorna una riga prezzo mantenendo coerenza articolo/UoM quando necessario.
+# Scopo: Aggiorna una riga prezzo. Articolo e unita' sono immutabili (lock del DB).
 def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_update_riga"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
-    current = _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
+    _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
     data = _extract_riga_payload(payload, for_update=True, function_name=function_name)
     _V.require_campi_da_aggiornare(
         data,
@@ -1493,11 +1456,6 @@ def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dic
         detail="Nessun campo aggiornabile presente nel payload.",
         context={"allowed_nullable_fields": sorted(_RIGA_NULLABLE_FIELDS)},
         function_name=function_name,
-    )
-    articolo_id = str(current["articolo_id"])
-    uom_id = int(current["uom_id"])
-    _validate_riga_articolo_uom(
-        articolo_id, uom_id, alla_data=versione["valido_dal"], function_name=function_name,
     )
     repository = ListiniRepository()
     try:

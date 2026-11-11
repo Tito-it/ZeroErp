@@ -6,8 +6,7 @@
 //        apre il LottoDrawer diagnostico (step corrente, fatture, task-run,
 //        segnalazioni) con le azioni di governo. Nessuna logica di dominio:
 //        stato/step/gate vivono nel motore, la lista rende e naviga.
-import { ref, computed, nextTick, onActivated, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, onActivated, watch } from 'vue'
 import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusuraGlobale'
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
@@ -23,6 +22,8 @@ import LottoDrawer from '../components/LottoDrawer.vue'
 import NumerazioneDataDialog from '../components/NumerazioneDataDialog.vue'
 import FatturazioneEsitiPanel from '../components/FatturazioneEsitiPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { useIngressoDaQuery } from '../../core/composables/useIngressoDaQuery'
+import { FORME_ID, idNellaForma } from '../../core/utils/idNellaForma'
 import { useNotify } from '../../core/composables/useNotify'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
@@ -57,9 +58,6 @@ import { oggiAziendale, parseIsoDate } from '../../core/utils/date'
 
 const { t, te } = useI18n()
 const notify = useNotify()
-// Servono al deep-link `?open=<id>` (vedi `applicaDeepLink` piu' sotto).
-const route = useRoute()
-const router = useRouter()
 // Il valore serve anche qui, non solo ai figli: in sola lettura il kebab di
 // riga non propone azioni di governo (il BE resta il guard vero).
 const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.VENDITE)
@@ -399,7 +397,6 @@ onActivated(() => {
   syncFiltri()
   if (!store.loading) load()
   loadMensile()
-  applicaDeepLink()
 })
 
 // Drawer diagnostico.
@@ -422,34 +419,25 @@ function apriLotto(row) {
 
 // ⭐ DEEP-LINK `?open=<id>`: la lista apre direttamente il lotto indicato.
 // Nasce per il BERSAGLIO di un errore (2026-08-24) — il pulsante «Apri Lotto
-// 6034» di un toast o di un'icona di riga arriva qui — ma e' il meccanismo
-// generico gia' in servizio su `vendite-contratti`, non un canale suo.
-//
-// ⚠️ In `onActivated` e non in un `watch immediate`, ed e' la differenza che
-// conta su questa view: sta sotto KeepAlive, quindi tornarci NON rimonta il
-// setup. Un `watch` sulla query funzionerebbe al primo ingresso e poi
-// silenziosamente piu' (feedback_keepalive_onactivated).
-// ⚠️ Il param si ripulisce subito: senza, un refresh della pagina riaprirebbe
-// il pannello che l'operatore aveva appena chiuso.
-function applicaDeepLink() {
-  const query = { ...route.query }
-  let cambiato = false
-
-  // ⭐ `?competenza=YYYY-MM-DD`: arrivare sul MESE giusto. Lo usa la Lente 1,
-  //    da cui «Rendi definitive» se n'è andato: senza, il rimando lascerebbe
-  //    l'operatore sul mese che la lista aveva l'ultima volta, e la card da cui
-  //    è partito parlava di un altro periodo.
-  // ⚠️ Porta il MESE e NON «solo i lotti emessi», ed è una limitazione da
-  //    sapere: il filtro di questa lista è sullo stato del LAVORO
-  //    (bozza/completato/errore), che è un altro asse dallo stato del
-  //    DOCUMENTO (emessa/definitiva). Quali righe si possano numerare lo dice
-  //    la casella di selezione, riga per riga, col suo motivo.
-  const competenza = query.competenza
-  if (competenza) {
-    delete query.competenza
-    cambiato = true
-    const d = parseIsoDate(competenza)
-    if (d) {
+// 6034» di un toast o di un'icona di riga arriva qui. Guard sulla rotta,
+// KeepAlive e pulizia della query (in UNA `replace`, coi due parametri): BB
+// `useIngressoDaQuery` (2026-11-11). ⚠️ Prima qui c'era il solo `onActivated`:
+// restando sulla lista, il «Apri lotto» di un errore non apriva niente.
+useIngressoDaQuery({
+  nomeRotta: 'vendite-lotti',
+  gestori: {
+    // ⭐ `?competenza=YYYY-MM-DD`: arrivare sul MESE giusto. Lo usa la Lente 1,
+    //    da cui «Rendi definitive» se n'è andato: senza, il rimando lascerebbe
+    //    l'operatore sul mese che la lista aveva l'ultima volta, e la card da cui
+    //    è partito parlava di un altro periodo.
+    // ⚠️ Porta il MESE e NON «solo i lotti emessi», ed è una limitazione da
+    //    sapere: il filtro di questa lista è sullo stato del LAVORO
+    //    (bozza/completato/errore), che è un altro asse dallo stato del
+    //    DOCUMENTO (emessa/definitiva). Quali righe si possano numerare lo dice
+    //    la casella di selezione, riga per riga, col suo motivo.
+    competenza: (grezzo) => {
+      const d = parseIsoDate(grezzo)
+      if (!d) return
       // ⛔ `cambiaAnno` prende un DELTA, non l'anno: passargli `2026` avrebbe
       //    calcolato `anno + 2026`, sforato il range e fatto un `return`
       //    silenzioso — si sarebbe atterrati sul mese giusto dell'anno
@@ -457,20 +445,14 @@ function applicaDeepLink() {
       const delta = d.getFullYear() - anno.value
       if (delta !== 0) cambiaAnno(delta)
       selezionaMese(d.getMonth())
-    }
-  }
-
-  const grezzo = query.open
-  if (grezzo) {
-    delete query.open
-    cambiato = true
-  }
-  if (cambiato) router.replace({ query })
-  if (!grezzo) return
-  const id = Number(grezzo)
-  if (!Number.isFinite(id) || id <= 0) return
-  nextTick(() => apriLotto({ id }))
-}
+    },
+    // Dopo il mese, nell'ordine dichiarato: il lotto si apre sul periodo giusto.
+    open: (grezzo) => {
+      const id = idNellaForma(grezzo, FORME_ID.INTERO)
+      if (id !== null) apriLotto({ id })
+    },
+  },
+})
 
 // Azioni di riga: stesso composable del drawer — conferme, chiamate e testi
 // stanno in una sede sola. La lista non ha il blob capability (scelta del team

@@ -3448,7 +3448,7 @@
         "versione_non_attiva": "Si chiude solo una versione attiva: di una bozza si modificano le date, una chiusa non cambia più.",
         "fine_nel_passato": "La fine non può essere prima di oggi: scegliere oggi o una data futura.",
         "clone_prima_della_sorgente": "La nuova versione non può cominciare prima della versione da cui si copia.",
-        "uom_non_convertibile": "Un prezzo è in un'unità che, in un giorno del periodo, non si converte per l'articolo: aggiungere la conversione o cambiare l'unità prima di attivarla."
+        "uom_non_convertibile": "Un prezzo è in un'unità che, in un giorno del periodo, non si converte per l'articolo: aggiungere la conversione, o rifare quel prezzo in un'altra unità, prima di attivarla."
       },
       "elimina_versione": "Elimina versione",
       "versione_eliminata": "Versione eliminata",

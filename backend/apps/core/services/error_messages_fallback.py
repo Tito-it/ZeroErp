@@ -713,6 +713,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "Articolo composito: il prezzo diretto non e' ammesso, usare i componenti.",
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "Prezzo bundle riferito a un componente non presente nella distinta base del padre composito.",
     "E_LISTINO_RIGA_IDENTITA_IMMUTABILE": "Una riga di listino non cambia articolo, unita' di misura o versione.",
+    # Brief-db-revisione-catalogo, giro 2-bis (2026-11-11): l'unita' del prezzo
+    #    vale per tutto il periodo della versione. Il catalogo porta versione,
+    #    unita', articolo e giorno con dei `%s`; qui la regola senza argomenti.
+    "E_LISTINO_UOM_NON_CONVERTIBILE": "L'unita' del prezzo non si converte per l'articolo in tutto il periodo della versione: aggiungere la conversione per tutto il periodo, oppure usare un'altra unita' o un periodo piu' corto.",
     "E_LISTINO_TIPOLOGIA_UTILITY": "Combinazione utility / tipologia non ammessa per questo listino.",
     "E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE": "Fuori dalla bozza questo campo della versione di listino non si cambia: di una versione attiva si cambia solo la fine validita', di una chiusa niente.",
     "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI": "La versione di listino e' chiusa: le sue date di validita' non si possono piu' modificare.",
@@ -1473,10 +1477,18 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_PRESET_VALIDAZIONE": "Preset lista non valido.",
     "E_UI_VISTA_SQL_NON_TROVATA": "Vista SQL della lista non trovata nel database.",
     "E_UOM_CALENDARIO_NON_TEMPO": "Un'unita' si puo' contare dal calendario solo se e' un'unita' di tempo.",
+    # Brief-db-revisione-catalogo, giro 2-bis (2026-11-11): la storia delle
+    #    conversioni (mappature dell'articolo e conversioni generali). Il
+    #    catalogo nomina la conversione e le date con dei `%s`.
+    "E_UOM_CHIUSURA_CON_LISTINI_ATTIVI": "La conversione non si chiude cosi': dei prezzi di listini attivi resterebbero in un'unita' che non si converte. Chiudere prima quelle versioni di listino, oppure inserire la conversione che continua questa.",
     "E_UOM_CONVERSIONE_TIPO_DIVERSO": "Non si possono convertire unita' di tipologia diversa: per un caso come il cartone di pezzi, indicare il fattore nelle unita' operative dell'articolo.",
     "E_UOM_MISMATCH": "Riga ordine e riga DDT hanno unita' di misura diverse.",
     "E_UOM_MISSING": "L'unita' della riga non si converte nell'unita' base dell'articolo alla data del documento.",
     "E_UOM_RIGA_BASE_IMMUTABILE": "L'unita' base dell'articolo non si cambia e non si toglie.",
+    "E_UOM_STORIA_CHIUSA": "La conversione e' gia' finita: la sua fine non si cambia piu'. Per riprenderla, inserirne una nuova che cominci da oggi.",
+    "E_UOM_STORIA_CHIUSURA_RETROATTIVA": "La fine della conversione non puo' cambiare i giorni gia' passati: scegliere una data da ieri in poi.",
+    "E_UOM_STORIA_IMMUTABILE": "Una conversione non si cambia sul posto: chiuderla e aprirne una nuova coi valori nuovi.",
+    "E_UOM_STORIA_IN_VIGORE": "La conversione e' gia' in vigore: non si spegne e non si cancella, si chiude impostando la data di fine.",
     "E_UOM_TIPO_IN_USO": "La tipologia dell'unita' non si cambia: l'unita' compare in una conversione.",
     "E_UPDATE_NOT_ALLOWED": "Modifica non permessa su questa riga.",
     "E_USER_DISABILITATO": "Utente disabilitato. Contattare l'amministratore.",
