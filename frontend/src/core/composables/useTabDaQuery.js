@@ -4,10 +4,13 @@
 // Doc: JavaScript
 // Scopo: La scheda attiva di una vista a tab, pilotabile da fuori con `?tab=`.
 // Note: estratto 2026-09-04 (regola del 2, ok Tid) da CodeLavoroView +
-//       UnitaMisuraView, che lo avevano scritto identico.
+//       UnitaMisuraView, che lo avevano scritto identico. Dal 2026-11-11 lo
+//       scheletro (guard sulla rotta, `watch` + `onActivated`, pulizia della
+//       query) sta in `useIngressoDaQuery`, che serve anche il `?open=` delle
+//       liste: qui resta la sola regola delle schede.
 // ------------------------------------------------------------
-import { ref, watch, onActivated, onDeactivated } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, onDeactivated } from 'vue'
+import { useIngressoDaQuery } from './useIngressoDaQuery'
 
 // ── Perche' un BB e non due copie ────────────────────────────────────────────
 //
@@ -53,8 +56,6 @@ import { useRoute, useRouter } from 'vue-router'
 //    prima della riattivazione) e la query e' gia' pulita quando arriva
 //    `onActivated` — che, azzerando li', annullerebbe la scheda appena chiesta.
 export function useTabDaQuery({ nomeRotta, ammessi, iniziale, parametro = 'tab', ripartiDaIniziale = false }) {
-  const route = useRoute()
-  const router = useRouter()
   const valori = Array.isArray(ammessi) ? ammessi : Object.values(ammessi)
 
   // ⚠️ Un valore iniziale fuori dall'enum non fallisce: `Tabs` non trova il
@@ -71,18 +72,16 @@ export function useTabDaQuery({ nomeRotta, ammessi, iniziale, parametro = 'tab',
   // ⚠️ Dichiarato PRIMA del watch che lo tocca (TDZ silenziosa).
   const attivo = ref(partenza)
 
-  function applicaDaQuery() {
-    if (route.name !== nomeRotta) return
-    const richiesta = route.query[parametro]
-    if (!valori.includes(richiesta)) return
-    attivo.value = richiesta
-    const resto = { ...route.query }
-    delete resto[parametro]
-    router.replace({ query: resto })
-  }
-
-  watch(() => route.query[parametro], applicaDaQuery)
-  onActivated(applicaDaQuery)
+  // ⚠️ Un valore fuori dall'enum si toglie dalla query lo stesso, e non
+  //    cambia la scheda: un ingresso sbagliato non resta nell'URL.
+  useIngressoDaQuery({
+    nomeRotta,
+    gestori: {
+      [parametro]: (richiesta) => {
+        if (valori.includes(richiesta)) attivo.value = richiesta
+      },
+    },
+  })
   if (ripartiDaIniziale) {
     onDeactivated(() => { attivo.value = partenza })
   }

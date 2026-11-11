@@ -1324,9 +1324,12 @@ class CatalogoServiceTests(TestCase):
 
         result = fn_list_uom_operative(1)
 
-        self.assertEqual(result["non_editable_fields"], ["uom_id"])
+        # BE21 (2026-11-11): l'identita' della mappatura e' ferma dal guard
+        #    della storia, che la vista non vede ancora (gap dichiarato).
+        self.assertEqual(result["non_editable_fields"], ["factor_to_base", "uom_id", "valido_dal"])
 
-    # Scopo: detail conversione UoM include non_editable_fields (uom_from_id, uom_to_id).
+    # Scopo: detail conversione UoM include non_editable_fields: le due unita',
+    #        e dal 2026-11-11 (BE21) fattore e inizio, fermi dal guard della storia.
     @patch(_LOCK_REPO, autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_get_conversione_includes_non_editable_fields(self, mock_repo_cls, mock_lock_cls):
@@ -1337,7 +1340,9 @@ class CatalogoServiceTests(TestCase):
 
         result = fn_get_conversione(7)
 
-        self.assertEqual(result["non_editable_fields"], ["uom_from_id", "uom_to_id"])
+        self.assertEqual(
+            result["non_editable_fields"], ["fattore", "uom_from_id", "uom_to_id", "valido_dal"],
+        )
 
     # Scopo: lista articoli propaga capability BoM dalla vista DB (Fase 6).
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)

@@ -13,7 +13,7 @@ Indice test eseguiti:
 4) ListiniServiceTests.test_get_versione_not_found
 5) ListiniServiceTests.test_change_versione_state_solo_attivazione
 6) ListiniServiceTests.test_change_versione_state_dry_run_stringa_400
-7) ListiniServiceTests.test_create_riga_invalid_articolo_uom
+7) (ritirato il 2026-11-11, BE22: l'unita' della riga la giudica il DB — test_listino_uom_compatibile_db)
 8) ListiniServiceTests.test_test_resolver_requires_uom
 9) ListiniServiceTests.test_create_riga_blocked_on_versione_attiva
 10) ListiniServiceTests.test_update_riga_blocked_on_versione_chiusa
@@ -365,38 +365,6 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         repo.attiva_versione.assert_not_called()
 
-    # Scopo: Verifica blocco riga con articolo/UoM non coerenti.
-    @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
-    def test_create_riga_invalid_articolo_uom(self, mock_repo_cls):
-        from apps.vendite.services.listini_service import fn_create_riga
-
-        repo = mock_repo_cls.return_value
-        repo.get_versione.return_value = {
-            "id": 101, "listino_id": 10, "stato": "BOZZA", "valido_dal": date(2026, 1, 1),
-        }
-        repo.get_articolo_uom_validation.return_value = {
-            "articolo_attivo": True,
-            "uom_attiva": True,
-            "uom_compatibile": False,
-        }
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_create_riga(
-                10,
-                101,
-                {
-                    "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
-                    "uom_id": 1,
-                    "prezzo": "12.50",
-                },
-            )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertEqual(ctx.exception.context.get("field"), "uom_id")
-        # BE17: la compatibilita' si chiede al DB alla decorrenza della versione.
-        repo.get_articolo_uom_validation.assert_called_once_with(
-            "019bbee2-5f6a-704f-bbd0-34ed84db252d", 1, date(2026, 1, 1),
-        )
-
     # Scopo: F1 - create_riga deve fallire se la versione non e' BOZZA.
     @patch("apps.vendite.services.listini_service.ListiniRepository", autospec=True)
     def test_create_riga_blocked_on_versione_attiva(self, mock_repo_cls):
@@ -430,9 +398,6 @@ class ListiniServiceTests(TestCase):
         repo = mock_repo_cls.return_value
         repo.get_versione.return_value = {
             "id": 101, "listino_id": 10, "stato": "BOZZA", "valido_dal": date(2026, 1, 1),
-        }
-        repo.get_articolo_uom_validation.return_value = {
-            "articolo_attivo": True, "uom_attiva": True, "uom_compatibile": True,
         }
         repo.create_riga.return_value = 7
         repo.get_riga.return_value = {"id": 7}

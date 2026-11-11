@@ -11,7 +11,6 @@ import json
 import logging
 from datetime import date
 from typing import Any
-from uuid import UUID
 
 from django.db import connection, transaction
 
@@ -939,47 +938,9 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Verifica in un solo round-trip articolo attivo, UoM attiva e coerenza
-    #        articolo/UoM ALLA DATA indicata (la decorrenza della versione).
-    # ⭐ «L'unita' vale per l'articolo» la dice il DB, `catalogo.fn_get_uom_factor`:
-    #    l'unita' base, la mappatura dell'articolo alla data, o una conversione
-    #    generale alla data (BE17 di brief-db-revisione-catalogo, 2026-11-09).
-    # ⛔ Fino al 2026-11-09 qui c'era una copia della regola, gia' DIVERGENTE:
-    #    base o mappatura attiva, senza le conversioni generali e senza la data
-    #    — una riga in chilogrammi su un articolo in grammi veniva rifiutata, e
-    #    una mappatura chiusa ammessa.
-    def get_articolo_uom_validation(
-        self, articolo_id: UUID | str, uom_id: int, alla_data: date,
-    ) -> dict[str, bool]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    EXISTS(
-                        SELECT 1
-                          FROM catalogo.articoli a
-                         WHERE a.id = %s
-                           AND a.attivo IS TRUE
-                    ) AS articolo_attivo,
-                    EXISTS(
-                        SELECT 1
-                          FROM catalogo.unita_misura u
-                         WHERE u.id = %s
-                           AND u.attivo IS TRUE
-                    ) AS uom_attiva,
-                    catalogo.fn_get_uom_factor(%s::uuid, %s::bigint, %s::date) IS NOT NULL
-                        AS uom_compatibile
-                """,
-                [articolo_id, uom_id, articolo_id, uom_id, alla_data],
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return {
-            "articolo_attivo": bool(row[0]),
-            "uom_attiva": bool(row[1]),
-            "uom_compatibile": bool(row[2]),
-        }
+    # ⛔ `get_articolo_uom_validation` ritirato il 2026-11-11 (BE22 di
+    #    brief-db-revisione-catalogo): la regola dell'unita' e' del DB, per tutto
+    #    il periodo della versione (vedi `listini_service`).
 
     # Scopo: Blocca la riga con FOR UPDATE per prevenire race condition durante
     #        la rettifica controllata N6. Restituisce True se la riga esiste.

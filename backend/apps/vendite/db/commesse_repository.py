@@ -348,7 +348,7 @@ class PushableRow:
     quantita: Decimal | None
     qta_operativa: Decimal | None
     uom_operativa_id: int | None
-    factor_to_base: Decimal
+    factor_to_base: Decimal | None
     competenza_mese: date
     prezzo_snapshot: Decimal | None
     prezzo_bloccato: bool
@@ -396,9 +396,14 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
             f"sorgente_chiave={raw_sorgente_chiave!r}, segment_key={raw_segment_key!r}"
         )
 
-    # Guard: factor_to_base=None → default Decimal(1); Decimal(0) preservato.
-    raw_factor = _col("factor_to_base")
-    factor_to_base = raw_factor if raw_factor is not None else Decimal(1)
+    # ⛔ Il fattore passa COM'E', anche NULL (BE23 di brief-db-revisione-catalogo,
+    #    D26, 2026-11-11). Fino a quel giorno qui un NULL diventava 1: giusto
+    #    quando la quantita' e' gia' nella base, ma una riga senza fattore in
+    #    un'altra unita' passava come se lo fosse (3 cartoni -> 3 pezzi), senza
+    #    rifiuto. Lo decide il DB (`vendite.trgfn_attivita_fattore_alla_data`):
+    #    il fattore scritto si rispetta, senza si legge alla data dell'attivita',
+    #    e senza nemmeno quello e' `E_UOM_MISSING`.
+    factor_to_base = _col("factor_to_base")
 
     # riga_sorgente_id mappato dalla colonna `riga_id` se presente nella fn DB.
     # Le fn `fn_list_preventivi_da_pushare`/`fn_list_ordini_da_pushare`/etc.

@@ -230,6 +230,41 @@ def apri_contesto_operatore(cur, *, super_admin: bool = False) -> int:
     return int(riga[0])
 
 
+# Scopo: UN OPERATORE COSTRUITO, col contesto aperto e livello TUTTO sulle
+#        aree indicate (per `schema_db`): `apri_operatore_con_aree(cur, aree=
+#        ("catalogo", "vendite"), motivo="...") -> auth_user_id`. Per i test
+#        che passano dai verbi del DB che chiedono un livello
+#        (`script.fn_guard_livello`), come li scrive il pannello dei permessi.
+# Note: estratto il 2026-11-11 (regola del 2, ok Tid) da
+#       `catalogo/.../test_chiusura_legame_prezzi_db` e
+#       `vendite/.../test_listino_uom_compatibile_db`.
+#       ⭐ A differenza di `apri_contesto_operatore` l'utente si COSTRUISCE
+#       (`dbops.fn_pgtap_crea_emittente_operatore`): niente dipende dagli
+#       utenti presenti, e non c'e' nessuno skip possibile.
+#       ⚠️ L'override si scrive con `ON CONFLICT … DO UPDATE`: l'operatore
+#       costruito ha gia' la sua riga su alcune aree (le vendite), e il livello
+#       va alzato, non duplicato.
+#       Va chiamata dentro una transazione annullata.
+def apri_operatore_con_aree(cur, *, aree: tuple[str, ...], motivo: str) -> int:
+    if not aree:
+        raise AssertionError("apri_operatore_con_aree senza aree: il livello non si alza su niente")
+    cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
+    utente = int(cur.fetchone()[0])
+    cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [utente])
+    cur.execute(
+        "INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)"
+        " SELECT %s, af.id, 'TUTTO'::config.livello_accesso, %s"
+        "   FROM config.aree_funzionali af WHERE af.schema_db = ANY(%s)"
+        " ON CONFLICT (auth_user_id, area_id) DO UPDATE SET livello = EXCLUDED.livello",
+        [utente, motivo, list(aree)],
+    )
+    # ⛔ Un'area scritta male non deve passare in silenzio: il test girerebbe
+    #    senza il livello e proverebbe E_PERMESSO_NEGATO invece della regola.
+    if cur.rowcount != len(aree):
+        raise AssertionError(f"aree non trovate in config.aree_funzionali: {aree} (righe {cur.rowcount})")
+    return utente
+
+
 # Scopo: apre la transazione di un test sul DB vero e ne REGISTRA l'annullo,
 #        che gira sempre: a test finito, fallito, saltato — e anche quando a
 #        interrompersi e' il `setUp` stesso. Da chiamare come prima istruzione

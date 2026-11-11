@@ -37,7 +37,12 @@ from django.db import DatabaseError, connection, transaction
 from apps.catalogo.services.catalogo_service import fn_chiudi_componente, fn_get_chiusura_componente
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_operatore_con_aree,
+    apri_transazione_annullata,
+    richiedi_db_provvisto,
+)
+from apps.vendite.tests.db._listino_di_prova import crea_listino_di_prova
 
 
 class ChiusuraLegamePrezziDbTests(unittest.TestCase):
@@ -49,34 +54,16 @@ class ChiusuraLegamePrezziDbTests(unittest.TestCase):
         apri_transazione_annullata(self)
         sfx = uuid4().hex[:6].upper()
         with connection.cursor() as cur:
-            cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
-            utente = cur.fetchone()[0]
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [utente])
             # I due diritti del verbo (Q21): TUTTO sul catalogo e sui listini,
-            # come li scrive il pannello dei permessi. L'operatore costruito
-            # non ha il catalogo, e sulle vendite ha gia' la sua riga.
-            cur.execute(
-                "INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)"
-                " SELECT %s, af.id, 'TUTTO'::config.livello_accesso, 'test BE19: chiusura del legame'"
-                "   FROM config.aree_funzionali af WHERE af.schema_db IN ('catalogo', 'vendite')"
-                " ON CONFLICT (auth_user_id, area_id) DO UPDATE SET livello = EXCLUDED.livello",
-                [utente],
+            # come li scrive il pannello dei permessi.
+            apri_operatore_con_aree(
+                cur, aree=("catalogo", "vendite"), motivo="test BE19: chiusura del legame",
             )
             cur.execute("SELECT script.fn_data_operativa()")
             self.oggi: date = cur.fetchone()[0]
-            cur.execute(
-                "SELECT min(u.id) FROM config.utilities u"
-                " WHERE EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu"
-                "                WHERE ltu.utility_id = u.id AND ltu.attivo)"
+            listino, tipologia = crea_listino_di_prova(
+                cur, etichetta="py legame", valido_dal=self._giorni(-200), valido_al=self._giorni(-150),
             )
-            utility = cur.fetchone()[0]
-            if utility is None:
-                raise unittest.SkipTest("nessuna utility con una tipologia di listino nel seed")
-            cur.execute(
-                "SELECT listino_id, tipologia_id FROM dbops.fn_pgtap_crea_listino(%s, 'py legame', %s, %s)",
-                [utility, self._giorni(-200), self._giorni(-150)],
-            )
-            listino, tipologia = cur.fetchone()
             art = {}
             for sigla in ("K", "F", "G", "S"):
                 cur.execute(

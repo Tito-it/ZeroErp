@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from datetime import date
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connection, transaction
@@ -277,16 +277,20 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 riga = repo.get_unita_misura(u1)
                 self.assertEqual((riga["descrizione"], riga["descrizione_fattura"]), ("U1 bis", "Fatt"))
 
+                oggi = oggi_aziendale()
                 conv = repo.create_conversione({
                     "uom_from_id": u1, "uom_to_id": u2, "fattore": Decimal("10"),
-                    "valido_dal": date(2026, 1, 1),
+                    "valido_dal": oggi - timedelta(days=10),
                 })
-                self.assertTrue(repo.update_conversione(conv, {
-                    "fattore": Decimal("12"), "valido_al": date(2026, 12, 31),
-                }))
+                # ⛔ Dal 2026-11-11 (D27 di brief-db-revisione-catalogo) fattore,
+                #    unita' e inizio di una conversione non si cambiano sul posto
+                #    (`catalogo.trgfn_uom_guard_storia`): si cambia la FINE, dal
+                #    giorno aziendale in poi. Il binding si prova su quella.
+                fine = oggi + timedelta(days=30)
+                self.assertTrue(repo.update_conversione(conv, {"valido_al": fine}))
                 riga = repo.get_conversione(conv)
-                self.assertEqual(riga["fattore"], Decimal("12"))
-                self.assertEqual(riga["valido_al"], date(2026, 12, 31))
+                self.assertEqual(riga["fattore"], Decimal("10"))
+                self.assertEqual(riga["valido_al"], fine)
                 self.assertFalse(repo.update_conversione(conv, {}))
                 raise Annulla
         except Annulla:

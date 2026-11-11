@@ -115,14 +115,21 @@ _NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE
 # VIVO: ogni colonna che un trigger di lock blocca davvero, `codice_interno`
 # compreso. Qui restano solo le colonne immutabili per il dominio che il DB
 # NON dichiara ancora come lock:
-#   - catalogo.articoli_uom_operativa.uom_id (immutabile per coppia)
-#   - catalogo.unita_misura_conversioni.uom_from_id / uom_to_id
+#   - catalogo.articoli_uom_operativa: uom_id, factor_to_base, valido_dal
+#   - catalogo.unita_misura_conversioni: uom_from_id, uom_to_id, fattore,
+#     valido_dal
+# ⚠️ Dal 2026-11-11 (BE21 di brief-db-revisione-catalogo, D24/D27) l'identita'
+#    di una mappatura o di una conversione (unita', fattore, inizio) la ferma
+#    `catalogo.trgfn_uom_guard_storia` (`E_UOM_STORIA_IMMUTABILE`), ma la vista
+#    legge i soli `trgfn_lock_columns` e non la vede: e' un gap DICHIARATO, e la
+#    richiesta di farla leggere alla vista sta nel brief. Il form la riceve da
+#    qui, e il DB resta il giudice.
 # ⛔ Un gap che ripete una colonna gia' bloccata dal DB e' una seconda sede
 #    della stessa regola: quando il DB la dichiara, la voce qui si toglie
 #    (cosi' e' uscito `catalogo.articoli.codice`, 2026-11-09).
 _NON_EDITABLE_DB_GAPS: dict[tuple[str, str], tuple[str, ...]] = {
-    ("catalogo", "articoli_uom_operativa"): ("uom_id",),
-    ("catalogo", "unita_misura_conversioni"): ("uom_from_id", "uom_to_id"),
+    ("catalogo", "articoli_uom_operativa"): ("uom_id", "factor_to_base", "valido_dal"),
+    ("catalogo", "unita_misura_conversioni"): ("uom_from_id", "uom_to_id", "fattore", "valido_dal"),
 }
 
 

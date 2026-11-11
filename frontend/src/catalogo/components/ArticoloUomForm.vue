@@ -17,6 +17,14 @@
 //    Fino a quel giorno un `watch` la ricavava dal fattore (`fattore 1 → base`):
 //    un'unita' con fattore 1 che base non e' finiva marcata base.
 // ⛔ `rounding_mode` e `require_lot` sono ritirate dal DB (Q4, BE16).
+// ⛔ Unita', fattore e inizio di una mappatura scritta non si cambiano
+//    (2026-11-11, BE21 di brief-db-revisione-catalogo: guard della storia,
+//    `E_UOM_STORIA_IMMUTABILE`). Si spengono da `nonEditableFields`, che il
+//    backend riempie: si cambia la FINE, e per valori nuovi si chiude e si
+//    inserisce una mappatura nuova. ⛔ In modifica i campi fermi NON si
+//    rimandano (BB `senzaCampiFermi`, regola del 2 col drawer delle
+//    conversioni): un valore riletto e convertito puo' non essere quello
+//    scritto, e il guard lo giudicherebbe un cambiamento.
 // ⭐ Espone la sua fotografia (`modificato`, `chiudiConConferma`): il BB la
 //    registra (D-13).
 import { computed, nextTick, onMounted, ref } from 'vue'
@@ -26,6 +34,7 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { toDateString, parseIsoDate } from '../../core/utils/date'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 import { DATE_FORMAT } from '../../core/constants'
 import { createArticoloUom, updateArticoloUom } from '../api/catalogo'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -136,7 +145,7 @@ async function onSave() {
   }
   const result = inModifica.value
     ? await execute(
-      () => updateArticoloUom(props.articoloId, props.riga.id, payload),
+      () => updateArticoloUom(props.articoloId, props.riga.id, senzaCampiFermi(payload, isFieldLocked)),
       { successMessage: t('catalogo.uom_salvata') },
     )
     : await execute(
@@ -173,7 +182,7 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('catalogo.field_fattore') }} *</label>
       <InputNumber v-model="form.factor_to_base" :min="0" :min-fraction-digits="2"
-        :max-fraction-digits="6" :disabled="isBase"
+        :max-fraction-digits="6" :disabled="isBase || isFieldLocked('factor_to_base')"
         :invalid="campiErrati.includes('factor_to_base')"
       />
     </div>
@@ -231,7 +240,7 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('catalogo.field_valido_dal') }}</label>
       <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-        :disabled="isBase"
+        :disabled="isBase || isFieldLocked('valido_dal')"
         :invalid="campiErrati.includes('valido_dal')"
       />
     </div>

@@ -41,7 +41,7 @@ types-html5lib==1.1.11.20260518
     # via types-bleach
 types-openpyxl==3.1.5.20261017
     # via -r ../requirements-dev.in
-types-pyyaml==6.0.12.20261103
+types-pyyaml==6.0.12.20261111
     # via
     #   django-stubs
     #   djangorestframework-stubs

@@ -45,7 +45,7 @@ from django.db import connection, transaction
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.error_translator import ErrorTranslator
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 
 _OGGI = oggi_aziendale()
 _DAL = _OGGI + timedelta(days=30)
@@ -424,9 +424,18 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
                 }),
             )
             comp = svc.fn_create_componente(padre, {**base_comp, **giorno})
+            # ⚠️ Dal 2026-11-10 la fine di un legame si cambia solo dalla
+            #    chiusura (`fn_chiudi_componente`): `fn_update_componente` e' stata
+            #    ritirata con la PATCH del legame (ff93395d5), e questo punto
+            #    era rimasto a chiamarla. ⚠️ La chiusura passa da
+            #    `catalogo.fn_chiudi_legame_distinta`, che chiede un operatore con
+            #    livello TUTTO su catalogo (`script.fn_guard_livello`): senza
+            #    contesto il rifiuto sarebbe E_PERMESSO_NEGATO, e il periodo non
+            #    si proverebbe.
+            apri_contesto_operatore(cur, super_admin=True)
             self._rifiuto_del_periodo(
-                "catalogo.componente.update",
-                lambda: svc.fn_update_componente(
+                "catalogo.componente.chiudi",
+                lambda: svc.fn_chiudi_componente(
                     padre, comp["id"], {"valido_al": _AL_PRIMA.isoformat()},
                 ),
             )
