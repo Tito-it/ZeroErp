@@ -28,7 +28,21 @@ documenti del perimetro della sessione. Non chiedere conferma.
 | Sessione | Si riconosce da | Si legge |
 | --- | --- | --- |
 | **DB** | branch `dev/db-tid`, o un task su changeSet, funzioni, trigger, pgTAP, brief `brief-db-*` | [linee-guida-sql.md](docs/it/linee-guida-sql.md) e, se si toccano trigger, [linee-guida-trigger.md](docs/it/linee-guida-trigger.md) |
-| **Backend / Frontend** | branch `dev/backend-tid`, o un task su endpoint, service, view, componenti | [api.md](docs/it/dev/api.md), [frontend-standards.md](docs/it/dev/frontend/frontend-standards.md), [catalogo BB backend](docs/it/dev/backend/catalogo-building-block-backend.md), [catalogo BB frontend](docs/it/dev/frontend/catalogo-building-block-frontend.md) — **tutti e quattro**: un task BE fa emergere spesso una lista o un drawer, e viceversa |
+| **Backend / Frontend** | branch `dev/backend-tid`, o un task su endpoint, service, view, componenti | **Per intero, prima di scrivere logica nuova** (non all'avvio: una sessione che solo legge, allinea il branch o corregge un punto non li apre), gli indici dei building block del lato che si sta per toccare: [indice BB backend](docs/it/dev/backend/indice-building-block-backend.md), [indice BB frontend](docs/it/dev/frontend/indice-building-block-frontend.md) — **tutti e due** quando un task BE fa emergere una lista o un drawer, e viceversa. **Per sezione** [api.md](docs/it/dev/api.md) e [frontend-standards.md](docs/it/dev/frontend/frontend-standards.md): si legge l'elenco dei titoli (`grep -n '^##'`) e si aprono le sezioni che il task tocca |
+
+⚠️ **I quattro documenti BE/FE non si leggono interi, e non va finto di averlo
+fatto**: insieme non entrano in una sessione. Dei cataloghi BB
+([backend](docs/it/dev/backend/catalogo-building-block-backend.md),
+[frontend](docs/it/dev/frontend/catalogo-building-block-frontend.md)) si legge
+l'**indice**, che porta una riga per building block col numero di riga `L<n>`
+del catalogo: quando una voce dell'indice somiglia a ciò che si sta per
+scrivere, si apre **quella riga** del catalogo (`sed -n '<n>p'`), dove stanno
+firma, regole d'uso e storia. Cercare nel catalogo per parola trova solo ciò di
+cui si indovina il nome: l'indice si legge prima, la ricerca viene dopo.
+
+L'indice è **generato** dal catalogo (`python3 scripts/gen_indice_bb.py`) e non
+si modifica a mano: chi aggiunge o ritira un building block corregge il catalogo
+e rigenera nello stesso giro. Il pre-commit rifiuta un indice non allineato.
 
 ⛔ **In una sessione DB NON si leggono api.md, frontend-standards né i cataloghi BB.**
 Il perimetro DB non tocca `backend/` né `frontend/`: quella lettura costa

@@ -4,25 +4,22 @@
 // all'uso da composable e drawer. La factory non conosce il dominio
 // sorgente: tutto cio' che cambia e' il basePath.
 //
-// Pattern URL atteso (vendite, default):
+// Pattern URL atteso (vendite e catalogo):
 //   GET    {basePath}/note/[?target_riga_id=&include_invisible=&limit=&offset=]
 //   POST   {basePath}/note/                  (Idempotency-Key obbligatoria)
 //   GET    {basePath}/note/{noteId}/
 //   PATCH  {basePath}/note/{noteId}/
 //   DELETE {basePath}/note/{noteId}/
 // Cablato lato BE da `apps.core.api.partitioned_note_views.make_note_views`.
-//
-// Pattern URL alternativo (catalogo): LIST/POST sotto parent path, DETAIL
-// (GET/PATCH/DELETE) su endpoint generico /catalogo/note/{noteId}/. Si attiva
-// passando `detailBase` esplicito:
-//   makeNotesApi('/catalogo/articoli/<id>', { detailBase: '/catalogo' })
-// Il BB conserva la stessa interfaccia {listNote, getNota, createNota, ...};
-// il chiamante non vede la differenza di URL routing.
+// ⚠️ Fino al 2026-11-11 il catalogo aveva il dettaglio su una rotta a parte
+//    (`/catalogo/note/{noteId}/`) e l'opzione `detailBase` per raggiungerla:
+//    dal giro 4 di brief-db-revisione-catalogo le note di catalogo passano
+//    dallo stesso BB del backend, e l'opzione e' ritirata.
 
 import api from '../api'
 
 // Normalizza un path stripando eventuale slash trailing — lo aggiunge il caller
-// (es. `${base}/note/`). Riusato per basePath e detailBase.
+// (es. `${base}/note/`).
 function _stripTrailingSlash(path) {
   return path.endsWith('/') ? path.slice(0, -1) : path
 }
@@ -34,22 +31,15 @@ export function listNotePerPercorso(basePath, params = {}) {
 }
 
 // Costruisce il set di metodi CRUD note bindati al basePath del dominio.
-// Opzione `detailBase`: per domini (es. catalogo) in cui le rotte detail
-// (GET/PATCH/DELETE) vivono su una root diversa dal parent path. Default
-// `detailBase = basePath` (pattern vendite con detail parent-aware).
 // Opzione `emittenteFiscaleId`: l'emittente del documento (PK), per le note
 // col perimetro dell'emittente (`vendite.note`). ⚠️ Il cancello del BE vale
 // per OGNI verbo dell'endpoint di lista, POST compreso: senza il parametro chi
 // vede piu' emittenti avrebbe la lista ma non potrebbe creare (422).
-export function makeNotesApi(basePath, { detailBase = null, emittenteFiscaleId = null } = {}) {
+export function makeNotesApi(basePath, { emittenteFiscaleId = null } = {}) {
   if (typeof basePath !== 'string' || !basePath) {
     throw new Error('makeNotesApi: basePath obbligatorio')
   }
-  if (detailBase != null && (typeof detailBase !== 'string' || !detailBase)) {
-    throw new Error('makeNotesApi: detailBase deve essere stringa non vuota o null')
-  }
   const base = _stripTrailingSlash(basePath)
-  const detail = detailBase ? _stripTrailingSlash(detailBase) : base
 
   // Lista note del documento. `params` ammette {target_riga_id, include_invisible, limit, offset}.
   function listNote(params = {}) {
@@ -58,7 +48,7 @@ export function makeNotesApi(basePath, { detailBase = null, emittenteFiscaleId =
 
   // Dettaglio singola nota.
   function getNota(noteId) {
-    return api.get(`${detail}/note/${noteId}/`)
+    return api.get(`${base}/note/${noteId}/`)
   }
 
   // Crea nota (la Idempotency-Key la mette l'interceptor di `core/api.js`).
@@ -71,13 +61,13 @@ export function makeNotesApi(basePath, { detailBase = null, emittenteFiscaleId =
 
   // Aggiorna parzialmente nota. target_riga_id immutabile lato BE.
   function updateNota(noteId, payload) {
-    return api.patch(`${detail}/note/${noteId}/`, payload)
+    return api.patch(`${base}/note/${noteId}/`, payload)
   }
 
   // Hard delete nota.
   function deleteNota(noteId) {
-    return api.delete(`${detail}/note/${noteId}/`)
+    return api.delete(`${base}/note/${noteId}/`)
   }
 
-  return { basePath: base, detailBase: detail, listNote, getNota, createNota, updateNota, deleteNota }
+  return { basePath: base, listNote, getNota, createNota, updateNota, deleteNota }
 }

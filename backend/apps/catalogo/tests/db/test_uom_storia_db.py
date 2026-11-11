@@ -23,6 +23,11 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 3) UomStoriaDbTests.test_mappatura_in_vigore_non_si_cancella
 4) UomStoriaDbTests.test_mappatura_futura_si_cancella
 5) UomStoriaDbTests.test_fattore_della_conversione_non_si_cambia
+6) UomStoriaDbTests.test_i_campi_fermi_li_dichiara_il_db
+7) UomStoriaDbTests.test_il_rifiuto_del_lock_porta_il_campo
+8) UomStoriaDbTests.test_la_capability_della_mappatura_arriva_dalla_vista
+9) UomStoriaDbTests.test_la_capability_della_conversione_in_lista_e_nel_dettaglio
+10) UomStoriaDbTests.test_la_riga_base_non_si_spegne
 """
 from __future__ import annotations
 
@@ -128,3 +133,83 @@ class UomStoriaDbTests(unittest.TestCase):
             conversione["id"], {"fattore": "999"},
         ))
         self.assertEqual(errore.code, "E_UOM_STORIA_IMMUTABILE")
+
+    def _conversione(self, valido_dal: date) -> dict[str, Any]:
+        return catalogo_service.fn_create_conversione({
+            "uom_from_id": crea_unita_di_prova("SK", self.sfx), "uom_to_id": self.base, "fattore": "1000",
+            "valido_dal": valido_dal.isoformat(),
+        })
+
+    # 6. BE21-a (G1-G2, 2026-11-11): unita', fattore e inizio li dichiara
+    #    `dbops.vw_non_editable_fields` (lock di colonna), non piu' un gap del
+    #    backend. Le liste e i dettagli li trasportano.
+    def test_i_campi_fermi_li_dichiara_il_db(self) -> None:
+        conversione = self._conversione(self._giorni(-10))
+        self.assertLessEqual(
+            {"uom_from_id", "uom_to_id", "fattore", "valido_dal"},
+            set(catalogo_service.fn_get_conversione(conversione["id"])["non_editable_fields"]),
+        )
+        self.assertLessEqual(
+            {"uom_id", "factor_to_base", "valido_dal"},
+            set(catalogo_service.fn_list_uom_operative(self.articolo)["non_editable_fields"]),
+        )
+
+    # 7. BE21-a / BE21-d: il rifiuto del lock porta il campo (la colonna), e
+    #    arriva al client nei `fields` senza ripieghi del backend.
+    def test_il_rifiuto_del_lock_porta_il_campo(self) -> None:
+        riga = self._mappatura(self._giorni(-10))
+        errore = self._rifiuto(lambda: catalogo_service.fn_update_uom_operativa(
+            self.articolo, riga["id"], self._form(riga, factor_to_base="12"),
+        ))
+        self.assertEqual(errore.code, "E_UOM_STORIA_IMMUTABILE")
+        self.assertIn("factor_to_base", errore.fields)
+
+    # 8. BE21-b: le azioni di riga di una mappatura vengono dalla vista (il
+    #    BB `fn_uom_conversione_capability`). In vigore: non si cancella e non
+    #    si spegne, si chiude da ieri. Futura: si cancella.
+    def test_la_capability_della_mappatura_arriva_dalla_vista(self) -> None:
+        in_vigore = self._mappatura(self._giorni(-10))
+        futura = catalogo_service.fn_create_uom_operativa(self.articolo, {
+            "uom_id": crea_unita_di_prova("SD", self.sfx), "factor_to_base": "10",
+            "valido_dal": self._giorni(3).isoformat(),
+        })
+        righe = {r["id"]: r for r in catalogo_service.fn_list_uom_operative(self.articolo)["results"]}
+        r = righe[in_vigore["id"]]
+        self.assertFalse(r["puo_eliminarsi"])
+        self.assertEqual(r["motivo_non_eliminabile"], "UOM_STORIA_IN_VIGORE")
+        self.assertFalse(r["puo_cambiare_attivo"])
+        self.assertTrue(r["puo_chiudersi"])
+        self.assertIsNotNone(r["data_min_chiusura"])
+        self.assertIn("data_default_chiusura", r)
+        self.assertIsNone(r["motivo_non_chiudibile"])
+        self.assertTrue(righe[futura["id"]]["puo_eliminarsi"])
+        base = next(x for x in righe.values() if x["is_base"])
+        self.assertFalse(base["puo_cambiare_attivo"])
+        self.assertEqual(base["motivo_non_chiudibile"], "UOM_BASE")
+
+    # 9. BE21-c / BE21-e: la lista delle conversioni e il dettaglio leggono la
+    #    vista `vw_unita_misura_conversioni_dettaglio`, con la stessa capability.
+    def test_la_capability_della_conversione_in_lista_e_nel_dettaglio(self) -> None:
+        conversione = self._conversione(self._giorni(-10))
+        righe, _ = catalogo_service.fn_list_conversioni(uom_id=self.base, attivo=None)
+        in_lista = next(r for r in righe if r["id"] == conversione["id"])
+        dettaglio = catalogo_service.fn_get_conversione(conversione["id"])
+        for riga in (in_lista, dettaglio):
+            with self.subTest("lista" if riga is in_lista else "dettaglio"):
+                self.assertFalse(riga["puo_eliminarsi"])
+                self.assertEqual(riga["motivo_non_eliminabile"], "UOM_STORIA_IN_VIGORE")
+                self.assertFalse(riga["puo_cambiare_attivo"])
+                self.assertTrue(riga["puo_chiudersi"])
+                self.assertEqual(riga["uom_to_id"], self.base)
+
+    # 10. BE21-f (Q34): la riga base non si spegne. Lo rifiuta il DB, col
+    #     campo `attivo`.
+    def test_la_riga_base_non_si_spegne(self) -> None:
+        base = next(
+            r for r in catalogo_service.fn_list_uom_operative(self.articolo)["results"] if r["is_base"]
+        )
+        errore = self._rifiuto(lambda: catalogo_service.fn_update_uom_operativa(
+            self.articolo, base["id"], {"attivo": False},
+        ))
+        self.assertEqual(errore.code, "E_UOM_RIGA_BASE_IMMUTABILE")
+        self.assertIn("attivo", errore.fields)

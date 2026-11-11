@@ -75,9 +75,13 @@ UOM_ORDER_COLUMNS: dict[str, str] = {  # alias: u = catalogo.unita_misura
 # default d'elezione). Il seed delle due colonne e' arrivato dal team DB lo
 # stesso giorno (lista_colonna 296/297, `ordinabile=t`): contratto allineato,
 # presidiato da test_liste_configurabili_seed.
+# ⭐ Dal 2026-11-11 (BE21-c di brief-db-revisione-catalogo) la lista legge la
+#    vista `catalogo.vw_unita_misura_conversioni_dettaglio` (la `vista_sql`
+#    della lista 22): codici e descrizioni delle due unita' sono colonne della
+#    vista, non piu' due JOIN scritte qui.
 UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
-    "uom_from_codice": "uf.codice",
-    "uom_to_codice": "ut.codice",
+    "uom_from_codice": "c.uom_from_codice",
+    "uom_to_codice": "c.uom_to_codice",
     "fattore": "c.fattore",
     "valido_dal": "c.valido_dal",
     "valido_al": "COALESCE(c.valido_al, 'infinity'::date)",
@@ -237,12 +241,26 @@ _RICERCA_ARTICOLI = RicercaFull("catalogo.articoli", ("codice", "descrizione"))
 #    il catalogo avrebbe acceso una colonna sconosciuta alla dichiarazione.
 _RICERCA_UOM_TIPI = RicercaFull("catalogo.uom_tipi", ("codice", "descrizione"))
 _RICERCA_UNITA_MISURA = RicercaFull("catalogo.unita_misura", ("codice", "descrizione"))
-_RICERCA_CONVERSIONI = RicercaFull("catalogo.conversioni_uom", {
-    "uom_from_codice": "uf.codice",
-    "uom_from_descrizione": "uf.descrizione",
-    "uom_to_codice": "ut.codice",
-    "uom_to_descrizione": "ut.descrizione",
-})
+_RICERCA_CONVERSIONI = RicercaFull("catalogo.conversioni_uom", (
+    "uom_from_codice", "uom_from_descrizione", "uom_to_codice", "uom_to_descrizione",
+))
+
+# La proiezione di una conversione, lista e dettaglio: le colonne della vista
+# e la capability di riga del BB del DB `catalogo.fn_uom_conversione_capability`
+# (G1-G2, 2026-11-11), la stessa regola con cui `trgfn_uom_guard_storia`
+# rifiuta. Il backend la TRASPORTA: `puo_eliminarsi` / `motivo_non_eliminabile`
+# per il cestino, `puo_cambiare_attivo` per l'interruttore, `puo_chiudersi` /
+# `data_min_chiusura` / `data_default_chiusura` / `motivo_non_chiudibile` per
+# la data di fine.
+_CONVERSIONE_COLONNE = """
+    c.id, c.uom_from_id, c.uom_to_id, c.fattore,
+    c.valido_dal, c.valido_al, c.attivo,
+    c.uom_from_codice, c.uom_from_descrizione,
+    c.uom_to_codice, c.uom_to_descrizione,
+    c.puo_eliminarsi, c.motivo_non_eliminabile,
+    c.puo_cambiare_attivo, c.puo_chiudersi,
+    c.data_min_chiusura, c.data_default_chiusura, c.motivo_non_chiudibile
+"""
 
 
 # Il tetto dei picker degli articoli (ricerca libera e righe di documento): una
@@ -789,7 +807,7 @@ class CatalogoRepository:
     # Conversioni UoM (catalogo.unita_misura_conversioni)
     # =================================================================
 
-    # Scopo: Lista paginata delle conversioni UoM con filtri e join UoM.
+    # Scopo: Lista paginata delle conversioni UoM (vista di dettaglio, con la capability di riga).
     def list_conversioni(
         self, *, search: str | None = None, attivo: bool | None = True,
         uom_id: int | None = None,
@@ -801,7 +819,7 @@ class CatalogoRepository:
         #    nelle sorelle con `.lower()`: ora la legge il BB per tutte.
         ordinamento = sql_order_clause(
             order_by, order_dir,
-            colonne=UOM_CONVERSIONI_ORDER_COLUMNS, default="uf.codice", tiebreak="c.id",
+            colonne=UOM_CONVERSIONI_ORDER_COLUMNS, default="c.uom_from_codice", tiebreak="c.id",
             colonne_desc=UOM_CONVERSIONI_SORT_COLONNE_DATA,
         )
 
@@ -813,21 +831,13 @@ class CatalogoRepository:
         if uom_id is not None:
             conditions.append("(c.uom_from_id = %s OR c.uom_to_id = %s)")
             params.extend([uom_id, uom_id])
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_CONVERSIONI)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_CONVERSIONI, alias="c")
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        from_where = (
-            "FROM catalogo.unita_misura_conversioni c "
-            "JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id "
-            "JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id "
-            f"{where_clause}"
-        )
+        from_where = f"FROM catalogo.vw_unita_misura_conversioni_dettaglio c {where_clause}"
 
         return fetch_paged_with_total(
             f"""
-            SELECT c.id, c.uom_from_id, c.uom_to_id, c.fattore,
-                   c.valido_dal, c.valido_al, c.attivo,
-                   uf.codice AS uom_from_codice, uf.descrizione AS uom_from_descrizione,
-                   ut.codice AS uom_to_codice, ut.descrizione AS uom_to_descrizione,
+            SELECT {_CONVERSIONE_COLONNE},
                    COUNT(*) OVER () AS total_count
             {from_where}
             ORDER BY {ordinamento}
@@ -839,20 +849,12 @@ class CatalogoRepository:
             offset=safe_offset,
         )
 
-    # Scopo: Restituisce singola conversione UoM per id.
+    # Scopo: Restituisce singola conversione UoM per id, dalla stessa vista
+    #        della lista: il drawer legge la stessa capability (BE21-e).
     def get_conversione(self, conv_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT c.id, c.uom_from_id, c.uom_to_id, c.fattore,
-                       c.valido_dal, c.valido_al, c.attivo,
-                       uf.codice AS uom_from_codice, uf.descrizione AS uom_from_descrizione,
-                       ut.codice AS uom_to_codice, ut.descrizione AS uom_to_descrizione
-                FROM catalogo.unita_misura_conversioni c
-                JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id
-                JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id
-                WHERE c.id = %s
-                """,
+                f"SELECT {_CONVERSIONE_COLONNE} FROM catalogo.vw_unita_misura_conversioni_dettaglio c WHERE c.id = %s",  # noqa: S608 — proiezione dalla costante _CONVERSIONE_COLONNE, valore come parametro
                 [conv_id],
             )
             return row_to_dict(cursor)

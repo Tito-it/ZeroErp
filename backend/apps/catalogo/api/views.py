@@ -19,11 +19,9 @@ from rest_framework.request import Request
 from apps.catalogo.services.catalogo_service import (
     fn_create_articolo,
     fn_create_componente,
-    fn_create_nota_articolo,
     fn_create_uom_tipo,
     fn_create_uom_operativa,
     fn_create_unita_misura,
-    fn_delete_nota,
     fn_delete_uom_operativa,
     fn_disattiva_articolo,
     fn_disattiva_unita_misura,
@@ -35,14 +33,12 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_componenti,
     fn_list_componenti_pagina,
     fn_list_articoli,
-    fn_list_note_articolo,
     fn_list_uom_operative,
     fn_list_uom_operative_pagina,
     fn_list_uom_tipi,
     fn_list_unita_misura,
     fn_lookup_articoli,
     fn_lookup_articoli_ammessi,
-    fn_update_nota,
     fn_update_articolo,
     fn_update_uom_tipo,
     fn_update_uom_operativa,
@@ -51,8 +47,6 @@ from apps.catalogo.services.catalogo_service import (
     fn_get_conversione,
     fn_create_conversione,
     fn_update_conversione,
-    fn_list_note_componente,
-    fn_create_nota_componente,
     fn_get_chiusura_componente,
     fn_chiudi_componente,
 )
@@ -142,22 +136,6 @@ def _componente_write_fields() -> dict[str, serializers.Field]:
     }
 
 
-# Scopo: Definisce i campi write nota catalogo per schema API.
-def _nota_write_fields() -> dict[str, serializers.Field]:
-    return {
-        "target_riga_id": serializers.UUIDField(required=False, allow_null=True),
-        "anchor_tipo": serializers.CharField(required=False),
-        "posizione": serializers.CharField(required=False),
-        "seq": serializers.IntegerField(required=False, allow_null=True),
-        "testo": serializers.CharField(required=False, allow_blank=True, allow_null=True),
-        "testo_md": serializers.CharField(required=False, allow_blank=True, allow_null=True),
-        "id_stile": serializers.IntegerField(required=False),
-        "id_lingua": serializers.IntegerField(required=False, allow_null=True),
-        "visibile": serializers.BooleanField(required=False),
-        "solo_stampa": serializers.BooleanField(required=False),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    }
-
 _ARTICOLO_CREATE_REQUEST = inline_serializer(
     name="CatalogoArticoloCreateRequest",
     fields=_articolo_write_fields(for_create=True),
@@ -194,17 +172,6 @@ _COMPONENTE_CREATE_REQUEST = inline_serializer(
     name="CatalogoComponenteCreateRequest",
     fields=_componente_write_fields(),
 )
-
-_NOTA_CREATE_REQUEST = inline_serializer(
-    name="CatalogoNotaCreateRequest",
-    fields=_nota_write_fields(),
-)
-
-_NOTA_PATCH_REQUEST = inline_serializer(
-    name="CatalogoNotaPatchRequest",
-    fields=_nota_write_fields(),
-)
-
 
 class ApiArticoliList(DomainAPIView):
     area_funzionale = "catalogo"
@@ -615,112 +582,6 @@ class ApiArticoloComponenteChiudi(DomainAPIView):
     def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
         return handle_post_json(
             request, handler=lambda payload: fn_chiudi_componente(articolo_id, comp_id, payload),
-        )
-
-
-# Endpoint atomico Fase 3: chiusura sorgente + apertura nuova versione in
-# singola TX DB con advisory lock. Idempotency-Key obbligatoria perche'
-# l'azione modifica stato (UPDATE + INSERT atomici).
-class ApiArticoloNoteList(DomainAPIView):
-    area_funzionale = "catalogo"
-    model_permission = ("catalogo", "articolo")
-    is_search_endpoint = True
-    # ⚠️ Nessun `lista_codice`: `catalogo.note` e' globale (perimetro_emittente
-    #    = false), il cancello non avrebbe niente da chiedere. Esenzione
-    #    motivata in `test_perimetro_emittente_copertura`.
-
-    @extend_schema(
-        parameters=_PARAMETRI_LISTA_FIGLIA,
-        responses={
-            200: inline_serializer(
-                name="CatalogoArticoloNoteListResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: La pagina delle note dell'articolo (lista `catalogo.note`).
-    def get(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        p = parse_list_params(request.query_params, default_order="")
-        results, total = fn_list_note_articolo(articolo_id, **_lista_pagina_da(p))
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
-
-    @extend_schema(
-        request=_NOTA_CREATE_REQUEST,
-        responses={
-            200: inline_serializer(
-                name="CatalogoArticoloNotaCreateResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Crea una nuova nota articolo.
-    def post(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        return handle_post_json(request, handler=lambda payload: fn_create_nota_articolo(articolo_id, payload))
-
-
-class ApiNotaDetail(DomainAPIView):
-    area_funzionale = "catalogo"
-    model_permission = ("catalogo", "articolo")
-
-    @extend_schema(
-        request=_NOTA_PATCH_REQUEST,
-        responses={
-            200: inline_serializer(
-                name="CatalogoNotaUpdateResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Aggiorna una nota catalogo esistente.
-    def patch(self, request: Request, nota_id: int) -> JsonResponse:
-        return success_response(fn_update_nota(nota_id, corpo_oggetto(request)))
-
-    @extend_schema(
-        responses={
-            200: inline_serializer(
-                name="CatalogoNotaDeleteResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Elimina una nota catalogo esistente.
-    def delete(self, request: Request, nota_id: int) -> JsonResponse:
-        del request
-        return success_response(fn_delete_nota(nota_id))
-
-
-class ApiComponenteNoteList(DomainAPIView):
-    area_funzionale = "catalogo"
-    model_permission = ("catalogo", "articolo")
-    is_search_endpoint = True
-    # ⚠️ Nessun `lista_codice`: `catalogo.note` e' globale (perimetro_emittente
-    #    = false), il cancello non avrebbe niente da chiedere. Esenzione
-    #    motivata in `test_perimetro_emittente_copertura`.
-
-    @extend_schema(
-        parameters=_PARAMETRI_LISTA_FIGLIA,
-        responses={200: inline_serializer(
-            name="CatalogoComponenteNoteListResponse",
-            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-        )},
-    )
-    # Scopo: La pagina delle note di un componente (lista `catalogo.note`).
-    def get(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        p = parse_list_params(request.query_params, default_order="")
-        results, total = fn_list_note_componente(articolo_id, comp_id, **_lista_pagina_da(p))
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
-
-    @extend_schema(
-        request=_NOTA_CREATE_REQUEST,
-        responses={200: inline_serializer(
-            name="CatalogoComponenteNotaCreateResponse",
-            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-        )},
-    )
-    # Scopo: Crea una nota per un componente articolo.
-    def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        return handle_post_json(
-            request, handler=lambda payload: fn_create_nota_componente(articolo_id, comp_id, payload),
         )
 
 

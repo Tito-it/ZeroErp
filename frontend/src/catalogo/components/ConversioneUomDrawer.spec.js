@@ -16,6 +16,8 @@
 // Indice test:
 //   1) in modifica: fattore e inizio spenti, la fine no
 //   2) in modifica: il PATCH porta solo i campi aperti, mai i fermi
+//   3) in vigore (capability del dettaglio, BE21-e): l'interruttore spento col
+//      motivo, la fine dalla prima data ammessa
 // ------------------------------------------------------------
 
 import { describe, expect, it, vi } from 'vitest'
@@ -23,6 +25,7 @@ import { defineComponent, h, ref } from 'vue'
 import { flushPromises } from '@vue/test-utils'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 const fetchDetail = vi.fn()
 const update = vi.fn()
@@ -57,6 +60,10 @@ const FERMI = ['fattore', 'uom_from_id', 'uom_to_id', 'valido_dal']
 const DETTAGLIO = {
   id: 7, uom_from_id: 3, uom_to_id: 4, fattore: '1234567890.123457',
   valido_dal: '2026-01-01', valido_al: null, attivo: true, non_editable_fields: FERMI,
+  // In vigore: la capability della vista (BB del DB `fn_uom_conversione_capability`).
+  puo_eliminarsi: false, motivo_non_eliminabile: 'UOM_STORIA_IN_VIGORE',
+  puo_cambiare_attivo: false, puo_chiudersi: true,
+  data_min_chiusura: '2026-11-10', data_default_chiusura: '2026-11-11', motivo_non_chiudibile: null,
 }
 
 async function apri() {
@@ -85,6 +92,16 @@ describe('ConversioneUomDrawer', () => {
     expect(update).toHaveBeenCalledTimes(1)
     const [id, payload] = update.mock.calls[0]
     expect(id).toBe(7)
-    expect(Object.keys(payload).sort()).toEqual(['attivo', 'valido_al'])
+    // `attivo` non c'e': su una conversione in vigore l'interruttore e' fermo.
+    expect(Object.keys(payload).sort()).toEqual(['valido_al'])
+  })
+
+  it("3) in vigore: l'interruttore spento col motivo, la fine dalla prima data", async () => {
+    const w = await apri()
+    expect(w.findComponent(ToggleSwitch).props('disabled')).toBe(true)
+    expect(w.find('[data-testid="motivo-attivo"]').text()).toBe('UOM_STORIA_IN_VIGORE')  // dizionario vuoto: il codice
+    const al = w.findAllComponents(DatePicker)[1]
+    expect(al.props('disabled')).toBe(false)
+    expect(al.props('minDate').getDate()).toBe(10)
   })
 })

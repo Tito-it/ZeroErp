@@ -29,6 +29,11 @@ from apps.core.services.partitioned_note_service import PartitionedNoteService
 # il service. Permette di iniettare contesto o mock nei test.
 ServiceFactory = Callable[[], PartitionedNoteService]
 
+# Il cancello del padre: riceve i kwargs del percorso e solleva (404) se il
+# padre dell'URL non e' raggiungibile da li'. Esempio: il legame di distinta
+# deve essere dell'articolo del percorso.
+CancelloPadre = Callable[[dict[str, Any]], None]
+
 
 # Scopo: Costruisce inline_serializer request/response unici per la coppia
 #        (target_tipo, suffisso). Serializer name DEVE essere unico nel
@@ -60,6 +65,23 @@ def _make_view_name(target_tipo: str, suffix: str) -> str:
 #                             "preventivo")). Se None, fallback al livello area.
 #         - is_search_endpoint: True abilita SearchBurstRateThrottle sulla GET
 #                               (default True per la lista note)
+#         - perimetro_emittente: True (default) monta il cancello di
+#                               perimetro della lista `vendite.note`. False
+#                               per le tabelle-madre GLOBALI
+#                               (`catalogo.note`, perimetro_emittente = false
+#                               a catalogo, esenzione motivata in
+#                               `test_perimetro_emittente_copertura`).
+#         - cancello_padre: callable (path_kwargs) -> None chiamato da OGNI
+#                               verbo prima del service, per i percorsi in cui
+#                               il padre sta sotto un altro padre (il legame
+#                               dentro l'articolo): un padre di un altro
+#                               percorso e' un 404, non una nota letta.
+#         - supporta_righe: True (default) se la sede ha note di riga. False
+#                               (le anagrafiche di catalogo) toglie dallo
+#                               schema il filtro e il campo `target_riga_id`:
+#                               il service li rifiuterebbe sempre (400). Il
+#                               chiamante lo legge dal repository
+#                               (`repo.supports_riga`), non lo riscrive.
 def make_note_views(
     *,
     area_funzionale: str,
@@ -68,6 +90,9 @@ def make_note_views(
     target_tipo: str,
     model_permission: tuple[str, str] | None = None,
     is_search_endpoint: bool = True,
+    perimetro_emittente: bool = True,
+    cancello_padre: CancelloPadre | None = None,
+    supporta_righe: bool = True,
 ) -> tuple[type[DomainAPIView], type[DomainAPIView]]:
     # Serializer inline univoci per il dominio. Schema OpenAPI puro: i campi
     # sono dichiarativi per drf-spectacular ma la validazione effettiva resta
@@ -85,7 +110,8 @@ def make_note_views(
             "id_stile": serializers.IntegerField(required=False),
             "id_lingua": serializers.IntegerField(required=False),
             "meta": serializers.JSONField(required=False),
-            "target_riga_id": serializers.IntegerField(required=False),
+            # La riga solo nelle sedi che hanno note di riga (`supporta_righe`).
+            **({"target_riga_id": serializers.IntegerField(required=False)} if supporta_righe else {}),
         },
     )
     patch_request = inline_serializer(
@@ -123,6 +149,32 @@ def make_note_views(
     _is_search = is_search_endpoint
     _parent_param = parent_path_param
 
+    # Scopo: la chiave del padre dal percorso, dopo il cancello del padre (se
+    #        c'e'). Il tipo lo da' il converter dell'URL (`<int:…>` o
+    #        `<uuid:…>`); la forma la verifica il service (`_target_id`).
+    def _target_dal_percorso(path_kwargs: dict[str, Any]) -> Any:
+        if cancello_padre is not None:
+            cancello_padre(path_kwargs)
+        return path_kwargs[_parent_param]
+
+    # La sola lista col perimetro dell'emittente porta il parametro nello schema.
+    _parametri_perimetro = [
+        OpenApiParameter(
+            name="emittente_fiscale_id", type=int,
+            location=OpenApiParameter.QUERY, required=False,
+            description="L'emittente del documento: scioglie il cancello di perimetro della lista.",
+        ),
+    ] if perimetro_emittente else []
+
+    # Il filtro di riga solo nelle sedi che hanno note di riga.
+    _parametri_riga = [
+        OpenApiParameter(
+            name="target_riga_id", type=int,
+            location=OpenApiParameter.QUERY, required=False,
+            description="Filtra le note di una specifica riga.",
+        ),
+    ] if supporta_righe else []
+
     class NoteListCreateView(DomainAPIView):
         """List + create note su un documento padre.
 
@@ -136,12 +188,12 @@ def make_note_views(
         #    2026-10-31), col perimetro dell'emittente: il documento lo porta,
         #    e il FE lo passa come lasciapassare del cancello.
         # ⚠️ Letterale perche' il presidio del perimetro legge il codice dal
-        #    sorgente. La fabbrica oggi la montano le sole partizioni di
-        #    `vendite.note` (`apps/vendite/api/note_views.py`); il repository
-        #    NON lo verifica (`lista_codice` lo ricava dalla partizione, e
-        #    accetta anche `catalogo.note`). ⛔ Montarla su un'altra tabella-
-        #    madre vuole il codice parametrico qui, o cancello e ricerca
-        #    girerebbero su due liste diverse.
+        #    sorgente. La fabbrica la montano le partizioni di `vendite.note`
+        #    (`apps/vendite/api/note_views.py`) col cancello, e dal 2026-11-11
+        #    quelle di `catalogo.note` (`apps/catalogo/api/note_views.py`)
+        #    con `perimetro_emittente=False`, che lo toglie (sotto). ⛔ Una
+        #    terza tabella-madre CON perimetro vuole il codice parametrico
+        #    qui, o cancello e ricerca girerebbero su due liste diverse.
         # ⚠️ Il cancello vale anche per il POST (`initial()`): il FE manda
         #    l'emittente anche sulla creazione (`makeNotesApi`).
         lista_codice = "vendite.note"
@@ -154,16 +206,8 @@ def make_note_views(
                 param_ricerca_full(),
                 OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
                 OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
-                OpenApiParameter(
-                    name="emittente_fiscale_id", type=int,
-                    location=OpenApiParameter.QUERY, required=False,
-                    description="L'emittente del documento: scioglie il cancello di perimetro della lista.",
-                ),
-                OpenApiParameter(
-                    name="target_riga_id", type=int,
-                    location=OpenApiParameter.QUERY, required=False,
-                    description="Filtra le note di una specifica riga.",
-                ),
+                *_parametri_perimetro,
+                *_parametri_riga,
                 OpenApiParameter(
                     name="include_invisible", type=bool,
                     location=OpenApiParameter.QUERY, required=False,
@@ -175,7 +219,7 @@ def make_note_views(
         )
         # Scopo: Restituisce la lista paginata note del documento padre.
         def get(self, request: Request, **path_kwargs: Any) -> JsonResponse:
-            target_id = int(path_kwargs[_parent_param])
+            target_id = _target_dal_percorso(path_kwargs)
             qp = request.query_params
             raw_riga = qp_str(qp.get("target_riga_id"))
             target_riga_id = (
@@ -205,7 +249,7 @@ def make_note_views(
         @extend_schema(request=create_request, responses={200: detail_response})
         # Scopo: Crea una nuova nota sul documento padre. Idempotency-Key obbligatoria.
         def post(self, request: Request, **path_kwargs: Any) -> JsonResponse:
-            target_id = int(path_kwargs[_parent_param])
+            target_id = _target_dal_percorso(path_kwargs)
             auth_user_id = get_actor_user_id(request)
 
             def _handler(payload: dict[str, Any]) -> dict[str, Any]:
@@ -238,7 +282,7 @@ def make_note_views(
             self, request: Request, *, note_id: int, **path_kwargs: Any,
         ) -> JsonResponse:
             del request
-            target_id = int(path_kwargs[_parent_param])
+            target_id = _target_dal_percorso(path_kwargs)
             svc = service_factory()
             return success_response(svc.get_nota(note_id=note_id, target_id=target_id))
 
@@ -247,7 +291,7 @@ def make_note_views(
         def patch(
             self, request: Request, *, note_id: int, **path_kwargs: Any,
         ) -> JsonResponse:
-            target_id = int(path_kwargs[_parent_param])
+            target_id = _target_dal_percorso(path_kwargs)
             auth_user_id = get_actor_user_id(request)
             svc = service_factory()
             updated = svc.aggiorna_nota(
@@ -267,10 +311,21 @@ def make_note_views(
             self, request: Request, *, note_id: int, **path_kwargs: Any,
         ) -> JsonResponse:
             del request
-            target_id = int(path_kwargs[_parent_param])
+            target_id = _target_dal_percorso(path_kwargs)
             svc = service_factory()
             svc.elimina_nota(note_id=note_id, target_id=target_id)
             return success_response({"deleted": True})
+
+    # ⭐ Una tabella-madre GLOBALE non ha il cancello di perimetro: la classe
+    #    dichiara `vendite.note` letterale (lo legge il presidio statico), e
+    #    qui lo si toglie. La ricerca e l'ordinamento restano quelli della
+    #    lista della sede (`repo.lista_codice`), che non dipendono da questo.
+    #    ⚠️ `setattr` e non l'assegnamento: la classe ha `lista_codice` come
+    #    `str` letterale (e annotarla `str | None` la nasconderebbe al
+    #    presidio, che legge solo gli assegnamenti semplici).
+    if not perimetro_emittente:
+        setattr(NoteListCreateView, "lista_codice", None)  # noqa: B010
+        setattr(NoteListCreateView, "lista_emittente_param", None)  # noqa: B010
 
     # Rinomina le classi per debugging/admin/openapi (drf-spectacular usa il
     # nome di classe come operationId quando non specificato).

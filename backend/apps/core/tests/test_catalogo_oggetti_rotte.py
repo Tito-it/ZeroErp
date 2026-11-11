@@ -117,10 +117,7 @@ _PERIMETRI: tuple[Perimetro, ...] = (
         r"^api/v1/anagrafiche/(soggetti/<str:soggetto_id>|ruoli/<int:soggetto_ruolo_id>)/conti-bancari/",
         r"^api/v1/anagrafiche/conti-bancari/",
     )),
-    Perimetro(("catalogo", "articolo"), (
-        r"^api/v1/catalogo/articoli/",
-        r"^api/v1/catalogo/note/",
-    )),
+    Perimetro(("catalogo", "articolo"), (r"^api/v1/catalogo/articoli/",)),
     Perimetro(("catalogo", "unita_misura"), (r"^api/v1/catalogo/(unita-misura|conversioni-uom)/",)),
     Perimetro(("catalogo", "uom_tipi"), (r"^api/v1/catalogo/uom-tipi/",)),
     Perimetro(("vendite", "promo_articolo"), (r"^api/v1/vendite/promo-articoli/",)),

@@ -1484,7 +1484,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UOM_CONVERSIONE_TIPO_DIVERSO": "Non si possono convertire unita' di tipologia diversa: per un caso come il cartone di pezzi, indicare il fattore nelle unita' operative dell'articolo.",
     "E_UOM_MISMATCH": "Riga ordine e riga DDT hanno unita' di misura diverse.",
     "E_UOM_MISSING": "L'unita' della riga non si converte nell'unita' base dell'articolo alla data del documento.",
-    "E_UOM_RIGA_BASE_IMMUTABILE": "L'unita' base dell'articolo non si cambia e non si toglie.",
+    "E_UOM_RIGA_BASE_IMMUTABILE": "L'unita' base dell'articolo non si cambia, non si spegne e non si toglie.",
     "E_UOM_STORIA_CHIUSA": "La conversione e' gia' finita: la sua fine non si cambia piu'. Per riprenderla, inserirne una nuova che cominci da oggi.",
     "E_UOM_STORIA_CHIUSURA_RETROATTIVA": "La fine della conversione non puo' cambiare i giorni gia' passati: scegliere una data da ieri in poi.",
     "E_UOM_STORIA_IMMUTABILE": "Una conversione non si cambia sul posto: chiuderla e aprirne una nuova coi valori nuovi.",
