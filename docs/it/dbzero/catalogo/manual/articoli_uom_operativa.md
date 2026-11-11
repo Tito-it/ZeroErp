@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.articoli_uom_operativa`
 
-> **Ultimo aggiornamento**: 10 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > Approfondimento viste:
 >
-> * [catalogo.vw_articoli_uom_operativa_dettaglio](/dbzero/catalogo/views/vw_articoli_uom_operativa_dettaglio) — la lista delle unità di un articolo, con i codici e la capability di eliminazione
+> * [catalogo.vw_articoli_uom_operativa_dettaglio](/dbzero/catalogo/views/vw_articoli_uom_operativa_dettaglio) — la lista delle unità di un articolo, con i codici e la capability di riga (eliminare, spegnere, chiudere)
 >
 > Approfondimento funzioni:
 >
@@ -82,7 +82,9 @@ di ogni riga che lo rilegge. Per questo una mappatura scritta si chiude, non si 
 
 * **fattore, unità, articolo e inizio** non si cambiano mai, neppure su una mappatura che
   comincia domani (`E_UOM_STORIA_IMMUTABILE`). Un fattore nuovo è una riga nuova: si chiude la
-  vecchia e si inserisce la nuova dal giorno dopo;
+  vecchia e si inserisce la nuova dal giorno dopo. Queste quattro colonne le blocca il lock di
+  colonna (`script.trgfn_lock_columns`, dal registro dei lock), così il form le mostra non
+  modificabili;
 * **la fine** si sposta, ma non prima di ieri (`E_UOM_STORIA_CHIUSURA_RETROATTIVA`): chiudere a
   ieri vuol dire «da oggi non vale più». Una mappatura già finita non si riapre né si
   accorcia (`E_UOM_STORIA_CHIUSA`);
@@ -92,6 +94,9 @@ di ogni riga che lo rilegge. Per questo una mappatura scritta si chiude, non si 
 * le colonne che non fanno la conversione (i flag d'uso, `gtin`, le regole di input) si
   cambiano liberamente;
 * cancellare l'articolo porta via le sue mappature, anche quelle in vigore.
+
+Che cosa si può fare oggi su una riga lo dice in anticipo la vista di dettaglio, con lo stesso
+giudizio del guard (`catalogo.fn_uom_conversione_capability`).
 
 Chiudere o spegnere una mappatura che un listino attivo usa ancora, oltre la nuova fine, è
 rifiutato a fine transazione (`E_UOM_CHIUSURA_CON_LISTINI_ATTIVI`): il prezzo del listino
@@ -201,6 +206,8 @@ Il lotto è una proprietà dell'articolo (`articoli.requires_lotto`), non dell'u
   retroattiva, spegnimento e cancellazione solo prima del primo giorno; non si chiude
   sotto un listino attivo; esce dal legame ATTIVO con articolo e unità
   (brief-db-revisione-catalogo, giro 2-bis).
+* 2026-11-11 — fattore, unità, articolo e inizio passano al lock di colonna; la vista di
+  dettaglio pubblica la capability del guard (brief-db-revisione-catalogo, §15.11).
 
 ---
 

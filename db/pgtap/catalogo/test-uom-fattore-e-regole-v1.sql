@@ -38,7 +38,7 @@
 --  16) UPDATE che cambia solo l'unita': il fattore si rilegge
 --  17) max_decimals 0: 1,5 cartoni rifiutati (E_QTA_OPERATIVA_DECIMALI)
 --  18) max_decimals 0: 2,0 cartoni ammessi (gli zeri in coda non contano)
---  19) riga base: fattore diverso da 1 rifiutato (CHECK)
+--  19) riga base: fattore diverso da 1 rifiutato (CHECK, anche senza il lock)
 --  20) riga base: unita' spostata rifiutata (E_UOM_RIGA_BASE_IMMUTABILE)
 --  21) riga base: cancellazione rifiutata
 --  22) riga base nuova su un'altra unita': rifiutata
@@ -242,11 +242,18 @@ SELECT lives_ok(
 -- ============================================================
 -- La riga base (19-25)
 -- ============================================================
+-- ⚠️ Rev 2026-11-11 (brief-db-revisione-catalogo §15.11, G1): factor_to_base e'
+--   ora nel lock di colonna (script.trgfn_lock_columns, E_UOM_STORIA_IMMUTABILE),
+--   che su un UPDATE scatta prima del CHECK, anche sulla riga base. Il CHECK resta
+--   la regola della base (vale anche per un INSERT): qui lo si prova con l'override
+--   di manutenzione del lock acceso, che throws_ok annulla insieme all'errore. Il
+--   rifiuto del lock lo prova catalogo/test-uom-storia-v1.
 SELECT throws_ok(
-    $$ UPDATE catalogo.articoli_uom_operativa SET factor_to_base = 2
+    $$ SET LOCAL zeroerp.allow_lock_columns_override = 'on';
+       UPDATE catalogo.articoli_uom_operativa SET factor_to_base = 2
         WHERE articolo_id = (SELECT b FROM _t_art) AND is_base $$,
     '23514', NULL,
-    '19) riga base con fattore diverso da 1: rifiutata dal CHECK');
+    '19) riga base con fattore diverso da 1: rifiutata dal CHECK (anche senza il lock)');
 
 SELECT throws_like(
     $$ UPDATE catalogo.articoli_uom_operativa SET uom_id = (SELECT kg FROM _t_u)

@@ -1,10 +1,10 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-11 (verifica del lavoro BE, §15.11)
+## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro G1-G2 applicato e committato, §15.11.1)
 
-**Riparte: Tid**, col via e il range dei numeri al giro di G1 e G2 (Q32 e Q33 decise), e con la scelta del campo del
-lock, (a) o (b) (§15.11). Poi il via ai giri 4-5 (§7). Restano da guardare le scelte dentro i giri 2-bis, 3, 2 e 1 (§15.7, §14.2, §14.6, §13.3,
-§10.3). In parallelo il **team BE**, con BE22-BE25 e la parte di BE21 che non dipende da G1 e G2 (§15.11).
+**Riparte: Tid**, col via ai giri 4-5 (§7): il giro G1-G2 (`20261111-69` … `-73`) è applicato su dbdev e scratch,
+con la convergenza del lock, e committato (§15.11.1). Restano da guardare le scelte dentro i giri 2-bis, 3, 2 e 1 (§15.7, §14.2, §14.6, §13.3,
+§10.3). In parallelo il **team BE**, con BE22-BE25 e tutto BE21, compreso BE21-a … d (§15.11, §15.11.1).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -36,8 +36,9 @@ lock, (a) o (b) (§15.11). Poi il via ai giri 4-5 (§7). Restano da guardare le 
 | 5-vicies | ✅ Tid | Apply del giro 2-bis su dbdev e scratch, pgTAP come app verdi (2026-11-11) | §15.10 | 5-novodecies |
 | 5-unvicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 2-bis (2026-11-11) | §15.10 | 5-vicies |
 | 5-vicies-bis | ✅ sessione DB | Verifica del lavoro BE dopo il giro 2-bis: il giro BE del giro 3 non lascia niente al DB; il giro 2-bis lascia G1 e G2 | §15.11 | 5-unvicies |
-| 5-vicies-ter | **Tid** ⏭️ | Q32 ✅ e Q33 ✅ (2026-11-11). Restano il campo del lock, (a) o (b); il via e il range dei numeri del giro | §15.11 | 5-vicies-bis |
-| 5-vicies-quater | sessione DB | Il giro di G1 e G2, col suo apply | §15.11 | 5-vicies-ter |
+| 5-vicies-ter | ✅ Tid | Q32 e Q33; il campo del lock, opzione (a); via e numeri dal `-69` (2026-11-11) | §15.11 | 5-vicies-bis |
+| 5-vicies-quater | ✅ sessione DB | Giro G1-G2: `20261111-69` … `-73`, quattro CSV, un pgTAP nuovo e tre riallineati, doc; provato sullo scratch | §15.11.1 | 5-vicies-ter |
+| 5-vicies-quinquies | **Tid** ✅ | Apply del giro G1-G2 su dbdev e scratch, **poi subito la convergenza del lock**; pgTAP come app; commit — fatto l'11-11: migrate e convergenza applicati, pgTAP verdi | §15.11.1 | 5-vicies-quater |
 | 6 | sessione DB | Giri 4-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-unvicies |
 | 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
 | 7-bis | ✅ team BE (committato, `ff93395d5e`, PR #84) | La doc API di BE9 e BE11 (`api_catalogo.md`); BE19 e BE20 del giro 3 e BE4 (campo di `E_PARAMETRO_INVALIDO`). BE1-BE4 e BE16-BE18 del giro 2 erano già fatti (PR #81) | §13.5, §14.10 | — |
@@ -47,11 +48,11 @@ lock, (a) o (b) (§15.11). Poi il via ai giri 4-5 (§7). Restano da guardare le 
 | 7-quinquies | ✅ team BE | Giro BE del giro 2: BE1-BE4, BE16-BE18 (BE4 resta aperta per D19); committato (`2af6d986f5`, PR #81) | §13.7 | — |
 | 7-sexies | ✅ Tid | Le tre domande di §13.7.3: Q23 bloccato, Q24 per tutto il periodo, Q25 in questo brief (2026-11-10) | §6, §15 | 7-quinquies |
 | 7-septies | **team BE** ⏭️ | BE22-BE25 e la parte di BE21 che non dipende da G1 e G2 (codice, policy, test del rifiuto): giro 2-bis applicato (2026-11-11) | §15.4, §15.9, §15.11 | 5-vicies |
-| 7-octies | team BE | Il resto di BE21: il form e le azioni di riga dalla capability e da `vw_non_editable_fields`; `_NON_EDITABLE_DB_GAPS` ritirato | §15.11 | 5-vicies-quater |
+| 7-octies | **team BE** ⏭️ | Il resto di BE21, a giro G1-G2 applicato: BE21-a … BE21-d (il form da `vw_non_editable_fields`, `_NON_EDITABLE_DB_GAPS` ritirato, le azioni di riga dalle due viste, la lista delle conversioni sulla vista nuova) | §15.11.1 | 5-vicies-quinquies |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
 
-**Decisioni aperte di Tid:** il campo del lock, (a) o (b) (§15.11); le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2
-(§13.3) e 1 (§10.3), da guardare. **Da committare:** questo brief (§15.11, 2026-11-11).
+**Decisioni aperte di Tid:** le quattro scelte dentro il giro G1-G2 (§15.11.1); le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2
+(§13.3) e 1 (§10.3), da guardare. **Committato** il giro G1-G2 (2026-11-11), con questo brief.
 ⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93`, il giro 3 `20261111-25` … `-37` (dati da Tid). Messaggi
 d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 
@@ -1690,7 +1691,7 @@ che queste voci si tolgono quando il DB le dichiara.
     non deve uscire prima del lock: o si toglie la regola 1 a convergenza fatta, o la si tiene finché il lock è
     vivo.
   * La frase di `E_UOM_STORIA_IMMUTABILE` va riscritta sul `%s` che passa `trgfn_lock_columns`, cioè la colonna.
-* **⚠️ Da decidere: il campo.** `trgfn_lock_columns` mette la colonna nel contesto con la chiave `column`, non
+* **✅ Il campo: (a), Tid, 2026-11-11.** `trgfn_lock_columns` mette la colonna nel contesto con la chiave `column`, non
   `campo`. Registra anche `'database'` come area e `TG_NAME` (il trigger) come funzione. Il guard di oggi manda
   `campo`. Spostando la regola, il rifiuto perde il campo che BE21 vuole evidenziare. Le strade:
   * **(a)** `trgfn_lock_columns` aggiunge `campo` (uguale a `column`). Tocca il BB di tutti i lock, e quindi il
@@ -1712,6 +1713,107 @@ che queste voci si tolgono quando il DB le dichiara.
 legge la capability dalla vista, per la mappatura e per la conversione. Finché G1 e G2 non sono applicati, BE21 è
 fattibile solo a metà: il codice, la policy e i test del rifiuto sì; il form e le azioni di riga no. BE22-BE25 non
 dipendono da G1 e G2.
+
+#### 15.11.1 Che cosa è scritto (sessione DB, 2026-11-11; via e numeri di Tid: dal `-69`, opzione a)
+
+Cinque changeSet, `20261111-69` … `-73`; nulla applicato. Il `-68` è dell'altra sessione.
+
+| # | Schema | Che cosa |
+| --- | --- | --- |
+| `-69` | script | `trgfn_lock_columns`: il contesto del rifiuto porta anche `campo` (= la colonna), accanto a `column`, `old_value` e `new_value`. Vale per tutti i lock (opzione a) |
+| `-70` | catalogo | **BB nuovo** `fn_uom_conversione_capability(valido_dal, valido_al)`: `puo_eliminarsi`, `puo_cambiare_attivo`, `puo_chiudersi`, `data_min_chiusura`, `data_default_chiusura` e i due motivi (`UOM_STORIA_IN_VIGORE`, `UOM_STORIA_CHIUSA`). LANGUAGE sql STABLE, `BEGIN ATOMIC`: nelle viste si espande in LATERAL |
+| `-71` | catalogo | `trgfn_uom_guard_storia` senza la regola 1 e senza argomenti; le regole 2 e 3 le giudica il BB. I due trigger rimontati su `UPDATE OF attivo, valido_al OR DELETE` |
+| `-72` | catalogo | `vw_articoli_uom_operativa_dettaglio`: la capability dal BB, le colonne della chiusura in coda. Sulla riga base: `UOM_BASE_NON_ELIMINABILE`, e attivo e fine non si offrono (motivo `UOM_BASE`) |
+| `-73` | catalogo | **Vista nuova** `vw_unita_misura_conversioni_dettaglio`: le colonne della tabella, codice e descrizione delle due unità, la capability del BB. Solo SELECT |
+
+Fuori dai changeSet:
+
+* **`dbops/automation_lock_columns.csv`**: otto righe col codice `E_UOM_STORIA_IMMUTABILE`, le quattro colonne di
+  ogni tabella. Il trigger `trg_<tabella>_a10_lock_columns_upd` lo genera l'automazione.
+* **`config/messaggi_errore.csv`**: la frase di `E_UOM_STORIA_IMMUTABILE` parla della colonna («Il campo %s di
+  una conversione già scritta non si cambia sul posto…»). **`config/codici_errore.csv`**: la nota dice chi lo
+  solleva ora, e il contesto nuovo.
+* **`ui/lista_definizione.csv`**: la lista 22 `catalogo.conversioni_uom` ha `vista_sql =
+  vw_unita_misura_conversioni_dettaglio`.
+
+**Le scelte dentro il giro (da guardare, Tid).**
+
+1. **La riga base nella vista delle mappature**: attivo e fine non si offrono (`UOM_BASE`), anche se il guard della
+   storia sulla base non dice niente. La base vale 1 a ogni data, quindi chiuderla o spegnerla non cambia niente. Se
+   preferisci che sia il DB a rifiutarlo, è una regola in più nel guard della riga base: un giro a parte.
+2. **Il lock vale anche sulla riga base.** Lì unità e fattore erano già fermi (guard della base e CHECK); in più
+   diventano fermi `articolo_id` e `valido_dal`, che nessuno scrive. Sul fattore della base, un UPDATE ora lo
+   rifiuta il lock (`E_UOM_STORIA_IMMUTABILE`), perché i trigger BEFORE scattano prima del CHECK. Il CHECK resta la
+   regola della base, e vale anche per un INSERT.
+3. **Il trigger del guard ora scatta solo su `attivo` e `valido_al`.** Prima scattava su ogni UPDATE, perché la
+   regola 1 guardava tutte le colonne.
+4. **Fra migrate e convergenza** le quattro colonne non le blocca nessuno, su dbdev (vedi l'apply qui sotto). In
+   CI la passata `ci_apply` genera il lock nello stesso giro.
+
+**Le prove** (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di numero, con le
+`preConditions` come asserzioni, le righe di seed nuove e la convergenza simulata con
+`dbops.fn_run_automations_lock_columns('SCHEDULED', ARRAY['catalogo'], false)`, in `BEGIN … ROLLBACK`).
+
+* **Compilazione.** I cinque changeSet compilano e le `preConditions` passano. La convergenza crea solo i due
+  trigger attesi: `trg_articoli_uom_operativa_a10_lock_columns_upd` e
+  `trg_unita_misura_conversioni_a10_lock_columns_upd`, coi quattro argomenti ciascuno. I rollback, in ordine
+  inverso, rimettono i corpi vivi (il guard con `TG_NARGS`, il lock senza `campo`, il BB tolto). Lo scratch è
+  rimasto intatto.
+* **pgTAP nuovo** `catalogo/test-uom-conversione-capability-v1`: 16/16. Le risposte del BB sono costruite sulle
+  date; le due viste dicono quello che dice il BB; riga per riga, il guard fa quello che il BB dice
+  (cancellazione, spegnimento, chiusura alla data minima e un giorno prima); la lista legge la vista con tutte le
+  sue colonne.
+* **Riallineati**, con nota datata:
+  * `catalogo/test-uom-storia-v1`: 24/24 (21 + 3 nuovi: il campo del rifiuto, le otto colonne in
+    `vw_non_editable_fields`, il montaggio del guard). Senza il giro, i tre nuovi sono rossi;
+  * `catalogo/test-vw-articoli-uom-operativa-dettaglio-capability-v1`: 8/8. La riga secondaria senza inizio era
+    «eliminabile» ed è in vigore da sempre: ora comincia oggi, e una terza riga in vigore prova il rifiuto;
+  * `catalogo/test-uom-fattore-e-regole-v1`: 31/31. Il test 19 (fattore della base → CHECK) prova il CHECK con
+    l'override di manutenzione del lock acceso, perché senza il lock parlerebbe prima (scelta 2).
+* **Regressione**, ogni file senza e con il giro, identica salvo i tre file qui sopra: in catalogo
+  `test-fn-get-uom`, `test-articoli-vincoli-note-uom-overlap`, `test-articoli-componenti-guard-attivo-composito`,
+  `test-articoli-seed-uom-base-lock`, `test-uom-tipi-global-conversioni-v1`, `test-articoli-ammessi-picker-v1`,
+  `test-fn-riattiva-articolo-v1`; in dbops `test-lock-columns-convergenza`,
+  `test-non-editable-fields-dal-lock-vivo-v1`, `test-punti-canale-campo-v1`,
+  `test-marcatori-automazione-senza-esecutore-v1`, `test-anti-overlap-enforcement-gate-v1`,
+  `test-riferimenti-morti-v1`; in script `test-trgfn-guard-date-validita-v1`,
+  `test-catalogo-messaggi-errore-completo`; in ui `test-lista-colonna-campo-sorgente-in-vista-v1`,
+  `test-fn-resolve-lista-config`, `test-ui-nell-ambito-v1`; in vendite `test-listino-uom-periodo-v1`,
+  `test-commesse-attivita-fattore-alla-data-v1`. Tutti verdi.
+* **Guardrail** (pre-commit sui file del giro): verdi.
+
+**Doc.**
+
+* Pagine `manual/` nuove: `catalogo/fn_uom_conversione_capability`, `catalogo/vw_unita_misura_conversioni_dettaglio`.
+* Riallineate: `catalogo/trgfn_uom_guard_storia`, `catalogo/vw_articoli_uom_operativa_dettaglio`,
+  `catalogo/articoli_uom_operativa`, `catalogo/unita_misura_conversioni`, `script/trgfn_lock_columns` (solo il
+  contesto e la data).
+* Da rigenerare dopo l'apply: le schede auto-generate.
+* **Debito documentale notato, fuori giro**: la pagina `manual/` di `script.trgfn_lock_columns` è nel formato
+  vecchio (niente «Vedi anche» allo standard, blocco `sql` d'esempio, slogan in coda). Non l'ho riscritta: non è di
+  catalogo.
+
+**Apply (Tid).**
+
+1. Il migrate su dbdev e scratch.
+2. **Subito dopo**, la convergenza del lock: `CALL maintenance.proc_automations_lock_columns_job()`, oppure il
+   job delle 21:00. Fino ad allora le quattro colonne di ogni tabella non le blocca nessuno, e sono rossi
+   `test-uom-storia-v1` (test 1-4, 14, 22, 23) e `test-lock-columns-convergenza` (il registro chiede due lock che
+   non ci sono).
+3. I pgTAP come app.
+4. Il commit su richiesta.
+
+**Esito (2026-11-11).** Tid ha applicato il giro G1-G2 su dbdev e scratch, con la convergenza del lock subito dopo,
+e i pgTAP come app sono verdi. Il commit è su `dev/db-tid`, coi file del giro e questo brief.
+
+**Ricadute su BE e FE, a giro applicato** (aggiornano BE21, §15.4 e §15.9):
+
+| # | Che cosa |
+| --- | --- |
+| BE21-a | `_NON_EDITABLE_DB_GAPS` (`catalogo_service.py:113`) si ritira: le colonne di mappatura e conversione arrivano da `vw_non_editable_fields`. Il rifiuto `E_UOM_STORIA_IMMUTABILE` porta il campo (`COLUMN`) |
+| BE21-b | Le unità di un articolo: le azioni di riga leggono `puo_eliminarsi`, `puo_cambiare_attivo`, `puo_chiudersi`, `data_min_chiusura`, `data_default_chiusura` e i motivi dalla vista. Il motivo nuovo `UOM_STORIA_IN_VIGORE` (e `UOM_STORIA_CHIUSA`, `UOM_BASE`) va nei locales |
+| BE21-c | Le conversioni generali: il repository (`list_conversioni`, `catalogo_repository.py:789`) legge `catalogo.vw_unita_misura_conversioni_dettaglio`, che è ora la `vista_sql` della lista 22, con le stesse azioni di riga |
+| BE21-d | Su tutti i codici di lock il contesto ha ora anche `campo`: se il backend ricavava il campo da `column`, quel ripiego si può togliere |
 
 ### 14.10 Giro BE del giro 3 (team BE, 2026-11-10, da committare su `dev/backend-tid`)
 
