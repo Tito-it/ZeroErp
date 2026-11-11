@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_riattiva_articolo: area di log 'catalogo' come le altre funzioni dello
+#   schema (era 'database'); il commento del corpo e il COMMENT nominano il codice vero,
+#   E_ATTIVO_PADRE_NON_ATTIVO al COMMIT, al posto di E_PARENT_* e di «(404)» (§2.5).
+#
+#   Corpo di partenza: pg_get_functiondef su dbdev, 2026-11-11; la dichiarazione
+#   (firma, RETURNS, %TYPE, SECURITY) da 20260428-08. Rollback = stessa dichiarazione,
+#   corpo e COMMENT di partenza.
+#   Brief: brief-db-revisione-catalogo, giro 5-A (§17).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261112-19-update-fn-riattiva-articolo-area-e-codice-mctit.yaml
+
+  - changeSet:
+      id: 20261112-19-update-fn-riattiva-articolo-area-e-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_riattiva_articolo: area di log 'catalogo', il codice vero nel commento e nel COMMENT.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid IN (to_regprocedure('catalogo.fn_riattiva_articolo(uuid)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_riattiva_articolo(
+                   p_articolo_id  catalogo.articoli.id%TYPE
+               )
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               AS $function$
+              -- Scopo: riattiva un articolo disattivato (UPDATE attivo=true).
+              --   Pattern "padre prima, figli poi": NON tocca i figli (righe
+              --   articoli_uom_operativa, BoM dove l'articolo e' componente,
+              --   ecc.) -- l'admin li riattiva esplicitamente in azioni
+              --   successive.
+              -- Idempotente su articolo gia' attivo (no audit spurio).
+              -- Errore: E_ARTICOLO_NOT_FOUND se id NULL o non esiste.
+              -- Tipi: %TYPE delle colonne target (linee-guida-sql).
+              DECLARE
+                  v_fn_name CONSTANT text := 'fn_riattiva_articolo';
+                  v_rows    integer;
+              BEGIN
+                  -- Guard parametro NULL: riconducibile a NOT FOUND.
+                  IF p_articolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo',
+                          v_fn_name,
+                          'E_ARTICOLO_NOT_FOUND',
+                          jsonb_build_object('articolo_id', NULL),
+                          NULL::uuid,
+                          'NULL'
+                      );
+                  END IF;
+
+                  -- UPDATE filtrato su attivo=false: idempotente per
+                  -- articoli gia' attivi (0 rows aggiornate, no audit
+                  -- triggers spuri come data_update/user_update/tx_id).
+                  -- Un riferimento spento (iva, gruppo, tipologia, ecc.)
+                  -- lo rifiuta dbops.trgfn_child_requires_active_parent
+                  -- (E_ATTIVO_PADRE_NON_ATTIVO, al COMMIT: trigger differito).
+                  UPDATE catalogo.articoli
+                     SET attivo = true
+                   WHERE id = p_articolo_id
+                     AND attivo = false;
+
+                  GET DIAGNOSTICS v_rows = ROW_COUNT;
+
+                  -- 0 rows aggiornate -> due possibilita':
+                  --   (a) articolo gia' attivo (no-op idempotente, return)
+                  --   (b) articolo non esiste (raise E_ARTICOLO_NOT_FOUND)
+                  IF v_rows = 0 THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM catalogo.articoli
+                           WHERE id = p_articolo_id
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo',
+                              v_fn_name,
+                              'E_ARTICOLO_NOT_FOUND',
+                              jsonb_build_object('articolo_id', p_articolo_id),
+                              NULL::uuid,
+                              p_articolo_id::text
+                          );
+                      END IF;
+                      -- (a) no-op, articolo gia' attivo
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_riattiva_articolo(uuid) IS
+                  'Riattiva un articolo (attivo = true) senza toccare le righe che dipendono da lui: prima il padre, poi i figli, uno per uno. Idempotente su un articolo gia'' attivo. Id NULL o inesistente: E_ARTICOLO_NOT_FOUND. Un riferimento spento dell''articolo (IVA, gruppo, tipologia, unita'' di misura e gli altri padri della famiglia ATTIVO) lo rifiuta dbops.trgfn_child_requires_active_parent con E_ATTIVO_PADRE_NON_ATTIVO, al COMMIT (trigger differito). La disattivazione e'' un UPDATE diretto, giudicato da dbops.trgfn_prevent_deactivate_if_children.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_riattiva_articolo(
+                   p_articolo_id  catalogo.articoli.id%TYPE
+               )
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               AS $function$
+              -- Scopo: riattiva un articolo disattivato (UPDATE attivo=true).
+              --   Pattern "padre prima, figli poi": NON tocca i figli (righe
+              --   articoli_uom_operativa, BoM dove l'articolo e' componente,
+              --   ecc.) -- l'admin li riattiva esplicitamente in azioni
+              --   successive.
+              -- Idempotente su articolo gia' attivo (no audit spurio).
+              -- Errore: E_ARTICOLO_NOT_FOUND (404) se id NULL o non esiste.
+              -- Tipi: %TYPE delle colonne target (linee-guida-sql).
+              DECLARE
+                  v_fn_name CONSTANT text := 'fn_riattiva_articolo';
+                  v_rows    integer;
+              BEGIN
+                  -- Guard parametro NULL: riconducibile a NOT FOUND.
+                  IF p_articolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          v_fn_name,
+                          'E_ARTICOLO_NOT_FOUND',
+                          jsonb_build_object('articolo_id', NULL),
+                          NULL::uuid,
+                          'NULL'
+                      );
+                  END IF;
+
+                  -- UPDATE filtrato su attivo=false: idempotente per
+                  -- articoli gia' attivi (0 rows aggiornate, no audit
+                  -- triggers spuri come data_update/user_update/tx_id).
+                  -- Eventuale fail per parent inattivi (iva, gruppo,
+                  -- tipologia, ecc.) si propaga dal trigger esistente
+                  -- trgfn_child_requires_active_parent (E_PARENT_*).
+                  UPDATE catalogo.articoli
+                     SET attivo = true
+                   WHERE id = p_articolo_id
+                     AND attivo = false;
+
+                  GET DIAGNOSTICS v_rows = ROW_COUNT;
+
+                  -- 0 rows aggiornate -> due possibilita':
+                  --   (a) articolo gia' attivo (no-op idempotente, return)
+                  --   (b) articolo non esiste (raise E_ARTICOLO_NOT_FOUND)
+                  IF v_rows = 0 THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM catalogo.articoli
+                           WHERE id = p_articolo_id
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              v_fn_name,
+                              'E_ARTICOLO_NOT_FOUND',
+                              jsonb_build_object('articolo_id', p_articolo_id),
+                              NULL::uuid,
+                              p_articolo_id::text
+                          );
+                      END IF;
+                      -- (a) no-op, articolo gia' attivo
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_riattiva_articolo(uuid) IS
+                  'Riattiva un articolo (attivo=true) senza toccare i figli (pattern "padre prima, figli poi"). Idempotente su gia'' attivo, raise E_ARTICOLO_NOT_FOUND (404) se id NULL o inesistente. Disattivazione resta UPDATE diretto, coperto da trgfn_prevent_deactivate_if_children.';

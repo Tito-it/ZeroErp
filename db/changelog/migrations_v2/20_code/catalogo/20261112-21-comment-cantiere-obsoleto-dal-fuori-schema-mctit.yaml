@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# COMMENT del cantiere obsoleto_dal fuori da catalogo (§3.3.1, Q11 precisata: D-C si
+#   chiude qui per intero).
+#
+#   Si riscrivono interi, al presente (linee-guida-sql §5d), anche dove il marcatore
+#   viene da un altro cantiere: acquisti.ddt_righe.sorgente_tipo_id,
+#   script.trgfn_righe_guard_articolo_ammesso, vendite.fn_clona_versione_listino e i due
+#   trigger OBSOLETO di vendite. I corpi non si riaprono.
+#   Rollback: i COMMENT di prima, letti su dbdev il 2026-11-11.
+#   Brief: brief-db-revisione-catalogo, giro 5-A (§17).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261112-21-comment-cantiere-obsoleto-dal-fuori-schema-mctit.yaml
+
+  - changeSet:
+      id: 20261112-21-comment-cantiere-obsoleto-dal-fuori-schema
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D-C di obsoleto_dal: i cinque COMMENT fuori da catalogo, al presente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid IN (to_regprocedure('vendite.fn_clona_versione_listino(bigint,character varying,date,date)'), to_regprocedure('script.trgfn_righe_guard_articolo_ammesso()'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN acquisti.ddt_righe.sorgente_tipo_id IS
+                  'FK -> config.sorgenti(id): da dove viene la riga, se l''ha generata un verbo (per esempio la riga dell''ordine d''acquisto). NULL = riga scelta dall''operatore. Si scrive nello STESSO INSERT, prima del legame in acquisti.ordini_righe_fulfillment; la chiave sta in sorgente_riga (key_selector id) o sorgente_uid (uid). Il guard dell''articolo ritirato legge questa colonna: valorizzata = riga derivata, passa.';
+              COMMENT ON FUNCTION script.trgfn_righe_guard_articolo_ammesso() IS
+                  'BB guard BEFORE INSERT OR UPDATE OF articolo_id sulle righe che scelgono un articolo: vendite.preventivi_righe, vendite.ordini_righe, vendite.ddt_righe, vendite.offerte_commerciali_eccezioni, vendite.contratti_righe, vendite.listini_righe (LISTINO_VERSIONE, anche UPDATE OF listino_versione_id) e vendite.promo_articoli (PROMO_ARTICOLO, TG_ARGV[1] = id: la promo non ha un padre). Solleva il primo motivo di script.fn_check_articolo_riga (il predicato sta nella check), passando la natura della riga e il suo tipo d''eccezione, letti da to_jsonb(NEW) (ognuno c''e'' solo sulle sue tabelle). Campo: quello del primo motivo, o articolo_id. Argomenti: TG_ARGV[0] il documento (codice di config.tipi_entita); TG_ARGV[1] la colonna del padre; TG_ARGV[2], facoltativo, la colonna che, valorizzata all''INSERT, dice che la riga e'' DERIVATA (sulle righe di preventivo, ordine, bolla e contratto: sorgente_tipo_id); una colonna di esenzione che la riga non ha = E_TRIGGER_ARGOMENTI_INVALIDI. Il guard calcola dalla riga la SCELTA NUOVA e la passa alla check (p_scelta_nuova): INSERT senza esenzione, o UPDATE con articolo o documento padre cambiati (riscrivere lo stesso valore non conta). Solo sulla scelta nuova conta il motivo OBSOLETO (E_ARTICOLO_OBSOLETO). Su preventivo, ordine e bolla e'' montato DOPO script.trgfn_righe_natura_vendita (_a10_natura_vendita < _a10_regole_articolo); su offerta e contratto PRIMA dei guard di riga (_a10_guard_articolo_ammesso < _a10_guard_erogazione_*): prima i motivi dell''articolo, poi quelli della riga; sulla promo prima del guard delle date (_a10_guard_articolo_ammesso < _a10_guard_data_driven). La riconsegna e'' esente: con la porta zeroerp.ddt_riconsegna = id del reso, accesa da vendite.fn_genera_ddt_riconsegna, una riga di bolla passa se il suo articolo e'' fra le righe di quel reso; la porta e'' stretta sugli articoli del reso perche'' il verbo e'' SECURITY INVOKER. La distinta ha il suo guard (catalogo.trgfn_articoli_componenti_guard_componente). Il picker catalogo.fn_articoli_ammessi da'' lo stesso motivo prima della scelta.';
+              COMMENT ON FUNCTION vendite.fn_clona_versione_listino(bigint,character varying,date,date) IS
+                  'VERBO «Clona» di una versione di listino, in una transazione: la sorgente nel perimetro, da qualunque stato (SECURITY INVOKER, la RLS delle tabelle del listino; FOR KEY SHARE; non trovata E_VENDITE_LISTINO_VERSIONE_NOT_FOUND); prima cio'' che vieta, sul campo valido_dal (il primo motivo di script.fn_check_versione_listino_clonabile: E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE); poi la versione nuova dello stesso listino (codice, decorrenza e fine dai parametri; nasce BOZZA, attivo e meta dai default), le righe attive della sorgente (articolo, unita'', prezzo, periodicita'', meta), i kit, e i componenti attivi con la validita'' ricalcolata come intersezione fra la riga di distinta e la versione nuova; si saltano i componenti senza intersezione. L''articolo ritirato alla data operativa (script.fn_e_obsoleto, lo stesso BB del guard di riga e del picker) non si ricopia: si saltano la sua riga, i suoi componenti e i suoi kit, e la copia non si ferma, perche'' una versione nuova e'' un impegno nuovo a vendere. Ritorna la versione nuova, le righe e i componenti copiati, i componenti saltati (anche quelli dell''articolo ritirato) e le righe saltate. Il permesso d''area resta al backend. EXECUTE solo all''applicazione.';
+              COMMENT ON TRIGGER trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd ON vendite.commesse_attivita IS
+                  'Guard OBSOLETO: l''ONERE scelto a mano (porta oneri, senza sorgente) non nasce su un articolo ritirato alla data operativa, ne'' vi si sposta. L''ONERE con sorgente (dal push di ordine e bolla) e'' derivato e passa all''INSERT. NORMALE e RETTIFICA fuori dal WHEN. Le righe esistenti si modificano: conta solo il cambio di articolo.';
+              COMMENT ON TRIGGER trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd ON vendite.listini_kit IS
+                  'Guard OBSOLETO: un kit di listino non nasce su un articolo ritirato alla data operativa. Senza esenzione: una versione di listino e'' sempre una scelta. La copia della versione salta l''articolo ritirato (vendite.fn_clona_versione_listino).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN acquisti.ddt_righe.sorgente_tipo_id IS
+                  'FK -> config.sorgenti(id): da dove viene la riga, se l''ha generata un verbo (per esempio la riga dell''ordine d''acquisto). NULL = riga scelta dall''operatore. Si scrive nello STESSO INSERT, prima del legame in acquisti.ordini_righe_fulfillment; la chiave sta in sorgente_riga (key_selector id) o sorgente_uid (uid). Il guard dell''articolo ritirato legge questa colonna: valorizzata = riga derivata, passa. brief-db-articoli-obsoleto-dal (D, O-3).';
+              COMMENT ON FUNCTION script.trgfn_righe_guard_articolo_ammesso() IS
+                  'BB guard BEFORE INSERT OR UPDATE OF articolo_id sulle righe che scelgono un articolo: vendite.preventivi_righe, vendite.ordini_righe, vendite.ddt_righe; dal 20261013-57 vendite.offerte_commerciali_eccezioni e vendite.contratti_righe; dal 20261013-61 vendite.listini_righe (LISTINO_VERSIONE, anche UPDATE OF listino_versione_id); dal 20261014-05 vendite.promo_articoli (PROMO_ARTICOLO, TG_ARGV[1] = id: la promo non ha un padre). Solleva il primo motivo di script.fn_check_articolo_riga (il predicato sta nella check: linee-guida-sql §12.5.2), passando la natura della riga e il suo tipo d''eccezione, letti da to_jsonb(NEW) (ognuno c''e'' solo sulle sue tabelle). Campo: quello del primo motivo, o articolo_id. TG_ARGV[0]: documento (codice di config.tipi_entita); TG_ARGV[1]: colonna del padre. Su preventivo, ordine e bolla e'' montato DOPO script.trgfn_righe_natura_vendita (_a10_natura_vendita < _a10_regole_articolo); su offerta e contratto PRIMA dei guard di riga (_a10_guard_articolo_ammesso < _a10_guard_erogazione_*): prima i motivi dell''articolo, poi quelli della riga; sulla promo prima del guard delle date (_a10_guard_articolo_ammesso < _a10_guard_data_driven). La riconsegna e'' esente (A-6): con la porta zeroerp.ddt_riconsegna = id del reso, accesa da vendite.fn_genera_ddt_riconsegna, una riga di bolla passa se il suo articolo e'' fra le righe di quel reso; la porta e'' stretta sugli articoli del reso perche'' il verbo e'' SECURITY INVOKER. La distinta ha il suo guard (catalogo.trgfn_articoli_componenti_guard_componente: padre uuid). Il picker catalogo.fn_articoli_ammessi da'' lo stesso motivo prima della scelta. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, A-6, D-6; §9.3.3, §9.4). ⭐ rev 2026-11-05 (20261105-11, brief-db-articoli-obsoleto-dal §4): TG_ARGV[2] opzionale, la colonna che valorizzata all''INSERT dice che la riga e'' DERIVATA (sulle righe di preventivo, ordine, bolla e contratto: sorgente_tipo_id, montaggi di 20261105-14). Il guard calcola dalla riga la SCELTA NUOVA e la passa alla check (p_scelta_nuova): INSERT senza esenzione, o UPDATE con articolo o documento padre cambiati (riscrivere lo stesso valore non conta). Solo sulla scelta nuova conta il motivo OBSOLETO (E_ARTICOLO_OBSOLETO); gli altri motivi si giudicano come prima. Colonna di esenzione assente dalla riga = E_TRIGGER_ARGOMENTI_INVALIDI.';
+              COMMENT ON FUNCTION vendite.fn_clona_versione_listino(bigint,character varying,date,date) IS
+                  'VERBO «Clona» di una versione di listino, in una transazione: la sorgente nel perimetro, da qualunque stato (SECURITY INVOKER, la RLS delle tabelle del listino; FOR KEY SHARE; non trovata E_VENDITE_LISTINO_VERSIONE_NOT_FOUND); prima cio'' che vieta, sul campo valido_dal (il primo motivo di script.fn_check_versione_listino_clonabile: E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE, decisione D2); poi la versione nuova dello stesso listino (codice, decorrenza e fine dai parametri; nasce BOZZA, attivo e meta dai default), le righe attive della sorgente (articolo, uom, prezzo, meta) e i componenti attivi con la validita'' ricalcolata come intersezione fra la riga di distinta e la versione nuova. Si saltano i componenti senza intersezione. Ritorna la versione nuova, righe e componenti copiati, componenti saltati. Prende il posto di listini_repository.clone_versione e della regola D2 del service. Il permesso d''area resta al backend. EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §16.14 (C-1 = a, Tid 2026-10-29). rev 2026-10-31 (20261031-38): copia la periodicita'' delle righe e i kit. ⭐ rev 2026-11-06 (20261106-01, brief-db-articoli-obsoleto-dal O-6): l''articolo ritirato alla data operativa (script.fn_e_obsoleto, lo stesso BB del guard di riga e del picker) non si ricopia: si saltano la sua riga, i suoi componenti e i suoi kit, e la copia non si ferma (O-2: una versione nuova e'' un impegno nuovo a vendere). + righe_saltate in coda al risultato; componenti_saltati conta anche i componenti dell''articolo ritirato. RETURNS TABLE cambiato: DROP + CREATE.';
+              COMMENT ON TRIGGER trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd ON vendite.commesse_attivita IS
+                  'Guard OBSOLETO (brief-db-articoli-obsoleto-dal O-9): l''ONERE scelto a mano (porta oneri, senza sorgente) non nasce su un articolo ritirato alla data operativa, ne'' vi si sposta. L''ONERE con sorgente (dal push di ordine e bolla) e'' derivato e passa all''INSERT. NORMALE e RETTIFICA fuori dal WHEN. Le righe esistenti si modificano: conta solo il cambio di articolo.';
+              COMMENT ON TRIGGER trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd ON vendite.listini_kit IS
+                  'Guard OBSOLETO (brief-db-articoli-obsoleto-dal O-2): un kit di listino non nasce su un articolo ritirato alla data operativa. Senza esenzione: una versione di listino e'' sempre una scelta. La copia della versione salta l''articolo ritirato (vendite.fn_clona_versione_listino, O-6).';

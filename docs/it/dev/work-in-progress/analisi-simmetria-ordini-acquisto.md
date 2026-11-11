@@ -3,8 +3,9 @@
 > Stato: **ANALISI**. Nessuna migration, nessun backend, nessun frontend.
 > Le decisioni del §5 vanno chiuse **prima** di aprire il cantiere: ognuna cambia il DDL.
 >
-> Data creazione: 2026-09-01 · revisione 2026-11-08 (§4.6-bis: la provenienza, passata qui da
-> brief-db-sorgente-documento-e-riga)
+> Data creazione: 2026-09-01 · revisione 2026-11-11 (§4.6-bis: la provenienza, passata qui da
+> brief-db-sorgente-documento-e-riga il 2026-11-08; il ritiro dell'articolo sulle righe d'acquisto, passato da
+> brief-db-articoli-obsoleto-dal il 2026-11-11)
 >
 > ⚠️ **Prima di diventare un brief** (Tid, 2026-11-08: «tutte le tabelle acquisti speculari a vendita devono essere
 > riallineate nelle logiche simili») questa analisi va **riscontrata con la vendita di oggi**, come al §4.1-ter: dal
@@ -347,6 +348,23 @@ TESTUALE**, nello stesso giro.
 * la regola «si cancella solo la bozza vuota» su ordini e DDT d'acquisto, come il giro T.4 per la vendita: il lato «in
   uscita» la presuppone (S-9: della cancellazione decide la tabella del documento);
 * la cascata del fulfillment d'acquisto, da allineare o da dichiarare diversa col motivo.
+
+**Il ritiro dell'articolo sulle righe d'acquisto (passato qui il 2026-11-11).** Da
+[brief-db-articoli-obsoleto-dal](brief-db-articoli-obsoleto-dal.md) (lotto C, O-3 di Tid del 2026-11-04): un articolo
+ritirato (`catalogo.articoli.obsoleto_dal` raggiunta) non si sceglie per una riga d'acquisto **nuova**; la riga
+**derivata** da un altro documento passa. Non è decisione da prendere, è lavoro da fare nel giro che porta qui la
+provenienza, perché l'esenzione legge la provenienza scritta dal verbo:
+
+* il guard generico `dbops.trgfn_child_requires_non_obsolete_parent` su `acquisti.ordini_righe.articolo_id` e
+  `acquisti.ddt_righe.articolo_id`, con l'argomento di esenzione `sorgente_tipo_id` (vale solo all'INSERT; sull'UPDATE
+  giudica solo il cambio d'articolo), come su `commesse_attivita` (`20261106-02`);
+* si monta **dopo** che i verbi d'acquisto scrivono la provenienza nello stesso INSERT: prima, una riga derivata da un
+  articolo ritirato sarebbe respinta come scelta nuova;
+* se le righe d'acquisto passano dalla check di riga (`script.fn_check_articolo_riga_su_contesto`) come quelle di
+  vendita, il motivo `E_ARTICOLO_OBSOLETO` è già lì e il guard generico non serve: lo si sceglie quando si apre il
+  cantiere, non due strumenti per la stessa domanda;
+* il pgTAP costruisce i casi: riga nuova respinta, derivata ammessa, cambio d'articolo respinto, ritiro programmato
+  ammesso (modello: `vendite/test-articolo-ritirato-v1`).
 
 ### 4.7, 4.8, 4.9 — le restanti
 

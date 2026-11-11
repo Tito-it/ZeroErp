@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_get_uom_base`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -27,8 +27,7 @@ l'articolo non esiste restituisce NULL, e il chiamante decide se è un errore.
 
 `articoli.uom_id` è obbligatorio, quindi un articolo che esiste ha sempre un'unità base: la
 funzione restituisce NULL solo quando l'id non corrisponde a nessun articolo (o l'articolo
-non è visibile a chi la chiama). Il COMMENT parla anche di articolo «senza UoM», ma è un caso
-che il modello non ammette.
+non è visibile a chi la chiama).
 
 L'unità base di un articolo non cambia dopo la creazione: `articoli.uom_id` è bloccato.
 
@@ -55,6 +54,8 @@ chiamanti.
 * 2025-11-03 — nasce insieme a `fn_get_uom_factor`.
 * 2026-11-09 — la chiama anche il calcolo della quantità sulle righe di vendita
   (brief-db-revisione-catalogo, giro 2).
+* 2026-11-11 — la firma è ancorata con `%TYPE`; via il `LIMIT 1` su chiave primaria e la
+  frase sull'articolo «senza UoM» (brief-db-revisione-catalogo, giro 5).
 
 ---
 

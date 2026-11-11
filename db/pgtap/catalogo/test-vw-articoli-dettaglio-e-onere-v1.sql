@@ -10,8 +10,9 @@
 -- Indice test (plan 4):
 --   1) l'articolo-onere: e_onere vero, la sua causale
 --   2) la merce: e_onere falso, causale NULL
---   3) e_onere e' la definizione di articolo-onere su tutto il catalogo
---      (causale_onere_id IS NOT NULL), seed compreso
+--   3) e_onere segue causale_onere_id: tolta la causale, lo stesso articolo
+--      costruito non e' piu' un onere (prima il test iterava su tutto il catalogo:
+--      brief-db-revisione-catalogo, giro 5-A)
 --   4) le due colonne nuove stanno subito dopo requires_lotto, dove le ha
 --      messe in coda il 20261103-53 (il BE legge per nome, il resto non si
 --      sposta). Si controlla la posizione relativa e non "le ultime 3": le
@@ -53,13 +54,13 @@ SELECT is(
   'false|NULL',
   '2) la merce: e_onere falso, causale NULL');
 
+UPDATE catalogo.articoli SET causale_onere_id = NULL WHERE id = (SELECT onere FROM _a);
+
 SELECT is(
-  (SELECT count(*)::int
-     FROM catalogo.vw_articoli_dettaglio v
-     JOIN catalogo.articoli a ON a.id = v.id
-    WHERE v.e_onere IS DISTINCT FROM (a.causale_onere_id IS NOT NULL)),
-  0,
-  '3) e_onere e'' causale_onere_id IS NOT NULL su tutto il catalogo');
+  (SELECT v.e_onere::text || '|' || coalesce(v.causale_onere_id::text, 'NULL')
+     FROM catalogo.vw_articoli_dettaglio v WHERE v.id = (SELECT onere FROM _a)),
+  'false|NULL',
+  '3) tolta la causale, lo stesso articolo non e'' piu'' un onere');
 
 SELECT is(
   (SELECT string_agg(c.column_name::text, ',' ORDER BY c.ordinal_position)

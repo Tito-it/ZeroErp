@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_componenti_guard_obbligatorio(): via 1 COALESCE su un valore che non puo' essere NULL.
+#
+#   BEFORE UPDATE su OLD.articolo_componente_id: la FK della riga vecchia regge,
+#   quindi il legame c'e', e articoli_componenti.obbligatorio e' NOT NULL.
+#   Il COALESCE e' un ramo che non scatta mai: si sostituisce col valore.
+#   Il resto del corpo e il COMMENT non cambiano.
+#   Corpo di partenza: pg_get_functiondef su dbdev, 2026-11-11; la dichiarazione (firma,
+#   RETURNS, %TYPE, SECURITY INVOKER) da 20260513-17. Rollback = stessa dichiarazione e corpo di partenza.
+#   Brief: brief-db-revisione-catalogo, giro 5-B (§17.4).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261112-13-update-trgfn-componenti-guard-obbligatorio-senza-coalesce-mctit.yaml
+
+  - changeSet:
+      id: 20261112-13-update-trgfn-componenti-guard-obbligatorio-senza-coalesce
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_componenti_guard_obbligatorio: via 1 COALESCE irraggiungibili. Brief: brief-db-revisione-catalogo, giro 5-B.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('script.trgfn_componenti_guard_obbligatorio()'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_obbligatorio()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               AS $function$
+              -- Scopo: BEFORE UPDATE OF attivo su *_righe_componenti — blocca
+              --   disattivazione (TRUE->FALSE) di componenti obbligatori.
+              --   I componenti obbligatori fanno sempre parte del documento;
+              --   per escluderli occorre modificare la BoM in catalogo.
+              DECLARE
+                  v_obbligatorio catalogo.articoli_componenti.obbligatorio%TYPE;
+                  v_codice_comp  catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- Scatta solo su transizione attivo TRUE -> FALSE
+                  IF OLD.attivo = TRUE AND NEW.attivo = FALSE THEN
+                      SELECT ac.obbligatorio, a.codice
+                        INTO v_obbligatorio, v_codice_comp
+                        FROM catalogo.articoli_componenti ac
+                        JOIN catalogo.articoli a ON a.id = ac.componente_id
+                       WHERE ac.id = OLD.articolo_componente_id;
+
+                      IF v_obbligatorio THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', TG_NAME, 'E_DOC_COMPONENTE_OBBLIGATORIO',
+                              jsonb_build_object(
+                                  'articolo_componente_id', OLD.articolo_componente_id,
+                                  'componente_id',          OLD.componente_id
+                              ),
+                              NULL::uuid,
+                              COALESCE(v_codice_comp, OLD.componente_id::text)
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_obbligatorio()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               AS $function$
+              -- Scopo: BEFORE UPDATE OF attivo su *_righe_componenti — blocca
+              --   disattivazione (TRUE->FALSE) di componenti obbligatori.
+              --   I componenti obbligatori fanno sempre parte del documento;
+              --   per escluderli occorre modificare la BoM in catalogo.
+              DECLARE
+                  v_obbligatorio catalogo.articoli_componenti.obbligatorio%TYPE;
+                  v_codice_comp  catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- Scatta solo su transizione attivo TRUE -> FALSE
+                  IF OLD.attivo = TRUE AND NEW.attivo = FALSE THEN
+                      SELECT ac.obbligatorio, a.codice
+                        INTO v_obbligatorio, v_codice_comp
+                        FROM catalogo.articoli_componenti ac
+                        JOIN catalogo.articoli a ON a.id = ac.componente_id
+                       WHERE ac.id = OLD.articolo_componente_id;
+
+                      IF COALESCE(v_obbligatorio, TRUE) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', TG_NAME, 'E_DOC_COMPONENTE_OBBLIGATORIO',
+                              jsonb_build_object(
+                                  'articolo_componente_id', OLD.articolo_componente_id,
+                                  'componente_id',          OLD.componente_id
+                              ),
+                              NULL::uuid,
+                              COALESCE(v_codice_comp, OLD.componente_id::text)
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

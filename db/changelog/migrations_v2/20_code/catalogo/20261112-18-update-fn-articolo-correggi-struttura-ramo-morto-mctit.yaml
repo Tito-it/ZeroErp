@@ -1,0 +1,347 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_articolo_correggi_struttura: via il secondo «p_campi IS NULL OR», che non
+#   scatta mai: un p_campi NULL lo rifiuta gia' il controllo di prima (E_PARAMETRO_INVALIDO).
+#
+#   Corpo di partenza: pg_get_functiondef su dbdev, 2026-11-11; la dichiarazione
+#   (firma, RETURNS, %TYPE, SECURITY) da 20261018-74. Rollback = stessa dichiarazione,
+#   corpo e COMMENT di partenza.
+#   Brief: brief-db-revisione-catalogo, giro 5-A (§17).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261112-18-update-fn-articolo-correggi-struttura-ramo-morto-mctit.yaml
+
+  - changeSet:
+      id: 20261112-18-update-fn-articolo-correggi-struttura-ramo-morto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_articolo_correggi_struttura: via un ramo irraggiungibile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid IN (to_regprocedure('catalogo.fn_articolo_correggi_struttura(uuid,jsonb)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_articolo_correggi_struttura(
+                   p_articolo_id catalogo.articoli.id%TYPE,
+                   p_campi       jsonb)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+               AS $function$
+              DECLARE
+                  v_codice    catalogo.articoli.codice%TYPE;
+                  v_estranee  text;
+                  v_set       text;
+                  v_prima     text[];
+                  v_righe     integer;
+                  v_documenti integer;
+                  v_elenco    jsonb;
+                  -- Una coppia chiave/valore di p_campi: nessuna colonna dietro.
+                  v_chiave    text;
+                  v_valore    jsonb;
+                  v_non_nullo boolean;
+                  v_tipo_ok   boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Correggere i flag strutturali di un articolo anche se
+                  --   usato. Solo SUPER_ADMIN. Ordine: permesso, parametri,
+                  --   valori, articolo, righe non ammesse prima, scrittura con
+                  --   la porta aperta, righe rese non ammesse.
+                  --   Le colonne ammesse: catalogo.fn_articolo_colonne_struttura().
+                  -- =========================================================
+                  PERFORM script.fn_guard_super_admin(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer);
+
+                  IF p_campi IS NULL OR jsonb_typeof(p_campi) <> 'object' OR p_campi = '{}'::jsonb THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_campi', 'valore', p_campi),
+                          NULL::uuid,
+                          'p_campi: un oggetto con almeno una colonna');
+                  END IF;
+
+                  SELECT string_agg(k, ', ' ORDER BY k)
+                    INTO v_estranee
+                    FROM jsonb_object_keys(p_campi) k
+                   WHERE k <> ALL (catalogo.fn_articolo_colonne_struttura());
+                  IF v_estranee IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_campi', 'non_ammesse', v_estranee),
+                          NULL::uuid,
+                          'p_campi: colonne non correggibili da qui: ' || v_estranee);
+                  END IF;
+
+                  -- I valori, prima di scrivere: vuoto su una colonna NOT NULL, o
+                  -- di un tipo che la colonna non accetta (la stessa conversione
+                  -- della scrittura, su quella sola colonna).
+                  FOR v_chiave, v_valore IN SELECT e.key, e.value FROM jsonb_each(p_campi) e ORDER BY e.key LOOP
+                      SELECT a.attnotnull INTO v_non_nullo
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attrelid = 'catalogo.articoli'::regclass
+                         AND a.attname  = v_chiave;
+
+                      IF jsonb_typeof(v_valore) = 'null' AND v_non_nullo THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                              jsonb_build_object('parametro', 'p_campi', 'campo', v_chiave, 'valore', v_valore),
+                              NULL::uuid,
+                              format('«%s» non può restare vuoto', catalogo.fn_articolo_flag_etichetta(v_chiave)));
+                      END IF;
+
+                      v_tipo_ok := true;
+                      BEGIN
+                          PERFORM jsonb_populate_record(NULL::catalogo.articoli,
+                                                        jsonb_build_object(v_chiave, v_valore));
+                      EXCEPTION WHEN data_exception THEN
+                          v_tipo_ok := false;
+                      END;
+                      IF NOT v_tipo_ok THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                              jsonb_build_object('parametro', 'p_campi', 'campo', v_chiave, 'valore', v_valore),
+                              NULL::uuid,
+                              format('il valore di «%s» non è valido', catalogo.fn_articolo_flag_etichetta(v_chiave)));
+                      END IF;
+                  END LOOP;
+
+                  SELECT a.codice INTO v_codice
+                    FROM catalogo.articoli a
+                   WHERE a.id = p_articolo_id
+                     FOR UPDATE;
+                  IF p_articolo_id IS NULL OR v_codice IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_ARTICOLO_NOT_FOUND',
+                          jsonb_build_object('articolo_id', p_articolo_id),
+                          NULL::uuid,
+                          COALESCE(p_articolo_id::text, '<null>'));
+                  END IF;
+
+                  -- Le righe vive gia' non ammesse PRIMA: non sono della correzione.
+                  SELECT array_agg(n.documento || ':' || n.riga_id)
+                    INTO v_prima
+                    FROM catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id) n;
+
+                  -- Solo le colonne passate (gia' controllate qui sopra), ciascuna col
+                  -- tipo della sua colonna: jsonb_populate_record fa la conversione.
+                  SELECT string_agg(format('%1$I = r.%1$I', k), ', ' ORDER BY k)
+                    INTO v_set
+                    FROM jsonb_object_keys(p_campi) k;
+
+                  PERFORM set_config('zeroerp.articolo_correggi_struttura', p_articolo_id::text, true);
+
+                  EXECUTE format(
+                      'UPDATE catalogo.articoli a
+                          SET %s
+                         FROM jsonb_populate_record(NULL::catalogo.articoli, $1) r
+                        WHERE a.id = $2',
+                      v_set)
+                  USING p_campi, p_articolo_id;
+
+                  PERFORM set_config('zeroerp.articolo_correggi_struttura', '', true);
+
+                  -- Le righe che la correzione RENDE non ammesse: non ammesse dopo,
+                  -- ammesse prima.
+                  SELECT count(*)::integer,
+                         count(DISTINCT (n.documento, n.documento_id))::integer,
+                         jsonb_path_query_array(
+                             jsonb_agg(jsonb_build_object(
+                                           'documento',    n.documento,
+                                           'documento_id', n.documento_id,
+                                           'riga_id',      n.riga_id,
+                                           'codice',       n.motivo ->> 'codice')
+                                       ORDER BY n.documento, n.documento_id, n.riga_id),
+                             '$[0 to 49]')
+                    INTO v_righe, v_documenti, v_elenco
+                    FROM catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id) n
+                   WHERE (n.documento || ':' || n.riga_id) <> ALL (COALESCE(v_prima, '{}'::text[]));
+
+                  IF v_righe > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_ARTICOLO_STRUTTURA_RIGHE_APERTE',
+                          jsonb_build_object(
+                              'articolo_id', p_articolo_id,
+                              'campi',       p_campi,
+                              'righe',       v_elenco),
+                          NULL::uuid,
+                          v_codice,
+                          v_righe::text,
+                          v_documenti::text);
+                  END IF;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_articolo_correggi_struttura(
+                   p_articolo_id catalogo.articoli.id%TYPE,
+                   p_campi       jsonb)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+               AS $function$
+              DECLARE
+                  v_codice    catalogo.articoli.codice%TYPE;
+                  v_estranee  text;
+                  v_set       text;
+                  v_prima     text[];
+                  v_righe     integer;
+                  v_documenti integer;
+                  v_elenco    jsonb;
+                  -- Una coppia chiave/valore di p_campi: nessuna colonna dietro.
+                  v_chiave    text;
+                  v_valore    jsonb;
+                  v_non_nullo boolean;
+                  v_tipo_ok   boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Correggere i flag strutturali di un articolo anche se
+                  --   usato. Solo SUPER_ADMIN. Ordine: permesso, parametri,
+                  --   valori, articolo, righe non ammesse prima, scrittura con
+                  --   la porta aperta, righe rese non ammesse.
+                  --   Le colonne ammesse: catalogo.fn_articolo_colonne_struttura().
+                  -- =========================================================
+                  PERFORM script.fn_guard_super_admin(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer);
+
+                  IF p_campi IS NULL OR jsonb_typeof(p_campi) <> 'object' OR p_campi = '{}'::jsonb THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_campi', 'valore', p_campi),
+                          NULL::uuid,
+                          'p_campi: un oggetto con almeno una colonna');
+                  END IF;
+
+                  SELECT string_agg(k, ', ' ORDER BY k)
+                    INTO v_estranee
+                    FROM jsonb_object_keys(p_campi) k
+                   WHERE k <> ALL (catalogo.fn_articolo_colonne_struttura());
+                  IF p_campi IS NULL OR v_estranee IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_campi', 'non_ammesse', v_estranee),
+                          NULL::uuid,
+                          'p_campi: colonne non correggibili da qui: ' || v_estranee);
+                  END IF;
+
+                  -- I valori, prima di scrivere: vuoto su una colonna NOT NULL, o
+                  -- di un tipo che la colonna non accetta (la stessa conversione
+                  -- della scrittura, su quella sola colonna).
+                  FOR v_chiave, v_valore IN SELECT e.key, e.value FROM jsonb_each(p_campi) e ORDER BY e.key LOOP
+                      SELECT a.attnotnull INTO v_non_nullo
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attrelid = 'catalogo.articoli'::regclass
+                         AND a.attname  = v_chiave;
+
+                      IF jsonb_typeof(v_valore) = 'null' AND v_non_nullo THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                              jsonb_build_object('parametro', 'p_campi', 'campo', v_chiave, 'valore', v_valore),
+                              NULL::uuid,
+                              format('«%s» non può restare vuoto', catalogo.fn_articolo_flag_etichetta(v_chiave)));
+                      END IF;
+
+                      v_tipo_ok := true;
+                      BEGIN
+                          PERFORM jsonb_populate_record(NULL::catalogo.articoli,
+                                                        jsonb_build_object(v_chiave, v_valore));
+                      EXCEPTION WHEN data_exception THEN
+                          v_tipo_ok := false;
+                      END;
+                      IF NOT v_tipo_ok THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
+                              jsonb_build_object('parametro', 'p_campi', 'campo', v_chiave, 'valore', v_valore),
+                              NULL::uuid,
+                              format('il valore di «%s» non è valido', catalogo.fn_articolo_flag_etichetta(v_chiave)));
+                      END IF;
+                  END LOOP;
+
+                  SELECT a.codice INTO v_codice
+                    FROM catalogo.articoli a
+                   WHERE a.id = p_articolo_id
+                     FOR UPDATE;
+                  IF p_articolo_id IS NULL OR v_codice IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_ARTICOLO_NOT_FOUND',
+                          jsonb_build_object('articolo_id', p_articolo_id),
+                          NULL::uuid,
+                          COALESCE(p_articolo_id::text, '<null>'));
+                  END IF;
+
+                  -- Le righe vive gia' non ammesse PRIMA: non sono della correzione.
+                  SELECT array_agg(n.documento || ':' || n.riga_id)
+                    INTO v_prima
+                    FROM catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id) n;
+
+                  -- Solo le colonne passate (gia' controllate qui sopra), ciascuna col
+                  -- tipo della sua colonna: jsonb_populate_record fa la conversione.
+                  SELECT string_agg(format('%1$I = r.%1$I', k), ', ' ORDER BY k)
+                    INTO v_set
+                    FROM jsonb_object_keys(p_campi) k;
+
+                  PERFORM set_config('zeroerp.articolo_correggi_struttura', p_articolo_id::text, true);
+
+                  EXECUTE format(
+                      'UPDATE catalogo.articoli a
+                          SET %s
+                         FROM jsonb_populate_record(NULL::catalogo.articoli, $1) r
+                        WHERE a.id = $2',
+                      v_set)
+                  USING p_campi, p_articolo_id;
+
+                  PERFORM set_config('zeroerp.articolo_correggi_struttura', '', true);
+
+                  -- Le righe che la correzione RENDE non ammesse: non ammesse dopo,
+                  -- ammesse prima.
+                  SELECT count(*)::integer,
+                         count(DISTINCT (n.documento, n.documento_id))::integer,
+                         jsonb_path_query_array(
+                             jsonb_agg(jsonb_build_object(
+                                           'documento',    n.documento,
+                                           'documento_id', n.documento_id,
+                                           'riga_id',      n.riga_id,
+                                           'codice',       n.motivo ->> 'codice')
+                                       ORDER BY n.documento, n.documento_id, n.riga_id),
+                             '$[0 to 49]')
+                    INTO v_righe, v_documenti, v_elenco
+                    FROM catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id) n
+                   WHERE (n.documento || ':' || n.riga_id) <> ALL (COALESCE(v_prima, '{}'::text[]));
+
+                  IF v_righe > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_ARTICOLO_STRUTTURA_RIGHE_APERTE',
+                          jsonb_build_object(
+                              'articolo_id', p_articolo_id,
+                              'campi',       p_campi,
+                              'righe',       v_elenco),
+                          NULL::uuid,
+                          v_codice,
+                          v_righe::text,
+                          v_documenti::text);
+                  END IF;
+              END;
+              $function$;

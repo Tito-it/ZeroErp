@@ -2,7 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-11
 
-**Riparte: Tid**, con la conferma di O-9 affinata. I `COMMENT` (D-C) non ripartono da qui: li riscrive tutti il giro 5
+**Riparte: team BE/FE** (#10). Il lato DB è chiuso: il residuo che non si poteva fare qui è passato al brief di
+competenza (#11), il resto era già chiuso da altri cantieri (#12). Dopo il BE/FE il brief si archivia (#13). Tid,
+2026-11-11: prima il BE/FE, poi la chiusura. O-9 affinata è confermata (2026-11-11). I `COMMENT` (D-C) non ripartono da qui: li riscrive tutti il giro 5
 di `brief-db-revisione-catalogo`, anche fuori `catalogo` (Tid, 2026-11-11). Il lotto B è applicato, riscritto sul
 modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
 
@@ -14,10 +16,14 @@ modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
 | 4 | ✅ Tid | O-1…O-10, D, ambito (2026-11-04); via allo sviluppo (2026-11-05) | §6 | — |
 | 5 | ✅ DB + Tid | lotto A (`20261105-01…-14`, CSV dei codici): scritto, applicato su dbdev e scratch, pgTAP verdi (2026-11-05) | §7.1 | — |
 | 6 | ✅ DB + Tid | lotti C e D senza sorgente (`20261106-01…-03`, pgTAP, guida, manuali): applicati, pgTAP verdi (2026-11-06) | §7.2-bis | — |
-| 7 | Tid | **confermare O-9 affinata**: l'`ONERE` con sorgente (dal push di ordine e bolla) passa | §7.2-bis | — |
-| 8 | ➡️ DB, in `brief-db-revisione-catalogo` | **D-C**: riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11). ✅ **Tid, 2026-11-11 (opzione a):** il giro 5 prende anche gli oggetti di questo cantiere fuori `catalogo` (`acquisti`, `script`, `vendite`); qui non resta niente. Elenco chiuso: §3.3.1 di quel brief | [revisione-catalogo §3.3.1](brief-db-revisione-catalogo.md#331-d-c-i-comment-del-cantiere-obsoleto_dal-anche-fuori-catalogo-tid-2026-11-11) | giro 5 |
+| 7 | ✅ Tid | O-9 affinata confermata: l'`ONERE` con sorgente (dal push di ordine e bolla) passa, quello senza sorgente (porta oneri) è respinto (2026-11-11) | §7.2-bis | — |
+| 8 | ✅ DB, in `brief-db-revisione-catalogo` | **D-C** (chiuso il 2026-11-11: giro 5 applicato da Tid, pgTAP verdi; i 26 oggetti puliti sul vivo, dbdev e scratch, revisione-catalogo §17.7): riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11). ✅ **Tid, 2026-11-11 (opzione a):** il giro 5 prende anche gli oggetti di questo cantiere fuori `catalogo` (`acquisti`, `script`, `vendite`); qui non resta niente. Elenco chiuso: §3.3.1 di quel brief. I dieci oggetti stavano nel giro 5-A: `catalogo` in `20261112-16`/`-20`, i cinque fuori schema in `20261112-21` | [revisione-catalogo §3.3.1](brief-db-revisione-catalogo.md#331-d-c-i-comment-del-cantiere-obsoleto_dal-anche-fuori-catalogo-tid-2026-11-11) | giro 5 |
 | 9 | ✅ DB + Tid | lotto B (verbi): riscritto sul modello nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`), applicato da Tid, pgTAP verdi (2026-11-06). Righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D): ancora fermi (le righe d'acquisto aspettano il cantiere `acquisti`, che porta le loro tabelle al modello; le righe di fattura non hanno un verbo che ne scriva la provenienza) | §7.2, §7.3 | — |
-| 10 | BE / FE | `obsoleto_dal` ed `e_obsoleto` nel form e nella lista, `righe_saltate` del «Clona», policy, chiave i18n | §8 | — |
+| 10 | **team BE / FE** ⏭️ | `obsoleto_dal` ed `e_obsoleto` in `ARTICOLI_DETAIL_COLUMNS` e `_LOOKUP_ARTICOLI_COLONNE`, nel drawer e nella lista; `righe_saltate` nella risposta del «Clona». Già fatti (letto nel codice il 2026-11-11): la policy di `E_ARTICOLO_OBSOLETO` e la chiave i18n del motivo nel picker | §8 | — |
+| 10-bis | ✅ DB | Lotto D, presidio per verbo: lo copre `vendite/test-sorgente-righe-vendita-v1` del giro R.1 di `brief-db-sorgente-documento-e-riga` (casi 5, 7-12: revisione, push preventivo→ordine, ordine e contratto dall'offerta, bolla dall'ordine, riconsegna; il 6 è la revisione su un articolo ritirato). Nessun test nuovo (2026-11-11) | §7.3 | — |
+| 11 | ✅ DB | Lotto C residuo, fuori di qui (Tid, 2026-11-11). **Righe d'acquisto** → [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md) §4.6-bis, il cantiere che porta la provenienza agli acquisti: il guard si monta lì, dopo i verbi. **Righe di fattura**: superato dal modello, vedi §7.3 (G-4) | §7.3 | — |
+| 12 | ✅ DB | Residui già chiusi da `work-done/brief-db-sorgente-documento-e-riga` (letto sul vivo il 2026-11-11): O-10 è la sua **D-3** (`preventivo_riga_id` resta accanto alla sorgente, perché è un consumo che si azzera all'annullo, non un doppione); M-1 (§9.4) e i quattro punti di §9.5 sono risolti. Non resta debito da portare | §6, §9 | — |
+| 13 | DB | Archiviazione in `work-done/`, a BE/FE fatto | — | 10 |
 
 ⛔ **Lotto B fermo (Tid, 2026-11-06):** non si applica finché non è deciso il modello della sorgente in
 `brief-db-sorgente-documento-e-riga` (tipo + chiave del documento + `sorgente_riga` = la riga). I verbi
@@ -45,7 +51,8 @@ colonne, funzioni, trigger, vista). Sono applicati, quindi non si toccano: serve
 giorno: dei 26 oggetti commentati da quei changeSet, 16 sono già stati riscritti da giri successivi; ne restano 10,
 cinque in `catalogo` e cinque fuori (`acquisti.ddt_righe.sorgente_tipo_id`, `script.trgfn_righe_guard_articolo_ammesso`,
 `vendite.fn_clona_versione_listino` e i due trigger di `commesse_attivita` e `listini_kit`). L'elenco sta in §3.3.1 di
-quel brief, e non si ricopia qui.
+quel brief, e non si ricopia qui. ✅ **Chiuso il 2026-11-11:** giro 5 applicato da Tid, pgTAP verdi; i 26 oggetti sono
+puliti sul vivo, su dbdev e sullo scratch (revisione-catalogo §17.7).
 
 Debito rinviato da Tid (2026-11-04): il ritiro di `preventivo_riga_id` (O-10), da riprendere all'archiviazione.
 Committato il 2026-11-06 (lotti A, C, D, il fix da zero `20261103-29`, i due brief).
@@ -223,7 +230,7 @@ stesso `INSERT`**. Le colonne nuove vanno su `vendite.ddt_righe`, `acquisti.ddt_
 | O-7 | Il cambio di articolo su una riga derivata: oggi `articolo_id` **non** è bloccato (`trgfn_lock_columns` blocca solo `natura_vendita_id`), quindi in bozza si cambia | ✅ **Tid, 2026-11-04**: l'esenzione vale solo sull'`INSERT`; sull'`UPDATE OF articolo_id` il guard controlla sempre. Scartata l'alternativa `articolo_id` immutabile sulle righe derivate (cambio di modello, ricaduta BE/FE) |
 
 | O-8 | La revisione di un preventivo (`fn_crea_revisione_preventivo`) ricopia un articolo diventato obsoleto | ✅ **Tid, 2026-11-04**: **derivata**, quindi passa. È la stessa proposta allo stesso cliente, non un impegno nuovo come il listino (O-2). Saltare la riga cambierebbe in silenzio un'offerta già fatta; respingerla impedirebbe di rivedere il resto. L'operatore la toglie a mano. Serve `sorgente_*` su `preventivi_righe` (sorgente `PREVENTIVO_RIGA`) |
-| O-9 | `commesse_attivita`: un'attività registrata su un articolo obsoleto | ✅ **Tid, 2026-11-04**: si respinge **solo l'inserimento della riga `ONERE`**; le righe già inserite restano (§4), l'unica inserita a mano dalla porta oneri. Tutte le altre passano, perché arrivano in commessa già predisposte per la fattura. La struttura lo conferma: `chk_commesse_attivita_senza_sorgente_onere_rettifica` obbliga ogni riga `NORMALE` ad avere una sorgente, e senza sorgente restano solo `ONERE` e `RETTIFICA`. La prima proposta DB («esente se `sorgente_uid` è valorizzato») **sbagliava**: avrebbe respinto la `RETTIFICA` senza sorgente, che è un accredito su una vendita già fatta. Montaggio: guard generico senza esenzione, con `WHEN (NEW.tipo_movimento = 'ONERE')` |
+| O-9 | `commesse_attivita`: un'attività registrata su un articolo obsoleto | ✅ **Tid, 2026-11-04**: si respinge **solo l'inserimento della riga `ONERE`**; le righe già inserite restano (§4), l'unica inserita a mano dalla porta oneri. Tutte le altre passano, perché arrivano in commessa già predisposte per la fattura. La struttura lo conferma: `chk_commesse_attivita_senza_sorgente_onere_rettifica` obbliga ogni riga `NORMALE` ad avere una sorgente, e senza sorgente restano solo `ONERE` e `RETTIFICA`. La prima proposta DB («esente se `sorgente_uid` è valorizzato») **sbagliava**: avrebbe respinto la `RETTIFICA` senza sorgente, che è un accredito su una vendita già fatta. Montaggio: guard generico senza esenzione, con `WHEN (NEW.tipo_movimento = 'ONERE')`. ✅ **Affinata, Tid 2026-11-11:** l'`ONERE` con sorgente (push di ordine e bolla) è derivato ed è esente; si respinge solo quello senza sorgente (§7.2-bis) |
 | O-10 | `ordini_righe` registra la provenienza in due forme: `preventivo_riga_id` e `sorgente_*` | ⏳ in discussione. Fatti (2026-11-04): `PREVENTIVO_RIGA` **è già** in `config.sorgenti`, ma `fn_push_preventivo_a_ordine` scrive `preventivo_riga_id` (FK vera, con `block_deact`) e non `sorgente_*` (polimorfa, senza FK). Lettori di `preventivo_riga_id`: 7 oggetti DB (tra cui `fn_documento_legami`, `fn_documento_lineage_legami`, `fn_documento_ritira_legami`, `trgfn_doc_righe_lock_fuori_bozza`, due viste di smistamento), 2 file BE, 11 pgTAP. ✅ **Tid, 2026-11-04**: il guard legge **solo la sorgente polimorfa** (`sorgente_tipo_id`), non `preventivo_riga_id`. Condizione: la sorgente deve essere **sempre** valorizzata sulle righe generate. ⚠️ Oggi (2026-11-04) su `ordini_righe` non la scrive nessun verbo: `fn_push_preventivo_a_ordine` scrive solo `preventivo_riga_id`, `fn_genera_ordine_da_offerta` niente. Rientra nel §5.4. Il presidio è nel §7. `preventivo_riga_id` **resta** e si continua a scrivere accanto alla sorgente, perché ha 7 lettori DB, 2 BE e 11 pgTAP: Tid, 2026-11-04, «momentaneamente non facciamo nulla». È un doppione di significato: all'archiviazione di questo brief va fra i residui |
 
 **Ambito:** ✅ ok esplicito di Tid, 2026-11-04: il guard si monta su tutte le righe di vendita e d'acquisto.
@@ -322,7 +329,7 @@ nel modello (la chiave del documento nella sua colonna, la riga in `sorgente_rig
 | guida `docs/it/guide/uso-di-obsoleto.md` | gli articoli come secondo caso; il sesto argomento del guard; «Dove è applicato» |
 | manuali | `vendite/manual/fn_clona_versione_listino`, `listini_kit`, `commesse_attivita`; `catalogo/manual/vw_articoli_dettaglio`, `articoli` |
 
-⚠️ **O-9 affinata, da confermare (Tid).** O-9 (2026-11-04) diceva «guard senza esenzione su `ONERE`», perché l'onere
+✅ **O-9 affinata, confermata da Tid il 2026-11-11.** O-9 (2026-11-04) diceva «guard senza esenzione su `ONERE`», perché l'onere
 nasceva solo dalla porta oneri, senza sorgente. Dal 2026-11-03 (`brief-db-addebito-trasporto-ordine`) un `ONERE`
 arriva anche dal push di ordine e bolla **con la sorgente del documento**: senza esenzione quella riga derivata
 sarebbe respinta, contro il §3. Il montaggio quindi esenta la riga con sorgente. Il motivo di O-9 («si controlla solo
@@ -361,6 +368,19 @@ verde.
   Poi il backfill di `ordini_righe` (`preventivo_riga_id` → sorgente) e il `CHECK`
   `preventivo_riga_id IS NULL OR sorgente_tipo_id IS NOT NULL`. ⚠️ Lo stesso cambio di modello vale per il
   legame `preventivo_riga_id` nei lettori: resta (debito di Tid).
+
+> ✅ **Stato al 2026-11-11.** Fatti: `commesse_attivita`, `listini_kit` e la copia del listino (§7.2-bis). Il resto:
+>
+> * **righe d'acquisto** → passate ad [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md)
+>   §4.6-bis: l'esenzione legge la provenienza, che lì nessun verbo scrive ancora;
+> * **righe di fattura**: superate dal modello. Dal G-4 di `brief-db-sorgente-documento-e-riga` (Tid, 2026-11-08)
+>   `fatture_righe` non ha colonne di provenienza: una riga aggrega n attività. Non c'è una colonna che esenti la
+>   derivata, e la riga di fattura è sempre derivata: la scrive solo la pipeline, dalle attività fatturabili o
+>   spezzando una sua riga. È il caso del §5.2: la scelta si giudica a monte, sulla riga del documento e
+>   sull'`ONERE` di commessa. Un guard qui respingerebbe in fattura un articolo ritirato già venduto, contro il §3.
+>
+> Il testo che segue resta come storia.
+
 * **C — il guard generico sulle righe che la check non serve**:
   * `fatture_righe.articolo_id` e `.kit_articolo_padre_id`, con esenzione `sorgente_tipo_id`;
   * `commesse_attivita`, con `WHEN (NEW.tipo_movimento = 'ONERE')` e senza esenzione (O-9);
