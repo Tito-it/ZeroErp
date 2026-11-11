@@ -97,7 +97,10 @@ Vale per DB, backend e frontend. È il criterio con cui nascono i building block
   della stessa regola prima o poi rispondono in due modi diversi, senza che
   nessun test se ne accorga.
 * Prima di scrivere, **si cerca nel catalogo**: la seconda occorrenza spesso è
-  la propria, e la prima esiste già.
+  la propria, e la prima esiste già. Lato BE/FE si parte dall'**indice** del
+  catalogo (`indice-building-block-*.md`, accanto a ciascun catalogo), che si
+  legge per intero; è generato da `scripts/gen_indice_bb.py` e si rigenera
+  nello stesso giro in cui si tocca il catalogo.
 * Un'estrazione che tocca più domini si concorda con Tid («ok Tid» nel catalogo).
 
 Esempi applicati: `frontend-standards.md` §«Dove vive il NOME di un'icona»

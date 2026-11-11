@@ -7,19 +7,19 @@ const BASE = '/catalogo'
 // --- Note (building block partizionato 2026-05-21) ---
 //
 // Wrapper di dominio sopra `makeNotesApi`: produce un set CRUD note bindato
-// al parent path (articolo o componente). Catalogo usa pattern URL "split":
-// LIST/POST sotto parent (`/catalogo/articoli/<id>/note/`), DETAIL su endpoint
-// generico (`/catalogo/note/<id>/`). Si esprime con `detailBase: '/catalogo'`.
-// Resto identico al pattern vendite (`makeNotesApi('/vendite/preventivi/<id>')`).
+// al parent path (articolo o componente). Dal 2026-11-11 le rotte sono quelle
+// del BB delle note, lista e dettaglio sotto il padre, come in vendita
+// (`makeNotesApi('/vendite/preventivi/<id>')`): la rotta a parte del
+// dettaglio (`/catalogo/note/<id>/`) e' ritirata.
 
 // Scopo: Set CRUD note articolo per il building block NoteDrawer.
 export function makeArticoloNotesApi(articoloId) {
-  return makeNotesApi(`${BASE}/articoli/${articoloId}`, { detailBase: BASE })
+  return makeNotesApi(`${BASE}/articoli/${articoloId}`)
 }
 
 // Scopo: Set CRUD note componente articolo per il building block NoteDrawer.
 export function makeComponenteNotesApi(articoloId, compId) {
-  return makeNotesApi(`${BASE}/articoli/${articoloId}/componenti/${compId}`, { detailBase: BASE })
+  return makeNotesApi(`${BASE}/articoli/${articoloId}/componenti/${compId}`)
 }
 
 // --- Articoli ---

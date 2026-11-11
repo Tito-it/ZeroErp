@@ -466,12 +466,9 @@ _ESERCIZI: dict[str, Esercizio] = {
             attivo=None, search=None, limit=1, offset=0, **_ordine(ob, od, "codice")
         ),
     ),
-    "catalogo.conversioni_uom": Esercizio(
-        dove="catalogo/db/catalogo_repository.py::list_conversioni",
-        chiama=lambda ob, od: _r(
-            "apps.catalogo.db.catalogo_repository", "CatalogoRepository"
-        ).list_conversioni(attivo=None, limit=1, offset=0, **_ordine(ob, od)),
-    ),
+    # `catalogo.conversioni_uom` e' uscita di qui il 2026-11-11: ha la vista
+    # (G1-G2 di brief-db-revisione-catalogo), ma la sua proiezione e' del
+    # repository, quindi e' in `_ALTRE_QUERY`.
     # ---------- documenti ----------
     "documenti.template_documenti": Esercizio(
         dove="documenti/db/documenti_repository.py::list_templates",
@@ -540,11 +537,14 @@ _ESERCIZI: dict[str, Esercizio] = {
             "apps.vendite.db.note_repositories", fromlist=["NOTE_REPO_PREVENTIVO"],
         ).NOTE_REPO_PREVENTIVO.list(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
     ),
+    # ⭐ Dal 2026-11-11 anche `catalogo.note` passa dal BB: si esegue la query
+    #    VIVA (`NOTE_REPO_ARTICOLO.list`), non la copia ritirata del repository
+    #    della distinta, che sarebbe stata verde a vuoto.
     "catalogo.note": Esercizio(
-        dove="catalogo/db/catalogo_bom_repository.py::list_note_articolo_pagina",
-        chiama=lambda ob, od: _r(
-            "apps.catalogo.db.catalogo_bom_repository", "CatalogoBomRepository"
-        ).list_note_articolo_pagina("00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od)),
+        dove="core/db/partitioned_note_repository.py::list (catalogo.note_articoli)",
+        chiama=lambda ob, od: __import__(
+            "apps.catalogo.db.note_repositories", fromlist=["NOTE_REPO_ARTICOLO"],
+        ).NOTE_REPO_ARTICOLO.list("00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od)),
     ),
     # La ricerca: la funzione vuole un tipo ruolo vero; il termine non trova
     # niente, e le colonne le dice il cursore anche a zero righe.
@@ -1159,7 +1159,7 @@ _ESERCIZI: dict[str, Esercizio] = {
 
 
 # Le ALTRE query di una lista: la stessa lista letta da una seconda SELECT
-# (le note di un componente, su un'altra vista di `catalogo.note`), o una lista
+# (le note di un componente, sull'altra partizione di `catalogo.note`), o una lista
 # CON vista che il repository legge con una proiezione sua (le UoM operative:
 # `UOM_OPERATIVA_DETAIL_COLUMNS`, non `v.*`). Il trigger DB valida il
 # `campo_sorgente` contro la vista, non contro QUELLA SELECT: senza questa riga
@@ -1170,10 +1170,12 @@ _ALTRE_QUERY: tuple[tuple[str, Esercizio], ...] = (
     (
         "catalogo.note",
         Esercizio(
-            dove="catalogo/db/catalogo_bom_repository.py::list_note_componente",
-            chiama=lambda ob, od: _r(
-                "apps.catalogo.db.catalogo_bom_repository", "CatalogoBomRepository"
-            ).list_note_componente("00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od)),
+            dove="core/db/partitioned_note_repository.py::list (catalogo.note_articoli_componenti)",
+            chiama=lambda ob, od: __import__(
+                "apps.catalogo.db.note_repositories", fromlist=["NOTE_REPO_ARTICOLO_COMPONENTE"],
+            ).NOTE_REPO_ARTICOLO_COMPONENTE.list(
+                "00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od),
+            ),
         ),
     ),
     (
@@ -1185,6 +1187,20 @@ _ALTRE_QUERY: tuple[tuple[str, Esercizio], ...] = (
             ).list_uom_operative_pagina(
                 "00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od),
             ),
+        ),
+    ),
+    # ⭐ Dal 2026-11-11 la lista 22 ha la vista
+    #    (`vw_unita_misura_conversioni_dettaglio`, G1-G2 di
+    #    brief-db-revisione-catalogo), ma il repository la legge con la SUA
+    #    proiezione (`_CONVERSIONE_COLONNE`, non `c.*`): e' il caso delle UoM
+    #    operative, e la query va eseguita qui.
+    (
+        "catalogo.conversioni_uom",
+        Esercizio(
+            dove="catalogo/db/catalogo_repository.py::list_conversioni",
+            chiama=lambda ob, od: _r(
+                "apps.catalogo.db.catalogo_repository", "CatalogoRepository"
+            ).list_conversioni(attivo=None, limit=1, offset=0, **_ordine(ob, od)),
         ),
     ),
 )

@@ -167,7 +167,9 @@ immutabilita' (Fase 5):
 - `uom_operative` — array UoM operative dell'articolo, ogni riga arricchita
   da capability di riga (Fase 6, vedi §3.1).
 - `componenti` — array componenti BoM (popolato solo se `is_composito=true`)
-- `note` — array note articolo
+- ⛔ niente `note`: ritirato il 2026-11-11 (era una terza lettura delle note,
+  senza lettori). Le note dell'articolo si leggono dalla loro lista
+  (`/api/v1/catalogo/articoli/{articolo_id}/note/`, §5).
 - `non_editable_fields: string[]` — Fase 5: chiavi del payload non
   modificabili in PATCH (es. `["codice", "uom_id"]`). Il FE le usa per
   pilotare i `:disabled` invece di cablare regole.
@@ -465,23 +467,23 @@ brief-db-revisione-catalogo, giro 2). La quantita' operativa rispetta
 e' la stessa per tutte le righe della stessa entita' e il FE legge la
 lista come prima chiamata API quando il sub-drawer apre.
 
-##### Capability di riga (Fase 6)
+##### Capability di riga
 
-Ogni riga espone capability data-driven da
-`vw_articoli_uom_operativa_dettaglio`:
+Ogni riga espone la capability di `vw_articoli_uom_operativa_dettaglio`, che
+dal 2026-11-11 la prende dal BB del DB `catalogo.fn_uom_conversione_capability`
+(G1-G2 di brief-db-revisione-catalogo): la stessa regola con cui il guard della
+storia rifiuta. Il backend la **trasporta**.
 
-- `puo_eliminarsi: bool` — `true` quando `NOT is_base`. Solo l'UoM
-  base blocca l'eliminazione (la mappatura operativa non ha FK reverse:
-  righe listino/magazzino/documenti puntano a `catalogo.unita_misura`,
-  non a `articoli_uom_operativa.id`).
-- `motivo_non_eliminabile: string | null` — codice motivo quando
-  `puo_eliminarsi=false`:
-  - `"UOM_BASE_NON_ELIMINABILE"` — UoM base.
-  - `null` — quando `puo_eliminarsi=true`.
+| Campo | Che cosa dice |
+| --- | --- |
+| `puo_eliminarsi` · `motivo_non_eliminabile` | Il cestino. Motivi: `UOM_BASE_NON_ELIMINABILE` (la riga base), `UOM_STORIA_IN_VIGORE` (una mappatura con giorni passati: si chiude, non si cancella) |
+| `puo_cambiare_attivo` | L'interruttore «attivo». Stessa regola dell'eliminazione, quindi stesso motivo (`motivo_non_eliminabile`); sulla riga base sempre `false` (Q34) |
+| `puo_chiudersi` · `motivo_non_chiudibile` | La data di fine. Motivi: `UOM_BASE` (la riga base non ha fine), `UOM_STORIA_CHIUSA` (una fine già passata non si tocca) |
+| `data_min_chiusura` · `data_default_chiusura` | La prima fine ammessa (la più tarda fra l'inizio e ieri) e quella proposta; vuote quando la riga non si chiude |
 
-Il FE usa questi campi per disabilitare l'azione "delete" della riga
-(non la nasconde, mantiene l'affordance) e mostrare il motivo via
-tooltip i18n (`catalogo.motivo_*`).
+Il FE spegne cestino, interruttore e data di fine col motivo (chiavi
+`catalogo.motivo_*`), non li nasconde; la lettura è l'helper
+`src/catalogo/utils/capabilityConversioneUom.js`.
 
 Stessa proiezione nel dettaglio articolo (campo `uom_operative[]`) e nella
 riga restituita da create/update (§3.2-3.3): leggono dalla stessa vista.
@@ -578,8 +580,11 @@ Singola riga arricchita con `non_editable_fields: ["uom_id"]` (Fase 5).
 
 #### Regole specifiche
 
-- La riga dell'unita' base non si elimina: la rifiuta il DB con
-  `E_UOM_RIGA_BASE_IMMUTABILE` (capability `puo_eliminarsi = false` in lista).
+- La riga dell'unita' base non si elimina e non si spegne: la rifiuta il DB con
+  `E_UOM_RIGA_BASE_IMMUTABILE`, campo `attivo` per lo spegnimento
+  (capability `puo_eliminarsi` e `puo_cambiare_attivo` a `false` in lista).
+- Una mappatura con giorni passati non si cancella: `E_UOM_STORIA_IN_VIGORE`
+  (capability `puo_eliminarsi = false`, motivo `UOM_STORIA_IN_VIGORE`).
 - Guard d'uso e blocchi delete restano nel DB
 
 ---
@@ -774,71 +779,48 @@ vero) e il pgTAP `catalogo/test-chiudi-legame-con-prezzi-v1`.
 
 ---
 
-## 5. Note articolo
+## 5. Note di catalogo (articolo e legame di distinta)
 
-### 5.1 Lista note
+⭐ Dal 2026-11-11 (giro 4 di brief-db-revisione-catalogo) le note di catalogo
+hanno la forma delle note degli altri schemi e passano dal **building block
+delle note** (`make_note_views` + `PartitionedNoteService`, lo stesso di
+`vendite.note`): stesso contratto, stessi codici `E_NOTA_*`, stesse rotte sotto
+il padre. ⛔ La rotta a parte del dettaglio (`/api/v1/catalogo/note/{nota_id}/`)
+è **ritirata**: `PATCH` e `DELETE` stanno sotto l'articolo o sotto il legame.
 
-| | |
-|---|---|
-| **Metodo** | `GET` |
-| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/note/` |
+| Padre | Lista e crea (`GET` `POST`) | Dettaglio (`GET` `PATCH` `DELETE`) |
+| --- | --- | --- |
+| articolo | `/api/v1/catalogo/articoli/{articolo_id}/note/` | `/api/v1/catalogo/articoli/{articolo_id}/note/{note_id}/` |
+| legame di distinta | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/note/` | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/note/{note_id}/` |
 
-### 5.2 Crea nota articolo
+* La lista è la pagina della lista `catalogo.note` (`search`, `order_by`,
+  `order_dir`, `limit`, `offset`; envelope paginato). ⚠️ **Nessun cancello di
+  perimetro**: `catalogo.note` è una lista globale (`perimetro_emittente =
+  false`), e `emittente_fiscale_id` non serve.
+* `POST` vuole l'`Idempotency-Key`.
+* **Body** (`POST`/`PATCH`): `testo`, `testo_md` (almeno uno dei due in
+  creazione), `posizione`, `seq`, `visibile`, `solo_stampa`, `id_stile` e
+  `id_lingua` (in creazione, se mancano, dai parametri `NOTE_DEFAULT_STILE` e
+  `NOTE_DEFAULT_LINGUA`), `meta`. Una chiave fuori elenco è un 400.
+* ⛔ **Nessuna nota di riga**: una nota di catalogo annota l'articolo o il
+  legame interi (CHECK `chk_note_catalogo_ancora_documento`). `anchor_tipo` è
+  `DOCUMENTO` per difetto; `RIGA`, o un `target_riga_id`, sono un 400
+  `E_NOTA_VALIDATION` col campo `anchor_tipo`, prima del DB.
+* Una nota si scrive anche su un articolo o un legame **spento**, e non
+  impedisce di spegnerli (Q12: la nota è un'eccezione dell'automazione ATTIVO).
+* ⛔ Il legame dev'essere **dell'articolo dell'URL**, su ogni verbo: articolo
+  inesistente → 404 `E_CATALOGO_ARTICOLO_NOT_FOUND`, legame inesistente o di un
+  altro articolo → 404 `E_CATALOGO_COMPONENTE_NOT_FOUND`, prima di leggere o
+  scrivere le note (cancello del padre della factory; dal 2026-10-21).
+* Una nota di un altro padre dall'URL di questo: 404 `E_NOTA_NOT_FOUND`. Un
+  articolo che non c'è, sulla lista o sulla creazione delle sue note: 404
+  `E_NOTA_PARENT_NOT_FOUND`.
 
-| | |
-|---|---|
-| **Metodo** | `POST` |
-| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/note/` |
-
-#### Body JSON
-
-Campi principali:
-- `target_riga_id`
-- `anchor_tipo`
-- `posizione`
-- `seq`
-- `testo`
-- `testo_md`
-- `id_stile`
-- `id_lingua`
-- `visibile`
-- `solo_stampa`
-- `meta`
-
-### 5.3 Aggiorna nota
-
-| | |
-|---|---|
-| **Metodo** | `PATCH` |
-| **URL** | `/api/v1/catalogo/note/{nota_id}/` |
-
-### 5.4 Elimina nota
-
-| | |
-|---|---|
-| **Metodo** | `DELETE` |
-| **URL** | `/api/v1/catalogo/note/{nota_id}/` |
+Prove: `apps/catalogo/tests/db/test_note_catalogo_db.py` (sul DB vero),
+`apps/catalogo/tests/api/test_catalogo_api.py` (rotte e cancello),
+`apps/core/tests/services/test_partitioned_note_service.py` (`SedeSenzaRighe`).
 
 ---
-
-### 5.3 Note di un componente di distinta
-
-| | |
-|---|---|
-| **Metodi** | `GET` `POST` |
-| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/note/` |
-
-Stesse note del §5, ancorate pero' alla **riga di distinta** invece che
-all'articolo: il `comp_id` in URL fa da `target_riga_id`, che quindi **non** va
-messo nel body. Il resto del contratto — campi, stile, visibilita' — e' quello
-del §5.2.
-
-⛔ Il componente dev'essere **dell'articolo dell'URL**: articolo inesistente →
-404 `E_CATALOGO_ARTICOLO_NOT_FOUND`; componente inesistente o di un altro articolo
-→ 404 `E_CATALOGO_COMPONENTE_NOT_FOUND`, prima di leggere o scrivere le note (dal
-2026-10-21: prima `articolo_id` era ignorato, e le note di un componente altrui si
-leggevano e si scrivevano dall'URL di questo).
-
 
 ## 6. Conversioni UoM
 
@@ -862,7 +844,12 @@ leggevano e si scrivevano dall'URL di questo).
 | `order_dir` | string | No | `asc`/`desc`. Assente: `asc`, salvo `valido_dal`/`valido_al` che partono `desc` |
 
 Risposta: envelope paginato standard (`count`, `page`, `page_size`,
-`total_pages`, `results`): non è la lista completa.
+`total_pages`, `results`): non è la lista completa. Dal 2026-11-11 la lista
+legge la vista `catalogo.vw_unita_misura_conversioni_dettaglio` (la `vista_sql`
+della lista 22) e ogni riga porta la stessa capability del §3.1
+(`puo_eliminarsi`, `motivo_non_eliminabile`, `puo_cambiare_attivo`,
+`puo_chiudersi`, `data_min_chiusura`, `data_default_chiusura`,
+`motivo_non_chiudibile`).
 
 ### 6.2 Dettaglio conversione
 
@@ -883,10 +870,17 @@ Risposta: envelope paginato standard (`count`, `page`, `page_size`,
     "valido_dal": "2026-01-01",
     "valido_al": null,
     "attivo": true,
-    "non_editable_fields": ["uom_from_id", "uom_to_id"]
+    "puo_cambiare_attivo": false,
+    "puo_chiudersi": true,
+    "data_min_chiusura": "2026-11-10",
+    "motivo_non_eliminabile": "UOM_STORIA_IN_VIGORE",
+    "non_editable_fields": ["fattore", "uom_from_id", "uom_to_id", "valido_dal"]
   }
 }
 ```
+
+Il dettaglio legge la stessa vista della lista, con la stessa capability
+(dal 2026-11-11): il drawer spegne interruttore e data di fine col motivo.
 
 ### 6.3 Crea conversione
 
@@ -919,9 +913,11 @@ Fra unita' di tipologia diversa: `E_UOM_CONVERSIONE_TIPO_DIVERSO` dal DB.
 
 #### Regole specifiche
 
-- `uom_from_id` e `uom_to_id` sono **immutabili** dopo create (vedi
-  `non_editable_fields` nel detail). Solo `fattore`, `valido_dal`,
-  `valido_al`, `attivo` sono modificabili.
+- `uom_from_id`, `uom_to_id`, `fattore` e `valido_dal` sono **immutabili**
+  dopo create: li ferma il lock di colonna (`E_UOM_STORIA_IMMUTABILE`, col
+  campo), e il detail li dichiara in `non_editable_fields`. Si cambiano
+  `valido_al` e `attivo`, nei limiti della capability (§6.2); per valori
+  nuovi si chiude e se ne inserisce una nuova.
 
 ---
 
@@ -983,15 +979,19 @@ permesso di **livello oggetto** sui rispettivi modelli.
   dettaglio conversione. **Non** c'è su dettaglio unità di misura, dettaglio
   tipologia UoM, create/update componente. Il FE pilota i `:disabled`
   da questa lista invece di cablare regole. Source: vista
-  `dbops.vw_non_editable_fields` (alias su `dbops.automation_lock_columns`)
-  + gap noti hardcoded in `_NON_EDITABLE_DB_GAPS` (`catalogo_service`).
+  `dbops.vw_non_editable_fields` (il lock vivo), letta dal BB
+  `compute_non_editable_fields`. ⛔ Nessun gap Python: `_NON_EDITABLE_DB_GAPS`
+  è ritirato il 2026-11-11 (BE21-a), dal giorno in cui il DB dichiara anche
+  unità, fattore e inizio di mappature e conversioni.
 
 ### Codici errore (404 NOT_FOUND)
 
 - `E_CATALOGO_ARTICOLO_NOT_FOUND`
 - `E_CATALOGO_UOM_NOT_FOUND`
 - `E_CATALOGO_COMPONENTE_NOT_FOUND`
-- `E_CATALOGO_NOTA_NOT_FOUND`
+- `E_NOTA_NOT_FOUND`, `E_NOTA_PARENT_NOT_FOUND` (note, §5: i codici del BB
+  delle note; `E_CATALOGO_NOTA_NOT_FOUND` non lo solleva piu' nessuno dal
+  2026-11-11)
 - `E_CATALOGO_CONV_NOT_FOUND`
 - `E_CATALOGO_UOM_TIPO_NOT_FOUND` (tipologia UoM)
 

@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Service generico per la gestione note partizionate su vendite.note.
+# Scopo: Service generico per la gestione delle note partizionate delle
+#        tabelle-madre `<schema>.note` (`vendite.note`, `catalogo.note`).
 #        Composto sopra PartitionedNoteRepository: aggiunge validazione
 #        payload, fallback id_stile da parameter NOTE_DEFAULT_STILE_ID,
 #        coerenza target_riga_id <-> target_id, traduzione IntegrityError
@@ -204,6 +205,27 @@ for _p in _VINCOLI_PARTIZIONE:
     _FK_CONSTRAINTS[_p.fk_riga] = ("E_NOTA_FK", _p.msg_riga)
 del _p
 
+# ⭐ I vincoli di `catalogo.note` (dal 2026-11-11, giro 4 di
+#    brief-db-revisione-catalogo: le note di catalogo hanno la forma di quelle
+#    degli altri schemi, e passano da questo service). I `chk_note_*` comuni
+#    hanno lo stesso nome e lo stesso significato delle note di vendita, e
+#    sono gia' sopra; qui il CHECK proprio della sede e le FK, coi nomi della
+#    doc auto-gen `dbzero/catalogo/tabelle/note*.md`.
+_CHECK_CONSTRAINTS["chk_note_catalogo_ancora_documento"] = (
+    "E_NOTA_CHECK_VIOLATION",
+    "Una nota di catalogo annota l'articolo o il legame interi, non una riga.",
+    "anchor_tipo",
+)
+_FK_CONSTRAINTS.update({
+    "fk_cat_note_target_tipo": ("E_NOTA_FK", "Tipo target nota non ammesso."),
+    "fk_cat_note_id_stile": ("E_NOTA_FK", "Stile nota non valido.", "id_stile"),
+    "fk_cat_note_id_lingua": ("E_NOTA_FK", "Lingua nota non valida.", "id_lingua"),
+    "fk_cat_note_articoli_target": ("E_NOTA_PARENT_NOT_FOUND", "Articolo di riferimento non trovato."),
+    "fk_cat_note_articoli_componenti_target": (
+        "E_NOTA_PARENT_NOT_FOUND", "Legame di distinta di riferimento non trovato.",
+    ),
+})
+
 
 class PartitionedNoteService:
     """Facade CRUD sopra una `PartitionedNoteRepository`.
@@ -244,8 +266,30 @@ class PartitionedNoteService:
         self._stile_lookup_fn = stile_lookup_fn or _default_stile_lookup
         self._lingua_lookup_fn = lingua_lookup_fn or _default_lingua_lookup
 
+    # Scopo: La chiave del padre nella forma della sua sede: un intero
+    #        positivo (documenti di vendita) o un UUID (anagrafiche di
+    #        catalogo, `repo.target_id_uuid`), normalizzato a stringa.
+    #        Altrimenti 400 `E_NOTA_VALIDATION`.
+    def _target_id(self, target_id: Any) -> int | str:
+        if self._repo.target_id_uuid:
+            return self._validator.require_uuid({"target_id": target_id}, "target_id")
+        self._validator.guard_positive_int(target_id, field="target_id")
+        return int(target_id)
+
+    # Scopo: Una sede senza righe (le anagrafiche di catalogo: la nota annota
+    #        l'articolo o il legame interi) non ha note di riga: ne' l'ancora
+    #        RIGA in scrittura, ne' il filtro `target_riga_id` in lettura.
+    #        UNA frase per le due porte, col campo che l'ha chiesto.
+    def _require_riga_ammessa(self, *, field: str) -> None:
+        ErrorManager.require(
+            self._repo.supports_riga,
+            code="E_NOTA_VALIDATION",
+            message="Note di riga non ammesse per questo target.",
+            context={"field": field, "target_tipo": self._repo.target_tipo},
+        )
+
     # Scopo: Verifica esistenza padre, solleva E_NOTA_PARENT_NOT_FOUND se mancante.
-    def _ensure_parent_exists(self, target_id: int) -> None:
+    def _ensure_parent_exists(self, target_id: int | str) -> None:
         ErrorManager.require(
             self._repo.exists_parent(target_id),
             code="E_NOTA_PARENT_NOT_FOUND",
@@ -258,7 +302,7 @@ class PartitionedNoteService:
     def list_note(
         self,
         *,
-        target_id: int,
+        target_id: int | str,
         target_riga_id: int | None = None,
         include_invisible: bool = True,
         search: str | None = None,
@@ -267,8 +311,12 @@ class PartitionedNoteService:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        self._validator.guard_positive_int(target_id, field="target_id")
+        target_id = self._target_id(target_id)
         if target_riga_id is not None:
+            # ⛔ Prima della forma: in una sede senza righe `target_riga_id` e'
+            #    `uuid` (catalogo) e un intero arriverebbe al DB come
+            #    `uuid = integer`, un 500.
+            self._require_riga_ammessa(field="target_riga_id")
             self._validator.guard_positive_int(target_riga_id, field="target_riga_id")
         # La pagina della lista `<schema>.note` (dal 2026-10-31): l'ordinamento
         # dalla whitelist comune delle note (`ordine_note_valido`).
@@ -289,9 +337,9 @@ class PartitionedNoteService:
 
     # Scopo: Restituisce una singola nota per id + target_id. Solleva
     #        E_NOTA_NOT_FOUND se mancante (anche su tampering url id<->target).
-    def get_nota(self, *, note_id: int, target_id: int) -> dict[str, Any]:
+    def get_nota(self, *, note_id: int, target_id: int | str) -> dict[str, Any]:
         self._validator.guard_positive_int(note_id, field="note_id")
-        self._validator.guard_positive_int(target_id, field="target_id")
+        target_id = self._target_id(target_id)
         nota = self._repo.get(note_id, target_id)
         ErrorManager.require(
             nota is not None,
@@ -308,23 +356,19 @@ class PartitionedNoteService:
     def crea_nota(
         self,
         *,
-        target_id: int,
+        target_id: int | str,
         payload: dict[str, Any],
         auth_user_id: int | None = None,
     ) -> dict[str, Any]:
-        self._validator.guard_positive_int(target_id, field="target_id")
+        target_id = self._target_id(target_id)
         self._ensure_parent_exists(target_id)
         normalized = self._normalize_payload(payload, is_create=True, auth_user_id=auth_user_id)
 
         # Coerenza riga: target_riga_id valorizzato => deve appartenere al parent.
+        # La sede senza righe e' gia' respinta da `_normalize_payload`
+        # (`_require_riga_ammessa`): una riga valorizzata vuol dire ancora RIGA.
         riga_id = normalized.get("target_riga_id")
         if riga_id is not None:
-            ErrorManager.require(
-                self._repo.supports_riga,
-                code="E_NOTA_VALIDATION",
-                message="Note di riga non ammesse per questo target.",
-                context={"target_tipo": self._repo.target_tipo},
-            )
             ErrorManager.require(
                 self._repo.riga_belongs_to_parent(target_id, riga_id),
                 code="E_NOTA_RIGA_INCOERENTE",
@@ -354,11 +398,12 @@ class PartitionedNoteService:
         self,
         *,
         note_id: int,
-        target_id: int,
+        target_id: int | str,
         patch: dict[str, Any],
         auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         # Verifica esistenza prima di accettare il patch (404 esplicito).
+        target_id = self._target_id(target_id)
         self.get_nota(note_id=note_id, target_id=target_id)
         normalized = self._normalize_payload(patch, is_create=False, auth_user_id=auth_user_id)
         # ⛔ Un PATCH senza campi e' un 400, non un 200 che restituisce la nota
@@ -387,9 +432,9 @@ class PartitionedNoteService:
 
     # Scopo: Elimina (hard delete) una nota. 404 se inesistente; idempotenza
     #        delegata al chiamante (chi richiama 2 volte vede il 404 sulla seconda).
-    def elimina_nota(self, *, note_id: int, target_id: int) -> None:
+    def elimina_nota(self, *, note_id: int, target_id: int | str) -> None:
         self._validator.guard_positive_int(note_id, field="note_id")
-        self._validator.guard_positive_int(target_id, field="target_id")
+        target_id = self._target_id(target_id)
         deleted = self._repo.delete(note_id, target_id)
         ErrorManager.require(
             deleted,
@@ -399,8 +444,8 @@ class PartitionedNoteService:
         )
 
     # Scopo: Conta note totali sul documento (per badge UI).
-    def count_per_target(self, *, target_id: int) -> int:
-        self._validator.guard_positive_int(target_id, field="target_id")
+    def count_per_target(self, *, target_id: int | str) -> int:
+        target_id = self._target_id(target_id)
         return self._repo.count_for_parent(target_id)
 
     # =================================================================
@@ -478,6 +523,13 @@ class PartitionedNoteService:
             anchor_eff = anchor_in
         else:
             anchor_eff = "RIGA" if normalized.get("target_riga_id") is not None else "DOCUMENTO"
+        # ⛔ Una sede senza righe (le anagrafiche di catalogo: la nota annota
+        #    l'articolo o il legame interi) non ha l'ancora RIGA, ne' in
+        #    creazione ne' in modifica. Lo dice anche il DB
+        #    (`chk_note_catalogo_ancora_documento`); qui la frase col campo,
+        #    prima della scrittura.
+        if anchor_eff == "RIGA":
+            self._require_riga_ammessa(field="anchor_tipo")
         if is_create or anchor_in is not None:
             normalized["anchor_tipo"] = anchor_eff
 
@@ -668,7 +720,7 @@ def _default_lingua_lookup(codice_iso: str) -> int | None:
 #        shape (api_fattura_dettaglio §`contatori`).
 # ⛔ Si chiama DOPO il cancello di testata: un documento fuori perimetro e'
 #    un 404, non un conteggio.
-def contatori_documento(repo: PartitionedNoteRepository, target_id: int) -> dict[str, int]:
+def contatori_documento(repo: PartitionedNoteRepository, target_id: int | str) -> dict[str, int]:
     return {
         "note": PartitionedNoteService(repo=repo).count_per_target(target_id=target_id),
     }

@@ -73,6 +73,18 @@ repos:
         pass_filenames: false
         files: '^(frontend/src/.*\.(vue|css)|scripts/check_classi_morte\.py)$'
 
+      # L'INDICE dei building block (2026-11-11) e' generato dai due cataloghi
+      #    ed e' cio' che una sessione BE/FE legge per intero (CLAUDE.md). Un
+      #    indice rimasto indietro non da' errore: nasconde un building block,
+      #    e chi non lo vede lo riscrive. Si rigenera con
+      #    `python3 scripts/gen_indice_bb.py`.
+      - id: check-indice-bb
+        name: Controlla indice building block
+        entry: python3 scripts/gen_indice_bb.py --check
+        language: system
+        pass_filenames: false
+        files: '^(docs/it/dev/(backend|frontend)/(catalogo|indice)-building-block-(backend|frontend)\.md|scripts/gen_indice_bb\.py)$'
+
   # ⭐ La PRIMA analisi statica del backend (2026-09-09). Fino a quel giorno su
   #    258.000 righe di Python non girava nessun linter, nessun type checker e
   #    nessun formattatore — mentre il frontend ne aveva gia' due.

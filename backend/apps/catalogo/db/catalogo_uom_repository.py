@@ -92,10 +92,22 @@ UOM_OPERATIVA_DETAIL_COLUMNS: tuple[str, ...] = (
     "auo.user_update",
     "auo.data_insert",
     "auo.data_update",
-    # Capability di riga (Fase 6): only is_base blocca eliminazione.
-    # motivo_non_eliminabile: 'UOM_BASE_NON_ELIMINABILE' | NULL.
+    # ⭐ Capability di riga: la vista le prende dal BB del DB
+    #    `catalogo.fn_uom_conversione_capability` (G1-G2 di
+    #    brief-db-revisione-catalogo, 2026-11-11), la stessa regola che il
+    #    guard della storia usa per rifiutare. Il backend le TRASPORTA.
+    #    `motivo_non_eliminabile`: UOM_BASE_NON_ELIMINABILE, UOM_STORIA_IN_VIGORE
+    #    o NULL; `motivo_non_chiudibile`: UOM_BASE, UOM_STORIA_CHIUSA o NULL.
+    #    `puo_cambiare_attivo` spegne l'interruttore (la riga base, una
+    #    mappatura in vigore); `data_min_chiusura` / `data_default_chiusura`
+    #    sono il pavimento e la proposta della data di fine.
     "auo.puo_eliminarsi",
     "auo.motivo_non_eliminabile",
+    "auo.puo_cambiare_attivo",
+    "auo.puo_chiudersi",
+    "auo.data_min_chiusura",
+    "auo.data_default_chiusura",
+    "auo.motivo_non_chiudibile",
 )
 
 

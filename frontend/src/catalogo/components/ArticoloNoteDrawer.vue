@@ -4,9 +4,10 @@
 // CatalogoNoteDrawer ad-hoc per allinearsi al pattern usato da preventivi/
 // contratti. Lo schema DB `catalogo.note` e' gemello di `vendite.note`
 // (target_tipo/target_id/target_riga_id/anchor_tipo/posizione/seq/visibile/
-// solo_stampa/id_stile/id_lingua/meta); cambia solo il routing URL (pattern
-// "split": LIST/POST sotto parent, DETAIL su /catalogo/note/<id>/),
-// gestito da `makeArticoloNotesApi`.
+// solo_stampa/id_stile/id_lingua/meta). Dal 2026-11-11 anche il backend e'
+// lo stesso BB (lista e dettaglio sotto il padre, `makeArticoloNotesApi`).
+// ⚠️ Nessuna nota di riga: una nota di catalogo annota l'articolo intero
+//    (`supportsRiga` resta spento).
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'

@@ -48,7 +48,8 @@ _LISTE = (
     ("articoli", lambda r, **k: r.list_articoli(**_FILTRI_ARTICOLI, **k), "a.descrizione", "a.id"),
     ("uom_tipi", lambda r, **k: r.list_uom_tipi(attivo=None, search=None, **k), "ut.descrizione", "ut.id"),
     ("unita_misura", lambda r, **k: r.list_unita_misura(attivo=None, search=None, **k), "u.codice", "u.id"),
-    ("conversioni", lambda r, **k: r.list_conversioni(attivo=None, **k), "uf.codice", "c.id"),
+    # La lista delle conversioni legge la vista di dettaglio (BE21-c, 2026-11-11).
+    ("conversioni", lambda r, **k: r.list_conversioni(attivo=None, **k), "c.uom_from_codice", "c.id"),
 )
 
 

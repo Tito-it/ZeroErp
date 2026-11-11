@@ -1,5 +1,11 @@
 from django.urls import path
 
+from apps.catalogo.api.note_views import (
+    ApiArticoloNoteDetail,
+    ApiArticoloNoteList,
+    ApiComponenteNoteDetail,
+    ApiComponenteNoteList,
+)
 from apps.catalogo.api.views import (
     ApiArticoloComponenteChiudi,
     ApiArticoloComponenteChiusura,
@@ -10,16 +16,13 @@ from apps.catalogo.api.views import (
     ApiArticoloDisattiva,
     ApiArticoloRiattiva,
     ApiArticoloDetail,
-    ApiArticoloNoteList,
     ApiArticoloUomDetail,
     ApiArticoloUomList,
     ApiArticoloUomLookup,
     ApiArticoliList,
     ApiArticoliLookup,
-    ApiComponenteNoteList,
     ApiConversioneDetail,
     ApiConversioniList,
-    ApiNotaDetail,
     ApiUomTipoDetail,
     ApiUomTipiList,
     ApiUnitaMisuraDetail,
@@ -38,16 +41,18 @@ urlpatterns = [
     # anche se `lista/` non e' un uuid — le rotte letterali in testa.
     path("articoli/<uuid:articolo_id>/componenti/lista/", ApiArticoloComponentiLista.as_view(), name="catalogo-articolo-componenti-lista"),
     path("articoli/<uuid:articolo_id>/componenti/lista/export/", ApiArticoloComponentiListaExport.as_view(), name="catalogo-articolo-componenti-lista-export"),
+    # Le note (BB `make_note_views`, dal 2026-11-11): lista e dettaglio sotto il padre.
+    path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/note/<int:note_id>/", ApiComponenteNoteDetail.as_view(), name="catalogo-componente-note-detail"),
     path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/note/", ApiComponenteNoteList.as_view(), name="catalogo-componente-note-list"),
     path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/chiusura/", ApiArticoloComponenteChiusura.as_view(), name="catalogo-articolo-componente-chiusura"),
     path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/chiudi/", ApiArticoloComponenteChiudi.as_view(), name="catalogo-articolo-componente-chiudi"),
     path("articoli/<uuid:articolo_id>/componenti/", ApiArticoloComponentiList.as_view(), name="catalogo-articolo-componenti-list"),
+    path("articoli/<uuid:articolo_id>/note/<int:note_id>/", ApiArticoloNoteDetail.as_view(), name="catalogo-articolo-note-detail"),
     path("articoli/<uuid:articolo_id>/note/", ApiArticoloNoteList.as_view(), name="catalogo-articolo-note-list"),
     path("articoli/<uuid:articolo_id>/disattiva/", ApiArticoloDisattiva.as_view(), name="catalogo-articolo-disattiva"),
     path("articoli/<uuid:articolo_id>/riattiva/", ApiArticoloRiattiva.as_view(), name="catalogo-articolo-riattiva"),
     path("articoli/<uuid:articolo_id>/", ApiArticoloDetail.as_view(), name="catalogo-articolo-detail"),
     path("articoli/", ApiArticoliList.as_view(), name="catalogo-articoli-list"),
-    path("note/<int:nota_id>/", ApiNotaDetail.as_view(), name="catalogo-nota-detail"),
     # Tipologie UoM (lookup usa endpoint generico /core/lookup/codici/?rel=catalogo.uom_tipi)
     path("uom-tipi/<int:tipo_id>/", ApiUomTipoDetail.as_view(), name="catalogo-uom-tipo-detail"),
     path("uom-tipi/", ApiUomTipiList.as_view(), name="catalogo-uom-tipi-list"),
