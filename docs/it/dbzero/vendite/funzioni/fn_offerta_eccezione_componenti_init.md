@@ -86,7 +86,7 @@ BEGIN
       INTO v_is_composito, v_codice_articolo
       FROM catalogo.articoli a WHERE a.id = v_articolo_id;
 
-    IF NOT COALESCE(v_is_composito, FALSE) THEN
+    IF NOT v_is_composito THEN
         RETURN 0;
     END IF;
 
@@ -135,7 +135,7 @@ BEGIN
             v_prezzo  := (p_componenti_overrides ->> v_comp.componente_id::text)::numeric;
             v_origine := 'MANUALE';
             -- Guard prezzo=0 solo per componenti obbligatori
-            IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
+            IF v_prezzo = 0 AND v_comp.obbligatorio THEN
                 PERFORM script.fn_log_and_raise_error(
                     'vendite', 'fn_offerta_eccezione_componenti_init',
                     -- rev 2026-08-07: era E_PARAMETRO_INVALIDO. Non e' un parametro

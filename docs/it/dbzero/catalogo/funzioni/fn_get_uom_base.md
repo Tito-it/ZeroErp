@@ -25,16 +25,15 @@ BEGIN
   SELECT a.uom_id
     INTO v_uom_base_id
   FROM catalogo.articoli a
-  WHERE a.id = p_articolo_id
-  LIMIT 1;
+  WHERE a.id = p_articolo_id;
 
-  -- Se non presente, ritorna NULL; il chiamante decide se bloccare/loggare
+  -- Articolo inesistente: NULL; il chiamante decide se rifiutare.
   RETURN v_uom_base_id;
 END;
 $function$
 
 COMMENT ON FUNCTION catalogo.fn_get_uom_base(p_articolo_id uuid)
-IS 'Ritorna la UoM BASE (uom_id) dell’articolo indicato. Se articolo non trovato o senza UoM, ritorna NULL.';
+IS 'L''unita'' base dell''articolo, catalogo.articoli.uom_id (NOT NULL). NULL solo se l''articolo non esiste: il chiamante decide se rifiutare.';
 ```
 
 </div>

@@ -55,7 +55,7 @@ BEGIN
       INTO v_estranee
       FROM jsonb_object_keys(p_campi) k
      WHERE k <> ALL (catalogo.fn_articolo_colonne_struttura());
-    IF p_campi IS NULL OR v_estranee IS NOT NULL THEN
+    IF v_estranee IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'catalogo', 'catalogo.fn_articolo_correggi_struttura', 'E_PARAMETRO_INVALIDO',
             jsonb_build_object('parametro', 'p_campi', 'non_ammesse', v_estranee),

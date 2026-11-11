@@ -44,7 +44,6 @@
 | PRIMARY KEY | pk_articoli_componenti | id |
 | UNIQUE | uq_articoli_componenti_id_temporal | id, validita |
 | UNIQUE | uq_articoli_componenti_no_overlap | prodotto_id, componente_id, validita |
-| UNIQUE | uq_articoli_componenti_prodotto_componente_from | prodotto_id, componente_id, valido_dal |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -54,7 +53,6 @@
 | pk_articoli_componenti | `CREATE UNIQUE INDEX pk_articoli_componenti ON catalogo.articoli_componenti USING btree (id)` |
 | uq_articoli_componenti_id_temporal | `CREATE UNIQUE INDEX uq_articoli_componenti_id_temporal ON catalogo.articoli_componenti USING gist (id, validita)` |
 | uq_articoli_componenti_no_overlap | `CREATE UNIQUE INDEX uq_articoli_componenti_no_overlap ON catalogo.articoli_componenti USING gist (prodotto_id, componente_id, validita)` |
-| uq_articoli_componenti_prodotto_componente_from | `CREATE UNIQUE INDEX uq_articoli_componenti_prodotto_componente_from ON catalogo.articoli_componenti USING btree (prodotto_id, componente_id, valido_dal)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

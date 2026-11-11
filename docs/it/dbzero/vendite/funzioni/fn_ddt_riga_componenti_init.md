@@ -67,7 +67,7 @@ BEGIN
             jsonb_build_object('p_riga_id', p_riga_id),
             NULL::uuid, p_riga_id::text);
     END IF;
-    IF NOT COALESCE(v_is_composito, FALSE) THEN RETURN 0; END IF;
+    IF NOT v_is_composito THEN RETURN 0; END IF;
 
     IF EXISTS (
         SELECT 1 FROM vendite.ddt_righe_componenti
@@ -97,7 +97,7 @@ BEGIN
             --   finche' il documento vende. Senza questa condizione il divieto
             --   sarebbe stato allentato nel trigger e rimasto qui, cioe' in
             --   due posti che dicono cose diverse sulla stessa regola.
-            IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE)
+            IF v_prezzo = 0 AND v_comp.obbligatorio
                AND vendite.fn_check_ddt_riga_richiede_prezzo(p_riga_id) THEN
                 PERFORM script.fn_log_and_raise_error(
                     'vendite', 'fn_ddt_riga_componenti_init',

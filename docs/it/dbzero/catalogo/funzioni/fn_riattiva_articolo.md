@@ -22,7 +22,7 @@ AS $function$
 --   ecc.) -- l'admin li riattiva esplicitamente in azioni
 --   successive.
 -- Idempotente su articolo gia' attivo (no audit spurio).
--- Errore: E_ARTICOLO_NOT_FOUND (404) se id NULL o non esiste.
+-- Errore: E_ARTICOLO_NOT_FOUND se id NULL o non esiste.
 -- Tipi: %TYPE delle colonne target (linee-guida-sql).
 DECLARE
     v_fn_name CONSTANT text := 'fn_riattiva_articolo';
@@ -31,7 +31,7 @@ BEGIN
     -- Guard parametro NULL: riconducibile a NOT FOUND.
     IF p_articolo_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
-            'database',
+            'catalogo',
             v_fn_name,
             'E_ARTICOLO_NOT_FOUND',
             jsonb_build_object('articolo_id', NULL),
@@ -43,9 +43,9 @@ BEGIN
     -- UPDATE filtrato su attivo=false: idempotente per
     -- articoli gia' attivi (0 rows aggiornate, no audit
     -- triggers spuri come data_update/user_update/tx_id).
-    -- Eventuale fail per parent inattivi (iva, gruppo,
-    -- tipologia, ecc.) si propaga dal trigger esistente
-    -- trgfn_child_requires_active_parent (E_PARENT_*).
+    -- Un riferimento spento (iva, gruppo, tipologia, ecc.)
+    -- lo rifiuta dbops.trgfn_child_requires_active_parent
+    -- (E_ATTIVO_PADRE_NON_ATTIVO, al COMMIT: trigger differito).
     UPDATE catalogo.articoli
        SET attivo = true
      WHERE id = p_articolo_id
@@ -62,7 +62,7 @@ BEGIN
              WHERE id = p_articolo_id
         ) THEN
             PERFORM script.fn_log_and_raise_error(
-                'database',
+                'catalogo',
                 v_fn_name,
                 'E_ARTICOLO_NOT_FOUND',
                 jsonb_build_object('articolo_id', p_articolo_id),
@@ -76,7 +76,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.fn_riattiva_articolo(p_articolo_id uuid)
-IS 'Riattiva un articolo (attivo=true) senza toccare i figli (pattern "padre prima, figli poi"). Idempotente su gia'' attivo, raise E_ARTICOLO_NOT_FOUND (404) se id NULL o inesistente. Disattivazione resta UPDATE diretto, coperto da trgfn_prevent_deactivate_if_children.';
+IS 'Riattiva un articolo (attivo = true) senza toccare le righe che dipendono da lui: prima il padre, poi i figli, uno per uno. Idempotente su un articolo gia'' attivo. Id NULL o inesistente: E_ARTICOLO_NOT_FOUND. Un riferimento spento dell''articolo (IVA, gruppo, tipologia, unita'' di misura e gli altri padri della famiglia ATTIVO) lo rifiuta dbops.trgfn_child_requires_active_parent con E_ATTIVO_PADRE_NON_ATTIVO, al COMMIT (trigger differito). La disattivazione e'' un UPDATE diretto, giudicato da dbops.trgfn_prevent_deactivate_if_children.';
 ```
 
 </div>

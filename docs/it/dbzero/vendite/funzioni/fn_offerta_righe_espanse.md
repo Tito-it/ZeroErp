@@ -85,7 +85,7 @@ BEGIN
                     -- rev 2026-10-29 (G-0-ter): l'ADESIONE porta la sua quantita'.
                     'ADESIONE'::vendite.tipo_eccezione_contratto
                 )
-            AND COALESCE(ecc.attivo, TRUE) = TRUE
+            AND ecc.attivo
      WHERE ecc.tipo_eccezione IS DISTINCT FROM 'ESCLUSIONE'::vendite.tipo_eccezione_contratto;
 
     -- PARTE 2a: AGGIUNTA standalone (articolo non a listino).
@@ -108,7 +108,7 @@ BEGIN
         ON a.id = ecc.articolo_id AND a.is_composito = FALSE AND a.attivo = TRUE
      WHERE ecc.offerta_id           = p_offerta_id
        AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
-       AND COALESCE(ecc.attivo, TRUE) = TRUE;
+       AND ecc.attivo;
 
     -- PARTE 2b: AGGIUNTA bundle. Componenti da offerte_commerciali_eccezioni_componenti.
     RETURN QUERY
@@ -149,7 +149,7 @@ BEGIN
         ON a.id = ecc.articolo_id AND a.is_composito = TRUE AND a.attivo = TRUE
      WHERE ecc.offerta_id           = p_offerta_id
        AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
-       AND COALESCE(ecc.attivo, TRUE) = TRUE;
+       AND ecc.attivo;
 END;
 $function$
 

@@ -256,7 +256,7 @@ BEGIN
               INTO v_overrides
               FROM vendite.preventivi_righe_componenti prc
              WHERE prc.riga_preventivo_id = v_riga.riga_id
-               AND COALESCE(prc.attivo, TRUE) IS TRUE
+               AND prc.attivo
                AND prc.prezzo_unitario <> 0;
 
             PERFORM vendite.fn_ordine_riga_componenti_init(
