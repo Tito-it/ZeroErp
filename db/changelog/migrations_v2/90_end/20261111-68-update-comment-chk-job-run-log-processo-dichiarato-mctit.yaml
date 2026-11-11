@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENT AL PRESENTE DI chk_job_run_log_processo_dichiarato
+#   Brief: brief-db-revisione-dbops.md, giro 14 (correzione, §34.6.7).
+#
+# ⛔ Perche' in 90_end e non in 20_code/maintenance/20261111-20 insieme agli
+#   altri: il vincolo nasce in 90_end (20260905-16). Su un database ricostruito
+#   da zero 20_code gira prima, e il COMMENT dentro il -20 falliva perche' il
+#   vincolo non c'era ancora. Qui gira dopo il -16, sia da zero sia sui
+#   database gia' migrati. Stesso caso di 90_end/20261111-66.
+#
+# Idempotente: un COMMENT riscrive il testo, e dove e' gia' quello non cambia
+# niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261111-68-update-comment-chk-job-run-log-processo-dichiarato-mctit.yaml
+
+  - changeSet:
+      id: 20261111-68-update-comment-chk-job-run-log-processo-dichiarato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente (linee-guida-sql §5d) del vincolo chk_job_run_log_processo_dichiarato
+        di maintenance.job_run_log, in 90_end perche' il vincolo nasce qui. Brief:
+        brief-db-revisione-dbops, giro 14.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'maintenance.job_run_log'::regclass
+                 AND conname = 'chk_job_run_log_processo_dichiarato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_job_run_log_processo_dichiarato ON maintenance.job_run_log IS
+                'Una corsa NUOVA deve dichiarare di quale processo e''. ⛔ NOT VALID e non un NOT NULL: le righe scritte prima che la colonna esistesse non hanno un processo, e non si puo'' fornirlo a posteriori; riempirle per far passare il vincolo sarebbe inventare un attore per corse che non l''avevano. Per lo stesso motivo non si esegue VALIDATE CONSTRAINT: fallirebbe sulle righe storiche, ed e'' giusto che le nomini invece di accettarle. ⚠️ Chi non si dichiara vede fallire l''INSERT, quindi il job: un processo che non sa dire chi e'' non gira, e fallire rumorosamente e'' meglio di una riga muta.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_job_run_log_processo_dichiarato ON maintenance.job_run_log IS
+                'Un run NUOVO deve dichiarare di quale processo e''. ⛔ NOT VALID e non un NOT NULL: al 2026-09-05 la tabella ha 99.775 righe senza attore su 100.738, scritte prima che la colonna esistesse — il giornale di ieri, dove l''attore non si puo'' fornire e non si potra'' mai. Riempirle per far passare il vincolo sarebbe inventare un attore per corse che non l''avevano. ⚠️ Chi non si dichiara vede fallire l''INSERT, quindi il job: e'' la scelta, non un effetto collaterale — un processo che non sa dire chi e'' non deve girare, e fallire rumorosamente e'' meglio che lasciare una riga muta. ⛔ NON si esegue VALIDATE CONSTRAINT: fallirebbe sulle righe storiche, ed e'' giusto che le nomini invece di accettarle. Brief: brief-db-processi-automatici-residui-be, DB-5.';

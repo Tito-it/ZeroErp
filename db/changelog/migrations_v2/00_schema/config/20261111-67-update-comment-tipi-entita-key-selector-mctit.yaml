@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENT DI config.tipi_entita.key_selector, CORRETTO
+#   Brief: brief-db-revisione-dbops.md §35.6.4
+#
+# ⛔ Il COMMENT di oggi dice «stessi valori di config.sorgenti.key_selector, di
+#   proposito», e non e' vero: PREVENTIVO e OFFERTA_COMMERCIALE sono `id` qui e
+#   `uid` in config.sorgenti. Sono due domande diverse:
+#   * config.sorgenti.key_selector: con che chiave un documento cita il tipo come
+#     sua provenienza (la chiave mista id/uid, che resta: guida
+#     sorgente-polimorfa §3);
+#   * config.tipi_entita.key_selector: con che chiave si raggiunge e si apre la
+#     cosa da fuori (il bersaglio di un errore, script.fn_bersaglio_di_riga).
+#   Stesso vocabolario (id | uid), valori che possono differire. Si corregge il
+#   testo, non i valori.
+#
+# Solo COMMENT ON: idempotente, nessuna preCondition (un COMMENT su una colonna
+# che non c'e' fallisce da se', e la colonna nasce in 00_schema/20260823-01).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261111-67-update-comment-tipi-entita-key-selector-mctit.yaml
+
+  - changeSet:
+      id: 20261111-67-update-comment-tipi-entita-key-selector
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente di config.tipi_entita.key_selector: stesso vocabolario di
+        config.sorgenti.key_selector, non gli stessi valori. Brief: brief-db-revisione-dbops §35.6.4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.tipi_entita.key_selector IS
+                'Con quale chiave si raggiunge da fuori un''entita'' di questo tipo: ''id'' (la PK numerica) oppure ''uid'' (il codice lungo). Serve a chi punta all''entita'' per aprirla, come il bersaglio di un errore (script.fn_bersaglio_di_riga): un pulsante che apre la cosa sbagliata e'' peggio di nessun pulsante. Usa lo stesso vocabolario di config.sorgenti.key_selector ma risponde a un''altra domanda: quella dice con che chiave un documento cita il tipo come sua provenienza, e per uno stesso tipo i due valori possono differire. Il giornale non la usa: per vendite.event_log l''entity_id e'' sempre la PK id. Nessun DEFAULT: chi semina un tipo nuovo dichiara la chiave.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN config.tipi_entita.key_selector IS
+                'Con quale chiave si raggiunge questa entita'': ''id'' (la PK numerica) oppure ''uid'' (il codice lungo con cui si citano preventivi e offerte). ⭐ Stesso nome e stessi valori di config.sorgenti.key_selector, di proposito: e'' la stessa convenzione, e due nomi per la stessa nozione sono il modo in cui due cataloghi divergono. Serve a chi PUNTA all''entita'' da fuori — il bersaglio di un errore, le rotte della timeline — perche'' un pulsante che apre la cosa sbagliata e'' peggio di nessun pulsante. ⛔ Il giornale non la usa: per vendite.event_log l''entity_id e'' la PK id, sempre. ⚠️ Nessun DEFAULT, ed e'' voluto: chi semina un tipo nuovo deve dichiarare la chiave invece di ereditarla.';
