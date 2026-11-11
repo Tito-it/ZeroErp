@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le note dei legami di distinta, una riga per nota, col legame, i codici e le descrizioni di padre e componente e la decodifica dello stile e della lingua. Le colonne di nota vengono da catalogo.vw_note (nota_target_tipo ARTICOLO_COMPONENTE, la partizione catalogo.note_articoli_componenti). Non filtra le note nascoste ne' quelle di sola stampa. Si legge; le note si scrivono sulla partizione. Rev 2026-11-11 (20261111-77/-80, brief-db-revisione-catalogo giro 4, R6): sopra la vista base, stesse colonne; user_* text.
+> Le note dei legami di distinta, una riga per nota, col legame, i codici e le descrizioni di padre e componente e la decodifica dello stile e della lingua. Le colonne di nota vengono da catalogo.vw_note (nota_target_tipo ARTICOLO_COMPONENTE, la partizione catalogo.note_articoli_componenti). Non filtra le note nascoste ne' quelle di sola stampa. Si legge; le note si scrivono sulla partizione. nota_user_insert e nota_user_update sono text.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 

@@ -95,7 +95,7 @@ databaseChangeLog:
               COMMENT ON CONSTRAINT chk_note_catalogo_ancora_documento ON catalogo.note IS
                   'Una nota di catalogo annota un''anagrafica (un articolo, un legame di distinta), e su un''anagrafica non c''e'' una riga: anchor_tipo DOCUMENTO e target_riga_id vuoto.';
               COMMENT ON TABLE catalogo.note IS
-                  'Note testuali ancorabili ad articoli o articoli_componenti; tabella padre partizionata per target_tipo. Rev 2026-10-25 (20261025-57, brief-db-grammatica-unica-documenti lotto 3, G-3/G-7): ricostruita per portare target_tipo a varchar(50) col codice di config.tipi_entita (ARTICOLO, ARTICOLO_COMPONENTE); le partizioni sono le stesse, staccate e riattaccate. Rev 2026-11-11 (20261111-77, brief-db-revisione-catalogo giro 4): la forma delle note degli altri schemi (testo non vuoto, user_* text, tx_id), l''ancora solo DOCUMENTO; la nota non tiene acceso il suo bersaglio e non chiede che sia acceso (automazione_attivo_eccezioni).';
+                  'Note testuali di catalogo, ancorate a un articolo o a un legame di distinta. Tabella padre partizionata per target_tipo, col codice di config.tipi_entita: ARTICOLO nella partizione catalogo.note_articoli, ARTICOLO_COMPONENTE in catalogo.note_articoli_componenti. Ha la forma delle note degli altri schemi: un testo non vuoto (chk_note_testo_non_vuoto), user_insert e user_update text, tx_id. Annota l''anagrafica intera, mai una riga (chk_note_catalogo_ancora_documento). La nota non tiene acceso il suo bersaglio e non chiede che sia acceso: e'' un''eccezione dell''automazione ATTIVO (dbops.automazione_attivo_eccezioni). Si scrive sulla partizione; si legge da catalogo.vw_note.';
       rollback:
         - sql:
             dbms: postgresql
