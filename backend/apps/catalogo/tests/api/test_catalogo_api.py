@@ -35,6 +35,9 @@ Indice test eseguiti:
 23) CatalogoApiTests.test_get_articolo_note_ok
 24) CatalogoApiTests.test_post_articolo_nota_ok
 25) CatalogoApiTests.test_patch_nota_not_found
+25b) CatalogoApiTests.test_note_legame_di_un_altro_articolo_404
+25c) CatalogoApiTests.test_note_di_catalogo_senza_cancello_di_perimetro
+25d) NoteCatalogoSchemaTests.test_target_riga_id_solo_dove_ci_sono_righe
 27) CatalogoApiTests.test_get_articolo_componenti_capability_ok
 """
 
@@ -43,6 +46,7 @@ from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 
+from apps.core.services.partitioned_note_service import PartitionedNoteService
 from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -528,11 +532,12 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(response.json()["data"]["id"], _COMPONENTE_UUID)
         self.assertEqual(str(mocked_create.call_args.args[0]), _ARTICOLO_UUID)
 
-    # Scopo: GET note articolo -> 200 con envelope count/results.
-    # Shape allineata al pattern partizionato vendite (2026-05-22):
-    # alias senza prefisso `nota_` (id/testo/testo_md, ecc.).
+    # Scopo: GET note articolo -> 200 con envelope count/results. Dal
+    #        2026-11-11 le note di catalogo passano dal BB delle note
+    #        (`make_note_views` + `PartitionedNoteService`): la chiave del
+    #        padre arriva al service come la da' il percorso (UUID).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.catalogo.api.views.fn_list_note_articolo")
+    @patch.object(PartitionedNoteService, "list_note", autospec=True)
     def test_get_articolo_note_ok(self, mocked_list, _mock_auth):
         mocked_list.return_value = ([{"id": 5, "testo": "Demo"}], 1)
 
@@ -540,42 +545,122 @@ class CatalogoApiTests(JwtMockedApiTest):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["results"][0]["id"], 5)
-        # La pagina della lista `catalogo.note` (dal 2026-10-31).
         self.assertEqual(response.json()["data"]["count"], 1)
         self.assertEqual(mocked_list.call_args.kwargs["search"], "dem")
+        self.assertEqual(str(mocked_list.call_args.kwargs["target_id"]), _ARTICOLO_UUID)
 
     # Scopo: POST nota articolo -> 200 e payload inoltrato al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.catalogo.api.views.fn_create_nota_articolo")
+    @patch.object(PartitionedNoteService, "crea_nota", autospec=True)
     def test_post_articolo_nota_ok(self, mocked_create, _mock_auth):
         mocked_create.return_value = {"id": 5, "testo": "Demo"}
 
         response = self.client.post(
             f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/note/",
-            data=json.dumps({"id_stile": 1, "testo": "Demo"}),
+            data=json.dumps({"testo": "Demo"}),
             content_type="application/json",
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["id"], 5)
-        self.assertEqual(str(mocked_create.call_args.args[0]), _ARTICOLO_UUID)
+        self.assertEqual(str(mocked_create.call_args.kwargs["target_id"]), _ARTICOLO_UUID)
+        self.assertEqual(mocked_create.call_args.kwargs["payload"], {"testo": "Demo"})
 
-    # Scopo: PATCH nota assente -> 404 via policy catalogo.
+    # Scopo: PATCH nota assente -> 404. Il dettaglio sta sotto il padre
+    #        (`…/articoli/<id>/note/<note_id>/`): la rotta a parte
+    #        `/catalogo/note/<id>/` e' ritirata il 2026-11-11.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.catalogo.api.views.fn_update_nota")
+    @patch.object(PartitionedNoteService, "aggiorna_nota", autospec=True)
     def test_patch_nota_not_found(self, mocked_update, _mock_auth):
         from apps.core.services.service_errors import ServiceError
 
-        mocked_update.side_effect = ServiceError(
-            code="E_CATALOGO_NOTA_NOT_FOUND",
-            message="Nota non trovata.",
-        )
+        mocked_update.side_effect = ServiceError(code="E_NOTA_NOT_FOUND", message="Nota non trovata.")
 
         response = self.client.patch(
-            "/api/v1/catalogo/note/999/",
+            f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/note/999/",
             data=json.dumps({"testo": "Aggiornata"}),
             content_type="application/json",
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json()["error"]["code"], "E_CATALOGO_NOTA_NOT_FOUND")
+        self.assertEqual(response.json()["error"]["code"], "E_NOTA_NOT_FOUND")
+        self.assertEqual(mocked_update.call_args.kwargs["note_id"], 999)
+        self.assertEqual(self.client.patch("/api/v1/catalogo/note/999/", data="{}", content_type="application/json").status_code, 404)
+
+    # Scopo: ⛔ un legame che non e' dell'articolo dell'URL e' un 404 su OGNI
+    #        verbo delle sue note (cancello del padre di `make_note_views`), e
+    #        il service delle note non parte (2026-10-21, §B8 di
+    #        brief-be-verifica-documentazione-api; dal 2026-11-11 sul BB).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.catalogo.api.note_views.fn_verifica_componente_dell_articolo", autospec=True)
+    @patch.object(PartitionedNoteService, "list_note", autospec=True)
+    @patch.object(PartitionedNoteService, "crea_nota", autospec=True)
+    @patch.object(PartitionedNoteService, "aggiorna_nota", autospec=True)
+    @patch.object(PartitionedNoteService, "elimina_nota", autospec=True)
+    def test_note_legame_di_un_altro_articolo_404(
+        self, m_elimina, m_aggiorna, m_crea, m_list, mocked_cancello, _mock_auth,
+    ):
+        from apps.core.services.service_errors import ServiceError
+
+        mocked_cancello.side_effect = ServiceError(
+            code="E_CATALOGO_COMPONENTE_NOT_FOUND", message="Componente non trovato.",
+        )
+        base = f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/componenti/{_COMPONENTE_UUID}/note/"
+        for nome, chiama in (
+            ("GET", lambda: self.client.get(base)),
+            ("POST", lambda: self.client.post(base, data=json.dumps({"testo": "x"}), content_type="application/json")),
+            ("PATCH", lambda: self.client.patch(f"{base}7/", data=json.dumps({"testo": "x"}), content_type="application/json")),
+            ("DELETE", lambda: self.client.delete(f"{base}7/")),
+        ):
+            with self.subTest(nome):
+                response = chiama()
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.json()["error"]["code"], "E_CATALOGO_COMPONENTE_NOT_FOUND")
+        for metodo in (m_list, m_crea, m_aggiorna, m_elimina):
+            metodo.assert_not_called()
+
+    # Scopo: `catalogo.note` e' una lista GLOBALE: le view delle sue note non
+    #        hanno il cancello di perimetro (`perimetro_emittente=False`),
+    #        quelle di vendita si'. La ricerca resta della lista della sede.
+    def test_note_di_catalogo_senza_cancello_di_perimetro(self):
+        from apps.catalogo.api.note_views import ApiArticoloNoteList, ApiComponenteNoteList
+        from apps.catalogo.db.note_repositories import NOTE_REPO_ARTICOLO
+        from apps.vendite.api.note_views import ApiPreventivoNoteList
+
+        for vista in (ApiArticoloNoteList, ApiComponenteNoteList):
+            with self.subTest(vista.__name__):
+                self.assertIsNone(vista.lista_codice)
+                self.assertIsNone(vista.lista_emittente_param)
+        self.assertEqual(ApiPreventivoNoteList.lista_codice, "vendite.note")
+        self.assertEqual(NOTE_REPO_ARTICOLO.lista_codice, "catalogo.note")
+
+
+class NoteCatalogoSchemaTests(JwtMockedApiTest):
+    # Scopo: ⛔ lo schema OpenAPI non promette cio' che il service rifiuta. Una
+    #        nota di catalogo non ha righe (`supports_riga` falso): niente
+    #        filtro ne' campo `target_riga_id`, che sarebbero sempre un 400.
+    #        Le note di vendita li hanno (presidio del ramo opposto).
+    def test_target_riga_id_solo_dove_ci_sono_righe(self):
+        from drf_spectacular.generators import SchemaGenerator
+
+        schema = SchemaGenerator().get_schema(request=None, public=True)
+        percorsi = schema["paths"]
+
+        def parametri(percorso: str) -> set[str]:
+            return {p["name"] for p in percorsi[percorso]["get"].get("parameters", [])}
+
+        def campi_post(percorso: str) -> set[str]:
+            ref = percorsi[percorso]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+            return set(schema["components"]["schemas"][ref.rsplit("/", 1)[-1]]["properties"])
+
+        catalogo = (
+            "/api/v1/catalogo/articoli/{articolo_id}/note/",
+            "/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/note/",
+        )
+        for percorso in catalogo:
+            with self.subTest(percorso):
+                self.assertNotIn("target_riga_id", parametri(percorso))
+                self.assertNotIn("target_riga_id", campi_post(percorso))
+        vendita = "/api/v1/vendite/preventivi/{preventivo_id}/note/"
+        self.assertIn("target_riga_id", parametri(vendita))
+        self.assertIn("target_riga_id", campi_post(vendita))

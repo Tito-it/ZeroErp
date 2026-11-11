@@ -29,11 +29,8 @@ Indice test eseguiti:
 20) CatalogoServiceTests.test_fn_update_uom_operativa_not_found
 21) CatalogoServiceTests.test_fn_create_componente_ok
 22) (ritirato il 2026-11-10 con la PATCH del legame: test_fn_update_componente_immutabile)
-23) CatalogoServiceTests.test_fn_create_nota_articolo_ok
-24) CatalogoServiceTests.test_fn_create_nota_articolo_default_documento_header
-25) CatalogoServiceTests.test_fn_create_nota_componente_default_riga_after
-26) CatalogoServiceTests.test_fn_create_nota_articolo_anchor_riga_inconsistency
-27) CatalogoServiceTests.test_fn_update_nota_not_found
+23-27) (ritirati il 2026-11-11: le note di catalogo passano dal BB
+       `PartitionedNoteService`, provato in `core/tests`)
 28) CatalogoServiceTests.test_fn_create_componente_self_reference
 26) CatalogoServiceTests.test_fn_create_articolo_listino_tipologia_id_ok
 27) CatalogoServiceTests.test_fn_update_articolo_listino_tipologia_id_invalid
@@ -47,6 +44,7 @@ Indice test eseguiti:
 41) CatalogoServiceTests.test_fn_create_conversione_valido_dal_fallback_today
 42) CatalogoServiceTests.test_fn_get_articolo_includes_non_editable_fields
 43) CatalogoServiceTests.test_fn_list_uom_operative_envelope_non_editable_fields
+43b) CatalogoServiceTests.test_uom_operative_nessun_gap_python
 44) CatalogoServiceTests.test_fn_get_conversione_includes_non_editable_fields
 45) CatalogoServiceTests.test_fn_list_articoli_proietta_capability_bom
 46) CatalogoServiceTests.test_fn_list_uom_operative_proietta_capability_eliminabile
@@ -61,7 +59,7 @@ Indice test eseguiti:
 55) CatalogoServiceTests.test_fn_update_articolo_modo_approvvigionamento_null_invalid
 56) CatalogoServiceTests.test_fn_update_articolo_lead_time_negativo_invalid
 57) CatalogoServiceTests.test_chiave_fuori_contratto_e_un_400_prima_del_repository
-58) CatalogoServiceTests.test_nota_meta_null_diventa_oggetto_vuoto
+58) (ritirato il 2026-11-11 con `_extract_nota_payload`: il `meta` lo legge il BB delle note)
 59) CatalogoServiceTests.test_fn_create_articolo_composito_e_solo_componente
 60) CatalogoServiceTests.test_fn_create_componente_periodo_sovrapposto
 61) CatalogoServiceTests.test_fn_create_uom_operativa_doppia
@@ -132,9 +130,6 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = [{"id": 1, "uom_codice": "PZ"}]
         mock_bom_repo_cls.return_value.list_righe.return_value = [{"id": "comp-1"}]
-        # Shape allineata al pattern partizionato vendite (2026-05-22):
-        # le note ritornano `id`/`testo_md` senza prefisso `nota_`.
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = [{"id": 9}]
 
         result = fn_get_articolo(7)
 
@@ -142,7 +137,9 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["codice"], "ART-007")
         self.assertEqual(result["uom_operative"][0]["uom_codice"], "PZ")
         self.assertEqual(result["componenti"][0]["id"], "comp-1")
-        self.assertEqual(result["note"][0]["id"], 9)
+        # Le note non sono nel dettaglio (ritirate il 2026-11-11): si leggono
+        # dalla loro lista, BB delle note.
+        self.assertNotIn("note", result)
 
     # Scopo: Dettaglio articolo assente -> not found uniforme.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
@@ -325,7 +322,6 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_create_articolo(
             {"codice": "ART-001", "descrizione": "Articolo demo", "uom_id": 1}
@@ -404,7 +400,6 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_update_articolo(
             "019bbee2-5f6a-704f-bbd0-34ed84db252d",
@@ -457,7 +452,6 @@ class CatalogoServiceTests(TestCase):
         ]
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_disattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
 
@@ -479,7 +473,6 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_disattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
 
@@ -500,7 +493,6 @@ class CatalogoServiceTests(TestCase):
         ]
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
 
@@ -522,7 +514,6 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
 
@@ -834,134 +825,6 @@ class CatalogoServiceTests(TestCase):
             fn_create_conversione({"uom_from_id": 1, "uom_to_id": 2, "fattore": "1000"})
         self.assertIs(ctx.exception, errore)
 
-    # Scopo: create nota articolo -> insert e rilettura nota arricchita.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
-    def test_fn_create_nota_articolo_ok(self, mock_repo_cls, mock_bom_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_create_nota_articolo
-
-        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
-        bom_repo = mock_bom_repo_cls.return_value
-        # Il servizio scrive con `create_nota` (target ARTICOLO): il vecchio
-        # `create_nota_articolo` non esiste, e il 5 non arrivava mai.
-        bom_repo.create_nota.return_value = 5
-        # Shape allineata al pattern partizionato vendite (2026-05-22):
-        # alias senza prefisso `nota_` (id/testo invece di nota_id/nota_testo).
-        bom_repo.get_nota_articolo.return_value = {"id": 5, "testo": "Demo"}
-
-        result = fn_create_nota_articolo("art-1", {"id_stile": 1, "testo": "Demo"})
-
-        self.assertEqual(result["id"], 5)
-        bom_repo.get_nota_articolo.assert_called_once_with("art-1", 5)
-
-    # Scopo: create nota articolo senza target_riga_id -> anchor_tipo/posizione
-    # default DOCUMENTO/HEADER applicati dal service (allineamento col pattern
-    # vendite PartitionedNoteService). Verifica che il payload passato al repo
-    # contenga i default — senza questi i NOT NULL DB su anchor_tipo/posizione
-    # rifiuterebbero l'INSERT (regression check per il bug E_CATALOGO_VALIDATION
-    # rilevato durante lo smoke Fase 2.B del refactor UI drawer).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
-    def test_fn_create_nota_articolo_default_documento_header(self, mock_repo_cls, mock_bom_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_create_nota_articolo
-
-        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
-        bom_repo = mock_bom_repo_cls.return_value
-        bom_repo.create_nota.return_value = 5
-        bom_repo.get_nota_articolo.return_value = {"id": 5}
-
-        fn_create_nota_articolo("art-1", {"id_stile": 1, "testo_md": "Demo"})
-
-        # Verifica argomento `data` passato al repo: deve contenere i default.
-        bom_repo.create_nota.assert_called_once()
-        _, _, data_arg = bom_repo.create_nota.call_args.args
-        self.assertEqual(data_arg["anchor_tipo"], "DOCUMENTO")
-        self.assertEqual(data_arg["posizione"], "HEADER")
-
-    # Scopo: create nota componente con target_riga_id -> anchor_tipo/posizione
-    # default RIGA/AFTER applicati dal service.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
-    def test_fn_create_nota_componente_default_riga_after(self, mock_bom_repo_cls, _mock_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_create_nota_componente
-
-        bom_repo = mock_bom_repo_cls.return_value
-        bom_repo.create_nota.return_value = 7
-        bom_repo.get_nota_componente.return_value = {"id": 7}
-
-        riga_uuid = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
-        fn_create_nota_componente(
-            "art-1", "comp-1",
-            {"id_stile": 1, "testo_md": "Demo", "target_riga_id": riga_uuid},
-        )
-
-        bom_repo.create_nota.assert_called_once()
-        _, _, data_arg = bom_repo.create_nota.call_args.args
-        self.assertEqual(data_arg["anchor_tipo"], "RIGA")
-        self.assertEqual(data_arg["posizione"], "AFTER")
-        self.assertEqual(str(data_arg["target_riga_id"]), riga_uuid)
-
-    # Scopo: ⛔ un componente che non e' dell'articolo dell'URL e' un 404, e le
-    #        note non si leggono ne' si scrivono (2026-10-21, §B8 del
-    #        brief-be-verifica-documentazione-api): prima `articolo_id` del path
-    #        era ignorato.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
-    def test_note_componente_di_un_altro_articolo_404(self, mock_bom_repo_cls, _mock_repo_cls):
-        from apps.catalogo.services.catalogo_service import (
-            fn_create_nota_componente,
-            fn_list_note_componente,
-        )
-
-        bom_repo = mock_bom_repo_cls.return_value
-        bom_repo.get_componente.return_value = None
-        for chiamata in (
-            lambda: fn_list_note_componente("art-1", "comp-di-altro"),
-            lambda: fn_create_nota_componente("art-1", "comp-di-altro", {"id_stile": 1, "testo_md": "x"}),
-        ):
-            with self.subTest(), self.assertRaises(ServiceError) as ctx:
-                chiamata()
-            self.assertEqual(ctx.exception.code, "E_CATALOGO_COMPONENTE_NOT_FOUND")
-        bom_repo.get_componente.assert_called_with("art-1", "comp-di-altro")
-        bom_repo.list_note_componente.assert_not_called()
-        bom_repo.create_nota.assert_not_called()
-
-    # Scopo: create nota con coppia incoerente anchor_tipo='DOCUMENTO' +
-    # target_riga_id valorizzato -> errore E_CATALOGO_VALIDATION (guard
-    # defense-in-depth simmetrica a vendite).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
-    def test_fn_create_nota_articolo_anchor_riga_inconsistency(self, mock_repo_cls, mock_bom_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_create_nota_articolo
-
-        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
-        del mock_bom_repo_cls  # repo non viene mai chiamato
-
-        riga_uuid = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
-        with self.assertRaises(ServiceError) as ctx:
-            fn_create_nota_articolo(
-                "art-1",
-                {
-                    "id_stile": 1,
-                    "testo_md": "Demo",
-                    "anchor_tipo": "DOCUMENTO",
-                    "target_riga_id": riga_uuid,
-                },
-            )
-        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
-
-    # Scopo: update nota inesistente -> 404 dominio catalogo.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
-    def test_fn_update_nota_not_found(self, mock_bom_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_update_nota
-
-        bom_repo = mock_bom_repo_cls.return_value
-        bom_repo.resolve_nota.return_value = []
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_update_nota(999, {"testo": "Aggiornata"})
-        self.assertEqual(ctx.exception.code, "E_CATALOGO_NOTA_NOT_FOUND")
-
     # Scopo: create componente self-reference -> errore anticipato senza delega al DB.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_create_componente_self_reference(self, mock_repo_cls):
@@ -999,7 +862,6 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_create_articolo(
             {
@@ -1051,7 +913,6 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_create_articolo(
             {
@@ -1103,7 +964,6 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
         mock_bom_repo_cls.return_value.list_righe.return_value = []
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_update_articolo(
             "019bbee2-5f6a-704f-bbd0-34ed84db252d",
@@ -1296,7 +1156,6 @@ class CatalogoServiceTests(TestCase):
 
         mock_repo_cls.return_value.get_articolo.return_value = {"id": 1, "is_composito": False}
         mock_uom_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_cls.return_value.list_note_articolo.return_value = []
 
         for db_locked, attesi in (
             (("codice", "uom_id"), ["codice", "uom_id"]),
@@ -1320,23 +1179,42 @@ class CatalogoServiceTests(TestCase):
 
         mock_repo_cls.return_value.get_articolo.return_value = {"id": 1}
         mock_uom_cls.return_value.list_uom_operative.return_value = []
-        mock_lock_cls.list_non_editable.return_value = ()
+        mock_lock_cls.list_non_editable.return_value = ("valido_dal", "uom_id", "factor_to_base", "articolo_id")
 
         result = fn_list_uom_operative(1)
 
-        # BE21 (2026-11-11): l'identita' della mappatura e' ferma dal guard
-        #    della storia, che la vista non vede ancora (gap dichiarato).
-        self.assertEqual(result["non_editable_fields"], ["factor_to_base", "uom_id", "valido_dal"])
+        # BE21-a (2026-11-11): l'identita' della mappatura la dichiara il DB
+        #    (lock di colonna, `vw_non_editable_fields`), e il backend la
+        #    trasporta ordinata. Nessun gap Python.
+        self.assertEqual(
+            result["non_editable_fields"], ["articolo_id", "factor_to_base", "uom_id", "valido_dal"],
+        )
+        mock_lock_cls.list_non_editable.assert_called_once_with("catalogo", "articoli_uom_operativa")
+
+    # Scopo: ⛔ senza il lock del DB nessuna colonna e' ferma: il backend non
+    #        ha piu' una seconda sede della regola (`_NON_EDITABLE_DB_GAPS`
+    #        ritirato il 2026-11-11, BE21-a).
+    @patch(_LOCK_REPO, autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
+    def test_uom_operative_nessun_gap_python(self, mock_repo_cls, mock_uom_cls, mock_lock_cls):
+        from apps.catalogo.services.catalogo_service import fn_list_uom_operative
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": 1}
+        mock_uom_cls.return_value.list_uom_operative.return_value = []
+        mock_lock_cls.list_non_editable.return_value = ()
+
+        self.assertEqual(fn_list_uom_operative(1)["non_editable_fields"], [])
 
     # Scopo: detail conversione UoM include non_editable_fields: le due unita',
-    #        e dal 2026-11-11 (BE21) fattore e inizio, fermi dal guard della storia.
+    #        fattore e inizio, dal lock di colonna del DB (BE21-a, 2026-11-11).
     @patch(_LOCK_REPO, autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_fn_get_conversione_includes_non_editable_fields(self, mock_repo_cls, mock_lock_cls):
         from apps.catalogo.services.catalogo_service import fn_get_conversione
 
         mock_repo_cls.return_value.get_conversione.return_value = {"id": 7}
-        mock_lock_cls.list_non_editable.return_value = ()
+        mock_lock_cls.list_non_editable.return_value = ("valido_dal", "fattore", "uom_to_id", "uom_from_id")
 
         result = fn_get_conversione(7)
 
@@ -1420,18 +1298,17 @@ class CatalogoServiceTests(TestCase):
     #    whitelist RIGIDA: una chiave fuori lista e' un `RuntimeError` (500),
     #    non piu' uno scarto silenzioso. Il 400 educato lo deve dare il service,
     #    PRIMA del repository — per ogni scrittura, comprese le chiavi che il
-    #    repository scrive da se' (padre dal path, partizione della nota).
-    @patch("apps.catalogo.services.catalogo_service._resolve_single_nota")
+    #    repository scrive da se' (padre dal path). Le note di catalogo dal
+    #    2026-11-11 le valida il BB `PartitionedNoteService` (`E_NOTA_VALIDATION`).
     @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository", autospec=True)
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository", autospec=True)
     def test_chiave_fuori_contratto_e_un_400_prima_del_repository(
-        self, mock_repo_cls, mock_bom_cls, mock_uom_cls, mock_resolve,
+        self, mock_repo_cls, mock_bom_cls, mock_uom_cls,
     ):
         from apps.catalogo.services import catalogo_service as svc
 
         mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
-        mock_resolve.return_value = {"nota_target_tipo": "ARTICOLO", "nota_target_id": "art-1"}
         comp = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
         casi = (
             ("update_articolo", lambda: svc.fn_update_articolo("art-1", {"descrizione": "x", "estranea": 1})),
@@ -1440,10 +1317,6 @@ class CatalogoServiceTests(TestCase):
             ("create_componente", lambda: svc.fn_create_componente(
                 "art-1", {"componente_id": comp, "coeff_qta": "1", "prodotto_id": "altro"},
             )),
-            ("create_nota", lambda: svc.fn_create_nota_articolo(
-                "art-1", {"testo": "t", "id_stile": 1, "target_tipo": "ARTICOLO_COMPONENTE"},
-            )),
-            ("update_nota", lambda: svc.fn_update_nota(5, {"testo": "t", "target_id": "altro"})),
             ("update_uom_tipo", lambda: svc.fn_update_uom_tipo(1, {"descrizione": "x", "codice": "Y"})),
             ("update_unita_misura", lambda: svc.fn_update_unita_misura(1, {"descrizione": "x", "codice": "Y"})),
             ("update_conversione", lambda: svc.fn_update_conversione(1, {"fattore": "2", "uom_from_id": 3})),
@@ -1461,16 +1334,3 @@ class CatalogoServiceTests(TestCase):
             ]
             self.assertEqual(scritture, [], "una chiave fuori contratto ha raggiunto il repository")
 
-    # 58. ⛔ `catalogo.note.meta` e' NOT NULL DEFAULT '{}': `meta: null` dal
-    #     client e' «nessun metadato», cioe' `{}`. Prima arrivava NULL al DB e
-    #     la scrittura falliva sul vincolo.
-    def test_nota_meta_null_diventa_oggetto_vuoto(self):
-        from apps.catalogo.services.catalogo_service import _extract_nota_payload
-
-        for for_update in (False, True):
-            with self.subTest(for_update=for_update):
-                data = _extract_nota_payload(
-                    {"testo": "x", "id_stile": 1, "meta": None},
-                    for_update=for_update, function_name="t",
-                )
-                self.assertEqual(data["meta"], {})

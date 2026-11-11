@@ -10,6 +10,14 @@ app verdi, e committati con il giro BE del giro 2-bis (`651160401e`, `ea4b8da3e8
 §13.3, §10.3). In parallelo il **team BE**: BE21-BE25 fatte (§15.10-bis); restano BE21-a … f (§15.11.1, §15.11.2) e
 BE26-BE28 (§16.4). Alla **sessione DB** una segnalazione del giro BE, il codice nel batch delle commesse (§15.10-bis.3,
 punto 3); i punti 1 e 2 sono diventati G1 e G2.
+## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro BE dei giri G1-G2, Q34 e 4 fatto, da committare, §16.5)
+
+**Riparte: Tid**, col via al giro 5 (§7). I giri G1-G2 (`20261111-69` … `-73`, §15.11.1), Q34 (`-74` … `-76`,
+§15.11.2) e 4 (`-77` … `-80`, §16) sono applicati su dbdev e scratch, con i pgTAP come app verdi. Da committare: Q34 e 4,
+e il giro BE del giro 2-bis (§15.10-bis, su `dev/backend-tid`). Restano da guardare le scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2, §14.6,
+§13.3, §10.3). Il **team BE** ha chiuso le sue voci: BE21-BE25 (§15.10-bis, committate) e BE21-a … f, BE26-BE28 (§16.5,
+2026-11-11, **da committare** su `dev/backend-tid`). Alla **sessione DB** la segnalazione del batch delle commesse
+(§15.10-bis.3, punto 3), le due nuove di §16.5.3 e la **Q35** (§16.6, un kit non si spegne più); a **Tid** una scelta di §16.5.3 e la Q35.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -72,6 +80,17 @@ punto 3); i punti 1 e 2 sono diventati G1 e G2.
 **Decisioni aperte di Tid:** le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2
 (§13.3) e 1 (§10.3), da guardare; il via al giro 5-bis. Le quattro del giro 5 (§17.3) sono prese. **Committati** i giri
 G1-G2, Q34 e 4, e il giro BE del giro 2-bis (2026-11-11). **Da committare:** il giro 5, applicato (§17.7).
+| 7-novies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | BE26-BE28 del giro 4: le note di catalogo passano dal BB delle note (opzione A di Tid), la copia di `catalogo_service` è ritirata | §16.5 | 6-bis |
+| 7-octies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | BE21-a … f: `_NON_EDITABLE_DB_GAPS` ritirato, capability delle due viste nei form, conversioni sulla vista nuova, ripiego della riga base | §16.5 | 5-vicies-septies |
+| 7-undecies | sessione DB ⏭️ | Le due segnalazioni del giro BE dei giri G1-G2, Q34 e 4: il **ritiro** di `E_CATALOGO_NOTA_NOT_FOUND` (deciso da Tid, 2026-11-11; poi il BE rigenera la policy); la proiezione delle note di vendita senza vista | §16.5.3 | 7-novies |
+| 7-terdecies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | Verifica critica del giro BE: un 500 sul filtro di riga, i presidi sulla copia delle note, il campo `note` del dettaglio ritirato, la regola del 2 nei form delle unità | §16.5.4 | 7-novies |
+| 7-duodecies | **Tid** ⏭️ | `seq` di una nota: il BB lo vuole ≥ 1, il CHECK del DB ammette 0 | §16.5.3 | 7-novies |
+| 7-decies | sessione DB ⏭️ | Le segnalazioni del giro BE: 1 e 2 ✅ (sono G1 e G2, §15.11.1); resta la 3, il codice nel risultato del batch delle commesse | §15.10-bis.3 | 7-septies |
+| 7-quaterdecies | sessione DB ⏭️ | **Q35**: un kit con la distinta non si spegne più (legame sempre attivo dopo il ritiro della PATCH, nessuna eccezione ATTIVO su `articoli_componenti`). Proposta (a) eccezione come Q31, previa verifica del lato componente; la scelta è di Tid. Presidio: i due smoke rossi `catalogo-phase3` e `preventivi-componenti` | §16.6 | — |
+| 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
+
+**Decisioni aperte di Tid:** le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2
+(§13.3) e 1 (§10.3), da guardare; `seq` delle note (§16.5.3, punto 3); **Q35**, lo spegnimento di un kit (§16.6). **Da committare** il giro BE di §16.5. **Committato** il giro G1-G2 (2026-11-11), con questo brief. **Da committare**: i giri Q34 (§15.11.2) e 4 (§16), applicati. **Da committare** anche il giro BE del giro 2-bis (§15.10-bis), su `dev/backend-tid`.
 ⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93`, il giro 3 `20261111-25` … `-37` (dati da Tid). Messaggi
 d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 
@@ -626,6 +645,7 @@ Da girare al team quando il giro DB corrispondente è applicato.
 
 | Q32 ✅ | G1 (§15.11): la regola 1 di `trgfn_uom_guard_storia` (unità, articolo, fattore, inizio: mai) passa a `script.trgfn_lock_columns`, registrata in `automation_lock_columns`, così entra in `vw_non_editable_fields`? | Sì. Il guard tiene le regole 2 e 3; il BE ritira `_NON_EDITABLE_DB_GAPS`; la frase di `E_UOM_STORIA_IMMUTABILE` si riscrive sulla colonna — **✅ Tid, 2026-11-11: come da proposta** |
 | Q33 ✅ | G2 (§15.11): la capability della mappatura (oggi `puo_eliminarsi` dice il falso) e quella della conversione generale | Un BB di catalogo sulle regole 2 e 3, letto da `vw_articoli_uom_operativa_dettaglio` e da una vista nuova `vw_unita_misura_conversioni_dettaglio`, che diventa la `vista_sql` di `catalogo.conversioni_uom` — **✅ Tid, 2026-11-11: come da proposta** |
+| Q35 ⏭️ | §16.6: col ritiro della PATCH il legame di distinta resta attivo per sempre, e il BLOCK su `articoli_componenti` impedisce di spegnere un kit (e un componente) con una storia | (a) **eccezione**, la forma di Q31: `articoli_componenti.prodotto_id` e `.componente_id` in `automazione_attivo_eccezioni`, dopo la verifica del lato componente (§16.6.3). Scartabile (b), un verbo «spegni legame» — **proposta, da decidere: Tid** |
 
 ## 7. I giri, nell'ordine in cui si fanno
 
@@ -2342,3 +2362,141 @@ nomi di brief, marcatori `rev`, id di changeSet, sigle di decisione o id di mess
 chiuso, che erano sporchi prima del giro. ⇒ **D-C di `brief-db-articoli-obsoleto-dal` è chiuso.**
 
 **Da committare:** il giro 5 (5-B e 5-A), con questo brief.
+### 16.5 Giro BE dei giri G1-G2, Q34 e 4 (team BE, 2026-11-11, da committare su `dev/backend-tid`)
+
+Fatto a giri applicati su dbdev (verificato sul DB: le otto colonne in `vw_non_editable_fields`, le due viste con la
+capability, `catalogo.vw_note`). Il push DB `a9f6d0a23` («Fix DB per CI») cambia solo tre COMMENT: nessuna ricaduta.
+
+#### 16.5.1 Che cosa è cambiato
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| BE21-a ✅ | `_NON_EDITABLE_DB_GAPS` e `_non_editable_fields_catalogo` ritirati: i service chiamano il BB `compute_non_editable_fields` senza gap. Il rifiuto `E_UOM_STORIA_IMMUTABILE` porta il campo (provato sul DB vero) | `catalogo_service.py` |
+| BE21-b ✅ | Le unità di un articolo trasportano tutta la capability della vista (`puo_cambiare_attivo`, `puo_chiudersi`, `data_min_chiusura`, `data_default_chiusura`, `motivo_non_chiudibile`). Il form spegne interruttore e data di fine col motivo, la fine parte da `data_min_chiusura`, e i campi spenti non vanno nel PATCH. Locales: `motivo_uom_storia_in_vigore`, `motivo_uom_storia_chiusa`, `motivo_uom_base`; `motivo_uom_base_non_eliminabile` riscritta («non si elimina e non si spegne») | `catalogo_uom_repository.py`, `ArticoloUomForm.vue`, `ArticoloUomDrawer.vue`, i due locales |
+| BE21-c ✅ | `list_conversioni` legge `vw_unita_misura_conversioni_dettaglio`: proiezione, ricerca e ordinamento sulle colonne della vista, con la capability. La lista 22 non ha colonna azioni: le azioni stanno nel drawer | `catalogo_repository.py` |
+| BE21-d ✅ | Niente da togliere: il backend non ricavava il campo da `column` | — |
+| BE21-e ✅ | `get_conversione` legge la stessa vista; il drawer spegne interruttore e fine col motivo, come il form delle unità | `catalogo_repository.py`, `ConversioneUomDrawer.vue` |
+| BE21-f ✅ | Ripiego di `E_UOM_RIGA_BASE_IMMUTABILE` allineato («non si cambia, non si spegne e non si toglie»); policy rigenerata (cambia solo la nota del codice, il CSV in git e il DB coincidono) | `error_messages_fallback.py`, `error_policies_generated.py` |
+| BE26 ✅ | **Opzione A di Tid.** Le note di catalogo passano dal BB delle note (`make_note_views` + `PartitionedNoteService` + `PartitionedNoteRepository`), generalizzato: chiave del padre UUID (`target_id_uuid`), sede senza righe (l'àncora `RIGA` è 400 col campo, in creazione e in modifica), lista senza perimetro (`perimetro_emittente=False`), cancello del padre annidato (`cancello_padre`: il legame dev'essere dell'articolo, su ogni verbo). I vincoli di `catalogo.note` entrano nelle mappe del service. ⛔ Ritirati: la copia di `catalogo_service` (`_extract_nota_payload`, `_translate_nota_integrity_error`, `_resolve_single_nota`, le sei `fn_*nota*`), le tre view di `catalogo/api/views.py`, la rotta `/api/v1/catalogo/note/<id>/` e l'opzione `detailBase` di `makeNotesApi`. Il dettaglio di una nota sta ora sotto il padre | `apps/core/{db,services,api}/partitioned_note_*`, `catalogo/db/note_repositories.py`, `catalogo/api/note_views.py`, `catalogo/api/urls.py`, `frontend/src/core/api/notes.js`, `frontend/src/catalogo/api/catalogo.js` |
+| BE27 ✅ | Niente da togliere: né il BE né il FE avvisavano «togli prima le note» o bloccavano la nota su un oggetto spento. Provato sul DB vero: un articolo con una nota si spegne, e la nota si scrive | — |
+| BE28 ✅ | Nessuna ricaduta: il backend passa `user_*` com'è | — |
+
+Regola del 2 lato FE (ok Tid, 2026-11-11): la lettura della capability delle conversioni è un helper di catalogo,
+`src/catalogo/utils/capabilityConversioneUom.js`, usato dal form delle unità e dal drawer delle conversioni.
+⚠️ Fail-closed: una riga senza capability non si spegne e non si chiude.
+
+#### 16.5.2 Le prove
+
+* Sul DB vero: `catalogo/tests/db/test_note_catalogo_db.py` nuovo (6: il giro intero con la chiave UUID, l'àncora
+  RIGA, il testo vuoto, la nota di un altro articolo, l'articolo con note che si spegne, il padre che non c'è);
+  `test_uom_storia_db.py` +5 (i campi fermi dal DB, il campo del rifiuto, la capability della mappatura e della
+  conversione in lista e nel dettaglio, la riga base che non si spegne); `test_note_vincoli_mappati_db` e
+  `test_note_confini_partizione_db` estesi a `catalogo.note`.
+* Riallineati: `test_catalogo_api` (le rotte nuove, il cancello del legame su quattro verbi, nessun cancello di
+  perimetro), `test_catalogo_service` (via i test delle note e i gap), `test_partitioned_note_service` (+3, la sede
+  senza righe), `test_lista_proiezione_campo_sorgente` (la lista 22 esce: ha la vista), `test_ordinamento_liste`,
+  `test_error_manager`, `test_catalogo_oggetti_rotte`.
+* FE: `capabilityConversioneUom.spec.js` nuovo (5), `ArticoloUomForm.spec.js` +3, `ConversioneUomDrawer.spec.js` +1.
+* Suite `apps.core` + `apps.catalogo` + `apps.vendite` col DB vero: 4895 test verdi. Vitest `src/catalogo` +
+  `src/core`: 708 verdi. ruff, mypy a cricchetto, `genera_error_policies --check`, lint e cancelli FE,
+  `check_i18n_keys` puliti.
+
+#### 16.5.3 Segnalazioni
+
+1. **Alla sessione DB — ritirare `E_CATALOGO_NOTA_NOT_FOUND`** (✅ deciso da Tid, 2026-11-11). Non lo solleva più
+   nessuno: le note di catalogo rispondono coi codici del BB (`E_NOTA_NOT_FOUND`, `E_NOTA_PARENT_NOT_FOUND`), e
+   nessun file Python lo nomina fuori dalla policy generata e dal ripiego. Da togliere: la riga di
+   `config/codici_errore.csv` e quella di `config/messaggi_errore.csv` (`80_data`, dal CSV e non con un `UPDATE`,
+   §11.2 di linee-guida-sql), più il codice in `work-in-progress/allegati/codici-errore-classe-note.csv`. **Dopo l'apply** il
+   team BE rigenera `error_policies_generated.py` e toglie la voce da `error_messages_fallback.py`, nello stesso giro
+   (mai rigenerare col DB avanti rispetto a git).
+2. **Alla sessione DB — la proiezione delle note.** Il BB backend legge le partizioni con la sua proiezione
+   (`_SELECT_COLUMNS`, stile e lingua in LEFT JOIN), per `vendite.note` e ora per `catalogo.note`. A catalogo la
+   stessa proiezione è `catalogo.vw_note` (R6); a vendite una vista così non c'è. Con una `vendite.vw_note` gemella
+   il BB potrebbe leggere la vista della sede in tutte e due, e la proiezione starebbe solo nel DB. Da valutare:
+   oggi sono due sedi della stessa forma.
+3. **A Tid — `seq` di una nota.** Il BB lo vuole ≥ 1 (`optional_smallint(min_val=1)`), il CHECK `chk_note_seq_pos`
+   delle due madri ammette 0, e la vecchia copia di catalogo ammetteva 0. Con le note di catalogo sul BB, uno 0 ora
+   è un 400 anche lì. Le strade: il BB si allinea al DB (≥ 0), o il DB stringe il CHECK (> 0). Non ho toccato niente.
+4. **Fatto, non difetto:** `data_default_chiusura` viaggia nelle righe ma il FE non la usa ancora: per mappature e
+   conversioni la fine si sceglie nel form, e il DatePicker di PrimeVue non ha una data proposta. Serve il giorno in
+   cui ci sarà un'azione «Chiudi» di riga, come per la distinta.
+
+#### 16.5.4 Verifica critica del giro BE (team BE, 2026-11-11, da committare su `dev/backend-tid`)
+
+Una revisione del codice di §16.5, con le correzioni e le due decisioni di Tid del giorno.
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| V1 ✅ | **Un 500.** `GET …/note/?target_riga_id=<intero>` su una nota di catalogo arrivava al DB come `uuid = integer` (provato sul DB vero: `ProgrammingError`). Ora è 400 `E_NOTA_VALIDATION` col campo `target_riga_id`. La regola «niente note di riga in una sede senza righe» ha una sede sola, `_require_riga_ammessa`, per la scrittura e per la lettura; il controllo in `crea_nota` era irraggiungibile e se n'è andato. Test nuovo in `test_partitioned_note_service` | `partitioned_note_service.py` |
+| V2 ✅ | **Presidi sul percorso sbagliato.** In `CatalogoBomRepository` restava la copia delle note (lista, pagina, dettaglio, risoluzione, scrittura, cancellazione e costanti), letta solo dai test: `test_lista_proiezione_campo_sorgente` (le due voci `catalogo.note`) e `test_ricerca_full_db` provavano la copia, e sarebbero stati verdi col BB rotto. Copia ritirata; i due presidi ora eseguono `NOTE_REPO_ARTICOLO` / `NOTE_REPO_ARTICOLO_COMPONENTE`. In `test_scritture_dinamiche_db` i casi delle note se ne vanno: le scritture del BB le presidia `test_scritture_email_note_db` | `catalogo_bom_repository.py`, i tre test |
+| V3 ✅ | **Il campo `note` del dettaglio articolo è ritirato** (decisione di Tid): era una terza lettura delle note, e nessun lettore la usava. Le note si leggono dalla loro lista. Doc in `api_catalogo.md` | `catalogo_service.fn_get_articolo` |
+| V4 ✅ | **Regola del 2 lato FE** (ok Tid): la frase del motivo e il «campo fermo nel PATCH» erano ricopiati identici nei due form; ora sono `fraseMotivoUom` e `fermoDallaCapability` nell'helper della capability (+2 test). Catalogo BB FE aggiornato | `capabilityConversioneUom.js`, `ArticoloUomForm.vue`, `ConversioneUomDrawer.vue` |
+| V5 ✅ | Codice morto: `_extract_enum_string` di `catalogo_service` (lo usava la sola copia delle note) | `catalogo_service.py` |
+| V6 ✅ | **Presidio delle proiezioni riaperto sulle conversioni.** La lista 22 era uscita da `test_lista_proiezione_campo_sorgente` perché «ha la vista», ma il repository la legge con la SUA proiezione (`_CONVERSIONE_COLONNE`): è il caso di `_ALTRE_QUERY`, come le UoM operative. Ora c'è; provato rosso togliendo una colonna dalla proiezione | `core/tests/db/test_lista_proiezione_campo_sorgente.py` |
+| V7 ✅ | **Lo schema OpenAPI delle note di catalogo non promette più `target_riga_id`** (ok Tid): filtro e campo sarebbero sempre un 400. `make_note_views` ha `supporta_righe` (default `True`), che le note di catalogo prendono dal repository (`repo.supports_riga`). Test `NoteCatalogoSchemaTests` sullo schema generato, provato rosso senza la correzione; le note di vendita li tengono | `core/api/partitioned_note_views.py`, `catalogo/api/note_views.py` |
+
+Prove: `apps.catalogo`, `apps.vendite`, `apps.core`, `apps.ui`, `apps.ai_assistant` col DB vero
+(`ZEROERP_TEST_DB_E2E=1`) verdi; vitest `src/catalogo` + `src/core` verdi; ruff, mypy, eslint, `check_i18n_keys`,
+`check_classi_morte` e `gen_indice_bb.py --check` puliti.
+
+### 16.6 Q35 — Un kit con la distinta non si spegne più (team BE → sessione DB, 2026-11-11)
+
+**Chi scrive:** team BE (`dev/backend-tid`), dal giro degli smoke. **A chi:** sessione DB. Via di Tid alla domanda,
+2026-11-11; la scelta fra le strade è di Tid.
+
+#### 16.6.1 Il fatto
+
+Due decisioni, giuste ognuna per conto suo, si incrociano.
+
+* **Il ritiro della PATCH del legame** (§14.10.3, ✅ Tid 2026-11-10): «un legame non ha più una scrittura oltre alla
+  fine». `articoli_componenti.attivo` non lo cambia più nessuno: un legame nasce attivo e resta attivo, chiuso o no.
+  Lo diceva già D4 (§2, «col modello "chiudi e inserisci" quei legami restano attivi»), ma solo per il guard IVA.
+* **Q31** ha messo in `dbops.automazione_attivo_eccezioni` la mappatura e la conversione («è storia, non un figlio
+  vivo: un articolo con una storia non si spegnerebbe mai»), e Q12 le note. **La distinta no**: il CSV
+  (`80_data/sql/dbops/automazione_attivo_eccezioni.csv`, verificato il 2026-11-11) non ha righe per
+  `articoli_componenti`.
+
+**Quindi:** il BLOCK generato su `articoli_componenti.prodotto_id` (e, per costruzione, su `.componente_id`) impedisce
+per sempre di spegnere un articolo che è stato kit, e, salvo verifica, un articolo che è stato componente di una
+distinta qualsiasi. È lo stesso difetto che Q31 ha chiuso per le mappature.
+
+**Visto da:** `smoke-test-catalogo-phase3.sh` (passo 17, spegnere il padre) e `smoke-test-preventivi-componenti.sh`
+(pulizia, spegnere il composito): tutti e due `409 E_ATTIVO_BLOCK_CHILDREN_ACTIVE` sulla distinta, dopo che il
+legame è stato chiuso col verbo. I due rossi restano **apposta**: sono il presidio di questa domanda, non della
+fixture.
+
+⚠️ Anche il motivo della riga `note_articoli_componenti.target_id` del CSV (giro 4) dice «il legame di distinta si
+spegne e si riaccende con le sue note»: dal ritiro della PATCH non è più vero.
+
+#### 16.6.2 La domanda
+
+**Q35.** Un articolo che ha (o ha avuto) una distinta, da padre o da componente, si deve poter spegnere?
+
+* **(a) Eccezione, la forma di Q31 (proposta).** `articoli_componenti.prodotto_id` e `.componente_id` in
+  `automazione_attivo_eccezioni`: il legame è storia («chiudi e inserisci»), non un figlio vivo. Il kit si spegne e
+  si riaccende con la distinta intatta; una riga di documento su un kit o un componente spento la fermano già i
+  REQUIRE del documento verso l'articolo. Il motivo della riga delle note del legame si riscrive.
+* **(b) Un verbo «spegni legame».** Il brief lo ammette (§14.10.3: «se servisse… è un verbo nuovo»). Rimette in vita
+  uno stato del legame che la chiusura rende inutile, e il kit si spegnerebbe solo dopo aver spento tutta la sua
+  storia a mano: è la (b) scartata in Q31.
+
+#### 16.6.3 Da verificare con (a), alla sessione DB
+
+1. **Il lato componente.** Con l'eccezione se ne va anche il REQUIRE, non solo il BLOCK (§16, punto 3 del giro 4).
+   Va visto chi rifiuta oggi, oltre all'automazione ATTIVO: un legame **nuovo** verso un componente spento o sotto un
+   padre spento (`fn_check_articolo_riga` lato componente, la check `ARTICOLO` di R3); un componente spento con un
+   legame **in vigore** (l'init dei componenti di documento, il BB della distinta alla data, il picker). Se uno di
+   questi si reggeva solo sul REQUIRE generato, va scritto prima dell'eccezione.
+2. **I legami già attivi** non cambiano: nessun backfill.
+3. **I pgTAP** che spegnevano la distinta o l'articolo nell'ordine «figli prima del padre» (come per Q34).
+
+#### 16.6.4 Ricadute sul BE e sugli smoke
+
+* **BE:** nessuna con (a). Il servizio di disattivazione non spegne figli. Con (b), un verbo e una rotta nuovi.
+* **Smoke già riallineati** (team BE, 2026-11-11, da committare su `dev/backend-tid`), sul modello deciso:
+  `catalogo-crud` (Q34: la base non si spegne, 409 `E_UOM_RIGA_BASE_IMMUTABILE`; Q31: l'articolo si spegne con la base
+  accesa), `catalogo-phase3` (la chiusura dal verbo `…/chiudi/`; le rotte note del BB; via gli spegnimenti di legami e
+  basi), `preventivi-componenti` (pulizia: legame chiuso col verbo, base non toccata). Dopo l'apply di (a) i due
+  smoke rossi tornano verdi **senza modifiche**: è la prova del giro.
+

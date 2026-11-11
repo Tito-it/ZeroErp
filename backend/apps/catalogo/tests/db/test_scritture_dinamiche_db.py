@@ -14,10 +14,8 @@
 #
 # ⭐ Il mondo si COSTRUISCE (regola zero): azienda e operatore da
 #    `fn_pgtap_crea_emittente_operatore`, il contesto, gli articoli da
-#    `fn_pgtap_crea_articolo` o dal repository stesso. Unica lettura dal seed:
-#    uno stile nota attivo (`config.note_stili`, FK NOT NULL della nota) — e'
-#    configurazione di sistema, come la UoM che sceglie la fixture articolo.
-#    Tutto in transazione ANNULLATA.
+#    `fn_pgtap_crea_articolo` o dal repository stesso. Tutto in transazione
+#    ANNULLATA.
 #
 # ⛔ IL RIFIUTO (classe senza DB). Una chiave fuori whitelist in una scrittura
 #    e' `RuntimeError` PRIMA di toccare il database: fino al 2026-09-26 veniva
@@ -34,8 +32,7 @@ Opt-in `ZEROERP_TEST_DB_E2E=1`:
    None -> NULL, payload vuoto in update -> False senza SQL.
 3) ScrittureDinamicheCatalogoDbTests.test_componente_bom_create
    padre dal path, UUID/Decimal/date come parametri.
-4) ScrittureDinamicheCatalogoDbTests.test_nota_articolo_create_e_update
-   partizione e padre dal repository, meta jsonb.
+4) (ritirato il 2026-11-11: la nota di catalogo la scrive il BB delle note)
 5) ScrittureDinamicheCatalogoDbTests.test_uom_operativa_update
    SET su riga seminata dal trigger (UoM base), ownership nel WHERE.
 6) ScrittureDinamicheCatalogoDbTests.test_uom_tipo_unita_conversione_update
@@ -99,8 +96,6 @@ class RifiutoChiaviFuoriListaTests(unittest.TestCase):
             ("update_unita_misura", lambda: repo.update_unita_misura(1, {"codice": "Y"})),
             ("update_conversione", lambda: repo.update_conversione(1, {"uom_from_id": 2})),
             ("create_componente", lambda: bom.create_componente("a", {"coeff_qta": 1, "estranea": 1})),
-            ("create_nota", lambda: bom.create_nota("ARTICOLO", "a", {"testo": "t", "estranea": 1})),
-            ("update_nota", lambda: bom.update_nota(1, "ARTICOLO", {"target_id": "b"})),
             ("create_uom_operativa", lambda: uom.create_uom_operativa("a", {"uom_id": 1, "estranea": 1})),
             ("update_uom_operativa", lambda: uom.update_uom_operativa("a", 1, {"articolo_id": "b"})),
         )
@@ -196,40 +191,10 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
         except Annulla:
             pass
 
-    # 4. Nota articolo: partizione e padre dal repository.
-    def test_nota_articolo_create_e_update(self):
-        bom = CatalogoBomRepository()
-        try:
-            with transaction.atomic(), connection.cursor() as cur:
-                _apri_mondo(cur)
-                cur.execute("SELECT dbops.fn_pgtap_crea_articolo('SCRDYN-NOTA', false)")
-                art = cur.fetchone()[0]
-                cur.execute("SELECT id FROM config.note_stili ORDER BY id LIMIT 1")
-                stile = cur.fetchone()
-                self.assertIsNotNone(stile, "config.note_stili vuota: e' un seed")
-
-                nota_id = bom.create_nota("ARTICOLO", art, {
-                    "anchor_tipo": "DOCUMENTO",
-                    "posizione": "HEADER",
-                    "testo": "Nota di prova",
-                    "id_stile": stile[0],
-                    "meta": {"n": 1},
-                })
-                riga = _riga(cur, """
-                    SELECT target_tipo, target_id, testo, jsonb_typeof(meta) AS tipo_meta
-                    FROM catalogo.note WHERE target_tipo = 'ARTICOLO' AND id = %s
-                """, [nota_id])
-                self.assertEqual(riga["target_tipo"], "ARTICOLO")
-                self.assertEqual(str(riga["target_id"]), str(art))
-                self.assertEqual(riga["tipo_meta"], "object")
-
-                self.assertTrue(bom.update_nota(nota_id, "ARTICOLO", {"testo": "Aggiornata", "seq": 2}))
-                self.assertFalse(bom.update_nota(nota_id, "ARTICOLO_COMPONENTE", {"testo": "no"}))
-                riga = _riga(cur, "SELECT testo, seq FROM catalogo.note WHERE target_tipo = 'ARTICOLO' AND id = %s", [nota_id])
-                self.assertEqual((riga["testo"], riga["seq"]), ("Aggiornata", 2))
-                raise Annulla
-        except Annulla:
-            pass
+    # 4. (ritirato il 2026-11-11) La nota di catalogo: la scrive il BB
+    #    `PartitionedNoteRepository`, presidiato in
+    #    `core/tests/db/test_scritture_email_note_db.py`; il giro intero sul
+    #    DB vero e' in `catalogo/tests/db/test_note_catalogo_db.py`.
 
     # 5. UoM operativa: SET sulla riga base che il trigger ha seminato.
     def test_uom_operativa_update(self):

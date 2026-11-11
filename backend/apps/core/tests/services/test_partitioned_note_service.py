@@ -17,6 +17,8 @@
 #   5. EliminaNota      - 404 / ok
 #   6. CountPerTarget   - delega al repo
 #   7. ContatoriDocumento - la forma `{"note": n}` del dettaglio, zero compreso
+#   8. SedeSenzaRighe   - (catalogo, 2026-11-11) chiave UUID normalizzata, chiave
+#                         non UUID 400, ancora RIGA rifiutata in create e update
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ def _make_repo_mock(
     *,
     target_tipo: str = "PREVENTIVO",
     supports_riga: bool = True,
+    target_id_uuid: bool = False,
 ) -> MagicMock:
     # `spec=PartitionedNoteRepository` consente set/get sulle @property
     # del target: `supports_riga` e' settabile come attributo dell'istanza
@@ -44,6 +47,9 @@ def _make_repo_mock(
     repo = MagicMock(spec=PartitionedNoteRepository)
     repo.target_tipo = target_tipo
     repo.supports_riga = supports_riga
+    # ⚠️ Esplicito: su un MagicMock la property sarebbe un mock VERO, e il
+    #    service tratterebbe la chiave intera come un UUID.
+    repo.target_id_uuid = target_id_uuid
     repo.exists_parent.return_value = True
     repo.riga_belongs_to_parent.return_value = True
     repo.list.return_value = ([], 0)
@@ -440,6 +446,55 @@ class AggiornaNotaTests(unittest.TestCase):
         )
         self.assertEqual(result["testo_md"], "nuovo")
         repo.update.assert_called_once()
+
+
+class SedeSenzaRigheTests(unittest.TestCase):
+    """Una sede come `catalogo.note`: padre con chiave UUID, nessuna riga."""
+
+    _UUID = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
+
+    def _svc(self) -> tuple[MagicMock, PartitionedNoteService]:
+        repo = _make_repo_mock(target_tipo="ARTICOLO", supports_riga=False, target_id_uuid=True)
+        repo.get.return_value = {"id": 1}
+        return repo, _make_service(repo, _make_params_mock())
+
+    def test_chiave_uuid_arriva_al_repo_come_stringa(self) -> None:
+        from uuid import UUID
+
+        repo, svc = self._svc()
+        svc.crea_nota(target_id=UUID(self._UUID), payload={"testo": "x"})
+        self.assertEqual(repo.create.call_args.args[0], self._UUID)
+        self.assertEqual(repo.create.call_args.args[1]["anchor_tipo"], "DOCUMENTO")
+
+    def test_chiave_non_uuid_e_un_400(self) -> None:
+        repo, svc = self._svc()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.list_note(target_id=1)
+        self.assertEqual(ctx.exception.code, "E_NOTA_VALIDATION")
+        repo.list.assert_not_called()
+
+    def test_ancora_riga_rifiutata_in_creazione_e_in_modifica(self) -> None:
+        repo, svc = self._svc()
+        for nome, chiama in (
+            ("crea", lambda: svc.crea_nota(target_id=self._UUID, payload={"testo": "x", "anchor_tipo": "RIGA"})),
+            ("aggiorna", lambda: svc.aggiorna_nota(note_id=1, target_id=self._UUID, patch={"anchor_tipo": "riga"})),
+        ):
+            with self.subTest(nome), self.assertRaises(ServiceError) as ctx:
+                chiama()
+            self.assertEqual(ctx.exception.code, "E_NOTA_VALIDATION")
+            self.assertEqual(ctx.exception.context.get("field"), "anchor_tipo")
+        repo.create.assert_not_called()
+        repo.update.assert_not_called()
+
+    # ⛔ Il filtro di riga in lettura: senza il cancello l'intero arrivava al
+    #    DB contro `target_riga_id uuid` (`uuid = integer`, un 500).
+    def test_filtro_di_riga_rifiutato_in_lettura(self) -> None:
+        repo, svc = self._svc()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.list_note(target_id=self._UUID, target_riga_id=5)
+        self.assertEqual(ctx.exception.code, "E_NOTA_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "target_riga_id")
+        repo.list.assert_not_called()
 
 
 class EliminaNotaTests(unittest.TestCase):

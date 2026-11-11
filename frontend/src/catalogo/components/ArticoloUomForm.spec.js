@@ -7,18 +7,25 @@
 //        brief-db-revisione-catalogo, 2026-11-11): unita', fattore e inizio si
 //        spengono quando il backend li dichiara in `nonEditableFields`; la
 //        fine resta aperta, perche' chiudere e' la strada.
-// Note: ⚠️ Si monta il form VERO; si fingono API e parametri. In creazione
+// Note: ⚠️ Si monta il form VERO; si fingono API e parametri. Il dizionario
+//       del montaggio di prova e' vuoto: il motivo esce col suo codice
+//       (`labelOrCode`), e il test guarda quello. In creazione
 //       niente e' fermo: i campi fermi lo sono solo per una riga scritta.
 //
 // Indice test:
 //  1) in modifica: unita', fattore e inizio spenti, la fine no
 //  2) in creazione: nessun campo spento da `nonEditableFields`
 //  3) in modifica: il PATCH non porta i campi fermi (BB `senzaCampiFermi`)
+//  4) in vigore (capability, BE21-b): interruttore spento col motivo, fuori dal
+//     PATCH; la fine parte dalla prima data ammessa
+//  5) gia' finita: la fine spenta col suo motivo, fuori dal PATCH
+//  6) fail-closed: una riga senza capability non si spegne e non si chiude
 // ------------------------------------------------------------
 import { describe, it, expect, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
+import ToggleSwitch from 'primevue/toggleswitch'
 import FormFooter from '../../core/components/FormFooter.vue'
 
 import ArticoloUomForm from './ArticoloUomForm.vue'
@@ -35,9 +42,13 @@ vi.mock('../../core/composables/useParameterDefaults', async () => {
 })
 
 const FERMI = ['factor_to_base', 'uom_id', 'valido_dal']
+// Una mappatura in vigore, come la consegna la vista (capability del DB).
 const RIGA = {
   id: 7, uom_id: 3, factor_to_base: '10', is_base: false, valido_dal: '2026-10-01',
   valido_al: null, attivo: true,
+  puo_eliminarsi: false, motivo_non_eliminabile: 'UOM_STORIA_IN_VIGORE',
+  puo_cambiare_attivo: false, puo_chiudersi: true,
+  data_min_chiusura: '2026-11-10', data_default_chiusura: '2026-11-11', motivo_non_chiudibile: null,
 }
 
 async function montaForm(riga) {
@@ -48,6 +59,12 @@ async function montaForm(riga) {
   )
   await flushPromises()
   return wrapper
+}
+
+// L'interruttore «attivo» e' l'ultimo del form (prima vendita, acquisto,
+// logistica e frazioni).
+function attivo(wrapper) {
+  return wrapper.findAllComponents(ToggleSwitch).at(-1)
 }
 
 function date(wrapper) {
@@ -81,5 +98,42 @@ describe('ArticoloUomForm', () => {
     expect(Object.keys(payload)).not.toContain('factor_to_base')
     expect(Object.keys(payload)).not.toContain('valido_dal')
     expect(payload).toHaveProperty('valido_al', null)
+  })
+
+  it('4) in vigore: interruttore spento col motivo, fuori dal PATCH; fine dalla prima data', async () => {
+    updateArticoloUom.mockReset()
+    updateArticoloUom.mockResolvedValue({ data: { data: { ...RIGA } } })
+    const wrapper = await montaForm(RIGA)
+    expect(attivo(wrapper).props('disabled')).toBe(true)
+    expect(wrapper.find('[data-testid="motivo-attivo"]').text()).toBe('UOM_STORIA_IN_VIGORE')
+    const al = wrapper.findAllComponents(DatePicker)[1]
+    expect(al.props('minDate').getDate()).toBe(10)
+    wrapper.findComponent(FormFooter).vm.$emit('save')
+    await flushPromises()
+    const payload = updateArticoloUom.mock.calls[0][2]
+    expect(Object.keys(payload)).not.toContain('attivo')
+    expect(payload).toHaveProperty('valido_al', null)
+  })
+
+  it("5) gia' finita: la fine spenta col suo motivo, fuori dal PATCH", async () => {
+    updateArticoloUom.mockReset()
+    updateArticoloUom.mockResolvedValue({ data: { data: { ...RIGA } } })
+    const chiusa = {
+      ...RIGA, valido_al: '2026-10-31', puo_chiudersi: false,
+      data_min_chiusura: null, data_default_chiusura: null, motivo_non_chiudibile: 'UOM_STORIA_CHIUSA',
+    }
+    const wrapper = await montaForm(chiusa)
+    expect(date(wrapper).al).toBe(true)
+    expect(wrapper.find('[data-testid="motivo-fine"]').text()).toBe('UOM_STORIA_CHIUSA')
+    wrapper.findComponent(FormFooter).vm.$emit('save')
+    await flushPromises()
+    expect(Object.keys(updateArticoloUom.mock.calls[0][2])).not.toContain('valido_al')
+  })
+
+  it('6) fail-closed: una riga senza capability non si spegne e non si chiude', async () => {
+    const { puo_cambiare_attivo: _a, puo_chiudersi: _c, ...senza } = RIGA
+    const wrapper = await montaForm(senza)
+    expect(attivo(wrapper).props('disabled')).toBe(true)
+    expect(date(wrapper).al).toBe(true)
   })
 })

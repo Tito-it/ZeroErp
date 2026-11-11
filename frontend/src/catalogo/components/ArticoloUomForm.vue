@@ -25,6 +25,12 @@
 //    rimandano (BB `senzaCampiFermi`, regola del 2 col drawer delle
 //    conversioni): un valore riletto e convertito puo' non essere quello
 //    scritto, e il guard lo giudicherebbe un cambiamento.
+// ⭐ Interruttore «attivo» e data di fine seguono la capability della riga
+//    (2026-11-11, BE21-b/f: la vista `vw_articoli_uom_operativa_dettaglio`
+//    dal BB del DB `fn_uom_conversione_capability`), letta dall'helper
+//    `capabilityConversioneUom` (regola del 2 col drawer delle conversioni):
+//    spenti col motivo, la fine dalla prima data ammessa, e non rimandati.
+//    Sulla riga base tutti e due fermi (Q34: la base non si spegne).
 // ⭐ Espone la sua fotografia (`modificato`, `chiudiConConferma`): il BB la
 //    registra (D-13).
 import { computed, nextTick, onMounted, ref } from 'vue'
@@ -35,6 +41,9 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { toDateString, parseIsoDate } from '../../core/utils/date'
 import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
+import {
+  capabilityConversioneUom, fermoDallaCapability, fraseMotivoUom,
+} from '../utils/capabilityConversioneUom'
 import { DATE_FORMAT } from '../../core/constants'
 import { createArticoloUom, updateArticoloUom } from '../api/catalogo'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -54,7 +63,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['saved', 'cancel'])
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
 
 const inModifica = computed(() => props.riga != null)
@@ -63,6 +72,13 @@ const inModifica = computed(() => props.riga != null)
 const isBase = computed(() => props.riga?.is_base === true)
 function isFieldLocked(name) {
   return inModifica.value && props.nonEditableFields.includes(name)
+}
+
+// Che cosa la riga ammette oggi (la capability della vista): in creazione tutto.
+const cap = computed(() => capabilityConversioneUom(props.riga))
+// Fermo per il PATCH: i campi del lock e quelli che la capability spegne.
+function fermoNelPatch(name) {
+  return isFieldLocked(name) || fermoDallaCapability(cap.value, name)
 }
 
 // Defaults UoM operativa via config.parameters (override per emittente). Il
@@ -145,7 +161,7 @@ async function onSave() {
   }
   const result = inModifica.value
     ? await execute(
-      () => updateArticoloUom(props.articoloId, props.riga.id, senzaCampiFermi(payload, isFieldLocked)),
+      () => updateArticoloUom(props.articoloId, props.riga.id, senzaCampiFermi(payload, fermoNelPatch)),
       { successMessage: t('catalogo.uom_salvata') },
     )
     : await execute(
@@ -247,17 +263,21 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('catalogo.field_valido_al') }}</label>
       <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-        :disabled="isBase"
+        :disabled="isBase || cap.fineFerma"
+        :min-date="cap.primaFine ?? undefined"
         :invalid="campiErrati.includes('valido_al')"
       />
+      <small v-if="cap.motivoFine && !isBase" data-testid="motivo-fine">{{ fraseMotivoUom(t, te, cap.motivoFine) }}</small>
     </div>
   </div>
   <div v-if="inModifica" class="form-grid">
     <div class="form-field">
       <label>{{ t('indirizzi.campo_attivo') }}</label>
       <ToggleSwitch v-model="form.attivo"
+        :disabled="cap.attivoFermo"
         :invalid="campiErrati.includes('attivo')"
       />
+      <small v-if="cap.motivoAttivo" data-testid="motivo-attivo">{{ fraseMotivoUom(t, te, cap.motivoAttivo) }}</small>
     </div>
   </div>
 

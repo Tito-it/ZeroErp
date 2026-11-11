@@ -263,19 +263,18 @@ log_info "Componenti trovati: ${EXTRACTED:-?}"
 # ⭐ La BoM e' immutabile nei campi di struttura (trigger
 # catalogo.trgfn_articoli_componenti_block_modifica_struttura, E_BOM_MODIFICA_VIETATA):
 # una riga non si corregge, si CHIUDE (valido_al) e se ne inserisce una nuova,
-# come le versioni dei listini v5. Fino al 2026-10-12 lo smoke faceva PATCH di
-# coeff_qta, che oggi e' giusto venga rifiutata: lo prova (11a), poi la strada vera.
+# come le versioni dei listini v5. Dal 2026-11-10 (brief-db-revisione-catalogo
+# §14.10.3) la rotta PATCH del legame non esiste piu': l'unica scrittura di un
+# legame e' la fine, dal verbo `…/chiudi/` (catalogo.fn_chiudi_legame_distinta).
+# Il rifiuto della modifica di struttura lo prova il pgTAP, non c'e' piu' una
+# strada HTTP per tentarla.
 OGGI=$(date +%F); DOMANI=$(date -d tomorrow +%F)
 echo ""
-echo "-- 11a. PATCH coeff_qta (struttura: atteso 409) --"
-do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/" "{\"coeff_qta\":\"3\"}"
-smoke_check_codice "PATCH struttura BoM rifiutata" 409 E_BOM_MODIFICA_VIETATA
+echo "-- 11a. Chiudi la riga (valido_al = oggi, verbo chiudi) --"
+do_curl POST "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/chiudi/" "{\"valido_al\":\"${OGGI}\"}"
+check "Chiusura riga BoM" "200" ".data.componente.id"
 echo ""
-echo "-- 11b. Chiudi la riga (valido_al = oggi) --"
-do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/" "{\"valido_al\":\"${OGGI}\"}"
-check "Chiusura riga BoM" "200" ".data.id"
-echo ""
-echo "-- 11c. Inserisci la nuova versione (coeff_qta 3, da domani) --"
+echo "-- 11b. Inserisci la nuova versione (coeff_qta 3, da domani) --"
 do_curl POST "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/" "{\"componente_id\":\"${CHILD_ID}\",\"coeff_qta\":\"3\",\"valido_dal\":\"${DOMANI}\",\"obbligatorio\":true}"
 check "Nuova versione riga BoM" "200" ".data.coeff_qta"
 COMP_ROW_ID_V2=$(json_get "$LAST_BODY" ".data.id")
@@ -301,15 +300,15 @@ if [[ -n "$NOTE_STYLE_ID" ]]; then
     echo ""
     echo "-- 14. Create nota articolo --"
     do_curl POST "/api/v1/catalogo/articoli/${PARENT_ID}/note/" "{\"id_stile\":${NOTE_STYLE_ID},\"testo\":\"Smoke nota ${TEST_SUFFIX}\",\"anchor_tipo\":\"DOCUMENTO\",\"posizione\":\"HEADER\",\"seq\":10}"
-    check "Create nota articolo" "200" ".data.nota_id"
+    check "Create nota articolo" "200" ".data.id"
     NOTE_ID="$EXTRACTED"
     log_info "Nota creata: id=${NOTE_ID}"
 
     # --- 15. PATCH nota articolo ---
     echo ""
     echo "-- 15. PATCH nota articolo --"
-    do_curl PATCH "/api/v1/catalogo/note/${NOTE_ID}/" "{\"testo\":\"Smoke nota aggiornata ${TEST_SUFFIX}\",\"visibile\":true}"
-    check "PATCH nota articolo" "200" ".data.nota_id"
+    do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/note/${NOTE_ID}/" "{\"testo\":\"Smoke nota aggiornata ${TEST_SUFFIX}\",\"visibile\":true}"
+    check "PATCH nota articolo" "200" ".data.id"
     log_info "Nota aggiornata: id=${EXTRACTED:-n/d}"
 else
     echo ""
@@ -322,35 +321,20 @@ fi
 echo ""
 echo "-- 16. DELETE figli Fase 3 --"
 if [[ -n "$NOTE_ID" ]]; then
-    do_curl DELETE "/api/v1/catalogo/note/${NOTE_ID}/"
+    do_curl DELETE "/api/v1/catalogo/articoli/${PARENT_ID}/note/${NOTE_ID}/"
     check "DELETE nota articolo" "200" ".data.deleted"
 else
     log_info "DELETE nota skipped"
 fi
-# Le righe BoM non si cancellano (DELETE bloccato, tracciabilita' delle
-# versioni): si spengono, figli prima del padre (passo 17).
-for comp in "$COMP_ROW_ID" "${COMP_ROW_ID_V2:-}"; do
-    [[ -z "$comp" ]] && continue
-    do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${comp}/" "{\"attivo\":false}"
-    check "Disattiva riga BoM ${comp}" "200" ".data.id"
-done
-# L'UoM operativa base non si cancella (e' quella dell'articolo): si disattiva,
-# figlio prima del padre (passo 17, guard E_ATTIVO_BLOCK_CHILDREN_ACTIVE).
-do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/uom/${UOM_OP_ID}/" "{\"attivo\":false}"
-check "Disattiva UoM operativa base del padre" "200" ".data.attivo"
+# Le righe BoM non si cancellano ne' si spengono (dal 2026-11-10 l'unica
+# scrittura di un legame e' la fine) e l'UoM operativa base non si spegne mai
+# (Q34): al passo 17 l'articolo si spegne con la sua storia accesa.
 
 # --- 17. Disattiva articoli di test ---
 echo ""
 echo "-- 17. Disattiva articoli di test --"
 do_curl POST "/api/v1/catalogo/articoli/${PARENT_ID}/disattiva/" "{}"
 check "Disattiva articolo padre" "200" ".data.attivo"
-# Anche il figlio ha la sua UoM operativa base seminata: prima quella.
-do_curl GET "/api/v1/catalogo/articoli/${CHILD_ID}/uom/"
-CHILD_UOM_OP_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-if [[ -n "$CHILD_UOM_OP_ID" ]]; then
-    do_curl PATCH "/api/v1/catalogo/articoli/${CHILD_ID}/uom/${CHILD_UOM_OP_ID}/" "{\"attivo\":false}"
-    check "Disattiva UoM operativa base del figlio" "200" ".data.attivo"
-fi
 do_curl POST "/api/v1/catalogo/articoli/${CHILD_ID}/disattiva/" "{}"
 check "Disattiva articolo figlio" "200" ".data.attivo"
 
