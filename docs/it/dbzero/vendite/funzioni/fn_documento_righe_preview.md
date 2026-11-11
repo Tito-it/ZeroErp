@@ -129,7 +129,7 @@ BEGIN
                         'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
                         'ADESIONE'::vendite.tipo_eccezione_contratto
                     )
-                AND COALESCE(e.attivo, TRUE) = TRUE;
+                AND e.attivo;
     END IF;
 
     -- PARTE 2a: AGGIUNTA standalone (non in listino).
@@ -149,7 +149,7 @@ BEGIN
       -- L'UdM della riga; NULL = la base dell'articolo.
       JOIN catalogo.unita_misura um ON um.id = COALESCE(e.uom_operativa_id, a.uom_id)
      WHERE e.tipo_eccezione         = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
-       AND COALESCE(e.attivo, TRUE) = TRUE;
+       AND e.attivo;
 
     -- PARTE 2b: AGGIUNTA bundle (non in listino), coi componenti della
     -- tabella dei componenti del documento.
@@ -204,7 +204,7 @@ BEGIN
       -- L'UdM della riga; NULL = la base dell'articolo.
       JOIN catalogo.unita_misura um ON um.id = COALESCE(e.uom_operativa_id, a.uom_id)
      WHERE e.tipo_eccezione         = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
-       AND COALESCE(e.attivo, TRUE) = TRUE;
+       AND e.attivo;
 END;
 $function$
 

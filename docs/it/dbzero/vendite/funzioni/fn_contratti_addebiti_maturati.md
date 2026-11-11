@@ -135,7 +135,7 @@ BEGIN
       FROM ctr c
       JOIN vendite.contratti_righe cr
         ON cr.contratto_id = c.id
-       AND COALESCE(cr.attivo, TRUE) IS TRUE
+       AND cr.attivo
        AND cr.tipo_erogazione = 'CANONE'
       JOIN catalogo.articoli a ON a.id = cr.articolo_id
       LEFT JOIN catalogo.unita_misura um ON um.id = a.uom_id
@@ -205,7 +205,7 @@ BEGIN
                  SELECT 1 FROM vendite.contratti_righe cx
                   WHERE cx.contratto_id = s.contratto_id
                     AND cx.articolo_id = s.articolo_id
-                    AND COALESCE(cx.attivo, TRUE) IS TRUE)
+                    AND cx.attivo)
       ) q
   ),
   fonti_k AS (
@@ -250,7 +250,7 @@ BEGIN
     FROM ctr c
     JOIN vendite.contratti_righe cr
       ON cr.contratto_id = c.id
-     AND COALESCE(cr.attivo, TRUE) IS TRUE
+     AND cr.attivo
      -- Si addebitano ADESIONE e AGGIUNTA. L'ESCLUSIONE non si fattura; l'OVERRIDE
      -- e' il prezzo del cliente, se e quando compra (F-1).
      AND cr.tipo_eccezione IN ('ADESIONE'::vendite.tipo_eccezione_contratto,

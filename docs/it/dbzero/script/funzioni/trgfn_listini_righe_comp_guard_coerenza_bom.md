@@ -59,7 +59,7 @@ BEGIN
      WHERE ac.id = NEW.articolo_componente_id;
 
     -- Guard 1: articolo_componente_id deve esistere e essere attivo
-    IF NOT FOUND OR NOT COALESCE(v_ac_attivo, TRUE) THEN
+    IF NOT FOUND OR NOT v_ac_attivo THEN
         PERFORM script.fn_log_and_raise_error(
             'script', TG_NAME, 'E_LISTINO_COMPONENTE_COERENZA_BOM',
             jsonb_build_object(

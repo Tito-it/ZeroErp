@@ -229,7 +229,7 @@ BEGIN
                 orc.pratica_approvazione_prezzo_id, orc.meta, orc.ordine
               FROM vendite.ordini_righe_componenti orc
              WHERE orc.riga_ordine_id = v_riga.ordine_riga_id
-               AND COALESCE(orc.attivo, TRUE) IS TRUE;
+               AND orc.attivo;
         END IF;
 
         -- Fulfillment: collega DDT<->ordine. Prima questa riga diceva

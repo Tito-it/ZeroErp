@@ -78,7 +78,7 @@ BEGIN
              WHERE ef.soggetto_ruolo_id = resolved_emittente_soggetto_ruolo_id AND ef.attivo IS TRUE
         ) INTO v_emittente_attivo;
 
-        IF COALESCE(v_emittente_attivo, FALSE) IS FALSE THEN
+        IF NOT v_emittente_attivo THEN
             PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_CODICE',
                 jsonb_build_object('emittente_soggetto_ruolo_id', resolved_emittente_soggetto_ruolo_id),
                 NULL::uuid, resolved_emittente_soggetto_ruolo_id::text, 'anagrafiche.emittenti_fiscali');

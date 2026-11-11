@@ -32,7 +32,7 @@ BEGIN
           JOIN catalogo.articoli a ON a.id = ac.componente_id
          WHERE ac.id = OLD.articolo_componente_id;
 
-        IF COALESCE(v_obbligatorio, TRUE) THEN
+        IF v_obbligatorio THEN
             PERFORM script.fn_log_and_raise_error(
                 'script', TG_NAME, 'E_DOC_COMPONENTE_OBBLIGATORIO',
                 jsonb_build_object(

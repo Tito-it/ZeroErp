@@ -293,7 +293,7 @@ BEGIN
               FROM vendite.contratti_righe cr
              WHERE cr.contratto_id          = v_contratto_id
                AND cr.articolo_id           = p_articolo_id
-               AND COALESCE(cr.attivo, TRUE) = TRUE
+               AND cr.attivo
                AND cr.tipo_eccezione <> 'ADESIONE'::vendite.tipo_eccezione_contratto
              LIMIT 1;
 
