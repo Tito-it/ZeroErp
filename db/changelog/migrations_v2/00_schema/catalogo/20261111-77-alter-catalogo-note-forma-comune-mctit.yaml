@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.note prende la forma delle note degli altri schemi (D16, Q12).
+#
+#   * chk_note_testo_non_vuoto: almeno uno fra testo e testo_md, come vendite.note e
+#     acquisti.note. Stesso nome e stesso testo.
+#   * chk_note_catalogo_ancora_documento: una nota di catalogo annota un'anagrafica, e su
+#     un'anagrafica non c'e' una riga. anchor_tipo = 'DOCUMENTO' e target_riga_id vuoto.
+#     chk_note_anchor_tipo, comune alle note di tutti gli schemi, resta com'e'. posizione
+#     non si restringe: BEFORE e AFTER dicono dove la nota dell'articolo va rispetto alla
+#     riga del documento in cui l'articolo compare.
+#   * user_insert e user_update da varchar(80) a text, come le altre note (Q12).
+#   * tx_id uuid (Q12): il trigger trg_<partizione>_gen_tx_id_ins_upd lo monta
+#     l'automazione TX_ID, che guarda le tabelle fisiche con la colonna (regola *all), alla
+#     convergenza del migrate (90_end/ci_apply/20260926-10).
+#   Vincoli e colonne si mettono sul padre e scendono sulle due partizioni.
+#   Le righe: nessuna viola i due CHECK su dbdev (11 note, 2026-11-11); da zero la tabella
+#   e' vuota a questa fase.
+#
+#   ⚠️ vw_articoli_note e vw_articoli_componenti_note leggono user_insert e user_update
+#     (pg_depend, dbdev, 2026-11-11: nessun'altra vista ne' funzione, nessun trigger
+#     UPDATE OF): ALTER TYPE le rifiuta. Si tolgono qui e tornano in 20_code, sopra la vista
+#     base nuova (R6): 20261111-78 … -80. Il rollback le rimette come erano (-58, -59).
+#   Q12, l'altra meta': la nota esce dal legame ATTIVO col suo bersaglio
+#     (80_data/sql/dbops/automazione_attivo_eccezioni.csv).
+#   Brief: brief-db-revisione-catalogo, giro 4 (D16, R6, Q12).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261111-77-alter-catalogo-note-forma-comune-mctit.yaml
+
+  - changeSet:
+      id: 20261111-77-alter-catalogo-note-forma-comune
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.note: CHECK sul testo non vuoto e sull'ancora DOCUMENTO, user_* text, tx_id; le due
+        viste delle note si tolgono e tornano in 20261111-79/-80. Brief: brief-db-revisione-catalogo, giro 4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_attribute
+                   WHERE attrelid = to_regclass('catalogo.note') AND attname = 'tx_id' AND NOT attisdropped
+            - sqlCheck:
+                expectedResult: 2
+                sql: >
+                  SELECT count(*) FROM pg_attribute
+                   WHERE attrelid = to_regclass('catalogo.note') AND NOT attisdropped
+                     AND attname IN ('user_insert', 'user_update')
+                     AND format_type(atttypid, atttypmod) = 'character varying(80)'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS catalogo.vw_articoli_note;
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_note;
+
+              ALTER TABLE catalogo.note
+                  ALTER COLUMN user_insert TYPE text,
+                  ALTER COLUMN user_update TYPE text;
+
+              ALTER TABLE catalogo.note ADD COLUMN tx_id uuid;
+
+              ALTER TABLE catalogo.note
+                  ADD CONSTRAINT chk_note_testo_non_vuoto
+                      CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE catalogo.note
+                  ADD CONSTRAINT chk_note_catalogo_ancora_documento
+                      CHECK (anchor_tipo = 'DOCUMENTO' AND target_riga_id IS NULL);
+
+              COMMENT ON COLUMN catalogo.note.tx_id IS
+                  'Transaction id di correlazione con l''audit: lo scrive il trigger generato trg_<partizione>_gen_tx_id_ins_upd (automazione TX_ID), come sulle note degli altri schemi.';
+              COMMENT ON COLUMN catalogo.note.user_insert IS
+                  'Chi ha scritto la nota (trgfn_audit_data_user_generic). text, come sulle note degli altri schemi.';
+              COMMENT ON COLUMN catalogo.note.user_update IS
+                  'Chi ha toccato la nota per ultimo (trgfn_audit_data_user_generic). text, come sulle note degli altri schemi.';
+              COMMENT ON COLUMN catalogo.note.anchor_tipo IS
+                  'Sempre DOCUMENTO: una nota di catalogo annota un''anagrafica, non una riga (chk_note_catalogo_ancora_documento). Il CHECK chk_note_anchor_tipo, che ammette anche RIGA, e'' quello comune alle note di tutti gli schemi.';
+              COMMENT ON COLUMN catalogo.note.target_riga_id IS
+                  'Sempre vuota: su un''anagrafica non c''e'' una riga (chk_note_catalogo_ancora_documento). C''e'' perche'' le note di tutti gli schemi hanno la stessa forma.';
+              COMMENT ON CONSTRAINT chk_note_testo_non_vuoto ON catalogo.note IS
+                  'Una nota ha un testo: almeno uno fra testo e testo_md. Come vendite.note e acquisti.note.';
+              COMMENT ON CONSTRAINT chk_note_catalogo_ancora_documento ON catalogo.note IS
+                  'Una nota di catalogo annota un''anagrafica (un articolo, un legame di distinta), e su un''anagrafica non c''e'' una riga: anchor_tipo DOCUMENTO e target_riga_id vuoto.';
+              COMMENT ON TABLE catalogo.note IS
+                  'Note testuali ancorabili ad articoli o articoli_componenti; tabella padre partizionata per target_tipo. Rev 2026-10-25 (20261025-57, brief-db-grammatica-unica-documenti lotto 3, G-3/G-7): ricostruita per portare target_tipo a varchar(50) col codice di config.tipi_entita (ARTICOLO, ARTICOLO_COMPONENTE); le partizioni sono le stesse, staccate e riattaccate. Rev 2026-11-11 (20261111-77, brief-db-revisione-catalogo giro 4): la forma delle note degli altri schemi (testo non vuoto, user_* text, tx_id), l''ancora solo DOCUMENTO; la nota non tiene acceso il suo bersaglio e non chiede che sia acceso (automazione_attivo_eccezioni).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS catalogo.vw_articoli_note;
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_note;
+              ALTER TABLE catalogo.note DROP CONSTRAINT IF EXISTS chk_note_catalogo_ancora_documento;
+              ALTER TABLE catalogo.note DROP CONSTRAINT IF EXISTS chk_note_testo_non_vuoto;
+              ALTER TABLE catalogo.note DROP COLUMN IF EXISTS tx_id;
+              ALTER TABLE catalogo.note
+                  ALTER COLUMN user_insert TYPE varchar(80),
+                  ALTER COLUMN user_update TYPE varchar(80);
+              COMMENT ON COLUMN catalogo.note.user_insert IS NULL;
+              COMMENT ON COLUMN catalogo.note.user_update IS NULL;
+              COMMENT ON COLUMN catalogo.note.anchor_tipo IS NULL;
+              COMMENT ON COLUMN catalogo.note.target_riga_id IS NULL;
+              COMMENT ON TABLE catalogo.note IS
+                  'Note testuali ancorabili ad articoli o articoli_componenti; tabella padre partizionata per target_tipo. Rev 2026-10-25 (20261025-57, brief-db-grammatica-unica-documenti lotto 3, G-3/G-7): ricostruita per portare target_tipo a varchar(50) col codice di config.tipi_entita (ARTICOLO, ARTICOLO_COMPONENTE); le partizioni sono le stesse, staccate e riattaccate.';
+
+              CREATE VIEW catalogo.vw_articoli_note AS
+               SELECT a.id AS articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  n.id AS nota_id,
+                  n.target_tipo AS nota_target_tipo,
+                  n.target_id AS nota_target_id,
+                  n.target_riga_id AS nota_target_riga_id,
+                  n.anchor_tipo AS nota_anchor_tipo,
+                  n.posizione AS nota_posizione,
+                  n.seq AS nota_seq,
+                  n.testo AS nota_testo,
+                  n.testo_md AS nota_testo_md,
+                  n.visibile AS nota_visibile,
+                  n.solo_stampa AS nota_solo_stampa,
+                  n.meta AS nota_meta,
+                  n.data_insert AS nota_data_insert,
+                  n.user_insert AS nota_user_insert,
+                  n.data_update AS nota_data_update,
+                  n.user_update AS nota_user_update,
+                  ns.id AS stile_id,
+                  ns.codice AS stile_codice,
+                  ns.descrizione AS stile_descrizione,
+                  l.id AS lingua_id,
+                  l.codice_iso AS lingua_codice_iso,
+                  l.descrizione AS lingua_descrizione,
+                  l.descrizione_locale AS lingua_descrizione_locale
+                 FROM catalogo.note_articoli n
+                   JOIN catalogo.articoli a ON a.id = n.target_id
+                   LEFT JOIN config.note_stili ns ON ns.id = n.id_stile
+                   LEFT JOIN config.lingue l ON l.id = n.id_lingua;
+
+              COMMENT ON VIEW catalogo.vw_articoli_note IS
+                'Vista note per articoli con dati stile e lingua. Rev 2026-10-25 (20261025-57/-58, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche'' la colonna che legge cambia tipo; nota_target_tipo vale ARTICOLO (era ARTICOLI) e diventa varchar(50), dalla partizione.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_note TO zeroerp_app;
+
+              CREATE VIEW catalogo.vw_articoli_componenti_note AS
+               SELECT ac.id AS articolo_componente_id,
+                  ac.prodotto_id,
+                  ap.codice AS prodotto_codice,
+                  ap.descrizione AS prodotto_descrizione,
+                  ac.componente_id,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  n.id AS nota_id,
+                  n.target_tipo AS nota_target_tipo,
+                  n.target_id AS nota_target_id,
+                  n.target_riga_id AS nota_target_riga_id,
+                  n.anchor_tipo AS nota_anchor_tipo,
+                  n.posizione AS nota_posizione,
+                  n.seq AS nota_seq,
+                  n.testo AS nota_testo,
+                  n.testo_md AS nota_testo_md,
+                  n.visibile AS nota_visibile,
+                  n.solo_stampa AS nota_solo_stampa,
+                  n.meta AS nota_meta,
+                  n.data_insert AS nota_data_insert,
+                  n.user_insert AS nota_user_insert,
+                  n.data_update AS nota_data_update,
+                  n.user_update AS nota_user_update,
+                  ns.id AS stile_id,
+                  ns.codice AS stile_codice,
+                  ns.descrizione AS stile_descrizione,
+                  l.id AS lingua_id,
+                  l.codice_iso AS lingua_codice_iso,
+                  l.descrizione AS lingua_descrizione,
+                  l.descrizione_locale AS lingua_descrizione_locale
+                 FROM catalogo.note_articoli_componenti n
+                   JOIN catalogo.articoli_componenti ac ON ac.id = n.target_id
+                   LEFT JOIN catalogo.articoli ap ON ap.id = ac.prodotto_id
+                   LEFT JOIN catalogo.articoli acmp ON acmp.id = ac.componente_id
+                   LEFT JOIN config.note_stili ns ON ns.id = n.id_stile
+                   LEFT JOIN config.lingue l ON l.id = n.id_lingua;
+
+              COMMENT ON VIEW catalogo.vw_articoli_componenti_note IS
+                'Vista note per componenti articolo con dati stile e lingua. Rev 2026-10-25 (20261025-57/-59, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche'' la colonna che legge cambia tipo; nota_target_tipo vale ARTICOLO_COMPONENTE (era ARTICOLI_COMPONENTI) e diventa varchar(50), dalla partizione.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_componenti_note TO zeroerp_app;

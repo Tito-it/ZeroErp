@@ -1,4 +1,4 @@
-bracex==3.2.1
+bracex==3.2.2
 certifi==2026.10.23
 cfgv==3.5.0
 charset-normalizer==3.5.2
@@ -7,7 +7,7 @@ colorama==0.4.6
 deepmerge==4.0.0
 distlib==0.4.4
 EditorConfig==0.17.1
-filelock==4.2.9
+filelock==4.2.10
 hjson==3.1.0
 identify==2.6.20
 idna==3.20
@@ -25,7 +25,7 @@ pre_commit==4.7.0
 psycopg==3.3.8
 psycopg-binary==3.3.8
 Pygments==2.21.0
-pymdown-extensions==12.3
+pymdown-extensions==13.1
 python-dateutil==4.0.0
 python-discovery==1.9.5
 python-dotenv==1.2.4
@@ -40,6 +40,6 @@ typing_extensions==4.16.0
 tzdata==2026.6
 urllib3==2.8.0
 virtualenv==21.15.6
-wcmatch==12.0
-zensical==0.1.0
-zensical-ui==0.0.41
+wcmatch==12.0.1
+zensical==0.1.1
+zensical-ui==0.0.42

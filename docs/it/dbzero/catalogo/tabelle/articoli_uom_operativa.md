@@ -59,21 +59,22 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_articoli_uom_operativa_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_articoli_uom_operativa_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
-| trg_articoli_uom_operativa_a10_guard_base_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_uom_operativa_guard_base()` |
+| trg_articoli_uom_operativa_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_articoli_uom_operativa_a10_guard_base_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_uom_operativa_guard_base()` |
+| trg_articoli_uom_operativa_a10_guard_base_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_uom_operativa_guard_base()` |
 | trg_articoli_uom_operativa_a10_guard_base_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION catalogo.trgfn_articoli_uom_operativa_guard_base()` |
 | trg_articoli_uom_operativa_a10_guard_listini_attivi_dlt | AFTER | DELETE | `EXECUTE FUNCTION catalogo.trgfn_uom_guard_listini_attivi()` |
 | trg_articoli_uom_operativa_a10_guard_listini_attivi_upd | AFTER | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_uom_guard_listini_attivi()` |
-| trg_articoli_uom_operativa_a10_guard_storia_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_uom_guard_storia('articolo_id', 'uom_id', 'factor_to_base', 'valido_dal')` |
-| trg_articoli_uom_operativa_a10_guard_storia_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION catalogo.trgfn_uom_guard_storia('articolo_id', 'uom_id', 'factor_to_base', 'valido_dal')` |
-| trg_articoli_uom_operativa_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_articoli_uom_operativa_a10_guard_storia_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_uom_guard_storia()` |
+| trg_articoli_uom_operativa_a10_guard_storia_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION catalogo.trgfn_uom_guard_storia()` |
+| trg_articoli_uom_operativa_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('articolo_id', 'E_UOM_STORIA_IMMUTABILE', 'factor_to_base', 'E_UOM_STORIA_IMMUTABILE', 'uom_id', 'E_UOM_STORIA_IMMUTABILE', 'valido_dal', 'E_UOM_STORIA_IMMUTABILE')` |
 | trg_articoli_uom_operativa_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_articoli_uom_operativa_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_uom_operativa_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_articoli_uom_operativa_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_articoli_uom_operativa_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_uom_operativa_id')` |
 | trg_articoli_uom_operativa_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_uom_operativa_id')` |
+| trg_articoli_uom_operativa_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_uom_operativa_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_uom_conversione_capability: che cosa si puo' fare oggi su una
+#   conversione versionata, dalle sue date. BB NUOVO (G2, Q33 di Tid, 2026-11-11).
+#
+#   Le regole sono quelle del guard della storia (regole 2 e 3 di
+#   catalogo.trgfn_uom_guard_storia): cancellare e spegnere o riaccendere solo
+#   senza giorni passati; la fine non si cambia piu' quando e' gia' passata, e la
+#   fine nuova non e' prima di ieri ne' prima dell'inizio. Le leggono il guard
+#   (-71) e le due viste di dettaglio (-72, -73): una sede, cosi' la capability
+#   non promette quello che il guard rifiuta.
+#
+#   Tipi: i parametri sono `date` nudi DICHIARATI, perche' la funzione serve due
+#   tabelle (catalogo.articoli_uom_operativa e catalogo.unita_misura_conversioni):
+#   ancorarli a una sola direbbe che e' sua. Le colonne di RETURNS TABLE sono
+#   decisioni e date calcolate, non il riflesso di una colonna.
+#   LANGUAGE sql STABLE, una SELECT sola: nelle viste si chiama in LATERAL e si
+#   espande nella query (niente chiamata per colonna). BEGIN ATOMIC: dipendenze
+#   in pg_depend; il COMMENT sta nel secondo change (pgjdbc).
+#   Rollback: la funzione si toglie (-71, -72, -73 si annullano prima).
+#   Brief: brief-db-revisione-catalogo, §15.11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-70-create-fn-uom-conversione-capability-mctit.yaml
+
+  - changeSet:
+      id: 20261111-70-create-fn-uom-conversione-capability
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.fn_uom_conversione_capability: la capability di una mappatura o di una conversione generale dalle sue date, sulle regole del guard della storia (G2, Q33). Brief: brief-db-revisione-catalogo, §15.11.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.proname = 'fn_uom_conversione_capability'
+                 AND p.pronamespace = 'catalogo'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_uom_conversione_capability(
+                  p_valido_dal date,
+                  p_valido_al  date)
+               RETURNS TABLE(
+                  puo_eliminarsi         boolean,
+                  puo_cambiare_attivo    boolean,
+                  puo_chiudersi          boolean,
+                  data_min_chiusura      date,
+                  data_default_chiusura  date,
+                  motivo_non_eliminabile text,
+                  motivo_non_chiudibile  text)
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT NOT s.in_vigore,
+                         NOT s.in_vigore,
+                         s.chiudibile,
+                         CASE WHEN s.chiudibile THEN GREATEST(s.dal, s.oggi - 1) END,
+                         CASE WHEN s.chiudibile THEN GREATEST(s.dal, s.oggi) END,
+                         CASE WHEN s.in_vigore THEN 'UOM_STORIA_IN_VIGORE' END,
+                         CASE WHEN NOT s.chiudibile THEN 'UOM_STORIA_CHIUSA' END
+                    FROM (SELECT o.oggi,
+                                 COALESCE(p_valido_dal, '-infinity'::date) AS dal,
+                                 COALESCE(p_valido_dal, '-infinity'::date) < o.oggi AS in_vigore,
+                                 (p_valido_al IS NULL OR p_valido_al >= o.oggi) AS chiudibile
+                            FROM (SELECT script.fn_data_operativa() AS oggi) o) s;
+              END
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_uom_conversione_capability(date, date) IS
+                  'Che cosa si puo'' fare oggi su una conversione versionata, dalle sue date: una mappatura di un articolo (catalogo.articoli_uom_operativa) o una conversione generale (catalogo.unita_misura_conversioni). Una riga. p_valido_dal NULL vuol dire «da sempre». In vigore = comincia prima di oggi (ha giorni passati). puo_eliminarsi e puo_cambiare_attivo (spegnere o riaccendere): solo se non e'' in vigore, altrimenti motivo_non_eliminabile UOM_STORIA_IN_VIGORE. puo_chiudersi: la fine e'' vuota o non ancora passata (oggi o dopo), altrimenti motivo_non_chiudibile UOM_STORIA_CHIUSA. data_min_chiusura: la prima fine ammessa, la piu'' tarda fra l''inizio e ieri; data_default_chiusura: la piu'' tarda fra l''inizio e oggi; vuote se non si chiude. Il giorno e'' script.fn_data_operativa. Sono le regole 2 e 3 di catalogo.trgfn_uom_guard_storia, che la legge: lo stesso giudizio per il guard e per le viste catalogo.vw_articoli_uom_operativa_dettaglio e catalogo.vw_unita_misura_conversioni_dettaglio. Le colonne che fanno la conversione (unita'', articolo, fattore, inizio) non si cambiano mai: le blocca script.trgfn_lock_columns, e il form le legge da dbops.vw_non_editable_fields. La riga dell''unita'' base non e'' affare suo. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_uom_conversione_capability(date, date);

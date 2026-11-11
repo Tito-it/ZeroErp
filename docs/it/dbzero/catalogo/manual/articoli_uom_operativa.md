@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.articoli_uom_operativa`
 
-> **Ultimo aggiornamento**: 10 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > Approfondimento viste:
 >
-> * [catalogo.vw_articoli_uom_operativa_dettaglio](/dbzero/catalogo/views/vw_articoli_uom_operativa_dettaglio) — la lista delle unità di un articolo, con i codici e la capability di eliminazione
+> * [catalogo.vw_articoli_uom_operativa_dettaglio](/dbzero/catalogo/views/vw_articoli_uom_operativa_dettaglio) — la lista delle unità di un articolo, con i codici e la capability di riga (eliminare, spegnere, chiudere)
 >
 > Approfondimento funzioni:
 >
@@ -44,16 +44,17 @@ articolo (chilogrammi in grammi) stanno in `unita_misura_conversioni`.
 ### La riga base
 
 Ogni articolo nasce con una riga base: la crea il trigger di seed alla creazione, sull'unità
-di `articoli.uom_id`, con fattore 1, senza date, attiva o spenta come l'articolo. Un articolo
+di `articoli.uom_id`, con fattore 1, senza date, attiva. Un articolo
 ha al più una riga base (indice unico parziale su `is_base`).
 
 La riga base è fissa:
 
-* fattore 1 e nessuna data: lo impone un CHECK, quindi vale sempre;
+* fattore 1 e nessuna data: lo impone un CHECK, quindi vale sempre e non si chiude;
 * resta sull'unità dell'articolo e sull'articolo, non smette di essere la base e una riga
-  normale non lo diventa; non si cancella; non se ne crea una su un'unità diversa da quella
-  dell'articolo. Lo garantisce `trgfn_articoli_uom_operativa_guard_base`
-  (`E_UOM_RIGA_BASE_IMMUTABILE`);
+  normale non lo diventa; non si spegne; non si cancella; non se ne crea una su un'unità
+  diversa da quella dell'articolo, né una spenta. Lo garantisce
+  `trgfn_articoli_uom_operativa_guard_base` (`E_UOM_RIGA_BASE_IMMUTABILE`). Resta attiva anche
+  sotto un articolo spento: da lei l'unità base prende le regole della quantità;
 * va via solo con l'articolo: cancellare l'articolo cancella anche lei.
 
 L'unità dell'articolo a sua volta non si cambia (lock di colonna su `articoli.uom_id`): base e
@@ -82,7 +83,9 @@ di ogni riga che lo rilegge. Per questo una mappatura scritta si chiude, non si 
 
 * **fattore, unità, articolo e inizio** non si cambiano mai, neppure su una mappatura che
   comincia domani (`E_UOM_STORIA_IMMUTABILE`). Un fattore nuovo è una riga nuova: si chiude la
-  vecchia e si inserisce la nuova dal giorno dopo;
+  vecchia e si inserisce la nuova dal giorno dopo. Queste quattro colonne le blocca il lock di
+  colonna (`script.trgfn_lock_columns`, dal registro dei lock), così il form le mostra non
+  modificabili;
 * **la fine** si sposta, ma non prima di ieri (`E_UOM_STORIA_CHIUSURA_RETROATTIVA`): chiudere a
   ieri vuol dire «da oggi non vale più». Una mappatura già finita non si riapre né si
   accorcia (`E_UOM_STORIA_CHIUSA`);
@@ -92,6 +95,9 @@ di ogni riga che lo rilegge. Per questo una mappatura scritta si chiude, non si 
 * le colonne che non fanno la conversione (i flag d'uso, `gtin`, le regole di input) si
   cambiano liberamente;
 * cancellare l'articolo porta via le sue mappature, anche quelle in vigore.
+
+Che cosa si può fare oggi su una riga lo dice in anticipo la vista di dettaglio, con lo stesso
+giudizio del guard (`catalogo.fn_uom_conversione_capability`).
 
 Chiudere o spegnere una mappatura che un listino attivo usa ancora, oltre la nuova fine, è
 rifiutato a fine transazione (`E_UOM_CHIUSURA_CON_LISTINI_ATTIVI`): il prezzo del listino
@@ -151,8 +157,8 @@ Il lotto è una proprietà dell'articolo (`articoli.requires_lotto`), non dell'u
 
 ### Codici errore
 
-* `E_UOM_RIGA_BASE_IMMUTABILE` — la riga base spostata, tolta, o creata su un'unità diversa da
-  quella dell'articolo.
+* `E_UOM_RIGA_BASE_IMMUTABILE` — la riga base spostata, tolta, spenta, o creata su un'unità
+  diversa da quella dell'articolo o spenta.
 * `E_UOM_STORIA_IMMUTABILE` — fattore, unità, articolo o inizio cambiati su una mappatura scritta.
 * `E_UOM_STORIA_IN_VIGORE` — una mappatura con giorni passati spenta, riaccesa o cancellata.
 * `E_UOM_STORIA_CHIUSURA_RETROATTIVA` — una mappatura chiusa prima di ieri.
@@ -170,7 +176,7 @@ Il lotto è una proprietà dell'articolo (`articoli.requires_lotto`), non dell'u
 
 * `db/pgtap/catalogo/test-uom-fattore-e-regole-v1.sql` — la mappatura versionata letta a due
   date, la sovrapposizione rifiutata, la riga base fissa e protetta, l'articolo creato spento
-  con la riga base spenta, `max_decimals` applicato.
+  con la riga base attiva, la base che non si spegne, `max_decimals` applicato.
 * `db/pgtap/catalogo/test-articoli-vincoli-note-uom-overlap.sql` — una seconda riga base è
   rifiutata.
 * `db/pgtap/catalogo/test-articoli-seed-uom-base-lock.sql` — l'articolo nasce con la sua riga
@@ -201,6 +207,10 @@ Il lotto è una proprietà dell'articolo (`articoli.requires_lotto`), non dell'u
   retroattiva, spegnimento e cancellazione solo prima del primo giorno; non si chiude
   sotto un listino attivo; esce dal legame ATTIVO con articolo e unità
   (brief-db-revisione-catalogo, giro 2-bis).
+* 2026-11-11 — fattore, unità, articolo e inizio passano al lock di colonna; la vista di
+  dettaglio pubblica la capability del guard (brief-db-revisione-catalogo, §15.11).
+* 2026-11-11 — la riga base è sempre attiva: nasce attiva, non si spegne, e quelle spente si
+  sono riaccese (brief-db-revisione-catalogo, Q34).
 
 ---
 

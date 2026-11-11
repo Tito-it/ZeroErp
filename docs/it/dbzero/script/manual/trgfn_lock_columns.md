@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Trigger Function `script.trgfn_lock_columns()`
 
+> **Ultimo aggiornamento**: 11 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimenti tabelle:   
@@ -60,7 +62,7 @@ COMMIT;
      * **Area**: `database`
      * **Function\_name**: nome del trigger (TG\_NAME)
      * **Error\_code**: codice testuale passato
-     * **Context**: JSON con `column`, `old_value`, `new_value`
+     * **Context**: JSON con `campo` (la colonna da evidenziare nel form), `column`, `old_value`, `new_value`
      * **Placeholder**: il nome della colonna per sostituire `%s`
    * La funzione logga su `dbops.error_log` (via dblink\_connect) e **rialza un’eccezione** con dettaglio e hint
 

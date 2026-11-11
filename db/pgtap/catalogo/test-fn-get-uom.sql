@@ -163,7 +163,9 @@ SELECT lives_ok($$
     UPDATE catalogo.articoli_uom_operativa
        SET attivo = false
      WHERE articolo_id = (SELECT art_base_id FROM tmp_seed)
-$$, 'La mappatura operativa che comincia oggi si puo'' disattivare');
+       -- Rev 2026-11-11 (brief-db-revisione-catalogo, Q34): la riga base non si spegne.
+       AND NOT is_base
+$$,'La mappatura operativa che comincia oggi si puo'' disattivare');
 
 SELECT is(
   catalogo.fn_get_uom_factor((SELECT art_base_id FROM tmp_seed),

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.unita_misura_conversioni`
 
-> **Ultimo aggiornamento**: 10 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,6 +15,11 @@
 > * [catalogo.fn_uom_fonti_conversione](/dbzero/catalogo/funzioni/fn_uom_fonti_conversione) — l'unica funzione che legge questa tabella: le fonti del fattore coi loro periodi
 > * [catalogo.fn_get_uom_factor](/dbzero/catalogo/funzioni/fn_get_uom_factor) — il fattore a una data, dalle fonti
 > * [catalogo.trgfn_uom_guard_storia](/dbzero/catalogo/funzioni/trgfn_uom_guard_storia) — la conversione è storia: cosa si cambia e cosa no
+> * [catalogo.fn_uom_conversione_capability](/dbzero/catalogo/funzioni/fn_uom_conversione_capability) — che cosa si può fare oggi su una conversione
+>
+> Approfondimento viste:
+>
+> * [catalogo.vw_unita_misura_conversioni_dettaglio](/dbzero/catalogo/views/vw_unita_misura_conversioni_dettaglio) — la lista delle conversioni, con le due unità e la capability di riga
 > * [catalogo.trgfn_uom_guard_listini_attivi](/dbzero/catalogo/funzioni/trgfn_uom_guard_listini_attivi) — una conversione non si chiude sotto un listino attivo che la usa
 > * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — il calcolo della quantità sulle righe di vendita, che la legge attraverso il fattore
 > * [catalogo.trgfn_uom_conversioni_guard_tipo](/dbzero/catalogo/funzioni/trgfn_uom_conversioni_guard_tipo) — rifiuta una conversione fra due famiglie
@@ -51,7 +56,8 @@ non stanno qui ma in `articoli_uom_operativa`, dove il fattore è per articolo.
 Le regole sono quelle della mappatura di un articolo (`trgfn_uom_guard_storia`):
 
 * **le due unità, il fattore e l'inizio** non si cambiano mai (`E_UOM_STORIA_IMMUTABILE`): un
-  fattore nuovo è una riga nuova, dal giorno dopo la chiusura della vecchia;
+  fattore nuovo è una riga nuova, dal giorno dopo la chiusura della vecchia. Le blocca il lock di
+  colonna, così il form le mostra non modificabili;
 * **la fine** si sposta, ma non prima di ieri (`E_UOM_STORIA_CHIUSURA_RETROATTIVA`); una
   conversione già finita non si riapre né si accorcia (`E_UOM_STORIA_CHIUSA`);
 * **spegnere, riaccendere o cancellare** si può solo finché la conversione non ha giorni
@@ -124,6 +130,8 @@ l'articolo non mappa. Le righe già scritte tengono il fattore che hanno fotogra
   alla data del documento (brief-db-revisione-catalogo, giro 2).
 * 2026-11-10 — la conversione è storia, come la mappatura; non si chiude sotto un listino
   attivo; esce dal legame ATTIVO con le sue unità (brief-db-revisione-catalogo, giro 2-bis).
+* 2026-11-11 — le due unità, il fattore e l'inizio passano al lock di colonna; nasce la vista di
+  dettaglio con la capability di riga (brief-db-revisione-catalogo, §15.11).
 
 ---
 

@@ -1,9 +1,10 @@
 # Brief DB — Ritirare un articolo senza cancellarlo (`obsoleto_dal`)
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08
+## ⏭️ Chi riparte — aggiornato al 2026-11-11
 
-**Riparte: Tid**, con la conferma di O-9 affinata; poi il **team DB**, col changeSet dei `COMMENT` (D-C). Il lotto B
-è applicato, riscritto sul modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
+**Riparte: Tid**, con la conferma di O-9 affinata. I `COMMENT` (D-C) non ripartono da qui: li riscrive tutti il giro 5
+di `brief-db-revisione-catalogo`, anche fuori `catalogo` (Tid, 2026-11-11). Il lotto B è applicato, riscritto sul
+modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -14,7 +15,7 @@
 | 5 | ✅ DB + Tid | lotto A (`20261105-01…-14`, CSV dei codici): scritto, applicato su dbdev e scratch, pgTAP verdi (2026-11-05) | §7.1 | — |
 | 6 | ✅ DB + Tid | lotti C e D senza sorgente (`20261106-01…-03`, pgTAP, guida, manuali): applicati, pgTAP verdi (2026-11-06) | §7.2-bis | — |
 | 7 | Tid | **confermare O-9 affinata**: l'`ONERE` con sorgente (dal push di ordine e bolla) passa | §7.2-bis | — |
-| 8 | ➡️ DB, in `brief-db-revisione-catalogo` | **D-C**: riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11) | sotto | — |
+| 8 | ➡️ DB, in `brief-db-revisione-catalogo` | **D-C**: riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11). ✅ **Tid, 2026-11-11 (opzione a):** il giro 5 prende anche gli oggetti di questo cantiere fuori `catalogo` (`acquisti`, `script`, `vendite`); qui non resta niente. Elenco chiuso: §3.3.1 di quel brief | [revisione-catalogo §3.3.1](brief-db-revisione-catalogo.md#331-d-c-i-comment-del-cantiere-obsoleto_dal-anche-fuori-catalogo-tid-2026-11-11) | giro 5 |
 | 9 | ✅ DB + Tid | lotto B (verbi): riscritto sul modello nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`), applicato da Tid, pgTAP verdi (2026-11-06). Righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D): ancora fermi (le righe d'acquisto aspettano il cantiere `acquisti`, che porta le loro tabelle al modello; le righe di fattura non hanno un verbo che ne scriva la provenienza) | §7.2, §7.3 | — |
 | 10 | BE / FE | `obsoleto_dal` ed `e_obsoleto` nel form e nella lista, `righe_saltate` del «Clona», policy, chiave i18n | §8 | — |
 
@@ -40,6 +41,11 @@ marcatori `rev`, id di changeSet, sigle di decisione o misure, e vale **da subit
 riscritto. I COMMENT scritti da `20261105-01…-14` e `20261106-01…-03` non la rispettano (13 changeSet su 17: tabelle,
 colonne, funzioni, trigger, vista). Sono applicati, quindi non si toccano: serve un changeSet nuovo di soli
 `COMMENT ON`, scritti dal vivo e ripuliti, più il controllo di testo su `obj_description`.
+➡️ **Lo fa il giro 5 di `brief-db-revisione-catalogo`, per intero (Tid, 2026-11-11).** Letti sul vivo lo stesso
+giorno: dei 26 oggetti commentati da quei changeSet, 16 sono già stati riscritti da giri successivi; ne restano 10,
+cinque in `catalogo` e cinque fuori (`acquisti.ddt_righe.sorgente_tipo_id`, `script.trgfn_righe_guard_articolo_ammesso`,
+`vendite.fn_clona_versione_listino` e i due trigger di `commesse_attivita` e `listini_kit`). L'elenco sta in §3.3.1 di
+quel brief, e non si ricopia qui.
 
 Debito rinviato da Tid (2026-11-04): il ritiro di `preventivo_riga_id` (O-10), da riprendere all'archiviazione.
 Committato il 2026-11-06 (lotti A, C, D, il fix da zero `20261103-29`, i due brief).

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_articoli_uom_operativa_guard_base`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,15 +16,15 @@
 >
 > Approfondimento viste:
 >
-> * [catalogo.vw_articoli_uom_operativa_dettaglio](/dbzero/catalogo/views/vw_articoli_uom_operativa_dettaglio) — la capability che dice in anticipo che la riga base non si cancella
+> * [catalogo.vw_articoli_uom_operativa_dettaglio](/dbzero/catalogo/views/vw_articoli_uom_operativa_dettaglio) — la capability che dice in anticipo che la riga base non si cancella e non si spegne
 
 ---
 
 ### 🎯 Scopo Principale
 
 Tiene giusta la riga dell'unità base di un articolo in `catalogo.articoli_uom_operativa`: sta
-sull'unità dell'articolo, non si sposta, non smette di essere la base e non si toglie finché
-c'è l'articolo.
+sull'unità dell'articolo, non si sposta, non smette di essere la base, resta attiva e non si
+toglie finché c'è l'articolo.
 
 ---
 
@@ -36,9 +36,15 @@ Con `E_UOM_RIGA_BASE_IMMUTABILE`:
 * **lo spostamento della riga base** su un'altra unità o su un altro articolo;
 * **il cambio di `is_base`**, in un verso o nell'altro: la base non smette di esserlo, e una
   riga normale non lo diventa;
+* **lo spegnimento della riga base**, e una riga base nuova che nasce spenta: la base non ha
+  stati, e da lei l'unità base prende le regole della quantità;
 * **la cancellazione della riga base.**
 
-La frase dice l'unità base e l'articolo; il bersaglio porta all'articolo.
+La frase dice l'unità base e l'articolo; il bersaglio porta all'articolo. Il campo da
+evidenziare è `attivo` per lo spegnimento, `uom_id` per tutto il resto.
+
+La riaccensione di una riga base spenta passa: è la strada con cui si sono riaccese le basi
+nate spente prima di questa regola.
 
 Fattore 1 e nessuna data non li controlla questa funzione: li impone un CHECK della tabella,
 per ogni riga base. Insieme, la riga base vale sempre, a ogni data, con fattore 1.
@@ -60,15 +66,15 @@ articolo e riga base restano allineati.
 
 ### Quando scatta
 
-Prima di ogni inserimento, degli aggiornamenti che scrivono `articolo_id`, `uom_id` o
-`is_base`, e di ogni cancellazione, riga per riga, nella fase dei guard.
+Prima di ogni inserimento, degli aggiornamenti che scrivono `articolo_id`, `uom_id`,
+`is_base` o `attivo`, e di ogni cancellazione, riga per riga, nella fase dei guard.
 
 ---
 
 ### Codici errore
 
-* `E_UOM_RIGA_BASE_IMMUTABILE` — la riga base spostata, tolta, o creata su un'unità diversa da
-  quella dell'articolo. Campo `uom_id`.
+* `E_UOM_RIGA_BASE_IMMUTABILE` — la riga base spostata, tolta, spenta, o creata su un'unità
+  diversa da quella dell'articolo o spenta. Campo `uom_id`, o `attivo` per lo spegnimento.
 
 ---
 
@@ -76,7 +82,8 @@ Prima di ogni inserimento, degli aggiornamenti che scrivono `articolo_id`, `uom_
 
 * `db/pgtap/catalogo/test-uom-fattore-e-regole-v1.sql` — la riga base spostata, cancellata e
   creata su un'altra unità sono rifiutate; il fattore diverso da 1 lo rifiuta il CHECK; una riga
-  normale si cancella; cancellare l'articolo porta via la riga base.
+  normale si cancella; cancellare l'articolo porta via la riga base; la base non si spegne e non
+  nasce spenta, col campo `attivo`.
 
 ---
 
@@ -84,6 +91,7 @@ Prima di ogni inserimento, degli aggiornamenti che scrivono `articolo_id`, `uom_
 
 * 2026-11-09 — nasce: prima la riga base la proteggeva solo l'interfaccia, attraverso la
   capability della vista (brief-db-revisione-catalogo, giro 2).
+* 2026-11-11 — la riga base non si spegne e non nasce spenta (brief-db-revisione-catalogo, Q34).
 
 ---
 

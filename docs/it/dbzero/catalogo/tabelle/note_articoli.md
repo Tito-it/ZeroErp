@@ -23,16 +23,19 @@
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying(80) | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying(80) | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_note_anchor_tipo |  |
+| CHECK | chk_note_catalogo_ancora_documento |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
+| CHECK | chk_note_testo_non_vuoto |  |
 | FOREIGN KEY | fk_cat_note_articoli_target | target_id |
 | FOREIGN KEY | fk_cat_note_id_lingua | id_lingua |
 | FOREIGN KEY | fk_cat_note_id_stile | id_stile |
@@ -48,10 +51,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_note_articoli_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'target_id', 'id')` |
-| trg_note_articoli_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'target_id', 'id')` |
 | trg_note_articoli_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_note_articoli_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_note_articoli_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_note_articoli_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `catalogo.trgfn_articoli_seed_uom_base`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,6 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il controllo che vuole l'articolo attivo sotto una riga attiva
 > * [catalogo.trgfn_articoli_uom_operativa_guard_base](/dbzero/catalogo/funzioni/trgfn_articoli_uom_operativa_guard_base) — tiene giusta la riga base dopo la nascita
 
 ---
@@ -20,7 +19,7 @@
 
 Fa nascere ogni articolo con la sua riga base in `catalogo.articoli_uom_operativa`: alla
 creazione dell'articolo scrive la riga sull'unità di `articoli.uom_id`, con `is_base` vero,
-fattore 1, senza date, attiva o spenta come l'articolo.
+fattore 1, senza date, sempre attiva.
 
 Senza questa riga l'articolo avrebbe l'unità base in testata ma non fra le sue unità
 operative, e la lista delle unità dell'articolo partirebbe vuota.
@@ -33,9 +32,10 @@ Gira dopo l'inserimento di ogni articolo, riga per riga, e inserisce la riga bas
 è nuovo, quindi nessuna mappatura può già puntarvi: la funzione non prevede una riga che
 esiste già.
 
-La riga base segue lo stato dell'articolo: un articolo che nasce spento ha la riga base
-spenta. Una riga attiva sotto un articolo spento la rifiuterebbe, alla fine della
-transazione, il controllo che vuole l'articolo attivo.
+La riga base nasce attiva anche sotto un articolo che nasce spento. La base non ha stati: vale
+1 a ogni data, e da lei l'unità base prende le regole della quantità, che una riga spenta non
+darebbe. Il legame fra la mappatura e l'attivo dell'articolo è fra le eccezioni
+dell'automazione ATTIVO: l'articolo si spegne e si riaccende con la sua base intatta.
 
 `articoli.uom_id` è obbligatorio, quindi un articolo senza unità non arriva fin qui: lo ferma
 prima il vincolo di colonna. Dopo la creazione `articoli.uom_id` è bloccato: la riga base non
@@ -49,8 +49,8 @@ che scrive dopo l'inserimento, non un controllo.
 ### Dopo la nascita
 
 La riga resta giusta: fattore 1 e nessuna data li impone un CHECK della tabella, e il guard
-della riga base impedisce di spostarla su un'altra unità, di toglierle `is_base` e di
-cancellarla finché c'è l'articolo.
+della riga base impedisce di spostarla su un'altra unità, di toglierle `is_base`, di
+spegnerla e di cancellarla finché c'è l'articolo.
 
 ---
 
@@ -68,7 +68,7 @@ tabella figlia.
   se non con l'interruttore di manutenzione.
 
 * `db/pgtap/catalogo/test-uom-fattore-e-regole-v1.sql` — un articolo creato spento nasce, con la
-  sua riga base spenta.
+  sua riga base attiva.
 
 ---
 
@@ -77,6 +77,9 @@ tabella figlia.
 * 2026-04-07 — nasce.
 * 2026-11-09 — la riga base nasce attiva o spenta come l'articolo; senza la clausola sulla riga
   già esistente (brief-db-revisione-catalogo, giro 2).
+* 2026-11-11 — la riga base nasce sempre attiva: il legame con l'attivo dell'articolo è fra le
+  eccezioni, e una base spenta toglieva le regole della quantità (brief-db-revisione-catalogo,
+  Q34).
 
 ---
 

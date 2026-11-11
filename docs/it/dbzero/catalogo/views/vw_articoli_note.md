@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista note per articoli con dati stile e lingua. Rev 2026-10-25 (20261025-57/-58, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche' la colonna che legge cambia tipo; nota_target_tipo vale ARTICOLO (era ARTICOLI) e diventa varchar(50), dalla partizione.
+> Le note degli articoli, una riga per nota, col codice e la descrizione dell'articolo annotato e la decodifica dello stile e della lingua. Le colonne di nota vengono da catalogo.vw_note (nota_target_tipo ARTICOLO, la partizione catalogo.note_articoli). Non filtra le note nascoste ne' quelle di sola stampa. Si legge; le note si scrivono sulla partizione. Rev 2026-11-11 (20261111-77/-79, brief-db-revisione-catalogo giro 4, R6): sopra la vista base, stesse colonne; user_* text.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -14,33 +14,32 @@ CREATE OR REPLACE VIEW catalogo.vw_articoli_note AS
 SELECT a.id AS articolo_id,
     a.codice AS articolo_codice,
     a.descrizione AS articolo_descrizione,
-    n.id AS nota_id,
-    n.target_tipo AS nota_target_tipo,
-    n.target_id AS nota_target_id,
-    n.target_riga_id AS nota_target_riga_id,
-    n.anchor_tipo AS nota_anchor_tipo,
-    n.posizione AS nota_posizione,
-    n.seq AS nota_seq,
-    n.testo AS nota_testo,
-    n.testo_md AS nota_testo_md,
-    n.visibile AS nota_visibile,
-    n.solo_stampa AS nota_solo_stampa,
-    n.meta AS nota_meta,
-    n.data_insert AS nota_data_insert,
-    n.user_insert AS nota_user_insert,
-    n.data_update AS nota_data_update,
-    n.user_update AS nota_user_update,
-    ns.id AS stile_id,
-    ns.codice AS stile_codice,
-    ns.descrizione AS stile_descrizione,
-    l.id AS lingua_id,
-    l.codice_iso AS lingua_codice_iso,
-    l.descrizione AS lingua_descrizione,
-    l.descrizione_locale AS lingua_descrizione_locale
-   FROM (((catalogo.note_articoli n
-     JOIN catalogo.articoli a ON ((a.id = n.target_id)))
-     LEFT JOIN config.note_stili ns ON ((ns.id = n.id_stile)))
-     LEFT JOIN config.lingue l ON ((l.id = n.id_lingua)));
+    n.nota_id,
+    n.nota_target_tipo,
+    n.nota_target_id,
+    n.nota_target_riga_id,
+    n.nota_anchor_tipo,
+    n.nota_posizione,
+    n.nota_seq,
+    n.nota_testo,
+    n.nota_testo_md,
+    n.nota_visibile,
+    n.nota_solo_stampa,
+    n.nota_meta,
+    n.nota_data_insert,
+    n.nota_user_insert,
+    n.nota_data_update,
+    n.nota_user_update,
+    n.stile_id,
+    n.stile_codice,
+    n.stile_descrizione,
+    n.lingua_id,
+    n.lingua_codice_iso,
+    n.lingua_descrizione,
+    n.lingua_descrizione_locale
+   FROM (catalogo.vw_note n
+     JOIN catalogo.articoli a ON ((a.id = n.nota_target_id)))
+  WHERE ((n.nota_target_tipo)::text = 'ARTICOLO'::text);
 ```
 
 </div>

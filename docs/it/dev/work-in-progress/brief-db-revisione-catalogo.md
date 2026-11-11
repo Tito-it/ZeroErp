@@ -1,10 +1,11 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-11 (verifica del lavoro BE, §15.11)
+## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro 4 applicato, §16)
 
-**Riparte: Tid**, col via e il range dei numeri al giro di G1 e G2 (Q32 e Q33 decise), e con la scelta del campo del
-lock, (a) o (b) (§15.11). Poi il via ai giri 4-5 (§7). Restano da guardare le scelte dentro i giri 2-bis, 3, 2 e 1 (§15.7, §14.2, §14.6, §13.3,
-§10.3). In parallelo il **team BE**, con BE22-BE25 e la parte di BE21 che non dipende da G1 e G2 (§15.11).
+**Riparte: Tid**, col via al giro 5 (§7). I giri G1-G2 (`20261111-69` … `-73`, §15.11.1), Q34 (`-74` … `-76`,
+§15.11.2) e 4 (`-77` … `-80`, §16) sono applicati su dbdev e scratch, con i pgTAP come app verdi. Da committare: Q34 e 4. Restano da guardare le scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2, §14.6,
+§13.3, §10.3). In parallelo il **team BE**, con BE22-BE28 e tutto BE21, compreso BE21-a … f (§15.11, §15.11.1,
+§15.11.2, §16.4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -36,9 +37,14 @@ lock, (a) o (b) (§15.11). Poi il via ai giri 4-5 (§7). Restano da guardare le 
 | 5-vicies | ✅ Tid | Apply del giro 2-bis su dbdev e scratch, pgTAP come app verdi (2026-11-11) | §15.10 | 5-novodecies |
 | 5-unvicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 2-bis (2026-11-11) | §15.10 | 5-vicies |
 | 5-vicies-bis | ✅ sessione DB | Verifica del lavoro BE dopo il giro 2-bis: il giro BE del giro 3 non lascia niente al DB; il giro 2-bis lascia G1 e G2 | §15.11 | 5-unvicies |
-| 5-vicies-ter | **Tid** ⏭️ | Q32 ✅ e Q33 ✅ (2026-11-11). Restano il campo del lock, (a) o (b); il via e il range dei numeri del giro | §15.11 | 5-vicies-bis |
-| 5-vicies-quater | sessione DB | Il giro di G1 e G2, col suo apply | §15.11 | 5-vicies-ter |
-| 6 | sessione DB | Giri 4-5, ognuno col suo via, i suoi numeri e il suo apply | §7 | 5-unvicies |
+| 5-vicies-ter | ✅ Tid | Q32 e Q33; il campo del lock, opzione (a); via e numeri dal `-69` (2026-11-11) | §15.11 | 5-vicies-bis |
+| 5-vicies-quater | ✅ sessione DB | Giro G1-G2: `20261111-69` … `-73`, quattro CSV, un pgTAP nuovo e tre riallineati, doc; provato sullo scratch | §15.11.1 | 5-vicies-ter |
+| 5-vicies-quinquies | **Tid** ✅ | Apply del giro G1-G2 su dbdev e scratch, **poi subito la convergenza del lock**; pgTAP come app; commit — fatto l'11-11: migrate e convergenza applicati, pgTAP verdi | §15.11.1 | 5-vicies-quater |
+| 5-vicies-sexies | ✅ sessione DB | Giro Q34 (la riga base sempre attiva): `-74` … `-76`, il messaggio, i pgTAP, le pagine `manual/`; provato sullo scratch | §15.11.2 | 5-vicies-quinquies |
+| 5-vicies-septies | ✅ Tid | Apply del giro Q34 su dbdev e scratch, pgTAP come app verdi (2026-11-11) | §15.11.2 | 5-vicies-sexies |
+| 6 | ✅ sessione DB | Giro 4, le note (D16, R6, Q12): `20261111-77` … `-80`, due righe di eccezione ATTIVO, un pgTAP nuovo, pagine `manual/`; provato sullo scratch (via e numeri di Tid, dal `-77`) | §16 | 5-vicies-septies |
+| 6-bis | ✅ Tid | Apply del giro 4 su dbdev e scratch, pgTAP come app verdi (2026-11-11); commit su richiesta, con il giro Q34 | §16.4 | 6 |
+| 6-ter | sessione DB | Giro 5, col suo via e i suoi numeri | §7 | 6-bis |
 | 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
 | 7-bis | ✅ team BE (committato, `ff93395d5e`, PR #84) | La doc API di BE9 e BE11 (`api_catalogo.md`); BE19 e BE20 del giro 3 e BE4 (campo di `E_PARAMETRO_INVALIDO`). BE1-BE4 e BE16-BE18 del giro 2 erano già fatti (PR #81) | §13.5, §14.10 | — |
 | 7-ter-bis | — | Assorbita in 7-septies, con la rinumerazione di §15 (BE19-BE21 → BE21-BE23) | §15 | — |
@@ -47,11 +53,12 @@ lock, (a) o (b) (§15.11). Poi il via ai giri 4-5 (§7). Restano da guardare le 
 | 7-quinquies | ✅ team BE | Giro BE del giro 2: BE1-BE4, BE16-BE18 (BE4 resta aperta per D19); committato (`2af6d986f5`, PR #81) | §13.7 | — |
 | 7-sexies | ✅ Tid | Le tre domande di §13.7.3: Q23 bloccato, Q24 per tutto il periodo, Q25 in questo brief (2026-11-10) | §6, §15 | 7-quinquies |
 | 7-septies | **team BE** ⏭️ | BE22-BE25 e la parte di BE21 che non dipende da G1 e G2 (codice, policy, test del rifiuto): giro 2-bis applicato (2026-11-11) | §15.4, §15.9, §15.11 | 5-vicies |
-| 7-octies | team BE | Il resto di BE21: il form e le azioni di riga dalla capability e da `vw_non_editable_fields`; `_NON_EDITABLE_DB_GAPS` ritirato | §15.11 | 5-vicies-quater |
+| 7-novies | **team BE** ⏭️ | BE26-BE28 del giro 4 (le note di catalogo: testo e àncora rifiutati dal DB, la nota che non tiene acceso il bersaglio, `user_*` text) | §16.4 | 6-bis |
+| 7-octies | **team BE** ⏭️ | Il resto di BE21, a giro G1-G2 applicato: BE21-a … BE21-d (il form da `vw_non_editable_fields`, `_NON_EDITABLE_DB_GAPS` ritirato, le azioni di riga dalle due viste, la lista delle conversioni sulla vista nuova), e BE21-e … f del giro Q34 (il drawer della conversione, la riga base che non si spegne) | §15.11.1, §15.11.2 | 5-vicies-septies |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
 
-**Decisioni aperte di Tid:** il campo del lock, (a) o (b) (§15.11); le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2
-(§13.3) e 1 (§10.3), da guardare. **Da committare:** questo brief (§15.11, 2026-11-11).
+**Decisioni aperte di Tid:** le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2
+(§13.3) e 1 (§10.3), da guardare. **Committato** il giro G1-G2 (2026-11-11), con questo brief. **Da committare**: i giri Q34 (§15.11.2) e 4 (§16), applicati.
 ⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93`, il giro 3 `20261111-25` … `-37` (dati da Tid). Messaggi
 d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 
@@ -66,7 +73,8 @@ d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 > **Brief vicini verificati:**
 > * [brief-db-articoli-obsoleto-dal](brief-db-articoli-obsoleto-dal.md): il suo **D-C** riscrive i COMMENT di quel
 >   cantiere (`obsoleto_dal`, `fn_articoli_ammessi`, `trgfn_articoli_componenti_guard_componente`,
->   `vw_articoli_dettaglio.e_obsoleto`). Si sovrappone a M3: chi lo fa lo decide Tid (Q11).
+>   `vw_articoli_dettaglio.e_obsoleto`). Si sovrappone a M3: chi lo fa lo decide Tid (Q11). ✅ Deciso: tutto qui, nel
+>   giro 5, anche gli oggetti fuori `catalogo` (Tid, 2026-11-11; elenco chiuso in §3.3.1).
 > * [brief-db-revisione-dbops](brief-db-revisione-dbops.md): il suo **D28** (le `condition_expr` di
 >   `lock_columns_conditional` ricopiano gli `EXISTS` del guard flags) tocca gli stessi predicati di D9. D28 resta
 >   lì; il giro 1 di qui va fatto **dopo** o **con** D28, perché cambia la finestra del predicato che D28 estrae.
@@ -460,6 +468,37 @@ nel giro che apre l'oggetto, oppure nel giro 5.
 
 Una parte coincide con D-C di `brief-db-articoli-obsoleto-dal` (Q11).
 
+#### 3.3.1 D-C: i COMMENT del cantiere `obsoleto_dal`, anche fuori `catalogo` (Tid, 2026-11-11)
+
+✅ **Tid, 2026-11-11, Q11 precisata (opzione a):** il giro 5 riscrive **tutti** i COMMENT nati da
+`brief-db-articoli-obsoleto-dal`, anche quelli fuori dallo schema `catalogo`. D-C si chiude qui per intero: là non
+resta un changeSet di COMMENT.
+
+Fonte: i 13 changeSet di quel cantiere che scrivono un `COMMENT ON` (`20261105-01` … `-04`, `-06`, `-09` … `-13`,
+`20261106-01` … `-03`; `-05`, `-07`, `-08` e `-14` non ne scrivono), poi `obj_description` / `col_description` su
+dbdev, letti il 2026-11-11. Sono 26 oggetti. 16 sono già puliti, perché un giro successivo li ha riscritti: le colonne
+`sorgente_*` di vendite (`brief-db-sorgente-documento-e-riga`), le due check e il guard della distinta (giri 1 e
+1-bis di qui), `fn_e_obsoleto` e il guard generico di `dbops`. **L'elenco chiuso da riscrivere è questo:**
+
+| Schema | Oggetto | Già in §3.3 |
+| --- | --- | --- |
+| `catalogo` | colonna `articoli.obsoleto_dal` | sì |
+| `catalogo` | vista `vw_articoli_dettaglio` e le colonne `obsoleto_dal`, `e_obsoleto` | sì |
+| `catalogo` | `fn_articoli_ammessi` | sì |
+| `acquisti` | colonna `ddt_righe.sorgente_tipo_id` | **no** |
+| `script` | `trgfn_righe_guard_articolo_ammesso` | **no** |
+| `vendite` | `fn_clona_versione_listino` | **no** |
+| `vendite` | trigger `trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd` | **no** |
+| `vendite` | trigger `trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd` | **no** |
+
+* Il COMMENT si riscrive **intero**, secondo `linee-guida-sql` §5d, anche dove il marcatore viene da un altro brief
+  (`trgfn_righe_guard_articolo_ammesso` cita anche `brief-db-articoli-ammessi-per-documento` e i suoi changeSet).
+* Prima di scrivere il giro si **rilegge** la tabella sul vivo: un giro intermedio può aver già ripulito un oggetto.
+* Il controllo di testo su `obj_description` del giro 5 copre anche questi cinque oggetti fuori schema.
+* ⚠️ Fuori da D-C: i rimandi al brief **nei corpi** (`-- … (brief-db-articoli-obsoleto-dal §3)` in
+  `fn_check_articolo_riga_su_contesto`, in `trgfn_righe_guard_articolo_ammesso`). D-C riguarda il COMMENT. Si toccano
+  solo se un giro riscrive comunque quella funzione: non si apre un `CREATE OR REPLACE` per un commento.
+
 ## 4. La documentazione
 
 ### 4.1 Le 35 pagine `manual/`
@@ -558,7 +597,7 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | Q8 ✅ | R2: il BB «distinta alla data» tocca le funzioni di tutti i documenti di vendita. Si fa qui, in un giro a parte, o in un brief di vendite? | Qui, giro 1-bis, dopo il giro 1 e insieme a D28 di `dbops` — **✅ Tid, 2026-11-08: come da proposta, ok alla famiglia dei documenti di vendita** |
 | Q9 ✅ | `uom_tipi`: `codice` o `codice_interno`? | Resta `codice_interno` (bloccato); `codice` si ritira, se il BE non lo espone come etichetta — **✅ Tid, 2026-11-08: come da proposta** |
 | Q10 ✅ | D20: la porta amministratore deve dipendere dalle regole del form? | No: le colonne strutturali si dichiarano in un posto, che leggono guard, form e porta (con D28) — **✅ Tid, 2026-11-08: come da proposta** |
-| Q11 ✅ | M3 e D-C di `brief-db-articoli-obsoleto-dal`: chi riscrive i COMMENT? | Tutti qui, nel giro 5; D-C si chiude rimandando qui — **✅ Tid, 2026-11-08: tutti qui; D-C di brief-db-articoli-obsoleto-dal si chiude rimandando qui** |
+| Q11 ✅ | M3 e D-C di `brief-db-articoli-obsoleto-dal`: chi riscrive i COMMENT? | Tutti qui, nel giro 5; D-C si chiude rimandando qui — **✅ Tid, 2026-11-08: tutti qui; D-C di brief-db-articoli-obsoleto-dal si chiude rimandando qui**. ✅ **Tid, 2026-11-11: «tutti» vale anche fuori `catalogo`**; l'elenco chiuso è in §3.3.1 |
 | Q12 ✅ | D16: le note di catalogo prendono `tx_id` e `user_* text` come le altre? E un articolo con una nota si deve poter disattivare? | Sì alla forma comune; sì alla disattivazione (la nota non è un figlio vivo: va esclusa dal `block_deact`) — **✅ Tid, 2026-11-08: come da proposta** |
 | Q13 ✅ | D22: il fattore della mappatura si legge alla data del documento? | Sì, se Q3 versiona la mappatura; altrimenti la domanda cade — **✅ Tid, 2026-11-08: il fattore si legge alla data del documento** |
 | Q14 ✅ | §2.4: si ritirano gli indici che ripetono un vincolo? | `uq_articoli_componenti_prodotto_componente_from` sì; `ix_uom_tipi_codice_interno_upper` e `ix_artuomop_art_isbase` solo dopo la verifica dei lettori e dei piani — **✅ Tid, 2026-11-08: come da proposta** |
@@ -590,7 +629,7 @@ giro dopo.
 | 2-bis | A + B | **Le tre decisioni del giro BE.** D24 (Q23), D25 (Q24), D26 (Q25); BE21-BE23 (§15) | Nascono dal giro BE del giro 2; tocca anche `vendite` (listini, commesse) |
 | 3 | A + B | **I guard degli articoli.** D4 (Q6) + D21, D5 (R4), D7, D18, D19, D20 (Q10), R5 | Gli oggetti di `catalogo.articoli` |
 | 4 | B | **Le note.** D16 (Q12), R6 | Tabella `note`, partizioni e due viste |
-| 5 | C | **Pulizia e metadati.** §3 (Q11), §2.4 (indici ridondanti, rami irraggiungibili, `uom_tipi.codice` con Q9), §2.5, pgTAP deboli di §2.6, R7 | Quello che nessun giro precedente ha già aperto |
+| 5 | C | **Pulizia e metadati.** §3 (Q11), con D-C di `brief-db-articoli-obsoleto-dal` anche fuori `catalogo` (§3.3.1), §2.4 (indici ridondanti, rami irraggiungibili, `uom_tipi.codice` con Q9), §2.5, pgTAP deboli di §2.6, R7 | Quello che nessun giro precedente ha già aperto |
 
 ## 8. Alla chiusura
 
@@ -1690,7 +1729,7 @@ che queste voci si tolgono quando il DB le dichiara.
     non deve uscire prima del lock: o si toglie la regola 1 a convergenza fatta, o la si tiene finché il lock è
     vivo.
   * La frase di `E_UOM_STORIA_IMMUTABILE` va riscritta sul `%s` che passa `trgfn_lock_columns`, cioè la colonna.
-* **⚠️ Da decidere: il campo.** `trgfn_lock_columns` mette la colonna nel contesto con la chiave `column`, non
+* **✅ Il campo: (a), Tid, 2026-11-11.** `trgfn_lock_columns` mette la colonna nel contesto con la chiave `column`, non
   `campo`. Registra anche `'database'` come area e `TG_NAME` (il trigger) come funzione. Il guard di oggi manda
   `campo`. Spostando la regola, il rifiuto perde il campo che BE21 vuole evidenziare. Le strade:
   * **(a)** `trgfn_lock_columns` aggiunge `campo` (uguale a `column`). Tocca il BB di tutti i lock, e quindi il
@@ -1712,6 +1751,201 @@ che queste voci si tolgono quando il DB le dichiara.
 legge la capability dalla vista, per la mappatura e per la conversione. Finché G1 e G2 non sono applicati, BE21 è
 fattibile solo a metà: il codice, la policy e i test del rifiuto sì; il form e le azioni di riga no. BE22-BE25 non
 dipendono da G1 e G2.
+
+#### 15.11.1 Che cosa è scritto (sessione DB, 2026-11-11; via e numeri di Tid: dal `-69`, opzione a)
+
+Cinque changeSet, `20261111-69` … `-73`; nulla applicato. Il `-68` è dell'altra sessione.
+
+| # | Schema | Che cosa |
+| --- | --- | --- |
+| `-69` | script | `trgfn_lock_columns`: il contesto del rifiuto porta anche `campo` (= la colonna), accanto a `column`, `old_value` e `new_value`. Vale per tutti i lock (opzione a) |
+| `-70` | catalogo | **BB nuovo** `fn_uom_conversione_capability(valido_dal, valido_al)`: `puo_eliminarsi`, `puo_cambiare_attivo`, `puo_chiudersi`, `data_min_chiusura`, `data_default_chiusura` e i due motivi (`UOM_STORIA_IN_VIGORE`, `UOM_STORIA_CHIUSA`). LANGUAGE sql STABLE, `BEGIN ATOMIC`: nelle viste si espande in LATERAL |
+| `-71` | catalogo | `trgfn_uom_guard_storia` senza la regola 1 e senza argomenti; le regole 2 e 3 le giudica il BB. I due trigger rimontati su `UPDATE OF attivo, valido_al OR DELETE` |
+| `-72` | catalogo | `vw_articoli_uom_operativa_dettaglio`: la capability dal BB, le colonne della chiusura in coda. Sulla riga base: `UOM_BASE_NON_ELIMINABILE`, e attivo e fine non si offrono (motivo `UOM_BASE`) |
+| `-73` | catalogo | **Vista nuova** `vw_unita_misura_conversioni_dettaglio`: le colonne della tabella, codice e descrizione delle due unità, la capability del BB. Solo SELECT |
+
+Fuori dai changeSet:
+
+* **`dbops/automation_lock_columns.csv`**: otto righe col codice `E_UOM_STORIA_IMMUTABILE`, le quattro colonne di
+  ogni tabella. Il trigger `trg_<tabella>_a10_lock_columns_upd` lo genera l'automazione.
+* **`config/messaggi_errore.csv`**: la frase di `E_UOM_STORIA_IMMUTABILE` parla della colonna («Il campo %s di
+  una conversione già scritta non si cambia sul posto…»). **`config/codici_errore.csv`**: la nota dice chi lo
+  solleva ora, e il contesto nuovo.
+* **`ui/lista_definizione.csv`**: la lista 22 `catalogo.conversioni_uom` ha `vista_sql =
+  vw_unita_misura_conversioni_dettaglio`.
+
+**Le scelte dentro il giro (da guardare, Tid).**
+
+1. **La riga base nella vista delle mappature**: attivo e fine non si offrono (`UOM_BASE`). La fine la rifiuta già il
+   CHECK della base; l'attivo, dal giro Q34, il guard della base (§15.11.2).
+2. **Il lock vale anche sulla riga base.** Lì unità e fattore erano già fermi (guard della base e CHECK); in più
+   diventano fermi `articolo_id` e `valido_dal`, che nessuno scrive. Sul fattore della base, un UPDATE ora lo
+   rifiuta il lock (`E_UOM_STORIA_IMMUTABILE`), perché i trigger BEFORE scattano prima del CHECK. Il CHECK resta la
+   regola della base, e vale anche per un INSERT.
+3. **Il trigger del guard ora scatta solo su `attivo` e `valido_al`.** Prima scattava su ogni UPDATE, perché la
+   regola 1 guardava tutte le colonne.
+4. **Fra migrate e convergenza** le quattro colonne non le blocca nessuno, su dbdev (vedi l'apply qui sotto). In
+   CI la passata `ci_apply` genera il lock nello stesso giro.
+
+**Le risposte di Tid (2026-11-11).**
+
+* **Scelta 2** e **scelta 3**: restano come sono.
+* **Scelta 4, corretta.** Su dbdev la finestra non c'è: il migrate di Tid (`liquibase5.sh` dalla cartella `db/`)
+  gira senza `--contexts`, quindi esegue anche il `runAlways` `90_end/ci_apply/20260926-10`, che fa `CALL` delle
+  procedure strutturali in ordine di `dbops.processi.ci_ordine` (il lock a 60). La convergenza del lock sta già
+  dentro il migrate, come in CI e sullo scratch (`ci-local.sh --ci-apply`). Il passo 2 dell'apply qui sotto era
+  superfluo. `CALL maintenance.proc_automations_lock_columns_job()` resta il modo di lanciarla da sola, e il job
+  delle 21:00 la ripete. Chi vuole il lock anche da un migrate con contesti ristretti lo scrive come changeSet
+  `90_end` «provision-lock» (il precedente è `20261020-12`).
+* **Scelta 1: sì, nel DB.** Guardando il guard della base per scriverla, la regola si divide in due.
+  * **La fine c'è già.** Il CHECK `chk_articoli_uom_operativa_base_fissa` vuole sulla base `valido_dal` e
+    `valido_al` vuoti: chiudere la base il DB lo rifiuta già (23514). Il `motivo_non_chiudibile = UOM_BASE` della
+    vista lo anticipa. Da correggere solo la frase della scelta 1 («il guard sulla base non dice niente»).
+  * **L'attivo è una domanda di modello: Q34, qui sotto.**
+
+**Q34 — L'attivo della riga base.** ✅ **Tid, 2026-11-11: (a).** Il giro è in §15.11.2. La storia delle decisioni:
+
+* **D7 (giro 2).** La riga base nasceva sempre attiva, e il REQUIRE verso l'articolo rompeva il COMMIT di un
+  articolo creato spento. La correzione: la base nasce attiva o spenta **come l'articolo** (`20261111-01`).
+* **Q31 (giro 2-bis).** Il legame ATTIVO fra mappatura e articolo è in eccezione: «l'articolo si spegne e si
+  riaccende con le sue mappature intatte». Il REQUIRE che aveva motivato D7 non c'è più.
+
+**L'attivo della base non è indifferente.** `catalogo.fn_uom_operativa_alla_data` legge la mappatura con
+`o.attivo IS TRUE`, la base compresa, e da lì `script.trgfn_qta_from_operativa` prende `qty_step`,
+`max_decimals`, `forbid_fraction`. Una base spenta toglie le regole della quantità all'unità base dell'articolo; il
+fattore no, perché `fn_uom_fonti_conversione` lo dà dall'articolo (priorità 0) senza leggere la riga. Quindi oggi
+un articolo nato spento, e poi acceso, ha la base spenta e perde quelle regole finché qualcuno non la riaccende.
+Vietare nel DB di cambiare l'attivo della base, con il seed di oggi, lo renderebbe per sempre. Le due strade
+coerenti:
+
+* **(a), proposta.** La base è sempre attiva: il seed torna a scrivere `attivo = TRUE` (D7 non serve più dopo
+  Q31), il guard della base rifiuta un UPDATE di `attivo` (`UPDATE OF … attivo`), e le basi spente oggi si
+  riaccendono con un backfill. È la stessa idea della fine: la base non ha stati, vale 1 sempre.
+* **(b).** La base segue l'articolo: un trigger sull'articolo copia `attivo` sulla sua base, e a mano non si
+  cambia. Le regole della quantità sull'unità base seguono l'accensione dell'articolo. Un pezzo di
+  propagazione in più, e una riga che si spegne per conto d'altri: la mappatura spenta oggi vuol dire «non vale»,
+  e l'articolo spento lo fermano già i REQUIRE dei documenti (Q31).
+
+**Le prove** (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in ordine di numero, con le
+`preConditions` come asserzioni, le righe di seed nuove e la convergenza simulata con
+`dbops.fn_run_automations_lock_columns('SCHEDULED', ARRAY['catalogo'], false)`, in `BEGIN … ROLLBACK`).
+
+* **Compilazione.** I cinque changeSet compilano e le `preConditions` passano. La convergenza crea solo i due
+  trigger attesi: `trg_articoli_uom_operativa_a10_lock_columns_upd` e
+  `trg_unita_misura_conversioni_a10_lock_columns_upd`, coi quattro argomenti ciascuno. I rollback, in ordine
+  inverso, rimettono i corpi vivi (il guard con `TG_NARGS`, il lock senza `campo`, il BB tolto). Lo scratch è
+  rimasto intatto.
+* **pgTAP nuovo** `catalogo/test-uom-conversione-capability-v1`: 16/16. Le risposte del BB sono costruite sulle
+  date; le due viste dicono quello che dice il BB; riga per riga, il guard fa quello che il BB dice
+  (cancellazione, spegnimento, chiusura alla data minima e un giorno prima); la lista legge la vista con tutte le
+  sue colonne.
+* **Riallineati**, con nota datata:
+  * `catalogo/test-uom-storia-v1`: 24/24 (21 + 3 nuovi: il campo del rifiuto, le otto colonne in
+    `vw_non_editable_fields`, il montaggio del guard). Senza il giro, i tre nuovi sono rossi;
+  * `catalogo/test-vw-articoli-uom-operativa-dettaglio-capability-v1`: 8/8. La riga secondaria senza inizio era
+    «eliminabile» ed è in vigore da sempre: ora comincia oggi, e una terza riga in vigore prova il rifiuto;
+  * `catalogo/test-uom-fattore-e-regole-v1`: 31/31. Il test 19 (fattore della base → CHECK) prova il CHECK con
+    l'override di manutenzione del lock acceso, perché senza il lock parlerebbe prima (scelta 2).
+* **Regressione**, ogni file senza e con il giro, identica salvo i tre file qui sopra: in catalogo
+  `test-fn-get-uom`, `test-articoli-vincoli-note-uom-overlap`, `test-articoli-componenti-guard-attivo-composito`,
+  `test-articoli-seed-uom-base-lock`, `test-uom-tipi-global-conversioni-v1`, `test-articoli-ammessi-picker-v1`,
+  `test-fn-riattiva-articolo-v1`; in dbops `test-lock-columns-convergenza`,
+  `test-non-editable-fields-dal-lock-vivo-v1`, `test-punti-canale-campo-v1`,
+  `test-marcatori-automazione-senza-esecutore-v1`, `test-anti-overlap-enforcement-gate-v1`,
+  `test-riferimenti-morti-v1`; in script `test-trgfn-guard-date-validita-v1`,
+  `test-catalogo-messaggi-errore-completo`; in ui `test-lista-colonna-campo-sorgente-in-vista-v1`,
+  `test-fn-resolve-lista-config`, `test-ui-nell-ambito-v1`; in vendite `test-listino-uom-periodo-v1`,
+  `test-commesse-attivita-fattore-alla-data-v1`. Tutti verdi.
+* **Guardrail** (pre-commit sui file del giro): verdi.
+
+**Doc.**
+
+* Pagine `manual/` nuove: `catalogo/fn_uom_conversione_capability`, `catalogo/vw_unita_misura_conversioni_dettaglio`.
+* Riallineate: `catalogo/trgfn_uom_guard_storia`, `catalogo/vw_articoli_uom_operativa_dettaglio`,
+  `catalogo/articoli_uom_operativa`, `catalogo/unita_misura_conversioni`, `script/trgfn_lock_columns` (solo il
+  contesto e la data).
+* Da rigenerare dopo l'apply: le schede auto-generate.
+* **Debito documentale notato, fuori giro**: la pagina `manual/` di `script.trgfn_lock_columns` è nel formato
+  vecchio (niente «Vedi anche» allo standard, blocco `sql` d'esempio, slogan in coda). Non l'ho riscritta: non è di
+  catalogo.
+
+**Apply (Tid).**
+
+1. Il migrate su dbdev e scratch.
+2. **Subito dopo**, la convergenza del lock: `CALL maintenance.proc_automations_lock_columns_job()`, oppure il
+   job delle 21:00. Fino ad allora le quattro colonne di ogni tabella non le blocca nessuno, e sono rossi
+   `test-uom-storia-v1` (test 1-4, 14, 22, 23) e `test-lock-columns-convergenza` (il registro chiede due lock che
+   non ci sono).
+3. I pgTAP come app.
+4. Il commit su richiesta.
+
+**Esito (2026-11-11).** Tid ha applicato il giro G1-G2 su dbdev e scratch, con la convergenza del lock subito dopo,
+e i pgTAP come app sono verdi. Il commit è su `dev/db-tid`, coi file del giro e questo brief.
+
+**Ricadute su BE e FE, a giro applicato** (aggiornano BE21, §15.4 e §15.9):
+
+| # | Che cosa |
+| --- | --- |
+| BE21-a | `_NON_EDITABLE_DB_GAPS` (`catalogo_service.py:113`) si ritira: le colonne di mappatura e conversione arrivano da `vw_non_editable_fields`. Il rifiuto `E_UOM_STORIA_IMMUTABILE` porta il campo (`COLUMN`) |
+| BE21-b | Le unità di un articolo: le azioni di riga leggono `puo_eliminarsi`, `puo_cambiare_attivo`, `puo_chiudersi`, `data_min_chiusura`, `data_default_chiusura` e i motivi dalla vista. Il motivo nuovo `UOM_STORIA_IN_VIGORE` (e `UOM_STORIA_CHIUSA`, `UOM_BASE`) va nei locales |
+| BE21-c | Le conversioni generali: il repository (`list_conversioni`, `catalogo_repository.py:789`) legge `catalogo.vw_unita_misura_conversioni_dettaglio`, che è ora la `vista_sql` della lista 22, con le stesse azioni di riga |
+| BE21-d | Su tutti i codici di lock il contesto ha ora anche `campo`: se il backend ricavava il campo da `column`, quel ripiego si può togliere |
+
+#### 15.11.2 Il giro Q34: la riga base sempre attiva (2026-11-11)
+
+**Che cosa è scritto.**
+
+| # | Livello | Che cosa |
+| --- | --- | --- |
+| `20_code/catalogo/20261111-74` | seed | `trgfn_articoli_seed_uom_base`: la riga base nasce con `attivo = TRUE`, anche sotto un articolo spento. Annulla la correzione di D7, che Q31 ha reso inutile |
+| `20_code/catalogo/20261111-75` | guard | `trgfn_articoli_uom_operativa_guard_base`: rifiuta lo spegnimento della base e una base nuova spenta (`E_UOM_RIGA_BASE_IMMUTABILE`, campo `attivo`). La riaccensione passa. Il trigger si rimonta con `attivo` in `UPDATE OF` |
+| `80_data/changelog/20261111-76` | backfill | Le basi spente si riaccendono. Passa il guard, perché riaccende. Idempotente; la `preCondition` vuole il trigger rimontato da `-75` |
+
+Fuori dai changeSet: `config/messaggi_errore.csv` (la frase dice «non si cambia, non si spegne e non si toglie») e
+`config/codici_errore.csv` (la nota col campo `attivo`).
+
+**I pgTAP.**
+
+* `catalogo/test-uom-fattore-e-regole-v1` (plan 34): 25b ora vuole la base attiva sotto l'articolo spento; nuovi 25c
+  (la base non si spegne), 25d (il campo è `attivo`), 25e (una base nuova spenta è rifiutata). I test 20-22 seguono la
+  frase nuova.
+* `catalogo/test-articoli-ammessi-picker-v1`, `catalogo/test-articoli-componenti-guard-attivo-composito`: spegnevano la
+  riga base prima dell'articolo, l'ordine «figli prima del padre» di prima di Q31. Il passo è tolto: dopo Q31 non serve,
+  dopo Q34 fallirebbe.
+* `catalogo/test-fn-get-uom` (test 8): spegneva tutte le mappature dell'articolo, la base compresa; ora solo quelle che
+  non sono la base, che è ciò che il test vuole provare.
+
+**Le prove** (scratch `zeroerp_ruoli`, come owner, SQL estratto dai YAML, in `BEGIN … ROLLBACK`).
+
+* I tre changeSet compilano e le `preConditions` passano; il trigger rimontato ha `attivo` in `UPDATE OF`.
+* Una base spenta a mano (trigger disattivato nella transazione) si riaccende con l'UPDATE del backfill: il guard la
+  lascia passare. I rollback, in ordine inverso, rimettono il corpo di D7 e il trigger di prima.
+* Regressione sui 21 pgTAP che toccano `articoli_uom_operativa` o la riga base: identici senza e con il giro, tutti
+  verdi. Le eccezioni sono `test-uom-fattore-e-regole-v1`, rosso senza il giro (7 test) perché è già scritto sul modello
+  nuovo e verde con il giro, e `vendite/test-refactor-qta-operativa-preventivi-v1`, rosso **uguale** senza e con (5
+  test, dal 6): la sua fixture cerca fra i dati dello scratch un preventivo DRAFT e un articolo, e non li trova. Non è
+  di questo giro.
+
+**Apply (Tid).** Il migrate su dbdev e scratch, i pgTAP come app, il commit su richiesta. Nessuna convergenza a parte.
+
+**Esito (2026-11-11).** Tid ha applicato il giro Q34 su dbdev e scratch (`-74`, `-75`, `-76` in `databasechangelog` di
+`zeroerp` e `zeroerp_ruoli`), e i pgTAP come app sono verdi.
+
+**La nota del BE del 2026-11-11** («pulsanti che il DB rifiuta») la chiude già il giro G1-G2, applicato:
+
+* `puo_eliminarsi` e `motivo_non_eliminabile` seguono la regola della storia (`UOM_STORIA_IN_VIGORE`) in
+  `vw_articoli_uom_operativa_dettaglio` (`-72`);
+* `puo_cambiare_attivo`, `puo_chiudersi`, `data_min_chiusura`, `data_default_chiusura`, `motivo_non_chiudibile` ci sono
+  nella vista della mappatura e nella vista nuova delle conversioni, `vw_unita_misura_conversioni_dettaglio` (`-73`);
+* fattore, unità, articolo e inizio li dichiara `vw_non_editable_fields` (lock di colonna, `-69` e il registro):
+  `_NON_EDITABLE_DB_GAPS` si ritira. La regola della data **non** è in `non_editable_fields`, come chiede la nota.
+
+Restano le voci BE21-a … d (§15.11.1), più due:
+
+| # | Che cosa |
+| --- | --- |
+| BE21-e | Anche il **drawer** di una conversione (il dettaglio, non solo la lista) legge `vw_unita_misura_conversioni_dettaglio`, per spegnere l'interruttore attivo con il motivo |
+| BE21-f | Riga base: un PATCH di `attivo` ora lo rifiuta il DB (`E_UOM_RIGA_BASE_IMMUTABILE`, campo `attivo`); il form la legge già da `puo_cambiare_attivo = false`. La frase di ripiego in `error_messages_fallback.py` può seguire quella nuova («non si cambia, non si spegne e non si toglie») |
 
 ### 14.10 Giro BE del giro 3 (team BE, 2026-11-10, da committare su `dev/backend-tid`)
 
@@ -1754,3 +1988,74 @@ scrittura oltre alla fine. Se servisse annotare un legame, è un verbo nuovo, no
 Questo brief ha due sezioni numerate «§14», «Giro 2-bis» e «Giro 3». Ognuna definisce un BE19 e un BE20 con un
 significato diverso (D24/D25 nella prima, la chiusura coi prezzi e l'IVA differita nella seconda), e la prima ha anche
 un BE21. Chi legge «BE20 fatto» non sa quale dei due. Proposta: rinumerare il giro 2-bis (§15, e BE22-BE24).
+
+## 16. Giro 4 — le note di catalogo (D16, R6, Q12), 2026-11-11
+
+Via di Tid il 2026-11-11, numeri dal `20261111-77`.
+
+### 16.1 Che cosa è scritto
+
+| # | Fase | Che cosa |
+| --- | --- | --- |
+| `00_schema/catalogo/20261111-77` | DDL | `catalogo.note`: `chk_note_testo_non_vuoto` (lo stesso di vendite e acquisti), `chk_note_catalogo_ancora_documento` (`anchor_tipo = 'DOCUMENTO' AND target_riga_id IS NULL`), `user_insert` e `user_update` a `text`, `tx_id uuid`, con i COMMENT. Sul padre, scendono sulle due partizioni. Toglie le due viste delle note, che leggono `user_*` |
+| `20_code/catalogo/20261111-78` | vista | **R6.** `catalogo.vw_note`: la proiezione della nota (16 colonne `nota_*`, 3 `stile_*`, 4 `lingua_*`) su `catalogo.note`, scritta una volta. Solo SELECT |
+| `20_code/catalogo/20261111-79` | vista | `vw_articoli_note` sopra `vw_note` per `nota_target_tipo = 'ARTICOLO'`: stesse colonne, stesso ordine, GRANT di prima |
+| `20_code/catalogo/20261111-80` | vista | `vw_articoli_componenti_note` sopra `vw_note` per `'ARTICOLO_COMPONENTE'`: stesse colonne, stesso ordine, GRANT di prima |
+
+Fuori dai changeSet: **`dbops/automazione_attivo_eccezioni.csv`**, due righe (`note_articoli.target_id`,
+`note_articoli_componenti.target_id`) col motivo di Q12. La convergenza dell'automazione ATTIVO, che gira dentro il
+migrate, toglie i due block su articolo e legame e i due require sulle partizioni.
+
+### 16.2 Le scelte dentro il giro (da guardare, Tid)
+
+1. **Il CHECK dell'àncora è nuovo, sul padre.** `chk_note_anchor_tipo` resta com'è, perché è comune alle note di tutti
+   gli schemi; il vincolo nuovo dice in più che a catalogo l'àncora è solo DOCUMENTO. Le colonne `anchor_tipo` e
+   `target_riga_id` restano, per la forma comune.
+2. **`posizione` non si restringe.** In vendite, con l'àncora DOCUMENTO la posizione è HEADER, FOOTER o SEZIONE; qui
+   `BEFORE` e `AFTER` dicono dove va la nota dell'articolo rispetto alla riga del documento in cui l'articolo compare.
+3. **Con l'eccezione se ne va anche il require**, non solo il block: una nota si scrive anche su un articolo spento.
+   È la forma di Q31, e l'eccezione toglie i due insieme.
+4. **`vw_note` non espone `tx_id`**: è correlazione tecnica con l'audit. Le due viste vecchie non l'avevano.
+5. **Fuori dal giro: il codice senza partizione** (D16, quarto punto). La FK verso `config.tipi_entita` ammette
+   ogni codice, e un codice senza partizione fallisce con l'errore di routing di PostgreSQL. La correzione decisa per
+   D16 non lo copre; vale anche per vendite e acquisti, quindi non è di questo brief. Resta nel «Che cosa oggi non
+   copre» della pagina delle partizioni.
+
+### 16.3 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in `BEGIN … ROLLBACK`)
+
+* **Compilazione.** I quattro changeSet compilano e le `preConditions` passano. Con le due righe di eccezione e la
+  convergenza simulata (`CALL maintenance.proc_automations_tx_id_job()` e `…_attivo_job()`) nascono
+  `trg_note_articoli_gen_tx_id_ins_upd` e `trg_note_articoli_componenti_gen_tx_id_ins_upd`, e se ne vanno i due block
+  e i due require. I tipi e i CHECK sulle partizioni sono quelli attesi.
+* **Rollback**, in ordine inverso: le due viste tornano con lo stesso `pg_get_viewdef` (md5 uguale), `user_*` torna
+  `varchar(80)`. I trigger tolti dall'eccezione non tornano: per riaverli si toglie la riga dal CSV e si riconverge.
+* **La partizione si sceglie ancora**: l'EXPLAIN di `vw_articoli_note` filtrato per articolo legge solo
+  `note_articoli` (su dbdev, dentro una transazione annullata).
+* **Le righe** (fatto datato, non motivo): nessuna nota di dbdev viola i due CHECK (11 note, 2026-11-11).
+* **pgTAP nuovo** `catalogo/test-note-catalogo-forma-v1` (plan 12): testo vuoto e àncora RIGA rifiutati, la forma
+  delle colonne, `tx_id` scritto, l'articolo con una nota che si spegne, la nota su un articolo spento, nessun block
+  né require, le due viste sopra `vw_note` con le colonne di prima.
+* **Regressione** sui 30 pgTAP che nominano le note di catalogo, le eccezioni ATTIVO o `config.tipi_entita`: identici
+  senza e con il giro. Due erano rossi già prima, uguali, e non sono di questo giro: `script/test-vw-giornale-entita`
+  muore in fixture (`p_tipo_doc_fiscale_id obbligatorio`), `ui/test-lista-definizione-perimetro-emittente-v1` test 4
+  (riceve il CHECK `chk_ui_lista_definizione_perimetro_coerente` invece del guard, P0001).
+
+### 16.4 Apply e ricadute
+
+**Apply (Tid).** Il migrate su dbdev e scratch: la convergenza di `TX_ID` e `ATTIVO` è dentro il migrate. Poi i pgTAP
+come app, e il commit su richiesta, insieme al giro Q34.
+
+**Ricadute su BE e FE:**
+
+| # | Che cosa |
+| --- | --- |
+| BE26 | Una nota di catalogo senza testo, o ancorata a una riga, ora la rifiuta il DB con un 23514 grezzo. Il form delle note di articolo e di legame non offre l'àncora RIGA e chiede il testo; il ripiego del 23514 la dice in parole |
+| BE27 | Un articolo o un legame con delle note ora si spegne, e su un oggetto spento una nota si scrive: se il FE avvisava «togli prima le note» o bloccava la nota su un oggetto spento, quel ramo si toglie |
+| BE28 | `nota_user_insert` e `nota_user_update` delle due viste sono ora `text`: nessuna ricaduta attesa, da verificare nei serializer |
+
+**Esito (2026-11-11).** Tid ha applicato il giro 4 su dbdev e scratch (`-77` … `-80` in `databasechangelog` di
+`zeroerp` e `zeroerp_ruoli`), e i pgTAP come app sono verdi. Su tutti e due i database la convergenza ha tolto i block
+e i require fra le note e i loro bersagli (nessun trigger rimasto).
+
+**Doc.** Riallineate le pagine `manual/` di `note`, delle due partizioni (solo la data), delle due viste e il blocco
+comune `_note-partizioni.md`; nuova `vw_note.md`. Le schede auto-generate nascono alla rigenerazione dopo l'apply.

@@ -3,9 +3,10 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: la mappatura di un articolo e la conversione generale non riscrivono il
---   passato (catalogo.trgfn_uom_guard_storia).
+--   passato: le colonne della conversione le blocca script.trgfn_lock_columns
+--   (dbops.automation_lock_columns), il resto catalogo.trgfn_uom_guard_storia.
 --
--- Elenco test (plan 21):
+-- Elenco test (plan 24):
 --  1) mappatura in vigore: il fattore non si cambia -> E_UOM_STORIA_IMMUTABILE
 --  2) mappatura in vigore: l'unita' non si cambia -> E_UOM_STORIA_IMMUTABILE
 --  3) mappatura in vigore: l'inizio non si sposta -> E_UOM_STORIA_IMMUTABILE
@@ -27,11 +28,19 @@
 -- 19) un articolo con mappature che hanno giorni passati si spegne (Q31)
 -- 20) un'unita' con mappature che hanno giorni passati si spegne (Q31)
 -- 21) un'unita' con conversioni generali che hanno giorni passati si spegne (Q31)
+-- 22) il rifiuto del lock porta il campo (la colonna) da evidenziare (Q32, opzione a)
+-- 23) le otto colonne della conversione sono in dbops.vw_non_editable_fields, col codice
+-- 24) il guard della storia non riceve argomenti e scatta su UPDATE OF attivo, valido_al
 --
 -- Scopo:
 --  - D24 (Q23, Q26, Q28) e D27 (Q29): prima fattore, unita', inizio e attivo si
 --    cambiavano sul posto e la riga si cancellava, e catalogo.fn_get_uom_factor
 --    rispondeva il valore nuovo anche per le date passate.
+--  - G1 (Q32, 2026-11-11): i test 1-4 e 14 li fa passare il lock generato
+--    dall'automazione LOCK_COLUMNS, non piu' il guard. ⚠️ Su un database di
+--    sviluppo sono rossi fra il migrate e la convergenza dell'automazione
+--    (job delle 21:00 o CALL a mano): il trigger non c'e' ancora. In CI lo
+--    genera la passata ci_apply.
 --
 -- Mondo: unita', conversioni e articoli costruiti; le tipologie per codice_interno.
 -- ------------------------------------------------------------
@@ -42,7 +51,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(21);
+SELECT plan(24);
 
 CREATE OR REPLACE FUNCTION pg_temp.oggi() RETURNS date LANGUAGE sql STABLE AS
 $fx$ SELECT script.fn_data_operativa() $fx$;
@@ -246,6 +255,59 @@ SELECT lives_ok(
 SELECT lives_ok(
     format('UPDATE catalogo.unita_misura SET attivo = false WHERE id = %s', pg_temp.u('KG')),
     '21) un''unita'' con conversioni generali che hanno giorni passati si spegne');
+
+-- ============================================================
+-- Il lock delle colonne (G1, Q32, 2026-11-11)
+-- ============================================================
+
+-- Scopo: la colonna che il rifiuto chiede di evidenziare (COLUMN del rifiuto,
+--   che script.fn_log_and_raise_error prende dalla chiave campo del contesto).
+CREATE OR REPLACE FUNCTION pg_temp.campo_del_rifiuto(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $fx$
+DECLARE v_col text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_col = COLUMN_NAME;
+    RETURN v_col;
+END $fx$;
+
+-- 22
+SELECT is(
+    pg_temp.campo_del_rifiuto(format('UPDATE catalogo.articoli_uom_operativa SET factor_to_base = 7 WHERE id = %s',
+                                     pg_temp.m('BOX'))),
+    'factor_to_base',
+    '22) il rifiuto del lock porta il campo da evidenziare');
+
+-- 23
+SELECT set_eq(
+    $$SELECT target_table::text || '.' || column_name::text || '=' || error_code::text
+        FROM dbops.vw_non_editable_fields
+       WHERE target_schema = 'catalogo'
+         AND target_table IN ('articoli_uom_operativa', 'unita_misura_conversioni')
+         AND error_code = 'E_UOM_STORIA_IMMUTABILE'$$,
+    $$VALUES ('articoli_uom_operativa.articolo_id=E_UOM_STORIA_IMMUTABILE'),
+             ('articoli_uom_operativa.uom_id=E_UOM_STORIA_IMMUTABILE'),
+             ('articoli_uom_operativa.factor_to_base=E_UOM_STORIA_IMMUTABILE'),
+             ('articoli_uom_operativa.valido_dal=E_UOM_STORIA_IMMUTABILE'),
+             ('unita_misura_conversioni.uom_from_id=E_UOM_STORIA_IMMUTABILE'),
+             ('unita_misura_conversioni.uom_to_id=E_UOM_STORIA_IMMUTABILE'),
+             ('unita_misura_conversioni.fattore=E_UOM_STORIA_IMMUTABILE'),
+             ('unita_misura_conversioni.valido_dal=E_UOM_STORIA_IMMUTABILE')$$,
+    '23) le otto colonne della conversione sono nel form come non modificabili, col codice');
+
+-- 24
+SELECT is(
+    (SELECT string_agg(c.relname || ':' || t.tgnargs || ':'
+                       || (SELECT string_agg(a.attname, ',' ORDER BY a.attname)
+                             FROM unnest(t.tgattr::smallint[]) k(n)
+                             JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attnum = k.n),
+                       ' ' ORDER BY c.relname)
+       FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+      WHERE t.tgfoid = 'catalogo.trgfn_uom_guard_storia()'::regprocedure),
+    'articoli_uom_operativa:0:attivo,valido_al unita_misura_conversioni:0:attivo,valido_al',
+    '24) il guard della storia non riceve argomenti e scatta su UPDATE OF attivo, valido_al');
 
 SELECT * FROM finish();
 ROLLBACK;
