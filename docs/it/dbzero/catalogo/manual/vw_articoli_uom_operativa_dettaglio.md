@@ -56,9 +56,9 @@ anticipo che cosa il database lascia fare oggi, con lo stesso giudizio del guard
 
 Il motivo c'è solo quando il blocco c'è, come nella vista della distinta.
 
-**La riga base** non si cancella (`UOM_BASE_NON_ELIMINABILE`, dal guard della riga base), e attivo
-e fine non si offrono (motivo `UOM_BASE`): la base vale 1 a ogni data, e chiuderla o spegnerla non
-cambierebbe niente.
+**La riga base** non si cancella (`UOM_BASE_NON_ELIMINABILE`), e non si spegne né si chiude
+(motivo `UOM_BASE`): la base vale 1 a ogni data ed è sempre attiva. Lo spegnimento lo rifiuta il
+guard della riga base, la chiusura il CHECK della tabella.
 
 Le colonne che non si cambiano mai (unità, articolo, fattore, inizio) non sono qui: il form le
 legge fra i campi non modificabili, perché le blocca il lock di colonna.

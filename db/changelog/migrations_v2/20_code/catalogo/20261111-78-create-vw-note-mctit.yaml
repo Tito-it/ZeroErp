@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.vw_note: la proiezione di una nota di catalogo, scritta una volta (R6).
+#
+#   vw_articoli_note e vw_articoli_componenti_note avevano le stesse 23 colonne di nota, stile
+#   e lingua scritte due volte: un ritocco su una sola le faceva divergere senza errore. Qui la
+#   proiezione sta una volta, sul padre; le due viste (-79, -80) la leggono per il loro
+#   target_tipo e aggiungono i nomi del loro bersaglio. script.fn_get_note non serve: vuole un
+#   target_id bigint, e le note di catalogo hanno un uuid.
+#   Il filtro su target_tipo scende sul padre e sceglie la partizione.
+#   Non filtra niente: le note nascoste e quelle di sola stampa ci sono.
+#   tx_id non c'e': e' correlazione tecnica con l'audit, non un dato della nota.
+#   Brief: brief-db-revisione-catalogo, giro 4 (R6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-78-create-vw-note-mctit.yaml
+
+  - changeSet:
+      id: 20261111-78-create-vw-note
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Vista base catalogo.vw_note: la proiezione di una nota di catalogo, con stile e lingua (R6).
+        Brief: brief-db-revisione-catalogo, giro 4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid = to_regclass('catalogo.vw_note')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW catalogo.vw_note AS
+               SELECT n.id AS nota_id,
+                  n.target_tipo AS nota_target_tipo,
+                  n.target_id AS nota_target_id,
+                  n.target_riga_id AS nota_target_riga_id,
+                  n.anchor_tipo AS nota_anchor_tipo,
+                  n.posizione AS nota_posizione,
+                  n.seq AS nota_seq,
+                  n.testo AS nota_testo,
+                  n.testo_md AS nota_testo_md,
+                  n.visibile AS nota_visibile,
+                  n.solo_stampa AS nota_solo_stampa,
+                  n.meta AS nota_meta,
+                  n.data_insert AS nota_data_insert,
+                  n.user_insert AS nota_user_insert,
+                  n.data_update AS nota_data_update,
+                  n.user_update AS nota_user_update,
+                  ns.id AS stile_id,
+                  ns.codice AS stile_codice,
+                  ns.descrizione AS stile_descrizione,
+                  l.id AS lingua_id,
+                  l.codice_iso AS lingua_codice_iso,
+                  l.descrizione AS lingua_descrizione,
+                  l.descrizione_locale AS lingua_descrizione_locale
+                 FROM catalogo.note n
+                   LEFT JOIN config.note_stili ns ON ns.id = n.id_stile
+                   LEFT JOIN config.lingue l ON l.id = n.id_lingua;
+
+              COMMENT ON VIEW catalogo.vw_note IS
+                'La proiezione di una nota di catalogo, una riga per nota di ogni partizione di catalogo.note, con la decodifica dello stile (config.note_stili) e della lingua (config.lingue). Non filtra: le note nascoste e quelle di sola stampa ci sono. E'' la sede unica delle colonne di nota: catalogo.vw_articoli_note e catalogo.vw_articoli_componenti_note la leggono per il loro nota_target_tipo. Si legge, non si scrive: le note si scrivono sul padre o sulla partizione.';
+
+              GRANT SELECT ON catalogo.vw_note TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS catalogo.vw_note;

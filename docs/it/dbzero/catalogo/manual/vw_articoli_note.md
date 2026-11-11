@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_note`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,7 @@
 >
 > Approfondimento viste:
 >
+> * [catalogo.vw_note](/dbzero/catalogo/views/vw_note) — la proiezione della nota che questa vista legge
 > * [catalogo.vw_articoli_componenti_note](/dbzero/catalogo/views/vw_articoli_componenti_note) — la stessa lettura per le note dei legami di distinta
 
 ---
@@ -29,7 +30,9 @@ Si legge per mostrare o stampare le note di un articolo; si scrive sulla partizi
 ### Mostra ogni nota, anche quelle da non mostrare
 
 La vista non filtra: espone le note visibili e quelle nascoste, quelle di sola stampa e le
-altre, e anche le note ancorate a `RIGA`, che su un articolo non hanno significato. Scegliere
+altre. Le colonne della nota, dello stile e della lingua vengono da
+[catalogo.vw_note](/dbzero/catalogo/views/vw_note), per le note con `target_tipo` `ARTICOLO`.
+Scegliere
 quali note far vedere, e in che ordine, tocca a chi legge, con i flag `visibile` e
 `solo_stampa` e con posizione e sequenza della nota.
 
@@ -39,9 +42,6 @@ Un articolo senza note non compare.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **È una copia.** La proiezione della nota (colonne della nota, stile e lingua) è la stessa di
-  [catalogo.vw_articoli_componenti_note](/dbzero/catalogo/views/vw_articoli_componenti_note),
-  scritta due volte: un ritocco fatto su una sola delle due le fa divergere senza errore.
 * **Non passa dalla lettura comune.** Le note dei documenti si leggono con
   [script.fn_get_note](/dbzero/script/funzioni/fn_get_note), che qui non si può usare perché
   vuole un bersaglio `bigint`.
@@ -52,6 +52,17 @@ Un articolo senza note non compare.
 
 * `db/pgtap/catalogo/test-vw-articoli-note.sql` — su un articolo costruito dal test, la nota
   compare nella vista con lo stile e la lingua giusti.
+* `db/pgtap/catalogo/test-note-catalogo-forma-v1.sql` — la vista mostra le note dell'articolo
+  come la vista base, con le colonne di prima nello stesso ordine.
+
+---
+
+### Note di migrazione
+
+* 2026-01-14 — nasce.
+* 2026-11-11 — legge la proiezione comune [catalogo.vw_note](/dbzero/catalogo/views/vw_note),
+  con le stesse colonne; `nota_user_insert` e `nota_user_update` sono testo
+  (brief-db-revisione-catalogo, giro 4).
 
 ---
 

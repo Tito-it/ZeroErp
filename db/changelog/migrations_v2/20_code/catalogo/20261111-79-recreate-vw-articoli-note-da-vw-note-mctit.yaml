@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.vw_articoli_note torna sopra la vista base delle note (R6).
+#
+#   Tolta da 20261111-77 (user_* cambia tipo). Stesse colonne, stesso ordine e stessi nomi di
+#   prima; le colonne di nota vengono da catalogo.vw_note (-78) per nota_target_tipo =
+#   'ARTICOLO', il confine della partizione note_articoli. user_* ora sono text. Le note
+#   ancorate a RIGA non ci sono piu': il CHECK di -77 non le ammette.
+#   GRANT come prima (SELECT, INSERT, UPDATE, DELETE a zeroerp_app; la vista non e'
+#   aggiornabile, le scritture vanno sulla partizione).
+#   Brief: brief-db-revisione-catalogo, giro 4 (R6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-79-recreate-vw-articoli-note-da-vw-note-mctit.yaml
+
+  - changeSet:
+      id: 20261111-79-recreate-vw-articoli-note-da-vw-note
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.vw_articoli_note sopra catalogo.vw_note, stesse colonne. Brief: brief-db-revisione-catalogo, giro 4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class
+               WHERE oid IN (to_regclass('catalogo.vw_note'))
+                 AND to_regclass('catalogo.vw_articoli_note') IS NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW catalogo.vw_articoli_note AS
+               SELECT a.id AS articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  n.nota_id,
+                  n.nota_target_tipo,
+                  n.nota_target_id,
+                  n.nota_target_riga_id,
+                  n.nota_anchor_tipo,
+                  n.nota_posizione,
+                  n.nota_seq,
+                  n.nota_testo,
+                  n.nota_testo_md,
+                  n.nota_visibile,
+                  n.nota_solo_stampa,
+                  n.nota_meta,
+                  n.nota_data_insert,
+                  n.nota_user_insert,
+                  n.nota_data_update,
+                  n.nota_user_update,
+                  n.stile_id,
+                  n.stile_codice,
+                  n.stile_descrizione,
+                  n.lingua_id,
+                  n.lingua_codice_iso,
+                  n.lingua_descrizione,
+                  n.lingua_descrizione_locale
+                 FROM catalogo.vw_note n
+                   JOIN catalogo.articoli a ON a.id = n.nota_target_id
+                WHERE n.nota_target_tipo = 'ARTICOLO';
+
+              COMMENT ON VIEW catalogo.vw_articoli_note IS
+                'Le note degli articoli, una riga per nota, col codice e la descrizione dell''articolo annotato e la decodifica dello stile e della lingua. Le colonne di nota vengono da catalogo.vw_note (nota_target_tipo ARTICOLO, la partizione catalogo.note_articoli). Non filtra le note nascoste ne'' quelle di sola stampa. Si legge; le note si scrivono sulla partizione. Rev 2026-11-11 (20261111-77/-79, brief-db-revisione-catalogo giro 4, R6): sopra la vista base, stesse colonne; user_* text.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_note TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS catalogo.vw_articoli_note;

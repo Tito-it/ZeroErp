@@ -15,11 +15,12 @@
 --     cambio d'unita' che rilegge il fattore; nessun DEFAULT 1 sul fattore;
 --   - catalogo.unita_misura_conversioni: una conversione per coppia, stessa
 --     tipologia; catalogo.unita_misura: tipologia in uso, calendario = TEMPO;
---   - l'articolo che nasce spento ha la riga base spenta.
+--   - l'articolo che nasce spento ha la riga base attiva, e la base non si
+--     spegne (Q34 a, 2026-11-11).
 -- Brief: brief-db-revisione-catalogo, giro 2 (D2, D3, D6, D7, D8, D12, D13,
--- D14, D17, D22, D23; Q3, Q4, Q7, Q13).
+-- D14, D17, D22, D23; Q3, Q4, Q7, Q13); §15.11.1, Q34.
 --
--- Elenco test (plan 31; il 25 sono due asserzioni):
+-- Elenco test (plan 34; il 25 sono cinque asserzioni):
 --  1)  fn_get_uom_factor ha la data in coda; la firma a due argomenti non c'e'
 --  2)  rounding_mode e require_lot ritirate (tabella e vista)
 --  3)  il parametro del default di rounding_mode e' ritirato
@@ -44,7 +45,8 @@
 --  22) riga base nuova su un'altra unita': rifiutata
 --  23) riga non base senza giorni passati: si cancella
 --  24) la cancellazione dell'articolo porta via la riga base
---  25) articolo creato spento: nasce, con la riga base spenta
+--  25) articolo creato spento: nasce, con la riga base attiva; la base non si
+--      spegne (campo attivo), e non ne nasce una spenta
 --  26) conversione fra tipologie diverse: E_UOM_CONVERSIONE_TIPO_DIVERSO
 --  27) tipologia di un'unita' in una conversione: E_UOM_TIPO_IN_USO
 --  28) tipologia di un'unita' senza conversioni: si cambia
@@ -62,7 +64,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(31);
+SELECT plan(34);
 
 -- Le tipologie, per codice_interno (bloccato).
 CREATE TEMP TABLE _t_tipo AS
@@ -258,19 +260,19 @@ SELECT throws_ok(
 SELECT throws_like(
     $$ UPDATE catalogo.articoli_uom_operativa SET uom_id = (SELECT kg FROM _t_u)
         WHERE articolo_id = (SELECT b FROM _t_art) AND is_base $$,
-    '%non si cambia e non si toglie%',
+    '%non si cambia, non si spegne e non si toglie%',
     '20) riga base spostata su un''altra unita'': E_UOM_RIGA_BASE_IMMUTABILE');
 
 SELECT throws_like(
     $$ DELETE FROM catalogo.articoli_uom_operativa
         WHERE articolo_id = (SELECT b FROM _t_art) AND is_base $$,
-    '%non si cambia e non si toglie%',
+    '%non si cambia, non si spegne e non si toglie%',
     '21) riga base cancellata: E_UOM_RIGA_BASE_IMMUTABILE');
 
 SELECT throws_like(
     $$ INSERT INTO catalogo.articoli_uom_operativa (articolo_id, uom_id, is_base, factor_to_base)
        SELECT a.b, u.kg, true, 1 FROM _t_art a, _t_u u $$,
-    '%non si cambia e non si toglie%',
+    '%non si cambia, non si spegne e non si toglie%',
     '22) una riga base su un''unita'' diversa da quella dell''articolo: rifiutata');
 
 -- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, Q28): si cancella solo
@@ -302,8 +304,41 @@ SELECT is(
     (SELECT o.attivo FROM catalogo.articoli_uom_operativa o
        JOIN catalogo.articoli a ON a.id = o.articolo_id
       WHERE a.codice = 'PGT-UOM2-SPENTO' AND o.is_base),
-    false,
-    '25b) ... e la sua riga base nasce spenta');
+    true,
+    '25b) ... e la sua riga base nasce attiva (Q34: la base non ha stati)');
+
+-- Scopo: la colonna che il rifiuto chiede di evidenziare (COLUMN del rifiuto,
+--   che script.fn_log_and_raise_error prende dalla chiave campo del contesto).
+CREATE OR REPLACE FUNCTION pg_temp.campo_del_rifiuto(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $fx$
+DECLARE v_col text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_col = COLUMN_NAME;
+    RETURN v_col;
+END $fx$;
+
+SELECT throws_like(
+    $$ UPDATE catalogo.articoli_uom_operativa SET attivo = false
+        WHERE articolo_id = (SELECT b FROM _t_art) AND is_base $$,
+    '%non si spegne%',
+    '25c) la riga base non si spegne: E_UOM_RIGA_BASE_IMMUTABILE');
+
+SELECT is(
+    pg_temp.campo_del_rifiuto($$ UPDATE catalogo.articoli_uom_operativa SET attivo = false
+                                  WHERE articolo_id = (SELECT b FROM _t_art) AND is_base $$),
+    'attivo',
+    '25d) ... e il rifiuto porta il campo attivo');
+
+SELECT is(
+    pg_temp.campo_del_rifiuto($$ INSERT INTO catalogo.articoli_uom_operativa
+                                     (articolo_id, uom_id, is_base, factor_to_base, attivo)
+                                  SELECT a.id, a.uom_id, true, 1, false
+                                    FROM catalogo.articoli a WHERE a.id = (SELECT b FROM _t_art) $$),
+    'attivo',
+    '25e) una riga base che nasce spenta: rifiutata, col campo attivo');
 
 -- ============================================================
 -- Le unita' e le conversioni (26-30)
