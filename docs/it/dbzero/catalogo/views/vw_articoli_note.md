@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le note degli articoli, una riga per nota, col codice e la descrizione dell'articolo annotato e la decodifica dello stile e della lingua. Le colonne di nota vengono da catalogo.vw_note (nota_target_tipo ARTICOLO, la partizione catalogo.note_articoli). Non filtra le note nascoste ne' quelle di sola stampa. Si legge; le note si scrivono sulla partizione. Rev 2026-11-11 (20261111-77/-79, brief-db-revisione-catalogo giro 4, R6): sopra la vista base, stesse colonne; user_* text.
+> Le note degli articoli, una riga per nota, col codice e la descrizione dell'articolo annotato e la decodifica dello stile e della lingua. Le colonne di nota vengono da catalogo.vw_note (nota_target_tipo ARTICOLO, la partizione catalogo.note_articoli). Non filtra le note nascoste ne' quelle di sola stampa. Si legge; le note si scrivono sulla partizione. nota_user_insert e nota_user_update sono text.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
