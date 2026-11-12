@@ -133,7 +133,7 @@ onMounted(() => {
       <template #cell-tipo_operazione="{ data }">
         <Tag :value="data.tipo_operazione" :severity="getAuditOpSeverity(data.tipo_operazione)" />
       </template>
-      <!-- Colonna calcolata lato FE: nel seed ha `campo_sorgente` vuoto, quindi
+      <!-- Colonna calcolata lato FE: nel seed ha `campo_sorgente` NULL, quindi
            il valore puo' arrivare solo da qui. -->
       <template #cell-dettaglio="{ data }">
         <span>{{ rowSummary(data) }}</span>

@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-12
 
-**Riparte: team BE**, con §5.1: **un test del backend è rosso in CI** (`test_ogni_formato_del_seed_e_reso_dal_frontend`)
-perché legge il CSV e prende il token `NULL` per un valore. Poi le verifiche di §5.2. Il lato DB è applicato su
-dbdev e scratch, i pgTAP sono verdi (Tid, 2026-11-12) ed è committato. Quando §5 è chiusa, il brief si archivia.
+**Riparte: sessione DB**, con l'archiviazione (passo 6), dopo il commit del lavoro BE sul suo branch. Il BE ha
+chiuso §5 il 2026-11-12 (§5.3): K-1 … K-4 fatti, il CI dei test backend torna verde, le verifiche di §5.2 fatte.
+Il lato DB è applicato su dbdev e scratch, i pgTAP sono verdi (Tid, 2026-11-12) ed è committato.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -13,11 +13,13 @@ dbdev e scratch, i pgTAP sono verdi (Tid, 2026-11-12) ed è committato. Quando �
 | 2-bis | ✅ Tid | Il via al giro; numero `20261112-30` dalla sessione del catalogo (2026-11-12) | §3 | 2 |
 | 3 | ✅ sessione DB | Il giro: il mirror, il CSV, i vincoli, i pgTAP, la doc; provato sullo scratch | §6 | 2-bis |
 | 4 | ✅ Tid | Apply su dbdev e scratch, pgTAP verdi (2026-11-12) | §6.2 | 3 |
-| 5 | **team BE** ⏭️ | K-1 … K-4: i test che leggono il CSV, il rosso in CI, il presidio dei preset | §5.1 | 4 |
-| 5-bis | team BE/FE | Le verifiche di §5.2 | §5.2 | 4 |
-| 6 | sessione DB | Archiviazione in `work-done/` | — | 5 |
+| 5 | ✅ team BE | K-1 … K-4: i test che leggono il CSV, il rosso in CI, il presidio dei preset (2026-11-12) | §5.1, §5.3 | 4 |
+| 5-bis | ✅ team BE/FE | Le verifiche di §5.2 (2026-11-12) | §5.2, §5.3 | 4 |
+| 5-ter | **Tid** | Il commit del lavoro BE su `dev/backend-tid` | §5.3 | 5 |
+| 6 | sessione DB ⏭️ | Archiviazione in `work-done/`; in §5.2.2 l'elenco dei commenti va completato con `CodaLavoriTab.vue` | — | 5-ter |
 
-**Decisioni aperte di Tid**: nessuna. **Da committare**: niente, il giro DB è committato.
+**Decisioni aperte di Tid**: nessuna. **Da committare**: il lavoro BE di §5.3, su `dev/backend-tid`; il giro
+DB è committato.
 
 **Brief vicini verificati**: `sviluppo-personalizzazioni-liste_def.md` (la prassi di DEF-7/DEF-10
 «`campo_sorgente` vuoto a catalogo» intende *senza sorgente*: non decide fra `NULL` e `''`, e qui non
@@ -127,6 +129,74 @@ Elenco chiuso:
    `?? ''`), falso per entrambe le forme. Restano da aggiornare i commenti che dicono «seed:
    `campo_sorgente` vuoto» (`AuditLogView.vue`, `CodaStampaTab.vue`).
 3. Per D1 (a), lo stesso per `etichetta_estesa`, `formato`, `gruppo` ed `etichetta_i18n_key`.
+
+### 5.3 Il giro BE fatto (team BE, 2026-11-12)
+
+**La lettura unica**, come proposto in §5.1 ⭐: il building block `seed_csv` / `seed_ui`
+(`backend/apps/core/tests/_seed_csv.py`, a catalogo BB backend). Dà `None` dove il caricatore del file scrive
+NULL. Il token si legge dal `nullValue` dei caricatori Liquibase del file. Dove i caricatori sono più d'uno e
+non sono d'accordo decide `CSV_SEED` di `scripts/gen_seed_lista.py`: è il caso di `lista_colonna.csv`, che ha
+il seed `20260507-07` con `""` e il mirror `20260806-15` con `"NULL"`, e il descrittore deve coincidere con uno
+dei due. Senza una risposta sola, il building block solleva. Le due copie di `_seed()` sono ritirate.
+
+* **K-1**: verde con la lettura corretta.
+* **K-2**: il contatore `divergenti_totali` conta solo le divergenti **ordinabili**, cioè quelle che le
+  asserzioni esercitano.
+* **K-3**: la lettura in linea della lista 49 passa da `seed_colonne_attive("vendite.dash_competenza_residui")`.
+  Erano spariti anche il `parents[4]` contato a mano e lo `skipTest` su file assente.
+* **K-4**: `test_l_ordinamento_dei_preset_nomina_il_campo_sorgente`, contro i `campo_sorgente` delle colonne
+  **attive**, le sole che `fn_resolve_lista_config` consegna (fatto datato: 81 chiavi, tutte giuste).
+  `test_l_ordinamento_col_codice_e_rifiutato` lo vede rosso su un preset costruito col codice.
+
+**Oltre l'elenco chiuso di §5.1**, trovati sulla stessa causa:
+* `test_lotto_gruppi_service` e `test_dashboard_competenza_service` avevano la forma di K-3 e passano da sé
+  sulla lettura unica.
+* `test_lineage_liste_be`, `test_ricerca_full_seed`, `test_ricerca_full_db`,
+  `test_lista_proiezione_campo_sorgente` e `test_perimetro_emittente_copertura` leggevano il seed con `_seed`
+  e ora passano da `seed_ui`.
+* I quattro ripieghi su `"NULL"` scritti a mano (tre in `test_lista_proiezione_campo_sorgente`, uno in `test_ricerca_full_db`)
+  sono tolti.
+
+**§5.2**:
+* (1) Il BE è come descritto: il serializer dichiara nullable i cinque campi e l'export tratta `None` come
+  cella vuota. Non c'è nessun confronto esplicito con `''` su quei campi, né nel FE né nel BE.
+* (2) Commenti aggiornati in `AuditLogView.vue` e `CodaStampaTab.vue`, **e in `CodaLavoriTab.vue`**, che
+  l'elenco non aveva.
+* L'hint del pannello «Lascia vuoto» (`colonna_campo_sorgente_hint`) resta: il pannello porta `''` a `None`.
+
+**Fuori brief, nello stesso giro (ok Tid)**:
+* `seed_csv` serve anche i due helper che riconoscevano il token a mano: `_contratto_processi`
+  (`dbops/processi.csv`) e `test_event_codes_declared_guardrail` (`config/tipi_entita.csv`,
+  `eventi_dominio.csv`). Lì la cella vuota era trattata come NULL; ora resta `''`, come la scrive il loader.
+  Per `brief-db-nullvalue-vuoto-cinque-mirror` §4.3: chi legge un CSV di seed nei test passa da `seed_csv`, e
+  i lettori che non ci passano oggi leggono solo colonne NOT NULL (`test_sorgenti_seed`,
+  `test_catalogo_oggetti_rotte`, `test_error_policies_classi`, `test_pagamenti_repository_sql`).
+* Il building block ha un test suo, `test_seed_csv`: il token di ogni file noto, la cella vuota che resta `''`,
+  il rifiuto di un file senza caricatore e di un descrittore in disaccordo coi caricatori.
+* Il pulitore dei `.vue` è spostato in `_repo.py` come `vue_senza_commenti`.
+  `_colonne_desc_dichiarate` leggeva i repository Python con quel pulitore, che lascia i `#`: ora usa
+  `sorgente_senza_commenti`.
+* I `Path(__file__).resolve().parents[N]` contati a mano nei test (21 siti in 14 file) passano da `repo_root()`.
+  Oggi indicavano tutti la cartella giusta, ma se il file si sposta un percorso contato a mano trova zero file e
+  il test passa a vuoto. Restano fuori, di proposito, i due nel codice di produzione (`genera_error_policies`,
+  `core/services/sveglie.py`): `repo_root` è un helper dei test.
+* Revisione (`/verifica`, 2026-11-12): passano da `seed_csv` anche `_seed_config` di
+  `test_perimetro_emittente_copertura` (`config/codici_errore.csv`) e `_colonne_con_grant`; il BB rifiuta un
+  `nullValue` che non è una stringa invece di un `assert`; il 5-ter sceglie una divergente il cui codice non è
+  il `campo_sorgente` di un'altra colonna della lista.
+* Stessa revisione (ok Tid): `_lista_id` e `_colonne_attive` escono da `test_liste_configurabili_seed`, dove
+  cinque test di `core` e `vendite` li importavano come nomi privati, ed entrano nel BB come `seed_lista_id` e
+  `seed_colonne_attive`.
+
+**Nota aperta — maiuscole e minuscole del token** (revisione 2026-11-12, non verificata): `seed_csv` confronta la
+cella col `nullValue` **esattamente**. Non è verificato se il loader Liquibase lo confronti senza distinguere
+maiuscole e minuscole: se lo fa, una cella `null` (in minuscolo) per il DB è NULL e per il BB resta la stringa
+`'null'`. Oggi il caso esiste in `vendite/fatturazione_pipeline.csv` (fatto datato), che nessun test legge
+tramite `seed_csv`. Chi lo verifica sul codice di Liquibase allinea il confronto del BB e gli aggiunge il test.
+
+**Prove**: i file toccati sono verdi anche coi test sul DB vero accesi (`ZEROERP_TEST_DB_E2E=1`, in
+transazione annullata). La suite backend intera è verde a fine giro, dopo la revisione e la pulizia dei `parents[N]`: 6594 test,
+`OK (skipped=293, expected failures=1)`.
 
 ## 6. Il giro fatto (2026-11-12)
 

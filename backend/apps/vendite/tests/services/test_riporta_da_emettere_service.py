@@ -162,22 +162,18 @@ class ListaResiduiTests(unittest.TestCase):
         nessun errore — esce **vuota** nel file di export e nella lista, e chi
         apre il foglio non ha modo di accorgersene.
         ⚠️ Il legame e' verificato sui NOMI, senza DB: il catalogo vive nel CSV
-        di `80_data`, che e' la sorgente anche del seed."""
-        import csv
-        from pathlib import Path
+        di `80_data`, che e' la sorgente anche del seed.
+        ⭐ Letto dal BB `seed_colonne_attive` (helper `_seed_csv`), come i gemelli di lotto_gruppi e dash_competenza_gruppi: il
+        CSV porta `NULL` per la colonna senza sorgente, e una lettura nuda lo
+        prenderebbe per un campo da cercare nella riga (K-3, 2026-11-12)."""
+        from apps.core.tests._seed_csv import seed_colonne_attive
 
-        radice = Path(__file__).resolve().parents[4].parent
-        csv_path = (radice / "db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv")
-        if not csv_path.exists():          # albero senza la parte DB: si dichiara
-            self.skipTest(f"catalogo non presente in questo albero: {csv_path}")
         campi = {
             r["campo_sorgente"]
-            for r in csv.DictReader(csv_path.open(encoding="utf-8"))
-            if r.get("lista_id") == "49"
-            and r.get("tipo_colonna") != "azione"
-            and r.get("campo_sorgente")
+            for r in seed_colonne_attive("vendite.dash_competenza_residui")
+            if r["tipo_colonna"] != "azione" and r["campo_sorgente"]
         }
-        self.assertTrue(campi, "nessuna colonna trovata per la lista 49")
+        self.assertTrue(campi, "nessuna colonna trovata per la lista dash_competenza_residui")
         # I nomi che il repository scrive nel dict di riga.
         from apps.vendite.types import DashCompetenzaResiduoRow
 

@@ -60,6 +60,7 @@ from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoM
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
+from apps.core.tests._repo import repo_root
 
 
 def _testata_default() -> dict[str, object]:
@@ -2993,10 +2994,8 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
     #        dalla definizione VIVA nella doc auto-gen.
     def _whitelist_db(self, nome: str) -> set[str]:
         import re
-        from pathlib import Path
 
-        # backend/apps/vendite/tests/services/<file> -> radice repo
-        radice = Path(__file__).resolve().parents[5]
+        radice = repo_root()
         doc = radice / self._DOC
         self.assertTrue(
             doc.is_file(),

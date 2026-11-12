@@ -30,6 +30,7 @@ from unittest import TestCase
 from django.http import QueryDict
 
 from apps.core.api.payload_validators import pagina_da_query, parse_list_params, richiedi_limit_offset
+from apps.core.tests._repo import repo_root
 
 
 class PaginazioneDialettoTests(TestCase):
@@ -76,9 +77,8 @@ class PaginazioneDialettoTests(TestCase):
     #    controllo che si dimentica non da' errore — lo da' questo test.
     def test_nessuna_lista_legge_limit_offset_a_mano(self) -> None:
         import re
-        from pathlib import Path
 
-        apps = Path(__file__).resolve().parents[3]
+        apps = repo_root() / "backend/apps"
         lettura = re.compile(r"""(?:qp|q|query_params)\.get\(["'](?:limit|offset)["']""")
         # Le sole letture ammesse: il BB, e i lookup che leggono il solo
         # `limit` (quanti suggerimenti, un altro significato: non paginano).
@@ -105,9 +105,8 @@ class PaginazioneDialettoTests(TestCase):
     #    parametro del tool verso il modello, non della query string.)
     def test_nessuna_view_legge_page_page_size(self) -> None:
         import re
-        from pathlib import Path
 
-        apps = Path(__file__).resolve().parents[3]
+        apps = repo_root() / "backend/apps"
         lettura = re.compile(r"""(?:qp|q|query_params)\.get\(["']page(?:_size)?["']""")
         trovate = [
             f"{f.relative_to(apps)}:{n}"

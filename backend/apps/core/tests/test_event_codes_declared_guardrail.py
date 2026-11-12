@@ -67,16 +67,15 @@
 from __future__ import annotations
 
 import ast
-import csv
-from pathlib import Path
 from unittest import TestCase
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
+from apps.core.tests._repo import repo_root
+from apps.core.tests._seed_csv import SEED_DIR, seed_csv
 
-# .../backend/apps/core/tests/<file> -> parents[3] = backend, parents[4] = repo
-_BACKEND = Path(__file__).resolve().parents[3]
+_BACKEND = repo_root() / "backend"
 _APPS = _BACKEND / "apps"
-_SEED = _BACKEND.parent / "db/changelog/migrations_v2/80_data/sql/config"
+_SEED = SEED_DIR / "config"
 _CATALOGO = _SEED / "eventi_dominio.csv"
 _CATALOGO_TIPI = _SEED / "tipi_entita.csv"
 
@@ -96,14 +95,13 @@ _ALLOWLIST: dict[str, str] = {}
 
 
 # Scopo: il catalogo dei codici evento, letto dal CSV di `80_data`.
-#        Ritorna {codice: obsoleto_dal_grezzo}.
-def _catalogo() -> dict[str, str]:
-    with _CATALOGO.open(encoding="utf-8", newline="") as fh:
-        return {
-            riga["codice"]: (riga.get("obsoleto_dal") or "").strip()
-            for riga in csv.DictReader(fh)
-            if riga.get("codice")
-        }
+#        Ritorna {codice: obsoleto_dal}, `None` dove il seed dice NULL.
+def _catalogo() -> dict[str, str | None]:
+    return {
+        riga["codice"]: riga["obsoleto_dal"]
+        for riga in seed_csv(_CATALOGO)
+        if riga["codice"]
+    }
 
 
 # Scopo: il catalogo dei tipi di entita', letto dal CSV di `80_data`.
@@ -115,25 +113,18 @@ def _catalogo() -> dict[str, str]:
 #    l'emittente si sa derivare. `TASK_RUN` sta a catalogo col modo a NULL, ed e'
 #    il caso che dimostra la differenza: scriverlo in `event_log` viene
 #    rifiutato dal trigger — che e' esattamente il difetto da cui si viene.
-def _catalogo_tipi() -> dict[str, str]:
-    with _CATALOGO_TIPI.open(encoding="utf-8", newline="") as fh:
-        return {
-            riga["codice"]: _valore_o_vuoto(riga.get("modo_risoluzione_emittente"))
-            for riga in csv.DictReader(fh)
-            if riga.get("codice")
-        }
-
-
-# Scopo: normalizza una cella del CSV che puo' valere il LETTERALE "NULL".
 #
-# ⛔ E' il letterale del loader Liquibase, non una stringa di dominio — ma per
-#    Python e' una stringa piena, quindi verissima. Senza questa normalizzazione
-#    `TASK_RUN` (modo = NULL) risultava GIORNALABILE e il cancello lo avrebbe
-#    lasciato passare: cioe' avrebbe mancato l'unico caso per cui esiste.
-#    Trovato dal test di sanity, non a occhio.
-def _valore_o_vuoto(cella: str | None) -> str:
-    valore = (cella or "").strip()
-    return "" if valore == "NULL" else valore
+# ⛔ La cella del modo vale il LETTERALE "NULL" del loader Liquibase, che per
+#    Python e' una stringa piena, quindi verissima: letto a mano, `TASK_RUN`
+#    (modo = NULL) risultava GIORNALABILE e il cancello lo avrebbe lasciato
+#    passare (trovato dal test di sanity, non a occhio). Il BB `seed_csv` lo
+#    da' `None`, dal `nullValue` del caricatore: niente token scritto qui.
+def _catalogo_tipi() -> dict[str, str | None]:
+    return {
+        riga["codice"]: riga["modo_risoluzione_emittente"]
+        for riga in seed_csv(_CATALOGO_TIPI)
+        if riga["codice"]
+    }
 
 
 # Scopo: costanti di modulo che valorizzano un codice evento
@@ -219,7 +210,7 @@ class EventCodesDeclaredGuardrail(TestCase):
             codice
             for codice, obsoleto_dal in _catalogo().items()
             # Confronto lessicografico su ISO-8601, che ordina come le date.
-            if _valore_o_vuoto(obsoleto_dal) and obsoleto_dal.strip() <= oggi
+            if obsoleto_dal is not None and obsoleto_dal <= oggi
         }
         usati_obsoleti = {
             codice: posizione

@@ -71,10 +71,8 @@ from pathlib import Path
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.db._helpers import RicercaFull, add_ricerca_full_condition, colonne_ricerca_attive
 from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
-from apps.core.tests.test_liste_configurabili_seed import (
-    _colonne_attive,
-    _seed,
-)
+from apps.core.tests._seed_csv import seed_colonne_attive, seed_ui
+from apps.core.tests._repo import repo_root
 
 
 # Scopo: la dichiarazione di una lista, letta dal simbolo che il repository
@@ -221,7 +219,7 @@ _DEBITO_RICERCA_A_MANO: frozenset[str] = frozenset()
 # Scopo: i `campo_sorgente` ricercabili e attivi di una lista, dal seed.
 def _ricercabili(codice: str) -> set[str]:
     return {
-        r["campo_sorgente"] for r in _colonne_attive(codice)
+        r["campo_sorgente"] for r in seed_colonne_attive(codice)
         if r["ricercabile_full"] == "t" and r["campo_sorgente"]
     }
 
@@ -229,7 +227,7 @@ def _ricercabili(codice: str) -> set[str]:
 # Scopo: codici delle liste che hanno almeno una colonna ricercabile attiva.
 def _liste_ricercabili() -> set[str]:
     return {
-        d["codice"] for d in _seed("lista_definizione.csv") if _ricercabili(d["codice"])
+        d["codice"] for d in seed_ui("lista_definizione.csv") if _ricercabili(d["codice"])
     }
 
 
@@ -392,7 +390,7 @@ class RicercaFullSeedTests(unittest.TestCase):
         for funzione in (add_ricerca_full_condition, param_ricerca_full):
             with self.subTest(firma=funzione.__name__):
                 self.assertNotIn("min_caratteri", inspect.signature(funzione).parameters)
-        apps = Path(__file__).resolve().parents[2]
+        apps = repo_root() / "backend/apps"
         colpevoli: list[str] = []
         for sorgente in sorted(apps.rglob("*.py")):
             albero = ast.parse(sorgente.read_text(encoding="utf-8"), filename=str(sorgente))
@@ -411,7 +409,7 @@ class RicercaFullSeedTests(unittest.TestCase):
         )
 
     def test_i_test_fingono_il_catalogo_da_una_sede(self):
-        apps = Path(__file__).resolve().parents[2]
+        apps = repo_root() / "backend/apps"
         sede = Path(__file__).resolve().parent / "ricerca_catalogo_fakes.py"
         # Composti, non scritti: scritti per intero, questo file troverebbe se stesso.
         letture = tuple(f"_helpers.{nome}" for nome in ("colonne_ricerca_accese", "soglia_ricerca"))

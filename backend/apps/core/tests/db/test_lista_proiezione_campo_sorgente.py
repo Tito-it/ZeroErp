@@ -105,10 +105,9 @@ from typing import Any
 from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests._seed_csv import seed_colonne_attive, seed_ui
 from apps.core.tests.test_liste_configurabili_seed import (
     _LISTE,
-    _colonne_attive,
-    _seed,
     campi_gemelli_per_formato,
     ORDINAMENTO_LOCALE,
 )
@@ -151,9 +150,9 @@ class Esercizio:
 def _liste_senza_vista() -> set[str]:
     return {
         riga["codice"]
-        for riga in _seed("lista_definizione.csv")
+        for riga in seed_ui("lista_definizione.csv")
         if riga["attivo"] == "t"
-        and (riga["vista_sql"] or "").strip().upper() in ("", "NULL")
+        and not (riga["vista_sql"] or "").strip()
     }
 
 
@@ -171,11 +170,11 @@ def _liste_senza_vista() -> set[str]:
 def _campi_dichiarati(codice: str) -> set[str]:
     campi = set()
     gemelle = campi_gemelli_per_formato()
-    for riga in _colonne_attive(codice):
+    for riga in seed_colonne_attive(codice):
         if riga["tipo_colonna"] == "azione":
             continue
         campo = (riga["campo_sorgente"] or "").strip()
-        if campo and campo.upper() != "NULL":
+        if campo:
             campi.add(campo)
         campi.update(gemelle.get((riga["formato"] or "").strip(), ()))
     return campi
@@ -186,12 +185,12 @@ def _campi_dichiarati(codice: str) -> set[str]:
 def _gemelle_delle_liste_con_vista() -> dict[tuple[str, str, str], set[str]]:
     gemelle = campi_gemelli_per_formato()
     esito: dict[tuple[str, str, str], set[str]] = {}
-    for definizione in _seed("lista_definizione.csv"):
+    for definizione in seed_ui("lista_definizione.csv"):
         vista = (definizione["vista_sql"] or "").strip()
-        if definizione["attivo"] != "t" or not vista or vista.upper() == "NULL":
+        if definizione["attivo"] != "t" or not vista:
             continue
         attese: set[str] = set()
-        for riga in _colonne_attive(definizione["codice"]):
+        for riga in seed_colonne_attive(definizione["codice"]):
             attese.update(gemelle.get((riga["formato"] or "").strip(), ()))
         if attese:
             esito[(definizione["codice"], definizione["schema_dati"], vista)] = attese
@@ -1337,7 +1336,7 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
 
     # 3. Il verso opposto: una riga morta qui nasconde una lista scoperta la'.
     def test_nessun_esercizio_punta_a_una_lista_inesistente(self) -> None:
-        codici = {riga["codice"] for riga in _seed("lista_definizione.csv")}
+        codici = {riga["codice"] for riga in seed_ui("lista_definizione.csv")}
         orfani = sorted((set(_ESERCIZI) | {c for c, _ in _ALTRE_QUERY}) - codici)
         self.assertEqual(orfani, [], "esercizi su liste assenti dal catalogo")
         con_vista = sorted(set(_ESERCIZI) - _liste_senza_vista())

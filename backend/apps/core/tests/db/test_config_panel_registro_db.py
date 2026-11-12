@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from unittest import TestCase
 
 from django.db import connection, transaction
@@ -53,8 +52,9 @@ from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE
 from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.services.lookup_service import fn_list_lookup_codici
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests._repo import repo_root
 
-_ROOT = Path(__file__).resolve().parents[5]
+_ROOT = repo_root()
 _LOCALES = _ROOT / "frontend" / "src" / "locales"
 _PREFISSO = "config_panel.campi"
 
