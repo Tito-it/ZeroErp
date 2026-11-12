@@ -245,6 +245,22 @@ class CreaNotaTests(unittest.TestCase):
         self.assertFalse(normalized["solo_stampa"])
         self.assertEqual(normalized["id_stile"], 99)  # fallback parametro
 
+    # D-seq (Tid, 2026-11-11): il range di `seq` e' quello del DB,
+    # `integer` con `CHECK (seq >= 0)`. Lo 0 passa, oltre lo smallint passa,
+    # il negativo e oltre l'integer sono un 400 col campo.
+    def test_seq_range_del_db(self) -> None:
+        repo = _make_repo_mock()
+        repo.get.return_value = {"id": 1, "anchor_tipo": "DOCUMENTO"}
+        svc = _make_service(repo, _make_params_mock())
+        for valore in (0, 40000, 2_147_483_647):
+            svc.crea_nota(target_id=1, payload={"testo_md": "ciao", "seq": valore})
+            self.assertEqual(repo.create.call_args[0][1]["seq"], valore)
+        for valore in (-1, 2_147_483_648):
+            with self.assertRaises(ServiceError) as cm:
+                svc.crea_nota(target_id=1, payload={"testo_md": "ciao", "seq": valore})
+            self.assertEqual(cm.exception.code, "E_NOTA_VALIDATION")
+            self.assertEqual(cm.exception.context.get("field"), "seq")
+
     def test_default_anchor_riga(self) -> None:
         repo = _make_repo_mock()
         repo.get.return_value = {"id": 1, "anchor_tipo": "RIGA"}

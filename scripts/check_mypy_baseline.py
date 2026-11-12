@@ -74,7 +74,12 @@ class UscitaIlleggibile(Exception):
 #        UscitaIlleggibile su qualunque cosa non sia «zero o piu' rilievi».
 def rileva() -> Counter[tuple[str, str]]:
     esito = subprocess.run(
-        [sys.executable, "-m", "mypy", "--output", "json"],
+        # `--show-traceback`: senza, un crash del plugin dice solo «INTERNAL
+        # ERROR», e la causa vera resta fuori dal rosso. Il caso tipico e'
+        # l'ambiente non caricato: il plugin Django importa le settings, che
+        # escono con `ImproperlyConfigured: Missing env var ...` (2026-11-12:
+        # scambiato per un difetto di mypy). Non tocca l'uscita JSON dei rilievi.
+        [sys.executable, "-m", "mypy", "--output", "json", "--show-traceback"],
         cwd=BACKEND,
         capture_output=True,
         text=True,
@@ -83,8 +88,10 @@ def rileva() -> Counter[tuple[str, str]]:
     # mypy: 0 = nessun rilievo, 1 = rilievi, 2 = errore suo (configurazione,
     # crash, import del plugin). Il 2 non e' «tanti rilievi»: e' «non ho guardato».
     if esito.returncode not in (0, 1):
+        # Tutte e due le uscite: al crash mypy scrive l'intestazione su stderr
+        # e il traceback (la causa) su stdout.
         raise UscitaIlleggibile(
-            f"mypy e' uscito con {esito.returncode}:\n{esito.stderr or esito.stdout}"
+            f"mypy e' uscito con {esito.returncode}:\n{esito.stderr}{esito.stdout}"
         )
     rilievi: Counter[tuple[str, str]] = Counter()
     for numero, riga in enumerate(esito.stdout.splitlines(), start=1):

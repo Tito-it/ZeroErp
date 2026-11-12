@@ -31,6 +31,9 @@
 //      perche'; nessun valore cambia da solo
 //   7) la sezione della distinta la apre `puo_gestire_bom` del dettaglio, non
 //      il composito acceso nel form e non ancora salvato (BE12)
+//   8) il ritiro (`obsoleto_dal`, brief-db-articoli-obsoleto-dal §8): la data
+//      del dettaglio torna nel PATCH come giorno ISO; svuotata, viaggia `null`
+//      (il ritiro si toglie)
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -260,5 +263,27 @@ describe('ArticoloDrawer — la sezione della distinta', () => {
 
     const k = await apri(articolo({ ...libero, is_composito: true, puo_gestire_bom: true }))
     expect(k.text()).toContain('catalogo.tab_bom')
+  })
+})
+
+describe('ArticoloDrawer — ritiro dell\'articolo', () => {
+  beforeEach(() => {
+    getArticolo.mockReset()
+    updateArticolo.mockReset().mockImplementation((_id, payload) =>
+      Promise.resolve(comeAxios(articolo(payload))))
+  })
+
+  it('8) la data del ritiro viaggia nel PATCH; svuotata, viaggia null', async () => {
+    const { default: DatePicker } = await import('primevue/datepicker')
+    const w = await apri(articolo({ obsoleto_dal: '2026-12-31', e_obsoleto: false }))
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(updateArticolo.mock.calls[0][1].obsoleto_dal).toBe('2026-12-31')
+
+    const w2 = await apri(articolo({ obsoleto_dal: '2026-12-31', e_obsoleto: false }))
+    w2.findComponent(DatePicker).vm.$emit('update:modelValue', null)
+    await w2.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(updateArticolo.mock.calls[1][1].obsoleto_dal).toBeNull()
   })
 })

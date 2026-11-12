@@ -30,6 +30,7 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 8) VersioneListinoModelloDbTests.test_elimina_dal_verbo
 9) VersioneListinoModelloDbTests.test_chiudi_dal_verbo
 10) VersioneListinoModelloDbTests.test_clona_dal_verbo
+10bis) VersioneListinoModelloDbTests.test_clona_salta_l_articolo_ritirato
 """
 from __future__ import annotations
 
@@ -280,6 +281,7 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
         out = fn_clone_versione(self.listino_id, self.v2, {"codice_versione": "COPIA", "valido_dal": dal.isoformat()})
         self.assertEqual((out["stato"], out["valido_dal"], out["righe_count"]), ("BOZZA", dal, 1))
         self.assertEqual((out["righe_copiate"], out["componenti_copiati"], out["componenti_saltati"]), (1, 0, 0))
+        self.assertEqual(out["righe_saltate"], 0)
         prima = self.v2_dal - timedelta(days=1)
         errore = self._rifiuto(
             lambda: fn_clone_versione(
@@ -288,3 +290,28 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
         )
         self.assertEqual(errore.code, "E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE")
         self.assertEqual(errore.fields, ("valido_dal",))
+
+    # 10-bis. Il clone non ricopia il prezzo di un articolo ritirato alla data
+    #     operativa, e lo conta: `righe_saltate` arriva fino alla risposta del
+    #     service (brief-db-articoli-obsoleto-dal §8). Il caso si costruisce:
+    #     un secondo articolo col suo prezzo, ritirato DOPO (una riga nuova su
+    #     un articolo gia' ritirato la respinge il guard di riga).
+    def test_clona_salta_l_articolo_ritirato(self) -> None:
+        self._con_un_prezzo(self.v2)
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT dbops.fn_pgtap_crea_articolo(%s, false, p_listino_tipologia_id =>"
+                " (SELECT listino_tipologia_id FROM catalogo.articoli WHERE id = %s))",
+                [f"LSMOD-RIT-{uuid4().hex[:8].upper()}", self.articolo_id],
+            )
+            ritirato = cur.fetchone()[0]
+            cur.execute("SELECT uom_id FROM catalogo.articoli WHERE id = %s", [ritirato])
+            uom_ritirato = cur.fetchone()[0]
+        self.repo.create_riga(self.v2, {
+            "articolo_id": str(ritirato), "uom_id": uom_ritirato, "prezzo": Decimal("7"),
+        })
+        with connection.cursor() as cur:
+            cur.execute("UPDATE catalogo.articoli SET obsoleto_dal = %s WHERE id = %s", [self.oggi, ritirato])
+        dal = self.v2_dal + timedelta(days=5)
+        out = fn_clone_versione(self.listino_id, self.v2, {"codice_versione": "COPIA-R", "valido_dal": dal.isoformat()})
+        self.assertEqual((out["righe_copiate"], out["righe_saltate"], out["righe_count"]), (1, 1, 1))

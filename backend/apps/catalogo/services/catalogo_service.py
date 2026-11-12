@@ -95,6 +95,7 @@ _ARTICOLO_FK_NOT_NULL: tuple[tuple[str, str], ...] = (
 _ARTICOLO_NULLABLE_FIELDS: frozenset[str] = frozenset({
     "descrizione_breve",
     *_ARTICOLO_INT_FIELDS,
+    "obsoleto_dal",
     "meta",
 })
 _ARTICOLO_CREATE_ALLOWED_KEYS: frozenset[str] = ARTICOLI_CREATE_COLUMNS
@@ -575,6 +576,15 @@ def _extract_articolo_payload(
             log_to_db=True,
         )
 
+    # Il ritiro: una data, o null per toglierla (l'articolo torna a scegliersi).
+    # Passata, di oggi o futura: quando vale lo dice il DB (`e_obsoleto`).
+    obsoleto_dal = _extract_payload_date(
+        payload, "obsoleto_dal", function_name=function_name, nullable=True,
+        message="Payload articolo non valido.",
+    )
+    if obsoleto_dal is not _MISSING:
+        data["obsoleto_dal"] = obsoleto_dal
+
     meta = _extract_meta(payload, function_name=function_name)
     if meta is not _MISSING:
         data["meta"] = meta
@@ -928,10 +938,6 @@ _COMPONENTE_UNIQUE: dict[str, tuple] = {
     "uq_articoli_componenti_no_overlap": (
         "E_CATALOGO_VALIDATION",
         "Il componente e' gia' nella distinta in un periodo che si sovrappone: chiudere il legame in vigore prima di aprirne uno nuovo.",
-    ),
-    "uq_articoli_componenti_prodotto_componente_from": (
-        "E_CATALOGO_VALIDATION",
-        "Il componente ha gia' un legame che comincia lo stesso giorno.",
     ),
 }
 

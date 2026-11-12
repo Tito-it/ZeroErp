@@ -16,8 +16,8 @@ import { useContatoreNote } from '../../core/composables/useContatoreNote'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { lookupArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
-import { oggiAziendaleString } from '../../core/utils/date'
+import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { oggiAziendaleString, parseIsoDate, toDateString } from '../../core/utils/date'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
@@ -33,6 +33,7 @@ import PuntoEstensione from '../../core/components/PuntoEstensione.vue'
 import { PUNTI_ESTENSIONE, precaricaPunto } from '../../core/estensioni'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -167,6 +168,11 @@ function defaultForm() {
     modo_approvvigionamento_id: null,
     gestito_a_magazzino: false,
     lead_time_giorni: null,
+    // Il ritiro (brief-db-articoli-obsoleto-dal): la data da cui l'articolo
+    // non si sceglie piu' per una riga nuova. null = si sceglie. ⛔ Se e'
+    // ritirato OGGI lo dice `detail.e_obsoleto` (il DB, alla data operativa):
+    // qui non si confrontano date.
+    obsoleto_dal: null,
   }
 }
 
@@ -250,6 +256,7 @@ async function loadDetail() {
     modo_approvvigionamento_id: data.modo_approvvigionamento_id,
     gestito_a_magazzino: data.gestito_a_magazzino || false,
     lead_time_giorni: data.lead_time_giorni ?? null,
+    obsoleto_dal: parseIsoDate(data.obsoleto_dal),
   }
   fissa()
   correzioneStruttura.value = false
@@ -313,6 +320,8 @@ async function handleSave() {
       modo_approvvigionamento_id: f.modo_approvvigionamento_id,
       gestito_a_magazzino: f.gestito_a_magazzino,
       lead_time_giorni: f.lead_time_giorni,
+      // Data svuotata = null = il ritiro si toglie.
+      obsoleto_dal: toDateString(f.obsoleto_dal),
     }
     // La struttura cambiata viaggia nel PATCH: il backend la passa prima al
     // verbo dell'amministratore, poi aggiorna il resto (che porta gli stessi
@@ -351,6 +360,7 @@ async function handleSave() {
         ? { modo_approvvigionamento_id: f.modo_approvvigionamento_id } : {}),
       gestito_a_magazzino: f.gestito_a_magazzino,
       lead_time_giorni: f.lead_time_giorni,
+      obsoleto_dal: toDateString(f.obsoleto_dal),
     }
     const result = await execute(
       () => store.create(payload),
@@ -488,6 +498,8 @@ const drawerActions = computed(() => {
       <DrawerEntityHeader>
         <Tag :value="detail.codice" severity="secondary" />
         <template #status>
+          <!-- Ritirato alla data operativa: lo dice il DB (`e_obsoleto`). -->
+          <Tag v-if="detail.e_obsoleto" :value="t('catalogo.tag_ritirato')" severity="warn" />
           <AttivoTag :active="detail.attivo" />
         </template>
       </DrawerEntityHeader>
@@ -627,6 +639,14 @@ const drawerActions = computed(() => {
         <label>{{ t('catalogo.field_lead_time_giorni') }}</label>
         <InputNumber v-model="form.lead_time_giorni" :min="0" :use-grouping="false"
           :invalid="campiErrati.includes('lead_time_giorni')" />
+      </div>
+      <!-- Il ritiro: la data si mette e si toglie (il pulsante «Cancella» del
+           calendario); togliendola l'articolo torna a scegliersi. -->
+      <div class="form-field">
+        <label>{{ t('catalogo.field_obsoleto_dal') }}</label>
+        <DatePicker v-model="form.obsoleto_dal" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+          :invalid="campiErrati.includes('obsoleto_dal')" />
+        <small class="app-text-muted mt-025">{{ t('catalogo.hint_obsoleto_dal') }}</small>
       </div>
     </div>
     <!-- Sezione: UoM riepilogo (edit mode) -->

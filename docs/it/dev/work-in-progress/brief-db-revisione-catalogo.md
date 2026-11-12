@@ -1,23 +1,15 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro 5 applicato, 5-A e 5-B, §17.7)
+## ⏭️ Chi riparte — aggiornato al 2026-11-11 (decisioni di Tid su 5-bis, 5-ter, D-seq e Q35; D-seq fatta)
 
-**Riparte: Tid**, col via al giro 5-bis della sessione DB (la segnalazione 3 del giro BE, §15.10-bis.3) e il commit del
-giro 5. Il giro 5 (`20261112-01` … `-24`) è applicato su dbdev e scratch, con i pgTAP come app verdi (§17.7); con lui si
-chiude D-C di `brief-db-articoli-obsoleto-dal`. I giri G1-G2 (`20261111-69` … `-73`,
-§15.11.1), Q34 (`-74` … `-76`, §15.11.2) e 4 (`-77` … `-80`, §16) sono applicati su dbdev e scratch, con i pgTAP come
-app verdi, e committati con il giro BE del giro 2-bis (`651160401e`, `ea4b8da3e8`). Restano da guardare le scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2, §14.6,
-§13.3, §10.3). In parallelo il **team BE**: BE21-BE25 fatte (§15.10-bis); restano BE21-a … f (§15.11.1, §15.11.2) e
-BE26-BE28 (§16.4). Alla **sessione DB** una segnalazione del giro BE, il codice nel batch delle commesse (§15.10-bis.3,
-punto 3); i punti 1 e 2 sono diventati G1 e G2.
-## ⏭️ Chi riparte — aggiornato al 2026-11-11 (giro BE dei giri G1-G2, Q34 e 4 fatto, da committare, §16.5)
-
-**Riparte: Tid**, col via al giro 5 (§7). I giri G1-G2 (`20261111-69` … `-73`, §15.11.1), Q34 (`-74` … `-76`,
-§15.11.2) e 4 (`-77` … `-80`, §16) sono applicati su dbdev e scratch, con i pgTAP come app verdi. Da committare: Q34 e 4,
-e il giro BE del giro 2-bis (§15.10-bis, su `dev/backend-tid`). Restano da guardare le scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2, §14.6,
-§13.3, §10.3). Il **team BE** ha chiuso le sue voci: BE21-BE25 (§15.10-bis, committate) e BE21-a … f, BE26-BE28 (§16.5,
-2026-11-11, **da committare** su `dev/backend-tid`). Alla **sessione DB** la segnalazione del batch delle commesse
-(§15.10-bis.3, punto 3), le due nuove di §16.5.3 e la **Q35** (§16.6, un kit non si spegne più); a **Tid** una scelta di §16.5.3 e la Q35.
+**Riparte: Tid**, coi **numeri** del giro 5-bis + 5-ter; poi la **sessione DB** lo scrive (§18.6: il BB
+`script.fn_codice_dominio`, il batch delle commesse, `fn_run_and_log` sul BB, il ritiro di `E_CATALOGO_NOTA_NOT_FOUND`)
+e, dopo, la **Q35** con la strada (a) previa la verifica del lato componente (§16.6.3). Tid ha deciso il 2026-11-11:
+D5bis-1 (a), 5-ter nello stesso giro, D-seq «il BE si allinea al DB», Q35 (a). Il **team BE** ha fatto BE29 (§17.3) e
+D-seq (§19), **da committare**; gli restano BE30 + BE31 a giro applicato (§18.5, §19). Da valutare alla sessione DB:
+`vendite.vw_note` (§19, voce 2). I giri fino al 5 sono applicati e committati (`9f2899c8b`, PR #92), come i giri BE fino
+a §16.5 (`971b7e00d`, PR #91). Restano da guardare le scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2,
+§14.6, §13.3, §10.3).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -62,7 +54,12 @@ e il giro BE del giro 2-bis (§15.10-bis, su `dev/backend-tid`). Restano da guar
 | 6-sexies | ✅ sessione DB | Giro 5-A: `20261112-15` … `-24` (il `-22` … `-24` riportano tre `%TYPE` che la 5-B aveva ricopiato sciolti), la nota di un lock nel CSV, un pgTAP nuovo (il presidio dei COMMENT di catalogo) e due riscritti, doc; provato sullo scratch | §17.6 | 6-quater |
 | 6-septies | ✅ Tid | Apply del giro 5 (`20261112-01` … `-24`) su dbdev e scratch, pgTAP come app verdi (2026-11-11); commit su richiesta | §17.7 | 6-sexies |
 | 6-septies-bis | ✅ sessione DB | Verifica sul vivo dopo l'apply: i 26 oggetti commentati dal cantiere `obsoleto_dal` (D-C, §3.3.1) puliti su dbdev e scratch; D-C chiuso anche nell'altro brief (2026-11-11) | §17.7 | 6-septies |
-| 6-octies | **Tid** ⏭️, poi sessione DB | Giro 5-bis: il codice nel risultato di `vendite.fn_batch_upsert_commessa_attivita` (segnalazione 3); aspetta il via | §15.10-bis.3, §17.3 | 6-septies |
+| 6-octies | ✅ Tid | Via al giro 5-bis (2026-11-11) | §18 | 6-septies |
+| 6-octies-bis | ✅ team BE | Specifica del giro 5-bis dal lato del consumatore: il contratto di `errors`, la regola del 2, il pgTAP, BE30 | §18 | 6-octies |
+| 6-octies-ter | **Tid** ⏭️ | D5bis-1 ✅ (a), 5-ter nello stesso giro ✅ (2026-11-11); restano i **numeri** del giro | §18.3, §18.6 | 6-octies-bis |
+| 6-nonies | sessione DB | Giro 5-bis + 5-ter: il BB `script.fn_codice_dominio`, il batch e `fn_run_and_log` sul BB, il ritiro di `E_CATALOGO_NOTA_NOT_FOUND` dai CSV; pgTAP di §18.4, COMMENT e `manual/`; prova sullo scratch | §18.6, §19 | 6-octies-ter |
+| 6-decies | Tid | Apply del giro 5-bis su dbdev e scratch, pgTAP come app | §18 | 6-nonies |
+| 6-undecies | team BE | BE30 (il codice degli errori del batch nel report del push) e, col 5-ter, BE31 (policy rigenerata, ripiego tolto) | §18.5, §19 | 6-decies |
 | 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
 | 7-bis | ✅ team BE (committato, `ff93395d5e`, PR #84) | La doc API di BE9 e BE11 (`api_catalogo.md`); BE19 e BE20 del giro 3 e BE4 (campo di `E_PARAMETRO_INVALIDO`). BE1-BE4 e BE16-BE18 del giro 2 erano già fatti (PR #81) | §13.5, §14.10 | — |
 | 7-ter-bis | — | Assorbita in 7-septies, con la rinumerazione di §15 (BE19-BE21 → BE21-BE23) | §15 | — |
@@ -70,27 +67,21 @@ e il giro BE del giro 2-bis (§15.10-bis, su `dev/backend-tid`). Restano da guar
 | 7-quater | ✅ Tid | La chiusura del legame coi prezzi va nel giro 3 (2026-11-09) | §14 | 7-ter |
 | 7-quinquies | ✅ team BE | Giro BE del giro 2: BE1-BE4, BE16-BE18 (BE4 resta aperta per D19); committato (`2af6d986f5`, PR #81) | §13.7 | — |
 | 7-sexies | ✅ Tid | Le tre domande di §13.7.3: Q23 bloccato, Q24 per tutto il periodo, Q25 in questo brief (2026-11-10) | §6, §15 | 7-quinquies |
-| 7-septies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | BE21-BE25 del giro 2-bis: la parte di BE21 che non dipende da G1 e G2 (codice, policy, test del rifiuto, campi fermi dichiarati come gap) | §15.10-bis, §15.4, §15.9 | 5-vicies |
-| 7-novies | **team BE** ⏭️ | BE26-BE28 del giro 4 (le note di catalogo: testo e àncora rifiutati dal DB, la nota che non tiene acceso il bersaglio, `user_*` text) | §16.4 | 6-bis |
-| 7-octies | **team BE** ⏭️ | Il resto di BE21, a giro G1-G2 applicato: BE21-a … BE21-d (il form da `vw_non_editable_fields`, `_NON_EDITABLE_DB_GAPS` ritirato, le azioni di riga dalle due viste, la lista delle conversioni sulla vista nuova), e BE21-e … f del giro Q34 (il drawer della conversione, la riga base che non si spegne) | §15.11.1, §15.11.2 | 5-vicies-septies |
-| 7-decies | sessione DB | Le segnalazioni del giro BE: 1 e 2 ✅ (sono G1 e G2, §15.11.1); la 3 è il giro 5-bis (passo 6-octies) | §15.10-bis.3 | 7-septies |
-| 7-undecies | **team BE** ⏭️ | BE29 del giro 5: la voce di `uq_articoli_componenti_prodotto_componente_from` in `catalogo_service.py` si toglie | §17.3 | 6-septies |
-| 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
-
-**Decisioni aperte di Tid:** le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2
-(§13.3) e 1 (§10.3), da guardare; il via al giro 5-bis. Le quattro del giro 5 (§17.3) sono prese. **Committati** i giri
-G1-G2, Q34 e 4, e il giro BE del giro 2-bis (2026-11-11). **Da committare:** il giro 5, applicato (§17.7).
-| 7-novies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | BE26-BE28 del giro 4: le note di catalogo passano dal BB delle note (opzione A di Tid), la copia di `catalogo_service` è ritirata | §16.5 | 6-bis |
-| 7-octies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | BE21-a … f: `_NON_EDITABLE_DB_GAPS` ritirato, capability delle due viste nei form, conversioni sulla vista nuova, ripiego della riga base | §16.5 | 5-vicies-septies |
+| 7-septies | ✅ team BE (2026-11-11, committato, `ea4b8da3e`) | BE21-BE25 del giro 2-bis: la parte di BE21 che non dipende da G1 e G2 (codice, policy, test del rifiuto, campi fermi dichiarati come gap) | §15.10-bis, §15.4, §15.9 | 5-vicies |
+| 7-octies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | BE21-a … f: `_NON_EDITABLE_DB_GAPS` ritirato, capability delle due viste nei form, conversioni sulla vista nuova, ripiego della riga base | §16.5 | 5-vicies-septies |
+| 7-novies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | BE26-BE28 del giro 4: le note di catalogo passano dal BB delle note (opzione A di Tid), la copia di `catalogo_service` è ritirata | §16.5 | 6-bis |
+| 7-decies | sessione DB | Le segnalazioni del giro BE del giro 2-bis: 1 e 2 ✅ (sono G1 e G2, §15.11.1); la 3, il codice nel risultato del batch delle commesse, è il giro 5-bis (passo 6-octies) | §15.10-bis.3 | 7-septies |
 | 7-undecies | sessione DB ⏭️ | Le due segnalazioni del giro BE dei giri G1-G2, Q34 e 4: il **ritiro** di `E_CATALOGO_NOTA_NOT_FOUND` (deciso da Tid, 2026-11-11; poi il BE rigenera la policy); la proiezione delle note di vendita senza vista | §16.5.3 | 7-novies |
-| 7-terdecies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | Verifica critica del giro BE: un 500 sul filtro di riga, i presidi sulla copia delle note, il campo `note` del dettaglio ritirato, la regola del 2 nei form delle unità | §16.5.4 | 7-novies |
-| 7-duodecies | **Tid** ⏭️ | `seq` di una nota: il BB lo vuole ≥ 1, il CHECK del DB ammette 0 | §16.5.3 | 7-novies |
-| 7-decies | sessione DB ⏭️ | Le segnalazioni del giro BE: 1 e 2 ✅ (sono G1 e G2, §15.11.1); resta la 3, il codice nel risultato del batch delle commesse | §15.10-bis.3 | 7-septies |
-| 7-quaterdecies | sessione DB ⏭️ | **Q35**: un kit con la distinta non si spegne più (legame sempre attivo dopo il ritiro della PATCH, nessuna eccezione ATTIVO su `articoli_componenti`). Proposta (a) eccezione come Q31, previa verifica del lato componente; la scelta è di Tid. Presidio: i due smoke rossi `catalogo-phase3` e `preventivi-componenti` | §16.6 | — |
+| 7-duodecies | ✅ Tid, ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | D-seq: il BB delle note si allinea al DB, `seq` da 0 al tetto dell'`integer` | §16.5.3, §19 | 7-novies |
+| 7-terdecies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | Verifica critica del giro BE: un 500 sul filtro di riga, i presidi sulla copia delle note, il campo `note` del dettaglio ritirato, la regola del 2 nei form delle unità | §16.5.4 | 7-novies |
+| 7-quaterdecies | ✅ Tid (a), 2026-11-11; **sessione DB** ⏭️ dopo il 5-bis | **Q35**: un kit con la distinta non si spegne più (legame sempre attivo dopo il ritiro della PATCH, nessuna eccezione ATTIVO su `articoli_componenti`). Proposta (a) eccezione come Q31, previa verifica del lato componente; la scelta è di Tid. Presidio: i due smoke rossi `catalogo-phase3` e `preventivi-componenti` | §16.6 | — |
+| 7-quindecies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | BE29 del giro 5: la voce di `uq_articoli_componenti_prodotto_componente_from` in `catalogo_service.py` è tolta | §17.3 | 6-septies |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
 
-**Decisioni aperte di Tid:** le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2
-(§13.3) e 1 (§10.3), da guardare; `seq` delle note (§16.5.3, punto 3); **Q35**, lo spegnimento di un kit (§16.6). **Da committare** il giro BE di §16.5. **Committato** il giro G1-G2 (2026-11-11), con questo brief. **Da committare**: i giri Q34 (§15.11.2) e 4 (§16), applicati. **Da committare** anche il giro BE del giro 2-bis (§15.10-bis), su `dev/backend-tid`.
+**Decisioni aperte di Tid:** le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2 (§13.3) e 1 (§10.3), da
+guardare; i numeri del giro 5-bis + 5-ter (§18). Prese il 2026-11-11: D5bis-1 (a), 5-ter nello stesso giro, D-seq
+(il BE si allinea), Q35 (a). Le quattro del giro 5 (§17.3) sono prese. **Committati:** i giri G1-G2, Q34, 4 e 5, il giro BE del giro 2-bis e quello di
+§16.5 (2026-11-11). **Da committare:** BE29 (§17.3) e D-seq (§19), su `dev/backend-tid`.
 ⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93`, il giro 3 `20261111-25` … `-37` (dati da Tid). Messaggi
 d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 
@@ -2141,227 +2132,6 @@ e i require fra le note e i loro bersagli (nessun trigger rimasto).
 **Doc.** Riallineate le pagine `manual/` di `note`, delle due partizioni (solo la data), delle due viste e il blocco
 comune `_note-partizioni.md`; nuova `vw_note.md`. Le schede auto-generate nascono alla rigenerazione dopo l'apply.
 
-## 17. Giro 5 — pulizia e metadati: il censimento sul vivo, 2026-11-11
-
-Via di Tid il 2026-11-11. §2.4, §2.5, §2.6 e §3 sono del 2026-11-08: i giri 1-4 ne hanno chiuso una parte. Qui
-l'elenco riletto su dbdev (`obj_description`, `col_description`, `pg_get_functiondef`, `pg_index`,
-`pg_stat_user_indexes`, il 2026-11-11), con quello che resta e la proposta.
-
-### 17.1 Già chiuso dai giri precedenti
-
-* **M1** (il COMMENT del guard flags non nomina più `guard_un_livello`), **M5** (`require_lot` e `rounding_mode`
-  ritirati, `max_decimals` applicato: giro 2), **M7** (il COMMENT di `magazzino.note` è corretto).
-* **R1-R6**: chiuse nei giri 1-4 (`fn_articolo_flag_etichetta` è R5, `vw_note` è R6).
-* La nota di `E_BOM_MODIFICA_VIETATA` nomina già il guard flags (§2.5).
-* `test-articoli-componenti-solo-componente.sql` è già sui builder, e lega il codice (§2.6).
-* `fn_get_uom_factor`: `v_factor > 0` e `LIMIT 1` su chiave unica non ci sono più (giro 2).
-* Funzioni, viste e tabelle di `catalogo` hanno tutte un COMMENT.
-
-### 17.2 L'elenco chiuso del giro 5
-
-**A. Indici e vincoli (§2.4, Q14, Q9)**
-
-| Oggetto | Esito del censimento | Proposta |
-| --- | --- | --- |
-| `uq_articoli_componenti_prodotto_componente_from` | Implicato da `uq_articoli_componenti_no_overlap`; 0 scansioni. Lo nomina il BE (`catalogo_service.py:1187`, la frase del 23505) | **Si ritira** (Q14). Ricaduta BE29 |
-| `ix_uom_tipi_codice_interno_upper` | 0 scansioni; nessun corpo del DB usa `upper(codice_interno)`; il BE cerca su `codice` | **Si ritira** (Q14) |
-| `ix_artuomop_art_isbase` | 7190 scansioni: è l'unico btree che comincia da `articolo_id` (la FK verso l'articolo, le letture per articolo). L'indice parziale `uq_artuomop_one_base` serve solo la riga base | **Resta**: la condizione di Q14 non tiene |
-| `uom_tipi.codice` | Il BE lo usa come etichetta (`tipo_uom_codice`), per l'ordinamento e per la ricerca; è la colonna di `CODICE_MAIUSCOLO`. `codice_interno` è quella bloccata | **Resta**: la condizione di Q9 non tiene. I due COMMENT, oggi uguali, si riscrivono distinti |
-| FK semplice `listini_righe_componenti_articolo_componente_id_fkey` | Implicata dalla FK temporale, ma è la FK da cui l'automazione ATTIVO deriva il block su `articoli_componenti` e il require sulle righe di listino (letti da `pg_constraint`) | **Resta**: toglierla spegne due trigger alla convergenza |
-
-**B. Rami irraggiungibili e codici (§2.4, §2.5)**
-
-* `fn_get_uom_base`: `LIMIT 1` su chiave primaria; il commento e il COMMENT dicono «senza UoM», ma `articoli.uom_id`
-  è NOT NULL (M6). Si toglie il `LIMIT 1` e si corregge il commento.
-* `fn_articolo_correggi_struttura`: `p_campi IS NULL OR` ripetuto (due volte) dopo il guard che rifiuta `p_campi` NULL.
-* `trgfn_unita_misura_guard_tipo`, `trgfn_uom_conversioni_guard_tipo`: passano `NULL::uuid` invece di `NEW.tx_id`.
-  Il ramo che lascia passare `tipo_uom_id` NULL (NOT NULL con FK) si toglie nello stesso `CREATE OR REPLACE`.
-* `fn_riattiva_articolo`: area di log `'database'` (le altre funzioni di catalogo usano `'catalogo'`); il commento
-  del corpo cita `E_PARENT_*`, il COMMENT cita «(404)» e `trgfn_prevent_deactivate_if_children` per la
-  disattivazione (che oggi ha le eccezioni ATTIVO e nessun figlio di storia). Il codice vero è
-  `E_ATTIVO_PADRE_NON_ATTIVO`, al COMMIT.
-* `trgfn_articoli_guard_iva_bom_attiva`: due `LIMIT 1`, da rileggere (se stanno dentro un `EXISTS` o su chiave
-  unica, si tolgono).
-
-**C. Metadati (§3)**
-
-* **Dicono il falso:** M2 (`vw_articoli_dettaglio`: «ui.lista_definizione 26» per id, `requires_lotto` «senza lock»),
-  M3 (`articoli.natura_vendita_id`: «a regime NOT NULL»), M4 (`articoli_componenti.id`: «sequence»; `.attivo`:
-  «del articolo»), M6 (`fn_get_uom_base`), M8 (la nota di `automation_lock_columns` su `articoli.uom_id` cita
-  `trg_articoli_a10_protect_uom_id_upd`, che non esiste: si riscrive la nota, che è un CSV).
-* **Marcatori e nomi di brief** (§3.3, riletto): i COMMENT di `fn_articoli_ammessi`, `fn_articolo_righe_vive_non_ammesse`,
-  `fn_riattiva_articolo`; della vista `vw_articoli_dettaglio` e delle sue colonne `causale_onere_id`, `e_onere`,
-  `obsoleto_dal`, `e_obsoleto`; delle colonne `articoli.causale_onere_id`, `.gestito_a_magazzino`,
-  `.modo_approvvigionamento_id`, `.note_target_tipo`, `.obsoleto_dal`, `.requires_lotto`,
-  `articoli_componenti.esposizione_in_fattura`, `.note_target_tipo`, `.validita`, `unita_misura_conversioni.validita`,
-  `note.target_tipo`, `unita_misura.conta_dal_calendario`; del trigger `trg_articoli_a10_guard_onere_natura_ins_upd`.
-  Nei corpi: `fn_articoli_ammessi`, `fn_articolo_righe_vive_non_ammesse`, `fn_riattiva_articolo` (si aprono comunque).
-* **D-C, fuori schema** (§3.3.1, riletto): tutti e cinque ancora da riscrivere (`acquisti.ddt_righe.sorgente_tipo_id`,
-  `script.trgfn_righe_guard_articolo_ammesso`, `vendite.fn_clona_versione_listino`, i due trigger di `vendite`).
-* **Senza COMMENT** (§3.2): le colonne di `note` (13), di `unita_misura_conversioni` (12), le quattro d'audit di
-  `uom_tipi`; i 13 trigger scritti a mano dei guard di catalogo (gli altri 103 senza COMMENT sono trigger delle
-  automazioni, che non ne scrivono in nessuno schema); le colonne delle sette viste (vedi la scelta 3).
-* **Il presidio**: `catalogo` e i cinque oggetti di D-C entrano in `dbops/test-comment-al-presente-v1.sql` (i COMMENT
-  della famiglia sono riscritti: `linee-guida-sql` §5d).
-
-**D. pgTAP deboli (§2.6)**
-
-* `test-articoli-natura-vendita-notnull-default-v1.sql`: il test 2 conta i NULL di una colonna NOT NULL su tutto il
-  catalogo (tautologico) e la fixture prende «il primo articolo» (`ORDER BY id LIMIT 1`): si riscrivono sui builder.
-* `test-vw-articoli-dettaglio-e-onere-v1.sql`: il test 3 itera su tutto il catalogo; i casi 1 e 2 sono costruiti. Si
-  toglie, o si riscrive su un articolo costruito.
-
-**E. Doc**
-
-* `guide/gestione-contratti.md:142`: «quando è *derivata dai componenti* la scrive il sistema»: quella fonte è
-  ritirata (§13.6). Si toglie la frase.
-* Le pagine `manual/` degli oggetti che il giro riapre.
-
-### 17.3 Le scelte (Tid)
-
-✅ **Tid, 2026-11-11:** 1 → giro 5-bis a parte; 2 → **si tolgono ora** (contro la proposta: solo i `COALESCE` davvero
-irraggiungibili, funzione per funzione, §17.4); 3 → solo le colonne calcolate; 4 → solo la nota.
-
-1. **La segnalazione 3 del giro BE** (§15.10-bis.3, passo 7-decies: il codice nel risultato di
-   `vendite.fn_batch_upsert_commessa_attivita`). È l'unico lavoro DB ancora aperto del brief, ma tocca `vendite` e un
-   contratto col BE. Proposta: **un giro a parte, 5-bis**, dopo il giro 5, per non mescolare un cambio di contratto
-   con la pulizia.
-2. **I `COALESCE` su valori NOT NULL nelle funzioni di `vendite`** (18 funzioni, residuo del giro 1-bis). Non sono
-   tutti irraggiungibili: dopo un `SELECT … INTO` senza righe la variabile è NULL. Proposta: **restano**; si toccano
-   quando un giro riapre quelle funzioni (`linee-guida-sql` §5d: non si apre un `CREATE OR REPLACE` per un commento).
-3. **I COMMENT delle colonne delle viste** (~200 colonne in sette viste). Proposta: **solo le colonne che la vista
-   calcola** (capability, motivi, `e_*`, `has_*`, le etichette decodificate); una colonna copiata dalla tabella ha il
-   COMMENT della tabella.
-4. **Il codice del lock su `articoli.uom_id`** (`E_CODICE_NON_MODIFICABILE`, «il valore interno della colonna %s»).
-   Proposta: **resta**, si riscrive solo la nota; un codice nuovo cambierebbe il contratto col BE per una frase che
-   resta vera.
-
-**Numeri (Tid, 2026-11-11):** `20261112-01` … `-30`. Il `20261111-81` e i seguenti sono dell'altra sessione
-(brief-db-revisione-dbops), aperta in parallelo.
-
-**Ricadute su BE e FE (quando il giro è applicato):**
-
-| # | Che cosa |
-| --- | --- |
-| BE29 | `catalogo_service.py:1187` mappa `uq_articoli_componenti_prodotto_componente_from`, che si ritira: la voce si toglie. La sovrapposizione la dice già `uq_articoli_componenti_no_overlap` (23P01) |
-
-### 17.4 Il giro, in due parti
-
-**5-A — catalogo, D-C, pgTAP, doc** (§17.2 A-E), senza i `COALESCE` di `vendite`. Il `LIMIT 1` del guard IVA resta:
-sta dopo un `ORDER BY a.codice` e prende il primo articolo in conflitto, non una chiave unica. I corpi di
-`fn_articoli_ammessi` e `fn_articolo_righe_vive_non_ammesse` non si riaprono: il giro riscrive solo il loro COMMENT
-(§3.3.1, ultimo punto).
-
-**5-B — i `COALESCE` su valori che non possono essere NULL** (scelta 2). Censiti uno per uno sul corpo vivo:
-
-| Funzione | `COALESCE` | Perché non può essere NULL | Esito |
-| --- | --- | --- | --- |
-| `vendite.fn_contratti_addebiti_maturati` | 3 su `contratti_righe.attivo` | Colonna NOT NULL | si toglie |
-| `vendite.fn_{contratto,ddt,ordine,preventivo}_riga_componenti_init` | 2 ciascuna: `v_is_composito`, `v_comp.obbligatorio` | Il primo viene da un JOIN con l'articolo, dopo il `NOT FOUND` che solleva; il secondo da `articoli_componenti.obbligatorio`, NOT NULL | si tolgono |
-| `vendite.fn_offerta_eccezione_componenti_init` | 2, gli stessi | `articolo_id` dell'eccezione è NOT NULL con FK, e l'eccezione è già trovata | si tolgono |
-| `vendite.fn_documento_righe_preview` | 3 su `e.attivo` | `fn_documento_righe_eccezione` lo prende da due colonne NOT NULL | si tolgono |
-| `vendite.fn_genera_ddt_da_ordine` | 1 su `ordini_righe_componenti.attivo` | NOT NULL | si toglie |
-| `vendite.fn_offerta_righe_espanse` | 3 su `offerte_commerciali_eccezioni.attivo` | NOT NULL | si tolgono |
-| `vendite.fn_push_preventivo_a_ordine` | 1 su `preventivi_righe_componenti.attivo` | NOT NULL | si toglie |
-| `vendite.fn_resolve_prezzo_listino_v2_esito` | 1 su `contratti_righe.attivo` | NOT NULL | si toglie |
-| `vendite.fn_resolve_lotto_utility_emittente` | 1 su `v_emittente_attivo` | Viene da `SELECT EXISTS (…)`, mai NULL | si toglie |
-| `script.trgfn_componenti_guard_obbligatorio` | 1 su `v_obbligatorio` | BEFORE UPDATE su `OLD.articolo_componente_id`: la FK della riga vecchia regge, il legame c'è | si toglie |
-| `script.trgfn_listini_righe_comp_guard_coerenza_bom` | 1 su `v_ac_attivo` | Il ramo `NOT FOUND` è già prima, nello stesso `IF` | si toglie |
-| `script.fn_check_riga_magazzino` | 2 | L'articolo si cerca per parametro: può non esserci | **resta** |
-| `script.trgfn_componenti_check_prezzo_obbligatorio` | 1 | BEFORE INSERT su `NEW.articolo_componente_id`: la FK si controlla dopo, il legame può non esserci | **resta** |
-| `script.trgfn_componenti_guard_coerenza_bom` | 1 | Legge la riga padre per `EXECUTE`, in un BEFORE: può non esserci | **resta** |
-| `vendite.fn_crea_famiglia_documento` | 1 su `p_attivo` | È un parametro | **resta** |
-
-Il resto del corpo non si tocca: un `COALESCE` su un valore che non può essere NULL si sostituisce col valore
-(`COALESCE(x, TRUE) IS TRUE` → `x`, `NOT COALESCE(v, FALSE)` → `NOT v`).
-
-### 17.5 Giro 5-B — che cosa è scritto e le prove (2026-11-11)
-
-Quattordici changeSet di `20_code`, uno per funzione, `20261112-01` … `-14` (dodici in `vendite/`, due in `script/`), con
-le sostituzioni della tabella di §17.4 e nient'altro.
-
-* **La dichiarazione viene dallo YAML, il corpo dall'oggetto vivo.** `pg_get_functiondef` scioglie i `%TYPE` di firma e
-  `RETURNS` e non scrive `SECURITY INVOKER`: la firma è quella dell'ultimo YAML che la dichiara, il corpo quello di
-  dbdev. Per i cinque init dei componenti l'ultimo YAML (giro 1-bis, `20261110-86` … `-90`) aveva già la firma sciolta:
-  la dichiarazione viene dal changeSet precedente, che ha i `%TYPE` (`20261029-42`, `20260819-17`, `20260513-30`,
-  `20260513-29`, `20261029-43`). Così questi changeSet **riportano i `%TYPE`** che il giro 1-bis aveva perso.
-  ⚠️ Non tutti: tre `%TYPE` erano persi già **prima** della fonte, e il giro 5-B li ha ricopiati sciolti. Sono
-  `p_emittente_sr_id` del contratto e dell'offerta (sciolti in agosto, `20260807-02`/`-03`) e le due colonne del
-  `RETURNS TABLE` di `fn_resolve_lotto_utility_emittente` (sciolte a marzo, `20260331-22`). Li ha trovati un confronto
-  con **tutta** la storia di ogni funzione, dopo l'apply: tornano col `-22` … `-24` (§17.6).
-  `SECURITY INVOKER` si aggiunge dove la dichiarazione non lo scriveva: il comportamento non cambia, è il default.
-* **Rollback**: la stessa dichiarazione col corpo di partenza.
-* **Prova di compilazione** (scratch `zeroerp_ruoli`, come owner, `BEGIN … ROLLBACK`): per ogni changeSet il corpo
-  vivo dello scratch è uguale a quello di dbdev; il forward ricompilato dà esattamente il corpo atteso
-  (`pg_get_functiondef` uguale), e il rollback ridà esattamente l'oggetto di oggi.
-* **Regressione** sui 76 pgTAP che nominano le quattordici funzioni, i loro trigger o le tabelle dei componenti:
-  identici senza e con il giro. Quattro erano rossi già prima, uguali, e non sono di questo giro: tre test «serve il
-  proprietario» (`catalogo/test-chiudi-legame-con-prezzi-v1` 11, `vendite/test-annullo-documento-con-legami-v1` 30,
-  `vendite/test-ddt-righe-evase-dall-ordine-v1` 43) falliscono perché la prova gira come owner; in
-  `vendite/test-offerta-righe-espanse` i test 6-8 ricevono NULL.
-* **Doc:** nessuna pagina cambia, perché il comportamento è lo stesso.
-
-### 17.6 Giro 5-A — che cosa è scritto e le prove (2026-11-11)
-
-| # | Fase | Che cosa |
-| --- | --- | --- |
-| `00_schema/catalogo/20261112-15` | DDL | Via `uq_articoli_componenti_prodotto_componente_from` e `ix_uom_tipi_codice_interno_upper` (Q14). Il rollback li rimette, col COMMENT del vincolo |
-| `00_schema/catalogo/20261112-16` | COMMENT | Le colonne delle tabelle: riscritte al presente (M3, M4, §3.3), nuove (`unita_misura_conversioni`, l'audit di `uom_tipi`, `note` e le due partizioni), `codice` e `codice_interno` di `uom_tipi` distinti; e la FK `fk_cat_note_target_tipo`, che nominava un brief (l'ha trovata il presidio nuovo) |
-| `20_code/catalogo/20261112-17` | funzione | `fn_get_uom_base`: via il `LIMIT 1` su chiave primaria, COMMENT al presente (M6); la firma ora è ancorata (`%TYPE`), non lo era mai stata |
-| `20_code/catalogo/20261112-18` | funzione | `fn_articolo_correggi_struttura`: via il secondo `p_campi IS NULL OR`. La firma riprende i `%TYPE` che il giro 3 (`20261111-37`) aveva sciolto |
-| `20_code/catalogo/20261112-19` | funzione | `fn_riattiva_articolo`: area di log `catalogo`; il commento del corpo e il COMMENT nominano `E_ATTIVO_PADRE_NON_ATTIVO` al COMMIT e le funzioni di `dbops` dell'automazione ATTIVO (§2.5) |
-| `20_code/catalogo/20261112-20` | COMMENT | `fn_articoli_ammessi`, `fn_articolo_righe_vive_non_ammesse`, `vw_articoli_dettaglio` (M2) e le sue colonne; le colonne calcolate delle sette viste (scelta 3); i trigger dei guard scritti a mano, e quello del guard onere/natura riscritto |
-| `20_code/catalogo/20261112-21` | COMMENT | D-C fuori schema (§3.3.1): `acquisti.ddt_righe.sorgente_tipo_id`, `script.trgfn_righe_guard_articolo_ammesso`, `vendite.fn_clona_versione_listino`, i due trigger OBSOLETO di vendite. D-C è chiuso |
-| `20_code/vendite/20261112-22` | funzione | `fn_resolve_lotto_utility_emittente`: le due colonne del `RETURNS TABLE` tornano col `%TYPE` del `20260222-06` |
-| `20_code/vendite/20261112-23` | funzione | `fn_contratto_riga_componenti_init`: `p_emittente_sr_id` torna `anagrafiche.soggetti_ruoli.id%TYPE` (`20260605-07`) |
-| `20_code/vendite/20261112-24` | funzione | `fn_offerta_eccezione_componenti_init`: `p_emittente_sr_id` torna `anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE` (`20260605-06`) |
-
-**`-22` … `-24`: i `%TYPE` che la 5-B aveva ricopiato sciolti** (§17.5). Il `-12`, il `-02` e il `-06` erano già
-applicati: non si toccano, e la dichiarazione torna in un changeSet nuovo. Il corpo è quello della 5-B e i tipi risolti
-sono gli stessi, quindi l'oggetto compilato è identico. Cambia la fonte che il prossimo changeSet della funzione
-ricopierà. Prova: preCondition 1; `pg_get_functiondef`, COMMENT e ACL uguali prima, dopo il forward e dopo il rollback.
-`p_data_riferimento` dei cinque init resta `date` dal `20260512`, anche nelle firme scritte col `%TYPE`: è la data
-alla quale si legge la distinta, non una colonna del documento.
-
-Fuori dai changeSet: la nota della riga `catalogo.articoli.uom_id` in `dbops/automation_lock_columns.csv` (M8: nomina il
-trigger vivo, il codice resta, scelta 4). Il CSV si ricarica con l'upsert `runOnChange` del `20260110-15`.
-
-**Caduti dal censimento** (§17.2 B), riletti sul corpo: i due guard della tipologia passano `NULL::uuid` perché
-`unita_misura` e `unita_misura_conversioni` non hanno `tx_id`; i loro rami «parla la FK» scattano davvero (BEFORE, la FK
-si giudica dopo). Restano com'erano.
-
-**pgTAP:**
-
-* Nuovo `catalogo/test-comment-al-presente-catalogo-v1` (plan 5): lo stesso presidio di `dbops`, su `catalogo` e sui
-  cinque oggetti di D-C. In un file suo, non dentro `dbops/test-comment-al-presente-v1`, che è dell'altra sessione aperta.
-* `test-articoli-natura-vendita-notnull-default-v1`: il test 2 non conta più i NULL di tutto il catalogo, prova il
-  rifiuto di una natura NULL esplicita (23502); la fixture è un articolo del builder, in una tabella temporanea sua (nel
-  `WHERE` il builder girava una volta per riga).
-* `test-vw-articoli-dettaglio-e-onere-v1`: il test 3 non itera sul catalogo; toglie la causale all'articolo costruito e
-  ne guarda `e_onere`.
-
-**Prove** (scratch `zeroerp_ruoli`, come owner, `BEGIN … ROLLBACK`): per ogni changeSet la preCondition passa, il
-forward cambia lo stato, i tre corpi ricompilati sono esattamente quelli attesi, e il rollback riporta lo stato di prima
-(md5 uguale su COMMENT di `catalogo`, `acquisti`, `script`, `vendite`, corpi, indici e vincoli di `catalogo`). Il
-guardrail CI dei COMMENT è pulito sui 24 changeSet. Regressione sui 70 pgTAP di `catalogo` e su quelli che nominano gli
-oggetti toccati o leggono i COMMENT: identici senza e con il giro, tranne il presidio nuovo, che è rosso senza (3 su 5) e
-verde con. I rossi di prima restano uguali: test «serve il proprietario» (la prova gira da owner) e alcuni di
-`magazzino` e `vendite` che non toccano il giro.
-
-**Doc:** `manual/` di `uom_tipi`, `fn_get_uom_base`, `fn_riattiva_articolo`; `guide/gestione-contratti.md` (via la fonte
-«derivata dai componenti», ritirata: la CHECK della riga ammette la quantità solo con la fonte FISSA).
-
-### 17.7 Apply del giro 5 (2026-11-11)
-
-✅ **Applicato da Tid il 2026-11-11** su dbdev e sullo scratch, 5-B e 5-A (`20261112-01` … `-24`, tutti `EXECUTED` in
-`databasechangelog` su tutti e due), con i pgTAP come app verdi.
-
-**Verifica sul vivo, lo stesso giorno** (come app, in sola lettura): `obj_description` / `col_description` dei 26 oggetti
-che i changeSet del cantiere `obsoleto_dal` avevano commentato (§3.3.1), su dbdev e sullo scratch. Nessuno porta più
-nomi di brief, marcatori `rev`, id di changeSet, sigle di decisione o id di messaggio. Compresi i dieci dell'elenco
-chiuso, che erano sporchi prima del giro. ⇒ **D-C di `brief-db-articoli-obsoleto-dal` è chiuso.**
-
-**Da committare:** il giro 5 (5-B e 5-A), con questo brief.
 ### 16.5 Giro BE dei giri G1-G2, Q34 e 4 (team BE, 2026-11-11, da committare su `dev/backend-tid`)
 
 Fatto a giri applicati su dbdev (verificato sul DB: le otto colonne in `vw_non_editable_fields`, le due viste con la
@@ -2500,3 +2270,341 @@ spegne e si riaccende con le sue note»: dal ritiro della PATCH non è più vero
   basi), `preventivi-componenti` (pulizia: legame chiuso col verbo, base non toccata). Dopo l'apply di (a) i due
   smoke rossi tornano verdi **senza modifiche**: è la prova del giro.
 
+## 17. Giro 5 — pulizia e metadati: il censimento sul vivo, 2026-11-11
+
+Via di Tid il 2026-11-11. §2.4, §2.5, §2.6 e §3 sono del 2026-11-08: i giri 1-4 ne hanno chiuso una parte. Qui
+l'elenco riletto su dbdev (`obj_description`, `col_description`, `pg_get_functiondef`, `pg_index`,
+`pg_stat_user_indexes`, il 2026-11-11), con quello che resta e la proposta.
+
+### 17.1 Già chiuso dai giri precedenti
+
+* **M1** (il COMMENT del guard flags non nomina più `guard_un_livello`), **M5** (`require_lot` e `rounding_mode`
+  ritirati, `max_decimals` applicato: giro 2), **M7** (il COMMENT di `magazzino.note` è corretto).
+* **R1-R6**: chiuse nei giri 1-4 (`fn_articolo_flag_etichetta` è R5, `vw_note` è R6).
+* La nota di `E_BOM_MODIFICA_VIETATA` nomina già il guard flags (§2.5).
+* `test-articoli-componenti-solo-componente.sql` è già sui builder, e lega il codice (§2.6).
+* `fn_get_uom_factor`: `v_factor > 0` e `LIMIT 1` su chiave unica non ci sono più (giro 2).
+* Funzioni, viste e tabelle di `catalogo` hanno tutte un COMMENT.
+
+### 17.2 L'elenco chiuso del giro 5
+
+**A. Indici e vincoli (§2.4, Q14, Q9)**
+
+| Oggetto | Esito del censimento | Proposta |
+| --- | --- | --- |
+| `uq_articoli_componenti_prodotto_componente_from` | Implicato da `uq_articoli_componenti_no_overlap`; 0 scansioni. Lo nomina il BE (`catalogo_service.py:1187`, la frase del 23505) | **Si ritira** (Q14). Ricaduta BE29 |
+| `ix_uom_tipi_codice_interno_upper` | 0 scansioni; nessun corpo del DB usa `upper(codice_interno)`; il BE cerca su `codice` | **Si ritira** (Q14) |
+| `ix_artuomop_art_isbase` | 7190 scansioni: è l'unico btree che comincia da `articolo_id` (la FK verso l'articolo, le letture per articolo). L'indice parziale `uq_artuomop_one_base` serve solo la riga base | **Resta**: la condizione di Q14 non tiene |
+| `uom_tipi.codice` | Il BE lo usa come etichetta (`tipo_uom_codice`), per l'ordinamento e per la ricerca; è la colonna di `CODICE_MAIUSCOLO`. `codice_interno` è quella bloccata | **Resta**: la condizione di Q9 non tiene. I due COMMENT, oggi uguali, si riscrivono distinti |
+| FK semplice `listini_righe_componenti_articolo_componente_id_fkey` | Implicata dalla FK temporale, ma è la FK da cui l'automazione ATTIVO deriva il block su `articoli_componenti` e il require sulle righe di listino (letti da `pg_constraint`) | **Resta**: toglierla spegne due trigger alla convergenza |
+
+**B. Rami irraggiungibili e codici (§2.4, §2.5)**
+
+* `fn_get_uom_base`: `LIMIT 1` su chiave primaria; il commento e il COMMENT dicono «senza UoM», ma `articoli.uom_id`
+  è NOT NULL (M6). Si toglie il `LIMIT 1` e si corregge il commento.
+* `fn_articolo_correggi_struttura`: `p_campi IS NULL OR` ripetuto (due volte) dopo il guard che rifiuta `p_campi` NULL.
+* `trgfn_unita_misura_guard_tipo`, `trgfn_uom_conversioni_guard_tipo`: passano `NULL::uuid` invece di `NEW.tx_id`.
+  Il ramo che lascia passare `tipo_uom_id` NULL (NOT NULL con FK) si toglie nello stesso `CREATE OR REPLACE`.
+* `fn_riattiva_articolo`: area di log `'database'` (le altre funzioni di catalogo usano `'catalogo'`); il commento
+  del corpo cita `E_PARENT_*`, il COMMENT cita «(404)» e `trgfn_prevent_deactivate_if_children` per la
+  disattivazione (che oggi ha le eccezioni ATTIVO e nessun figlio di storia). Il codice vero è
+  `E_ATTIVO_PADRE_NON_ATTIVO`, al COMMIT.
+* `trgfn_articoli_guard_iva_bom_attiva`: due `LIMIT 1`, da rileggere (se stanno dentro un `EXISTS` o su chiave
+  unica, si tolgono).
+
+**C. Metadati (§3)**
+
+* **Dicono il falso:** M2 (`vw_articoli_dettaglio`: «ui.lista_definizione 26» per id, `requires_lotto` «senza lock»),
+  M3 (`articoli.natura_vendita_id`: «a regime NOT NULL»), M4 (`articoli_componenti.id`: «sequence»; `.attivo`:
+  «del articolo»), M6 (`fn_get_uom_base`), M8 (la nota di `automation_lock_columns` su `articoli.uom_id` cita
+  `trg_articoli_a10_protect_uom_id_upd`, che non esiste: si riscrive la nota, che è un CSV).
+* **Marcatori e nomi di brief** (§3.3, riletto): i COMMENT di `fn_articoli_ammessi`, `fn_articolo_righe_vive_non_ammesse`,
+  `fn_riattiva_articolo`; della vista `vw_articoli_dettaglio` e delle sue colonne `causale_onere_id`, `e_onere`,
+  `obsoleto_dal`, `e_obsoleto`; delle colonne `articoli.causale_onere_id`, `.gestito_a_magazzino`,
+  `.modo_approvvigionamento_id`, `.note_target_tipo`, `.obsoleto_dal`, `.requires_lotto`,
+  `articoli_componenti.esposizione_in_fattura`, `.note_target_tipo`, `.validita`, `unita_misura_conversioni.validita`,
+  `note.target_tipo`, `unita_misura.conta_dal_calendario`; del trigger `trg_articoli_a10_guard_onere_natura_ins_upd`.
+  Nei corpi: `fn_articoli_ammessi`, `fn_articolo_righe_vive_non_ammesse`, `fn_riattiva_articolo` (si aprono comunque).
+* **D-C, fuori schema** (§3.3.1, riletto): tutti e cinque ancora da riscrivere (`acquisti.ddt_righe.sorgente_tipo_id`,
+  `script.trgfn_righe_guard_articolo_ammesso`, `vendite.fn_clona_versione_listino`, i due trigger di `vendite`).
+* **Senza COMMENT** (§3.2): le colonne di `note` (13), di `unita_misura_conversioni` (12), le quattro d'audit di
+  `uom_tipi`; i 13 trigger scritti a mano dei guard di catalogo (gli altri 103 senza COMMENT sono trigger delle
+  automazioni, che non ne scrivono in nessuno schema); le colonne delle sette viste (vedi la scelta 3).
+* **Il presidio**: `catalogo` e i cinque oggetti di D-C entrano in `dbops/test-comment-al-presente-v1.sql` (i COMMENT
+  della famiglia sono riscritti: `linee-guida-sql` §5d).
+
+**D. pgTAP deboli (§2.6)**
+
+* `test-articoli-natura-vendita-notnull-default-v1.sql`: il test 2 conta i NULL di una colonna NOT NULL su tutto il
+  catalogo (tautologico) e la fixture prende «il primo articolo» (`ORDER BY id LIMIT 1`): si riscrivono sui builder.
+* `test-vw-articoli-dettaglio-e-onere-v1.sql`: il test 3 itera su tutto il catalogo; i casi 1 e 2 sono costruiti. Si
+  toglie, o si riscrive su un articolo costruito.
+
+**E. Doc**
+
+* `guide/gestione-contratti.md:142`: «quando è *derivata dai componenti* la scrive il sistema»: quella fonte è
+  ritirata (§13.6). Si toglie la frase.
+* Le pagine `manual/` degli oggetti che il giro riapre.
+
+### 17.3 Le scelte (Tid)
+
+✅ **Tid, 2026-11-11:** 1 → giro 5-bis a parte; 2 → **si tolgono ora** (contro la proposta: solo i `COALESCE` davvero
+irraggiungibili, funzione per funzione, §17.4); 3 → solo le colonne calcolate; 4 → solo la nota.
+
+1. **La segnalazione 3 del giro BE** (§15.10-bis.3, passo 7-decies: il codice nel risultato di
+   `vendite.fn_batch_upsert_commessa_attivita`). È l'unico lavoro DB ancora aperto del brief, ma tocca `vendite` e un
+   contratto col BE. Proposta: **un giro a parte, 5-bis**, dopo il giro 5, per non mescolare un cambio di contratto
+   con la pulizia.
+2. **I `COALESCE` su valori NOT NULL nelle funzioni di `vendite`** (18 funzioni, residuo del giro 1-bis). Non sono
+   tutti irraggiungibili: dopo un `SELECT … INTO` senza righe la variabile è NULL. Proposta: **restano**; si toccano
+   quando un giro riapre quelle funzioni (`linee-guida-sql` §5d: non si apre un `CREATE OR REPLACE` per un commento).
+3. **I COMMENT delle colonne delle viste** (~200 colonne in sette viste). Proposta: **solo le colonne che la vista
+   calcola** (capability, motivi, `e_*`, `has_*`, le etichette decodificate); una colonna copiata dalla tabella ha il
+   COMMENT della tabella.
+4. **Il codice del lock su `articoli.uom_id`** (`E_CODICE_NON_MODIFICABILE`, «il valore interno della colonna %s»).
+   Proposta: **resta**, si riscrive solo la nota; un codice nuovo cambierebbe il contratto col BE per una frase che
+   resta vera.
+
+**Numeri (Tid, 2026-11-11):** `20261112-01` … `-30`. Il `20261111-81` e i seguenti sono dell'altra sessione
+(brief-db-revisione-dbops), aperta in parallelo.
+
+**Ricadute su BE e FE (quando il giro è applicato):**
+
+| # | Che cosa |
+| --- | --- |
+| BE29 | `catalogo_service.py:1187` mappa `uq_articoli_componenti_prodotto_componente_from`, che si ritira: la voce si toglie. La sovrapposizione la dice già `uq_articoli_componenti_no_overlap` (23P01) |
+
+✅ **BE29 fatta** (team BE, 2026-11-11, da committare su `dev/backend-tid`): la voce è tolta da `_COMPONENTE_UNIQUE`;
+il vincolo non lo nomina più nessun file di `backend/` né `frontend/src`. La sovrapposizione resta presidiata da
+`test_vincoli_catalogo_db.test_legame_sovrapposto` (DB vero) e dal test del service sul 23P01. `apps.catalogo` col DB
+vero (`ZEROERP_TEST_DB_E2E=1`): verde.
+
+### 17.4 Il giro, in due parti
+
+**5-A — catalogo, D-C, pgTAP, doc** (§17.2 A-E), senza i `COALESCE` di `vendite`. Il `LIMIT 1` del guard IVA resta:
+sta dopo un `ORDER BY a.codice` e prende il primo articolo in conflitto, non una chiave unica. I corpi di
+`fn_articoli_ammessi` e `fn_articolo_righe_vive_non_ammesse` non si riaprono: il giro riscrive solo il loro COMMENT
+(§3.3.1, ultimo punto).
+
+**5-B — i `COALESCE` su valori che non possono essere NULL** (scelta 2). Censiti uno per uno sul corpo vivo:
+
+| Funzione | `COALESCE` | Perché non può essere NULL | Esito |
+| --- | --- | --- | --- |
+| `vendite.fn_contratti_addebiti_maturati` | 3 su `contratti_righe.attivo` | Colonna NOT NULL | si toglie |
+| `vendite.fn_{contratto,ddt,ordine,preventivo}_riga_componenti_init` | 2 ciascuna: `v_is_composito`, `v_comp.obbligatorio` | Il primo viene da un JOIN con l'articolo, dopo il `NOT FOUND` che solleva; il secondo da `articoli_componenti.obbligatorio`, NOT NULL | si tolgono |
+| `vendite.fn_offerta_eccezione_componenti_init` | 2, gli stessi | `articolo_id` dell'eccezione è NOT NULL con FK, e l'eccezione è già trovata | si tolgono |
+| `vendite.fn_documento_righe_preview` | 3 su `e.attivo` | `fn_documento_righe_eccezione` lo prende da due colonne NOT NULL | si tolgono |
+| `vendite.fn_genera_ddt_da_ordine` | 1 su `ordini_righe_componenti.attivo` | NOT NULL | si toglie |
+| `vendite.fn_offerta_righe_espanse` | 3 su `offerte_commerciali_eccezioni.attivo` | NOT NULL | si tolgono |
+| `vendite.fn_push_preventivo_a_ordine` | 1 su `preventivi_righe_componenti.attivo` | NOT NULL | si toglie |
+| `vendite.fn_resolve_prezzo_listino_v2_esito` | 1 su `contratti_righe.attivo` | NOT NULL | si toglie |
+| `vendite.fn_resolve_lotto_utility_emittente` | 1 su `v_emittente_attivo` | Viene da `SELECT EXISTS (…)`, mai NULL | si toglie |
+| `script.trgfn_componenti_guard_obbligatorio` | 1 su `v_obbligatorio` | BEFORE UPDATE su `OLD.articolo_componente_id`: la FK della riga vecchia regge, il legame c'è | si toglie |
+| `script.trgfn_listini_righe_comp_guard_coerenza_bom` | 1 su `v_ac_attivo` | Il ramo `NOT FOUND` è già prima, nello stesso `IF` | si toglie |
+| `script.fn_check_riga_magazzino` | 2 | L'articolo si cerca per parametro: può non esserci | **resta** |
+| `script.trgfn_componenti_check_prezzo_obbligatorio` | 1 | BEFORE INSERT su `NEW.articolo_componente_id`: la FK si controlla dopo, il legame può non esserci | **resta** |
+| `script.trgfn_componenti_guard_coerenza_bom` | 1 | Legge la riga padre per `EXECUTE`, in un BEFORE: può non esserci | **resta** |
+| `vendite.fn_crea_famiglia_documento` | 1 su `p_attivo` | È un parametro | **resta** |
+
+Il resto del corpo non si tocca: un `COALESCE` su un valore che non può essere NULL si sostituisce col valore
+(`COALESCE(x, TRUE) IS TRUE` → `x`, `NOT COALESCE(v, FALSE)` → `NOT v`).
+
+### 17.5 Giro 5-B — che cosa è scritto e le prove (2026-11-11)
+
+Quattordici changeSet di `20_code`, uno per funzione, `20261112-01` … `-14` (dodici in `vendite/`, due in `script/`), con
+le sostituzioni della tabella di §17.4 e nient'altro.
+
+* **La dichiarazione viene dallo YAML, il corpo dall'oggetto vivo.** `pg_get_functiondef` scioglie i `%TYPE` di firma e
+  `RETURNS` e non scrive `SECURITY INVOKER`: la firma è quella dell'ultimo YAML che la dichiara, il corpo quello di
+  dbdev. Per i cinque init dei componenti l'ultimo YAML (giro 1-bis, `20261110-86` … `-90`) aveva già la firma sciolta:
+  la dichiarazione viene dal changeSet precedente, che ha i `%TYPE` (`20261029-42`, `20260819-17`, `20260513-30`,
+  `20260513-29`, `20261029-43`). Così questi changeSet **riportano i `%TYPE`** che il giro 1-bis aveva perso.
+  ⚠️ Non tutti: tre `%TYPE` erano persi già **prima** della fonte, e il giro 5-B li ha ricopiati sciolti. Sono
+  `p_emittente_sr_id` del contratto e dell'offerta (sciolti in agosto, `20260807-02`/`-03`) e le due colonne del
+  `RETURNS TABLE` di `fn_resolve_lotto_utility_emittente` (sciolte a marzo, `20260331-22`). Li ha trovati un confronto
+  con **tutta** la storia di ogni funzione, dopo l'apply: tornano col `-22` … `-24` (§17.6).
+  `SECURITY INVOKER` si aggiunge dove la dichiarazione non lo scriveva: il comportamento non cambia, è il default.
+* **Rollback**: la stessa dichiarazione col corpo di partenza.
+* **Prova di compilazione** (scratch `zeroerp_ruoli`, come owner, `BEGIN … ROLLBACK`): per ogni changeSet il corpo
+  vivo dello scratch è uguale a quello di dbdev; il forward ricompilato dà esattamente il corpo atteso
+  (`pg_get_functiondef` uguale), e il rollback ridà esattamente l'oggetto di oggi.
+* **Regressione** sui 76 pgTAP che nominano le quattordici funzioni, i loro trigger o le tabelle dei componenti:
+  identici senza e con il giro. Quattro erano rossi già prima, uguali, e non sono di questo giro: tre test «serve il
+  proprietario» (`catalogo/test-chiudi-legame-con-prezzi-v1` 11, `vendite/test-annullo-documento-con-legami-v1` 30,
+  `vendite/test-ddt-righe-evase-dall-ordine-v1` 43) falliscono perché la prova gira come owner; in
+  `vendite/test-offerta-righe-espanse` i test 6-8 ricevono NULL.
+* **Doc:** nessuna pagina cambia, perché il comportamento è lo stesso.
+
+### 17.6 Giro 5-A — che cosa è scritto e le prove (2026-11-11)
+
+| # | Fase | Che cosa |
+| --- | --- | --- |
+| `00_schema/catalogo/20261112-15` | DDL | Via `uq_articoli_componenti_prodotto_componente_from` e `ix_uom_tipi_codice_interno_upper` (Q14). Il rollback li rimette, col COMMENT del vincolo |
+| `00_schema/catalogo/20261112-16` | COMMENT | Le colonne delle tabelle: riscritte al presente (M3, M4, §3.3), nuove (`unita_misura_conversioni`, l'audit di `uom_tipi`, `note` e le due partizioni), `codice` e `codice_interno` di `uom_tipi` distinti; e la FK `fk_cat_note_target_tipo`, che nominava un brief (l'ha trovata il presidio nuovo) |
+| `20_code/catalogo/20261112-17` | funzione | `fn_get_uom_base`: via il `LIMIT 1` su chiave primaria, COMMENT al presente (M6); la firma ora è ancorata (`%TYPE`), non lo era mai stata |
+| `20_code/catalogo/20261112-18` | funzione | `fn_articolo_correggi_struttura`: via il secondo `p_campi IS NULL OR`. La firma riprende i `%TYPE` che il giro 3 (`20261111-37`) aveva sciolto |
+| `20_code/catalogo/20261112-19` | funzione | `fn_riattiva_articolo`: area di log `catalogo`; il commento del corpo e il COMMENT nominano `E_ATTIVO_PADRE_NON_ATTIVO` al COMMIT e le funzioni di `dbops` dell'automazione ATTIVO (§2.5) |
+| `20_code/catalogo/20261112-20` | COMMENT | `fn_articoli_ammessi`, `fn_articolo_righe_vive_non_ammesse`, `vw_articoli_dettaglio` (M2) e le sue colonne; le colonne calcolate delle sette viste (scelta 3); i trigger dei guard scritti a mano, e quello del guard onere/natura riscritto |
+| `20_code/catalogo/20261112-21` | COMMENT | D-C fuori schema (§3.3.1): `acquisti.ddt_righe.sorgente_tipo_id`, `script.trgfn_righe_guard_articolo_ammesso`, `vendite.fn_clona_versione_listino`, i due trigger OBSOLETO di vendite. D-C è chiuso |
+| `20_code/vendite/20261112-22` | funzione | `fn_resolve_lotto_utility_emittente`: le due colonne del `RETURNS TABLE` tornano col `%TYPE` del `20260222-06` |
+| `20_code/vendite/20261112-23` | funzione | `fn_contratto_riga_componenti_init`: `p_emittente_sr_id` torna `anagrafiche.soggetti_ruoli.id%TYPE` (`20260605-07`) |
+| `20_code/vendite/20261112-24` | funzione | `fn_offerta_eccezione_componenti_init`: `p_emittente_sr_id` torna `anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE` (`20260605-06`) |
+
+**`-22` … `-24`: i `%TYPE` che la 5-B aveva ricopiato sciolti** (§17.5). Il `-12`, il `-02` e il `-06` erano già
+applicati: non si toccano, e la dichiarazione torna in un changeSet nuovo. Il corpo è quello della 5-B e i tipi risolti
+sono gli stessi, quindi l'oggetto compilato è identico. Cambia la fonte che il prossimo changeSet della funzione
+ricopierà. Prova: preCondition 1; `pg_get_functiondef`, COMMENT e ACL uguali prima, dopo il forward e dopo il rollback.
+`p_data_riferimento` dei cinque init resta `date` dal `20260512`, anche nelle firme scritte col `%TYPE`: è la data
+alla quale si legge la distinta, non una colonna del documento.
+
+Fuori dai changeSet: la nota della riga `catalogo.articoli.uom_id` in `dbops/automation_lock_columns.csv` (M8: nomina il
+trigger vivo, il codice resta, scelta 4). Il CSV si ricarica con l'upsert `runOnChange` del `20260110-15`.
+
+**Caduti dal censimento** (§17.2 B), riletti sul corpo: i due guard della tipologia passano `NULL::uuid` perché
+`unita_misura` e `unita_misura_conversioni` non hanno `tx_id`; i loro rami «parla la FK» scattano davvero (BEFORE, la FK
+si giudica dopo). Restano com'erano.
+
+**pgTAP:**
+
+* Nuovo `catalogo/test-comment-al-presente-catalogo-v1` (plan 5): lo stesso presidio di `dbops`, su `catalogo` e sui
+  cinque oggetti di D-C. In un file suo, non dentro `dbops/test-comment-al-presente-v1`, che è dell'altra sessione aperta.
+* `test-articoli-natura-vendita-notnull-default-v1`: il test 2 non conta più i NULL di tutto il catalogo, prova il
+  rifiuto di una natura NULL esplicita (23502); la fixture è un articolo del builder, in una tabella temporanea sua (nel
+  `WHERE` il builder girava una volta per riga).
+* `test-vw-articoli-dettaglio-e-onere-v1`: il test 3 non itera sul catalogo; toglie la causale all'articolo costruito e
+  ne guarda `e_onere`.
+
+**Prove** (scratch `zeroerp_ruoli`, come owner, `BEGIN … ROLLBACK`): per ogni changeSet la preCondition passa, il
+forward cambia lo stato, i tre corpi ricompilati sono esattamente quelli attesi, e il rollback riporta lo stato di prima
+(md5 uguale su COMMENT di `catalogo`, `acquisti`, `script`, `vendite`, corpi, indici e vincoli di `catalogo`). Il
+guardrail CI dei COMMENT è pulito sui 24 changeSet. Regressione sui 70 pgTAP di `catalogo` e su quelli che nominano gli
+oggetti toccati o leggono i COMMENT: identici senza e con il giro, tranne il presidio nuovo, che è rosso senza (3 su 5) e
+verde con. I rossi di prima restano uguali: test «serve il proprietario» (la prova gira da owner) e alcuni di
+`magazzino` e `vendite` che non toccano il giro.
+
+**Doc:** `manual/` di `uom_tipi`, `fn_get_uom_base`, `fn_riattiva_articolo`; `guide/gestione-contratti.md` (via la fonte
+«derivata dai componenti», ritirata: la CHECK della riga ammette la quantità solo con la fonte FISSA).
+
+### 17.7 Apply del giro 5 (2026-11-11)
+
+✅ **Applicato da Tid il 2026-11-11** su dbdev e sullo scratch, 5-B e 5-A (`20261112-01` … `-24`, tutti `EXECUTED` in
+`databasechangelog` su tutti e due), con i pgTAP come app verdi.
+
+**Verifica sul vivo, lo stesso giorno** (come app, in sola lettura): `obj_description` / `col_description` dei 26 oggetti
+che i changeSet del cantiere `obsoleto_dal` avevano commentato (§3.3.1), su dbdev e sullo scratch. Nessuno porta più
+nomi di brief, marcatori `rev`, id di changeSet, sigle di decisione o id di messaggio. Compresi i dieci dell'elenco
+chiuso, che erano sporchi prima del giro. ⇒ **D-C di `brief-db-articoli-obsoleto-dal` è chiuso.**
+
+**Committato** il giro 5 (5-B e 5-A), con questo brief (`9f2899c8b`, PR #92).
+
+## 18. Giro 5-bis — il codice nel risultato del batch delle commesse (via di Tid, 2026-11-11)
+
+**Chi scrive:** team BE (`dev/backend-tid`), 2026-11-11, al via di Tid («procedi in ordine, prima 5-bis poi tutto il
+resto»). **A chi:** sessione DB (`dev/db-tid`), che scrive i changeSet e il pgTAP; Tid, per i numeri e una decisione.
+**Origine:** la segnalazione 3 di §15.10-bis.3 (passo 7-decies), scelta 1 di §17.3.
+
+### 18.1 Il difetto
+
+`vendite.fn_batch_upsert_commessa_attivita` cattura ogni errore della madre (`EXCEPTION WHEN others`) e lo riporta in
+`errors` come `{index, segment_key, error}`, dove `error` è il solo `SQLERRM`. Il codice di dominio, che
+`script.fn_log_and_raise_error` mette nel campo `CONSTRAINT` della diagnostica (contratto «`P0001` + `CONSTRAINT`
+valorizzato», `work-done/brief-db-codice-errore-strutturato.md`), si perde nel ramo EXCEPTION: il backend lo legge dalla
+`__cause__` dell'eccezione del driver (`apps/core/services/db_error_fields.py`), e qui un'eccezione al backend non
+arriva. Un rifiuto `E_UOM_MISSING` dal push si riconosce solo dalla frase
+(`vendite/tests/db/test_commessa_fattore_senza_db.py`, caso 3, cerca il codice dell'unità dentro `error`), e il report del
+push (`commesse_source_handlers.py`, `Errore batch segment_key=…: <frase>`) non porta nessun codice da mappare a policy o
+ui_action.
+
+### 18.2 Il contratto proposto
+
+Ogni oggetto di `errors` porta, **in più** delle tre chiavi di oggi, che restano identiche:
+
+| Chiave | Da dove | Quando c'è |
+| --- | --- | --- |
+| `sqlstate` | `RETURNED_SQLSTATE` | sempre |
+| `codice` | `CONSTRAINT_NAME` | solo con `sqlstate = 'P0001'` e `CONSTRAINT_NAME` non vuoto: è il codice di dominio. Per un 23505 o un 23514 il `CONSTRAINT` è il nome di un vincolo, non un codice, e la chiave **non c'è** |
+| `campo` | `COLUMN_NAME` | alle stesse condizioni di `codice` (il secondo canale strutturato, il campo da correggere) |
+
+* `jsonb_strip_nulls` sull'oggetto, come i wrapper di lotto (§ COMMENT di `vendite.fn_snapshot_fattura_lotto`): una chiave
+  presente col valore null si legge come «c'è ed è vuota».
+* La clausola resta `WHEN others`: il batch è collect-all, e un errore di dati (un cast del payload, un vincolo) deve
+  restare una riga in `errors`, non fermare il giro.
+* **Additivo:** nessuna chiave cambia nome o significato, la firma non cambia. Il backend di oggi continua a funzionare
+  identico prima di BE30, quindi l'ordine apply → BE non è stretto.
+* COMMENT della funzione e pagina `manual/` (§ «Gestione errori») riallineati.
+
+### 18.3 Regola del 2 — da dichiarare prima di scrivere (decisione di Tid, D5bis-1)
+
+La lettura «`P0001` + `CONSTRAINT` valorizzato = codice di dominio» è già scritta, a DB, in tre sedi:
+
+| Sede | Forma |
+| --- | --- |
+| `maintenance.fn_run_and_log` | `CASE WHEN sqlstate = 'P0001' AND NULLIF(vincolo,'') IS NOT NULL THEN vincolo ELSE sqlstate END` |
+| `vendite.fn_snapshot_fattura_lotto` | `CONSTRAINT_NAME` nudo (cattura solo `raise_exception`, quindi è sempre `P0001`) |
+| `vendite.fn_genera_scadenze_lotto` | idem |
+
+Il batch sarebbe la **quarta**, e la prima che cattura `others` senza ripiegare sullo SQLSTATE come codice. Le strade:
+
+* **(a) Proposta: un BB in `script`**, per esempio `script.fn_codice_dominio(p_sqlstate text, p_vincolo text) RETURNS
+  text` (`IMMUTABLE`, NULL se non è un errore di dominio), letto dal batch e da `fn_run_and_log`, che ci mette il suo
+  ripiego sullo SQLSTATE. I due wrapper di lotto **restano**: catturano solo `raise_exception`, e per loro la regola è
+  già vera per costruzione (si può dire, non serve dirlo). Le copie si ritirano nello stesso giro (`fn_run_and_log`).
+* (b) Il `CASE` scritto sul posto nel batch, e il BB alla prossima occorrenza. ⛔ Sconsigliata: è già la seconda
+  occorrenza della forma con il `CASE` (`fn_run_and_log`).
+
+La scelta (a) tocca `maintenance` oltre `vendite`: un'estrazione su più domini vuole l'ok di Tid (AGENTS.md, regola
+del 2). ✅ **Tid, 2026-11-11: (a)**, e il 5-ter (§19, voce 1) entra nello stesso giro.
+
+### 18.4 Il pgTAP (sessione DB)
+
+In `db/pgtap/vendite/test-fn-batch-upsert-commessa-attivita-v1.sql`, con i casi **costruiti** (builder `dbops.fn_pgtap_*`,
+come `test_commessa_fattore_senza_db`):
+
+1. un rifiuto di dominio: una riga in un'unità senza conversione → `errors->0` ha `codice = 'E_UOM_MISSING'`,
+   `sqlstate = 'P0001'`, `error` invariato;
+2. un errore che non è di dominio: una data del payload scritta male (cast) → `sqlstate` valorizzato, **niente**
+   `codice` né `campo`;
+3. la riga buona dello stesso batch scritta comunque (collect-all invariato);
+4. con (a), il BB da solo: `P0001` + vincolo → il vincolo; `P0001` senza vincolo → NULL; `23505` + vincolo → NULL.
+
+### 18.5 Ricadute sul BE (team BE, a giro applicato)
+
+| # | Che cosa |
+| --- | --- |
+| BE30 | `CommesseRepository.batch_upsert_attivita` porta `codice`, `sqlstate`, `campo` di ogni errore; `commesse_source_handlers` mette il codice nel report del push (`Errore batch segment_key=… [E_…]: <frase>`); `test_commessa_fattore_senza_db` caso 3 asserisce `codice == 'E_UOM_MISSING'` e non cerca più nel testo; il test del repository col mock aggiunge la chiave. Prova sul DB vero (`ZEROERP_TEST_DB_E2E=1`) |
+
+### 18.6 Che cosa serve per partire
+
+* **Tid:** ~~D5bis-1~~ ✅ (a); i numeri del giro (5-bis + 5-ter).
+* **Sessione DB:** changeSet in `20_code/vendite/` (e, con (a), `20_code/script/` più `20_code/maintenance/`), corpo
+  preso dalla doc auto-generata (`docs/it/dbzero/vendite/funzioni/fn_batch_upsert_commessa_attivita.md`), pgTAP di §18.4,
+  COMMENT e pagine `manual/`; prova sullo scratch; apply di Tid.
+
+## 19. Dopo il 5-bis: il resto, in ordine (team BE, 2026-11-11)
+
+| Ordine | Voce | Chi | Stato |
+| --- | --- | --- | --- |
+| 1 | **Giro 5-ter, il ritiro di `E_CATALOGO_NOTA_NOT_FOUND`** (§16.5.3, punto 1; deciso da Tid). Righe di `config/codici_errore.csv` e `config/messaggi_errore.csv` dal CSV (§11.2 di linee-guida-sql), più `allegati/codici-errore-classe-note.csv`. Dopo l'apply il BE rigenera `error_policies_generated.py` e toglie il ripiego **nello stesso giro** (BE31) | sessione DB, poi team BE | ✅ Tid: nello stesso giro del 5-bis. Aspetta i numeri |
+| 2 | **`vendite.vw_note`** gemella di `catalogo.vw_note` (§16.5.3, punto 2) | sessione DB | da valutare: è una proposta, non una decisione |
+| 3 | **`seq` di una nota** (§16.5.3, punto 3) | Tid, poi team BE | ✅ fatto (D-seq, sotto) |
+| 4 | **Q35**, lo spegnimento di un kit (§16.6) | sessione DB | ✅ Tid: (a). Prima la verifica di §16.6.3; numeri da Tid |
+
+**D-seq, i fatti dal contratto** (struttura, non popolazione). `seq` è `integer NOT NULL DEFAULT 10` con `CHECK (seq >= 0)`
+su **tutte** le tabelle delle note: `vendite.note`, `catalogo.note`, e le partizioni di `acquisti` e `magazzino`
+(`20261025-55`, `20261025-56`). È il BB del backend a discostarsi, e due volte: `optional_smallint(min_val=1,
+max_val=32767)` in `partitioned_note_service.py` rifiuta lo 0 che il DB ammette, e taglia a un tetto da `smallint` che
+la colonna `integer` non ha. **Proposta: il BB si allinea al DB** (≥ 0, tetto dell'`integer`): `seq` è una chiave di
+ordinamento, e lo 0 è proprio il valore che mette una nota prima di quelle nate col default 10. Stringere il CHECK
+vorrebbe dire cambiarlo su quattro schemi per dare ragione a un limite nato nel backend. Lavoro solo BE, una riga e i
+test.
+
+✅ **D-seq, Tid 2026-11-11: il BE si allinea al DB. Fatto** (team BE, lo stesso giorno, da committare su
+`dev/backend-tid`): in `partitioned_note_service.py` `seq` va da 0 a `INTEGER_MAX`, e la frase di `chk_note_seq_pos`
+dice «non può essere negativo» (diceva «positivo», e lo 0 il DB lo ammette). Test nuovo `test_seq_range_del_db` (0,
+oltre lo smallint e il tetto dell'integer passano; −1 e oltre l'integer sono 400 `E_NOTA_VALIDATION` col campo). Il FE
+delle note non limita `seq`: nessuna ricaduta. Prove: `test_partitioned_note_service`, `test_note_catalogo_db` e i test
+delle note sul DB vero (`ZEROERP_TEST_DB_E2E=1`), 57 verdi; ruff pulito.
+
+**Q35, Tid 2026-11-11: (a).** Alla sessione DB, dopo il giro 5-bis: prima la verifica del lato componente (§16.6.3,
+punto 1), poi le due righe in `automazione_attivo_eccezioni.csv` e il motivo della riga delle note del legame
+riscritto. Prova del giro: i due smoke `catalogo-phase3` e `preventivi-componenti` tornano verdi senza modifiche.

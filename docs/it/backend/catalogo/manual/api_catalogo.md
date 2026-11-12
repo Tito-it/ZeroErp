@@ -148,6 +148,7 @@ il motivo via tooltip i18n (chiavi `catalogo.motivo_*`).
 | `modo_approvvigionamento_id` | int | No | **Da dove arriva** l'articolo (FK `config.modi_approvvigionamento`: `ACQUISTO` / `PRODUZIONE` / `STOCK` / `NON_APPLICABILE` — 2026-09-14, Blocco B di `brief-db-modifiche-certe-ciclo-vendita-e-articolo`). Dimensione **ortogonale** alla natura di vendita (dice dove *va* la riga, non da dove *viene*). Se omesso → default DB `ACQUISTO`. **Mai null esplicito** (NOT NULL): `E_CATALOGO_VALIDATION` col campo. Lookup: `GET /core/lookup/codici/?rel=config.modi_approvvigionamento` |
 | `gestito_a_magazzino` | bool | No | L'articolo **movimenta giacenza**. Default DB `false` (fail-safe: nessun articolo comincia a movimentare per distrazione). ⚠️ Non si deriva da natura `MERCE`: una merce può essere venduta senza passare da giacenza |
 | `lead_time_giorni` | int | No | Giorni fra richiesta e disponibilità. **Nullable per modello**: per una prestazione non significa niente, e `0` non è «non si applica». Negativo → `E_CATALOGO_VALIDATION` col campo (anticipa il CHECK) |
+| `obsoleto_dal` | date | No | Il **ritiro** dell'articolo: la data da cui non si sceglie più per una riga nuova (`YYYY-MM-DD`). Nullable: `null` = si sceglie; una data futura è un ritiro programmato; `null` in PATCH toglie il ritiro. I documenti già fatti non cambiano. Una data scritta male → `E_CATALOGO_VALIDATION` col campo |
 | `meta` | object | No | Metadati liberi |
 
 Una chiave fuori da questo elenco è rifiutata con `400` `E_CATALOGO_VALIDATION`: anche `voce_utility`, che non esiste più (né come campo né come filtro, né in risposta). I booleani si mandano come booleani JSON.
@@ -190,6 +191,11 @@ immutabilita' (Fase 5):
   nome**: una colonna nuova della vista non esce finché nessuno la nomina —
   le tre colonne della lista 26 (`ui.lista_colonna` 747-749) sono nate
   `attivo = f` e accese nello stesso commit di questa proiezione.
+- Ritiro (2026-11-11, da `vw_articoli_dettaglio`): `obsoleto_dal`, la data
+  scritta dall'operatore, ed `e_obsoleto`, vero quando l'articolo è ritirato
+  alla data operativa (`script.fn_e_obsoleto`, lo stesso predicato del guard
+  di riga e del picker di riga). ⛔ Il FE legge `e_obsoleto` e non confronta
+  date. Gli stessi due campi sono nelle righe della lista (§1.1).
 
 ### 1.4 Aggiorna articolo
 
@@ -402,8 +408,9 @@ non un elenco intero spacciato per filtrato.
 Envelope `{"count", "results", "troncato"}` (`troncato`: il tetto ha tagliato). Campi per
 autocomplete cross-dominio: `id`, `codice`, `descrizione`, `uom_codice`, `uom_descrizione`,
 `is_composito`, `attivo`, `iva_id`, `iva_codice`, `iva_descrizione`, `iva_aliquota_iva`,
-`gestito_a_magazzino`, `requires_lotto`, `requires_serial` (più `motivo` sulla riga di un
-documento, e la causale con `solo_oneri`).
+`gestito_a_magazzino`, `requires_lotto`, `requires_serial`, `e_onere`, `causale_onere_id`,
+`obsoleto_dal`, `e_obsoleto` (più `motivo` sulla riga di un documento, e la causale con
+`solo_oneri`).
 
 ### 2.2 Lookup unita` di misura — RIMOSSO
 

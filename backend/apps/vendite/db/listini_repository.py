@@ -566,7 +566,8 @@ class ListiniRepository:
     #        (D2: la copia non comincia prima della sorgente).
     #        ⛔ Ritirate il 2026-10-29 (BE-C1) le tre INSERT che il backend
     #        faceva da se': la stessa copia, ora nel DB.
-    # Ritorna: {versione_id, righe_copiate, componenti_copiati, componenti_saltati}.
+    # Ritorna: {versione_id, righe_copiate, componenti_copiati,
+    #        componenti_saltati, righe_saltate}.
     #        ⭐ Parametri espliciti e non un dict: attivo, meta e stato non si
     #        clonano, e una chiave in piu' non ha dove andare.
     def clone_versione(
