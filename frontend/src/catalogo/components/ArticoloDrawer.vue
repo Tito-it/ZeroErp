@@ -7,7 +7,7 @@
 //        `requires_lotto` lo DICE. Il drawer vive in `src/magazzino` (Q-1 del piano
 //        anagrafiche-fuori-dal-pannello-config: chi possiede il dato possiede il componente).
 //        Contenuto deferito a dopo l'animazione per evitare rimbalzi visivi.
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useArticoliStore } from '../stores/articoli'
 import { useAuthStore } from '../../stores/auth'
@@ -384,6 +384,28 @@ async function refreshAfterStateChange(result) {
   emit('saved', result)
 }
 
+// Il campo «Ritirato dal», per portarci l'operatore quando il DB rifiuta lo
+// spegnimento e indica il ritiro (vedi `portaAlRitiro`).
+const campoRitiroRef = ref(null)
+
+// Scopo: un articolo nominato da altre righe (distinte, documenti, listini)
+//        non si spegne, si RITIRA (Q35 (c), Tid 2026-11-12): il DB rifiuta con
+//        409 `E_ATTIVO_BLOCK_SI_RITIRA` e `fields: ['obsoleto_dal']`. Il campo
+//        e' gia' rosso (`campiErrati`) e il toast dice la soluzione; qui si
+//        porta lo sguardo e il fuoco sul campo, che sta piu' in basso del
+//        pulsante appena premuto. ⛔ La data NON la sceglie il drawer: oggi o
+//        un giorno futuro (ritiro programmato) e' una decisione di chi compila.
+//        Il segnale e' il CAMPO nominato dall'errore, non il codice: e' il
+//        contratto dell'envelope (`fields`), lo stesso che accende il rosso.
+async function portaAlRitiro() {
+  if (!campiErrati.value.includes('obsoleto_dal')) return
+  await nextTick()
+  const el = campoRitiroRef.value
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.querySelector('input')?.focus({ preventScroll: true })
+}
+
 function onConfirmDisattiva() {
   if (!detail.value) return
   confirmAction({
@@ -396,6 +418,10 @@ function onConfirmDisattiva() {
         () => store.disattiva(props.articoloId),
         { successMessage: t('catalogo.articolo_disattivato') }
       )
+      if (result === null) {
+        await portaAlRitiro()
+        return
+      }
       await refreshAfterStateChange(result)
     }
   })
@@ -642,7 +668,7 @@ const drawerActions = computed(() => {
       </div>
       <!-- Il ritiro: la data si mette e si toglie (il pulsante «Cancella» del
            calendario); togliendola l'articolo torna a scegliersi. -->
-      <div class="form-field">
+      <div ref="campoRitiroRef" class="form-field">
         <label>{{ t('catalogo.field_obsoleto_dal') }}</label>
         <DatePicker v-model="form.obsoleto_dal" :dateFormat="DATE_FORMAT" showIcon showButtonBar
           :invalid="campiErrati.includes('obsoleto_dal')" />

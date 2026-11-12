@@ -101,7 +101,9 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from apps.vendite.db.commesse_repository import BatchUpsertResult, CommesseRepository, PushableRow
+from apps.vendite.db.commesse_repository import (
+    BatchUpsertResult, CommesseRepository, ErroreBatchAttivita, PushableRow,
+)
 from apps.vendite.services.commesse_source_handlers import (
     BoMComponentExpander,
     ComponenteConsumabile,
@@ -257,7 +259,10 @@ class CommesseSourceHandlersTests(TestCase):
         repo.fetch_pushable_rows.return_value = [riga_ok, riga_ko]
         repo.batch_upsert_attivita.return_value = BatchUpsertResult(
             total_rows=2, inserted=1, updated=0,
-            errors=[{"segment_key": "TEST:uid-002:R:1", "error": "guard KO"}],
+            errors=[ErroreBatchAttivita(
+                index=1, segment_key="TEST:uid-002:R:1", error="guard KO",
+                sqlstate="P0001", codice="E_UOM_MISSING", campo="uom_operativa_id",
+            )],
         )
         handler = HandlerPreventivi(repo)
 
@@ -268,7 +273,10 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual([c[1] for c in coppie], ["TEST:uid-001:R:1"])
         # L'errore resta visibile nel report.
         self.assertEqual(result.skipped, 1)
-        self.assertTrue(any("TEST:uid-002:R:1" in e for e in result.errors))
+        # Il report porta il codice di dominio del rifiuto (BE30).
+        self.assertIn(
+            "Errore batch segment_key=TEST:uid-002:R:1 [E_UOM_MISSING]: guard KO", result.errors,
+        )
 
     # Scopo: sorgente_id valorizzato → propagato a fetch_pushable_rows del repo.
     # Assicura che il push singolo UI-driven filtri davvero a livello DB.

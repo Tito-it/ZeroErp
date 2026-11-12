@@ -1975,7 +1975,7 @@
     "disattiva_articolo": "Deactivate",
     "riattiva_articolo": "Reactivate",
     "disattiva_dialog_titolo": "Deactivate article",
-    "disattiva_dialog_messaggio": "Article {codice} will be deactivated. Linked operative UoMs, BoM rows and price lists remain unchanged. Confirm?",
+    "disattiva_dialog_messaggio": "Article {codice} will be deactivated. If it is still in use (in a bill of materials, a document, a price list) it cannot be deactivated: withdraw it with the «Withdrawn from» date instead. Confirm?",
     "riattiva_dialog_titolo": "Reactivate article",
     "riattiva_dialog_messaggio": "Article {codice} will be reactivated. Child entities (operative UoMs, BoM rows) keep their current state: reactivate them separately if needed. Confirm?",
     "correggi_struttura": "Correct structure",

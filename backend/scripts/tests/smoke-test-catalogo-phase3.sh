@@ -21,7 +21,7 @@
 # 14) Create nota articolo (opzionale, richiede NOTE_STYLE_ID)
 # 15) PATCH nota articolo (opzionale)
 # 16) DELETE nota; righe BoM e UoM base disattivate (non si cancellano)
-# 17) Disattiva articoli di test
+# 17) Articoli di test: lo spegnimento e' rifiutato (409 E_ATTIVO_BLOCK_SI_RITIRA), si ritirano
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -328,20 +328,27 @@ else
 fi
 # Le righe BoM non si cancellano ne' si spengono (dal 2026-11-10 l'unica
 # scrittura di un legame e' la fine) e l'UoM operativa base non si spegne mai
-# (Q34): al passo 17 l'articolo si spegne con la sua storia accesa.
+# (Q34).
 
-# --- 17. Disattiva articoli di test ---
+# --- 17. Articoli di test: si ritirano, non si spengono ---
+# Il kit ha la distinta e il figlio e' un suo componente: tutti e due sono
+# nominati da altre righe, e un articolo nominato non si spegne, si ritira
+# (Q35 (c), Tid 2026-11-12). Lo spegnimento e' un 409 col codice del ritiro e
+# il campo da accendere; il ritiro con la data di oggi passa.
 echo ""
-echo "-- 17. Disattiva articoli di test --"
-do_curl POST "/api/v1/catalogo/articoli/${PARENT_ID}/disattiva/" "{}"
-check "Disattiva articolo padre" "200" ".data.attivo"
-do_curl POST "/api/v1/catalogo/articoli/${CHILD_ID}/disattiva/" "{}"
-check "Disattiva articolo figlio" "200" ".data.attivo"
+echo "-- 17. Articoli di test: lo spegnimento e' rifiutato, si ritirano --"
+for ART in "$PARENT_ID" "$CHILD_ID"; do
+    do_curl POST "/api/v1/catalogo/articoli/${ART}/disattiva/" "{}"
+    smoke_check_codice "Disattiva articolo ${ART} rifiutato" "409" "E_ATTIVO_BLOCK_SI_RITIRA" || true
+    do_curl PATCH "/api/v1/catalogo/articoli/${ART}/" "{\"obsoleto_dal\":\"${OGGI}\"}"
+    check "Ritira articolo ${ART} (obsoleto_dal = oggi)" "200" ".data.obsoleto_dal" || true
+    [[ "$EXTRACTED" == "$OGGI" ]] || log_fail "obsoleto_dal atteso ${OGGI}, ricevuto ${EXTRACTED:-<vuoto>}"
+done
 
 echo ""
 echo "========================================="
 echo -e " Risultato: ${GREEN}$PASS OK${NC} / ${RED}$FAIL FAIL${NC}"
 echo "========================================="
-echo "Nota: lo smoke crea due articoli di test e li lascia disattivati."
+echo "Nota: lo smoke crea due articoli di test e li lascia ritirati (attivi, obsoleto_dal = oggi)."
 
 [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1

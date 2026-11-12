@@ -238,8 +238,16 @@ immutabilita' (Fase 5):
 
 - Soft delete logico (`attivo=false`)
 - Idempotente se l'articolo e' gia' inattivo
-- Trigger DB `trgfn_prevent_deactivate_if_children` blocca la
-  disattivazione se esistono figli attivi (UoM operative, righe BoM, ecc.)
+- ⛔ **Un articolo nominato da altre righe non si spegne, si ritira** (Q35 (c),
+  Tid 2026-11-12, brief-db-revisione-catalogo §16.6.7). Il trigger
+  `trgfn_prevent_deactivate_if_children`, sulle tabelle col ritiro
+  (`obsoleto_dal`), rifiuta con **409 `E_ATTIVO_BLOCK_SI_RITIRA`** e
+  `fields: ["obsoleto_dal"]`: la strada e' il `PATCH` dell'articolo con
+  `obsoleto_dal` (oggi, o un giorno futuro per un ritiro programmato). Vale per
+  le distinte (anche i legami chiusi), i documenti, i listini. I due rami
+  `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` / `_EXIST` restano per le tabelle senza
+  ritiro. Il drawer articolo colora il campo «Ritirato dal» e ci porta
+  l'operatore. Prova: `smoke-test-catalogo-phase3.sh` passo 17.
 
 ### 1.6 Riattiva articolo (Fase 7)
 

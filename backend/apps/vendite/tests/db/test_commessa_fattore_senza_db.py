@@ -146,7 +146,8 @@ class CommessaFattoreSenzaDbTests(unittest.TestCase):
             factor_to_base=None,
         )])
         self.assertEqual(len(esito.errors), 1, esito.errors)
-        # ⚠️ Il batch del DB riporta la FRASE del rifiuto, non il codice: si
-        #    riconosce dall'unita' che nomina, costruita qui.
-        self.assertIn(self.codice_uom_senza, esito.errors[0]["error"])
+        # Il batch del DB riporta il CODICE del rifiuto (20261112-26, BE30): si
+        # riconosce da quello, non dalla frase.
+        self.assertEqual(esito.errors[0].codice, "E_UOM_MISSING")
+        self.assertEqual(esito.errors[0].sqlstate, "P0001")
         self.assertEqual(self._fattore(), prima)
