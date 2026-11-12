@@ -616,8 +616,11 @@ class BaseSourceHandler(ABC):
             result.updated = batch.updated
             result.skipped += len(batch.errors)
             for err in batch.errors:
+                # Il codice di dominio nel report, quando il DB lo da' (BE30):
+                # chi legge il push riconosce il rifiuto senza leggere la frase.
+                codice = f" [{err.codice}]" if err.codice else ""
                 result.errors.append(
-                    f"Errore batch segment_key={err.get('segment_key')}: {err.get('error')}"
+                    f"Errore batch segment_key={err.segment_key}{codice}: {err.error}"
                 )
             # Il batch DB ritorna solo contatori: risolviamo gli id dalle chiavi
             # naturali (commessa_id, segment_key) per dire al ponte QUALI righe
@@ -628,7 +631,7 @@ class BaseSourceHandler(ABC):
             # VALORI STALI mentre il report la segna in errore (review
             # 2026-07-23: BOZZA→APPROVATA→fatturata col vecchio importo).
             chiavi_fallite = {
-                err.get("segment_key") for err in batch.errors
+                err.segment_key for err in batch.errors
             }
             result.attivita_ids_per_commessa = self._repo.list_attivita_ids_by_segments(
                 [

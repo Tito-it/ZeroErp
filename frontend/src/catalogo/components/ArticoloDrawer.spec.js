@@ -34,6 +34,10 @@
 //   8) il ritiro (`obsoleto_dal`, brief-db-articoli-obsoleto-dal §8): la data
 //      del dettaglio torna nel PATCH come giorno ISO; svuotata, viaggia `null`
 //      (il ritiro si toglie)
+//   9) lo spegnimento rifiutato col ritiro (409 `E_ATTIVO_BLOCK_SI_RITIRA`,
+//      `fields: ['obsoleto_dal']`, Q35 (c)): il campo «Ritirato dal» e' rosso
+//      e il drawer ci porta l'operatore; un rifiuto che non nomina il campo
+//      non sposta niente
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -42,6 +46,7 @@ import { flushPromises } from '@vue/test-utils'
 
 const getArticolo = vi.fn()
 const updateArticolo = vi.fn()
+const disattivaArticolo = vi.fn()
 
 // `useDrawerFormPreserve` legge la route per il cambio pagina.
 vi.mock('vue-router', () => ({
@@ -56,7 +61,7 @@ vi.mock('../api/catalogo', () => ({
   getArticolo: (...a) => getArticolo(...a),
   createArticolo: vi.fn(),
   updateArticolo: (...a) => updateArticolo(...a),
-  disattivaArticolo: vi.fn(),
+  disattivaArticolo: (...a) => disattivaArticolo(...a),
   riattivaArticolo: vi.fn(),
   lookupArticoloUom: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }),
   listArticoloComponenti: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }),
@@ -285,5 +290,40 @@ describe('ArticoloDrawer — ritiro dell\'articolo', () => {
     await w2.find('.salva-finto').trigger('click')
     await flushPromises()
     expect(updateArticolo.mock.calls[1][1].obsoleto_dal).toBeNull()
+  })
+})
+
+describe('ArticoloDrawer — lo spegnimento rifiutato porta al ritiro', () => {
+  // Un rifiuto del backend come lo consegna axios: l'envelope sta in `response`.
+  const rifiuto = (error) => Object.assign(new Error('409'), {
+    response: { status: 409, data: { error } },
+  })
+
+  beforeEach(() => {
+    getArticolo.mockReset()
+    disattivaArticolo.mockReset()
+    // jsdom non ha `scrollIntoView`: si conta chi la chiama.
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  it('9) col campo nominato, il «Ritirato dal» e\' rosso e in vista; senza, niente', async () => {
+    const { default: DatePicker } = await import('primevue/datepicker')
+    disattivaArticolo.mockRejectedValue(rifiuto({
+      code: 'E_ATTIVO_BLOCK_SI_RITIRA', message: 'si ritira', fields: ['obsoleto_dal'],
+    }))
+    const w = await apri(articolo())
+    await w.find('.azione-disattiva').trigger('click')
+    await flushPromises()
+    expect(disattivaArticolo).toHaveBeenCalledWith(ID)
+    expect(w.findComponent(DatePicker).props('invalid')).toBe(true)
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+
+    Element.prototype.scrollIntoView.mockClear()
+    disattivaArticolo.mockRejectedValue(rifiuto({ code: 'E_ALTRO', message: 'altro' }))
+    const w2 = await apri(articolo())
+    await w2.find('.azione-disattiva').trigger('click')
+    await flushPromises()
+    expect(w2.findComponent(DatePicker).props('invalid')).toBe(false)
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
   })
 })

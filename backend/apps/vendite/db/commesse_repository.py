@@ -195,13 +195,48 @@ class UpsertAttivitaResult:
 
 
 @dataclass(frozen=True)
+class ErroreBatchAttivita:
+    """Il rifiuto di UNA riga di fn_batch_upsert_commessa_attivita.
+
+    Scopo: la forma dell'errore che il batch del DB consegna (20261112-26), letta
+           una volta qui e non a chiavi sparse nei consumatori. `index`,
+           `segment_key` ed `error` (la frase) ci sono sempre; `sqlstate` sempre
+           dal 2026-11-12; `codice` e `campo` solo per un errore di DOMINIO
+           (`script.fn_codice_dominio`: P0001 col CONSTRAINT). Un errore tecnico
+           (un cast, un vincolo) ha `codice` e `campo` a None: e' un caso del
+           modello, non un difetto.
+    """
+
+    index: int | None
+    segment_key: str | None
+    error: str
+    sqlstate: str | None = None
+    codice: str | None = None
+    campo: str | None = None
+
+    # Scopo: un elemento dell'array `errors` del DB → record. Le chiavi assenti
+    #        (il DB le toglie con jsonb_strip_nulls) diventano None.
+    @classmethod
+    def da_jsonb(cls, raw: dict) -> "ErroreBatchAttivita":
+        index = raw.get("index")
+        return cls(
+            index=int(index) if index is not None else None,
+            segment_key=raw.get("segment_key"),
+            error=str(raw.get("error") or ""),
+            sqlstate=raw.get("sqlstate"),
+            codice=raw.get("codice"),
+            campo=raw.get("campo"),
+        )
+
+
+@dataclass(frozen=True)
 class BatchUpsertResult:
     """Risultato batch di fn_batch_upsert_commessa_attivita."""
 
     total_rows: int
     inserted: int
     updated: int
-    errors: list[dict]
+    errors: list[ErroreBatchAttivita]
 
 
 # --- Costanti dominio commesse (valori allineati ai DEFAULT delle fn SQL) ---
@@ -1261,7 +1296,11 @@ class CommesseRepository(EventLogRepositoryMixin):
             total_rows=int(row[0]),
             inserted=int(row[1]),
             updated=int(row[2]),
-            errors=errors_raw if isinstance(errors_raw, list) else [],
+            errors=[
+                ErroreBatchAttivita.da_jsonb(e)
+                for e in (errors_raw if isinstance(errors_raw, list) else [])
+                if isinstance(e, dict)
+            ],
         )
 
     # --- Gruppo 3: Emit attività fatturabili (pull) ---

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1216, di cui 128 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1217, di cui 129 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -185,6 +185,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ATTIVO_BLOCK_FKCOL_NOT_FOUND": "TECNICO",
     # ⚠️ CODICE SOLO-LOG: l'unico punto che lo nomina usa · `fn_log_error_only`, che scrive in dbops.error_log e NON solleva. · Non arriva mai a un client, quindi questo status non lo legge · nessuno: la policy esiste perche' il cancello lo pretende, ed e' · giusto che lo pretenda — la misura e' volutamente larga e non puo' · sapere se domani qualcuno lo fara' sollevare davvero. Vedi §16.2.
     "E_ATTIVO_BLOCK_REF_NULL": "TECNICO",
+    # dbops.trgfn_prevent_deactivate_if_children, ramo «il padre ha il ritiro (obsoleto_dal)»: una voce che altre righe nominano non si spegne, si ritira con una data di ritiro, e da quel giorno non si propone piu' per un uso nuovo. Precede i due rami di E_ATTIVO_BLOCK_CHILDREN_ACTIVE ed E_ATTIVO_BLOCK_CHILDREN_EXIST, che restano per le tabelle senza ritiro: il rimedio e' un altro, la data e non le figlie. Il campo e' obsoleto_dal.
+    "E_ATTIVO_BLOCK_SI_RITIRA": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_ATTIVO_CASCADE": "TECNICO",
     # dbops.trgfn_child_requires_active_parent (il require ATTIVO generato su ogni FK verso una tabella con lo stato attivo, e qualche montaggio a mano): una figlia attiva si collega a un padre disattivato. CONFLITTO_STATO: il padre esiste ed e' valido, e' il suo stato a non ammettere il collegamento. Gemello del block (E_ATTIVO_BLOCK_CHILDREN_ACTIVE): stessi valori, stesso ordine (padre, colonna referenziata, valore, figlia); campo = la colonna FK della figlia. Prima usciva E_ATTIVO_REQUIRE, TECNICO, e il backend lo aggirava con controlli preventivi (brief-db-revisione-dbops D46, richiesta BE3).
@@ -258,6 +260,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CATALOGO_ARTICOLO_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_COMPONENTE_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_CONV_NOT_FOUND": "NON_TROVATO",
+    # Ritirato: le note di catalogo passano dal building block delle note del backend, che risponde con E_NOTA_NOT_FOUND ed E_NOTA_PARENT_NOT_FOUND. Nessuna funzione del database lo solleva.
+    # ⚠️ RITIRATO il 2026-11-12
     "E_CATALOGO_NOTA_NOT_FOUND": "NON_TROVATO",
     # Guard catalogo obsoleto (dbops.trgfn_child_requires_non_obsolete_parent): · tentata creazione/ri-aggancio di un'istanza su una voce di catalogo con · obsoleto_dal <= oggi. Conflitto di stato del catalogo → 409 (come gli · altri guard). Messaggio parlante dal DB (messaggi_errore id 500). · Dal 2026-11-07 solo per il catalogo obsoleto: i rami di configurazione del trigger (argomenti, colonne mancanti) sollevano E_TRIGGER_ARGOMENTI_INVALIDI, il padre assente E_PADRE_INESISTENTE (brief-db-revisione-dbops D47, D5).
     "E_CATALOGO_OBSOLETO_NUOVA_ISTANZA": "CONFLITTO_STATO",
@@ -2163,6 +2167,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_BOM_SORGENTE_GIA_CHIUSA",
         "E_BOM_VALIDO_AL_INVALIDO",
         "E_BOM_VERSIONE_OVERLAP",
+        "E_CATALOGO_NOTA_NOT_FOUND",
         "E_CLIENTE_NON_ATTIVO",
         "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI",
         "E_COMMESSA_AZIONE_NON_AMMESSA",

@@ -1,14 +1,14 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-12 (giri 5-bis + 5-ter, Q35 (c) + Q36 e viste delle note applicati, pgTAP verdi)
+## ⏭️ Chi riparte — aggiornato al 2026-11-12 (giro BE di BE30-BE33 e del FE del ritiro fatto, da committare)
 
-**Riparte: il team BE**, con quattro voci a DB applicato: **BE30 + BE31** (il codice degli errori del batch, il ripiego
-del codice ritirato; §18.5, §18.7.3), **BE32** (il codice `E_ATTIVO_BLOCK_SI_RITIRA` e i due smoke che ritirano il kit;
-§16.6.7), **BE33** (il BB delle note legge `<schema>.vw_note`; §20.3). Tid ha applicato il 2026-11-12, pgTAP verdi:
-`20261112-25` … `-27`, `-29`, `-31` … `-35` e i CSV. Alla **sessione DB** non resta lavoro aperto: dopo il BE, la
-verifica del suo giro e l'archiviazione (passo 8). A **Tid**: il commit dei tre giri DB; da guardare, quando vuole, le
+**Riparte: Tid** col commit del giro BE (BE30-BE33 e il FE del ritiro, §21, su `dev/backend-tid`); poi la **sessione
+DB** con la verifica del giro BE e l'archiviazione (passo 6-quaterdecies). Tid ha applicato il 2026-11-12, pgTAP verdi:
+`20261112-25` … `-27`, `-29`, `-31` … `-35` e i CSV. Alla **sessione DB**, dopo il commit del BE, resta solo la
+verifica del suo giro e l'archiviazione (passo 6-quaterdecies, poi 8). A **Tid**, da guardare quando vuole, le
 scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2, §14.6, §13.3, §10.3). I giri fino al 5 sono committati
-(`9f2899c8b`, PR #92), come i giri BE fino a BE29 e D-seq (`21c2d86ae9`, PR #94).
+(`9f2899c8b`, PR #92), i giri BE fino a BE29 e D-seq (`21c2d86ae9`, PR #94), i giri DB 5-bis, 5-ter, Q35 (c) + Q36 e
+le viste delle note (`67c6c4de9`, PR #95).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -58,9 +58,9 @@ scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2, §14.6, §13.3,
 | 6-octies-ter | ✅ Tid | D5bis-1 (a), 5-ter nello stesso giro (2026-11-11); i numeri `20261112-25` … `-27` (2026-11-12) | §18.3, §18.6 | 6-octies-bis |
 | 6-nonies | ✅ sessione DB | Giro 5-bis + 5-ter: `20261112-25` … `-27` (il BB `script.fn_codice_dominio`, il batch e `fn_run_and_log` sul BB), `E_CATALOGO_NOTA_NOT_FOUND` ritirato con `obsoleto_dal`, un pgTAP nuovo e due estesi, COMMENT e `manual/`; provato sullo scratch (2026-11-12) | §18.7 | 6-octies-ter |
 | 6-decies | ✅ Tid | Apply del giro 5-bis + 5-ter su dbdev e scratch, pgTAP come app verdi (2026-11-12) | §18.7 | 6-nonies |
-| 6-undecies | **team BE** ⏭️ | BE30 (il codice degli errori del batch nel report del push) e, col 5-ter, BE31 (policy rigenerata, ripiego tolto) | §18.5, §19 | 6-decies |
+| 6-undecies | ✅ team BE (2026-11-12, da committare) | BE30 (il codice degli errori del batch nel report del push) e, col 5-ter, BE31 (policy rigenerata, ripiego tolto) | §18.5, §19, §21 | 6-decies |
 | 6-duodecies | ✅ sessione DB, ✅ Tid | Giro Q35 (c) + Q36 (a) (`20261112-29`, tre CSV) e giro delle viste delle note (`-31` … `-35`, col ritiro di `script.fn_get_note`): scritti e provati; applicati da Tid su dbdev e scratch, pgTAP come app verdi (2026-11-12) | §16.6.7, §20 | 6-decies |
-| 6-terdecies | **team BE** ⏭️ | BE32 (il codice `E_ATTIVO_BLOCK_SI_RITIRA` nelle policy e nel ripiego, i due smoke che ritirano il kit) e BE33 (il BB delle note legge `<schema>.vw_note`) | §16.6.7, §20.3 | 6-duodecies |
+| 6-terdecies | ✅ team BE (2026-11-12, da committare) | BE32 (il codice `E_ATTIVO_BLOCK_SI_RITIRA` nelle policy e nel ripiego, i due smoke che ritirano il kit), BE33 (il BB delle note legge `<schema>.vw_note`) e il FE del ritiro (Tid: «facciamo subito») | §16.6.7, §20.3, §21 | 6-duodecies |
 | 6-quaterdecies | sessione DB | Verifica del giro BE (`/arrivi-be`), poi l'archiviazione (passo 8) | — | 6-undecies, 6-terdecies |
 | 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
 | 7-bis | ✅ team BE (committato, `ff93395d5e`, PR #84) | La doc API di BE9 e BE11 (`api_catalogo.md`); BE19 e BE20 del giro 3 e BE4 (campo di `E_PARAMETRO_INVALIDO`). BE1-BE4 e BE16-BE18 del giro 2 erano già fatti (PR #81) | §13.5, §14.10 | — |
@@ -2838,3 +2838,28 @@ oggi non li usa. Proposta: (a), salvo che la stampa li aspetti. ✅ **Tid, 2026-
 
 **Da committare:** i cinque changeSet, il pgTAP nuovo, il CSV `automazione_codice_eccezioni.csv`, le pagine nuove e
 riscritte, le quattro cancellate, le due analisi, questo brief.
+
+## 21. Giro BE di BE30-BE33 e il FE del ritiro (team BE, 2026-11-12, da committare su `dev/backend-tid`)
+
+Partito dopo `/arrivi-db` (fast forward su `origin/Tito-dev`, prerequisiti verificati sul DB vero). Ordine e FE: via di
+Tid, 2026-11-12.
+
+| # | Che cosa è fatto | File |
+| --- | --- | --- |
+| BE32 + BE31 | `error_policies_generated.py` rigenerato (DB e git allineati sui codici: nessuna differenza): `E_ATTIVO_BLOCK_SI_RITIRA` → `CONFLITTO_STATO`, `E_CATALOGO_NOTA_NOT_FOUND` fra i `CODICI_RITIRATI`. Ripiego: la voce nuova (la frase del DB, senza segnaposti), tolta quella del codice ritirato. Prima del giro lo spegnimento di un kit con distinta rispondeva **400** (codice senza policy), ora 409 | `core/services/error_policies_generated.py`, `error_messages_fallback.py` |
+| BE32, smoke | `catalogo-phase3` passo 17 e la pulizia di `preventivi-componenti`: lo spegnimento è un 409 atteso con `E_ATTIVO_BLOCK_SI_RITIRA` (`smoke_check_codice`), poi il ritiro con `obsoleto_dal` = oggi. Verdi: 24/0 (con le scritture delle note accese) e 23/0 | `scripts/tests/smoke-test-catalogo-phase3.sh`, `smoke-test-preventivi-componenti.sh` |
+| BE32, test Django | `ui/tests/db/test_audit_ui_dal_trigger_db` resta su `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (tabella di `ui` senza ritiro): verde sul DB vero. Le anagrafiche di magazzino che citano `E_ATTIVO_BLOCK_CHILDREN_EXIST` non hanno `obsoleto_dal`: non cambiano | — |
+| BE30 | Il record tipizzato `ErroreBatchAttivita` (`index`, `segment_key`, `error`, `sqlstate`, `codice`, `campo`; le chiavi tolte dal DB diventano `None`), letto una volta nel repository: `BatchUpsertResult.errors` è `list[ErroreBatchAttivita]` e non più `list[dict]` letto a chiavi sparse. Il report del push: `Errore batch segment_key=… [E_…]: <frase>` (senza codice, senza parentesi). Caso 3 di `test_commessa_fattore_senza_db` su `codice == 'E_UOM_MISSING'` e `sqlstate == 'P0001'`; il test col mock porta un errore di dominio e uno tecnico | `vendite/db/commesse_repository.py`, `vendite/services/commesse_source_handlers.py` e i tre test |
+| BE33 | `PartitionedNoteRepository.list` / `get` leggono `<schema>.vw_note` della sede; le due LEFT JOIN sono ritirate. Le scritture restano sulla partizione. ⭐ Il **contratto d'uscita dell'API non cambia**: `_SELECT_COLUMNS` riporta i nomi della vista ai nomi di oggi (`id`, `seq`, `id_stile`, `id_lingua`, …), perché li leggono `ui.lista_colonna.campo_sorgente` delle liste `vendite.note` e `catalogo.note` e il FE. `EXPLAIN` sul DB vero: con il filtro su `nota_target_tipo` si legge una partizione sola (`note_preventivo`, `note_articoli`). Voce del catalogo BB aggiornata | `core/db/partitioned_note_repository.py`, catalogo BB backend |
+| FE | Il 409 porta `fields: ['obsoleto_dal']` (provato con una chiamata vera). `ArticoloDrawer` già colorava il campo «Ritirato dal» (`campiErrati`); ora, dopo il rifiuto, ci porta lo sguardo e il fuoco (il campo sta sotto il pulsante). La data non la sceglie il drawer. Corretta la conferma della disattivazione, che diceva che con le righe BoM l'articolo si spegneva lo stesso (it, en). Test 9 nello spec | `catalogo/components/ArticoloDrawer.vue` (+ spec), `locales/it.json`, `en.json` |
+
+**Prove:** test core dei service (937), BE30 col DB vero (138), le note e le liste col DB vero (751), FE intero (1146),
+`genera_error_policies --check` allineato, mypy pulito sui file toccati. ⚠️ `ruff` non è installato sulla macchina del
+backend: lo vede il pre-commit.
+
+**Le altre anagrafiche col ritiro** (`dbops.presidi`, `dbops.processi`, i due vocabolari di stato di `pagamenti`,
+`pratiche.template_flussi`, `pratiche.tipi_prestazione`): il rifiuto arriva con la frase, la soluzione e `fields`, e chi
+monta `campiErrati` sul campo (il drawer generico del pannello config) lo colora già. Il «porta al campo» è scritto una
+volta sola, in `ArticoloDrawer`: alla seconda superficie che lo vuole si estrae un BB (regola del 2).
+
+**Da committare:** i file delle righe sopra, questo brief.

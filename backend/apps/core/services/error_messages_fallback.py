@@ -121,6 +121,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ATTIVO_BLOCK_CHILDREN_EXIST": "Non si puo' disattivare: ci sono ancora righe collegate.",
     "E_ATTIVO_BLOCK_FKCOL_NOT_FOUND": "Configurazione trigger di protezione non valida.",
     "E_ATTIVO_BLOCK_REF_NULL": "Colonna di riferimento nulla nel guard di disattivazione.",
+    "E_ATTIVO_BLOCK_SI_RITIRA": "Non si puo' disattivare: e' ancora usato. Per non sceglierlo piu' si ritira con una data di ritiro.",
     "E_ATTIVO_PADRE_NON_ATTIVO": "La riga a cui si collega non e' attiva: non vi si puo' collegare una riga attiva.",
     # Dal 2026-11-07 lo solleva solo il generatore (brief-db-revisione-dbops D46):
     # il trigger dice E_ATTIVO_PADRE_NON_ATTIVO, E_PADRE_INESISTENTE ed
@@ -173,7 +174,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CATALOGO_ARTICOLO_NOT_FOUND": "Articolo non trovato.",
     "E_CATALOGO_COMPONENTE_NOT_FOUND": "Componente non trovato.",
     "E_CATALOGO_CONV_NOT_FOUND": "Conversione unita' di misura non trovata.",
-    "E_CATALOGO_NOTA_NOT_FOUND": "Nota non trovata.",
     "E_CATALOGO_OBSOLETO_NUOVA_ISTANZA": "Voce di catalogo obsoleta: non selezionabile per nuove istanze.",
     "E_CATALOGO_UOM_NOT_FOUND": "UoM operativa non trovata.",
     "E_CATALOGO_UOM_TIPO_NOT_FOUND": "Tipologia UoM non trovata.",

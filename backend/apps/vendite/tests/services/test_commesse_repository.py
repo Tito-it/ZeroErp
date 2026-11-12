@@ -56,6 +56,7 @@ from unittest.mock import patch
 
 from apps.vendite.db.commesse_repository import (
     BatchUpsertResult,
+    ErroreBatchAttivita,
     CommessaAttivitaInput,
     CommesseRepository,
     PushableRow,
@@ -741,7 +742,14 @@ class CommesseRepositoryUnitTests(TestCase):
     # Scopo: Verifica mapping BatchUpsertResult da fn_batch_upsert_commessa_attivita.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_batch_upsert_attivita_maps_result(self, mock_cursor_factory):
-        errors_json = '[{"index": 0, "segment_key": "SEG:001", "error": "duplicate"}]'
+        # La forma del DB dal 20261112-26: un errore di dominio porta `sqlstate`,
+        # `codice` e `campo`; uno tecnico solo `sqlstate` (le altre chiavi il DB
+        # le toglie, non le manda null).
+        errors_json = (
+            '[{"index": 0, "segment_key": "SEG:001", "error": "unita assente",'
+            ' "sqlstate": "P0001", "codice": "E_UOM_MISSING", "campo": "uom_operativa_id"},'
+            ' {"index": 1, "segment_key": "SEG:002", "error": "cast", "sqlstate": "22P02"}]'
+        )
         mock_cursor_factory.return_value = _mock_cursor(fetchone=(3, 2, 1, errors_json))
         repo = CommesseRepository()
         inp = CommessaAttivitaInput(
@@ -754,8 +762,13 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(result.total_rows, 3)
         self.assertEqual(result.inserted, 2)
         self.assertEqual(result.updated, 1)
-        self.assertEqual(len(result.errors), 1)
-        self.assertEqual(result.errors[0]["segment_key"], "SEG:001")
+        self.assertEqual(result.errors, [
+            ErroreBatchAttivita(
+                index=0, segment_key="SEG:001", error="unita assente",
+                sqlstate="P0001", codice="E_UOM_MISSING", campo="uom_operativa_id",
+            ),
+            ErroreBatchAttivita(index=1, segment_key="SEG:002", error="cast", sqlstate="22P02"),
+        ])
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_batch_upsert_commessa_attivita", sql)
 

@@ -1975,7 +1975,7 @@
     "disattiva_articolo": "Disattiva",
     "riattiva_articolo": "Riattiva",
     "disattiva_dialog_titolo": "Disattivare articolo",
-    "disattiva_dialog_messaggio": "L'articolo {codice} verra' disattivato. Eventuali UoM operative, righe BoM e listini collegati restano invariati. Confermi?",
+    "disattiva_dialog_messaggio": "L'articolo {codice} verra' disattivato. Se e' ancora usato (in una distinta, in un documento, in un listino) non si disattiva: si ritira con la data «Ritirato dal». Confermi?",
     "riattiva_dialog_titolo": "Riattivare articolo",
     "riattiva_dialog_messaggio": "L'articolo {codice} verra' riattivato. Le entita' figlie (UoM operative, righe BoM) restano nello stato corrente: vanno riattivate separatamente se necessario. Confermi?",
     "correggi_struttura": "Correggi struttura",
