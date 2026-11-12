@@ -1,5 +1,22 @@
 # Brief DB — La provenienza del prezzo viaggia con il prezzo, dal documento alla commessa
 
+## ⏭️ Chi riparte — aggiornato al 2026-11-12
+
+**Riparte: team DB** (`dev/db-tid`), con la progettazione di R-1 … R-6. Nessuna decisione aperta di
+Tid: la decisione B (2026-10-09) fissa il criterio, l'insieme esatto delle colonne e la sede della regola
+di R-2 (`CHECK` o guard) le propone il team DB. Verificato il 2026-11-12 (doc auto-generata del
+2026-11-09): sul DB **niente è stato fatto** (le righe padre non hanno colonne di provenienza, le
+`fn_list_*_da_pushare` restituiscono solo `prezzo_snapshot` e `prezzo_bloccato`). Lato BE il §6.0 è al
+suo posto. ⚠️ Il commit `a85b76d58` «Chiusura brief brief-db-provenienza-prezzo-segue-il-prezzo»
+chiude in realtà `brief-db-coerenza-listino-della-riga-di-commessa`: **questo brief è aperto**.
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ✅ sessione BE | Il difetto, il contratto, la richiesta; il push non scrive più `listino_riga_id` | §1-§3, §6.0 | — |
+| 2 | ✅ sessione BE | Le righe dell'offerta (`offerte_commerciali_eccezioni`) aggiunte al perimetro (2026-11-12) | §2, R-1 | 1 |
+| 3 | **team DB** ⏭️ | Le colonne, la regola su chi scrive, il push, le copie a valle, i consumi, pgTAP, la doc | §3 R-1 … R-6 | 2 |
+| 4 | team BE/FE | `PushableRow` e `_build_attivita_input`, le scritture delle righe, il form, i test sul DB vero | §6 «Dopo la consegna DB» | 3 |
+
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§6), che **attende** la consegna DB.
 > **Origine:** revisione delle modifiche di
@@ -44,6 +61,13 @@ Il prezzo arriva in commessa dalla riga del documento, attraverso le
 | --- | --- | --- |
 | `preventivi_righe`, `ordini_righe`, `contratti_righe`, `ddt_righe` | `prezzo_unitario` (+ `sconto_percentuale`, non su contratti) | ❌ nessuna colonna |
 | `*_righe_componenti` (le stesse quattro famiglie) | `prezzo_unitario` | ✅ `origine_prezzo` (NOT NULL tranne DDT) e `prezzo_resolver_context` |
+| `offerte_commerciali_eccezioni` (le righe dell'offerta) | `prezzo_unitario` | ❌ nessuna colonna |
+| `offerte_commerciali_eccezioni_componenti` | `prezzo_unitario` | ✅ `origine_prezzo` (NOT NULL) e `prezzo_resolver_context` |
+
+Le righe dell'offerta sono aggiunte il 2026-11-12 (doc auto-generata del 2026-11-09): la tabella si
+dichiara «mirror fedele di `contratti_righe`», copiata 1:1 da `fn_push_offerta_a_contratto`, ed è il
+primo anello della catena offerta → contratto → commessa. Senza la provenienza lì, la catena la perde
+all'origine.
 
 Cioè: **i componenti dicono già da dove viene il loro prezzo, le righe padre no**.
 È un'asimmetria del modello. Chi scrive il prezzo di una riga di documento (spesso
@@ -60,7 +84,7 @@ versione precedente risulta «diverso» pur essendo venuto dal listino.
 
 | # | Cosa |
 | --- | --- |
-| **R-1** | **Le righe di documento dichiarano la provenienza del prezzo**, come i componenti. Su `preventivi_righe`, `ordini_righe`, `contratti_righe`, `ddt_righe`: le colonne di provenienza che `commesse_attivita` ha già (`origine_prezzo` con lo stesso `CHECK`, `prezzo_base_snapshot`, `listino_versione_id`, `listino_riga_id`, `promo_id`, `contratto_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`, `tipo_variazione_applicata`, `valore_variazione_applicata`). L'insieme esatto lo decide il team DB; il criterio è «quello che serve a riprodurre il prezzo». ⭐ Simmetria piena con i componenti, nello stesso giro: o i componenti acquistano le stesse colonne, o si scrive perché non servono (cfr. D-2 del brief chiuso: il loro guard è già più severo). |
+| **R-1** | **Le righe di documento dichiarano la provenienza del prezzo**, come i componenti. Su `preventivi_righe`, `ordini_righe`, `contratti_righe`, `ddt_righe` e `offerte_commerciali_eccezioni` (le righe dell'offerta, §2; la simmetria strutturale con `contratti_righe` va conservata): le colonne di provenienza che `commesse_attivita` ha già (`origine_prezzo` con lo stesso `CHECK`, `prezzo_base_snapshot`, `listino_versione_id`, `listino_riga_id`, `promo_id`, `contratto_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`, `tipo_variazione_applicata`, `valore_variazione_applicata`). L'insieme esatto lo decide il team DB; il criterio è «quello che serve a riprodurre il prezzo». ⭐ Simmetria piena con i componenti, nello stesso giro: o i componenti acquistano le stesse colonne, o si scrive perché non servono (cfr. D-2 del brief chiuso: il loro guard è già più severo). |
 | **R-2** | **La regola su chi scrive.** Un prezzo scritto senza provenienza è `MANUALE`, e un prezzo `MANUALE` non cita listino (riga, versione, base `NULL`). Da decidere se la regola sta in un `CHECK` (coerenza fra `origine_prezzo` e colonne di listino) o in un guard. ⚠️ Una modifica del solo `prezzo_unitario` dopo la precompilazione dal listino deve far decadere la provenienza da listino: altrimenti si torna al §1 (prezzo a mano, provenienza dal listino). |
 | **R-3** | **Il legame segue il prezzo nel push.** Le cinque `fn_list_*_da_pushare` restituiscono la provenienza della riga (o del componente) accanto a `prezzo_snapshot`. Per le righe che **non** hanno un prezzo alla sorgente (`prezzo_snapshot NULL`: contratti e DDT senza prezzo, `prezzo_bloccato = FALSE`), la provenienza resta `NULL`: il prezzo lo darà il listino più tardi, e chi lo scrive scrive anche la provenienza (riallinea, sblocca — già così lato BE). |
 | **R-4** | **La copia a valle dei documenti.** Le funzioni che copiano una riga da un documento all'altro (revisione preventivo/offerta, offerta → contratto, ordine → DDT: `fn_crea_revisione_preventivo`, `fn_crea_revisione_offerta`, `fn_push_offerta_a_contratto`, `fn_genera_ddt_da_ordine`, e le altre che il team DB trova) copiano la provenienza con il prezzo. Da censire. |
