@@ -41,8 +41,8 @@
 --  15)  padre assente (chiave senza FK): E_PADRE_INESISTENTE, frase del catalogo, nessun bersaglio
 --  16)  padre ritirato: E_CATALOGO_OBSOLETO_NUOVA_ISTANZA, frase del catalogo
 --  17)  ... e il bersaglio del padre
---  18)  BLOCK con figlie attive: E_ATTIVO_BLOCK_CHILDREN_ACTIVE, frase del catalogo, nessun bersaglio
---  19)  BLOCK con figlie senza attivo: E_ATTIVO_BLOCK_CHILDREN_EXIST, frase del catalogo
+--  18)  BLOCK con figlie attive, padre col ritiro: E_ATTIVO_BLOCK_SI_RITIRA, frase del catalogo, nessun bersaglio
+--  19)  BLOCK con figlie senza attivo, padre col ritiro: E_ATTIVO_BLOCK_SI_RITIRA (il ritiro precede i due rami)
 --  20)  PRESIDIO sul testo: nessun motivo di script.fn_check_registro_disattivabile porta valori
 --  21)  ... ne' di script.fn_check_famiglia_documento_disattivabile
 --
@@ -143,10 +143,11 @@ SELECT is(
     (SELECT string_agg(m.codice, ', ' ORDER BY m.codice)
        FROM config.messaggi_errore m
       WHERE m.codice IN ('E_ATTIVO_PADRE_NON_ATTIVO', 'E_PADRE_INESISTENTE', 'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
-                         'E_ATTIVO_BLOCK_CHILDREN_ACTIVE', 'E_ATTIVO_BLOCK_CHILDREN_EXIST')
+                         'E_ATTIVO_BLOCK_CHILDREN_ACTIVE', 'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                         'E_ATTIVO_BLOCK_SI_RITIRA')
         AND m.messaggio LIKE '%\%%'),
     NULL,
-    '11) presidio: le cinque frasi della famiglia non hanno segnaposti (i guard passano il variadico vuoto)');
+    '11) presidio: le sei frasi della famiglia non hanno segnaposti (i guard passano il variadico vuoto)');
 
 -- ============================================================
 -- Fixture: un padre con un tipo, uno senza, le figlie
@@ -229,15 +230,18 @@ SELECT is((SELECT ritirato ->> 'bersaglio' FROM tmp_r), 'PGTAP_SBE1:3',
 INSERT INTO t_figlia (id, padre_id) VALUES (20, 1);
 INSERT INTO t_figlia_nuda (id, padre_id) VALUES (20, 4);
 
+-- t_padre ha obsoleto_dal: un padre col ritiro che altre righe nominano si ritira, con le figlie
+--   attive (18) come con quelle senza attivo (19). I due codici delle tabelle senza ritiro li
+--   presidia db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql.
 SELECT is(pg_temp.rifiuto($$UPDATE t_padre SET attivo = false WHERE id = 1$$),
-    jsonb_build_object('codice', 'E_ATTIVO_BLOCK_CHILDREN_ACTIVE', 'frase', pg_temp.frase('E_ATTIVO_BLOCK_CHILDREN_ACTIVE'),
+    jsonb_build_object('codice', 'E_ATTIVO_BLOCK_SI_RITIRA', 'frase', pg_temp.frase('E_ATTIVO_BLOCK_SI_RITIRA'),
                        'bersaglio', NULL),
-    '18) BLOCK con figlie attive: E_ATTIVO_BLOCK_CHILDREN_ACTIVE, frase del catalogo, nessun bersaglio');
+    '18) BLOCK con figlie attive, padre col ritiro: E_ATTIVO_BLOCK_SI_RITIRA, frase del catalogo, nessun bersaglio');
 
 SELECT is(pg_temp.rifiuto($$UPDATE t_padre SET attivo = false WHERE id = 4$$),
-    jsonb_build_object('codice', 'E_ATTIVO_BLOCK_CHILDREN_EXIST', 'frase', pg_temp.frase('E_ATTIVO_BLOCK_CHILDREN_EXIST'),
+    jsonb_build_object('codice', 'E_ATTIVO_BLOCK_SI_RITIRA', 'frase', pg_temp.frase('E_ATTIVO_BLOCK_SI_RITIRA'),
                        'bersaglio', NULL),
-    '19) BLOCK con figlie senza attivo: E_ATTIVO_BLOCK_CHILDREN_EXIST, frase del catalogo');
+    '19) BLOCK con figlie senza attivo, padre col ritiro: E_ATTIVO_BLOCK_SI_RITIRA, il ritiro precede i due rami');
 
 -- ============================================================
 -- 20-21) Le due check di disattivazione

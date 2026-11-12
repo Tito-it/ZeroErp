@@ -1,6 +1,6 @@
 # Guida — Gestione dei Messaggi di Errore e Generazione Log
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e devops
 >
@@ -344,6 +344,13 @@ Il `RAISE` che li popola è in [Area tecnica](#area-tecnica-esempi):
 vincolo vera (classe `23xxx`) `constraint_name` contiene il nome del vincolo del
 database (`uq_…`, `fk_…`). Leggerlo come codice applicativo produrrebbe un codice
 inesistente, cioè un 500 al posto di un 409 parlante.
+
+Quando l'errore si **cattura nel database** e non arriva al backend (un batch che
+raccoglie gli errori riga per riga, il registro delle corse dei job), il backend
+non può leggere i canali dal driver: il database li riporta nel risultato. La
+regola si legge allora con
+[`script.fn_codice_dominio`](/dbzero/script/funzioni/fn_codice_dominio), che
+risponde col codice o con `NULL`: una sede sola, e nessuna copia del confronto.
 
 ### Il nome del campo: non si scrive, si dichiara
 

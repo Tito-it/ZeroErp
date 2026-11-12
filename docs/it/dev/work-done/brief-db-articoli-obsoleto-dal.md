@@ -1,11 +1,10 @@
 # Brief DB — Ritirare un articolo senza cancellarlo (`obsoleto_dal`)
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-11
+## ⏭️ Chi riparte — aggiornato al 2026-11-12 (archiviato)
 
-**Riparte: sessione DB**, con l'archiviazione (#13). Il BE/FE è fatto (#10, 2026-11-11, **da committare** su
-`dev/backend-tid`, §8.1). Il lato DB era già chiuso: il residuo è passato al brief di competenza (#11), il resto era
-chiuso da altri cantieri (#12). Tid,
-2026-11-11: prima il BE/FE, poi la chiusura. O-9 affinata è confermata (2026-11-11). I `COMMENT` (D-C) non ripartono da qui: li riscrive tutti il giro 5
+**Riparte: nessuno. Cantiere chiuso e archiviato in `work-done/` il 2026-11-12** (#13). Il BE/FE è fatto e
+committato (#10, `21c2d86ae9`, PR #94, §8.1). Il lato DB era già chiuso: il residuo è passato al brief di competenza
+(#11), il resto era chiuso da altri cantieri (#12). Tid, 2026-11-11: prima il BE/FE, poi la chiusura. O-9 affinata è confermata (2026-11-11). I `COMMENT` (D-C) non ripartono da qui: li riscrive tutti il giro 5
 di `brief-db-revisione-catalogo`, anche fuori `catalogo` (Tid, 2026-11-11). Il lotto B è applicato, riscritto sul
 modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
 
@@ -18,13 +17,18 @@ modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
 | 5 | ✅ DB + Tid | lotto A (`20261105-01…-14`, CSV dei codici): scritto, applicato su dbdev e scratch, pgTAP verdi (2026-11-05) | §7.1 | — |
 | 6 | ✅ DB + Tid | lotti C e D senza sorgente (`20261106-01…-03`, pgTAP, guida, manuali): applicati, pgTAP verdi (2026-11-06) | §7.2-bis | — |
 | 7 | ✅ Tid | O-9 affinata confermata: l'`ONERE` con sorgente (dal push di ordine e bolla) passa, quello senza sorgente (porta oneri) è respinto (2026-11-11) | §7.2-bis | — |
-| 8 | ✅ DB, in `brief-db-revisione-catalogo` | **D-C** (chiuso il 2026-11-11: giro 5 applicato da Tid, pgTAP verdi; i 26 oggetti puliti sul vivo, dbdev e scratch, revisione-catalogo §17.7): riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11). ✅ **Tid, 2026-11-11 (opzione a):** il giro 5 prende anche gli oggetti di questo cantiere fuori `catalogo` (`acquisti`, `script`, `vendite`); qui non resta niente. Elenco chiuso: §3.3.1 di quel brief. I dieci oggetti stavano nel giro 5-A: `catalogo` in `20261112-16`/`-20`, i cinque fuori schema in `20261112-21` | [revisione-catalogo §3.3.1](brief-db-revisione-catalogo.md#331-d-c-i-comment-del-cantiere-obsoleto_dal-anche-fuori-catalogo-tid-2026-11-11) | giro 5 |
+| 8 | ✅ DB, in `brief-db-revisione-catalogo` | **D-C** (chiuso il 2026-11-11: giro 5 applicato da Tid, pgTAP verdi; i 26 oggetti puliti sul vivo, dbdev e scratch, revisione-catalogo §17.7): riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](../work-in-progress/brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11). ✅ **Tid, 2026-11-11 (opzione a):** il giro 5 prende anche gli oggetti di questo cantiere fuori `catalogo` (`acquisti`, `script`, `vendite`); qui non resta niente. Elenco chiuso: §3.3.1 di quel brief. I dieci oggetti stavano nel giro 5-A: `catalogo` in `20261112-16`/`-20`, i cinque fuori schema in `20261112-21` | [revisione-catalogo §3.3.1](../work-in-progress/brief-db-revisione-catalogo.md#331-d-c-i-comment-del-cantiere-obsoleto_dal-anche-fuori-catalogo-tid-2026-11-11) | giro 5 |
 | 9 | ✅ DB + Tid | lotto B (verbi): riscritto sul modello nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`), applicato da Tid, pgTAP verdi (2026-11-06). Righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D): ancora fermi (le righe d'acquisto aspettano il cantiere `acquisti`, che porta le loro tabelle al modello; le righe di fattura non hanno un verbo che ne scriva la provenienza) | §7.2, §7.3 | — |
-| 10 | ✅ team BE / FE (2026-11-11, da committare su `dev/backend-tid`) | `obsoleto_dal` ed `e_obsoleto` in `ARTICOLI_DETAIL_COLUMNS` e `_LOOKUP_ARTICOLI_COLONNE`; la data scrivibile dal drawer articolo; il ritirato segnato in lista e in testata; `righe_saltate` nella risposta e nell'avviso del «Clona». Erano già fatti la policy di `E_ARTICOLO_OBSOLETO` e la chiave i18n del motivo nel picker | §8.1 | — |
+| 10 | ✅ team BE / FE (2026-11-11, committato, `21c2d86ae9`, PR #94) | `obsoleto_dal` ed `e_obsoleto` in `ARTICOLI_DETAIL_COLUMNS` e `_LOOKUP_ARTICOLI_COLONNE`; la data scrivibile dal drawer articolo; il ritirato segnato in lista e in testata; `righe_saltate` nella risposta e nell'avviso del «Clona». Erano già fatti la policy di `E_ARTICOLO_OBSOLETO` e la chiave i18n del motivo nel picker | §8.1 | — |
 | 10-bis | ✅ DB | Lotto D, presidio per verbo: lo copre `vendite/test-sorgente-righe-vendita-v1` del giro R.1 di `brief-db-sorgente-documento-e-riga` (casi 5, 7-12: revisione, push preventivo→ordine, ordine e contratto dall'offerta, bolla dall'ordine, riconsegna; il 6 è la revisione su un articolo ritirato). Nessun test nuovo (2026-11-11) | §7.3 | — |
-| 11 | ✅ DB | Lotto C residuo, fuori di qui (Tid, 2026-11-11). **Righe d'acquisto** → [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md) §4.6-bis, il cantiere che porta la provenienza agli acquisti: il guard si monta lì, dopo i verbi. **Righe di fattura**: superato dal modello, vedi §7.3 (G-4) | §7.3 | — |
+| 11 | ✅ DB | Lotto C residuo, fuori di qui (Tid, 2026-11-11). **Righe d'acquisto** → [analisi-simmetria-ordini-acquisto](../work-in-progress/analisi-simmetria-ordini-acquisto.md) §4.6-bis, il cantiere che porta la provenienza agli acquisti: il guard si monta lì, dopo i verbi. **Righe di fattura**: superato dal modello, vedi §7.3 (G-4) | §7.3 | — |
 | 12 | ✅ DB | Residui già chiusi da `work-done/brief-db-sorgente-documento-e-riga` (letto sul vivo il 2026-11-11): O-10 è la sua **D-3** (`preventivo_riga_id` resta accanto alla sorgente, perché è un consumo che si azzera all'annullo, non un doppione); M-1 (§9.4) e i quattro punti di §9.5 sono risolti. Non resta debito da portare | §6, §9 | — |
-| 13 | **DB** ⏭️ | Archiviazione in `work-done/`, a BE/FE fatto; con lei la riga di `catalogo/manual/vw_articoli_dettaglio.md` che dice le due colonne «non ancora nella proiezione del backend» (§8.1) | — | 10 |
+| 13 | ✅ DB (2026-11-12, da committare) | Archiviazione in `work-done/`, i link ripuntati; tolta da `catalogo/manual/vw_articoli_dettaglio.md` la frase sulle due colonne «non ancora nella proiezione del backend» (§8.1, segnalazione 2) | — | 10 |
+
+**Decisioni aperte di Tid:** nessuna. Resta fuori, non chiesta: una colonna o un filtro «ritirato» nella lista 26
+(§8.1, segnalazione 1), configurazione `ui.lista_*`, da decidere se servirà.
+**Lavoro da committare:** l'archiviazione (questo brief, i link in `analisi-simmetria-ordini-acquisto.md` e
+`brief-db-revisione-catalogo.md`, la pagina `catalogo/manual/vw_articoli_dettaglio.md`).
 
 ⛔ **Lotto B fermo (Tid, 2026-11-06):** non si applica finché non è deciso il modello della sorgente in
 `brief-db-sorgente-documento-e-riga` (tipo + chiave del documento + `sorgente_riga` = la riga). I verbi
@@ -372,7 +376,7 @@ verde.
 
 > ✅ **Stato al 2026-11-11.** Fatti: `commesse_attivita`, `listini_kit` e la copia del listino (§7.2-bis). Il resto:
 >
-> * **righe d'acquisto** → passate ad [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md)
+> * **righe d'acquisto** → passate ad [analisi-simmetria-ordini-acquisto](../work-in-progress/analisi-simmetria-ordini-acquisto.md)
 >   §4.6-bis: l'esenzione legge la provenienza, che lì nessun verbo scrive ancora;
 > * **righe di fattura**: superate dal modello. Dal G-4 di `brief-db-sorgente-documento-e-riga` (Tid, 2026-11-08)
 >   `fatture_righe` non ha colonne di provenienza: una riga aggrega n attività. Non c'è una colonna che esenti la

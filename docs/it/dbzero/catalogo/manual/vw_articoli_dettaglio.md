@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_dettaglio`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -97,8 +97,7 @@ non ha RLS, e la vista non attraversa tabelle protette.
 
 * **Le colonne nuove vanno in coda.** La vista si estende con `CREATE OR REPLACE VIEW`, che può
   solo aggiungere colonne alla fine; chi legge le colonne per nome (il backend) vede una
-  colonna nuova solo quando la nomina. Oggi `obsoleto_dal` ed `e_obsoleto` non sono ancora nella
-  proiezione del backend.
+  colonna nuova solo quando la nomina.
 * **Gli `*_ref_id` ripetono le FK.** `uom_ref_id`, `tipologia_ref_id`, `gruppo_ref_id`,
   `spesa_ref_id` e `iva_ref_id` valgono quanto la FK dell'articolo, quando la voce esiste.
 

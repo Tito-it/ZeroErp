@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_codice_eccezioni`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -64,7 +64,7 @@ Le ha decise Tid il 2026-11-04, sulle colonne con valori non in maiuscolo nei se
 | `dbops.processi` | il codice è il nome del job e del giornale delle corse |
 | `config.aree_funzionali` | il codice è il nome di uno schema |
 | `config.assets_ownership` | codici tecnici; eccezione di prudenza, da togliere quando si verifica che nessuno li confronta per nome |
-| `config.note_stili` | lo stile esce dalle note per nome (`script.fn_get_note`) |
+| `config.note_stili` | lo stile esce dalle note per nome (`stile_codice` delle viste `<schema>.vw_note`) |
 
 ⚠️ `ui` e `dbops.processi` oggi sono fuori dall'ambito delle automazioni: le righe restano perché
 la regola è sulla colonna, e reggono anche se l'ambito si allarga.

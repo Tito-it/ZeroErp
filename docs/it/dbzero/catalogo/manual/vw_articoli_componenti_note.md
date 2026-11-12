@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_componenti_note`
 
-> **Ultimo aggiornamento**: 11 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -45,9 +45,6 @@ Un legame senza note non compare.
 
 * **Non espone la validità del legame.** Per sapere se un legame è in vigore a una data bisogna
   tornare a [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti).
-* **Non passa dalla lettura comune.** Le note dei documenti si leggono con
-  [script.fn_get_note](/dbzero/script/funzioni/fn_get_note), che qui non si può usare perché
-  vuole un bersaglio `bigint`.
 
 ---
 

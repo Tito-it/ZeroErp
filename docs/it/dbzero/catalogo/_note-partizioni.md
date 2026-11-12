@@ -1,4 +1,4 @@
-> **Ultimo aggiornamento**: 11 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 
 ### 🗒️ Le partizioni di note in `catalogo`
 
@@ -74,9 +74,8 @@ rispetto alla riga del documento in cui l'articolo compare.
   `config.tipi_entita` ammette ogni codice del vocabolario, ma solo due hanno una partizione:
   per gli altri l'inserimento dal padre fallisce con l'errore di routing di PostgreSQL, non con
   un codice registrato.
-* **La lettura comune delle note non le vede.**
-  [script.fn_get_note](/dbzero/script/funzioni/fn_get_note) vuole un bersaglio `bigint`, e
-  queste note hanno un `uuid`: si leggono da [catalogo.vw_note](/dbzero/catalogo/views/vw_note),
-  la proiezione comune, o dalle due viste che la leggono per il loro bersaglio,
+* **Si leggono dalla vista della sede.** Le note di catalogo si leggono da
+  [catalogo.vw_note](/dbzero/catalogo/views/vw_note), la proiezione con stile e lingua, gemella
+  delle viste delle altre sedi, o dalle due viste che la leggono per il loro bersaglio,
   [catalogo.vw_articoli_note](/dbzero/catalogo/views/vw_articoli_note) e
   [catalogo.vw_articoli_componenti_note](/dbzero/catalogo/views/vw_articoli_componenti_note).

@@ -1,6 +1,6 @@
 # Guida — Mandare in pensione una voce di catalogo (`obsoleto_dal`)
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori database e backend
 >
@@ -53,6 +53,11 @@ Una voce di catalogo ha **due interruttori diversi**, che rispondono a due doman
 > ⚠️ **L'errore classico** è usare `attivo = false` per "ritirare" una voce. Sembra funzionare,
 > ma i documenti che la usano filtrano per `attivo` → si rompono. E giustamente il database lo
 > impedisce. Per "ritirare" si usa **sempre** `obsoleto_dal`, mai `attivo`.
+>
+> Il rifiuto lo dice: chi prova a spegnere una voce che ha il ritiro e che altre righe usano
+> riceve «si ritira con una data di ritiro» (`E_ATTIVO_BLOCK_SI_RITIRA`), col campo sulla data.
+> Vale anche per un kit con la sua distinta, e per un articolo che è componente di un kit: la
+> distinta lo nomina, anche col legame chiuso.
 
 ### I tre stati di `obsoleto_dal`
 
