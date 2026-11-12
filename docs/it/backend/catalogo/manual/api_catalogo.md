@@ -149,6 +149,7 @@ il motivo via tooltip i18n (chiavi `catalogo.motivo_*`).
 | `gestito_a_magazzino` | bool | No | L'articolo **movimenta giacenza**. Default DB `false` (fail-safe: nessun articolo comincia a movimentare per distrazione). ⚠️ Non si deriva da natura `MERCE`: una merce può essere venduta senza passare da giacenza |
 | `lead_time_giorni` | int | No | Giorni fra richiesta e disponibilità. **Nullable per modello**: per una prestazione non significa niente, e `0` non è «non si applica». Negativo → `E_CATALOGO_VALIDATION` col campo (anticipa il CHECK) |
 | `obsoleto_dal` | date | No | Il **ritiro** dell'articolo: la data da cui non si sceglie più per una riga nuova (`YYYY-MM-DD`). Nullable: `null` = si sceglie; una data futura è un ritiro programmato; `null` in PATCH toglie il ritiro. I documenti già fatti non cambiano. Una data scritta male → `E_CATALOGO_VALIDATION` col campo |
+| `causale_onere_id` | int | No | La **causale dell'articolo-onere** (FK `config.causali_onere`, 2026-11-12, brief-db-addebito-trasporto-ordine §9.10): `null` = merce, un id fa dell'articolo un onere. Il legame è 1:1: una causale già di un altro articolo → `400` `E_ARTICOLO_CAUSALE_ONERE_GIA_USATA` sul campo (anche dall'indice `uq_articoli_causale_onere`, su due scritture concorrenti). Su un onere valgono `E_ARTICOLO_ONERE_NATURA_MERCE` e `E_ARTICOLO_ONERE_STRUTTURA`. In PATCH si cambia finché l'articolo non è usato (A-10, `non_editable_fields`). Le causali libere: `GET /core/lookup/codici/?rel=catalogo.vw_causali_onere_assegnabili` |
 | `meta` | object | No | Metadati liberi |
 
 Una chiave fuori da questo elenco è rifiutata con `400` `E_CATALOGO_VALIDATION`: anche `voce_utility`, che non esiste più (né come campo né come filtro, né in risposta). I booleani si mandano come booleani JSON.
@@ -196,6 +197,10 @@ immutabilita' (Fase 5):
   alla data operativa (`script.fn_e_obsoleto`, lo stesso predicato del guard
   di riga e del picker di riga). ⛔ Il FE legge `e_obsoleto` e non confronta
   date. Gli stessi due campi sono nelle righe della lista (§1.1).
+- Onere (2026-11-12, da `vw_articoli_dettaglio`): `e_onere`, `causale_onere_id`,
+  `causale_onere_codice_interno` (per la logica) e `causale_onere_descrizione`
+  (a video), `null` sulla merce. ⛔ Non `_codice`: il valore viene dalla colonna
+  immutabile (linee-guida-sql §6c).
 
 ### 1.4 Aggiorna articolo
 
@@ -403,7 +408,7 @@ entra, ma entra come bundle.
 | `attivo` | bool | No | Default API `true` |
 | `is_composito` | bool | No | Filtro composti |
 | `gestito_a_magazzino` | bool | No | Solo gestiti a magazzino (picker di inventari e rettifiche). Assente = nessun filtro |
-| `solo_oneri` | bool | No | Solo articoli-onere; aggiunge la causale ai risultati |
+| `solo_oneri` | bool | No | Solo articoli-onere (la porta oneri della commessa) |
 | `limit` | int | No | Default `20`, max `50` |
 
 ⛔ `is_solo_componente` ed `escludi_destinazione` sono **ritirati** il 2026-10-14: li usavano solo
@@ -417,8 +422,9 @@ Envelope `{"count", "results", "troncato"}` (`troncato`: il tetto ha tagliato). 
 autocomplete cross-dominio: `id`, `codice`, `descrizione`, `uom_codice`, `uom_descrizione`,
 `is_composito`, `attivo`, `iva_id`, `iva_codice`, `iva_descrizione`, `iva_aliquota_iva`,
 `gestito_a_magazzino`, `requires_lotto`, `requires_serial`, `e_onere`, `causale_onere_id`,
-`obsoleto_dal`, `e_obsoleto` (più `motivo` sulla riga di un documento, e la causale con
-`solo_oneri`).
+`causale_onere_codice_interno`, `causale_onere_descrizione`, `obsoleto_dal`, `e_obsoleto` (più
+`motivo` sulla riga di un documento). ⛔ `causale_onere_codice` non esce più dal 2026-11-12: la
+decodifica la porta la vista, per tutte le lookup (§9.10, C-1).
 
 ### 2.2 Lookup unita` di misura — RIMOSSO
 

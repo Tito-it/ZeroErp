@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1217, di cui 129 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1218, di cui 129 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -113,6 +113,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_APPROVAZIONE_PREZZO_NON_AMMESSA": "CONFLITTO_STATO",
     # script.trgfn_lock_columns: il trigger e' stato dichiarato con un · numero dispari di argomenti. Se ne accorge chi lo monta, mai · l'operatore.
     "E_ARGOMENTI_A_COPPIE": "TECNICO",
+    # La causale onere scelta per un articolo e' gia' di un altro articolo: il legame articolo-causale e' 1:1 (indice uq_articoli_causale_onere). Regola 0 di catalogo.trgfn_articoli_guard_onere_natura, BEFORE INSERT OR UPDATE OF ... causale_onere_id: giudicata su INSERT e quando la causale cambia, prima della natura e della struttura. L'indice resta la rete per due scritture concorrenti (23505). Le causali libere le offre catalogo.vw_causali_onere_assegnabili (lookup generico). Brief: brief-db-addebito-trasporto-ordine §9.10 (C-3, Tid 2026-11-12). I VALORI: codice dell'articolo, descrizione della causale, codice dell'articolo che la porta; campo = causale_onere_id.
+    "E_ARTICOLO_CAUSALE_ONERE_GIA_USATA": "DATO_ERRATO",
     "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": "NON_ESEGUIBILE",
     # Motivo 2 di script.fn_check_articolo_riga_su_contesto per PREVENTIVO, ORDINE_VENDITA, DDT_VENDITA e per AGGIUNTA e OVERRIDE di OFFERTA_COMMERCIALE e CONTRATTO: l'articolo e' un composito senza una distinta da oggi in poi (catalogo.fn_articolo_padre_di_distinta_da_oggi, la finestra dei guard della distinta). Lo dice il picker catalogo.fn_articoli_ammessi e lo solleva il guard script.trgfn_righe_guard_articolo_ammesso. Non e' E_DOC_COMPOSITO_BOM_VUOTA: quella frase porta la data, ed e' il caso della distinta alla data del documento, che giudica l'init dei componenti. I VALORI: codice dell'articolo; campo articolo_id.
     "E_ARTICOLO_KIT_SENZA_COMPONENTI": "DATO_ERRATO",

@@ -666,7 +666,8 @@ class ApiArticoliLookup(DomainAPIView):
                 required=False,
                 description=(
                     "Solo articoli-onere (con causale_onere_id valorizzato). "
-                    "Aggiunge causale_onere_id/_codice/_descrizione ai risultati. "
+                    "I risultati portano gia' causale_onere_id, "
+                    "causale_onere_codice_interno e causale_onere_descrizione. "
                     "Alimenta la porta oneri della commessa."
                 ),
             ),

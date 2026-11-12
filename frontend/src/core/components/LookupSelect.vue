@@ -77,6 +77,13 @@ const props = defineProps({
   //    sceglibile: tenerla e' ammesso (Tid, 2026-10-01), e tornarci dopo averla
   //    cambiata nello stesso form non deve essere impossibile.
   voceCorrente: { type: Object, default: null },
+  // La voce del record e' VALIDA, e l'elenco non la propone per costruzione
+  // (2026-11-12, brief-db-addebito-trasporto-ordine §9.10): un elenco delle
+  // sole voci LIBERE (`catalogo.vw_causali_onere_assegnabili`) non contiene
+  // quella che il record ha gia' preso, perche' l'ha presa lui. Si aggiunge
+  // in coda come per `voceCorrente`, ma SENZA «non attiva»: lo direbbe di una
+  // voce attivissima.
+  voceCorrenteAttiva: { type: Boolean, default: false },
 })
 
 if (import.meta.env.DEV && !props.rel === !props.fetcher) {
@@ -126,9 +133,14 @@ const filteredItems = computed(() => {
 const voceFuoriElenco = computed(() => {
   const v = props.voceCorrente
   const valore = v?.[props.valueField]
-  if (valore == null || !lookup.loaded.value) return null
+  if (valore == null) return null
   if (lookup.items.value.some(i => i?.[props.valueField] === valore)) return null
   const etichetta = v[props.labelField] ?? valore
+  // ⚠️ La voce VALIDA non aspetta l'elenco: il cancello `loaded` serve a non
+  //    dire «non attiva» a torto, e qui non si dice. Senza, finche' l'elenco
+  //    carica (o se la lettura fallisce) il campo sarebbe vuoto con un valore.
+  if (props.voceCorrenteAttiva) return { ...v, [props.labelField]: etichetta }
+  if (!lookup.loaded.value) return null
   return { ...v, [props.labelField]: `${etichetta} — ${t('common.lookup_voce_non_attiva')}` }
 })
 

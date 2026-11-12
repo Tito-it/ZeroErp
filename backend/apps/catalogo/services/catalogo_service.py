@@ -81,6 +81,11 @@ _ARTICOLO_INT_FIELDS: tuple[str, ...] = (
     # e `0` non e' «non si applica». Il CHECK `>= 0` e' anticipato nel service
     # con messaggio parlante (vedi `_validate_articolo_payload`).
     "lead_time_giorni",
+    # La causale dell'articolo-onere (§9.10, D-1 di Tid 2026-11-12): NULL e' la
+    # merce, un id fa dell'articolo un onere. Nessun giudizio qui: il doppione,
+    # la natura, i flag di struttura e il blocco sull'articolo usato li dice il
+    # DB (guard dell'onere, A-10).
+    "causale_onere_id",
 )
 # Scopo: FK NOT NULL a DB con DEFAULT: (chiave, dettaglio dell'errore se
 #        arriva null). Il valore si puo' cambiare, mai azzerare — assente nel
@@ -597,6 +602,14 @@ def _extract_articolo_payload(
 # `map_integrity_error`.
 _ARTICOLO_UNIQUE: dict[str, tuple] = {
     "uq_articoli_codice": ("E_CATALOGO_VALIDATION", "Codice articolo gia' esistente.", "codice"),
+    # Il legame articolo-causale e' 1:1. Il doppione lo rifiuta prima il guard
+    # dell'onere col suo codice; l'indice scatta solo su due scritture
+    # concorrenti, e risponde con lo stesso codice (§9.10, C-3).
+    "uq_articoli_causale_onere": (
+        "E_ARTICOLO_CAUSALE_ONERE_GIA_USATA",
+        "La causale onere scelta e' gia' di un altro articolo.",
+        "causale_onere_id",
+    ),
 }
 # ⚠️ Il CHECK su composito/solo componente (brief-db-revisione-catalogo, BE10)
 #    non ha UN campo: e' la coppia a essere incoerente, e il form spegne

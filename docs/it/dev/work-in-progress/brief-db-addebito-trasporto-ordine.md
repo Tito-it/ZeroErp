@@ -1,8 +1,8 @@
 # Brief DB — Dove si addebita il trasporto di un ordine fatturato alla conferma
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-12 (sera)
+## ⏭️ Chi riparte — aggiornato al 2026-11-12 (notte)
 
-**Riparte: Tid**, col commit del giro DB 8-septies (`20261112-40`…`-42` e CSV: applicati alle 18:36, corsa pgTAP verde, 2026-11-12); poi BE/FE (§9.10, elenco chiuso) e l'archiviazione.
+**Riparte: Tid**, col commit di BE e FE del giro 8-septies (§9.10, fatti e verdi il 2026-11-12, `dev/backend-tid`), una prova a video del drawer articolo, poi l'archiviazione.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -35,11 +35,13 @@
 | 15-bis | ✅ Tid | C-2, C-3 come da proposta; il picker dal lookup generico (2026-11-12) | §9.10 | — |
 | 15-ter | ✅ DB | C-2 `-41` (vista per il lookup) + seed `tabelle_gestibili`; C-3 `-42` (guard) + codice; scritti e provati (2026-11-12) | §9.10 | — |
 | 15-quater | ✅ Tid | apply di `-40`…`-42` e dei CSV (18:36), corsa pgTAP verde (2026-11-12) | §9.10 | — |
-| 15-quinquies | Tid | commit del giro DB su `dev/db-tid` | — | — |
-| 16 | BE / FE | le due colonne nominate; JOIN del picker oneri ritirato; causale nel form articolo (libera in inserimento, spenta se bloccata), picker delle sole causali libere | §9.10 | 15-quater |
-| 17 | Tid | archiviazione del brief | — | 16 |
+| 15-quinquies | ✅ Tid | commit del giro DB su `dev/db-tid` (`f35f04e12`, PR #102, 2026-11-12) | — | — |
+| 15-sexies | ✅ Tid | D-1 e D-2 come da proposta (2026-11-12) | §9.10 | — |
+| 16 | ✅ BE / FE | le due colonne nominate; JOIN del picker oneri ritirato; `causale_onere_id` scrivibile (D-1); causale nel form articolo (libera in inserimento, spenta se bloccata), picker delle sole causali libere; in inserimento l'onere lo dice la causale scelta (D-2) (2026-11-12) | §9.10 | — |
+| 16-bis | Tid | commit di BE e FE; prova a video del drawer articolo (serve una causale libera: su dbdev oggi non ce n'è) | §9.10 | — |
+| 17 | Tid | archiviazione del brief | — | 16-bis |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: `20261112-40`…`-42`; CSV `codici_errore`, `messaggi_errore` (id 1482), `tabelle_gestibili` (id 94); pgTAP `catalogo/test-vw-articoli-dettaglio-e-onere-v1` (esteso) e `catalogo/test-causale-onere-assegnabile-v1` (nuovo); manual di `vw_articoli_dettaglio`, `vw_causali_onere_assegnabili` (nuova), `trgfn_articoli_guard_onere_natura`; questo brief.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: BE e FE del §9.10 (`dev/backend-tid`, 2026-11-12).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** decisione A-9 di Tid (2026-10-12) in
@@ -828,3 +830,26 @@ sopra: la causale a video (`causale_onere_descrizione`); in inserimento una tend
 tendina spenta quando `vw_non_editable_fields` la dichiara bloccata (articolo usato). Il rifiuto
 `E_ARTICOLO_CAUSALE_ONERE_GIA_USATA` arriva sul campo `causale_onere_id` come gli altri errori di campo:
 nessuna chiave i18n nuova (non è un motivo di capability).
+
+**Ripresa BE/FE (2026-11-12, dopo il merge #102).** Prerequisiti verificati su dbdev: le due colonne in coda a
+`vw_articoli_dettaglio`, i changeSet `-40`…`-42` in `databasechangelog`, la riga 94 di `config.tabelle_gestibili`
+(`lookup = t`), il messaggio 1482, il blocco di `causale_onere_id` sull'articolo usato (`dbops.lock_columns_conditional`
+id 705); la chiamata reale `DbopsRepository.list_lookup_codici(rel='catalogo.vw_causali_onere_assegnabili')` risponde.
+Fatto datato: su dbdev la tendina è vuota (le sei causali sono tutte legate a un articolo, 2026-11-12), quindi il FE si
+prova dallo spec.
+
+Due buchi dell'elenco chiuso, trovati rileggendo il percorso di scrittura:
+
+| # | Buco | Decisione di Tid (2026-11-12) |
+| --- | --- | --- |
+| **D-1** | `causale_onere_id` non è in `ARTICOLI_CREATE_COLUMNS` (né, per derivazione, in `ARTICOLI_UPDATE_COLUMNS`): la causale mandata dal drawer in inserimento è un 400 di `validate_allowed_keys` | ✅ **Si aggiunge alla whitelist**, create e update: in modifica la ferma A-10 quando l'articolo è usato (lock 705 e il guard), prima del primo uso cambiarla non rompe niente |
+| **D-2** | Il drawer dice «è un onere» dal dettaglio salvato (`e_onere`): con la tendina, in inserimento non è più vero che «un articolo nuovo non è mai un onere» | ✅ **In inserimento, e finché la causale si può cambiare, conta la causale del form**: i quattro flag di struttura (P-6) si spengono appena si sceglie una causale, invece di aspettare il rifiuto del guard |
+
+**Fatto (BE/FE, 2026-11-12).**
+
+| Chi | Fatto |
+| --- | --- |
+| BE | `catalogo_repository.py`: `causale_onere_codice_interno` e `causale_onere_descrizione` in `ARTICOLI_DETAIL_COLUMNS` e `_LOOKUP_ARTICOLI_COLONNE`; filtro `solo_oneri` senza `JOIN config.causali_onere` né `extra_cols` (resta `a.e_onere`), commento della sonda riscritto; `causale_onere_id` in `ARTICOLI_CREATE_COLUMNS` (e per derivazione nell'update, D-1). `catalogo_service.py`: `causale_onere_id` fra i campi interi nullable; `uq_articoli_causale_onere` mappato su `E_ARTICOLO_CAUSALE_ONERE_GIA_USATA` (campo `causale_onere_id`), per le due scritture concorrenti che il guard non vede. Policy generata (`genera_error_policies`: il diff porta il solo codice nuovo) e ripiego in `error_messages_fallback.py`. Descrizione OpenAPI di `solo_oneri` e `api_catalogo.md` (§1.2 campo, §1.3 dettaglio, §2.1 lookup) allineati |
+| FE | `ArticoloDrawer.vue`: la tendina «Causale onere» sul lookup generico (`rel=catalogo.vw_causali_onere_assegnabili`), con la causale dell'articolo come voce del record e spenta da `isFieldLocked` (A-10); «è un onere» dalla causale del form (D-2); un interruttore di struttura già acceso resta spegnibile, nessuno si riaccende su un onere. Lo store articoli invalida la cache delle causali libere a ogni scrittura (`afterWrite`). `LookupSelect`: prop nuova `voceCorrenteAttiva` (la voce valida che l'elenco non propone per costruzione, senza «non attiva»; registrata nel catalogo BB FE). Tre chiavi i18n (`catalogo.field_causale_onere`, `select_causale_onere`, `hint_causale_onere`) |
+
+Prove: test sul DB vero `test_articolo_e_onere_db` 6/6 (i tre nuovi costruiscono due causali proprie in transazione annullata: nascita dell'onere, doppione col codice del guard sul campo, tendina delle sole libere; nessuna riga rimasta); suite `apps.catalogo` 182 verde; presidi delle policy (29, verdi); `genera_error_policies --check` allineato; mypy a cricchetto senza rilievi nuovi; ruff pulito. FE: `ArticoloDrawer.spec` 13 (quattro nuovi, 10-13) e `LookupSelect.spec` 7 (due nuovi: il secondo, dalla verifica del 2026-11-12, prova che la voce valida non aspetta l'elenco caricato); controprova: con «è un onere» dal dettaglio salvato i test 10 e 12 diventano rossi. Suite FE intera 1152 verde, eslint pulito, `check_i18n_keys` pulito.
