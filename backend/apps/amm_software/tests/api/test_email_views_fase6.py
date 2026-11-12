@@ -199,6 +199,9 @@ class TestEmailAccountPatchChiavi(TestCase):
         kwargs = repo.update_account.call_args.kwargs
         self.assertEqual(kwargs["codice"], "main")  # il maiuscolo e' del DB
         self.assertNotIn("smtp_password", kwargs)
+        # Il Reply-To svuotato e' un'assenza: `NULL`, mai `''`
+        # (brief-db-nullvalue-vuoto-cinque-mirror §7).
+        self.assertIsNone(kwargs["email_reply_to"])
 
     @patch(REPO_PATH, autospec=True)
     def test_patch_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:

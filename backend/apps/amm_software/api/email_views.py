@@ -284,6 +284,13 @@ class EmailAccountDetailView(AdminAPIView):
                        "email_from", "email_reply_to"):
             if field in data:
                 update_fields[field] = data[field].strip() if isinstance(data[field], str) else data[field]
+        # `email_reply_to` e' l'unica colonna nullable del ciclo: il campo
+        # svuotato dal drawer arriva `''` e va scritto `NULL`, come in
+        # creazione (il DB lo presidia col CHECK
+        # chk_email_account_email_reply_to_non_vuoto,
+        # brief-db-nullvalue-vuoto-cinque-mirror §7).
+        if update_fields.get("email_reply_to") == "":
+            update_fields["email_reply_to"] = None
         if "smtp_port" in data:
             update_fields["smtp_port"] = optional_int(data, "smtp_port")
         # In PATCH un flag presente vuole un booleano: `null` e' un 400, non

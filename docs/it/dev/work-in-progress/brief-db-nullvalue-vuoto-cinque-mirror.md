@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-12
 
-**Riparte: team BE**, con la PATCH dell'account email (§7). Tid rigenera la doc auto-generata e committa i giri 1 e 2.
+**Riparte: Tid**, col commit e il push della PATCH BE (§7, fatta il 2026-11-12). Poi la sessione DB mette il `CHECK` su `email_reply_to` e archivia il brief.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,11 +12,11 @@
 | 4 | ✅ Tid | D1-b (`NULL` + `CHECK`) e D1-c (`user_insert` a §7, colonne di audit fuori dal CSV) | §6 | 3 |
 | 5 | ✅ sessione DB | Giro 2: `name_template`, `trigger_name`, `causali` | §8 | 4 |
 | 6 | ✅ Tid | Apply e pgTAP dei giri 1 e 2: applicati il 2026-11-12, verdi | §5, §8 | 3, 5 |
-| 7 | **Tid** ⏭️ | Rigenerare la doc auto-generata (vincoli e default nuovi) e committare | — | 6 |
-| 8 | **team BE** ⏭️ | La PATCH dell'account email porta `''` a `None` | §7 | — |
+| 7 | ✅ Tid | Rigenerare la doc auto-generata (vincoli e default nuovi) e committare: in `83d21a13d` (PR #100) | — | 6 |
+| 8 | ✅ team BE | La PATCH dell'account email porta `''` a `None`: fatta il 2026-11-12, **da committare e pushare** (Tid) ⏭️ | §7 | — |
 | 9 | sessione DB | Il `CHECK` su `email_reply_to`, poi l'archiviazione del brief | §7 | 7, 8 |
 
-**Decisioni aperte di Tid**: nessuna. **Da committare**: i giri 1 e 2 (§5, §8), applicati, e questo brief.
+**Decisioni aperte di Tid**: nessuna nel perimetro (le due note fuori perimetro sono in §8). **Da committare**: la PATCH BE (§7) e questo brief.
 
 **Brief vicini verificati**: `brief-db-lista-colonna-campo-sorgente-null.md` (lo stesso difetto su
 `ui.lista_colonna`, già corretto: il giro qui ne riprende la forma); `brief-db-guardrail-forme-residue.md`
@@ -160,6 +160,15 @@ Richiesta, elenco chiuso:
   diventa `None`;
 * `tests/api/test_email_views_fase6.py`: il test della PATCH col payload del drawer (`email_reply_to: ""`)
   asserisce che `update_account` riceve `None`.
+
+> ✅ **Fatto dal team BE, 2026-11-12** (da committare). In `EmailAccountDetailView.patch`, dopo il ciclo
+> di strip, un `email_reply_to` uguale a `''` diventa `None`. `update_account` → `execute_dynamic_update`
+> gira con `skip_none=False`, quindi il `None` scrive `NULL` e non salta la colonna. Il test è
+> `backend/apps/amm_software/tests/api/test_email_views_fase6.py::TestEmailAccountPatchChiavi::test_patch_payload_del_drawer_passa`
+> (il percorso nell'elenco qui sopra era senza `backend/apps/amm_software/`); il modulo è verde, 22 test.
+> Il frontend non cambia: il drawer manda ancora `''`, e la normalizzazione è del BE. Nessun altro
+> scrittore BE delle cinque colonne: le tabelle `iva_assoggettamenti`, `automation_rules_tbl` e
+> `automation_delete_block` non sono scritte da codice Python fuori dai test.
 
 **Chi cambia per primo**: il BE. Finché la PATCH scrive `''`, il DB non mette il `CHECK` su `email_reply_to`.
 Messo prima, svuotare il campo dal pannello darebbe un `23514`. Quando il BE ha fatto il push, la sessione DB
