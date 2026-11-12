@@ -28,6 +28,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import (
+    INTEGER_MAX,
     PayloadValidator,
     map_integrity_error,
 )
@@ -152,7 +153,7 @@ _CHECK_CONSTRAINTS: dict[str, tuple] = {
     ),
     "chk_note_seq_pos": (
         "E_NOTA_CHECK_VIOLATION",
-        "Il valore seq deve essere positivo.",
+        "Il valore seq non puo' essere negativo.",
         "seq",
     ),
     "chk_note_testo_non_vuoto": (
@@ -561,9 +562,14 @@ class PartitionedNoteService:
         elif is_create:
             normalized["posizione"] = "AFTER" if anchor_eff == "RIGA" else "HEADER"
 
-        # seq: positive int. Default 10 in create.
+        # seq: il range e' quello del DB, `integer` con `CHECK (seq >= 0)` su
+        # tutte le tabelle delle note (D-seq di Tid, 2026-11-11,
+        # brief-db-revisione-catalogo §19). Lo 0 e' ammesso: mette una nota
+        # prima di quelle nate col default 10. Il tetto e' quello dell'integer,
+        # non dello smallint: `optional_smallint` qui e' il lettore d'intero a
+        # range dichiarato. Default 10 in create.
         seq = self._validator.optional_smallint(
-            payload, "seq", min_val=1, max_val=32767,
+            payload, "seq", min_val=0, max_val=INTEGER_MAX,
         )
         if seq is not None:
             normalized["seq"] = seq

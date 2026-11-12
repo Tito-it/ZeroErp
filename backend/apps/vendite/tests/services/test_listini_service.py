@@ -524,6 +524,7 @@ class ListiniServiceTests(TestCase):
         ]
         repo.clone_versione.return_value = {
             "versione_id": 202, "righe_copiate": 3, "componenti_copiati": 2, "componenti_saltati": 1,
+            "righe_saltate": 4,
         }
 
         result = fn_clone_versione(10, 101, {"codice_versione": "V002", "valido_dal": "2026-02-15"})
@@ -533,6 +534,7 @@ class ListiniServiceTests(TestCase):
             (result["righe_copiate"], result["componenti_copiati"], result["componenti_saltati"]),
             (3, 2, 1),
         )
+        self.assertEqual(result["righe_saltate"], 4)
         mock_atomic.assert_called_once()
         repo.clone_versione.assert_called_once_with(
             101, codice_versione="V002", valido_dal=date(2026, 2, 15), valido_al=None,

@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-11
 
-**Riparte: team BE/FE** (#10). Il lato DB è chiuso: il residuo che non si poteva fare qui è passato al brief di
-competenza (#11), il resto era già chiuso da altri cantieri (#12). Dopo il BE/FE il brief si archivia (#13). Tid,
+**Riparte: sessione DB**, con l'archiviazione (#13). Il BE/FE è fatto (#10, 2026-11-11, **da committare** su
+`dev/backend-tid`, §8.1). Il lato DB era già chiuso: il residuo è passato al brief di competenza (#11), il resto era
+chiuso da altri cantieri (#12). Tid,
 2026-11-11: prima il BE/FE, poi la chiusura. O-9 affinata è confermata (2026-11-11). I `COMMENT` (D-C) non ripartono da qui: li riscrive tutti il giro 5
 di `brief-db-revisione-catalogo`, anche fuori `catalogo` (Tid, 2026-11-11). Il lotto B è applicato, riscritto sul
 modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
@@ -19,11 +20,11 @@ modello di `brief-db-sorgente-documento-e-riga` (giro R.1, 2026-11-06).
 | 7 | ✅ Tid | O-9 affinata confermata: l'`ONERE` con sorgente (dal push di ordine e bolla) passa, quello senza sorgente (porta oneri) è respinto (2026-11-11) | §7.2-bis | — |
 | 8 | ✅ DB, in `brief-db-revisione-catalogo` | **D-C** (chiuso il 2026-11-11: giro 5 applicato da Tid, pgTAP verdi; i 26 oggetti puliti sul vivo, dbdev e scratch, revisione-catalogo §17.7): riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d. Passa al giro 5 di [brief-db-revisione-catalogo](brief-db-revisione-catalogo.md), che riscrive tutti i COMMENT di `catalogo` in un changeSet solo (Tid, 2026-11-08, Q11). ✅ **Tid, 2026-11-11 (opzione a):** il giro 5 prende anche gli oggetti di questo cantiere fuori `catalogo` (`acquisti`, `script`, `vendite`); qui non resta niente. Elenco chiuso: §3.3.1 di quel brief. I dieci oggetti stavano nel giro 5-A: `catalogo` in `20261112-16`/`-20`, i cinque fuori schema in `20261112-21` | [revisione-catalogo §3.3.1](brief-db-revisione-catalogo.md#331-d-c-i-comment-del-cantiere-obsoleto_dal-anche-fuori-catalogo-tid-2026-11-11) | giro 5 |
 | 9 | ✅ DB + Tid | lotto B (verbi): riscritto sul modello nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`), applicato da Tid, pgTAP verdi (2026-11-06). Righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D): ancora fermi (le righe d'acquisto aspettano il cantiere `acquisti`, che porta le loro tabelle al modello; le righe di fattura non hanno un verbo che ne scriva la provenienza) | §7.2, §7.3 | — |
-| 10 | **team BE / FE** ⏭️ | `obsoleto_dal` ed `e_obsoleto` in `ARTICOLI_DETAIL_COLUMNS` e `_LOOKUP_ARTICOLI_COLONNE`, nel drawer e nella lista; `righe_saltate` nella risposta del «Clona». Già fatti (letto nel codice il 2026-11-11): la policy di `E_ARTICOLO_OBSOLETO` e la chiave i18n del motivo nel picker | §8 | — |
+| 10 | ✅ team BE / FE (2026-11-11, da committare su `dev/backend-tid`) | `obsoleto_dal` ed `e_obsoleto` in `ARTICOLI_DETAIL_COLUMNS` e `_LOOKUP_ARTICOLI_COLONNE`; la data scrivibile dal drawer articolo; il ritirato segnato in lista e in testata; `righe_saltate` nella risposta e nell'avviso del «Clona». Erano già fatti la policy di `E_ARTICOLO_OBSOLETO` e la chiave i18n del motivo nel picker | §8.1 | — |
 | 10-bis | ✅ DB | Lotto D, presidio per verbo: lo copre `vendite/test-sorgente-righe-vendita-v1` del giro R.1 di `brief-db-sorgente-documento-e-riga` (casi 5, 7-12: revisione, push preventivo→ordine, ordine e contratto dall'offerta, bolla dall'ordine, riconsegna; il 6 è la revisione su un articolo ritirato). Nessun test nuovo (2026-11-11) | §7.3 | — |
 | 11 | ✅ DB | Lotto C residuo, fuori di qui (Tid, 2026-11-11). **Righe d'acquisto** → [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md) §4.6-bis, il cantiere che porta la provenienza agli acquisti: il guard si monta lì, dopo i verbi. **Righe di fattura**: superato dal modello, vedi §7.3 (G-4) | §7.3 | — |
 | 12 | ✅ DB | Residui già chiusi da `work-done/brief-db-sorgente-documento-e-riga` (letto sul vivo il 2026-11-11): O-10 è la sua **D-3** (`preventivo_riga_id` resta accanto alla sorgente, perché è un consumo che si azzera all'annullo, non un doppione); M-1 (§9.4) e i quattro punti di §9.5 sono risolti. Non resta debito da portare | §6, §9 | — |
-| 13 | DB | Archiviazione in `work-done/`, a BE/FE fatto | — | 10 |
+| 13 | **DB** ⏭️ | Archiviazione in `work-done/`, a BE/FE fatto; con lei la riga di `catalogo/manual/vw_articoli_dettaglio.md` che dice le due colonne «non ancora nella proiezione del backend» (§8.1) | — | 10 |
 
 ⛔ **Lotto B fermo (Tid, 2026-11-06):** non si applica finché non è deciso il modello della sorgente in
 `brief-db-sorgente-documento-e-riga` (tipo + chiave del documento + `sorgente_riga` = la riga). I verbi
@@ -434,6 +435,35 @@ verde.
 * BE (§9): nessuna ricaduta attesa. Censito il 2026-11-06: nessun `ON CONFLICT` del backend né del DB si appoggia agli
   indici unici che il §9 ritira. Quelli trovati stanno tutti su tabelle di collegamento (`pratiche_sorgenti`,
   `documenti_fatturazione_canali`, coda di stampa), che il §9 non tocca.
+
+### 8.1 Giro BE/FE (team BE, 2026-11-11, da committare su `dev/backend-tid`)
+
+Fatto a DB applicato (letto su dbdev: le due colonne della vista, `righe_saltate` nel risultato del verbo).
+
+| Che cosa | Dove |
+| --- | --- |
+| `obsoleto_dal` ed `e_obsoleto` nella lista, nel dettaglio e nei picker dell'articolo | `catalogo_repository.py` (`ARTICOLI_DETAIL_COLUMNS`, `_LOOKUP_ARTICOLI_COLONNE`) |
+| `obsoleto_dal` si scrive dalla create e dalla PATCH dell'articolo: una data, o `null` per togliere il ritiro. Nessun verbo: è una colonna dell'articolo, senza lock. Una data scritta male è 400 `E_CATALOGO_VALIDATION` col campo | `catalogo_repository.py` (`ARTICOLI_CREATE_COLUMNS`), `catalogo_service.py` |
+| Il drawer articolo ha il campo «Ritirato dal» (data, si svuota dal calendario) e il Tag «Ritirato» in testata; la lista lo mostra sotto il codice. Tutti e due leggono `e_obsoleto`: il FE non confronta date | `ArticoloDrawer.vue`, `ArticoliSearchTable.vue`, i due locales |
+| `righe_saltate` nella risposta del «Clona», e l'avviso all'operatore accanto a quello dei componenti | `listini_service.py`, `CloneVersioneDrawer.vue`, i due locales |
+| Doc API | `api_catalogo.md`, `api_listini.md` |
+
+**Prove.** Sul DB vero: `catalogo/tests/db/test_articolo_obsoleto_db.py` nuovo (4: l'articolo nuovo, la data che ritira,
+programma e si toglie, il picker, la data non valida); `test_listino_versione_modello_db` +1 (il clone salta e conta il
+prezzo di un articolo ritirato, caso costruito). Suite `apps.catalogo` + `apps.core` + `apps.vendite` col DB vero verdi;
+vitest `src/catalogo` e `src/vendite/components` verdi (`ArticoloDrawer.spec.js` +1); ruff, eslint, `check_i18n_keys`,
+`check_classi_morte` puliti. Cricchetto mypy verde (0 rilievi nuovi, 2026-11-12). Il primo giro era uscito con un «errore interno
+del plugin Django»: era l'ambiente non caricato (`env.sh`, le settings vogliono `DJANGO_SECRET_KEY`), non
+un difetto di mypy; da quel giorno lo script mostra il traceback, e la causa sta nel rosso.
+
+**Scelte e segnalazioni.**
+
+1. **«Riconoscibile in lista»** è un Tag sotto il codice, da `e_obsoleto`. Una colonna o un filtro della lista 26
+   sarebbero configurazione `ui.lista_*`, cioè lavoro DB: non chiesti qui, da decidere (Tid).
+2. **Alla sessione DB:** `catalogo/manual/vw_articoli_dettaglio.md` dice ancora che le due colonne «non sono ancora
+   nella proiezione del backend»: non è più vero.
+3. **Il picker libero** (`ArticoloLookup` senza documento) porta le due colonne ma non le mostra: il rifiuto di una
+   riga nuova su un articolo ritirato lo dà il DB, e il picker di riga lo dice già col motivo.
 
 ## 9. Le colonne sorgente: un modello solo su tutti i documenti (Tid, 2026-11-06)
 

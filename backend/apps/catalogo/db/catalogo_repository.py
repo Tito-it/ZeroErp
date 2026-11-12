@@ -132,6 +132,11 @@ ARTICOLI_CREATE_COLUMNS: frozenset[str] = frozenset({
     "modo_approvvigionamento_id",
     "gestito_a_magazzino",
     "lead_time_giorni",
+    # Il ritiro dell'articolo (brief-db-articoli-obsoleto-dal): la data da cui
+    # non si sceglie piu' per una riga nuova. Nullable: NULL = si sceglie,
+    # una data futura = ritiro programmato; rimetterla a NULL lo riattiva per
+    # le scelte nuove. Nessun lock e nessun verbo: e' una colonna dell'articolo.
+    "obsoleto_dal",
     "meta",
 })
 
@@ -226,6 +231,12 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     # lotto e seriale, che il guard DB rifiuta su un onere.
     "a.e_onere",
     "a.causale_onere_id",
+    # Il ritiro (20261106-03, brief-db-articoli-obsoleto-dal §8): `obsoleto_dal`
+    # e' la data che l'operatore scrive, `e_obsoleto` il predicato del DB
+    # (`script.fn_e_obsoleto`, alla data operativa: lo stesso del guard di riga
+    # e del picker). ⛔ Il FE legge `e_obsoleto` e non confronta date.
+    "a.obsoleto_dal",
+    "a.e_obsoleto",
 )
 
 
@@ -278,6 +289,8 @@ LOOKUP_ARTICOLI_MAX = 50
 # scelta nel picker — mai ricalcolati (piano-be-fe-magazzino-lotto-2-motore §5.3).
 # L'ONERE (2026-11-03): sulla riga d'ordine nuova il form spegne le date di
 # consegna se l'articolo scelto e' un onere (brief-db-addebito-trasporto-ordine §9.9).
+# IL RITIRO (2026-11-11, brief-db-articoli-obsoleto-dal §8): `obsoleto_dal` ed
+# `e_obsoleto`, cosi' un picker puo' dire che l'articolo e' ritirato o lo sara'.
 _LOOKUP_ARTICOLI_COLONNE = """a.id,
                 a.codice,
                 a.descrizione,
@@ -293,7 +306,9 @@ _LOOKUP_ARTICOLI_COLONNE = """a.id,
                 a.requires_lotto,
                 a.requires_serial,
                 a.e_onere,
-                a.causale_onere_id"""
+                a.causale_onere_id,
+                a.obsoleto_dal,
+                a.e_obsoleto"""
 
 
 class CatalogoRepository:

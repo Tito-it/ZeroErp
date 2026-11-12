@@ -1184,7 +1184,10 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
 #        `valido_dal`, dalla stessa `fn_check`.
 # Ritorna: il dettaglio della versione nuova, piu' i conteggi della copia
 #          (`righe_copiate`, `componenti_copiati`, `componenti_saltati`: i
-#          componenti senza giorni in comune fra distinta e versione nuova).
+#          componenti senza giorni in comune fra distinta e versione nuova, e
+#          quelli di un articolo ritirato; `righe_saltate`: le righe di un
+#          articolo ritirato alla data operativa, che una versione nuova non
+#          ricopia).
 def fn_clone_versione(
     listino_id: int,
     src_versione_id: int,
@@ -1227,6 +1230,7 @@ def fn_clone_versione(
         "righe_copiate": copia["righe_copiate"],
         "componenti_copiati": copia["componenti_copiati"],
         "componenti_saltati": copia["componenti_saltati"],
+        "righe_saltate": copia["righe_saltate"],
     }
 
 

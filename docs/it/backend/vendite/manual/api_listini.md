@@ -434,7 +434,10 @@ con `attivo=true` (le righe non attive della sorgente sono escluse).
 
 Il dettaglio della versione nuova (§3.1) piu' i conteggi della copia:
 `righe_copiate`, `componenti_copiati`, `componenti_saltati` (i componenti senza
-giorni in comune fra la distinta e la versione nuova: non si copiano).
+giorni in comune fra la distinta e la versione nuova, e quelli di un articolo
+ritirato: non si copiano) e `righe_saltate` (i prezzi di un articolo ritirato
+alla data operativa: una versione nuova è un impegno nuovo a vendere, e non li
+ricopia; la copia non si ferma).
 
 #### Vincolo D2 — `valido_dal` e retroattivita`
 
