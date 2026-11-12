@@ -19,6 +19,10 @@
 #
 # Dipendenza: config.sistema_codici deve esistere,
 #   vendite.offerte_commerciali deve esistere (migration 20260524-03).
+#
+# ℹ️ NOTA 2026-11-13 (brief-db-token-null-dei-seed D1): la cella vuota di
+#   `separatore` e' la stringa vuota voluta; dal 90_end/20261112-53 la colonna e'
+#   NOT NULL DEFAULT ''. Vedi la nota in 20250813-05, che legge lo stesso CSV.
 # ------------------------------------------------------------
 
 databaseChangeLog:

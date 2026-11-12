@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `config.fn_pannello_scrivi()`
 
+> **Ultimo aggiornamento**: 13 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > **La lista che legge:** [config.tabelle_gestibili](/dbzero/config/tabelle/tabelle_gestibili)
@@ -43,6 +45,16 @@ sembrava riuscito.
 Si scrivono solo i campi mandati: gli altri tengono il valore di prima (o il
 default, per una riga nuova). I valori li converte il database, secondo il tipo
 di ogni colonna.
+
+⭐ **Un campo di testo svuotato si salva come «nessun valore»** (dal 13-11-2026).
+Quando una colonna di testo **può restare vuota**, il verbo salva come `NULL` il
+campo arrivato vuoto o con soli spazi: è ciò che manda il form quando si
+cancella il contenuto di un campo in modifica. Così l'assenza ha una forma sola,
+e le colonne che vietano la stringa vuota (la nota degli assoggettamenti IVA e
+degli stili di nota) non rifiutano più il salvataggio. Una colonna di testo
+**obbligatoria** riceve il campo vuoto così com'è: per esempio il separatore di
+`config.sistema_codici`, dove vuoto vuol dire «nessun separatore». Un testo vero
+non si tocca, spazi compresi.
 
 La riga che il verbo restituisce ha l'`id` e le colonne scrivibili: gli stessi
 campi del form.

@@ -31,6 +31,9 @@
 #   `causa = ''` e ZERO hanno `causa IS NULL`. Su una colonna DATE quella
 #   stringa vuota sarebbe un errore di cast. La convenzione del progetto e' il
 #   TOKEN LETTERALE (`NULL` nella cella) con `nullValue: "NULL"`.
+#   ⚠️ CORRETTO IL 2026-11-13 (brief-db-token-null-dei-seed §1): `nullValue` non
+#   e' un attributo di loadUpdateData e Liquibase lo ignora. La cella `NULL`
+#   e' NULL perche' e' la parola null; la cella vuota DATE e' NULL comunque.
 #
 #   ⚠️ Il cambio NON tocca le colonne esistenti: nessuna cella del CSV contiene
 #   il token `NULL` (verificato, 0 su 634 record), e le celle `""` continuano a
@@ -38,6 +41,14 @@
 #     SELECT count(*) FILTER (WHERE causa IS NULL)  -- deve restare 0
 #          , count(*) FILTER (WHERE causa = '')     -- deve restare 331
 #       FROM config.messaggi_errore;
+#   ⚠️ SUPERATA IL 2026-11-13: vedi la REV qui sotto. Oggi causa = '' e' 0.
+#
+# ⭐ REV 2026-11-13 — causa e soluzione assenti si scrivono NULL
+#   (brief-db-token-null-dei-seed D3). Nel CSV dei messaggi le 321 cause e le 327
+#   soluzioni vuote diventano `NULL`: la cella vuota di una colonna STRING arrivava
+#   come stringa vuota. In 90_end/20261112-55 la conversione delle '' rimaste e
+#   i due CHECK. ⛔ Una riga nuova senza causa o soluzione scrive `NULL`, mai la
+#   cella vuota: il guardrail (regola cella-vuota-string) la rifiuta.
 #
 # ── 🔴 ESTESO IL 2026-08-07: DUE LOADER PRIMA DEL CATALOGO ──────────────
 #   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-5)
@@ -150,7 +161,7 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            # Token letterale, non la cella vuota: vedi la nota in testata.
+            # Token letterale, non la cella vuota: vedi la REV 2026-11-13 in testata.
             nullValue: "NULL"
             primaryKey: "id"
             columns:

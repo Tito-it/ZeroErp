@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # ------------------------------------------------------------
+# ⭐ REV 2026-11-12 — nel CSV le celle `null` di utility_id e tipo_doc_fiscale_id
+#   si scrivono `NULL`, la grafia della convenzione (regola null-grafia; brief
+#   brief-db-token-null-dei-seed). Il caricatore le leggeva gia' come NULL: il
+#   render offline e' identico prima e dopo.
+# ------------------------------------------------------------
 
 databaseChangeLog:
   - changeSet:

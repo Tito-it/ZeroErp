@@ -54,9 +54,9 @@ La tabella **`ui.lista_colonna`** è il **catalogo delle colonne disponibili** p
 Su `campo_sorgente`, `etichetta_estesa`, `formato`, `gruppo` ed `etichetta_i18n_key` un valore
 che manca è `NULL`. Un `CHECK` per colonna (`chk_lista_colonna_<colonna>_non_vuoto/a`) rifiuta la
 stringa vuota, e anche quella di soli spazi. Chi legge scrive quindi `campo_sorgente IS NOT NULL`,
-senza tollerare anche `''`. Nel CSV del seed una cella senza valore porta il token `NULL`: il
-mirror dichiara `nullValue: "NULL"`, e una cella lasciata vuota arriverebbe come stringa vuota,
-che il vincolo rifiuta.
+senza tollerare anche `''`. Nel CSV del seed una cella senza valore porta il token `NULL`: una
+cella lasciata vuota, su una colonna testo, il caricatore la scrive come stringa vuota, che il
+vincolo rifiuta (linee-guida-sql §11.2).
 
 ---
 

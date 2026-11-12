@@ -1,6 +1,14 @@
 # ------------------------------------------------------------
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Liquibase changelog per Zero ERP
+#
+# ⭐ REV 2026-11-13 — via `user_insert` e `user_update` (brief-db-token-null-dei-seed
+#   D2, la forma di magazzino.causali). In 13 righe `user_update` era vuota e
+#   arrivava come stringa vuota; la tabella non ha trigger di audit, quindi
+#   restava ''. Le due colonne escono dal CSV e da `columns:`, e vale il default
+#   della tabella (linee-guida-sql §7: tutte e due sono gia' NOT NULL DEFAULT
+#   CURRENT_USER). La conversione delle righe gia' scritte sta in
+#   90_end/20261112-56.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -38,10 +46,8 @@ databaseChangeLog:
                   type: JSON
                   defaultValue: "{}"
               - column: { name: data_insert, type: STRING }
-              - column: { name: user_insert, type: STRING }
               - column:
                   name: data_update
                   type: STRING
                   defaultValue: "NOW()"
-              - column: { name: user_update, type: STRING }
 

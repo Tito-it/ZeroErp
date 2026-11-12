@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.iva_natura`
 
+> **Ultimo aggiornamento**: 13 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimenti tabelle:    
@@ -27,6 +29,9 @@ La tabella **`config.iva_natura`** contiene i codici natura IVA utilizzati per l
 * **Unicità**: `codice` deve essere univoco nel catalogo.
 * **Validità**: ogni codice  corrisponde a uno specifico significato fiscale, es. `N1` (Esportazioni), `N2` (Operazioni non imponibili), etc.
 * **Audit**: ogni modifica al catalogo aggiorna automaticamente `data_update` e `user_update` tramite trigger.
+  Dal 2026-11-13 `user_insert` è `NOT NULL DEFAULT CURRENT_USER` (linee-guida-sql §7,
+  `90_end/20261112-54`): il seed non porta più le colonne di audit, e una natura nuova registra chi
+  l'ha inserita.
 * ⭐ **`is_reverse_charge`** (dal 2026-08-29): dice se quella natura è
   un'**inversione contabile**, cioè se l'imposta la assolve chi riceve invece di
   chi emette. Sono le nature `N6.1`…`N6.9` — rottami, oro, subappalto edile,

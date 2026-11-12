@@ -5,6 +5,11 @@
 #
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
+#
+# ℹ️ NOTA 2026-11-13 (brief-db-token-null-dei-seed D1): la cella vuota di
+#   `separatore` arriva come stringa vuota, ed e' il valore voluto («nessun
+#   separatore»). Dal 90_end/20261112-53 la colonna e' NOT NULL DEFAULT '':
+#   un `NULL` nel CSV fermerebbe il migrate. Lo stesso CSV lo legge 20260524-25.
 # ------------------------------------------------------------
 
 databaseChangeLog:

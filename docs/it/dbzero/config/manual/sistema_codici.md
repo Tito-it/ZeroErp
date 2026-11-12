@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.sistema_codici`
 
+> **Ultimo aggiornamento**: 13 novembre 2026
+
 La tabella **`config.sistema_codici`** definisce le regole per la generazione automatica di codici alfanumerici (clienti, soggetti, fornitori, vettori, istanze di utility, pratiche, preventivi, contratti, offerte commerciali, lotti di fatturazione).
 
 ⛔ **Non i documenti di vendita.** Fatture, documenti di trasporto, ordini, commesse e resi si numerano sui registri, e dal 2026-08-31 non hanno più una riga qui: vedi la revisione in fondo.
@@ -24,6 +26,9 @@ La tabella **`config.sistema_codici`** definisce le regole per la generazione au
   Prefisso testuale anteposto alla parte numerica (es. `ORD-`, `CL-`).
 * **`separatore`**
   Carattere o stringa utilizzata per separare il prefisso dalla parte numerica (es. `-`, `/`, `_`).
+  «Nessun separatore» è la **stringa vuota**: la colonna è `NOT NULL DEFAULT ''` dal 2026-11-13
+  (`90_end/20261112-53`). Il generatore compone `prefisso || separatore || numero`, e un `NULL`
+  renderebbe `NULL` il codice. Una riga creata dal pannello col campo vuoto prende il default.
 * **`lunghezza_numero`**
   Numero totale di cifre della parte numerica (es. `6` → da `000001` a `999999`). Se la sequenza supera lo spazio, si deve aggiornare il parametro.
 * **`usa_sequenza`**

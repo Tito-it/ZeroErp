@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.messaggi_errore: un messaggio senza causa o senza soluzione le ha NULL,
+#   mai la stringa vuota. Brief: brief-db-token-null-dei-seed (D3, Tid 2026-11-12).
+#
+# ⚠️ PERCHE'. «Nessuna causa» aveva due forme. Il seed la scriveva '' (la cella
+#   vuota di una colonna STRING resta stringa vuota sotto qualunque nullValue,
+#   linee-guida-sql §11.2): 321 cause e 327 soluzioni su 1216 righe. Chi scrive
+#   la riga per altra strada la lascia NULL. Il CSV ora scrive NULL (mirror
+#   80_data/20260614-08), e qui la seconda forma si chiude per costruzione. Una
+#   stringa di soli spazi vale come vuota.
+#
+# ℹ️ PERCHE' QUI, IN 90_end. Tutto 00_schema gira prima di 80_data: un vincolo
+#   messo prima del mirror lo vedrebbe passare con il CSV di oggi, ma non con un
+#   seed che torni a scrivere '' (linee-guida-sql §11.14). Qui il mirror e' gia'
+#   passato.
+#
+# ℹ️ IL PRIMO PASSO PORTA A NULL LE STRINGHE VUOTE RIMASTE, quelle delle righe che
+#   il CSV non conosce. Hanno lo stesso significato, quindi la conversione non
+#   decide niente. Sulle righe del CSV, gia' riscritte dal mirror, non trova
+#   niente da cambiare.
+#
+# CENSIMENTO (§11.14), 2026-11-13.
+#   Chi scrive la tabella: il seed (il mirror, ora NULL); alcuni changeSet di
+#   80_data che CANCELLANO righe (20260805-08, -11, -16); nessuna funzione del
+#   database, nessun endpoint, e la tabella non e' nel pannello.
+#   Chi legge causa e soluzione: script.fn_log_and_raise_error, che le passa al
+#   RAISE con coalesce(…, '') come DETAIL e HINT; script.fn_log_error_only, che
+#   le legge e non le scrive nel log; il backend per JOIN (error_log, tipate
+#   str | None) e il drawer del frontend, che le mostra solo se valorizzate.
+#   Nessun lettore distingue '' da NULL.
+#   Chi legge il CSV: scripts/estrai_classi_codici_errore.py e gli indicatori
+#   (codice e lingua, non causa e soluzione).
+# Presidio: config/test-messaggi-errore-causa-soluzione-non-vuote-v1.
+# Rollback: via i due vincoli. Le stringhe vuote convertite non tornano: NULL e ''
+#   qui hanno lo stesso significato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-55-add-chk-messaggi-errore-causa-soluzione-non-vuote-mctit.yaml
+
+  - changeSet:
+      id: 20261112-55-add-chk-messaggi-errore-causa-soluzione-non-vuote
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.messaggi_errore: causa e soluzione vuote diventano NULL, poi due CHECK vietano la stringa vuota.
+        Brief: brief-db-token-null-dei-seed.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'config.messaggi_errore'::regclass
+                 AND conname IN ('chk_messaggi_errore_causa_non_vuota',
+                                 'chk_messaggi_errore_soluzione_non_vuota');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE config.messaggi_errore me
+                 SET causa     = CASE WHEN btrim(me.causa) = ''     THEN NULL ELSE me.causa END,
+                     soluzione = CASE WHEN btrim(me.soluzione) = '' THEN NULL ELSE me.soluzione END
+               WHERE btrim(me.causa) = ''
+                  OR btrim(me.soluzione) = '';
+
+              ALTER TABLE config.messaggi_errore
+                ADD CONSTRAINT chk_messaggi_errore_causa_non_vuota
+                    CHECK (causa IS NULL OR btrim(causa) <> ''),
+                ADD CONSTRAINT chk_messaggi_errore_soluzione_non_vuota
+                    CHECK (soluzione IS NULL OR btrim(soluzione) <> '');
+
+              COMMENT ON CONSTRAINT chk_messaggi_errore_causa_non_vuota ON config.messaggi_errore IS
+                'Un messaggio senza causa ha causa NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+              COMMENT ON CONSTRAINT chk_messaggi_errore_soluzione_non_vuota ON config.messaggi_errore IS
+                'Un messaggio senza soluzione ha soluzione NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.messaggi_errore
+                DROP CONSTRAINT IF EXISTS chk_messaggi_errore_soluzione_non_vuota,
+                DROP CONSTRAINT IF EXISTS chk_messaggi_errore_causa_non_vuota;

@@ -15,6 +15,11 @@
 # Nessun trigger data viene attivato per le 4 righe invariate.
 # Il codice_interno 'DEFAULT' è lockato da trg_note_stili_a10_lock_columns_upd
 # dopo il primo INSERT: non modificabile in update.
+#
+# ⭐ REV 2026-11-13 — la nota assente si scrive NULL (brief-db-token-null-dei-seed
+#   D3). Le cinque celle vuote di `note` diventano `NULL`: la cella vuota di una
+#   colonna STRING arrivava come stringa vuota, sotto qualunque nullValue (che
+#   Liquibase ignora, brief §1).
 # ------------------------------------------------------------
 
 databaseChangeLog:

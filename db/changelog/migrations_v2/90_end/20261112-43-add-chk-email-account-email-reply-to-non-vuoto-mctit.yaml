@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.email_account: senza indirizzo di risposta email_reply_to e' NULL, mai
+#   la stringa vuota.
+#   Brief: brief-db-nullvalue-vuoto-cinque-mirror (D1, Tid 2026-11-12; §7).
+#
+# ⚠️ PERCHE'. «Nessun Reply-To» aveva due forme: '' dal seed (il mirror scriveva
+#   la cella vuota come stringa vuota) e dalla modifica dal pannello quando si
+#   svuota il campo, NULL dalla creazione. Il mirror 80_data/20260329-60 scrive
+#   NULL dal giro 1, e la PATCH del backend porta '' a None dal 2026-11-12: qui
+#   la seconda forma si chiude per costruzione. Una stringa di soli spazi vale
+#   come vuota.
+#
+# ℹ️ CHI CAMBIA PER PRIMO: il backend (brief §7). Messo prima della PATCH
+#   corretta, svuotare il campo dal pannello avrebbe dato un 23514.
+#
+# ℹ️ PERCHE' QUI, IN 90_end. Tutto 00_schema gira prima di 80_data: un vincolo
+#   messo prima del mirror lo vedrebbe passare con il CSV di oggi, ma non con un
+#   seed che torni a scrivere '' (linee-guida-sql §11.14). Qui il mirror e' gia'
+#   passato.
+#
+# ℹ️ IL PRIMO PASSO PORTA A NULL LE STRINGHE VUOTE RIMASTE: quelle delle righe
+#   che il CSV non conosce, scritte dal pannello prima della PATCH corretta. Hanno
+#   lo stesso significato, quindi la conversione non decide niente: rende il dato
+#   conforme al vincolo che segue (linee-guida-sql §11.2). L'UPDATE tocca solo
+#   email_reply_to: il lock di codice_interno non scatta, e il trigger di audit
+#   scrive data_update/user_update, come per ogni modifica.
+#
+# CENSIMENTO DI CHI SCRIVE LA COLONNA (§11.14), 2026-11-12: il seed (il mirror,
+#   NULL); la creazione dal pannello (email_views.py, `.strip() or None`); la
+#   PATCH dal pannello (email_views.py, '' -> None). Nessuna funzione del
+#   database la scrive; fn_resolve_email_account la legge e la restituisce com'e'.
+# Presidio: config/test-email-account-reply-to-non-vuoto-v1.
+# Rollback: via il vincolo. Le stringhe vuote convertite non tornano: NULL e ''
+#   qui hanno lo stesso significato (il servizio di invio non mette il Reply-To
+#   in nessuno dei due casi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-43-add-chk-email-account-email-reply-to-non-vuoto-mctit.yaml
+
+  - changeSet:
+      id: 20261112-43-add-chk-email-account-email-reply-to-non-vuoto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.email_account: i Reply-To vuoti diventano NULL, poi un CHECK vieta la stringa vuota.
+        Brief: brief-db-nullvalue-vuoto-cinque-mirror.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'config.email_account'::regclass
+                 AND conname = 'chk_email_account_email_reply_to_non_vuoto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE config.email_account ea
+                 SET email_reply_to = NULL
+               WHERE btrim(ea.email_reply_to) = '';
+
+              ALTER TABLE config.email_account
+                ADD CONSTRAINT chk_email_account_email_reply_to_non_vuoto
+                    CHECK (email_reply_to IS NULL OR btrim(email_reply_to) <> '');
+
+              COMMENT ON CONSTRAINT chk_email_account_email_reply_to_non_vuoto ON config.email_account IS
+                'Senza indirizzo di risposta l''account ha email_reply_to NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.email_account
+                DROP CONSTRAINT IF EXISTS chk_email_account_email_reply_to_non_vuoto;

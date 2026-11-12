@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-12
 
-**Riparte: sessione DB**, con l'archiviazione (passo 6), dopo il commit del lavoro BE sul suo branch. Il BE ha
-chiuso §5 il 2026-11-12 (§5.3): K-1 … K-4 fatti, il CI dei test backend torna verde, le verifiche di §5.2 fatte.
-Il lato DB è applicato su dbdev e scratch, i pgTAP sono verdi (Tid, 2026-11-12) ed è committato.
+**Riparte: nessuno, il brief è archiviato** (2026-11-12). Il BE ha chiuso §5 (§5.3), il lavoro BE è committato
+(`5701b090ab`, PR #101), il lato DB è applicato, verde e committato. Il residuo della nota sul token `null`
+(§5.3, risposta della sessione DB) prosegue in `brief-db-nullvalue-vuoto-cinque-mirror.md` §9.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -15,11 +15,11 @@ Il lato DB è applicato su dbdev e scratch, i pgTAP sono verdi (Tid, 2026-11-12)
 | 4 | ✅ Tid | Apply su dbdev e scratch, pgTAP verdi (2026-11-12) | §6.2 | 3 |
 | 5 | ✅ team BE | K-1 … K-4: i test che leggono il CSV, il rosso in CI, il presidio dei preset (2026-11-12) | §5.1, §5.3 | 4 |
 | 5-bis | ✅ team BE/FE | Le verifiche di §5.2 (2026-11-12) | §5.2, §5.3 | 4 |
-| 5-ter | **Tid** | Il commit del lavoro BE su `dev/backend-tid` | §5.3 | 5 |
-| 6 | sessione DB ⏭️ | Archiviazione in `work-done/`; in §5.2.2 l'elenco dei commenti va completato con `CodaLavoriTab.vue` | — | 5-ter |
+| 5-ter | ✅ Tid | Il commit del lavoro BE su `dev/backend-tid`: `5701b090ab` (PR #101) | §5.3 | 5 |
+| 6 | ✅ sessione DB | Archiviazione in `work-done/`; §5.2.2 completato con `CodaLavoriTab.vue`; risposta alla nota sul token `null` (2026-11-12) | §5.2, §5.3 | 5-ter |
 
-**Decisioni aperte di Tid**: nessuna. **Da committare**: il lavoro BE di §5.3, su `dev/backend-tid`; il giro
-DB è committato.
+**Decisioni aperte di Tid**: nessuna. **Da committare**: l'archiviazione di questo brief e §9 di
+`brief-db-nullvalue-vuoto-cinque-mirror.md`, su `dev/db-tid`.
 
 **Brief vicini verificati**: `sviluppo-personalizzazioni-liste_def.md` (la prassi di DEF-7/DEF-10
 «`campo_sorgente` vuoto a catalogo» intende *senza sorgente*: non decide fra `NULL` e `''`, e qui non
@@ -127,7 +127,8 @@ Elenco chiuso:
    come cella vuota, come prima con `''`.
 2. Nel frontend le letture usano il test di verità (`v-if="data.campo_sorgente"`,
    `?? ''`), falso per entrambe le forme. Restano da aggiornare i commenti che dicono «seed:
-   `campo_sorgente` vuoto» (`AuditLogView.vue`, `CodaStampaTab.vue`).
+   `campo_sorgente` vuoto» (`AuditLogView.vue`, `CodaStampaTab.vue`, e `CodaLavoriTab.vue`, trovato dal BE in
+   §5.3).
 3. Per D1 (a), lo stesso per `etichetta_estesa`, `formato`, `gruppo` ed `etichetta_i18n_key`.
 
 ### 5.3 Il giro BE fatto (team BE, 2026-11-12)
@@ -193,6 +194,23 @@ cella col `nullValue` **esattamente**. Non è verificato se il loader Liquibase 
 maiuscole e minuscole: se lo fa, una cella `null` (in minuscolo) per il DB è NULL e per il BB resta la stringa
 `'null'`. Oggi il caso esiste in `vendite/fatturazione_pipeline.csv` (fatto datato), che nessun test legge
 tramite `seed_csv`. Chi lo verifica sul codice di Liquibase allinea il confronto del BB e gli aggiunge il test.
+
+> ⚠️ **Corretta lo stesso giorno** in `brief-db-nullvalue-vuoto-cinque-mirror.md` §9.1: Liquibase 5.0.4 non
+> ha un attributo `nullValue` sul change e lo ignora; il token NULL è la parola `null` in qualunque grafia, su
+> ogni file, e la cella vuota di una `STRING` resta `''`. La premessa del BB `seed_csv` (`token_nullo`) va
+> rivista: è in D3 di quel brief.
+
+**Risposta (sessione DB, 2026-11-12, sul bytecode di `tools/liquibase/5.0.4`)**: il confronto del caricatore
+col `nullValue` è **esatto** (`LoadDataChange.isNullValue`: `equals` se il `nullValue` è dichiarato, `NULL`
+senza distinguere maiuscole e minuscole solo se manca). Ma per `loadUpdateData`, cioè per tutti i mirror tranne
+due `loadData`, il valore passa poi da `CharType.objectToSql` (e quindi da `VarcharType`), che scrive SQL `NULL`
+per **ogni** stringa che in minuscolo è `null`. Sulle colonne `NUMERIC` fa lo stesso già `setValueNumeric`
+(`"null".equalsIgnoreCase`); `setValueDate` e `setValueBoolean` portano confronti simili, non letti nel dettaglio. In pratica: con `loadUpdateData` una cella `null`,
+`Null` o `NULL` arriva al DB come NULL **qualunque sia il `nullValue`**, e il BB oggi la rende come stringa.
+Prova sul dato (dbdev, 2026-11-12): `vendite.fatturazione_pipeline`, mirror `20260128-06` con `nullValue: ""`,
+otto righe con `null` in `utility_id` e `tipo_doc_fiscale_id`, tutte e otto NULL a DB. Il caso di `loadData`
+(prepared statement, senza `objectToSql`) non è verificato. Il seguito, per il BB e per il CSV, è in
+`brief-db-nullvalue-vuoto-cinque-mirror.md` §9.
 
 **Prove**: i file toccati sono verdi anche coi test sul DB vero accesi (`ZEROERP_TEST_DB_E2E=1`, in
 transazione annullata). La suite backend intera è verde a fine giro, dopo la revisione e la pulizia dei `parents[N]`: 6594 test,
