@@ -78,6 +78,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ANAG_VALIDAZIONE": "Parametri anagrafiche non validi.",
     "E_APPROVAZIONE_PREZZO_NON_AMMESSA": "Operazione di approvazione prezzo non ammessa nello stato corrente.",
     "E_ARGOMENTI_A_COPPIE": "Trigger configurato con argomenti non a coppie.",
+    "E_ARTICOLO_CAUSALE_ONERE_GIA_USATA": "La causale onere scelta e' gia' di un altro articolo: ogni causale va a un articolo solo.",
     "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": "L'articolo e' stato escluso dal contratto e non puo' essere venduto a questo cliente.",
     "E_ARTICOLO_KIT_SENZA_COMPONENTI": "Il kit non ha componenti in vigore da oggi in poi: non puo' stare in una riga di documento. Completare la sua distinta o scegliere un altro articolo.",
     "E_ARTICOLO_MISMATCH": "Riga ordine e riga DDT hanno articoli diversi.",

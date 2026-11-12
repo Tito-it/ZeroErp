@@ -1,6 +1,6 @@
 # Brief DB — Cinque mirror scrivono `''` dove la colonna ammette `NULL`
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-12
+## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
 **Riparte: Tid**, con l'apply e i pgTAP del giro 3 (il `CHECK` su `email_reply_to`, §7, scritto e provato sullo
 scratch il 2026-11-12), poi l'archiviazione. Il tema del token NULL dei CSV (§9, §9.1) prosegue in
@@ -175,7 +175,7 @@ Richiesta, elenco chiuso:
 * `tests/api/test_email_views_fase6.py`: il test della PATCH col payload del drawer (`email_reply_to: ""`)
   asserisce che `update_account` riceve `None`.
 
-> ✅ **Fatto dal team BE, 2026-11-12** (da committare). In `EmailAccountDetailView.patch`, dopo il ciclo
+> ✅ **Fatto dal team BE, 2026-11-12**, committato il 2026-11-13 su `dev/backend-tid`. In `EmailAccountDetailView.patch`, dopo il ciclo
 > di strip, un `email_reply_to` uguale a `''` diventa `None`. `update_account` → `execute_dynamic_update`
 > gira con `skip_none=False`, quindi il `None` scrive `NULL` e non salta la colonna. Il test è
 > `backend/apps/amm_software/tests/api/test_email_views_fase6.py::TestEmailAccountPatchChiavi::test_patch_payload_del_drawer_passa`

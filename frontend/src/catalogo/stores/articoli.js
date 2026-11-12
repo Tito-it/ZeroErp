@@ -6,7 +6,10 @@ import {
   disattivaArticolo, riattivaArticolo,
 } from '../api/catalogo'
 import { createCrudStore } from '../../core/stores/createCrudStore'
+import { invalidateLookup } from '../../core/composables/useGlobalLookup'
+import { chiaveLookupCodici } from '../../core/composables/useLookupCodici'
 import { TAB_ENTITIES } from '../../core/constants'
+import { CATALOGO_LOOKUP_RELS } from '../constants'
 
 export const useArticoliStore = createCrudStore('catalogo-articoli', {
   api: { list: listArticoli, detail: getArticolo, create: createArticolo, update: updateArticolo },
@@ -24,4 +27,8 @@ export const useArticoliStore = createCrudStore('catalogo-articoli', {
     disattiva: disattivaArticolo,
     riattiva: riattivaArticolo,
   },
+  // Un articolo che prende, cambia o lascia una causale onere cambia l'elenco
+  // delle causali LIBERE (§9.10): la cache del lookup condiviso si invalida a
+  // ogni scrittura, e la tendina la rilegge alla prossima apertura del drawer.
+  afterWrite: () => invalidateLookup(chiaveLookupCodici(CATALOGO_LOOKUP_RELS.CAUSALI_ONERE_ASSEGNABILI)),
 })
