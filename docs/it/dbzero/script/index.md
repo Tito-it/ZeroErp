@@ -375,7 +375,7 @@ search:
 - [trgfn_guard_sorgente](funzioni/trgfn_guard_sorgente.md)
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.
 - [trgfn_listini_righe_comp_guard_coerenza_bom](funzioni/trgfn_listini_righe_comp_guard_coerenza_bom.md)
-- [trgfn_lock_columns](funzioni/trgfn_lock_columns.md) — -  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
+- [trgfn_lock_columns](funzioni/trgfn_lock_columns.md) — La trigger function generica che **impedisce di cambiare le colonne protette** di una tabella: per ogni colonna che un UPDATE modifica, rifiuta con il codice d'errore dichiarato per quella colonna.
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md) — La trigger function `script.trgfn_note_validate_generic` valida le note ancorate a una riga di documento (`anchor_tipo = 'RIGA'`): la riga indicata da `target_riga_id` deve appartenere davvero alla testata indicata da `target_id`.
 - [trgfn_notify_permessi_catalogo](funzioni/trgfn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
 - [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.

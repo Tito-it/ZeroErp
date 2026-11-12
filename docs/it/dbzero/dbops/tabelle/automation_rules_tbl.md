@@ -23,6 +23,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_automation_rules_tbl_exec_mode |  |
+| CHECK | chk_automation_rules_tbl_name_template_non_vuoto |  |
 | CHECK | chk_automation_rules_tbl_regola_valida |  |
 | CHECK | chk_automation_rules_tbl_rule_type |  |
 | PRIMARY KEY | automation_rules_tbl_pkey | id |

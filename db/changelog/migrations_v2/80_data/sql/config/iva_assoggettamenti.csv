@@ -1,4 +1,4 @@
 id,codice,descrizione,attivo,note,data_insert,user_insert,data_update,user_update,storicizza
-1,NI,Escluso Base imponibile,t,"",2025-10-06 17:26:30.442057+02,titodb,2026-01-16 19:26:50.739638+01,titodb,t
-2,ES,Escluso I.V.A. Art. 2,t,"",2025-10-06 17:26:30.442057+02,titodb,2026-01-16 19:26:50.739638+01,titodb,t
-4,ED,IVA ex art.17 ter DPR 633/72,t,"",2025-10-06 17:26:30.442057+02,titodb,2026-01-16 19:26:50.739638+01,titodb,t
+1,NI,Escluso Base imponibile,t,NULL,2025-10-06 17:26:30.442057+02,titodb,2026-01-16 19:26:50.739638+01,titodb,t
+2,ES,Escluso I.V.A. Art. 2,t,NULL,2025-10-06 17:26:30.442057+02,titodb,2026-01-16 19:26:50.739638+01,titodb,t
+4,ED,IVA ex art.17 ter DPR 633/72,t,NULL,2025-10-06 17:26:30.442057+02,titodb,2026-01-16 19:26:50.739638+01,titodb,t

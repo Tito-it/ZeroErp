@@ -17,6 +17,15 @@
 #   INV_INIZIALE, STORNO_POS, STORNO_NEG). Nessun loader nuovo.
 #   ⚠️ nullValue "": una cella vuota e' NULL (tx_id, user_*, data_update, che
 #   ha defaultValue NOW()).
+#
+# ⭐ REV 2026-11-12 — via `user_insert` e `user_update` (brief-db-nullvalue-vuoto-cinque-mirror).
+#   Con `nullValue: ""` le due colonne di audit, vuote nel CSV, arrivavano come
+#   stringa vuota: un'audit che non dice chi ha scritto. Il valore giusto e' il
+#   default della tabella (linee-guida-sql §7, §11.2): le due colonne escono dal
+#   CSV e dall'elenco `columns:`. Il default e il NOT NULL di `user_insert`, e la
+#   conversione delle righe gia' scritte, stanno in 90_end/20261112-39.
+#   ⚠️ La riga del 2026-09-15 qui sopra («una cella vuota e' NULL») era falsa per
+#   le colonne STRING: valeva solo per tx_id (uuid) e data_update (defaultValue).
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -58,8 +67,6 @@ databaseChangeLog:
                   # se il CSV ha valore vuoto, usa {} come JSON valido
                   defaultValue: "{}"
               - column: { name: tx_id, type: uuid }
-              - column: { name: user_insert, type: STRING }
-              - column: { name: user_update, type: STRING }
               - column: { name: data_insert, type: STRING }
               - column:
                   name: data_update

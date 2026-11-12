@@ -1,5 +1,7 @@
 ## Documentazione Concettuale -- Tabella `config.email_account`
 
+> **Ultimo aggiornamento**: 12 novembre 2026
+
 > Vedi anche
 >
 > Approfondimento tabelle:
@@ -41,6 +43,11 @@ L'account determina il mittente (`email_from`), il reply-to e tutti i parametri 
 * `smtp_port` deve essere tra 1 e 65535.
 * Un solo account con `unita_organizzativa_id IS NULL` e codice `SISTEMA` deve esistere come fallback.
 * La FK su `unita_organizzative` e' NO ACTION: non si cancella un reparto se ha un account email associato.
+* Senza indirizzo di risposta `email_reply_to` e' `NULL`, e il servizio di invio non mette il
+  `Reply-To`. Nel CSV del seed la cella vuota porta il token `NULL` (il mirror dichiara
+  `nullValue: "NULL"`). ⚠️ La stringa vuota non e' ancora vietata da un vincolo: la modifica
+  dal pannello scrive `''` quando si svuota il campo, e il `CHECK` arriva quando il backend la
+  porta a `NULL`.
 
 ---
 

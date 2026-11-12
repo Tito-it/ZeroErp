@@ -5,6 +5,14 @@
 #
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
+#
+# ⭐ REV 2026-11-12 — `nullValue: "NULL"` (brief-db-nullvalue-vuoto-cinque-mirror).
+#   Con `nullValue: ""` Liquibase scriveva la cella vuota di `name_template`
+#   come stringa vuota. Le regole che non montano trigger (CLEANUP_*,
+#   STORICO_PROVISION) non hanno template: per il modello e' un'assenza, quindi
+#   NULL, come gia' scrivono i pgTAP e le regole nate da SQL. Nel CSV le celle
+#   vuote di `name_template` portano ora il token `NULL`. Il CHECK che vieta la
+#   stringa vuota sta in 90_end/20261112-37, dopo questo mirror.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -29,7 +37,7 @@ databaseChangeLog:
             schemaName: dbops
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id,           type: STRING }

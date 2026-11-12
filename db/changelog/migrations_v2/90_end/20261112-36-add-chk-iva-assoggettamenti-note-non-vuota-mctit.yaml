@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.iva_assoggettamenti: l'assenza di una nota e' NULL, mai la stringa vuota.
+#   Brief: brief-db-nullvalue-vuoto-cinque-mirror (D1, Tid 2026-11-12).
+#
+# ⚠️ PERCHE'. «Nessuna nota» aveva due forme: '' dal seed (il mirror scriveva la
+#   cella vuota come stringa vuota) e NULL da chi scrive la riga per altra strada.
+#   Il mirror 80_data/20250814-04 ora scrive NULL; qui la seconda forma si chiude
+#   per costruzione. Una stringa di soli spazi vale come vuota.
+#
+# ℹ️ PERCHE' QUI, IN 90_end. Tutto 00_schema gira prima di 80_data: un vincolo
+#   messo prima del mirror lo vedrebbe passare con il CSV di oggi, ma non con un
+#   seed che torni a scrivere '' (linee-guida-sql §11.14). Qui il mirror e' gia'
+#   passato.
+#
+# ℹ️ IL PRIMO PASSO PORTA A NULL LE STRINGHE VUOTE RIMASTE: quelle delle righe
+#   che il CSV non conosce, scritte su un'installazione. Hanno lo stesso
+#   significato, quindi la conversione non decide niente: rende il dato conforme
+#   al vincolo che segue. Sulle righe del CSV, gia' riscritte dal mirror, non
+#   trova niente da cambiare (linee-guida-sql §11.2).
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-12: il seed (il mirror,
+#   ora NULL); nessuna funzione del database; nessun endpoint del backend.
+# Presidio: config/test-iva-assoggettamenti-note-non-vuota-v1.
+# Rollback: via il vincolo. Le stringhe vuote convertite non tornano: NULL e ''
+#   qui hanno lo stesso significato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-36-add-chk-iva-assoggettamenti-note-non-vuota-mctit.yaml
+
+  - changeSet:
+      id: 20261112-36-add-chk-iva-assoggettamenti-note-non-vuota
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.iva_assoggettamenti: le note vuote diventano NULL, poi un CHECK vieta la stringa vuota.
+        Brief: brief-db-nullvalue-vuoto-cinque-mirror.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'config.iva_assoggettamenti'::regclass
+                 AND conname = 'chk_iva_assoggettamenti_note_non_vuota';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE config.iva_assoggettamenti ia
+                 SET note = NULL
+               WHERE btrim(ia.note) = '';
+
+              ALTER TABLE config.iva_assoggettamenti
+                ADD CONSTRAINT chk_iva_assoggettamenti_note_non_vuota
+                    CHECK (note IS NULL OR btrim(note) <> '');
+
+              COMMENT ON CONSTRAINT chk_iva_assoggettamenti_note_non_vuota ON config.iva_assoggettamenti IS
+                'Senza nota l''assoggettamento ha note NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.iva_assoggettamenti
+                DROP CONSTRAINT IF EXISTS chk_iva_assoggettamenti_note_non_vuota;

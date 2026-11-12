@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.iva_assoggettamenti`
 
+> **Ultimo aggiornamento**: 12 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -34,7 +36,10 @@ Obiettivi:
 * `codice` (UNIQUE) → identificatore breve e stabile (es. `ES_ART10`, `NI_ART8`, `RC_ART17`, `FC`).
 * `descrizione` → descrizione estesa del regime.
 * `attivo` → abilita/disabilita in selezione.
-* `note` → annotazioni operative/normative.
+* `note` → annotazioni operative/normative. Senza nota la colonna è `NULL`, mai la stringa
+  vuota: il `CHECK` `chk_iva_assoggettamenti_note_non_vuota` rifiuta `''` e una stringa di
+  soli spazi. Nel CSV del seed la cella senza nota porta il token `NULL` (il mirror dichiara
+  `nullValue: "NULL"`).
 * **Audit/Governance**: `data_*`, `user_*`, `storicizza`.
 
 ---
@@ -43,6 +48,7 @@ Obiettivi:
 
 * **PK**: `id` (identity).
 * **UNIQUE**: `uq_cfg_iva_assoggettamenti_codice` su `codice`.
+* **CHECK**: `chk_iva_assoggettamenti_note_non_vuota` → l'assenza della nota è `NULL`.
 * **Indici**:
 
   * `ix_cfg_iva_assoggettamenti_attivo` → filtri per stato attivo.

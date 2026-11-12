@@ -449,12 +449,9 @@ def type_perso(firme_prima: dict[str, Firma], firme_ora: dict[str, Firma]) -> li
 # I caricatori che oggi scrivono '' in una colonna testo nullable: debito noto,
 # con la sede della correzione. Una riga che non viola piu' e' una riga morta, e
 # il cancello la segnala: si toglie nello stesso giro in cui si corregge il mirror.
+# Vuoto dal 2026-11-12 (brief-db-nullvalue-vuoto-cinque-mirror): un caso nuovo si
+# corregge, non si registra qui.
 NULLVALUE_DEBITO = {
-    "20250814-04-upsert-config-iva-assoggettamenti.yaml": "brief-db-nullvalue-vuoto-cinque-mirror",
-    "20250918-02-upsert-dbops-automations_rule_table.yaml": "brief-db-nullvalue-vuoto-cinque-mirror",
-    "20251001-51-upsert-magazzino-causali-table.yaml": "brief-db-nullvalue-vuoto-cinque-mirror",
-    "20260123-11-upsert-automation-delete-block-ruoli-mctit.yaml": "brief-db-nullvalue-vuoto-cinque-mirror",
-    "20260329-60-upsert-config-email-account-mctit.yaml": "brief-db-nullvalue-vuoto-cinque-mirror",
 }
 COLONNA_DOC_RE = re.compile(r"^\|\s*(\w+)\s*\|\s*([^|]+?)\s*\|\s*(YES|NO)\s*\|")
 TESTO_RE = re.compile(r"^(text|character varying|varchar|character|char)\b", re.IGNORECASE)
