@@ -10,6 +10,7 @@
 > * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — la distinta che decide `has_componenti_alla_data`
 > * [config.nature_vendita](/dbzero/config/tabelle/nature_vendita) — la natura di vendita e la sua destinazione
 > * [config.modi_approvvigionamento](/dbzero/config/tabelle/modi_approvvigionamento) — il modo di approvvigionamento decodificato
+> * [config.causali_onere](/dbzero/config/tabelle/causali_onere) — la causale dell'articolo-onere decodificata
 >
 > Approfondimento funzioni:
 >
@@ -69,6 +70,11 @@ Si legge e basta: le modifiche vanno sulla tabella `catalogo.articoli`.
   di un onere) e al form dell'articolo, che spegne magazzino, composito, lotto e matricola su un
   onere. Sulla **riga** di documento la domanda «è un onere?» si fa alla vista della riga, che
   guarda la natura fissata sulla riga.
+* `causale_onere_codice_interno` e `causale_onere_descrizione` decodificano la causale, come la
+  natura di vendita: il codice interno per la logica, la descrizione a video (lista, drawer
+  articolo, picker della porta oneri). Sulla merce sono vuote. Il codice modificabile della
+  causale non esce. Su un articolo **usato** la causale non cambia più, come gli altri campi che
+  dicono che cos'è l'articolo: il form lo legge dalle colonne bloccate, non da qui.
 * `obsoleto_dal` è la data del ritiro: vuota, si sceglie; futura, ritiro programmato;
   cancellarla riattiva l'articolo per le scelte nuove. `e_obsoleto` è vera quando l'articolo è
   ritirato alla data operativa, con lo stesso building block del guard di riga e del picker:
@@ -108,7 +114,8 @@ non ha RLS, e la vista non attraversa tabelle protette.
 * `db/pgtap/catalogo/test-vw-articoli-dettaglio-bom-capability-v1.sql` — le due capability della
   distinta nei tre casi, compreso l'articolo composito e solo componente.
 * `db/pgtap/catalogo/test-vw-articoli-dettaglio-e-onere-v1.sql` — `e_onere` e `causale_onere_id`
-  su un onere e su una merce, e la loro posizione dopo `requires_lotto`.
+  su un onere e su una merce, e la loro posizione dopo `requires_lotto`; la decodifica della
+  causale sull'onere e sulla merce, e la sua posizione dopo `e_obsoleto`.
 * `db/pgtap/catalogo/test-articoli-approvvigionamento-v1.sql` — le colonne di approvvigionamento
   nella vista.
 * `db/pgtap/vendite/test-articolo-ritirato-v1.sql` — `e_obsoleto` alla data operativa.
@@ -132,6 +139,8 @@ non ha RLS, e la vista non attraversa tabelle protette.
 * 2026-11-06 — in coda `obsoleto_dal` ed `e_obsoleto` (brief-db-articoli-obsoleto-dal).
 * 2026-11-09 — `has_componenti_alla_data` legge `catalogo.fn_distinta_alla_data`; le colonne non
   cambiano (brief-db-revisione-catalogo, giro 1-bis).
+* 2026-11-12 — in coda `causale_onere_codice_interno` e `causale_onere_descrizione`
+  (brief-db-addebito-trasporto-ordine).
 
 ---
 

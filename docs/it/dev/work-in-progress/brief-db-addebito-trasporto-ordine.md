@@ -1,9 +1,8 @@
 # Brief DB — Dove si addebita il trasporto di un ordine fatturato alla conferma
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-04
+## ⏭️ Chi riparte — aggiornato al 2026-11-12 (sera)
 
-**Riparte: Tid**, col via allo sviluppo del giro 8-septies (§9.10: la causale dell'onere nella vista e nel form articolo, 2026-11-04). Prima, col commit di BE e FE (`dev/backend-tid`) e l'archiviazione del brief: BE e FE del §9.3, §9.4, §9.8 e §9.9 sono fatti (2026-11-03), compresi 8-ter e P-6 sopra il `-53` del DB, la rilettura critica (8-quater) e le due note di «Genera DDT» sopra il `-65` (8-sexies). Lato DB tutto applicato, verde e committato (`20261103-16…-53`, 2026-11-03). Lato DB i giri 1 e 2 sono chiusi e applicati (`20261103-16…-48` e i seed del trasporto, 2026-11-03); corsa pgTAP di Tid verde come applicazione e lavoro committato (2026-11-03); l'archiviazione dopo BE e FE. Tid ha scelto la forma (2026-11-03): **oneri come righe del documento**, a cura dell'operatore come gli articoli.
-Tid ha deciso T-4 (2026-11-03): **prima** si lega l'onere al documento, **poi** il trasporto.
+**Riparte: Tid**, col commit del giro DB 8-septies (`20261112-40`…`-42` e CSV: applicati alle 18:36, corsa pgTAP verde, 2026-11-12); poi BE/FE (§9.10, elenco chiuso) e l'archiviazione.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -29,13 +28,18 @@ Tid ha deciso T-4 (2026-11-03): **prima** si lega l'onere al documento, **poi** 
 | 11 | ✅ DB | T-3 bis: `-47`, `-48`, pgTAP, guide; applicati (12:33) | §10.2 | — |
 | 12 | ✅ Tid / DB | corsa pgTAP del giro 2 verde (Tid); commit dei giri 1 e 2 (2026-11-03) | §10.4 | — |
 | 12-bis | ✅ DB / Tid | richiesta BE §9.8: `-49`…`-52`, applicati, pgTAP verdi, committati (2026-11-03) | §9.8 | — |
-| 13 | Tid | commit di BE e FE del §9.9 | — | — |
+| 13 | ✅ Tid | commit di BE e FE del §9.9 (`67aafefe87`, PR #28, 2026-11-03) | — | — |
 | 14 | ✅ Tid | 8-septies: la causale nella vista; A-10 resta («bloccata se usato») (2026-11-04) | §9.10 | — |
-| 15 | DB | `causale_onere_codice_interno` e `causale_onere_descrizione` in coda a `vw_articoli_dettaglio` | §9.10 | via allo sviluppo di Tid |
-| 16 | BE / FE | le due colonne nominate; causale nel form articolo (libera in inserimento, spenta se bloccata), picker delle sole causali libere | §9.10 | 15 |
+| 14-bis | ✅ Tid | C-1 come da proposta, e via allo sviluppo (2026-11-12) | §9.10 | — |
+| 15 | ✅ DB | `causale_onere_codice_interno` e `causale_onere_descrizione` in coda a `vw_articoli_dettaglio`: `20261112-40` scritto e provato (2026-11-12) | §9.10 | — |
+| 15-bis | ✅ Tid | C-2, C-3 come da proposta; il picker dal lookup generico (2026-11-12) | §9.10 | — |
+| 15-ter | ✅ DB | C-2 `-41` (vista per il lookup) + seed `tabelle_gestibili`; C-3 `-42` (guard) + codice; scritti e provati (2026-11-12) | §9.10 | — |
+| 15-quater | ✅ Tid | apply di `-40`…`-42` e dei CSV (18:36), corsa pgTAP verde (2026-11-12) | §9.10 | — |
+| 15-quinquies | Tid | commit del giro DB su `dev/db-tid` | — | — |
+| 16 | BE / FE | le due colonne nominate; JOIN del picker oneri ritirato; causale nel form articolo (libera in inserimento, spenta se bloccata), picker delle sole causali libere | §9.10 | 15-quater |
 | 17 | Tid | archiviazione del brief | — | 16 |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: BE e FE del §9.9, da 8-ter a 8-sexies (`dev/backend-tid`, 2026-11-03), se non già in PR #28.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: `20261112-40`…`-42`; CSV `codici_errore`, `messaggi_errore` (id 1482), `tabelle_gestibili` (id 94); pgTAP `catalogo/test-vw-articoli-dettaglio-e-onere-v1` (esteso) e `catalogo/test-causale-onere-assegnabile-v1` (nuovo); manual di `vw_articoli_dettaglio`, `vw_causali_onere_assegnabili` (nuova), `trgfn_articoli_guard_onere_natura`; questo brief.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** decisione A-9 di Tid (2026-10-12) in
@@ -703,9 +707,12 @@ modificabile in inserimento e bloccata in modifica.
    (SUPER_ADMIN).
 
 **DB (dopo il via).** Un changeSet `20_code`: `CREATE OR REPLACE VIEW` con `LEFT JOIN
-config.causali_onere` e le due colonne in coda (la vista può solo appendere); DDL dalla doc
-auto-generata (rev `-53`). pgTAP: le due colonne decodificano un articolo-onere costruito nel test, e
-sono `NULL` sulla merce.
+config.causali_onere` e le due colonne in coda (la vista può solo appendere), più il `COMMENT ON VIEW`
+che nomini la decodifica della causale. ⚠️ DDL dalla doc auto-generata **di oggi**, non dal `-53`: la vista
+è cambiata dopo, con `20261106-03` (`e_obsoleto`) e `20261110-92` (`has_componenti_alla_data`), e il
+commento con `20261112-20` (doc rigenerata il 2026-11-11, prima del `-20`: il commento si rilegge dal
+catalogo). pgTAP: le due colonne decodificano un articolo-onere costruito nel test, e sono `NULL` sulla
+merce.
 
 **Richiesta al BE.**
 
@@ -723,3 +730,101 @@ sono `NULL` sulla merce.
   a escluderla, il DB la traduce in un codice nel giro (da decidere nello sviluppo).
 * scegliendo una causale valgono le regole già a video da P-6 (flag di struttura spenti) e il guard
   `trgfn_articoli_guard_onere_natura` (natura non merce).
+
+**Rilettura del 2026-11-12 (ripresa dopo la sospensione).** Verificato sul repo:
+
+* A-10 regge: `causale_onere_id` è fra le otto colonne della dichiarazione
+  `catalogo.fn_articolo_colonne_struttura` (`20261111-34`), che dal `20261111-35` il guard legge nel corpo,
+  e fra le regole del form del `20261013-51`; l'etichetta «causale onere» c'è in
+  `catalogo.fn_articolo_flag_etichetta` (`-33`). Il DB del blocco non cambia;
+* l'indice 1:1 `uq_articoli_causale_onere` ha ancora **nessun codice registrato** (23505 grezzo): resta da
+  decidere nello sviluppo, come sopra;
+* ⚠️ **una seconda sede della decodifica esiste già nel BE**: il filtro `solo_oneri` di
+  `backend/apps/catalogo/db/catalogo_repository.py` (picker della porta oneri) fa `JOIN
+  config.causali_onere` ed espone `co.codice AS causale_onere_codice` e `co.descrizione AS
+  causale_onere_descrizione`; il FE (`CommessaGestioneDrawer.vue`) legge la sola descrizione, il codice lo
+  legge solo `test_articolo_e_onere_db.py`. Con le colonne nella vista quel JOIN è una copia (regola del 2):
+  si ritira nel giro BE, come l'8-ter ha ritirato il JOIN su `catalogo.articoli`.
+
+| # | Domanda | Proposta del team DB |
+| --- | --- | --- |
+| **C-1** | Il picker oneri del BE espone `causale_onere_codice` (il `codice` utente della causale): la vista lo porta anche lei, o il BE lo lascia cadere? | **Lo lascia cadere**: nessuno lo mostra, e la forma di Tid (decisione 1) è quella di `natura_vendita_*`, `codice_interno` + `descrizione`. Il test BE passa a `causale_onere_codice_interno` |
+
+**✅ Tid, 2026-11-12: C-1 come da proposta**, e via allo sviluppo. Il BE lascia cadere `causale_onere_codice`, ritira il JOIN del filtro `solo_oneri` e legge le due colonne dalla vista.
+
+**Fatto (DB, 2026-11-12).** `20261112-40-update-vw-articoli-dettaglio-causale-onere`: corpo dal
+`pg_get_viewdef` di dbdev (coincide col `20261110-92`), `LEFT JOIN config.causali_onere` sulla PK (1:1,
+nessuna RLS: la vista resta senza `security_invoker`), le due colonne in coda dopo `e_obsoleto`,
+`COMMENT` della vista riscritto e `COMMENT` delle due colonne. pgTAP
+`catalogo/test-vw-articoli-dettaglio-e-onere-v1` esteso (plan 4 → 7): decodifica sull'onere (la fixture ha
+`codice` diverso da `codice_interno`, così un alias sbagliato si vede), NULL sulla merce, posizione dopo
+`e_obsoleto`. Manual della vista aggiornato.
+
+Prove (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli` da owner, ROLLBACK): estratto per intero,
+catalogo identico dopo; il pgTAP esteso **senza** l'estratto si ferma al test 3 (colonne assenti),
+**con** 7/7. Non regressione, stesso esito senza e con: `test-distinta-alla-data-v1` 17,
+`test-vw-articoli-dettaglio-bom-capability-v1` 7, `test-articoli-approvvigionamento-v1` 12,
+`vendite/test-articolo-ritirato-v1` 17, `rls/test-rls-viste-security-invoker` 7,
+`test-non-editable-fields-dal-lock-vivo-v1` 9. ⚠️ Prove da owner: l'esito che conta è la corsa di Tid
+dopo l'apply.
+
+**Due buchi trovati scrivendo la richiesta al FE (2026-11-12).** Oggi **nessuno** offre l'elenco delle
+causali da scegliere: né un endpoint BE né un picker FE (l'unica lettura delle causali è la decodifica del
+picker oneri). E il «solo le causali libere» è una regola (attiva, non legata a un altro articolo):
+scritta nel BE sarebbe logica fuori dal DB.
+
+| # | Domanda | Proposta del team DB |
+| --- | --- | --- |
+| **C-2** | Chi dice quali causali si possono dare a un articolo? | Il DB: una funzione `catalogo.fn_causali_onere_assegnabili(p_articolo_id)` (le attive non legate ad altri articoli, più quella già dell'articolo, così il drawer in modifica la ritrova), letta dal picker. Il BE la espone, il FE la mostra |
+| **C-3** | La seconda causale uguale (l'indice 1:1 `uq_articoli_causale_onere`) arriva come 23505 grezzo: si registra un codice? | Sì: il picker non basta (due operatori insieme, l'API diretta). Codice `E_ARTICOLO_CAUSALE_ONERE_GIA_USATA` (DATO_ERRATO, campo `causale_onere_id`, valori: la causale e l'articolo che la porta) dal guard dell'articolo-onere, prima dell'indice |
+
+**✅ Tid, 2026-11-12: C-2 e C-3 come da proposta**, con una correzione su C-2: niente funzione, si usa il
+**lookup generico**. Verificato: il lookup (`dbops.fn_get_lookup_codici`, endpoint `core/lookup/codici/`)
+non vale solo per `config` (la whitelist `config.tabelle_gestibili` ha righe di nove schemi), ma oggi serve
+solo tabelle, e sulla tabella delle causali «libere» non si filtra. Quindi una **vista** sulla forma del
+lookup, registrata nella whitelist. Senza parametro la vista non contiene la causale dell'articolo aperto:
+il drawer la legge dalla riga dell'articolo (`causale_onere_descrizione`), e su un articolo usato la tendina
+è spenta comunque (A-10).
+
+**Fatto (DB, 2026-11-12).**
+
+* `20261112-41-create-vw-causali-onere-assegnabili`: `catalogo.vw_causali_onere_assegnabili` (`id`,
+  `codice`, `codice_interno`, `descrizione`, `attivo`), le causali che nessun articolo porta; il filtro
+  delle attive lo fa il lookup. Nessuna RLS sotto, niente `security_invoker`, GRANT dai default
+  privileges. Seed `config/tabelle_gestibili.csv` id 94: `lookup = true`, `pannello = false`, oggetto
+  `(config, causali_onere)`;
+* `20261112-42-update-trgfn-articoli-guard-onere-causale-gia-usata`: regola 0 del guard, prima di natura e
+  struttura, su `INSERT` e quando la causale cambia: `E_ARTICOLO_CAUSALE_ONERE_GIA_USATA` (DATO_ERRATO,
+  campo `causale_onere_id`, valori: codice dell'articolo, causale, codice dell'articolo che la porta;
+  messaggio id 1482). Corpo e COMMENT dal vivo (quelli del `20261111-36`); il trigger non cambia
+  (`causale_onere_id` è già nell'elenco `OF`). L'indice resta, per due scritture concorrenti;
+* pgTAP `catalogo/test-causale-onere-assegnabile-v1` (11); manual della vista (nuova) e del guard.
+
+Prove (`scripts/prova_changeset.py`, scratch da owner, ROLLBACK; i CSV in testa con uno YAML di prova
+fuori dal repo, perché i loader non hanno SQL da estrarre): il pgTAP nuovo 11/11; **controprova** senza
+il `-42`: rossi i test 6, 7, 9, 11 (i quattro del doppione). Non regressione su 36 pgTAP che nominano la
+causale, il guard, il lookup o la whitelist, e su 9 presidi globali (codici conformi, COMMENT al presente,
+corpo senza commenti, canale del campo, riferimenti morti, motivi nominati, valori attesi) più
+`rls/test-rls-viste-security-invoker`: **stesso esito senza e con**. Rossi preesistenti da owner, uguali
+prima e dopo: `config/test-pannello-porta-v1` (3), `vendite/test-fn-partite-merce-chiusura-v1` (1),
+`vendite/test-vw-situazione-merce-ordine-v1` (1). ✅ Applicati da Tid su dbdev il 2026-11-12 (`-40`…`-42` alle 18:36, con i seed di `tabelle_gestibili` e dei messaggi, `databasechangelog`); **corsa pgTAP di Tid verde**, come applicazione.
+
+**Elenco chiuso per il BE** (dopo l'apply di `-40`…`-42` e dei CSV):
+
+1. `backend/apps/catalogo/db/catalogo_repository.py`: `a.causale_onere_codice_interno`,
+   `a.causale_onere_descrizione` in `ARTICOLI_DETAIL_COLUMNS` (accanto a `a.causale_onere_id`) e in
+   `_LOOKUP_ARTICOLI_COLONNE`;
+2. stesso file, filtro `solo_oneri`: ritirati il `JOIN config.causali_onere co` e `extra_cols`
+   (`causale_onere_codice` non esce più, C-1); resta `a.e_onere` nel `WHERE`. Il commento sulla sonda
+   («regge perché il JOIN è 1:1») si aggiorna: quel JOIN non c'è più;
+3. `backend/apps/catalogo/tests/db/test_articolo_e_onere_db.py:83`: `causale_onere_codice` →
+   `causale_onere_codice_interno`;
+4. nessun endpoint nuovo per C-2: la tendina usa il lookup generico, `core/lookup/codici/?rel=catalogo.vw_causali_onere_assegnabili` (la whitelist la legge dal DB);
+5. il codice nuovo `E_ARTICOLO_CAUSALE_ONERE_GIA_USATA` nelle policy (`genera_error_policies`: solo questo codice) e la sua frase di ripiego.
+
+**FE:** `CommessaGestioneDrawer.vue` legge già `causale_onere_descrizione`: invariato. Drawer articolo come
+sopra: la causale a video (`causale_onere_descrizione`); in inserimento una tendina sul lookup generico
+(`rel=catalogo.vw_causali_onere_assegnabili`); in modifica la causale dell'articolo dalla sua riga, e la
+tendina spenta quando `vw_non_editable_fields` la dichiara bloccata (articolo usato). Il rifiuto
+`E_ARTICOLO_CAUSALE_ONERE_GIA_USATA` arriva sul campo `causale_onere_id` come gli altri errori di campo:
+nessuna chiave i18n nuova (non è un motivo di capability).

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista della lista degli articoli (ui.lista_definizione catalogo.articoli) e del drawer articolo: catalogo.articoli con le decodifiche (unita' di misura, tipologia, gruppo, spesa, IVA, tipologia di listino, natura di vendita, modo di approvvigionamento), le capability della distinta (puo_gestire_bom, motivo_non_gestibile_bom, has_componenti_alla_data), l'onere (e_onere) e il ritiro (e_obsoleto). Natura di vendita e modo di approvvigionamento escono con codice_interno, per la logica, e descrizione, a video. Quali colonne non si cambiano lo dice dbops.vw_non_editable_fields: i lock di colonna e quelli condizionali (requires_lotto, per esempio, non cambia su un articolo usato). Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio: db/pgtap/rls/test-rls-viste-security-invoker.sql).
+> Vista della lista degli articoli (ui.lista_definizione catalogo.articoli) e del drawer articolo: catalogo.articoli con le decodifiche (unita' di misura, tipologia, gruppo, spesa, IVA, tipologia di listino, natura di vendita, modo di approvvigionamento, causale dell'onere), le capability della distinta (puo_gestire_bom, motivo_non_gestibile_bom, has_componenti_alla_data), l'onere (e_onere) e il ritiro (e_obsoleto). Natura di vendita, modo di approvvigionamento e causale dell'onere escono con codice_interno, per la logica, e descrizione, a video. Quali colonne non si cambiano lo dice dbops.vw_non_editable_fields: i lock di colonna e quelli condizionali (requires_lotto e causale_onere_id, per esempio, non cambiano su un articolo usato). Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli e config.causali_onere non hanno RLS e la vista non attraversa tabelle protette (presidio: db/pgtap/rls/test-rls-viste-security-invoker.sql).
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -75,8 +75,10 @@ SELECT a.id,
     (a.causale_onere_id IS NOT NULL) AS e_onere,
     a.causale_onere_id,
     a.obsoleto_dal,
-    script.fn_e_obsoleto(a.obsoleto_dal) AS e_obsoleto
-   FROM (((((((((catalogo.articoli a
+    script.fn_e_obsoleto(a.obsoleto_dal) AS e_obsoleto,
+    co.codice_interno AS causale_onere_codice_interno,
+    co.descrizione AS causale_onere_descrizione
+   FROM ((((((((((catalogo.articoli a
      CROSS JOIN ( SELECT script.fn_data_operativa() AS data_operativa
          OFFSET 0) oggi)
      LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
@@ -86,7 +88,8 @@ SELECT a.id,
      LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
      LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)))
      LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)))
-     LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)));
+     LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)))
+     LEFT JOIN config.causali_onere co ON ((co.id = a.causale_onere_id)));
 ```
 
 </div>
