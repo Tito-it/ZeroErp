@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automation_rules_tbl: una regola senza template ha name_template NULL, mai
+#   la stringa vuota. Brief: brief-db-nullvalue-vuoto-cinque-mirror (D1-b, Tid
+#   2026-11-12).
+#
+# ⚠️ PERCHE'. Le regole che non montano trigger (CLEANUP_*, STORICO_PROVISION)
+#   non hanno template, e l'assenza aveva due forme: '' dal seed (il mirror
+#   scriveva la cella vuota come stringa vuota) e NULL dalle regole nate da SQL e
+#   dai pgTAP. Il mirror 80_data/20250918-02 ora scrive NULL; qui la seconda forma
+#   si chiude per costruzione. Una stringa di soli spazi vale come vuota.
+#   Il vincolo non dice QUALI regole hanno il template: quello resta di
+#   chk_automation_rules_tbl_regola_valida (dbops.fn_regola_automazione_valida),
+#   che gia' legge '' e NULL allo stesso modo.
+#
+# ℹ️ PERCHE' QUI, IN 90_end: dopo il mirror e dopo 80_data/20260110-13, che
+#   scrive la regola LOCK_COLUMNS (linee-guida-sql §11.14).
+#
+# ℹ️ IL PRIMO PASSO PORTA A NULL LE STRINGHE VUOTE RIMASTE, cioe' quelle delle
+#   regole che il CSV non conosce. Hanno lo stesso significato: la conversione non
+#   decide niente.
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-12: il seed (il mirror,
+#   ora NULL); 80_data/20260110-13 (LOCK_COLUMNS, con il template);
+#   80_data/20261109-74 (UPDATE di existence_strategy, non tocca il template);
+#   nessuna funzione del database, nessun endpoint; i pgTAP scrivono NULL.
+# Presidio: dbops/test-registri-automazioni-nomi-non-vuoti-v1.
+# Rollback: via il vincolo. Le stringhe vuote convertite non tornano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-37-add-chk-automation-rules-name-template-non-vuoto-mctit.yaml
+
+  - changeSet:
+      id: 20261112-37-add-chk-automation-rules-name-template-non-vuoto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.automation_rules_tbl: i name_template vuoti diventano NULL, poi un CHECK vieta la stringa vuota.
+        Brief: brief-db-nullvalue-vuoto-cinque-mirror.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'dbops.automation_rules_tbl'::regclass
+                 AND conname = 'chk_automation_rules_tbl_name_template_non_vuoto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE dbops.automation_rules_tbl r
+                 SET name_template = NULL
+               WHERE btrim(r.name_template) = '';
+
+              ALTER TABLE dbops.automation_rules_tbl
+                ADD CONSTRAINT chk_automation_rules_tbl_name_template_non_vuoto
+                    CHECK (name_template IS NULL OR btrim(name_template) <> '');
+
+              COMMENT ON CONSTRAINT chk_automation_rules_tbl_name_template_non_vuoto ON dbops.automation_rules_tbl IS
+                'Una regola senza template (CLEANUP_*, STORICO_PROVISION) ha name_template NULL, mai la stringa vuota: l''assenza ha una forma sola. Quali regole lo richiedono lo dice chk_automation_rules_tbl_regola_valida.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.automation_rules_tbl
+                DROP CONSTRAINT IF EXISTS chk_automation_rules_tbl_name_template_non_vuoto;

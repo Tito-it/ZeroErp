@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.causali`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -86,17 +86,26 @@ La tabella è **fuori dal perimetro RLS**: le causali sono parte del contratto d
 valgono identiche per ogni emittente. `codice_interno` è la chiave su cui il codice confronta
 ed è immutabile; una causale con movimenti o attese non si spegne.
 
+Le colonne di audit hanno la forma di `linee-guida-sql` §7: `user_insert` è `NOT NULL DEFAULT
+CURRENT_USER`, e chi inserisce senza dichiararla (il seed, il pannello di configurazione) scrive il
+ruolo che inserisce. Il CSV del seed non porta `user_insert` né `user_update`.
+
 ---
 
 ### Test
 
 * `db/pgtap/magazzino/test-causali-e-sorgenti-seed-v1.sql` — le causali del seed e il
   catalogo delle sorgenti.
+* `db/pgtap/magazzino/test-causali-audit-insert-v1.sql` — la forma di `user_insert` e un seed
+  senza colonne di audit vuote.
 
 ---
 
 ### Note di migrazione
 
+* 2026-11-12 — `brief-db-nullvalue-vuoto-cinque-mirror` (D1-c): `user_insert` prende default e
+  `NOT NULL` (`90_end/20261112-39`); il seed perde `user_insert` e `user_update`, che arrivavano
+  come stringa vuota.
 * 2026-09-15 — `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.1; analisi carico e scarico,
   §4, M-1): `segno` diventa un meccanismo (prima nessun calcolo lo leggeva e la quantità
   doveva arrivare firmata senza garanzie); sparisce il valore `0`; escono

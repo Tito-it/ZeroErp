@@ -4,6 +4,17 @@
 # Upsert dati config.email_account
 # Seed: account SISTEMA (fallback per invii senza reparto).
 # La password SMTP e' un placeholder — da configurare in produzione.
+#
+# ⭐ REV 2026-11-12 — `nullValue: "NULL"` (brief-db-nullvalue-vuoto-cinque-mirror).
+#   Con `nullValue: ""` Liquibase scriveva la cella vuota di `email_reply_to`
+#   come stringa vuota: «nessun indirizzo di risposta» aveva due forme, '' dal
+#   seed e NULL dalla creazione del pannello. Per il modello l'assenza e' NULL:
+#   nel CSV le celle vuote delle colonne nullable portano ora il token `NULL`
+#   (anche `unita_organizzativa_id`, NUMERIC, che col token nuovo non
+#   accetterebbe la cella vuota).
+#   ⚠️ Il CHECK che vieta la stringa vuota NON c'e' ancora: la PATCH del pannello
+#   scrive '' quando si svuota il campo. Arriva quando il backend porta '' a
+#   NULL (brief, §5).
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -29,7 +40,7 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }

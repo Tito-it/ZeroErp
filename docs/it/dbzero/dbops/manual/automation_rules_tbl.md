@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_rules_tbl`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -113,7 +113,9 @@ un trigger (`TX_ID`, `AUDIT_UPDATE`, `STORICO`, `LOCK_COLUMNS`, `DATE_VALIDITA`,
 `CODICE_MAIUSCOLO`) `name_template` è obbligatorio e non vuoto. Per `ATTIVO` il template è un
 oggetto JSON con due modelli, `block` per il padre e `require` per il figlio, e ognuno contiene un
 segnaposto `{fkhash6...}`: due FK della stessa coppia devono poter avere due nomi. Le regole
-`CLEANUP_*` e `STORICO_PROVISION` non montano trigger e non hanno template.
+`CLEANUP_*` e `STORICO_PROVISION` non montano trigger e non hanno template: `name_template` è
+`NULL`, mai la stringa vuota, che il `CHECK` `chk_automation_rules_tbl_name_template_non_vuoto`
+rifiuta (anche di soli spazi). Nel CSV del seed la cella senza template porta il token `NULL`.
 
 ---
 

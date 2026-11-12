@@ -5,6 +5,16 @@
 #
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
+#
+# ⭐ REV 2026-11-12 — `nullValue: "NULL"` (brief-db-nullvalue-vuoto-cinque-mirror).
+#   Con `nullValue: ""` Liquibase scriveva la cella vuota di `note` come stringa
+#   vuota: «nessuna nota» aveva due forme, '' dal seed e NULL da chi scrive la
+#   riga per altra strada. Per il modello l'assenza e' NULL: nel CSV le celle
+#   vuote di `note` portano ora il token `NULL`. Il CHECK che vieta la stringa
+#   vuota sta in 90_end/20261112-36, dopo questo mirror.
+#
+# ⚠️ La sede di config.iva_assoggettamenti e' il CSV
+#   `80_data/sql/config/iva_assoggettamenti.csv`: nessun UPDATE su questa tabella.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -31,7 +41,7 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            nullValue: "NULL"
             primaryKey: "id"
 
             columns:

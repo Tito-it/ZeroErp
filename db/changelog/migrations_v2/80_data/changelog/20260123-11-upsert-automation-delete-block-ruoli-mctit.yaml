@@ -5,6 +5,13 @@
 #
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
+#
+# ⭐ REV 2026-11-12 — `nullValue: "NULL"` (brief-db-nullvalue-vuoto-cinque-mirror).
+#   Con `nullValue: ""` Liquibase scriveva la cella vuota di `trigger_name` come
+#   stringa vuota. `trigger_name` e' l'override facoltativo del nome: senza, vale
+#   il template (dbops.fn_nome_oggetto_dichiarato). Per il modello e' un'assenza,
+#   quindi NULL: nel CSV le celle vuote portano ora il token `NULL`. Il CHECK che
+#   vieta la stringa vuota sta in 90_end/20261112-38, dopo questo mirror.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -31,7 +38,7 @@ databaseChangeLog:
             schemaName: dbops
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: NUMERIC }
