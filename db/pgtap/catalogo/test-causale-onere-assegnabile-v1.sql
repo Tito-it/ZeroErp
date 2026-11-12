@@ -4,12 +4,13 @@
 --
 -- Una causale onere va a un articolo solo: il picker offre le libere, il
 -- guard rifiuta il doppione col suo codice.
--- Brief: brief-db-addebito-trasporto-ordine §9.10 (C-2, C-3, Tid 2026-11-12)
+-- Brief: brief-db-addebito-trasporto-ordine §9.10 (C-2, C-3, Tid 2026-11-12);
+--   5-bis: richiesta BE del 2026-11-13 (le causali nel pannello, Tid)
 -- ChangeSet: 20261112-41 (catalogo.vw_causali_onere_assegnabili),
 --   20261112-42 (regola 0 di catalogo.trgfn_articoli_guard_onere_natura);
 --   seed config.tabelle_gestibili, codice E_ARTICOLO_CAUSALE_ONERE_GIA_USATA
 --
--- Elenco test (plan 11):
+-- Elenco test (plan 12):
 --  Il picker (C-2)
 --   1) una causale libera e' nella vista
 --   2) data a un articolo, esce dalla vista
@@ -18,6 +19,9 @@
 --      attive la toglie (il filtro attivo e' del lookup, non della vista)
 --   5) la vista e' nel lookup generico (config.tabelle_gestibili), fuori dal
 --      pannello
+--   5-bis) la tabella config.causali_onere e' nel pannello, sullo STESSO
+--      oggetto della vista: una causale nuova nasce dal pannello e la tendina
+--      la offre, con un permesso solo
 --  Il doppione (C-3)
 --   6) INSERT di un onere con la causale di un altro -> E_ARTICOLO_CAUSALE_ONERE_GIA_USATA,
 --      la frase nomina l'articolo che la porta
@@ -39,7 +43,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ============================================================
 -- Fixture
@@ -107,6 +111,17 @@ SELECT is(
       WHERE tg.codice_interno = 'catalogo.vw_causali_onere_assegnabili'),
     'true|false',
     '5) la vista e'' nel lookup generico, fuori dal pannello');
+
+SELECT is(
+    (SELECT tab.lookup::text || '|' || tab.pannello::text || '|'
+            || ((tab.app_label, tab.model_name)
+                IS NOT DISTINCT FROM (vis.app_label, vis.model_name))::text
+       FROM config.tabelle_gestibili tab
+       JOIN config.tabelle_gestibili vis
+         ON vis.codice_interno = 'catalogo.vw_causali_onere_assegnabili'
+      WHERE tab.codice_interno = 'config.causali_onere'),
+    'true|true|true',
+    '5-bis) la tabella e'' nel pannello, sullo stesso oggetto della vista');
 
 -- ============================================================
 -- Il doppione (6-11)
