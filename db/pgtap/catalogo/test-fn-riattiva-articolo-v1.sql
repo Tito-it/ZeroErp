@@ -100,11 +100,12 @@ SELECT art_a, 'pgTAP riattiva articolo' FROM _t_ctx;
 -- 1) Disattivazione bloccata da figlio attivo
 -- L'articolo ha una descrizione aggiuntiva attiva.
 --
--- ⭐ Il discriminante e' il RAMO: vendite.articoli_descrizioni_aggiuntive ha la colonna attivo,
---    quindi il guard sceglie E_ATTIVO_BLOCK_CHILDREN_ACTIVE (934) e la sua frase, non
---    E_ATTIVO_BLOCK_CHILDREN_EXIST (125). Questo file e' il testimone del ramo A; il ramo B,
---    figlia senza colonna attivo, lo presidia db/pgtap/vendite/test-registri-per-emittente-v1.sql
---    (test 6). I due rami hanno due rimedi diversi (disattivare le righe, o toglierle).
+-- ⭐ Il discriminante e' il RAMO: catalogo.articoli ha il ritiro (obsoleto_dal), quindi il guard
+--    sceglie E_ATTIVO_BLOCK_SI_RITIRA e la sua frase: un articolo nominato da altre righe non si
+--    spegne, si ritira (Q35 (c), brief-db-revisione-catalogo §16.6.6). I due rami delle tabelle
+--    senza ritiro (E_ATTIVO_BLOCK_CHILDREN_ACTIVE ed _EXIST) li presidiano
+--    db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql e
+--    db/pgtap/vendite/test-registri-per-emittente-v1.sql (test 6).
 -- ⛔ La frase NON nomina la figlia: le frasi della famiglia ATTIVO non nominano tabelle
 --    (brief-db-revisione-dbops, S-BE-1). Quale tabella blocca sta nel contesto del diario.
 --    Che la frase non porti nomi di tabelle lo presidia dbops/test-bersaglio-guard-attivo-v1.
@@ -116,8 +117,8 @@ SELECT throws_ok(
     ),
     'P0001',
     (SELECT m.messaggio FROM config.messaggi_errore m
-      WHERE m.codice = 'E_ATTIVO_BLOCK_CHILDREN_ACTIVE' AND m.lingua = 'it'),
-    '1) UPDATE attivo=false con figlio attivo -> raise con la frase del ramo ATTIVE (E_ATTIVO_BLOCK_CHILDREN_ACTIVE)'
+      WHERE m.codice = 'E_ATTIVO_BLOCK_SI_RITIRA' AND m.lingua = 'it'),
+    '1) UPDATE attivo=false con figlio attivo -> raise con la frase del ritiro (E_ATTIVO_BLOCK_SI_RITIRA)'
 );
 
 -- =========================================================

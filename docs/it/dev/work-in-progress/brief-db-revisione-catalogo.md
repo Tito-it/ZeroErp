@@ -1,15 +1,14 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-11 (decisioni di Tid su 5-bis, 5-ter, D-seq e Q35; D-seq fatta)
+## ⏭️ Chi riparte — aggiornato al 2026-11-12 (giri 5-bis + 5-ter, Q35 (c) + Q36 e viste delle note applicati, pgTAP verdi)
 
-**Riparte: Tid**, coi **numeri** del giro 5-bis + 5-ter; poi la **sessione DB** lo scrive (§18.6: il BB
-`script.fn_codice_dominio`, il batch delle commesse, `fn_run_and_log` sul BB, il ritiro di `E_CATALOGO_NOTA_NOT_FOUND`)
-e, dopo, la **Q35** con la strada (a) previa la verifica del lato componente (§16.6.3). Tid ha deciso il 2026-11-11:
-D5bis-1 (a), 5-ter nello stesso giro, D-seq «il BE si allinea al DB», Q35 (a). Il **team BE** ha fatto BE29 (§17.3) e
-D-seq (§19), **da committare**; gli restano BE30 + BE31 a giro applicato (§18.5, §19). Da valutare alla sessione DB:
-`vendite.vw_note` (§19, voce 2). I giri fino al 5 sono applicati e committati (`9f2899c8b`, PR #92), come i giri BE fino
-a §16.5 (`971b7e00d`, PR #91). Restano da guardare le scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2,
-§14.6, §13.3, §10.3).
+**Riparte: il team BE**, con quattro voci a DB applicato: **BE30 + BE31** (il codice degli errori del batch, il ripiego
+del codice ritirato; §18.5, §18.7.3), **BE32** (il codice `E_ATTIVO_BLOCK_SI_RITIRA` e i due smoke che ritirano il kit;
+§16.6.7), **BE33** (il BB delle note legge `<schema>.vw_note`; §20.3). Tid ha applicato il 2026-11-12, pgTAP verdi:
+`20261112-25` … `-27`, `-29`, `-31` … `-35` e i CSV. Alla **sessione DB** non resta lavoro aperto: dopo il BE, la
+verifica del suo giro e l'archiviazione (passo 8). A **Tid**: il commit dei tre giri DB; da guardare, quando vuole, le
+scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2, §14.6, §13.3, §10.3). I giri fino al 5 sono committati
+(`9f2899c8b`, PR #92), come i giri BE fino a BE29 e D-seq (`21c2d86ae9`, PR #94).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -56,10 +55,13 @@ a §16.5 (`971b7e00d`, PR #91). Restano da guardare le scelte dentro i giri 4, 2
 | 6-septies-bis | ✅ sessione DB | Verifica sul vivo dopo l'apply: i 26 oggetti commentati dal cantiere `obsoleto_dal` (D-C, §3.3.1) puliti su dbdev e scratch; D-C chiuso anche nell'altro brief (2026-11-11) | §17.7 | 6-septies |
 | 6-octies | ✅ Tid | Via al giro 5-bis (2026-11-11) | §18 | 6-septies |
 | 6-octies-bis | ✅ team BE | Specifica del giro 5-bis dal lato del consumatore: il contratto di `errors`, la regola del 2, il pgTAP, BE30 | §18 | 6-octies |
-| 6-octies-ter | **Tid** ⏭️ | D5bis-1 ✅ (a), 5-ter nello stesso giro ✅ (2026-11-11); restano i **numeri** del giro | §18.3, §18.6 | 6-octies-bis |
-| 6-nonies | sessione DB | Giro 5-bis + 5-ter: il BB `script.fn_codice_dominio`, il batch e `fn_run_and_log` sul BB, il ritiro di `E_CATALOGO_NOTA_NOT_FOUND` dai CSV; pgTAP di §18.4, COMMENT e `manual/`; prova sullo scratch | §18.6, §19 | 6-octies-ter |
-| 6-decies | Tid | Apply del giro 5-bis su dbdev e scratch, pgTAP come app | §18 | 6-nonies |
-| 6-undecies | team BE | BE30 (il codice degli errori del batch nel report del push) e, col 5-ter, BE31 (policy rigenerata, ripiego tolto) | §18.5, §19 | 6-decies |
+| 6-octies-ter | ✅ Tid | D5bis-1 (a), 5-ter nello stesso giro (2026-11-11); i numeri `20261112-25` … `-27` (2026-11-12) | §18.3, §18.6 | 6-octies-bis |
+| 6-nonies | ✅ sessione DB | Giro 5-bis + 5-ter: `20261112-25` … `-27` (il BB `script.fn_codice_dominio`, il batch e `fn_run_and_log` sul BB), `E_CATALOGO_NOTA_NOT_FOUND` ritirato con `obsoleto_dal`, un pgTAP nuovo e due estesi, COMMENT e `manual/`; provato sullo scratch (2026-11-12) | §18.7 | 6-octies-ter |
+| 6-decies | ✅ Tid | Apply del giro 5-bis + 5-ter su dbdev e scratch, pgTAP come app verdi (2026-11-12) | §18.7 | 6-nonies |
+| 6-undecies | **team BE** ⏭️ | BE30 (il codice degli errori del batch nel report del push) e, col 5-ter, BE31 (policy rigenerata, ripiego tolto) | §18.5, §19 | 6-decies |
+| 6-duodecies | ✅ sessione DB, ✅ Tid | Giro Q35 (c) + Q36 (a) (`20261112-29`, tre CSV) e giro delle viste delle note (`-31` … `-35`, col ritiro di `script.fn_get_note`): scritti e provati; applicati da Tid su dbdev e scratch, pgTAP come app verdi (2026-11-12) | §16.6.7, §20 | 6-decies |
+| 6-terdecies | **team BE** ⏭️ | BE32 (il codice `E_ATTIVO_BLOCK_SI_RITIRA` nelle policy e nel ripiego, i due smoke che ritirano il kit) e BE33 (il BB delle note legge `<schema>.vw_note`) | §16.6.7, §20.3 | 6-duodecies |
+| 6-quaterdecies | sessione DB | Verifica del giro BE (`/arrivi-be`), poi l'archiviazione (passo 8) | — | 6-undecies, 6-terdecies |
 | 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
 | 7-bis | ✅ team BE (committato, `ff93395d5e`, PR #84) | La doc API di BE9 e BE11 (`api_catalogo.md`); BE19 e BE20 del giro 3 e BE4 (campo di `E_PARAMETRO_INVALIDO`). BE1-BE4 e BE16-BE18 del giro 2 erano già fatti (PR #81) | §13.5, §14.10 | — |
 | 7-ter-bis | — | Assorbita in 7-septies, con la rinumerazione di §15 (BE19-BE21 → BE21-BE23) | §15 | — |
@@ -71,17 +73,19 @@ a §16.5 (`971b7e00d`, PR #91). Restano da guardare le scelte dentro i giri 4, 2
 | 7-octies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | BE21-a … f: `_NON_EDITABLE_DB_GAPS` ritirato, capability delle due viste nei form, conversioni sulla vista nuova, ripiego della riga base | §16.5 | 5-vicies-septies |
 | 7-novies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | BE26-BE28 del giro 4: le note di catalogo passano dal BB delle note (opzione A di Tid), la copia di `catalogo_service` è ritirata | §16.5 | 6-bis |
 | 7-decies | sessione DB | Le segnalazioni del giro BE del giro 2-bis: 1 e 2 ✅ (sono G1 e G2, §15.11.1); la 3, il codice nel risultato del batch delle commesse, è il giro 5-bis (passo 6-octies) | §15.10-bis.3 | 7-septies |
-| 7-undecies | sessione DB ⏭️ | Le due segnalazioni del giro BE dei giri G1-G2, Q34 e 4: il **ritiro** di `E_CATALOGO_NOTA_NOT_FOUND` (deciso da Tid, 2026-11-11; poi il BE rigenera la policy); la proiezione delle note di vendita senza vista | §16.5.3 | 7-novies |
-| 7-duodecies | ✅ Tid, ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | D-seq: il BB delle note si allinea al DB, `seq` da 0 al tetto dell'`integer` | §16.5.3, §19 | 7-novies |
+| 7-undecies | ✅ sessione DB (il ritiro); sessione DB (la vista) | Le due segnalazioni del giro BE dei giri G1-G2, Q34 e 4: il **ritiro** di `E_CATALOGO_NOTA_NOT_FOUND` è scritto nel giro 5-ter (§18.7.1, con `obsoleto_dal`); la proiezione delle note di vendita senza vista resta da valutare (§19, voce 2) | §16.5.3 | 7-novies |
+| 7-duodecies | ✅ Tid, ✅ team BE (2026-11-11, committato, `21c2d86ae9`) | D-seq: il BB delle note si allinea al DB, `seq` da 0 al tetto dell'`integer` | §16.5.3, §19 | 7-novies |
 | 7-terdecies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | Verifica critica del giro BE: un 500 sul filtro di riga, i presidi sulla copia delle note, il campo `note` del dettaglio ritirato, la regola del 2 nei form delle unità | §16.5.4 | 7-novies |
-| 7-quaterdecies | ✅ Tid (a), 2026-11-11; **sessione DB** ⏭️ dopo il 5-bis | **Q35**: un kit con la distinta non si spegne più (legame sempre attivo dopo il ritiro della PATCH, nessuna eccezione ATTIVO su `articoli_componenti`). Proposta (a) eccezione come Q31, previa verifica del lato componente; la scelta è di Tid. Presidio: i due smoke rossi `catalogo-phase3` e `preventivi-componenti` | §16.6 | — |
-| 7-quindecies | ✅ team BE (2026-11-11, da committare su `dev/backend-tid`) | BE29 del giro 5: la voce di `uq_articoli_componenti_prodotto_componente_from` in `catalogo_service.py` è tolta | §17.3 | 6-septies |
-| 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6 |
+| 7-quaterdecies | ✅ Tid (c) e Q36 (a), 2026-11-12; ✅ sessione DB, il giro (`20261112-29`); ✅ Tid, apply e pgTAP verdi (2026-11-12); **team BE** ⏭️, BE32 | **Q35**: un kit con la distinta non si spegne più (legame sempre attivo dopo il ritiro della PATCH, nessuna eccezione ATTIVO su `articoli_componenti`). Proposta (a) eccezione come Q31, previa verifica del lato componente; la scelta è di Tid. Presidio: i due smoke rossi `catalogo-phase3` e `preventivi-componenti`. La verifica (§16.6.5) ha trovato due buchi che l'eccezione apriva; con (c) il kit si ritira e non nascono. Q35c-1 e -2 scritti, Q35c-3 è BE32 | §16.6.6, §16.6.7 | — |
+| 7-quindecies | ✅ team BE (2026-11-11, committato, `21c2d86ae9`) | BE29 del giro 5: la voce di `uq_articoli_componenti_prodotto_componente_from` in `catalogo_service.py` è tolta | §17.3 | 6-septies |
+| 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6-quaterdecies |
 
-**Decisioni aperte di Tid:** le scelte dentro i giri 2-bis (§15.7), 3 (§14.2, §14.6), 2 (§13.3) e 1 (§10.3), da
-guardare; i numeri del giro 5-bis + 5-ter (§18). Prese il 2026-11-11: D5bis-1 (a), 5-ter nello stesso giro, D-seq
-(il BE si allinea), Q35 (a). Le quattro del giro 5 (§17.3) sono prese. **Committati:** i giri G1-G2, Q34, 4 e 5, il giro BE del giro 2-bis e quello di
-§16.5 (2026-11-11). **Da committare:** BE29 (§17.3) e D-seq (§19), su `dev/backend-tid`.
+**Decisioni aperte di Tid:** ✅ Q37 (a) (2026-11-12); ✅ Q35 (c), il messaggio «si ritira» e Q36 (a) (2026-11-12); ✅ le viste delle note per tutte le sedi (§19, voce 2, 2026-11-12); le scelte dentro i giri 2-bis
+(§15.7), 3 (§14.2, §14.6), 2 (§13.3) e 1 (§10.3), da guardare. Prese il 2026-11-11: D5bis-1 (a), 5-ter nello stesso
+giro, D-seq (il BE si allinea), Q35 (a); il 2026-11-12, i numeri del 5-bis, Q35 (c), Q36 (a), le viste delle note e Q37 (a). Le quattro del giro 5 (§17.3) sono prese.
+**Committati:** i giri G1-G2, Q34, 4 e 5, i giri BE del giro 2-bis, di §16.5, BE29 e D-seq. **Da committare** (tutti e tre applicati,
+pgTAP verdi, 2026-11-12): il giro 5-bis + 5-ter (§18.7.2), il giro Q35 (c) + Q36 (§16.6.7) e il giro delle viste delle
+note (§20), su `dev/db-tid`. ⚠️ Nell'albero ci sono anche i file dell'altra sessione (`20261112-28`, `-30`, `ui/lista_colonna.csv` e i pgTAP che tocca): non sono di questo brief.
 ⚠️ **Numerazione:** il giro 1 ha preso `20261110-62` … `-71`, il giro 1-bis `-85` … `-93`, il giro 3 `20261111-25` … `-37` (dati da Tid). Messaggi
 d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 
@@ -94,7 +98,7 @@ d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 > sui corpi di `pg_get_functiondef`, su `pg_trigger`/`pg_constraint`/`obj_description` di dbdev e sulle
 > schede auto-generate. Chi scrive il brief ha ricontrollato sul corpo D1, D2, D3, D4 e D7 (✔︎).
 > **Brief vicini verificati:**
-> * [brief-db-articoli-obsoleto-dal](brief-db-articoli-obsoleto-dal.md): il suo **D-C** riscrive i COMMENT di quel
+> * [brief-db-articoli-obsoleto-dal](../work-done/brief-db-articoli-obsoleto-dal.md): il suo **D-C** riscrive i COMMENT di quel
 >   cantiere (`obsoleto_dal`, `fn_articoli_ammessi`, `trgfn_articoli_componenti_guard_componente`,
 >   `vw_articoli_dettaglio.e_obsoleto`). Si sovrappone a M3: chi lo fa lo decide Tid (Q11). ✅ Deciso: tutto qui, nel
 >   giro 5, anche gli oggetti fuori `catalogo` (Tid, 2026-11-11; elenco chiuso in §3.3.1).
@@ -636,7 +640,7 @@ Da girare al team quando il giro DB corrispondente è applicato.
 
 | Q32 ✅ | G1 (§15.11): la regola 1 di `trgfn_uom_guard_storia` (unità, articolo, fattore, inizio: mai) passa a `script.trgfn_lock_columns`, registrata in `automation_lock_columns`, così entra in `vw_non_editable_fields`? | Sì. Il guard tiene le regole 2 e 3; il BE ritira `_NON_EDITABLE_DB_GAPS`; la frase di `E_UOM_STORIA_IMMUTABILE` si riscrive sulla colonna — **✅ Tid, 2026-11-11: come da proposta** |
 | Q33 ✅ | G2 (§15.11): la capability della mappatura (oggi `puo_eliminarsi` dice il falso) e quella della conversione generale | Un BB di catalogo sulle regole 2 e 3, letto da `vw_articoli_uom_operativa_dettaglio` e da una vista nuova `vw_unita_misura_conversioni_dettaglio`, che diventa la `vista_sql` di `catalogo.conversioni_uom` — **✅ Tid, 2026-11-11: come da proposta** |
-| Q35 ⏭️ | §16.6: col ritiro della PATCH il legame di distinta resta attivo per sempre, e il BLOCK su `articoli_componenti` impedisce di spegnere un kit (e un componente) con una storia | (a) **eccezione**, la forma di Q31: `articoli_componenti.prodotto_id` e `.componente_id` in `automazione_attivo_eccezioni`, dopo la verifica del lato componente (§16.6.3). Scartabile (b), un verbo «spegni legame» — **proposta, da decidere: Tid** |
+| Q35 ✅ | §16.6: col ritiro della PATCH il legame di distinta resta attivo per sempre, e il BLOCK su `articoli_componenti` impedisce di spegnere un kit (e un componente) con una storia | (a) **eccezione**, la forma di Q31: `articoli_componenti.prodotto_id` e `.componente_id` in `automazione_attivo_eccezioni`, dopo la verifica del lato componente (§16.6.3). Scartabile (b), un verbo «spegni legame». ✅ **Tid, 2026-11-12: (c)**, revoca della (a) dell'11-11: un kit o un componente con una distinta non si spegne, si ritira con `obsoleto_dal`; il rifiuto lo dice (Q36, §16.6.6) |
 
 ## 7. I giri, nell'ordine in cui si fanno
 
@@ -2270,6 +2274,119 @@ spegne e si riaccende con le sue note»: dal ritiro della PATCH non è più vero
   basi), `preventivi-componenti` (pulizia: legame chiuso col verbo, base non toccata). Dopo l'apply di (a) i due
   smoke rossi tornano verdi **senza modifiche**: è la prova del giro.
 
+#### 16.6.5 La verifica del lato componente, e la domanda Q35-bis (sessione DB, 2026-11-12)
+
+Letta sulla doc auto-generata (struttura, non popolazione). Con l'eccezione su `articoli_componenti.prodotto_id` e
+`.componente_id` se ne vanno, per quelle due FK, sia il BLOCK sull'articolo sia il **REQUIRE** sul legame
+(`dbops/manual/automazione_attivo_eccezioni.md`: «il motore non genera né il block … né il require»). Che cosa si
+reggeva solo sul REQUIRE:
+
+| # | Il caso | Chi rifiuta oggi | Dopo (a) |
+| --- | --- | --- | --- |
+| C1 | Un legame **nuovo** (o riacceso, o allungato) verso un componente spento, o sotto un padre spento | solo il REQUIRE generato (`E_ATTIVO_PADRE_NON_ATTIVO`). `catalogo.trgfn_articoli_componenti_guard_componente` chiama `script.fn_check_articolo_riga` (documento `ARTICOLO`), che guarda il **ritiro** (`obsoleto_dal`, `E_ARTICOLO_OBSOLETO`), non `attivo` | ⛔ **passa**: nessuno lo rifiuta |
+| C2 | Un componente **spento** con un legame **in vigore** | impossibile: il BLOCK non lascia spegnere il componente | ✅ possibile, ed è il punto di (a). Ma: `catalogo.fn_distinta_alla_data` e `catalogo.fn_articolo_padre_di_distinta_da_oggi` contano il legame, non l'attivo del componente; il picker (`catalogo.fn_articoli_ammessi`) propone il kit, che è attivo; l'init dei componenti di un documento prova a scrivere la riga-componente, e lo ferma il REQUIRE generato di `*_righe_componenti.componente_id` → `catalogo.articoli` (preventivi, ordini, bolle, contratti, eccezioni d'offerta; per le versioni di listino `articolo_figlio_id`). Sicuro, ma il rifiuto arriva **dopo** che il picker ha proposto la riga, e nomina il componente, non il kit |
+| C3 | Il kit **spento** | — | ✅ nessun buco: le righe di documento sul kit le fermano i REQUIRE del documento verso l'articolo, e il picker filtra `a.attivo` |
+
+Punti 2 e 3 di §16.6.3: nessun backfill (i legami restano attivi); i pgTAP che spengono distinta o articolo «figli
+prima del padre» si censiscono quando si scrive.
+
+**Q35-bis. Come si chiudono C1 e C2, prima dell'eccezione?** Proposta, da decidere:
+
+* **C1 → (i) il guard del legame rifiuta una composizione nuova su un padre o un componente spento.** Sede: un motivo
+  della check (`script.fn_check_articolo_riga_su_contesto`, documento `ARTICOLO`), così il picker dei componenti e il
+  guard dicono la stessa cosa (linee-guida-sql §12.6). Un codice nuovo, di classe `CONFLITTO_STATO`, che nomina
+  l'articolo spento. Alternativa (ii): il controllo scritto nel solo guard, senza motivo; più corto, ma il picker
+  continuerebbe a proporre un componente spento.
+* **C2 → (i) un motivo del kit nella check** per i documenti di vendita, accanto a `KIT_SENZA_COMPONENTI`: «il kit ha
+  un componente spento nella distinta in vigore», così picker e guard di riga lo dicono prima dell'init, col kit come
+  oggetto. Alternativa (ii): lasciarlo al REQUIRE delle righe-componente, com'è (sicuro, rifiuto tardivo). Alternativa
+  (iii): l'eccezione solo su `prodotto_id`; il componente resta col BLOCK, e un articolo che è stato componente di una
+  distinta, anche chiusa, non si spegne più: è il difetto di Q31 dal lato componente.
+
+Chi rifiuta, in ogni caso, il kit spento resta il REQUIRE dei documenti (C3).
+
+#### 16.6.6 Decisione: Q35 (c), il kit si ritira (Tid, 2026-11-12)
+
+✅ **Tid, 2026-11-12: strada (c). Revoca la (a) dell'11-11**, e con lei la domanda Q35-bis (§16.6.5).
+
+**Perché, sul modello.** È la regola del cantiere `obsoleto_dal` (`work-done/brief-db-articoli-obsoleto-dal` §1,
+2026-11-04; guida «Mandare in pensione una voce di catalogo»): `attivo` vuol dire «riferimento valido», un articolo che
+altri nominano non si spegne, e per «non lo vendo più» si ritira con `obsoleto_dal`. La distinta è un altro articolo che
+lo nomina: il BLOCK su `articoli_componenti` fa il suo lavoro e resta, e C1 e C2 non nascono. Q31 resta valida: una
+mappatura o una conversione sono storia **dell'articolo stesso**, non un altro oggetto che lo nomina.
+
+Col ritiro: il kit ritirato non si propone e non entra in una riga nuova, le righe derivate passano, la sua distinta si
+mantiene; un componente ritirato non entra in un legame nuovo (`E_ARTICOLO_OBSOLETO`, già nel guard del legame) e i kit
+che lo contengono continuano a espandersi (righe derivate).
+
+**Che cosa resta da fare.**
+
+| # | Chi | Che cosa |
+| --- | --- | --- |
+| Q35c-1 | ✅ sessione DB (§16.6.7) | Il motivo della riga `catalogo.note_articoli_componenti.target_id` di `automazione_attivo_eccezioni.csv` («il legame di distinta si spegne e si riaccende con le sue note») si riscrive: il legame non si spegne, si chiude |
+| Q35c-2 | ✅ sessione DB | ✅ **Tid: il rifiuto dice «si ritira con la data di ritiro»**; Q36 (a), nel BLOCK generico (2026-11-12). Scritto: §16.6.7 |
+| Q35c-3 | team BE | I due smoke rossi (`catalogo-phase3` passo 17, `preventivi-componenti` pulizia) non spengono il kit: lo ritirano con `obsoleto_dal`, e lo spegnimento di un kit con distinta è un 409 atteso, col codice di Q36 |
+
+**Q36. Dove si dice «si ritira».** Il rifiuto nasce in `dbops.trgfn_prevent_deactivate_if_children`, il BLOCK generico
+dell'automazione ATTIVO: sugli articoli ce ne sono 35 (documenti, listini, distinta…), e dicono tutti
+`E_ATTIVO_BLOCK_CHILDREN_ACTIVE` / `_EXIST` («ci sono ancora righe collegate»). La regola «chi è nominato non si spegne,
+si ritira» vale per ogni tabella che ha `obsoleto_dal` (oggi, struttura del 2026-11-12: `catalogo.articoli`,
+`pratiche.tipi_prestazione`, `pratiche.template_flussi`, `config.tipi_entita`, `config.eventi_dominio`, `config.stradario`,
+`config.registri_giornale`, `config.codici_errore`, `config.classi_errore`, `dbops.processi`, `dbops.presidi`, i due
+vocabolari di stato di `pagamenti`).
+
+* **(a) Proposta: nel BLOCK generico.** Se la riga del padre ha la colonna `obsoleto_dal` (si legge da `to_jsonb(OLD)`,
+  che il trigger ha già: nessuna query in più), il rifiuto è un codice nuovo, per esempio
+  `E_ATTIVO_BLOCK_SI_RITIRA` («Non si può disattivare: è usato. Per non sceglierlo più, dagli una data di ritiro»), col
+  `campo` su `obsoleto_dal`. Una sede sola, per tutte le tabelle col ritiro, anche quelle che nasceranno. Tocca un
+  trigger di `dbops` montato su tutto il database: l'ok è di Tid (regola del 2, più domini).
+* (b) Un guard scritto sul solo `catalogo.articoli`, prima del BLOCK. Più stretto, ma è una seconda sede della stessa
+  regola, e le altre tabelle col ritiro restano col messaggio generico.
+
+#### 16.6.7 Il giro Q35 (c) + Q36 (a) (sessione DB, 2026-11-12)
+
+Via di Tid il 2026-11-12, Q36 (a), numeri dal primo libero: `20261112-29` (il `-28` e il `-30` sono dell'altra sessione).
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261112-29` | `dbops.trgfn_prevent_deactivate_if_children`: se la riga del padre ha la colonna `obsoleto_dal` (letta da `to_jsonb(OLD)`, nessuna query) il rifiuto è `E_ATTIVO_BLOCK_SI_RITIRA`, col `campo` su `obsoleto_dal`; senza ritiro i due codici di prima. Corpo dal vivo, stessa firma; COMMENT riscritto |
+| `config/codici_errore.csv`, `config/messaggi_errore.csv` | `E_ATTIVO_BLOCK_SI_RITIRA`, `CONFLITTO_STATO`; la frase «Non si può disattivare: è ancora usato. Per non sceglierlo più si ritira con una data di ritiro.» (id 1481), senza segnaposti come le sorelle |
+| `dbops/automazione_attivo_eccezioni.csv` | Q35c-1: il motivo di `note_articoli_componenti.target_id` riscritto (il legame non si spegne, si chiude) |
+
+Le check di capability che portano i codici del BLOCK (`script.fn_check_registro_disattivabile`,
+`script.fn_check_famiglia_documento_disattivabile`) lavorano su tabelle senza ritiro (`vendite.registri_fatturazione`,
+`vendite.famiglie_documento`): restano allineate al guard.
+
+**Prove** (scratch, `prova_changeset.py`, 2026-11-12; le due righe del codice simulate in un YAML di sola prova,
+perché un `loadUpdateData` non ha SQL da estrarre: il caricamento vero lo vede l'apply):
+
+| pgTAP | Senza → con |
+| --- | --- |
+| `dbops/test-block-attivo-si-ritira-v1` (nuovo: kit e componente costruiti; spegnere il componente, il kit, il kit col legame chiuso → `E_ATTIVO_BLOCK_SI_RITIRA` col campo `obsoleto_dal`; il ritiro passa; il codice a catalogo; `catalogo.unita_misura`, senza ritiro, resta `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`) | 2/7 → 7/7 |
+| `catalogo/test-fn-riattiva-articolo-v1` (test 1), `dbops/test-guard-attivo-grammatica-e-codici-v1` (test 21), `dbops/test-bersaglio-guard-attivo-v1` (test 11, 18, 19): riallineati, il padre ha il ritiro | rossi → verdi |
+| gli altri quindici pgTAP che nominano il BLOCK o i suoi codici (fra cui `dbops/test-trgfn-prevent-deactivate-if-children-pdp`, che resta il testimone dei due rami senza ritiro) | invariati, verdi |
+
+Doc: `dbops/manual/trgfn_prevent_deactivate_if_children.md` (tre rami), `catalogo/manual/articoli.md` (il codice; tolta
+la riga stantia «una nota impedisce di spegnere l'articolo», chiusa da Q12), le guide «Automazione DB» e «Mandare in
+pensione una voce di catalogo».
+
+✅ **Applicato da Tid, pgTAP come app verdi (2026-11-12).**
+
+**Al team BE, dopo l'apply (BE32):**
+
+* rigenerare `error_policies_generated.py` (il codice nuovo, `CONFLITTO_STATO`) e la voce di ripiego in
+  `error_messages_fallback.py`;
+* Q35c-3: i due smoke rossi (`catalogo-phase3` passo 17, `preventivi-componenti` pulizia) ritirano il kit con
+  `obsoleto_dal` invece di spegnerlo; lo spegnimento di un kit con distinta è un 409 atteso con
+  `E_ATTIVO_BLOCK_SI_RITIRA`;
+* FE, da valutare: il rifiuto porta `campo = obsoleto_dal`; il drawer articolo può accendere il campo «Ritirato dal»
+  invece dell'interruttore. Vale per ogni anagrafica col ritiro;
+* i test Django che spengono una voce col ritiro e aspettano `E_ATTIVO_BLOCK_CHILDREN_*`: oggi ne nomina uno solo
+  `ui/tests/db/test_audit_ui_dal_trigger_db` (su una tabella di `ui`, senza ritiro: non cambia), da ricontrollare
+  col DB vero.
+
+**Da committare:** il `-29`, i tre CSV, il pgTAP nuovo e i tre riallineati, le quattro pagine, questo brief.
+
 ## 17. Giro 5 — pulizia e metadati: il censimento sul vivo, 2026-11-11
 
 Via di Tid il 2026-11-11. §2.4, §2.5, §2.6 e §3 sono del 2026-11-08: i giri 1-4 ne hanno chiuso una parte. Qui
@@ -2575,19 +2692,59 @@ come `test_commessa_fattore_senza_db`):
 
 ### 18.6 Che cosa serve per partire
 
-* **Tid:** ~~D5bis-1~~ ✅ (a); i numeri del giro (5-bis + 5-ter).
+* **Tid:** ~~D5bis-1~~ ✅ (a); ~~i numeri del giro~~ ✅ `20261112-25` … `-27` (2026-11-12).
 * **Sessione DB:** changeSet in `20_code/vendite/` (e, con (a), `20_code/script/` più `20_code/maintenance/`), corpo
   preso dalla doc auto-generata (`docs/it/dbzero/vendite/funzioni/fn_batch_upsert_commessa_attivita.md`), pgTAP di §18.4,
   COMMENT e pagine `manual/`; prova sullo scratch; apply di Tid.
+
+### 18.7 Il giro scritto (sessione DB, 2026-11-12)
+
+Numeri di Tid: `20261112-25` … `-27`. Corpi dalla doc auto-generata del 2026-11-12.
+
+#### 18.7.1 Che cosa cambia
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20_code/script/20261112-25` | Nuovo `script.fn_codice_dominio(p_sqlstate text, p_vincolo text) RETURNS text`, `LANGUAGE sql IMMUTABLE PARALLEL SAFE`: il CONSTRAINT con `P0001` e CONSTRAINT non vuoto, NULL altrimenti. Nessun ripiego: lo sceglie chi lo legge |
+| `20_code/vendite/20261112-26` | `vendite.fn_batch_upsert_commessa_attivita`: il ramo `EXCEPTION WHEN others` legge `RETURNED_SQLSTATE`, `CONSTRAINT_NAME` e `COLUMN_NAME`. Ogni errore porta, **in più** di `index`, `segment_key`, `error` (identiche: una `segment_key` null resta una chiave null), `sqlstate` sempre e `codice`, `campo` solo per un errore di dominio. `jsonb_strip_nulls` si applica alle sole chiavi nuove. Firma e clausola invariate |
+| `20_code/maintenance/20261112-27` | `maintenance.fn_run_and_log`: `error_code = COALESCE(script.fn_codice_dominio(…), sqlstate)`, la copia del `CASE` è ritirata. Comportamento identico. Firma ri-ancorata con `%TYPE` (tipi identici al vivo: nessuna seconda firma) |
+| `80_data/sql/config/codici_errore.csv` | **5-ter:** `E_CATALOGO_NOTA_NOT_FOUND` ritirato con `obsoleto_dal = 2026-11-12` e la nota. ⚠️ **Non cancellato**, diversamente da quanto chiedeva §16.5.3: la guida «Messaggi di Errore», § «Ritirare un codice, non cancellarlo», vuole la riga in piedi perché `dbops.error_log` punta al messaggio con una FK `NOT NULL`, e un `DELETE` fallirebbe su un database che ha registrato il codice. La riga di `messaggi_errore.csv` resta, e nessun changeSet è servito. `allegati/codici-errore-classe-note.csv` non si tocca: è l'elenco consegnato dal BE per il piano delle classi (`work-done/piano-db-classe-codici-errore`), un documento chiuso |
+
+#### 18.7.2 Le prove e i file
+
+Sullo scratch con `scripts/prova_changeset.py` (i tre changeSet in testa a ogni pgTAP, da owner), 2026-11-12:
+
+| pgTAP | Senza → con |
+| --- | --- |
+| `script/test-fn-codice-dominio-v1` (nuovo: la regola sui valori e sulla diagnostica vera, i due lettori senza copia del confronto) | interrotto → 8/8 |
+| `vendite/test-fn-batch-upsert-commessa-attivita-v1` (+5: `E_UOM_MISSING` su un articolo e un'unità costruiti, con `codice`, `sqlstate`, `campo`; le tre chiavi e il collect-all; un errore di cast senza `codice` né `campo`) | 9 ok / 4 not ok → 13/13 (i 4 sono i casi nuovi) |
+| `maintenance/test-job-run-sqlstate-e-codice-v1` (test 8 riscritto: il presidio sul testo cerca la chiamata al BB) | 8/9 → 9/9 |
+| `maintenance/test-fn-run-and-log-lock-ed-esito-v1`, `maintenance/test-job-run-registrazione`, `vendite/test-onere-batch-e-sezione-documento-v1`, `vendite/test-riga-listino-propagata-dalla-commessa-v1`, `vendite/test-sorgente-commenti-al-presente-v1` | invariati, verdi |
+
+Guardrail: `comment_al_presente`, `run_on_change`, `sql_letterali`, `pgtap_preambolo` puliti. La riga del CSV non ha
+prova di caricamento (un `loadUpdateData` non ha SQL da estrarre): la vede l'apply.
+
+**Da committare:** i tre changeSet; `codici_errore.csv`; i tre pgTAP; le pagine `script/manual/fn_codice_dominio.md`
+(nuova), `vendite/manual/fn_batch_upsert_commessa_attivita.md`, `maintenance/manual/fn_run_and_log.md`; la guida
+«Messaggi di Errore» (§ dei canali); questo brief. La scheda auto-generata del BB nasce alla rigenerazione dopo l'apply.
+
+✅ **Applicato da Tid su dbdev e scratch, pgTAP come app verdi (2026-11-12).**
+
+#### 18.7.3 Al team BE, dopo l'apply
+
+* **BE30** come in §18.5. Le chiavi nuove: `sqlstate` sempre, `codice` e `campo` solo quando ci sono (assenti, non
+  `null`).
+* **BE31** cambia forma: il codice **non sparisce** dal catalogo, è ritirato (`obsoleto_dal`). `genera_error_policies`
+  lo scrive già col commento «RITIRATO il …»; il ripiego in `error_messages_fallback.py` si toglie come previsto.
 
 ## 19. Dopo il 5-bis: il resto, in ordine (team BE, 2026-11-11)
 
 | Ordine | Voce | Chi | Stato |
 | --- | --- | --- | --- |
-| 1 | **Giro 5-ter, il ritiro di `E_CATALOGO_NOTA_NOT_FOUND`** (§16.5.3, punto 1; deciso da Tid). Righe di `config/codici_errore.csv` e `config/messaggi_errore.csv` dal CSV (§11.2 di linee-guida-sql), più `allegati/codici-errore-classe-note.csv`. Dopo l'apply il BE rigenera `error_policies_generated.py` e toglie il ripiego **nello stesso giro** (BE31) | sessione DB, poi team BE | ✅ Tid: nello stesso giro del 5-bis. Aspetta i numeri |
-| 2 | **`vendite.vw_note`** gemella di `catalogo.vw_note` (§16.5.3, punto 2) | sessione DB | da valutare: è una proposta, non una decisione |
+| 1 | **Giro 5-ter, il ritiro di `E_CATALOGO_NOTA_NOT_FOUND`** (§16.5.3, punto 1; deciso da Tid). Righe di `config/codici_errore.csv` e `config/messaggi_errore.csv` dal CSV (§11.2 di linee-guida-sql), più `allegati/codici-errore-classe-note.csv`. Dopo l'apply il BE rigenera `error_policies_generated.py` e toglie il ripiego **nello stesso giro** (BE31) | sessione DB, poi team BE | ✅ applicato col 5-bis, con `obsoleto_dal` invece del `DELETE` (§18.7.1); ora BE31 |
+| 2 | **`vendite.vw_note`** gemella di `catalogo.vw_note` (§16.5.3, punto 2) | sessione DB, poi team BE | ✅ **Tid, 2026-11-12: per tutte le sedi delle note** (vendite, acquisti, magazzino, accanto a quella di catalogo). ✅ Applicato da Tid, pgTAP verdi (2026-11-12), `20261112-31` … `-35` (§20); ora BE33 |
 | 3 | **`seq` di una nota** (§16.5.3, punto 3) | Tid, poi team BE | ✅ fatto (D-seq, sotto) |
-| 4 | **Q35**, lo spegnimento di un kit (§16.6) | sessione DB | ✅ Tid: (a). Prima la verifica di §16.6.3; numeri da Tid |
+| 4 | **Q35**, lo spegnimento di un kit (§16.6) | sessione DB, poi team BE | ✅ Tid: (c), il kit si ritira (2026-11-12, revoca la (a)); Q36 (a); ✅ applicato da Tid, pgTAP verdi (2026-11-12, §16.6.7); ora BE32 |
 
 **D-seq, i fatti dal contratto** (struttura, non popolazione). `seq` è `integer NOT NULL DEFAULT 10` con `CHECK (seq >= 0)`
 su **tutte** le tabelle delle note: `vendite.note`, `catalogo.note`, e le partizioni di `acquisti` e `magazzino`
@@ -2608,3 +2765,76 @@ delle note sul DB vero (`ZEROERP_TEST_DB_E2E=1`), 57 verdi; ruff pulito.
 **Q35, Tid 2026-11-11: (a).** Alla sessione DB, dopo il giro 5-bis: prima la verifica del lato componente (§16.6.3,
 punto 1), poi le due righe in `automazione_attivo_eccezioni.csv` e il motivo della riga delle note del legame
 riscritto. Prova del giro: i due smoke `catalogo-phase3` e `preventivi-componenti` tornano verdi senza modifiche.
+
+## 20. Le viste delle note, una per sede (Tid, 2026-11-12)
+
+✅ **Tid, 2026-11-12** (§19, voce 2): «per tutte, per rendere omogeneo il meccanismo, altrimenti tra un po' uscirà di
+nuovo fuori». Via e numeri dal primo libero: `20261112-31` … `-35`.
+
+### 20.1 Il censimento (struttura, scratch, 2026-11-12)
+
+Le sedi sono le tabelle partizionate di nome `note` (madri, `LIST (target_tipo)`), tutte della stessa forma; `storico`
+ne tiene le copie, che non sono sedi. `pratiche.note_flussi` e `pratiche.note_pratiche` sono tabelle semplici, fuori dal
+meccanismo.
+
+| Madre | RLS | Policy | Bersaglio | Vista prima |
+| --- | --- | --- | --- | --- |
+| `catalogo.note` | no (catalogo comune) | 0 | `uuid` | `catalogo.vw_note`, definer |
+| `vendite.note` | sì, madre e sette partizioni | 3 (una per veste) | `bigint` | nessuna |
+| `magazzino.note` | sì, madre e nove partizioni | 1 (perimetro) | `bigint` | nessuna |
+| `acquisti.note` | **no**, né la madre né le partizioni | 0 | `bigint` | nessuna |
+
+Le proiezioni con stile e lingua erano **tre**: `catalogo.vw_note`; la query del BB backend (`_SELECT_COLUMNS` di
+`partitioned_note_repository.py`, con `stile_codice_interno`, che la vista non aveva); `script.fn_get_note`, il lettore
+comune dei documenti, con le sue JOIN.
+
+⚠️ `acquisti` è tutto senza RLS (testate, righe, satelliti, note): non è un buco di questo giro, è il cantiere acquisti
+(`analisi-simmetria-ordini-acquisto` §4.1-bis e la riga «RLS sui cinque satelliti»).
+
+### 20.2 Il giro
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/catalogo/20261112-31` | `catalogo.vw_note`: `stile_codice_interno` in coda, `security_invoker = true`, COMMENT della forma comune |
+| `20_code/vendite/20261112-32`, `acquisti/-33`, `magazzino/-34` | `<schema>.vw_note` nuove: le stesse colonne nello stesso ordine, `security_invoker` (chi legge vede ciò che le policy della madre gli concedono), `GRANT SELECT` a `zeroerp_app` |
+| `20_code/script/20261112-35` | **Q37 (a):** `DROP` di `script.fn_get_note` e dei tre involucri (`vendite.fn_get_vendite_note`, `acquisti.fn_get_acquisti_note`, `magazzino.fn_get_magazzino_note`). Erano la seconda copia della proiezione, senza consumatori. (Il `-35` era nato come riscrittura di `fn_get_note` sulla vista; mai applicato, né su dbdev né sullo scratch, è stato sostituito dal ritiro) |
+
+**Prove** (scratch, `prova_changeset.py`, da owner, 2026-11-12):
+
+| pgTAP | Senza → con |
+| --- | --- |
+| `dbops/test-viste-note-gemelle-v1` (nuovo: ogni madre ha la sua vista e viceversa; le quattro sedi; colonne gemelle; `security_invoker`; privilegio dell'app; nessun filtro) | interrotto → 6/6, col ritiro del `-35` |
+| `catalogo/test-note-catalogo-forma-v1`, `catalogo/test-vw-articoli-note`, `catalogo/test-vw-articoli-componenti-note`, `ui/test-lista-note-gemelle-v1` | invariati, verdi |
+
+⚠️ Da owner la RLS non si applica: il perimetro delle viste di vendite e magazzino lo vede l'esecuzione come app dopo
+l'apply. Il test 6 (nessun filtro) confronta le righe che ci sono, ed è dichiarato tale.
+
+Doc: `catalogo/manual/vw_note.md` (la forma comune), le tre pagine nuove `vendite|acquisti|magazzino/manual/vw_note.md`.
+Col ritiro (Q37): **cancellate** le pagine `manual/` delle quattro funzioni (`script/fn_get_note.md`,
+`vendite/fn_get_vendite_note.md`, `acquisti/fn_get_acquisti_note.md`, `magazzino/fn_get_magazzino_note.md`); ripuntati
+`catalogo/_note-partizioni.md`, `catalogo/manual/vw_articoli_note.md`, `vw_articoli_componenti_note.md`,
+`dbops/manual/automazione_codice_eccezioni.md` e il motivo della riga `config.note_stili` di
+`dbops/automazione_codice_eccezioni.csv`; una nota di ritiro nelle due analisi aperte che le contavano. Le schede
+auto-generate e gli `index.md` si riallineano alla rigenerazione dopo l'apply.
+
+✅ **Applicato da Tid su dbdev e scratch, pgTAP come app verdi (2026-11-12)**, col ritiro del `-35`.
+
+### 20.3 Al team BE, dopo l'apply (BE33)
+
+Il BB `PartitionedNoteRepository` legge `<schema>.vw_note` della sede al posto della sua `_SELECT_COLUMNS` con le due
+LEFT JOIN, per lista, pagina e dettaglio, in vendite e in catalogo; le colonne di uscita si ricavano dai nomi della
+vista (`nota_id`, `nota_seq`, `stile_codice`, `stile_codice_interno`, `lingua_codice_iso`, …). Il filtro per
+`nota_target_tipo` tiene il pruning sulla partizione. Acquisti e magazzino, quando avranno le note nel BE, nascono già
+sulla vista. ⚠️ `id_stile` e `id_lingua` della proiezione di oggi nella vista si chiamano `stile_id` e `lingua_id`.
+
+### 20.4 Q37 — il vecchio lettore comune (✅ Tid, 2026-11-12: (a), si ritira)
+
+`script.fn_get_note` e i suoi tre involucri (`vendite.fn_get_vendite_note`, `acquisti.fn_get_acquisti_note`,
+`magazzino.fn_get_magazzino_note`) non hanno consumatori: né il backend, né un'altra funzione, né un pgTAP oltre al
+presidio di questo giro (struttura, 2026-11-12). Il 2026-11-01 erano rotti a ogni chiamata e nessuno se n'era accorto.
+Le strade: (a) ritirarli, la proiezione resta nelle viste; (b) tenerli come lettore dei documenti per la stampa, che
+oggi non li usa. Proposta: (a), salvo che la stampa li aspetti. ✅ **Tid, 2026-11-12: (a)**, con la cancellazione delle pagine
+`manual/`: è il `-35` (§20.2).
+
+**Da committare:** i cinque changeSet, il pgTAP nuovo, il CSV `automazione_codice_eccezioni.csv`, le pagine nuove e
+riscritte, le quattro cancellate, le due analisi, questo brief.

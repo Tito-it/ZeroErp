@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_batch_upsert_commessa_attivita`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,6 +14,8 @@
 > * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita) — la madre chiamata per ogni riga
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) — il resolver da cui viene lo snapshot pricing
 > * [script.fn_sorgente_chiave](/dbzero/script/funzioni/fn_sorgente_chiave) — il BB che, nella madre, traduce la chiave del documento
+> * [script.fn_codice_dominio](/dbzero/script/funzioni/fn_codice_dominio) — il BB che legge il codice di dominio di un errore raccolto
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il contratto dei canali `CONSTRAINT` e `COLUMN`
 >
 > Guide:
 >
@@ -79,8 +81,8 @@ Se la chiave manca o è `null` JSON, il wrapper propaga `NULL` al single-upsert 
 ### Che cosa restituisce
 
 Un record di aggregato: le righe processate, quante hanno prodotto un INSERT (`is_new` del
-single-upsert), quante un UPDATE, e l'elenco degli errori (posizione, `segment_key`, messaggio)
-delle righe fallite. Le righe processate sono sempre la somma degli altri tre.
+single-upsert), quante un UPDATE, e l'elenco degli errori delle righe fallite (sotto, «Gestione
+errori»). Le righe processate sono sempre la somma degli altri tre.
 
 ---
 
@@ -91,8 +93,19 @@ Per ogni riga il wrapper esegue il single-upsert dentro un `BEGIN ... EXCEPTION 
 * **Success** → contatore `inserted`/`updated` incrementato.
 * **Errore** → oggetto JSON aggiunto ad `errors` con:
     * `index`: posizione (0-based) nell'array di input
-    * `segment_key`: valore della chiave per identificare la riga
+    * `segment_key`: valore della chiave per identificare la riga (`null` se la riga non la porta)
     * `error`: `SQLERRM` (messaggio testuale dell'errore)
+    * `sqlstate`: lo SQLSTATE dell'errore, sempre
+    * `codice`: il **codice di dominio** (`E_…`, il codice del catalogo dei messaggi), solo quando
+      l'errore è di dominio: SQLSTATE `P0001` col codice nel canale `CONSTRAINT`, il contratto di
+      `script.fn_log_and_raise_error`, letto con `script.fn_codice_dominio`
+    * `campo`: il campo da correggere (il canale `COLUMN`), alle stesse condizioni di `codice` e
+      solo se l'errore lo nomina
+
+  Per un errore che non è di dominio (un cast del payload, una violazione di vincolo) `codice` e
+  `campo` **non ci sono**: per un `23505` il canale `CONSTRAINT` porta il nome del vincolo, non un
+  codice. Il chiamante riconosce un rifiuto dal `codice`, mai dalla frase: qui l'eccezione non gli
+  arriva, e il driver non può leggere i canali al suo posto.
 
 Il loop **continua** sulla riga successiva. Il wrapper non solleva eccezioni: la responsabilità di decidere cosa fare in caso di errori parziali è lasciata al caller (es. rollback lato BE se `errors` non vuoto).
 
@@ -105,8 +118,16 @@ Casi degenerati:
 
 ### Dipendenze DB
 
-* Funzioni: [`vendite.fn_upsert_commessa_attivita`](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita) (chiamata N volte).
+* Funzioni: [`vendite.fn_upsert_commessa_attivita`](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita) (chiamata N volte), [`script.fn_codice_dominio`](/dbzero/script/funzioni/fn_codice_dominio) (per ogni errore raccolto).
 * Nessuna lettura/scrittura diretta su tabelle: tutto passa dal single-upsert.
+
+---
+
+### Test
+
+* `db/pgtap/vendite/test-fn-batch-upsert-commessa-attivita-v1.sql` — i contatori, il collect-all,
+  il codice e il campo di un rifiuto di dominio (un'unità senza conversione, `E_UOM_MISSING`) e la
+  loro assenza per un errore di cast del payload.
 
 ---
 
@@ -121,6 +142,8 @@ Casi degenerati:
 * 2026-11-07 — arriva la chiave `sorgente_riga`, e la chiave del documento passa da `sorgente_uid` a
   `sorgente_chiave`, che la madre traduce nella colonna tipizzata giusta
   (brief-db-sorgente-documento-e-riga).
+* 2026-11-12 — ogni errore raccolto porta anche `sqlstate` e, per un errore di dominio, `codice` e
+  `campo`; le tre chiavi di prima non cambiano (brief-db-revisione-catalogo, giro 5-bis).
 
 ---
 

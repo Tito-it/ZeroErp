@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_codice_dominio: il codice di dominio di un errore catturato, o NULL.
+#   Brief: brief-db-revisione-catalogo, giro 5-bis (§18.3, D5bis-1 (a), Tid 2026-11-11).
+#
+#   La lettura «P0001 + CONSTRAINT valorizzato = codice di dominio» (il contratto di
+#   script.fn_log_and_raise_error) era scritta sul posto in maintenance.fn_run_and_log;
+#   il batch delle commesse ne e' la seconda occorrenza: alla seconda si estrae qui
+#   (regola del 2). Leggono il BB vendite.fn_batch_upsert_commessa_attivita (-26) e
+#   maintenance.fn_run_and_log (-27), che ci mette il suo ripiego sullo SQLSTATE.
+#   I due wrapper di lotto (fn_snapshot_fattura_lotto, fn_genera_scadenze_lotto)
+#   restano come sono: catturano solo raise_exception, e per loro la regola e' vera
+#   per costruzione.
+#   Funzione nuova, rollback: DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261112-25-create-fn-codice-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20261112-25-create-fn-codice-dominio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_codice_dominio: il codice di dominio di un errore catturato (P0001 + CONSTRAINT valorizzato), o NULL. Letto dal batch delle commesse e da maintenance.fn_run_and_log. Brief: brief-db-revisione-catalogo, giro 5-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.proname = 'fn_codice_dominio'
+                 AND p.pronamespace = 'script'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_codice_dominio(
+                  -- RETURNED_SQLSTATE e CONSTRAINT_NAME di GET STACKED DIAGNOSTICS:
+                  -- valori della diagnostica, nessuna colonna li rispecchia
+                  p_sqlstate text,
+                  p_vincolo  text)
+               RETURNS text
+               LANGUAGE sql
+               IMMUTABLE
+               PARALLEL SAFE
+              AS $function$
+                  -- Per un 23505 o un 23514 il CONSTRAINT e' il nome di un vincolo,
+                  -- non un codice: conta solo col P0001 di fn_log_and_raise_error.
+                  SELECT CASE
+                           WHEN p_sqlstate = 'P0001' AND NULLIF(p_vincolo, '') IS NOT NULL
+                             THEN p_vincolo
+                         END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_codice_dominio(text, text) IS
+                'Il codice di dominio di un errore catturato, letto dalla sua diagnostica (RETURNED_SQLSTATE, CONSTRAINT_NAME): il CONSTRAINT quando lo SQLSTATE e'' P0001 e il CONSTRAINT non e'' vuoto, il contratto di script.fn_log_and_raise_error; NULL altrimenti. Per un errore che non e'' di dominio (un 23505, un 23514) il CONSTRAINT e'' il nome di un vincolo, non un codice, e la risposta e'' NULL. Non sceglie un ripiego: chi la legge decide che cosa scrivere quando non c''e'' un codice. La leggono vendite.fn_batch_upsert_commessa_attivita e maintenance.fn_run_and_log.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_codice_dominio(text, text);

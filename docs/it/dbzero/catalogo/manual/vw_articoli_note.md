@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_note`
 
-> **Ultimo aggiornamento**: 11 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -42,9 +42,6 @@ Un articolo senza note non compare.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Non passa dalla lettura comune.** Le note dei documenti si leggono con
-  [script.fn_get_note](/dbzero/script/funzioni/fn_get_note), che qui non si può usare perché
-  vuole un bersaglio `bigint`.
 
 ---
 

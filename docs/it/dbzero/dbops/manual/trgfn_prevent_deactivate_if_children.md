@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_prevent_deactivate_if_children`
 
-> **Ultimo aggiornamento**: 10 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -70,19 +70,26 @@ trigger, non i nomi delle tabelle, e legge gli argomenti dal suo montaggio.
 
 ---
 
-### ⭐ Due rami, due codici, due rimedi
+### ⭐ Tre rami, tre codici, tre rimedi
 
-I due rami non sono due modi di dire la stessa cosa: hanno **rimedi diversi**.
+I rami non sono modi diversi di dire la stessa cosa: hanno **rimedi diversi**.
 
-| Figlia | Che cosa blocca | Rimedio | Codice |
+| Padre / figlia | Che cosa blocca | Rimedio | Codice |
 | --- | --- | --- | --- |
-| con la colonna attivo | le righe attive | spegnerle: prima i figli, poi il padre | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` |
-| senza la colonna attivo | qualunque riga | toglierle, perché spegnerle non si può | `E_ATTIVO_BLOCK_CHILDREN_EXIST` |
+| il padre ha il ritiro (`obsoleto_dal`) | le figlie, come nei due rami sotto | **ritirarlo** con una data di ritiro, non spegnerlo | `E_ATTIVO_BLOCK_SI_RITIRA` (campo `obsoleto_dal`) |
+| padre senza ritiro, figlia con la colonna attivo | le righe attive | spegnerle: prima i figli, poi il padre | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` |
+| padre senza ritiro, figlia senza la colonna attivo | qualunque riga | toglierle, perché spegnerle non si può | `E_ATTIVO_BLOCK_CHILDREN_EXIST` |
+
+⭐ **Il ritiro viene prima.** Una voce di catalogo che altre righe nominano non si spegne: i
+riferimenti diventerebbero non validi. Si ritira, e da quel giorno non si propone per un uso nuovo
+(guida [Mandare in pensione una voce di catalogo](/guide/uso-di-obsoleto)). La funzione lo
+riconosce dalla riga che ha già in mano: se il padre ha la colonna `obsoleto_dal` il rimedio è la
+data, qualunque sia la figlia. Vale per ogni tabella col ritiro, anche quelle che nasceranno.
 
 La funzione sceglie il **codice**, non compone la frase: il testo sta a catalogo e **non nomina
 tabelle**, perché a un operatore `anagrafiche.pdp` non dice niente, e su un portale o uno shop è
 un'informazione sulla struttura del database. Padre, figlia, colonna FK, colonna referenziata e
-suo valore viaggiano nel contesto del registro errori, per chi ripara il dato. ⛔ I due messaggi
+suo valore viaggiano nel contesto del registro errori, per chi ripara il dato. ⛔ I tre messaggi
 condividono la stessa chiamata: devono avere gli stessi segnaposti (oggi nessuno, come i valori
 passati), altrimenti l'errore di dominio sparirebbe in un errore tecnico.
 
@@ -93,7 +100,8 @@ righe da indicare sarebbero le figlie, che possono essere molte.
 
 ### Codici errore
 
-* `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST` — il rifiuto, secondo il ramo.
+* `E_ATTIVO_BLOCK_SI_RITIRA`, `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST` — il
+  rifiuto, secondo il ramo.
 * `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` — la figlia o la sua colonna FK non esistono: per esempio un
   block rimasto dopo l'eliminazione della figlia (lo toglie `dbops.fn_ritira_attivo_orfani`).
 * `E_ATTIVO_BLOCK_ARGS` — il trigger è montato fuori grammatica, o nomina una colonna che il padre
@@ -135,6 +143,9 @@ righe da indicare sarebbero le figlie, che possono essere molte.
   (prima i ripieghi su `id` e `attivo` scrivevano nel registro errori a ogni scatto).
 * 2026-11-10 — le due frasi non nominano più tabelle: padre e figlia restano nel contesto del
   registro errori.
+* 2026-11-12 — un padre col ritiro (`obsoleto_dal`) si rifiuta con `E_ATTIVO_BLOCK_SI_RITIRA`:
+  si ritira, non si spegne. Prima riceveva il rimedio delle figlie (brief-db-revisione-catalogo,
+  Q35 e Q36).
 
 ---
 

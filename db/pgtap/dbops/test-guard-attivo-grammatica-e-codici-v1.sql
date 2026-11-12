@@ -47,7 +47,7 @@
 --  18)   D47: colonna di esenzione assente -> E_TRIGGER_ARGOMENTI_INVALIDI
 --  19)   colonna FK assente sulla figlia -> E_TRIGGER_ARGOMENTI_INVALIDI (prima passava)
 --  20)   D49: block con quattro argomenti -> E_ATTIVO_BLOCK_ARGS
---  21)   il block resta E_ATTIVO_BLOCK_CHILDREN_ACTIVE con una figlia attiva
+--  21)   il block con una figlia attiva, su un padre col ritiro: E_ATTIVO_BLOCK_SI_RITIRA
 --  22)   la lettura del padre rifiuta un trigger che non e' un require
 --  23)   PRESIDIO sul testo: nessuno dei sette (i tre trigger, gli orfani, il ritiro
 --        delle eccezioni e, dal giro 4, i due riconoscimenti per argomenti) legge
@@ -295,10 +295,13 @@ SELECT is(
 -- ============================================================
 INSERT INTO t_figlia (id, padre_id) VALUES (20, 1);
 
+-- t_padre ha obsoleto_dal (serve al REQUIRE del ritiro, sopra): un padre col ritiro che una
+--   figlia nomina non si spegne, si ritira. I due codici delle tabelle senza ritiro li presidia
+--   db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql.
 SELECT is(
     pg_temp.codice_di($$UPDATE t_padre SET attivo = false WHERE id = 1$$),
-    'E_ATTIVO_BLOCK_CHILDREN_ACTIVE',
-    '21) il block resta E_ATTIVO_BLOCK_CHILDREN_ACTIVE con una figlia attiva'
+    'E_ATTIVO_BLOCK_SI_RITIRA',
+    '21) il block con una figlia attiva, su un padre col ritiro: E_ATTIVO_BLOCK_SI_RITIRA'
 );
 
 SELECT is(

@@ -72,7 +72,7 @@ Fatto misurato il **2026-09-01**, sul repo e sulla doc auto-generata.
 | --- | --- | --- |
 | **Tabelle DB** | 9 (`ordini`, `ordini_righe`, `ordini_righe_fulfillment`, `ddt`, `ddt_righe`, `ddt_indirizzi`, `note` + 2 partizioni) | — |
 | **Viste DB** | **0** | 7 |
-| **Funzioni DB** | **2** (`fn_get_acquisti_note`, un trigger guard sull'indirizzo) | 18 |
+| **Funzioni DB** | **2** (`fn_get_acquisti_note`, ritirata il 2026-11-12, e un trigger guard sull'indirizzo) | 18 |
 | **Backend** | scheletro: `apps.py`, `models.py`, `admin.py`, `api/views.py` e `api/urls.py` **vuoti**, tre `README.md` segnaposto | 2.779 righe su 5 file, **29 rotte** |
 | **Frontend** | due `.gitkeep` | 1.991 righe su 10 file |
 | **Navigazione FE** | dominio presente in [`navigation.js:118`](../../../../frontend/src/core/navigation.js#L118), **menu L2 vuoto** (`'acquisti': []`) | 12 voci |
@@ -350,7 +350,7 @@ TESTUALE**, nello stesso giro.
 * la cascata del fulfillment d'acquisto, da allineare o da dichiarare diversa col motivo.
 
 **Il ritiro dell'articolo sulle righe d'acquisto (passato qui il 2026-11-11).** Da
-[brief-db-articoli-obsoleto-dal](brief-db-articoli-obsoleto-dal.md) (lotto C, O-3 di Tid del 2026-11-04): un articolo
+[brief-db-articoli-obsoleto-dal](../work-done/brief-db-articoli-obsoleto-dal.md) (lotto C, O-3 di Tid del 2026-11-04): un articolo
 ritirato (`catalogo.articoli.obsoleto_dal` raggiunta) non si sceglie per una riga d'acquisto **nuova**; la riga
 **derivata** da un altro documento passa. Non è decisione da prendere, è lavoro da fare nel giro che porta qui la
 provenienza, perché l'esenzione legge la provenienza scritta dal verbo:

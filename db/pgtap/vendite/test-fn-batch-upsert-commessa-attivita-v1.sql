@@ -13,6 +13,14 @@
 -- 6) Batch riga duplicata (stessa segment_key 2 volte) -> inserted=1, updated=1
 -- 7) Batch errore validazione (quantita=0) -> errore raccolto, altre ok
 -- 8) Contatori aggregati corretti su batch misto
+-- Il codice dell'errore nel risultato (changeSet 20261112-25, -26):
+-- 9) un rifiuto di dominio (un'unita' senza conversione): codice = E_UOM_MISSING
+-- 10) ... sqlstate = P0001
+-- 11) ... campo = uom_operativa_id, il campo che l'errore nomina
+-- 12) le tre chiavi di prima restano, e la riga buona dello stesso batch e'
+--     scritta (collect-all)
+-- 13) un errore che non e' di dominio (una data del payload scritta male):
+--     sqlstate valorizzato, niente codice ne' campo
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -31,7 +39,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(13);
 
 -- ============================================================
 -- TEST 1: Funzione batch presente
@@ -331,6 +339,104 @@ SELECT ok(
      AND jsonb_array_length(errors) = 0
    FROM tmp_batch_8),
   'Batch misto 3 righe: contatori corretti (2 inserted, 1 updated)'
+);
+
+-- ============================================================
+-- TEST 9-12: un rifiuto di dominio porta il suo codice
+-- ============================================================
+
+-- Un'unita' NUOVA, nata nella transazione, della stessa tipologia della base
+--   dell'articolo: nessuna mappatura e nessuna conversione generale la portano
+--   alla base, quindi un'attivita' in quell'unita' senza fattore scritto si
+--   rifiuta con E_UOM_MISSING (vendite.trgfn_attivita_fattore_alla_data).
+--   L'articolo si COSTRUISCE (dbops.fn_pgtap_crea_articolo): quello pescato dal
+--   catalogo per i test 2-8 potrebbe avere una storia di unita' che il test non
+--   conosce.
+CREATE TEMP TABLE tmp_batch_art_uom AS
+SELECT dbops.fn_pgtap_crea_articolo(
+         ('PGT-5B-' || upper(substr(md5(clock_timestamp()::text || 'a'), 1, 8)))::varchar,
+         false) AS articolo_id;
+
+CREATE TEMP TABLE tmp_batch_uom_senza (id bigint);
+
+WITH nuova AS (
+  INSERT INTO catalogo.unita_misura (codice, descrizione, tipo_uom_id)
+  SELECT 'PGT5B' || upper(substr(md5(clock_timestamp()::text || 'u'), 1, 8)),
+         'pgTAP batch: senza conversione', um.tipo_uom_id
+    FROM catalogo.articoli a
+    JOIN catalogo.unita_misura um ON um.id = a.uom_id
+   WHERE a.id = (SELECT articolo_id FROM tmp_batch_art_uom)
+  RETURNING id
+)
+INSERT INTO tmp_batch_uom_senza SELECT id FROM nuova;
+
+-- La riga sull'articolo costruito, nella sua unita' base.
+CREATE FUNCTION pg_temp.mk_row_art(p_seg text) RETURNS jsonb AS $$
+  SELECT pg_temp.mk_row(p_seg)
+         || jsonb_build_object(
+              'articolo_id', (SELECT articolo_id FROM tmp_batch_art_uom)::text,
+              'uom_id',      (SELECT a.uom_id FROM catalogo.articoli a
+                               WHERE a.id = (SELECT articolo_id FROM tmp_batch_art_uom)));
+$$ LANGUAGE sql;
+
+CREATE TEMP TABLE tmp_batch_9 AS
+SELECT * FROM vendite.fn_batch_upsert_commessa_attivita(
+  jsonb_build_array(
+    pg_temp.mk_row_art('BATCH-UOM-' || substr(md5(clock_timestamp()::text || 'i'), 1, 8))
+      || jsonb_build_object('uom_operativa_id', (SELECT id FROM tmp_batch_uom_senza),
+                            'qta_operativa',    3),
+    pg_temp.mk_row_art('BATCH-UOM-OK-' || substr(md5(clock_timestamp()::text || 'j'), 1, 8))
+  )
+);
+
+SELECT is(
+  (SELECT errors -> 0 ->> 'codice' FROM tmp_batch_9),
+  'E_UOM_MISSING',
+  'Rifiuto di dominio: codice = E_UOM_MISSING, dal canale CONSTRAINT'
+);
+
+SELECT is(
+  (SELECT errors -> 0 ->> 'sqlstate' FROM tmp_batch_9),
+  'P0001',
+  'Rifiuto di dominio: sqlstate = P0001'
+);
+
+SELECT is(
+  (SELECT errors -> 0 ->> 'campo' FROM tmp_batch_9),
+  'uom_operativa_id',
+  'Rifiuto di dominio: campo = uom_operativa_id, dal canale COLUMN'
+);
+
+SELECT ok(
+  (SELECT total_rows = 2
+      AND inserted = 1
+      AND jsonb_array_length(errors) = 1
+      AND (errors -> 0 ->> 'index')::integer = 0
+      AND errors -> 0 ->> 'segment_key' LIKE '%BATCH-UOM-%'
+      AND length(errors -> 0 ->> 'error') > 0
+     FROM tmp_batch_9),
+  'Rifiuto di dominio: index, segment_key ed error restano, la riga buona e'' scritta'
+);
+
+-- ============================================================
+-- TEST 13: un errore che non e' di dominio non porta codice ne' campo
+-- ============================================================
+
+CREATE TEMP TABLE tmp_batch_13 AS
+SELECT * FROM vendite.fn_batch_upsert_commessa_attivita(
+  jsonb_build_array(
+    pg_temp.mk_row_art('BATCH-CAST-' || substr(md5(clock_timestamp()::text || 'k'), 1, 8))
+      || jsonb_build_object('data_attivita', 'non-una-data')
+  )
+);
+
+SELECT ok(
+  (SELECT jsonb_array_length(errors) = 1
+      AND errors -> 0 ->> 'sqlstate' = '22007'
+      AND NOT (errors -> 0 ? 'codice')
+      AND NOT (errors -> 0 ? 'campo')
+     FROM tmp_batch_13),
+  'Errore di cast del payload: sqlstate 22007, niente codice ne'' campo'
 );
 
 SELECT * FROM finish();

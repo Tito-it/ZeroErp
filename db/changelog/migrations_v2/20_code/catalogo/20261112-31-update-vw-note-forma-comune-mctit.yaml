@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.vw_note nella forma comune delle viste delle note (una per sede).
+#   Brief: brief-db-revisione-catalogo §19 voce 2, §20 (Tid, 2026-11-12: «per tutte, per rendere
+#   omogeneo il meccanismo»).
+#
+# ⭐ PERCHE'. Le note hanno quattro sedi della stessa forma (catalogo, vendite, acquisti,
+#   magazzino); la proiezione con stile e lingua stava a DB solo per catalogo, e nel backend per
+#   le altre. Le quattro viste <schema>.vw_note nascono con le stesse colonne nello stesso ordine
+#   (-32 … -34), e il backend potra' leggere la vista della sede invece di comporre la sua query.
+#
+# ⭐ CHE COSA CAMBIA QUI.
+#   * in coda stile_codice_interno: il backend lo legge (la sua proiezione delle note lo porta), la
+#     vista no. CREATE OR REPLACE aggiunge solo in coda (§6): le colonne di prima restano dove sono,
+#     e catalogo.vw_articoli_note / vw_articoli_componenti_note, che le nominano, non cambiano;
+#   * security_invoker = true, come le tre sorelle: oggi catalogo.note non ha RLS e non cambia
+#     niente, ma il meccanismo e' uno (chi legge la vista legge con i suoi privilegi e le sue
+#     policy), e una policy che arrivasse domani varrebbe anche qui.
+#   COMMENT riscritto (la forma comune); GRANT ridato com'era.
+#   Rollback: il corpo di prima torna rieseguendo 20261111-78 (senza la colonna in coda serve
+#   DROP + CREATE delle tre viste: lo si fa a mano).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261112-31-update-vw-note-forma-comune-mctit.yaml
+
+  - changeSet:
+      id: 20261112-31-update-vw-note-forma-comune
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.vw_note nella forma comune delle viste delle note: stile_codice_interno in coda, security_invoker. Brief: brief-db-revisione-catalogo §20.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_note
+                WITH (security_invoker = true) AS
+               SELECT n.id AS nota_id,
+                  n.target_tipo AS nota_target_tipo,
+                  n.target_id AS nota_target_id,
+                  n.target_riga_id AS nota_target_riga_id,
+                  n.anchor_tipo AS nota_anchor_tipo,
+                  n.posizione AS nota_posizione,
+                  n.seq AS nota_seq,
+                  n.testo AS nota_testo,
+                  n.testo_md AS nota_testo_md,
+                  n.visibile AS nota_visibile,
+                  n.solo_stampa AS nota_solo_stampa,
+                  n.meta AS nota_meta,
+                  n.data_insert AS nota_data_insert,
+                  n.user_insert AS nota_user_insert,
+                  n.data_update AS nota_data_update,
+                  n.user_update AS nota_user_update,
+                  ns.id AS stile_id,
+                  ns.codice AS stile_codice,
+                  ns.descrizione AS stile_descrizione,
+                  l.id AS lingua_id,
+                  l.codice_iso AS lingua_codice_iso,
+                  l.descrizione AS lingua_descrizione,
+                  l.descrizione_locale AS lingua_descrizione_locale,
+                  ns.codice_interno AS stile_codice_interno
+                 FROM catalogo.note n
+                   LEFT JOIN config.note_stili ns ON ns.id = n.id_stile
+                   LEFT JOIN config.lingue l ON l.id = n.id_lingua;
+
+              COMMENT ON VIEW catalogo.vw_note IS
+                'La proiezione di una nota di catalogo, una riga per nota di ogni partizione di catalogo.note, con la decodifica dello stile (config.note_stili: codice, descrizione, codice_interno) e della lingua (config.lingue). Non filtra: le note nascoste e quelle di sola stampa ci sono. Ha le stesse colonne, nello stesso ordine, di vendite.vw_note, acquisti.vw_note e magazzino.vw_note: una vista per ogni sede delle note, e la proiezione sta solo qui. security_invoker: si legge con i privilegi e le policy di chi la interroga. catalogo.vw_articoli_note e catalogo.vw_articoli_componenti_note la leggono per il loro nota_target_tipo. Si legge, non si scrive: le note si scrivono sul padre o sulla partizione.';
+
+              GRANT SELECT ON catalogo.vw_note TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo di prima torna rieseguendo 20261111-78, dopo DROP VIEW delle tre viste.
+              SELECT 1;
