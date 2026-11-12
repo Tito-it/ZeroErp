@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.commesse_attivita`
 
-> **Ultimo aggiornamento**: 10 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -187,6 +187,11 @@ esisteva lo portano ancora in `meta`, come fotografia, e nessuno lo legge.
 
 > ⭐ Come l'`ONERE` manuale, la `RETTIFICA` e' **sourceless per progetto**: nessun documento a
 > monte, gruppo fatturabile `MAN:<commessa_id>`.
+
+> ⚠️ **Per chi costruisce liste e filtri.** Una colonna, un filtro o una navigazione costruiti
+> sulla sorgente della riga sono **vuoti** su queste righe. Accanto alla sorgente si espone sempre
+> `tipo_movimento` e, dove serve una risposta mai vuota, il gruppo fatturabile letto dalla sua
+> funzione. L'origine vera di una rettifica si risale dal ponte degli accrediti del reso.
 
 > Le righe più vecchie conservano in `meta` una chiave `tipo_movimento` residua: vale sempre
 > `NORMALE` e nessuno la legge — la colonna e' l'unica fonte.

@@ -12,6 +12,9 @@
 [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
 
 ---
+
+> **Ultimo aggiornamento**: 12 novembre 2026
+
 ### 🎯 Scopo Principale
 (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il
 criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione**
@@ -144,8 +147,7 @@ una transazione annullata: la stessa riga era rifiutata scritta direttamente e *
 ogni processo senza identità.
 
 ⭐ **La rev**: se non c'è utente in sessione, la RLS «non è attiva» **ma** si sta dentro una
-DEFINER (`current_user <> session_user`: `session_user` resta il login role, l'unico nome che
-dice chi scrive davvero), il guard risolve comunque l'emittente della riga e, se la riga **ha
+DEFINER, il guard risolve comunque l'emittente della riga e, se la riga **ha
 un padrone**, si ferma con `E_SCOPE_SENZA_UTENTE`; una riga **senza padrone** passa come prima —
 è il caso delle email di sistema (emittente `NULL`), da cui dipende il reset password senza
 sessione. Non è una seconda scrittura della regola di esenzione: il criterio resta
@@ -153,6 +155,14 @@ sessione. Non è una seconda scrittura della regola di esenzione: il criterio re
 Consumatori DEFINER censiti al 18-09: `fn_accoda_email_sistema`, `fn_chiudi_email_sistema`
 (entrambe a emittente `NULL`, invariate). Presidi: `test-guard-emittente-senza-utente.sql`
 (7-8) e `magazzino/test-porta-ledger-v1.sql` (13-14: la primitiva senza identità si ferma).
+
+⭐ **Come si riconosce «dentro una DEFINER» (rev 2026-10-15).** Il guard confronta il
+`current_user` con il **ruolo di sessione**, cioè il parametro `role`, e solo se `role` non è
+impostato con il `session_user`. Il confronto col solo `session_user` sbagliava per chi lavora
+come proprietario con `SET role`: un utente personale che fa `SET role zeroerp_owner` ha
+`current_user <> session_user` anche fuori da una DEFINER, e il guard lo trattava come una
+DEFINER. Una DEFINER cambia il `current_user` ma non il parametro `role`, quindi la differenza
+fra i due resta il segnale giusto.
 
 ⭐ **Gli altri sette trigger che leggono `app.current_user_id` non sono stati
 toccati**, ed è una scelta: i cinque `*_default_emittente` non *concedono*

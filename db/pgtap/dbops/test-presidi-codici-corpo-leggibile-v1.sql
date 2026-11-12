@@ -40,21 +40,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(11);
 
--- Il codice del rifiuto: fn_log_and_raise_error lo mette in CONSTRAINT_NAME; ogni altro errore
---   torna col suo SQLSTATE.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION
-    WHEN SQLSTATE 'P0001' THEN
-        GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-        RETURN v_c;
-    WHEN OTHERS THEN
-        RETURN SQLSTATE;
-END $$;
 
 -- ============================================================
 -- Il building block
@@ -154,12 +139,12 @@ SELECT ok(
 -- script.fn_get_contatti: il soggetto obbligatorio lo e' davvero
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM script.fn_get_contatti(NULL::uuid)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM script.fn_get_contatti(NULL::uuid)$$),
     'E_CONTATTI_SOGGETTO_OBBLIGATORIO',
     '9) fn_get_contatti(NULL) e'' rifiutato');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM script.fn_get_contatto_default(NULL::uuid)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM script.fn_get_contatto_default(NULL::uuid)$$),
     'E_CONTATTI_SOGGETTO_OBBLIGATORIO',
     '10) fn_get_contatto_default(NULL) e'' rifiutato');
 

@@ -1,6 +1,6 @@
 # Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultimo aggiornamento**: 14 settembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -564,6 +564,13 @@ modifica tutto.
    per default, ma l'operatore può aggiungerla manualmente dalla modale)
 5. Opzionale: aggiornare i preset di base per includerla (admin operativo)
 
+⚠️ **Per chi sviluppa: «la colonna esce dalla vista» non basta.** Prima di promettere una colonna
+si apre il repository del backend che serve quella lista: se la sua lettura elenca i nomi delle
+colonne invece di prenderle tutte, la colonna non esiste per il frontend finché il backend non la
+aggiunge alla sua proiezione, e su una lista con una vista nessun controllo lo segnala (cella vuota,
+nessun errore). La richiesta al backend nomina file e costante, e la riga di `ui.lista_colonna`
+nasce spenta (vedi [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna)).
+
 ### 10.2 Nascondere una colonna sensibile per un profilo
 
 1. Tenant admin: pagina operativa → tab "Permessi colonne" → **Nuovo**
@@ -765,6 +772,14 @@ non dichiara niente.
 
 Le liste si accendono **una per una**, quando la loro colonna mostra un nome su
 dati veri.
+
+#### Il verso opposto: la lista senza perimetro
+
+Una lista dichiarata **senza** perimetro emittente (`perimetro_emittente = false`)
+non espone colonne che dicono di chi è la riga: se una colonna attiva legge un
+campo dell'emittente, la lista ha un perimetro ed è `multi_emittente`. Le righe
+«di sistema» con l'emittente vuoto (preset, modelli standard) non la rendono
+globale. Lo verifica `db/pgtap/ui/test-lista-definizione-perimetro-emittente-v1.sql`.
 
 ---
 

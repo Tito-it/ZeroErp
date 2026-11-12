@@ -47,27 +47,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(17);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
-
-CREATE OR REPLACE FUNCTION pg_temp.vincolo_violato(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN unique_violation THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.corpo(p regprocedure) RETURNS text
 LANGUAGE sql AS $$
@@ -141,12 +120,12 @@ SELECT is(
     '6. un campo assente in riscrittura resta com''era (secondo fattore)');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT config.fn_scrivi_profilo_accesso('REPARTO', 'PGTAP_PROFILO_ADHOC', 'x')$$),
+    dbops.fn_pgtap_codice_errore($$SELECT config.fn_scrivi_profilo_accesso('REPARTO', 'PGTAP_PROFILO_ADHOC', 'x')$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '7. un codice di un altro tipo: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT config.fn_scrivi_profilo_accesso('AD_HOC', 'PGTAP_PROFILO_X', 'x',
+    dbops.fn_pgtap_codice_errore($$SELECT config.fn_scrivi_profilo_accesso('AD_HOC', 'PGTAP_PROFILO_X', 'x',
         NULL, NULL, '{"tipo": "REPARTO"}'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '8. chiave estranea fra i campi: E_CAMPO_NON_AMMESSO');
@@ -167,12 +146,12 @@ SELECT is((SELECT config.fn_lega_profilo_identita(p.p1, o.id_op) FROM t_p p, t_o
           '10. lo stesso profilo di nuovo: lo stesso binding (idempotente)');
 
 SELECT is(
-    pg_temp.vincolo_violato($$SELECT config.fn_lega_profilo_identita((SELECT p2 FROM t_p), (SELECT id_op FROM t_op))$$),
+    dbops.fn_pgtap_codice_errore($$SELECT config.fn_lega_profilo_identita((SELECT p2 FROM t_p), (SELECT id_op FROM t_op))$$),
     'uq_profili_accesso_bindings_identita',
     '11. un altro profilo: uq_profili_accesso_bindings_identita');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT config.fn_lega_profilo_identita(NULL, (SELECT id_op FROM t_op))$$),
+    dbops.fn_pgtap_codice_errore($$SELECT config.fn_lega_profilo_identita(NULL, (SELECT id_op FROM t_op))$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '12. argomento NULL: E_SCRIPT_CHIAMATA_NON_VALIDA');
 

@@ -75,17 +75,6 @@ CREATE TEMP TABLE _num AS
 SELECT (SELECT d.numero::text FROM vendite.ddt d WHERE d.id = (SELECT ddt_id FROM _d))              AS ddt,
        (SELECT p.numero::text FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM _p)) AS prev;
 
--- Il codice dell'errore sollevato (il canale CONSTRAINT dell'eccezione).
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text)
-RETURNS text AS $fn$
-DECLARE v_codice text;
-BEGIN
-  EXECUTE p_sql;
-  RETURN 'NESSUN ERRORE';
-EXCEPTION WHEN OTHERS THEN
-  GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME;
-  RETURN COALESCE(NULLIF(v_codice, ''), SQLSTATE);
-END $fn$ LANGUAGE plpgsql;
 
 -- ===== il BB che risolve =====
 SELECT results_eq(
@@ -199,51 +188,51 @@ SELECT results_eq(
     '17) il preventivo con l''uid: (NULL, uid)');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM script.fn_sorgente_chiave(%s, '   ')$$, (SELECT ddt FROM _t))),
     'E_SORG_KEY_MISSING',
     '18) chiave vuota -> E_SORG_KEY_MISSING');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM script.fn_sorgente_chiave(%s, 'DDT-42')$$, (SELECT ddt FROM _t))),
     'E_SORG_FORMATO',
     '19) chiave che non e'' ne'' un id ne'' un uuid -> E_SORG_FORMATO');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM script.fn_sorgente_chiave(%s, %L)$$,
         (SELECT ddt FROM _t), (SELECT upper(ddt_uid::text) FROM _d))),
     'E_SORG_FORMATO',
     '20) uuid con le maiuscole -> E_SORG_FORMATO (non e'' in forma canonica)');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM script.fn_sorgente_chiave(%s, %L)$$, (SELECT ddt FROM _t), gen_random_uuid()::text)),
     'E_SORG_NORM_NON_RISOLTA',
     '21) uuid che non trova la bolla -> E_SORG_NORM_NON_RISOLTA');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM script.fn_sorgente_chiave(%s, '999999999999')$$, (SELECT ddt FROM _t))),
     'E_SORG_NOT_FOUND',
     '22) id che non trova la bolla -> E_SORG_NOT_FOUND');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM script.fn_sorgente_chiave(%s, %L)$$, (SELECT prev FROM _t), gen_random_uuid()::text)),
     'E_SORG_NOT_FOUND',
     '23) uuid che non trova il preventivo -> E_SORG_NOT_FOUND');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM script.fn_sorgente_chiave(%s, %L)$$, (SELECT comm FROM _t), gen_random_uuid()::text)),
     'E_SORG_NORM_NON_RISOLTA',
     '24) uuid per una commessa (tabella senza uid) -> E_SORG_NORM_NON_RISOLTA');
 
 SELECT results_eq(
-    $$SELECT pg_temp.codice_errore($q$SELECT * FROM script.fn_sorgente_chiave(NULL, '1')$q$),
-             pg_temp.codice_errore($q$SELECT * FROM script.fn_sorgente_chiave(-1, '1')$q$)$$,
+    $$SELECT dbops.fn_pgtap_codice_errore($q$SELECT * FROM script.fn_sorgente_chiave(NULL, '1')$q$),
+             dbops.fn_pgtap_codice_errore($q$SELECT * FROM script.fn_sorgente_chiave(-1, '1')$q$)$$,
     $$VALUES ('E_SORG_CONF', 'E_SORG_CONF')$$,
     '25) tipo assente o inesistente -> E_SORG_CONF');
 

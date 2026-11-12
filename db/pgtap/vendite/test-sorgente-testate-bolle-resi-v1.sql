@@ -52,21 +52,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(20);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- ============================================================
 -- LA FORMA
 -- ============================================================
@@ -178,23 +163,23 @@ SELECT is(
 -- IL GUARD UNICO E LA FORMA, su bolla e reso in bozza
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ddt SET sorgente_id = NULL, sorgente_uid = %L WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ddt SET sorgente_id = NULL, sorgente_uid = %L WHERE id = %s',
                        (SELECT ordine_uid FROM _bozza), (SELECT ddt_id FROM _bozza))),
   'E_SORG_CHIAVE_NON_CONFORME',
   '12) l''uid dell''ordine per un tipo a chiave id: E_SORG_CHIAVE_NON_CONFORME');
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ddt SET sorgente_id = -1 WHERE id = %s', (SELECT ddt_id FROM _bozza))),
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ddt SET sorgente_id = -1 WHERE id = %s', (SELECT ddt_id FROM _bozza))),
   'E_SORG_NOT_FOUND',
   '13) un ordine che non c''e'': E_SORG_NOT_FOUND');
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ddt SET sorgente_tipo_id = NULL WHERE id = %s', (SELECT ddt_id FROM _bozza))),
-  '23514 chk_ddt_sorgente_forma',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ddt SET sorgente_tipo_id = NULL WHERE id = %s', (SELECT ddt_id FROM _bozza))),
+  'chk_ddt_sorgente_forma',
   '14) la chiave senza il tipo, sulla bolla: il CHECK di forma');
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.resi SET sorgente_id = NULL WHERE id = %s', (SELECT reso_id FROM _reso_bozza))),
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.resi SET sorgente_id = NULL WHERE id = %s', (SELECT reso_id FROM _reso_bozza))),
   'E_SORG_CHIAVE_NON_CONFORME',
   '15) il reso col tipo e senza chiave: E_SORG_CHIAVE_NON_CONFORME (un reso ha sempre una provenienza)');
 
@@ -202,7 +187,7 @@ SELECT is(
 -- IL LOCK FUORI BOZZA
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ddt SET sorgente_id = %s WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ddt SET sorgente_id = %s WHERE id = %s',
                        (SELECT ordine_id FROM _bozza), (SELECT ddt_id FROM _ddt))),
   'E_DOC_SORGENTE_FUORI_BOZZA',
   '16) sulla bolla consegnata la provenienza non cambia: E_DOC_SORGENTE_FUORI_BOZZA');
@@ -234,7 +219,7 @@ SELECT is_empty(
 -- ============================================================
 -- L'ordine esiste e il guard unico lo accetterebbe: e' il tipo che il reso non ammette.
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.resi SET sorgente_tipo_id = %s, sorgente_id = %s WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.resi SET sorgente_tipo_id = %s, sorgente_id = %s WHERE id = %s',
                        (SELECT t_ord FROM _t), (SELECT ordine_id FROM _ddt), (SELECT reso_id FROM _reso_bozza))),
   'E_RESO_SORGENTE_NON_DDT',
   '20) il reso che dichiara l''ordine al posto della bolla: E_RESO_SORGENTE_NON_DDT');

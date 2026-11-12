@@ -24,6 +24,8 @@ DECLARE
   v_new_attivo   boolean;
   -- il valore della colonna referenziata: la nomina il montaggio, testo
   v_ref_val      text;
+  -- La riga del padre ha il ritiro (obsoleto_dal)? Un interruttore, nessuna colonna lo rispecchia.
+  v_si_ritira    boolean;
 BEGIN
   /*
     Scopo
@@ -119,13 +121,22 @@ BEGIN
   END IF;
 
   IF v_f.presenti THEN
-    -- Due codici perche' i rimedi sono due: con la colonna attivo le
-    -- figlie si disattivano, senza si tolgono. La frase sta a catalogo,
-    -- senza valori: i dati viaggiano nel contesto del diario.
+    -- ⭐ Una voce che ha il ritiro (la colonna obsoleto_dal) e che altri
+    --   nominano non si spegne: si ritira. Il rimedio e' la data di
+    --   ritiro, non le figlie, e il rifiuto lo dice, col campo sulla data.
+    --   La colonna si legge dalla riga che il trigger ha gia': nessuna
+    --   query in piu', e vale per ogni tabella col ritiro, anche futura.
+    v_si_ritira := jsonb_exists(v_vecchia, 'obsoleto_dal');
+
+    -- Senza ritiro, due codici perche' i rimedi sono due: con la colonna
+    -- attivo le figlie si disattivano, senza si tolgono. La frase sta a
+    -- catalogo, senza valori: i dati viaggiano nel contesto del diario.
     PERFORM script.fn_log_and_raise_error(
       'database',
       TG_NAME,
-      CASE WHEN v_f.figlia_attivo_col IS NOT NULL
+      CASE WHEN v_si_ritira
+           THEN 'E_ATTIVO_BLOCK_SI_RITIRA'
+           WHEN v_f.figlia_attivo_col IS NOT NULL
            THEN 'E_ATTIVO_BLOCK_CHILDREN_ACTIVE'
            ELSE 'E_ATTIVO_BLOCK_CHILDREN_EXIST'
       END,
@@ -137,7 +148,8 @@ BEGIN
         'fk_col',           v_g.fk_col,
         'child_attivo_col', v_f.figlia_attivo_col,
         'child_has_attivo', v_f.figlia_attivo_col IS NOT NULL,
-        'campo',            v_g.stato_col
+        'campo',            CASE WHEN v_si_ritira THEN 'obsoleto_dal'
+                                 ELSE v_g.stato_col END
       ),
       NULL::uuid,
       VARIADIC ARRAY[]::text[]
@@ -149,7 +161,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children()
-IS 'Trigger function ATTIVO/BLOCK, montata dal generatore dbops.fn_run_automations_attivo come BEFORE UPDATE OF <attivo> sul padre: impedisce la disattivazione (attivo da TRUE a FALSE) se esistono righe figlie collegate. Se la figlia ha la colonna attivo contano solo le figlie attive e il rifiuto e'' E_ATTIVO_BLOCK_CHILDREN_ACTIVE (rimedio: disattivarle); se non ce l''ha conta ogni riga e il rifiuto e'' E_ATTIVO_BLOCK_CHILDREN_EXIST (rimedio: toglierle). Le due frasi non nominano tabelle e non portano bersaglio: padre, figlia, colonna FK, colonna referenziata e suo valore stanno nel contesto del diario. TG_ARGV, tutti obbligatori, nella grammatica di dbops.fn_trigger_attivo_argomenti: figlia_schema, figlia_tabella, fk_col, ref_col (la colonna del padre referenziata dalla FK, anche una UNIQUE non primaria), stato_col (la colonna attivo del padre, con l''override di dbops.automation_overrides_cols). Un montaggio fuori grammatica, o che nomina una colonna che il padre non ha, solleva E_ATTIVO_BLOCK_ARGS; una figlia o una colonna FK che non esiste, E_ATTIVO_BLOCK_FKCOL_NOT_FOUND. Le figlie le cerca dbops.fn_trigger_figlie_presenti, fuori dalla row security: che un padre sia usato non dipende da chi guarda. Con la colonna referenziata NULL nessuna figlia puo'' riferirla: registra E_ATTIVO_BLOCK_REF_NULL in dbops.error_log e lascia passare.';
+IS 'Trigger function ATTIVO/BLOCK, montata dal generatore dbops.fn_run_automations_attivo come BEFORE UPDATE OF <attivo> sul padre: impedisce la disattivazione (attivo da TRUE a FALSE) se esistono righe figlie collegate. Se il padre ha il ritiro (la colonna obsoleto_dal) il rifiuto e'' E_ATTIVO_BLOCK_SI_RITIRA, col campo obsoleto_dal: una voce che altri nominano non si spegne, si ritira con una data di ritiro, e smette di essere proposta per un uso nuovo. Senza ritiro: se la figlia ha la colonna attivo contano solo le figlie attive e il rifiuto e'' E_ATTIVO_BLOCK_CHILDREN_ACTIVE (rimedio: disattivarle); se non ce l''ha conta ogni riga e il rifiuto e'' E_ATTIVO_BLOCK_CHILDREN_EXIST (rimedio: toglierle). Le frasi non nominano tabelle e non portano bersaglio: padre, figlia, colonna FK, colonna referenziata e suo valore stanno nel contesto del diario. TG_ARGV, tutti obbligatori, nella grammatica di dbops.fn_trigger_attivo_argomenti: figlia_schema, figlia_tabella, fk_col, ref_col (la colonna del padre referenziata dalla FK, anche una UNIQUE non primaria), stato_col (la colonna attivo del padre, con l''override di dbops.automation_overrides_cols). Un montaggio fuori grammatica, o che nomina una colonna che il padre non ha, solleva E_ATTIVO_BLOCK_ARGS; una figlia o una colonna FK che non esiste, E_ATTIVO_BLOCK_FKCOL_NOT_FOUND. Le figlie le cerca dbops.fn_trigger_figlie_presenti, fuori dalla row security: che un padre sia usato non dipende da chi guarda. Con la colonna referenziata NULL nessuna figlia puo'' riferirla: registra E_ATTIVO_BLOCK_REF_NULL in dbops.error_log e lascia passare.';
 ```
 
 </div>

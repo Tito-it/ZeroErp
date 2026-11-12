@@ -120,17 +120,6 @@ CREATE TRIGGER trg_prov_testo_a10_guard_sorgente_ins_upd BEFORE INSERT OR UPDATE
 CREATE TRIGGER trg_prov_boh_a10_guard_sorgente_ins_upd BEFORE INSERT OR UPDATE ON pg_temp._prov_boh
     FOR EACH ROW EXECUTE FUNCTION script.trgfn_guard_sorgente('BOH');
 
--- Il codice dell'errore sollevato (il canale CONSTRAINT dell'eccezione).
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text)
-RETURNS text AS $fn$
-DECLARE v_codice text;
-BEGIN
-  EXECUTE p_sql;
-  RETURN 'NESSUN ERRORE';
-EXCEPTION WHEN OTHERS THEN
-  GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME;
-  RETURN COALESCE(NULLIF(v_codice, ''), SQLSTATE);
-END $fn$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION pg_temp.messaggio_errore(p_sql text)
 RETURNS text AS $fn$
@@ -156,71 +145,71 @@ SELECT lives_ok(pg_temp.ins('_prov', NULL, NULL, NULL, NULL, NULL),
 SELECT lives_ok(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, NULL, NULL),
     '2) la bolla con sorgente_id: passa');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), NULL, (SELECT ddt1_uid FROM _b), NULL, NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), NULL, (SELECT ddt1_uid FROM _b), NULL, NULL)),
     'E_SORG_CHIAVE_NON_CONFORME',
     '3) la bolla con sorgente_uid (il tipo dice id) -> E_SORG_CHIAVE_NON_CONFORME');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), (SELECT ddt1_uid FROM _b), NULL, NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), (SELECT ddt1_uid FROM _b), NULL, NULL)),
     'E_SORG_CHIAVE_NON_CONFORME',
     '4) la bolla con tutte e due le chiavi -> E_SORG_CHIAVE_NON_CONFORME');
 
 SELECT lives_ok(pg_temp.ins('_prov', (SELECT prev FROM _t), NULL, (SELECT preventivo_uid FROM _p), NULL, NULL),
     '5) il preventivo con sorgente_uid: passa');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT prev FROM _t), (SELECT preventivo_id FROM _p), NULL, NULL, NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT prev FROM _t), (SELECT preventivo_id FROM _p), NULL, NULL, NULL)),
     'E_SORG_CHIAVE_NON_CONFORME',
     '6) il preventivo con sorgente_id (il tipo dice uid) -> E_SORG_CHIAVE_NON_CONFORME');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), -1, NULL, NULL, NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), -1, NULL, NULL, NULL)),
     'E_SORG_NOT_FOUND',
     '7) una bolla che non c''e'' -> E_SORG_NOT_FOUND');
 
 SELECT lives_ok(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, (SELECT r1 FROM _b), NULL),
     '8) la bolla e una sua riga: passa');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, (SELECT r3 FROM _b), NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, (SELECT r3 FROM _b), NULL)),
     'E_SORG_RIGA_NON_DEL_DOCUMENTO',
     '9) la bolla e la riga di un''altra bolla -> E_SORG_RIGA_NON_DEL_DOCUMENTO');
 
 SELECT lives_ok(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, (SELECT r1 FROM _b), (SELECT prel1 FROM _b)),
     '10) la bolla, la riga e un suo prelievo: passa');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, (SELECT r2 FROM _b), (SELECT prel1 FROM _b))),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, (SELECT r2 FROM _b), (SELECT prel1 FROM _b))),
     'E_SORG_DETTAGLIO_NON_DELLA_RIGA',
     '11) la riga 2 col prelievo della riga 1 -> E_SORG_DETTAGLIO_NON_DELLA_RIGA');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, NULL, (SELECT prel1 FROM _b))),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, NULL, (SELECT prel1 FROM _b))),
     'E_SORG_LIVELLO_NON_PREVISTO',
     '12) un prelievo senza la sua riga -> E_SORG_LIVELLO_NON_PREVISTO');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT prev FROM _t), NULL, (SELECT preventivo_uid FROM _p), (SELECT preventivo_riga_id FROM _p), 1)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT prev FROM _t), NULL, (SELECT preventivo_uid FROM _p), (SELECT preventivo_riga_id FROM _p), 1)),
     'E_SORG_LIVELLO_NON_PREVISTO',
     '13) il preventivo con un dettaglio (il tipo non ne ha) -> E_SORG_LIVELLO_NON_PREVISTO');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov', (SELECT consumi FROM _t), -1, NULL, 1, NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov', (SELECT consumi FROM _t), -1, NULL, 1, NULL)),
     'E_SORG_LIVELLO_NON_PREVISTO',
     '14) un tipo senza righe con una riga, documento inesistente: parla la forma (E_SORG_LIVELLO_NON_PREVISTO)');
 
 -- 15) UPDATE in un'istruzione sola, della sola riga
 INSERT INTO pg_temp._prov (sorgente_tipo_id, sorgente_id, sorgente_riga)
 SELECT (SELECT ddt FROM _t), ddt1, r2 FROM _b;
-SELECT is(pg_temp.codice_errore(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
         'UPDATE pg_temp._prov SET sorgente_riga = %s WHERE sorgente_riga = %s',
         (SELECT r3 FROM _b), (SELECT r2 FROM _b))),
     'E_SORG_RIGA_NON_DEL_DOCUMENTO',
     '15) UPDATE della sola sorgente_riga verso la riga di un''altra bolla -> E_SORG_RIGA_NON_DEL_DOCUMENTO');
 
 -- ===== livello RIGA =====
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov_riga', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, NULL, NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov_riga', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, NULL, NULL)),
     'E_SORG_LIVELLO_MANCANTE',
     '16) livello RIGA, la bolla senza riga -> E_SORG_LIVELLO_MANCANTE');
 
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov_riga', (SELECT consumi FROM _t), -1, NULL, NULL, NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov_riga', (SELECT consumi FROM _t), -1, NULL, NULL, NULL)),
     'E_SORG_NOT_FOUND',
     '17) livello RIGA, un tipo senza righe: il minimo si ferma ai livelli del tipo (E_SORG_NOT_FOUND, non il livello)');
 
 -- ===== livello DETTAGLIO =====
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov_dett', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, (SELECT r1 FROM _b), NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov_dett', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, (SELECT r1 FROM _b), NULL)),
     'E_SORG_LIVELLO_MANCANTE',
     '18) livello DETTAGLIO, la bolla con la riga e senza prelievo -> E_SORG_LIVELLO_MANCANTE');
 
@@ -228,11 +217,11 @@ SELECT lives_ok(pg_temp.ins('_prov_dett', (SELECT prev FROM _t), NULL, (SELECT p
     '19) livello DETTAGLIO, il preventivo con la riga (il tipo non ha dettaglio): passa');
 
 -- ===== argomenti e forma =====
-SELECT is(pg_temp.codice_errore(pg_temp.ins('_prov_boh', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, NULL, NULL)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.ins('_prov_boh', (SELECT ddt FROM _t), (SELECT ddt1 FROM _b), NULL, NULL, NULL)),
     'E_SORG_CONF',
     '20) un guard montato con argomenti fuori grammatica -> E_SORG_CONF');
 
-SELECT is(pg_temp.codice_errore(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
         'INSERT INTO pg_temp._prov_testo (sorgente_tipo_id, sorgente_uid) VALUES (%s, %L)',
         (SELECT prev FROM _t), 'PRV-0001')),
     'E_SORG_FORMATO',

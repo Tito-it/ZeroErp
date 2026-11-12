@@ -55,21 +55,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(22);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- ============================================================
 -- LA FORMA
 -- ============================================================
@@ -197,7 +182,7 @@ SELECT is(
   '8) l''ordine passato per id in testo: lo stesso link, idempotente');
 
 SELECT is(
-  pg_temp.esito(format('SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L)',
+  dbops.fn_pgtap_codice_errore(format('SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L)',
                        pg_temp.comm('M2'), (SELECT t_ord FROM _t), (SELECT ordine_uid::text FROM _or))),
   'E_COMMESSA_SORGENTE_ALTRA_COMMESSA',
   '9) l''ordine su una seconda commessa aperta: rifiutato');
@@ -227,8 +212,8 @@ CREATE TEMP TABLE _m2 AS
 SELECT coalesce(vendite.fn_commessa_viva_di_sorgente(t.t_ord, o.ordine_id, o.ordine_uid)::text, 'nessuna') AS prima
   FROM _t t, _or o;
 ALTER TABLE _m2 ADD COLUMN link text;
-UPDATE _m2 SET link = pg_temp.esito(format('SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L)',
-                                           pg_temp.comm('M2'), (SELECT t_ord FROM _t), (SELECT ordine_uid::text FROM _or)));
+UPDATE _m2 SET link = COALESCE(dbops.fn_pgtap_codice_errore(format('SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L)',
+                                           pg_temp.comm('M2'), (SELECT t_ord FROM _t), (SELECT ordine_uid::text FROM _or))), 'PASSA');
 
 SELECT is(
   (SELECT concat_ws('|', m.prima, m.link,
@@ -241,7 +226,7 @@ SELECT is(
 -- IL GUARD UNICO (scritture a mano: la porta non le produce)
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
        VALUES (%s, %s, %L, 'COLLEGATO')$q$,
     pg_temp.comm('M3'), (SELECT t_ord FROM _t), (SELECT ordine_uid FROM _or))),
@@ -249,7 +234,7 @@ SELECT is(
   '12) l''uid dell''ordine in sorgente_uid: non e'' la chiave del suo tipo');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
        VALUES (%s, %s, %s, 'COLLEGATO')$q$,
     pg_temp.comm('M3'), (SELECT t_ord FROM _t), (SELECT max(id) + 1000000 FROM vendite.ordini))),
@@ -257,7 +242,7 @@ SELECT is(
   '13) un ordine che non c''e'': rifiutato');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link)
        VALUES (%s, %s, %s, %L, 'COLLEGATO')$q$,
     pg_temp.comm('M3'), (SELECT t_ord FROM _t), (SELECT ordine_id FROM _or), (SELECT ordine_uid FROM _or))),
@@ -265,14 +250,14 @@ SELECT is(
   '14) tutte e due le chiavi del documento: rifiutato dal guard, prima del CHECK di forma');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$UPDATE vendite.commesse_sorgenti SET sorgente_riga = %s WHERE id = %s$q$,
     (SELECT preventivo_riga_id FROM _pv WHERE k = 'A'), (SELECT link_id FROM _link WHERE k = 'PREV'))),
-  'PASSA',
+  NULL,
   '15) la riga del preventivo sul suo link: passa');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$UPDATE vendite.commesse_sorgenti SET sorgente_riga = %s WHERE id = %s$q$,
     (SELECT preventivo_riga_id FROM _pv WHERE k = 'B'), (SELECT link_id FROM _link WHERE k = 'PREV'))),
   'E_SORG_RIGA_NON_DEL_DOCUMENTO',
@@ -291,7 +276,7 @@ SELECT ok(
 -- IL FLAG DI CORSIA
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$UPDATE vendite.ordini SET fatturazione_immediata = NOT fatturazione_immediata WHERE id = %s$q$,
     (SELECT ordine_id FROM _or))),
   'E_FATT_IMMEDIATA_NON_MODIFICABILE',
@@ -301,7 +286,7 @@ SELECT is(
 -- LA CANCELLAZIONE (BLOCCA)
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format($q$DELETE FROM vendite.ordini WHERE id = %s$q$, (SELECT ordine_id FROM _or))),
+  dbops.fn_pgtap_codice_errore(format($q$DELETE FROM vendite.ordini WHERE id = %s$q$, (SELECT ordine_id FROM _or))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '19) l''ordine collegato a una commessa non si cancella, anche in bozza');
 

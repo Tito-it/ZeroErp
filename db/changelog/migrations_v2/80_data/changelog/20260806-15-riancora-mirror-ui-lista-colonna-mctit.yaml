@@ -37,6 +37,16 @@
 #   non la si rigenera dall'intestazione del CSV, cosi' una colonna nuova non
 #   entra nel mirror per sbaglio.
 #
+# ⭐ REV 2026-11-12 — `nullValue: "NULL"` (brief-db-lista-colonna-campo-sorgente-null).
+#   Con `nullValue: ""` Liquibase scriveva la cella vuota come stringa vuota
+#   sulle colonne STRING: «nessuna sorgente», «nessun formato», «nessun gruppo»
+#   arrivavano come '' dal seed e come NULL dal pannello. Per il modello
+#   l'assenza e' NULL: nel CSV le celle vuote delle colonne nullable portano ora
+#   il token `NULL` (anche le NUMERIC larghezza_default e gruppo_ordine, che col
+#   token nuovo non accetterebbero la cella vuota). Restano vuote le 4 celle di
+#   `etichetta`, NOT NULL. I CHECK che vietano la stringa vuota sulle cinque
+#   colonne testo stanno in 90_end/20261112-30, dopo questo mirror.
+#
 # ⚠️ La sede della configurazione delle liste e' il CSV
 #   `80_data/sql/ui/lista_colonna.csv`: nessun UPDATE nuovo su questa tabella.
 # ------------------------------------------------------------
@@ -71,7 +81,7 @@ databaseChangeLog:
             schemaName: ui
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id,               type: NUMERIC }

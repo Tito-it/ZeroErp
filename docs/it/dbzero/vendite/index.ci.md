@@ -215,7 +215,6 @@ search:
 - [fn_get_tipo_utenza_fornitura](manual/fn_get_tipo_utenza_fornitura.md) — (latest review 30-08-2026)
 - [fn_get_totale_fondi_fattura](manual/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](manual/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
-- [fn_get_vendite_note](manual/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
 - [fn_guard_lotto_fatture_stato_coerente](manual/fn_guard_lotto_fatture_stato_coerente.md) — (rev 2026-10-24 — funzione rev 2026-10-24, R-1)
 - [fn_imposta_data_documento_lotto](manual/fn_imposta_data_documento_lotto.md) — **Dichiara la data documento di un lotto** — l'atto che l'operatore compie davvero: *«questo lotto lo dato al 31 luglio»*.
 - [fn_libera_attivita_fatturabili](manual/fn_libera_attivita_fatturabili.md) — (latest review 26-08-2026)
@@ -458,6 +457,7 @@ search:
 - [vw_lotti_gruppi_azioni](manual/vw_lotti_gruppi_azioni.md)
 - [vw_lotti_gruppi_serviti](manual/vw_lotti_gruppi_serviti.md) — **Quali gruppi fatturabili un lotto ha davvero servito.** Una riga per ogni combinazione (lotto, gruppo, commessa) per cui esiste almeno un'attività finita su una riga di fattura di quel lotto, con quante attività e quante fatture.
 - [vw_lotti_segnalazioni_summary](manual/vw_lotti_segnalazioni_summary.md) — (latest review 19-09-2026)
+- [vw_note](manual/vw_note.md) — La proiezione di una nota di vendite: una riga per nota, di ogni partizione, con le colonne della nota e la decodifica dello stile e della lingua. Ha le stesse colonne, nello stesso ordine, delle viste delle note delle altre sedi: la forma comune è spiegata in [catalogo.vw_note](/dbzero/catalogo/views/vw_note).
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](manual/vw_ordini_lista.md) — `vendite.vw_ordini_lista` è la vista canonica che alimenta la lista ordini di vendita configurabile e il dettaglio dell'ordine: la testata con le decodifiche denormalizzate e la provenienza leggibile.
 - [vw_ordini_riepilogo_iva_dettaglio](manual/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)

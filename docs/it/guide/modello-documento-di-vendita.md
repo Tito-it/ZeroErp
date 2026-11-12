@@ -1,6 +1,6 @@
 # Guida — Il modello del documento di vendita
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: chi lavora su un documento di vendita o d'acquisto — sviluppatori database,
 > backend, frontend e analisti funzionali. Prima di cambiare come un documento nasce, cambia stato,
@@ -172,6 +172,12 @@ Ogni riga della matrice **dichiara** se è manuale o di processo: una riga senza
 si scrive, perché chi la leggeva da sé l'avrebbe interpretata in due modi diversi. Per la stessa
 ragione una condizione sul tipo di lotto sta solo sui passaggi di processo: un passaggio manuale vale
 per ogni lotto, così la lista e il dettaglio propongono gli stessi bottoni.
+
+⚠️ **Dove sta un guard di transizione.** Sta sulla **destinazione** quando protegge chi consuma lo
+stato senza sapere da dove si arriva; sta sulla **coppia** di uscita dalla bozza quando protegge un
+atto dell'operatore. Prima di scegliere si leggono dalla matrice i passaggi di processo che entrano
+nello stato di arrivo: una regola sulla destinazione fermerebbe anche quei rientri, e con loro
+l'annullamento che li provoca.
 
 **Lo stato che il documento ha già.** Chiedere al verbo lo stato in cui il documento si trova (un
 secondo «Emetti», la stessa conferma inviata due volte) non è un passaggio: la matrice non ha la riga

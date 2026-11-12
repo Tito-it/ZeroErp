@@ -17,7 +17,7 @@ search:
 - [ordini_righe_fulfillment](tabelle/ordini_righe_fulfillment.md) — (rev 2026-08-21)
 
 ## ⚙️ Funzioni
-- [fn_get_acquisti_note](funzioni/fn_get_acquisti_note.md) — (rev 2026-08-21)
 - [trgfn_acq_ordini_only_consegna_tipo_con](funzioni/trgfn_acq_ordini_only_consegna_tipo_con.md) — (rev 2026-08-21)
 
 ## 🔍 Views
+- [vw_note](views/vw_note.md) — La proiezione di una nota di acquisti: una riga per nota, di ogni partizione, con le colonne della nota e la decodifica dello stile e della lingua. Ha le stesse colonne, nello stesso ordine, delle viste delle note delle altre sedi: la forma comune è spiegata in [catalogo.vw_note](/dbzero/catalogo/views/vw_note).

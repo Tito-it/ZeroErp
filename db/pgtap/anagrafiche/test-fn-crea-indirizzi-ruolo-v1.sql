@@ -47,16 +47,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(18);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.colonna_errore(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -202,7 +192,7 @@ SELECT ok(
 -- I rifiuti
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo(
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo(
         (SELECT sr_id FROM t_sr), '[{"tipo_indirizzo_codice_interno": "PGTAP-NON-ESISTE", "indirizzo_libero": "x"}]'::jsonb)$$),
     'E_TIPO_INDIRIZZO_NON_TROVATO',
     '11. tipo inesistente: E_TIPO_INDIRIZZO_NON_TROVATO');
@@ -214,23 +204,23 @@ SELECT is(
     '12. ... col campo sul canale COLUMN');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo(
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo(
         (SELECT sr_id FROM t_sr), '[{"tipo_indirizzo_id": 1, "descrizione": "x"}]'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '13. chiave estranea: E_CAMPO_NON_AMMESSO');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo((SELECT sr_id FROM t_sr), '[1]'::jsonb)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo((SELECT sr_id FROM t_sr), '[1]'::jsonb)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '14. un elemento che non e'' un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo((SELECT sr_id FROM t_sr), '{}'::jsonb)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo((SELECT sr_id FROM t_sr), '{}'::jsonb)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '15. indirizzi che non sono un elenco: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo(-1, '[]'::jsonb)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo(-1, '[]'::jsonb)$$),
     'E_SOGGETTO_RUOLO_NON_TROVATO',
     '16. ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO');
 

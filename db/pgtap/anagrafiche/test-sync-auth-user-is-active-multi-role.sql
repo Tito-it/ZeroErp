@@ -382,21 +382,11 @@ END;
 --    chk_identita_digitali_ruolo_non_ritirato; il codice viaggia nel
 --    canale CONSTRAINT_NAME dell'eccezione P0001.
 -- =========================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 SELECT CASE
     WHEN (SELECT case_cli_ready FROM _t_setup)
     THEN is(
-        pg_temp.codice_errore(format(
+        dbops.fn_pgtap_codice_errore(format(
             $$UPDATE anagrafiche.identita_digitali
                  SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
                WHERE id = %s$$,

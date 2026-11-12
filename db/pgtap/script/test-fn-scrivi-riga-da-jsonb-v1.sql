@@ -60,16 +60,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(27);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.sqlstate_di(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -184,13 +174,13 @@ SELECT is(
 -- ============================================================
 -- Chiamata malformata
 -- ============================================================
-SELECT is(pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb(NULL, '{}'::jsonb)$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb(NULL, '{}'::jsonb)$$),
           'E_SCRIPT_CHIAMATA_NON_VALIDA', '12. tabella NULL: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
-SELECT is(pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass, '[1]'::jsonb)$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass, '[1]'::jsonb)$$),
           'E_SCRIPT_CHIAMATA_NON_VALIDA', '13. dati che non sono un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
-SELECT is(pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass, '{"qta": 1}'::jsonb, '{}'::jsonb)$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass, '{"qta": 1}'::jsonb, '{}'::jsonb)$$),
           'E_SCRIPT_CHIAMATA_NON_VALIDA', '14. chiave di riga vuota: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 -- ============================================================
@@ -253,13 +243,13 @@ SELECT is(
     '23. INSERT riletta per la chiave: la riga col DEFAULT e l''id');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass,
+    dbops.fn_pgtap_codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass,
         '{"codice": "SENZA_CHIAVE"}'::jsonb, NULL, ARRAY['qta'])$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '24. una colonna della chiave assente dai dati: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass,
+    dbops.fn_pgtap_codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass,
         '{"nota": "x"}'::jsonb, '{"codice": "A"}'::jsonb, ARRAY['codice'])$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '25. rilettura con p_dove (un UPDATE): E_SCRIPT_CHIAMATA_NON_VALIDA');
@@ -280,7 +270,7 @@ SELECT is(
     '26. il perche'': sotto una policy che non lascia vedere la riga, il RETURNING muore (42501)');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_cieca'::regclass,
+    dbops.fn_pgtap_codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_cieca'::regclass,
         '{"codice": "R2"}'::jsonb, NULL, ARRAY['codice'])$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '27. ... e la rilettura dice che la riga non si vede, non un NULL muto');

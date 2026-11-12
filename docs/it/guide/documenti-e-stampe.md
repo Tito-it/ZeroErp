@@ -1,6 +1,6 @@
 # Guida — Documenti e Stampe
 
-> **Ultimo aggiornamento**: 20 ottobre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, operatori configuratori.
 >
@@ -209,6 +209,12 @@ preparato dal backend, e usa le variabili con la sintassi dei template (Jinja2).
 
 Il modello **non interroga mai il database**: riceve solo i dati già preparati. Niente logica
 nascosta nel layout, e la generazione è riproducibile.
+
+⚠️ **Un campo vuoto non sempre tace in stampa.** Un blocco condizionale omette il campo vuoto; un
+valore di ripiego (`campo or "…"`) stampa invece un'**affermazione** al suo posto, come «Mezzo
+proprio» per un vettore non indicato. Prima di decidere che un documento generato «non eredita» un
+campo si legge come il modello rende il vuoto: il confronto vero può essere fra due affermazioni,
+non fra pieno e vuoto.
 
 La **fattura** non legge i dati «vivi»: intestazione delle due parti e indirizzo arrivano dai
 valori congelati sul documento quando è nata. Cambiando l'anagrafica e ristampando, il PDF della

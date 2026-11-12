@@ -38,16 +38,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(9);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.corpo(p regprocedure) RETURNS text
 LANGUAGE sql AS $$
@@ -102,13 +92,13 @@ SELECT is(
 -- I rifiuti del BB
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_veste_portale(
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_veste_portale(
         (SELECT au2 FROM t_u), (SELECT sr_cl FROM t_m), 'OPERATORE', true)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '5. la veste OPERATORE: E_SCRIPT_CHIAMATA_NON_VALIDA (ha le sue madri)');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_veste_portale(
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_veste_portale(
         (SELECT au2 FROM t_u), (SELECT sr_cl FROM t_m), 'CLIENTE_PORTALE', NULL)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '6. attivo NULL: E_SCRIPT_CHIAMATA_NON_VALIDA (nessun default)');
@@ -117,7 +107,7 @@ SELECT is(
 -- I guard della tabella, attraverso il BB
 -- ============================================================
 SELECT isnt(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_veste_portale(
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_veste_portale(
         (SELECT au2 FROM t_u), (SELECT sr_fo FROM t_m), 'CLIENTE_PORTALE', false)$$),
     NULL,
     '7. il portale clienti su un ruolo fornitore: lo rifiuta il guard di coerenza');

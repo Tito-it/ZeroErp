@@ -58,18 +58,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(23);
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- ============================================================
 -- Forma e porta
@@ -106,12 +94,12 @@ SELECT is(
     '1|t',
     '4. l''ambiente e'' dichiarato: una riga, un valore del vocabolario');
 
--- ⚠️ Il lettore che decide si chiama dentro pg_temp.codice_errore: su un
+-- ⚠️ Il lettore che decide si chiama dentro dbops.fn_pgtap_codice_errore: su un
 --   database non dichiarato solleva, e una eccezione nuda fermerebbe il file
 --   (gli altri test non girerebbero). Lo stato «non dichiarato» lo dice il 4.
 SELECT is(
     format('%s|%s',
-           COALESCE(pg_temp.codice_errore($$SELECT script.fn_ambiente_installazione()$$), 'nessun errore'),
+           COALESCE(dbops.fn_pgtap_codice_errore($$SELECT script.fn_ambiente_installazione()$$), 'nessun errore'),
            (SELECT script.fn_ambiente_installazione()
              WHERE script.fn_ambiente_dichiarato() IS NOT NULL)
                IS NOT DISTINCT FROM script.fn_ambiente_dichiarato()),
@@ -124,13 +112,13 @@ SELECT is_empty($$SELECT * FROM dbops.vw_ambiente_non_dichiarato$$,
 -- ============================================================
 -- ⛔ Immutabile
 -- ============================================================
-SELECT is(pg_temp.codice_errore($$UPDATE dbops.installazione SET ambiente = ambiente$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$UPDATE dbops.installazione SET ambiente = ambiente$$),
           'E_AMBIENTE_IMMUTABILE', '7. UPDATE, anche allo stesso valore: E_AMBIENTE_IMMUTABILE');
 
-SELECT is(pg_temp.codice_errore($$DELETE FROM dbops.installazione$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$DELETE FROM dbops.installazione$$),
           'E_AMBIENTE_IMMUTABILE', '8. DELETE: E_AMBIENTE_IMMUTABILE');
 
-SELECT is(pg_temp.codice_errore($$TRUNCATE dbops.installazione$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$TRUNCATE dbops.installazione$$),
           'E_AMBIENTE_IMMUTABILE', '9. TRUNCATE: E_AMBIENTE_IMMUTABILE');
 
 SELECT throws_ok(
@@ -165,13 +153,13 @@ DELETE FROM dbops.processi_accensione a
 SELECT is(script.fn_ambiente_dichiarato(), NULL::text,
           '12. fn_ambiente_dichiarato(): NULL, non dichiarato');
 
-SELECT is(pg_temp.codice_errore($$SELECT script.fn_ambiente_installazione()$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT script.fn_ambiente_installazione()$$),
           'E_CONFIG_MANCANTE', '13. fn_ambiente_installazione(): E_CONFIG_MANCANTE, nessun ripiego (R-1)');
 
 SELECT is((SELECT v.database_nome FROM dbops.vw_ambiente_non_dichiarato v), current_database()::text,
           '14. il presidio ha una riga, col nome del database');
 
-SELECT is(pg_temp.codice_errore($$SELECT maintenance.fn_sveglia_accesa('smoke_notturno')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT maintenance.fn_sveglia_accesa('smoke_notturno')$$),
           'E_CONFIG_MANCANTE', '15. la sveglia di uno spegnibile senza scelta: E_CONFIG_MANCANTE');
 
 SELECT is(maintenance.fn_sveglia_accesa('listen_permessi'), true,

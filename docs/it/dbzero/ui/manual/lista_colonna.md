@@ -10,6 +10,8 @@
 >
 > [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente)
 
+> **Ultimo aggiornamento**: 12 novembre 2026
+
 La tabella **`ui.lista_colonna`** è il **catalogo delle colonne disponibili** per ciascuna lista configurabile. Definisce tutto ciò che una lista può mostrare: tipo dato, comportamento (filtrabile, ordinabile, esportabile), raggruppamento per la modale di personalizzazione e flag di sensibilità per il controllo accesso.
 
 ---
@@ -39,11 +41,22 @@ La tabella **`ui.lista_colonna`** è il **catalogo delle colonne disponibili** p
 |---------|-------|
 | `codice` | Chiave stabile usata nel JSONB delle preferenze (non l'`id`). Cambiarlo invalida tutte le preferenze salvate. |
 | `campo_sorgente` | Nome colonna nella view PostgreSQL. NULL per `tipo_colonna='azione'`. Validato da trigger. |
+| `ordinabile` | Il flag e la whitelist di ordinamento della lista sono **una modifica sola in due file**: si cambiano insieme, e si verifica con `scripts/gen_seed_lista.py --verifica-ordinamento <lista>`. Per le liste ordinate da una funzione del database il controllo legge la whitelist dalla doc auto-generata della funzione, e resta rosso finché la doc non è rigenerata. Nella whitelist un letterale che non è un nome di colonna si scrive in maiuscolo, o il controllo lo prende per una colonna. |
+| `attivo` | Una colonna nuova con `campo_sorgente` valorizzato, su una lista senza `vista_sql`, si semina **spenta**: finché il repository del backend non proietta quella chiave la cella sarebbe vuota, e il test della proiezione (`test_lista_proiezione_campo_sorgente`) rosso. La accende il backend nello stesso commit in cui aggiunge la chiave. Le colonne senza `campo_sorgente` (azioni, calcolate dal frontend) nascono attive. |
 | `gruppo` / `gruppo_ordine` | Raggruppamento nella modale di personalizzazione (es. "Dati anagrafici", "Dati fiscali"). |
 | `sensibile` | `TRUE`: deny-list invertita → blocco default. `FALSE`: accesso pieno salvo restrizioni. |
 | `formato` | Hint di formattazione per il frontend (es. `currency_eur`, `date_short`, `percent_2`, `yesno`). |
 | `larghezza_default` | Larghezza suggerita in pixel. Fa anche da **contributo al packing a somma** del ritiro dinamico (vedi `priorita`). |
 | `priorita` | `SMALLINT NOT NULL DEFAULT 50`. Peso di permanenza per il **ritiro dinamico** delle colonne lato FE. |
+
+### ⛔ L'assenza è `NULL`, mai la stringa vuota
+
+Su `campo_sorgente`, `etichetta_estesa`, `formato`, `gruppo` ed `etichetta_i18n_key` un valore
+che manca è `NULL`. Un `CHECK` per colonna (`chk_lista_colonna_<colonna>_non_vuoto/a`) rifiuta la
+stringa vuota, e anche quella di soli spazi. Chi legge scrive quindi `campo_sorgente IS NOT NULL`,
+senza tollerare anche `''`. Nel CSV del seed una cella senza valore porta il token `NULL`: il
+mirror dichiara `nullValue: "NULL"`, e una cella lasciata vuota arriverebbe come stringa vuota,
+che il vincolo rifiuta.
 
 ---
 

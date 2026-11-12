@@ -38,6 +38,11 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_lista_colonna_campo_sorgente_non_vuoto |  |
+| CHECK | chk_lista_colonna_etichetta_estesa_non_vuota |  |
+| CHECK | chk_lista_colonna_etichetta_i18n_key_non_vuota |  |
+| CHECK | chk_lista_colonna_formato_non_vuoto |  |
+| CHECK | chk_lista_colonna_gruppo_non_vuoto |  |
 | CHECK | chk_ui_lista_colonna_azione_non_esportabile |  |
 | CHECK | chk_ui_lista_colonna_priorita_non_negativa |  |
 | FOREIGN KEY | fk_lista_colonna_lista_definizione | lista_id |

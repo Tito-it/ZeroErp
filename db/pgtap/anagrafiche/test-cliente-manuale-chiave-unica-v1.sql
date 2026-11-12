@@ -84,19 +84,6 @@ BEGIN;
 
 SELECT plan(29);
 
--- Il codice di dominio di un errore (canale CONSTRAINT su P0001); per gli
--- altri errori SQLSTATE e vincolo. NULL se non solleva.
-CREATE OR REPLACE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' THEN v_c ELSE v_s || ' ' || coalesce(v_c, '') END;
-END $$;
-
 -- La frase dell'errore. NULL se non solleva.
 CREATE OR REPLACE FUNCTION pg_temp.frase(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -229,7 +216,7 @@ SELECT ok(
 -- ============================================================
 -- 1-7) La chiave
 -- ============================================================
-SELECT is(pg_temp.esito(pg_temp.cliente_sql('c1', 'AT', 'script.fn_data_operativa() - 30')),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('c1', 'AT', 'script.fn_data_operativa() - 30')),
           NULL, '1. C1 attivo dal giorno -30: vive');
 
 SELECT is(
@@ -241,7 +228,7 @@ SELECT is(
     (SELECT ba_codice FROM _t_ba WHERE etichetta = 'c1'),
     '2. fn_clienti_stessa_chiave restituisce C1, col codice del suo BA');
 
-SELECT is(pg_temp.esito(pg_temp.cliente_sql('sosp', 'AT', 'script.fn_data_operativa() - 10')),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('sosp', 'AT', 'script.fn_data_operativa() - 10')),
           'E_CLIENTE_STESSA_CHIAVE',
           '3. Un secondo cliente attivo con la stessa chiave: E_CLIENTE_STESSA_CHIAVE');
 
@@ -250,48 +237,48 @@ SELECT ok(
            (SELECT ba_codice FROM _t_ba WHERE etichetta = 'c1')) > 0,
     '4. La frase del rifiuto porta il codice del BA del cliente esistente (C-3)');
 
-SELECT is(pg_temp.esito(pg_temp.cliente_sql('c2', 'AT', 'script.fn_data_operativa() - 30')),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('c2', 'AT', 'script.fn_data_operativa() - 30')),
           NULL, '5. Stesso soggetto e azienda, altra utility: vive');
 
-SELECT is(pg_temp.esito(pg_temp.cliente_sql('pr', 'PR', 'NULL')),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('pr', 'PR', 'NULL')),
           NULL, '6. Un pre-contrattuale con la stessa chiave: vive (non blocca)');
 
-SELECT is(pg_temp.esito(pg_temp.cliente_sql('an', 'AN', 'NULL')),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('an', 'AN', 'NULL')),
           NULL, '7. Un annullato con la stessa chiave: vive');
 
 -- ============================================================
 -- 8-14) Il sospeso, la riattivazione, la chiusura
 -- ============================================================
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''SF'') WHERE id = %s',
     pg_temp.cid('c1'))),
     'E_CLIENTE_STATO_SENZA_DATA', '8. Sospeso senza data di sospensione: E_CLIENTE_STATO_SENZA_DATA');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''SF''), data_sospensione = script.fn_data_operativa() - 20 WHERE id = %s',
     pg_temp.cid('c1'))),
     NULL, '9. Sospeso con la data: vive');
 
-SELECT is(pg_temp.esito(pg_temp.cliente_sql('sosp', 'AT', 'script.fn_data_operativa() - 10')),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('sosp', 'AT', 'script.fn_data_operativa() - 10')),
           'E_CLIENTE_STESSA_CHIAVE',
           '10. Un attivo con la stessa chiave mentre C1 e'' sospeso: E_CLIENTE_STESSA_CHIAVE (il sospeso occupa)');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''AT'') WHERE id = %s',
     pg_temp.cid('c1'))),
     'E_CLIENTE_STATO_SENZA_DATA', '11. Riattivato senza data di riattivazione: E_CLIENTE_STATO_SENZA_DATA');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''AT''), data_riattivazione = script.fn_data_operativa() - 15 WHERE id = %s',
     pg_temp.cid('c1'))),
     NULL, '12. Riattivato con la data: vive');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''CH'') WHERE id = %s',
     pg_temp.cid('c1'))),
     'E_CLIENTE_STATO_SENZA_DATA', '13. Chiuso senza data di chiusura: E_CLIENTE_STATO_SENZA_DATA');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''CH''), data_chiusura = script.fn_data_operativa() WHERE id = %s',
     pg_temp.cid('c1'))),
     NULL, '14. Chiuso con la chiusura oggi: vive');
@@ -299,7 +286,7 @@ SELECT is(pg_temp.esito(format(
 -- ============================================================
 -- 15-16) La catena nuova
 -- ============================================================
-SELECT is(pg_temp.esito(pg_temp.cliente_sql('c6', 'AT', 'script.fn_data_operativa()')),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('c6', 'AT', 'script.fn_data_operativa()')),
           NULL, '15. Catena nuova: attivo da oggi su istanza e BA nuovi, vive');
 
 SELECT is(
@@ -311,22 +298,22 @@ SELECT is(
 -- ============================================================
 -- 17-20) Chiuso e' finale
 -- ============================================================
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''AT'') WHERE id = %s',
     pg_temp.cid('c1'))),
     'E_CLIENTE_STATO_TRANSIZIONE_INVALIDA', '17. Da chiuso ad attivo: E_CLIENTE_STATO_TRANSIZIONE_INVALIDA');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET data_chiusura = script.fn_data_operativa() + 5 WHERE id = %s',
     pg_temp.cid('c1'))),
     'E_CLIENTE_DATA_CHIUSURA_IMMUTABILE', '18. Un chiuso cambia la data di chiusura: E_CLIENTE_DATA_CHIUSURA_IMMUTABILE');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''CF'') WHERE id = %s',
     pg_temp.cid('c1'))),
     NULL, '19. Da CH a CF, stessa data: vive');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''CH'') WHERE id = %s',
     pg_temp.cid('c1'))),
     'E_CLIENTE_STATO_TRANSIZIONE_INVALIDA', '20. Da CF si esce: E_CLIENTE_STATO_TRANSIZIONE_INVALIDA');
@@ -334,7 +321,7 @@ SELECT is(pg_temp.esito(format(
 -- ============================================================
 -- 21) Il pre-contrattuale si blocca all'attivazione
 -- ============================================================
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.clienti SET stato_cliente_id = pg_temp.stato(''AT''), data_attivazione = script.fn_data_operativa() WHERE id = %s',
     pg_temp.cid('pr'))),
     'E_CLIENTE_STESSA_CHIAVE', '21. Il pre-contrattuale si attiva mentre C6 e'' attivo: E_CLIENTE_STESSA_CHIAVE');
@@ -343,15 +330,15 @@ SELECT is(pg_temp.esito(format(
 -- 22-23) Un'altra azienda, e il movimento 2
 -- ============================================================
 SET CONSTRAINTS ALL DEFERRED;
-SELECT pg_temp.esito(pg_temp.cliente_sql('c7', 'AT', 'script.fn_data_operativa()'));
+SELECT dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('c7', 'AT', 'script.fn_data_operativa()'));
 UPDATE anagrafiche.emittenti_fiscali_billing_account
    SET emittente_soggetto_ruolo_id = (SELECT ef_altro FROM _t_ef)
  WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'c7');
-SELECT is(pg_temp.esito('SET CONSTRAINTS ALL IMMEDIATE'),
+SELECT is(dbops.fn_pgtap_codice_errore('SET CONSTRAINTS ALL IMMEDIATE'),
           NULL, '22. Stesso soggetto e utility, su un BA dell''altra azienda: vive');
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.emittenti_fiscali_billing_account SET emittente_soggetto_ruolo_id = %s WHERE billing_account_id = %s',
     (SELECT ef_mio FROM _t_ef), (SELECT ba_id FROM _t_ba WHERE etichetta = 'c7'))),
     'E_CLIENTE_STESSA_CHIAVE', '23. Movimento 2: il BA torna all''azienda del mondo, doppione: E_CLIENTE_STESSA_CHIAVE');
@@ -359,10 +346,10 @@ SELECT is(pg_temp.esito(format(
 -- ============================================================
 -- 24) Movimento 3: un'istanza diventa fittizia
 -- ============================================================
-SELECT is(pg_temp.esito(pg_temp.cliente_sql('vera', 'AT', 'script.fn_data_operativa()')),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('vera', 'AT', 'script.fn_data_operativa()')),
           NULL, '24a. Un cliente attivo su un''istanza vera, stessa chiave: vive (la regola e'' fra le fittizie)');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.istanze_utilities SET fittizia = true WHERE id = %s',
     (SELECT istanza_id FROM _t_ba WHERE etichetta = 'vera'))),
     'E_CLIENTE_STESSA_CHIAVE', '24. Movimento 3: l''istanza vera diventa fittizia, doppione: E_CLIENTE_STESSA_CHIAVE');
@@ -371,14 +358,14 @@ SELECT is(pg_temp.esito(format(
 -- 25) Movimento 4: la predefinita
 -- ============================================================
 SET CONSTRAINTS ALL DEFERRED;
-SELECT pg_temp.esito(pg_temp.cliente_sql('scollegato', 'AT', 'script.fn_data_operativa()'));
+SELECT dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('scollegato', 'AT', 'script.fn_data_operativa()'));
 DELETE FROM anagrafiche.emittenti_fiscali_billing_account
  WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'scollegato');
-SELECT is(pg_temp.esito('SET CONSTRAINTS ALL IMMEDIATE'),
+SELECT is(dbops.fn_pgtap_codice_errore('SET CONSTRAINTS ALL IMMEDIATE'),
           NULL, '25a. Il cliente del BA scollegato e'' della predefinita (la terza azienda): vive');
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.emittenti_fiscali_billing_account SET emittente_soggetto_ruolo_id = %s WHERE is_default',
     (SELECT ef_mio FROM _t_ef))),
     'E_CLIENTE_STESSA_CHIAVE', '25. Movimento 4: la predefinita va sull''azienda del mondo, il cliente scollegato diventa un doppione: E_CLIENTE_STESSA_CHIAVE');

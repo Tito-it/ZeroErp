@@ -65,21 +65,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(24);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- ============================================================
 -- LA FORMA
 -- ============================================================
@@ -353,7 +338,7 @@ SELECT is(
   '18) la dashboard delle offerte: le due offerte sono transitate, all''ordine e al contratto');
 
 SELECT is(
-  pg_temp.esito(format('SELECT vendite.fn_genera_ordine_da_offerta(%s)', pg_temp.fix('off_ord'))),
+  dbops.fn_pgtap_codice_errore(format('SELECT vendite.fn_genera_ordine_da_offerta(%s)', pg_temp.fix('off_ord'))),
   'E_ORD_OFFERTA_GIA_CONVERTITA',
   '19) un secondo ordine dalla stessa offerta: E_ORD_OFFERTA_GIA_CONVERTITA, dai documenti vivi');
 
@@ -362,34 +347,34 @@ SELECT is(
 -- che ha gia' un ordine vivo. Il guard lo accetta (l'offerta c'e'), l'indice no.
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     'UPDATE vendite.ordini SET sorgente_tipo_id = %s, sorgente_id = NULL, sorgente_uid = %L WHERE id = %s',
     (SELECT t_off FROM _ref),
     (SELECT uid FROM vendite.offerte_commerciali WHERE id = pg_temp.fix('off_ord')),
     pg_temp.fix('ord_prev'))),
-  '23505 uq_ordini_v_sorgente_offerta',
+  'uq_ordini_v_sorgente_offerta',
   '20) un secondo ordine vivo che cita la stessa offerta: uq_ordini_v_sorgente_offerta');
 
 -- ============================================================
 -- IL GUARD UNICO E LA FORMA, sull'ordine dal preventivo, in bozza
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     'UPDATE vendite.ordini SET sorgente_id = %s, sorgente_uid = NULL WHERE id = %s',
     pg_temp.fix('acc'), pg_temp.fix('ord_prev'))),
   'E_SORG_CHIAVE_NON_CONFORME',
   '21) la chiave della specie sbagliata (l''id per il preventivo, che ha chiave uid): E_SORG_CHIAVE_NON_CONFORME');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     'UPDATE vendite.ordini SET sorgente_uid = gen_random_uuid() WHERE id = %s', pg_temp.fix('ord_prev'))),
   'E_SORG_NOT_FOUND',
   '22) un preventivo che non c''e'': E_SORG_NOT_FOUND');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     'UPDATE vendite.ordini SET sorgente_tipo_id = NULL WHERE id = %s', pg_temp.fix('ord_prev'))),
-  '23514 chk_ordini_sorgente_forma',
+  'chk_ordini_sorgente_forma',
   '23) la chiave senza tipo: il CHECK di forma');
 
 -- ============================================================
@@ -407,7 +392,7 @@ UPDATE vendite.ordini
 UPDATE vendite.preventivi_righe SET attivo = false WHERE preventivo_id = pg_temp.fix('bozza');
 
 SELECT is(
-  pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', pg_temp.fix('bozza'))),
+  dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s', pg_temp.fix('bozza'))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '24) il preventivo citato da un ordine non si cancella: E_SORG_ORIGINE_REFERENZIATA');
 

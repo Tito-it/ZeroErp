@@ -178,6 +178,8 @@ La caratteristica critica del registro e la **persistenza fuori transazione**: l
 
 ⚠️ Senza canale di log configurato, o con `dblink` che non risponde, la funzione emette solo un WARNING nel log del server e **la riga non nasce**: il registro non ha un ripiego in transazione. Il dettaglio è in [dbops.error_log](/dbzero/dbops/tabelle/error_log).
 
+⚠️ **Chi legge il registro distingue gli scrittori.** `area = 'backend'` è il gestore degli errori Python, il nome di uno schema è una funzione del database, e uno stesso fallimento può lasciare una riga per lato. Ci scrivono anche i test (pgTAP e suite Django), proprio perché la riga sopravvive al rollback. Prima di concludere qualcosa da un conteggio si raggruppa per `area` e funzione, e si risolvono gli id del contesto contro le tabelle: una riga il cui documento non esiste era un test.
+
 Da un punto di vista tecnico:
 
 * `id` (BIGINT, PK): chiave primaria auto-incrementale
@@ -256,6 +258,8 @@ Da un punto di vista tecnico:
 | `p_context`         | JSONB  | —       | Contesto per il debug                  |
 | `p_tx_id`           | UUID   | —       | Transazione correlata                  |
 | `VARIADIC p_valori` | TEXT[] | —       | Valori per i placeholder del messaggio |
+
+⛔ **Un messaggio senza segnaposto non autorizza a omettere l'ultimo argomento**: si passa `VARIADIC ARRAY[]::text[]`. Con cinque argomenti la firma variadica non si risolve, la chiamata risponde «la funzione non esiste» e il guard si annulla da solo, su un ramo che spesso nessun test percorre. Ogni chiamata ha quindi almeno sei argomenti, oppure la parola `VARIADIC`. Presidio: `scripts/guardrail_forme_changeset.py`, regola `log-cinque-argomenti`.
 
 > Documentazione dettagliata: [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
@@ -381,6 +385,19 @@ frase che l'operatore legge in entrambi i casi — sono in
 [Area tecnica](#area-tecnica-esempi). Nel primo il codice è registrato e la frase
 no: il messaggio è di qualità `E_GENERICO`, cioè generico per costruzione.
 
+⚠️ **Segnaposto e valori si contano.** Il messaggio è composto con `format()`: ogni `%` è seguito
+da `s` (minuscola) o da un altro `%`, e i valori passati sono tanti quanti i segnaposto. Con meno
+valori `format()` solleva `22023` e l'errore di dominio sparisce; con zero valori il segnaposto esce
+letterale; con più valori non succede niente e, se il primo non è quello atteso, esce la frase
+sbagliata. Quest'ultimo caso lo vede solo un `throws_like` sulla frase resa. La forma del
+segnaposto e l'unicità dell'`id` nel CSV le controlla `scripts/guardrail_forme_changeset.py`
+(regola `messaggi-segnaposto`); il conteggio dei valori no.
+
+⚠️ **I segnaposto li riempie `script.fn_log_and_raise_error`, e solo lei.** La frase di un codice che
+solo il backend solleva è chiusa, senza `%s`: prima di coniarne uno si guardano i fratelli della
+stessa famiglia e ci si chiede chi riempirebbe il segnaposto. Il perché si scrive nella nota del
+codice in `codici_errore.csv`.
+
 #### ⭐ Perché la regola sta qui e non altrove
 
 Perché il difetto **non si vede guardando il codice errore**. Il primo esempio usa
@@ -485,6 +502,11 @@ Un `throws_ok(..., 'P0001', ...)` **non** protegge questa regola: `P0001` dice
 posta in gioco si asserisce con `throws_like` su un frammento stabile — mai
 attraverso un segnaposto ([esempio](#area-tecnica-esempi)).
 
+Per lo stesso motivo, prima di cambiare il testo di un messaggio i test che lo
+leggono si cercano in tre passi: il nome della funzione o del trigger che solleva,
+il nome del codice, e solo per ultimo il testo. Un `throws_like` su un frammento
+non contiene la frase intera, e la ricerca per testo non lo trova.
+
 ---
 
 ### ⚠️ Le tre trappole, prese sul campo
@@ -580,6 +602,10 @@ fuori strada la diagnosi.
 **Nel dubbio, guarda il chiamante, non il nome.** Quando si aggiunge o si modifica
 un codice, la verifica è una sola riga: se passa per `fn_log_and_raise_error` deve
 iniziare per `E_`, se passa per `fn_log_error_only` per `W_`.
+
+⛔ **Un `W_` difettoso si corregge, non si rinomina e non si toglie.** Rinominato in
+`E_` passerebbe per un errore di dominio, e cancellato lascerebbe senza nome le
+righe del registro che lo citano.
 
 ✅ **Nessun codice vivo è fuori convenzione.** Il registro
 `dbops.messaggi_errore_codici_legacy` esiste per il debito **ereditato**: un nome

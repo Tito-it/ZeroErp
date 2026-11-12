@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 15 ottobre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -548,7 +548,8 @@ il resolver deve sapere per conto di **quale veste** si sta risolvendo.
 ### 6.2 Permission class DRF
 
 Sono previste tre permission class, una per ciascun namespace API, tutte
-delegate allo stesso `PermissionResolver`:
+delegate allo stesso `PermissionResolver`. Le view del pannello di amministrazione
+ne usano una quarta, descritta sotto le tre:
 
 * **`ZeroERPPermission`** — per `/api/admin/*` (operatori interni)
 * **`PortaleBasePermission`** — per `/api/portale/*` (clienti, fornitori)
@@ -582,6 +583,19 @@ occupano solo di:
   `model_name`) e si consulta il livello effettivo. Il livello viene
   quindi tradotto in insieme dei verbi ammessi: se il verbo richiesto
   non e' nell'insieme, l'accesso e' negato.
+
+**La quarta: `IsAdminZeroERP`, per le view di amministrazione.** Le view che
+ereditano da `AdminAPIView` (il pannello Amministrazione software) passano da
+`IsAdminZeroERP`, che decide una cosa sola: l'utente è superuser Django o ha il
+profilo `SUPER_ADMIN`, altrimenti 403. Non consulta aree né azioni di processo.
+⛔ Per questo un `<metodo>_permission` su una view di amministrazione **non lo
+valuta nessuno**: chi arriva è già `SUPER_ADMIN`, che le azioni le ha tutte, e
+chi non lo è non arriva. Una riga di `config.azioni_processo` nominata solo da
+una view di amministrazione non concede niente a nessuno. Se un verbo deve
+aprirsi a un operatore, la view passa a `DomainAPIView`, con l'`area_funzionale`
+e il `<metodo>_permission`; finché resta di amministrazione, l'azione a catalogo
+è solo la sede per quel giorno, e la view lo dichiara (es. `processo_avvia`, su
+«Esegui ora» dei processi).
 
 **Determinazione dell'area di un model.** Per default, l'area coincide
 con lo schema DB (uguale a `app_label` Django). Se per quel model

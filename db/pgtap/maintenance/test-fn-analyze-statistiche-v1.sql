@@ -57,19 +57,6 @@ INSERT INTO t_stat_part VALUES (5), (6);
 
 CREATE TEMP TABLE t_stat_part_senza (a integer) PARTITION BY RANGE (a);
 
--- L'esito di un'istruzione: NULL se passa, il codice di dominio (CONSTRAINT)
--- se solleva P0001, altrimenti lo SQLSTATE.
-CREATE OR REPLACE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' THEN v_c ELSE v_s || ' ' || coalesce(v_c, '') END;
-END $$;
-
 -- ============================================================
 -- 1. Gli oggetti
 -- ============================================================
@@ -129,7 +116,7 @@ SELECT CASE
            'NON_ANALIZZABILE',
            '6. maintenance.job_run_log, senza MAINTAIN, e'' NON_ANALIZZABILE')
         || E'\n' ||
-        is(pg_temp.esito($$SELECT maintenance.fn_analyze_statistiche(
+        is(dbops.fn_pgtap_codice_errore($$SELECT maintenance.fn_analyze_statistiche(
                               ARRAY['maintenance.job_run_log'::regclass])$$),
            'E_STATISTICHE_MANCANTI',
            '7. il verbo su una tabella che ANALYZE salterebbe solleva E_STATISTICHE_MANCANTI')

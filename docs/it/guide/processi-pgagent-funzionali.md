@@ -1,6 +1,6 @@
 # Guida — Processi pgAgent funzionali
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > Destinatari: sviluppatori database, backend, analisti funzionali
 >
@@ -115,6 +115,15 @@ così ciò che il lavoro crea (tabelle di storico, indici) appartiene al
 proprietario come tutto il resto, e `zeroerp_job` da solo non può fare niente fuori
 da quella procedura. Uno step scritto a mano con un comando qualsiasi viene
 rifiutato.
+
+⚠️ **Per questo i lavori di pgAgent non subiscono la row level security.** Se un
+percorso la subisce si legge dalla catena dei ruoli, non dal nome dell'utente che
+si collega: la procedura è del proprietario, quindi anche le funzioni che chiama
+senza `SECURITY DEFINER` girano da proprietario, fuori dalle policy. Una tabella
+con emittente scritta da questi lavori non può avere il guard
+[script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope),
+che dentro una funzione del proprietario rifiuta le scritture senza utente in
+sessione.
 
 **Per un lavoro nuovo** quindi servono due cose:
 

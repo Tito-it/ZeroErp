@@ -86,18 +86,6 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
--- Scopo: il CONSTRAINT_NAME di uno statement che deve fallire (il codice di
--- script.fn_log_and_raise_error), NULL se passa.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $fx$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $fx$;
 
 -- Scopo: l'INSERT di una riga della matrice di MIA, utility U1, col listino dato.
 CREATE OR REPLACE FUNCTION pg_temp.riga(p_listino bigint, p_dal date)
@@ -137,13 +125,13 @@ SELECT lives_ok(
 );
 
 SELECT is(
-    pg_temp.codice_errore(pg_temp.riga((SELECT listino_id FROM tmp_cl_l_altra_u), '2099-01-01')),
+    dbops.fn_pgtap_codice_errore(pg_temp.riga((SELECT listino_id FROM tmp_cl_l_altra_u), '2099-01-01')),
     'E_CATEGORIA_LISTINO_UTILITY_DIVERSA',
     '3) listino di un''altra utility -> E_CATEGORIA_LISTINO_UTILITY_DIVERSA'
 );
 
 SELECT is(
-    pg_temp.codice_errore(pg_temp.riga((SELECT listino_id FROM tmp_cl_l_altrui), '2099-01-01')),
+    dbops.fn_pgtap_codice_errore(pg_temp.riga((SELECT listino_id FROM tmp_cl_l_altrui), '2099-01-01')),
     'E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO',
     '4) listino di un''altra azienda -> E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO'
 );
@@ -152,7 +140,7 @@ SELECT is(
 -- 5-6) UPDATE
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.categorie_clienti_listini SET listino_id = %s WHERE categoria_cliente_id = %s',
         (SELECT listino_id FROM tmp_cl_l_altrui), (SELECT id FROM tmp_cl_cat))),
     'E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO',

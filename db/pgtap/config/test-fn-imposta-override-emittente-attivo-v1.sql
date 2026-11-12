@@ -38,16 +38,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(13);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.sqlstate_di(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -129,13 +119,13 @@ SELECT is(
     '6. valido_dal assente: la data operativa; a null: NULL');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT config.fn_imposta_override_oggetti((SELECT au FROM t_u),
+    dbops.fn_pgtap_codice_errore($$SELECT config.fn_imposta_override_oggetti((SELECT au FROM t_u),
         jsonb_build_array((SELECT due -> 0 FROM t_o) || '{"livello": "LETTURA", "auth_user_id": 1}'::jsonb))$$),
     'E_CAMPO_NON_AMMESSO',
     '7. chiave estranea in un elemento: E_CAMPO_NON_AMMESSO');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT config.fn_imposta_override_oggetti((SELECT au FROM t_u), '[1]'::jsonb)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT config.fn_imposta_override_oggetti((SELECT au FROM t_u), '[1]'::jsonb)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '8. un elemento che non e'' un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
@@ -179,7 +169,7 @@ SELECT isnt(
     '12. lo stesso valore tocca la riga (la storia registra la conferma)');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT config.fn_imposta_emittente_attivo((SELECT au FROM t_u), NULL)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT config.fn_imposta_emittente_attivo((SELECT au FROM t_u), NULL)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '13. argomento NULL: E_SCRIPT_CHIAMATA_NON_VALIDA');
 

@@ -56,7 +56,6 @@
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -67,12 +66,10 @@ import yaml
 #   2026-09-10): ~14x. Stesso risultato, provato su tutti i changelog del
 #   repo — vedi scripts/_yaml_veloce.py.
 #   ⚠️ `yaml` resta importato: serve per `yaml.YAMLError` nei rami di errore.
-from _yaml_veloce import carica as carica_yaml
+# ⭐ Lettura dei changelog e primitive lessicali in un posto solo
+#   (scripts/_guardrail_comune.py).
+import _guardrail_comune as gc
 
-ROOT = Path(__file__).resolve().parent.parent
-BASE = ROOT / "db" / "changelog" / "migrations_v2"
-FILENAME_RE = re.compile(r"^\d{8}-\d{2}.*\.(ya?ml)$", re.IGNORECASE)
-DOLLAR_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9]*\$|\$\$")
 
 # Le forme tronche dell'italiano senza accento: sono la sorgente pratica del
 # difetto, e nominarle nel messaggio d'errore fa risparmiare la ricerca.
@@ -84,122 +81,47 @@ TRONCHE = ("e'", "gia'", "piu'", "perche'", "cioe'", "puo'", "la'", "li'",
 # Scopo: estrae i blocchi SQL testuali di un changelog, con la loro provenienza
 #        (changes | rollback) per poterla nominare nell'errore.
 def blocchi_sql(percorso: Path) -> list[tuple[str, str]]:
-    doc = carica_yaml(percorso.read_text(encoding="utf-8"))
-    if not isinstance(doc, dict):
-        return []
     fuori: list[tuple[str, str]] = []
-    for voce in doc.get("databaseChangeLog") or []:
-        if not isinstance(voce, dict):
-            continue
-        cs = voce.get("changeSet")
-        if not isinstance(cs, dict):
-            continue
-        for sezione in ("changes", "rollback"):
-            valore = cs.get(sezione)
-            if not valore:
-                continue
-            for cambio in valore if isinstance(valore, list) else [valore]:
-                if not isinstance(cambio, dict) or "sql" not in cambio:
-                    continue
-                corpo = cambio["sql"]
-                testo = corpo.get("sql") if isinstance(corpo, dict) else corpo
-                if isinstance(testo, str):
-                    fuori.append((sezione, testo))
+    for cs in gc.changeset(percorso):
+        fuori.extend(gc.blocchi_sql(cs, ("changes", "rollback")))
     return fuori
 
 
-# Scopo: cammina il blocco e restituisce le righe in cui un letterale a quote
-#        singole si apre e non si chiude piu'.
-#        ⚠️ Il dollar-quoting va saltato per intero: dentro `$function$ ... $$`
-#        l'apostrofo non ha nessun significato, ed e' li' che vive il 90% del
-#        testo dei corpi plpgsql.
 def letterali_non_chiusi(sql: str) -> list[tuple[int, str]]:
     i, n = 0, len(sql)
-    riga = 1
-    problemi: list[tuple[int, str]] = []
     while i < n:
-        c = sql[i]
-        if c == "\n":
-            riga += 1
-            i += 1
-            continue
         if sql.startswith("--", i):  # commento di riga: fino a capo
             fine = sql.find("\n", i)
             i = n if fine < 0 else fine
             continue
         if sql.startswith("/*", i):
-            # ⚠️ In PostgreSQL i commenti a blocco SI ANNIDANO: si conta la
-            #    profondita', non si cerca il primo `*/`. E dentro un commento
-            #    un apostrofo non apre niente — e' il caso che faceva perdere
-            #    il passo alla prima stesura.
-            profondita = 1
-            j = i + 2
-            while j < n and profondita > 0:
-                if sql.startswith("/*", j):
-                    profondita += 1
-                    j += 2
-                    continue
-                if sql.startswith("*/", j):
-                    profondita -= 1
-                    j += 2
-                    continue
-                if sql[j] == "\n":
-                    riga += 1
-                j += 1
-            if profondita > 0:
-                problemi.append((riga, "commento /* non chiuso"))
-                break
-            i = j
+            # ⚠️ I commenti a blocco SI ANNIDANO, e dentro un commento un
+            #    apostrofo non apre niente (gc.fine_commento_blocco).
+            f = gc.fine_commento_blocco(sql, i)
+            if not f.chiuso:
+                return [(sql.count("\n", 0, i) + 1, "commento /* non chiuso")]
+            i = f.pos
             continue
-        if c == "$":
-            m = DOLLAR_RE.match(sql, i)
-            if m:
-                tag = m.group(0)
-                chiusura = sql.find(tag, i + len(tag))
-                if chiusura < 0:
-                    problemi.append((riga, f"dollar-quote {tag} non chiuso"))
-                    break
-                riga += sql.count("\n", i, chiusura + len(tag))
-                i = chiusura + len(tag)
+        if sql[i] == "$":
+            dq = gc.dollar_quote(sql, i)
+            if dq:
+                tag, f = dq
+                if not f.chiuso:
+                    return [(sql.count("\n", 0, i) + 1, f"dollar-quote {tag} non chiuso")]
+                i = f.pos
                 continue
-        if c == "'":
-            riga_apertura = riga
-            j = i + 1
-            while j < n:
-                if sql[j] == "'":
-                    if j + 1 < n and sql[j + 1] == "'":  # apostrofo raddoppiato
-                        j += 2
-                        continue
-                    break
-                if sql[j] == "\n":
-                    riga += 1
-                j += 1
-            if j >= n:
-                problemi.append(
-                    (riga_apertura, "letterale ' aperto e mai chiuso"))
-                break
-            i = j + 1
+        if sql[i] == "'":
+            f = gc.fine_letterale(sql, i)
+            if not f.chiuso:
+                return [(sql.count("\n", 0, i) + 1, "letterale ' aperto e mai chiuso")]
+            i = f.pos
             continue
         i += 1
-    return problemi
+    return []
 
 
-# Scopo: elenca i file da esaminare — quelli passati a riga di comando, oppure
-#        tutti i changelog di migrations_v2 con nome a norma.
-def file_da_esaminare(argomenti: list[str]) -> list[Path]:
-    if argomenti:
-        return [Path(a).resolve() for a in argomenti]
-    if not BASE.is_dir():
-        return []
-    return sorted(p for p in BASE.rglob("*")
-                  if p.is_file() and FILENAME_RE.match(p.name))
-
-
-# Scopo: orchestra la passata — legge ogni changelog, analizza i suoi blocchi
-#        SQL e stampa un rapporto che dica DOVE e COSA fare; ritorna il codice
-#        di uscita per la CI.
 def main() -> int:
-    percorsi = file_da_esaminare(sys.argv[1:])
+    percorsi = gc.file_changelog(sys.argv[1:], None)
     violazioni: list[tuple[str, str, int, str, str]] = []
     esaminati = 0
 
@@ -214,8 +136,7 @@ def main() -> int:
             for riga, motivo in letterali_non_chiusi(sql):
                 righe = sql.split("\n")
                 estratto = righe[riga - 1].strip() if riga <= len(righe) else ""
-                rel = str(percorso.relative_to(ROOT)) \
-                    if ROOT in percorso.parents else str(percorso)
+                rel = gc.rel(percorso)
                 violazioni.append((rel, sezione, riga, motivo, estratto[:150]))
 
     if not violazioni:

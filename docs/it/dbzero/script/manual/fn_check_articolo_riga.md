@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_articolo_riga`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -161,6 +161,12 @@ Il corpo è la composizione di due funzioni:
 
 Serve al picker: valuta molti articoli sullo stesso documento, e il documento lo legge una volta
 sola invece che per ogni articolo.
+
+⚠️ **La forma della delega conta.** L'involucro assegna a `v_motivi` il risultato di
+`script.fn_check_articolo_riga_su_contesto`:
+[dbops.vw_funzioni_check_codici](/dbzero/dbops/views/vw_funzioni_check_codici) eredita i codici
+della funzione delegata solo da una delega scritta come assegnazione o come concatenazione verso
+una `fn_check_*`. Riscritta in un'altra forma, la funzione risulterebbe senza i suoi codici.
 
 ---
 

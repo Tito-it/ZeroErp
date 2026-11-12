@@ -61,16 +61,6 @@ BEGIN
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _op));
 END $ctx$;
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE TEMP TABLE _ruoli ON COMMIT DROP AS
 SELECT tr.codice_interno, tr.id FROM config.tipi_ruoli tr;
@@ -179,7 +169,7 @@ SELECT is(
 -- ============================================================
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT * FROM script.fn_search_soggetti_universale('ZQPAGRE', %s, 3, 0, 'utility_list', 'ASC')$q$,
         (SELECT id FROM _ruoli WHERE codice_interno = 'RE'))),
     'E_PARAMETRO_INVALIDO',
