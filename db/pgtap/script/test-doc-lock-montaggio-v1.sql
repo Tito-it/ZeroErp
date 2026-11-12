@@ -77,21 +77,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(30);
 
--- Il codice di dominio di un errore, dal canale CONSTRAINT (P0001); per gli
--- altri, SQLSTATE e vincolo. 'PASSA' se non solleva.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- La regola di un montaggio di prova, con gli argomenti contati da 0 come
 -- TG_ARGV (righe) o da 1 come dbops.fn_trigger_argomenti (testata).
 CREATE FUNCTION pg_temp.righe(VARIADIC p text[]) RETURNS jsonb
@@ -363,20 +348,20 @@ DO $ann$ BEGIN
 END $ann$;
 
 SELECT is(
-    pg_temp.esito(format('UPDATE _tmp_testata SET a = 1, b = 1 WHERE id = %s', pg_temp.ord('ANN'))),
+    dbops.fn_pgtap_codice_errore(format('UPDATE _tmp_testata SET a = 1, b = 1 WHERE id = %s', pg_temp.ord('ANN'))),
     'E_DDT_CAUSALE_IMMUTABILE',
     '18) testata fuori bozza: cambiano due colonne nominate, parla la prima del montaggio col suo codice'
 );
 
 SELECT is(
-    pg_temp.esito(format('UPDATE _tmp_testata SET libera = 1 WHERE id = %s', pg_temp.ord('ANN'))),
-    'PASSA',
+    dbops.fn_pgtap_codice_errore(format('UPDATE _tmp_testata SET libera = 1 WHERE id = %s', pg_temp.ord('ANN'))),
+    NULL,
     '19) testata fuori bozza: una colonna che il montaggio non nomina passa'
 );
 
 SELECT is(
-    pg_temp.esito(format('UPDATE _tmp_testata SET a = 2, b = 2 WHERE id = %s', pg_temp.ord('CONF'))),
-    'PASSA',
+    dbops.fn_pgtap_codice_errore(format('UPDATE _tmp_testata SET a = 2, b = 2 WHERE id = %s', pg_temp.ord('CONF'))),
+    NULL,
     '20) testata in bozza: passano anche le colonne nominate'
 );
 
@@ -386,7 +371,7 @@ CREATE TRIGGER trg_tmp_testata_a05_ins
         'ORDINE_VENDITA', 'DRAFT', 'a', 'E_DOC_EMITTENTE_FUORI_BOZZA', '');
 
 SELECT is(
-    pg_temp.esito('INSERT INTO _tmp_testata VALUES (-1, 0, 0, 0)'),
+    dbops.fn_pgtap_codice_errore('INSERT INTO _tmp_testata VALUES (-1, 0, 0, 0)'),
     'E_DOC_RIGHE_LOCK_MONTAGGIO',
     '21) testata montata su INSERT: errore di montaggio, non di dato'
 );
@@ -411,9 +396,9 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 7 WHERE id = %s',
+    dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 7 WHERE id = %s',
                          pg_temp.riga('CONF'))),
-    'PASSA',
+    NULL,
     '24) CONFERMATO: il lock lascia cambiare la sola data — capability e lock dicono la stessa cosa'
 );
 
@@ -437,8 +422,8 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 7 WHERE id = %s',
-                         pg_temp.riga('ANN'))),
+    COALESCE(dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 7 WHERE id = %s',
+                         pg_temp.riga('ANN'))), 'PASSA'),
     script.fn_check_ordine_data_consegna_confermata(pg_temp.ord('ANN')) -> 0 ->> 'codice',
     '27) ANNULLATO: il lock rifiuta col codice del motivo — capability e lock dicono la stessa cosa'
 );
@@ -454,7 +439,7 @@ SELECT is(
 SELECT is(
     coalesce(script.fn_check_ordine_data_consegna_confermata(
                  (SELECT coalesce(max(o.id), 0) + 1000000 FROM vendite.ordini o))::text, 'NULL')
-    || ' | ' || pg_temp.esito('SELECT script.fn_check_ordine_data_consegna_confermata(0)'),
+    || ' | ' || COALESCE(dbops.fn_pgtap_codice_errore('SELECT script.fn_check_ordine_data_consegna_confermata(0)'), 'PASSA'),
     'NULL | E_PARAMETRO_INVALIDO',
     '29) la check: un ordine che non c''e'' non ha risposta (non [], che vorrebbe dire si''); un id non valido e'' un errore'
 );

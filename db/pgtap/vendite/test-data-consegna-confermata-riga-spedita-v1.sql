@@ -138,21 +138,6 @@ END $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION pg_temp.dc_fix(p_chiave text) RETURNS bigint
   AS $$ SELECT id FROM tmp_fix WHERE chiave = p_chiave $$ LANGUAGE sql;
 
--- L'esito di un'istruzione: PASSA, o il codice del rifiuto (P0001 lo porta
--- in CONSTRAINT_NAME), o lo SQLSTATE. Forma di script/test-doc-lock-montaggio-v1.
-CREATE OR REPLACE FUNCTION pg_temp.dc_esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- La frase del rifiuto, per il test della frase.
 CREATE OR REPLACE FUNCTION pg_temp.dc_frase(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $f$
@@ -165,8 +150,8 @@ END
 $f$;
 
 CREATE OR REPLACE FUNCTION pg_temp.dc_set_data(p_riga bigint, p_data date) RETURNS text
-  AS $$ SELECT pg_temp.dc_esito(format(
-           'UPDATE vendite.ordini_righe SET data_consegna_confermata = %L WHERE id = %s', p_data, p_riga)) $$
+  AS $$ SELECT COALESCE(dbops.fn_pgtap_codice_errore(format(
+           'UPDATE vendite.ordini_righe SET data_consegna_confermata = %L WHERE id = %s', p_data, p_riga)), 'PASSA') $$
   LANGUAGE sql;
 
 -- ⭐ L'utility «Aggiorna date di consegna» nella forma del BE
@@ -272,9 +257,9 @@ SELECT ok(
   '10) la frase dice quale riga e perche''');
 
 SELECT is(
-  pg_temp.dc_esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = data_consegna_confermata WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = data_consegna_confermata WHERE id = %s',
                           pg_temp.dc_fix('a_r1'))),
-  'PASSA',
+  NULL,
   '11) lo stesso valore non e'' un cambio: il guard non scatta (WHEN)');
 
 SELECT is(
@@ -351,7 +336,7 @@ SELECT is(
   '20) la check su un id assente: NULL');
 
 SELECT is(
-  pg_temp.dc_esito('SELECT script.fn_check_ordine_riga_data_consegna_confermata(0)'),
+  dbops.fn_pgtap_codice_errore('SELECT script.fn_check_ordine_riga_data_consegna_confermata(0)'),
   'E_VENDITE_CHIAMATA_NON_VALIDA',
   '21) la check su un id non valido: errore del chiamante, non un motivo');
 

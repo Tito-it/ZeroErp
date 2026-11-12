@@ -1,6 +1,6 @@
 # Guida — Tracciamento processi e job
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -96,6 +96,8 @@ maintenance (job schedulati)
 Il task registry e il catalogo centralizzato di tutti i task disponibili nei vari domini applicativi. E pensato per essere **riusabile**: quando si aggiunge un nuovo dominio (es. PRATICHE, ATTIVITA_FATTURABILI), si registrano i task nello stesso registry senza creare nuove tabelle di catalogo.
 
 L'architettura e a tre livelli: dominio → task → implementazione.
+
+⚠️ Un dominio a catalogo non è per forza una pipeline: `ATTIVITA_FATTURABILI` non ne ha una. La promozione da commessa ad attività fatturabili è un task idempotente dentro la pipeline di fatturazione, perché è una distribuzione senza ciclo di vita proprio; il motore serve un processo con stati, numerazione e rollback. Vedi [dbops.domini_task](/dbzero/dbops/tabelle/domini_task).
 
 #### `dbops.domini_task`
 
@@ -271,6 +273,8 @@ Ogni job schedulato ha una procedura dedicata (es. `proc_automations_storico_job
 * [`script.fn_job_run_end(id, ok, message, rows, error_code, error_detail, meta, lock_key)`](/dbzero/script/funzioni/fn_job_run_end): chiude la riga e rilascia il lock.
 
 Entrambe sono `SECURITY DEFINER` (chi le chiama, l'applicazione, ha solo `EXECUTE`: **nessuna scrittura diretta** su `job_run_log`) con `search_path` fisso e `EXECUTE` revocato da PUBLIC. Ogni riga registra anche l'utente del database con cui la corsa si è collegata (`ruolo_sessione`). Lato BE le avvolge il context manager `registered_job` (vedi `apps/core/services/job_run.py`).
+
+⚠️ **Il giornale ha tre scrittori**: `maintenance.fn_run_and_log`, `maintenance.fn_job_run_log_failure` e `script.fn_job_run_start`. Una colonna nuova del giornale si censisce su tutti e tre. E `origine` vale `PGAGENT` anche per una corsa lanciata a mano: chi ha eseguito davvero si legge da `ruolo_sessione`.
 
 ---
 

@@ -53,16 +53,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(16);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- ============================================================
 -- La regola, sui valori
@@ -112,17 +102,17 @@ SELECT lives_ok(
     '7. ... e una di credenziale');
 
 SELECT is(
-    pg_temp.codice_errore($$UPDATE dbops.soggetti_di_prova SET chiave = 'PGTAP-ALTRA' WHERE chiave = 'PGTAP-ETICHETTA-1'$$),
+    dbops.fn_pgtap_codice_errore($$UPDATE dbops.soggetti_di_prova SET chiave = 'PGTAP-ALTRA' WHERE chiave = 'PGTAP-ETICHETTA-1'$$),
     'E_ETICHETTA_DI_PROVA_IMMUTABILE',
     '8. UPDATE: E_ETICHETTA_DI_PROVA_IMMUTABILE');
 
 SELECT is(
-    pg_temp.codice_errore($$DELETE FROM dbops.credenziali_di_prova WHERE chiave = 'pgtap.etichetta'$$),
+    dbops.fn_pgtap_codice_errore($$DELETE FROM dbops.credenziali_di_prova WHERE chiave = 'pgtap.etichetta'$$),
     'E_ETICHETTA_DI_PROVA_IMMUTABILE',
     '9. DELETE: E_ETICHETTA_DI_PROVA_IMMUTABILE');
 
 SELECT is(
-    pg_temp.codice_errore($$TRUNCATE dbops.soggetti_di_prova$$),
+    dbops.fn_pgtap_codice_errore($$TRUNCATE dbops.soggetti_di_prova$$),
     'E_ETICHETTA_DI_PROVA_IMMUTABILE',
     '10. TRUNCATE: E_ETICHETTA_DI_PROVA_IMMUTABILE');
 
@@ -137,7 +127,7 @@ UPDATE dbops.installazione SET ambiente = 'PRODUZIONE';
 ALTER TABLE dbops.installazione ENABLE TRIGGER trg_installazione_a05_guard_immutabile_upd_dlt;
 
 SELECT is(
-    pg_temp.codice_errore($$INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave)
+    dbops.fn_pgtap_codice_errore($$INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave)
                             SELECT soggetto_id2, 'PGTAP-ETICHETTA-2' FROM t_s$$),
     'E_DATI_DI_SVILUPPO_IN_PRODUZIONE',
     '12. in PRODUZIONE un''etichetta nuova: E_DATI_DI_SVILUPPO_IN_PRODUZIONE');
@@ -150,7 +140,7 @@ SELECT is(
     '13. il presidio vede le due etichette nate prima');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_provisiona_dati_di_sviluppo()$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_provisiona_dati_di_sviluppo()$$),
     'E_DATI_DI_SVILUPPO_IN_PRODUZIONE',
     '14. il verbo non parte: E_DATI_DI_SVILUPPO_IN_PRODUZIONE');
 
@@ -162,7 +152,7 @@ DELETE FROM dbops.installazione;
 ALTER TABLE dbops.installazione ENABLE TRIGGER trg_installazione_a05_guard_immutabile_upd_dlt;
 
 SELECT is(
-    pg_temp.codice_errore($$INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave)
+    dbops.fn_pgtap_codice_errore($$INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave)
                             SELECT soggetto_id2, 'PGTAP-ETICHETTA-3' FROM t_s$$),
     'E_CONFIG_MANCANTE',
     '15. ambiente non dichiarato: E_CONFIG_MANCANTE, dal lettore');

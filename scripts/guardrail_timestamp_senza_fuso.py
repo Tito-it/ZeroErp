@@ -73,19 +73,13 @@ from pathlib import Path
 
 import yaml
 
-# ⭐ Il parser YAML in C dove c'e' (scripts/_yaml_veloce.py): il costo di
-#   questi cancelli e' tutto nel parsing. `yaml` resta per `yaml.YAMLError`.
-from _yaml_veloce import carica as carica_yaml
+# ⭐ Lettura dei changelog e primitive lessicali in un posto solo
+#   (scripts/_guardrail_comune.py). `yaml` resta per `yaml.YAMLError`.
+import _guardrail_comune as gc
 
-ROOT = Path(__file__).resolve().parent.parent
-BASE = ROOT / "db" / "changelog" / "migrations_v2"
-FILENAME_RE = re.compile(r"^(\d{8})-\d{2}.*\.(ya?ml)$", re.IGNORECASE)
 # ⭐ Il perimetro: da quando la regola esiste. I changelog precedenti non si
 #   toccano (mergiati) e il loro difetto lo sana 20260920-02..-07.
 DATA_INIZIO = "20260920"
-MARCATORE_RE = re.compile(r"^#\s*timestamp-senza-fuso:\s*ammesso\s*[—-]\s*(\S.*)$", re.MULTILINE)
-DOLLAR_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9]*\$|\$\$")
-IS_PRIMA_RE = re.compile(r"\bIS$", re.IGNORECASE)
 # `timestamp` come parola intera, con eventuale precisione, e cio' che segue.
 TIMESTAMP_RE = re.compile(r"\btimestamp\b(\s*\(\s*\d+\s*\))?", re.IGNORECASE)
 WITH_TZ_RE = re.compile(r"\s*with\s+time\s+zone\b", re.IGNORECASE)
@@ -96,75 +90,10 @@ TIPO_NATIVO_RE = re.compile(
 CHANGE_CON_COLONNE = ("createTable", "addColumn", "modifyDataType", "createIndex")
 
 
-# Scopo: toglie commenti e letterali a quote singole dal blocco SQL, lasciando
-#        il resto AL SUO POSTO (stesse righe) cosi' i numeri di riga restano
-#        veri; i dollar-quote sono resi trasparenti — il corpo di una
-#        funzione si esamina, e' li' che vivono DECLARE e RETURNS.
-#        Stesso tokenizer del cancello dei letterali (commenti /* */ annidati).
-def spoglia(sql: str) -> str:
-    fuori: list[str] = []
-    i, n = 0, len(sql)
-    while i < n:
-        if sql.startswith("--", i):
-            fine = sql.find("\n", i)
-            i = n if fine < 0 else fine
-            continue
-        if sql.startswith("/*", i):
-            profondita = 1
-            j = i + 2
-            while j < n and profondita > 0:
-                if sql.startswith("/*", j):
-                    profondita += 1
-                    j += 2
-                    continue
-                if sql.startswith("*/", j):
-                    profondita -= 1
-                    j += 2
-                    continue
-                if sql[j] == "\n":
-                    fuori.append("\n")
-                j += 1
-            i = j
-            continue
-        if sql[i] == "$":
-            m = DOLLAR_RE.match(sql, i)
-            if m:
-                # ⚠️ Un dollar-quote dopo `IS` e' PROSA (COMMENT ON ... IS
-                #   $c$ ... $c$), non un corpo: si toglie come un letterale.
-                #   Misurato: 20260207-02 dice «colonna timestamp di base»
-                #   nel COMMENT di fn_apply_cleanup_at, e non e' un tipo.
-                prima = "".join(fuori).rstrip()
-                if IS_PRIMA_RE.search(prima):
-                    tag = m.group(0)
-                    chiusura = sql.find(tag, m.end())
-                    fine = n if chiusura < 0 else chiusura + len(tag)
-                    fuori.append("\n" * sql.count("\n", i, fine))
-                    i = fine
-                    continue
-                i = m.end()
-                continue
-        if sql[i] == "'":
-            j = i + 1
-            while j < n:
-                if sql[j] == "'":
-                    if j + 1 < n and sql[j + 1] == "'":
-                        j += 2
-                        continue
-                    break
-                if sql[j] == "\n":
-                    fuori.append("\n")
-                j += 1
-            i = j + 1
-            continue
-        fuori.append(sql[i])
-        i += 1
-    return "".join(fuori)
-
-
 # Scopo: le occorrenze di `timestamp` senza fuso in un blocco SQL, come
 #        (riga, estratto). Esenta le istruzioni che cominciano con DROP.
 def timestamp_nudi(sql: str) -> list[tuple[int, str]]:
-    testo = spoglia(sql)
+    testo = gc.spoglia(sql)
     trovati: list[tuple[int, str]] = []
     for m in TIMESTAMP_RE.finditer(testo):
         if WITH_TZ_RE.match(testo, m.end()):
@@ -182,26 +111,12 @@ def timestamp_nudi(sql: str) -> list[tuple[int, str]]:
 # Scopo: le violazioni di un changelog — blocchi `sql:` e `type:` nativi —
 #        guardando SOLO `changes`, mai `rollback`.
 def violazioni_di(percorso: Path) -> list[tuple[str, str]]:
-    doc = carica_yaml(percorso.read_text(encoding="utf-8"))
-    if not isinstance(doc, dict):
-        return []
     fuori: list[tuple[str, str]] = []
-    for voce in doc.get("databaseChangeLog") or []:
-        if not isinstance(voce, dict):
-            continue
-        cs = voce.get("changeSet")
-        if not isinstance(cs, dict) or not cs.get("changes"):
-            continue
-        cambi = cs["changes"]
-        for cambio in cambi if isinstance(cambi, list) else [cambi]:
-            if not isinstance(cambio, dict):
-                continue
-            if "sql" in cambio:
-                corpo = cambio["sql"]
-                testo = corpo.get("sql") if isinstance(corpo, dict) else corpo
-                if isinstance(testo, str):
-                    for riga, estratto in timestamp_nudi(testo):
-                        fuori.append((f"sql, riga ~{riga} del blocco", estratto))
+    for cs in gc.changeset(percorso):
+        for _sezione, testo in gc.blocchi_sql(cs):
+            for riga, estratto in timestamp_nudi(testo):
+                fuori.append((f"sql, riga ~{riga} del blocco", estratto))
+        for cambio in gc.cambi(cs):
             for nome in CHANGE_CON_COLONNE:
                 if nome not in cambio or not isinstance(cambio[nome], dict):
                     continue
@@ -218,28 +133,9 @@ def violazioni_di(percorso: Path) -> list[tuple[str, str]]:
     return fuori
 
 
-# Scopo: i file da esaminare — quelli passati, oppure il perimetro
-#        (data >= DATA_INIZIO), oppure tutta la storia con --tutto.
-def file_da_esaminare(argomenti: list[str]) -> list[Path]:
-    tutto = "--tutto" in argomenti
-    espliciti = [a for a in argomenti if a != "--tutto"]
-    if espliciti:
-        return [Path(a).resolve() for a in espliciti]
-    if not BASE.is_dir():
-        return []
-    fuori = []
-    for p in sorted(BASE.rglob("*")):
-        m = FILENAME_RE.match(p.name)
-        if not p.is_file() or not m:
-            continue
-        if tutto or m.group(1) >= DATA_INIZIO:
-            fuori.append(p)
-    return fuori
-
-
 # Scopo: orchestra la passata e stampa un rapporto che dica DOVE e COSA fare.
 def main() -> int:
-    percorsi = file_da_esaminare(sys.argv[1:])
+    percorsi = gc.file_changelog(sys.argv[1:], (int(DATA_INIZIO), 0))
     violazioni: list[tuple[str, str, str]] = []
     dichiarati: list[tuple[str, str, int]] = []
     esaminati = 0
@@ -253,10 +149,10 @@ def main() -> int:
         esaminati += 1
         if not trovate:
             continue
-        rel = str(percorso.relative_to(ROOT)) if ROOT in percorso.parents else str(percorso)
-        marcatore = MARCATORE_RE.search(percorso.read_text(encoding="utf-8"))
-        if marcatore:
-            dichiarati.append((rel, marcatore.group(1).strip(), len(trovate)))
+        rel = gc.rel(percorso)
+        motivo = gc.marcatore(percorso.read_text(encoding="utf-8"), "timestamp-senza-fuso")
+        if motivo:
+            dichiarati.append((rel, motivo, len(trovate)))
             continue
         for dove, estratto in trovate:
             violazioni.append((rel, dove, estratto))

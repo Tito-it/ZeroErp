@@ -346,6 +346,27 @@ jobs:
         # dbops/test-nessun-timestamp-senza-fuso-v1 piu' avanti.
         run: python scripts/guardrail_timestamp_senza_fuso.py
 
+      - name: Guardrail forme che muoiono all'apply
+        # Cosa presidia: tredici forme scritte nella documentazione e ricadute
+        # piu' volte, che si vedono leggendo il file e che la prova a mano spesso
+        # non prende — una sqlCheck che attende t/f, il `;` mancante dopo un
+        # corpo copiato dalla doc auto-generata, un BEGIN ATOMIC che divide il
+        # suo `sql:`, fn_log_and_raise_error a cinque argomenti, il `where:` che
+        # Liquibase ignora su addUniqueConstraint, l'operatore jsonb `?` nella
+        # forma che si rompe, un riferimento a django risolto alla CREATE, un
+        # %TYPE perso rispetto alla revisione precedente della funzione, un id
+        # a tipo nudo senza ragione, un mirror che scrive '' in una colonna di
+        # testo nullable, un segnaposto rotto nei messaggi d'errore, un CSV con fine riga misti, un
+        # pgTAP che legge pgagent senza il runner owner. L'elenco, con la sede
+        # di ogni regola, sta in testa allo script.
+        #
+        # ⚠️ POSIZIONE: prima del migrate, come gli altri: quasi tutte queste
+        # forme lo fanno morire, e quelle che non lo fanno morire lasciano un
+        # vincolo che non c'e'.
+        #
+        # Statico e senza database. Le eccezioni si dichiarano in testa al file.
+        run: python scripts/guardrail_forme_changeset.py
+
       - name: Guardrail preCondition sul contenuto di 80_data
         # ⚠️ POSIZIONE: prima del migrate, e per lo stesso motivo degli altri
         # tre — il difetto che presidia UCCIDE il migrate, e scoprirlo dopo

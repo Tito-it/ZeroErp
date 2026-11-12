@@ -62,21 +62,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(19);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- ============================================================
 -- LA FORMA
 -- ============================================================
@@ -154,9 +139,9 @@ SELECT vendite.fn_libera_attivita_fatturabili(ARRAY(SELECT id FROM _af1));
 
 CREATE TEMP TABLE _emit2 (r text);
 INSERT INTO _emit2
-SELECT pg_temp.esito(format(
+SELECT COALESCE(dbops.fn_pgtap_codice_errore(format(
   'CREATE TEMP TABLE _emit2_esito AS SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id => %s)',
-  pg_temp.comm('M1')));
+  pg_temp.comm('M1'))), 'PASSA');
 
 SELECT is(
   (SELECT r FROM _emit2),
@@ -259,10 +244,10 @@ SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id => 
 -- tipo_doc_fiscale_id tolto: il normalize lo rimette dal tipo del documento
 -- della riga di commessa (P: PREVENTIVO) o, senza documento, da COMMESSA (O).
 CREATE TEMP TABLE _norm (k text, r text);
-INSERT INTO _norm SELECT 'P', pg_temp.esito(format(
-  'UPDATE vendite.attivita_fatturabili SET tipo_doc_fiscale_id = NULL WHERE id = %s', pg_temp.af_di('P')));
-INSERT INTO _norm SELECT 'O', pg_temp.esito(format(
-  'UPDATE vendite.attivita_fatturabili SET tipo_doc_fiscale_id = NULL WHERE id = %s', pg_temp.af_di('O')));
+INSERT INTO _norm SELECT 'P', COALESCE(dbops.fn_pgtap_codice_errore(format(
+  'UPDATE vendite.attivita_fatturabili SET tipo_doc_fiscale_id = NULL WHERE id = %s', pg_temp.af_di('P'))), 'PASSA');
+INSERT INTO _norm SELECT 'O', COALESCE(dbops.fn_pgtap_codice_errore(format(
+  'UPDATE vendite.attivita_fatturabili SET tipo_doc_fiscale_id = NULL WHERE id = %s', pg_temp.af_di('O'))), 'PASSA');
 
 SELECT is(
   (SELECT n.r || '/' || (af.tipo_doc_fiscale_id = s.tipo_doc_fiscale_id)::text

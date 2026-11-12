@@ -57,20 +57,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(13);
 
--- Il codice di dominio di un errore, letto dal canale CONSTRAINT (contratto
--- P0001 + CONSTRAINT = codice); per gli errori di vincolo, SQLSTATE e nome del
--- vincolo. NULL se non solleva.
-CREATE OR REPLACE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' THEN v_c ELSE v_s || ' ' || coalesce(v_c, '') END;
-END $$;
-
 -- ============================================================
 -- Fixture: il mondo (emittente E, operatore in sessione, cliente con BA X
 -- sulla coppia (istanza A, utility U), preventivo P in bozza).
@@ -95,7 +81,7 @@ SELECT (SELECT iu.soggetto_id FROM anagrafiche.istanze_utilities iu
 -- 1) Istanza senza BA -> E_ISTANZA_SENZA_BA al COMMIT
 -- ============================================================
 SELECT is(
-    pg_temp.esito($sql$
+    dbops.fn_pgtap_codice_errore($sql$
         DO $c$ BEGIN
             SET CONSTRAINTS ALL DEFERRED;
             INSERT INTO anagrafiche.istanze_utilities (fittizia, proprietario_inquilino, soggetto_id)
@@ -135,7 +121,7 @@ SELECT lives_ok(
 --    Prima il collegamento all'emittente (FK fk_emittenti_fiscali_billing_account_ba).
 -- ============================================================
 SELECT is(
-    pg_temp.esito($sql$
+    dbops.fn_pgtap_codice_errore($sql$
         DO $c$ BEGIN
             SET CONSTRAINTS ALL DEFERRED;
             DELETE FROM anagrafiche.emittenti_fiscali_billing_account
@@ -227,10 +213,10 @@ SELECT lives_ok(
 --    coppia del preventivo ha il suo BA (il guard di coerenza tace): parla la FK.
 -- ============================================================
 SELECT is(
-    pg_temp.esito($sql$
+    dbops.fn_pgtap_codice_errore($sql$
         UPDATE vendite.preventivi SET billing_account_id = (SELECT ba_2 FROM t_v)
          WHERE id = (SELECT preventivo_id FROM t_w) $sql$),
-    '23503 fk_preventivi_ba_coppia',
+    'fk_preventivi_ba_coppia',
     '8. Preventivo col billing account di un''altra coppia: fk_preventivi_ba_coppia'
 );
 
@@ -238,7 +224,7 @@ SELECT is(
 -- 9) Preventivo senza BA -> 23502
 -- ============================================================
 SELECT is(
-    left(pg_temp.esito($sql$
+    left(dbops.fn_pgtap_codice_errore($sql$
         UPDATE vendite.preventivi SET billing_account_id = NULL
          WHERE id = (SELECT preventivo_id FROM t_w) $sql$), 5),
     '23502',
@@ -253,7 +239,7 @@ CREATE TEMP TABLE t_altro AS
 SELECT * FROM dbops.fn_pgtap_crea_emittente();
 
 SELECT is(
-    pg_temp.esito($sql$
+    dbops.fn_pgtap_codice_errore($sql$
         UPDATE anagrafiche.emittenti_fiscali_billing_account
            SET emittente_soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM t_altro)
          WHERE billing_account_id = (SELECT ba_2 FROM t_v) $sql$),
@@ -311,7 +297,7 @@ SELECT CASE
            AND t.tgfoid = 'script.trgfn_lock_columns()'::regprocedure
            AND encode(t.tgargs, 'escape') LIKE '%utility_id%E_BA_ISTANZA_IMMUTABILE%')
     THEN is(
-        pg_temp.esito($sql$
+        dbops.fn_pgtap_codice_errore($sql$
             UPDATE anagrafiche.billing_account
                SET utility_id = (SELECT utility_id FROM t_w)
              WHERE id = (SELECT ba_2 FROM t_v) $sql$),

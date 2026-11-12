@@ -146,18 +146,6 @@ RETURNS text LANGUAGE sql STABLE AS $f$
     FROM _idp i WHERE i.lato = p_lato;
 $f$;
 
--- Scopo: il codice di dominio di un'istruzione che fallisce (P0001 + CONSTRAINT).
-CREATE FUNCTION pg_temp.codice(p_sql text)
-RETURNS text LANGUAGE plpgsql AS $f$
-DECLARE v_state text; v_code text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'nessun errore';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_code = CONSTRAINT_NAME;
-    RETURN v_state || ' ' || COALESCE(v_code, '');
-END $f$;
-
 -- Scopo: sposta il contratto sulla fornitura del lato (UPDATE della testata).
 CREATE FUNCTION pg_temp.sposta_contratto(p_id bigint, p_lato text)
 RETURNS void LANGUAGE sql AS $f$
@@ -226,8 +214,8 @@ SELECT is(
     '3) la scheda di A; quella di G col tipo d''uso derivato dalla classe; N nessuna');
 
 SELECT is(
-    pg_temp.codice('SELECT * FROM vendite.fn_get_fornitura_da_anagrafica(NULL, NULL)'),
-    'P0001 E_DOC_FORNITURA_PARAMETRO_MANCANTE',
+    dbops.fn_pgtap_codice_errore('SELECT * FROM vendite.fn_get_fornitura_da_anagrafica(NULL, NULL)'),
+    'E_DOC_FORNITURA_PARAMETRO_MANCANTE',
     '4) coppia NULL: E_DOC_FORNITURA_PARAMETRO_MANCANTE');
 
 -- ============================================================
@@ -305,13 +293,13 @@ SELECT is(
 --   testata lo rifiuta prima che la scheda si muova. Prima il test diceva
 --   «la scheda di G»: il caso non e' piu' raggiungibile dalla testata.
 CREATE TEMP TABLE _r12 AS
-SELECT pg_temp.codice(format('SELECT pg_temp.sposta_contratto(%s, %L)',
-                             (SELECT contratto_id FROM _k1), 'G')) AS esito;
+SELECT COALESCE(dbops.fn_pgtap_codice_errore(format('SELECT pg_temp.sposta_contratto(%s, %L)',
+                             (SELECT contratto_id FROM _k1), 'G')), 'nessun errore') AS esito;
 
 SELECT is(
     (SELECT esito FROM _r12)
     || ' ' || pg_temp.scheda('contratti_utilities', 'contratto_id', (SELECT contratto_id FROM _k1)),
-    'P0001 E_DOC_UTILITY_IMMUTABILE ' || pg_temp.attesa('A'),
+    'E_DOC_UTILITY_IMMUTABILE ' || pg_temp.attesa('A'),
     '12) A -> G, su un''altra utility: rifiutato (la utility e'' ferma), la scheda resta quella di A');
 
 -- ============================================================
@@ -321,19 +309,19 @@ SELECT is(
 DELETE FROM vendite.contratti_utilities WHERE contratto_id = (SELECT contratto_id FROM _k3);
 
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         'INSERT INTO vendite.contratti_utilities (contratto_id, istanza_utility_id, utility_id) '
         'SELECT %s, c.istanza_utility_id, c.utility_id FROM _c c WHERE c.lato = %L',
         (SELECT contratto_id FROM _k3), 'B')),
-    'P0001 E_DOC_FORNITURA_FUORI_TESTATA',
+    'E_DOC_FORNITURA_FUORI_TESTATA',
     '13) una scheda con la coppia di un altro cliente: E_DOC_FORNITURA_FUORI_TESTATA');
 
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.contratti_utilities SET istanza_utility_id = (SELECT istanza_utility_id FROM _c WHERE lato = %L) '
         ' WHERE contratto_id = %s',
         'B', (SELECT contratto_id FROM _k2))),
-    'P0001 E_DOC_FORNITURA_FUORI_TESTATA',
+    'E_DOC_FORNITURA_FUORI_TESTATA',
     '14) spostare la coppia di una scheda gia'' scritta: E_DOC_FORNITURA_FUORI_TESTATA');
 
 -- ============================================================

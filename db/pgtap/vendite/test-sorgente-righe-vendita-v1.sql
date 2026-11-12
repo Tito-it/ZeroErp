@@ -59,21 +59,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(24);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- ============================================================
 -- LA FORMA
 -- ============================================================
@@ -208,8 +193,8 @@ UPDATE catalogo.articoli SET obsoleto_dal = script.fn_data_operativa() - 1
  WHERE id = (SELECT art_rev FROM _ref);
 
 CREATE TEMP TABLE _rev AS
-SELECT pg_temp.esito(format('SELECT vendite.fn_crea_revisione_preventivo(%s, %L)',
-                            pg_temp.fix('rev_n'), 'pgtap')) AS esito;
+SELECT COALESCE(dbops.fn_pgtap_codice_errore(format('SELECT vendite.fn_crea_revisione_preventivo(%s, %L)',
+                            pg_temp.fix('rev_n'), 'pgtap')), 'PASSA') AS esito;
 INSERT INTO _fix
 SELECT 'rev_n1', p.id FROM vendite.preventivi p
  WHERE p.numero = (SELECT numero FROM vendite.preventivi WHERE id = pg_temp.fix('rev_n'))
@@ -306,50 +291,50 @@ SELECT is(
 SELECT pg_temp.mk_preventivo('bozza', 'DRAFT', (SELECT art_prev FROM _ref));
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione, qta_operativa,
                                          prezzo_unitario, iva_id, sorgente_tipo_id, sorgente_uid, sorgente_riga)
        SELECT %s, 99, k.art_prev, 'pgTAP sorgente righe', 1, 10, k.iva_id, k.t_prev, p.uid, %s
          FROM _ref k, vendite.preventivi p WHERE p.id = %s$q$,
     pg_temp.fix('ord_prev'), pg_temp.fix('bozza_riga'), pg_temp.fix('bozza'))),
-  'PASSA',
+  NULL,
   '13) una riga scritta a mano che cita il documento e una sua riga: il guard la ammette');
 
 INSERT INTO _fix SELECT 'mano', r.id FROM vendite.ordini_righe r
  WHERE r.ordine_id = pg_temp.fix('ord_prev') AND r.riga_nr = 99;
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ordini_righe SET sorgente_riga = %s WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET sorgente_riga = %s WHERE id = %s',
                        pg_temp.fix('acc_riga'), pg_temp.fix('mano'))),
   'E_SORG_RIGA_NON_DEL_DOCUMENTO',
   '14) la riga di un ALTRO documento: E_SORG_RIGA_NON_DEL_DOCUMENTO');
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ordini_righe SET sorgente_id = %s WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET sorgente_id = %s WHERE id = %s',
                        pg_temp.fix('bozza'), pg_temp.fix('mano'))),
   'E_SORG_CHIAVE_NON_CONFORME',
   '15) due chiavi insieme: E_SORG_CHIAVE_NON_CONFORME');
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ordini_righe SET sorgente_uid = NULL, sorgente_id = %s WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET sorgente_uid = NULL, sorgente_id = %s WHERE id = %s',
                        pg_temp.fix('bozza'), pg_temp.fix('mano'))),
   'E_SORG_CHIAVE_NON_CONFORME',
   '16) l''id per un tipo a chiave uid: E_SORG_CHIAVE_NON_CONFORME (la chiave la dice il key_selector)');
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ordini_righe SET sorgente_uid = %L, sorgente_riga = NULL WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET sorgente_uid = %L, sorgente_riga = NULL WHERE id = %s',
                        '00000000-0000-7000-8000-000000000000', pg_temp.fix('mano'))),
   'E_SORG_NOT_FOUND',
   '17) un documento che non c''e'': E_SORG_NOT_FOUND');
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ordini_righe SET sorgente_tipo_id = NULL, sorgente_uid = NULL WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET sorgente_tipo_id = NULL, sorgente_uid = NULL WHERE id = %s',
                        pg_temp.fix('mano'))),
-  '23514 chk_ordini_righe_sorgente_forma',
+  'chk_ordini_righe_sorgente_forma',
   '18) sorgente_riga senza tipo: il guard tace (nessun tipo), il CHECK di forma rifiuta');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario,
                                              iva_id, sorgente_tipo_id, sorgente_uid)
        SELECT %s, k.art_prev, 1, 10, k.iva_id, k.t_prev, p.uid
@@ -362,7 +347,7 @@ SELECT is(
 -- IN USCITA
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format('DELETE FROM vendite.preventivi_righe WHERE id = %s', pg_temp.fix('bozza_riga'))),
+  dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi_righe WHERE id = %s', pg_temp.fix('bozza_riga'))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '20) la riga d''origine citata da una riga d''ordine non si cancella (BLOCCA)');
 
@@ -373,15 +358,15 @@ SELECT is(
 UPDATE vendite.preventivi_righe SET attivo = false WHERE preventivo_id = pg_temp.fix('bozza');
 
 SELECT is(
-  pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', pg_temp.fix('bozza'))),
+  dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s', pg_temp.fix('bozza'))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '21) ... e il preventivo d''origine nemmeno');
 
 DELETE FROM vendite.ordini_righe WHERE id = pg_temp.fix('mano');
 
 SELECT is(
-  pg_temp.esito(format('DELETE FROM vendite.preventivi_righe WHERE id = %s', pg_temp.fix('bozza_riga'))),
-  'PASSA',
+  dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi_righe WHERE id = %s', pg_temp.fix('bozza_riga'))),
+  NULL,
   '22) tolta la riga che la cita, la riga d''origine si cancella');
 
 -- ============================================================

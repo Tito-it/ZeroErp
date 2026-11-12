@@ -25,6 +25,12 @@ DECLARE
   v_row      jsonb;
   v_result   record;
   i          integer;
+  -- La diagnostica dell'errore di una riga (GET STACKED DIAGNOSTICS):
+  --   valori dell'eccezione, nessuna colonna li rispecchia.
+  v_sqlstate text;
+  v_vincolo  text;
+  v_colonna  text;
+  v_codice   text;
 BEGIN
   -- =========================================================
   -- Batch wrapper su fn_upsert_commessa_attivita.
@@ -115,12 +121,30 @@ BEGIN
       END IF;
 
     EXCEPTION WHEN others THEN
+      -- ⭐ Il codice di dominio viaggia nel canale CONSTRAINT, il campo da
+      --   correggere nel canale COLUMN (script.fn_log_and_raise_error): qui
+      --   l'eccezione non arriva al backend, che non puo' leggerli dal driver.
+      GET STACKED DIAGNOSTICS
+        v_sqlstate = RETURNED_SQLSTATE,
+        v_vincolo  = CONSTRAINT_NAME,
+        v_colonna  = COLUMN_NAME;
+      -- ⚠️ Per un 23505 o un 23514 il CONSTRAINT e' il nome di un vincolo:
+      --   codice e campo ci sono solo per un errore di dominio.
+      v_codice := script.fn_codice_dominio(v_sqlstate, v_vincolo);
+
+      -- Le tre chiavi di prima restano identiche (una segment_key null resta
+      --   una chiave null); le nuove non compaiono quando non hanno valore.
       v_errors := v_errors || jsonb_build_array(
         jsonb_build_object(
           'index',       i,
           'segment_key', v_row ->> 'segment_key',
           'error',       SQLERRM
         )
+        || jsonb_strip_nulls(jsonb_build_object(
+          'sqlstate',    v_sqlstate,
+          'codice',      v_codice,
+          'campo',       CASE WHEN v_codice IS NOT NULL THEN NULLIF(v_colonna, '') END
+        ))
       );
     END;
   END LOOP;
@@ -130,7 +154,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_batch_upsert_commessa_attivita(p_rows jsonb)
-IS 'Il batch del push: un array jsonb di righe, ognuna passata a vendite.fn_upsert_commessa_attivita con le chiavi dei suoi parametri (senza il prefisso p_), e i contatori total_rows, inserted, updated con gli errori raccolti tutti (collect-all: una riga che fallisce non ferma le altre). Le chiavi dello snapshot di prezzo (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot) sono obbligatorie come nella madre. La provenienza: sorgente_tipo_id, sorgente_chiave (la chiave del documento come la ha il chiamante, id o uid) e sorgente_riga (la riga del documento, dalla riga_id dei lister del push).';
+IS 'Il batch del push: un array jsonb di righe, ognuna passata a vendite.fn_upsert_commessa_attivita con le chiavi dei suoi parametri (senza il prefisso p_), e i contatori total_rows, inserted, updated con gli errori raccolti tutti (collect-all: una riga che fallisce non ferma le altre, qualunque errore sia). Ogni errore di errors porta index (la posizione della riga nell''array), segment_key, error (il messaggio) e sqlstate; quando l''errore e'' di dominio (script.fn_codice_dominio: P0001 col codice nel canale CONSTRAINT) porta anche codice, il codice del catalogo dei messaggi, e campo, il campo da correggere quando l''errore lo nomina. Per un errore che non e'' di dominio (un cast del payload, un vincolo) codice e campo non ci sono. Le chiavi dello snapshot di prezzo (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot) sono obbligatorie come nella madre. La provenienza: sorgente_tipo_id, sorgente_chiave (la chiave del documento come la ha il chiamante, id o uid) e sorgente_riga (la riga del documento, dalla riga_id dei lister del push).';
 ```
 
 </div>

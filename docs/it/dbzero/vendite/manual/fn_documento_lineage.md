@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_documento_lineage`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -79,6 +79,11 @@ documenti del sistema.
 compare due volte: come figlia diretta della commessa e, al livello 2, come rettifica della fattura.
 Non è un difetto: sono due relazioni diverse verso lo stesso documento, e la funzione ritorna archi,
 non nodi.
+
+⚠️ **E una per chi cammina all'indietro.** Da una fattura si arriva alla commessa, e da lì a tutti i
+suoi documenti: l'arco fattura → commessa è a grana di documento, non di riga. Per sapere da quali
+documenti viene una fattura si parte dalle righe fatturate
+([vendite.fn_fattura_origini](/dbzero/vendite/funzioni/fn_fattura_origini)), non dal lineage.
 
 ---
 

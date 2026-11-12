@@ -49,18 +49,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(12);
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Una scelta a mano gia' presente su questa macchina non deve falsare i test:
 --   si parte senza (tutto si annulla col ROLLBACK).
@@ -107,11 +95,11 @@ SELECT is(
     'SPENTO|f|f',
     '5. ... e il panorama dice SPENTO, non da guardare');
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', true, 'pgTAP: riaccendo in produzione')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', true, 'pgTAP: riaccendo in produzione')$$),
           'E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE',
           '6. riaccendere smoke_notturno in PRODUZIONE: E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE');
 
-SELECT is(pg_temp.codice_errore($$
+SELECT is(dbops.fn_pgtap_codice_errore($$
               UPDATE dbops.processi_accensione a
                  SET motivo = 'pgTAP: ritocco il motivo'
                 FROM dbops.processi p
@@ -135,7 +123,7 @@ ALTER TABLE dbops.installazione DISABLE TRIGGER trg_installazione_a05_guard_immu
 DELETE FROM dbops.installazione;
 ALTER TABLE dbops.installazione ENABLE TRIGGER trg_installazione_a05_guard_immutabile_upd_dlt;
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', true, 'pgTAP: accendo senza ambiente')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', true, 'pgTAP: accendo senza ambiente')$$),
           'E_CONFIG_MANCANTE',
           '11. ambiente non dichiarato: accendere un non accendibile non si decide, E_CONFIG_MANCANTE');
 

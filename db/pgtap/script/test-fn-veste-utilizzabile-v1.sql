@@ -72,18 +72,6 @@ SELECT plan(28);
 -- ============================================================
 -- Fixture
 -- ============================================================
--- Il codice dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error).
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Operatore umano dal percorso di produzione: persona, risorsa umana,
 -- credenziale, veste OPERATORE accesa.
@@ -231,7 +219,7 @@ SELECT is((SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_i
 UPDATE anagrafiche.identita_digitali SET attivo = true WHERE id = (SELECT identita_id FROM _cl);
 
 SELECT is(
-    pg_temp.codice_errore(format('SELECT script.fn_get_user_profile(%s)',
+    dbops.fn_pgtap_codice_errore(format('SELECT script.fn_get_user_profile(%s)',
                                  (SELECT auth_user_id FROM _op))),
     'E_UTENTE_DISABILITATO',
     '19) profilo col rapporto chiuso: E_UTENTE_DISABILITATO');
@@ -239,7 +227,7 @@ SELECT pg_temp.ripristina_op();
 
 UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() + 1 WHERE id = (SELECT identita_id FROM _op);
 SELECT is(
-    pg_temp.codice_errore(format('SELECT script.fn_get_user_profile(%s)',
+    dbops.fn_pgtap_codice_errore(format('SELECT script.fn_get_user_profile(%s)',
                                  (SELECT auth_user_id FROM _op))),
     'E_UTENTE_DISABILITATO',
     '20) profilo con la veste non ancora valida: E_UTENTE_DISABILITATO');

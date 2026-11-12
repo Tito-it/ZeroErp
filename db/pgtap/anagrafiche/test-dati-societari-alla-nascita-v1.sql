@@ -50,16 +50,6 @@ SET CONSTRAINTS ALL DEFERRED;
 
 SELECT plan(18);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN '(nessun rifiuto)';
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $f$;
 
 CREATE OR REPLACE FUNCTION pg_temp.corpo(p_nome text) RETURNS text
 LANGUAGE sql AS $f$
@@ -127,13 +117,13 @@ SELECT is(
 -- Il BB: il soggetto
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_scrivi_dati_societari_alla_nascita(
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_scrivi_dati_societari_alla_nascita(
         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)$$),
     'E_PARAMETRO_INVALIDO',
     '6. soggetto NULL -> E_PARAMETRO_INVALIDO (un chiamante rotto, non «niente da scrivere»)');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_scrivi_dati_societari_alla_nascita(
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_scrivi_dati_societari_alla_nascita(
         '00000000-0000-0000-0000-000000000000', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)$$),
     'E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO',
     '7. soggetto inesistente -> E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO');
@@ -229,7 +219,7 @@ SELECT is(
 CREATE TEMP TABLE _cf_atomico AS SELECT dbops.fn_pgtap_cf_libero() AS cf;
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT anagrafiche.fn_crea_soggetto_pf(
               p_cognome := 'Nascita', p_nome := 'Canale C', p_codice_fiscale := %L,
               p_email := 'pgtap.nascita.ds.di.c@example.com',
@@ -262,7 +252,7 @@ SELECT throws_ok(
 --   della forma (E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO, l'ordine e' per
 --   nome), e il test non vedrebbe il guard della natura.
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT anagrafiche.fn_crea_soggetto_pf(
               p_cognome := 'Nascita', p_nome := 'Privato', p_codice_fiscale := %L,
               p_email := 'pgtap.nascita.ds.pr@example.com', p_sesso := 'F',

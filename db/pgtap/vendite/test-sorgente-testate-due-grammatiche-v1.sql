@@ -45,19 +45,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(15);
 
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 CREATE TEMP TABLE _a AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-SDG-MERCE', false) AS merce;
 
@@ -113,7 +100,7 @@ SELECT is(
   '4) vendite.fn_ddt_vincoli_cliente: vincolo SORGENTE con il BA e l''etichetta dell''ordine');
 
 SELECT is(
-  pg_temp.esito(format('UPDATE vendite.ddt SET billing_account_id = NULL WHERE id = %s', (SELECT ddt_id FROM _b))),
+  dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ddt SET billing_account_id = NULL WHERE id = %s', (SELECT ddt_id FROM _b))),
   'E_DOC_CLIENTE_DIVERSO_DA_SORGENTE',
   '5) il guard del cliente rifiuta il cambio di BA: l''ordine lo trova per id');
 
@@ -167,9 +154,9 @@ SELECT ok(
   '13) la firma testuale del risolutore si e'' ritirata: resta quella sulle colonne del modello');
 
 SELECT is(
-  (SELECT pg_temp.esito(format('SELECT script.fn_get_sorgente_emittente_sr_id(%s, NULL::bigint, NULL::uuid)', t_ord)) FROM _k)
+  (SELECT COALESCE(dbops.fn_pgtap_codice_errore(format('SELECT script.fn_get_sorgente_emittente_sr_id(%s, NULL::bigint, NULL::uuid)', t_ord)), 'PASSA') FROM _k)
   || ' / ' ||
-  (SELECT pg_temp.esito(format('SELECT script.fn_get_sorgente_emittente_sr_id(%s, 999999999999::bigint, NULL::uuid)', t_ord)) FROM _k),
+  (SELECT COALESCE(dbops.fn_pgtap_codice_errore(format('SELECT script.fn_get_sorgente_emittente_sr_id(%s, 999999999999::bigint, NULL::uuid)', t_ord)), 'PASSA') FROM _k),
   'E_SORG_KEY_MISSING / E_SORG_EMITTENTE_NON_RISOLTO',
   '14) ... i codici: nessuna chiave E_SORG_KEY_MISSING, documento che non c''e'' E_SORG_EMITTENTE_NON_RISOLTO');
 

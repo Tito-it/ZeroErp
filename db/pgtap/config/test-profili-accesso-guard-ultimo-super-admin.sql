@@ -44,20 +44,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(3);
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error). Si pinna il codice, non la frase del
--- catalogo: la frase si riscrive (rev 2026-10-07, giro 2 di
--- brief-db-veste-utilizzabile, «attivo e senza data di fine»), il codice no.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- =========================================================
 -- Helper: crea un binding SUPER_ADMIN ad-hoc su un'identita OPERATORE
@@ -152,13 +138,13 @@ SELECT pg_temp.disable_others((SELECT bind_id FROM _t_c2));
 --   accetta QUALUNQUE errore — anche quello sbagliato, ed e' il debito che il
 --   cancello `guardrail_pgtap_preambolo.py` conta. Gli errori di dominio del
 --   progetto sono tutti `P0001`: il discriminante e' il CODICE, che viaggia
---   in CONSTRAINT_NAME (pg_temp.codice_errore).
+--   in CONSTRAINT_NAME (dbops.fn_pgtap_codice_errore).
 --   ⛔ Fino al 2026-10-07 si pinnava la FRASE («zero SUPER_ADMIN attivi»), e
 --   la riscrittura del messaggio nel giro 2 di brief-db-veste-utilizzabile
 --   («attivo e senza data di fine») ha reso rosso il test senza che la regola
 --   cambiasse. La frase e' del catalogo, non del guard.
 SELECT is(
-    pg_temp.codice_errore(
+    dbops.fn_pgtap_codice_errore(
         format(
             $sql$ UPDATE config.profili_accesso_bindings SET attivo = false WHERE id = %s $sql$,
             (SELECT bind_id FROM _t_c2)
@@ -189,7 +175,7 @@ SELECT pg_temp.disable_others((SELECT bind_id FROM _t_c3));
 --   dbops.automazione_attivo_eccezioni e quel block non c'e' piu'. Il ramo
 --   specifico e' raggiungibile, e l'asserzione pinna la regola: E_PROFILO_ULTIMO_SUPER_ADMIN.
 SELECT is(
-    pg_temp.codice_errore(
+    dbops.fn_pgtap_codice_errore(
         format(
             $sql$ UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = %s $sql$,
             (SELECT id_id FROM _t_c3)

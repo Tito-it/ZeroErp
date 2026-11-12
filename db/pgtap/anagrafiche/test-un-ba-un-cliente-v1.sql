@@ -55,19 +55,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(12);
 
--- Il codice di dominio di un errore (canale CONSTRAINT su P0001), o SQLSTATE
--- e nome del vincolo per gli errori di vincolo. NULL se non solleva.
-CREATE OR REPLACE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' THEN v_c ELSE v_s || ' ' || coalesce(v_c, '') END;
-END $$;
-
 -- ============================================================
 -- Fixture: il mondo (emittente, operatore in sessione, cliente con BA X sulla
 -- coppia (istanza A, utility U), preventivo P). ⛔ Si legge separato.
@@ -184,12 +171,12 @@ SELECT lives_ok(
 -- 3) Un secondo cliente sullo stesso BA -> 23505
 -- ============================================================
 SELECT is(
-    pg_temp.esito($sql$
+    dbops.fn_pgtap_codice_errore($sql$
         INSERT INTO anagrafiche.clienti
             (soggetto_ruolo_id, istanza_utility_id, billing_account_id, stato_cliente_id, data_attivazione)
         SELECT w.cliente_soggetto_ruolo_id, v.istanza_c, v.ba_c1, v.stato_cliente_id, script.fn_data_operativa()
           FROM t_w w, t_v v $sql$),
-    '23505 uq_clienti_billing_account',
+    'uq_clienti_billing_account',
     '3. Un secondo cliente sullo stesso billing account: uq_clienti_billing_account'
 );
 
@@ -223,7 +210,7 @@ END;
 SELECT CASE WHEN (SELECT pratica_id FROM t_v) IS NULL
     THEN skip('5. nessuna pratica costruita', 1)
     ELSE is(
-        pg_temp.esito($sql$
+        dbops.fn_pgtap_codice_errore($sql$
             UPDATE pratiche.pratiche SET soggetto_ruolo_id = NULL
              WHERE id = (SELECT pratica_id FROM t_v) $sql$),
         'E_PRATICHE_BA_NON_COERENTE',
@@ -236,10 +223,10 @@ END;
 SELECT CASE WHEN (SELECT pratica_id FROM t_v) IS NULL
     THEN skip('6. nessuna pratica costruita', 1)
     ELSE is(
-        pg_temp.esito($sql$
+        dbops.fn_pgtap_codice_errore($sql$
             UPDATE pratiche.pratiche SET istanza_utility_id = NULL
              WHERE id = (SELECT pratica_id FROM t_v) $sql$),
-        '23514 chk_pratiche_ba_con_istanza',
+        'chk_pratiche_ba_con_istanza',
         '6. Pratica col billing account ma senza istanza: chk_pratiche_ba_con_istanza')
 END;
 
@@ -249,10 +236,10 @@ END;
 SELECT CASE WHEN (SELECT pratica_id FROM t_v) IS NULL
     THEN skip('7. nessuna pratica costruita', 1)
     ELSE is(
-        pg_temp.esito($sql$
+        dbops.fn_pgtap_codice_errore($sql$
             UPDATE pratiche.pratiche SET istanza_utility_id = (SELECT istanza_b FROM t_v)
              WHERE id = (SELECT pratica_id FROM t_v) $sql$),
-        '23503 fk_pratiche_billing_account_istanza',
+        'fk_pratiche_billing_account_istanza',
         '7. Pratica col billing account di un''altra istanza: fk_pratiche_billing_account_istanza')
 END;
 

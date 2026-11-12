@@ -78,7 +78,7 @@ ZeroErp/
 │       └── 90_end/           # Indici FK (apply_fk_index_policy)
 ├── db/pgtap/                 # Test DB con pgTAP
 ├── docs/it/                  # Documentazione MkDocs
-│   ├── linee-guida-sql.md    # LEGGERE prima di scrivere SQL
+│   ├── linee-guida-sql.md    # prima di scrivere SQL: titoli, poi le sezioni toccate
 │   ├── linee-guida-trigger.md
 │   ├── guide/                # Guide operative (fatturazione, pagamenti, ecc.)
 │   ├── dbzero/<schema>/      # Doc auto-generata (NON modificare)

@@ -55,18 +55,6 @@ SELECT plan(12);
 -- ============================================================
 -- Fixture
 -- ============================================================
--- Il codice dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error): P0001 da solo non dice QUALE.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.messaggio_errore(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -100,7 +88,7 @@ SELECT is(
     '1) CHECK chk_identita_digitali_ruolo_non_ritirato presente e validato');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO anagrafiche.identita_digitali
               (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
           VALUES (%s, %s, 'DISABILITATO'::config.ruolo_applicativo, false)$$,
@@ -109,7 +97,7 @@ SELECT is(
     '2) una veste DISABILITATO nuova: E_RUOLO_APPLICATIVO_RITIRATO, prima del CHECK');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$UPDATE anagrafiche.identita_digitali
              SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo,
                  attivo = false
@@ -133,7 +121,7 @@ SELECT is(
     '4) spento con attivo = false resta OPERATORE, e la credenziale si spegne');
 
 SELECT is(
-    pg_temp.codice_errore(format('SELECT script.fn_get_user_profile(%s)',
+    dbops.fn_pgtap_codice_errore(format('SELECT script.fn_get_user_profile(%s)',
                                  (SELECT auth_user_id FROM _op))),
     'E_UTENTE_DISABILITATO',
     '5) il profilo di un operatore spento: E_UTENTE_DISABILITATO');
@@ -168,7 +156,7 @@ UPDATE anagrafiche.identita_digitali SET attivo = false
  WHERE id = (SELECT identita_id FROM _op);
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$UPDATE anagrafiche.identita_digitali
              SET soggetto_ruolo_id = %s
            WHERE id = %s$$,
@@ -209,7 +197,7 @@ UPDATE anagrafiche.identita_digitali SET attivo = false
 SELECT is(
     (SELECT (script.fn_veste_di_riferimento(o.auth_user_id, 'OPERATORE'::config.ruolo_applicativo)
              = (SELECT id FROM _b))::text
-            || '|' || pg_temp.codice_errore(format('SELECT script.fn_get_user_profile(%s)', o.auth_user_id))
+            || '|' || dbops.fn_pgtap_codice_errore(format('SELECT script.fn_get_user_profile(%s)', o.auth_user_id))
        FROM _op o),
     'true|E_UTENTE_DISABILITATO',
     '10) tutte spente: la veste di riferimento e'' la piu'' recente, e il profilo rifiuta');

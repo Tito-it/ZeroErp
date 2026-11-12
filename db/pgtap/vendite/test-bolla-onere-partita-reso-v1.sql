@@ -60,20 +60,6 @@ END $az$;
 
 SELECT plan(12);
 
--- L'esito di un'istruzione: NULL se passa, il codice di dominio (canale
--- CONSTRAINT) se solleva P0001, altrimenti lo SQLSTATE. Discrimina il codice,
--- non la frase: P0001 da solo lo darebbe anche un altro guard.
-CREATE OR REPLACE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' THEN v_c ELSE v_s || ' ' || coalesce(v_c, '') END;
-END $$;
-
 -- ============================================================
 -- FIXTURE
 -- ============================================================
@@ -146,7 +132,7 @@ SELECT is(
   '3) in bozza la correzione della quantita'' evasa sull''onere e'' spenta: primo motivo RIGA_ONERE');
 
 SELECT is(
-  pg_temp.esito(format('SELECT vendite.fn_ddt_riga_correggi_qta_evasa(%s, 2)',
+  dbops.fn_pgtap_codice_errore(format('SELECT vendite.fn_ddt_riga_correggi_qta_evasa(%s, 2)',
                        (SELECT onere_id FROM _righe))),
   'E_DDT_RIGA_ONERE_NON_CORREGGIBILE',
   '4) il verbo della correzione solleva il primo motivo della check: E_DDT_RIGA_ONERE_NON_CORREGGIBILE');
@@ -184,7 +170,7 @@ SELECT is(
 -- IL RESO
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $$SELECT * FROM dbops.fn_pgtap_crea_reso('reso onere', %s, 1,
                  p_stato_codice_interno => 'DRAFT', p_ddt_riga_id => %s)$$,
     (SELECT ddt_id FROM _d), (SELECT onere_id FROM _righe))),

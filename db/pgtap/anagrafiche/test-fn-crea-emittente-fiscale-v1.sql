@@ -39,28 +39,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(14);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
-
--- Il vincolo violato (23505/23503): CONSTRAINT_NAME porta il suo nome.
-CREATE OR REPLACE FUNCTION pg_temp.vincolo_violato(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN unique_violation OR foreign_key_violation THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.contesto_campo(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -154,7 +132,7 @@ SELECT cmp_ok(
 -- I rifiuti
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
         (SELECT s1 FROM t_sog), 'PGTX0001', '{"ragione_sociale": "x"}'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '7. una chiave estranea: E_CAMPO_NON_AMMESSO');
@@ -166,26 +144,26 @@ SELECT is(
     '8. ... e il campo esce sul canale COLUMN, per accenderlo nel form');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
         (SELECT s1 FROM t_sog), 'PGTX0001', '{"regime_fiscale_confermato_il": "2026-01-01"}'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '9. la conferma del regime non si scrive a mano');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
         (SELECT s1 FROM t_sog), 'PGTX0001', '[]'::jsonb)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '10. campi che non sono un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.vincolo_violato($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
         dbops.fn_pgtap_crea_soggetto_pg('Emittente verbo pgTAP 3'),
         (SELECT a FROM t_sigla))$$),
     'uq:codice',
     '11. codice gia'' usato: esce dal vincolo uq:codice');
 
 SELECT is(
-    pg_temp.vincolo_violato($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_emittente_fiscale(
         (SELECT s1 FROM t_sog), 'PGTX0002')$$),
     'uq_emittenti_fiscali_ruolo',
     '12. secondo emittente sullo stesso soggetto: esce da uq_emittenti_fiscali_ruolo');

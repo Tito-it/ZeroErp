@@ -48,20 +48,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(12);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice(p_sql text)
-RETURNS text LANGUAGE plpgsql AS $fx$
-DECLARE v_cst text;
-BEGIN
-    BEGIN
-        EXECUTE p_sql;
-        RETURN 'NESSUN ERRORE';
-    EXCEPTION WHEN OTHERS THEN
-        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME;
-        RETURN coalesce(nullif(v_cst, ''), '-');
-    END;
-END;
-$fx$;
-
 CREATE TEMP TABLE _fam ON COMMIT DROP AS
 SELECT * FROM (VALUES
     ('vendite', 'fn_documento_listino_operativo'),
@@ -92,13 +78,13 @@ SELECT is_empty(
     '2) p_documento e'' character varying (config.sorgenti.codice_interno%TYPE)');
 
 -- 3-6) il codice corto non passa
-SELECT is(pg_temp.codice($$SELECT * FROM vendite.fn_documento_listino_operativo('OFFERTA', -1)$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT * FROM vendite.fn_documento_listino_operativo('OFFERTA', -1)$$),
           'E_DOC_TIPO_NON_GESTITO', '3) fn_documento_listino_operativo rifiuta OFFERTA');
-SELECT is(pg_temp.codice($$SELECT * FROM vendite.fn_documento_righe_eccezione('OFFERTA', -1)$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT * FROM vendite.fn_documento_righe_eccezione('OFFERTA', -1)$$),
           'E_DOC_TIPO_NON_GESTITO', '4) fn_documento_righe_eccezione rifiuta OFFERTA');
-SELECT is(pg_temp.codice($$SELECT script.fn_check_listino_congelabile('OFFERTA', NULL, NULL)$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT script.fn_check_listino_congelabile('OFFERTA', NULL, NULL)$$),
           'E_DOC_TIPO_NON_GESTITO', '5) fn_check_listino_congelabile rifiuta OFFERTA');
-SELECT is(pg_temp.codice($$SELECT script.fn_check_riga_erogazione('OFFERTA', -1, NULL, NULL, NULL, NULL)$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT script.fn_check_riga_erogazione('OFFERTA', -1, NULL, NULL, NULL, NULL)$$),
           'E_DOC_TIPO_NON_GESTITO', '6) fn_check_riga_erogazione rifiuta OFFERTA');
 
 -- 7) il codice della sorgente passa

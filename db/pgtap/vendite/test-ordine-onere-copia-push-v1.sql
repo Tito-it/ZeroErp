@@ -57,19 +57,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(17);
 
--- Il codice di dominio dell'errore, dal canale CONSTRAINT (contratto di
--- script.fn_log_and_raise_error). NULL = nessun errore.
-CREATE OR REPLACE FUNCTION pg_temp.codice(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
-
 -- Una causale e il suo articolo-onere (servizio una tantum, non a magazzino);
 -- un articolo di merce.
 CREATE TEMP TABLE _caus AS
@@ -232,7 +219,7 @@ SELECT is(
 CREATE TEMP TABLE _ob AS SELECT pg_temp.ordine('pgTAP OCP B', 'CONFERMATO', 2, 2) AS id;
 
 SELECT is(
-  pg_temp.codice(format(
+  dbops.fn_pgtap_codice_errore(format(
     'SELECT vendite.fn_genera_ddt_da_ordine(%s, %L::jsonb)',
     (SELECT id FROM _ob),
     jsonb_build_array(jsonb_build_object(
@@ -250,7 +237,7 @@ VALUES ((SELECT ddt_id FROM _bc), 2, (SELECT onere FROM _a), 'Fixture pgTAP: one
         (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1));
 
 SELECT is(
-  pg_temp.codice(format(
+  dbops.fn_pgtap_codice_errore(format(
     'INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa) VALUES (%s, %s, 1)',
     pg_temp.riga_ord((SELECT id FROM _ob), true),
     pg_temp.riga_ddt((SELECT ddt_id FROM _bc), true))),

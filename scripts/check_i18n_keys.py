@@ -343,7 +343,9 @@ def main():
                 if riga.get("attivo") != "t":
                     continue
                 chiave = (riga.get("etichetta_i18n_key") or "").strip()
-                if chiave:
+                # Il mirror dichiara `nullValue: "NULL"`: il token e' l'assenza
+                # della chiave, non una chiave.
+                if chiave and chiave != "NULL":
                     colonne_keys.setdefault(chiave, set()).add(rel)
 
     rotte = sorted((k, v) for k, v in citate.items() if k not in presenti)

@@ -37,16 +37,6 @@ SELECT plan(4);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Due aziende in due istruzioni. Su un database ricostruito il predefinito non
 -- c'e', e lo diventa il PRIMO emittente costruito; dove c'e' gia' (dbdev),
@@ -110,7 +100,7 @@ SELECT is(
 -- 3) Un emittente indicato e diverso resta rifiutato
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'SELECT vendite.fn_get_or_create_lotto(p_lotto_id => %s, p_emittente_soggetto_ruolo_id => %s)',
         (SELECT lotto_id FROM t_lotto), (SELECT sr FROM t_pred))),
     'E_LOTTO_PARAMETRO_NON_COERENTE',

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.riferimenti_morti_esenzioni`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -73,6 +73,11 @@ pgAgent c'è.
 Le voci entrano e escono con changeSet di dati, non con un CSV di mirror: si aggiunge una voce con
 il suo motivo quando un difetto si decide di tenerlo, e si toglie quando la vista dei rientrati (o
 il guardrail) la segnala.
+
+⚠️ **Una funzione trigger che nasce prima del suo primo montaggio** è `ORFANA` e accende il
+presidio. Il changeSet che la crea porta nello stesso giro la voce di esenzione (il motivo «senza
+alcun trigger»), e il changeSet che la monta per la prima volta la toglie: altrimenti la voce
+risulta rientrata.
 
 ---
 

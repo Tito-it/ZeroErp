@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_codice_errore: che cosa ha rifiutato un'istruzione, in un pgTAP.
+#
+# ⚠️ PERCHE'. La lettura «esegui, e se rifiuta dimmi il codice» era scritta sul
+#   posto come pg_temp.codice_errore in 47 pgTAP, in sei varianti: chi catturava
+#   solo P0001, chi anche 23514, chi ogni errore; chi rendeva NULL senza errore e
+#   chi una frase. Sei varianti della stessa lettura rispondono in modi diversi
+#   allo stesso rifiuto (regola del 2). Qui la versione che le copre tutte; le
+#   copie si ritirano nello stesso giro, nei pgTAP.
+#
+# LA RISPOSTA, in ordine:
+#   1. nessun errore                    -> NULL (il test che vuole «passa» asserisce NULL);
+#   2. errore di dominio                -> il codice (script.fn_codice_dominio: P0001 con
+#                                          CONSTRAINT valorizzato, il contratto di
+#                                          script.fn_log_and_raise_error);
+#   3. vincolo violato (CHECK, UNIQUE,
+#      FK, NOT NULL di un dominio)      -> il nome del vincolo;
+#   4. ogni altro errore                -> lo SQLSTATE.
+#   Un errore che non e' quello atteso non fa piu' cadere il file: torna come
+#   valore, e l'is() del test lo mostra («have: 42501, want: E_…»). Il test resta
+#   rosso, con un messaggio che dice che cosa e' successo.
+#
+# ⚠️ Dipende da script.fn_codice_dominio, che nasce in 20261112-25 (numero minore,
+#   stesso giro di apply). Il corpo plpgsql la risolve alla prima esecuzione.
+# Presidio: dbops/test-fn-pgtap-codice-errore-v1. Funzione nuova, rollback: DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261112-28-create-fn-pgtap-codice-errore-mctit.yaml
+
+  - changeSet:
+      id: 20261112-28-create-fn-pgtap-codice-errore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_codice_errore: esegue un'istruzione e rende che cosa l'ha rifiutata (codice di dominio, nome del vincolo o SQLSTATE; NULL se passa). Sostituisce le 47 copie di pg_temp.codice_errore nei pgTAP.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_codice_errore';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_pgtap_codice_errore(
+                  -- l'istruzione da provare: testo SQL, nessuna colonna la rispecchia
+                  p_sql text)
+               -- un codice di dominio, il nome di un vincolo o uno SQLSTATE: tre
+               -- vocabolari diversi, nessuna colonna di cui sia il riflesso
+               RETURNS text
+               LANGUAGE plpgsql
+               VOLATILE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: eseguire un'istruzione in un pgTAP e dire CHE COSA l'ha
+              --   rifiutata, per asserirlo con is(). Solo per i pgTAP.
+              -- Uso:
+              --   SELECT is(dbops.fn_pgtap_codice_errore($$SELECT schema.fn_verbo(…)$$),
+              --             'E_CODICE_ATTESO', 'descrizione');
+              --   SELECT is(dbops.fn_pgtap_codice_errore($$…$$), NULL, 'passa');
+              DECLARE
+                  -- valori della diagnostica, nessuna colonna li rispecchia
+                  v_sqlstate text;
+                  v_vincolo  text;
+              BEGIN
+                  EXECUTE p_sql;
+                  RETURN NULL;
+              EXCEPTION WHEN OTHERS THEN
+                  GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE,
+                                          v_vincolo  = CONSTRAINT_NAME;
+                  -- Il codice di dominio prima di tutto: la sua lettura sta in un
+                  -- posto solo. Poi il nome del vincolo, poi lo SQLSTATE.
+                  RETURN COALESCE(script.fn_codice_dominio(v_sqlstate, v_vincolo),
+                                  NULLIF(v_vincolo, ''),
+                                  v_sqlstate);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_codice_errore(text) IS
+                  'Fixture pgTAP (building block): esegue p_sql e rende che cosa l''ha rifiutata, da asserire con is(). In ordine: NULL se l''istruzione passa; il codice di dominio se l''errore viene da script.fn_log_and_raise_error (letto da script.fn_codice_dominio); il nome del vincolo per un CHECK, UNIQUE o FK violato; altrimenti lo SQLSTATE. Un errore inatteso non interrompe il file: torna come valore e l''is() lo mostra. Le scritture di un''istruzione rifiutata si annullano col blocco EXCEPTION; quelle di un''istruzione che passa restano nella transazione del test. Solo per i pgTAP.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_codice_errore(text);

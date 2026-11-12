@@ -47,16 +47,6 @@ SELECT plan(7);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' OR SQLSTATE '23514' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE TEMP TABLE t_mondo AS
 SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
@@ -116,7 +106,7 @@ SELECT ok(
 -- 4-5) Lo spegnimento
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.listini SET attivo = false WHERE id = %s',
         (SELECT listino_id FROM t_storia))),
     'E_LISTINO_CON_STORIA_NON_SPEGNIBILE',
@@ -135,7 +125,7 @@ SELECT is(
 -- 6) Una versione CHIUSA ha sempre la fine validita'
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal,
                                                 stato_doc_listino_versione_id)
           VALUES (%s, 'PGTAP_CHIUSA', DATE '2020-01-01', %s)$$,

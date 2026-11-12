@@ -3,14 +3,17 @@
 
 > 📝 **Descrizione**
 >
-> La proiezione di una nota di catalogo, una riga per nota di ogni partizione di catalogo.note, con la decodifica dello stile (config.note_stili) e della lingua (config.lingue). Non filtra: le note nascoste e quelle di sola stampa ci sono. E' la sede unica delle colonne di nota: catalogo.vw_articoli_note e catalogo.vw_articoli_componenti_note la leggono per il loro nota_target_tipo. Si legge, non si scrive: le note si scrivono sul padre o sulla partizione.
+> La proiezione di una nota di catalogo, una riga per nota di ogni partizione di catalogo.note, con la decodifica dello stile (config.note_stili: codice, descrizione, codice_interno) e della lingua (config.lingue). Non filtra: le note nascoste e quelle di sola stampa ci sono. Ha le stesse colonne, nello stesso ordine, di vendite.vw_note, acquisti.vw_note e magazzino.vw_note: una vista per ogni sede delle note, e la proiezione sta solo qui. security_invoker: si legge con i privilegi e le policy di chi la interroga. catalogo.vw_articoli_note e catalogo.vw_articoli_componenti_note la leggono per il loro nota_target_tipo. Si legge, non si scrive: le note si scrivono sul padre o sulla partizione.
 
-> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+> 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
+> 🔓 **Sicurezza**: `security_invoker` — le tabelle sotto si leggono con i privilegi e la RLS di chi interroga; owner `zeroerp_owner`.
 
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE VIEW catalogo.vw_note AS
+CREATE OR REPLACE VIEW catalogo.vw_note
+WITH (security_invoker=true) AS
 SELECT n.id AS nota_id,
     n.target_tipo AS nota_target_tipo,
     n.target_id AS nota_target_id,
@@ -33,7 +36,8 @@ SELECT n.id AS nota_id,
     l.id AS lingua_id,
     l.codice_iso AS lingua_codice_iso,
     l.descrizione AS lingua_descrizione,
-    l.descrizione_locale AS lingua_descrizione_locale
+    l.descrizione_locale AS lingua_descrizione_locale,
+    ns.codice_interno AS stile_codice_interno
    FROM ((catalogo.note n
      LEFT JOIN config.note_stili ns ON ((ns.id = n.id_stile)))
      LEFT JOIN config.lingue l ON ((l.id = n.id_lingua)));

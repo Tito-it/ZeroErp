@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -467,6 +467,14 @@ un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA 
 > una corsia che emette documenti invalidi. Il presidio è
 > `test-pipeline-processi-invariante-v1.sql`: fallisce se una tappa qualsiasi ha corsie con
 > `processi` divergenti, o se una corsia attiva resta vuota.
+
+> ⛔ **Mettere un task nei `processi` di una pipeline vuole tre sedi nello stesso giro**: il JSON
+> `processi`, il registro (`dbops.pipeline_task_registry` e `pipeline_task_registry_impl`) e la
+> policy ([vendite.fatturazione_pipeline_task_policy](/dbzero/vendite/tabelle/fatturazione_pipeline_task_policy)).
+> `processi` è un JSON, e nessuna chiave esterna lo lega alle altre due: senza registro lo step muore
+> al primo task, senza policy il task gira **senza il suo `task_run`** e nessuno solleva. Nella policy
+> `annullabile` risponde a «annullare il `task_run` disfa davvero l'effetto?» e `resume_mode` a «basta
+> rilanciare il task o va rifatta la sequenza?». Lo stesso presidio verifica registro e policy.
 
 ### I task dello step DRAFT (entrambe le corsie)
 

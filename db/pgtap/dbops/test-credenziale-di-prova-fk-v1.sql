@@ -34,21 +34,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(6);
 
--- Il codice del rifiuto: fn_log_and_raise_error lo mette in CONSTRAINT_NAME (come in
---   dbops/test-etichette-di-prova-v1); ogni altro errore torna col suo SQLSTATE.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION
-    WHEN SQLSTATE 'P0001' THEN
-        GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-        RETURN v_c;
-    WHEN OTHERS THEN
-        RETURN SQLSTATE;
-END $$;
 
 -- ⚠️ L'ambiente si dichiara SVILUPPO a trigger spento, perche' il file non dipenda dalla macchina
 --   (come dbops/test-etichette-di-prova-v1).
@@ -100,7 +85,7 @@ SELECT auth_user_id, 'pgtap.etichetta.fk' FROM t_cred;
 -- 2-5) La credenziale e la sua etichetta
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$DELETE FROM dbops.credenziali_di_prova WHERE chiave = 'pgtap.etichetta.fk'$$),
+    dbops.fn_pgtap_codice_errore($$DELETE FROM dbops.credenziali_di_prova WHERE chiave = 'pgtap.etichetta.fk'$$),
     'E_ETICHETTA_DI_PROVA_IMMUTABILE',
     '2) il DELETE diretto dell''etichetta, con la credenziale viva: E_ETICHETTA_DI_PROVA_IMMUTABILE');
 
@@ -120,7 +105,7 @@ SELECT CASE
        END;
 
 SELECT is(
-    pg_temp.codice_errore($$UPDATE dbops.credenziali_di_prova SET chiave = 'pgtap.altra' WHERE chiave = 'pgtap.etichetta.fk'$$),
+    dbops.fn_pgtap_codice_errore($$UPDATE dbops.credenziali_di_prova SET chiave = 'pgtap.altra' WHERE chiave = 'pgtap.etichetta.fk'$$),
     'E_ETICHETTA_DI_PROVA_IMMUTABILE',
     '4) l''UPDATE dell''etichetta resta rifiutato');
 
@@ -133,7 +118,7 @@ SELECT EXISTS (SELECT 1 FROM pg_constraint
        NULL::text AS esito;
 
 UPDATE t_esito
-   SET esito = COALESCE((SELECT pg_temp.codice_errore(
+   SET esito = COALESCE((SELECT dbops.fn_pgtap_codice_errore(
                                     format('DELETE FROM django.auth_user WHERE id = %s', auth_user_id)) FROM t_cred),
                         'ok')
  WHERE con_fk;
@@ -156,7 +141,7 @@ INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave)
 SELECT soggetto_id, 'PGTAP-ETICHETTA-FK' FROM t_sog;
 
 SELECT is(
-    pg_temp.codice_errore($$DELETE FROM dbops.soggetti_di_prova WHERE chiave = 'PGTAP-ETICHETTA-FK'$$),
+    dbops.fn_pgtap_codice_errore($$DELETE FROM dbops.soggetti_di_prova WHERE chiave = 'PGTAP-ETICHETTA-FK'$$),
     'E_ETICHETTA_DI_PROVA_IMMUTABILE',
     '6) l''etichetta di un soggetto vivo non si cancella');
 

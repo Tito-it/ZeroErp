@@ -461,7 +461,8 @@ CAMPI_PC = ["preset_id", "colonna_id", "ordine", "visibile", "fissata"]
 
 # Descrittore dei quattro CSV di seed. `nullo` e' il token che il rispettivo
 # loader Liquibase interpreta come NULL, e NON e' lo stesso per tutti:
-# 20260507-06 dichiara `nullValue: "NULL"`, gli altri tre `nullValue: ""`.
+# 20260507-06 (lista_definizione) e 20260806-15 (lista_colonna, dal 2026-11-12) dichiarano
+# `nullValue: "NULL"`, gli altri due `nullValue: ""`.
 # Sbagliarlo non e' un dettaglio di forma: una cella vuota su lista_definizione
 # diventa `vista_sql = ''` (non NULL), il guard
 # ui.trgfn_ui_lista_definizione_a10_valida_vista_sql non salta piu' e l'apply
@@ -472,7 +473,7 @@ CSV_SEED = {
         "tabella": "ui.lista_definizione",
     },
     "lista_colonna.csv": {
-        "campi": CAMPI_COL, "nullo": "", "pk": ("id",),
+        "campi": CAMPI_COL, "nullo": "NULL", "pk": ("id",),
         "tabella": "ui.lista_colonna",
     },
     "lista_preset.csv": {
@@ -484,6 +485,10 @@ CSV_SEED = {
         "tabella": "ui.lista_preset_colonna",
     },
 }
+# La cella «nessun valore» delle colonne nullable di lista_colonna: il token del
+# suo loader. Una cella vuota arriverebbe come stringa vuota, che i CHECK
+# chk_lista_colonna_*_non_vuoto/a rifiutano (90_end/20261112-30).
+NULLO_COL = CSV_SEED["lista_colonna.csv"]["nullo"]
 
 # Suffissi fisici che le liste configurate tolgono per ottenere il nome logico
 # della colonna (`stato_descrizione` -> `stato`, `valuta_codice` -> `valuta`).
@@ -941,18 +946,18 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
 
         righe_col.append({
             "id": id_col, "lista_id": id_lista, "codice": logico, "etichetta": etichetta,
-            "etichetta_estesa": "Colonna calcolata FE" if calcolata else "",
-            "campo_sorgente": campo or "",
+            "etichetta_estesa": "Colonna calcolata FE" if calcolata else NULLO_COL,
+            "campo_sorgente": campo or NULLO_COL,
             "tipo_colonna": tipo_colonna, "tipo_dato": tipo_dato,
-            "formato": voce["formato"] or "", "larghezza_default": "",
+            "formato": voce["formato"] or NULLO_COL, "larghezza_default": NULLO_COL,
             "ordine_default": pos * 10, "allineamento": allineamento,
-            "gruppo": "", "gruppo_ordine": "",
+            "gruppo": NULLO_COL, "gruppo_ordine": NULLO_COL,
             "filtrabile": "f" if calcolata else "t",
             "ordinabile": "f" if calcolata else "t",
             "esportabile": "f" if calcolata else "t",
             "ricercabile_full": "f", "sensibile": "f", "attivo": "t",
             "data_insert": data_insert, "user_insert": utente,
-            "etichetta_i18n_key": voce["chiave"] or "", "priorita": 50,
+            "etichetta_i18n_key": voce["chiave"] or NULLO_COL, "priorita": 50,
         })
         righe_pc.append({
             "preset_id": id_preset, "colonna_id": id_col, "ordine": pos * 10,
@@ -965,10 +970,10 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
         id_col += 1
         righe_col.append({
             "id": id_col, "lista_id": id_lista, "codice": "azioni", "etichetta": "Azioni",
-            "etichetta_estesa": "", "campo_sorgente": "",
-            "tipo_colonna": "azione", "tipo_dato": "string", "formato": "",
+            "etichetta_estesa": NULLO_COL, "campo_sorgente": NULLO_COL,
+            "tipo_colonna": "azione", "tipo_dato": "string", "formato": NULLO_COL,
             "larghezza_default": 70, "ordine_default": 999, "allineamento": "center",
-            "gruppo": "", "gruppo_ordine": 99,
+            "gruppo": NULLO_COL, "gruppo_ordine": 99,
             "filtrabile": "f", "ordinabile": "f", "esportabile": "f",
             "ricercabile_full": "f", "sensibile": "f", "attivo": "t",
             "data_insert": data_insert, "user_insert": utente,

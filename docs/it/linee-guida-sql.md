@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -20,13 +20,47 @@
 > * [pgcrypto](/postgresql/pgcrypto)
 ---
 
-### 1. Schemi Principali
+## Come si legge questo documento
+
+Il documento non si legge intero a ogni lavoro: si legge l'**elenco dei titoli**,
+poi le sezioni che il lavoro tocca.
+
+```bash
+grep -n '^## \|^### ' docs/it/linee-guida-sql.md      # titoli col numero di riga
+sed -n '<da>,<a>p' docs/it/linee-guida-sql.md          # la sezione che serve
+```
+
+L'elenco dei titoli si legge **sempre e per intero**: un titolo che somiglia a
+ciò che si sta per scrivere si apre, anche se la tabella qui sotto non lo nomina.
+La tabella dà il minimo per tipo di lavoro, non il massimo.
+
+| Si sta per scrivere | Sezioni da aprire |
+| --- | --- |
+| Un changeSet qualunque | §11.1, §11.3, §11.13, §11.14 e i titoli di §11: ogni divieto che il lavoro sfiora si apre |
+| Una tabella o una colonna | §2, §3, §7, §7d, §7e, §7f, §8.7, §11.10, §11.14; §10 se la tabella ha un perimetro |
+| Una funzione | §5, §5b, §5c, §5d, §5e, §5g, §13; §5f se ne cambia la firma |
+| Un trigger o una funzione trigger | §5, §9 e [linee-guida-trigger.md](linee-guida-trigger.md) per intero |
+| Una vista | §6, §6b, §6c, §6d, §13 |
+| Un riferimento a un catalogo, `codice` o `codice_interno` | §6b, §6c, §6d |
+| La provenienza di un documento o di una riga | §6e |
+| Una validità temporale o un ciclo di stato | §7b, §7c |
+| Un indice | §8 (per una ricerca testuale §8.3; sotto policy §8.5-bis) |
+| Una policy, una funzione di scope, un privilegio | §10, §8.5-bis, §11.6, §11.8, §11.9, §13.1, §13.3 |
+| Un seed o un CSV | §11.2, §11.4, §11.7 |
+| Una capability, un'azione di riga, un picker | §12 |
+| Un lavoro sulle prestazioni | §13 e [Un database che resta veloce](/guide/database-che-resta-veloce) |
+
+Chi aggiunge una sezione aggiorna la riga della tabella che la riguarda.
+
+---
+
+## 1. Schemi Principali
 
 {% include-markdown "it/schemidb.md" %}
 
 ---
 
-### 2. Convenzioni di Naming
+## 2. Convenzioni di Naming
 
 Uniformità e chiarezza nel codice DDL:
 
@@ -62,7 +96,18 @@ In caso di più varianti sullo stesso concetto, usare un suffisso chiaro e funzi
 
 > ℹ️ Le convenzioni sono tratte dalla struttura condivisa in Zero ERP
 
-#### L'emittente si nomina col suo ruolo: `emittente_soggetto_ruolo_id`
+**Rinominare una tabella non rinomina i suoi oggetti.** Restano col nome vecchio la chiave
+primaria, la sequenza dell'identity, i vincoli `NOT NULL` e i trigger scritti a mano: il changeSet
+della rinomina li rinomina tutti (`RENAME CONSTRAINT`, `ALTER SEQUENCE … RENAME`,
+`ALTER TRIGGER … RENAME`), con i limiti di §11.5 per quelli generati. Per gli indici delle FK vale
+§8.7 («Mai a mano»).
+
+**Un `DROP COLUMN` è trattenuto dai trigger che nominano la colonna in `UPDATE OF`, non dai corpi
+`plpgsql`.** Il trigger si ricrea senza la colonna in un changeSet con numero inferiore a quello
+del `DROP`, e i corpi che la nominano si riscrivono prima: un riferimento morto in un corpo non
+ferma il `DROP`, e fallisce alla prima chiamata.
+
+### L'emittente si nomina col suo ruolo: `emittente_soggetto_ruolo_id`
 
 L'azienda che emette un documento oggi ha **due** nomi nel modello:
 `emittente_fiscale_id` (FK a `anagrafiche.emittenti_fiscali`) su preventivi,
@@ -90,7 +135,7 @@ lo riceverà in questa forma (D8 del documento di valutazione).
 
 ---
 
-### 3. Gestione delle Chiavi Primarie
+## 3. Gestione delle Chiavi Primarie
 
 1. **UUID** per entità master (anagrafiche.soggetti):
 
@@ -113,7 +158,7 @@ lo riceverà in questa forma (D8 del documento di valutazione).
 
 ---
 
-### 4. Eccezioni e Alternative
+## 4. Eccezioni e Alternative
 
 * **UUID vs SERIAL**: usare UUID quando serve unicità globale o sharding; SERIAL su tabelle di log e storicizzazione.
 * **Foreign Key con composti**: preferire surrogate key (`id`) e colonne FK (`<table>_id`) piuttosto che chiavi composte.
@@ -121,7 +166,7 @@ lo riceverà in questa forma (D8 del documento di valutazione).
 
 ---
 
-### 5. Trigger e Funzioni
+## 5. Trigger e Funzioni
 
 **Trigger e funzioni trigger** — nomi, fasi e ordine di esecuzione, `UPDATE OF` contro `WHEN`, che
 cosa vede un `BEFORE ROW`, trigger differiti, rapporto coi trigger generati — hanno una sede sola:
@@ -167,6 +212,48 @@ Mescolare i nomi a caso:
 `<= 0`. Non si normalizza in silenzio (un `COALESCE` o un `GREATEST` che
 trasforma un id rotto in un valore plausibile nasconde il chiamante sbagliato).
 
+**Logica estratta da una funzione che non solleva.** Quando si estrae logica da una funzione che
+per contratto **non solleva** (la chiama un gestore d'eccezione), le due funzioni hanno contratti
+opposti. L'estratta resta fail-loud sui parametri: la chiama anche il backend, e una risposta vuota
+sarebbe indistinguibile da «nessun risultato». La madre tiene il **proprio** guard prima della
+chiamata, così non arriva mai a farla sollevare. Il pgTAP asserisce i due versi.
+
+**Un guard sui parametri protegge anche ciò che viene dopo.** Non difende solo la scrittura: difende
+ogni espressione che usa quei valori (`daterange`, divisioni, cast, `generate_series`). Prima di
+ritirarlo come copia di un guard di tabella si cerca ogni uso dei parametri fra il controllo e la
+scrittura; l'espressione che può sollevare si riscrive in modo che non dipenda dal valore invalido,
+e la controprova è un pgTAP che, tolto il ramo, non esce con la frase tecnica.
+
+**Il `CHECK` di tabella e l'elenco dentro la funzione che ci scrive sono due sedi.** Allargare il
+vincolo passa pulito, e fallisce la prima scrittura che attraversa la funzione. Chi cambia un
+`CHECK` su una colonna scritta da una funzione ne cerca il guard nel corpo vivo; la funzione tiene
+l'elenco in una costante sola, letta dal guard e dal messaggio; il presidio è un pgTAP che rilegge
+`pg_get_constraintdef` e lo confronta con l'elenco.
+
+**Il significato di una colonna si legge da chi la scrive.** Prima di aggiungere un `CHECK` o un
+guard di dominio su una colonna esistente si cerca chi la scrive, anche in `frontend/src` e
+`backend/apps` (in sola lettura): `COMMENT`, fixture e dati di sviluppo possono discendere dallo
+stesso equivoco e non sono conferme indipendenti. Se commento e scrittore dissentono, la domanda
+riguarda il significato della colonna, non la forma del valore.
+
+**Il `search_path` di una `SECURITY DEFINER` vale anche per le funzioni che chiama.** Una funzione
+senza un `search_path` proprio eredita quello, stretto, della DEFINER che la chiama, e non trova
+più ciò che sta fuori. Una funzione che usa un'estensione (`unaccent`, `dblink`, `plpgsql_check`, i
+tipi PostGIS) e può essere chiamata da una DEFINER dichiara quindi il proprio `SET search_path`
+nella definizione, con dentro lo schema delle estensioni (`public`). Non si allarga il path della
+DEFINER, e non si usa `ALTER FUNCTION … SET`: il `CREATE OR REPLACE` successivo lo perde (§13.7).
+
+**Una GUC di manutenzione alzata si riabbassa prima di uscire.** Una funzione che alza un flag per
+attraversare un guard (`set_config('zeroerp.maintenance_…', 'on', true)`) lo riporta giù prima del
+ritorno, con un blocco `EXCEPTION` perché torni giù anche in errore. Il terzo argomento `true` lega
+il valore alla **transazione**, non alla chiamata: chi chiama dentro una transazione più lunga
+resterebbe col guard spento.
+
+**Un controllo «la colonna esiste?» che decide un `DROP` legge `pg_attribute`.**
+`information_schema.columns` e `dbops.fn_col_exists` mostrano solo ciò su cui il ruolo ha
+privilegi: per un ruolo ristretto una colonna viva risulta assente, e il `DROP` che ne dipende
+parte a torto. Si legge `pg_catalog.pg_attribute` per nome (`attnum > 0 AND NOT attisdropped`).
+
 **Che cosa passare a `fn_log_and_raise_error`** — tre canali, tre destinatari
 diversi, e confonderli è il difetto più facile da non vedere:
 
@@ -176,6 +263,9 @@ diversi, e confonderli è il difetto più facile da non vedere:
 | `p_context ->> 'campo'` | il **frontend** (quale campo accendere) | il nome della colonna, mai il valore |
 | `p_context -> 'bersaglio'` | il **frontend** (dove portare l'operatore) | ⭐ **dal 2026-08-23** — array di `{tipo, id}`, **sempre**, anche con un elemento solo |
 | `VARIADIC p_valori` | **l'operatore** (la frase che legge) | ⛔ mai un nome di parametro o di colonna: la cosa che una persona riconosce |
+
+`fn_log_and_raise_error` registra **e solleva**: dopo il `PERFORM` non segue nessun `RAISE`, che
+sarebbe codice irraggiungibile e una seconda frase per lo stesso errore.
 
 
 ### ⭐ Due funzioni per sollevare, e a scegliere non sei tu
@@ -303,6 +393,16 @@ serve scrivere `BEGIN/EXCEPTION` per l'all-or-nothing (i blocchi `EXCEPTION` ser
   `gen_codice`: la madre fa solo le scritture di dominio.
 * **Riusa le figlie** invece di duplicare: una fn condivisa (es. `pratiche.fn_crea_pratica`) usata
   da più madri di dominio; un nuovo dominio = un madre sottile che compone le figlie condivise.
+* **Una figlia estratta non cambia il contratto d'errore delle funzioni che la chiamano**: il
+  messaggio di chiamata non valida nomina la **porta** che il chiamante ha usato, non la figlia.
+  Il building block prende in coda il nome della porta e lo usa nella frase (come `p_lettore` di
+  `script.fn_stato_per_colonna_id`); prima di estrarre si cercano nei pgTAP le asserzioni su quella
+  frase.
+* **Una colonna nuova su una tabella di righe passa da tutte le copie.** Le madri ricopiano le
+  righe con un elenco esplicito di colonne: quella non nominata nasce `NULL` nella copia, senza
+  errore. Chi aggiunge la colonna cerca ogni funzione con `INSERT INTO <tabella righe> (` nel corpo
+  vivo (`pg_get_functiondef`, §5c) e la allinea nello stesso giro; una colonna lasciata fuori
+  apposta si dichiara nel corpo, col motivo.
 * **Delta parziale** via JSONB (`jsonb_exists()` per la presenza chiave, `jsonb_populate_record`
   per l'INSERT dinamico): aggiorna solo le chiavi presenti e rispetta i default/trigger DB.
 * **Errori** con `script.fn_log_and_raise_error` e codici **registrati** (mai `E_GENERICO`).
@@ -319,6 +419,35 @@ serve scrivere `BEGIN/EXCEPTION` per l'all-or-nothing (i blocchi `EXCEPTION` ser
 > ⚠️ **Le sequence non fanno rollback.** Un numero/codice da `nextval` (es. via
 > `script.fn_generate_codice`) consumato resta un **gap** anche se la transazione rolla: è normale e
 > innocuo. La madre elimina la **riga orfana**, non il gap di numerazione (che c'era già).
+
+**Una FK `ON DELETE SET NULL` non ripara l'ordine sbagliato delle scritture.** L'azione
+referenziale scatta a fine istruzione: dopo il `DELETE` del padre il puntatore dei figli è già
+`NULL`, e ogni `UPDATE` successivo che filtra su quel puntatore tocca zero righe senza errore. La
+funzione riallinea i figli **prima** di cancellare il padre, e la FK resta `NO ACTION`: così un
+figlio ancora agganciato fa fallire il `DELETE` invece di sganciarsi in silenzio. Non si rende la
+FK `DEFERRABLE` per aggirare l'ordine. Il pgTAP asserisce l'effetto sui figli, non il conteggio
+dei padri cancellati.
+
+**Serializzare con un lock advisory.** Quando due chiamate concorrenti non devono leggere lo stesso
+valore (un progressivo, un «trova o crea»), la madre prende un lock di transazione:
+
+* **Sempre la forma a due argomenti**:
+  `pg_advisory_xact_lock(hashtext('<schema.funzione o risorsa>'), hashtext(<chiave>::text))`. Il
+  primo è lo spazio dei nomi, il secondo il perimetro serializzato. La forma a un argomento
+  condivide un solo spazio fra tutte le funzionalità che la usano, e una collisione di hash ne
+  bloccherebbe due senza relazione. `hashtext` va su **entrambi**: la firma è
+  `(integer, integer)`, una chiave `bigint` passata nuda dà `42883` alla prima chiamata e un cast
+  `::int` fallisce oltre il dominio.
+* ⛔ **Ciò che il controllo legge sta tutto dentro la chiave del lock.** Un lock più stretto della
+  lettura non serializza niente: due transazioni prendono lock diversi, leggono lo stesso valore e
+  passano entrambe (una chiave per anno, con un controllo di monotonia che legge attraverso gli
+  anni). Se la lettura è più larga, si allarga il lock.
+* **Il lock si prende dopo le guard sui parametri** e i lookup di validazione, perché una chiamata
+  invalida non serializzi le altre, purché due chiamate concorrenti convergano allo stesso esito.
+  Se la guard decide una scrittura non idempotente, il lock va prima.
+* Lock seguito da `SELECT max(…)`/`count(…)` è corretto solo in `READ COMMITTED`, dove la lettura
+  prende uno snapshot nuovo: accanto ci va comunque un guard a valle (un `UNIQUE`) che fallisce
+  invece di sovrascrivere.
 
 **pgTAP obbligatorio.** Testare sia il caso felice sia il **rollback totale** su fallimento di uno
 step (pattern: trigger temporaneo che fa fallire l'ultima scrittura → verificare che nessun effetto
@@ -359,11 +488,16 @@ compila solo il plpgsql), e la catena vista → funzione → tabelle resta leggi
 oggi la usano la partita e la situazione merce, la lineage, la diagnosi del push, i lettori delle
 vesti.
 
+**Una funzione `RETURNS SETOF <vista>` seleziona dalla vista che dichiara**, mai da un'altra con
+`r.*`. Una funzione a stringa si valida solo al `CREATE`: quando la vista letta guadagna una
+colonna, ogni chiamata fallisce con «troppe colonne» senza che nessuna migrazione se ne accorga.
+
 **Restano `BEGIN ATOMIC` anche quando si cambiano.** Il prezzo della scelta sono tre regole:
 
 * **Come si scrive il changeSet.** pgjdbc esegue un `BEGIN ATOMIC` solo se sta **da solo** nel suo
   `sql:`: il `COMMENT ON FUNCTION` e il `GRANT` vanno in un secondo `sql:` dello stesso changeSet
   (`20260921-21`, `20261011-92`). Le clausole `SET` (`plan_cache_mode`, `jit`) si ripetono, §13.7.
+  Presidio: `scripts/guardrail_forme_changeset.py`, regola `begin-atomic-da-solo`.
 * **⛔ Blocca `ALTER COLUMN … TYPE`, come una vista.** Una colonna letta da una `BEGIN ATOMIC` è una
   dipendenza, e `ALTER TYPE` la rifiuta. Per cambiare il tipo di quella colonna la funzione si
   **toglie** nel changeSet di `00_schema` (con le viste che la leggono) e si **ricrea**, sempre
@@ -379,11 +513,23 @@ vesti.
   grammatica unica: quattro funzioni mai viste
   ([brief-db-grammatica-unica-documenti](/dev/work-done/brief-db-grammatica-unica-documenti)
   §12.3).
+* **⛔ Un valore passato come argomento di trigger non sta in nessun corpo.** Quando la funzione
+  trigger è generica (`script.trgfn_lock_columns`), codice d'errore e colonne stanno in
+  `pg_trigger.tgargs`. Chi censisce i posti che nominano un codice, per ritirarlo o rinominarlo,
+  interroga quindi **due** superfici: il testo delle funzioni (`pg_get_functiondef`) e gli
+  argomenti dei trigger, letti con `dbops.fn_trigger_argomenti(tgargs)` e confrontati per
+  **uguaglianza** (un `LIKE` aggancia anche i codici che lo contengono).
 
 ⚠️ `pg_get_functiondef` di una `BEGIN ATOMIC` stampa i nomi relativi al `search_path` della sessione
 (`sorgenti`, non `config.sorgenti`). Per ricopiarne il corpo in un changeSet si prende l'ultimo YAML
 che l'ha scritta e lo si **verifica uguale al vivo**, oppure si legge il vivo con
-`SET search_path = pg_catalog`, che qualifica tutto.
+`SET search_path = pg_catalog`, che qualifica tutto. Vale anche per `pg_get_viewdef`: due database
+si confrontano leggendo entrambi con `SET search_path = pg_catalog`.
+
+⚠️ **Una `LANGUAGE sql` scritta come stringa può essere già rotta**, perché nessuno la ricompila
+quando cambia ciò che legge. Prima di riscriverla dal corpo vivo la si esegue in una transazione
+annullata. Se è rotta e senza chiamanti la risposta è il ritiro, presidiato da un `hasnt_function`,
+non la riparazione.
 
 ### 5d. ⛔ Il `COMMENT` descrive l'oggetto, non la sua storia
 
@@ -421,6 +567,12 @@ Il nome di un **oggetto** (`script.fn_resolve_emittente_for_user`, `dbops.presid
 prova) ci va: è un rimando a qualcosa che esiste, non alla sua storia. Gli apostrofi si raddoppiano
 (§11.3).
 
+**Una correzione riscrive anche la doc scritta a mano.** Quando una decisione cambia la condizione
+o il significato di una vista o di una funzione, nello stesso giro si riscrivono il `COMMENT`
+**e** ogni pagina scritta a mano che la racconta: si cerca il nome in `docs/` (pagine `manual/`,
+guide), in `80_data` (testi dei presidi) e in `scripts/`. La doc del backend va come richiesta al
+team.
+
 **Quando si applica.** Ogni COMMENT nuovo o riscritto la rispetta da subito. I COMMENT esistenti
 che non la rispettano sono debito: si riscrivono **per famiglia**, quando un lavoro riapre quegli
 oggetti, e non con una riscrittura di massa.
@@ -438,12 +590,120 @@ un marcatore di revisione (`rev`), l'id di un changeSet, l'hash di un commit.
 Date, sigle di decisione e misure non entrano nei presidi: possono stare in una frase lecita, e un
 presidio che sbaglia insegna a ignorarlo. Si leggono a mano quando si riscrive.
 
+### 5e. ⛔ Trappole di PL/pgSQL che il `CREATE` non vede
+
+Il `CREATE FUNCTION` controlla la sintassi, non i rami: queste forme compilano, e sbagliano solo
+quando il ramo viene eseguito, oppure non sbagliano mai e danno un risultato diverso da quello
+atteso.
+
+* **Un `SELECT … INTO` senza righe mette le variabili a `NULL`.** In una catena di risoluzione a
+  livelli (termini di pagamento, indirizzi, prezzi) un `SELECT COALESCE(v_x, t.col) INTO v_x`
+  protegge dalla riga con `NULL`, non dall'assenza della riga: il livello a valle cancella ciò che
+  il livello a monte aveva risolto. Ogni livello legge in variabili proprie e la fusione si fa
+  dopo, in codice: `v_x := COALESCE(v_x, v_liv_x)`. Il sospetto è alto dove un livello di ripiego
+  ha un `JOIN` interno.
+* **Un `SELECT … INTO` su più righe prende la prima che capita.** Succede quando si ritira un
+  valore che faceva da filtro: chi chiedeva il tipo vicino ora trova più righe ammesse dal modello.
+  Ritirando un valore si cercano anche i lettori del valore che ne prende il posto; quelli che non
+  filtrano la colonna di stato (`attivo`) vogliono una regola di scelta esplicita, in una funzione
+  sola (come `script.fn_veste_di_riferimento`), non la prima riga.
+* **Un confronto nudo vale `NULL` quando l'operando è `NULL`.** `v_flag := (v_x = 'S')` è `NULL`
+  se `v_x` è `NULL`, e un `CASE WHEN v_flag … ELSE …` a valle lo fa cadere nell'`ELSE`: due campi
+  dello stesso risultato, derivati dalla stessa variabile, dicono uno «non lo so» e l'altro «no».
+  Chi deriva più campi da una variabile decide **una volta** che cosa valgono quando è `NULL`
+  (`(v_x = 'S') IS TRUE`, oppure `NULL` su tutti), e il verso si legge dalla nullabilità della
+  colonna di destinazione.
+* **Un `CASE` nella condizione di un `IF` va tra parentesi.** Il parser chiude la condizione al
+  primo `THEN`, che è quello interno al `CASE`: si scrive `IF (CASE … END) THEN`. Il `CASE` è la
+  forma giusta quando serve garantire l'ordine di valutazione, che un `AND` non garantisce.
+* **Un elemento si aggiunge a un array con `array_append(arr, 'x')`** (o `arr || 'x'::text`). Un
+  letterale nudo accanto a un array è letto come **letterale di array**: il corpo compila e
+  l'errore arriva solo sul ramo che lo esegue.
+* **Una funzione nel `FROM` viene valutata sempre**, anche quando la `WHERE` esclude il ramo
+  (`jsonb_array_elements_text(fn(…))`). «Non chiamare» si scrive con un `IF`, non con una
+  condizione sulla query.
+* **Un `FOR … IN EXECUTE` scrive in una lista di scalari** dichiarati con `%TYPE`, non in un
+  `record`. Con SQL dinamico il presidio dei riferimenti morti non conosce le colonne del record e
+  segnala la funzione come rotta anche se a runtime lavora. Un `record` riempito da una `SELECT`
+  statica va bene. La forma si corregge nel codice, non nel registro delle esenzioni.
+
+### 5f. ⛔ Cambiare la firma di una funzione
+
+Una funzione è identificata da nome e tipi degli argomenti. Da qui tre regole.
+
+* **Un parametro nuovo si aggiunge in coda, con un `DEFAULT` che riproduce il comportamento di
+  prima.** Un parametro esistente non si sposta, non si sostituisce e non si toglie, e il
+  `RETURNS TABLE` non perde colonne: backend e pgTAP chiamano **per posizione**, e uno spostamento
+  rompe ogni punto di chiamata. Quando il comportamento di prima è il difetto (un valore
+  inventato), il parametro in coda è obbligatorio, senza default, e il costo sui chiamanti si
+  dichiara.
+* **Cambiare la firma è un `DROP` + `CREATE`, non un `CREATE OR REPLACE`.** Aggiungere o cambiare
+  un parametro crea una **seconda** funzione accanto alla vecchia, e se i parametri nuovi hanno un
+  `DEFAULT` ogni chiamata esistente diventa ambigua («la funzione non è unica»). Cambiare la lista
+  di `RETURNS TABLE` o il tipo restituito è rifiutato. In entrambi i casi il changeSet apre con
+  `DROP FUNCTION IF EXISTS nome(<firma vecchia esatta>)`, e la prova verifica che resti una sola
+  firma per nome. Per le viste vale la regola gemella di §6.
+* **Si censiscono tre popolazioni, con una ricerca sola sul nome**
+  (`grep -rn '<nome>' db/pgtap backend/ db/changelog`): chi la chiama nel database, chi la chiama
+  dal backend, chi la **verifica**. La terza non si rompe in modo visibile: un pgTAP sulla forma
+  vecchia muore in errore e perde le asserzioni successive, un test Django che sonda la firma
+  esatta (`richiedi_db_provvisto`) viene saltato. ⚠️ `SELECT fn(…)` su una `RETURNS TABLE` non
+  fallisce: consegna la tupla in un campo solo; si scrive `SELECT … FROM fn(…)`. Vale identico per
+  una vista a cui si aggiungono colonne (i `columns_are` dei pgTAP esistenti).
+
+### 5g. Tipi ancorati: `%TYPE`
+
+**Ogni tipo che riflette una colonna si ancora con `%TYPE`**, in tutte le sedi di una funzione:
+parametri, `RETURNS` / `RETURNS TABLE`, `DECLARE` (anche nei blocchi `DO`) e le firme di
+`COMMENT ON FUNCTION`, `DROP FUNCTION` e `GRANT EXECUTE`. Così la funzione dichiara di quale colonna
+il valore è il riflesso, e nasce col tipo che la colonna ha in quel momento.
+
+* **Dove non c'è una colonna di cui il valore sia il riflesso** (un conteggio, un interruttore del
+  chiamante, una chiave polimorfa, un array) si scrive il tipo esplicito, con la ragione accanto.
+* **Il confine è «le funzioni sì, le tabelle no».** PostgreSQL accetta `%TYPE` ovunque si nomini
+  la firma di una funzione (in `COMMENT ON FUNCTION` e `DROP FUNCTION` lo converte con un
+  `NOTICE`) e lo rifiuta con un errore di sintassi nel DDL di tabella (`CREATE TABLE`,
+  `ALTER TABLE … ADD COLUMN`): lì si scrive il tipo esplicito.
+* **Le colonne dello schema `django` non si ancorano**: al `CREATE` quello schema può non
+  esistere (§11.9).
+* ⚠️ **`pg_get_functiondef` e la doc auto-generata mostrano i `%TYPE` già sciolti.** Il corpo si
+  prende da lì, la testata si ri-ancora: anche quando la modifica non la tocca, e anche se la
+  versione precedente era a tipi nudi. La prova: argomenti e risultato identici al vivo, e una
+  sola funzione per nome.
+* ⛔ **`%TYPE` in firma è una fotografia, non un legame.** Si risolve una volta, al `CREATE`: un
+  `ALTER COLUMN … TYPE` successivo non aggiorna la funzione, e `RETURN QUERY` fallisce a runtime
+  perché pretende la corrispondenza esatta dei tipi. Chi cambia il tipo di una colonna censisce le
+  funzioni che la ancorano e le ricrea nella stessa corsa, con `DROP FUNCTION` della firma vecchia
+  (§5f): un `CREATE OR REPLACE` con lo stesso `%TYPE` ora risolve al tipo nuovo, e nascerebbe una
+  seconda firma accanto alla prima. Se il parametro non è più il riflesso della colonna, prende il
+  tipo esplicito con la ragione. Il caso di `character(n)` è in §7e.
+* Presidio: `scripts/guardrail_forme_changeset.py`, regola `type-perso`. Ferma un parametro o una colonna di `RETURNS TABLE` che nella
+  revisione precedente della stessa funzione aveva `%TYPE` e torna a un tipo nudo, se non porta la
+  ragione in un commento sulla stessa riga o su una riga di solo commento subito sopra. Con la
+  regola `id-senza-type` ferma anche un parametro o una colonna `*_id` a tipo nudo e senza
+  ragione: un id è quasi sempre il riflesso di una colonna. Gli altri tipi nudi restano alla
+  revisione (Tid, 2026-11-12).
+
 ---
 
-### 6. Viste (Views)
+## 6. Viste (Views)
 
 * **Applicative**: `vw_<descrittivo>` in schema `script`, es. `vw_clienti_attivi`
 * **Tecniche**: in schema `dbops`, senza prefisso extra, es. `vw_function_list`
+
+**`CREATE OR REPLACE VIEW` aggiunge colonne solo in coda.** Per toglierne o rinominarne una serve
+`DROP VIEW` + `CREATE VIEW`, che porta via `COMMENT`, `GRANT` e `security_invoker`: si riscrivono
+tutti (§13.7). Chi aggiunge colonne censisce chi verifica la vista, come per una firma (§5f).
+
+**Un flag che risponde a due domande in `AND` si espone insieme alle sue componenti.** Da `false`
+non si risale a quale termine è falso, e un filtro di default su quel flag rende irraggiungibili le
+righe escluse dal secondo termine. La vista espone le componenti come colonne e deriva il flag
+composto da loro; il nome del flag dice tutte e due le domande.
+
+**Una vista sopra una funzione proietta le colonne per nome e ripete il cast di quelle con
+precisione** (`col::numeric(18,6)`). `RETURNS TABLE` non conserva precisione e scala del tipo, e
+`CREATE OR REPLACE VIEW` accetta di perderle ma poi rifiuta di riprenderle. Una colonna nuova nel
+`RETURNS TABLE` vuole il `DROP` della funzione e di tutte le viste che la leggono (§5f).
 
 ---
 
@@ -526,6 +786,11 @@ grep -rEn "[^_]codice[[:space:]]+AS[[:space:]]+[a-z_]*codice_interno\b" db/ && e
 > `20260628-02..11`) e la regola è applicata da un guardrail CI bloccante
 > (`scripts/sql/check_naming_stato_codice.sql`). Storia in [brief-naming-stato-codice-interno.md](dev/work-done/brief-naming-stato-codice-interno.md).
 
+⚠️ **Il guardrail legge le definizioni vive del database**: un alias infedele scritto in una query
+del backend non lo vede. Quando una traduzione duplicata passa dal backend a una vista entra nella
+sua portata, e l'alias prende il nome fedele (`*_codice_interno`) anche se a valle cambia un nome.
+Un corpo rigenerato da `pg_get_viewdef` riporta l'alias com'è: rigenerare non bonifica.
+
 ---
 
 ### 6d. Antipattern: literale hardcoded contro `codice` + cosa fare se manca `codice_interno`
@@ -591,7 +856,7 @@ Il presidio è in CI (`dbops/test-sorgenti-struttura-v1`): una tabella con `sorg
 motivo. Un id che arriva da un sistema esterno non usa queste colonne: va in una tabella di
 collegamento propria.
 
-### 7. Colonne di Audit e Log
+## 7. Colonne di Audit e Log
 
 Standardizzare i campi di auditing:
 
@@ -825,6 +1090,12 @@ Quando una tabella ha **sia** una colonna `stato` (ciclo vita gestionale: es. `B
 6. **INSERT**: non vincolare l'INSERT con la matrice transizioni (per permettere seed/import con stati diretti). Il guard scatta solo su UPDATE OF stato.
 7. **Semantica `valido_al`**: ultimo giorno **incluso** (convenzione della colonna generata `validita`, §7b: bounds <code>[]</code> canonicalizzati a <code>[)</code>). Esempio: `valido_al = 2026-04-26` → la riga e' operativamente valida fino al 2026-04-26 23:59:59, scade dal 2026-04-27. Conseguenza: la query `valido_al < CURRENT_DATE` chiude **dal giorno successivo** a `valido_al` — schedule 00:05 cattura al primo momento utile dopo il cambio data.
 
+⚠️ **`ordine` su un vocabolario di stati ordina la presentazione, non il ciclo di vita.** Non è
+garantito monotono né valorizzato, e gli stati di annullo stanno spesso in alto. Uno stato «con un
+significato» si legge da una colonna sì/no del vocabolario. Dove una soglia su `ordine` è davvero
+la regola, un pgTAP asserisce l'assunzione sul seed e il confronto si rende totale (`COALESCE`),
+con l'annullo escluso a parte.
+
 #### Framework `dbops.automazione_chiusura_scadenze` (post 26-04-2026)
 
 La logica di chiusura per scadenza e' centralizzata in un framework parametrico. Aggiungere una nuova tabella al pattern non richiede nuovo codice DB: basta una INSERT seed nella tabella di configurazione.
@@ -901,6 +1172,11 @@ ADD COLUMN importo numeric(18,6)
   **forma esatta** su ogni colonna `numeric` (`storico` escluso): una colonna nuova
   senza CHECK lo rende rosso.
 
+**Un importo che passa da una tabella a un'altra si calcola alla scala del destino.** Se la
+colonna d'origine ha più decimali, l'`INSERT` arrotonda in silenzio, e una frazione può diventare
+zero o superare l'origine. L'arrotondamento si scrive esplicito (`round`/`trunc` alla scala del
+destino); una variabile `%TYPE` si ancora alla colonna di cui il calcolo deve avere la scala.
+
 Brief: `brief-db-valore-numerico-non-finito-nei-documenti` (§5.2).
 
 ### 7e. ⛔ `character(n)` non si usa
@@ -930,6 +1206,24 @@ chi se ne dimentica li mostra all'utente o li scrive in un documento.
   della firma vale lo stesso.
 
 Brief: `brief-db-character-n-spazi-di-riempimento`.
+
+### 7f. ⛔ `NOT NULL`, `CHECK` e `regclass`: tre regole sulle colonne
+
+* **Un `NOT NULL` si mette dove il dato si può fornire, non dove il difetto si vede.** Se la
+  colonna è scritta per copia da un'altra che ammette il `NULL`, il vincolo sposta la rottura su
+  chi copia, con un `23502` che non è un rifiuto di dominio. Prima si chiude il `NULL` dal capo, a
+  monte; nel frattempo il caso si rifiuta nella `fn_check_*` da cui il documento esce, e la
+  finestra che resta (la bozza) si dichiara.
+* **Un `CHECK` che vale `NULL` passa.** PostgreSQL rifiuta la riga solo se l'espressione è falsa:
+  `jsonb_typeof(meta -> 'k') = 'boolean'` non rifiuta la chiave mancante, perché col dato assente
+  il confronto è `NULL`. La presenza si scrive in una forma che dà `FALSE`
+  (`jsonb_exists(meta, 'k') AND …`, `col IS NOT NULL AND …`, `(…) IS TRUE`), e il pgTAP del
+  vincolo costruisce il caso della chiave mancante o della colonna a `NULL`.
+* **`regclass` non si usa come tipo di colonna.** Memorizza l'OID: una rinomina non lo tocca, un
+  `DROP TABLE` lascia la riga con un numero al posto del nome, e in un CSV di seed l'OID dipende
+  dalla macchina. La colonna è `text` con un `CHECK` di forma `schema.tabella`; che il nome punti
+  a una tabella viva lo asserisce un pgTAP (`to_regclass(col) IS NOT NULL`, come in
+  `db/pgtap/script/test-giornale-registri-catalogo-v1.sql`).
 
 ---
 
@@ -979,6 +1273,15 @@ ix_soggetti_ragione_sociale_norm_trgm
 | BRIN   | Tabelle molto grandi e append-only  |
 
 ⚠️ Non sostituire mai il B-Tree con GIN/GiST: sono complementari, non alternativi.
+
+**Un filtro a prefisso vuole un indice `text_pattern_ops`.** Il database ha collation
+`it_IT.UTF-8`: un btree ordinario non serve `col LIKE 'x%'`. Un filtro a prefisso dichiarato vuole
+un indice `text_pattern_ops` (o `varchar_pattern_ops`) sulla colonna, che serve `=` e `LIKE 'x%'`
+ma mai `ILIKE`. ⛔ `_` e `%` sono jolly: su una colonna di nomi con underscore (`function_name`,
+`codice_interno`) il prefisso fisso si ferma al primo `_` e la lettura torna a tutta la tabella.
+Chi chiama **protegge** il prefisso con l'escape (`fn\_get\_lotto%`), che è anche l'unica forma
+corretta. Il pgTAP di forma fissa la classe di operatori leggendola da `pg_index.indclass`. Sotto
+una policy vale §8.5-bis: lì il `LIKE` non entra nell'indice nemmeno così.
 
 ---
 
@@ -1132,6 +1435,8 @@ WHERE is_default;
 
 `dbops.vw_fk_senza_indice` riconosce questo caso e considera la FK coperta. **Ogni altro predicato no**: un indice con, per dire, `WHERE stato = 'ATTIVO'` non copre la FK, perché il controllo referenziale deve poter trovare qualsiasi riga figlia, non solo quelle attive.
 
+**Un `UNIQUE` che non porta `attivo` nel predicato conta anche le righe spente.** Spegnere una riga la toglie a chi legge, non libera la chiave. Prima di «disattivo e ricreo», in una bonifica o in una fixture, si legge il predicato dell'indice. Aggiungere `WHERE attivo` all'indice è una decisione di dominio (ammette più righe storiche per la stessa chiave), non una riparazione.
+
 ---
 
 ### 8.4-bis ⛔ Indici UNIQUE con colonne nullable
@@ -1239,6 +1544,10 @@ stima viene dalle statistiche della colonna. Un indice su espressione no:
 `vendite.commesse_attivita.segment_base` (`20261010-80…-82`,
 `brief-db-segment-base-commesse-attivita`).
 
+⚠️ Una funzione che riceve **un insieme di chiavi** lo normalizza prima di usarlo nel join (la
+base della chiave, con `DISTINCT`): due chiavi che cadono sulla stessa base raddoppiano le righe,
+e quindi le somme, senza errore.
+
 ---
 
 ### 8.6 Gestione Indici Ridondanti
@@ -1334,6 +1643,8 @@ Il predicato dell'indice dev'essere assente, oppure una congiunzione di soli `<c
 
 Gli indici governati dalla politica **non si creano e non si droppano con un `CREATE`/`DROP` scritto a mano**: si agisce sulla decisione e ci pensa `apply_fk_index_policy()`. Un `DROP` di un indice `CON_INDICE` verrebbe annullato al primo `migrate` successivo, perché la procedura gira `runAlways` in `90_end`.
 
+**Un indice FK nato col `CREATE TABLE` tiene il suo nome, e non è della politica.** Dove il changeSet d'origine della tabella aveva già messo un indice sulla colonna FK, la politica non ne crea uno suo: su un database costruito da zero gli indici FK di una tabella possono quindi chiamarsi diversamente che altrove. Quando si rinomina una tabella (§2), l'elenco dei suoi indici si legge su un database ricostruito dai changelog. Un nome storico si toglie con `DROP INDEX IF EXISTS` (è un indice **non** governato: la politica ricopre la FK col suo nome nella stessa passata), non con una `RENAME` verso il nome di policy, che collide dove quel nome esiste già. Il pgTAP «nessun oggetto porta il nome vecchio» cerca anche l'abbreviazione storica.
+
 #### Le due guardie di `apply_fk_index_policy()`
 
 1. **Con `CON_INDICE` crea solo se la FK figura ancora in `vw_fk_senza_indice`.** Una FK già servita da una UNIQUE più larga, o da un parziale `IS NOT NULL`, non riceve un indice dedicato. Un `CON_INDICE` scritto per errore non può quindi rigenerare ridondanze già bonificate.
@@ -1345,9 +1656,11 @@ Warning e non eccezione: la procedura gira a ogni `migrate` e nel job settimanal
 
 Il nome dell'indice, `indice_nome`, è una colonna generata dal `dll_command`, con la stessa grammatica del CHECK di forma: la procedura e `vw_indici_ridondanti_prefisso` lo confrontano per uguaglianza. Una riga `SENZA_INDICE` deve quindi nominare il **nome reale** dell'indice da togliere, altrimenti il `DROP` non trova niente. E col nome canonico toglie anche l'indice con quel nome nato nel changeSet della tabella: la seconda guardia lo ferma solo se l'indice regge un vincolo.
 
+Il `dll_command` si scrive su **ogni** riga, qualunque sia la decisione: il CHECK di forma rifiuta una cella vuota, e l'errore si vede solo al migrate, non scrivendo il CSV.
+
 ---
 
-### 9. Transaction ID Centralizzato
+## 9. Transaction ID Centralizzato
 
 Per garantire **coerenza transazionale** fra tutte le tabelle che registrano modifiche, ogni entità deve avere la colonna `tx_id UUID` che accetta anche valori nulli:
 
@@ -1359,7 +1672,7 @@ Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la
 
 ---
 
-### 10. Row Level Security (RLS)
+## 10. Row Level Security (RLS)
 
 > **Scheda tecnica PostgreSQL**: [row-level-security](/postgresql/row-level-security) — sintassi,
 > troubleshooting, performance, interazione con viste e funzioni `SECURITY DEFINER`.
@@ -1368,7 +1681,7 @@ Le policy RLS sono il meccanismo nativo PostgreSQL per filtrare **quali righe** 
 o puo' modificare. In ZeroErp sono lo strumento **di difesa in profondita'** sullo scope dati
 multi-utente (operatori, clienti portale, fornitori portale, shop customer).
 
-#### 10.1 Quando usarla
+### 10.1 Quando usarla
 
 Abilitare RLS **solo** su tabelle con scope multi-soggetto, ovvero tabelle le cui righe
 appartengono a piu' entita' distinte che non devono vedersi tra loro:
@@ -1396,7 +1709,7 @@ appartengono a piu' entita' distinte che non devono vedersi tra loro:
 Se una tabella non ha uno scope evidente, probabilmente **non va messa in RLS**: aggiungere
 policy "preventive" genera falsa sicurezza e costo di manutenzione.
 
-#### 10.2 Naming policy
+### 10.2 Naming policy
 
 ```
 rls_<tabella>_<nome_scope>
@@ -1413,11 +1726,17 @@ Esempi:
 
 * Una tabella puo' avere **piu'** policy concorrenti (una per scope). PostgreSQL le combina in
   OR per evento `SELECT/UPDATE/DELETE` (piu' permissivo vince).
-* Se servono semantiche diverse su `SELECT` vs `UPDATE`, creare policy distinte con
-  `FOR SELECT` / `FOR UPDATE` esplicito, **mai** policy `FOR ALL` generiche.
+* **Un predicato solo per leggere e scrivere**: una policy `FOR ALL`, con `USING` e
+  `WITH CHECK` entrambi espliciti (§10.6). È il caso dello scope emittente degli
+  operatori (`rls_<tabella>_ef_whitelist`). Con la RLS attiva, una veste che scrive su
+  una tabella che ha solo policy `FOR SELECT` si vede rifiutare ogni `INSERT`/`UPDATE`.
+* **Predicati diversi** fra lettura e scrittura: policy distinte, una per comando
+  (`FOR SELECT`, `FOR INSERT`, `FOR UPDATE`, `FOR DELETE`). ⛔ Non si scrive una
+  `FOR ALL` con il predicato della lettura, aspettandosi che la scrittura sia ristretta
+  da un'altra parte.
 * Il nome deve rendere leggibile la combinazione tabella + regola di scope.
 
-#### 10.3 Logica di scope in funzioni `script.fn_scope_*`
+### 10.3 Logica di scope in funzioni `script.fn_scope_*`
 
 **Regola tassativa**: la condizione della policy deve invocare una funzione del pattern
 `script.fn_scope_<nome_scope>(...)` che ritorna `boolean`. **Non** scrivere logica inline
@@ -1568,7 +1887,7 @@ Il presidio `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` non amm
 eccezioni: il suo elenco del debito (test 4 e 6) è vuoto, e chi ci aggiunge una voce
 la scrive con la sua ragione.
 
-#### 10.4 Input: sempre dai GUC `app.*`
+### 10.4 Input: sempre dai GUC `app.*`
 
 Le funzioni `fn_scope_*` non devono mai dedurre l'utente corrente da `session_user` o
 `current_user` del DB. L'utente "applicativo" non coincide con il ruolo DB: il backend si
@@ -1611,7 +1930,7 @@ END;
 Dentro una policy RLS e' comunque preferibile leggere **solo** il GUC effettivamente usato
 (es. `app.current_identita_id`) per evitare chiamata funzione non necessaria.
 
-#### 10.5 Bypass per ruoli DB di manutenzione
+### 10.5 Bypass per ruoli DB di manutenzione
 
 Alcuni ruoli DB devono poter bypassare le policy per eseguire migrazioni, analisi e
 riparazioni dati. Due strategie complementari:
@@ -1631,7 +1950,18 @@ riparazioni dati. Due strategie complementari:
 3. **`zeroerp_app` NON deve avere `BYPASSRLS`**: e' il ruolo con cui il backend si
    connette, deve essere soggetto a tutte le policy.
 
-##### ⛔ L'invariante: tabelle del migratore, applicazione senza proprietà, `FORCE` spento
+**Un controllo sul ruolo chiede che cosa il ruolo può fare, non come si chiama.** I nomi dei ruoli
+di sistema sono fissi, ma chi si collega può esserne un **membro** (un utente personale che lavora
+come proprietario): un confronto sul nome dà rosso sull'installazione fatta bene. Un presidio o
+una guardia in una funzione chiede quindi `pg_has_role(r, 'zeroerp_job', 'MEMBER')`, `rolsuper`,
+la non appartenenza a `zeroerp_owner`.
+
+**«Sono dentro una `SECURITY DEFINER`» si riconosce dal parametro `role`**:
+`current_user <> coalesce(nullif(current_setting('role'), 'none'), session_user)`. Una DEFINER
+cambia `current_user` ma non `role`. Il confronto nudo `current_user <> session_user` è vero anche
+per un utente personale che lavora come proprietario con `ALTER ROLE … SET role`.
+
+#### ⛔ L'invariante: tabelle del migratore, applicazione senza proprietà, `FORCE` spento
 
 Le funzioni `SECURITY DEFINER` girano come il loro proprietario. Siccome il proprietario delle
 tabelle non subisce la RLS, una DEFINER del migratore **legge oltre la RLS**: è così che i
@@ -1652,6 +1982,12 @@ e tutte e tre devono restare vere:
 Le poche DEFINER di `postgres` (dblink, log fuori transazione, dichiarate in
 `dbops.sec_functions_owner`) leggono oltre la RLS perché superuser.
 
+⛔ **Un guard su una tabella senza perimetro che legge tabelle sotto policy non può essere
+`SECURITY INVOKER`**: vedrebbe solo le righe dell'azienda di chi agisce, e fra aziende sarebbe
+aperto. Il predicato sta in una funzione `SECURITY DEFINER` con `search_path` stretto, e il
+messaggio non nomina righe che l'operatore può non vedere. Caso: gli articoli, catalogo unico, e
+`catalogo.fn_articolo_usato`.
+
 ⭐ Lo presidia `db/pgtap/dbops/test-postura-proprietario-rls-v1.sql`, **a criterio** (il
 proprietario si legge dal catalogo, le estensioni si escludono per appartenenza): un solo
 proprietario per le tabelle con RLS, nessuna tabella di `zeroerp_app`, nessun `FORCE` sulle tabelle
@@ -1660,7 +1996,7 @@ proprietario può accendere `FORCE` **dentro la propria transazione** (come
 `rls/test-rls-offerte-satelliti`), che il `ROLLBACK` spegne: lo stato che resta, ed è quello che il
 presidio guarda, è senza `FORCE`. Un changeSet non lo accende mai.
 
-#### 10.6 `USING` vs `WITH CHECK`
+### 10.6 `USING` vs `WITH CHECK`
 
 Due clausole distinte, con semantica diversa:
 
@@ -1679,7 +2015,7 @@ Due clausole distinte, con semantica diversa:
 * Se `WITH CHECK` e' omesso su UPDATE, PostgreSQL usa `USING` anche per la verifica post-update
   — spesso non e' quello che serve. **Esplicitare sempre** `WITH CHECK` per evitare ambiguita'.
 
-#### 10.7 Defense-in-depth, non sostituzione
+### 10.7 Defense-in-depth, non sostituzione
 
 Le policy RLS **si sommano** ai filtri applicativi esistenti (la condizione di
 scope emittente dei repository, `add_emittente_scope_condition`, e
@@ -1694,7 +2030,7 @@ scope emittente dei repository, `add_emittente_scope_condition`, e
 Regola: **se un filtro applicativo si dimentica, la RLS salva. Se la RLS e' troppo
 restrittiva, il bug e' evidente subito.** Mai il contrario.
 
-#### 10.8 Test pgTAP obbligatori
+### 10.8 Test pgTAP obbligatori
 
 Per ogni policy RLS pushata in produzione devono esistere test pgTAP che coprono:
 
@@ -1707,7 +2043,18 @@ Per ogni policy RLS pushata in produzione devono esistere test pgTAP che coprono
 
 Naming file test: `db/pgtap/rls/<schema>_<tabella>_rls.sql`.
 
-#### 10.9 Checklist migrazione
+**Un'asserzione di perimetro si scrive dopo aver letto l'espressione della policy**
+(`pg_get_expr(polqual, polrelid)`): una policy ha più congiunti, e il test chiude quello che
+governa il caso. Accanto al caso «senza utente» va quello di un utente **vero** fuori perimetro,
+che è ciò che l'applicazione può davvero produrre.
+
+**Una policy su una tabella con la RLS spenta non difende niente.** PostgreSQL conserva le policy
+di una tabella con la row level security disabilitata, e non le applica. Un presidio o un test che
+misura «questa tabella è difesa?» chiede `relrowsecurity AND EXISTS (… pg_policy …)`, mai la sola
+esistenza della policy; e distingue i due motivi, perché «manca la policy» è una decisione di
+sicurezza e «la RLS è spenta» è una riga di `ALTER TABLE`.
+
+### 10.9 Checklist migrazione
 
 Prima di attivare RLS su una tabella esistente:
 
@@ -1734,6 +2081,27 @@ Prima di attivare RLS su una tabella esistente:
 * Ruolo `zeroerp_migration` ha `BYPASSRLS`
 * La tabella è del migratore e **senza** `FORCE` (invariante di §10.5, presidiato da `dbops/test-postura-proprietario-rls-v1`)
 * Policy testata in staging con dati realistici prima del merge
+* **Censito chi legge la tabella fuori dal percorso HTTP**: management command, job, worker,
+  funzioni `SECURITY DEFINER`. Senza le GUC d'identità la policy risponde zero righe, e zero righe
+  non è un errore: il processo gira verde e il lavoro non viene fatto. Il rimedio non è
+  un'eccezione nella policy: il processo si presenta con la sua identità tecnica; se deve
+  attraversare i perimetri, il lettore si dichiara.
+* **Su una tabella figlia con policy «via padre», cercati gli statement che inseriscono padre e
+  figlio nella stessa CTE**, nel codice e in `db/pgtap/`: con la RLS accesa falliscono con una
+  violazione di policy sulla figlia, che non vede ancora il padre. Si ritaglia lo statement dal
+  `WITH` al `;` e si guarda se nomina entrambe le tabelle; una ricerca per riga non li trova.
+
+Quando si **cambia** una policy o una funzione di scope già in servizio:
+
+* **Le policy si leggono dal database**, con `pg_get_expr(polqual, polrelid)` e `polwithcheck` su
+  `pg_policy`: non stanno nella doc auto-generata delle tabelle, e una policy viene riscritta da
+  changeSet successivi con lo stesso nome. Chi cambia il perimetro di una testata legge le policy
+  di **tutte** le sue tabelle figlie e toglie nello stesso giro ogni ramo che nomina la colonna
+  del vecchio perimetro, col suo `COMMENT`: un ramo irraggiungibile in un predicato di sicurezza
+  non si lascia.
+* **Chi cambia la semantica di una funzione di scope censisce i pgTAP che la attraversano, senza
+  esentare quelli marcati owner**: un test che accende `FORCE ROW LEVEL SECURITY` nella sua
+  transazione (§10.5) subisce la policy come l'applicazione.
 
 ---
 
@@ -1826,6 +2194,8 @@ dopo il loader.
 | aggiungere una riga | append al CSV, mai un `INSERT` a parte |
 | **aggiungere una colonna** | colonna in coda al CSV **principale** + `- column:` nell'elenco del mirror, anche se mergiato (`runOnChange` + `ANY`). ⛔ Mai un secondo CSV |
 | cancellare una riga | `loadUpdateData` non cancella → `DELETE` SQL forward-only. **Unica eccezione** |
+| spegnere una riga (`attivo` a `f`) | è un `UPDATE` che passa dal guard sull'`attivo` del padre: se la riga ha figlie collegate il mirror si ferma, e a fermarsi è il changeSet del mirror, non quello di oggi. Se la figlia non ha una colonna di stato riconosciuta contano **tutte** le sue righe: una colonna di stato con un altro nome si dichiara in `dbops.automation_overrides_cols` (`ATTIVO_COL`). Le figlie si sistemano **prima** che il mirror ripassi: un changeSet nuovo di `80_data` gira dopo di lui e non serve |
+| scrivere un `NULL` | il token letterale `NULL`, col mirror che dichiara `nullValue: "NULL"`: la cella vuota può arrivare al database come `''`, che un tipo non testuale o un `CHECK` rifiutano e una `varchar` accetta in silenzio (§11.7). Presidio: `scripts/guardrail_forme_changeset.py`, regola `nullvalue-vuoto`, su ogni caricatore con `nullValue: ""` e una colonna di testo nullable. Se il valore giusto è il default della tabella, la colonna si toglie dal CSV e dall'elenco `columns:` del mirror |
 
 ⛔ **Una tabella, UN CSV** (Tid, 2026-09-18). Un secondo CSV «per sottoinsieme»
 — chiavato sulla chiave naturale, con un `loadUpdateData` suo, «per non toccare
@@ -1846,12 +2216,37 @@ avere. ⭐ E la chiave del mirror principale è la **chiave naturale**, non
 l'`id` di una identity: una riga nata senza id (DISTINTA, 812 su dev) non è
 raggiungibile per id da un CSV che vale ovunque.
 
+⛔ **E un CSV, UN mirror che lo carica.** Se un `loadUpdateData` `runOnChange`
+legge già il file, una riga nuova è un append e una colonna nuova si aggiunge al
+suo elenco: un secondo loader sullo stesso file è una seconda sorgente
+dell'elenco delle colonne, e finché ne restano due la riga nuova la scrive per
+primo il più vecchio, che ne sa di meno. Quando un mirror si ri-ancora (qui
+sotto), quello vecchio smette di caricare e resta come storia.
+
 ⚠️ Se un SQL storico sovrascrive un CSV e non si può cancellare perché mergiato,
 **spegnerlo non basta**: su un database nuovo applica comunque una volta, e
 comunque dopo il loader. Serve un mirror **ri-ancorato** più avanti nella
 timeline — stesso CSV, stesse colonne, numerazione nuova. Esempi:
 `20260806-13-riancora-mirror-transizioni-preventivi`,
 `20260806-14-riancora-mirror-stati-doc-contratti`.
+
+⛔ **Ritirare una riga che ha figlie (`attivo` da `t` a `f`) porta la bonifica nel
+changelog.** Il mirror esegue un `UPDATE`, e su quella transizione
+`dbops.trgfn_prevent_deactivate_if_children` rifiuta di spegnere una riga con figlie
+collegate. Il changeSet che fallisce è quello del mirror, spesso vecchio di mesi, e il
+rosso non somiglia alla riga cambiata. Il mirror gira al suo numero, prima di ogni file
+datato oggi, quindi una bonifica scritta oggi arriva tardi. La forma è in due passi:
+
+1. un changeSet di bonifica, idempotente, che ritira o stacca le figlie;
+2. il mirror **ri-ancorato** dopo la bonifica, come qui sopra.
+
+Le figlie vere di un'installazione, per esempio la configurazione dei profili, sono
+dati che il ritiro deve gestire ovunque, non solo sul database di sviluppo. A mano si
+toglie solo ciò che esiste sulla sola macchina di sviluppo. ⚠️ Il guard riconosce come
+«figlia attiva» solo una colonna di nome `attivo`. Su una tabella dove lo stato ha un
+altro nome (`abilitata`) conta tutte le righe, finché una riga di
+`dbops.automation_overrides_cols` (`ATTIVO_COL`) non gli insegna la colonna giusta. Quella
+riga ha effetto dal `ci_apply` successivo, non nella migrate in corso.
 
 ⛔ **E «appendere una riga» non è mai gratis: sveglia il mirror, che rilegge
 TUTTO il file.** Il 2026-08-25 un append a `config/parameters.csv` ha fatto
@@ -1864,6 +2259,10 @@ fallire il migrate su `DEFAULT_UTILITY` — una riga di qualcun altro, con
 | --- | --- | --- |
 | **stantìa** | dice il falso rispetto al DB | confronto CSV ↔ DB |
 | **irriscrivibile** | dice il **vero**, ma un guard entrato dopo lo rifiuta | **solo rieseguendo l'upsert** |
+
+Nel confronto una cella vuota si legge come la carica il loader: `NULL` dove il
+mirror non dichiara la colonna `STRING` (`NULLIF(cella, '')`). Confrontarla come
+`''` inventa divergenze che non esistono.
 
 ⭐ **La verifica che le prende entrambe**, prima di toccare un CSV con mirror
 `runOnChange`: caricarlo in una temp table e rifare l'upsert su **tutte** le
@@ -1878,6 +2277,76 @@ blocca anche il migrate. Se succede, `pg_terminate_backend`.
 riga rifiuta, e perché): fino al 18-09 questa riga offriva come via un «CSV
 dedicato con un loader suo», ed è la porta da cui sono entrati i sei laterali
 ritirati quel giorno. Non è più una via.
+
+**Altre regole sullo stesso file**, ognuna col suo perché:
+
+* **Un CSV ha un fine riga solo, `\n`.** `csv.writer` di Python scrive `\r\n` di
+  default: una riga appesa così nasce col ritorno carrello, invisibile nel diff,
+  e la verifica qui sopra (il `COPY` in una temp table) muore su «ritorno
+  carrello non quotato», indicando la riga e non la causa. Si apre il writer con
+  `lineterminator='\n'`. Presidio: `scripts/guardrail_forme_changeset.py`, regola `csv-fine-riga-misti`.
+* **Il CSV si modifica per riga, non si riscrive.** Una libreria CSV rimette o
+  toglie le virgolette su righe che non c'entrano, e su un mirror `runOnChange`
+  quelle righe vengono riscritte sul database insieme alla propria. La verifica è
+  `git diff --numstat`: tante righe cambiate quante se ne volevano toccare.
+* **Una riga di catalogo esiste se sta nel CSV, non se la si legge sul database
+  di sviluppo.** Quel database non si ricostruisce e conserva righe scritte a
+  mano o da changeSet poi ritirati: da zero non ci sono. Prima di scrivere «è già
+  a catalogo» si cerca la riga nel CSV. Una riga che entra nel CSV copiata dal
+  database si legge **intera** (`attivo`, `meta`) e si decide che cosa il
+  progetto vuole; poi la presidia un pgTAP che la nomina, perché la sua assenza
+  si vede solo da zero.
+* **Una tabella di configurazione scritta da una funzione è comunque un seed.**
+  Finché la scrive del codice (una funzione che rileva dallo schema e fa
+  `INSERT … ON CONFLICT DO NOTHING`, un job), una bonifica una tantum sistema
+  solo le righe di quel momento: quelle nate dopo restano sbagliate, e il
+  changeSet risulta applicato. Il rimedio è togliere lo scrittore: la
+  configurazione diventa un mirror CSV, e la funzione che rilevava resta come
+  **diagnosi**, che segnala e non scrive. Nella bonifica prima si corregge chi ha
+  ancora un valore valido, poi si spegne ciò che resta; una riga non più valida
+  si spegne nel CSV e non si toglie: la riga spenta dice che il caso è stato
+  considerato.
+* **Estendendo un mirror a una colonna nuova, i valori già scritti via SQL si
+  riportano prima nel CSV.** Il mirror, risvegliandosi, li sovrascrive in
+  silenzio con ciò che il file dice.
+* **Una colonna con FK aggiunta a un CSV chiede: il bersaglio è seminato prima o
+  dopo questo mirror?** In `80_data` l'ordine è quello dei nomi dei file: un
+  mirror vecchio che riceve la colonna scrive, da zero, prima che il catalogo
+  puntato esista, e la FK lo rifiuta. Se il bersaglio viene dopo, o la tabella
+  puntata si carica come primo `loadUpdateData` dello stesso changeSet del
+  mirror, o il mirror si ri-ancora dopo il seme del bersaglio con **tutte** le
+  colonne. Togliere la riga `- column:` non basta, perché Liquibase mappa
+  dall'intestazione del CSV: per non caricare una colonna serve `type: SKIP`. Il
+  `NOT NULL` sulla colonna sta in `90_end`, dopo tutto `80_data`; se la figlia ha
+  già righe, la FK nasce `NOT VALID` e si convalida in `90_end`.
+* **Una colonna `text[]` non si semina da un CSV.** `loadData` e
+  `loadUpdateData` legano il valore come stringa, e PostgreSQL lo rifiuta. La
+  sede resta il CSV, quindi cambia la forma della colonna: un elenco va in
+  `jsonb`, dichiarato `type: JSON` nel mirror (`dbops.automazione_overlap`,
+  colonna `key_columns`). Prima di scegliere un elenco ci si chiede se serve: un
+  elenco di valori **cattivi** tace sul valore nuovo di domani, uno scalare col
+  valore **atteso**, confrontato con `IS DISTINCT FROM`, lo manda in allarme
+  (`dbops.presidi.stato_atteso`).
+* **Un `id` esplicito nel CSV non muove la sequenza.** `loadUpdateData` scrive
+  l'`id` del file e l'identity resta dov'era: una `INSERT` senza id prenderebbe
+  un numero già usato (`23505`). La riallinea a ogni migrate una passata
+  `runAlways` di `90_end`, su ogni colonna identity del database e senza mai
+  arretrare. Il nome della sequenza è costruito a runtime
+  (`pg_get_serial_sequence`) e non compare in nessun file: chi vuole sapere se
+  una sequenza è presidiata cerca il meccanismo (`setval`), non il nome.
+  ⭐ Il presidio è questa passata (`90_end/20260818-72`): un append con `id`
+  esplicito **non** porta un changeSet di resync suo. Il `setval` dentro il seed,
+  subito dopo il `loadUpdateData`, serve solo quando nella **stessa** migrate,
+  dopo quel seed, un changeSet inserisce nella tabella senza `id`: la passata di
+  `90_end` arriverebbe tardi. ⚠️ La passata non copre una prova composta in
+  `ROLLBACK`, che non arriva a `90_end`: lì l'SQL della passata va messo dopo
+  l'upsert simulato.
+* **Un `id` scritto a mano nel CSV è un numero condiviso.** Nei CSV chiavati
+  sull'`id` (le liste di `ui`) due lavori aperti insieme che appendono righe
+  prendono gli stessi numeri: il conflitto arriva in git, o come chiave duplicata
+  al migrate. Prima di appendere si allinea il ramo e si rilegge il massimo; le
+  righe nuove si appendono per ultime, subito prima di consegnare. Vale per quei
+  file: la chiave consigliata di un mirror resta quella naturale.
 
 ---
 
@@ -2139,6 +2608,16 @@ concede, `check_db_role_batch_*.sql` che verifica, e il pgTAP di postura.
 Toccarne uno solo non dà errore: dà falsi positivi altrove. Il 2026-09-02 la
 terza lista era indietro di sei tabelle.
 
+**Come si scrive uno script di provisioning.** Gira da superuser, ma le
+primitive del framework agiscono solo dove il proprietario dell'oggetto è
+`current_user`, e non riconoscono il superuser: dopo aver passato la proprietà
+al migratore lo script fa `SET ROLE` al migratore prima di chiamarle, e
+`RESET ROLE` dopo. Dentro un blocco `DO $$ … $$` psql non interpola le sue
+variabili (`:'nome'`): il valore passa da `set_config(…)` fuori dal blocco e da
+`current_setting(…)` dentro. Un passo che dipende da un changeSet è condizionale
+(`to_regproc('…') IS NOT NULL`), perché il provisioning si lancia anche a
+migrate non concluso. Stampo: `scripts/sql/provision_storico_scope.sql`.
+
 ⚠️ **Limiti del cancello, dichiarati**: guarda `migrations_v2` e non la vecchia
 storia congelata; e riconosce i ruoli dal prefisso `zeroerp_batch_`.
 
@@ -2327,6 +2806,11 @@ prima di guardare le righe. ⚠️ Con una colonna che **esiste** su quella tabe
 (`SET id = id`): il parser risolve i nomi prima del controllo dei permessi, e su
 una colonna assente risponderebbe `42703`, rosso per il motivo sbagliato.
 
+Per **enumerare** i privilegi di un ruolo (il verso «niente oltre l'atteso») si
+legge `pg_class.relacl` con `aclexplode(…)` unito a `pg_roles`:
+`has_*_privilege` risponde a una domanda per volta. Un `relacl` a `NULL` vuol
+dire privilegi di default, e non produce righe.
+
 Precedente: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`; guida:
 [Audit Logging](/guide/messaggi-audit), sezione *Chi può scrivere*.
 
@@ -2426,6 +2910,40 @@ già provisionati. Presidio:
 baseline con «permesso negato» va **letto**, non registrato — è quasi sempre
 questa regola.
 
+⛔ **Il codice può chiamare dentro `django`, non dipenderne.** Le tabelle di
+`django` nascono dopo Liquibase: durante il migrate da zero non esistono. Conta
+**quando il riferimento si risolve**: alla `CREATE` (una vista, una FK, una
+colonna generata, una funzione `LANGUAGE sql`, un `%TYPE`) il migrate si ferma;
+alla prima esecuzione (un corpo plpgsql) no. Da qui:
+
+* una **funzione** che legge `django.*` è plpgsql, e non si converte in
+  `LANGUAGE sql`; i tipi delle colonne di `django` si scrivono espliciti (§5g);
+* una **vista** non nomina `django.*`: legge attraverso un accessore plpgsql in
+  `JOIN LATERAL` (`script.fn_get_auth_user_stato`), che su un id assente
+  restituisce zero righe e non solleva;
+* una **FK** verso `django.*` sta in `90_end` con `tableExists` e
+  `onFail: MARK_RAN`: su un database da zero quella FK non nasce. È un prezzo
+  accettabile per una FK, non per un oggetto che qualcuno legge;
+* un oggetto che **ricava una regola da quelle FK** (letta da `pg_constraint`)
+  è quindi fail-closed quando mancano, con un codice suo. Il suo pgTAP non
+  salta: asserisce il ramo del mondo in cui gira, e il mondo si riconosce da una
+  FK con `confrelid` = `django.auth_user` fuori dallo schema `django`, non da
+  `to_regclass('django.auth_user')`: in CI la tabella c'è e le FK no.
+  Precedente: `db/pgtap/dbops/test-credenziale-di-prova-fk-v1.sql`;
+* le tre forme che si risolvono alla `CREATE` in `00_schema`/`20_code` (`%TYPE`
+  su una colonna di `django`, una funzione `LANGUAGE sql` o una vista che lo
+  nomina, una FK fuori da `90_end`) le ferma `scripts/guardrail_forme_changeset.py`,
+  regola `django-alla-create`;
+* **il ruolo dei job (`zeroerp_job`) non ha `USAGE` su `django`, ed è voluto.**
+  Una funzione `SECURITY INVOKER` che legge `django.*` e sta sul percorso di un
+  trigger fa fallire con `42501` ogni job che scrive quelle righe. Se la lettura
+  è **facoltativa** (una proposta, un livello di una cascata), la funzione
+  chiede prima al catalogo, per OID, se la tabella esiste ed è leggibile
+  (`has_schema_privilege(n.oid, 'USAGE') AND has_table_privilege(c.oid,
+  'SELECT')`, con `IS TRUE`: tabella assente vuol dire zero righe, cioè `NULL`),
+  e solo poi fa la `SELECT`. Niente blocco `EXCEPTION`: in un trigger costa una
+  sottotransazione per riga. Precedente: `script.fn_get_parameter_di_sessione`.
+
 ---
 
 ### 11.10 ⛔ `TIMESTAMP` nudo è senza fuso: si scrive `timestamptz`, sempre
@@ -2499,6 +3017,149 @@ baseline per far girare la CI su un database nuovo (2026-09-02). Un caso così
 si concorda con Tid e si rigenera il manifesto **nello stesso commit**
 (`python scripts/guardrail_v1_congelato.py --rigenera`): il diff del manifesto
 è la firma del cambio.
+
+---
+
+### 11.12 ⛔ Trappole di scrittura che si vedono solo all'apply
+
+* **La `preCondition` di un ritiro esclude ciò che il changeSet stesso ritira.**
+  Un changeSet che toglie più oggetti e pretende «nessuno nomina più la funzione
+  ritirata» conta anche il chiamante che sta per togliere: la condizione non è
+  mai vera e il changeSet non gira.
+* **Niente commenti `--` in una `sqlCheck` scritta come blocco piegato**
+  (`sql: >`). Le righe si uniscono in una sola e il commento porta via tutto ciò
+  che segue.
+* **DML e `ALTER TABLE` sulla stessa tabella, nello stesso changeSet, aprono con
+  `SET CONSTRAINTS ALL IMMEDIATE`.** Liquibase gira coi vincoli differiti: un
+  `UPDATE` che accoda trigger `DEFERRABLE INITIALLY DEFERRED` seguito da un
+  `ALTER TABLE` è rifiutato con «eventi trigger in sospeso».
+
+**Presidio**: `scripts/prova_changeset.py` esegue le `sqlCheck` e prova l'SQL
+coi vincoli differiti, come Liquibase. Le `preConditions` valgono per il
+database su cui si leggono: quella che conta è la risposta del database che
+incontrerà il changeSet.
+
+Due forme in più della stessa famiglia, che all'apply non danno nemmeno errore:
+
+* **Un attributo che Liquibase non conosce non dà errore: sparisce.** `where:`
+  esiste solo su `createIndex`: su `addUniqueConstraint` viene ignorato, e nasce
+  un vincolo totale. Un `- sql:` scritto dentro la lista `columns:` di un
+  `addColumn` non viene eseguito: la colonna nasce, il vincolo no. Un'unicità
+  parziale si scrive in SQL esplicito (`CREATE UNIQUE INDEX … WHERE`, §8.4), e
+  l'esito si legge nella doc auto-generata della tabella, alla sezione dei
+  vincoli. Presidio: `scripts/guardrail_forme_changeset.py`, regola `unique-ignorato`.
+* **L'operatore jsonb `?` si scrive `jsonb_exists()`.** In un `sql:` di
+  Liquibase un `?` fuori da un corpo dollar-quoted è un segnaposto JDBC e va
+  raddoppiato; dentro un corpo `$function$` il raddoppio resta letterale e la
+  funzione fallisce alla prima chiamata; in un file pgTAP letto da `psql` il
+  raddoppio è un errore di sintassi. `jsonb_exists(x, 'k')`, `jsonb_exists_any`
+  e `jsonb_exists_all` valgono identici nei tre contesti, e il frammento si
+  sposta dall'uno all'altro senza ripensarci. Presidio: `scripts/guardrail_forme_changeset.py`, regola `jsonb-punto-di-domanda`.:
+  ferma le due forme che si rompono, il `?` singolo fuori da un corpo e il `??` dentro.
+
+### 11.13 ⛔ `preCondition` e `MARK_RAN`: che cosa promettono
+
+Una `preCondition` guarda ciò che viene prima (§11.4), e il suo `onFail` decide
+che cosa succede quando non lo trova. Le regole che seguono valgono in ogni
+fase.
+
+* **Una `sqlCheck` risponde con un numero.** Liquibase legge un boolean come
+  `t`/`f`, quindi un `expectedResult: "true"` non è mai soddisfatto. Si scrive
+  `SELECT count(*) … WHERE <predicato>` con `expectedResult: "1"`, o `"0"` per
+  «nessuna riga cattiva». Presidio: `scripts/guardrail_forme_changeset.py`, regola `sqlcheck-booleano`.
+* **La firma di una funzione, in una `sqlCheck`, si chiede con l'arità.**
+  `pg_get_function_identity_arguments()` rende nome **e** tipo di ogni
+  parametro: confrontata con una lista di soli tipi non combacia mai, e il
+  migrate si ferma con «Expected '1' got '0'». La domanda «il changeSet
+  precedente è già passato?» si fa con `pronargs`, o con
+  `proargtypes::regtype[]` quando l'arità non distingue.
+* **`onFail: MARK_RAN` registra il changeSet come eseguito senza eseguirlo**, e
+  con `runOnChange: false` non ci si torna più. È la risposta giusta solo dove
+  «già fatto» è uno stato legittimo e saltare è corretto (§11.5), mai per
+  evitare una scrittura. Su un DDL già idempotente (`DROP … IF EXISTS`,
+  `CREATE OR REPLACE`) non si mette nessuna `preCondition`: l'idempotenza la dà
+  il comando. Una dipendenza vera si esprime con `HALT`. Se un `MARK_RAN` è
+  scattato a torto si corregge in avanti, con un changeSet nuovo, e si ripulisce
+  anche il file vecchio, perché da zero deve essere giusto anche lui.
+* **Una `preCondition` rossa solo da zero non si rilassa.** Se pretende uno
+  stato che sul database di sviluppo esiste perché qualcuno lo ha prodotto a
+  mano, a mancare è un passo del changelog: lo si aggiunge in un changeSet suo,
+  idempotente (tocca zero righe dove il passo è già stato fatto), collocato
+  prima di quello che lo presuppone. Portare il cancello a `MARK_RAN` lascerebbe
+  in piedi per sempre lo stato che il cancello vietava.
+* **Un oggetto che sul database di sviluppo c'è può non nascere mai da zero.**
+  Se il changeSet che lo crea ha una `preCondition` con `MARK_RAN`, il suo
+  esito (`exectype`) si legge nel `databasechangelog` dello scratch ricostruito
+  dai changelog, non in quello di sviluppo. Prima di un `DROP CONSTRAINT`, un
+  `RENAME CONSTRAINT` o un `ALTER SEQUENCE` per nome si censiscono lì tutti i
+  nomi del lotto, in un giro solo. `IF EXISTS` si mette solo su ciò che un
+  `MARK_RAN` a monte può non aver creato, col perché nell'intestazione.
+* **Una famiglia sotto lo stesso `MARK_RAN` si spezza col membro nuovo.** Se più
+  changeSet condividono la stessa `preCondition` con `MARK_RAN` (le FK verso una
+  tabella che può non esistere ancora, §11.9), un membro aggiunto dopo trova la
+  condizione vera dove i fratelli l'avevano trovata falsa, e nasce una famiglia
+  a metà. Chi aggiunge un membro verifica lo stato della famiglia su ogni
+  database che lo riceverà in modo incrementale, e il pgTAP della famiglia
+  asserisce «tutte o nessuna» (`db/pgtap/config/test-fk-auth-user-ponte-django-v1.sql`).
+
+### 11.14 ⛔ Da zero l'ordine è per fase, poi per numero
+
+Su un database ricostruito da zero le fasi girano nell'ordine di §11.4, e
+dentro ogni fase i file girano per nome. **La data di un changeSet non dice
+quando gira**: un `90_end` di mesi fa gira dopo un `00_schema` scritto oggi. Su
+un database di sviluppo, dove ogni changeSet è arrivato nel giorno in cui è
+stato scritto, niente di ciò che segue si vede.
+
+* **Un changeSet nomina solo ciò che è nato prima di lui.** Una `preCondition`,
+  un `%TYPE` e una DDL risolvono il nome all'apply: l'oggetto deve nascere in un
+  changeSet con numero minore, e la cartella non conta, perché `00_schema` e
+  `20_code` girano mescolati per numero. Un corpo plpgsql che chiama una
+  funzione successiva compila lo stesso: si risolve alla prima esecuzione.
+* **Un changeSet di `00_schema`/`20_code` non tocca un oggetto che nasce in
+  `80_data` o `90_end`.** Un `COMMENT ON CONSTRAINT`, un `ALTER` o un `DROP`
+  senza `IF EXISTS` su un vincolo, un indice, una vista o una colonna creati in
+  una fase successiva passa sul database di sviluppo e da zero si ferma con
+  «does not exist». L'istruzione va in un changeSet della fase in cui l'oggetto
+  nasce, con un nome che viene dopo. Trovato un guasto di questo tipo, si
+  censiscono tutti i changeSet scritti con lo stesso criterio, non solo quello
+  che ha fermato la build.
+* **Un `ADD COLUMN … DEFAULT fn()` chiama la funzione all'`ALTER`.** Per un
+  default non volatile PostgreSQL valuta l'espressione una volta, quando la
+  colonna nasce, anche su una tabella vuota. Se la funzione legge un dato di
+  `70_dati_sistema` o di `80_data`, in `00_schema` quel dato non c'è ancora. La
+  forma è: colonna nuda in `00_schema`, valore iniziale nella fase dei dati, poi
+  `SET DEFAULT` e `SET NOT NULL` in un changeSet separato (un `SET DEFAULT` non
+  chiama la funzione).
+* **Un vincolo nuovo passa anche da chi scrive già la tabella.** Tutto
+  `00_schema` gira prima di tutto `80_data`: un `CHECK` o un `NOT NULL` che una
+  riga di seed soddisfa solo dopo il mirror del suo CSV viene violato
+  dall'`INSERT` di un changeSet più vecchio, che quella colonna non la nomina
+  (il `NOT NULL` si giudica sulla riga proposta, anche con `ON CONFLICT`). La
+  colonna nasce in `00_schema` col suo default, il valore vero arriva dal CSV, e
+  il `CHECK` (o il `DROP DEFAULT`) sta in `90_end`. Prima di stringere si
+  censisce chi scrive la tabella, in quattro sedi: gli `INSERT INTO <tabella>` di
+  `80_data`, le funzioni del database, le fixture dei pgTAP (che scrivono
+  direttamente) e il backend. Una fixture che il vincolo rifiuta costruiva una
+  riga che il modello non ammette: si corregge la fixture, non si allenta il
+  vincolo.
+* **Un oggetto si ritira nella fase dell'ultimo changeSet che lo pretende.** Se
+  un changeSet di `80_data` o `90_end` pretende l'oggetto (una `preCondition`
+  con `HALT`, una DDL senza `IF EXISTS`), un `DROP` scritto oggi in `00_schema`
+  gira prima di lui e il migrate da zero si ferma. Prima di un
+  `DROP TABLE/COLUMN/FUNCTION` si cercano nelle fasi successive i changeSet che
+  nominano l'oggetto; se uno lo pretende, il `DROP` sta nella sua stessa fase,
+  con un nome che viene dopo, e lo dichiara in intestazione. Le funzioni-trigger
+  montate solo su quella tabella si tolgono nello stesso changeSet, dopo la
+  tabella.
+* **Prima di togliere una fonte si contano i suoi lettori, non solo si verifica
+  il sostituto.** Vale per una tabella, per delle righe di catalogo, per una
+  chiave di configurazione. Una `SELECT` da una tabella vuota non è un errore, e
+  un `COALESCE` con una costante uguale al dato nasconde il lettore rimasto su
+  tutti i casi tranne quello che se ne discosta: è quello da provare. Si cerca
+  la **lettura** (`FROM <tabella>`, `params ->> 'chiave'`) nel corpo vivo delle
+  funzioni (`pg_get_functiondef`, §5c), nei pgTAP e nei default di colonna, non
+  la parola: commenti e sottostringhe danno falsi lettori. Ciò che il censimento
+  trova diventa la `preCondition` del ritiro (§11.12).
 
 ---
 
@@ -2583,10 +3244,25 @@ emesse dalle funzioni nella doc auto-gen e assenti da `it.json`/`en.json`, e
 **fallisce**. Quindi ogni `reason_key` nuova va **chiesta al FE nello stesso
 giro**, non dopo.
 
+⚠️ **Il presidio sbaglia per difetto.** Riconosce una chiave solo quando sta
+sulla stessa riga del nome della proprietà, subito dopo la virgola
+(`'reason_key', '<chiave>'`; lo stesso per `label_key` e `nessuna_azione_key`).
+Una chiave dentro un `CASE`, in una tupla `VALUES` o sotto un'altra proprietà
+(`stato_info_key`) non la vede. L'elenco di ciò che il frontend deve tradurre è
+quindi il `COMMENT` della funzione, che dichiara tutte le chiavi emesse: il
+rosso del presidio ne è un sottoinsieme.
+
 Namespace: `common.azione_reason.*` per i motivi trasversali (documento senza
 righe, indirizzi mancanti), `<area>.<entità>.<azione>_reason.*` per quelli di
 dominio (`vendite.reso.annulla_reason.con_accrediti`,
 `vendite.ddt.push_commessa_reason.gia_inviato`).
+
+**Un elenco di motivi si deriva dal catalogo solo se il catalogo contiene tutto
+ciò che serve a chi lo legge.** Se dà solo la parte macchina e a video serve
+anche una frase tradotta, la derivazione emetterebbe una chiave che nessuno ha
+tradotto. Lì l'elenco resta scritto a mano, ed è **tenuto da un presidio** che
+lo confronta col catalogo e diventa rosso alla prima voce in più (l'elenco delle
+figlie in `script.fn_check_registro_disattivabile`).
 
 #### ⚠️ Un motivo che dipende da CHI GUARDA non è un motivo di stato
 
@@ -2716,6 +3392,13 @@ quando conta: si preferisce dire **cosa è** la riga invece di ripetere l'avverb
 inseguire il `reason`. Il frontend rende il testo da lì, quindi cambiarlo costa
 due file di `locales` e non compra niente.
 
+**Nel corpo, ogni motivo sta accanto alla sua condizione**: un `SELECT … INTO`
+seguito da `IF FOUND THEN RETURN <motivo>`, mai un `FOR … LOOP` col `RETURN`
+dentro. Il presidio che associa ogni motivo alla sua condizione
+(`db/pgtap/dbops/test-vw-codici-errore-motivo-nominato.sql`) legge il testo
+vicino al motivo, e una query lunga fra i due lo rende cieco. I `valori` di un
+motivo che non ne ha sono `jsonb_build_array()`.
+
 #### 12.5.2 ⭐ La madre CHIAMA la check — e questo è il punto
 
 Il §12.2 chiede che il predicato sia *«lo STESSO del guard»*. Per le azioni di
@@ -2735,6 +3418,14 @@ partenza spostato di un passo.
 ⚠️ **Nessun codice errore nuovo.** La check *nomina* codici già a catalogo. Se
 per scriverla servisse un codice nuovo, il difetto è a monte: la madre stava
 rifiutando senza saper dire perché.
+
+⛔ **Cambiare un ramo della check è cambiare anche la vista che ne specchia il
+motivo.** Dove la vista di riga ricalcola il motivo invece di chiamare la check
+non si rompe niente: la lista propone il verbo su una riga che la mutazione
+rifiuta, o lo nasconde su una che accetterebbe. Nello stesso giro si cercano il
+codice e il `reason` in `docs/it/dbzero/*/views/` e in `db/pgtap` (i test che
+fissano quel motivo, non solo quelli del lavoro in corso), e un valore che la
+vista non può più produrre si ritira dal vocabolario.
 
 #### 12.5.3 ⛔ Il motivo deve arrivare sulla superficie dove il pulsante VIVE
 
@@ -2892,6 +3583,21 @@ chiamato con un letterale e chiamato con una colonna o un parametro produce pian
 diversi (§13.4, §13.5). Il JIT della lineage (2026-10-11) si è visto dal pgTAP
 lento, non dalla funzione misurata da sola.
 
+⛔ **Il corpo di una funzione eseguito come query prova le righe, non il
+piano.** Con i parametri sostituiti da letterali il planner pota rami e sceglie
+accessi che dentro la funzione non sceglie, nei due versi: nasconde un difetto
+vero e ne inventa uno che non c'è. Il banco serve a dimostrare che il risultato
+non cambia: `EXCEPT ALL` nei due versi fra corpo vecchio e nuovo, **per seme** e
+non solo nel modo «tutte», più una mutazione che il confronto deve vedere; due
+conteggi uguali non lo dimostrano. Il piano si legge con `EXPLAIN (ANALYZE)`
+sulla funzione applicata, guardando `loops` e il tempo del nodo di testa di ogni
+CTE, non i buffer cumulati. Per una **vista** il banco vale anche per il piano:
+è una macro, e la sua definizione eseguita come app ha lo stesso piano.
+
+⚠️ **La durata si misura leggendo le colonne**, non con `count(*)`, e
+confrontando corpo vecchio e nuovo: un pgTAP verde non dice niente sul tempo.
+Vale prima di tutto per chi riscrive una funzione che gira su tutto il database.
+
 ### 13.2 ⛔ Ciò che non dipende dalla riga si calcola una volta
 
 Il difetto più frequente, e il più caro, è un calcolo che **si ripete per ogni
@@ -2919,6 +3625,29 @@ no-leak e delega: la usano il guard e il dettaglio, mentre la lista chiama la
 metà. Le regole restano in un posto solo. Precedente:
 [`fn_check_riga_contabile_eliminabile_su_distinta`](/dbzero/script/manual/fn_check_riga_contabile_eliminabile_su_distinta)
 (`20261021-62/-63`, nota del BE del 2026-10-21).
+
+**Altre forme dello stesso difetto, e due cure che non lo sono**:
+
+* **Una funzione usata come filtro nel join fra due CTE** si rivaluta per ogni
+  coppia di righe: sulle CTE il planner non ha statistiche. Il predicato
+  calcolato dalla funzione diventa una colonna della CTE di base,
+  `AS MATERIALIZED`, e i join confrontano il valore.
+* **Una funzione `LANGUAGE sql` che restituisce molte colonne e contiene una CTE
+  costosa**, chiamata per riga, viene incorporata e rifà la CTE per ogni colonna
+  letta: si scrive in plpgsql.
+* **Una vista che cerca testo nei corpi delle funzioni** estrae una volta, da
+  ogni corpo, i nomi e i letterali che le servono, e poi fa un join per
+  uguaglianza: un test testuale per coppia (tabelle × funzioni) è un prodotto
+  cartesiano di regex. Per la stessa ragione un ciclo plpgsql carattere per
+  carattere si riscrive a token.
+* ⛔ **La CTE `MATERIALIZED` si semina con le chiavi in gioco**
+  (`WHERE id = ANY (SELECT DISTINCT <chiavi>)`), non leggendo l'insieme intero:
+  letta intera costa una volta sola, ma fa pagare l'anagrafica completa anche
+  alla lettura di un documento.
+* ⛔ **Togliere il recinto non è la cura**: senza `MATERIALIZED` il planner pota
+  la catena per chi non la legge e la riesegue per riga per chi la legge. In una
+  vista si recinta anche la `SELECT` finale, o resta lei la parte calcolata per
+  riga.
 
 ### 13.3 ⛔ Un cast o una funzione nel join verso una tabella sotto policy
 
@@ -2991,6 +3720,18 @@ restituisce un insieme). `ANALYZE` non li tocca mai.
 Conta l'ordine di grandezza, non la cifra: `COST` e `ROWS` non forzano un piano,
 danno al planner il prezzo vero.
 
+⚠️ **Una vista che legge il catalogo (`pg_proc`) non ha una stima che dipende
+solo dalla sua struttura**: dipende dalle statistiche del catalogo, che
+l'autoanalyze aggiorna coi suoi tempi. Un presidio sul costo stimato che diventa
+rosso dopo un apply si giudica togliendo il lavoro in una transazione annullata
+e rimisurando: se la stima non si muove è la statistica, e la cura resta
+dichiarare la cardinalità vera. Il wrapper che dichiara `ROWS` è **plpgsql**:
+una `LANGUAGE sql` viene incorporata e il suo `ROWS` ignorato. Per dividere un
+testo si usa `unnest(regexp_split_to_array(…))` al posto di
+`regexp_split_to_table`. ⚠️ Abbassare una stima può cambiare il piano in peggio
+(una `LATERAL` rieseguita per coppia): l'estrazione va in una CTE
+`MATERIALIZED`, e la tenuta si prova forzando il prefiltro a stimare di più.
+
 ### 13.7 ⛔ Le proprietà invisibili nel corpo si ripetono a ogni `CREATE OR REPLACE`
 
 `COST`, `ROWS` e le clausole `SET` (`plan_cache_mode`, `jit`, `search_path`)
@@ -3010,6 +3751,45 @@ comportamento se ne accorge, se ne accorge solo il tempo. Per questo:
 Lo stesso vale per `security_invoker` sulle viste: un `CREATE OR REPLACE VIEW`
 che non lo ripete lo perde, e la vista esce dal perimetro RLS. Presidio:
 `rls/test-rls-viste-security-invoker`.
+
+⛔ **Prima di un `CREATE OR REPLACE` si confrontano gli attributi vivi, non solo
+il corpo.** Oltre a `COST`, `ROWS` e `SET` (`procost`, `prorows`, `proconfig`)
+contano `SECURITY DEFINER` (`prosecdef`), volatilità (`provolatile`), `PARALLEL`
+(`proparallel`), proprietario e privilegi (`proacl`): si leggono da `pg_proc`
+prima e dopo l'estratto, in transazione annullata, e devono cambiare solo quelli
+che il changeSet dichiara di cambiare. Se un altro lavoro ha toccato la stessa
+funzione dopo l'ultima rigenerazione della doc, fa fede il vivo. Il segnale che
+un corpo è stato ricostruito da uno YAML: `changes` e `rollback` portano la
+stessa generazione del corpo. Il changeSet che ha disfatto qualcosa non si
+corregge: se ne scrive uno nuovo, il cui `rollback` torna allo stato che ha
+trovato, non più indietro.
+
+### 13.8 ⛔ Tre forme di filtro e di firma che il planner non piega
+
+* **Un `OR` fra due chiavi vale contro una tabella, non contro una vista
+  `UNION ALL`.** Contro una tabella la provenienza (§6e) si incontra con
+  `sorgente_tipo_id = t AND (sorgente_id = x OR sorgente_uid = y)`: il planner
+  combina i due indici parziali. Contro una vista `UNION ALL`
+  (`script.vw_stato_sorgente`) lo stesso `OR` su due colonne diverse non scende
+  nei rami, e ogni tabella-documento si legge per intero. Lì si scrive **un ramo
+  per chiave**, ognuno con la sua uguaglianza (`UNION ALL` nella `LATERAL`, o
+  due `RETURN QUERY` in plpgsql). Si verifica sul piano, non sul tempo.
+* **«Nullo = tutti» non si scrive `p IS NULL OR col = ANY (p)`.** Con un
+  parametro non costante (una colonna in `LATERAL`, un parametro plpgsql in
+  piano generico) il ramo `IS NULL` non si semplifica e l'`OR` diventa un
+  filtro: scansione intera per riga. O il parametro è obbligatorio e «tutti» lo
+  costruisce il chiamante, o i due modi stanno in `UNION ALL`: il ramo
+  `WHERE p IS NULL` non nomina colonne, diventa un filtro valutato una volta e
+  non scandisce quando è falso. `STRICT` non dà lo stesso risultato. Si prova
+  con `EXPLAIN` nella forma di chiamata reale (§13.1).
+* **Una funzione che compone un valore riceve i valori, non l'id della riga.**
+  La «sede unica» di un numero di documento o di un'etichetta scritta come
+  `fn(p_numero, p_serie)` è `IMMUTABLE` e `LANGUAGE sql`: il planner la
+  incorpora nella vista, e si prova senza costruire niente. `fn(p_id)` rilegge
+  la tabella a ogni riga. ⛔ `STRICT` non si mette per igiene: annulla il
+  risultato appena un parametro è `NULL`, e se quel `NULL` è un caso normale (la
+  fattura senza serie) spegne metà della regola. Dove conta, un pgTAP asserisce
+  `pg_proc.proisstrict`. Precedente: `vendite.fn_numero_documento_fattura`.
 
 ---
 

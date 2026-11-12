@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.processi`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -115,6 +115,11 @@ chi accoda» vale per i `CODA` di `DOMINIO`, che toccano i dati di un'azienda.
   esterne lo referenziano **per codice**, quindi rinominare un processo è una migrazione, non una
   modifica di catalogo. Le procedure dei job registrano sotto il nome che passano alla porta del
   giornale, e quel nome deve essere un codice a catalogo.
+* ⛔ Per questo il codice **non si cambia nel CSV**: la modifica della chiave è rifiutata su ogni
+  database dove esistono righe figlie, mentre passa su uno ricostruito da zero, che non ne ha. Si
+  aggiunge la riga col codice nuovo e si ritira la vecchia; la storia resta col codice con cui è
+  stata scritta. Vale per ogni codice referenziato **per codice**: prima di toccarne uno in un CSV
+  si cercano le chiavi esterne che entrano su quella colonna.
 * ⚠️ Il legame col job di pgAgent **non è il nome**: lo dichiara `jobname_pgagent`, perché un job
   può chiamarsi diversamente dal processo che registra (`apply_fk_index_policy` è svegliato da
   `automations_apply_fk_indexes_policy`). Due processi non possono dichiarare lo stesso job, e un

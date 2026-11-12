@@ -121,6 +121,18 @@ Chi lo apre deve sapere **a chi tocca** senza leggerlo tutto.
   nessun blocco: dice a qualcuno che tocca a lui quando non è vero.
 * Il blocco dice **chi** e **dove**: il dettaglio resta nella sua sezione, non
   si ricopia qui.
+* **Non solo la testata: il brief si aggiorna nello stesso turno** in cui nasce
+  una misura, una correzione o una decisione, non a fine giornata e non su
+  richiesta. Il brief è la memoria del cantiere fra una sessione e l'altra: se
+  resta indietro, chi riparte lavora su numeri vecchi o rifà domande già chiuse.
+* **Una sezione superata non si cancella: si marca** con un ⚠️ in testa che
+  rimanda a quella che la corregge. Si scrivono anche i **vicoli ciechi** e le
+  misure che hanno smentito un'ipotesi: impediscono di riprovare la stessa strada.
+* **Un brief può averlo scritto un'altra sessione mentre si lavorava.** Prima di
+  modificarlo si rileggono le righe da toccare, e si cambia per sostituzione del
+  testo attuale, mai riscrivendo il file da un testo ricordato. Un messaggio
+  arrivato alla sessione sbagliata ha sbagliato destinatario, non per forza
+  contenuto: prima di togliere un fatto dal brief si verifica a chi era.
 
 Esempio:
 [brief-db-indirizzi-documento-seguono-il-cliente](../docs/it/dev/work-done/brief-db-indirizzi-documento-seguono-il-cliente.md).
@@ -131,15 +143,30 @@ Vale per DB, backend e frontend (Tid, 2026-10-21). Due brief aperti sullo stesso
 stessi oggetti, si pestano i piedi: riscrivono la stessa funzione per ragioni diverse, a pochi
 giorni di distanza, e ognuno lascia all'altro un pezzo da rifare.
 
-* **Prima di aprire un brief** si cercano in `docs/it/dev/work-in-progress/` (brief, piani,
-  analisi) quelli che toccano **lo stesso tema** o **gli stessi oggetti** (tabelle, funzioni,
-  documenti, endpoint), anche se il titolo parla d'altro.
+* **Di default un brief non si apre.** Serve quando porta qualcosa che le intestazioni di
+  changeSet, pgTAP e pagine `manual/` non portano: richieste a un altro team, decisioni di Tid
+  da prendere, più giri. Una richiesta di un altro team non basta, e nemmeno un debito trovato
+  analizzandola: lo si chiude nello stesso giro, oppure lo si dice in chat e decide Tid. Un
+  brief di troppo è un doppione da tenere allineato.
+* **Prima di aprire un brief, e anche prima di proporre o costruire una regola**, si cercano
+  in `docs/it/dev/work-in-progress/` (brief, piani, analisi) quelli che toccano **lo stesso
+  tema** o **gli stessi oggetti** (tabelle, colonne, funzioni, documenti, endpoint), anche se il
+  titolo parla d'altro. Se un brief esiste, il lavoro va lì e risponde alle domande che ha già
+  scritto.
 * Se uno copre il tema, o un lavoro **complementare** sugli stessi oggetti, il lavoro nuovo va
   **lì**, come sezione o giro in più, e non in un brief nuovo. Se i due vanno fusi, lo decide Tid.
 * Un brief nuovo dichiara in testata **«Brief vicini verificati»**: quelli trovati e perché non
   bastano, oppure «nessuno».
 * Un tema che tocca **tutti i documenti di una famiglia** (tutti i documenti di vendita, tutti
   quelli di magazzino…) non si apre senza l'ok esplicito di Tid.
+* **Il debito che resta archiviando un brief va in un brief nuovo** in `work-in-progress/`,
+  «aperto, non iniziato», con le decisioni attese. Una voce in un registro di migliorie da sola
+  si perde: lì ci va solo un rimando breve al brief, e il brief archiviato rimanda al nuovo. Fa
+  eccezione un residuo che è un pezzo di uno sviluppo futuro: resta nel brief archiviato, marcato
+  «parte dello sviluppo X». Nel dubbio fra debito e sviluppo futuro, si chiede.
+* ⛔ **Un punto facoltativo che Tid scarta si cancella**: non è debito. Si toglie ogni sua
+  menzione (testata, tabella dei passi, sezione dove era nato), e non si ripropone alla chiusura
+  successiva.
 * Prima di proporre un cambio di **modello**, si cerca la decisione esistente (brief in
   `work-done/`, guide, `git log -S`): la proposta dice se è nuova, se completa una decisione
   presa o se ne **revoca** una, citandola con la data.
@@ -223,6 +250,12 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
   auto-generata** (`docs/it/dbzero/<schema>/…`), mai da uno YAML: ce ne sono
   spesso cinque o sei per lo stesso oggetto, e ripartire da uno vecchio fa
   regredire in silenzio le revisioni intermedie.
+  ⚠️ **La doc auto-generata è vera solo se è stata rigenerata dopo l'ultimo
+  changeSet sull'oggetto.** Su un oggetto toccato da un changeSet applicato dopo
+  l'ultima rigenerazione, il «cosa fa adesso» si legge dal catalogo
+  (`pg_get_functiondef`, `pg_proc`), non dal markdown. Il segnale è un changeSet
+  sull'oggetto più recente del file di doc. Resta vietato ricostruire il DDL
+  dagli YAML.
 
 La pipeline invoca Liquibase **due volte** su un database ricostruito da zero
 (`!provision`, poi `ci_apply`), e ogni regola qui sotto passa sul DB di sviluppo

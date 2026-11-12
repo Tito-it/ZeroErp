@@ -74,22 +74,6 @@ SELECT plan(25);
 --   i motivi del listino (8, 11, 12, 16), non il permesso: l'azione si concede.
 SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
 
--- Scopo: esegue uno statement che deve essere rifiutato e ne rende il codice,
---   dal canale CONSTRAINT dell'eccezione ('NESSUN ERRORE' se passa).
-CREATE OR REPLACE FUNCTION pg_temp.codice(p_sql text)
-RETURNS text LANGUAGE plpgsql AS $fx$
-DECLARE v_cst text;
-BEGIN
-    BEGIN
-        EXECUTE p_sql;
-        RETURN 'NESSUN ERRORE';
-    EXCEPTION WHEN OTHERS THEN
-        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME;
-        RETURN coalesce(nullif(v_cst, ''), '-');
-    END;
-END;
-$fx$;
-
 -- Scopo: l'azione di una capability verso uno stato, come jsonb.
 CREATE OR REPLACE FUNCTION pg_temp.azione(p_blob jsonb, p_stato text)
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $fx$
@@ -193,7 +177,7 @@ SELECT is(
     '5) versione fissata: vince la fissata, anche se non e'' quella in vigore');
 
 SELECT is(
-    pg_temp.codice($$ SELECT script.fn_check_listino_congelabile('PREVENTIVO', NULL, NULL) $$),
+    dbops.fn_pgtap_codice_errore($$ SELECT script.fn_check_listino_congelabile('PREVENTIVO', NULL, NULL) $$),
     'E_DOC_TIPO_NON_GESTITO',
     '6) check con un documento che non congela un listino: E_DOC_TIPO_NON_GESTITO');
 
@@ -238,7 +222,7 @@ SELECT is(
     '12) …con la reason_key vendite.offerte.azione_reason.listino_senza_versione_in_vigore');
 
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_cl_off WHERE slot = 'B'))),
     'E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO',
@@ -260,10 +244,10 @@ SELECT is(
 -- ⚠️ Il verbo e la lettura in due istruzioni: nella stessa, la lettura vedrebbe
 --   la fotografia di prima del verbo.
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_cl_off WHERE slot = 'A2'))),
-    'NESSUN ERRORE',
+    NULL,
     '15a) la revisione si emette');
 
 SELECT is(
@@ -291,7 +275,7 @@ SELECT is(
     '16) versione fissata CHIUSA: «Emetti» spento col motivo LISTINO_VERSIONE_NON_ATTIVA');
 
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_cl_off WHERE slot = 'D'))),
     'E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA',
@@ -342,7 +326,7 @@ SELECT is(
     '18) contratto su un listino senza versione in vigore: «Attiva» spento col motivo');
 
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C1'))),
     'E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO',
@@ -351,10 +335,10 @@ SELECT is(
 -- ⚠️ Il verbo e la lettura in due istruzioni: nella stessa, la lettura vedrebbe
 --   la fotografia di prima del verbo.
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C2'))),
-    'NESSUN ERRORE',
+    NULL,
     '20a) listino in vigore: l''attivazione passa');
 
 SELECT is(
@@ -366,10 +350,10 @@ SELECT is(
 -- ⚠️ Il verbo e la lettura in due istruzioni: nella stessa, la lettura vedrebbe
 --   la fotografia di prima del verbo.
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C3'))),
-    'NESSUN ERRORE',
+    NULL,
     '21a) versione gia'' fissata, anche CHIUSA: l''attivazione passa');
 
 SELECT is(

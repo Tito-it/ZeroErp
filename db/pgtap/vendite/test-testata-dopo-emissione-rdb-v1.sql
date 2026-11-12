@@ -99,21 +99,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(37);
 
--- Il codice di dominio di un errore, dal canale CONSTRAINT (P0001); per gli
--- altri, SQLSTATE e vincolo. 'PASSA' se non solleva.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- Il campo di un rifiuto, dal canale COLUMN.
 CREATE FUNCTION pg_temp.campo(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $f$
@@ -307,16 +292,16 @@ $fixture$;
 -- 5-11) I satelliti di un ordine e di un preventivo veri
 -- =========================================================
 SELECT is(
-    pg_temp.esito(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.ordini_indirizzi (ordine_id, tipo_indirizzo_id, snapshot)
           VALUES (%s, %s, '{"display":"pgtap"}')$$,
         pg_temp.doc('ORD_DRAFT'), pg_temp.tipo('ORDINE_VENDITA'))),
-    'PASSA',
+    NULL,
     '5) ordine in bozza: l''indirizzo si aggiunge'
 );
 
 SELECT is(
-    pg_temp.esito(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.ordini_indirizzi (ordine_id, tipo_indirizzo_id, snapshot)
           SELECT %s, a.tipo_indirizzo_id, '{"display":"pgtap"}'
             FROM config.tipi_indirizzi_allowed a
@@ -328,7 +313,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$UPDATE vendite.ordini_indirizzi SET snapshot = '{"display":"altro"}' WHERE ordine_id = %s$$,
         pg_temp.doc('ORD_CONF'))),
     'E_DOC_DATI_COLLEGATI_NON_BOZZA',
@@ -336,7 +321,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format($$DELETE FROM vendite.ordini_indirizzi WHERE ordine_id = %s$$, pg_temp.doc('ORD_CONF'))),
+    dbops.fn_pgtap_codice_errore(format($$DELETE FROM vendite.ordini_indirizzi WHERE ordine_id = %s$$, pg_temp.doc('ORD_CONF'))),
     'E_DOC_DATI_COLLEGATI_NON_BOZZA',
     '8) ... toglierlo pure'
 );
@@ -355,10 +340,10 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format(
+    COALESCE(dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.preventivi_indirizzi (preventivo_id, tipo_indirizzo_id, snapshot)
           VALUES (%s, %s, '{"display":"pgtap"}')$$,
-        pg_temp.doc('PREV'), pg_temp.tipo('PREVENTIVO')))
+        pg_temp.doc('PREV'), pg_temp.tipo('PREVENTIVO'))), 'PASSA')
       || '|' || (script.fn_available_actions_preventivo(pg_temp.doc('PREV')) ->> 'can_edit_indirizzi'),
     'E_DOC_DATI_COLLEGATI_NON_BOZZA|false',
     '11) preventivo EMESSO: l''indirizzo e'' rifiutato, e la capability lo dice'
@@ -417,7 +402,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$UPDATE vendite.offerte_commerciali SET listino_versione_id = NULL WHERE id = %s$$,
         pg_temp.doc('OFF_EMETTI'))),
     'E_DOC_CONDIZIONI_FUORI_BOZZA',
@@ -425,7 +410,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.offerte_commerciali_utilities (offerta_id, istanza_utility_id, utility_id)
           SELECT %s, m.istanza_utility_id, m.utility_id FROM _m m$$,
         pg_temp.doc('OFF_EMETTI'))),
@@ -488,7 +473,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$UPDATE vendite.contratti SET listino_versione_id = NULL WHERE id = %s$$,
         pg_temp.doc('CON_ATTIVA'))),
     'E_DOC_CONDIZIONI_FUORI_BOZZA',
@@ -496,10 +481,10 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format(
+    COALESCE(dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.contratti_indirizzi (contratto_id, tipo_indirizzo_id, snapshot)
           VALUES (%s, %s, '{"display":"pgtap"}')$$,
-        pg_temp.doc('CON_ATTIVA'), pg_temp.tipo('CONTRATTO')))
+        pg_temp.doc('CON_ATTIVA'), pg_temp.tipo('CONTRATTO'))), 'PASSA')
       || '|' || (SELECT (c ->> 'can_edit_utility') || '|' || (c ->> 'can_edit_indirizzi')
                    FROM (SELECT script.fn_available_actions_contratto(pg_temp.doc('CON_ATTIVA')) AS c) x)
       || '|' || (SELECT (c ->> 'can_edit_utility') || '|' || (c ->> 'can_edit_indirizzi')
@@ -544,7 +529,7 @@ SELECT pg_temp.doc('CON_AGGIUNTA'), a.id, 'AGGIUNTA', 80.00, e.q, e.q, a.uom_id
  WHERE a.id = pg_temp.art('X');
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.contratti SET listino_id = %s WHERE id = %s$$,
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.contratti SET listino_id = %s WHERE id = %s$$,
                          (SELECT listino_id FROM _l2), pg_temp.doc('CON_RIGHE'))),
     'E_DOC_LISTINO_CAMBIO_CON_RIGHE',
     '22) contratto DRAFT con righe: un altro listino e'' rifiutato'
@@ -558,35 +543,35 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.contratti SET listino_id = NULL WHERE id = %s$$,
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.contratti SET listino_id = NULL WHERE id = %s$$,
                          pg_temp.doc('CON_RIGHE'))),
     'E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI',
     '24) contratto DRAFT con un''esclusione: togliere il listino e'' rifiutato'
 );
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.contratti SET listino_id = NULL WHERE id = %s$$,
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.contratti SET listino_id = NULL WHERE id = %s$$,
                          pg_temp.doc('CON_AGGIUNTA'))),
-    'PASSA',
+    NULL,
     '25) contratto DRAFT con la sola aggiunta: il listino si toglie (l''aggiunta vale anche senza)'
 );
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.contratti SET listino_id = %s WHERE id = %s$$,
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.contratti SET listino_id = %s WHERE id = %s$$,
                          (SELECT listino_id FROM _l2), pg_temp.doc('CON_VUOTO'))),
-    'PASSA',
+    NULL,
     '26) contratto DRAFT senza righe: il listino si cambia'
 );
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.offerte_commerciali SET listino_id = %s WHERE id = %s$$,
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.offerte_commerciali SET listino_id = %s WHERE id = %s$$,
                          (SELECT listino_id FROM _l2), pg_temp.doc('OFF_RIGHE'))),
     'E_DOC_LISTINO_CAMBIO_CON_RIGHE',
     '27) offerta BOZZA con righe: un altro listino e'' rifiutato, la stessa regola del contratto (D-11)'
 );
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.contratti SET listino_id = %s WHERE id = %s$$,
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.contratti SET listino_id = %s WHERE id = %s$$,
                          (SELECT listino_id FROM _l2), pg_temp.doc('CON_ATTIVA'))),
     'E_DOC_CONDIZIONI_FUORI_BOZZA',
     '28) contratto ATTIVO: un altro listino, e parla prima il lock di testata'
@@ -595,7 +580,7 @@ SELECT is(
 SELECT is(
     script.fn_check_listino_cambiabile('CONTRATTO', pg_temp.doc('CON_RIGHE'),
                                        (SELECT listino_id FROM _l), (SELECT listino_id FROM _l))::text
-      || '|' || pg_temp.esito($$SELECT script.fn_check_listino_cambiabile('ORDINE', 1, 1, 2)$$),
+      || '|' || COALESCE(dbops.fn_pgtap_codice_errore($$SELECT script.fn_check_listino_cambiabile('ORDINE', 1, 1, 2)$$), 'PASSA'),
     '[]|E_DOC_TIPO_NON_GESTITO',
     '29) la check: listino invariato, nessun motivo; un documento che non ha la regola e'' un errore di chiamante'
 );
@@ -643,7 +628,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.ddt SET billing_account_id = NULL WHERE id = %s$$,
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.ddt SET billing_account_id = NULL WHERE id = %s$$,
                          pg_temp.doc('DDT_DA_ORDINE'))),
     'E_DOC_CLIENTE_DIVERSO_DA_SORGENTE',
     '32) ... e il guard rifiuta il cambio di cliente: la capability lo spegne dove il guard rifiuta'
@@ -700,13 +685,13 @@ SELECT m.istanza_utility_id, m.utility_id FROM _m m;
 --    nascita) e si attiva per la matrice, in un'istruzione sua: lo snapshot
 --    resta quello scritto alla nascita, e lo stato si legge nell'asserzione.
 CREATE TEMP TABLE _nato AS
-SELECT pg_temp.esito(format(
+SELECT COALESCE(dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.contratti (numero, billing_account_id, istanza_utility_id, utility_id,
                listino_id, valido_dal, valido_al)
           SELECT 'PGT-RDB-NATO-ATTIVO', m.billing_account_id, m.istanza_utility_id, m.utility_id,
                  l.listino_id, %L::date, %L::date
             FROM _m m, _l l$$,
-        script.fn_data_operativa() + 2000, script.fn_data_operativa() + 2365)) AS esito;
+        script.fn_data_operativa() + 2000, script.fn_data_operativa() + 2365)), 'PASSA') AS esito;
 
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
   FROM vendite.contratti c
@@ -725,7 +710,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.contratti_utilities (contratto_id, istanza_utility_id, utility_id)
           SELECT %s, m.istanza_utility_id, m.utility_id FROM _m m$$,
         pg_temp.doc('CON_ATTIVA'))),
@@ -736,7 +721,7 @@ SELECT is(
 -- 37) La strada di prima del 35 non c'e' piu': un INSERT che dice ATTIVO lo
 --     rifiuta il trigger della nascita (trg_contratti_a05_stato_iniziale_ins).
 SELECT is(
-    pg_temp.esito(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.contratti (numero, billing_account_id, istanza_utility_id, utility_id,
                stato_doc_contratto_id, listino_id, valido_dal, valido_al)
           SELECT 'PGT-RDB-NATO-ATTIVO-2', m.billing_account_id, m.istanza_utility_id, m.utility_id,

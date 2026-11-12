@@ -63,19 +63,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(26);
 
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- =========================================================
 -- Le decisioni del brief, scritte dal test (non lette dal montaggio):
 --   una riga per colonna nominata, con gli stati (oltre alla bozza) in cui
@@ -270,81 +257,81 @@ LANGUAGE sql STABLE AS $f$ SELECT id FROM _doc WHERE chiave = p $f$;
 -- =========================================================
 -- 5-12) Un ordine vero
 -- =========================================================
-SELECT is(pg_temp.esito(format('UPDATE vendite.ordini SET data = data + 1 WHERE id = %s', pg_temp.doc('ORD_CONF'))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini SET data = data + 1 WHERE id = %s', pg_temp.doc('ORD_CONF'))),
           'E_DOC_IDENTITA_FUORI_BOZZA', '5) ordine CONFERMATO: la data non cambia (identita'')');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.ordini
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.ordini
                                     SET termine_pagamento_id = (SELECT t.id FROM config.termini_pagamento t
                                                                  WHERE t.id IS DISTINCT FROM ordini.termine_pagamento_id
                                                                  ORDER BY t.id LIMIT 1)
                                   WHERE id = %s$$, pg_temp.doc('ORD_CONF'))),
           'E_DOC_CONDIZIONI_FUORI_BOZZA', '6) ordine CONFERMATO: il termine di pagamento non cambia (condizioni)');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.ordini
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.ordini
                                     SET utility_id = (SELECT u.id FROM config.utilities u
                                                        WHERE u.id IS DISTINCT FROM ordini.utility_id
                                                        ORDER BY u.id LIMIT 1)
                                   WHERE id = %s$$, pg_temp.doc('ORD_CONF'))),
           'E_DOC_CLIENTE_FUORI_BOZZA', '7) ordine CONFERMATO: la utility non cambia (cliente)');
 
-SELECT is(pg_temp.esito(format('UPDATE vendite.ordini SET sorgente_uid = gen_random_uuid() WHERE id = %s', pg_temp.doc('ORD_CONF'))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini SET sorgente_uid = gen_random_uuid() WHERE id = %s', pg_temp.doc('ORD_CONF'))),
           'E_DOC_SORGENTE_FUORI_BOZZA', '8) ordine CONFERMATO: la sorgente non cambia');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.ordini SET meta = coalesce(meta, '{}'::jsonb) || '{"nota":"pgTAP"}' WHERE id = %s$$,
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.ordini SET meta = coalesce(meta, '{}'::jsonb) || '{"nota":"pgTAP"}' WHERE id = %s$$,
                                pg_temp.doc('ORD_CONF'))),
-          'PASSA', '9) ordine CONFERMATO: le note si scrivono');
+          NULL, '9) ordine CONFERMATO: le note si scrivono');
 
-SELECT is(pg_temp.esito(format('UPDATE vendite.ordini SET imponibile_tot = imponibile_tot WHERE id = %s; SELECT vendite.fn_ricalcola_totali_ordine(%s)',
+SELECT is(dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini SET imponibile_tot = imponibile_tot WHERE id = %s; SELECT vendite.fn_ricalcola_totali_ordine(%s)',
                                pg_temp.doc('ORD_ANN'), pg_temp.doc('ORD_ANN'))),
-          'PASSA', '10) anche su un ordine ANNULLATO i totali li riscrive il database: colonne non nominate');
+          NULL, '10) anche su un ordine ANNULLATO i totali li riscrive il database: colonne non nominate');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.ordini SET meta = coalesce(meta, '{}'::jsonb) || '{"nota":"pgTAP"}' WHERE id = %s$$,
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.ordini SET meta = coalesce(meta, '{}'::jsonb) || '{"nota":"pgTAP"}' WHERE id = %s$$,
                                pg_temp.doc('ORD_ANN'))),
           'E_DOC_CHIUSO', '11) ordine ANNULLATO: nemmeno le note, il documento e'' chiuso');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.ordini SET meta = '{"x":1}', data = data + 1 WHERE id = %s$$,
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.ordini SET meta = '{"x":1}', data = data + 1 WHERE id = %s$$,
                                pg_temp.doc('ORD_ANN'))),
           'E_DOC_IDENTITA_FUORI_BOZZA', '12) ordine ANNULLATO, data e note insieme: parla la prima del montaggio (la data)');
 
 -- =========================================================
 -- 13-21) Un preventivo vero, EMESSO
 -- =========================================================
-SELECT is(pg_temp.esito(format($$UPDATE vendite.preventivi SET competenza_mese = date_trunc('month', script.fn_data_operativa())::date WHERE id = %s$$,
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.preventivi SET competenza_mese = date_trunc('month', script.fn_data_operativa())::date WHERE id = %s$$,
                                pg_temp.doc('PREV'))),
-          'PASSA', '13) preventivo EMESSO: competenza_mese si sceglie accettando, quindi si cambia (D-9)');
+          NULL, '13) preventivo EMESSO: competenza_mese si sceglie accettando, quindi si cambia (D-9)');
 
-SELECT is(pg_temp.esito(format('UPDATE vendite.preventivi SET fatturazione_immediata = NOT coalesce(fatturazione_immediata, false) WHERE id = %s',
+SELECT is(dbops.fn_pgtap_codice_errore(format('UPDATE vendite.preventivi SET fatturazione_immediata = NOT coalesce(fatturazione_immediata, false) WHERE id = %s',
                                pg_temp.doc('PREV'))),
-          'PASSA', '14) preventivo EMESSO: anche fatturazione_immediata (la governa il guard di commessa, non il lock)');
+          NULL, '14) preventivo EMESSO: anche fatturazione_immediata (la governa il guard di commessa, non il lock)');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.preventivi
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.preventivi
                                     SET billing_account_id = (SELECT b.id FROM anagrafiche.billing_account b
                                                                WHERE b.id <> preventivi.billing_account_id ORDER BY b.id LIMIT 1)
                                   WHERE id = %s$$, pg_temp.doc('PREV'))),
           'E_DOC_CLIENTE_FUORI_BOZZA', '15) preventivo EMESSO: il cliente non cambia (D-6)');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.preventivi
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.preventivi
                                     SET termine_pagamento_id = (SELECT t.id FROM config.termini_pagamento t
                                                                  WHERE t.id IS DISTINCT FROM preventivi.termine_pagamento_id
                                                                  ORDER BY t.id LIMIT 1)
                                   WHERE id = %s$$, pg_temp.doc('PREV'))),
           'E_DOC_CONDIZIONI_FUORI_BOZZA', '16) preventivo EMESSO: il termine di pagamento non cambia (D-3)');
 
-SELECT is(pg_temp.esito(format('UPDATE vendite.preventivi SET validita_al = coalesce(validita_al, script.fn_data_operativa()) + 30 WHERE id = %s',
+SELECT is(dbops.fn_pgtap_codice_errore(format('UPDATE vendite.preventivi SET validita_al = coalesce(validita_al, script.fn_data_operativa()) + 30 WHERE id = %s',
                                pg_temp.doc('PREV'))),
           'E_DOC_CONDIZIONI_FUORI_BOZZA', '17) preventivo EMESSO: la validita'' non cambia (D-3)');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.preventivi
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.preventivi
                                     SET fatturazione_immediata = true,
                                         competenza_mese = date_trunc('month', script.fn_data_operativa())::date
                                   WHERE id = %s;
                                  SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', %s, 'ACCETTATO')$$,
                                pg_temp.doc('PREV'), pg_temp.doc('PREV'))),
-          'PASSA', '18) l''accettazione come la fa il backend: competenza e modalita'' scritte in EMESSO, poi ACCETTATO');
+          NULL, '18) l''accettazione come la fa il backend: competenza e modalita'' scritte in EMESSO, poi ACCETTATO');
 
-SELECT is(pg_temp.esito(format($$UPDATE vendite.preventivi SET meta = coalesce(meta, '{}'::jsonb) || '{"nota":"pgTAP"}' WHERE id = %s$$,
+SELECT is(dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.preventivi SET meta = coalesce(meta, '{}'::jsonb) || '{"nota":"pgTAP"}' WHERE id = %s$$,
                                pg_temp.doc('PREV'))),
-          'PASSA', '19) preventivo ACCETTATO: le note si scrivono');
+          NULL, '19) preventivo ACCETTATO: le note si scrivono');
 
 SELECT is(
     ARRAY[script.fn_doc_colonna_modificabile('vendite.preventivi'::regclass, 'competenza_mese', 'ACCETTATO'),
