@@ -8,7 +8,7 @@
 | codice_interno | text | NO |  |
 | descrizione | text | YES |  |
 | prefisso | text | NO |  |
-| separatore | text | YES |  |
+| separatore | text | NO | ''::text |
 | lunghezza_numero | integer | NO | 6 |
 | usa_sequenza | boolean | YES | true |
 | data_insert | timestamp with time zone | YES | now() |
