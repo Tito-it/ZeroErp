@@ -92,3 +92,4 @@ id,codice_interno,schema_tabella,nome_tabella,app_label,model_name,lookup,pannel
 91,documenti.formati_pagina,documenti,formati_pagina,documenti,formati_pagina,true,false
 92,documenti.orientamenti_pagina,documenti,orientamenti_pagina,documenti,orientamenti_pagina,true,false
 93,config.periodicita,config,periodicita,config,periodicita,true,false
+94,catalogo.vw_causali_onere_assegnabili,catalogo,vw_causali_onere_assegnabili,config,causali_onere,true,false
