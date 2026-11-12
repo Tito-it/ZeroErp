@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-08.
+> Ultima revisione: 2026-11-13.
 
 ## Identità del Progetto
 
@@ -317,6 +317,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Pratica di approvazione prezzo su revisione superata** [BE]
 - **L'L3 dei componenti non esiste** [DB + BE]
 - **`user_update` nullable su nove tabelle senza audit** [DB]
+- **`data_update` nullable e senza default su tabelle che hanno l'audit** [DB]
 - **Residui della roadmap fatturazione**: Esercizio fiscale come entità; Vista push; Alerting sui dati; Diagrammi di stato; Preview di fatturazione del contratto
 
 ### Note operative

@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: Tid**, con l'apply e i pgTAP del giro 3 (il `CHECK` su `email_reply_to`, §7, scritto e provato sullo
-scratch il 2026-11-12), poi l'archiviazione. Il tema del token NULL dei CSV (§9, §9.1) prosegue in
-`brief-db-token-null-dei-seed.md`.
+**Riparte: nessuno, archiviato il 2026-11-13.** I tre giri sono applicati e i loro pgTAP sono verdi. Il tema del
+token NULL dei CSV (§9, §9.1) prosegue in `work-in-progress/brief-db-token-null-dei-seed.md`. Il residuo
+`causali.data_update` (§8, note) è nel registro dei residui aperti.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,21 +16,28 @@ scratch il 2026-11-12), poi l'archiviazione. Il tema del token NULL dei CSV (§9
 | 6 | ✅ Tid | Apply e pgTAP dei giri 1 e 2: applicati il 2026-11-12, verdi | §5, §8 | 3, 5 |
 | 7 | ✅ Tid | Rigenerare la doc auto-generata (vincoli e default nuovi) e committare: in `83d21a13d` (PR #100) | — | 6 |
 | 8 | ✅ team BE | La PATCH dell'account email porta `''` a `None`: fatta il 2026-11-12, committata in `0216782d6b` (PR #103) | §7 | — |
-| 9 | ✅ sessione DB, poi **Tid** ⏭️ | Giro 3: il `CHECK` su `email_reply_to`, scritto e provato sullo scratch; apply, pgTAP e doc auto-generata a Tid | §7 | 7, 8 |
+| 9 | ✅ sessione DB, poi Tid | Giro 3: il `CHECK` su `email_reply_to`. Scritto e provato sullo scratch il 2026-11-12; applicato, pgTAP verde e doc auto-generata rigenerata da Tid, committato in `0ac632fe75` (PR #105) | §7 | 7, 8 |
 | 10 | ✅ Tid | D2 (b), il 2026-11-12: ⚠️ sospesa, la premessa è falsa (§9.1) | §9 | — |
 | 10-bis | ✅ Tid | D3 (a), il 2026-11-12: la regola si riscrive, in `brief-db-token-null-dei-seed.md` | §9.1 | 10 |
 | 11 | ✅ sessione DB | Il tema passa a `brief-db-token-null-dei-seed.md`: qui non resta lavoro di §9 | §9.1 | 10-bis |
-| 13 | sessione DB | Archiviazione | — | 9, 11, 12 |
+| 12 | ✅ sessione DB | Il residuo `causali.data_update` (§8, note) passa al registro dei residui aperti | — | — |
+| 13 | ✅ sessione DB | Archiviazione, il 2026-11-13 (ok di Tid) | — | 9, 11, 12 |
 
-**Decisioni aperte di Tid**: `causali.data_update`, fuori perimetro (§8, note). **Da committare**:
-questo brief (§9), il giro 3 (§7) e l'archiviazione di `brief-db-lista-colonna-campo-sorgente-null`, su
-`dev/db-tid`.
+**Decisioni aperte di Tid**: nessuna in questo brief. `causali.data_update` resta da decidere, ma come voce del
+registro dei residui aperti, insieme alle altre tabelle con la stessa forma. **Da committare**: l'archiviazione
+(questo brief, il registro dei residui, `PROJECT_CONTEXT.md`), su `dev/db-tid`.
 
 **Brief vicini verificati**: `brief-db-lista-colonna-campo-sorgente-null.md` (lo stesso difetto su
 `ui.lista_colonna`, già corretto: il giro qui ne riprende la forma); `brief-db-guardrail-forme-residue.md`
 (archiviato, ha fatto nascere il guardrail). Nessuno copre questi cinque mirror.
 
 ## 1. Il difetto
+
+> ⚠️ **Premessa corretta da §9.1** (2026-11-12): Liquibase 5.0.4 ignora `nullValue:`, quindi la cella vuota di
+> una colonna `STRING` è `''` sotto **qualunque** `nullValue`, e il NULL lo scrive solo la cella `NULL`. Il difetto
+> qui sotto è reale, ma non dipende dal `nullValue` dichiarato. Dal giro A di `brief-db-token-null-dei-seed.md`, la
+> regola `nullvalue-vuoto` e il registro `NULLVALUE_DEBITO` sono sostituiti da `cella-vuota-string` e
+> `CELLA_VUOTA_DEBITO`, che guardano ogni caricatore.
 
 Un caricatore con `nullValue: ""` scrive la cella vuota di una colonna `STRING` come stringa vuota. Dove la
 colonna della tabella è di testo e nullable, l'assenza ha così due forme: `''` dal seed, `NULL` da chi scrive
@@ -184,7 +191,8 @@ Richiesta, elenco chiuso:
 > scrittore BE delle cinque colonne: le tabelle `iva_assoggettamenti`, `automation_rules_tbl` e
 > `automation_delete_block` non sono scritte da codice Python fuori dai test.
 
-> ✅ **Lato DB, giro 3 (2026-11-12)**, scritto e provato, da applicare.
+> ✅ **Lato DB, giro 3 (2026-11-12)**, scritto e provato. Applicato da Tid, col pgTAP verde, e committato in
+> `0ac632fe75` (2026-11-13).
 > `90_end/20261112-43-add-chk-email-account-email-reply-to-non-vuoto`: conversione delle `''` rimaste, poi
 > `chk_email_account_email_reply_to_non_vuoto` (`email_reply_to IS NULL OR btrim(email_reply_to) <> ''`).
 > Presidio `config/test-email-account-reply-to-non-vuoto-v1` (plan 8): costruisce INSERT e UPDATE, perché la
@@ -194,7 +202,7 @@ Richiesta, elenco chiuso:
 > l'estratto 8 su 8. I due pgTAP vicini (`test-fn-resolve-email-account`, `test-fn-email-sistema`) danno 7 e 12 ok
 > con e senza. Il catalogo resta identico. La pagina `config/manual/email_account.md` è aggiornata.
 
-**Chi cambia per primo**: il BE. Finché la PATCH scrive `''`, il DB non mette il `CHECK` su `email_reply_to`.
+**Chi cambia per primo** (✅ rispettato: il BE in `0216782d6b`, poi il `CHECK` del giro 3): il BE. Finché la PATCH scrive `''`, il DB non mette il `CHECK` su `email_reply_to`.
 Messo prima, svuotare il campo dal pannello darebbe un `23514`. Quando il BE ha fatto il push, la sessione DB
 scrive in `90_end` la conversione e il `CHECK` (`chk_email_account_email_reply_to_non_vuoto`), col suo
 pgTAP.
@@ -243,7 +251,8 @@ pgTAP.
   sempre, in INSERT e in UPDATE. Secondo la doc auto-generata, la stessa forma (`data_update` nullable) ce
   l'hanno altre 12 tabelle, fra cui `config.tipi_soggetto*`, `forme_giuridiche*`, `stradario` e
   `magazzino.assets`: è un tema di famiglia, non di questo brief. Tid ha scelto di deciderlo a parte
-  (2026-11-12): il giro 3 non la tocca.
+  (2026-11-12): il giro 3 non la tocca. All'archiviazione (2026-11-13) è passato al registro dei residui aperti,
+  voce «`data_update` nullable e senza default su tabelle che hanno l'audit».
 * ✅ Il mirror delle regole dichiarava `- column: { name: rules_type }`, ma il CSV ha `rule_type`: la colonna
   si caricava dall'intestazione del CSV, quindi la riga non aveva effetto. Corretta nel giro 3 (2026-11-12, ok
   di Tid), con una nota di REV in testa al mirror. Il render offline è identico prima e dopo.

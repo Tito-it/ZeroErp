@@ -28,6 +28,7 @@ DECLARE
     v_scrivibili text[];
     v_estranea  text;
     v_riga      jsonb;
+    v_dati      jsonb;
 BEGIN
     -- 0. La tabella: nella lista, nel pannello, esistente, senza RLS.
     SELECT tg.*
@@ -89,14 +90,38 @@ BEGIN
             v_estranea);
     END IF;
 
+    -- 2-bis. L'assenza ha una forma sola (D5 di brief-db-token-null-dei-seed):
+    --   una stringa vuota o di soli spazi destinata a una colonna di testo
+    --   NULLABLE diventa null. Le colonne NOT NULL la ricevono com'e'; un
+    --   testo vero passa intatto.
+    SELECT jsonb_object_agg(
+               e.key,
+               CASE WHEN jsonb_typeof(e.value) = 'string'
+                     AND btrim(e.value #>> '{}') = ''
+                     AND EXISTS (
+                         SELECT 1
+                           FROM pg_catalog.pg_attribute a
+                           JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+                          WHERE a.attrelid = v_relid
+                            AND a.attname = e.key
+                            AND a.attnum > 0
+                            AND NOT a.attisdropped
+                            AND NOT a.attnotnull
+                            AND t.typcategory = 'S')
+                    THEN 'null'::jsonb
+                    ELSE e.value
+               END)
+      INTO v_dati
+      FROM jsonb_each(p_dati) AS e;
+
     -- 3. La scrittura. I valori li converte PostgreSQL, sul tipo di riga:
     --    il BB script.fn_scrivi_riga_da_jsonb (rev 2026-10-17, regola del 2).
     --    La tabella gli arriva per oid, quello trovato al passo 0.
     IF p_id IS NULL THEN
-        v_riga := script.fn_scrivi_riga_da_jsonb(v_relid::regclass, p_dati);
+        v_riga := script.fn_scrivi_riga_da_jsonb(v_relid::regclass, v_dati);
     ELSE
         v_riga := script.fn_scrivi_riga_da_jsonb(
-                      v_relid::regclass, p_dati, jsonb_build_object('id', p_id));
+                      v_relid::regclass, v_dati, jsonb_build_object('id', p_id));
 
         IF v_riga IS NULL THEN
             PERFORM script.fn_log_and_raise_error(
@@ -116,7 +141,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.fn_pannello_scrivi(p_tabella text, p_id bigint, p_dati jsonb)
-IS 'VERBO del pannello di configurazione (modello «una scrittura = un verbo», D-3 di brief-db-permesso-nel-verbo-di-scrittura). Scrive una riga di una tabella di config.tabelle_gestibili con pannello = true: p_id NULL = INSERT, altrimenti UPDATE per id. Passo 0: tabella in lista, esistente e SENZA RLS (il verbo non sa rimettere un perimetro, D-P2) -> altrimenti E_PANNELLO_TABELLA_NON_AMMESSA. Passo 1: script.fn_guard_livello(utente, app_label, model_name, TUTTO) sull''oggetto della riga di lista, non sull''area del pannello (E_PERMESSO_NEGATO). Passo 2: p_dati oggetto jsonb non vuoto (E_PANNELLO_DATI_VUOTI) con sole colonne scrivibili, che da'' config.fn_pannello_colonne_scrivibili (sede unica della regola, letta anche dal metadata del backend); una chiave estranea si RIFIUTA (E_PANNELLO_CAMPO_NON_AMMESSO con campo, D-P3). Passo 3: valori convertiti da jsonb_populate_record sul tipo di riga, scritte solo le colonne del payload; UPDATE su id assente -> E_PANNELLO_RIGA_NON_TROVATA. Ritorna la riga con id e le colonne scrivibili, cioe'' i campi del form. I trigger della tabella scattano come sempre. Nessun DELETE. SECURITY DEFINER del proprietario con search_path bloccato; il nome della tabella si compone dalla lista con format(%I.%I). Brief: brief-db-pannello-config-verbo-generico §3.3 e §6. Rev 2026-10-17: la scrittura del passo 3 la fa il BB script.fn_scrivi_riga_da_jsonb e la chiave estranea del passo 2 la trova script.fn_prima_chiave_estranea (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1); comportamento, codici e firma invariati.';
+IS 'VERBO del pannello di configurazione (modello «una scrittura = un verbo», D-3 di brief-db-permesso-nel-verbo-di-scrittura). Scrive una riga di una tabella di config.tabelle_gestibili con pannello = true: p_id NULL = INSERT, altrimenti UPDATE per id. Passo 0: tabella in lista, esistente e SENZA RLS (il verbo non sa rimettere un perimetro, D-P2) -> altrimenti E_PANNELLO_TABELLA_NON_AMMESSA. Passo 1: script.fn_guard_livello(utente, app_label, model_name, TUTTO) sull''oggetto della riga di lista, non sull''area del pannello (E_PERMESSO_NEGATO). Passo 2: p_dati oggetto jsonb non vuoto (E_PANNELLO_DATI_VUOTI) con sole colonne scrivibili, che da'' config.fn_pannello_colonne_scrivibili (sede unica della regola, letta anche dal metadata del backend); una chiave estranea si RIFIUTA (E_PANNELLO_CAMPO_NON_AMMESSO con campo, D-P3). Passo 3: valori convertiti da jsonb_populate_record sul tipo di riga, scritte solo le colonne del payload; UPDATE su id assente -> E_PANNELLO_RIGA_NON_TROVATA. Ritorna la riga con id e le colonne scrivibili, cioe'' i campi del form. I trigger della tabella scattano come sempre. Nessun DELETE. SECURITY DEFINER del proprietario con search_path bloccato; il nome della tabella si compone dalla lista con format(%I.%I). Brief: brief-db-pannello-config-verbo-generico §3.3 e §6. Rev 2026-10-17: la scrittura del passo 3 la fa il BB script.fn_scrivi_riga_da_jsonb e la chiave estranea del passo 2 la trova script.fn_prima_chiave_estranea (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1); comportamento, codici e firma invariati. Rev 2026-11-13: passo 2-bis, una stringa vuota o di soli spazi destinata a una colonna di testo nullable diventa null prima della scrittura (l''assenza ha una forma sola; le colonne NOT NULL la ricevono com''e''). Brief: brief-db-token-null-dei-seed D5.';
 ```
 
 </div>

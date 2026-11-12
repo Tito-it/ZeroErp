@@ -22,8 +22,8 @@ caricatori e il guardrail lo vieta. Poi il brief si archivia.
 | 8 | sessione DB | Archiviazione | — | 6-quinquies, 7 |
 
 **Decisioni aperte di Tid**: nessuna. **Da committare**: i giri A, B e D5 e questo brief, su `dev/db-tid`.
-**Dopo il commit**: la doc auto-generata si rigenera. Quando dirà `separatore` `NOT NULL`, il guardrail segnalerà
-come morte le due righe di `sistema_codici` in `CELLA_VUOTA_DEBITO`, che si tolgono allora (§5.1).
+✅ La doc auto-generata è rigenerata da Tid (2026-11-13) e dice `separatore` `NOT NULL`: le due righe di
+`sistema_codici` sono uscite da `CELLA_VUOTA_DEBITO`, che ora è vuoto (§5.1). Da committare con la doc rigenerata.
 
 **Brief vicini verificati**: `brief-db-nullvalue-vuoto-cinque-mirror.md` (i cinque mirror con `nullValue: ""`:
 §9 e §9.1 hanno fatto nascere questo brief, e lì resta un rimando; il suo giro 3 su `email_reply_to` non si
@@ -176,6 +176,7 @@ decidere a parte. La riga 5474 è un dato che manca, non una forma.
 * **Guardrail.** Le righe di `iva_natura`, `note_stili` e `messaggi_errore` escono da `CELLA_VUOTA_DEBITO`.
   Restano le due di `sistema_codici`: la regola legge la nullabilità dalla doc auto-generata, e quando questa,
   rigenerata, dirà `NOT NULL`, le due righe diventeranno morte e il cancello chiederà di toglierle.
+  ✅ Tolte il 2026-11-13, dopo la rigenerazione della doc: `CELLA_VUOTA_DEBITO` è vuoto.
 * **Prove.** Render offline dei cinque mirror: `iva_natura` e `task_policy` senza colonne di audit, `note = NULL`,
   321 `causa = NULL` e 327 `soluzione = NULL` senza nessuna `''`, `separatore = ''` sulle tre righe senza
   separatore. `scripts/prova_changeset.py` sullo scratch: `-53` 3/3, `-54` + `-56` 4/4, `-55` 8/8. Senza

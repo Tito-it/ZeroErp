@@ -463,18 +463,10 @@ def type_perso(firme_prima: dict[str, Firma], firme_ora: dict[str, Firma]) -> li
 # con la decisione che lo chiude. Una riga che non viola piu' e' una riga morta, e
 # il cancello la segnala: si toglie nello stesso giro in cui si corregge il mirror.
 # Un caso nuovo si corregge, non si registra qui.
-# ⚠️ Le due righe di sistema_codici non sono un debito del CSV: '' e' il valore, e
-#   90_end/20261112-53 rende la colonna NOT NULL DEFAULT ''. La regola legge la
-#   nullabilita' dalla doc auto-generata: quando la doc rigenerata dice NOT NULL,
-#   le due righe diventano morte e il cancello chiede di toglierle.
-CELLA_VUOTA_DEBITO = {
-    "20250813-05-upsert-sistema_codici-mctit.yml":
-        "sistema_codici.separatore: '' e' il valore, la colonna diventa NOT NULL in 90_end/20261112-53 "
-        "(brief-db-token-null-dei-seed D1)",
-    "20260524-25-upsert-sistema-codici-offerta-commerciale-mctit.yaml":
-        "sistema_codici.separatore: '' e' il valore, la colonna diventa NOT NULL in 90_end/20261112-53 "
-        "(brief-db-token-null-dei-seed D1)",
-}
+# Vuoto dal 2026-11-13: le ultime due righe (sistema_codici.separatore, dove '' e'
+#   il valore) sono uscite quando la doc rigenerata ha detto NOT NULL, dopo
+#   90_end/20261112-53 (brief-db-token-null-dei-seed D1).
+CELLA_VUOTA_DEBITO: dict[str, str] = {}
 COLONNA_DOC_RE = re.compile(r"^\|\s*(\w+)\s*\|\s*([^|]+?)\s*\|\s*(YES|NO)\s*\|")
 TESTO_RE = re.compile(r"^(text|character varying|varchar|character|char)\b", re.IGNORECASE)
 

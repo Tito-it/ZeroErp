@@ -398,6 +398,14 @@
 - **`user_update` nullable su nove tabelle senza audit** (DB, stessa origine, §2 e §4.6): `dbops.fk_index_policy`,
   `dbops.transaction_ids` e sette di `ui`. Il presidio `dbops/test-user-update-not-null-v1` le tiene a vista nel
   registro del debito; da decidere chi scrive la colonna
+- **`data_update` nullable e senza default su tabelle che hanno l'audit** (DB, ereditata il 2026-11-13 dalla
+  chiusura di `work-done/brief-db-nullvalue-vuoto-cinque-mirror.md` §8, note): `magazzino.causali.data_update` è
+  fuori da `linee-guida-sql` §7, e il suo mirror la riempie con `defaultValue: "NOW()"`. Il buco è nel contratto,
+  non nel dato: `trgfn_audit_data_user_generic` la scrive sempre, in INSERT e in UPDATE. La stessa forma, letta
+  dalla doc auto-generata il 2026-11-12, ce l'hanno altre tabelle, fra cui `config.tipi_soggetto*`,
+  `forme_giuridiche*`, `stradario` e `magazzino.assets`. È un tema di famiglia: Tid ha scelto di deciderlo a parte
+  (2026-11-12). Da decidere: `NOT NULL DEFAULT now()` su tutte, col censimento dalla doc auto-generata. Gemella
+  della voce qui sopra su `user_update`
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
 `docs/it/dev/work-done/fatturazione-roadmap.md`, dove sta il *perché* di
