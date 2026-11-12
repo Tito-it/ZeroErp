@@ -21,15 +21,14 @@
 
 from __future__ import annotations
 
-import csv
 import re
 from typing import TypedDict
 
 from apps.core.services.sveglie import Dovuto
-from apps.core.tests._repo import repo_root
+from apps.core.tests._seed_csv import SEED_DIR, RigaSeed, seed_csv
 
 
-SEED_PROCESSI = repo_root() / "db/changelog/migrations_v2/80_data/sql/dbops/processi.csv"
+SEED_PROCESSI = SEED_DIR / "dbops/processi.csv"
 
 # Vocabolario del seed (mirror dei CHECK `chk_processi_canale` / `chk_processi_segno_di_vita`).
 CANALE_COMMAND = "COMMAND"
@@ -50,28 +49,41 @@ class ContrattoSeed(TypedDict):
 # Scopo: i contratti di liveness per codice, letti dal seed del catalogo.
 # ⛔ FAIL-LOUD sulla forma: se una colonna sparisce dal CSV il test che ci
 #    poggia deve diventare rosso, non leggere `None` ovunque e passare.
+# ⭐ Il seed si legge dal BB `seed_csv`, che da' `None` dove il caricatore
+#    scrive NULL (il suo `nullValue`): niente token riconosciuto a mano. Una
+#    cella VUOTA resta `''`, come la scriverebbe il loader, e su una colonna
+#    intera fa rosso in `int()` invece di passare per «non si presidia».
 def leggi_contratti_dal_seed() -> dict[str, ContrattoSeed]:
-    with SEED_PROCESSI.open(encoding="utf-8", newline="") as fh:
-        lettore = csv.DictReader(fh)
-        attese = {"codice", "canale", "attivo", "tolleranza_minuti", "segno_di_vita"}
-        mancanti = attese - set(lettore.fieldnames or ())
-        if mancanti:
-            raise AssertionError(
-                f"{SEED_PROCESSI}: colonne mancanti nel seed: {sorted(mancanti)}"
-            )
-        contratti: dict[str, ContrattoSeed] = {}
-        for riga in lettore:
-            grezza = (riga["tolleranza_minuti"] or "").strip()
-            contratti[riga["codice"]] = ContrattoSeed(
-                codice=riga["codice"],
-                canale=riga["canale"],
-                attivo=riga["attivo"].strip().lower() in ("t", "true", "1"),
-                tolleranza_minuti=None if grezza.upper() in ("", "NULL") else int(grezza),
-                segno_di_vita=riga["segno_di_vita"].strip(),
-            )
-    if not contratti:
+    righe = seed_csv(SEED_PROCESSI)
+    if not righe:
         raise AssertionError(f"{SEED_PROCESSI}: seed vuoto")
+    attese = {"codice", "canale", "attivo", "tolleranza_minuti", "segno_di_vita"}
+    mancanti = attese - set(righe[0])
+    if mancanti:
+        raise AssertionError(
+            f"{SEED_PROCESSI}: colonne mancanti nel seed: {sorted(mancanti)}"
+        )
+    contratti: dict[str, ContrattoSeed] = {}
+    for riga in righe:
+        codice = _obbligatoria(riga, "codice")
+        tolleranza = riga["tolleranza_minuti"]
+        contratti[codice] = ContrattoSeed(
+            codice=codice,
+            canale=_obbligatoria(riga, "canale"),
+            attivo=_obbligatoria(riga, "attivo").strip().lower() in ("t", "true", "1"),
+            tolleranza_minuti=None if tolleranza is None else int(tolleranza),
+            segno_di_vita=_obbligatoria(riga, "segno_di_vita").strip(),
+        )
     return contratti
+
+
+# Scopo: una colonna NOT NULL del seed: NULL qui e' un seed sbagliato, non un
+#        valore da leggere.
+def _obbligatoria(riga: RigaSeed, campo: str) -> str:
+    valore = riga[campo]
+    if valore is None:
+        raise AssertionError(f"{SEED_PROCESSI}: `{campo}` NULL nella riga {riga}")
+    return valore
 
 
 # Le forme di `OnCalendar` in uso nel progetto, e quanto puo' passare AL

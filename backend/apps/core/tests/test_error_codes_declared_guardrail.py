@@ -55,11 +55,11 @@ from __future__ import annotations
 
 import ast
 import re
-from pathlib import Path
 from unittest import TestCase
 
-# Radice backend: .../backend/apps/core/tests/<file> -> parents[3] = backend.
-_BACKEND = Path(__file__).resolve().parents[3]
+from apps.core.tests._repo import repo_root
+
+_BACKEND = repo_root() / "backend"
 _APPS = _BACKEND / "apps"
 # Dal 2026-08-07 i codici dichiarati non stanno piu' in `error_policies.py` (che
 # ora contiene le REGOLE: classe -> status, ui_action) ma nella mappa

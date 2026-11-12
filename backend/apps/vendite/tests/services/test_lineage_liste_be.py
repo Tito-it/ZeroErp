@@ -44,18 +44,11 @@ import inspect
 import re
 from unittest import TestCase
 
-# ⭐ Riuso, non copia: `repo_root` (helper `_repo`), `_seed` e `_senza_commenti` esistono gia'
-#    nel presidio trasversale delle liste configurabili e sono la stessa
-#    identica esigenza (leggere il seed e i `.vue` distinguendo chi USA da chi
-#    NOMINA). Importarli tiene UNA sede sola.
-# ⚠️ MA LA SEDE E' SBAGLIATA, ed e' un debito dichiarato: sono nomi privati di
-#    un MODULO DI TEST di un'altra app, e questo file si rompe se quel modulo
-#    viene rinominato. La sede giusta e' un helper di test condiviso
-#    (`apps/core/tests/_helpers.py` o simile). ⛔ Non estratto qui di
-#    iniziativa: la regola del progetto e' dichiarare l'estrazione e aspettare
-#    l'ok, e questo commento e' la dichiarazione.
-from apps.core.tests._repo import repo_root
-from apps.core.tests.test_liste_configurabili_seed import _seed, _senza_commenti
+# ⭐ Riuso, non copia: il seed si legge dal BB `seed_ui` (helper `_seed_csv`),
+#    la root e il sorgente `.vue` senza commenti dai BB di `_repo`
+#    (`repo_root`, `vue_senza_commenti`: distingue chi USA da chi NOMINA).
+from apps.core.tests._repo import repo_root, vue_senza_commenti
+from apps.core.tests._seed_csv import seed_ui
 
 # ⭐ E lo spogliatore di commenti per il sorgente PYTHON vive dove sta il suo
 #    presidio: il gemello Python del guardrail di naming, in `apps/core`. Era
@@ -202,11 +195,11 @@ def _montato_in_cella(testo: str, nome: str) -> bool:
 #        sola invece di dover aggiornare un numero.
 def _liste_con_colonna_transito() -> set[str]:
     ids = {
-        r["lista_id"] for r in _seed("lista_colonna.csv")
+        r["lista_id"] for r in seed_ui("lista_colonna.csv")
         if r["codice"] == "transito" and r["attivo"] == "t"
     }
     return {
-        r["codice"] for r in _seed("lista_definizione.csv")
+        r["codice"] for r in seed_ui("lista_definizione.csv")
         if r["id"] in ids and r["attivo"] == "t"
     }
 
@@ -230,12 +223,12 @@ def _liste_con_colonna_transito() -> set[str]:
 def _vue_per_lista() -> dict[str, list[tuple[str, str]]]:
     mappa: dict[str, list[tuple[str, str]]] = {}
     for percorso in sorted((repo_root() / "frontend" / "src").rglob("*.vue")):
-        testo = _senza_commenti(percorso.read_text(encoding="utf-8"))
+        testo = vue_senza_commenti(percorso.read_text(encoding="utf-8"))
         codici = set(_RE_LISTA_CONFIGURABILE.findall(testo))
         if not codici:
             continue
         importati = [
-            _senza_commenti((percorso.parent / rel).resolve().read_text(encoding="utf-8"))
+            vue_senza_commenti((percorso.parent / rel).resolve().read_text(encoding="utf-8"))
             for nome, rel in _RE_IMPORT_VUE.findall(testo)
             if _montato_in_cella(testo, nome) and (percorso.parent / rel).resolve().is_file()
         ]

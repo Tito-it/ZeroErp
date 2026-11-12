@@ -229,11 +229,11 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
     #     dichiara di presidiare (il seed che cambia nome a un campo).
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
     def test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga(self, mock_fetch):
-        from apps.core.tests.test_liste_configurabili_seed import _colonne_attive
+        from apps.core.tests._seed_csv import seed_colonne_attive
 
         attese = sorted(
             r["campo_sorgente"]
-            for r in _colonne_attive("vendite.lotto_gruppi")
+            for r in seed_colonne_attive("vendite.lotto_gruppi")
             if r["tipo_colonna"] != "azione" and r["campo_sorgente"]
         )
         self.assertTrue(attese, "il catalogo della lista e' vuoto: seed mancante.")

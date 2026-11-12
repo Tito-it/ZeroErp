@@ -34,6 +34,25 @@ def sorgente_senza_commenti(testo: str) -> str:
     return re.sub(r"^[ \t]*--.*$", "", senza_py, flags=re.M)
 
 
+# Scopo: sorgente FRONTEND (`.vue`, `.js`) senza commenti — `<!-- -->`, `/* */`
+#        e le righe `//`. Serve a distinguere chi USA uno slot, una prop, un
+#        componente da chi lo NOMINA: un presidio che cerca una PAROLA si accende
+#        sui messaggi, ed e' successo il 2026-08-26 — un commento che citava
+#        `#cell-azioni` per spiegare il difetto ha fatto diventare rosso il test
+#        che quel difetto presidia.
+# ⛔ Non e' `sorgente_senza_commenti`: i due linguaggi hanno commenti diversi, e
+#    passare un file Python da qui lascia i `#` dentro (difetto trovato il
+#    2026-11-12 su `_colonne_desc_dichiarate`, che leggeva cosi' i repository).
+# ⭐ Il guard gemello `frontend/scripts/check-liste-configurabili.mjs` ha
+#    `senzaCommenti()` con la stessa motivazione. Spostata qui dal modulo
+#    `test_liste_configurabili_seed` il 2026-11-12, dove era un nome privato
+#    importato da un test di un'altra app (`test_lineage_liste_be`).
+def vue_senza_commenti(testo: str) -> str:
+    senza_html = re.sub(r"<!--.*?-->", "", testo, flags=re.S)
+    senza_blocco = re.sub(r"/\*.*?\*/", "", senza_html, flags=re.S)
+    return re.sub(r"^\s*//.*$", "", senza_blocco, flags=re.M)
+
+
 # Scopo: root del repo, o AssertionError se questo file non sta dentro al repo.
 def repo_root() -> Path:
     for cartella in Path(__file__).resolve().parents:

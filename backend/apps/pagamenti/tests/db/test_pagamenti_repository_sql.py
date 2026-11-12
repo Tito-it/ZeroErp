@@ -38,7 +38,6 @@ Indice test eseguiti:
 
 import csv
 import re
-from pathlib import Path
 from unittest import TestCase
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -57,10 +56,10 @@ from apps.pagamenti.db.pagamenti_repository import (
     PagamentiRepository,
 )
 from apps.pagamenti.services import pagamenti_service
+from apps.core.tests._repo import repo_root
 
-# I CSV di seed: .../backend/apps/pagamenti/tests/db/<file> -> parents[5] = radice.
 _SEED = (
-    Path(__file__).resolve().parents[5]
+    repo_root()
     / "db/changelog/migrations_v2/80_data/sql/pagamenti"
 )
 
@@ -241,7 +240,7 @@ class CataloghiTests(TestCase):
     #        far sparire del denaro.
     def test_i_motivi_fuori_capienza_sono_quelli_della_vista(self):
         vista = (
-            Path(__file__).resolve().parents[5]
+            repo_root()
             / "docs/it/dbzero/pagamenti/views/vw_rate_fuori_capienza.md"
         ).read_text(encoding="utf-8")
         for motivo in pagamenti_service.MOTIVI_FUORI_CAPIENZA:
@@ -259,7 +258,7 @@ class CataloghiTests(TestCase):
             r["codice"]
             for r in _csv.DictReader(
                 (
-                    Path(__file__).resolve().parents[5]
+                    repo_root()
                     / "db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv"
                 ).open(encoding="utf-8")
             )
@@ -339,7 +338,7 @@ class OrdinamentiDichiaratiTests(TestCase):
     #    sul valore piu' facile da scrivere male.
     def test_le_colonne_delle_rate_esistono_nella_vista(self):
         vista = (
-            Path(__file__).resolve().parents[5]
+            repo_root()
             / "docs/it/dbzero/pagamenti/views/vw_rate_fuori_capienza.md"
         ).read_text(encoding="utf-8")
         colonne = {

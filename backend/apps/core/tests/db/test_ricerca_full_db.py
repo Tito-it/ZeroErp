@@ -87,7 +87,7 @@ from apps.core.tests.db_e2e import (
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
-from apps.core.tests.test_liste_configurabili_seed import _seed
+from apps.core.tests._seed_csv import seed_ui
 from apps.core.tests.test_ricerca_full_seed import _RICERCHE
 
 
@@ -170,10 +170,10 @@ def _risolvi_test(percorso: str) -> None:
 
 # Scopo: la vista qualificata di una lista, dal seed del catalogo.
 def _vista(codice: str) -> str | None:
-    for riga in _seed("lista_definizione.csv"):
+    for riga in seed_ui("lista_definizione.csv"):
         if riga["codice"] == codice:
             vista = riga["vista_sql"]
-            if not vista or vista == "NULL":
+            if not vista:
                 return None
             return f"{riga['schema_dati']}.{vista}"
     raise AssertionError(f"lista '{codice}' assente da lista_definizione.csv")

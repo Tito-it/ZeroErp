@@ -207,7 +207,7 @@ const loadingAzione = computed(() => azioneLoading.value || archiviazioneLoading
         />
       </span>
     </template>
-    <!-- Colonna calcolata FE (seed: campo_sorgente vuoto, ordinabile=f). -->
+    <!-- Colonna calcolata FE (seed: campo_sorgente NULL, ordinabile=f). -->
     <template #cell-tentativi="{ data }">
       {{ data.tentativi }}/{{ data.max_tentativi }}
     </template>

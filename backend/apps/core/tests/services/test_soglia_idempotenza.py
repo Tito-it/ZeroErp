@@ -27,7 +27,6 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
@@ -44,6 +43,7 @@ from apps.core.services.soglia_idempotenza import (
     SogliaIdempotenzaNonSicura,
     verifica_soglia_contro_timeout,
 )
+from apps.core.tests._repo import repo_root
 
 _SOGLIA = "apps.core.services.soglia_idempotenza.IdempotencyStore.soglia_ripresa_secondi"
 
@@ -106,7 +106,7 @@ class ComandoPresidiAvvioTests(TestCase):
 # Scopo: carica `backend/gunicorn.conf.py` come lo carica gunicorn (dal file:
 #        il nome non e' un modulo importabile).
 def _gunicorn_conf() -> ModuleType:
-    percorso = Path(__file__).resolve().parents[4] / "gunicorn.conf.py"
+    percorso = repo_root() / "backend" / "gunicorn.conf.py"
     spec = importlib.util.spec_from_file_location("_gunicorn_conf_di_prova", percorso)
     assert spec is not None and spec.loader is not None
     modulo = importlib.util.module_from_spec(spec)
@@ -145,7 +145,7 @@ class GunicornConfTests(TestCase):
     #    faceva ereditare ai worker di un HUP i moduli vecchi. Presidio sulla
     #    forma: il file non nomina Django.
     def test_il_master_non_carica_django(self) -> None:
-        testo = (Path(__file__).resolve().parents[4] / "gunicorn.conf.py").read_text()
+        testo = (repo_root() / "backend" / "gunicorn.conf.py").read_text()
         codice = "\n".join(r for r in testo.splitlines() if not r.lstrip().startswith("#"))
         self.assertNotIn("django", codice)
         self.assertNotIn("apps.", codice)

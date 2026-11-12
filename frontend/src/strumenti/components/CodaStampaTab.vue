@@ -137,7 +137,7 @@ function buildRowActions(row) {
     <template #cell-lotto_id="{ data }">
       {{ data.lotto_id ?? '—' }}
     </template>
-    <!-- Colonne calcolate FE (seed: campo_sorgente vuoto, ordinabile=f). -->
+    <!-- Colonne calcolate FE (seed: campo_sorgente NULL, ordinabile=f). -->
     <template #cell-esito="{ data }">
       <span v-if="data.documento_id">
         <i :class="MANAGE_ICONS.PDF" /> {{ t('strumenti.code.esito_documento', { id: data.documento_id }) }}

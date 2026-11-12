@@ -21,10 +21,11 @@ Indice test eseguiti:
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 from unittest import TestCase
 
-_APPS = Path(__file__).resolve().parents[2]
+from apps.core.tests._repo import repo_root
+
+_APPS = repo_root() / "backend/apps"
 
 # (file relativo ad apps/, classe della view). Il PERCHE' lavora a passi non
 # sta qui: sta nel commento `⭐ A_PASSI` accanto alla chiamata, una sede sola
