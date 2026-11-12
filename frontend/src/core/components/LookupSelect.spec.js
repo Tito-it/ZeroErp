@@ -7,6 +7,9 @@
 //        brief-db-esigibilita-iva-per-cassa-emittente): la voce che il record
 //        ha gia', disattivata nel catalogo dopo, resta visibile e sceglibile,
 //        marcata «non attiva» — invece di un campo vuoto con un valore dentro.
+//        Con `voceCorrenteAttiva` (2026-11-12, brief-db-addebito-trasporto-
+//        ordine §9.10) la voce e' valida e l'elenco non la propone per
+//        costruzione (le sole voci libere): in coda, senza «non attiva».
 // Note: si guarda cio' che arriva al `Select` di PrimeVue (`options`): e' li'
 //       che una voce mancante diventa il campo vuoto.
 // ------------------------------------------------------------
@@ -81,6 +84,30 @@ describe('LookupSelect — voceCorrente', () => {
     )
     await flushPromises()
     expect(opzioni(w)).toEqual([])
+  })
+
+  it('con voceCorrenteAttiva la voce va in coda senza «non attiva»', async () => {
+    const w = montaCon({
+      modelValue: 'RF03',
+      voceCorrente: { codice_interno: 'RF03', codice: 'RF03', descrizione: 'Trasporto' },
+      voceCorrenteAttiva: true,
+    })
+    await flushPromises()
+    const voci = opzioni(w)
+    expect(voci).toHaveLength(3)
+    expect(voci[2]).toEqual({ codice_interno: 'RF03', codice: 'RF03', descrizione: 'Trasporto' })
+  })
+
+  // La voce valida non aspetta l'elenco: con la lettura fallita (o in corso)
+  // il campo non resta vuoto con un valore dentro.
+  it('con voceCorrenteAttiva la voce c\'e\' anche a elenco non caricato', async () => {
+    const voce = { codice_interno: 'RF03', codice: 'RF03', descrizione: 'Trasporto' }
+    const w = montaCon(
+      { modelValue: 'RF03', voceCorrente: voce, voceCorrenteAttiva: true },
+      { fetcher: () => Promise.reject(new Error('rete')) },
+    )
+    await flushPromises()
+    expect(opzioni(w)).toEqual([voce])
   })
 
   it('senza voceCorrente l\'elenco e\' quello di sempre', async () => {

@@ -10,6 +10,7 @@
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useArticoliStore } from '../stores/articoli'
+import { CATALOGO_LOOKUP_RELS } from '../constants'
 import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useContatoreNote } from '../../core/composables/useContatoreNote'
@@ -77,13 +78,23 @@ function isFieldLocked(name) {
 // Un articolo-ONERE e' un addebito, non un bene: non va a magazzino, non e'
 // composito, non e' a lotti ne' a matricola. Lo rifiuta il guard del DB
 // (`trgfn_articoli_guard_onere_natura`, `E_ARTICOLO_ONERE_STRUTTURA`, nessuna
-// porta amministratore), e qui i quattro interruttori si spengono invece di
-// lasciarli accendere per farsi rispondere. «E' un onere» lo dice il dettaglio
-// (`e_onere` di `vw_articoli_dettaglio`, 20261103-53): la causale non e' in
-// questo form, quindi in creazione un articolo non e' mai un onere.
-// ⚠️ Spenti anche nella correzione di struttura: il guard non ha eccezioni.
+// porta amministratore), e qui i quattro interruttori non si accendono invece
+// di lasciarli accendere per farsi rispondere.
+// ⭐ «E' un onere» lo dice la CAUSALE DEL FORM (D-2 di Tid, 2026-11-12,
+//    brief-db-addebito-trasporto-ordine §9.10): da quando la causale si sceglie
+//    qui, un articolo nuovo puo' nascere onere, e il dettaglio salvato
+//    (`e_onere`) non descrive il form non salvato. E' lo stesso predicato della
+//    vista (`causale_onere_id IS NOT NULL`), e a form appena caricato coincide
+//    con `e_onere`.
+// ⚠️ Un interruttore ACCESO resta spegnibile: chi sceglie la causale su un
+//    articolo che ha ancora il magazzino deve poterlo togliere. Nessun valore
+//    cambia da solo (lo stesso criterio di `ESCLUSI` qui sotto).
+// ⚠️ Fermi anche nella correzione di struttura: il guard non ha eccezioni.
 const ONERE_SENZA = ['gestito_a_magazzino', 'is_composito', 'requires_lotto', 'requires_serial']
-const eOnere = computed(() => detail.value?.e_onere === true)
+const eOnere = computed(() => form.value.causale_onere_id != null)
+function fermoDallOnere(name) {
+  return eOnere.value && ONERE_SENZA.includes(name) && form.value[name] !== true
+}
 // ⭐ Composito e solo componente si escludono: lo dice il CHECK
 // `chk_articoli_composito_non_solo_componente` (brief-db-revisione-catalogo,
 // BE10). Il form spegne l'interruttore dell'uno finche' l'altro e' acceso, cosi'
@@ -98,7 +109,7 @@ function esclusoDallAltro(name) {
   return name in ESCLUSI && form.value[ESCLUSI[name]] === true
 }
 function isFieldDisabled(name) {
-  return (eOnere.value && ONERE_SENZA.includes(name)) || esclusoDallAltro(name) || isFieldLocked(name)
+  return fermoDallOnere(name) || esclusoDallAltro(name) || isFieldLocked(name)
 }
 
 // ⭐ La CORREZIONE DI STRUTTURA (A-10, Lotto 3u): un articolo usato non cambia
@@ -110,7 +121,7 @@ function isFieldDisabled(name) {
 // l'UPDATE in una transazione (R-BE-1, 2026-10-18).
 // ⭐ Quali campi riaprire lo dice il dettaglio (`struttura_correggibile`), dalla
 // sede del DB da cui il verbo legge le colonne ammesse (R-DB-3): nessuna copia
-// qui. La causale onere non e' in questo form.
+// qui. Fra quelle c'e' la causale onere, che dal 2026-11-12 e' in questo form.
 const colonneStruttura = computed(() => detail.value?.struttura_correggibile || [])
 const correzioneStruttura = ref(false)
 const strutturaBloccata = computed(() =>
@@ -134,7 +145,25 @@ function campiStrutturaCambiati() {
 // composito, solo componente, gestito a magazzino, lotto, seriale). Lock
 // condizionali in `dbops.lock_columns_conditional` + `dbops.fn_non_editable_fields`.
 // Single source of truth BE — nessuna logica locale FE: ogni campo che il DB
-// puo' bloccare legge `isFieldLocked`. La causale onere non e' in questo form.
+// puo' bloccare legge `isFieldLocked`, causale onere compresa.
+
+// ⭐ La causale onere (§9.10): la tendina offre le sole causali LIBERE
+// (`catalogo.vw_causali_onere_assegnabili`, legame 1:1). Quella dell'articolo
+// aperto non c'e', perche' e' legata a lui: viene dalla riga del dettaglio
+// (`causale_onere_descrizione`) e la combo la mostra in coda, senza «non
+// attiva» (`voce-corrente-attiva`). Il doppione che la tendina non vede
+// (due operatori insieme) lo rifiuta il DB sul campo,
+// `E_ARTICOLO_CAUSALE_ONERE_GIA_USATA`.
+const REL_CAUSALI_ONERE = CATALOGO_LOOKUP_RELS.CAUSALI_ONERE_ASSEGNABILI
+const voceCausaleOnere = computed(() => {
+  const d = detail.value
+  if (d?.causale_onere_id == null) return null
+  return {
+    id: d.causale_onere_id,
+    codice_interno: d.causale_onere_codice_interno,
+    descrizione: d.causale_onere_descrizione,
+  }
+})
 
 // Sub-drawer e riepilogo (edit mode)
 const uomDrawerVisible = ref(false)
@@ -153,6 +182,8 @@ function defaultForm() {
     codice: '', descrizione: '', descrizione_breve: '',
     uom_id: null, tipo_voce_id: null, gruppo_voce_id: null,
     listino_tipologia_id: null, natura_vendita_id: null,
+    // null = merce; una causale fa dell'articolo un onere (§9.10).
+    causale_onere_id: null,
     spesa_id: null, iva_id: null,
     conto_contabile_vendita_id: null, conto_contabile_acquisto_id: null,
     is_composito: false, is_solo_componente: false,
@@ -245,6 +276,7 @@ async function loadDetail() {
     gruppo_voce_id: data.gruppo_voce_id,
     listino_tipologia_id: data.listino_tipologia_id,
     natura_vendita_id: data.natura_vendita_id,
+    causale_onere_id: data.causale_onere_id ?? null,
     spesa_id: data.spesa_id,
     iva_id: data.iva_id,
     conto_contabile_vendita_id: data.conto_contabile_vendita_id,
@@ -308,6 +340,8 @@ async function handleSave() {
       listino_tipologia_id: f.listino_tipologia_id,
       // NOT NULL a DB: in EDIT il valore arriva sempre dal detail, mai null.
       natura_vendita_id: f.natura_vendita_id,
+      // Si cambia finche' l'articolo non e' usato (A-10): poi la ferma il DB.
+      causale_onere_id: f.causale_onere_id,
       spesa_id: f.spesa_id,
       iva_id: f.iva_id,
       conto_contabile_vendita_id: f.conto_contabile_vendita_id,
@@ -347,6 +381,7 @@ async function handleSave() {
       // NOT NULL a DB con DEFAULT MERCE: si invia solo se scelta esplicita
       // (null esplicito verrebbe rifiutato dal BE).
       ...(f.natura_vendita_id != null ? { natura_vendita_id: f.natura_vendita_id } : {}),
+      causale_onere_id: f.causale_onere_id,
       spesa_id: f.spesa_id,
       iva_id: f.iva_id,
       conto_contabile_vendita_id: f.conto_contabile_vendita_id,
@@ -590,6 +625,16 @@ const drawerActions = computed(() => {
         <LookupSelect v-model="form.natura_vendita_id" rel="config.nature_vendita" :placeholder="t('catalogo.select_natura_vendita')"
           :disabled="isFieldLocked('natura_vendita_id')" />
         <small class="app-text-muted mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
+      </div>
+      <!-- La causale onere (§9.10): libera in inserimento, ferma quando il DB
+           la dichiara bloccata (articolo usato, A-10). -->
+      <div class="form-field">
+        <label>{{ t('catalogo.field_causale_onere') }}</label>
+        <LookupSelect v-model="form.causale_onere_id" :rel="REL_CAUSALI_ONERE"
+          :placeholder="t('catalogo.select_causale_onere')" show-clear
+          :voce-corrente="voceCausaleOnere" voce-corrente-attiva
+          :disabled="isFieldLocked('causale_onere_id')" />
+        <small class="app-text-muted mt-025">{{ t('catalogo.hint_causale_onere') }}</small>
       </div>
     </div>
 
