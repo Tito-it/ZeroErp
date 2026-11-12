@@ -1,14 +1,12 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-12 (giro BE di BE30-BE33 e del FE del ritiro fatto, da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-11-12 (giro BE di BE30-BE33 committato, verifica DB fatta)
 
-**Riparte: Tid** col commit del giro BE (BE30-BE33 e il FE del ritiro, §21, su `dev/backend-tid`); poi la **sessione
-DB** con la verifica del giro BE e l'archiviazione (passo 6-quaterdecies). Tid ha applicato il 2026-11-12, pgTAP verdi:
-`20261112-25` … `-27`, `-29`, `-31` … `-35` e i CSV. Alla **sessione DB**, dopo il commit del BE, resta solo la
-verifica del suo giro e l'archiviazione (passo 6-quaterdecies, poi 8). A **Tid**, da guardare quando vuole, le
-scelte dentro i giri 4, 2-bis, 3, 2 e 1 (§16.2, §15.7, §14.2, §14.6, §13.3, §10.3). I giri fino al 5 sono committati
-(`9f2899c8b`, PR #92), i giri BE fino a BE29 e D-seq (`21c2d86ae9`, PR #94), i giri DB 5-bis, 5-ter, Q35 (c) + Q36 e
-le viste delle note (`67c6c4de9`, PR #95).
+**Riparte: Tid**, con le scelte dentro i giri ancora da guardare (passo 5-octodecies-bis), che la sessione DB gli
+spiega una alla volta; poi l'archiviazione (passo 8). Il giro BE di BE30-BE33 e del FE del ritiro è committato
+(`bf13beb4d1`, PR #97) e la sessione DB l'ha verificato contro il contratto (passo 6-quaterdecies, 2026-11-12). I giri
+fino al 5 sono committati (`9f2899c8b`, PR #92), i giri BE fino a BE29 e D-seq (`21c2d86ae9`, PR #94), i giri DB
+5-bis, 5-ter, Q35 (c) + Q36 e le viste delle note (`67c6c4de9`, PR #95).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -58,10 +56,10 @@ le viste delle note (`67c6c4de9`, PR #95).
 | 6-octies-ter | ✅ Tid | D5bis-1 (a), 5-ter nello stesso giro (2026-11-11); i numeri `20261112-25` … `-27` (2026-11-12) | §18.3, §18.6 | 6-octies-bis |
 | 6-nonies | ✅ sessione DB | Giro 5-bis + 5-ter: `20261112-25` … `-27` (il BB `script.fn_codice_dominio`, il batch e `fn_run_and_log` sul BB), `E_CATALOGO_NOTA_NOT_FOUND` ritirato con `obsoleto_dal`, un pgTAP nuovo e due estesi, COMMENT e `manual/`; provato sullo scratch (2026-11-12) | §18.7 | 6-octies-ter |
 | 6-decies | ✅ Tid | Apply del giro 5-bis + 5-ter su dbdev e scratch, pgTAP come app verdi (2026-11-12) | §18.7 | 6-nonies |
-| 6-undecies | ✅ team BE (2026-11-12, da committare) | BE30 (il codice degli errori del batch nel report del push) e, col 5-ter, BE31 (policy rigenerata, ripiego tolto) | §18.5, §19, §21 | 6-decies |
+| 6-undecies | ✅ team BE (2026-11-12, `bf13beb4d1`, PR #97) | BE30 (il codice degli errori del batch nel report del push) e, col 5-ter, BE31 (policy rigenerata, ripiego tolto) | §18.5, §19, §21 | 6-decies |
 | 6-duodecies | ✅ sessione DB, ✅ Tid | Giro Q35 (c) + Q36 (a) (`20261112-29`, tre CSV) e giro delle viste delle note (`-31` … `-35`, col ritiro di `script.fn_get_note`): scritti e provati; applicati da Tid su dbdev e scratch, pgTAP come app verdi (2026-11-12) | §16.6.7, §20 | 6-decies |
-| 6-terdecies | ✅ team BE (2026-11-12, da committare) | BE32 (il codice `E_ATTIVO_BLOCK_SI_RITIRA` nelle policy e nel ripiego, i due smoke che ritirano il kit), BE33 (il BB delle note legge `<schema>.vw_note`) e il FE del ritiro (Tid: «facciamo subito») | §16.6.7, §20.3, §21 | 6-duodecies |
-| 6-quaterdecies | sessione DB | Verifica del giro BE (`/arrivi-be`), poi l'archiviazione (passo 8) | — | 6-undecies, 6-terdecies |
+| 6-terdecies | ✅ team BE (2026-11-12, `bf13beb4d1`, PR #97) | BE32 (il codice `E_ATTIVO_BLOCK_SI_RITIRA` nelle policy e nel ripiego, i due smoke che ritirano il kit), BE33 (il BB delle note legge `<schema>.vw_note`) e il FE del ritiro (Tid: «facciamo subito») | §16.6.7, §20.3, §21 | 6-duodecies |
+| 6-quaterdecies | ✅ sessione DB (2026-11-12) | Verifica del giro BE (`/arrivi-be`): policy e ripiego di `E_ATTIVO_BLOCK_SI_RITIRA` e `E_CATALOGO_NOTA_NOT_FOUND`, le colonne di `vw_note` lette da `_SELECT_COLUMNS`, le chiavi del batch di BE30 contro §18.2: allineati | — | 6-undecies, 6-terdecies |
 | 7 | ✅ team BE | BE8-BE12 (giro 1) e BE13-BE15 (giro 1-bis), fatte il 2026-11-09 (`9f540bea72`, PR #77) | §11.10 | — |
 | 7-bis | ✅ team BE (committato, `ff93395d5e`, PR #84) | La doc API di BE9 e BE11 (`api_catalogo.md`); BE19 e BE20 del giro 3 e BE4 (campo di `E_PARAMETRO_INVALIDO`). BE1-BE4 e BE16-BE18 del giro 2 erano già fatti (PR #81) | §13.5, §14.10 | — |
 | 7-ter-bis | — | Assorbita in 7-septies, con la rinumerazione di §15 (BE19-BE21 → BE21-BE23) | §15 | — |
@@ -72,11 +70,11 @@ le viste delle note (`67c6c4de9`, PR #95).
 | 7-septies | ✅ team BE (2026-11-11, committato, `ea4b8da3e`) | BE21-BE25 del giro 2-bis: la parte di BE21 che non dipende da G1 e G2 (codice, policy, test del rifiuto, campi fermi dichiarati come gap) | §15.10-bis, §15.4, §15.9 | 5-vicies |
 | 7-octies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | BE21-a … f: `_NON_EDITABLE_DB_GAPS` ritirato, capability delle due viste nei form, conversioni sulla vista nuova, ripiego della riga base | §16.5 | 5-vicies-septies |
 | 7-novies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | BE26-BE28 del giro 4: le note di catalogo passano dal BB delle note (opzione A di Tid), la copia di `catalogo_service` è ritirata | §16.5 | 6-bis |
-| 7-decies | sessione DB | Le segnalazioni del giro BE del giro 2-bis: 1 e 2 ✅ (sono G1 e G2, §15.11.1); la 3, il codice nel risultato del batch delle commesse, è il giro 5-bis (passo 6-octies) | §15.10-bis.3 | 7-septies |
+| 7-decies | ✅ sessione DB | Le segnalazioni del giro BE del giro 2-bis: 1 e 2 ✅ (sono G1 e G2, §15.11.1); la 3, il codice nel risultato del batch delle commesse, è il giro 5-bis (passo 6-octies) | §15.10-bis.3 | 7-septies |
 | 7-undecies | ✅ sessione DB (il ritiro); sessione DB (la vista) | Le due segnalazioni del giro BE dei giri G1-G2, Q34 e 4: il **ritiro** di `E_CATALOGO_NOTA_NOT_FOUND` è scritto nel giro 5-ter (§18.7.1, con `obsoleto_dal`); la proiezione delle note di vendita senza vista resta da valutare (§19, voce 2) | §16.5.3 | 7-novies |
 | 7-duodecies | ✅ Tid, ✅ team BE (2026-11-11, committato, `21c2d86ae9`) | D-seq: il BB delle note si allinea al DB, `seq` da 0 al tetto dell'`integer` | §16.5.3, §19 | 7-novies |
 | 7-terdecies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | Verifica critica del giro BE: un 500 sul filtro di riga, i presidi sulla copia delle note, il campo `note` del dettaglio ritirato, la regola del 2 nei form delle unità | §16.5.4 | 7-novies |
-| 7-quaterdecies | ✅ Tid (c) e Q36 (a), 2026-11-12; ✅ sessione DB, il giro (`20261112-29`); ✅ Tid, apply e pgTAP verdi (2026-11-12); **team BE** ⏭️, BE32 | **Q35**: un kit con la distinta non si spegne più (legame sempre attivo dopo il ritiro della PATCH, nessuna eccezione ATTIVO su `articoli_componenti`). Proposta (a) eccezione come Q31, previa verifica del lato componente; la scelta è di Tid. Presidio: i due smoke rossi `catalogo-phase3` e `preventivi-componenti`. La verifica (§16.6.5) ha trovato due buchi che l'eccezione apriva; con (c) il kit si ritira e non nascono. Q35c-1 e -2 scritti, Q35c-3 è BE32 | §16.6.6, §16.6.7 | — |
+| 7-quaterdecies | ✅ Tid (c) e Q36 (a), 2026-11-12; ✅ sessione DB, il giro (`20261112-29`); ✅ Tid, apply e pgTAP verdi (2026-11-12); ✅ team BE, BE32 (`bf13beb4d1`, PR #97) | **Q35**: un kit con la distinta non si spegne più (legame sempre attivo dopo il ritiro della PATCH, nessuna eccezione ATTIVO su `articoli_componenti`). Proposta (a) eccezione come Q31, previa verifica del lato componente; la scelta è di Tid. Presidio: i due smoke rossi `catalogo-phase3` e `preventivi-componenti`. La verifica (§16.6.5) ha trovato due buchi che l'eccezione apriva; con (c) il kit si ritira e non nascono. Q35c-1 e -2 scritti, Q35c-3 è BE32 | §16.6.6, §16.6.7 | — |
 | 7-quindecies | ✅ team BE (2026-11-11, committato, `21c2d86ae9`) | BE29 del giro 5: la voce di `uq_articoli_componenti_prodotto_componente_from` in `catalogo_service.py` è tolta | §17.3 | 6-septies |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6-quaterdecies |
 
@@ -2839,7 +2837,7 @@ oggi non li usa. Proposta: (a), salvo che la stampa li aspetti. ✅ **Tid, 2026-
 **Da committare:** i cinque changeSet, il pgTAP nuovo, il CSV `automazione_codice_eccezioni.csv`, le pagine nuove e
 riscritte, le quattro cancellate, le due analisi, questo brief.
 
-## 21. Giro BE di BE30-BE33 e il FE del ritiro (team BE, 2026-11-12, da committare su `dev/backend-tid`)
+## 21. Giro BE di BE30-BE33 e il FE del ritiro (team BE, 2026-11-12, committato: `bf13beb4d1`, PR #97)
 
 Partito dopo `/arrivi-db` (fast forward su `origin/Tito-dev`, prerequisiti verificati sul DB vero). Ordine e FE: via di
 Tid, 2026-11-12.

@@ -531,6 +531,21 @@ jobs:
           # due volte raddoppierebbe il costo per niente.
           docker exec "$CID" bash -euo pipefail -c \
             "apt-get update -qq && apt-get install -y -qq postgresql-18-plpgsql-check postgresql-18-pgtap"
+          # ⚠️ Riavvio OBBLIGATORIO dopo l'apt-get. Le dipendenze dei due
+          #   pacchetti tirano su la minor PGDG piu' recente di postgresql-18,
+          #   che sovrascrive i .so in /usr/lib/postgresql/18/lib mentre il
+          #   postmaster della minor dell'immagine e' ancora in piedi: il primo
+          #   backend che carica plpgsql.so muore con «undefined symbol» (12-11-2026,
+          #   immagine 18.6, apt 18.7: heap_datum_update_type). Il riavvio
+          #   allinea binario e librerie; pacchetti e dati restano, perche'
+          #   restart non ricrea il container.
+          docker restart "$CID" >/dev/null
+          for _ in $(seq 1 60); do
+            docker exec "$CID" pg_isready -U postgres -d zeroerp -q && break
+            sleep 1
+          done
+          docker exec "$CID" pg_isready -U postgres -d zeroerp
+          docker exec "$CID" psql -U postgres -d zeroerp -tAc "SELECT version();"
           # Verifica che postgres lo veda davvero: senza, il changeSet -36
           # verrebbe saltato e il guardrail fallirebbe piu' tardi con un
           # messaggio meno chiaro di questo.
