@@ -1,108 +1,122 @@
-## 📘 Documentazione Concettuale – Trigger Function `script.trgfn_lock_columns()`
+## 📘 Documentazione Concettuale – Trigger function `script.trgfn_lock_columns`
 
-> **Ultimo aggiornamento**: 11 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:   
+> Approfondimento tabelle:
 >
-[config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)   
->  [dbops.error_log](/dbzero/dbops/tabelle/error_log)   
+> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns) — il registro delle colonne bloccate, da cui l'automazione genera i trigger
+> * [dbops.lock_columns_conditional](/dbzero/dbops/tabelle/lock_columns_conditional) — le colonne bloccate solo a certe condizioni, che il form legge
+> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore) — la frase di ogni codice passato come argomento
 >
-Approfondimenti funzioni:   
+> Approfondimento viste:
 >
-[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+> * [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields) — le colonne bloccate, come le legge il form
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra il rifiuto e solleva il codice
+> * [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc) — l'override per la manutenzione, nella stessa forma, sulle cancellazioni
+>
+> Guide:
+>
+> * [Framework di automazione DB](/guide/automazione-db) — la regola `LOCK_COLUMNS`
+
+---
+
 ### 🎯 Scopo Principale
--  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
 
-* **Controllo dinamico** delle colonne PASSATE come argomenti al trigger
-* **Logging remoto** tramite dblink, per tracciare l’evento prima del rollback
-* **Messaggi parametrizzati** con placeholder e codici definiti in `config.messaggi_errore`
+La trigger function generica che **impedisce di cambiare le colonne protette** di una tabella: per
+ogni colonna che un UPDATE modifica, rifiuta con il codice d'errore dichiarato per quella colonna.
 
----
-
-### GUC di override per manutenzione
-
-La funzione supporta un **override via GUC** per consentire la modifica delle colonne
-protette in contesti di manutenzione, senza dover DISABLE/ENABLE TRIGGER:
-
-```sql
-BEGIN;
-SET LOCAL zeroerp.allow_lock_columns_override = 'on';
-UPDATE anagrafiche.fornitori SET codice = 'NUOVO-CODICE' WHERE id = 123;
-COMMIT;
-```
-
-- **GUC**: `zeroerp.allow_lock_columns_override`
-- **Valore di attivazione**: `'on'`
-- **Scope consigliato**: `SET LOCAL` (solo la transazione corrente)
-- **Default**: assente o qualsiasi valore diverso da `'on'` → colonne protette
-- **Pattern**: coerente con `trgfn_delete_block_by_guc` che usa GUC per l'override delle delete
+Una sola funzione serve tutte le tabelle: le colonne e i codici arrivano come argomenti del
+trigger, quindi una colonna nuova da bloccare è una riga di registro, non una funzione nuova.
 
 ---
 
-### 🎯  Comportamento Chiave
+### Gli argomenti sono coppie: colonna e codice
 
-1. **GUC override** — se `zeroerp.allow_lock_columns_override = 'on'`, ritorna `NEW` immediatamente senza controlli
+Il trigger passa gli argomenti a coppie, prima il nome della colonna e poi il codice d'errore da
+sollevare quando quella colonna cambia. Ogni colonna ha il suo codice, quindi l'operatore legge
+una frase che parla del campo che ha toccato.
 
-2. **Validazione degli argomenti**
-
-   * Accetta un numero pari di parametri (`colonna`, `msgcode`)
-   * Se dispari, invoca `fn_log_and_raise_error(‘database’, TG_NAME, ‘E_ARGOMENTI_A_COPPIE’, {...})`
-
-3. **Ciclo di verifica**
-
-   * Per ogni coppia, estrae **OLD.col** e **NEW\.col** in modo dinamico
-   * Confronta i valori: se **distinti**, scatta il blocco
-
-4. **Gestione dell’errore**
-
-   * Chiama `script.fn_log_and_raise_error` con:
-
-     * **Area**: `database`
-     * **Function\_name**: nome del trigger (TG\_NAME)
-     * **Error\_code**: codice testuale passato
-     * **Context**: JSON con `campo` (la colonna da evidenziare nel form), `column`, `old_value`, `new_value`
-     * **Placeholder**: il nome della colonna per sostituire `%s`
-   * La funzione logga su `dbops.error_log` (via dblink\_connect) e **rialza un’eccezione** con dettaglio e hint
-
-5. **Permette UPDATE** solo se nessuna colonna protetta è stata modificata
+Un numero dispari di argomenti è un trigger montato male: la funzione rifiuta ogni UPDATE con
+`E_ARGOMENTI_A_COPPIE`, prima di guardare i valori.
 
 ---
 
-### Punti di Interesse
+### Che cosa conta come modifica
 
-* **TG\_ARGV**: array variadico; le posizioni pari/dispai determinano colonna e messaggio
-* **EXECUTE dinamico**: `format('SELECT ($1).%I, ($2).%I', ... )` per ottenere valori senza hard‑coding
-* **Logging isolato**: il dblink `logconn` inserisce il log in una sessione separata, garantendo il commit anche in caso di rollback nella sessione corrente
-* **Placeholder variadico**: il quinto parametro di `fn_log_and_raise_error` permette di inserire il nome della colonna in `%s` dentro il messaggio predefinito
+La funzione confronta il valore vecchio e quello nuovo **resi a testo**, con «distinto da»: un
+passaggio da NULL a un valore, o viceversa, è una modifica. Un UPDATE che riscrive lo stesso
+valore passa.
 
----
-
-### Esempio di Utilizzo
-
-```sql
-CREATE TRIGGER trg_lock_sensitive
-  BEFORE UPDATE ON app.orders
-  FOR EACH ROW
-  EXECUTE FUNCTION script.trgfn_lock_columns(
-    'customer_id',   'ERR_LOCK_CUSTID',
-    'order_status',  'ERR_LOCK_STATUS'
-  );
-```
-
-* **customer\_id** non può cambiare: userà `ERR_LOCK_CUSTID` e mostrerà in messaggio il campo stesso
-* **order\_status** è protetto con `ERR_LOCK_STATUS`
+La funzione non giudica il resto della riga: le colonne che non sono fra gli argomenti si
+modificano liberamente, e se nessuna colonna protetta cambia l'UPDATE passa.
 
 ---
 
-### ✨ Vantaggi Operativi
+### Il rifiuto dice quale campo correggere
 
-* **Zero duplicazioni**: una sola function per più tabelle e colonne
-* **Flessibilità totale**: basta passare argomenti diversi per replicare il pattern
-* **Tracciabilità**: ogni blocco viene loggato con contesto e transazione (tx\_id)
-* **Manutenibilità**: i messaggi di errore si aggiornano in `config.messaggi_errore` senza toccare il trigger
+Il codice si solleva con il nome della colonna come valore del messaggio, e con un contesto che
+porta `campo` (la colonna da evidenziare nel form), `column`, il valore vecchio e quello nuovo. La
+registrazione e il rilancio li fa `script.fn_log_and_raise_error`, nell'area `database`, con il
+nome del trigger come origine.
 
 ---
 
-> **“Con `trgfn_lock_columns` gestisci centralmente i blocchi di sicurezza su colonne critiche, integrando log e messaggi dinamici in un’unica soluzione.”**
+### ⭐ I trigger li genera l'automazione, non una migrazione
+
+Chi vuole bloccare una colonna la dichiara in `dbops.automation_lock_columns`, col suo codice: la
+regola `LOCK_COLUMNS` monta il trigger su quella tabella. Il form legge lo stesso registro, da
+`dbops.vw_non_editable_fields`, per mostrare il campo come non modificabile: il blocco e la sua
+resa a video hanno una fonte sola.
+
+Fa eccezione una tabella fuori dall'ambito dell'automazione: lì il trigger lo monta una
+migrazione, e il registro lo dichiara comunque (la regola è nella guida e nella pagina di `dbops.automation_lock_columns`).
+
+---
+
+### ⚠️ L'override per la manutenzione
+
+Una transazione di manutenzione può modificare le colonne protette accendendo
+`zeroerp.allow_lock_columns_override` al valore `on`, con `SET LOCAL` per non portarlo oltre la
+transazione. Con l'override acceso la funzione lascia passare la riga senza controlli; con il
+GUC assente, o con qualunque altro valore, le colonne restano protette.
+
+Serve a non dover spegnere e riaccendere il trigger: è la stessa forma dell'override delle
+cancellazioni di `script.trgfn_delete_block_by_guc`.
+
+---
+
+### Codici errore
+
+* `E_ARGOMENTI_A_COPPIE` — il trigger ha un numero dispari di argomenti.
+* Il codice passato come argomento per ogni colonna, quando quella colonna cambia: è il registro
+  a sceglierlo (per esempio `E_CODICE_NON_MODIFICABILE`).
+
+---
+
+### Test
+
+* `db/pgtap/catalogo/test-articoli-seed-uom-base-lock.sql`, `db/pgtap/vendite/test-ordini-lock-cliente.sql`,
+  `db/pgtap/config/test-user-emittenti-fiscali-immutable.sql` — colonne bloccate di tabelle
+  diverse: il cambio è rifiutato col codice dichiarato per la colonna.
+* `db/pgtap/script/test-catalogo-messaggi-errore-completo.sql` — ogni codice sollevato ha il suo
+  messaggio.
+
+---
+
+### Note di migrazione
+
+* 2025-05-07 — nasce.
+* 2025-06-17 — la registrazione del rifiuto passa per `dblink`, in una sessione separata, così
+  il log resta anche quando la transazione viene annullata.
+* 2026-03-28 — l'override per la manutenzione `zeroerp.allow_lock_columns_override`.
+* 2026-11-11 — il contesto porta `campo`, la colonna da evidenziare nel form
+  (`brief-db-revisione-catalogo`, giro G1-G2).
+
+---
+
+{% include-markdown "signature-core.md" %}

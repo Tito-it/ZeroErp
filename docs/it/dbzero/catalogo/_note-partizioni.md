@@ -68,14 +68,21 @@ rispetto alla riga del documento in cui l'articolo compare.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### ⭐ Un codice senza partizione è rifiutato dal routing
 
-* **Un codice senza partizione esce come errore grezzo.** La chiave verso
-  `config.tipi_entita` ammette ogni codice del vocabolario, ma solo due hanno una partizione:
-  per gli altri l'inserimento dal padre fallisce con l'errore di routing di PostgreSQL, non con
-  un codice registrato.
-* **Si leggono dalla vista della sede.** Le note di catalogo si leggono da
-  [catalogo.vw_note](/dbzero/catalogo/views/vw_note), la proiezione con stile e lingua, gemella
-  delle viste delle altre sedi, o dalle due viste che la leggono per il loro bersaglio,
-  [catalogo.vw_articoli_note](/dbzero/catalogo/views/vw_articoli_note) e
-  [catalogo.vw_articoli_componenti_note](/dbzero/catalogo/views/vw_articoli_componenti_note).
+La chiave verso `config.tipi_entita` ammette ogni codice del vocabolario, ma solo due hanno una
+partizione: per gli altri l'inserimento dal padre fallisce con l'errore di routing di
+PostgreSQL. È voluto, come per le note dei documenti: l'elenco dei bersagli lo dicono le
+partizioni, in un posto solo, senza un CHECK che lo ripeta. Il `target_tipo` non arriva mai
+dall'operatore, lo valorizza chi scrive la nota: un codice senza partizione è un errore di
+programma, e deve fermarsi subito.
+
+---
+
+### Si leggono dalla vista della sede
+
+Le note di catalogo si leggono da [catalogo.vw_note](/dbzero/catalogo/views/vw_note), la
+proiezione con stile e lingua, gemella delle viste delle altre sedi, o dalle due viste che la
+leggono per il loro bersaglio,
+[catalogo.vw_articoli_note](/dbzero/catalogo/views/vw_articoli_note) e
+[catalogo.vw_articoli_componenti_note](/dbzero/catalogo/views/vw_articoli_componenti_note).

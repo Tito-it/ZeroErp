@@ -1,12 +1,12 @@
 # Brief DB — Revisione dello schema `catalogo`: la documentazione, i difetti di codice, i doppioni
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-12 (giro BE di BE30-BE33 committato, verifica DB fatta)
+## ⏭️ Chi riparte — aggiornato al 2026-11-12 (archiviato)
 
-**Riparte: Tid**, con le scelte dentro i giri ancora da guardare (passo 5-octodecies-bis), che la sessione DB gli
-spiega una alla volta; poi l'archiviazione (passo 8). Il giro BE di BE30-BE33 e del FE del ritiro è committato
-(`bf13beb4d1`, PR #97) e la sessione DB l'ha verificato contro il contratto (passo 6-quaterdecies, 2026-11-12). I giri
-fino al 5 sono committati (`9f2899c8b`, PR #92), i giri BE fino a BE29 e D-seq (`21c2d86ae9`, PR #94), i giri DB
-5-bis, 5-ter, Q35 (c) + Q36 e le viste delle note (`67c6c4de9`, PR #95).
+**Riparte: nessuno.** Il brief è chiuso e archiviato il 2026-11-12. Tutti i giri DB e BE sono applicati e committati;
+la sessione DB ha verificato l'ultimo giro BE (`bf13beb4d1`, PR #97). Tid ha guardato le scelte dei giri e deciso il
+codice senza partizione (§16.2.5). Nessun debito residuo: i `COALESCE` di `vendite` li ha tolti il giro 5-B (§17.3,
+§17.5), il debito documentale fuori giro è chiuso (passo 8). **Decisioni aperte di Tid:** nessuna. **Da committare:** le correzioni
+dell'archiviazione (questo brief e quattro pagine `manual/`).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -33,7 +33,7 @@ fino al 5 sono committati (`9f2899c8b`, PR #92), i giri BE fino a BE29 e D-seq (
 | 5-sexdecies | ✅ Tid | Apply del giro 3 su dbdev e scratch, pgTAP come app verdi (2026-11-10) | §14.9 | 5-quindecies |
 | 5-septdecies | ✅ sessione DB, su richiesta di Tid | Commit del giro 3 (2026-11-10) | §14.9 | 5-sexdecies |
 | 5-octodecies | ✅ Tid | Numeri del giro 2-bis dal `20261111-47` (l'altra sessione finisce al `-46`); Q26 (2026-11-10) | §15 | 5-septdecies |
-| 5-octodecies-bis | **Tid** ⏭️ | Q27 ✅ (rifiuto, 2026-11-10); il via ai giri 4-5; le scelte di §14.2, §14.6, §13.3, §10.3 da guardare | §7, §15 | 5-octodecies |
+| 5-octodecies-bis | ✅ Tid (2026-11-12) | Q27 ✅ (rifiuto, 2026-11-10); il via ai giri 4-5; le scelte dei giri guardate: le cinque che cambiano il comportamento (§10.3.1, §14.2.1, §14.2.2, §15.7.1, §15.7.5) tenute come sono, le altre sono conseguenze tecniche | §7, §15 | 5-octodecies |
 | 5-novodecies | ✅ sessione DB | Giro 2-bis: D24-D27 (Q23-Q31), `20261111-47` … `-65`, sei codici, quattro eccezioni ATTIVO, tre pgTAP nuovi, doc; provato sullo scratch | §15.6-§15.9 | 5-octodecies-bis |
 | 5-vicies | ✅ Tid | Apply del giro 2-bis su dbdev e scratch, pgTAP come app verdi (2026-11-11) | §15.10 | 5-novodecies |
 | 5-unvicies | ✅ sessione DB, su richiesta di Tid | Commit del giro 2-bis (2026-11-11) | §15.10 | 5-vicies |
@@ -76,7 +76,7 @@ fino al 5 sono committati (`9f2899c8b`, PR #92), i giri BE fino a BE29 e D-seq (
 | 7-terdecies | ✅ team BE (2026-11-11, committato, `971b7e00d`, PR #91) | Verifica critica del giro BE: un 500 sul filtro di riga, i presidi sulla copia delle note, il campo `note` del dettaglio ritirato, la regola del 2 nei form delle unità | §16.5.4 | 7-novies |
 | 7-quaterdecies | ✅ Tid (c) e Q36 (a), 2026-11-12; ✅ sessione DB, il giro (`20261112-29`); ✅ Tid, apply e pgTAP verdi (2026-11-12); ✅ team BE, BE32 (`bf13beb4d1`, PR #97) | **Q35**: un kit con la distinta non si spegne più (legame sempre attivo dopo il ritiro della PATCH, nessuna eccezione ATTIVO su `articoli_componenti`). Proposta (a) eccezione come Q31, previa verifica del lato componente; la scelta è di Tid. Presidio: i due smoke rossi `catalogo-phase3` e `preventivi-componenti`. La verifica (§16.6.5) ha trovato due buchi che l'eccezione apriva; con (c) il kit si ritira e non nascono. Q35c-1 e -2 scritti, Q35c-3 è BE32 | §16.6.6, §16.6.7 | — |
 | 7-quindecies | ✅ team BE (2026-11-11, committato, `21c2d86ae9`) | BE29 del giro 5: la voce di `uq_articoli_componenti_prodotto_componente_from` in `catalogo_service.py` è tolta | §17.3 | 6-septies |
-| 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §7, §8 | 6-quaterdecies |
+| 8 | ✅ sessione DB (2026-11-12) | Pagine `manual/` riallineate a ogni difetto chiuso, insieme al COMMENT; il debito documentale fuori giro chiuso (le eccezioni ATTIVO, `script.trgfn_lock_columns`, `fn_resolve_scope`); il codice senza partizione deciso (§16.2.5); brief in `work-done/` | §7, §8 | 6-quaterdecies |
 
 **Decisioni aperte di Tid:** ✅ Q37 (a) (2026-11-12); ✅ Q35 (c), il messaggio «si ritira» e Q36 (a) (2026-11-12); ✅ le viste delle note per tutte le sedi (§19, voce 2, 2026-11-12); le scelte dentro i giri 2-bis
 (§15.7), 3 (§14.2, §14.6), 2 (§13.3) e 1 (§10.3), da guardare. Prese il 2026-11-11: D5bis-1 (a), 5-ter nello stesso
@@ -103,7 +103,7 @@ d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 > * [brief-db-revisione-dbops](../work-done/brief-db-revisione-dbops.md): il suo **D28** (le `condition_expr` di
 >   `lock_columns_conditional` ricopiano gli `EXISTS` del guard flags) tocca gli stessi predicati di D9. D28 resta
 >   lì; il giro 1 di qui va fatto **dopo** o **con** D28, perché cambia la finestra del predicato che D28 estrae.
-> * [brief-db-addebito-trasporto-ordine](brief-db-addebito-trasporto-ordine.md): tocca `trgfn_articoli_guard_onere_natura`,
+> * [brief-db-addebito-trasporto-ordine](../work-in-progress/brief-db-addebito-trasporto-ordine.md): tocca `trgfn_articoli_guard_onere_natura`,
 >   `vw_articoli_dettaglio` (`causale_onere_id`, `e_onere`) e `fn_articolo_righe_vive_non_ammesse`. Qui non si
 >   rifà niente di quel cantiere: si toccano solo i metadati (M3) e l'etichetta dei flag (R5).
 > * `analisi-db-magazzino-carico-e-scarico` (analisi, non brief): tocca `requires_lotto`, quindi Q4.
@@ -603,9 +603,9 @@ Da girare al team quando il giro DB corrispondente è applicato.
 | BE7 | 3 | Se il cambio d'IVA diventa un verbo del kit (Q6), il form dell'articolo lo chiama |
 | BE16 | 2 | Q4 ritira `rounding_mode` e `require_lot`: il lookup `GET /api/v1/catalogo/lookup/rounding-modes/` (`api_catalogo.md` §2.3, `_ROUNDING_MODE_VALIDI` in `catalogo_service`) e i campi del form dell'unità operativa si ritirano nello stesso giro BE |
 | BE8 ✅ (2026-11-09) | 1 | I due codici nuovi `E_BOM_CHIUSURA_RETROATTIVA` (DATO_ERRATO, campo `valido_al`) ed `E_BOM_LEGAME_CHIUSO` (CONFLITTO_STATO, campo `valido_al`): mappa degli errori generata (`error_policies_generated.py`) e i18n. `E_ARTICOLO_NON_COMPOSITO` ora porta `campo = prodotto_id` e un bersaglio `ARTICOLO` |
-| BE9 ✅ (2026-11-09), doc ⏭️ | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE. ⏭️ **Resta la doc** (verificato il 2026-11-09 dopo `9f540bea72`): `docs/it/backend/catalogo/manual/api_catalogo.md:601` dice ancora «`valido_dal` se chiudibile», e §4.3 (`valido_al` «unico campo modificabile») non dice che la fine non cambia i giorni passati e che una fine già passata non si tocca |
+| BE9 ✅ (2026-11-09), doc ✅ (PR #84) | 1 | «Chiudi riga» della distinta: `data_min_chiusura` è ieri (non più `valido_dal`); il datepicker la legge dalla vista, nessun calcolo nel FE. ⏭️ **Resta la doc** (verificato il 2026-11-09 dopo `9f540bea72`): `docs/it/backend/catalogo/manual/api_catalogo.md:601` dice ancora «`valido_dal` se chiudibile», e §4.3 (`valido_al` «unico campo modificabile») non dice che la fine non cambia i giorni passati e che una fine già passata non si tocca |
 | BE10 ✅ (2026-11-09) | 1 | Il form dell'articolo: `is_composito` e `is_solo_componente` insieme li rifiuta ora un CHECK (23514, `chk_articoli_composito_non_solo_componente`). Il form spegne l'uno quando l'altro è acceso, e il servizio mappa il vincolo a un messaggio |
-| BE11 ✅ (2026-11-09), doc ⏭️ | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi». ⏭️ **Resta la doc**: l'endpoint è ritirato, ma `api_catalogo.md` §4.4 «Elimina componente» documenta ancora il `DELETE` |
+| BE11 ✅ (2026-11-09), doc ✅ (PR #84) | 1 | `catalogo_bom_repository.delete_componente` (`:270`) non può mai riuscire: il trigger d'immutabilità rifiuta ogni DELETE. Si ritira con il suo endpoint, oppure diventa «chiudi». ⏭️ **Resta la doc**: l'endpoint è ritirato, ma `api_catalogo.md` §4.4 «Elimina componente» documenta ancora il `DELETE` |
 | BE12 ✅ (2026-11-09) | 1 | Il picker degli articoli ammessi per la distinta (`catalogo.fn_articoli_ammessi` con `ARTICOLO`) su un padre non composito solleva `E_ARTICOLO_NON_COMPOSITO` invece di restituire una lista vuota: il FE apre il picker solo con `puo_gestire_bom` |
 
 ## 6. Le decisioni di Tid
@@ -715,7 +715,8 @@ non è stata lanciata, quindi l'include del blocco comune non è provato al rend
 * Le date delle Note di migrazione vengono dalle pagine vecchie, dagli header dei pgTAP e da `git log -S`, non da
   un controllo changeSet per changeSet.
 * La pagina d'esempio `dbops/manual/fn_resolve_scope.md` ha ancora un id di changeSet nelle Note di migrazione,
-  contro lo standard. È fuori perimetro: la sistema il brief `dbops`.
+  contro lo standard. È fuori perimetro: la sistema il brief `dbops`. ✅ **Tolto all'archiviazione (2026-11-12)**: il
+  brief `dbops` era già archiviato.
 
 ### 9.5 Commit (2026-11-08)
 
@@ -769,7 +770,7 @@ modello, la regola è **«la fine non cambia i giorni già passati»**, al giorn
 1. **Il padre non composito è un controllo del documento, non un motivo.** L'ho messo in `fn_articolo_riga_contesto`,
    come il padre mancante, e non fra i motivi del componente. Ne segue che il picker della distinta su un padre non
    composito solleva invece di proporre una lista vuota (BE12). In compenso la regola ha una sede sola, ed è il lato
-   documento della stessa check che già giudicava il componente.
+   documento della stessa check che già giudicava il componente. ✅ **Tid, 2026-11-12: si tiene l'errore.**
 2. **Il check 2 del guard flags non cambia finestra.** Resta «componente di una distinta in vigore»: D9 parla
    del padre, e la regola del check 2 (un componente non cambia `is_solo_componente`) è sospetta di suo (§2.2, D11).
    Il suo predicato `fn_articolo_componente_di_distinta_in_vigore` resta.
@@ -1033,7 +1034,7 @@ anche il motivo `SOLO_COMPONENTE` è scritto in più rami: anche questo è giro 
 * **BE9.** La data la legge già la vista; corretti i tre commenti di `ArticoloBomDrawer.vue` che dicevano
   «= `valido_dal`».
 * **BE14.** Niente da fare.
-* ⏭️ **Resta al team BE** (verifica della sessione DB, 2026-11-09): la doc API di BE9 e BE11 in
+* ✅ **Fatta dal team BE** (passo 7-bis, `ff93395d5e`, PR #84). Era rimasta (verifica della sessione DB, 2026-11-09): la doc API di BE9 e BE11 in
   `docs/it/backend/catalogo/manual/api_catalogo.md` (riga 601 e §4.4), vedi §5. Nessuna richiesta al DB nel commit.
 
 #### 11.10.1 Per Tid: il legame con prezzi bundle non si chiude
@@ -1314,10 +1315,10 @@ Codici nuovi (`codici_errore.csv`, `messaggi_errore.csv`, id `1471` … `1474`):
 1. **Prezzi in listini di un'altra azienda: la chiusura si rifiuta.** Fatto emerso nel censimento: la distinta è comune
    a tutte le aziende, i listini hanno la RLS per emittente. Q19 diceva «in ogni versione che le prezza»; la lettura
    che ne dà Q21 («chi non può toccare un listino non lo tocca nemmeno dalla distinta») è il rifiuto, col numero dei
-   prezzi e senza dire quali. Lo sblocca chi vede quei listini.
+   prezzi e senza dire quali. Lo sblocca chi vede quei listini. ✅ **Tid, 2026-11-12: si tiene il rifiuto.**
 2. **Prezzi di una versione non in bozza che cominciano dopo la fine: la chiusura si rifiuta** e dice la prima fine
    ammessa (l'inizio più tardo). Non si accorciano (periodo vuoto) e non si cancellano (la versione non è in bozza). In
-   bozza invece si tolgono, e la finestra lo dice (esito `TOGLIE`).
+   bozza invece si tolgono, e la finestra lo dice (esito `TOGLIE`). ✅ **Tid, 2026-11-12: si tiene così.**
 3. **Il diritto sui listini si chiede solo se ci sono prezzi da toccare.** Un legame senza prezzi chiede solo quello
    sul catalogo, e nessuna conferma. I due diritti sono il livello TUTTO su `catalogo.articolo` e su `vendite.listino`
    (gli oggetti che il backend usa per gli stessi endpoint), dal guard `script.fn_guard_livello`.
@@ -1587,7 +1588,7 @@ Fuori dai changeSet:
 1. **Q31 esteso alle conversioni generali.** Nel proporre Q31 avevo scritto che le conversioni non bloccano lo
    spegnimento delle unità: era sbagliato. Lo scratch ha il block su `uom_from_id` e su `uom_to_id`, e con Q29 il
    problema è identico. Le due FK sono in eccezione con lo stesso motivo. Se preferisci tenerle legate, si tolgono
-   due righe dal CSV prima dell'apply.
+   due righe dal CSV prima dell'apply. ✅ **Tid, 2026-11-12: si tiene così.**
 2. **D26 anche su `attivita_fatturabili`.** Q30 nominava le due colonne. Il trigger è montato su tutte e due:
    l'emissione copia il fattore, ma senza il trigger il default tolto lascerebbe un NOT NULL secco come rifiuto.
 3. **L'inizio di una mappatura futura è fermo anch'esso.** Q26 diceva «di una mappatura in vigore». Il guard tratta
@@ -1597,6 +1598,9 @@ Fuori dai changeSet:
    cambierebbe il fattore delle date passate.
 5. **Un INSERT con `valido_dal` passato non è giudicato.** Scrivere oggi una mappatura che vale da un mese è una
    correzione del passato. Oggi passa, come per la distinta (giro 1). Se va chiuso, è un giro a parte.
+   ✅ **Tid, 2026-11-12: resta così, non è un giro a parte.** Sul modello l'INSERT retroattivo riempie solo un buco: un
+   periodo già coperto lo rifiuta l'EXCLUDE, in un periodo scoperto nessun documento ha potuto usare l'unità
+   (`E_UOM_MISSING`), e i documenti derivati portano il fattore scritto sulla riga (§13.3.5).
 6. **Il cambio dell'id di un'unità in cascata (`ON UPDATE CASCADE`) è rifiutato** dal guard della storia, perché
    cambia l'unità della riga. Gli id non si cambiano, quindi non ha effetti pratici; è annotato qui.
 7. **Le righe che cancellano l'articolo o l'unità passano**: il guard lascia andare la riga se il padre non c'è più
@@ -1658,7 +1662,8 @@ generati, preCondition su seed, runOnChange, GRANT batch, preambolo pgTAP, v1 co
 * Da rigenerare dopo l'apply: le schede auto-generate.
 
 **Debito documentale notato, fuori giro.** La tabella delle eccezioni, nella pagina `manual/` e nella guida, non
-elencava le sedici righe di `ui` del giro 7-bis di brief-db-revisione-dbops.
+elencava le sedici righe di `ui` del giro 7-bis di brief-db-revisione-dbops. ✅ **Chiuso all'archiviazione
+(2026-11-12)**: la guida le cita già (§1.1); la pagina `manual/` le elenca, con le due righe delle note di catalogo.
 
 **Ricadute BE e FE**, oltre a §15.4:
 
@@ -1941,7 +1946,7 @@ coerenti:
 * Da rigenerare dopo l'apply: le schede auto-generate.
 * **Debito documentale notato, fuori giro**: la pagina `manual/` di `script.trgfn_lock_columns` è nel formato
   vecchio (niente «Vedi anche» allo standard, blocco `sql` d'esempio, slogan in coda). Non l'ho riscritta: non è di
-  catalogo.
+  catalogo. ✅ **Riscritta all'archiviazione (2026-11-12)**, dal corpo e dal COMMENT di oggi.
 
 **Apply (Tid).**
 
@@ -2093,7 +2098,11 @@ migrate, toglie i due block su articolo e legame e i due require sulle partizion
 5. **Fuori dal giro: il codice senza partizione** (D16, quarto punto). La FK verso `config.tipi_entita` ammette
    ogni codice, e un codice senza partizione fallisce con l'errore di routing di PostgreSQL. La correzione decisa per
    D16 non lo copre; vale anche per vendite e acquisti, quindi non è di questo brief. Resta nel «Che cosa oggi non
-   copre» della pagina delle partizioni.
+   copre» della pagina delle partizioni. ✅ **Tid, 2026-11-12: (a), è voluto.** Il CHECK con l'elenco
+   (`chk_note_target_tipo`) è stato ritirato di proposito il 2026-10-25 (`work-done/brief-db-grammatica-unica-documenti`,
+   lotto 3): l'elenco dei bersagli lo dicono le partizioni. Il `target_tipo` lo valorizza il codice, mai l'operatore:
+   un codice senza partizione è un errore di programma. La pagina delle partizioni lo dice come regola, non più come
+   buco. Scartate: (b) una partizione DEFAULT per schema che rifiuta con un codice; (c) il CHECK di nuovo.
 
 ### 16.3 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML in `BEGIN … ROLLBACK`)
 
