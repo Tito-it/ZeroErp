@@ -1,8 +1,8 @@
 # Brief DB — Cinque mirror scrivono `''` dove la colonna ammette `NULL`
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-12
+## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: Tid**, col commit e il push della PATCH BE (§7, fatta il 2026-11-12). Poi la sessione DB mette il `CHECK` su `email_reply_to` e archivia il brief.
+**Riparte: sessione DB**, dopo il push di `dev/backend-tid` con la PATCH BE (§7, committata il 2026-11-13): il `CHECK` su `email_reply_to`, poi l'archiviazione del brief.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -13,10 +13,10 @@
 | 5 | ✅ sessione DB | Giro 2: `name_template`, `trigger_name`, `causali` | §8 | 4 |
 | 6 | ✅ Tid | Apply e pgTAP dei giri 1 e 2: applicati il 2026-11-12, verdi | §5, §8 | 3, 5 |
 | 7 | ✅ Tid | Rigenerare la doc auto-generata (vincoli e default nuovi) e committare: in `83d21a13d` (PR #100) | — | 6 |
-| 8 | ✅ team BE | La PATCH dell'account email porta `''` a `None`: fatta il 2026-11-12, **da committare e pushare** (Tid) ⏭️ | §7 | — |
-| 9 | sessione DB | Il `CHECK` su `email_reply_to`, poi l'archiviazione del brief | §7 | 7, 8 |
+| 8 | ✅ team BE | La PATCH dell'account email porta `''` a `None`: fatta il 2026-11-12, committata il 2026-11-13 su `dev/backend-tid` | §7 | — |
+| 9 | **sessione DB** ⏭️ | Il `CHECK` su `email_reply_to`, poi l'archiviazione del brief | §7 | 7, 8 |
 
-**Decisioni aperte di Tid**: nessuna nel perimetro (le due note fuori perimetro sono in §8). **Da committare**: la PATCH BE (§7) e questo brief.
+**Decisioni aperte di Tid**: nessuna nel perimetro (le due note fuori perimetro sono in §8). **Da committare**: niente.
 
 **Brief vicini verificati**: `brief-db-lista-colonna-campo-sorgente-null.md` (lo stesso difetto su
 `ui.lista_colonna`, già corretto: il giro qui ne riprende la forma); `brief-db-guardrail-forme-residue.md`
@@ -161,7 +161,7 @@ Richiesta, elenco chiuso:
 * `tests/api/test_email_views_fase6.py`: il test della PATCH col payload del drawer (`email_reply_to: ""`)
   asserisce che `update_account` riceve `None`.
 
-> ✅ **Fatto dal team BE, 2026-11-12** (da committare). In `EmailAccountDetailView.patch`, dopo il ciclo
+> ✅ **Fatto dal team BE, 2026-11-12**, committato il 2026-11-13 su `dev/backend-tid`. In `EmailAccountDetailView.patch`, dopo il ciclo
 > di strip, un `email_reply_to` uguale a `''` diventa `None`. `update_account` → `execute_dynamic_update`
 > gira con `skip_none=False`, quindi il `None` scrive `NULL` e non salta la colonna. Il test è
 > `backend/apps/amm_software/tests/api/test_email_views_fase6.py::TestEmailAccountPatchChiavi::test_patch_payload_del_drawer_passa`
