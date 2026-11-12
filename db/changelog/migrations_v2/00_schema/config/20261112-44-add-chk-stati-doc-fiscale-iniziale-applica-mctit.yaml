@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DELLA NASCITA SI APPLICA A FATTURA E LOTTO
+#   Brief: brief-db-stati-documento-dal-vocabolario §4.1 (d) e §4.5, S-7
+#   (Tid, 2026-11-08). Giro 1: il vocabolario fiscale.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Fattura e lotto nascono dallo stesso vocabolario (config.stati_doc_fiscale)
+#   e dallo stesso BB della nascita (script.trgfn_doc_stato_iniziale, montato
+#   sulla fattura e, da 20261112-45, sul lotto). Il BB mette lo stato marcato
+#   iniziale e non guarda applica_lotto / applica_fattura: lo dice questo
+#   CHECK, una volta per il vocabolario. I guard di stato (-48, -49) giudicano
+#   applica_* sulla destinazione di ogni CAMBIO; la nascita non e' un cambio,
+#   e la copre questa regola.
+#
+# ── FASE ────────────────────────────────────────────────────────────
+#   00_schema, come chk_stati_doc_fiscale_iniziale_attivo (20261024-07): da
+#   zero il primo upsert del seed (20250912-01) non scrive iniziale (vale il
+#   DEFAULT false, il CHECK e' vero) e il mirror successivo scrive iniziale e
+#   applica_* nella stessa riga. Fatto datato, 2026-11-12: su dbdev lo stato
+#   iniziale (DRAFT) ha applica_lotto e applica_fattura true.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261112-44-add-chk-stati-doc-fiscale-iniziale-applica-mctit.yaml
+
+  - changeSet:
+      id: 20261112-44-add-chk-stati-doc-fiscale-iniziale-applica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK su config.stati_doc_fiscale: lo stato iniziale si applica al lotto e alla fattura. Brief: brief-db-stati-documento-dal-vocabolario §4.1 (d), S-7.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: stati_doc_fiscale }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale
+                  ADD CONSTRAINT chk_stati_doc_fiscale_iniziale_applica
+                  CHECK (NOT iniziale OR (applica_lotto AND applica_fattura));
+
+              COMMENT ON CONSTRAINT chk_stati_doc_fiscale_iniziale_applica ON config.stati_doc_fiscale IS
+                  'Lo stato in cui nascono fattura e lotto (iniziale = true) si applica a entrambi (applica_lotto e applica_fattura): il trigger della nascita (script.trgfn_doc_stato_iniziale) lo mette su tutti e due senza guardare applica_*, e i guard di stato di fattura e lotto giudicano applica_* solo sui cambi di stato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale DROP CONSTRAINT IF EXISTS chk_stati_doc_fiscale_iniziale_applica;

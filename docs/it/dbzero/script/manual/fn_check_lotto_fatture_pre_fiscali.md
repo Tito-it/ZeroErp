@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_lotto_fatture_pre_fiscali`
 ### 🎯 Scopo Principale
-(latest review 04-08-2026)
+(latest review 12-11-2026)
 Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo
 stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non
 scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
@@ -13,17 +13,20 @@ per loro tramite le due funzioni di mutazione e le capability.
 
 ### Cos'è «pre-fiscale»
 
-`DRAFT` o `EMESSA`. A `EMESSA` la fattura **non è ancora numerata** (C-19): il documento
-non è fiscalmente nato e si può ancora disfare. Da `DEFINITIVA` in poi no.
+Uno stato **non ancora congelato**: `congela_fiscale` falso nel vocabolario
+[`config.stati_doc_fiscale`](/dbzero/config/manual/stati_doc_fiscale), che è la sede unica
+della soglia. Oggi sono `DRAFT` ed `EMESSA`: a `EMESSA` la fattura **non è ancora numerata**,
+il documento non è fiscalmente nato e si può ancora disfare. Da `DEFINITIVA` in poi no. La
+funzione legge la colonna, non i codici: uno stato nuovo prima del congelamento entra da solo.
 
 ---
 
-### ⚠️ Perché `IS DISTINCT FROM` e non un `NOT IN` sui codici
+### ⚠️ Perché `NOT EXISTS` e non un `JOIN`
 
-La condizione confronta lo `stato_doc_fiscale_id` della fattura con i due id risolti, con
-`IS DISTINCT FROM`. Così una fattura con `stato_doc_fiscale_id` **NULL** conta come **non**
-pre-fiscale — fail-closed. Un `NOT IN` scritto via `JOIN` sui codici la perderebbe per
-strada, e il verdetto risulterebbe «demolibile» proprio sulla riga di cui non si sa niente.
+Si contano le fatture del lotto per cui **non esiste** uno stato non congelato con il loro
+`stato_doc_fiscale_id`. Così una fattura il cui stato non si trova conta come **non**
+pre-fiscale — fail-closed. Un `JOIN` sul vocabolario la perderebbe per strada, e il verdetto
+risulterebbe «demolibile» proprio sulla riga di cui non si sa niente.
 
 ---
 
@@ -39,8 +42,6 @@ possono farlo solo finché il documento non è fiscalmente nato.
 ### Errori sollevati (non di dominio)
 
 * `E_PARAMETRO_INVALIDO` — `lotto_id` assente o `<= 0`.
-* `E_CONFIG_MANCANTE` — stato `DRAFT` o `EMESSA` non configurato (installazione rotta,
-  non condizione di dominio).
 
 ---
 

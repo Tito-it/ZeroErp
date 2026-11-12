@@ -103,12 +103,9 @@ SELECT ok(
 -- Fixture: un lotto con tre figlie, due sorgenti, e un lotto rotto
 -- ============================================================
 
--- Il lotto «buono». Nessuno stato fiscale: le figlie nascono senza stato, e
--- il guard di coerenza del ponte vuole che i due lati combacino.
--- ⚠️ rev 2026-10-24: le figlie non nascono piu' «senza stato» ma in DRAFT
---    (lo stato iniziale, che il trigger della nascita scrive). Provato sullo
---    scratch con un mondo costruito: il ponte verso il lotto senza stato
---    resta accettato dal guard di coerenza.
+-- Il lotto «buono»: l'INSERT non dice lo stato, e il lotto nasce nello stato
+-- iniziale come le sue figlie (lo scrive il trigger della nascita, su lotto e
+-- fattura). Il guard di coerenza del ponte vuole che i due lati combacino.
 CREATE TEMP TABLE tmp_lotto_ffl AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, meta)

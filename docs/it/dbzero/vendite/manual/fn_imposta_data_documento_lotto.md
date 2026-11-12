@@ -68,6 +68,9 @@ una fattura già numerata — e il guard
 [`trgfn_fatture_guard_data_numerata`](/dbzero/vendite/funzioni/trgfn_fatture_guard_data_numerata)
 la rifiuterebbe, facendo fallire tutto. Lo stato serve comunque, ma per un'altra
 cosa: non toccare documenti oltre la finestra in cui le rate sono rigenerabili.
+La finestra è «non ancora congelata»: `congela_fiscale` falso nel vocabolario
+[`config.stati_doc_fiscale`](/dbzero/config/manual/stati_doc_fiscale), letto dalla
+colonna e non da un elenco di codici.
 
 ---
 

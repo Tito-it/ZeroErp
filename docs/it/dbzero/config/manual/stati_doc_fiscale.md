@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_fiscale`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -61,14 +61,19 @@ non si disattiva.
 
 Lo stesso vocabolario serve due documenti, e i due flag dicono quali stati valgono per ciascuno. Li
 legge [`config.fn_get_stati_doc_fiscale`](/dbzero/config/funzioni/fn_get_stati_doc_fiscale), che
-elenca gli stati di uno dei due; la creazione del lotto prende lo stato di partenza fra quelli con
-`applica_lotto`; i guard di stato li controllano alla **prima** assegnazione dello stato.
+elenca gli stati di uno dei due. I guard di stato della fattura e del lotto li controllano sulla
+**destinazione** di ogni cambio: uno stato che non si applica al documento si rifiuta
+(`E_LOTTO_PARAMETRO_NON_COERENTE`), da qualunque passaggio arrivi.
 
-⚠️ **`applica_lotto` ha una seconda sede che deve dire la stessa cosa**: la matrice. Dopo la prima
-assegnazione ogni cambio passa dalla matrice, e il flag non viene riletto: uno stato che la matrice
-fa raggiungere a un lotto **deve** avere il flag, altrimenti il vocabolario dice il falso senza che
-niente si fermi. Lo presidia un pgTAP, in un verso solo (raggiungibile ⇒ flag): uno stato può avere
-il flag senza che nessun passaggio del lotto lo raggiunga.
+La nascita non è un cambio di stato. Fattura e lotto nascono entrambi nello stato marcato
+`iniziale`, che mette il trigger della nascita senza guardare i due flag: per questo lo stato
+iniziale si applica a tutti e due per vincolo (`chk_stati_doc_fiscale_iniziale_applica`).
+
+⚠️ **I flag hanno una seconda sede che deve dire la stessa cosa**: la matrice. Un passaggio del
+lotto verso uno stato senza `applica_lotto` esiste nella matrice ma il guard lo rifiuta: il
+vocabolario e la matrice dissentono. Lo presidia un pgTAP, in un verso solo (raggiungibile ⇒
+flag): uno stato può avere il flag senza che nessun passaggio del lotto lo raggiunga, come oggi
+`REGISTRATA`.
 
 ---
 

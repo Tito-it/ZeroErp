@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LOTTO NASCE DAL VOCABOLARIO, COME LA FATTURA
+#   Brief: brief-db-stati-documento-dal-vocabolario §4.1 (a), difetto ②
+#   (Tid, 2026-11-08). Giro 1: il vocabolario fiscale.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il BB della nascita (script.trgfn_doc_stato_iniziale) e' montato su undici
+#   testate, non sul lotto: vendite.fn_create_fatturazione_lotto sceglieva lo
+#   stato col letterale 'DRAFT'. Da qui lo mette il trigger, letto dal
+#   vocabolario (iniziale = true); la madre smette di sceglierlo (-47) e la
+#   colonna diventa NOT NULL (-46).
+#
+# ── FASE _a05_ ──────────────────────────────────────────────────────
+#   Prima di ogni altro BEFORE INSERT del lotto (a10_area_geografica, a10_gen_
+#   codice, a10_guard_emittente_scope, a10_stati_doc_fiscale_require_attivo,
+#   a10_tipi_doc_fiscale_require_attivo, a15_codice_maiuscolo, gen_tx_id):
+#   chi legge lo stato lo trova gia' risolto. Nessun altro trigger della
+#   tabella scrive la colonna all'INSERT (pg_trigger su dbdev, 2026-11-12).
+#   Montaggio nuovo: nessun nome storico da togliere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261112-45-create-trigger-fatturazione-lotti-stato-iniziale-mctit.yaml
+
+  - changeSet:
+      id: 20261112-45-create-trigger-fatturazione-lotti-stato-iniziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_iniziale (BEFORE INSERT, _a05_) su vendite.fatturazione_lotti. Brief: brief-db-stati-documento-dal-vocabolario §4.1 (a).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('script.trgfn_doc_stato_iniziale()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_fatturazione_lotti_a05_stato_iniziale_ins
+                  BEFORE INSERT ON vendite.fatturazione_lotti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_iniziale(
+                      'stato_doc_fiscale_id', 'config.stati_doc_fiscale');
+
+              COMMENT ON TRIGGER trg_fatturazione_lotti_a05_stato_iniziale_ins ON vendite.fatturazione_lotti IS
+                  'Nascita nello stato iniziale (BB script.trgfn_doc_stato_iniziale): stato assente -> lo stato iniziale di config.stati_doc_fiscale; altro stato -> E_DOC_STATO_INIZIALE_NON_VALIDO. Fascia _a05_: prima di ogni altro trigger BEFORE INSERT del lotto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_a05_stato_iniziale_ins ON vendite.fatturazione_lotti;

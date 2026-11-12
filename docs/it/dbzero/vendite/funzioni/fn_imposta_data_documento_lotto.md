@@ -154,7 +154,9 @@ BEGIN
     -- trg_fatture_a10_guard_data_numerata_upd la rifiuterebbe,
     -- facendo fallire l'intera dichiarazione.
     -- ⚠️ Lo stato serve lo stesso, per non toccare documenti oltre
-    -- la finestra in cui le rate sono ancora rigenerabili.
+    -- la finestra in cui le rate sono ancora rigenerabili: uno stato
+    -- non ancora congelato (config.stati_doc_fiscale.congela_fiscale),
+    -- dal vocabolario e non da un elenco di codici.
     -- ⚠️ `IS DISTINCT FROM`: senza, si riscriverebbe la stessa data
     -- generando storico e audit per niente.
     WITH aggiornate AS (
@@ -167,7 +169,7 @@ BEGIN
            AND f.data IS DISTINCT FROM p_data
            AND f.stato_doc_fiscale_id IN (
                    SELECT sd.id FROM config.stati_doc_fiscale sd
-                    WHERE sd.codice_interno IN ('DRAFT', 'EMESSA'))
+                    WHERE sd.congela_fiscale IS FALSE)
         RETURNING f.id
     )
     SELECT array_agg(a.id), count(*)::integer

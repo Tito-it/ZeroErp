@@ -11,7 +11,7 @@
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 >
 ### 🎯 Scopo Principale
-(latest review 23-01-2026)
+(latest review 12-11-2026)
 `vendite.fatturazione_lotti` rappresenta il **lotto di fatturazione**, ovvero il contenitore operativo
 che fissa i **parametri di calcolo** (competenza, utility, tipo documento, BA, emittente fiscale) e consente la gestione
 coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, statistiche).
@@ -25,7 +25,10 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
 * **Tipo lotto**: `tipo_lotto` (MASSIVO | GIORNALIERO).
 * **Stati**:
   * `stato_lotto` (IN_ESECUZIONE | COMPLETATO | ERRORE)
-  * `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`)
+  * `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`, **sempre valorizzato**): il lotto
+    nasce nello stato iniziale del vocabolario, che mette il trigger della nascita
+    (`trg_fatturazione_lotti_a05_stato_iniziale_ins`) quando l'`INSERT` non lo dice; un altro
+    stato alla nascita è rifiutato. Gli altri stati si raggiungono dalla matrice, coi verbi del lotto.
   * `stato_operativo` (APERTO | CHIUSO | ERRORE)
 * **Riapertura** (dal 03-08-2026): `riaperto_il` (timestamptz, `NULL` = mai
   riaperto) — istante in cui il lotto è stato riportato in bozza **di proposito**

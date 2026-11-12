@@ -21,7 +21,6 @@ DECLARE
     v_utility_id          config.utilities.id%TYPE;
     v_lock_batch_id       vendite.fatturazione_lotti.lock_batch_id%TYPE;
     v_lotto_id            vendite.fatturazione_lotti.id%TYPE;
-    v_stato_doc_id        config.stati_doc_fiscale.id%TYPE;
     v_map_exists          BOOLEAN;
     v_emittente_id        vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
     v_single_emittente_count BIGINT;
@@ -173,35 +172,19 @@ BEGIN
         );
     END IF;
 
-    -- Stato iniziale DRAFT
-    SELECT id INTO v_stato_doc_id
-      FROM config.stati_doc_fiscale
-     WHERE codice_interno = 'DRAFT'
-       AND applica_lotto IS TRUE
-       AND attivo IS TRUE
-     ORDER BY ordine
-     LIMIT 1;
-
-    IF v_stato_doc_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_create_fatturazione_lotto', 'E_CONFIG_MANCANTE',
-            jsonb_build_object('codice_interno', 'DRAFT'),
-            NULL::uuid, 'stato DRAFT non disponibile per lotto'
-        );
-    END IF;
-
+    -- Lo stato non si sceglie qui: il lotto nasce nello stato
+    -- iniziale del vocabolario, messo dal trigger della nascita
+    -- (trg_fatturazione_lotti_a05_stato_iniziale_ins).
     v_lock_batch_id := COALESCE(p_lock_batch_id, uuidv7());
 
     -- Creazione lotto
     INSERT INTO vendite.fatturazione_lotti (
         lock_batch_id, competenza_mese, utility_id, billing_account_id,
-        emittente_soggetto_ruolo_id, tipo_doc_fiscale_id,
-        stato_doc_fiscale_id, meta
+        emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, meta
     )
     VALUES (
         v_lock_batch_id, v_competenza, v_utility_id, p_billing_account_id,
-        v_emittente_id, p_tipo_doc_fiscale_id,
-        v_stato_doc_id, COALESCE(p_meta, '{}'::jsonb)
+        v_emittente_id, p_tipo_doc_fiscale_id, COALESCE(p_meta, '{}'::jsonb)
     )
     RETURNING id INTO v_lotto_id;
 
@@ -210,7 +193,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_create_fatturazione_lotto(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_utility_id integer, p_billing_account_id bigint, p_lock_batch_id uuid, p_meta jsonb, p_emittente_soggetto_ruolo_id bigint)
-IS 'Crea lotto fatturazione validando coerenza competenza/utility/tipo_doc e risolvendo emittente fiscale.';
+IS 'Crea un lotto di fatturazione: valida competenza, utility (dal parametro o dal billing account), tipo di documento fiscale e la sua mappa sul registro, risolve l''emittente fiscale (dal parametro, poi dal billing account, poi l''unico emittente attivo) e inserisce il lotto, di cui ritorna l''id. Lo stato non lo sceglie: il lotto nasce nello stato iniziale di config.stati_doc_fiscale, messo dal trigger trg_fatturazione_lotti_a05_stato_iniziale_ins (script.trgfn_doc_stato_iniziale). Errori: E_PARAMETRO_INVALIDO, E_VALORE_MANCANTE, E_CLIENTE_UTILITY_MISMATCH_BA, E_EMITTENTE_DEFAULT_MISSING, E_CODICE, E_CONFIG_MANCANTE.';
 ```
 
 </div>

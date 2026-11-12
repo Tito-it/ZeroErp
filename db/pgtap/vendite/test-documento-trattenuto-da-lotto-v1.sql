@@ -1,18 +1,30 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce un'AZIENDA — emittente fiscale,
+--   utente tecnico e identita' digitale (dbops.fn_pgtap_crea_emittente_operatore)
+--   — e un operatore dentro un perimetro non crea l'azienda in cui lavora.
+--   Stesso criterio del gemello test-vw-lotti-fase-v1.
 -- pgTAP test per Zero ERP
 --
 -- Test: T-1 — vendite.vw_documenti_trattenuti_da_lotto, la SEDE UNICA della
 --       domanda «questo documento e' trattenuto da un lotto ancora in gioco?».
 --
--- Elenco test (plan 7) — numerati come li stampa il TAP:
+-- Elenco test (plan 6) — numerati come li stampa il TAP:
 --  1) ⭐ lotto DRAFT + esito COMPLETED  -> TRATTENUTO
 --  2) ⭐ lotto ANNULLATA + esito ERRORE -> LIBERO
 --  3) ⛔ esito ESCLUSO su lotto vivo    -> LIBERO (uscito dal giro)
---  4) ⭐ lotto SENZA stato risolvibile  -> TRATTENUTO (fail-closed)
---  5) ⚠️ lo stesso documento in DUE lotti vivi -> DUE righe
---  6) 🔴 lotto DEFINITIVA (CHIUSO) + COMPLETED -> LIBERO   [rev 2026-09-09]
---  7) 🔴 lotto INVIATA (dopo la chiusura) + COMPLETED -> LIBERO
+--  4) ⚠️ lo stesso documento in DUE lotti vivi -> DUE righe
+--  5) 🔴 lotto DEFINITIVA (CHIUSO) + COMPLETED -> LIBERO
+--  6) 🔴 lotto INVIATA (dopo la chiusura) + COMPLETED -> LIBERO
+--
+-- ⛔ RITIRATO il 2026-11-12 il test del lotto SENZA stato (era il 4): il caso
+--   non e' piu' costruibile (stato_doc_fiscale_id NOT NULL, 20261112-46; il
+--   trigger della nascita mette lo stato iniziale, -45). La LEFT JOIN della
+--   vista resta. Brief: brief-db-stati-documento-dal-vocabolario §4.1, S-6.
+-- ⭐ E dallo stesso giorno il mondo si COSTRUISCE: emittente e tipo documento
+--   si prendevano «da un lotto che c'e' gia'», e su un database senza lotti
+--   (lo scratch, la CI) il file non scriveva niente e girava a vuoto.
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ I TEST 1 E 2 VANNO LETTI INSIEME, ed e' tutto il senso del cantiere.
@@ -36,7 +48,7 @@
 --   renderebbe il test 2 verde a vuoto, e su un database ricostruito da zero
 --   girerebbe identico solo per coincidenza.
 --
--- ⭐ I TEST 6 E 7 SONO ARRIVATI DOPO, E DICONO PERCHE' (rev 2026-09-09).
+-- ⭐ I TEST 5 E 6 SONO ARRIVATI DOPO, E DICONO PERCHE'.
 --   La prima stesura definiva «in gioco» come `NOT is_abortito`, cioe' «non
 --   annullato». Ma `is_abortito` e' TRUE solo su ANNULLATA: un lotto
 --   DEFINITIVA non e' annullato, e' CHIUSO — e risultava ancora «vivo».
@@ -44,7 +56,7 @@
 --   e «Riporta da emettere» smetteva di avere effetto. Cancello senza chiave:
 --   dal giro non lo si poteva nemmeno togliere, perche' l'uscita vuole un
 --   lotto PRE-FISCALE.
---   ⛔ E il test 7 e' il seguito: la correzione ovvia — `NOT chiude_lotto` —
+--   ⛔ E il test 6 e' il seguito: la correzione ovvia — `NOT chiude_lotto` —
 --   sbaglia anch'essa, perche' quel flag e' TRUE solo su DEFINITIVA e il
 --   catalogo ammette DEFINITIVA -> INVIATA. Il flag giusto e' `in_gioco` di
 --   vendite.vw_lotti_fase.
@@ -60,22 +72,34 @@
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(7);
+-- ⭐ L'AZIENDA E IL SUO OPERATORE SI COSTRUISCONO. ⚠️ Il builder apre e
+--   richiude da solo la finestra dei vincoli differiti: va chiamato DOPO
+--   `SET CONSTRAINTS ALL IMMEDIATE`.
+CREATE TEMP TABLE tmp_trat_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- Contesto applicativo: l'operatore che ha nel perimetro l'azienda appena creata
+-- (senza, la RLS sui lotti nasconderebbe le righe scritte qui).
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM tmp_trat_mondo));
+END $ctx$;
+
+SELECT plan(6);
 
 -- ============================================================
--- Fixture — cinque lotti-testimone, uno per forma
+-- Fixture — sette lotti-testimone, uno per forma
 -- ============================================================
--- ⚠️ Il tipo documento e l'emittente si prendono da un lotto che c'e' gia': sono
---   FK obbligatorie e non hanno niente a che vedere con cio' che si prova.
+-- ⚠️ L'emittente e' quello dell'azienda costruita; il tipo documento si prende
+--   dal catalogo per `codice_interno`, la chiave stabile.
 CREATE TEMP TABLE tmp_trat_rif AS
-SELECT l.tipo_doc_fiscale_id, l.emittente_soggetto_ruolo_id
-  FROM vendite.fatturazione_lotti l
- ORDER BY l.id DESC
- LIMIT 1;
+SELECT (SELECT t.id FROM config.tipi_doc_fiscale t
+         WHERE t.codice_interno = 'BACKOFFICE') AS tipo_doc_fiscale_id,
+       m.soggetto_ruolo_id                     AS emittente_soggetto_ruolo_id
+  FROM tmp_trat_mondo m;
 
 CREATE TEMP TABLE tmp_trat (caso text, lotto_id bigint, gruppo_key text);
 
@@ -90,31 +114,32 @@ BEGIN
             ('vivo_completed',  'DRAFT',      'COMPLETED'),
             ('morto_errore',    'ANNULLATA',  'ERRORE'),
             ('vivo_escluso',    'DRAFT',      'ESCLUSO'),
-            ('senza_stato',     NULL,         'COMPLETED'),
             ('doppio_a',        'DRAFT',      'ERRORE'),
             ('doppio_b',        'EMESSA',     'PENDING'),
-            -- ⭐ rev 2026-09-09: i due casi del difetto. CHIUSO non e'
-            --   ANNULLATO, e INVIATA viene DOPO la chiusura.
+            -- ⭐ I due casi del difetto: CHIUSO non e' ANNULLATO, e
+            --   INVIATA viene DOPO la chiusura.
             ('chiuso_completed',  'DEFINITIVA', 'COMPLETED'),
             ('inviato_completed', 'INVIATA',    'COMPLETED')
         ) AS v(caso, stato, esito)
     LOOP
+        -- ⭐ Il lotto nasce nello stato iniziale (trigger della nascita) e si
+        --   porta allo stato voluto dai verbi del lotto, lungo la matrice,
+        --   PRIMA di gruppi ed esiti: e' vuoto, nessuna fattura da allineare.
         INSERT INTO vendite.fatturazione_lotti
             (codice, competenza_mese, tipo_doc_fiscale_id,
-             emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
+             emittente_soggetto_ruolo_id)
         SELECT 'PGTAP-TRAT-' || upper(r.caso),
                date_trunc('month', script.fn_data_operativa())::date,
-               t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
-               -- ⭐ `codice_interno`, mai un id: e' la chiave stabile. E per il
-               --   caso «senza stato» si lascia NULL apposta — la colonna e'
-               --   nullable, quindi il ramo fail-closed e' COSTRUIBILE e non
-               --   va dichiarato irraggiungibile.
-               (SELECT s.id FROM config.stati_doc_fiscale s
-                 WHERE s.codice_interno = r.stato)
+               t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id
           FROM tmp_trat_rif t
         RETURNING id INTO v_id;
 
-        -- I due «doppio_*» tengono lo STESSO documento: e' il caso del test 5.
+        IF r.stato <> 'DRAFT' THEN
+            -- `codice_interno`, mai un id: e' la chiave stabile.
+            PERFORM dbops.fn_pgtap_porta_a_stato('vendite.fatturazione_lotti', v_id, r.stato);
+        END IF;
+
+        -- I due «doppio_*» tengono lo STESSO documento: e' il caso del test 4.
         INSERT INTO tmp_trat VALUES (
             r.caso, v_id,
             CASE WHEN r.caso LIKE 'doppio%' THEN 'PGTAP:TRAT:doppio'
@@ -177,21 +202,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 4) ⭐ Fail-closed: stato non risolvibile, documento trattenuto
--- ============================================================
--- ⚠️ La LEFT JOIN nella vista e' voluta: un lotto senza stato deve ARRIVARE al
---   confronto e farlo scattare, non sparire dal risultato. Con una INNER JOIN
---   questo documento risulterebbe LIBERO — cioe' il caso in cui non sappiamo
---   niente diventerebbe quello in cui lasciamo fare tutto.
-SELECT is(
-    (SELECT lotto_stato FROM vendite.vw_documenti_trattenuti_da_lotto
-      WHERE gruppo_key = 'PGTAP:TRAT:senza_stato'),
-    NULL,
-    '4. un lotto senza stato risolvibile TRATTIENE lo stesso (fail-closed)'
-);
-
--- ============================================================
--- 5) ⚠️ Lo stesso documento in due lotti vivi: due righe
+-- 4) ⚠️ Lo stesso documento in due lotti vivi: due righe
 -- ============================================================
 -- ⛔ Non e' un difetto della vista: e' il difetto che la vista serve a rendere
 --   visibile. Un `DISTINCT ON (gruppo_key)` qui dentro nasconderebbe proprio la
@@ -201,11 +212,11 @@ SELECT is(
     (SELECT count(*)::int FROM vendite.vw_documenti_trattenuti_da_lotto
       WHERE gruppo_key = 'PGTAP:TRAT:doppio'),
     2,
-    '5. un documento tenuto da DUE lotti vivi rende due righe: la vista non lo nasconde'
+    '4. un documento tenuto da DUE lotti vivi rende due righe: la vista non lo nasconde'
 );
 
 -- ============================================================
--- 6) 🔴 Lotto CHIUSO (DEFINITIVA): non trattiene piu' niente
+-- 5) 🔴 Lotto CHIUSO (DEFINITIVA): non trattiene piu' niente
 -- ============================================================
 -- ⛔ E' IL DIFETTO CHE HA APERTO IL CANTIERE SEGUENTE. Con `NOT is_abortito`
 --   questo caso risultava TRATTENUTO: DEFINITIVA non e' abortita, e'
@@ -216,11 +227,11 @@ SELECT is(
 SELECT ok(
     NOT EXISTS (SELECT 1 FROM vendite.vw_documenti_trattenuti_da_lotto
                  WHERE gruppo_key = 'PGTAP:TRAT:chiuso_completed'),
-    '6. un lotto DEFINITIVA (chiuso) non trattiene piu'': chiuso non e'' annullato'
+    '5. un lotto DEFINITIVA (chiuso) non trattiene piu'': chiuso non e'' annullato'
 );
 
 -- ============================================================
--- 7) 🔴 E dopo la chiusura: INVIATA non riapre niente
+-- 6) 🔴 E dopo la chiusura: INVIATA non riapre niente
 -- ============================================================
 -- ⛔ E' IL CASO CHE LA CORREZIONE OVVIA SBAGLIA. `NOT chiude_lotto` sembra dire
 --   «non ha finito», ma quel flag e' TRUE solo su DEFINITIVA: marca la
@@ -231,7 +242,7 @@ SELECT ok(
 SELECT ok(
     NOT EXISTS (SELECT 1 FROM vendite.vw_documenti_trattenuti_da_lotto
                  WHERE gruppo_key = 'PGTAP:TRAT:inviato_completed'),
-    '7. un lotto INVIATA (dopo la chiusura) non trattiene: chiuso RESTA chiuso'
+    '6. un lotto INVIATA (dopo la chiusura) non trattiene: chiuso RESTA chiuso'
 );
 
 SELECT * FROM finish();

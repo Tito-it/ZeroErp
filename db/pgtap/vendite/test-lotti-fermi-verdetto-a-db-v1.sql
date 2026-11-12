@@ -65,7 +65,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(24);
+SELECT plan(23);
 
 -- ============================================================
 -- Fixture: due lotti (DRAFT e DEFINITIVA) e una fattura DRAFT nel primo
@@ -102,8 +102,9 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
--- Il lotto CHIUSO (DEFINITIVA): l'INSERT non passa dal guard di transizione,
--- che e' su UPDATE — e' il modo in cui il test 17 costruisce il caso.
+-- Il lotto CHIUSO (DEFINITIVA): nasce nello stato iniziale (lo pretende il
+-- trigger della nascita del lotto, 20261112-45) e si porta a DEFINITIVA dai
+-- verbi del lotto, lungo la matrice. E' vuoto: nessuna fattura da allineare.
 CREATE TEMP TABLE _lotto_def AS
 WITH ins AS (
     INSERT INTO vendite.fatturazione_lotti
@@ -111,11 +112,14 @@ WITH ins AS (
          emittente_soggetto_ruolo_id, stato_doc_fiscale_id, meta)
     SELECT 'PGTAP-FERMO-D-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
            date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
-           r.stato_definitiva_id, jsonb_build_object('test_scope', 'pgtap_lotti_fermi')
+           r.stato_draft_id, jsonb_build_object('test_scope', 'pgtap_lotti_fermi')
       FROM _rif r
     RETURNING id
 )
 SELECT id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatturazione_lotti', l.id, 'DEFINITIVA')
+  FROM _lotto_def l;
 
 -- La fattura, nello STESSO stato del lotto: il guard di coerenza
 -- (fn_guard_lotto_fatture_stato_coerente, IMMEDIATE qui) lo pretende.
@@ -484,36 +488,12 @@ SELECT is(
     '23. COMPLETATO in bozza + esito ERRORE da due ore: lo vedono i fermi, non i congelati (niente doppione)'
 );
 
--- Un lotto con lo stato fiscale IGNOTO: pre_fiscale e' COALESCE(..., false),
--- quindi cade fra i congelati, dove un esito in errore resta visibile.
-CREATE TEMP TABLE _lotto_ignoto AS
-WITH ins AS (
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, tipo_doc_fiscale_id, competenza_mese,
-         emittente_soggetto_ruolo_id, stato_doc_fiscale_id, meta)
-    SELECT 'PGTAP-FERMO-I-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
-           date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
-           NULL, jsonb_build_object('test_scope', 'pgtap_lotti_fermi')
-      FROM _rif r
-    RETURNING id
-)
-SELECT id FROM ins;
-
-INSERT INTO vendite.fatturazione_lotti_esiti
-    (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
-SELECT l.id, 'PGTAP:FERMO:ign1', 'ERRORE', 'E_PULL_COMMESSA', 'rotto, stato ignoto'
-  FROM _lotto_ignoto l;
-
-SELECT is(
-    (SELECT (
-        (SELECT c.stato_codice_interno IS NULL FROM vendite.vw_lotti_congelati_con_gruppi_in_errore c
-          WHERE c.lotto_id = (SELECT id FROM _lotto_ignoto)),
-        (SELECT count(*)::int FROM dbops.vw_lotti_fermi_da_guardare
-          WHERE lotto_id = (SELECT id FROM _lotto_ignoto))
-    )::text),
-    (true, 0)::text,
-    '24. stato fiscale ignoto + esito ERRORE: lo vedono i congelati, con lo stato NULL; non i fermi'
-);
+-- ⛔ Ritirato il 2026-11-12 il test 24 («stato fiscale ignoto + esito ERRORE:
+--   lo vedono i congelati»): costruiva un lotto con lo stato NULL, che il
+--   contratto non ammette piu' (stato_doc_fiscale_id NOT NULL, 20261112-46; il
+--   trigger della nascita mette lo stato iniziale). Il ramo fail-closed delle
+--   viste resta, ma il caso non e' piu' costruibile. Brief:
+--   brief-db-stati-documento-dal-vocabolario §4.1, S-6.
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -14,6 +14,11 @@
 -- ⚠️ Attesa cambiata: test 3 e 4 (otto -> nove vocabolari), 5 (la versione di
 --   listino nel perimetro atteso: non e' una sorgente DOCUMENTO) e 6 (dieci ->
 --   undici testate).
+-- 2026-11-12 (brief-db-stati-documento-dal-vocabolario §4.1, giro 1): il lotto
+--   di fatturazione nasce dal vocabolario (20261112-45, -46, -47) e lo stato
+--   iniziale si applica a lotto e fattura (CHECK, -44). Attesa cambiata: test 5
+--   (il lotto nel perimetro atteso: non e' una sorgente) e 6 (undici -> dodici
+--   testate); nuovi i test 19-22.
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - ogni vocabolario degli stati delle testate dichiara UNO stato iniziale,
@@ -29,14 +34,15 @@
 --   - montaggio sbagliato, vocabolario senza stato iniziale, lettore chiamato
 --     male: E_SCRIPT_CHIAMATA_NON_VALIDA.
 --
--- Elenco test (plan 18):
+-- Elenco test (plan 22):
 --   1) script.fn_stato_iniziale_id(regclass) esiste
 --   2) script.trgfn_doc_stato_iniziale() esiste
 --   3) i nove vocabolari hanno uno e un solo stato iniziale, attivo
 --   4) i nove vocabolari hanno l'indice unico parziale e il CHECK
 --   5) montaggio: ogni testata con FK verso un vocabolario con `iniziale`
 --      monta il BB su quella colonna e quel vocabolario, e viceversa
---   6) montaggio: undici testate (otto di vendita, due d'acquisto, la versione di listino)
+--   6) montaggio: dodici testate (otto di vendita, due d'acquisto, la versione
+--      di listino, il lotto di fatturazione)
 --   7) il trigger della nascita e' il primo BEFORE INSERT di ogni testata
 --   8) il lettore rende lo stato iniziale dichiarato (ordini: DRAFT)
 --   9) un ordine creato senza dire lo stato nasce DRAFT
@@ -49,6 +55,11 @@
 --  16) lettore con una tabella senza la colonna iniziale: chiamata non valida
 --  17) montaggio con un argomento solo: chiamata non valida
 --  18) vocabolario che non dichiara lo stato iniziale: chiamata non valida
+--  19) un lotto creato dalla madre nasce nello stato iniziale del vocabolario
+--  20) un lotto che nasce DEFINITIVA: rifiutato
+--  21) ⭐ la marca spostata: con iniziale su EMESSA, la madre crea il lotto in
+--      EMESSA (non ricorda un codice)
+--  22) il CHECK: uno stato iniziale che non si applica al lotto e' rifiutato
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -57,7 +68,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(18);
+SELECT plan(22);
 
 -- 1-2) Gli oggetti
 SELECT has_function('script', 'fn_stato_iniziale_id', ARRAY['regclass'],
@@ -124,7 +135,8 @@ SELECT c.conrelid AS tab, a.attname::text AS col, c.confrelid AS voc
    AND (c.conrelid IN (SELECT s.target_table FROM config.sorgenti s
                         WHERE s.categoria = 'DOCUMENTO' AND s.target_table IS NOT NULL)
         OR c.conrelid IN ('acquisti.ordini'::regclass, 'acquisti.ddt'::regclass,
-                          'vendite.listini_versioni'::regclass));
+                          'vendite.listini_versioni'::regclass,
+                          'vendite.fatturazione_lotti'::regclass));
 
 CREATE TEMP TABLE t_montato AS
 SELECT g.tgrelid AS tab, g.tgname::text AS nome,
@@ -144,12 +156,12 @@ SELECT is(
     'ogni testata con un vocabolario degli stati monta il BB su quella colonna e quel vocabolario, e nessun altro montaggio'
 );
 
--- 6) Undici testate: le otto di vendita, le due d'acquisto (P-3), la versione
---    di listino (giro 12)
+-- 6) Dodici testate: le otto di vendita, le due d'acquisto (P-3), la versione
+--    di listino, il lotto di fatturazione
 SELECT is(
     (SELECT count(DISTINCT tab)::integer FROM t_montato),
-    11,
-    'il BB e'' montato su undici testate: otto di vendita, due d''acquisto, la versione di listino'
+    12,
+    'il BB e'' montato su dodici testate: otto di vendita, due d''acquisto, la versione di listino, il lotto di fatturazione'
 );
 
 -- 7) Il primo BEFORE INSERT di ogni testata: chi legge lo stato lo trova gia'
@@ -290,6 +302,62 @@ SELECT throws_like(
     $$INSERT INTO t_doc_muto VALUES (NULL)$$,
     'Chiamata non valida a script.trgfn_doc_stato_iniziale: il vocabolario % non dichiara lo stato iniziale%',
     'un vocabolario senza stato iniziale: chiamata non valida che lo nomina'
+);
+
+-- 19) Il lotto dalla madre: vendite.fn_create_fatturazione_lotto non sceglie
+--     lo stato, lo mette il trigger della nascita.
+CREATE TEMP TABLE t_lotto AS
+SELECT * FROM dbops.fn_pgtap_crea_lotto('nascita lotto');
+
+SELECT is(
+    (SELECT l.stato_doc_fiscale_id FROM vendite.fatturazione_lotti l
+      WHERE l.id = (SELECT lotto_id FROM t_lotto)),
+    script.fn_stato_iniziale_id('config.stati_doc_fiscale'::regclass),
+    'un lotto creato dalla madre nasce nello stato iniziale del vocabolario'
+);
+
+-- 20) Un lotto che nasce DEFINITIVA. Il trigger e' il primo BEFORE INSERT:
+--     basta la colonna di stato.
+SELECT throws_like(
+    $$INSERT INTO vendite.fatturazione_lotti (stato_doc_fiscale_id)
+      SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DEFINITIVA'$$,
+    '% non può nascere nello stato DEFINITIVA: un documento nuovo nasce in Bozza%',
+    'un lotto che nasce DEFINITIVA e'' rifiutato'
+);
+
+-- 21) ⭐ La marca spostata: in transazione lo stato iniziale passa da DRAFT a
+--     EMESSA (che si applica a lotto e fattura). La madre, chiamata
+--     direttamente — il builder porterebbe comunque il lotto allo stato
+--     chiesto e nasconderebbe la differenza — crea il lotto in EMESSA: non
+--     ricorda un codice.
+UPDATE config.stati_doc_fiscale SET iniziale = false WHERE iniziale;
+UPDATE config.stati_doc_fiscale SET iniziale = true WHERE codice_interno = 'EMESSA';
+
+-- ⚠️ In un'istruzione sua: la SELECT che chiama la madre non vede la riga che
+--   la madre inserisce (stessa fotografia).
+CREATE TEMP TABLE t_lotto_marca AS
+SELECT vendite.fn_create_fatturazione_lotto(
+           p_competenza_mese             => t.competenza_mese,
+           p_tipo_doc_fiscale_id         => t.tipo_doc_fiscale_id,
+           p_utility_id                  => t.utility_id,
+           p_emittente_soggetto_ruolo_id => t.emittente_soggetto_ruolo_id) AS lotto_id
+  FROM t_lotto t;
+
+SELECT is(
+    (SELECT s.codice_interno
+       FROM vendite.fatturazione_lotti l
+       JOIN config.stati_doc_fiscale s ON s.id = l.stato_doc_fiscale_id
+      WHERE l.id = (SELECT lotto_id FROM t_lotto_marca)),
+    'EMESSA'::character varying,
+    'con lo stato iniziale spostato su EMESSA la madre crea il lotto in EMESSA'
+);
+
+-- 22) Il CHECK: lo stato iniziale (qui EMESSA, dal test 21) che smette di
+--     applicarsi al lotto e' rifiutato.
+SELECT throws_like(
+    $$UPDATE config.stati_doc_fiscale SET applica_lotto = false WHERE iniziale$$,
+    '%chk_stati_doc_fiscale_iniziale_applica%',
+    'uno stato iniziale che non si applica al lotto e'' rifiutato dal CHECK'
 );
 
 SELECT * FROM finish();

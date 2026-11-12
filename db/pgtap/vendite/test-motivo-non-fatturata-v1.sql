@@ -261,9 +261,10 @@ WITH ins AS (
   RETURNING id, codice)
 SELECT id AS lotto_id, codice AS lotto_codice FROM ins;
 
--- ⭐ Il lotto MORTO (rev 2026-09-12): nasce direttamente ANNULLATA — l'INSERT
---   non passa dalla matrice delle transizioni, per progetto (§7c.6) — e il suo
---   lock_batch_id e' il marchio che la LIBERA_MORTA porta in emit_batch_id.
+-- ⭐ Il lotto MORTO: nasce nello stato iniziale (lo pretende il trigger della
+--   nascita del lotto, 20261112-45) e si annulla dai verbi del lotto, lungo la
+--   matrice; il suo lock_batch_id e' il marchio che la LIBERA_MORTA porta in
+--   emit_batch_id.
 --   Su vw_lotti_fase.in_gioco vale false: e' cio' che separa 5-bis da 5-ter.
 CREATE TEMP TABLE tmp_lotto_morto_mnf AS
 WITH ins AS (
@@ -275,11 +276,14 @@ WITH ins AS (
          r.tipo_doc_fiscale_id,
          (SELECT emittente_sr_id FROM tmp_cost_mnf),
          (SELECT lock_batch_morto FROM tmp_cost_mnf),
-         r.stato_annullata_id,
+         r.stato_draft_id,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_mnf))
     FROM tmp_refs_mnf r
   RETURNING id, codice)
 SELECT id AS lotto_id, codice AS lotto_codice FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatturazione_lotti', l.lotto_id, 'ANNULLATA')
+  FROM tmp_lotto_morto_mnf l;
 
 -- Una fattura DRAFT con una riga, per il caso IN_FATTURA
 CREATE TEMP TABLE tmp_fattura_mnf AS
