@@ -1,8 +1,10 @@
 # Brief DB — Gli stati dei documenti: ogni significato dal vocabolario
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-08
+## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: Tid**, col via allo sviluppo (S-2 … S-10 decise come proposte dal DB, 2026-11-08); poi il **team DB**, un giro per difetto.
+**Riparte: team DB** col giro 2, l'offerta (§6.1), al via di Tid. Il giro 1 è applicato e verde (2026-11-13). In
+parallelo il **team BE** può fare la richiesta R-2 del §6.4 (un test Django).
+Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col via di Tid, ha scritto il giro 1 (§6).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -11,11 +13,19 @@
 | 3 | ✅ Tid | **S-1**: `terminale` = nessun passaggio **a mano** in uscita; gli automatismi restano (A, 2026-11-08) | §3 | — |
 | 4 | ✅ DB | censimento: per ogni difetto i lettori e gli scrittori, la proposta di correzione, il pgTAP, le ricadute (2026-11-08) | §4 | — |
 | 5 | ✅ Tid | S-2 … S-10 come proposte dal DB («confermo la tua proposta», 2026-11-08) | §4.9 | — |
-| 6 | Tid | via allo sviluppo | — | 5 |
-| 7 | DB | sviluppo, prova in transazione, pgTAP | — | 6 |
-| 8 | BE/FE | le ricadute del §4.10 (FE: costanti degli ordini e copia degli stati terminali dell'offerta; BE: il rifiuto dell'offerta, se S-3) | §4.10 | 7 |
+| 6 | ✅ Tid | via allo sviluppo (2026-11-12) | — | — |
+| 7 | ✅ DB | giro 1, il vocabolario fiscale (②, ⑥, S-6, S-7 e la parte fiscale di S-2): nove changeSet, prova in transazione, pgTAP adeguati e nuovi (2026-11-12) | §6.2, §6.3 | — |
+| 8 | ✅ Tid | apply del giro 1 (`20261112-44 … -52`) e pgTAP del §6.3: verdi (2026-11-13) | §6.3 | — |
+| 8b | ✅ Tid | R-1 … R-3 come proposte dal DB; per R-2 il ritiro di `in_gioco` (2026-11-13) | §6.4 | — |
+| 9 | DB | giri 2 … 6, uno per volta, nell'ordine del §6.1 | §6.1 | il via di Tid per ogni giro |
+| 10 | BE/FE | le ricadute del §4.10 (FE: costanti degli ordini e copia degli stati terminali dell'offerta; BE: il rifiuto dell'offerta, se S-3). Il giro 1 non ne ha | §4.10 | il giro che le porta |
+| 11 | BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` | §6.4 | — (si può fare subito) |
 
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non l'`attivo = false`). **Lavoro da committare:** questo brief.
+**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
+resta su EMESSA, eccezione voluta); R-2, `in_gioco` si ritira (giro 5, dopo la riga 11); R-3, il lotto non diventa
+REGISTRATO (`applica_lotto` = false, giro 4). Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non
+l'`attivo = false`). **Lavoro da committare:** la verifica del 2026-11-12 (§5) e il giro 1 (§6); il brief del
+2026-11-08 è nel commit `e2a4de9efc`.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid, poi il team DB.
 > **Origine:** il giro DOC.4 di `brief-db-sorgente-documento-e-riga` (§7.3 «Trovato da DOC.4»): riscrivendo le dieci
@@ -149,12 +159,12 @@ colonna già dichiara) sta nei guard di transizione di **ordine** (`'DRAFT'`→`
 | --- | --- |
 | guard di transizione | `trgfn_ordini_guard_transizione` (DRAFT→iniziale, CONFERMATO→emissione, ANNULLATO→is_abortito); `trgfn_contratti_guard_transizione_stato` (ATTIVO→emissione, CESSATO→cessazione); `trgfn_preventivi_guard_transizione` (ACCETTATO→accettazione); `trgfn_ddt_guard_transizione` (DRAFT, EMESSO); `trgfn_preventivi_guard_annullamento` (ANNULLATO) |
 | capability | `script.fn_available_actions_{contratto,ddt,offerta,ordine,preventivo,reso}` (`v_stato_cod = 'DRAFT'/'BOZZA'` per «in bozza»; EMESSO, ANNULLATO) |
-| bolla | `trgfn_ddt_gen_numero_emesso`, `trgfn_ddt_guard_causale_emissione`, `trgfn_ddt_guard_indirizzi_obbligatori`, `trgfn_ddt_guard_transizione_approvazione` (EMESSO→emissione) |
+| bolla | `trgfn_ddt_gen_numero_emesso`, `trgfn_ddt_guard_causale_emissione`, `trgfn_ddt_guard_indirizzi_obbligatori`, `trgfn_ddt_guard_transizione_approvazione` (EMESSO→emissione); `script.vw_stati_doc_ddt_merce_partita` (aggiunta il 2026-11-12, §5: EMESSO→emissione per trovare lo stato da cui si conta; il «da lì in poi» per `ordine` resta, scelta (a) di Tid del 2026-10-12) |
 | contratto | `trgfn_contratti_freeze_listino_versione`, `trgfn_contratti_set_categoria_cliente_snapshot` (DRAFT, ATTIVO); `fn_get_contratto_attivo` (ATTIVO) |
 | reso | `fn_conferma_reso`, `fn_annulla_reso`, `script.fn_check_reso_merce`, `trgfn_resi_righe_guard_quantita` (DRAFT, ANNULLATO) |
 | preventivo, ordine | `fn_crea_revisione_preventivo` (DRAFT); `fn_list_ordini_da_pushare` (DRAFT, ANNULLATO) |
 | listino | `trgfn_listini_kit_guard`, `trgfn_listini_righe_guard_stato`, `trgfn_listini_righe_guard_periodicita_quota_fissa`, `trgfn_listini_righe_comp_guard_immutabilita_v5`, `trgfn_listini_versioni_guard_per_stato`, `script.fn_check_versione_listino_eliminabile`, `fn_check_listino_provenienza`, `fn_listino_ha_storia`, `fn_resolve_prezzo_listino_v2_esito` (BOZZA→iniziale) |
-| fiscale | i tre di ② (DRAFT); `trgfn_fatture_guard_stato` (`'EMESSA'` per il cancello IVA: il vocabolario fiscale non ha `emissione`, S-3) |
+| fiscale | i tre di ② (DRAFT); `trgfn_fatture_guard_stato` (`'EMESSA'` per il cancello IVA: il vocabolario fiscale non ha `emissione`, e non la avrà, R-1 del §6.4) |
 
 Gli altri letterali del censimento nominano uno stato **senza** un significato dichiarato (EVASO, PARZIALMENTE_EVASO;
 SPEDITO, CONSEGNATO, RESO della bolla; CONFERMATO del reso; ATTIVA, CHIUSA del listino): sono destinazioni o condizioni
@@ -292,8 +302,12 @@ stato attivo senza righe in entrata e verifica che il presidio lo trovi. Nessun 
 
 **Ricadute (se ritirati).** FE: `frontend/src/vendite/ordini/constants.js` (quattro voci), `frontend/src/locales/it.json`
 e `en.json` (`vendite.ordini.stato_info.fatturato`); i commenti che citano `ALLOCATO` come esempio di descrizione
-(`PreventiviDrawer.vue:781`, `CommessaGestioneDrawer.vue:403`, `ContrattoDrawer.vue:735`) restano veri come esempio
-solo se lo stato c'è: da riscrivere. BE: nessuna. Doc: `guide/gestione-ordini.md:399`.
+restano veri come esempio solo se lo stato c'è: da riscrivere. ⚠️ Elenco corretto il 2026-11-12 (§5): sono **sei**,
+non tre — `frontend/src/vendite/preventivi/components/PreventiviDrawer.vue`,
+`frontend/src/vendite/components/CommessaGestioneDrawer.vue`, `frontend/src/vendite/components/ContrattoDrawer.vue`,
+`frontend/src/vendite/ordini/components/OrdiniDrawer.vue`, `frontend/src/vendite/ddt/components/DdtDrawer.vue`,
+`frontend/src/vendite/resi/components/ResoDrawer.vue`. BE: nessuna. Doc: `guide/gestione-ordini.md` (la riga della
+tabella «⏳ non ancora raggiunti»).
 
 ### 4.5 ⑥ Il controllo di `applica_fattura` in un ramo che non scatta
 
@@ -375,9 +389,11 @@ altrimenti (contratti, fiscale, `vendite.contratti.is_abortito_snapshot`), in un
   seconda verità ovunque stia, e portarne via una sola lascia la regola ricopiata nelle altre.
 * **S-3 — I significati che il vocabolario non ha.** Tre stati hanno un significato che il codice usa ma nessuna colonna
   dice: il **rifiuto** (offerta RIFIUTATA: `data_rifiuto`, la motivazione obbligatoria; preventivo RIFIUTATO),
-  l'**emissione del reso** (CONFERMATO: lì nasce il numero, `trgfn_resi_gen_numero`) e l'**emissione fiscale** (EMESSA: il
+  l'**emissione del reso** (CONFERMATO: lì nasce il numero, `trgfn_resi_gen_numero`; e da lì la merce è rientrata,
+  `script.vw_stati_doc_reso_merce_rientrata`, nata il 2026-11-09, §5) e l'**emissione fiscale** (EMESSA: il
   cancello IVA di `trgfn_fatture_guard_stato`). **Proposta DB:** una colonna `rifiuto` su offerte e preventivi (come
-  `accettazione`, col suo lettore `script.fn_stato_rifiuto_id`), `emissione` su `stati_doc_reso` e `stati_doc_fiscale`.
+  `accettazione`, col suo lettore `script.fn_stato_rifiuto_id`), `emissione` su `stati_doc_reso` e `stati_doc_fiscale`
+  (⚠️ per `stati_doc_fiscale` **revocata** da Tid il 2026-11-13, R-1 del §6.4).
   Restano nominati col codice, attraverso `script.fn_doc_stato_id`, gli stati che sono **la destinazione di un
   processo** (EVASO, PARZIALMENTE_EVASO, SPEDITO, CONSEGNATO, RESO della bolla, ATTIVA e CHIUSA del listino): il processo
   nomina la sua destinazione come la nomina la riga della matrice. *Perché:* la colonna serve dove c'è un lettore che
@@ -422,10 +438,169 @@ altrimenti (contratti, fiscale, `vendite.contratti.is_abortito_snapshot`), in un
 | ② | nessuna (due test Django passano DRAFT, che è l'iniziale) | nessuna |
 | ③ | nessuna; con S-3: `backend/apps/vendite/services/offerte_service.py` (`registra_rifiuto`) | nessuna |
 | ④ | nessuna | nessuna; con S-10: `frontend/src/vendite/offerte/constants.js`, `frontend/src/vendite/offerte/components/OffertaDrawer.vue` |
-| ⑤ (S-8) | nessuna | `frontend/src/vendite/ordini/constants.js`, `frontend/src/locales/it.json`, `frontend/src/locales/en.json`; commenti in `PreventiviDrawer.vue`, `CommessaGestioneDrawer.vue`, `ContrattoDrawer.vue` |
+| ⑤ (S-8) | nessuna | `frontend/src/vendite/ordini/constants.js`, `frontend/src/locales/it.json`, `frontend/src/locales/en.json`; commenti nei sei drawer del §4.4 (elenco corretto il 2026-11-12) |
 | ⑥ | nessuna | nessuna |
 | ⑦ | nessuna (stesse colonne; cambia un valore con S-5) | nessuna |
 | ⑧ | nessuna | nessuna |
 
 Il codice d'errore nuovo di ④ lo solleva solo chi scrive la configurazione: da registrare (`codici_errore.csv`,
 `messaggi_errore.csv`), senza ricadute sul BE oltre al catalogo generato.
+
+## 5. Riverifica sul catalogo (team DB, 2026-11-12)
+
+Fonti: `pg_proc.prosrc`, `pg_get_viewdef`, `pg_trigger`, `pg_index`, `pg_description`, seed e matrici su dbdev (applicato
+fino al 2026-11-12), in sola lettura; `grep` in `backend/apps` e `frontend/src`. Fra il 2026-11-08 e il 2026-11-12 sono
+entrati circa 400 changeSet, e un centinaio tocca oggetti nominati qui.
+
+**Reggono tutti i difetti del §2 e i fatti del §4.** Letterale `'DRAFT'` nella madre del lotto, nessun trigger della
+nascita sul lotto, colonna di stato nullable (②); i cinque codici nel guard dell'offerta, nessuna colonna `rifiuto`
+(③); le uscite di processo da SUPERATA, EVASO (preventivi e ordini), CONSEGNATO e RESO della bolla, l'uscita a mano
+CONFERMATO→ANNULLATO del reso (④, S-5); i quattro stati d'ordine fuori dalla matrice, la «cintura» FATTURATO di
+`fn_list_ordini_da_pushare` (⑤); il ramo «prima assegnazione» di `trgfn_fatture_guard_stato` (⑥); la regola su
+`fase = 'CHIUSO'` nelle due viste di bolla e reso (⑦); l'indice `ux_…` e la `fase` che manca sul listino (⑧); tutti i
+COMMENT stantii del §2; nessun `terminale` letto da `fn_available_actions_offerta` (S-10). Esistono tutti i pgTAP
+citati; non esistono ancora quelli nuovi (`test-offerta-guard-dal-vocabolario-v1`,
+`test-terminale-senza-uscita-manuale-v1`) e il builder `dbops.fn_pgtap_crea_offerta`.
+
+**Corretto in questa verifica.**
+
+1. **Mancava al censimento di ③ la vista della bolla** `script.vw_stati_doc_ddt_merce_partita` (BB del 2026-10-12):
+   trova lo stato da cui si conta col letterale `'EMESSO'`, mentre `config.stati_doc_ddt.emissione` lo dice già.
+   Aggiunta alla riga «bolla» del §4.2. Il resto della regola, «da quello stato in poi» per `ordine`, è la scelta (a)
+   di Tid del 2026-10-12 e **non** si tocca qui.
+2. **Una vista nuova dopo il brief:** `script.vw_stati_doc_reso_merce_rientrata` (2026-11-09, gemella della
+   precedente; la leggono `dbops.vw_resi_confermati_senza_carico`, `vendite.vw_resi_righe_effettive`,
+   `vendite.vw_resi_da_riconsegnare`) trova lo stato col letterale `'CONFERMATO'`. È un lettore dell'**emissione del
+   reso** di S-3: quando nasce `config.stati_doc_reso.emissione`, legge quella. Aggiunta a S-3.
+3. **Le ricadute FE di S-8 erano incomplete.** I commenti che citano `ALLOCATO` come esempio stanno in sei drawer, non
+   in tre, e due dei tre percorsi erano sbagliati. Elenco chiuso, coi percorsi interi, corretto nel §4.4 e nel §4.10.
+4. Riferimenti di riga che si sono spostati: `guide/gestione-ordini.md` (la riga «⏳ non ancora raggiunti» oggi è la
+   402); in `backend/apps/pratiche/db/pratiche_repository.py` il secondo lettore di `terminale` è la `LATERAL` su
+   `script.vw_flusso_doc_sorgente` (intorno alla 104).
+
+⚠️ **Per chi sviluppa: i corpi sono cambiati dopo il 2026-11-08.** Il comportamento letto qui regge, ma molti oggetti
+del censimento hanno una revisione più recente del brief, e alcune sono più recenti della doc auto-generata:
+`vendite.fn_conferma_reso`, `vendite.fn_annulla_reso` (2026-11-09/10), `vendite.fn_list_ordini_da_pushare`
+(2026-11-08), `vendite.fn_resolve_prezzo_listino_v2_esito` (2026-11-12),
+`vendite.trgfn_listini_righe_comp_guard_immutabilita_v5` (2026-11-11), `pratiche.fn_stato_sorgente` e
+`pratiche.fn_reconcile_sorgente` (2026-11-08), `dbops.fn_pgtap_crea_lotto` e i builder di bolla, ordine, preventivo,
+fattura e reso (2026-11-08). Il DDL si prende dalla doc auto-gen solo se è stata rigenerata dopo l'ultimo changeSet
+sull'oggetto; altrimenti da `pg_get_functiondef`. Mai dagli YAML.
+
+## 6. Lo sviluppo (team DB)
+
+### 6.1 L'ordine dei giri
+
+Un giro per vocabolario o per difetto, così ogni oggetto si apre una volta sola:
+
+| Giro | Che cosa | Difetti e decisioni |
+| --- | --- | --- |
+| 1 ✅ applicato | il vocabolario fiscale: lotto e fattura | ②, ⑥, S-6, S-7; S-2 sul fiscale. L'emissione fiscale di S-3 è revocata (R-1) |
+| 2 | l'offerta | ③, S-3 (`rifiuto` su offerte e preventivi), S-10 per l'offerta, il builder `dbops.fn_pgtap_crea_offerta` |
+| 3 | `terminale`, bolla e reso | ④ (il BB e i COMMENT), ⑦, S-4, S-5, S-3 (`emissione` del reso, coi due lettori del §5) |
+| 4 | gli stati d'ordine senza passaggi | ⑤, S-8, il presidio della raggiungibilità; R-3 (`applica_lotto` = false su REGISTRATA) |
+| 5 | il vocabolario del listino e i COMMENT stantii | ⑧, S-9, §4.8; R-2 (il ritiro di `in_gioco`, se la riga 11 è fatta) |
+| 6 … | il resto della famiglia di S-2 | un documento per volta: preventivo, ordine, contratto, bolla, reso, listino |
+
+### 6.2 Giro 1 — il vocabolario fiscale (2026-11-12)
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `00_schema/config/20261112-44` | CHECK `chk_stati_doc_fiscale_iniziale_applica`: lo stato iniziale si applica a lotto e fattura (§4.1 d) |
+| `20_code/vendite/20261112-45` | il trigger della nascita sul lotto, `trg_fatturazione_lotti_a05_stato_iniziale_ins` (§4.1 a) |
+| `00_schema/vendite/20261112-46` | `vendite.fatturazione_lotti.stato_doc_fiscale_id NOT NULL` (S-6) |
+| `20_code/vendite/20261112-47` | `vendite.fn_create_fatturazione_lotto` non sceglie più lo stato (§4.1 b) |
+| `20_code/vendite/20261112-48` | `vendite.trgfn_fatture_guard_stato`: `applica_fattura` sulla destinazione, via il ramo «prima assegnazione» (S-7) |
+| `20_code/vendite/20261112-49` | `vendite.trgfn_fatturazione_lotti_guard_stato`: lo stesso con `applica_lotto` (S-7) |
+| `20_code/script/20261112-50` | `script.fn_check_lotto_fatture_pre_fiscali`: «pre-fiscale» da `congela_fiscale`, non da DRAFT ed EMESSA (S-2) |
+| `20_code/vendite/20261112-51` | `vendite.trgfn_fatture_guard_uscita_draft`: la bozza da `iniziale` (S-2) |
+| `20_code/vendite/20261112-52` | `vendite.fn_imposta_data_documento_lotto`: la finestra da `congela_fiscale` (S-2) |
+
+Corpi presi da `pg_get_functiondef` su dbdev, testate ri-ancorate con `%TYPE`, COMMENT riscritti al presente; ogni
+changeSet porta nel rollback il corpo e il COMMENT di prima. Il cancello IVA del guard della fattura resta sul codice
+EMESSA (R-1: eccezione voluta). Fatto datato, 2026-11-12: ogni stato fiscale ha `applica_lotto` e `applica_fattura` true, e DRAFT ed
+EMESSA sono gli unici con `congela_fiscale` false, quindi nessun passaggio di oggi cambia esito. I rami fail-closed di
+`vendite.vw_lotti_fase` e `vendite.vw_documenti_trattenuti_da_lotto` restano (sono un LEFT JOIN corretto anche col
+NOT NULL); si ritirano i casi dei pgTAP che li costruivano.
+
+Guardrail delle forme, del COMMENT al presente e del preambolo pgTAP: verdi. Estratto provato in `ROLLBACK` sullo
+scratch con `scripts/prova_changeset.py`: eseguito per intero, catalogo identico prima e dopo. BE/FE: nessuna ricaduta
+(i due test Django che inseriscono un lotto passano DRAFT, che è lo stato iniziale). Pagine `manual/` riscritte:
+`config/stati_doc_fiscale`, `vendite/fn_create_fatturazione_lotto`, `vendite/fatturazione_lotti`,
+`script/fn_check_lotto_fatture_pre_fiscali`, `vendite/trgfn_fatture_guard_uscita_draft`,
+`vendite/fn_imposta_data_documento_lotto`. La doc auto-generata non è rigenerata.
+
+### 6.3 I pgTAP del giro 1
+
+Nuovi o estesi:
+
+* `script/test-trgfn-doc-stato-iniziale-v1` (plan 18 → 22): il lotto nel censimento dei montaggi (test 5, 6: dodici
+  testate); nuovi 19 (il lotto dalla madre nasce nello stato iniziale), 20 (un lotto che nasce DEFINITIVA è
+  rifiutato), 21 (la marca spostata: con `iniziale` su EMESSA la madre crea il lotto in EMESSA), 22 (il CHECK);
+* `vendite/test-stato-fiscale-dal-vocabolario-v1` (nuovo, plan 8): S-7 su fattura e lotto, ognuno col suo contrasto;
+  «pre-fiscale» con la marca spostata su `congela_fiscale`; il presidio sulla forma, che tiene a un punto solo l'eccezione di R-1.
+
+Adeguati, perché facevano nascere il lotto in uno stato che il trigger ora rifiuta:
+
+* `vendite/test-annullamento-chiude-la-vita-v1`, `vendite/test-lotti-fermi-verdetto-a-db-v1`,
+  `vendite/test-motivo-non-fatturata-v1`: il lotto nasce in bozza e si porta allo stato voluto con
+  `dbops.fn_pgtap_porta_a_stato`;
+* `vendite/test-vw-lotti-fase-v1` (plan 8 → 5) e `vendite/test-documento-trattenuto-da-lotto-v1` (plan 7 → 6):
+  stessa forma, e ritirati i test del lotto senza stato (S-6). In `test-lotti-fermi-verdetto-a-db-v1` c'era un terzo
+  caso uguale, il test 24, che il §4.1 non elencava: ritirato anche quello (plan 24 → 23). Tolto da
+  `test-vw-lotti-fase-v1` anche il testimone REGISTRATA, che un lotto non raggiunge (R-3);
+* `test-documento-trattenuto-da-lotto-v1` ora **costruisce** il suo mondo (`dbops.fn_pgtap_crea_emittente_operatore`,
+  runner owner come il gemello): prendeva emittente e tipo documento «da un lotto che c'è già», e su un database senza
+  lotti (lo scratch, la CI) non scriveva niente, verde per sottrazione;
+* `vendite/test-fondi-fattura-lotto`: solo il commento della fixture (il lotto ora nasce in bozza, come le figlie).
+
+Regressione con `prova_changeset.py --pgtap`, senza e con l'estratto, su 118 file che nominano il vocabolario fiscale,
+il lotto, il BB della nascita o gli oggetti toccati: tutti uguali o migliori. I rossi rimasti sono di prima:
+`script/test-vw-giornale-entita` si interrompe senza e con l'estratto su un dato che lo scratch non ha (passa dalla
+madre e non nomina lo stato del lotto); i test di perimetro RLS sono rossi da owner per costruzione. I pgTAP li lancia
+Tid.
+
+**Esito (Tid, 2026-11-13):** giro 1 applicato su dbdev, pgTAP del §6.3 verdi.
+
+### 6.4 Trovati dal giro 1 — decisi da Tid (2026-11-13)
+
+Decise da Tid il 2026-11-13, tutte e tre come proposte dal DB (per R-2 il ritiro, non il mantenimento).
+
+* **R-1 — L'emissione fiscale di S-3: revocata.** S-3 proponeva `emissione` su `config.stati_doc_fiscale`, per il
+  cancello IVA del guard della fattura. Il 2026-10-25 (`20261025-37`, brief-modello-documento-vendita §8) la colonna era
+  nata **solo** sui cinque documenti che passano da «Emetti», e la fattura ne era stata esclusa apposta: «la pipeline
+  non emette, il lettore risponde NULL». Il backend legge `script.fn_stato_emissione_id` per rifiutare l'emissione sul
+  cambio stato generico: dare la colonna alla fattura cambierebbe anche quella risposta. **Deciso:** per il fiscale
+  niente colonna `emissione`; il cancello IVA nomina EMESSA, ed è l'**unico** punto del fiscale che nomina un codice.
+  Non è un debito: è un'eccezione voluta, tenuta a un punto solo dal test 8 di
+  `test-stato-fiscale-dal-vocabolario-v1` (frase aggiornata il 2026-11-13). Se un giorno un secondo lettore vorrà
+  sapere «da qui la fattura è emessa», serve una colonna col suo nome, non quella di «Emetti».
+* **R-2 — `in_gioco` senza un caso suo: si ritira.** `vendite.vw_lotti_fase` ha due flag, `pre_fiscale` e `in_gioco`,
+  e l'unico caso in cui dissentivano era il lotto senza stato (il test 8 di `test-vw-lotti-fase-v1`: «è tutta la
+  ragione per cui sono due flag»). Con S-6 quel caso non esiste più: `in_gioco` è una copia di `pre_fiscale`, e una
+  copia si ritira nello stesso cantiere. Lettori, censiti sul catalogo di dbdev e nel codice il 2026-11-13:
+
+  | Lato | Lettore | Cosa cambia |
+  | --- | --- | --- |
+  | DB | `vendite.vw_dash_competenza_attivita` (`lfase.in_gioco`, motivo GIRO_IN_CORSO) | legge `pre_fiscale` |
+  | DB | `vendite.vw_documenti_trattenuti_da_lotto` (`f.in_gioco`) | legge `pre_fiscale` |
+  | DB | `script.fn_check_attivita_riportabile_da_emettere` (`f.in_gioco AS marchio_in_gioco`) | legge `pre_fiscale` |
+  | BE | `backend/apps/vendite/tests/db/test_riepilogo_esclude_trattenuti.py` (righe 119-225: `SELECT in_gioco FROM vendite.vw_lotti_fase`, il metodo `_crea_lotto_in_gioco` e i commenti) | legge `pre_fiscale` |
+  | FE | nessuno | — |
+
+  **Chi cambia per primo:** il BE (riga 11 della testata), perché `pre_fiscale` c'è già e vale quanto `in_gioco`: il test
+  passa prima e dopo. Poi il DB, nel giro 5: i tre lettori passano a `pre_fiscale` e la colonna esce dalla vista (che va
+  ricreata con le sue dipendenti), insieme alle pagine `vw_lotti_fase`, `vw_documenti_trattenuti_da_lotto`,
+  `vw_dash_competenza_attivita` e `fn_check_attivita_riportabile_da_emettere`, e ai pgTAP che la nominano
+  (`test-vw-lotti-fase-v1`, `test-documento-trattenuto-da-lotto-v1`, `test-motivo-non-fatturata-v1`). Se il BE non ha
+  ancora fatto la sua parte, il DB porta i tre lettori e lascia la colonna.
+* **R-3 — REGISTRATA e il lotto: il lotto non diventa REGISTRATO.** REGISTRATA ha `applica_lotto` = true, ma nessuna riga
+  della matrice porta un lotto in REGISTRATA (INVIATA → REGISTRATA è solo della fattura): la registrazione è un fatto
+  della singola fattura. **Deciso:** `applica_lotto` = false su REGISTRATA, dal CSV, nel giro 4, insieme al presidio
+  della raggiungibilità di ⑤, che altrimenti la segnalerebbe sull'asse del lotto. Così il vocabolario dice la stessa
+  cosa della matrice.
+
+Minori, da chiudere quando si riaprono gli oggetti: il BB della nascita, sul lotto, nomina la tabella
+(`fatturazione_lotti`) nella frase del rifiuto, perché il lotto non è in `config.sorgenti` (come la versione di
+listino; lo raggiunge solo un `INSERT` diretto, la madre non passa lo stato); il commento nel corpo di
+`dbops.fn_pgtap_crea_lotto` dice ancora che lo stato DRAFT lo decide la madre.

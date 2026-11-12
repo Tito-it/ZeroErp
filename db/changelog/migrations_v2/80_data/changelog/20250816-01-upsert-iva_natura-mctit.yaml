@@ -5,6 +5,13 @@
 #
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
+#
+# ⭐ REV 2026-11-13 — via `user_insert` e `user_update` (brief-db-token-null-dei-seed
+#   D2, la forma di magazzino.causali). `user_insert` era vuota in tutte le 21
+#   righe e arrivava come stringa vuota: un'audit che non dice chi ha scritto. Le
+#   due colonne escono dal CSV e da `columns:`, e vale il default della tabella
+#   (linee-guida-sql §7). Il default e il NOT NULL di `user_insert`, e la
+#   conversione delle righe gia' scritte, stanno in 90_end/20261112-54.
 # ------------------------------------------------------------
 databaseChangeLog:
   - changeSet:
@@ -39,12 +46,10 @@ databaseChangeLog:
             - column: { name: codice,   type: STRING }
             - column: { name: descrizione,   type: STRING }
             - column: { name: data_insert,   type: STRING }
-            - column: { name: user_insert,   type: STRING }
             - column:
                     name: data_update
                     type: STRING
                     defaultValue: "NOW()"
-            - column: { name: user_update,      type: STRING }
            
   - changeSet:
       id: 20250816-90-upsert-iva_natura

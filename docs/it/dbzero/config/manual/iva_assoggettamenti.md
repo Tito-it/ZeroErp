@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.iva_assoggettamenti`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -38,8 +38,10 @@ Obiettivi:
 * `attivo` → abilita/disabilita in selezione.
 * `note` → annotazioni operative/normative. Senza nota la colonna è `NULL`, mai la stringa
   vuota: il `CHECK` `chk_iva_assoggettamenti_note_non_vuota` rifiuta `''` e una stringa di
-  soli spazi. Nel CSV del seed la cella senza nota porta il token `NULL` (il mirror dichiara
-  `nullValue: "NULL"`).
+  soli spazi. Nel CSV del seed la cella senza nota porta il token `NULL`: lasciata vuota,
+  il caricatore la scriverebbe come stringa vuota (linee-guida-sql §11.2). Dal pannello,
+  svuotare la nota la salva `NULL` (`config.fn_pannello_scrivi`, dal 13 novembre 2026): prima
+  il salvataggio veniva rifiutato dal `CHECK`.
 * **Audit/Governance**: `data_*`, `user_*`, `storicizza`.
 
 ---

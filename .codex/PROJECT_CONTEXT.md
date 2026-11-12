@@ -256,8 +256,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
   cambio di licenza.
-- 📝 **Gli stati del documento dal vocabolario** (`work-in-progress/brief-db-stati-documento-dal-vocabolario.md`):
-  decisioni prese, aspetta il via.
+- 🔵 **Gli stati del documento dal vocabolario** (`work-in-progress/brief-db-stati-documento-dal-vocabolario.md`):
+  in sviluppo, un giro per vocabolario; il giro 1 (fiscale) è applicato e verde il 2026-11-13, R-1 … R-3 decise lo stesso giorno
+  (una richiesta BE: un test Django passa da `in_gioco` a `pre_fiscale`); chi riparte è in testa al brief.
 - ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
   decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. BE in attesa.
 

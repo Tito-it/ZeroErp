@@ -5,7 +5,7 @@
 # Doc: Python
 # Guardrail CI — le forme che passano la lettura e muoiono all'apply
 #
-# COSA PRESIDIA. Tredici regole scritte nella documentazione e ricadute piu'
+# COSA PRESIDIA. Quattordici regole scritte nella documentazione e ricadute piu'
 #   volte, ognuna con la sua sede. Hanno in comune che si vedono LEGGENDO il
 #   file, senza database, e che la prova a mano spesso non le prende:
 #
@@ -57,14 +57,20 @@
 #                          ancora con `%TYPE` (linee-guida-sql §5g; Tid 2026-11-12:
 #                          la regola intera resta alla revisione, il guardrail
 #                          guarda gli id)
-#   nullvalue-vuoto        un caricatore con `nullValue: ""` il cui CSV ha una
-#                          cella vuota in una colonna dichiarata STRING e nullable
-#                          nella tabella: Liquibase scrive '' dove si voleva NULL,
-#                          e l'assenza ha due forme (linee-guida-sql §11.7). La
+#   cella-vuota-string     un caricatore il cui CSV ha una cella vuota in una
+#                          colonna dichiarata STRING (senza defaultValue) e
+#                          testo nullable nella tabella: Liquibase la scrive '',
+#                          e l'assenza ha due forme. Qualunque `nullValue:` il
+#                          caricatore dichiari: Liquibase lo ignora, e l'assenza
+#                          si scrive `NULL` (linee-guida-sql §11.2). La
 #                          nullabilita' si legge dalla doc auto-generata. Guarda
 #                          tutti i caricatori, perche' un append a un CSV non fa
 #                          nascere un changeSet nuovo; i casi noti stanno in
-#                          NULLVALUE_DEBITO, che non tiene righe morte
+#                          CELLA_VUOTA_DEBITO, che non tiene righe morte
+#   null-grafia            una cella che e' la parola null in una grafia diversa
+#                          da `NULL`: il caricatore la riconosce lo stesso, ma la
+#                          convenzione e' una, e chi legge il CSV senza Liquibase
+#                          cerca `NULL` (linee-guida-sql §11.2)
 #   pgtap-pgagent-owner    un pgTAP che legge `pgagent.*` senza
 #                          `-- pgtap-runner: owner` nelle prime 80 righe: il
 #                          runner lo esegue come applicazione, che sullo schema
@@ -444,14 +450,30 @@ def type_perso(firme_prima: dict[str, Firma], firme_ora: dict[str, Firma]) -> li
     return fuori
 
 
-# ── nullvalue-vuoto ─────────────────────────────────────────────────────
+# ── cella-vuota-string, null-grafia ─────────────────────────────────────
 
+# ⚠️ Liquibase 5.0.4 NON ha un attributo `nullValue` su loadData/loadUpdateData
+#   e lo ignora senza errore (misurato il 2026-11-12, brief-db-token-null-dei-seed
+#   §1): una cella vuota su una colonna STRING e' '' sotto qualunque nullValue, e
+#   la parola null, in ogni grafia, e' NULL. Per questo la regola guarda tutti i
+#   caricatori, non solo quelli con `nullValue: ""` (la forma di prima, che non
+#   vedeva i casi sotto `nullValue: "NULL"`).
+#
 # I caricatori che oggi scrivono '' in una colonna testo nullable: debito noto,
-# con la sede della correzione. Una riga che non viola piu' e' una riga morta, e
+# con la decisione che lo chiude. Una riga che non viola piu' e' una riga morta, e
 # il cancello la segnala: si toglie nello stesso giro in cui si corregge il mirror.
-# Vuoto dal 2026-11-12 (brief-db-nullvalue-vuoto-cinque-mirror): un caso nuovo si
-# corregge, non si registra qui.
-NULLVALUE_DEBITO = {
+# Un caso nuovo si corregge, non si registra qui.
+# ⚠️ Le due righe di sistema_codici non sono un debito del CSV: '' e' il valore, e
+#   90_end/20261112-53 rende la colonna NOT NULL DEFAULT ''. La regola legge la
+#   nullabilita' dalla doc auto-generata: quando la doc rigenerata dice NOT NULL,
+#   le due righe diventano morte e il cancello chiede di toglierle.
+CELLA_VUOTA_DEBITO = {
+    "20250813-05-upsert-sistema_codici-mctit.yml":
+        "sistema_codici.separatore: '' e' il valore, la colonna diventa NOT NULL in 90_end/20261112-53 "
+        "(brief-db-token-null-dei-seed D1)",
+    "20260524-25-upsert-sistema-codici-offerta-commerciale-mctit.yaml":
+        "sistema_codici.separatore: '' e' il valore, la colonna diventa NOT NULL in 90_end/20261112-53 "
+        "(brief-db-token-null-dei-seed D1)",
 }
 COLONNA_DOC_RE = re.compile(r"^\|\s*(\w+)\s*\|\s*([^|]+?)\s*\|\s*(YES|NO)\s*\|")
 TESTO_RE = re.compile(r"^(text|character varying|varchar|character|char)\b", re.IGNORECASE)
@@ -471,28 +493,52 @@ def _nullable(schema: str, tabella: str) -> dict[str, bool] | None:
     return fuori
 
 
-def nullvalue_vuoto(cs: dict, percorso: Path) -> list[Violazione]:
-    fuori: list[Violazione] = []
+# Scopo: i caricatori di un changeSet, ciascuno col suo CSV.
+def _caricatori(cs: dict, percorso: Path) -> list[tuple[str, dict, Path]]:
+    fuori: list[tuple[str, dict, Path]] = []
     for cambio in gc.cambi(cs):
         for tipo in ("loadData", "loadUpdateData"):
             ld = cambio.get(tipo)
-            if not isinstance(ld, dict) or ld.get("nullValue", None) != "" or not ld.get("file"):
+            if not isinstance(ld, dict) or not ld.get("file"):
                 continue
             csv_path = (percorso.parent / ld["file"]) if ld.get("relativeToChangelogFile") \
                 else (gc.ROOT / "db" / "changelog" / ld["file"])
-            nullable = _nullable(ld.get("schemaName", "public"), ld.get("tableName", ""))
-            if not csv_path.exists() or nullable is None:
-                continue
-            stringhe = {c["name"] for col in ld.get("columns") or [] if isinstance(col, dict)
-                        for c in [col.get("column")]
-                        if isinstance(c, dict) and str(c.get("type", "")).upper() == "STRING"}
-            with csv_path.open(encoding="utf-8", newline="") as fh:
-                vuote = sorted({col for r in csv.DictReader(fh) for col, v in r.items()
-                                if v == "" and col in stringhe and nullable.get(col)})
-            if vuote:
-                fuori.append((f"{tipo} di {ld.get('schemaName')}.{ld.get('tableName')} con nullValue \"\": "
-                              "celle vuote in colonne testo nullable, scritte come ''",
-                              ", ".join(vuote)[:150]))
+            fuori.append((tipo, ld, csv_path))
+    return fuori
+
+
+def cella_vuota_string(cs: dict, percorso: Path) -> list[Violazione]:
+    fuori: list[Violazione] = []
+    for tipo, ld, csv_path in _caricatori(cs, percorso):
+        nullable = _nullable(ld.get("schemaName", "public"), ld.get("tableName", ""))
+        if not csv_path.exists() or nullable is None:
+            continue
+        # Una colonna con defaultValue prende il default sulla cella vuota.
+        stringhe = {c["name"] for col in ld.get("columns") or [] if isinstance(col, dict)
+                    for c in [col.get("column")]
+                    if isinstance(c, dict) and str(c.get("type", "")).upper() == "STRING"
+                    and not any(str(k).startswith("defaultValue") for k in c)}
+        with csv_path.open(encoding="utf-8", newline="") as fh:
+            vuote = sorted({col for r in csv.DictReader(fh) for col, v in r.items()
+                            if v == "" and col in stringhe and nullable.get(col)})
+        if vuote:
+            fuori.append((f"{tipo} di {ld.get('schemaName')}.{ld.get('tableName')}: celle vuote in "
+                          "colonne STRING testo nullable, scritte come '' (l'assenza si scrive NULL)",
+                          ", ".join(vuote)[:150]))
+    return fuori
+
+
+def null_grafia(cs: dict, percorso: Path) -> list[Violazione]:
+    fuori: list[Violazione] = []
+    for tipo, ld, csv_path in _caricatori(cs, percorso):
+        if not csv_path.exists():
+            continue
+        with csv_path.open(encoding="utf-8", newline="") as fh:
+            colonne = sorted({col for r in csv.DictReader(fh) for col, v in r.items()
+                              if isinstance(v, str) and v.lower() == "null" and v != "NULL"})
+        if colonne:
+            fuori.append((f"{tipo} di {ld.get('schemaName')}.{ld.get('tableName')}: la parola null "
+                          "scritta in una grafia diversa da NULL", ", ".join(colonne)[:150]))
     return fuori
 
 
@@ -647,19 +693,22 @@ def main() -> int:
             if not in_esame:
                 continue
             viol_nv: list[Violazione] = []
+            viol_grafia: list[Violazione] = []
             for cs in changeset:
-                viol_nv.extend(nullvalue_vuoto(cs, percorso))
-            if percorso.name in NULLVALUE_DEBITO:
+                viol_nv.extend(cella_vuota_string(cs, percorso))
+                viol_grafia.extend(null_grafia(cs, percorso))
+            registra("null-grafia", percorso, viol_grafia)
+            if percorso.name in CELLA_VUOTA_DEBITO:
                 if viol_nv:
-                    dichiarate.append(("nullvalue-vuoto", gc.rel(percorso),
-                                       "debito noto, " + NULLVALUE_DEBITO[percorso.name], len(viol_nv)))
+                    dichiarate.append(("cella-vuota-string", gc.rel(percorso),
+                                       "debito noto, " + CELLA_VUOTA_DEBITO[percorso.name], len(viol_nv)))
                 elif not yaml_espliciti:
-                    trovate.append(("nullvalue-vuoto", gc.rel(percorso),
-                                    "riga morta di NULLVALUE_DEBITO: il mirror non scrive piu' ''",
+                    trovate.append(("cella-vuota-string", gc.rel(percorso),
+                                    "riga morta di CELLA_VUOTA_DEBITO: il mirror non scrive piu' ''",
                                     "togliere la riga dal registro"))
                 nv_visti.add(percorso.name)
             else:
-                registra("nullvalue-vuoto", percorso, viol_nv)
+                registra("cella-vuota-string", percorso, viol_nv)
             for nome, regola, inizio in REGOLE_CHANGESET:
                 if not (yaml_espliciti or tutto or inizio is None
                         or (chiave is not None and chiave >= inizio)):

@@ -1,48 +1,48 @@
 codice,lingua,messaggio,id,causa,soluzione
-E_GENERICO,it,%s,128,,
-E_STORICIZZAZIONE,it,Errore storicizzazione per la tabella: %s in fase di: %s per il codice: %s valore: %s .  SQL ERROR: %s  ,21,Operazione non prevista in fase di storicizzazione ,
+E_GENERICO,it,%s,128,NULL,NULL
+E_STORICIZZAZIONE,it,Errore storicizzazione per la tabella: %s in fase di: %s per il codice: %s valore: %s .  SQL ERROR: %s  ,21,Operazione non prevista in fase di storicizzazione ,NULL
 E_MESSAGGIO_NON_DEFINITO,it,Definire il messaggio con codice : %s,14,Non è presente il messaggio nella tabella config.messaggi_errore.,Definire il messaggio nella tabella config.messaggi_errore
-E_SNAPSHOT_CLOSE_ERROR,it,Errore chiusura snapshot: %s (SQLSTATE: %s),23,I valori dello snapshot in chiusura sono errati,
-E_DELETE_BLOCK,it,Generazione trigger block in automazione non permessa. (sqlerrm %s),191,,
-E_CLIENTE_UTILITY_MISMATCH_BA,it,Billing account id %s: Utility del cliente (%s) diversa da quella del billing_account (%s).,101,,
-E_DBLINK_LOG_CONN_MISSING,it,Impostare il parametro a livello DATABASE/ROLE o ALTER SYSTEM. (%s),102,,
-E_TXID_DBLINK_NULL,it,"dblink ha restituito NULL, uso uuidv7() locale.(%s) ",103,,
-E_TXID_DBLINK_ERROR,it,Errore Function %s sqlerrm %s,104,,
-E_RUOLO_RICHIEDE_PIVA,it,"Il ruolo %s  deve essere associato a un soggetto con partita_iva valorizzata. Soggetto_id %s , Soggetto_ruolo_id %s",106,,
-E_GESTORE_SOGGETTO_RUOLO_MANCANTE,it,Il gestore deve riferirsi a un soggetto_ruolo esistente(id %s).,105,,
-E_GESTORE_SINGLETON_VIOLATO,it,Esiste già un record di gestore. Non è possibile crearne un secondo. (id %s),107,,
-E_TIPO_INDIRIZZO_NON_PERMESSO,it,Tipo indirizzo %s non permesso per tipo_ruolo_id %s (soggetto_ruolo_id=%s),108,,Verificare la configurazione in config.tipi_ruolo_tipi_indirizzo.
+E_SNAPSHOT_CLOSE_ERROR,it,Errore chiusura snapshot: %s (SQLSTATE: %s),23,I valori dello snapshot in chiusura sono errati,NULL
+E_DELETE_BLOCK,it,Generazione trigger block in automazione non permessa. (sqlerrm %s),191,NULL,NULL
+E_CLIENTE_UTILITY_MISMATCH_BA,it,Billing account id %s: Utility del cliente (%s) diversa da quella del billing_account (%s).,101,NULL,NULL
+E_DBLINK_LOG_CONN_MISSING,it,Impostare il parametro a livello DATABASE/ROLE o ALTER SYSTEM. (%s),102,NULL,NULL
+E_TXID_DBLINK_NULL,it,"dblink ha restituito NULL, uso uuidv7() locale.(%s) ",103,NULL,NULL
+E_TXID_DBLINK_ERROR,it,Errore Function %s sqlerrm %s,104,NULL,NULL
+E_RUOLO_RICHIEDE_PIVA,it,"Il ruolo %s  deve essere associato a un soggetto con partita_iva valorizzata. Soggetto_id %s , Soggetto_ruolo_id %s",106,NULL,NULL
+E_GESTORE_SOGGETTO_RUOLO_MANCANTE,it,Il gestore deve riferirsi a un soggetto_ruolo esistente(id %s).,105,NULL,NULL
+E_GESTORE_SINGLETON_VIOLATO,it,Esiste già un record di gestore. Non è possibile crearne un secondo. (id %s),107,NULL,NULL
+E_TIPO_INDIRIZZO_NON_PERMESSO,it,Tipo indirizzo %s non permesso per tipo_ruolo_id %s (soggetto_ruolo_id=%s),108,NULL,Verificare la configurazione in config.tipi_ruolo_tipi_indirizzo.
 E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO,it,Soggetto %s non trovato: impossibile validare i dati societari.,109,"Guard anagrafiche.trgfn_dati_societari_guard_tipo_soggetto: la SELECT sul soggetto indicato da NEW.soggetto_id non trova nessuna riga (IF NOT FOUND). Non e' «il soggetto richiede dati societari» — quello era il vecchio messaggio, che descriveva una condizione diversa da quella che solleva davvero (brief terzo lato §14.5b, corretto il 2026-08-06).","Verificare il soggetto_id passato: la riga non esiste in anagrafiche.soggetti. Se il soggetto e' stato cancellato, la riga di dati societari che lo referenzia va rimossa o ripuntata."
-E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO,it,"Non è stato configurata la policy per il tipo_soggetto. Soggetto_id %s , cod_tipo_soggetto_int %s",110,,
+E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO,it,"Non è stato configurata la policy per il tipo_soggetto. Soggetto_id %s , cod_tipo_soggetto_int %s",110,NULL,NULL
 E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO,it,Non sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s,27,Informazioni della tabella anagrafiche.dati_societari non collegate ad un soggetto ti tipo Aziendale.,Collegare le informazioni ad un soggetto di tipo aziendale
-E_DATI_SOCIETARI_REQUIRED_MANCANTI,it,"Sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s""",111,,
-E_ADMIN_VALIDAZIONE,it,%s.,310,,
-E_ADMIN_CF_DUPLICATO,it,%s.,311,,
+E_DATI_SOCIETARI_REQUIRED_MANCANTI,it,"Sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s""",111,NULL,NULL
+E_ADMIN_VALIDAZIONE,it,%s.,310,NULL,NULL
+E_ADMIN_CF_DUPLICATO,it,%s.,311,NULL,NULL
 E_ADMIN_PIVA_DUPLICATA,it,Partita IVA gia' presente in anagrafica.,313,Esiste gia' un soggetto con la stessa partita IVA per lo stesso stato.,Verificare la partita IVA o utilizzare il soggetto esistente.
-E_ADMIN_UO_NON_TROVATA,it,%s.,312,,
-E_AUTH_USER_SOGGETTO_CON_PIVA,it,Operatore non può essere associato ad una partita iva %s.,314,,
-E_FORNITORE_ID_INVALIDO,it,Fornitore_id deve essere NOT NULL e > 0. Id %s,315,,
-E_FORNITORE_NON_TROVATO,it,Fornitore non valido id %s.,316,,
-E_FORNITORE_NON_ATTIVO,it,Fornitore id %s non attivo.,317,,
-E_FORNITORE_BLOCCATO,it,Fornitore id %s bloccato.,318,,
-E_CODICE,it,Il codice %s non è stato trovato nella tabella %s,112,,
+E_ADMIN_UO_NON_TROVATA,it,%s.,312,NULL,NULL
+E_AUTH_USER_SOGGETTO_CON_PIVA,it,Operatore non può essere associato ad una partita iva %s.,314,NULL,NULL
+E_FORNITORE_ID_INVALIDO,it,Fornitore_id deve essere NOT NULL e > 0. Id %s,315,NULL,NULL
+E_FORNITORE_NON_TROVATO,it,Fornitore non valido id %s.,316,NULL,NULL
+E_FORNITORE_NON_ATTIVO,it,Fornitore id %s non attivo.,317,NULL,NULL
+E_FORNITORE_BLOCCATO,it,Fornitore id %s bloccato.,318,NULL,NULL
+E_CODICE,it,Il codice %s non è stato trovato nella tabella %s,112,NULL,NULL
 E_DATA_CHIUSURA,it,"Il cliente %s non può chiudersi il %s: è attivo dal %s.",113,"La data di chiusura di un cliente non può precedere la data di attivazione.","Indicare una data di chiusura uguale o successiva alla data di attivazione."
-E_DATA_APERTURA,it,per il cliente %s non è stato indicata una data apertura ma lo stato è attivo,114,,
-SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_interno: %s,8,,
+E_DATA_APERTURA,it,per il cliente %s non è stato indicata una data apertura ma lo stato è attivo,114,NULL,NULL
+SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_interno: %s,8,NULL,NULL
 PRATICHE_TRANSIZIONE_NON_AMMESSA,it,Transizione pratica non ammessa: %s,301,Transizione stato pratica non consentita dalla matrice config.transizioni_stati_pratiche.,Verificare la sequenza di stati corretta per la pratica.
 FLUSSI_TRANSIZIONE_NON_AMMESSA,it,Transizione flusso non ammessa: %s,302,Transizione stato flusso non consentita dalla matrice config.transizioni_stati_flussi_pratiche.,Verificare la sequenza di stati corretta per il flusso.
 SOSPENSIONI_FLUSSO_NON_COERENTE,it,Il flusso %s non appartiene alla pratica %s,303,Il flusso indicato non appartiene alla pratica della sospensione.,Verificare che flusso_id e pratica_id siano coerenti.
 E_DATA_FINE_INFERIORE_DI_INIZIO,it,Il valore della data finale %s è inferiore  alla data iniziale %s,34,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore o uguale di iniziale
 E_DATA_AL_MINORE_DAL,it,Il valore della data al %s è inferiore alla data dal %s,118,"La data di fine validità è precedente alla data di inizio: il periodo risulterebbe rovesciato.","Correggere una delle due date: la data di fine deve essere uguale o successiva a quella di inizio, oppure restare vuota se il periodo è aperto."
-E_CONTO_BANCARIO,it,Il conto bancario (id %s) che si sta associando non è attivo,119,,
-E_INDIRIZZO_OBBLIGATORIO_MANCANTE,it,"Indirizzo obbligatorio mancante per soggetto %s  per %s %s ,  fallback id %s",116,,
-E_FORMA_GIURIDICA_PAESE,it,Forma giuridica (%s) non coerente con il paese del soggetto (%s).,120,,
-E_DATA_ERRATA,it,Data %s errata o mancante.,122,,
-E_ATTIVO_BLOCK_FKCOL_NOT_FOUND,it,%s,123,,
+E_CONTO_BANCARIO,it,Il conto bancario (id %s) che si sta associando non è attivo,119,NULL,NULL
+E_INDIRIZZO_OBBLIGATORIO_MANCANTE,it,"Indirizzo obbligatorio mancante per soggetto %s  per %s %s ,  fallback id %s",116,NULL,NULL
+E_FORMA_GIURIDICA_PAESE,it,Forma giuridica (%s) non coerente con il paese del soggetto (%s).,120,NULL,NULL
+E_DATA_ERRATA,it,Data %s errata o mancante.,122,NULL,NULL
+E_ATTIVO_BLOCK_FKCOL_NOT_FOUND,it,%s,123,NULL,NULL
 E_ATTIVO_BLOCK_CHILDREN_EXIST,it,Non si puo' disattivare: ci sono ancora righe collegate.,125,"Il guard generico dbops.trgfn_prevent_deactivate_if_children impedisce di disattivare una riga che ha ancora righe collegate in un'altra tabella. E' generato dall'automazione ATTIVO per ogni coppia padre/figlia che abbia una chiave esterna, quindi lo stesso codice arriva da molti trigger diversi: la tabella che sta bloccando e' nel contesto dell'evento in dbops.error_log (chiave child_table). Questo codice e' il ramo delle tabelle collegate che NON hanno lo stato attivo/non attivo: li' una riga o c'e' o non c'e', quindi ne basta una qualsiasi. Quando invece la tabella collegata ha la colonna attivo, lo stesso guard solleva E_ATTIVO_BLOCK_CHILDREN_ACTIVE (934) e contano solo le righe attive.","TOGLIERE le righe collegate nella tabella che blocca (chiave child_table del contesto in dbops.error_log), poi ripetere la disattivazione. ATTENZIONE: qui non si possono «spegnere» - quella tabella non ha lo stato attivo/non attivo, ed e' esattamente la ragione per cui questo codice e' distinto da E_ATTIVO_BLOCK_CHILDREN_ACTIVE. La colonna che le collega e il valore cercato sono nel contesto dell'evento in dbops.error_log (chiavi fk_col, ref_col, ref_val). Se le righe non si possono togliere, la strada non e' la disattivazione: e' capire quale delle due informazioni non e' piu' vera."
-E_STORICO_PARENT_PK_NOT_FOUND,it,"Impossibile determinare PK o tipo per tabella padre. Schema %s , tabella %s",121,,
-E_RIGA_GIA_FATTURATA,it,Riga già fatturata.(id_riga %s),129,,
-E_EMITTENTE_DEFAULT_MISSING,it,Emittente fiscale di default mancante. %s,130,,
+E_STORICO_PARENT_PK_NOT_FOUND,it,"Impossibile determinare PK o tipo per tabella padre. Schema %s , tabella %s",121,NULL,NULL
+E_RIGA_GIA_FATTURATA,it,Riga già fatturata.(id_riga %s),129,NULL,NULL
+E_EMITTENTE_DEFAULT_MISSING,it,Emittente fiscale di default mancante. %s,130,NULL,NULL
 E_EMITTENTE_DISATTIVAZIONE_BLOCCATA,it,Disattivazione emittente fiscale non consentita: mapping billing_account presente. Soggetto_ruolo_id %s,131,L'emittente fiscale ha ancora billing_account associati.,Rimuovere i mapping billing_account prima di disattivare l'emittente.
 E_EMITTENTE_DEFAULT_SINGLETON,it,Deve esistere un solo emittente fiscale di default. Trovati: %s,132,Il vincolo di singolarita' del default e' violato.,Verificare che un solo emittente abbia is_default=true in emittenti_fiscali_billing_account.
 E_RESELLER_DISATTIVAZIONE_BLOCCATA,it,Disattivazione reseller non consentita: mapping billing_account presente. Soggetto_ruolo_id %s,133,Il reseller ha ancora billing_account associati.,Rimuovere i mapping billing_account prima di disattivare il reseller.
@@ -58,73 +58,73 @@ E_LOTTO_NON_TROVATO,it,Lotto non trovato (id %s),143,Il lotto indicato non esist
 E_COMMESSA_NON_MODIFICABILE,it,Commessa %s non in stato modificabile,144,La commessa e' in uno stato che non consente modifiche.,Verificare lo stato della commessa.
 E_COMMESSA_ATTIVITA_NON_COERENTE,it,Attivita' commessa non coerente: %s,145,L'attivita non appartiene alla commessa o i parametri non sono coerenti.,Verificare commessa_id e commessa_attivita_id.
 E_FATTURA_NON_TROVATA,it,Fattura non trovata (id %s),140,La fattura indicata non esiste nella tabella vendite.fatture.,Verificare l'id fattura passato.
-E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.",2,,
+E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.",2,NULL,NULL
 E_ARTICOLO_NON_COMPOSITO,it,L'articolo indicato non è composito: non può avere una distinta base.,127,La distinta base descrive di quali componenti è fatto un articolo composito: un articolo semplice non ne ha una.,Attivare il flag composito sull'articolo padre oppure spostare il componente su un articolo già composito.
 ERRORE_PARAMETRI_TABELLA,it,Parametro:%s  non trovato nella tabella: %s,16,Il parametro segnalato non è stato caricato nella tabella indicata.,Caricare il parametro nella rispettiva tabella
 E_TXID_GENERATION,it,Generazione dell'identificativo di transazione non riuscita.,18,Non è stato possibile assegnare un id transaction,Andare nella tabella dei log per verificare il problema
 E_TABELLA_OP_NON_CONSENTITA,it,Operazione non consentita sulla tabella %s: %s non permessa,17,Si sta cercando di effettuare una operazione che non è permessa su questa tabella. ,L'attività non è permessa
 CODICE_NON_MODIFICABILE,it,Impossibile modificare il valore interno della colonna %s,6,si sta cercando di aggiornare un valore definito per una colonna con utilizzo interno (di sistema) non modificabile,Il valore non può essere aggiornato. 
-E_INVALID_SNAPSHOT,it,Dati snapshot non validi per la tabella %s.%s,22,I valori che si stanno storicizzando sono nulli. ,
-CF_NON_VALIDO,it,Codice Fiscale non valido: %s,5,,
-E_ATTIVO_BLOCK_ARGS,it,%s,124,,
-E_IVA_CONTO_ACQ_ERR,it,Il conto %s IVA acquisti non è un conto di tipo Acquisto.,3,,
-PIVA_NON_VALIDA,it,Partita IVA non valida: %s,7,,
-E_IVA_CONTO_VEN_ERR,it,Il conto %s IVA vendita non è un conto di tipo Vendita.,4,,
-E_QUERY_FAILED,it,Errore di esecuzione della query per la tabella: schema %s  tabella %s. SQLSTATE(%s),31,La query è errata,
+E_INVALID_SNAPSHOT,it,Dati snapshot non validi per la tabella %s.%s,22,I valori che si stanno storicizzando sono nulli. ,NULL
+CF_NON_VALIDO,it,Codice Fiscale non valido: %s,5,NULL,NULL
+E_ATTIVO_BLOCK_ARGS,it,%s,124,NULL,NULL
+E_IVA_CONTO_ACQ_ERR,it,Il conto %s IVA acquisti non è un conto di tipo Acquisto.,3,NULL,NULL
+PIVA_NON_VALIDA,it,Partita IVA non valida: %s,7,NULL,NULL
+E_IVA_CONTO_VEN_ERR,it,Il conto %s IVA vendita non è un conto di tipo Vendita.,4,NULL,NULL
+E_QUERY_FAILED,it,Errore di esecuzione della query per la tabella: schema %s  tabella %s. SQLSTATE(%s),31,La query è errata,NULL
 E_DEFAULT_ERRATO,it,la tabella %s parametro %s non ha valori per %s,28,Il codice impostato nella tabella dei parametri non ha un valore valido,Verificare la tabella dei parametri di default e reimpostare il codice correttamente
-E_STORICO_PROVISION,it,Errore generazione della tabella nello schema storico,44,,
-E_NUMERAZIONE_IMMUTABILE,it,"La numerazione non può essere modificata. Tabella %s , id %s.",70,,
-E_TIPO_INDIRIZZO,it,"Tipo indirizzo non consentito: id=%s, codice=%s,  per %s consentiti: %s ",71,,
-E_PERC_IVA_NO_MOD,it,La percentuale Iva non può essere modificata,72,,
-E_ASSOGGETTAMENTO_NO_MOD,it,Assoggettamento Iva non può essere modificato,73,,
-E_NOTE_TARGET_ID,it,"Target_riga_id mancante per nota ancorata alla riga. Anchor_tipo(%s) , target(%s)",74,,
+E_STORICO_PROVISION,it,Errore generazione della tabella nello schema storico,44,NULL,NULL
+E_NUMERAZIONE_IMMUTABILE,it,"La numerazione non può essere modificata. Tabella %s , id %s.",70,NULL,NULL
+E_TIPO_INDIRIZZO,it,"Tipo indirizzo non consentito: id=%s, codice=%s,  per %s consentiti: %s ",71,NULL,NULL
+E_PERC_IVA_NO_MOD,it,La percentuale Iva non può essere modificata,72,NULL,NULL
+E_ASSOGGETTAMENTO_NO_MOD,it,Assoggettamento Iva non può essere modificato,73,NULL,NULL
+E_NOTE_TARGET_ID,it,"Target_riga_id mancante per nota ancorata alla riga. Anchor_tipo(%s) , target(%s)",74,NULL,NULL
 E_DATA_FINE_NON_MAGGIORE_DI_INIZIO,it,Il valore della data finale %s è minore uguale alla data iniziale %s,33,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore di iniziale
-E_ATTIVO_CASCADE,it,Errore generazione regola ATTIVO_cascade. Sqlerrm: %s,41,,
-E_ATTIVO_REQUIRE,it,Errore generazione regola ATTIVO_require. Sqlerrm: %s,42,,
-E_ATTIVO_BLOCK,it,Errore generazione regola ATTIVO_block. Sqlerrm: %s,43,,
+E_ATTIVO_CASCADE,it,Errore generazione regola ATTIVO_cascade. Sqlerrm: %s,41,NULL,NULL
+E_ATTIVO_REQUIRE,it,Errore generazione regola ATTIVO_require. Sqlerrm: %s,42,NULL,NULL
+E_ATTIVO_BLOCK,it,Errore generazione regola ATTIVO_block. Sqlerrm: %s,43,NULL,NULL
 E_STATO_SCONOSCIUTO,it,Errore Stato errato o mancante: id = %s,9,Codice RITIRATO il 2026-08-06: ne conteneva due. Lo sollevavano vendite.fn_cambia_stato_commessa / fn_cambia_stato_preventivo (la destinazione di workflow non esiste) e config.trgfn_toponomastica_normalize (la NAZIONE di un indirizzo non si risolve). Un codice solo non puo' dire due cose: con 404 la form indirizzi si sarebbe svuotata mentre l'operatore digita; con 400 il cambio stato avrebbe mentito. Sostituito da E_STATO_WORKFLOW_NON_TROVATO (892) e E_NAZIONE_NON_TROVATA (893).,"La riga NON si cancella e regge il diario: dbops.error_log ha una FK verso config.messaggi_errore(id) e gli errori gia' accaduti devono continuare a risolvere il proprio messaggio. Nessuna funzione viva lo solleva piu': se ricompare, il controllo (D) del guardrail codice-errore-strutturato diventa rosso."
-E_NOTE_CONFIG,it,Configurazione trigger errata: tabella %s inesistente,75,,
-E_SORG_CONF,it,Configurazione sorgente mancante/errata.Sorgente_tipo_id(%s),77,,
+E_NOTE_CONFIG,it,Configurazione trigger errata: tabella %s inesistente,75,NULL,NULL
+E_SORG_CONF,it,Configurazione sorgente mancante/errata.Sorgente_tipo_id(%s),77,NULL,NULL
 E_SORG_KEY_MISSING,it,Chiave sorgente mancante per il tipo sorgente %s (key_selector: %s).,78,Il tipo sorgente dichiara con quale chiave si aggancia il documento di origine: per key_selector 'id' serve sorgente_riga; per 'uid' serve sorgente_uid.,Valorizzare la chiave che il tipo sorgente richiede.
-E_SORG_KEYSEL,it,key_selector non supportato. (%s),79,,
-E_SORG_NOT_FOUND,it,Riferimento sorgente non trovato nella tabella target. (%s),80,,
-E_QTA_NON_POSITIVA,it,La quantità deve essere positiva. Valore(%s),81,,
-E_FULFILL_NOT_FOUND,it,"Mancano i legami fulfillment. Tabella %s id %s , con tabella %s id %s. ",82,,
-E_ARTICOLO_MISMATCH,it,"Articolo non corrispondente.Tabella %s id %s , con tabella %s id %s. ",83,,
-E_UOM_MISMATCH,it,"Unità di misura non corrispondente.Tabella %s id %s  Uom %s, con tabella %s id %s UOM %s. ",84,,
+E_SORG_KEYSEL,it,key_selector non supportato. (%s),79,NULL,NULL
+E_SORG_NOT_FOUND,it,Riferimento sorgente non trovato nella tabella target. (%s),80,NULL,NULL
+E_QTA_NON_POSITIVA,it,La quantità deve essere positiva. Valore(%s),81,NULL,NULL
+E_FULFILL_NOT_FOUND,it,"Mancano i legami fulfillment. Tabella %s id %s , con tabella %s id %s. ",82,NULL,NULL
+E_ARTICOLO_MISMATCH,it,"Articolo non corrispondente.Tabella %s id %s , con tabella %s id %s. ",83,NULL,NULL
+E_UOM_MISMATCH,it,"Unità di misura non corrispondente.Tabella %s id %s  Uom %s, con tabella %s id %s UOM %s. ",84,NULL,NULL
 E_RUOLO_NATURA_NON_AMMESSA,it,Natura soggetto %s non ammessa per il ruolo %s. Soggetto_id %s,200,La natura del soggetto non rientra tra quelle previste per il ruolo.,Verificare la configurazione in config.tipi_ruoli_nature_ammesse.
 E_RUOLO_NATURA_TIPO_DET_NULL,it,Impossibile assegnare il ruolo %s al soggetto %s: tipo_soggetto_dettaglio non configurato.,201,Il soggetto non ha tipo_soggetto_dettaglio_id valorizzato ma il ruolo richiede una verifica della natura.,Configurare tipo_soggetto_dettaglio_id sul soggetto prima di assegnare il ruolo.
-E_COLONNA_NON_MODIFICABILE,it,Colonna non modificabile: %s,12,,
-E_ARGOMENTI_A_COPPIE,it,Passare gli argomenti a coppie,13,,
-E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,1,,
+E_COLONNA_NON_MODIFICABILE,it,Colonna non modificabile: %s,12,NULL,NULL
+E_ARGOMENTI_A_COPPIE,it,Passare gli argomenti a coppie,13,NULL,NULL
+E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,1,NULL,NULL
 W_TXID_NOT_REGISTERED,it,Avviso - tx_id di sessione non registrato in dbops.transaction_ids.,19,L'id transaction non corrisponde con quello assegnato nella tabella transactions_id ,Andare nella tabella dei log per verificare il problema
 E_SQL_READ_TABLE,it,Errore  in lettura tabella: %s.  Sqlerror: %s',20,Errore sql da verificare,Verificare la stringa sql in errore
-E_DRYRUN_CREATE_TRIGGER,it,Errore generazione trigger,36,,
-E_TX_ID,it,Errore generazione trigger per TX_ID. Sqlerrm: %s,37,,
-E_AUDIT_UPDATE,it,Errore generazione trigger per AUDIT_UPDATE. Sqlerrm: %s,38,,
-E_STORICO_UPD,it,Errore generazione trigger per STORICO_UPD. Sqlerrm: %s,39,,
-E_STORICO_DLT,it,Errore generazione trigger per STORICO_DLT. Sqlerrm: %s,40,,
-E_SNAPSHOT_ID_NOT_FOUND,it,Errore ottenimento ID: %s,26,Non è stato possibile reperire id della transazione snapshot,
+E_DRYRUN_CREATE_TRIGGER,it,Errore generazione trigger,36,NULL,NULL
+E_TX_ID,it,Errore generazione trigger per TX_ID. Sqlerrm: %s,37,NULL,NULL
+E_AUDIT_UPDATE,it,Errore generazione trigger per AUDIT_UPDATE. Sqlerrm: %s,38,NULL,NULL
+E_STORICO_UPD,it,Errore generazione trigger per STORICO_UPD. Sqlerrm: %s,39,NULL,NULL
+E_STORICO_DLT,it,Errore generazione trigger per STORICO_DLT. Sqlerrm: %s,40,NULL,NULL
+E_SNAPSHOT_ID_NOT_FOUND,it,Errore ottenimento ID: %s,26,Non è stato possibile reperire id della transazione snapshot,NULL
 E_VALORE_MANCANTE,it,Indicare un valore per %s. Dato obbligatorio.,32,Non è stato assegnato un valore all'informazione richiesta.,Assegnare il valore al dato obbligatorio
 E_ID_FISCALI_DIVERSI,it,Parent account (%s) appartiene a id fiscale diverso: %s vs %s,35,Gli identificativi fiscali tra account e parents non coincidono,Scegliere un parent account che coincida con l'account
-E_SNAPSHOT_INIT_INSERT_ERROR,it,Errore inserimento snapshot iniziale: %s (SQLSTATE: %s),24,Errore inserimento storico iniziale,
-E_SNAPSHOT_FINAL_INSERT_ERROR,it,Errore inserimento snapshot finale: %s (SQLSTATE: %s),25,Errore inserimento storico finale,
+E_SNAPSHOT_INIT_INSERT_ERROR,it,Errore inserimento snapshot iniziale: %s (SQLSTATE: %s),24,Errore inserimento storico iniziale,NULL
+E_SNAPSHOT_FINAL_INSERT_ERROR,it,Errore inserimento snapshot finale: %s (SQLSTATE: %s),25,Errore inserimento storico finale,NULL
 E_QUERY_FAILED_SCHEMA_TABLE,it,Errore nella ricerca dai dati nella tabella %s.%s,29,Lo schema o la tabella non sono corretti,Immettere i nomi della tabella o schema corretti
-E_QTA_SUPERA_RESIDUO,it,"Quantità supera residuo. Tabella %s id %s.  Quantità ordine %s , quantità evasa%s , qtà nuova%s, residuo %s",85,,
-E_REFRESH_LOCK_TIMEOUT,it,"Timeout di aggiornamento lock per %s , tentativi %s",86,,
+E_QTA_SUPERA_RESIDUO,it,"Quantità supera residuo. Tabella %s id %s.  Quantità ordine %s , quantità evasa%s , qtà nuova%s, residuo %s",85,NULL,NULL
+E_REFRESH_LOCK_TIMEOUT,it,"Timeout di aggiornamento lock per %s , tentativi %s",86,NULL,NULL
 E_DELETE_BLOCKED_FUL,it,Questa riga di %s e' gia' stata evasa o consegnata: non si puo' togliere dal documento.,90,"Sulla riga esiste un legame di evasione (vendite.ordini_righe_fulfillment): quella quantita' e' gia' passata da un ordine a un DDT, o viceversa. Togliere la riga lascerebbe il legame senza uno dei suoi due capi, ed e' la chiave esterna stessa (ON DELETE RESTRICT) a impedirlo: questo messaggio esiste per dirlo con una frase invece che con una violazione tecnica.","Il rimedio e' a monte del legame, non sulla riga: si disfa l'evasione (si annulla o si riporta indietro il DDT che l'ha consumata), e a quel punto la riga torna libera e si puo' togliere. Se invece l'evasione e' corretta, la riga non va tolta: e' merce che ha gia' viaggiato."
-E_DELETE_NOT_ALLOWED,it,"Cancellazione non permessa. Tabella %s,  id %s",91,,
+E_DELETE_NOT_ALLOWED,it,"Cancellazione non permessa. Tabella %s,  id %s",91,NULL,NULL
 E_UOM_MISSING,it,"L'unità %s non si converte nell'unità base %s dell'articolo %s alla data %s.",92,"Per quell'articolo e quella data non c'è un fattore di conversione: né nelle unità operative dell'articolo, né fra le conversioni generali.","Aggiungere l'unità alle unità operative dell'articolo col suo fattore, o una conversione generale fra le due unità, valida alla data del documento."
-E_QTA_MISSING,it,"Quantità nulla o mancante. (%s %s, %s %s)",95,,
-E_QTA_OPER_STEP_INVALIDO,it,"Quantità operativa step invalido. (%s %s , %s %s )",94,,
-E_QTA_OPERATIVA_NON_INTERA,it,"Quantità operativa non intera. (%s %s, %s %s )",93,,
-E_SOGGETTO_NULL,it,soggetto_id (%s)  mancante per il ruolo   %s.,98,,
-E_SOGGETTI_RUOLI_RACE,it,"Race condition su soggetti_ruoli per soggetto %s, id ruolo %s, cod_int_ruolo %s.",99,,
+E_QTA_MISSING,it,"Quantità nulla o mancante. (%s %s, %s %s)",95,NULL,NULL
+E_QTA_OPER_STEP_INVALIDO,it,"Quantità operativa step invalido. (%s %s , %s %s )",94,NULL,NULL
+E_QTA_OPERATIVA_NON_INTERA,it,"Quantità operativa non intera. (%s %s, %s %s )",93,NULL,NULL
+E_SOGGETTO_NULL,it,soggetto_id (%s)  mancante per il ruolo   %s.,98,NULL,NULL
+E_SOGGETTI_RUOLI_RACE,it,"Race condition su soggetti_ruoli per soggetto %s, id ruolo %s, cod_int_ruolo %s.",99,NULL,NULL
 ERRORE_PARAMETRI,it,Parametri obbligatori : %s,15,Non sono stati indicati tutti i parametri necessari,Inserire tutti i parametri obbligatori
-E_COD_INT_RUOLO,it,Ruolo con cd_int_ruolo = %s non trovato in config.tipi_ruoli,11,,
-E_SOGGETTI_RUOLI,it,"Errore soggetti ruoli (id=%s, soggetto_id=%s, ruolo_id=%s): non è stata assegnata la relazione anagrafiche.soggetti_ruoli.",10,,
-E_BILLING_ACCOUNT_UTILITY_NULL,it,Billing account %s senza utility associata.,100,,
-E_RISORSA_UMANA_SOGGETTO_MISMATCH,it,Il soggetto  a cui è collegata la risorsa non è un gestore (soggetto_ruolo id %s).,126,,
+E_COD_INT_RUOLO,it,Ruolo con cd_int_ruolo = %s non trovato in config.tipi_ruoli,11,NULL,NULL
+E_SOGGETTI_RUOLI,it,"Errore soggetti ruoli (id=%s, soggetto_id=%s, ruolo_id=%s): non è stata assegnata la relazione anagrafiche.soggetti_ruoli.",10,NULL,NULL
+E_BILLING_ACCOUNT_UTILITY_NULL,it,Billing account %s senza utility associata.,100,NULL,NULL
+E_RISORSA_UMANA_SOGGETTO_MISMATCH,it,Il soggetto  a cui è collegata la risorsa non è un gestore (soggetto_ruolo id %s).,126,NULL,NULL
 E_PIVA_OBBLIGATORIA,it,Partita IVA obbligatoria per tipo soggetto %s. Soggetto_id %s,202,Il tipo di soggetto richiede la partita IVA ma il campo e' vuoto.,Valorizzare il campo partita_iva prima di proseguire.
 E_CF_OBBLIGATORIO,it,Codice Fiscale obbligatorio per tipo soggetto %s. Soggetto_id %s,203,Il tipo di soggetto richiede il codice fiscale ma il campo e' vuoto.,Valorizzare il campo codice_fiscale prima di proseguire.
 E_PARAMETRO_INVALIDO,it,Parametro non valido: %s,204,Un parametro obbligatorio e' nullo o ha un valore non ammesso.,Verificare i parametri passati alla funzione.
@@ -368,262 +368,262 @@ E_SCADENZE_FATTURA_BLOCCATA,it,Fattura %s in stato %s: il piano rate non e' piu'
 E_FATTURA_NON_NUMERABILE_INCOERENTE,it,Fattura %s non numerabile: %s.,574,"La numerazione consuma un progressivo del registro, e nextval non torna indietro: un documento che fallisce DOPO aver preso il numero lascia comunque un buco nella numerazione fiscale. Per questo la coerenza si verifica PRIMA: totali calcolati, riepilogo IVA presente se ci sono righe, somma delle rate pari al totale a pagare (o nessuna rata se il totale non e' positivo). E' lo stesso presidio gia' in uso per le fatture prive di righe.","Completare lo step EMESSA sulla fattura — ricalcolo IVA, totali e generazione del piano rate — e poi rilanciare la numerazione."
 E_FATTURA_NON_EMETTIBILE_INCOMPLETA,it,Fattura %s non emettibile: %s.,575,"Una fattura non lascia lo stato DRAFT finche' non e' completa di cio' che il documento stampa: gli indirizzi marcati obbligatori per l'ambito FATTURE in config.tipi_indirizzi_allowed (oggi il solo FATT) e l'intestazione fiscale congelata delle due parti (emittente_snapshot e cliente_snapshot in testata), e nell'intestazione dell'emittente la sede legale del cedente. Sono i due lati della stessa garanzia: la ristampa di una fattura emessa deve restare identica a se stessa anche se l'anagrafica cambia. Congelare l'indirizzo e lasciare l'intestazione live e' peggio che tenerle entrambe live, perche' il blocco stampato diventa incoerente al proprio interno pur sembrando congelato. Lo snapshot lo scrive lo step DRAFT del lotto (task snapshot_indirizzi_lotto): un errore qui significa che quel passo non e' stato eseguito, oppure che ha marcato la fattura come difettosa e qualcuno la sta avanzando lo stesso con un UPDATE diretto.","Rieseguire lo step DRAFT del lotto, che riscrive indirizzi e intestazione ed e' idempotente. Se lo step segnala ancora la fattura, la causa e' anagrafica e non di processo: manca l'indirizzo di fatturazione del cliente (vedi E_INDIRIZZO_FATTURA_MANCANTE), manca la sede legale dell'azienda emittente (da inserire nella sua anagrafica: «intestazione incompleta» nel messaggio), oppure l'identita' fiscale dell'emittente o del cliente non e' risolvibile. Per vedere che cosa manca: SELECT script.fn_indirizzi_obbligatori_mancanti('FATTURE', (SELECT array_agg(tipo_indirizzo_id) FROM vendite.fatture_indirizzi WHERE fattura_id = <id>)), e SELECT emittente_snapshot, cliente_snapshot FROM vendite.fatture WHERE id = <id>."
 E_COMMESSA_CHIAVE_IMMUTABILE,it,"Commessa %s: %s non modificabile, la commessa ha gia' %s attivita' collegate.",576,"Le condizioni di pagamento sono un elemento della chiave di raggruppamento della commessa (D-R): un documento sorgente con termine diverso apre una commessa nuova invece di riusare questa. Cambiare il termine dopo che alla commessa e' stato attaccato del lavoro lascerebbe quelle attivita' su una chiave che non le descrive piu' — sarebbero state raggruppate qui proprio perche' il termine era quello di prima. E il difetto sarebbe silenzioso: nessun errore, solo una fattura che aggrega righe con condizioni di pagamento diverse da quelle con cui erano state raccolte.","Non si corregge la commessa: se ne apre una nuova con le condizioni giuste, e il push successivo ci indirizza le attivita' che le competono. Se la commessa e' appena nata e non ha ancora attivita' collegate, la modifica e' invece ammessa e questo errore non compare."
-E_ADMIN_EMAIL_DUPLICATA,it,Email gia' in uso.,577,,
-E_ADMIN_ULTIMO,it,Impossibile disabilitare l'ultimo amministratore.,578,,
-E_ADMIN_USERNAME_DUPLICATO,it,Username gia' in uso.,579,,
-E_AI_CONFIRMATION_REQUIRED,it,Operazione in scrittura: conferma esplicita richiesta.,580,,
-E_AI_DISABLED,it,Funzionalita' assistente AI non attiva.,581,,
-E_AI_PROVIDER_ERROR,it,Errore nella comunicazione con il provider AI.,582,,
-E_AI_PROVIDER_UNKNOWN,it,Provider AI non riconosciuto.,583,,
-E_AI_QUERY_EMPTY,it,Il messaggio non puo' essere vuoto.,584,,
-E_AI_QUERY_TOO_LONG,it,Il messaggio supera la lunghezza massima consentita.,585,,
-E_AI_TOOL_DENIED,it,Non hai i permessi per questo strumento AI.,586,,
-E_AI_TOOL_NOT_FOUND,it,Strumento AI richiesto non disponibile.,587,,
-E_AMM_SCOPE_NON_AMMESSO,it,Scope emittenti non ammesso per la richiesta.,588,,
-E_AMM_UTENTE_NOT_FOUND,it,Utente non trovato.,589,,
-E_AMM_VALIDAZIONE,it,Parametri amministrazione non validi.,590,,
-E_ANAG_DUPLICATO,it,Record gia' esistente.,591,,
-E_ANAG_FK,it,Riferimento non valido: l'entita' indicata non esiste.,592,,
-E_ANAG_MATRICE_OVERLAP,it,Esiste gia' una riga attiva che si sovrappone per questa combinazione di dimensioni nel periodo indicato.,593,,
-E_ANAG_NOT_FOUND,it,Record non trovato.,594,,
-E_ANAG_VALIDAZIONE,it,Parametri anagrafiche non validi.,595,,
-E_APPROVAZIONE_PREZZO_NON_AMMESSA,it,Operazione di approvazione prezzo non ammessa nello stato corrente.,596,,
-E_ATTIVAZIONE,it,Errore attivazione account.,597,,
-E_ATTIVAZIONE_PORTALE,it,Errore attivazione account portale.,598,,
-E_ATTIVAZIONE_SHOP,it,Errore attivazione account shop.,599,,
-E_ATTIVAZIONE_SHOP_CROSS,it,Errore attivazione veste shop dal profilo portale.,600,,
-E_ATTIVITA_KIT_SENZA_PADRE,it,Componente di kit senza articolo padre: correggere il documento di origine.,601,,
-E_ATTIVITA_LOTTO_NOT_FOUND,it,Lotto attivita non trovato.,602,,
-E_ATTIVITA_PIPELINE,it,Errore nella pipeline attivita fatturabili.,603,,
-E_ATTIVITA_VALIDATION,it,Parametri pipeline attivita non validi.,604,,
-E_AUTHENTICATION_FAILED,it,Autenticazione fallita.,605,,
-E_BATCH_ARRAY_DISALLINEATI,it,Errore interno nella generazione delle righe.,606,,
-E_CATALOGO_ARTICOLO_NOT_FOUND,it,Articolo non trovato.,607,,
-E_CATALOGO_COMPONENTE_NOT_FOUND,it,Componente non trovato.,608,,
-E_CATALOGO_CONV_NOT_FOUND,it,Conversione unita' di misura non trovata.,609,,
-E_CATALOGO_NOTA_NOT_FOUND,it,Nota non trovata.,610,,
-E_CATALOGO_UOM_NOT_FOUND,it,UoM operativa non trovata.,611,,
-E_CATALOGO_UOM_TIPO_NOT_FOUND,it,Tipologia UoM non trovata.,612,,
-E_CATALOGO_VALIDATION,it,Parametri catalogo non validi.,613,,
-E_CHANGE_PASSWORD,it,Errore cambio password.,614,,
-E_CODA_HANDLER_NON_REGISTRATO,it,Tipo di lavoro non cablato nel sistema.,615,,
-E_CODA_IDENTITA_NON_ATTIVA,it,Identità operatore non più attiva: lavoro non eseguibile.,616,,
-E_CODA_SCOPE_OPERATORE_INVALIDO,it,Lavoro accodato con scope operatore incompleto.,617,,
-E_COMMESSA_ATTIVITA_NOT_FOUND,it,Attivita` commessa non trovata.,618,,
-E_COMMESSA_AZIONE_NON_AMMESSA,it,Azione di stato non ammessa nello stato corrente della commessa.,619,,
-E_COMMESSA_NOT_FOUND,it,Commessa non trovata.,620,,
-E_COMMESSA_PUSH_LOG_NOT_FOUND,it,Push log commesse non trovato.,621,,
-E_COMMESSA_PUSH_PARZIALE_VIETATO,it,Push fallito: nessuna riga inviata.,622,,
-E_COMMESSA_SORGENTE_SCONOSCIUTA,it,Sorgente commessa sconosciuta.,623,,
-E_COMMESSA_VALIDATION,it,Parametri commessa non validi.,624,,
-E_CONFIG_MATRICE_DUPLICATA,it,Esiste gia' una riga matrice per questa coppia utility/tipo ruolo.,625,,
-E_CONFIG_MATRICE_FK,it,Utility o tipo ruolo inesistente.,626,,
-E_CONFIG_MATRICE_NOT_FOUND,it,Riga matrice utilities/ruoli non trovata.,627,,
-E_CONFIG_VALIDATION,it,Parametri di configurazione non validi.,628,,
-E_CONTATTO_INCOMPLETO,it,Contatto incompleto: hai inserito qualche dato ma mancano i campi obbligatori (nominativo e tipo contatto). Completa il contatto oppure svuota tutti i campi.,629,,
-E_CONTRATTO_ANNULLATO_CON_FATTURE,it,Impossibile annullare il contratto: esistono attivita' gia' fatturate. Per chiudere il contratto usa la cessazione (stato CESSATO con data di fine validita').,630,,
-E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE,it,Modifica del listino bloccata: ci sono righe gia' caricate contro questo contesto pricing. Elimina prima le righe oppure annulla il contratto e creane uno nuovo.,631,,
-E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA,it,Il listino selezionato non ha una versione ATTIVA. Solo i listini con almeno una versione pubblicata e attiva possono essere associati a un contratto. Attiva una versione del listino in gestione listini prima di tornare a selezionarlo qui.,632,,
-E_CONTRATTO_NON_MODIFICABILE,it,Modifica non consentita: il contratto e' in uno stato che limita le operazioni. Per modifiche sostanziali creare un nuovo contratto.,633,,
-E_CORE_PROFILE_NOT_FOUND,it,Profilo utente non trovato.,634,,
-E_CORE_VALIDATION,it,Parametri non validi.,635,,
-E_DATABASE,it,Errore durante l'operazione database.,636,,
-E_DATABASE_RETRYABLE,it,"Conflitto transazionale, riprovare l'operazione.",637,,
+E_ADMIN_EMAIL_DUPLICATA,it,Email gia' in uso.,577,NULL,NULL
+E_ADMIN_ULTIMO,it,Impossibile disabilitare l'ultimo amministratore.,578,NULL,NULL
+E_ADMIN_USERNAME_DUPLICATO,it,Username gia' in uso.,579,NULL,NULL
+E_AI_CONFIRMATION_REQUIRED,it,Operazione in scrittura: conferma esplicita richiesta.,580,NULL,NULL
+E_AI_DISABLED,it,Funzionalita' assistente AI non attiva.,581,NULL,NULL
+E_AI_PROVIDER_ERROR,it,Errore nella comunicazione con il provider AI.,582,NULL,NULL
+E_AI_PROVIDER_UNKNOWN,it,Provider AI non riconosciuto.,583,NULL,NULL
+E_AI_QUERY_EMPTY,it,Il messaggio non puo' essere vuoto.,584,NULL,NULL
+E_AI_QUERY_TOO_LONG,it,Il messaggio supera la lunghezza massima consentita.,585,NULL,NULL
+E_AI_TOOL_DENIED,it,Non hai i permessi per questo strumento AI.,586,NULL,NULL
+E_AI_TOOL_NOT_FOUND,it,Strumento AI richiesto non disponibile.,587,NULL,NULL
+E_AMM_SCOPE_NON_AMMESSO,it,Scope emittenti non ammesso per la richiesta.,588,NULL,NULL
+E_AMM_UTENTE_NOT_FOUND,it,Utente non trovato.,589,NULL,NULL
+E_AMM_VALIDAZIONE,it,Parametri amministrazione non validi.,590,NULL,NULL
+E_ANAG_DUPLICATO,it,Record gia' esistente.,591,NULL,NULL
+E_ANAG_FK,it,Riferimento non valido: l'entita' indicata non esiste.,592,NULL,NULL
+E_ANAG_MATRICE_OVERLAP,it,Esiste gia' una riga attiva che si sovrappone per questa combinazione di dimensioni nel periodo indicato.,593,NULL,NULL
+E_ANAG_NOT_FOUND,it,Record non trovato.,594,NULL,NULL
+E_ANAG_VALIDAZIONE,it,Parametri anagrafiche non validi.,595,NULL,NULL
+E_APPROVAZIONE_PREZZO_NON_AMMESSA,it,Operazione di approvazione prezzo non ammessa nello stato corrente.,596,NULL,NULL
+E_ATTIVAZIONE,it,Errore attivazione account.,597,NULL,NULL
+E_ATTIVAZIONE_PORTALE,it,Errore attivazione account portale.,598,NULL,NULL
+E_ATTIVAZIONE_SHOP,it,Errore attivazione account shop.,599,NULL,NULL
+E_ATTIVAZIONE_SHOP_CROSS,it,Errore attivazione veste shop dal profilo portale.,600,NULL,NULL
+E_ATTIVITA_KIT_SENZA_PADRE,it,Componente di kit senza articolo padre: correggere il documento di origine.,601,NULL,NULL
+E_ATTIVITA_LOTTO_NOT_FOUND,it,Lotto attivita non trovato.,602,NULL,NULL
+E_ATTIVITA_PIPELINE,it,Errore nella pipeline attivita fatturabili.,603,NULL,NULL
+E_ATTIVITA_VALIDATION,it,Parametri pipeline attivita non validi.,604,NULL,NULL
+E_AUTHENTICATION_FAILED,it,Autenticazione fallita.,605,NULL,NULL
+E_BATCH_ARRAY_DISALLINEATI,it,Errore interno nella generazione delle righe.,606,NULL,NULL
+E_CATALOGO_ARTICOLO_NOT_FOUND,it,Articolo non trovato.,607,NULL,NULL
+E_CATALOGO_COMPONENTE_NOT_FOUND,it,Componente non trovato.,608,NULL,NULL
+E_CATALOGO_CONV_NOT_FOUND,it,Conversione unita' di misura non trovata.,609,NULL,NULL
+E_CATALOGO_NOTA_NOT_FOUND,it,Nota non trovata.,610,NULL,NULL
+E_CATALOGO_UOM_NOT_FOUND,it,UoM operativa non trovata.,611,NULL,NULL
+E_CATALOGO_UOM_TIPO_NOT_FOUND,it,Tipologia UoM non trovata.,612,NULL,NULL
+E_CATALOGO_VALIDATION,it,Parametri catalogo non validi.,613,NULL,NULL
+E_CHANGE_PASSWORD,it,Errore cambio password.,614,NULL,NULL
+E_CODA_HANDLER_NON_REGISTRATO,it,Tipo di lavoro non cablato nel sistema.,615,NULL,NULL
+E_CODA_IDENTITA_NON_ATTIVA,it,Identità operatore non più attiva: lavoro non eseguibile.,616,NULL,NULL
+E_CODA_SCOPE_OPERATORE_INVALIDO,it,Lavoro accodato con scope operatore incompleto.,617,NULL,NULL
+E_COMMESSA_ATTIVITA_NOT_FOUND,it,Attivita` commessa non trovata.,618,NULL,NULL
+E_COMMESSA_AZIONE_NON_AMMESSA,it,Azione di stato non ammessa nello stato corrente della commessa.,619,NULL,NULL
+E_COMMESSA_NOT_FOUND,it,Commessa non trovata.,620,NULL,NULL
+E_COMMESSA_PUSH_LOG_NOT_FOUND,it,Push log commesse non trovato.,621,NULL,NULL
+E_COMMESSA_PUSH_PARZIALE_VIETATO,it,Push fallito: nessuna riga inviata.,622,NULL,NULL
+E_COMMESSA_SORGENTE_SCONOSCIUTA,it,Sorgente commessa sconosciuta.,623,NULL,NULL
+E_COMMESSA_VALIDATION,it,Parametri commessa non validi.,624,NULL,NULL
+E_CONFIG_MATRICE_DUPLICATA,it,Esiste gia' una riga matrice per questa coppia utility/tipo ruolo.,625,NULL,NULL
+E_CONFIG_MATRICE_FK,it,Utility o tipo ruolo inesistente.,626,NULL,NULL
+E_CONFIG_MATRICE_NOT_FOUND,it,Riga matrice utilities/ruoli non trovata.,627,NULL,NULL
+E_CONFIG_VALIDATION,it,Parametri di configurazione non validi.,628,NULL,NULL
+E_CONTATTO_INCOMPLETO,it,Contatto incompleto: hai inserito qualche dato ma mancano i campi obbligatori (nominativo e tipo contatto). Completa il contatto oppure svuota tutti i campi.,629,NULL,NULL
+E_CONTRATTO_ANNULLATO_CON_FATTURE,it,Impossibile annullare il contratto: esistono attivita' gia' fatturate. Per chiudere il contratto usa la cessazione (stato CESSATO con data di fine validita').,630,NULL,NULL
+E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE,it,Modifica del listino bloccata: ci sono righe gia' caricate contro questo contesto pricing. Elimina prima le righe oppure annulla il contratto e creane uno nuovo.,631,NULL,NULL
+E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA,it,Il listino selezionato non ha una versione ATTIVA. Solo i listini con almeno una versione pubblicata e attiva possono essere associati a un contratto. Attiva una versione del listino in gestione listini prima di tornare a selezionarlo qui.,632,NULL,NULL
+E_CONTRATTO_NON_MODIFICABILE,it,Modifica non consentita: il contratto e' in uno stato che limita le operazioni. Per modifiche sostanziali creare un nuovo contratto.,633,NULL,NULL
+E_CORE_PROFILE_NOT_FOUND,it,Profilo utente non trovato.,634,NULL,NULL
+E_CORE_VALIDATION,it,Parametri non validi.,635,NULL,NULL
+E_DATABASE,it,Errore durante l'operazione database.,636,NULL,NULL
+E_DATABASE_RETRYABLE,it,"Conflitto transazionale, riprovare l'operazione.",637,NULL,NULL
 E_DDT_CLIENTE_IMMUTABILE,it,La bolla e' in stato %s: il cliente si sceglie solo in bozza.,638,"Il cliente della bolla - billing account, utility e destinatario - e' stampato sul documento e decide a chi si fattura: fuori bozza non cambia. Lo dice il building block vendite.trgfn_doc_testata_lock_fuori_bozza (trigger trg_ddt_a05_lock_fuori_bozza_upd), che guarda lo stato di prima: l'emissione che sceglie il cliente insieme resta lecita.","Se il cliente e' sbagliato, annullare la bolla e crearne una nuova. In bozza il cliente si cambia."
-E_DDT_NESSUNA_RIGA,it,Il DDT non ha righe eleggibili per l'operazione.,639,,
-E_DDT_NOT_FOUND,it,DDT non trovato.,640,,
-E_DDT_STATO_TRANSIZIONE,it,Operazione non ammessa nello stato corrente del DDT.,641,,
-E_DDT_VALIDAZIONE,it,Parametri DDT non validi.,642,,
-E_DEFINIZIONE_NOT_FOUND,it,Edizione di workflow o step non trovato.,643,,
-E_DOCUMENTI_DENIED,it,Operazione documentale non consentita.,644,,
-E_DOCUMENTI_NOT_FOUND,it,Documento o template non trovato.,645,,
-E_DOCUMENTI_RENDER_FAILED,it,Generazione PDF documento fallita.,646,,
-E_DOCUMENTI_STORAGE_FAILED,it,Errore lettura/scrittura file documento.,647,,
-E_DOCUMENTI_VALIDATION,it,Parametri documento non validi.,648,,
-E_DOCUMENTI_VERSIONE_OVERLAP,it,Le date di validita' si sovrappongono con un'altra versione PUBBLICATA attiva del template. Chiudi quella esistente prima di pubblicare la nuova.,649,,
-E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE,it,Impossibile emettere: componenti senza prezzo valorizzato.,650,,
-E_EMAIL,it,Errore configurazione email.,651,,
-E_FLUSSO_NOT_FOUND,it,Flusso non trovato.,652,,
-E_FLUSSO_OWNERSHIP,it,Flusso non appartiene alla pratica indicata.,653,,
-E_FLUSSO_VALIDATION,it,Parametri flusso non validi.,654,,
-E_GENERATE_FATTURE_RIGHE_VALIDATION,it,Parametri generazione righe non validi.,655,,
-E_GROUP_ATTIVITA_INVALID_DATA,it,Dati gruppo attivita non validi.,656,,
-E_GROUP_ATTIVITA_NOT_FOUND,it,Gruppo attivita non trovato.,657,,
-E_GROUP_ATTIVITA_VALIDATION,it,Parametri gruppo attivita non validi.,658,,
+E_DDT_NESSUNA_RIGA,it,Il DDT non ha righe eleggibili per l'operazione.,639,NULL,NULL
+E_DDT_NOT_FOUND,it,DDT non trovato.,640,NULL,NULL
+E_DDT_STATO_TRANSIZIONE,it,Operazione non ammessa nello stato corrente del DDT.,641,NULL,NULL
+E_DDT_VALIDAZIONE,it,Parametri DDT non validi.,642,NULL,NULL
+E_DEFINIZIONE_NOT_FOUND,it,Edizione di workflow o step non trovato.,643,NULL,NULL
+E_DOCUMENTI_DENIED,it,Operazione documentale non consentita.,644,NULL,NULL
+E_DOCUMENTI_NOT_FOUND,it,Documento o template non trovato.,645,NULL,NULL
+E_DOCUMENTI_RENDER_FAILED,it,Generazione PDF documento fallita.,646,NULL,NULL
+E_DOCUMENTI_STORAGE_FAILED,it,Errore lettura/scrittura file documento.,647,NULL,NULL
+E_DOCUMENTI_VALIDATION,it,Parametri documento non validi.,648,NULL,NULL
+E_DOCUMENTI_VERSIONE_OVERLAP,it,Le date di validita' si sovrappongono con un'altra versione PUBBLICATA attiva del template. Chiudi quella esistente prima di pubblicare la nuova.,649,NULL,NULL
+E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE,it,Impossibile emettere: componenti senza prezzo valorizzato.,650,NULL,NULL
+E_EMAIL,it,Errore configurazione email.,651,NULL,NULL
+E_FLUSSO_NOT_FOUND,it,Flusso non trovato.,652,NULL,NULL
+E_FLUSSO_OWNERSHIP,it,Flusso non appartiene alla pratica indicata.,653,NULL,NULL
+E_FLUSSO_VALIDATION,it,Parametri flusso non validi.,654,NULL,NULL
+E_GENERATE_FATTURE_RIGHE_VALIDATION,it,Parametri generazione righe non validi.,655,NULL,NULL
+E_GROUP_ATTIVITA_INVALID_DATA,it,Dati gruppo attivita non validi.,656,NULL,NULL
+E_GROUP_ATTIVITA_NOT_FOUND,it,Gruppo attivita non trovato.,657,NULL,NULL
+E_GROUP_ATTIVITA_VALIDATION,it,Parametri gruppo attivita non validi.,658,NULL,NULL
 E_IDEMPOTENCY_IN_PROGRESS,it,L'operazione è ancora in corso.,659,La stessa richiesta è già stata inviata e il server la sta eseguendo.,"Attendi qualche secondo e riprova: l'operazione non verrà eseguita due volte."
 E_IDEMPOTENCY_IN_PROGRESS,en,The operation is still in progress.,1386,The same request has already been sent and the server is processing it.,"Wait a few seconds and try again: the operation will not be executed twice."
-E_IDEMPOTENCY_KEY_REQUIRED,it,Idempotency-Key obbligatoria per questa operazione.,660,,
+E_IDEMPOTENCY_KEY_REQUIRED,it,Idempotency-Key obbligatoria per questa operazione.,660,NULL,NULL
 E_IDEMPOTENCY_KEY_RIUSATA,it,La chiave di invio di questa richiesta appartiene a un'altra operazione.,1387,"La chiave che rende sicuro il reinvio (Idempotency-Key) è già stata usata da un altro utente o per un'altra operazione: rispondere con l'esito di quella operazione sarebbe sbagliato.","Riprova l'operazione dall'inizio: l'applicazione genera una chiave nuova. Se l'errore si ripete, segnalalo: è un difetto del programma che invia la richiesta."
 E_IDEMPOTENCY_KEY_RIUSATA,en,The submission key of this request belongs to another operation.,1388,"The key that makes a resend safe (Idempotency-Key) has already been used by another user or for another operation: answering with the outcome of that operation would be wrong.","Start the operation again: the application generates a new key. If the error persists, report it: it is a defect of the program sending the request."
-E_IDENTITA_NON_ATTIVA,it,Sessione non piu' valida: effettua nuovamente l'accesso.,661,,
-E_INVALID_ID,it,ID non valido.,662,,
-E_INVITO_OPERATORE,it,Operatore non invitabile.,663,,
-E_INVITO_PORTALE,it,Invito portale non inviabile.,664,,
-E_JOB_NON_ANNULLABILE,it,Il lavoro non e` piu` in attesa: annullo non possibile.,665,,
-E_JOB_NON_RIACCODABILE,it,Il lavoro non e` riaccodabile nello stato corrente.,666,,
-E_JOB_NON_TROVATO,it,Lavoro non trovato.,667,,
-E_JWT_SENZA_IDENTITA,it,Sessione scaduta: effettua nuovamente l'accesso.,668,,
-E_KIT_QUANTITA_DISOMOGENEE,it,Componenti dello stesso kit con quantita diverse: la fattura non e' rappresentabile.,669,,
-E_LISTINO_RIGA_COMP_BOM_INCOERENTE,it,Prezzo bundle riferito a un componente non presente nella distinta base del padre composito.,670,,
-E_LOGOUT_NO_TOKEN,it,Token di refresh richiesto per il logout.,671,,
-E_LOTTO_NON_NUMERABILE,it,Il lotto non e` in stato EMESSA: numerazione non applicabile.,672,,
-E_LOTTO_NON_RISTAMPABILE,it,Il lotto non e` definitivo: la ristampa massiva richiede fatture numerate (Rendi definitive).,673,,
-E_NOTA_CHECK_VIOLATION,it,"Valore non ammesso per anchor_tipo, posizione, seq o testo.",674,,
-E_NOTA_DUPLICATO,it,Nota gia' esistente (violato vincolo di univocita').,675,,
-E_NOTA_FK,it,"Riferimento non valido: stile, lingua o riga non esistenti.",676,,
-E_NOTA_NOT_FOUND,it,Nota non trovata.,677,,
-E_NOTA_PARENT_NOT_FOUND,it,Documento di riferimento non trovato.,678,,
-E_NOTA_RIGA_INCOERENTE,it,La riga indicata non appartiene al documento.,679,,
-E_NOTA_VALIDATION,it,Dati nota non validi.,680,,
-E_NOT_AUTHENTICATED,it,Non autenticato.,681,,
-E_ORD_NESSUNA_RIGA,it,L'ordine non ha righe eleggibili per l'operazione.,682,,
-E_ORD_NOT_FOUND,it,Ordine non trovato.,683,,
-E_ORD_OFFERTA_GIA_CONVERTITA,it,Un ordine è già stato generato da questa offerta.,684,,
-E_ORD_ORIGINE_NON_CONVERTIBILE,it,Il documento di origine non è in uno stato che consente di generare un ordine.,685,,
-E_ORD_STATO_TRANSIZIONE,it,Operazione non ammessa nello stato corrente dell'ordine.,686,,
-E_ORD_VALIDAZIONE,it,Parametri ordine non validi.,687,,
-E_OUTBOX,it,Errore gestione bozza email.,688,,
-E_PARAMETER_NOT_FOUND,it,Parametro di sistema non trovato.,689,,
-E_PARAMETER_VALIDATION,it,Valore parametro non valido.,690,,
-E_PERMESSO_NEGATO,it,Non hai i permessi per questa operazione.,691,,
-E_PERMISSION_DENIED,it,Permesso negato.,692,,
-E_PIPELINE,it,Errore nella pipeline di fatturazione.,693,,
-E_PIPELINE_DOMINIO,it,Errore dominio pipeline.,694,,
-E_PIPELINE_DOMINIO_NOT_FOUND,it,Dominio pipeline non trovato.,695,,
+E_IDENTITA_NON_ATTIVA,it,Sessione non piu' valida: effettua nuovamente l'accesso.,661,NULL,NULL
+E_INVALID_ID,it,ID non valido.,662,NULL,NULL
+E_INVITO_OPERATORE,it,Operatore non invitabile.,663,NULL,NULL
+E_INVITO_PORTALE,it,Invito portale non inviabile.,664,NULL,NULL
+E_JOB_NON_ANNULLABILE,it,Il lavoro non e` piu` in attesa: annullo non possibile.,665,NULL,NULL
+E_JOB_NON_RIACCODABILE,it,Il lavoro non e` riaccodabile nello stato corrente.,666,NULL,NULL
+E_JOB_NON_TROVATO,it,Lavoro non trovato.,667,NULL,NULL
+E_JWT_SENZA_IDENTITA,it,Sessione scaduta: effettua nuovamente l'accesso.,668,NULL,NULL
+E_KIT_QUANTITA_DISOMOGENEE,it,Componenti dello stesso kit con quantita diverse: la fattura non e' rappresentabile.,669,NULL,NULL
+E_LISTINO_RIGA_COMP_BOM_INCOERENTE,it,Prezzo bundle riferito a un componente non presente nella distinta base del padre composito.,670,NULL,NULL
+E_LOGOUT_NO_TOKEN,it,Token di refresh richiesto per il logout.,671,NULL,NULL
+E_LOTTO_NON_NUMERABILE,it,Il lotto non e` in stato EMESSA: numerazione non applicabile.,672,NULL,NULL
+E_LOTTO_NON_RISTAMPABILE,it,Il lotto non e` definitivo: la ristampa massiva richiede fatture numerate (Rendi definitive).,673,NULL,NULL
+E_NOTA_CHECK_VIOLATION,it,"Valore non ammesso per anchor_tipo, posizione, seq o testo.",674,NULL,NULL
+E_NOTA_DUPLICATO,it,Nota gia' esistente (violato vincolo di univocita').,675,NULL,NULL
+E_NOTA_FK,it,"Riferimento non valido: stile, lingua o riga non esistenti.",676,NULL,NULL
+E_NOTA_NOT_FOUND,it,Nota non trovata.,677,NULL,NULL
+E_NOTA_PARENT_NOT_FOUND,it,Documento di riferimento non trovato.,678,NULL,NULL
+E_NOTA_RIGA_INCOERENTE,it,La riga indicata non appartiene al documento.,679,NULL,NULL
+E_NOTA_VALIDATION,it,Dati nota non validi.,680,NULL,NULL
+E_NOT_AUTHENTICATED,it,Non autenticato.,681,NULL,NULL
+E_ORD_NESSUNA_RIGA,it,L'ordine non ha righe eleggibili per l'operazione.,682,NULL,NULL
+E_ORD_NOT_FOUND,it,Ordine non trovato.,683,NULL,NULL
+E_ORD_OFFERTA_GIA_CONVERTITA,it,Un ordine è già stato generato da questa offerta.,684,NULL,NULL
+E_ORD_ORIGINE_NON_CONVERTIBILE,it,Il documento di origine non è in uno stato che consente di generare un ordine.,685,NULL,NULL
+E_ORD_STATO_TRANSIZIONE,it,Operazione non ammessa nello stato corrente dell'ordine.,686,NULL,NULL
+E_ORD_VALIDAZIONE,it,Parametri ordine non validi.,687,NULL,NULL
+E_OUTBOX,it,Errore gestione bozza email.,688,NULL,NULL
+E_PARAMETER_NOT_FOUND,it,Parametro di sistema non trovato.,689,NULL,NULL
+E_PARAMETER_VALIDATION,it,Valore parametro non valido.,690,NULL,NULL
+E_PERMESSO_NEGATO,it,Non hai i permessi per questa operazione.,691,NULL,NULL
+E_PERMISSION_DENIED,it,Permesso negato.,692,NULL,NULL
+E_PIPELINE,it,Errore nella pipeline di fatturazione.,693,NULL,NULL
+E_PIPELINE_DOMINIO,it,Errore dominio pipeline.,694,NULL,NULL
+E_PIPELINE_DOMINIO_NOT_FOUND,it,Dominio pipeline non trovato.,695,NULL,NULL
 E_PIPELINE_LOTTO_CRITICAL,it,Lotto bloccato per segnalazioni critiche o documenti in errore.,696,"Il lotto ha almeno una segnalazione critica attiva o un documento preso in carico il cui ultimo esito e' ERRORE: lo step successivo non puo' partire.","Correggere le segnalazioni critiche e i documenti in errore (o toglierli dal giro), poi rilanciare lo step."
-E_PIPELINE_LOTTO_IN_ESECUZIONE,it,Lotto gia' in esecuzione.,697,,
-E_PIPELINE_LOTTO_NOT_FOUND,it,Lotto non trovato.,698,,
-E_PIPELINE_MARK_ERROR,it,Errore marcatura pipeline.,699,,
-E_PIPELINE_NOT_FOUND,it,Configurazione pipeline non trovata.,700,,
-E_PIPELINE_SCOPE_INCOMPLETE,it,Scope pipeline incompleto.,701,,
-E_PIPELINE_STATO_LOTTO,it,Stato lotto non compatibile con l'operazione.,702,,
-E_PIPELINE_TASK,it,Errore task pipeline.,703,,
-E_PIPELINE_TASK_HANDLER_NOT_FOUND,it,Handler task non trovato.,704,,
-E_PIPELINE_VALIDATION,it,Parametri pipeline non validi.,705,,
-E_PRATICA_NOT_FOUND,it,Pratica non trovata.,706,,
-E_PRATICA_VALIDATION,it,Parametri pratica non validi.,707,,
-E_PREV_COMPONENTE_NOT_FOUND,it,Componente preventivo non trovato.,708,,
-E_PREV_GIA_IN_COMMESSA,it,Preventivo gia' inviato a fatturazione.,709,,
-E_PREV_NESSUNA_RIGA,it,Nessuna riga attiva nel preventivo.,710,,
-E_PREV_PRATICA_STATO,it,Stato preventivo non ammette generazione pratica.,711,,
-E_PREV_REVISIONE_ATTIVA,it,Esiste gia' una revisione attiva per questo preventivo.,712,,
-E_PREV_RIGA_NOT_FOUND,it,Riga preventivo non trovata.,713,,
-E_PREV_STATO_NON_MODIFICABILE,it,Preventivo non modificabile nello stato corrente.,714,,
-E_PREV_STATO_TRANSIZIONE,it,Transizione di stato preventivo non ammessa.,715,,
-E_PRICING_MAGGIORAZIONE_ECCESSIVA,it,Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.,716,,
-E_PRICING_OVERRIDE_NON_AUTORIZZATO,it,Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.,717,,
-E_PRICING_SCONTO_ECCESSIVO,it,Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.,718,,
-E_PULL_COMMESSA,it,Errore pull commessa.,719,,
-E_PULL_COMMESSA_ALL_FAILED,it,Tutti i pull commessa falliti.,720,,
-E_REPARTO_SENZA_PROFILO,it,Il reparto non ha ancora un profilo permessi configurato.,721,,
-E_RESET_LOTTO_FATTURA_VALIDATION,it,Parametri reset fattura non validi.,722,,
-E_RESET_LOTTO_VALIDATION,it,Parametri reset lotto non validi.,723,,
-E_RESET_PASSWORD,it,Errore reset password.,724,,
-E_RESO_STATO_TRANSIZIONE,it,Operazione non ammessa nello stato corrente del reso.,725,,
-E_RESO_VALIDAZIONE,it,Parametri reso non validi.,726,,
-E_SCADENZE_LOTTO_PARZIALE,it,Piano rate non generato per alcune fatture: vedi i log delle fatture interessate.,727,,
-E_SEARCH_NOT_FOUND,it,Nessun risultato trovato.,728,,
-E_SEARCH_VALIDATION,it,Parametri ricerca non validi.,729,,
-E_SESSIONE_NOT_FOUND,it,Sessione non trovata o gia' revocata.,730,,
-E_SESSIONE_REVOCA_CORRENTE,it,Non puoi revocare la sessione corrente. Usa il logout.,731,,
-E_SHOP_NON_DISPONIBILE,it,Shop non ancora disponibile. In arrivo con PR-C.,732,,
-E_SOSPENSIONE_DATA_FINE,it,La data di riattivazione deve essere successiva all'inizio della sospensione.,733,,
-E_SOSPENSIONE_NOT_FOUND,it,Sospensione non trovata o gia' chiusa.,734,,
+E_PIPELINE_LOTTO_IN_ESECUZIONE,it,Lotto gia' in esecuzione.,697,NULL,NULL
+E_PIPELINE_LOTTO_NOT_FOUND,it,Lotto non trovato.,698,NULL,NULL
+E_PIPELINE_MARK_ERROR,it,Errore marcatura pipeline.,699,NULL,NULL
+E_PIPELINE_NOT_FOUND,it,Configurazione pipeline non trovata.,700,NULL,NULL
+E_PIPELINE_SCOPE_INCOMPLETE,it,Scope pipeline incompleto.,701,NULL,NULL
+E_PIPELINE_STATO_LOTTO,it,Stato lotto non compatibile con l'operazione.,702,NULL,NULL
+E_PIPELINE_TASK,it,Errore task pipeline.,703,NULL,NULL
+E_PIPELINE_TASK_HANDLER_NOT_FOUND,it,Handler task non trovato.,704,NULL,NULL
+E_PIPELINE_VALIDATION,it,Parametri pipeline non validi.,705,NULL,NULL
+E_PRATICA_NOT_FOUND,it,Pratica non trovata.,706,NULL,NULL
+E_PRATICA_VALIDATION,it,Parametri pratica non validi.,707,NULL,NULL
+E_PREV_COMPONENTE_NOT_FOUND,it,Componente preventivo non trovato.,708,NULL,NULL
+E_PREV_GIA_IN_COMMESSA,it,Preventivo gia' inviato a fatturazione.,709,NULL,NULL
+E_PREV_NESSUNA_RIGA,it,Nessuna riga attiva nel preventivo.,710,NULL,NULL
+E_PREV_PRATICA_STATO,it,Stato preventivo non ammette generazione pratica.,711,NULL,NULL
+E_PREV_REVISIONE_ATTIVA,it,Esiste gia' una revisione attiva per questo preventivo.,712,NULL,NULL
+E_PREV_RIGA_NOT_FOUND,it,Riga preventivo non trovata.,713,NULL,NULL
+E_PREV_STATO_NON_MODIFICABILE,it,Preventivo non modificabile nello stato corrente.,714,NULL,NULL
+E_PREV_STATO_TRANSIZIONE,it,Transizione di stato preventivo non ammessa.,715,NULL,NULL
+E_PRICING_MAGGIORAZIONE_ECCESSIVA,it,Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.,716,NULL,NULL
+E_PRICING_OVERRIDE_NON_AUTORIZZATO,it,Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.,717,NULL,NULL
+E_PRICING_SCONTO_ECCESSIVO,it,Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.,718,NULL,NULL
+E_PULL_COMMESSA,it,Errore pull commessa.,719,NULL,NULL
+E_PULL_COMMESSA_ALL_FAILED,it,Tutti i pull commessa falliti.,720,NULL,NULL
+E_REPARTO_SENZA_PROFILO,it,Il reparto non ha ancora un profilo permessi configurato.,721,NULL,NULL
+E_RESET_LOTTO_FATTURA_VALIDATION,it,Parametri reset fattura non validi.,722,NULL,NULL
+E_RESET_LOTTO_VALIDATION,it,Parametri reset lotto non validi.,723,NULL,NULL
+E_RESET_PASSWORD,it,Errore reset password.,724,NULL,NULL
+E_RESO_STATO_TRANSIZIONE,it,Operazione non ammessa nello stato corrente del reso.,725,NULL,NULL
+E_RESO_VALIDAZIONE,it,Parametri reso non validi.,726,NULL,NULL
+E_SCADENZE_LOTTO_PARZIALE,it,Piano rate non generato per alcune fatture: vedi i log delle fatture interessate.,727,NULL,NULL
+E_SEARCH_NOT_FOUND,it,Nessun risultato trovato.,728,NULL,NULL
+E_SEARCH_VALIDATION,it,Parametri ricerca non validi.,729,NULL,NULL
+E_SESSIONE_NOT_FOUND,it,Sessione non trovata o gia' revocata.,730,NULL,NULL
+E_SESSIONE_REVOCA_CORRENTE,it,Non puoi revocare la sessione corrente. Usa il logout.,731,NULL,NULL
+E_SHOP_NON_DISPONIBILE,it,Shop non ancora disponibile. In arrivo con PR-C.,732,NULL,NULL
+E_SOSPENSIONE_DATA_FINE,it,La data di riattivazione deve essere successiva all'inizio della sospensione.,733,NULL,NULL
+E_SOSPENSIONE_NOT_FOUND,it,Sospensione non trovata o gia' chiusa.,734,NULL,NULL
 E_SOSPENSIONI_FLUSSO_NON_COERENTE,it,Il flusso %s non appartiene alla pratica %s,735,Il flusso indicato non appartiene alla pratica della sospensione.,Verificare che flusso_id e pratica_id siano coerenti.
-E_TASK,it,Errore esecuzione task.,736,,
-E_TASK_FATTURA,it,Errore task fattura.,737,,
-E_TASK_IMPLEMENTATION_NOT_FOUND,it,Implementazione task non trovata.,738,,
-E_TASK_NOT_ALLOWED,it,Task pipeline non autorizzato.,739,,
-E_TASK_NOT_IMPLEMENTED,it,Task pipeline non implementato.,740,,
-E_TASK_RESET_REQUIRED,it,Reset necessario prima di rieseguire.,741,,
-E_TIPO_FONDO_NOT_FOUND,it,Tipo fondo non trovato.,742,,
-E_TOKEN,it,"Token non valido, scaduto o gia' utilizzato.",743,,
-E_UI_COLONNA_IN_USO,it,"La colonna e' in uso (preferenze utente, preset o permessi). Disattivala con attivo=false invece di eliminarla.",744,,
-E_UI_COLONNA_NON_TROVATA,it,Colonna lista non trovata.,745,,
-E_UI_COLONNA_VALIDAZIONE,it,Colonna lista non valida.,746,,
-E_UI_DEFINIZIONE_IN_USO,it,"La definizione lista e' in uso (preferenze utente, colonne o preset). Disattivala con attivo=false invece di eliminarla.",747,,
-E_UI_DEFINIZIONE_NON_TROVATA,it,Definizione lista non trovata.,748,,
-E_UI_DEFINIZIONE_VALIDAZIONE,it,Definizione lista non valida.,749,,
-E_UI_EXPORT_FAILED,it,Generazione export non riuscita.,750,,
-E_UI_EXPORT_FORMAT_INVALID,it,"Formato export non supportato (ammessi: csv, xlsx).",751,,
-E_UI_EXPORT_LIMIT_EXCEEDED,it,L'export supera il limite di righe consentito. Raffina i filtri e riprova.,752,,
-E_UI_GENERIC_FAILED,it,Errore configurazione lista.,753,,
-E_UI_PERMESSO_NON_TROVATO,it,Permesso colonna non trovato.,754,,
-E_UI_PERMESSO_VALIDAZIONE,it,Permesso colonna non valido.,755,,
-E_UI_PREFERENZA_NON_TROVATA,it,Preferenza utente non trovata per questa lista.,756,,
-E_UI_PREFERENZA_VALIDAZIONE,it,Preferenza lista non valida.,757,,
-E_UI_PRESET_NON_TROVATO,it,Preset lista non trovato.,758,,
-E_UI_PRESET_VALIDAZIONE,it,Preset lista non valido.,759,,
-E_USER_DISABILITATO,it,Utente disabilitato. Contattare l'amministratore.,760,,
+E_TASK,it,Errore esecuzione task.,736,NULL,NULL
+E_TASK_FATTURA,it,Errore task fattura.,737,NULL,NULL
+E_TASK_IMPLEMENTATION_NOT_FOUND,it,Implementazione task non trovata.,738,NULL,NULL
+E_TASK_NOT_ALLOWED,it,Task pipeline non autorizzato.,739,NULL,NULL
+E_TASK_NOT_IMPLEMENTED,it,Task pipeline non implementato.,740,NULL,NULL
+E_TASK_RESET_REQUIRED,it,Reset necessario prima di rieseguire.,741,NULL,NULL
+E_TIPO_FONDO_NOT_FOUND,it,Tipo fondo non trovato.,742,NULL,NULL
+E_TOKEN,it,"Token non valido, scaduto o gia' utilizzato.",743,NULL,NULL
+E_UI_COLONNA_IN_USO,it,"La colonna e' in uso (preferenze utente, preset o permessi). Disattivala con attivo=false invece di eliminarla.",744,NULL,NULL
+E_UI_COLONNA_NON_TROVATA,it,Colonna lista non trovata.,745,NULL,NULL
+E_UI_COLONNA_VALIDAZIONE,it,Colonna lista non valida.,746,NULL,NULL
+E_UI_DEFINIZIONE_IN_USO,it,"La definizione lista e' in uso (preferenze utente, colonne o preset). Disattivala con attivo=false invece di eliminarla.",747,NULL,NULL
+E_UI_DEFINIZIONE_NON_TROVATA,it,Definizione lista non trovata.,748,NULL,NULL
+E_UI_DEFINIZIONE_VALIDAZIONE,it,Definizione lista non valida.,749,NULL,NULL
+E_UI_EXPORT_FAILED,it,Generazione export non riuscita.,750,NULL,NULL
+E_UI_EXPORT_FORMAT_INVALID,it,"Formato export non supportato (ammessi: csv, xlsx).",751,NULL,NULL
+E_UI_EXPORT_LIMIT_EXCEEDED,it,L'export supera il limite di righe consentito. Raffina i filtri e riprova.,752,NULL,NULL
+E_UI_GENERIC_FAILED,it,Errore configurazione lista.,753,NULL,NULL
+E_UI_PERMESSO_NON_TROVATO,it,Permesso colonna non trovato.,754,NULL,NULL
+E_UI_PERMESSO_VALIDAZIONE,it,Permesso colonna non valido.,755,NULL,NULL
+E_UI_PREFERENZA_NON_TROVATA,it,Preferenza utente non trovata per questa lista.,756,NULL,NULL
+E_UI_PREFERENZA_VALIDAZIONE,it,Preferenza lista non valida.,757,NULL,NULL
+E_UI_PRESET_NON_TROVATO,it,Preset lista non trovato.,758,NULL,NULL
+E_UI_PRESET_VALIDAZIONE,it,Preset lista non valido.,759,NULL,NULL
+E_USER_DISABILITATO,it,Utente disabilitato. Contattare l'amministratore.,760,NULL,NULL
 E_UTENTE_BLOCCATO,it,Troppi tentativi non riusciti da questa postazione: riprovare fra %s minuti.,761,"Dopo troppi tentativi non riusciti da questa postazione, l'accesso da qui e' sospeso per qualche minuto.","Attendere e riprovare; se la password e' dimenticata, usare il recupero della password."
-E_VALIDATION_INPUT,it,Parametro di input non valido.,762,,
-E_VENDITA_PREVENTIVO_NON_COLLEGATO,it,Il preventivo non e' collegato a una pratica: azione non disponibile.,763,,
-E_VENDITA_SMISTAMENTO_NON_ESEGUITO,it,Esegui lo smistamento della merce (genera ordine) prima di completare lo step.,764,,
-E_VENDITE_CONTRATTO_OVERLAP,it,Esiste gia' un contratto sovrapposto per questo cliente/istanza/utility/ambito nel periodo indicato.,765,,
-E_VENDITE_DASH_PREVISIONE_FATTURE_FALLITA,it,Impossibile calcolare la previsione delle fatture da emettere.,766,,
-E_VENDITE_DUPLICATO,it,Record gia' esistente (violato vincolo di univocita').,767,,
-E_VENDITE_FK,it,Riferimento non valido: l'entita' indicata non esiste.,768,,
-E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND,it,Associazione listino non trovata.,769,,
-E_VENDITE_LISTINO_NOT_FOUND,it,Listino non trovato.,770,,
-E_VENDITE_LISTINO_RIGA_COMP_OVERLAP,it,Esiste gia' un prezzo bundle attivo sovrapposto per questo componente nel periodo indicato. Disattiva o chiudi quello esistente prima di salvare il nuovo prezzo.,771,,
-E_VENDITE_LISTINO_RIGA_NOT_FOUND,it,Riga listino non trovata.,772,,
-E_VENDITE_LISTINO_VERSIONE_NOT_FOUND,it,Versione listino non trovata.,773,,
-E_VENDITE_LISTINO_VERSIONE_OVERLAP,it,Esiste gia' una versione ATTIVA sovrapposta per il listino. Chiudi la vecchia (valido_al = nuova_valido_dal - 1) e poi attiva la nuova: la nuova decorrenza deve essere almeno 1 giorno dopo l'inizio della precedente.,774,,
-E_VENDITE_NOT_FOUND,it,Record vendite non trovato.,775,,
-E_VENDITE_PRICING_FAILED,it,Impossibile risolvere il prezzo listino.,776,,
-E_VENDITE_PROMO_OVERLAP,it,"Esiste gia' una promo attiva per questo (articolo, unita' di misura) nel periodo indicato.",777,,
-E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA,it,Riallineamento richiede conferma: la versione listino e` cambiata.,778,,
-E_VENDITE_RIGA_GIA_PROPAGATA,it,Riga gia` propagata in commessa o fatturabile. Usare clone versione.,779,,
-E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO,it,Sblocco prezzo non ammesso: il prezzo non e` bloccato.,780,,
-E_VENDITE_VALIDATION,it,Parametri non validi.,781,,
-E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA,it,Operazione prezzo non ammessa sullo stato corrente.,782,,
-E_VESTE_NON_ATTIVA,it,Non hai accesso a questo canale.,783,,
+E_VALIDATION_INPUT,it,Parametro di input non valido.,762,NULL,NULL
+E_VENDITA_PREVENTIVO_NON_COLLEGATO,it,Il preventivo non e' collegato a una pratica: azione non disponibile.,763,NULL,NULL
+E_VENDITA_SMISTAMENTO_NON_ESEGUITO,it,Esegui lo smistamento della merce (genera ordine) prima di completare lo step.,764,NULL,NULL
+E_VENDITE_CONTRATTO_OVERLAP,it,Esiste gia' un contratto sovrapposto per questo cliente/istanza/utility/ambito nel periodo indicato.,765,NULL,NULL
+E_VENDITE_DASH_PREVISIONE_FATTURE_FALLITA,it,Impossibile calcolare la previsione delle fatture da emettere.,766,NULL,NULL
+E_VENDITE_DUPLICATO,it,Record gia' esistente (violato vincolo di univocita').,767,NULL,NULL
+E_VENDITE_FK,it,Riferimento non valido: l'entita' indicata non esiste.,768,NULL,NULL
+E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND,it,Associazione listino non trovata.,769,NULL,NULL
+E_VENDITE_LISTINO_NOT_FOUND,it,Listino non trovato.,770,NULL,NULL
+E_VENDITE_LISTINO_RIGA_COMP_OVERLAP,it,Esiste gia' un prezzo bundle attivo sovrapposto per questo componente nel periodo indicato. Disattiva o chiudi quello esistente prima di salvare il nuovo prezzo.,771,NULL,NULL
+E_VENDITE_LISTINO_RIGA_NOT_FOUND,it,Riga listino non trovata.,772,NULL,NULL
+E_VENDITE_LISTINO_VERSIONE_NOT_FOUND,it,Versione listino non trovata.,773,NULL,NULL
+E_VENDITE_LISTINO_VERSIONE_OVERLAP,it,Esiste gia' una versione ATTIVA sovrapposta per il listino. Chiudi la vecchia (valido_al = nuova_valido_dal - 1) e poi attiva la nuova: la nuova decorrenza deve essere almeno 1 giorno dopo l'inizio della precedente.,774,NULL,NULL
+E_VENDITE_NOT_FOUND,it,Record vendite non trovato.,775,NULL,NULL
+E_VENDITE_PRICING_FAILED,it,Impossibile risolvere il prezzo listino.,776,NULL,NULL
+E_VENDITE_PROMO_OVERLAP,it,"Esiste gia' una promo attiva per questo (articolo, unita' di misura) nel periodo indicato.",777,NULL,NULL
+E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA,it,Riallineamento richiede conferma: la versione listino e` cambiata.,778,NULL,NULL
+E_VENDITE_RIGA_GIA_PROPAGATA,it,Riga gia` propagata in commessa o fatturabile. Usare clone versione.,779,NULL,NULL
+E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO,it,Sblocco prezzo non ammesso: il prezzo non e` bloccato.,780,NULL,NULL
+E_VENDITE_VALIDATION,it,Parametri non validi.,781,NULL,NULL
+E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA,it,Operazione prezzo non ammessa sullo stato corrente.,782,NULL,NULL
+E_VESTE_NON_ATTIVA,it,Non hai accesso a questo canale.,783,NULL,NULL
 E_VALIDAZIONE,it,Validazione fallita: %s,784,"Guard di validazione parametri in ingresso: le funzioni di dominio rifiutano NULL e id <= 0 invece di normalizzarli in silenzio. Il dettaglio del parametro violato arriva come valore, non e' nel codice.",Correggere il parametro indicato nel messaggio e rilanciare la chiamata.
-E_COMPETENZA,it,"Competenza attivita' non valida (%s, %s): mese e intervallo dal/al sono alternativi e devono essere coerenti fra loro.",785,,
-E_COMPETENZA_SUPERATA,it,Data attivita' %s fuori dalla competenza dichiarata (%s).,786,,
-E_FONTE_QUANTITA_NON_VALIDA,it,Fonte quantita' '%s' non valida per l'articolo %s.,787,,
-E_REGOLA_FATTURAZIONE_MANCANTE,it,Nessuna regola di fatturazione configurata per l'articolo %s.,788,,
-E_COERENZA_ID,it,Il valore di %s (%s) non e' coerente con %s %s.,789,,
-E_PARAMETRI_TABELLA,it,Parametro %s non valido o inesistente: %s.,790,,
-E_SCOPE_EMITTENTE,it,Accesso negato per scope emittente fiscale: %s,791,,
-E_NOTE_RIGA_MISMATCH,it,La riga %s non appartiene al documento di dominio %s indicato (%s).,792,,
-E_LOCK_COLUMNS,it,Automazione colonne di lock fallita: %s,793,,
-E_STORICO_UD,it,Automazione di storicizzazione fallita: %s,794,,
+E_COMPETENZA,it,"Competenza attivita' non valida (%s, %s): mese e intervallo dal/al sono alternativi e devono essere coerenti fra loro.",785,NULL,NULL
+E_COMPETENZA_SUPERATA,it,Data attivita' %s fuori dalla competenza dichiarata (%s).,786,NULL,NULL
+E_FONTE_QUANTITA_NON_VALIDA,it,Fonte quantita' '%s' non valida per l'articolo %s.,787,NULL,NULL
+E_REGOLA_FATTURAZIONE_MANCANTE,it,Nessuna regola di fatturazione configurata per l'articolo %s.,788,NULL,NULL
+E_COERENZA_ID,it,Il valore di %s (%s) non e' coerente con %s %s.,789,NULL,NULL
+E_PARAMETRI_TABELLA,it,Parametro %s non valido o inesistente: %s.,790,NULL,NULL
+E_SCOPE_EMITTENTE,it,Accesso negato per scope emittente fiscale: %s,791,NULL,NULL
+E_NOTE_RIGA_MISMATCH,it,La riga %s non appartiene al documento di dominio %s indicato (%s).,792,NULL,NULL
+E_LOCK_COLUMNS,it,Automazione colonne di lock fallita: %s,793,NULL,NULL
+E_STORICO_UD,it,Automazione di storicizzazione fallita: %s,794,NULL,NULL
 E_ARTICOLO_SOLO_COMPONENTE,it,Articolo utilizzabile solo come componente di distinta base: non puo' essere inserito come riga autonoma.,795,"L'articolo e' marcato come utilizzabile solo dentro una distinta base: puo' comparire come componente di un padre, mai come riga di documento a se' stante.","Inserire l'articolo padre che lo contiene, oppure togliere il flag di solo-componente in anagrafica articolo se l'uso autonomo e' legittimo."
-E_RECONCILE_AMBIGUO,it,Riconciliazione sorgente ambigua: %s,796,,
-E_TASK_RUNTIME,it,Errore runtime del task di pipeline: %s,797,,
+E_RECONCILE_AMBIGUO,it,Riconciliazione sorgente ambigua: %s,796,NULL,NULL
+E_TASK_RUNTIME,it,Errore runtime del task di pipeline: %s,797,NULL,NULL
 E_LOTTO_NON_ANNULLABILE,it,Il lotto non e' in bozza: l'annullamento non e' possibile (stato attuale: %s).,798,L'annullamento demolisce le fatture pre-fiscali e chiude il lotto: e' ammesso solo finche' il lotto non ha prodotto nulla oltre la bozza.,"Se il lotto e' emesso ma non ancora numerato, usare «Riporta in bozza»: riporta indietro il lotto lasciandolo vivo."
 E_LOTTO_FATTURE_NON_PRE_FISCALI,it,Il lotto contiene %s fattura/e oltre lo stato pre-fiscale: l'operazione le distruggerebbe.,799,Pre-fiscale significa non ancora numerata (bozza o emessa). Oltre quella soglia il documento e' fiscalmente nato e non si cancella.,"Verificare le fatture del lotto: se una e' gia' definitiva, il lotto non torna indietro. Vedere vendite.vw_lotti_fatture_incoerenti per l'elenco."
 E_LOTTO_NON_RIPORTABILE_A_DRAFT,it,Il ritorno in bozza e' ammesso solo su un lotto in bozza o emesso (stato attuale: %s).,800,"Oltre EMESSA c'e' la numerazione, che e' il punto di non ritorno del documento fiscale.",Nessuna azione: un lotto numerato non si riapre. Le correzioni si fanno con note di credito.
 E_LOTTO_FATTURE_NUMERATE,it,Il lotto contiene %s fattura/e gia' numerata/e: riportarlo in bozza aprirebbe un buco nella numerazione fiscale.,801,"Il controllo guarda il NUMERO della fattura, non il suo stato: una numerazione persa e' un danno irreversibile, quindi si verifica il fatto e non cio' che dovrebbe implicarlo.","Nessuna azione sul lotto. Se le fatture numerate sono un errore, la strada e' la nota di credito, non la cancellazione."
-E_ALLEGATO_INSERT,it,Errore durante l'inserimento dell'allegato.,802,,
-E_ALLEGATO_NOT_FOUND,it,Allegato non trovato.,803,,
-E_AMM_OPERATORE_NOT_FOUND,it,Operatore non trovato.,804,,
-E_FLUSSO_COMPETENZA_INSERT,it,Errore durante l'inserimento della competenza del flusso.,805,,
-E_FLUSSO_COMPETENZA_NOT_FOUND,it,Competenza del flusso non trovata.,806,,
-E_EMAIL_ADMIN,it,Operazione sulla configurazione email non riuscita.,807,,
-E_EMAIL_OP,it,Operazione email non riuscita.,808,,
-E_EMITTENTE_ATTIVO_NON_VALIDO,it,"Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",809,,
-E_EMITTENTE_ATTIVO_TOKEN,it,Refresh token richiesto per applicare il cambio di emittente.,810,,
-E_FATTURA_EMITTENTE_NON_RISOLTO,it,Emittente fiscale non risolvibile per la fattura in coda di stampa.,811,,
-E_FATTURAZIONE_GIRO_NESSUN_LOTTO,it,Nessun lotto da fatturare nel perimetro indicato.,812,,
-E_FATTURAZIONE_GIRO_PAYLOAD,it,Parametri del giro di fatturazione non validi.,813,,
-E_FATTURAZIONE_NUMERA_PAYLOAD,it,Parametri della numerazione non validi.,814,,
-E_FLUSSO_ID_INVALIDO,it,Flusso non valido.,815,,
-E_FLUSSO_ID_OBBLIGATORIO,it,Flusso obbligatorio.,816,,
-E_FLUSSO_INSERT,it,Errore durante l'inserimento del flusso.,817,,
-E_FLUSSO_PRESA_IN_CARICO,it,Errore durante la presa in carico del flusso.,818,,
-E_GENERAZIONE_PRATICA,it,Errore durante la generazione della pratica dal flusso.,819,,
-E_GIORNALE_QUERY,it,Errore durante la lettura del giornale.,820,,
-E_HANDLER_NON_REGISTRATO,it,Handler di flusso non registrato: configurazione incompleta.,821,,
-E_NOTA_INSERT,it,Errore durante l'inserimento della nota.,822,,
-E_PIPELINE_DRIVER_MAX_ITER,it,Pipeline interrotta: superato il numero massimo di iterazioni.,823,,
-E_PRATICA_ID_INVALIDO,it,Pratica non valida.,824,,
-E_PRATICA_ID_OBBLIGATORIO,it,Pratica obbligatoria.,825,,
-E_PRATICA_INSERT,it,Errore durante l'inserimento della pratica.,826,,
-E_PRATICA_QUERY,it,Errore durante la lettura delle pratiche.,827,,
-E_PRATICA_SORGENTE_TIPO_INVALIDO,it,Codice sorgente non presente in configurazione.,828,,
-E_SOSPENSIONE_INSERT,it,Errore durante l'inserimento della sospensione.,829,,
+E_ALLEGATO_INSERT,it,Errore durante l'inserimento dell'allegato.,802,NULL,NULL
+E_ALLEGATO_NOT_FOUND,it,Allegato non trovato.,803,NULL,NULL
+E_AMM_OPERATORE_NOT_FOUND,it,Operatore non trovato.,804,NULL,NULL
+E_FLUSSO_COMPETENZA_INSERT,it,Errore durante l'inserimento della competenza del flusso.,805,NULL,NULL
+E_FLUSSO_COMPETENZA_NOT_FOUND,it,Competenza del flusso non trovata.,806,NULL,NULL
+E_EMAIL_ADMIN,it,Operazione sulla configurazione email non riuscita.,807,NULL,NULL
+E_EMAIL_OP,it,Operazione email non riuscita.,808,NULL,NULL
+E_EMITTENTE_ATTIVO_NON_VALIDO,it,"Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",809,NULL,NULL
+E_EMITTENTE_ATTIVO_TOKEN,it,Refresh token richiesto per applicare il cambio di emittente.,810,NULL,NULL
+E_FATTURA_EMITTENTE_NON_RISOLTO,it,Emittente fiscale non risolvibile per la fattura in coda di stampa.,811,NULL,NULL
+E_FATTURAZIONE_GIRO_NESSUN_LOTTO,it,Nessun lotto da fatturare nel perimetro indicato.,812,NULL,NULL
+E_FATTURAZIONE_GIRO_PAYLOAD,it,Parametri del giro di fatturazione non validi.,813,NULL,NULL
+E_FATTURAZIONE_NUMERA_PAYLOAD,it,Parametri della numerazione non validi.,814,NULL,NULL
+E_FLUSSO_ID_INVALIDO,it,Flusso non valido.,815,NULL,NULL
+E_FLUSSO_ID_OBBLIGATORIO,it,Flusso obbligatorio.,816,NULL,NULL
+E_FLUSSO_INSERT,it,Errore durante l'inserimento del flusso.,817,NULL,NULL
+E_FLUSSO_PRESA_IN_CARICO,it,Errore durante la presa in carico del flusso.,818,NULL,NULL
+E_GENERAZIONE_PRATICA,it,Errore durante la generazione della pratica dal flusso.,819,NULL,NULL
+E_GIORNALE_QUERY,it,Errore durante la lettura del giornale.,820,NULL,NULL
+E_HANDLER_NON_REGISTRATO,it,Handler di flusso non registrato: configurazione incompleta.,821,NULL,NULL
+E_NOTA_INSERT,it,Errore durante l'inserimento della nota.,822,NULL,NULL
+E_PIPELINE_DRIVER_MAX_ITER,it,Pipeline interrotta: superato il numero massimo di iterazioni.,823,NULL,NULL
+E_PRATICA_ID_INVALIDO,it,Pratica non valida.,824,NULL,NULL
+E_PRATICA_ID_OBBLIGATORIO,it,Pratica obbligatoria.,825,NULL,NULL
+E_PRATICA_INSERT,it,Errore durante l'inserimento della pratica.,826,NULL,NULL
+E_PRATICA_QUERY,it,Errore durante la lettura delle pratiche.,827,NULL,NULL
+E_PRATICA_SORGENTE_TIPO_INVALIDO,it,Codice sorgente non presente in configurazione.,828,NULL,NULL
+E_SOSPENSIONE_INSERT,it,Errore durante l'inserimento della sospensione.,829,NULL,NULL
 E_FATTURA_NON_ANNULLABILE,it,Fattura %s gia' numerata: l'annullamento non e' ammesso.,830,"La numerazione consuma un progressivo del registro fiscale e non torna indietro: una fattura che ha gia' un numero non puo' uscire dal registro con un cambio di stato, altrimenti la sequenza resterebbe con un buco. Il guard confronta il nuovo stato con ANNULLATA e blocca solo se il documento e' gia' numerato: sulle fatture senza numero l'annullamento resta possibile.","Se il documento numerato e' sbagliato, correggerlo con il percorso previsto per i documenti fiscali gia' emessi. L'annullamento va usato prima della numerazione."
 E_LOTTO_NON_PRE_FISCALE,it,Il lotto e' oltre lo stato pre-fiscale (stato attuale: %s): non si possono piu' togliere fatture.,831,"Togliere una fattura da un lotto significa cancellarla. E' ammesso finche' il lotto non ha superato il pre-fiscale, cioe' finche' i suoi documenti non sono numerati: da li' in avanti nessuno di essi si cancella piu'.","Nessuna azione sul lotto numerato. Se il documento e' sbagliato, la strada e' quella prevista per i documenti fiscali gia' emessi."
 E_FATTURA_NON_COLLEGATA_AL_LOTTO,it,La fattura %s non risulta collegata a questo lotto.,832,"L'operazione lavora sul legame fra lotto e fattura: se il legame non c'e', non c'e' niente da togliere. Puo' capitare se la fattura e' gia' stata rimossa da un'altra sessione, oppure se l'identificativo passato appartiene a un altro lotto.",Ricaricare l'elenco delle fatture del lotto e ripetere l'operazione sulla riga giusta.
@@ -634,7 +634,7 @@ E_PREV_ORDINE_GIA_GENERATO,it,"Preventivo %s: e' gia' stato generato un ordine, 
 E_ORD_ANNULLA_CON_DDT,it,"Ordine %s: esistono gia' documenti di trasporto collegati, l'annullamento non e' ammesso.",837,"Un DDT racconta merce che si e' mossa. Annullare l'ordine che l'ha generata lascerebbe il trasporto senza origine e i conti della merce senza una causale: il fatto fisico e' gia' accaduto e non si cancella riscrivendo il documento a monte. Il legame si trova su vendite.ddt.sorgente_uid, che punta all'uid dell'ordine.",Per rientrare della merce si registra un reso sul DDT. L'annullamento dell'ordine resta possibile finche' non e' partito nulla.
 E_ORD_ANNULLA_IN_COMMESSA,it,"Ordine %s: e' gia' stato inviato a fatturazione, l'annullamento non e' ammesso.",838,"Le righe dell'ordine sono gia' entrate in una commessa e possono essere state approvate o emesse: annullare la testata a valle di quel passaggio scollegherebbe attivita' fatturabili dal documento che le motiva. Il legame si trova in vendite.commesse_sorgenti, dove l'ordine compare con la propria chiave nativa (id).","Intervenire prima sulla commessa: togliere o annullare le attivita' collegate se lo stato lo consente, e poi tornare sull'ordine."
 E_PREV_ANNULLA_COMMESSA_EMESSA,it,"Preventivo %s: alcune righe sono gia' state fatturate in commessa, l'annullamento non e' ammesso.",839,"Le righe del preventivo sono entrate in una commessa e da li' sono gia' state emesse: esiste percio' un documento fiscale che le motiva. Annullare il preventivo a valle dell'emissione lascerebbe una fattura senza l'origine commerciale che la giustifica. Il legame si trova in vendite.commesse_attivita, sulle righe la cui segment_key inizia con PREV:<uid>:R: e il cui stato_emissione e' EMESSA.","Non si annulla finché quel lavoro è in volo verso una fattura, ma la via d'uscita adesso esiste e prima non c'era: dal cruscotto competenza, sulla casella «Emesse non fatturate», il verbo «Riporta da emettere» rimette le righe RESIDUE a NON_EMESSA — e da lì la chiusura del preventivo le ritira da sé, senza che nessuno debba ricordarsene. Il verbo prende SOLO i residui veri: riga lucchettata, giro di fatturazione COMPLETED e nessuna riga di fattura. Le righe già dentro una fattura viva non le tocca, e per quelle la strada resta la nota di credito dal lato fatturazione. Se invece serve solo correggere il preventivo, la strada è la revisione."
-E_ATTIVO_BLOCK_REF_NULL,it,%s,840,,
+E_ATTIVO_BLOCK_REF_NULL,it,%s,840,NULL,NULL
 E_PREV_TRANSIZIONE_NON_AMMESSA,it,Transizione del preventivo non ammessa: da %s a %s.,841,"Il percorso degli stati di un preventivo e' dichiarato in config.transizioni_stati_preventivi, e il passaggio richiesto non c'e' o non e' attivo. Non e' un problema del singolo documento: e' una strada che il flusso non prevede. Sostituisce PREV_TRANSIZIONE_NON_AMMESSA, che non seguiva la convenzione E_ ed era nel registro del debito.","Passare per gli stati intermedi previsti (per esempio DRAFT -> EMESSO -> ACCETTATO, non DRAFT -> ACCETTATO). Se invece la transizione dovrebbe esistere, va aggiunta alla matrice: e' dato di configurazione, non codice."
 E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO,it,Esito default obbligatorio: la modalita esito %s richiede un esito_default valorizzato (template flusso %s).,842,Su pratiche.template_flussi la modalita_esito e' AUTOMATICO o CONTESTUALE ma esito_default e' NULL: un automatismo deve sapere quale esito scrivere (Inv1). Guard fail-fast trg_template_flussi_a10_guard_modalita_esito_ins_upd (brief-db-esito-configurabile-flussi).,"Valorizzare esito_default (POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE) sul template, oppure riportare modalita_esito a MANUALE."
 E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA,it,"Modalita esito AUTOMATICO ammessa solo su step a direzione INTERNA (template flusso %s, direzione %s).",843,Su pratiche.template_flussi la modalita_esito e' AUTOMATICO ma la direzione non e' INTERNA (Inv2): un esito AUTOMATICO su step ENTRATA/USCITA fabbricherebbe la risposta di una controparte esterna. Guard fail-fast trg_template_flussi_a10_guard_modalita_esito_ins_upd (brief-db-esito-configurabile-flussi).,"Usare modalita_esito CONTESTUALE (l'operatore conferma comunque l'esito in un'unica azione) per gli step ENTRATA/USCITA, oppure riservare AUTOMATICO ai soli step INTERNA."
@@ -647,10 +647,10 @@ E_PRATICHE_ISTANZA_SENZA_SOGGETTO,it,istanza_utility_id richiede soggetto_id. Is
 E_PREV_REVISIONE_STATO_NON_AMMESSO,it,Revisione non ammessa per preventivo %s in stato %s. Ammessa solo da un preventivo emesso o scaduto.,850,"La creazione di una nuova revisione e' consentita solo dallo stato di emissione (EMESSO) e, dal 31-10-2026, da quello di scadenza (SCADUTO): un preventivo scaduto si ripropone con una revisione. Rev 03-05-2026: ACCETTATO non piu' ammesso (chiude la negoziazione e abilita push commessa, non e' rivisitabile). Per modifiche post-accettazione creare un nuovo preventivo, non revisione.",Creare la revisione da un preventivo emesso o scaduto. Se il preventivo e' gia' ACCETTATO/RIFIUTATO/EVASO/ANNULLATO creare un nuovo preventivo.
 E_PREV_REVISIONE_BOZZA_ESISTENTE,it,Esiste gia' una revisione in DRAFT per il numero %s.,851,Non e' possibile creare una nuova revisione se esiste gia' una revisione in DRAFT.,Completare o annullare la revisione DRAFT esistente.
 E_PREV_STATO_CORRENTE_NON_TROVATO,it,Stato corrente non trovato per preventivo %s.,852,Lo stato del preventivo non corrisponde a nessuno stato configurato.,Verificare la configurazione in config.stati_doc_preventivi.
-E_SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_interno: %s,860,,
+E_SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_interno: %s,860,NULL,NULL
 E_CODICE_NON_MODIFICABILE,it,Impossibile modificare il valore interno della colonna %s,854,si sta cercando di aggiornare un valore definito per una colonna con utilizzo interno (di sistema) non modificabile,Il valore non può essere aggiornato. 
-E_CF_NON_VALIDO,it,Codice Fiscale non valido: %s,853,,
-E_PIVA_NON_VALIDA,it,Partita IVA non valida: %s,856,,
+E_CF_NON_VALIDO,it,Codice Fiscale non valido: %s,853,NULL,NULL
+E_PIVA_NON_VALIDA,it,Partita IVA non valida: %s,856,NULL,NULL
 E_PREV_NESSUNA_RIGA_ATTIVA,it,Preventivo %s senza righe attive. Richiesta almeno una riga per emissione.,859,Il preventivo non ha righe attive con quantita > 0.,Aggiungere almeno una riga attiva prima di procedere con l'emissione.
 E_PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE,it,Aggancio sorgente incoerente: il flusso indicato appartiene a un'altra pratica.,858,pratiche.pratiche_sorgenti.flusso_id punta a un flusso (pratiche.flussi) la cui pratica_id differisce dalla pratica_id del link. flusso_id ancora il link ROOT documento->flusso (brief-db-aggancio-documento-flusso) e deve essere un flusso DELLA stessa pratica del link. Guard fail-fast trg_pratiche_sorgenti_a10_guard_coerenza_flusso_ins_upd.,"Agganciare il documento a un flusso della stessa pratica, oppure correggere pratica_id/flusso_id perche' coincidano. Per i link COLLEGATO a valle lasciare flusso_id NULL (non vincolati)."
 E_GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE,it,Generazione cross-pratica: lo step %s dichiarato dalla regola non esiste nella definizione %s della pratica figlia.,855,"Guard fail-fast di pratiche.fn_genera_pratica_da_flusso (D2-8, brief-db-step-dominio-e-definizioni-versionate Fase 1): la regola di generazione dichiara un template destinazione (per codice) che non e' presente nella definizione pinnata della pratica figlia. Tipicamente un fork che ha rimosso quello step dal proprio workflow.","Aggiungere lo step mancante all'edizione della pratica figlia, oppure correggere la regola di generazione (template destinazione) coerentemente con l'edizione risolta per quell'emittente."
@@ -1193,7 +1193,7 @@ E_CODA_SCOPE_ALTRUI,it,Il lavoro %s non si accoda: è intestato a un'altra perso
 E_CODA_CHIAVE_ALTRUI,it,Il lavoro %s con chiave %s è già in coda per un'altra azienda.,1457,La chiave che impedisce due lavori uguali vivi insieme è la stessa per due aziende diverse: chi l'ha costruita non ci ha messo l'azienda.,Includere l'azienda nella chiave del lavoro.
 E_COMMESSA_ATTIVITA_CHIAVE_NON_DEL_DOCUMENTO,it,La chiave %s della riga di commessa non nomina il documento di origine %s %s.,1458,"La segment_key di una riga di commessa con provenienza deve cominciare con il codice del tipo e l'uid del documento d'origine (<CODICE>:<uid>...), come la compone script.fn_segment_key: da li' si legge la chiave del gruppo fatturabile.","Comporre la chiave con script.fn_segment_key a partire dal tipo e dall'uid del documento indicato in sorgente_id o sorgente_uid, oppure correggere la provenienza."
 W_TXID_BYPASS_PARAMETRO_ASSENTE,it,Avviso - il parametro %s non è valorizzato: il bypass del tx_id resta spento.,1459,Il parametro che accende il bypass del tx_id manca dalla configurazione o non ha un valore.,Caricare il parametro con il suo valore (true o false) nella configurazione dei parametri.
-E_GUARD_UTILITY,it,Automazione guard utility/tipo ruolo fallita: %s,1460,,
+E_GUARD_UTILITY,it,Automazione guard utility/tipo ruolo fallita: %s,1460,NULL,NULL
 E_BOM_CHIUSURA_RETROATTIVA,it,La fine del legame non può cambiare i giorni già passati: la prima data ammessa è il %s.,1462,La distinta è una storia: i documenti già emessi la rileggono com'era. Una fine prima di ieri toglierebbe al legame giorni in cui era in vigore.,"Scegliere come fine una data dal giorno indicato in poi. Per far valere una versione nuova già da oggi, chiudere il legame a ieri."
 E_BOM_LEGAME_CHIUSO,it,Il legame è finito il %s: la sua fine non si cambia più.,1463,"La distinta è una storia: un legame già finito resta com'era, perché i documenti di quel periodo lo rileggono.","Per rimettere il componente nella distinta, inserire un legame nuovo che parte da oggi."
 E_CONTATTI_SOGGETTO_OBBLIGATORIO,it,Indicare il soggetto di cui leggere i contatti.,1464,"La lettura dei contatti è stata chiesta senza il soggetto: senza soggetto non c'è un contatto da scegliere.",Indicare il soggetto e riprovare.

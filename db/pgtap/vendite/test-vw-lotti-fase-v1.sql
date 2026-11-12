@@ -14,17 +14,24 @@
 -- Test: P-9 — vendite.vw_lotti_fase, la SEDE UNICA della domanda
 --       «in che fase e' questo lotto?».
 --
--- Elenco test (plan 8) — numerati come li stampa il TAP:
+-- Elenco test (plan 5) — numerati come li stampa il TAP:
 --  1) il contratto: la vista espone esattamente le colonne dichiarate
 --  2) ⭐ DRAFT ed EMESSA        -> pre_fiscale TRUE
---  3) ⭐ DEFINITIVA, INVIATA, REGISTRATA, ANNULLATA -> pre_fiscale FALSE
---  4) ⚠️ stato IGNOTO           -> la riga C'E' e pre_fiscale e' FALSE
---  5) ⚠️ stato IGNOTO           -> i tre assi grezzi restano NULL
---  6) ⭐ il catalogo ammette DEFINITIVA -> INVIATA per il LOTTO: il caso del
+--  3) ⭐ DEFINITIVA, INVIATA, ANNULLATA -> pre_fiscale FALSE
+--  4) ⭐ il catalogo ammette DEFINITIVA -> INVIATA per il LOTTO: il caso del
 --        test 3 e' RAGGIUNGIBILE, non ipotetico
---  7) ⭐ `in_gioco` sui sei stati: coincide con `pre_fiscale`
---  8) ⭐⭐ sullo stato IGNOTO i due DIVERGONO — ed e' tutta la ragione per cui
---        sono due flag e non uno
+--  5) ⭐ `in_gioco` sugli stati del lotto: coincide con `pre_fiscale`
+--
+-- ⛔ RITIRATI il 2026-11-12 i test dello stato IGNOTO (erano 4, 5 e 8): il
+--   lotto senza stato non e' piu' costruibile (stato_doc_fiscale_id NOT NULL,
+--   20261112-46; il trigger della nascita mette lo stato iniziale, -45). Il
+--   test 8 era «tutta la ragione per cui sono due flag»: senza lo stato ignoto
+--   pre_fiscale e in_gioco coincidono su ogni lotto, e se `in_gioco` debba
+--   restare e' un residuo aperto. Brief: brief-db-stati-documento-dal-vocabolario
+--   §4.1, S-6.
+-- ⚠️ REGISTRATA non e' fra i testimoni: nessuna riga della matrice porta un
+--   LOTTO in REGISTRATA (INVIATA -> REGISTRATA e' solo della fattura), e con la
+--   nascita dal vocabolario un lotto si costruisce solo lungo la matrice.
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ I TEST 2 E 3 VANNO LETTI INSIEME, ed e' la stessa disciplina del test
@@ -49,8 +56,8 @@
 --   Se i due predicati divergessero esisterebbe un documento trattenuto senza
 --   via d'uscita: un cancello senza chiave.
 --
--- ⛔ I CASI SI COSTRUISCONO. La fixture crea SETTE lotti, uno per stato piu'
---   quello senza stato, e non ne cerca nessuno fra i lotti di oggi: su un
+-- ⛔ I CASI SI COSTRUISCONO. La fixture crea CINQUE lotti, uno per stato che
+--   un lotto raggiunge, e non ne cerca nessuno fra i lotti di oggi: su un
 --   database ricostruito da zero un testimone «trovato» non esiste, e il file
 --   sarebbe verde per sottrazione.
 --
@@ -90,10 +97,10 @@ BEGIN
         (SELECT auth_user_id FROM tmp_mondo));
 END $ctx$;
 
-SELECT plan(8);
+SELECT plan(5);
 
 -- ============================================================
--- Fixture — sette lotti-testimone, uno per forma
+-- Fixture — cinque lotti-testimone, uno per stato del lotto
 -- ============================================================
 -- ⚠️ Emittente e tipo documento si COSTRUISCONO: l'emittente e' quello
 --   dell'operatore del contesto (senza, la RLS su vendite.fatturazione_lotti
@@ -115,28 +122,28 @@ BEGIN
       FROM config.tipi_doc_fiscale t
      WHERE t.codice_interno = 'BACKOFFICE';
 
+    -- ⭐ Ogni lotto nasce nello stato iniziale (trigger della nascita) e si
+    --   porta allo stato voluto dai verbi del lotto, lungo la matrice.
     FOR r IN
         SELECT * FROM (VALUES
             ('DRAFT'), ('EMESSA'), ('DEFINITIVA'),
-            ('INVIATA'), ('REGISTRATA'), ('ANNULLATA'),
-            -- ⭐ Lo stato IGNOTO e' COSTRUIBILE: la colonna e' nullable,
-            --   quindi il ramo fail-closed non e' un ramo dichiarato
-            --   irraggiungibile — e' un caso che il modello ammette.
-            (NULL)
+            ('INVIATA'), ('ANNULLATA')
         ) AS v(stato)
     LOOP
         INSERT INTO vendite.fatturazione_lotti
             (codice, competenza_mese, tipo_doc_fiscale_id,
-             emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
-        VALUES ('PGTAP-FASE-' || COALESCE(r.stato, 'IGNOTO'),
+             emittente_soggetto_ruolo_id)
+        VALUES ('PGTAP-FASE-' || r.stato,
                 date_trunc('month', script.fn_data_operativa())::date,
-                v_tipo, v_emit_sr,
-                -- ⭐ `codice_interno`, mai un id: e' la chiave stabile.
-                (SELECT s.id FROM config.stati_doc_fiscale s
-                  WHERE s.codice_interno = r.stato))
+                v_tipo, v_emit_sr)
         RETURNING id INTO v_id;
 
-        INSERT INTO tmp_fase VALUES (COALESCE(r.stato, '(ignoto)'), v_id);
+        IF r.stato <> 'DRAFT' THEN
+            -- ⭐ `codice_interno`, mai un id: e' la chiave stabile.
+            PERFORM dbops.fn_pgtap_porta_a_stato('vendite.fatturazione_lotti', v_id, r.stato);
+        END IF;
+
+        INSERT INTO tmp_fase VALUES (r.stato, v_id);
     END LOOP;
 END;
 $fixture$;
@@ -168,53 +175,23 @@ SELECT results_eq(
 );
 
 -- ============================================================
--- 3) ⭐ E il verso opposto: chiuso, inviato, registrato, annullato
+-- 3) ⭐ E il verso opposto: chiuso, inviato, annullato
 -- ============================================================
--- ⛔ INVIATA e REGISTRATA sono il caso che un predicato costruito su
---   `chiude_lotto` sbaglierebbe: quel flag e' TRUE solo su DEFINITIVA, quindi
---   direbbe «aperto» su due stati che vengono DOPO la chiusura.
+-- ⛔ INVIATA e' il caso che un predicato costruito su `chiude_lotto`
+--   sbaglierebbe: quel flag e' TRUE solo su DEFINITIVA, quindi direbbe
+--   «aperto» su uno stato che viene DOPO la chiusura.
 SELECT results_eq(
     $$ SELECT t.stato, f.pre_fiscale
          FROM tmp_fase t JOIN vendite.vw_lotti_fase f ON f.lotto_id = t.lotto_id
-        WHERE t.stato IN ('DEFINITIVA', 'INVIATA', 'REGISTRATA', 'ANNULLATA')
+        WHERE t.stato IN ('DEFINITIVA', 'INVIATA', 'ANNULLATA')
         ORDER BY t.stato $$,
     $$ VALUES ('ANNULLATA', false), ('DEFINITIVA', false),
-              ('INVIATA', false), ('REGISTRATA', false) $$,
-    '3. DEFINITIVA, INVIATA, REGISTRATA e ANNULLATA: pre_fiscale FALSE — e chiuso resta chiuso'
+              ('INVIATA', false) $$,
+    '3. DEFINITIVA, INVIATA e ANNULLATA: pre_fiscale FALSE — e chiuso resta chiuso'
 );
 
 -- ============================================================
--- 4) ⚠️ Stato non risolvibile: la riga C'E', e la risposta e' chiusa
--- ============================================================
--- ⭐ Le due meta' contano tutte e due. Se la riga sparisse, chi fa un JOIN non
---   troverebbe niente e leggerebbe «nessun problema»: il fail-closed si
---   perderebbe proprio dove serve.
-SELECT results_eq(
-    $$ SELECT count(*)::int, bool_and(f.pre_fiscale IS FALSE)
-         FROM tmp_fase t JOIN vendite.vw_lotti_fase f ON f.lotto_id = t.lotto_id
-        WHERE t.stato = '(ignoto)' $$,
-    $$ VALUES (1, true) $$,
-    '4. stato non risolvibile: la riga c''e'' E pre_fiscale e'' FALSE (fail-closed)'
-);
-
--- ============================================================
--- 5) ⚠️ E i tre assi GREZZI restano NULL: il fatto non si maschera
--- ============================================================
--- ⛔ Se anche i grezzi fossero COALESCE-ati, la stessa colonna direbbe «fatto»
---   e «difesa» insieme — per giunta con default in direzioni opposte
---   (is_abortito -> false, congela_fiscale -> true). Il grezzo e' il fatto, e
---   un fatto ignoto si dice ignoto.
-SELECT results_eq(
-    $$ SELECT f.is_abortito IS NULL, f.congela_fiscale IS NULL,
-              f.chiude_lotto IS NULL, f.stato_codice_interno IS NULL
-         FROM tmp_fase t JOIN vendite.vw_lotti_fase f ON f.lotto_id = t.lotto_id
-        WHERE t.stato = '(ignoto)' $$,
-    $$ VALUES (true, true, true, true) $$,
-    '5. stato non risolvibile: i tre assi grezzi restano NULL, il fatto non si maschera'
-);
-
--- ============================================================
--- 6) ⭐ Il caso del test 3 e' RAGGIUNGIBILE, non ipotetico
+-- 4) ⭐ Il caso del test 3 e' RAGGIUNGIBILE, non ipotetico
 -- ============================================================
 -- ⚠️ Questo test non guarda la vista: guarda il CATALOGO. Serve a tenere in
 --   vita la ragione per cui il flag non e' `chiude_lotto` — se un giorno la
@@ -233,41 +210,21 @@ SELECT ok(
                AND t.solo_lotto
                AND sda.codice_interno = 'DEFINITIVA'
                AND sdb.codice_interno = 'INVIATA'),
-    '6. il catalogo ammette DEFINITIVA -> INVIATA per il LOTTO: un lotto chiuso PUO'' cambiare ancora stato'
+    '4. il catalogo ammette DEFINITIVA -> INVIATA per il LOTTO: un lotto chiuso PUO'' cambiare ancora stato'
 );
 
 -- ============================================================
--- 7) ⭐ `in_gioco` sui sei stati: dice le stesse cose di `pre_fiscale`
+-- 5) ⭐ `in_gioco` sugli stati del lotto: dice le stesse cose di `pre_fiscale`
 -- ============================================================
 -- ⚠️ Sui casi VERI i due flag coincidono, ed e' giusto: sono lo stesso asse.
 --   Se qui divergessero, uno dei due avrebbe una formula sbagliata.
 SELECT results_eq(
     $$ SELECT t.stato, f.in_gioco
          FROM tmp_fase t JOIN vendite.vw_lotti_fase f ON f.lotto_id = t.lotto_id
-        WHERE t.stato <> '(ignoto)'
         ORDER BY t.stato $$,
     $$ VALUES ('ANNULLATA', false), ('DEFINITIVA', false), ('DRAFT', true),
-              ('EMESSA', true), ('INVIATA', false), ('REGISTRATA', false) $$,
-    '7. in_gioco sui sei stati a catalogo: coincide con pre_fiscale'
-);
-
--- ============================================================
--- 8) ⭐⭐ E sull'IGNOTO divergono: e' tutta la ragione per cui sono due
--- ============================================================
--- ⭐ Le due domande vogliono la risposta PRUDENTE opposta:
---     · «si puo' ancora USCIRE dal giro?»  -> ignoto = NO  -> pre_fiscale f
---     · «il lotto TRATTIENE ancora?»       -> ignoto = SI' -> in_gioco    t
---   ⛔ Con un flag solo, un lotto senza stato risolvibile sarebbe LIBERO per un
---   secondo giro E non estraibile dal primo: il peggio dei due, in silenzio.
--- ⚠️ Questo test e' l'unico posto in cui la differenza fra i due flag e'
---   VISIBILE. Se un giorno qualcuno li fondesse «perche' dicono la stessa
---   cosa», e' questo che diventa rosso.
-SELECT results_eq(
-    $$ SELECT f.pre_fiscale, f.in_gioco
-         FROM tmp_fase t JOIN vendite.vw_lotti_fase f ON f.lotto_id = t.lotto_id
-        WHERE t.stato = '(ignoto)' $$,
-    $$ VALUES (false, true) $$,
-    '8. stato non risolvibile: pre_fiscale FALSE e in_gioco TRUE — le due prudenze sono opposte'
+              ('EMESSA', true), ('INVIATA', false) $$,
+    '5. in_gioco sugli stati del lotto: coincide con pre_fiscale'
 );
 
 SELECT * FROM finish();

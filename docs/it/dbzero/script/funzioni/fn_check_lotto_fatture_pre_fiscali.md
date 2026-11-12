@@ -23,13 +23,15 @@ AS $function$
 --   Consumatori: script.fn_check_lotto_annullabile,
 --   script.fn_check_lotto_riportabile_a_draft e — per loro
 --   tramite — script.fn_available_actions_lotto.
+-- Pre-fiscale = in uno stato non ancora congelato
+--   (config.stati_doc_fiscale.congela_fiscale = false): lo
+--   snapshot fiscale non e' preso, la fattura non e' numerata.
+--   La soglia si legge dal vocabolario, non da un elenco di codici.
 -- Ritorna: [] se tutte le fatture del lotto sono pre-fiscali;
 --   altrimenti array di {codice, reason, reason_key, dettaglio}.
 DECLARE
   v_motivi    jsonb := '[]'::jsonb;
-  v_draft_id  config.stati_doc_fiscale.id%TYPE;
-  v_emessa_id config.stati_doc_fiscale.id%TYPE;
-  v_bad       integer;
+  v_bad       integer;  -- un conteggio
 BEGIN
   -- Guard parametro (AGENTS.md): id assente o non valido e' un
   -- errore di programmazione, non una condizione di dominio.
@@ -40,37 +42,19 @@ BEGIN
       NULL::uuid, 'lotto_id obbligatorio (>0)');
   END IF;
 
-  SELECT s.id INTO v_draft_id
-    FROM config.stati_doc_fiscale s
-   WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
-  IF v_draft_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'script','fn_check_lotto_fatture_pre_fiscali','E_CONFIG_MANCANTE',
-      jsonb_build_object('codice_interno','DRAFT'),
-      NULL::uuid, 'stato DRAFT non configurato');
-  END IF;
-
-  SELECT s.id INTO v_emessa_id
-    FROM config.stati_doc_fiscale s
-   WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE LIMIT 1;
-  IF v_emessa_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'script','fn_check_lotto_fatture_pre_fiscali','E_CONFIG_MANCANTE',
-      jsonb_build_object('codice_interno','EMESSA'),
-      NULL::uuid, 'stato EMESSA non configurato');
-  END IF;
-
   -- MOTIVO UNICO — almeno una fattura oltre il pre-fiscale.
-  -- IS DISTINCT FROM su entrambi gli id: lo stato NULL conta
-  -- come NON pre-fiscale (fail-closed), un JOIN lo perderebbe.
+  -- NOT EXISTS e non un JOIN: una fattura il cui stato non si
+  -- trova conta come NON pre-fiscale (fail-closed).
   SELECT count(*)
     INTO v_bad
     FROM vendite.fatture f
     JOIN vendite.fatturazione_lotti_fatture lf
       ON lf.fattura_id = f.id
    WHERE lf.lotto_id = p_lotto_id
-     AND f.stato_doc_fiscale_id IS DISTINCT FROM v_draft_id
-     AND f.stato_doc_fiscale_id IS DISTINCT FROM v_emessa_id;
+     AND NOT EXISTS (SELECT 1
+                       FROM config.stati_doc_fiscale s
+                      WHERE s.id = f.stato_doc_fiscale_id
+                        AND s.congela_fiscale IS FALSE);
 
   IF v_bad > 0 THEN
     v_motivi := v_motivi || jsonb_build_object(
@@ -85,7 +69,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id bigint)
-IS 'Funzione PURA (fn_check_*): motivi ostativi, sul versante FATTURE, alla demolizione del contenuto di un lotto. Ritorna [] se tutte le fatture sono pre-fiscali (DRAFT o EMESSA, cioe'' non ancora numerate — C-19), altrimenti {codice, reason, reason_key, dettaglio} con il conteggio (codice 799). Sede UNICA della definizione di «pre-fiscale» per le fatture di un lotto: la usano script.fn_check_lotto_annullabile e script.fn_check_lotto_riportabile_a_draft, e per loro tramite le due fn di mutazione e le capabilities. ⚠️ La condizione e'' IS DISTINCT FROM sui due id e non un NOT IN sui codici: una fattura con stato_doc_fiscale_id NULL deve contare come NON pre-fiscale (fail-closed). rev 2026-08-04.';
+IS 'Funzione pura (fn_check_*): i motivi, sul versante delle fatture, che impediscono di demolire il contenuto di un lotto. Ritorna [] se tutte le fatture del lotto sono pre-fiscali, cioe'' in uno stato non ancora congelato (config.stati_doc_fiscale.congela_fiscale = false: lo snapshot fiscale non e'' preso, la fattura non e'' numerata); altrimenti un motivo {codice, reason, reason_key, dettaglio} col conteggio (E_LOTTO_FATTURE_NON_PRE_FISCALI). La soglia si legge dal vocabolario, non da un elenco di codici. Una fattura il cui stato non si trova conta come non pre-fiscale (fail-closed). La usano script.fn_check_lotto_annullabile e script.fn_check_lotto_riportabile_a_draft, e per loro tramite i verbi e le capability del lotto. Errore: E_PARAMETRO_INVALIDO su un id assente o non positivo.';
 ```
 
 </div>

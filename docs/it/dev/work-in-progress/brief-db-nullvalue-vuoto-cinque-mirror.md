@@ -2,7 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: sessione DB**, dopo il push di `dev/backend-tid` con la PATCH BE (§7, committata il 2026-11-13): il `CHECK` su `email_reply_to`, poi l'archiviazione del brief.
+**Riparte: Tid**, con l'apply e i pgTAP del giro 3 (il `CHECK` su `email_reply_to`, §7, scritto e provato sullo
+scratch il 2026-11-12), poi l'archiviazione. Il tema del token NULL dei CSV (§9, §9.1) prosegue in
+`brief-db-token-null-dei-seed.md`.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -13,10 +15,16 @@
 | 5 | ✅ sessione DB | Giro 2: `name_template`, `trigger_name`, `causali` | §8 | 4 |
 | 6 | ✅ Tid | Apply e pgTAP dei giri 1 e 2: applicati il 2026-11-12, verdi | §5, §8 | 3, 5 |
 | 7 | ✅ Tid | Rigenerare la doc auto-generata (vincoli e default nuovi) e committare: in `83d21a13d` (PR #100) | — | 6 |
-| 8 | ✅ team BE | La PATCH dell'account email porta `''` a `None`: fatta il 2026-11-12, committata il 2026-11-13 su `dev/backend-tid` | §7 | — |
-| 9 | **sessione DB** ⏭️ | Il `CHECK` su `email_reply_to`, poi l'archiviazione del brief | §7 | 7, 8 |
+| 8 | ✅ team BE | La PATCH dell'account email porta `''` a `None`: fatta il 2026-11-12, committata in `0216782d6b` (PR #103) | §7 | — |
+| 9 | ✅ sessione DB, poi **Tid** ⏭️ | Giro 3: il `CHECK` su `email_reply_to`, scritto e provato sullo scratch; apply, pgTAP e doc auto-generata a Tid | §7 | 7, 8 |
+| 10 | ✅ Tid | D2 (b), il 2026-11-12: ⚠️ sospesa, la premessa è falsa (§9.1) | §9 | — |
+| 10-bis | ✅ Tid | D3 (a), il 2026-11-12: la regola si riscrive, in `brief-db-token-null-dei-seed.md` | §9.1 | 10 |
+| 11 | ✅ sessione DB | Il tema passa a `brief-db-token-null-dei-seed.md`: qui non resta lavoro di §9 | §9.1 | 10-bis |
+| 13 | sessione DB | Archiviazione | — | 9, 11, 12 |
 
-**Decisioni aperte di Tid**: nessuna nel perimetro (le due note fuori perimetro sono in §8). **Da committare**: niente.
+**Decisioni aperte di Tid**: `causali.data_update`, fuori perimetro (§8, note). **Da committare**:
+questo brief (§9), il giro 3 (§7) e l'archiviazione di `brief-db-lista-colonna-campo-sorgente-null`, su
+`dev/db-tid`.
 
 **Brief vicini verificati**: `brief-db-lista-colonna-campo-sorgente-null.md` (lo stesso difetto su
 `ui.lista_colonna`, già corretto: il giro qui ne riprende la forma); `brief-db-guardrail-forme-residue.md`
@@ -93,6 +101,12 @@ Le due righe sono uscite da `NULLVALUE_DEBITO`, e il guardrail è verde. Sono ag
 * *Chi legge il CSV*: per tutti e due i file, solo il loro mirror. Nessuno script e nessun test del backend
   legge questi CSV. Il nome `email_account.csv` compare in `00_schema/20260629-05` solo in un commento.
 * *Chi scrive `note`*: solo il seed. Nessuna funzione del database e nessun endpoint la scrivono.
+  ⚠️ **Corretto il 2026-11-13**: la scrive anche il **pannello generico** (`iva_assoggettamenti` ha
+  `pannello = true`), che in modifica manda `''` quando si svuota il campo. Col `CHECK` di `-36` quella modifica
+  dà `23514`. La decisione su dove la stringa vuota diventa NULL è D5 di `brief-db-token-null-dei-seed.md` §5.2.
+  ✅ **Chiuso il 2026-11-13** (D5 (a) di Tid): il verbo del pannello porta a NULL la stringa vuota destinata a
+  una colonna di testo nullable (`20_code/config/20261112-57`). `-36` resta com'è. Presidio:
+  `config/test-fn-pannello-scrivi-stringa-vuota-v1`, test 1-4.
 * *Chi scrive `email_reply_to`*: il seed, la creazione dal pannello (`email_views.py`, `.strip() or None`,
   quindi `NULL`) e la **PATCH** dal pannello, che scrive `''` quando si svuota il campo (§7).
 * *Chi legge `email_reply_to`*: `fn_resolve_email_account` lo restituisce com'è. `email_service.py` mette il
@@ -170,6 +184,16 @@ Richiesta, elenco chiuso:
 > scrittore BE delle cinque colonne: le tabelle `iva_assoggettamenti`, `automation_rules_tbl` e
 > `automation_delete_block` non sono scritte da codice Python fuori dai test.
 
+> ✅ **Lato DB, giro 3 (2026-11-12)**, scritto e provato, da applicare.
+> `90_end/20261112-43-add-chk-email-account-email-reply-to-non-vuoto`: conversione delle `''` rimaste, poi
+> `chk_email_account_email_reply_to_non_vuoto` (`email_reply_to IS NULL OR btrim(email_reply_to) <> ''`).
+> Presidio `config/test-email-account-reply-to-non-vuoto-v1` (plan 8): costruisce INSERT e UPDATE, perché la
+> modifica dal pannello è un UPDATE. Censimento degli scrittori: il seed, la creazione e la PATCH, che scrivono
+> tutti `NULL`; nessuna funzione del database. Prove con `scripts/prova_changeset.py` sullo scratch: il test
+> nuovo senza l'estratto 3 ok e 5 not ok (manca il vincolo, e lo scratch ha ancora `''` dal seed vecchio), con
+> l'estratto 8 su 8. I due pgTAP vicini (`test-fn-resolve-email-account`, `test-fn-email-sistema`) danno 7 e 12 ok
+> con e senza. Il catalogo resta identico. La pagina `config/manual/email_account.md` è aggiornata.
+
 **Chi cambia per primo**: il BE. Finché la PATCH scrive `''`, il DB non mette il `CHECK` su `email_reply_to`.
 Messo prima, svuotare il campo dal pannello darebbe un `23514`. Quando il BE ha fatto il push, la sessione DB
 scrive in `90_end` la conversione e il `CHECK` (`chk_email_account_email_reply_to_non_vuoto`), col suo
@@ -215,7 +239,110 @@ pgTAP.
 
 * ⚠️ `causali.data_update` è anche lei fuori da §7: nullable e senza default. Il mirror la riempie con
   `defaultValue: "NOW()"`. Non è nel perimetro di D1-c: la decide Tid.
-* Il mirror delle regole dichiara `- column: { name: rules_type }`, ma il CSV ha `rule_type`. La colonna si
-  carica dall'intestazione del CSV, quindi la riga `columns:` non ha effetto. È innocua, ma sbagliata: non
-  l'ho toccata.
+  Letto il 2026-11-12: il buco è nel contratto, non nel dato, perché `trgfn_audit_data_user_generic` la scrive
+  sempre, in INSERT e in UPDATE. Secondo la doc auto-generata, la stessa forma (`data_update` nullable) ce
+  l'hanno altre 12 tabelle, fra cui `config.tipi_soggetto*`, `forme_giuridiche*`, `stradario` e
+  `magazzino.assets`: è un tema di famiglia, non di questo brief. Tid ha scelto di deciderlo a parte
+  (2026-11-12): il giro 3 non la tocca.
+* ✅ Il mirror delle regole dichiarava `- column: { name: rules_type }`, ma il CSV ha `rule_type`: la colonna
+  si caricava dall'intestazione del CSV, quindi la riga non aveva effetto. Corretta nel giro 3 (2026-11-12, ok
+  di Tid), con una nota di REV in testa al mirror. Il render offline è identico prima e dopo.
 * Il mirror delle regole è in CRLF. Le righe nuove seguono il file, per non cambiarne il fine riga.
+
+## 9. Il token `null` scritto a mano (aperto il 2026-11-12, dalla nota di `brief-db-lista-colonna-campo-sorgente-null` §5.3)
+
+> ⚠️ **Superata da §9.1** (2026-11-12). La premessa è falsa: Liquibase 5.0.4 **non ha** un attributo
+> `nullValue` sul change, e lo ignora. La proposta qui sotto (celle vuote al posto di `null`) è stata provata
+> col render offline e **romperebbe l'apply**: la cella vuota di una colonna `STRING` arriva come `''`, e
+> `utility_id` è intera. D2, approvata da Tid il 2026-11-12 nella forma (b), è sospesa in attesa di D3.
+
+**Il comportamento di Liquibase**, letto sul bytecode di `tools/liquibase/5.0.4` (2026-11-12):
+
+* il caricatore confronta la cella col `nullValue` in modo **esatto** (`LoadDataChange.isNullValue`); solo
+  senza `nullValue` riconosce `NULL` senza distinguere maiuscole e minuscole;
+* con `loadUpdateData` (tutti i mirror tranne due `loadData`) il valore passa poi da `CharType.objectToSql`,
+  ereditato da `VarcharType`, che scrive SQL `NULL` per **ogni** stringa che in minuscolo è `null`. Sulle
+  colonne `NUMERIC` fa lo stesso `setValueNumeric`;
+* quindi con `loadUpdateData` una cella `null`, `Null` o `NULL` arriva al DB come NULL **qualunque sia il
+  `nullValue`**, anche sotto `nullValue: ""`. Il caso di `loadData` (prepared statement) non è verificato.
+
+**Il difetto** è della stessa famiglia di §1: la stessa assenza ha due grafie nel CSV, la cella vuota (il token
+dichiarato) e la parola `null`. Chi legge il CSV senza conoscere questa regola del loader sbaglia in silenzio. È
+il caso del BB `seed_csv` del backend, che confronta solo col `nullValue` e rende la cella `null` come stringa
+`'null'`.
+
+**Fatto datato** (scansione dei CSV di `80_data/sql/`, 2026-11-12): l'unico file con `null` scritto in una forma
+diversa da `NULL` è `vendite/fatturazione_pipeline.csv`, colonne `utility_id` e `tipo_doc_fiscale_id` (8 righe
+su 8), caricato da `20260128-06` con `nullValue: ""`. Su dbdev le 8 righe sono NULL in tutte e due le colonne.
+Il dato non decide il giro: la regola vale per qualunque file.
+
+**Proposta**:
+
+* *DB*: nel CSV le 16 celle diventano vuote, cioè il token dichiarato dal mirror. Il DB non cambia, ma cambia
+  il checksum del mirror, che va trattato come gli altri mirror toccati dai giri 1 e 2. Il guardrail
+  `nullvalue-vuoto`, o una regola nuova dello stesso script, rifiuta una cella che in minuscolo è `null` ma non
+  è il `nullValue` dichiarato.
+* *BE* (richiesta, elenco chiuso): `backend/apps/core/tests/_seed_csv.py`, `seed_csv` rende `None` anche la cella
+  che in minuscolo è `null`, oltre al token del file. Il test `backend/apps/core/tests/test_seed_csv.py` lo prova
+  su un file costruito. Chi cambia per primo è indifferente: oggi nessun test legge `fatturazione_pipeline.csv`
+  tramite `seed_csv`.
+
+**D2 — Tid**: il giro si fa? E il presidio: si estende `nullvalue-vuoto` o nasce una regola a parte?
+
+### 9.1 Che cosa fa davvero il caricatore (misurato il 2026-11-12)
+
+**Il vicolo cieco, scritto perché non si riprovi.** Il giro D2 (b) ha portato a vuote le 16 celle `null` di
+`fatturazione_pipeline.csv` e ha scritto la regola `null-scritto-a-mano`. Il render offline del mirror
+(`updateSQL --url=offline:postgresql`, copia senza `preConditions`) ha dato `utility_id = ''`: su una colonna
+intera l'apply si sarebbe fermato. Il CSV e la regola sono stati annullati prima di qualunque apply.
+
+**I fatti** (bytecode di `tools/liquibase/5.0.4` e render offline sulla copia del mirror `20260128-06`):
+
+* `LoadDataChange` **non ha** un attributo `nullValue`. I suoi setter sono `file`, `separator`, `quotchar`,
+  `encoding`, `commentLineStartsWith`, `relativeToChangelogFile`, `usePreparedStatements`, `columns`. Il
+  `nullValue:` scritto nei mirror (206 file in `db/changelog`) Liquibase lo **ignora senza errore**. Il segnaposto
+  vero è `nullPlaceholder`, **per colonna** (`LoadDataColumnConfig`): nessun file di `db/changelog` lo usa.
+* Senza `nullPlaceholder`, il caricatore riconosce come NULL la cella che è la parola `null` **in qualunque
+  grafia** (`isNullValue` → `StringUtil.equalsWordNull`, `equalsIgnoreCase`). Il render lo conferma: `null`,
+  `Null` e `NULL` diventano SQL `NULL`.
+* Su una colonna `STRING` la cella vuota resta `''`; il render lo conferma.
+* Prova del token inventato: il mirror copiato con `nullValue: XX` e una cella `XX` rende `utility_id = 'XX'`.
+  L'attributo non ha effetto.
+
+**Che cosa significa per il modello.**
+
+* Il token NULL dei CSV di seed è **uno solo per tutto il progetto, `NULL`**, e non lo decide il mirror. I giri
+  che sono passati a `nullValue: "NULL"` (giri 1 e 2 qui, `lista_colonna`) danno il risultato giusto, ma perché
+  le celle scrivono `NULL`, non per il `nullValue`.
+* `nullValue: ""` non ha mai fatto niente: la cella vuota di una `STRING` era `''` comunque. Il difetto di §1 è
+  reale, ma non dipende dal `nullValue` dichiarato. Una cella vuota in una colonna testo nullable scrive `''`
+  **anche** sotto `nullValue: "NULL"`. Il guardrail `nullvalue-vuoto` guarda solo i caricatori con
+  `nullValue: ""`, quindi non vede gli altri.
+* `fatturazione_pipeline.csv` non ha un difetto di dato: `null` è il token vero. Ha solo una grafia diversa
+  dalla convenzione (`NULL`) e un `nullValue: ""` che non fa niente.
+* Il BB `seed_csv` del backend (`token_nullo` legge il `nullValue`, e ne segue la regola per `lista_colonna.csv`)
+  poggia sulla stessa premessa. La regola vera è più semplice: `None` per la cella che in minuscolo è `null`,
+  `''` per la cella vuota, su ogni file.
+* Le sedi che raccontano il `nullValue` come se funzionasse vanno lette e corrette: `linee-guida-sql` §11.7 e la
+  riga «scrivere un `NULL`» della tabella in fondo, la testata della regola `nullvalue-vuoto`, il catalogo BB
+  backend (`seed_csv`). Il censimento non è fatto.
+
+**Da non dare per verificato**: le colonne `NUMERIC`, `DATE` e `BOOLEAN` con cella vuota (il render di prova non
+ha cambiato il tipo della copia), e `loadData` con prepared statement (i due file `loadData`).
+
+> ✅ **Decisa da Tid il 2026-11-12: (a).** Il giro è in `brief-db-token-null-dei-seed.md`, che riprende le misure di
+> questa sezione e le completa (tutti i tipi di colonna, il checksum, il censimento di ogni caricatore).
+
+**D3 — Tid**: come si riprende il tema?
+
+* (a) ⭐ **La regola si riscrive sul comportamento vero, in un giro solo**: il token è `NULL`, scritto così;
+  `nullValue:` esce dai mirror, perché dichiara una cosa che non succede (o resta, se Tid preferisce non toccare
+  206 file, ma la linea guida dice che non conta niente); il guardrail `nullvalue-vuoto` guarda **ogni**
+  caricatore, con qualunque `nullValue`; una regola nuova vieta `null` in una grafia diversa da `NULL`;
+  `fatturazione_pipeline.csv` passa a `NULL`. Al BE si chiede di semplificare `seed_csv` (via `token_nullo` e il
+  descrittore `CSV_SEED` per il token). Prima si misura il caso `NUMERIC`/`DATE`/`BOOLEAN`.
+* (b) Solo la documentazione e il BB: si corregge ciò che si racconta, il guardrail resta com'è, e i 206
+  `nullValue` restano come rumore innocuo.
+
+Il tema è più largo di questo brief, che censiva cinque mirror: se Tid sceglie (a), è un brief suo (un tema, un
+brief), e qui resta un rimando.

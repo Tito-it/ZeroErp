@@ -16,22 +16,15 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_uscita_draft()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- rev 2026-10-21 (20261021-13, brief-db-modelli-documento-standard §10.7 R-5):
---   l'intestazione dell'emittente deve portare la SEDE LEGALE del
---   cedente. Prima bastava uno snapshot non vuoto: una fattura usciva
---   senza la sede, che il documento fiscale pretende.
--- rev 2026-10-20 (20261020-61, brief-db-grammatica-unica-documenti, 2d G-6):
---   l'ambito degli indirizzi FATTURE diventa FATTURA, il codice della
---   sorgente.
--- Scopo: una fattura non lascia lo stato DRAFT se non e' completa
+-- Scopo: una fattura non lascia lo stato iniziale (la bozza:
+--        config.stati_doc_fiscale.iniziale) se non e' completa
 --        di cio' che il documento stampa — gli indirizzi marcati
 --        obbligatori per l'ambito FATTURE e l'intestazione
 --        fiscale congelata delle due parti.
 -- Uso:   BEFORE UPDATE OF stato_doc_fiscale_id FOR EACH ROW
--- Piano: piano-db-satelliti-fattura Fase 2.5, criterio allargato
---        dal brief intestazione §3.5 (passo I.4).
 DECLARE
     v_old_codice   config.stati_doc_fiscale.codice_interno%TYPE;
+    v_old_iniziale config.stati_doc_fiscale.iniziale%TYPE;
     v_new_codice   config.stati_doc_fiscale.codice_interno%TYPE;
     v_new_abortito config.stati_doc_fiscale.is_abortito%TYPE;
     v_presenti     integer[];
@@ -48,15 +41,16 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    SELECT s.codice_interno
-      INTO v_old_codice
+    SELECT s.codice_interno, s.iniziale
+      INTO v_old_codice, v_old_iniziale
       FROM config.stati_doc_fiscale s
      WHERE s.id = OLD.stato_doc_fiscale_id;
 
     -- Si presidia l'USCITA dalla bozza, non ogni avanzamento:
-    -- oltre DRAFT il documento e' gia' passato di qui, e a
+    -- oltre la bozza il documento e' gia' passato di qui, e a
     -- proteggerlo c'e' il guard di congelamento dei satelliti.
-    IF v_old_codice IS DISTINCT FROM 'DRAFT' THEN
+    -- La bozza e' lo stato iniziale del vocabolario, non un codice.
+    IF v_old_iniziale IS NOT TRUE THEN
         RETURN NEW;
     END IF;
 
@@ -96,7 +90,7 @@ BEGIN
        OR NEW.emittente_snapshot = '{}'::jsonb THEN
         v_int_mancanti := v_int_mancanti || 'emittente_snapshot'::text;
     -- 2-bis. La SEDE LEGALE del cedente, dentro l'intestazione
-    --    congelata (rev 20261021-13). La scrive lo snapshot dalla
+    --    congelata. La scrive lo snapshot dalla
     --    catena RUOLO -> SOGGETTO (script.fn_resolve_indirizzo_documento,
     --    SEDELEG); senza indirizzo la chiave non c'e' (jsonb_strip_nulls).
     --    Stesso criterio del tipo: '{}' non vale.
@@ -148,7 +142,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_fatture_guard_uscita_draft()
-IS 'Guard (BEFORE UPDATE OF stato_doc_fiscale_id) di completezza sull''uscita dalla bozza: una fattura non lascia DRAFT senza gli indirizzi marcati obbligatori per l''ambito FATTURE (matrice config.tipi_indirizzi_allowed via script.fn_indirizzi_obbligatori_mancanti, oggi il solo FATT) e senza l''intestazione fiscale congelata delle due parti (emittente_snapshot e cliente_snapshot, scritte da fn_snapshot_intestazione_fattura). Sono i due lati della stessa garanzia di ristampa conforme: presidiarne uno solo lascerebbe un blocco stampato meta'' congelato e meta'' vivo. Esce in testa se lo stato di partenza non e'' DRAFT (oltre quella soglia il presidio e'' del guard di congelamento dei satelliti) e se lo stato di destinazione e'' abortito (una bozza incompleta deve restare chiudibile). Solo UPDATE: l''unico creatore applicativo, fn_get_or_create_fattura_header, inserisce sempre in DRAFT. Nessun bypass GUC: il reset lotto rientra nella bozza, non ne esce. L''intestazione si verifica per jsonb_typeof e non per IS NULL, perche'' jsonb_strip_nulls fa arrivare uno snapshot vuoto come ''{}''. Errore: E_FATTURA_NON_EMETTIBILE_INCOMPLETA. Modello: trgfn_ddt_guard_indirizzi_obbligatori. piano-db-satelliti-fattura Fase 2.5 + brief intestazione §3.5 (I.4). Rev 2026-10-20 (20261020-61, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi FATTURE diventa FATTURA, il codice della sorgente. Rev 2026-10-21 (20261021-13, brief-db-modelli-documento-standard §10.7 R-5): l''intestazione dell''emittente deve portare la sede legale del cedente (emittente_snapshot.sede, scritta da fn_snapshot_intestazione_fattura dalla catena ruolo -> soggetto, SEDELEG): senza, lo stesso errore, con la mancanza nel messaggio («intestazione incompleta») e nel contesto (intestazione_incompleta). Il rimedio e'' anagrafico: inserire la sede legale dell''azienda e rieseguire lo step DRAFT.';
+IS 'Guard (BEFORE UPDATE OF stato_doc_fiscale_id) di completezza sull''uscita dalla bozza: una fattura non lascia lo stato iniziale del vocabolario (config.stati_doc_fiscale.iniziale) senza gli indirizzi marcati obbligatori per l''ambito FATTURA (matrice config.tipi_indirizzi_allowed via script.fn_indirizzi_obbligatori_mancanti) e senza l''intestazione fiscale congelata delle due parti (emittente_snapshot, con la sede legale del cedente, e cliente_snapshot, scritte da vendite.fn_snapshot_intestazione_fattura). Sono i due lati della stessa garanzia di ristampa conforme. Esce in testa se lo stato di partenza non e'' quello iniziale (oltre, presidia il guard di congelamento dei satelliti) e se lo stato d''arrivo e'' abortito (una bozza incompleta resta chiudibile). Nessun bypass GUC: il reset del lotto rientra nella bozza, non ne esce. L''intestazione si verifica per jsonb_typeof e non per IS NULL, perche'' jsonb_strip_nulls fa arrivare uno snapshot vuoto come ''{}''. Errore: E_FATTURA_NON_EMETTIBILE_INCOMPLETA, con la mancanza nel messaggio e nel contesto. Il rimedio della sede mancante e'' anagrafico: inserire la sede legale dell''azienda e rieseguire lo step della bozza.';
 ```
 
 </div>
