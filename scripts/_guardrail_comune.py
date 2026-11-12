@@ -258,3 +258,33 @@ def spoglia(sql: str, prosa_dopo_is: bool = True) -> str:
         fuori.append(sql[i:fine])
         i = fine
     return "".join(fuori)
+
+
+# Scopo: le istruzioni di primo livello di un blocco SQL, come (inizio, fine):
+#        si spezza sui `;` fuori da commenti, letterali e dollar-quote.
+def istruzioni(sql: str) -> list[tuple[int, int]]:
+    fuori: list[tuple[int, int]] = []
+    i, n, inizio = 0, len(sql), 0
+    while i < n:
+        if sql.startswith("--", i):
+            fine = sql.find("\n", i)
+            i = n if fine < 0 else fine
+            continue
+        if sql.startswith("/*", i):
+            i = fine_commento_blocco(sql, i).pos
+            continue
+        if sql[i] == "'":
+            i = fine_letterale(sql, i).pos
+            continue
+        if sql[i] == "$":
+            dq = dollar_quote(sql, i)
+            if dq:
+                i = dq[1].pos
+                continue
+        if sql[i] == ";":
+            fuori.append((inizio, i))
+            inizio = i + 1
+        i += 1
+    if sql[inizio:].strip():
+        fuori.append((inizio, n))
+    return fuori

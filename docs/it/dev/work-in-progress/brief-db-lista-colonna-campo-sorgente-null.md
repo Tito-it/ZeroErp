@@ -13,7 +13,7 @@ dbdev e scratch, i pgTAP sono verdi (Tid, 2026-11-12) ed è committato. Quando �
 | 2-bis | ✅ Tid | Il via al giro; numero `20261112-30` dalla sessione del catalogo (2026-11-12) | §3 | 2 |
 | 3 | ✅ sessione DB | Il giro: il mirror, il CSV, i vincoli, i pgTAP, la doc; provato sullo scratch | §6 | 2-bis |
 | 4 | ✅ Tid | Apply su dbdev e scratch, pgTAP verdi (2026-11-12) | §6.2 | 3 |
-| 5 | **team BE** ⏭️ | K-1 … K-3: i test che leggono il CSV, il rosso in CI | §5.1 | 4 |
+| 5 | **team BE** ⏭️ | K-1 … K-4: i test che leggono il CSV, il rosso in CI, il presidio dei preset | §5.1 | 4 |
 | 5-bis | team BE/FE | Le verifiche di §5.2 | §5.2 | 4 |
 | 6 | sessione DB | Archiviazione in `work-done/` | — | 5 |
 
@@ -96,6 +96,14 @@ sul suo branch (la sessione DB non tocca `backend/`). Elenco chiuso, censito il 
 * **K-3 — un filtro fragile.** `apps/vendite/tests/services/test_riporta_da_emettere_service.py` (lista 49):
   `r.get("campo_sorgente")` accetta `'NULL'`. Oggi è verde perché la lista 49 non ha colonne calcolate dal FE;
   il giorno in cui ne ha una, cerca il campo `NULL` nella riga.
+
+* **K-4 — un presidio nuovo, nello stesso file** (dal gruppo C di `brief-db-guardrail-forme-residue`, Tid
+  2026-11-12). In `ui.lista_preset.ordinamento_default` la chiave `col` nomina il `campo_sorgente` della colonna,
+  non il suo `codice`: dove i due differiscono, un preset che usa il codice ordina per una colonna che non esiste,
+  senza errore a DB. Si chiede un test che, per ogni preset di `lista_preset.csv`, pretenda che ogni `col`
+  dell'ordinamento sia un `campo_sorgente` delle colonne della sua lista in `lista_colonna.csv`. Fatto datato
+  (2026-11-12): le 81 chiavi di ordinamento del seed sono tutte giuste, quindi il test nasce verde e va visto rosso
+  su un preset costruito col codice.
 
 ⭐ La causa comune: il CSV si legge in tre posti, con due copie di `_seed()` (`test_liste_configurabili_seed.py` e
 `test_ordinamento_data_desc.py`) e una lettura in linea. La proposta è **una lettura sola**, che renda `None` la

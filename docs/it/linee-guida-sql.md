@@ -677,6 +677,12 @@ il valore è il riflesso, e nasce col tipo che la colonna ha in quel momento.
   (§5f): un `CREATE OR REPLACE` con lo stesso `%TYPE` ora risolve al tipo nuovo, e nascerebbe una
   seconda firma accanto alla prima. Se il parametro non è più il riflesso della colonna, prende il
   tipo esplicito con la ragione. Il caso di `character(n)` è in §7e.
+* Presidio: `scripts/guardrail_forme_changeset.py`, regola `type-perso`. Ferma un parametro o una colonna di `RETURNS TABLE` che nella
+  revisione precedente della stessa funzione aveva `%TYPE` e torna a un tipo nudo, se non porta la
+  ragione in un commento sulla stessa riga o su una riga di solo commento subito sopra. Con la
+  regola `id-senza-type` ferma anche un parametro o una colonna `*_id` a tipo nudo e senza
+  ragione: un id è quasi sempre il riflesso di una colonna. Gli altri tipi nudi restano alla
+  revisione (Tid, 2026-11-12).
 
 ---
 
@@ -2189,7 +2195,7 @@ dopo il loader.
 | **aggiungere una colonna** | colonna in coda al CSV **principale** + `- column:` nell'elenco del mirror, anche se mergiato (`runOnChange` + `ANY`). ⛔ Mai un secondo CSV |
 | cancellare una riga | `loadUpdateData` non cancella → `DELETE` SQL forward-only. **Unica eccezione** |
 | spegnere una riga (`attivo` a `f`) | è un `UPDATE` che passa dal guard sull'`attivo` del padre: se la riga ha figlie collegate il mirror si ferma, e a fermarsi è il changeSet del mirror, non quello di oggi. Se la figlia non ha una colonna di stato riconosciuta contano **tutte** le sue righe: una colonna di stato con un altro nome si dichiara in `dbops.automation_overrides_cols` (`ATTIVO_COL`). Le figlie si sistemano **prima** che il mirror ripassi: un changeSet nuovo di `80_data` gira dopo di lui e non serve |
-| scrivere un `NULL` | il token letterale `NULL`, col mirror che dichiara `nullValue: "NULL"`: la cella vuota può arrivare al database come `''`, che un tipo non testuale o un `CHECK` rifiutano e una `varchar` accetta in silenzio (§11.7). Se il valore giusto è il default della tabella, la colonna si toglie dal CSV e dall'elenco `columns:` del mirror |
+| scrivere un `NULL` | il token letterale `NULL`, col mirror che dichiara `nullValue: "NULL"`: la cella vuota può arrivare al database come `''`, che un tipo non testuale o un `CHECK` rifiutano e una `varchar` accetta in silenzio (§11.7). Presidio: `scripts/guardrail_forme_changeset.py`, regola `nullvalue-vuoto`, su ogni caricatore con `nullValue: ""` e una colonna di testo nullable. Se il valore giusto è il default della tabella, la colonna si toglie dal CSV e dall'elenco `columns:` del mirror |
 
 ⛔ **Una tabella, UN CSV** (Tid, 2026-09-18). Un secondo CSV «per sottoinsieme»
 — chiavato sulla chiave naturale, con un `loadUpdateData` suo, «per non toccare
@@ -2924,6 +2930,10 @@ alla prima esecuzione (un corpo plpgsql) no. Da qui:
   FK con `confrelid` = `django.auth_user` fuori dallo schema `django`, non da
   `to_regclass('django.auth_user')`: in CI la tabella c'è e le FK no.
   Precedente: `db/pgtap/dbops/test-credenziale-di-prova-fk-v1.sql`;
+* le tre forme che si risolvono alla `CREATE` in `00_schema`/`20_code` (`%TYPE`
+  su una colonna di `django`, una funzione `LANGUAGE sql` o una vista che lo
+  nomina, una FK fuori da `90_end`) le ferma `scripts/guardrail_forme_changeset.py`,
+  regola `django-alla-create`;
 * **il ruolo dei job (`zeroerp_job`) non ha `USAGE` su `django`, ed è voluto.**
   Una funzione `SECURITY INVOKER` che legge `django.*` e sta sul percorso di un
   trigger fa fallire con `42501` ogni job che scrive quelle righe. Se la lettura
@@ -3044,7 +3054,8 @@ Due forme in più della stessa famiglia, che all'apply non danno nemmeno errore:
   funzione fallisce alla prima chiamata; in un file pgTAP letto da `psql` il
   raddoppio è un errore di sintassi. `jsonb_exists(x, 'k')`, `jsonb_exists_any`
   e `jsonb_exists_all` valgono identici nei tre contesti, e il frammento si
-  sposta dall'uno all'altro senza ripensarci.
+  sposta dall'uno all'altro senza ripensarci. Presidio: `scripts/guardrail_forme_changeset.py`, regola `jsonb-punto-di-domanda`.:
+  ferma le due forme che si rompono, il `?` singolo fuori da un corpo e il `??` dentro.
 
 ### 11.13 ⛔ `preCondition` e `MARK_RAN`: che cosa promettono
 
