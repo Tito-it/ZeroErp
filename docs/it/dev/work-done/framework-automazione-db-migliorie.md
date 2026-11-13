@@ -1,8 +1,27 @@
-# WIP – Framework Automazione DB: migliorie e implementazioni proposte
+# Framework Automazione DB: migliorie e implementazioni proposte (archiviato)
+
+## ⏭️ Chi riparte — aggiornato al 2026-11-13
+
+**Riparte: nessuno.** Il brief è archiviato: le voci sono chiuse, superate dal modello della convergenza, o scartate da Tid
+(2026-11-13). L'ultimo residuo (§2.4, la riga di `automation_delete_block` fuori ambito) è stato chiuso nello stesso giro
+dell'archiviazione.
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ✅ sessione DB | Riverifica voce per voce contro lo stato del 2026-11-13 | §5 | — |
+| 2 | ✅ Tid | Scartati i punti facoltativi (§1.3, §3.1, §3.2, il WARNING su `target_schema` di §2.4); unico residuo da chiudere: §2.4 delete_block | §5 | 1 |
+| 3 | ✅ sessione DB | Presidio della riga attiva fuori ambito (test 3 e 18 di `test-delete-block-convergenza-v1`), guida §4.4 e pagine `manual/` | §2.4 | 2 |
+| 4 | Tid | Esecuzione del pgTAP modificato e commit | `db/pgtap/dbops/test-delete-block-convergenza-v1.sql` | 3 |
+
+**Decisioni aperte di Tid:** il residuo `ILIKE r.target_table` (§2.4): brief nuovo o chiuso subito.
+**Da committare:** il giro del 2026-11-13 (test, guida, due pagine `manual/`, questo spostamento e i link).
 
 > (creato 02-03-26)
 >
-> Questo documento raccoglie le modifiche, migliorie e implementazioni proposte per il framework di automazione DB, emerse dall'analisi critica della documentazione e del codice.
+> Questo documento raccoglieva le modifiche, migliorie e implementazioni proposte per il framework di automazione DB,
+> emerse dall'analisi critica della documentazione e del codice. Gran parte delle voci di codice le ha poi assorbite
+> [brief-db-revisione-dbops](brief-db-revisione-dbops.md) (archiviato), che ha portato i runner al modello della
+> convergenza.
 
 ---
 
@@ -32,112 +51,75 @@ Creato `docs/it/tutorial/aggiungere-tabella-al-framework.md`:
 - [x] Sezione errori comuni e soluzioni
 - [x] 7 passi dall'inizio alla fine (5 obbligatori + 2 opzionali)
 
-### 1.3 Miglioramenti futuri alla documentazione
-
-- [ ] **Checklist standalone**: estrarre la checklist operativa in un documento separato (es. `docs/it/guide/automazione-db-checklist.md`) per chi la stampa e la usa in deploy
-- [ ] **Diagramma flowchart dettagliato**: il diagramma Mermaid attuale e semplificato; valutare un diagramma piu dettagliato che mostri le interazioni tra i runner specifici
-- [ ] **Documentazione per runner**: una scheda tecnica per ciascun orchestratore con parametri, output e casi limite
-- [ ] **Indice tutorial**: creare un `docs/it/tutorial/index.md` man mano che si aggiungono altri tutorial
-
 ---
 
 ## 2. Codice e implementazione
 
-### 2.1 Funzione `fn_populate_fk_index_policy` – chiarire il naming
+### 2.1 Funzione `fn_populate_fk_index_policy` – chiarire il naming ✅
 
-La guida originale listava `fn_populate_fk_index_policy` due volte con descrizioni diverse:
+La guida originale listava `fn_populate_fk_index_policy` due volte con descrizioni diverse: il ruolo reale (registrare
+in policy le FK senza indice) e quello di `apply_fk_index_policy` (creare o togliere gli indici).
 
-1. "registra in policy le FK senza indice" → **questo e il ruolo reale della funzione**
-2. "crea/rimuove indici in base alla policy" → **questo e il ruolo di `apply_fk_index_policy`**
-
-**Azione proposta:** verificare che nella documentazione auto-generata in `dbzero/dbops/funzioni/` la descrizione di `fn_populate_fk_index_policy` sia coerente e non confondibile con `apply_fk_index_policy`. Se la funzione fa entrambe le cose, considerare lo split in due funzioni con nomi espliciti.
-
-**Stato:** la guida e stata corretta; verificare il codice SQL.
+✅ Chiusa da `brief-db-revisione-dbops` §29 (giro 10d, 2026-11-10): COMMENT e pagina riscritti, e la politica delle FK
+ha la colonna `decisione` (`20261110-42`, `20261110-47`).
 
 ### 2.2 Recovery da esecuzione parziale del runner
 
-Attualmente se un runner fallisce a meta esecuzione, i trigger gia creati restano in piedi. L'idempotenza del framework mitiga il problema (rieseguire e sicuro), ma manca un meccanismo di:
-
-- [ ] **Rollback esplicito**: una funzione che, dato un `execution_id` da `audit_log`, rimuova tutti i trigger creati in quella esecuzione
-- [ ] **Resume**: un parametro `p_resume_from` che salti le tabelle gia processate con successo
-
-**Priorita:** bassa — il workaround (fix + riesegui) funziona bene nella pratica.
+⚠️ **Superata dal modello della convergenza** (`brief-db-revisione-dbops`, giri 10b-10d). La proposta era un rollback per
+`execution_id` e un parametro `p_resume_from`. Oggi ogni runner confronta i trigger vivi con quelli dichiarati nel
+registro e li porta lì (crea, rigenera, toglie): un giro interrotto si recupera rilanciandolo, e uno stato parziale è
+solo una divergenza che il giro dopo chiude.
 
 ### 2.3 Conflitto trigger manuali vs generati
 
-Non esiste un meccanismo automatico per rilevare trigger manuali che fanno la stessa cosa dei trigger generati. Questo puo portare a doppia esecuzione.
+⚠️ **Superata dai giri di convergenza.** La proposta era un warning nel dry run o una funzione di diagnostica. Oggi un
+trigger si riconosce dalla funzione che esegue, non dal nome; un trigger della funzione che il registro non conosce
+ferma il runner (SCONOSCIUTO), e i presidi lo vedono: `test-delete-block-convergenza-v1`,
+`test-lock-columns-convergenza`, `test-guard-utility-convergenza-v1`, `test-trigger-attivo-orfani-v1`,
+`test-vw-bersagli-non-dichiarati`.
 
-**Azione proposta:**
+### 2.4 Validazione del registro
 
-- [ ] Aggiungere al dry-run un warning quando rileva un trigger manuale con nome simile a quello che starebbe per generare
-- [ ] Oppure: una view/funzione di diagnostica `dbops.fn_check_trigger_conflicts(schema, table)` che elenchi i potenziali conflitti
-
-**Priorita:** media — diventa importante quando il team cresce.
-
-### 2.4 Validazione ambito vs rules al momento dell'insert
-
-Attualmente e possibile inserire una regola con `target_schema='vendite'` anche se `vendite` non rientra nell'ambito. La regola semplicemente non viene applicata, ma questo puo confondere.
-
-**Azione proposta:**
-
-- [ ] Aggiungere un trigger di validazione su `automation_rules_tbl` che emetta un WARNING (non un errore) se il `target_schema` non e presente nell'ambito
-- [ ] Lo stesso vale per `dbops.automation_delete_block` (aggiunta del 2026-11-04, `brief-db-revisione-dbops` D41):
-  una riga su una tabella fuori ambito viene ignorata da `fn_run_automations_delete_block` senza nessuna
-  traccia, mentre una tabella in ambito ma sparita lascia un `WARN TABLE_NOT_FOUND`. La validazione va
-  fatta qui, sull'ambito, e non nel runner.
-
-**Priorita:** bassa — utile per developer experience ma non critico.
-
----
-
-## 3. Funzionalita mancanti
-
-### 3.1 Report stato automazioni
-
-Manca una view sintetica che mostri per ogni tabella nell'ambito quali automazioni sono attive e quali no.
-
-**Proposta:**
-
-- [ ] Creare `dbops.vw_automazioni_stato` con colonne: `schema`, `table`, `has_tx_id`, `has_audit`, `has_storico`, `has_lock_columns`, `has_attivo`, `last_apply_date`
-
-**Priorita:** media — molto utile per onboarding e audit periodici.
-
-### 3.2 Dashboard audit
-
-L'`audit_log` contiene dati preziosi ma non e facilmente consultabile per trend.
-
-**Proposta:**
-
-- [ ] View `dbops.vw_audit_summary` con conteggi per status, rule_type, periodo
-- [ ] View `dbops.vw_audit_errors_recent` con gli ultimi N errori con context
-
-**Priorita:** bassa — utile per monitoring ma non bloccante.
-
-### 3.3 Test pgTAP per le automazioni
-
-Non ci sono test automatizzati che verifichino il comportamento del framework su una tabella di esempio.
-
-**Proposta:**
-
-- [ ] Creare `db/pgtap/dbops/test_automazioni_framework.sql` con:
-    - Test dry-run su tabella di laboratorio
-    - Test apply + verifica trigger esistenti
-    - Test idempotenza (apply due volte = stesso risultato)
-    - Test rollback ambito (tabella fuori ambito non viene toccata)
-
-**Priorita:** alta — fondamentale per evitare regressioni.
+- ✅ **Vocabolari del registro (D17-bis)**: `rule_type`, `exec_mode` e `col_role` sono vocabolari chiusi, con CHECK
+  (`brief-db-revisione-dbops`, giro 10b; `test-registro-regole-vincoli-v1`).
+- ✅ **`fn_name_from_template` non idempotente** (lì §28.6 punto 1, indirizzato qui): reso idempotente nel blocco 10c-4,
+  col censimento dei nomi vivi (2026-11-09).
+- ✅ **Una riga di `dbops.automation_delete_block` su una tabella fuori ambito** (aggiunta del 2026-11-04,
+  `brief-db-revisione-dbops` D41): `fn_run_automations_delete_block` la saltava senza traccia, e la tabella restava
+  cancellabile mentre il registro la dichiarava protetta: una promessa senza esecutore, come N5 per i lock. Chiusa il
+  2026-11-13 col presidio a due metà di `test-delete-block-convergenza-v1`: il test 2 (già c'era) vieta un blocco vivo
+  fuori ambito, il test 3 (nuovo) una riga accesa fuori ambito; il test 18 prova che il presidio la vede. A differenza
+  dei lock, fuori ambito non c'è il trigger montato da una migrazione: la tabella entra nell'ambito, o la riga resta
+  spenta (guida `automazione-db.md` §4.4, pagina `manual/` di `automation_delete_block`). Fatto datato: su scratch e
+  dbdev, il 2026-11-13, le otto righe accese erano tutte in ambito.
+- ⏳ **`ILIKE r.target_table`** (residuo di `brief-db-revisione-dbops` §27.8, indirizzato qui): `target_table` è un modello
+  LIKE, e `_` vi fa da jolly, quindi una regola su `event_log` copre anche una `eventXlog`. Sta in
+  `dbops.fn_cleanup_at_regola` e nel ciclo del purge di `fn_run_automations_cleanup`. Non toccato perché cambia il
+  significato di ogni regola del registro. **Decide Tid**: brief nuovo o chiuso subito.
 
 ---
 
-## 4. Priorita riepilogo
+## 3. Funzionalità mancanti
 
-| Miglioria | Priorita | Tipo |
-| --- | --- | --- |
-| Test pgTAP per automazioni | Alta | Codice |
-| Report stato automazioni (view) | Media | Codice |
-| Rilevamento conflitti trigger | Media | Codice |
-| Checklist standalone | Bassa | Documentazione |
-| Recovery da esecuzione parziale | Bassa | Codice |
-| Dashboard audit (view) | Bassa | Codice |
-| Validazione ambito vs rules | Bassa | Codice |
-| Documentazione per singolo runner | Bassa | Documentazione |
+### 3.3 Test pgTAP per le automazioni ✅
+
+La proposta era un `test_automazioni_framework.sql` con dry run, apply, idempotenza e ambito. ✅ Coperta, per runner, dai
+pgTAP di `db/pgtap/dbops/` nati con `brief-db-revisione-dbops`: convergenza (`test-*-convergenza*`), dry run e audit
+(`test-delete-block-audit-v1`, `test-cleanup-framework`), tabelle sparite (`test-overlap-tabella-sparita-v1`), ambito
+(i presidi fuori ambito dei test di convergenza).
+
+---
+
+## 4. Vicoli ciechi
+
+- **Rollback per `execution_id`** (§2.2): avrebbe tolto i trigger di un giro, ma un trigger non dice da quale giro è
+  nato; con la convergenza non serve.
+- **Riconoscere un trigger manuale dal nome simile** (§2.3): il nome non dice cosa fa un trigger; il criterio giusto è la
+  funzione che esegue, e su quello si sono costruiti i presidi.
+
+---
+
+## 5. Riverifica del 2026-11-13
+
+Ogni voce confrontata con il codice, i pgTAP e i brief archiviati. Le voci facoltative scartate da Tid il 2026-11-13 sono
+state tolte dal documento.

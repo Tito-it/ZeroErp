@@ -105,8 +105,9 @@ BEGIN
   --  chk_commesse_attivita_tipo_variazione_applicata) li
   -- garantirebbero comunque, ma qui la fail-fast e' piu'
   -- chiara come messaggio.
-  IF p_origine_prezzo IS NOT NULL
-     AND p_origine_prezzo NOT IN ('PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE') THEN
+  -- L'elenco delle origini ha una sede sola: vendite.fn_origine_prezzo_ammessa,
+  -- la stessa dei CHECK (che ammette anche NULL).
+  IF NOT vendite.fn_origine_prezzo_ammessa(p_origine_prezzo) THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
       jsonb_build_object('parametro','origine_prezzo','valore',p_origine_prezzo),

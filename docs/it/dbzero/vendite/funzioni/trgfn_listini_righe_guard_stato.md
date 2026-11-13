@@ -58,16 +58,47 @@ BEGIN
         );
     END IF;
 
-    -- ATTIVA: verifica propagazione
-    -- Tabelle controllate per propagazione riga:
-    -- 1. vendite.commesse_attivita (listino_riga_id)
-    -- 2. vendite.attivita_fatturabili (listino_riga_id)
+    -- ATTIVA: verifica propagazione. Una riga e' «propagata» se il suo prezzo
+    -- e' stato USATO: la cita una riga di commessa, un'attivita' fatturabile, o
+    -- una riga (o un componente) di preventivo, ordine, contratto, DDT, offerta
+    -- (D-4 di Tid, 2026-11-13, brief-db-provenienza-prezzo-segue-il-prezzo §8.5:
+    -- anche da una bozza). Ogni colonna listino_riga_id ha il suo indice parziale.
     -- Per aggiungere nuove tabelle: UNION ALL qui sotto
     SELECT EXISTS(
         SELECT 1 FROM vendite.commesse_attivita
          WHERE listino_riga_id = OLD.id
         UNION ALL
         SELECT 1 FROM vendite.attivita_fatturabili
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.preventivi_righe
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.preventivi_righe_componenti
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.ordini_righe
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.ordini_righe_componenti
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.contratti_righe
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.contratti_righe_componenti
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.ddt_righe
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.ddt_righe_componenti
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.offerte_commerciali_eccezioni
+         WHERE listino_riga_id = OLD.id
+        UNION ALL
+        SELECT 1 FROM vendite.offerte_commerciali_eccezioni_componenti
          WHERE listino_riga_id = OLD.id
     )
     INTO v_propagata;
@@ -94,7 +125,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_listini_righe_guard_stato()
-IS 'Guard N6: protegge righe listino in base a stato versione. BOZZA=passa, ATTIVA=solo se non propagata, CHIUSA=blocca. Solo UPDATE/DELETE. Rev 2026-10-28 (20261028-23, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';
+IS 'Guard sulle righe di listino, BEFORE UPDATE e DELETE, secondo lo stato della versione (dal vocabolario config.stati_doc_listino_versioni, codice_interno): BOZZA passa; CHIUSA rifiuta sempre (E_RIGA_LISTINO_VERSIONE_CHIUSA); ATTIVA passa solo se la riga non e'' propagata, cioe'' se il suo prezzo non e'' stato usato (E_RIGA_LISTINO_PROPAGATA). Propagata: la cita (listino_riga_id) una riga di commessa, un''attivita'' fatturabile, o una riga principale o un componente di preventivo, ordine, contratto, DDT od offerta, anche in bozza. Per cambiare il prezzo di una riga propagata si fa una versione nuova del listino.';
 ```
 
 </div>

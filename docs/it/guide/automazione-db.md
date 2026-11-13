@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -404,6 +404,7 @@ Per tabelle sensibili (es. tabelle ruoli, configurazioni critiche) dove la DELET
 * Trigger `BEFORE DELETE` per riga su `script.trgfn_delete_block_by_guc(guc_key)` — blocca la DELETE a meno che il GUC specificato non sia impostato a `'on'`. ⭐ `BEFORE` perché il rifiuto arrivi prima delle cascate delle FK e dei guard dei figli
 * Runner `dbops.fn_run_automations_delete_block()`, nella convergenza del rilascio e nel giro notturno `automations_delete_block` (§9). **Converge**: crea il blocco dove manca, lo rigenera se non è quello dichiarato (nome, momento, GUC), lo toglie se la riga è spenta
 * ⛔ Per togliere un blocco si **spegne** la riga (`enabled = false`), non la si cancella: un blocco vivo su una tabella che il registro non nomina ferma il runner, che lo nomina
+* ⛔ **Fuori dall'ambito non c'è eccezione**, a differenza dei lock di colonna (§4.1): il runner non ci arriva e il blocco non si monta a mano. Una tabella da proteggere entra nell'ambito; finché non c'entra, la sua riga resta spenta. Il presidio (`test-delete-block-convergenza-v1`) guarda le due metà: nessun blocco vivo e nessuna riga attiva su una tabella fuori dall'ambito
 * Il blocco vivo si riconosce dalla funzione e dal suo argomento, non dal nome: il confronto sta in [dbops.fn_delete_block_divergenze](/dbzero/dbops/funzioni/fn_delete_block_divergenze)
 
 Il comportamento completo sta nella pagina di

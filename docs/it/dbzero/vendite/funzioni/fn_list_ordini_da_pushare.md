@@ -13,7 +13,7 @@ CREATE FUNCTION fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_acco
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_ordine_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer, causale_onere_id bigint)
+ RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer, causale_onere_id bigint, origine_prezzo character varying, listino_versione_id bigint, listino_riga_id bigint, prezzo_base_snapshot numeric, tipo_variazione_applicata character varying, valore_variazione_applicata numeric, promo_id bigint, prezzo_contratto_id bigint, categoria_cliente_id_snapshot smallint, classe_utenza_id_snapshot integer)
  LANGUAGE plpgsql
 AS $function$
 -- rev 2026-11-03 (20261103-38, brief-db-addebito-trasporto-ordine §8.1, K-1):
@@ -113,7 +113,17 @@ BEGIN
     -- stata tolta la causale dopo la vendita esce ONERE senza causale, e la
     -- madre lo rifiuta (E_PARAMETRO_INVALIDO): rumoroso, non NORMALE in silenzio.
     CASE WHEN script.fn_natura_e_merce(or_r.natura_vendita_id) IS FALSE
-         THEN a.causale_onere_id END
+         THEN a.causale_onere_id END,
+    pv.origine_prezzo,
+    pv.listino_versione_id,
+    pv.listino_riga_id,
+    pv.prezzo_base_snapshot,
+    pv.tipo_variazione_applicata,
+    pv.valore_variazione_applicata,
+    pv.promo_id,
+    pv.prezzo_contratto_id,
+    pv.categoria_cliente_id_snapshot,
+    pv.classe_utenza_id_snapshot
   FROM vendite.ordini o
   JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
   -- rev 2026-07-10: join stato solo per ESCLUDERE i non eleggibili
@@ -127,6 +137,9 @@ BEGIN
    AND or_r.quantita > 0
    AND or_r.prezzo_unitario >= 0
   JOIN catalogo.articoli a ON a.id = or_r.articolo_id
+  -- La provenienza del prezzo della riga, nelle colonne della commessa (R-3).
+  CROSS JOIN LATERAL vendite.fn_provenienza_prezzo_esplosa(
+    or_r.origine_prezzo, or_r.listino_versione_id, or_r.listino_riga_id, or_r.prezzo_resolver_context) pv
   WHERE o.fatturazione_trigger = 'CONFERMATO'
     AND (p_competenza_mese IS NULL OR date_trunc('month', o.data)::date = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR o.billing_account_id = p_billing_account_id)
@@ -143,7 +156,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
-IS 'Le righe degli ordini di vendita da mandare in commessa: ordini con fatturazione_trigger CONFERMATO, in qualunque stato di spedizione tranne DRAFT, ANNULLATO e FATTURATO; righe attive con quantita'' > 0 e prezzo >= 0. Una riga gia'' instradata resta fuori: e'' eleggibile solo se script.fn_get_stato_push_segment dice LIBERA, lo stesso classificatore della capability dell''ordine, che vede anche i componenti #CMP. p_ordine_id: un ordine solo (NULL = tutti; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente ORDINE_VENDITA assente dal catalogo solleva E_CODICE. Filtri in AND, ordine per ordine e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid dell''ordine in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push ORDINE_VENDITA:<uid>:R:<riga> la compone script.fn_segment_key. uom_id viene dall''articolo (catalogo.articoli). fatturazione_immediata e'' quella dell''ordine; prezzo_bloccato e'' sempre TRUE, perche'' l''accoppiamento col flag di corsia esiste solo sui preventivi. Una riga-onere (script.fn_natura_e_merce falso sulla natura della riga) esce con tipo_movimento ONERE e la causale dell''articolo in causale_onere_id; la merce esce NORMALE, con causale_onere_id NULL. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine. Il backend legge le colonne per nome.';
+IS 'Le righe degli ordini di vendita da mandare in commessa: ordini con fatturazione_trigger CONFERMATO, in qualunque stato di spedizione tranne DRAFT, ANNULLATO e FATTURATO; righe attive con quantita'' > 0 e prezzo >= 0. Una riga gia'' instradata resta fuori: e'' eleggibile solo se script.fn_get_stato_push_segment dice LIBERA, lo stesso classificatore della capability dell''ordine, che vede anche i componenti #CMP. p_ordine_id: un ordine solo (NULL = tutti; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente ORDINE_VENDITA assente dal catalogo solleva E_CODICE. Filtri in AND, ordine per ordine e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid dell''ordine in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push ORDINE_VENDITA:<uid>:R:<riga> la compone script.fn_segment_key. uom_id viene dall''articolo (catalogo.articoli). fatturazione_immediata e'' quella dell''ordine; prezzo_bloccato e'' sempre TRUE, perche'' l''accoppiamento col flag di corsia esiste solo sui preventivi. Una riga-onere (script.fn_natura_e_merce falso sulla natura della riga) esce con tipo_movimento ONERE e la causale dell''articolo in causale_onere_id; la merce esce NORMALE, con causale_onere_id NULL. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine. Il backend legge le colonne per nome. Restituisce anche la provenienza del prezzo, nelle colonne della riga di commessa (origine_prezzo, listino_versione_id, listino_riga_id, prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata, promo_id, prezzo_contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot): quella della riga d''ordine (vendite.fn_provenienza_prezzo_esplosa).';
 ```
 
 </div>

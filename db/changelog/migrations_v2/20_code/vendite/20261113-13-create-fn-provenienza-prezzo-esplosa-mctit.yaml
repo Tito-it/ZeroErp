@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_provenienza_prezzo_esplosa(origine, versione, riga,
+#   contesto) -> le dieci colonne della provenienza di una riga di commessa
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.7, giro 2, R-3)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il push porta la provenienza del prezzo in commessa (R-3). La riga di
+#   documento la tiene in quattro colonne (origine, versione, riga di listino,
+#   prezzo_resolver_context); la riga di commessa in dieci, tipizzate. La
+#   traduzione serve a cinque lister e a vendite.fn_contratti_addebiti_maturati
+#   _con_provenienza (regola del 2): sta qui, una volta.
+#
+# ── IL CONTRATTO DEL CONTESTO ───────────────────────────────────────
+#   Le chiavi di prezzo_resolver_context sono i nomi delle colonne del
+#   risultato del resolver (vendite.fn_resolve_prezzo_listino_v2_esito):
+#   prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata,
+#   promo_id, contratto_id, categoria_cliente_id_snapshot,
+#   classe_utenza_id_snapshot. Cosi' to_jsonb(<riga del resolver>) e' un
+#   contesto valido cosi' com'e', e chi precompila una riga dal resolver lo
+#   scrive senza tradurre. Chiavi in piu' si ignorano.
+#   Il contratto della chiave contratto_id esce come prezzo_contratto_id: nei
+#   lister «contratto_id» e' gia' il documento sorgente.
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Il contesto conta solo per un'origine da listino: con MANUALE, COMPONENTI
+#   o senza origine i sette campi sono NULL anche se il contesto ne porta (un
+#   prezzo scritto a mano non viene da una promo). Origine, versione e riga
+#   passano come sono: la loro coerenza l'hanno gia' giudicata il CHECK e il
+#   guard della riga di documento.
+#   LANGUAGE sql IMMUTABLE, una riga sempre: si monta in LEFT/CROSS JOIN
+#   LATERAL. Eseguibile da PUBLIC: non legge tabelle.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-13-create-fn-provenienza-prezzo-esplosa-mctit.yaml
+
+  - changeSet:
+      id: 20261113-13-create-fn-provenienza-prezzo-esplosa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.fn_provenienza_prezzo_esplosa: dalla provenienza di una riga di documento
+        (origine, versione, riga di listino, contesto del resolver) le dieci colonne della provenienza
+        di una riga di commessa. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_provenienza_prezzo_esplosa(
+                  p_origine             vendite.commesse_attivita.origine_prezzo%TYPE,
+                  p_listino_versione_id vendite.commesse_attivita.listino_versione_id%TYPE,
+                  p_listino_riga_id     vendite.commesse_attivita.listino_riga_id%TYPE,
+                  p_contesto            vendite.preventivi_righe.prezzo_resolver_context%TYPE)
+              RETURNS TABLE(
+                  origine_prezzo                vendite.commesse_attivita.origine_prezzo%TYPE,
+                  listino_versione_id           vendite.commesse_attivita.listino_versione_id%TYPE,
+                  listino_riga_id               vendite.commesse_attivita.listino_riga_id%TYPE,
+                  prezzo_base_snapshot          vendite.commesse_attivita.prezzo_base_snapshot%TYPE,
+                  tipo_variazione_applicata     vendite.commesse_attivita.tipo_variazione_applicata%TYPE,
+                  valore_variazione_applicata   vendite.commesse_attivita.valore_variazione_applicata%TYPE,
+                  promo_id                      vendite.commesse_attivita.promo_id%TYPE,
+                  prezzo_contratto_id           vendite.commesse_attivita.contratto_id%TYPE,
+                  categoria_cliente_id_snapshot vendite.commesse_attivita.categoria_cliente_id_snapshot%TYPE,
+                  classe_utenza_id_snapshot     vendite.commesse_attivita.classe_utenza_id_snapshot%TYPE)
+              LANGUAGE sql
+              IMMUTABLE
+              PARALLEL SAFE
+              AS $function$
+                  SELECT p_origine,
+                         p_listino_versione_id,
+                         p_listino_riga_id,
+                         (s.c ->> 'prezzo_base_snapshot')::numeric,
+                         (s.c ->> 'tipo_variazione_applicata')::varchar,
+                         (s.c ->> 'valore_variazione_applicata')::numeric,
+                         (s.c ->> 'promo_id')::bigint,
+                         (s.c ->> 'contratto_id')::bigint,
+                         (s.c ->> 'categoria_cliente_id_snapshot')::smallint,
+                         (s.c ->> 'classe_utenza_id_snapshot')::integer
+                    FROM (SELECT CASE WHEN p_origine IS NULL
+                                        OR p_origine IN ('MANUALE', 'COMPONENTI')
+                                      THEN NULL
+                                      ELSE p_contesto END AS c) s;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_provenienza_prezzo_esplosa(vendite.commesse_attivita.origine_prezzo%TYPE, vendite.commesse_attivita.listino_versione_id%TYPE, vendite.commesse_attivita.listino_riga_id%TYPE, vendite.preventivi_righe.prezzo_resolver_context%TYPE) IS
+                  'Dalla provenienza del prezzo di una riga di documento (origine, versione e riga di listino, contesto del resolver) le dieci colonne della provenienza di una riga di commessa, in una riga sola. Le chiavi del contesto sono i nomi delle colonne del risultato del resolver (vendite.fn_resolve_prezzo_listino_v2_esito): prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id (esce come prezzo_contratto_id), categoria_cliente_id_snapshot, classe_utenza_id_snapshot; le altre si ignorano, e to_jsonb di una riga del resolver e'' un contesto valido. Il contesto conta solo per un''origine da listino: con MANUALE, COMPONENTI o senza origine quei campi sono NULL. Origine, versione e riga passano come sono. La leggono i lister del push (vendite.fn_list_*_da_pushare) e vendite.fn_contratti_addebiti_maturati_con_provenienza.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_provenienza_prezzo_esplosa(varchar, bigint, bigint, jsonb);

@@ -31,12 +31,17 @@
 | user_update | text | NO | CURRENT_USER |
 | stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
+| origine_prezzo | character varying(32) | YES |  |
+| listino_versione_id | bigint | YES |  |
+| listino_riga_id | bigint | YES |  |
+| prezzo_resolver_context | jsonb | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_offerte_commerciali_eccezioni_factor_to_base_finito |  |
 | CHECK | chk_offerte_commerciali_eccezioni_prezzo_unitario_finito |  |
+| CHECK | chk_offerte_commerciali_eccezioni_provenienza_prezzo |  |
 | CHECK | chk_offerte_commerciali_eccezioni_qta_operativa_finito |  |
 | CHECK | chk_offerte_commerciali_eccezioni_quantita_finito |  |
 | CHECK | chk_offerte_eccezioni_canone_periodicita |  |
@@ -48,6 +53,8 @@
 | CHECK | chk_offerte_eccezioni_qta_operativa_nonzero |  |
 | CHECK | chk_offerte_eccezioni_quantita_per_fonte |  |
 | FOREIGN KEY | fk_offerte_commerciali_eccezioni_erogazione_fonte | tipo_erogazione, fonte_quantita_attesa |
+| FOREIGN KEY | fk_offerte_commerciali_eccezioni_listino_riga | listino_riga_id |
+| FOREIGN KEY | fk_offerte_commerciali_eccezioni_listino_versione | listino_versione_id |
 | FOREIGN KEY | fk_offerte_commerciali_eccezioni_periodicita | periodicita |
 | FOREIGN KEY | fk_offerte_eccezioni_articolo | articolo_id |
 | FOREIGN KEY | fk_offerte_eccezioni_offerta | offerta_id |
@@ -58,6 +65,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_offerte_commerciali_eccezioni_listino_riga_id | `CREATE INDEX ix_offerte_commerciali_eccezioni_listino_riga_id ON vendite.offerte_commerciali_eccezioni USING btree (listino_riga_id) WHERE (listino_riga_id IS NOT NULL)` |
+| ix_offerte_commerciali_eccezioni_listino_versione_id | `CREATE INDEX ix_offerte_commerciali_eccezioni_listino_versione_id ON vendite.offerte_commerciali_eccezioni USING btree (listino_versione_id) WHERE (listino_versione_id IS NOT NULL)` |
 | ix_vendite_offerte_eccezioni_stato_approvazione | `CREATE INDEX ix_vendite_offerte_eccezioni_stato_approvazione ON vendite.offerte_commerciali_eccezioni USING btree (stato_approvazione_prezzo) WHERE (stato_approvazione_prezzo IS NOT NULL)` |
 | pk_offerte_commerciali_eccezioni | `CREATE UNIQUE INDEX pk_offerte_commerciali_eccezioni ON vendite.offerte_commerciali_eccezioni USING btree (id)` |
 | uq_offerte_eccezioni_one_aggiunta_per_articolo | `CREATE UNIQUE INDEX uq_offerte_eccezioni_one_aggiunta_per_articolo ON vendite.offerte_commerciali_eccezioni USING btree (offerta_id, articolo_id) WHERE (tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto)` |
@@ -76,32 +85,36 @@
 | trg_offerte_commerciali_eccezioni_a10_note_offerte_comme_22884e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_offerte_commerciali', 'target_riga_id', 'id', 'attivo')` |
 | trg_offerte_commerciali_eccezioni_a10_offerte_commercial_160059 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni_componenti', 'eccezione_offerta_id', 'id', 'attivo')` |
 | trg_offerte_commerciali_eccezioni_a10_sorgente_in_uscita_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_sorgente_in_uscita()` |
-| trg_offerte_commerciali_eccezioni_a10_unita_misura_requi_4af3a4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_offerte_commerciali_eccezioni_a10_unita_misura_requi_4af3a4 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
+| trg_offerte_commerciali_eccezioni_a10_unita_misura_requi_4af3a4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_offerte_commerciali_eccezioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_offerte_commerciali_eccezioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_offerte_commerciali_eccezioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_commerciali_eccezioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_offerte_eccezioni_a10_default_erogazione_articolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
+| trg_offerte_commerciali_eccezioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_eccezioni_a10_default_erogazione_articolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
+| trg_offerte_eccezioni_a10_default_erogazione_articolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
 | trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_offerte_eccezioni_a10_default_periodicita_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_periodicita_da_listino('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_default_periodicita_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_periodicita_da_listino('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('OFFERTA_COMMERCIALE', 'offerta_id')` |
-| trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_erogazione_perimetro_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_erogazione_perimetro_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_listino_provenienza_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza()` |
+| trg_offerte_eccezioni_a10_guard_listino_provenienza_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza()` |
 | trg_offerte_eccezioni_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_pending('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_periodicita_canone_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_periodicita_canone('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_periodicita_canone_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_periodicita_canone('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_quantita_per_fonte_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_quantita_per_fonte('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_quantita_per_fonte_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_quantita_per_fonte('offerta_id')` |
-| trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa', 'offerte_commerciali', 'offerta_id', 'validita_dal')` |
 | trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa', 'offerte_commerciali', 'offerta_id', 'validita_dal')` |
+| trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa', 'offerte_commerciali', 'offerta_id', 'validita_dal')` |
+| trg_offerte_eccezioni_a20_provenienza_prezzo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo()` |
+| trg_offerte_eccezioni_a20_provenienza_prezzo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo()` |
 | trg_offerte_eccezioni_z90_propaga_qta_componenti_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_propaga_qta('vendite', 'offerte_commerciali_eccezioni_componenti', 'eccezione_offerta_id')` |
 
 ---

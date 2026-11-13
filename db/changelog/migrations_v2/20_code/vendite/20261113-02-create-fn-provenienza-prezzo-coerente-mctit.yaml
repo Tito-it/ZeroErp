@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_provenienza_prezzo_coerente(origine, prezzo, versione,
+#   riga) -> boolean
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2, R-1/R-2, D-1)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Le dieci tabelle che portano un prezzo di documento (le cinque righe
+#   principali e i cinque componenti) dichiarano da dove viene (20261113-04).
+#   La coerenza fra prezzo e provenienza e' una regola sola: D-1 vuole che
+#   nasca una volta, non ricopiata in dieci CHECK. Questa funzione e' la
+#   regola; ogni tabella ha un CHECK che la chiama.
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   · l'origine e' nell'elenco (vendite.fn_origine_prezzo_ammessa);
+#   · senza prezzo, nessuna provenienza: origine, versione e riga NULL;
+#   · con un prezzo, un'origine (R-2: un prezzo senza provenienza e' MANUALE,
+#     e lo scrive il trigger di derivazione, 20261113-08);
+#   · una riga di listino porta la sua versione (come
+#     chk_commesse_attivita_listino_riga_con_versione);
+#   · MANUALE e COMPONENTI non citano listino.
+#   Il contesto jsonb (prezzo_resolver_context) non entra: e' la fotografia
+#   del resolver, non un riferimento giudicato.
+#   Sempre vero o falso, mai NULL: un CHECK che vale NULL passa (§7f).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   LANGUAGE sql IMMUTABLE, senza tabelle, eseguibile da PUBLIC (la legge un
+#   CHECK). Il prezzo entra come numeric nudo: le dieci colonne prezzo_unitario
+#   non hanno la stessa scala, e qui conta solo se c'e'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-02-create-fn-provenienza-prezzo-coerente-mctit.yaml
+
+  - changeSet:
+      id: 20261113-02-create-fn-provenienza-prezzo-coerente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.fn_provenienza_prezzo_coerente: la coerenza fra il prezzo di una riga di
+        documento e la sua provenienza (origine, versione e riga di listino), letta dai CHECK delle
+        dieci tabelle. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_provenienza_prezzo_coerente(
+                  p_origine             vendite.commesse_attivita.origine_prezzo%TYPE,
+                  -- numeric nudo: le dieci colonne prezzo_unitario hanno scale diverse,
+                  -- e qui conta solo se il prezzo c'e'.
+                  p_prezzo              numeric,
+                  p_listino_versione_id vendite.listini_righe.listino_versione_id%TYPE,
+                  p_listino_riga_id     vendite.listini_righe.id%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              PARALLEL SAFE
+              AS $function$
+                  SELECT CASE
+                      WHEN NOT vendite.fn_origine_prezzo_ammessa(p_origine) THEN false
+                      WHEN p_prezzo IS NULL THEN
+                           p_origine IS NULL
+                       AND p_listino_versione_id IS NULL
+                       AND p_listino_riga_id IS NULL
+                      WHEN p_origine IS NULL THEN false
+                      WHEN p_listino_riga_id IS NOT NULL
+                       AND p_listino_versione_id IS NULL THEN false
+                      WHEN p_origine IN ('MANUALE', 'COMPONENTI') THEN
+                           p_listino_versione_id IS NULL
+                       AND p_listino_riga_id IS NULL
+                      ELSE true
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_provenienza_prezzo_coerente(vendite.commesse_attivita.origine_prezzo%TYPE, numeric, vendite.listini_righe.listino_versione_id%TYPE, vendite.listini_righe.id%TYPE) IS
+                  'Vero se la provenienza del prezzo di una riga di documento e'' coerente col prezzo: l''origine e'' ammessa (vendite.fn_origine_prezzo_ammessa); senza prezzo non c''e'' provenienza (origine, versione e riga di listino NULL); con un prezzo c''e'' un''origine; una riga di listino porta la sua versione; MANUALE e COMPONENTI non citano listino. Mai NULL. La leggono i CHECK chk_<tabella>_provenienza_prezzo delle righe principali e dei componenti di preventivi, ordini, contratti, DDT e offerte. Che la riga di listino sia dell''articolo, dell''emittente e di una versione non in bozza lo giudica il trigger vendite.trgfn_riga_documento_guard_listino_provenienza, che legge altre tabelle.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_provenienza_prezzo_coerente(varchar, numeric, bigint, bigint);
