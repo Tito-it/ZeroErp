@@ -3,7 +3,7 @@
 ## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
 **Riparte: nessuno, archiviato il 2026-11-13.** I tre giri sono applicati e i loro pgTAP sono verdi. Il tema del
-token NULL dei CSV (§9, §9.1) prosegue in `work-in-progress/brief-db-token-null-dei-seed.md`. Il residuo
+token NULL dei CSV (§9, §9.1) prosegue in `work-done/brief-db-token-null-dei-seed.md`. Il residuo
 `causali.data_update` (§8, note) è nel registro dei residui aperti.
 
 | # | Chi | Che cosa | Dove | Aspetta |

@@ -36,7 +36,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
             primaryKey: "id"
             # elenco esplicito di TUTTE le colonne,
             # inclusa cd_int_utility per l'INSERT

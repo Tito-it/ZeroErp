@@ -50,7 +50,7 @@ class ContrattoSeed(TypedDict):
 # ⛔ FAIL-LOUD sulla forma: se una colonna sparisce dal CSV il test che ci
 #    poggia deve diventare rosso, non leggere `None` ovunque e passare.
 # ⭐ Il seed si legge dal BB `seed_csv`, che da' `None` dove il caricatore
-#    scrive NULL (il suo `nullValue`): niente token riconosciuto a mano. Una
+#    scrive NULL (il token `NULL` della cella): niente token riconosciuto a mano. Una
 #    cella VUOTA resta `''`, come la scriverebbe il loader, e su una colonna
 #    intera fa rosso in `int()` invece di passare per «non si presidia».
 def leggi_contratti_dal_seed() -> dict[str, ContrattoSeed]:

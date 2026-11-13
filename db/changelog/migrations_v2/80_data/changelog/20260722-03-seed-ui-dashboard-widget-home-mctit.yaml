@@ -59,7 +59,6 @@ databaseChangeLog:
             schemaName: ui
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "dashboard_id,widget_id"
             columns:
               - column: { name: dashboard_id,   type: NUMERIC }

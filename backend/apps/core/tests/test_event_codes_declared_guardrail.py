@@ -118,7 +118,7 @@ def _catalogo() -> dict[str, str | None]:
 #    Python e' una stringa piena, quindi verissima: letto a mano, `TASK_RUN`
 #    (modo = NULL) risultava GIORNALABILE e il cancello lo avrebbe lasciato
 #    passare (trovato dal test di sanity, non a occhio). Il BB `seed_csv` lo
-#    da' `None`, dal `nullValue` del caricatore: niente token scritto qui.
+#    da' `None`, come il caricatore: niente token scritto qui.
 def _catalogo_tipi() -> dict[str, str | None]:
     return {
         riga["codice"]: riga["modo_risoluzione_emittente"]

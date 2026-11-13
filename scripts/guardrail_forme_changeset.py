@@ -5,7 +5,7 @@
 # Doc: Python
 # Guardrail CI — le forme che passano la lettura e muoiono all'apply
 #
-# COSA PRESIDIA. Quattordici regole scritte nella documentazione e ricadute piu'
+# COSA PRESIDIA. Quindici regole scritte nella documentazione e ricadute piu'
 #   volte, ognuna con la sua sede. Hanno in comune che si vedono LEGGENDO il
 #   file, senza database, e che la prova a mano spesso non le prende:
 #
@@ -71,6 +71,13 @@
 #                          da `NULL`: il caricatore la riconosce lo stesso, ma la
 #                          convenzione e' una, e chi legge il CSV senza Liquibase
 #                          cerca `NULL` (linee-guida-sql §11.2)
+#   nullvalue-ignorato     un caricatore che dichiara `nullValue:`: Liquibase non
+#                          ha quell'attributo e lo ignora senza errore, quindi la
+#                          riga dice una regola che non succede (linee-guida-sql
+#                          §11.2). Il segnaposto vero e' `nullPlaceholder`, per
+#                          colonna. Tutta la storia: i 210 attributi sono usciti
+#                          dai changelog mergiati il 2026-11-13, a checksum
+#                          invariato (brief-db-token-null-dei-seed, giro C)
 #   pgtap-pgagent-owner    un pgTAP che legge `pgagent.*` senza
 #                          `-- pgtap-runner: owner` nelle prime 80 righe: il
 #                          runner lo esegue come applicazione, che sullo schema
@@ -534,11 +541,18 @@ def null_grafia(cs: dict, percorso: Path) -> list[Violazione]:
     return fuori
 
 
+def nullvalue_ignorato(cs: dict, percorso: Path) -> list[Violazione]:
+    return [(f"{tipo} di {ld.get('schemaName')}.{ld.get('tableName')}: `nullValue:` non esiste "
+             "per Liquibase (lo ignora): l'assenza si scrive NULL nella cella", f"nullValue: {ld['nullValue']!r}")
+            for tipo, ld, _csv in _caricatori(cs, percorso) if "nullValue" in ld]
+
+
 # (nome, regola, inizio del perimetro; None = tutta la storia)
 REGOLE_CHANGESET: list[tuple[str, Callable[[dict, Path], list[Violazione]], tuple[int, int] | None]] = [
     ("sqlcheck-booleano", sqlcheck_booleano, None),
     ("punto-e-virgola", punto_e_virgola, None),
     ("begin-atomic-da-solo", begin_atomic_da_solo, None),
+    ("nullvalue-ignorato", nullvalue_ignorato, None),
     # ⚠️ Due regole partono da oggi: changelog mergiati le violano, e le revisioni
     #   successive degli stessi oggetti le hanno gia' corrette.
     ("log-cinque-argomenti", log_cinque_argomenti, (20261112, 1)),

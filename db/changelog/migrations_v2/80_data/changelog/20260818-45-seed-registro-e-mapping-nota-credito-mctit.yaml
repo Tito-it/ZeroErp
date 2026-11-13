@@ -120,7 +120,6 @@ databaseChangeLog:
             schemaName: vendite
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: NUMERIC }

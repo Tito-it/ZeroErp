@@ -96,7 +96,6 @@ databaseChangeLog:
             # Token letterale `NULL`, non la cella vuota: su una colonna
             # dichiarata STRING la cella vuota entrerebbe come stringa vuota, e
             # lo farebbe IN SILENZIO.
-            nullValue: "NULL"
             primaryKey: "vista"
             columns:
               - column: { name: vista,         type: STRING }

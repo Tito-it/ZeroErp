@@ -26,7 +26,6 @@ databaseChangeLog:
         schemaName: config
         separator: ","
         encoding: UTF-8
-        nullValue: ""
         primaryKey:
           - id
         columns:

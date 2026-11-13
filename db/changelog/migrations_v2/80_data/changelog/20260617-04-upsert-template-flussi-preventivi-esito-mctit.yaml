@@ -59,7 +59,6 @@ databaseChangeLog:
             # Sentinel letterale NULL nel CSV (non cella vuota): in Liquibase 5
             # loadUpdateData con nullValue:"" NON converte l'empty in NULL e genera
             # SET esito_default = '' -> viola chk_template_flussi_esito_default.
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id,             type: NUMERIC }

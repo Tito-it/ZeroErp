@@ -47,7 +47,6 @@ databaseChangeLog:
             schemaName: dbops
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "modo"
             columns:
               - column: { name: modo, type: STRING }

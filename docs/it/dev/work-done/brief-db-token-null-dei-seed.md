@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: team BE**, con la richiesta di §6 (`seed_csv` sulla regola vera). I giri A, B e D5 sono applicati e
-i loro pgTAP sono verdi (2026-11-13). Dopo il push del BE, la sessione DB fa il giro C (§4): `nullValue:` esce dai
-caricatori e il guardrail lo vieta. Poi il brief si archivia.
+**Riparte: nessuno, archiviato il 2026-11-13.** I giri A, B, D5 e C sono fatti: i primi tre applicati e coi pgTAP
+verdi, il giro C a checksum invariato, senza niente da applicare (§4.1). Il BE ha consumato §6 (`7d2c1c3a76`). I
+due commenti di §6.1 li ha corretti la sessione DB, su indicazione di Tid.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,16 +12,19 @@ caricatori e il guardrail lo vieta. Poi il brief si archivia.
 | 2 | ✅ Tid | D3 (a) di `brief-db-nullvalue-vuoto-cinque-mirror` §9.1: la regola si riscrive, in un brief suo (2026-11-12) | — | 1 |
 | 3 | ✅ sessione DB | Giro A: guardrail, linee guida, `fatturazione_pipeline.csv` a `NULL` | §4 | 2 |
 | 4 | ✅ Tid | D1 … D4: accettate le proposte (2026-11-13) | §5 | 1 |
-| 5 | **team BE** ⏭️ | `seed_csv` e `gen_seed_lista.py` sulla regola vera; il commento di `check_i18n_keys.py` | §6 | 2 |
+| 5 | ✅ team BE | `seed_csv` e `gen_seed_lista.py` sulla regola vera; il commento di `check_i18n_keys.py` (`7d2c1c3a76`, 2026-11-13) | §6 | 2 |
 | 6 | ✅ sessione DB | Giro B: D1, D2 e D3 su `messaggi_errore` (CSV, `90_end`, pgTAP, manual); il CSV di `note_stili` | §5.1 | 4 |
 | 6-bis | ✅ Tid | D5 (a): la stringa vuota la porta a NULL il verbo del pannello (2026-11-13) | §5.2 | 6 |
 | 6-ter | ✅ Tid | Apply di `20261112-53` … `-56` e i tre pgTAP di §5.1: verdi (2026-11-13) | §5.1 | 6 |
 | 6-quater | ✅ sessione DB | Giro D5: il verbo del pannello (`-57`, chiude il buco di `-36`) e `note_stili.note` (`-58`) | §5.3 | 6-bis |
 | 6-quinquies | ✅ Tid | Apply di `-57` e `-58`, e i due pgTAP di §5.3: verdi (2026-11-13) | §5.3 | 6-quater |
-| 7 | sessione DB | Giro C: `nullValue:` esce dai 208 caricatori, il guardrail lo vieta | §4 | 5 |
-| 8 | sessione DB | Archiviazione | — | 6-quinquies, 7 |
+| 7 | ✅ sessione DB | Giro C: `nullValue:` esce da 191 file (210 attributi), il guardrail lo vieta; checksum e SQL reso identici (2026-11-13) | §4.1 | 5 |
+| 7-bis | ✅ sessione DB | I due commenti BE che citavano il `nullValue` del caricatore; da `dev/db-tid` su indicazione di Tid, perché sono solo commenti (2026-11-13) | §6.1 | — |
+| 8 | ✅ sessione DB | Archiviazione (2026-11-13) | — | 7, 7-bis |
 
-**Decisioni aperte di Tid**: nessuna. **Da committare**: i giri A, B e D5 e questo brief, su `dev/db-tid`.
+**Decisioni aperte di Tid**: nessuna. **Da committare**: il giro C (191 changelog di `80_data`, `00_schema`,
+`70_dati_sistema` e `90_end`, il guardrail, `linee-guida-sql` §11.2), i due commenti BE e questo brief, su
+`dev/db-tid`. Non c'è niente da applicare.
 ✅ La doc auto-generata è rigenerata da Tid (2026-11-13) e dice `separatore` `NOT NULL`: le due righe di
 `sistema_codici` sono uscite da `CELLA_VUOTA_DEBITO`, che ora è vuoto (§5.1). Da committare con la doc rigenerata.
 
@@ -120,10 +123,31 @@ fermato.
    identico prima e dopo (`utility_id = NULL`, `tipo_doc_fiscale_id = NULL`).
 4. Le tre pagine `manual/` di §2: il token è `NULL`, senza più il rimando al `nullValue`.
 
-**Giro C (aspetta §6).** `nullValue:` esce dai 208 caricatori: è una dichiarazione che non succede niente, e chi
+**Giro C (fatto il 2026-11-13, §4.1).** `nullValue:` esce dai 208 caricatori: è una dichiarazione che non succede niente, e chi
 la legge ci crede. Il checksum non cambia (§1). Il guardrail lo rifiuta su ogni caricatore, con una regola
 `nullvalue-ignorato`. **Chi cambia per primo: il BE.** Oggi `seed_csv` solleva su un caricatore senza
 `nullValue`: togliere l'attributo prima farebbe rossa la CI dei test backend.
+
+### 4.1 Giro C (scritto il 2026-11-13, nessun apply)
+
+* **Cosa esce.** Le 210 righe `nullValue:` di 191 file, tutte dentro un `loadData` o un `loadUpdateData`
+  (censimento del 2026-11-13: 194 file in `80_data`, 11 in `00_schema`, uno in `70_dati_sistema` e uno in
+  `90_end`; il §3 ne contava 208 il giorno prima). Escono anche le 10 righe `# nullValue: ""`, lo stesso
+  attributo commentato. Il diff toglie solo righe e non ne aggiunge nessuna. ⚠️ **Restano** i commenti che
+  raccontano la regola vecchia («con `nullValue: ""` la cella vuota…»): sono la storia dei changeSet
+  mergiati, e la regola vera sta in `linee-guida-sql` §11.2.
+* **Perché si tocca un changelog mergiato.** Il divieto (AGENTS.md) protegge la catena dei checksum, e qui il
+  checksum non cambia. Questa volta non si è ripresa la misura di §1 su un changeSet solo: si è rifatta su
+  **tutti** quelli toccati. Il render offline (`updateSQL --url=offline:postgresql`, un file alla volta) prima e
+  dopo dà **checksum identici** sui 226 changeSet dei 191 file, e **SQL reso identico** su tutti i 191. Il
+  «prima» è stato reso da un worktree di HEAD nello scratchpad. Non si applica niente: Liquibase non ha niente
+  da rigirare.
+* **Il presidio.** `scripts/guardrail_forme_changeset.py`, regola nuova **`nullvalue-ignorato`**: rifiuta un
+  caricatore che dichiara `nullValue:`, su tutta la storia (perimetro `None`), perché la storia ora è pulita.
+  Provata su un caricatore costruito con `nullValue: "NULL"`: scatta. Il perimetro è verde, e `--tutto` non
+  porta violazioni di questa regola.
+* **`linee-guida-sql` §11.2**, riga «scrivere un `NULL`»: `nullValue:` non si scrive, e il presidio elenca la
+  regola nuova.
 
 ## 5. Le decisioni di Tid
 
@@ -252,3 +276,20 @@ La regola vera (§1) è più semplice di quella su cui il BB è nato, e vale per
 * Il catalogo BB backend, voce `seed_csv`: la stessa correzione.
 
 **Chi cambia per primo**: il BE, prima del giro C. Il giro A e il giro B non toccano ciò che il BE legge.
+
+✅ **Consumata dal BE** con `7d2c1c3a76` (2026-11-13), e verificata sul codice dalla sessione DB: `seed_csv` non
+ha più `token_nullo` e non rifiuta più il file senza `nullValue`. La lettura dei caricatori sta in
+`scripts/_seed_csv_caricatori.py`, e il catalogo BB è aggiornato.
+
+### 6.1 Due commenti rimasti indietro (2026-11-13, elenco chiuso)
+
+Li ha trovati il giro C cercando `nullValue` nel repo. Sono solo commenti, e il codice è già giusto:
+
+* `backend/apps/core/tests/_contratto_processi.py`, righe 52-53: «`None` dove il caricatore scrive NULL (il suo
+  `nullValue`)». Il NULL viene dal token `NULL` della cella, non da un attributo del caricatore.
+* `backend/apps/core/tests/test_event_codes_declared_guardrail.py`, riga 121: «dal `nullValue` del
+  caricatore». Va corretto allo stesso modo.
+
+**Chi cambia per primo**: indifferente, perché il DB non legge quei file.
+
+✅ **Corretti il 2026-11-13** dalla sessione DB, su indicazione di Tid («se sono solo commenti procedi»).

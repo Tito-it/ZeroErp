@@ -77,7 +77,6 @@ databaseChangeLog:
             schemaName: dbops
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "schema_tabella,nome_tabella,colonna,valore"
             columns:
               - column: { name: schema_tabella,     type: STRING }

@@ -39,7 +39,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "ambito,tipo_indirizzo_id"
             columns:
               # rev 2026-10-20 (20261020-47, brief-db-grammatica-unica-documenti 2d, G-6):

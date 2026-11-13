@@ -42,7 +42,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "stato_da_id,stato_a_id"
             columns:
               - column: { name: stato_da_id, type: NUMERIC }
