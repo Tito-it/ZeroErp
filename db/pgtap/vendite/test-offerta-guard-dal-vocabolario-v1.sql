@@ -5,7 +5,8 @@
 -- Test: l'offerta legge il significato dei suoi stati dal vocabolario.
 --   ChangeSet: 20261112-59 (colonna rifiuto), -60 (script.fn_stato_rifiuto_id),
 --   -61 (guard di transizione), -62 (capability), -63
---   (vendite.vw_dash_fatturazione_offerte), -64 (dbops.fn_pgtap_crea_offerta).
+--   (vendite.vw_dash_fatturazione_offerte), -64 (dbops.fn_pgtap_crea_offerta),
+--   -65 (vendite.vw_offerte_commerciali_lista.is_scaduta, D-SCAD).
 --   Brief: brief-db-stati-documento-dal-vocabolario, giro 2 (③, S-2, S-3,
 --   S-10).
 --
@@ -21,6 +22,8 @@
 --     corrente) e decide «in bozza» dallo stato iniziale;
 --   - il cruscotto delle offerte da' DOC_BOZZA nello stato iniziale e
 --     IN_ATTESA_ACCETTAZIONE nello stato di emissione;
+--   - la lista dice is_scaduta solo se la validita' e' passata E lo stato non
+--     ha ancora un esito (il cliente non ha risposto);
 --   - guard, capability e vista non nominano i codici degli stati
 --     dell'offerta (presidio sulla FORMA, dichiarato tale).
 --
@@ -31,7 +34,7 @@
 -- ⭐ I CASI SI COSTRUISCONO: le offerte dal builder, sul cliente del primo.
 --   Nessuno skip.
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 15):
 --   1) il builder: l'offerta nasce nello stato iniziale
 --   2) l'emissione dallo stato iniziale: versione di listino congelata e
 --      data_emissione scritta
@@ -49,6 +52,10 @@
 --      can_edit_eccezioni vero
 --  11) ⭐ ... e motivo_fermo DOC_BOZZA
 --  12) forma: guard, capability e vista non nominano i codici dell'offerta
+--  13) lista: l'offerta emessa con la validita' passata e' scaduta
+--  14) lista: la rifiutata con la validita' passata non lo e' (ha un esito)
+--  15) ⭐ marca spostata: con un esito sullo stato EMESSA, l'emessa con la
+--      validita' passata non e' piu' scaduta
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -57,7 +64,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(15);
 
 -- ============================================================
 -- Fixture: tre offerte dello stesso cliente
@@ -74,6 +81,29 @@ CREATE TEMP TABLE t_rifiutata AS
 SELECT * FROM dbops.fn_pgtap_crea_offerta(
     'offerta dal vocabolario, rifiutata', 'RIFIUTATA',
     (SELECT b.billing_account_id FROM t_bozza b));
+
+-- Le due offerte della scadenza (test 13-15): nascono in bozza, la validita'
+-- si porta nel passato finche' l'offerta si modifica, poi si portano avanti.
+-- Si costruiscono qui, prima che il test sposti lo stato iniziale.
+CREATE TEMP TABLE t_scad_emessa AS
+SELECT * FROM dbops.fn_pgtap_crea_offerta(
+    'offerta dal vocabolario, scaduta emessa', 'BOZZA',
+    (SELECT b.billing_account_id FROM t_bozza b));
+CREATE TEMP TABLE t_scad_rifiutata AS
+SELECT * FROM dbops.fn_pgtap_crea_offerta(
+    'offerta dal vocabolario, scaduta rifiutata', 'BOZZA',
+    (SELECT b.billing_account_id FROM t_bozza b));
+
+UPDATE vendite.offerte_commerciali o
+   SET validita_dal = script.fn_data_operativa() - 30,
+       validita_al  = script.fn_data_operativa() - 1
+ WHERE o.id IN ((SELECT e.offerta_id FROM t_scad_emessa e),
+                (SELECT r.offerta_id FROM t_scad_rifiutata r));
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali'::regclass,
+                                    (SELECT e.offerta_id FROM t_scad_emessa e), 'EMESSA');
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali'::regclass,
+                                    (SELECT r.offerta_id FROM t_scad_rifiutata r), 'RIFIUTATA');
 
 -- ============================================================
 -- 1-3) Il builder e le date del passaggio
@@ -225,6 +255,34 @@ SELECT is(
          ORDER BY 1),
     ARRAY[]::text[],
     '12. forma: guard, capability e cruscotto delle offerte non nominano i codici degli stati dell''offerta'
+);
+
+-- ============================================================
+-- 13-15) La scadenza nella lista: la regola intera, dal vocabolario
+-- ============================================================
+SELECT is(
+    (SELECT v.is_scaduta FROM vendite.vw_offerte_commerciali_lista v
+      WHERE v.id = (SELECT e.offerta_id FROM t_scad_emessa e)),
+    true,
+    '13. lista: l''offerta emessa con la validita'' passata e'' scaduta'
+);
+
+SELECT is(
+    (SELECT v.is_scaduta FROM vendite.vw_offerte_commerciali_lista v
+      WHERE v.id = (SELECT r.offerta_id FROM t_scad_rifiutata r)),
+    false,
+    '14. lista: la rifiutata con la validita'' passata non e'' scaduta: il cliente ha risposto'
+);
+
+-- ⭐ La marca spostata: lo stato EMESSA prende un esito. Se la vista
+--   ricordasse i codici BOZZA ed EMESSA, la risposta resterebbe true.
+UPDATE config.stati_doc_offerte SET esito = 'POSITIVO' WHERE codice_interno = 'EMESSA';
+
+SELECT is(
+    (SELECT v.is_scaduta FROM vendite.vw_offerte_commerciali_lista v
+      WHERE v.id = (SELECT e.offerta_id FROM t_scad_emessa e)),
+    false,
+    '15. con un esito sullo stato EMESSA, la stessa offerta non e'' piu'' scaduta'
 );
 
 SELECT * FROM finish();

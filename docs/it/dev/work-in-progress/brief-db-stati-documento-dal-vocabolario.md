@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: team BE/FE**, con le richieste del giro 2 (§6.7). Il giro 2, l'offerta, è applicato e i suoi pgTAP sono
-verdi (Tid, 2026-11-13). In parallelo **Tid** decide D-SCAD (§6.7, in fondo), e il **team DB** fa il giro 3 al suo via.
+**Riparte: il team BE/FE**, con le richieste del giro 2 (§6.7) e di D-SCAD (§6.8). Il giro 2, l'offerta, e D-SCAD,
+la scadenza dell'offerta, sono applicati e verdi (Tid, 2026-11-13); il **team DB** fa il giro 3 al via di Tid.
 Il giro 1 è applicato, verde e mergiato (2026-11-13); il BE ha fatto R-2 (`e174a302e2`), quindi nel giro 5 la
 colonna `in_gioco` esce dalla vista.
 Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col via di Tid, ha scritto il giro 1 (§6).
@@ -22,14 +22,18 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 9 | ✅ DB | giro 2, l'offerta (③, S-3, S-10, S-2 per l'offerta, il builder): sei changeSet, due CSV, prova in transazione, pgTAP nuovo e uno adeguato (2026-11-13) | §6.5, §6.6 | via di Tid (2026-11-13) |
 | 9b | ✅ Tid | apply di `20261112-59 … -64` e dei due mirror; pgTAP del §6.6: verdi (2026-11-13) | §6.6 | 9 |
 | 9c | **BE/FE** ⏭️ | le richieste del giro 2: il rifiuto dal vocabolario (BE), `stato_terminale` al posto di `STATI_OFFERTA_TERMINALI` (FE) | §6.7 | 9b |
+| 9c-bis | ✅ Tid | D-SCAD: (a), `esito IS NULL` (2026-11-13) | §6.8 | — |
+| 9c-ter | ✅ DB | D-SCAD: `20261112-65`, pgTAP esteso (plan 15), prova in transazione (2026-11-13) | §6.8 | 9c-bis |
+| 9c-quater | ✅ Tid | apply di `20261112-65`, pgTAP `test-offerta-guard-dal-vocabolario-v1`: verde (2026-11-13) | §6.8 | 9c-ter |
+| 9c-quinquies | **BE/FE** ⏭️ | le richieste di D-SCAD: `is_scaduta` nel dettaglio (BE), il badge dal flag da solo e il ritiro di `STATI_OFFERTA_SEGNALA_SCADENZA` (FE) | §6.8 | 9c-quater |
 | 9d | DB | giri 3 … 6, uno per volta, nell'ordine del §6.1 | §6.1 | il via di Tid per ogni giro |
 | 10 | BE/FE | le ricadute del §4.10 degli altri giri (FE: costanti degli ordini, giro 4). Il giro 1 non ne ha; quelle del giro 2 sono la riga 9c | §4.10 | il giro che le porta |
 | 11 | ✅ BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` (`e174a302e2`, 2026-11-13) | §6.4 | — |
 
-**Decisioni aperte di Tid:** D-SCAD, la scadenza dell'offerta e la copia `STATI_OFFERTA_SEGNALA_SCADENZA` (§6.7, in fondo). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
+**Decisioni aperte di Tid:** nessuna; D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
 resta su EMESSA, eccezione voluta); R-2, `in_gioco` si ritira (giro 5, dopo la riga 11); R-3, il lotto non diventa
 REGISTRATO (`applica_lotto` = false, giro 4). Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non
-l'`attivo = false`). **Lavoro da committare:** il giro 2 (§6.5, §6.6, applicato) e questo brief; la verifica del 2026-11-12
+l'`attivo = false`). **Lavoro da committare:** nessuno; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
 (§5) e il giro 1 (§6) sono nel commit `a9b7a0f32e` (PR #108).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid, poi il team DB.
@@ -691,7 +695,8 @@ BE/FE non cambia, il comportamento resta quello di oggi: la chiave nuova la igno
 
 Non serve altro nel BE perché la capability viaggia intera sotto `capabilities` (`offerte_service.get_offerta`).
 
-⚠️ **Fuori da questo elenco: D-SCAD, la scadenza dell'offerta (da decidere, Tid).** Trovata scrivendo S-10, verificata
+⚠️ **Fuori da questo elenco: D-SCAD, la scadenza dell'offerta.** ✅ Decisa da Tid il 2026-11-13: (a). Sviluppo al
+§6.8. Trovata scrivendo S-10, verificata
 sul catalogo il 2026-11-13. La regola «quest'offerta è scaduta» oggi sta in due metà:
 
 * il DB, in `vendite.vw_offerte_commerciali_lista.is_scaduta`, dice solo «`validita_al` è passata
@@ -717,3 +722,45 @@ ancora risposto: la bozza e l'offerta emessa. Due modi di dirlo dal vocabolario,
 Il giro, se Tid lo apre: un changeSet sulla vista (la stessa colonna, con il suo significato intero, e il COMMENT),
 il pgTAP con la marca spostata, e una richiesta FE (due file). Il preventivo non ha questo problema: lì la scadenza
 è uno stato (`scadenza`, scritto dal job).
+
+### 6.8 D-SCAD — la scadenza dell'offerta (2026-11-13)
+
+**Decisione (Tid, 2026-11-13): (a)**, `esito IS NULL`. Numero dato da Tid: `20261112-65`.
+
+✅ **Applicato da Tid il 2026-11-13**, con il pgTAP `test-offerta-guard-dal-vocabolario-v1` (plan 15) verde; la pagina
+generata della vista è rigenerata.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261112-65` | `vendite.vw_offerte_commerciali_lista.is_scaduta` = `esito IS NULL` **e** la validità passata (`script.fn_data_operativa`, come prima). Stesse colonne, `security_invoker` ripetuto; il COMMENT della vista, una cronaca, è riscritto al presente; `is_scaduta` prende il suo COMMENT di colonna |
+
+`esito` prende un secondo lettore, per la stessa domanda («il cliente ha già risposto?»): scritto nella pagina
+`config/stati_doc_offerte`. Pagina `vendite/vw_offerte_commerciali_lista` riscritta sulla regola intera.
+
+**pgTAP.** `vendite/test-offerta-guard-dal-vocabolario-v1` passa da plan 12 a plan 15:
+
+* 13: l'emessa con la validità passata è scaduta;
+* 14: la rifiutata con la validità passata non lo è;
+* 15: con la marca spostata (un esito sullo stato EMESSA), l'emessa non è più scaduta.
+
+**Prova (scratch, 2026-11-13).** I guardrail sono verdi. L'estratto gira per intero in `ROLLBACK` e il catalogo resta
+identico. La regressione, senza e con l'estratto, sui 9 pgTAP che leggono la vista più quello esteso:
+
+* 9 uguali;
+* il test esteso: 13 ok / 2 not ok senza l'estratto, 15 ok con. I due rossi senza sono i test 14 e 15, cioè il
+  difetto: la regola di prima dice «scaduta» anche a un'offerta rifiutata.
+
+**Trovato:** il badge «Scaduta» del **dettaglio** (`OffertaDrawer.vue`) non si accende mai. Legge
+`detail.is_scaduta`, che il dettaglio non porta: `offerte_service.get_offerta` legge la sua proiezione
+(`_SELECT_COLS_OFFERTA`), non la vista.
+
+**Richieste al team BE/FE (elenco chiuso).** Chi cambia per primo: il DB. Fino al passo FE la lista mostra il badge
+come oggi, perché il filtro FE e la regola nuova dicono la stessa cosa sugli stati di oggi.
+
+| Lato | File | Che cosa |
+| --- | --- | --- |
+| BE | `backend/apps/vendite/db/offerte_repository.py` | il dettaglio porta `is_scaduta` letto da `vendite.vw_offerte_commerciali_lista` (la sede della regola), non ricalcolato |
+| FE | `frontend/src/vendite/offerte/components/OfferteSearchTable.vue` | il badge legge `data.is_scaduta` da solo, senza `STATI_OFFERTA_SEGNALA_SCADENZA` |
+| FE | `frontend/src/vendite/offerte/components/OffertaDrawer.vue` | il badge legge `detail.is_scaduta` da solo |
+| FE | `frontend/src/vendite/offerte/constants.js` | ritira `STATI_OFFERTA_SEGNALA_SCADENZA` e il commento in testa che la giustifica |
+
