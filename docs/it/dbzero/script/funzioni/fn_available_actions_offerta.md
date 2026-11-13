@@ -17,81 +17,25 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_offerta(p_offerta_id bigi
  LANGUAGE plpgsql
  STABLE
 AS $function$
--- rev 2026-10-31 (20261031-20, brief-modello-documento-vendita §17):
---   accettazione ed emissione dal vocabolario (accettazione, emissione),
---   non 'ACCETTATA' ed 'EMESSA'.
--- Scopo: capability offerta commerciale per detail API (data-driven,
---   specchio di fn_available_actions_preventivo). push_contratto e
---   genera_ordine mutuamente esclusive (ACCETTATA).
---   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
---   config.stati_doc_offerte (bottone PDF data-driven via capabilities).
---   rev 2026-07-19: + enabled/reason/reason_key su ogni azione
---   (uniformita' 6 domini): verso EMESSA disabled se la versione
---   listino manca o non e' ATTIVA — specchio del guard
---   BOZZA->EMESSA (brief-db-guard-righe-avanzamento-stato §1a).
---   rev 2026-07-19 (bis): le 3 push_reason passano al namespace
---   i18n vendite.offerte.* (era offerte.*, radice inesistente nei
---   locales FE) — brief-db-i18n-reason-mancanti-offerte-preventivi.
---   rev 2026-08-06: + outlined dal meta della transizione (era
---   l'unica insieme al preventivo a non emetterlo: il dato del
---   seed non arrivava al pulsante) e + target_state_descrizione,
---   la forma leggibile dello stato di destinazione, che il
---   codice_interno non permette di derivare (BOZZA -> Bozza vale
---   per caso, ALLOCATO -> «Allocato a magazzino» no). NULL sulle
---   azioni che non cambiano stato.
---   rev 2026-08-11: + stato_info_key, la nota che spiega cosa sta
---   succedendo quando il documento e' in uno stato chiuso. Arriva dal
---   `meta` dello stato, e viene emessa SEMPRE che lo stato la dichiari —
---   anche accanto a un'azione ancora abilitata: la nota spiega lo STATO,
---   non risponde a una barra vuota (decisione §5 di Tid, gia' applicata a
---   preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era
---   fra i cinque che non emettevano affatto il campo, mentre il drawer lo
---   legge gia': il cablaggio c'era ed era inerte.
---   ⚠️ La PROPRIETA' nel meta si chiama `nessuna_azione_key` mentre il
---   campo del blob si chiama `stato_info_key`. L'asimmetria e' voluta:
---   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
---   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare
---   il guard lo renderebbe verde per cecita'.
---   ⚠️ Il campo e' SEMPRE presente nel blob, col valore a null quando non
---   si applica: filtrare per presenza risponde vero per tutti i documenti,
---   va guardato il valore.
---   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
---   rev 2026-09-24: le azioni di stato passano alla forma dell'ARRAY DEI
---   MOTIVI (come preventivo e ordine): verso EMESSA il motivo del listino
---   e poi i prezzi non autorizzati, verso ACCETTATA i prezzi — dal
---   building block script.fn_check_prezzi_autorizzati, lo stesso del
---   guard di transizione (brief-db-preventivi-congelamento-pricing, D-4).
---   rev 2026-09-24 (2): «Crea revisione» spento col motivo se c'e' un
---   prezzo IN ATTESA (script.fn_check_prezzi_in_attesa, stessa funzione
---   della madre fn_crea_revisione_offerta); can_create_revisione
---   veritiero. Brief §10.
---   rev 2026-10-07: il motivo del listino verso EMESSA viene da
---   script.fn_check_listino_congelabile sulla versione che verrebbe
---   congelata (brief-db-offerta-emissione-ed-erogazione §C.1.3).
---   rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.2, §H.3):
---   verso EMESSA, per ultime, le righe che la regola intera non ammette
---   (script.fn_check_righe_documento, lo stesso del guard); «Genera
---   contratto» e «Genera ordine» da ACCETTATA restano PROPOSTE e si
---   spengono col motivo delle righe (script.fn_check_righe_documento e
---   script.fn_check_righe_offerta_in_ordine, gli stessi del push e del
---   verbo); verso ANNULLATA il motivo di script.fn_check_offerta_annullabile.
---   ⭐ rev 2026-10-26 (20261026-27, brief-modello-documento-vendita §13,
---   M-3, O-1): un passaggio con un'azione di processo sulla sua riga della
---   matrice (letta da script.fn_doc_passaggio: emetti_offerta
---   sull'emissione e sull'annullo dell'accettata) si NASCONDE a chi non ha
---   l'azione: permesso => nascondi, stato => disabilita col motivo. I motivi
---   dell'emissione e dell'annullo si legano agli stati che il vocabolario
---   dichiara (emissione, is_abortito), non ai letterali; quello di
---   ACCETTATA resta sul codice (il vocabolario non ha un flag
---   dell'accettazione).
+-- Scopo: la capability dell'offerta commerciale per il dettaglio: le azioni
+--   di stato proposte (dalla matrice, coi motivi che le spengono), le azioni
+--   applicative (crea revisione, genera contratto, genera ordine), cosa si
+--   modifica nello stato, il PDF, la nota e il significato dello stato
+--   corrente. Il significato di uno stato lo dice il vocabolario
+--   (iniziale, emissione, accettazione, is_abortito, terminale), mai il
+--   codice; i predicati sono gli stessi del guard di transizione e dei verbi,
+--   nello stesso ordine. Dettaglio nel COMMENT.
 DECLARE
     -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
     -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
-    -- Lo stato di oggi e' l'accettazione? l'emissione? Dal vocabolario.
+    -- Lo stato di oggi e' l'iniziale? l'accettazione? l'emissione? e'
+    -- terminale? Dal vocabolario.
+    v_iniziale     config.stati_doc_offerte.iniziale%TYPE;
     v_accettazione config.stati_doc_offerte.accettazione%TYPE;
     v_emissione    config.stati_doc_offerte.emissione%TYPE;
+    v_terminale    config.stati_doc_offerte.terminale%TYPE;
     v_stato_info_key      text;
     v_pdf_mode    config.stati_doc_offerte.pdf_mode%TYPE;
     v_pdf_allow   config.stati_doc_offerte.pdf_allow_allegati%TYPE;
@@ -166,11 +110,11 @@ DECLARE
 BEGIN
     -- Stato corrente + versione listino + capability PDF.
     SELECT o.stato_doc_offerta_id, sdo.codice_interno,
-           sdo.accettazione, sdo.emissione,
+           sdo.iniziale, sdo.accettazione, sdo.emissione, sdo.terminale,
            sdo.pdf_mode, sdo.pdf_allow_allegati,
            o.listino_id, o.listino_versione_id,
            sdo.meta->>'nessuna_azione_key'
-      INTO v_stato_id, v_stato_cod, v_accettazione, v_emissione,
+      INTO v_stato_id, v_stato_cod, v_iniziale, v_accettazione, v_emissione, v_terminale,
            v_pdf_mode, v_pdf_allow,
            v_listino_id, v_listino_versione_id, v_stato_info_key
       FROM vendite.offerte_commerciali o
@@ -206,9 +150,9 @@ BEGIN
                  || script.fn_check_indirizzi_documento_cliente('OFFERTA_COMMERCIALE', p_offerta_id);
     -- rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.2, H-R1):
     -- per ultime le righe che la regola intera non ammette piu', lo stesso
-    -- building block e lo stesso ordine del guard BOZZA->EMESSA. Solo in
-    -- BOZZA, l'unico stato da cui si emette: il contesto espande il listino.
-    IF v_stato_cod = 'BOZZA' THEN
+    -- building block e lo stesso ordine del guard all'emissione. Solo nello
+    -- stato iniziale, l'unico da cui si emette: il contesto espande il listino.
+    IF v_iniziale THEN
         v_mot_emetti := v_mot_emetti
                      || script.fn_check_righe_documento('OFFERTA_COMMERCIALE', p_offerta_id);
     END IF;
@@ -345,7 +289,8 @@ BEGIN
         v_ordine_reason_key := 'vendite.offerte.push_reason.non_accettata';
     END IF;
 
-    v_can_edit := (v_stato_cod = 'BOZZA');
+    -- Le eccezioni si scrivono nello stato iniziale (la bozza).
+    v_can_edit := v_iniziale;
 
     -- La testata nello stato, letta dal montaggio del lock di testata
     -- (rev 2026-10-10): le colonne «sempre» della capability, poi quelle
@@ -371,13 +316,16 @@ BEGIN
         'non_editable_fields', v_testata -> 'non_modificabili',
         'pdf',                           jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
         'stato_info_key',                v_stato_info_key,
-        'stato_codice',                  v_stato_cod
+        'stato_codice',                  v_stato_cod,
+        -- Lo stato corrente e' terminale (config.stati_doc_offerte.terminale):
+        -- il documento non ha piu' passaggi a mano in uscita.
+        'stato_terminale',               v_terminale
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino). rev 2026-07-19 (bis): le 3 push_reason (gia_generato / ordine_gia_generato / non_accettata, usate sia da can_push_contratto_reason_key sia da can_genera_ordine_reason_key) passano al namespace i18n vendite.offerte.* — erano sotto offerte.*, radice inesistente nei locales, quindi il motivo non compariva mai in interfaccia; brief-db-i18n-reason-mancanti-offerte-preventivi. rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_offerte.descrizione della destinazione). outlined mancava qui e sul preventivo: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_contratto / genera_ordine), che non cambiano stato. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3. rev 2026-09-24: le azioni di stato passano alla forma dell''''ARRAY DEI MOTIVI — enabled/reason/reason_key discendono da `reasons` (chiave nuova). Verso EMESSA: il motivo del listino (LISTINO_VERSIONE_MANCANTE / _NON_ATTIVA, invariato) e poi i prezzi non autorizzati; verso ACCETTATA: i prezzi. I prezzi (PENDING o REJECTED su eccezioni e loro componenti BoM attivi) vengono da script.fn_check_prezzi_autorizzati, lo stesso building block con cui trgfn_offerte_commerciali_guard_transizione solleva. ⚠️ Le reason_key common.azione_reason.prezzo_pendente / prezzo_rifiutato sono un debito verso il frontend. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5). rev 2026-09-24 (2, 20260924-37): «Crea revisione» resta proposto su EMESSA ma SPENTO col motivo (enabled/reason/reason_key/reasons) se l''''offerta ha un prezzo IN ATTESA — script.fn_check_prezzi_in_attesa, la stessa funzione con cui vendite.fn_crea_revisione_offerta rifiuta. can_create_revisione diventa veritiero. Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-09-27 (20260927-11): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-08): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.3): il motivo del listino verso EMESSA viene da script.fn_check_listino_congelabile(''OFFERTA'', listino, versione), lo stesso predicato del guard BOZZA->EMESSA, e giudica la versione che verrebbe congelata (la fissata, altrimenti quella in vigore oggi) invece della colonna nuda. Un''offerta in bozza su un listino con una versione in vigore ha «Emetti» acceso. Motivi: LISTINO_SENZA_VERSIONE_IN_VIGORE (reason_key nuova vendite.offerte.azione_reason.listino_senza_versione_in_vigore, debito verso il frontend) e LISTINO_VERSIONE_NON_ATTIVA (invariata). LISTINO_VERSIONE_MANCANTE non si emette più. I motivi del listino portano ora il codice che il guard solleva. rev 2026-10-10 (brief-db-testata-dopo-emissione fase 2): non_editable_fields e can_edit_testata si leggono dal montaggio del lock di testata con script.fn_doc_testata_in_stato: le colonne «sempre» della capability seguite da quelle che il lock blocca nello stato, e can_edit_testata vero se nello stato almeno una colonna nominata si cambia. Ritirate le liste scritte a mano dei campi bloccati fuori bozza (la terza copia della regola, accanto a lock e backend): con D-8/D-10 le colonne aperte dopo l''emissione (note, trasporto, valido_al e CIG/CUP del contratto…) si cambiano negli stati del montaggio e si fermano a documento chiuso. rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-2 e R-DB-3): motivazione_rifiuto esce dalle colonne ferme in ogni stato — la governa il montaggio del lock di testata, aperta in EMESSA e ACCETTATA (D-10). can_edit_utility non e'' piu'' lo stato BOZZA scritto qui: si legge dal montaggio del lock di vendite.offerte_commerciali_utilities (script.fn_doc_riga_modificabile); + can_edit_indirizzi dal montaggio del lock di vendite.offerte_commerciali_indirizzi rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-3 di Tid): verso EMESSA, dopo listino e prezzi, il motivo di script.fn_check_indirizzi_documento_cliente(''OFFERTA'', id) — E_INDIRIZZO_DOC_NON_DEL_CLIENTE, reason INDIRIZZO_NON_DEL_CLIENTE, reason_key common.azione_reason.indirizzo_non_del_cliente (debito verso il frontend) — lo stesso che il guard BOZZA->EMESSA solleva. Firma ancorata: p_offerta_id vendite.offerte_commerciali.id%TYPE (stesso tipo, stessa identita''). rev 2026-10-11 (20261011-75, brief-db-annullo-documento-con-legami D-3/D-6): can_push_contratto e can_genera_ordine guardano i soli documenti VIVI nati dall''offerta, da vendite.fn_offerta_documenti_vivi (la sede che legge anche il push): un contratto o un ordine annullato non consuma piu'' l''offerta. ⭐ rev 2026-10-19 (20261019-27, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. ⚠️ fn_check_indirizzi_documento_cliente riceve ancora OFFERTA: e'' la grammatica delle testate, la migra il lotto 2. ⭐ rev 2026-10-19 (20261019-54, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. Rev 2026-10-21 (20261021-58, brief-db-offerta-emissione-ed-erogazione §I.2, §H.3): verso EMESSA (solo da BOZZA), per ultime, le righe che la regola intera non ammette (script.fn_check_righe_documento: E_DOC_RIGA_NON_AMMESSA, reason RIGA_NON_AMMESSA, reason_key common.azione_reason.riga_non_ammessa, debito verso il frontend), lo stesso del guard BOZZA->EMESSA (H-R1). Da ACCETTATA senza documenti vivi push_contratto e genera_ordine sono PROPOSTE con enabled/reason/reason_key/reasons: spente se una riga non puo'' andare nel documento da generare (script.fn_check_righe_documento per il contratto, script.fn_check_righe_offerta_in_ordine per l''ordine, la stessa del verbo vendite.fn_genera_ordine_da_offerta); can_push_contratto e can_genera_ordine seguono, con reason e reason_key del primo motivo (H-R2, I-D2). Verso ANNULLATA (da BOZZA e, nuova, da ACCETTATA) il motivo di script.fn_check_offerta_annullabile: E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI, reason DOCUMENTI_VIVI, reason_key vendite.offerte.azione_reason.documenti_vivi, debito verso il frontend (H-R3). ⭐ rev 2026-10-26 (20261026-27, brief-modello-documento-vendita §13, M-3, O-1): un passaggio con un''azione di processo sulla sua riga della matrice (letta da script.fn_doc_passaggio: emetti_offerta sull''emissione e sull''annullo dell''accettata) si NASCONDE a chi non ha l''azione (script.fn_check_azione_processo, utente da app.current_user_id): permesso => nascondi, stato => disabilita col motivo. I motivi dell''emissione e dell''annullo si legano agli stati che il vocabolario dichiara (emissione, is_abortito), non ai letterali. Rev 2026-10-27 (20261027-42, brief-modello-documento-vendita §15.14): i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale, permesso => nascondi), non piu'' dal predicato ricopiato.';
+IS 'Capability dell''offerta commerciale per il dettaglio (NULL se l''offerta non c''e''). available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale; un passaggio con un''azione di processo si nasconde a chi non ce l''ha), ognuno con enabled, reason, reason_key dal primo motivo e reasons, l''array intero; target_state e target_state_descrizione dalla destinazione; label_key, requires_confirm, requires_motivazione, outlined dal meta della transizione. I motivi, sul significato della destinazione: verso lo stato di emissione script.fn_check_listino_congelabile, script.fn_check_prezzi_autorizzati, script.fn_check_indirizzi_documento_cliente e, dallo stato iniziale, script.fn_check_righe_documento; verso lo stato di accettazione i prezzi; verso lo stato di annullo script.fn_check_offerta_annullabile. Sono gli stessi predicati, nello stesso ordine, di vendite.trgfn_offerte_commerciali_guard_transizione. Azioni applicative: crea_revisione dallo stato di emissione, spenta col motivo di script.fn_check_prezzi_in_attesa (can_create_revisione e'' vero solo se la revisione si puo'' creare); push_contratto e genera_ordine dallo stato di accettazione senza documenti vivi nati dall''offerta (vendite.fn_offerta_documenti_vivi), spente coi motivi di script.fn_check_righe_documento e script.fn_check_righe_offerta_in_ordine; can_push_contratto, can_genera_ordine e i loro reason e reason_key. Cosa si modifica: can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato), can_edit_eccezioni nello stato iniziale, can_edit_utility e can_edit_indirizzi dal lock dei satelliti (script.fn_doc_riga_modificabile). pdf {mode, allow_allegati} dal vocabolario. stato_info_key: la nota dello stato dal suo meta (proprieta'' nessuna_azione_key), sempre presente, null quando lo stato non la dichiara. stato_codice: il codice_interno dello stato corrente. stato_terminale: config.stati_doc_offerte.terminale dello stato corrente, perche'' chi mostra il documento non ricopi l''elenco degli stati terminali. Le reason_key sono chiavi i18n del frontend.';
 ```
 
 </div>

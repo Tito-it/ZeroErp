@@ -451,7 +451,7 @@ search:
 - [trgfn_offerte_commerciali_default_revisione_radice](funzioni/trgfn_offerte_commerciali_default_revisione_radice.md)
 - [trgfn_offerte_commerciali_default_valuta](funzioni/trgfn_offerte_commerciali_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_gen_codice](funzioni/trgfn_offerte_commerciali_gen_codice.md) — (rev 2026-08-21)
-- [trgfn_offerte_commerciali_guard_transizione](funzioni/trgfn_offerte_commerciali_guard_transizione.md) — (rev 2026-09-24 — il prezzo non autorizzato; rev 2026-08-21 — funzione rev 2026-05-25)
+- [trgfn_offerte_commerciali_guard_transizione](funzioni/trgfn_offerte_commerciali_guard_transizione.md) — Il guard del cambio di stato dell'offerta commerciale. Giudica ogni passaggio e scrive la data del passaggio. ⭐ **Non riconosce mai uno stato dal suo codice**: ogni regola chiede a una colonna del vocabolario che cosa significa lo stato di partenza o di arrivo (`iniziale`, `emissione`, `accettazione`, `rifiuto`, `is_abortito`, `is_superato`). I codici servono solo ai messaggi. Spostata una marca nel vocabolario, il guard la segue.
 - [trgfn_offerte_commerciali_revisione](funzioni/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24; ultima revisione 2026-10-26)
 - [trgfn_offerte_commerciali_rientro_padre](funzioni/trgfn_offerte_commerciali_rientro_padre.md)
 - [trgfn_ordini_ful_guard_consistenza](funzioni/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_preventivi`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -21,6 +21,7 @@
 > * [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) — legge lo stato di `emissione`
 > * [script.fn_stato_accettazione_id](/dbzero/script/funzioni/fn_stato_accettazione_id) — legge lo stato di `accettazione`
 > * [script.fn_stato_scadenza_id](/dbzero/script/funzioni/fn_stato_scadenza_id) — legge lo stato di `scadenza`
+> * [script.fn_stato_rifiuto_id](/dbzero/script/funzioni/fn_stato_rifiuto_id) — legge lo stato di `rifiuto`
 > * [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) — legge lo stato di annullo (`is_abortito`)
 > * [vendite.fn_chiudi_preventivi_scaduti](/dbzero/vendite/funzioni/fn_chiudi_preventivi_scaduti) — il job delle scadenze
 > * [script.fn_available_actions_preventivo](/dbzero/script/funzioni/fn_available_actions_preventivo) — la capability, che legge i flag, `meta` e `pdf_mode`
@@ -52,7 +53,7 @@ passaggi fra gli stati stanno nella matrice
 | `EMESSO` | proposto al cliente: ha il numero e il PDF | `emissione` |
 | `ACCETTATO` | il cliente ha accettato: da qui la push a commessa e la push a ordine | `accettazione` |
 | `EVASO` | lo smistamento verso commessa e ordine lo ha portato a termine | `terminale` |
-| `RIFIUTATO` | il cliente ha detto no | `terminale` |
+| `RIFIUTATO` | il cliente ha detto no | `rifiuto`, `terminale` |
 | `SCADUTO` | la validità è finita senza una risposta del cliente | `scadenza`, `terminale` |
 | `ANNULLATO` | la revisione è stata abbandonata | `is_abortito`, `terminale` |
 
@@ -88,6 +89,10 @@ tutti i lettori seguono.
 * **`scadenza`** — lo stato in cui il preventivo è scaduto. Lo scrive il job delle scadenze
   ([`vendite.fn_chiudi_preventivi_scaduti`](/dbzero/vendite/funzioni/fn_chiudi_preventivi_scaduti))
   quando la validità è finita; da qui la revisione ripropone il preventivo.
+* **`rifiuto`** — lo stato in cui il cliente ha rifiutato il preventivo. Non è il contrario di
+  `accettazione`: `SCADUTO` e `ANNULLATO` hanno anche loro un esito negativo, ma non sono un no del
+  cliente. Si legge con [`script.fn_stato_rifiuto_id`](/dbzero/script/funzioni/fn_stato_rifiuto_id);
+  il codice del preventivo non lo nomina ancora per significato.
 * **`is_abortito`** — la revisione con questo stato è stata abbandonata. Lo legge il verbo d'annullo
   ([`vendite.fn_annulla_preventivo`](/dbzero/vendite/funzioni/fn_annulla_preventivo)) attraverso
   [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id), e lo legge
@@ -159,6 +164,7 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_preve
 * 2026-10-31 — arrivano `accettazione` (brief `brief-modello-documento-vendita` §17) e `scadenza`
   (brief `brief-db-scadenza-preventivi` §8.1): il codice smette di scrivere `'ACCETTATO'` e
   `'SCADUTO'`.
+* 2026-11-13 — arriva `rifiuto` (brief `brief-db-stati-documento-dal-vocabolario`, giro 2).
 
 ---
 

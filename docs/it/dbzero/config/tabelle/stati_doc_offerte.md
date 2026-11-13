@@ -29,6 +29,7 @@
 | iniziale | boolean | NO | false |
 | emissione | boolean | NO | false |
 | accettazione | boolean | NO | false |
+| rifiuto | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -39,6 +40,7 @@
 | CHECK | chk_stati_doc_offerte_fase |  |
 | CHECK | chk_stati_doc_offerte_iniziale_attivo |  |
 | CHECK | chk_stati_doc_offerte_pdf_mode |  |
+| CHECK | chk_stati_doc_offerte_rifiuto_attivo |  |
 | CHECK | chk_stati_doc_offerte_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_offerte_esito | esito |
 | PRIMARY KEY | pk_stati_doc_offerte | id |
@@ -56,6 +58,7 @@
 | uq_stati_doc_offerte_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice_interno ON config.stati_doc_offerte USING btree (codice_interno)` |
 | uq_stati_doc_offerte_emissione | `CREATE UNIQUE INDEX uq_stati_doc_offerte_emissione ON config.stati_doc_offerte USING btree (emissione) WHERE emissione` |
 | uq_stati_doc_offerte_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_offerte_iniziale ON config.stati_doc_offerte USING btree (iniziale) WHERE iniziale` |
+| uq_stati_doc_offerte_rifiuto | `CREATE UNIQUE INDEX uq_stati_doc_offerte_rifiuto ON config.stati_doc_offerte USING btree (rifiuto) WHERE rifiuto` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_offerte`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -20,9 +20,11 @@
 > * [script.trgfn_doc_stato_iniziale](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) — fa nascere l'offerta nello stato iniziale
 > * [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) — legge lo stato di `emissione`
 > * [script.fn_stato_accettazione_id](/dbzero/script/funzioni/fn_stato_accettazione_id) — legge lo stato di `accettazione`
+> * [script.fn_stato_rifiuto_id](/dbzero/script/funzioni/fn_stato_rifiuto_id) — legge lo stato di `rifiuto`
 > * [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) — legge lo stato di annullo (`is_abortito`)
 > * [vendite.fn_offerta_proietta_stato_revisione](/dbzero/vendite/funzioni/fn_offerta_proietta_stato_revisione) — mette e toglie il superamento sul padre
-> * [script.fn_available_actions_offerta](/dbzero/script/funzioni/fn_available_actions_offerta) — la capability, che legge i flag, `meta` e `pdf_mode`
+> * [script.fn_available_actions_offerta](/dbzero/script/funzioni/fn_available_actions_offerta) — la capability, che legge i flag, `meta` e `pdf_mode`, ed espone `terminale`
+> * [vendite.trgfn_offerte_commerciali_guard_transizione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione) — il guard del cambio di stato, che legge le regole e le date dalle colonne
 >
 > Guide:
 >
@@ -34,8 +36,8 @@
 
 `config.stati_doc_offerte` è il **vocabolario degli stati dell'offerta commerciale**, dalla bozza
 all'accettazione, al rifiuto, al superamento da parte di una revisione o all'annullo. Per ogni stato
-dice che cosa significa per il resto del sistema: se l'offerta ci nasce, se è emessa, se è accettata,
-se è stata rimpiazzata o annullata.
+dice che cosa significa per il resto del sistema: se l'offerta ci nasce, se è emessa, se è accettata
+o rifiutata dal cliente, se è stata rimpiazzata o annullata.
 
 Il codice non riconosce uno stato dal suo nome: lo chiede a una colonna di questa tabella. I
 passaggi fra gli stati stanno nella matrice
@@ -50,7 +52,7 @@ passaggi fra gli stati stanno nella matrice
 | `BOZZA` | in preparazione, si modifica | `iniziale` |
 | `EMESSA` | proposta al cliente: ha il PDF, la versione di listino è congelata | `emissione` |
 | `ACCETTATA` | il cliente ha accettato: da qui il passaggio a contratto e la generazione dell'ordine | `accettazione` |
-| `RIFIUTATA` | il cliente ha detto no | `terminale` |
+| `RIFIUTATA` | il cliente ha detto no | `rifiuto`, `terminale` |
 | `SUPERATA` | una revisione successiva l'ha rimpiazzata | `is_superato`, `terminale` |
 | `ANNULLATA` | ritirata, in bozza o dopo l'accettazione | `is_abortito`, `terminale` |
 
@@ -80,10 +82,21 @@ tutti i lettori seguono.
   generazione dell'ordine
   ([`vendite.fn_genera_ordine_da_offerta`](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta)) e la
   capability, che spegne il passaggio all'accettazione finché restano prezzi non autorizzati.
+* **`rifiuto`** — lo stato in cui il cliente ha rifiutato l'offerta. Non è il contrario di
+  `accettazione`: `SUPERATA` e `ANNULLATA` hanno anche loro un esito negativo, ma non sono un no
+  del cliente. Il guard del cambio di stato ci scrive `data_rifiuto`; il backend lo legge con
+  [`script.fn_stato_rifiuto_id`](/dbzero/script/funzioni/fn_stato_rifiuto_id). La motivazione non la
+  chiede questa colonna ma la riga del passaggio nella matrice.
 * **`is_abortito`** — lo stato di annullo, letto dal verbo d'annullo
   ([`vendite.fn_annulla_offerta`](/dbzero/vendite/funzioni/fn_annulla_offerta)) attraverso
   [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id).
 * **`is_superato`** — lo stato di superamento: vedi la sezione che segue.
+
+Il guard del cambio di stato
+([`vendite.trgfn_offerte_commerciali_guard_transizione`](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione))
+e la capability leggono il significato da queste colonne e mai dal codice: l'emissione è il passaggio
+dallo stato `iniziale` allo stato di `emissione`, e la data che il passaggio scrive dipende dalla
+colonna della destinazione (`emissione`, `accettazione`, `rifiuto`, `is_abortito`).
 
 ---
 
@@ -131,7 +144,8 @@ uno stato ma una relazione fra revisioni (`numero`, `rev`), e la deriva `vendite
   [`config.esiti_flussi_pratiche`](/dbzero/config/tabelle/esiti_flussi_pratiche) (lo controlla il
   guard [`config.trgfn_stati_doc_guard_esito_verdetto`](/dbzero/config/funzioni/trgfn_stati_doc_guard_esito_verdetto));
   vuoto vuol dire nessun verdetto.
-* `terminale` implica `fase = CHIUSO`.
+* `terminale` implica `fase = CHIUSO`. La capability lo espone come `stato_terminale`, perché chi
+  mostra l'offerta non ricopi l'elenco degli stati terminali.
 
 ⚠️ La proiezione **non basta** a distinguere i tre modi di chiudere: `RIFIUTATA`, `SUPERATA` e
 `ANNULLATA` hanno la stessa `fase`, lo stesso `esito` e sono tutte terminali. Servono `is_abortito` e
@@ -163,6 +177,7 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_offer
 
 * `db/pgtap/vendite/test-offerta-al-modello-v1.sql` — l'offerta sul modello del documento.
 * `db/pgtap/script/test-doc-stati-dal-vocabolario-v1.sql` — i lettori di `emissione`, `accettazione` e degli altri stati marcati.
+* `db/pgtap/vendite/test-offerta-guard-dal-vocabolario-v1.sql` — guard, capability e cruscotto leggono le colonne: spostata la marca in transazione, la risposta la segue; il lettore del rifiuto.
 * `db/pgtap/vendite/offerte_commerciali/test-vw-offerte-lista-superata-vs-abortito.sql` — i due assi di chiusura nella lista.
 * `db/pgtap/vendite/offerte_commerciali/test-offerte-rientro-padre-revisione-annullata.sql` — il rientro del padre dal superamento.
 
@@ -178,6 +193,9 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_offer
 * 2026-10-26 — il superamento lo mette e lo toglie la proiezione delle revisioni, chiamata dai
   trigger della revisione e del rientro del padre.
 * 2026-10-31 — arriva `accettazione` (brief `brief-modello-documento-vendita` §17).
+* 2026-11-13 — arriva `rifiuto`, e il guard del cambio di stato, la capability e il cruscotto
+  leggono il significato dalle colonne invece che dai codici (brief
+  `brief-db-stati-documento-dal-vocabolario`, giro 2).
 
 ---
 

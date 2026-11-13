@@ -330,6 +330,7 @@ search:
 - [fn_stato_iniziale_id](funzioni/fn_stato_iniziale_id.md)
 - [fn_stato_per_colonna_id](funzioni/fn_stato_per_colonna_id.md)
 - [fn_stato_proposto_id](funzioni/fn_stato_proposto_id.md) — (18-10-2026 — decisione D-1 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
+- [fn_stato_rifiuto_id](funzioni/fn_stato_rifiuto_id.md)
 - [fn_stato_scadenza_id](funzioni/fn_stato_scadenza_id.md)
 - [fn_stato_veste](funzioni/fn_stato_veste.md)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest review 01-03-26)

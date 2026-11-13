@@ -1,7 +1,7 @@
-id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,fase,terminale,pdf_mode,pdf_allow_allegati,is_abortito,is_superato,iniziale,emissione,accettazione
-1,BOZZA,BOZZA,Bozza,t,10,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,APERTO,f,PREVIEW,f,f,f,t,f,f
-2,EMESSA,EMESSA,Emessa,t,20,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_ATTESA,f,ARCHIVE,t,f,f,f,t,f
-3,ACCETTATA,ACCETTATA,Accettata,t,30,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_CORSO,f,ARCHIVE,f,f,f,f,f,t
-4,RIFIUTATA,RIFIUTATA,Rifiutata,t,40,"{""nessuna_azione_key"":""vendite.offerte.stato_info.rifiutata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,f,f,f,f,f
-5,SUPERATA,SUPERATA,Superata,t,50,"{""nessuna_azione_key"":""vendite.offerte.stato_info.superata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,f,t,f,f,f
-6,ANNULLATA,ANNULLATA,Annullata,t,60,"{""nessuna_azione_key"":""vendite.offerte.stato_info.annullata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,t,f,f,f,f
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,fase,terminale,pdf_mode,pdf_allow_allegati,is_abortito,is_superato,iniziale,emissione,accettazione,rifiuto
+1,BOZZA,BOZZA,Bozza,t,10,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,APERTO,f,PREVIEW,f,f,f,t,f,f,f
+2,EMESSA,EMESSA,Emessa,t,20,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_ATTESA,f,ARCHIVE,t,f,f,f,t,f,f
+3,ACCETTATA,ACCETTATA,Accettata,t,30,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_CORSO,f,ARCHIVE,f,f,f,f,f,t,f
+4,RIFIUTATA,RIFIUTATA,Rifiutata,t,40,"{""nessuna_azione_key"":""vendite.offerte.stato_info.rifiutata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,f,f,f,f,f,t
+5,SUPERATA,SUPERATA,Superata,t,50,"{""nessuna_azione_key"":""vendite.offerte.stato_info.superata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,f,t,f,f,f,f
+6,ANNULLATA,ANNULLATA,Annullata,t,60,"{""nessuna_azione_key"":""vendite.offerte.stato_info.annullata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,t,f,f,f,f,f

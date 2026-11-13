@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LO STATO DI RIFIUTO DI UNA TESTATA
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 2 (S-3, Tid
+#   2026-11-08). Gemello di script.fn_stato_accettazione_id: la logica e' del
+#   lettore comune script.fn_stato_per_colonna_id (20261031-06), qui la porta
+#   con il nome.
+#
+# ── CHE COSA DICE ───────────────────────────────────────────────────
+#   L'id dello stato di rifiuto (rifiuto = true, colonna nata in 20261112-59)
+#   nel vocabolario della testata: oggi RIFIUTATA dell'offerta e RIFIUTATO del
+#   preventivo. NULL per gli altri documenti, che il cliente non rifiuta: il
+#   loro vocabolario non ha la colonna.
+#
+# ── CHI LO LEGGE ────────────────────────────────────────────────────
+#   Il backend, quando registra l'esito negativo del cliente, al posto del
+#   letterale StatoOfferta.RIFIUTATA (richiesta al team BE nel brief, §4.10).
+#   Nel database il guard dell'offerta ha gia' in mano la riga del
+#   vocabolario e legge la colonna (20261112-61).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261112-60-create-fn-stato-rifiuto-id-mctit.yaml
+
+  - changeSet:
+      id: 20261112-60-create-fn-stato-rifiuto-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.fn_stato_rifiuto_id(regclass): l'id dello stato di rifiuto (rifiuto) nel
+        vocabolario di una testata della mappa, NULL se il vocabolario non ha la colonna o non ne
+        dichiara. Gemello di script.fn_stato_accettazione_id, dal lettore comune
+        script.fn_stato_per_colonna_id. Brief: brief-db-stati-documento-dal-vocabolario, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_stato_per_colonna_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_stato_rifiuto_id(p_testata regclass)
+               -- bigint: l'id di uno stato di un vocabolario qualunque della
+               -- mappa; nessuna colonna comune a cui ancorarlo.
+               RETURNS bigint
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: l'id dello stato di rifiuto della testata, dal suo
+                  --   vocabolario (colonna rifiuto = true). La logica e' del
+                  --   lettore comune:
+                  --   - testata fuori mappa: E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - vocabolario senza la colonna rifiuto: il documento
+                  --     non ha quello stato, NULL;
+                  --   - nessuno stato dichiarato: NULL.
+                  -- =========================================================
+                  RETURN script.fn_stato_per_colonna_id(p_testata, 'rifiuto', 'script.fn_stato_rifiuto_id');
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_stato_rifiuto_id(p_testata regclass)
+              IS 'BB del modello del documento: l''id dello stato di RIFIUTO del cliente di una testata, letto dal suo vocabolario degli stati (colonna rifiuto = true; la mappa e'' script.fn_doc_stato_modello). Unica sede da cui leggerlo: nessuno scrive ''RIFIUTATA'' / ''RIFIUTATO'' per dire «lo stato di rifiuto». Al massimo uno per vocabolario, ed e'' attivo (uq_<vocabolario>_rifiuto, chk_<vocabolario>_rifiuto_attivo). NULL se il vocabolario non ha la colonna (i documenti che il cliente non rifiuta: tutti tranne preventivo e offerta) o non ne dichiara; testata fuori mappa: E_SCRIPT_CHIAMATA_NON_VALIDA. La logica e'' di script.fn_stato_per_colonna_id, comune ai gemelli script.fn_stato_emissione_id, script.fn_stato_abortito_id, script.fn_stato_cessazione_id, script.fn_stato_accettazione_id, script.fn_stato_scadenza_id; il codice si legge con script.fn_doc_stato_codice. Chi ha gia'' in mano la riga del vocabolario legge la colonna (vendite.trgfn_offerte_commerciali_guard_transizione); il backend la legge al posto del letterale per l''esito negativo del cliente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_stato_rifiuto_id(regclass);

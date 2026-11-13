@@ -2,8 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: team DB** col giro 2, l'offerta (§6.1), al via di Tid. Il giro 1 è applicato e verde (2026-11-13). In
-parallelo il **team BE** può fare la richiesta R-2 del §6.4 (un test Django).
+**Riparte: team BE/FE**, con le richieste del giro 2 (§6.7). Il giro 2, l'offerta, è applicato e i suoi pgTAP sono
+verdi (Tid, 2026-11-13). In parallelo **Tid** decide D-SCAD (§6.7, in fondo), e il **team DB** fa il giro 3 al suo via.
+Il giro 1 è applicato, verde e mergiato (2026-11-13); il BE ha fatto R-2 (`e174a302e2`), quindi nel giro 5 la
+colonna `in_gioco` esce dalla vista.
 Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col via di Tid, ha scritto il giro 1 (§6).
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -17,15 +19,18 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 7 | ✅ DB | giro 1, il vocabolario fiscale (②, ⑥, S-6, S-7 e la parte fiscale di S-2): nove changeSet, prova in transazione, pgTAP adeguati e nuovi (2026-11-12) | §6.2, §6.3 | — |
 | 8 | ✅ Tid | apply del giro 1 (`20261112-44 … -52`) e pgTAP del §6.3: verdi (2026-11-13) | §6.3 | — |
 | 8b | ✅ Tid | R-1 … R-3 come proposte dal DB; per R-2 il ritiro di `in_gioco` (2026-11-13) | §6.4 | — |
-| 9 | DB | giri 2 … 6, uno per volta, nell'ordine del §6.1 | §6.1 | il via di Tid per ogni giro |
-| 10 | BE/FE | le ricadute del §4.10 (FE: costanti degli ordini e copia degli stati terminali dell'offerta; BE: il rifiuto dell'offerta, se S-3). Il giro 1 non ne ha | §4.10 | il giro che le porta |
-| 11 | BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` | §6.4 | — (si può fare subito) |
+| 9 | ✅ DB | giro 2, l'offerta (③, S-3, S-10, S-2 per l'offerta, il builder): sei changeSet, due CSV, prova in transazione, pgTAP nuovo e uno adeguato (2026-11-13) | §6.5, §6.6 | via di Tid (2026-11-13) |
+| 9b | ✅ Tid | apply di `20261112-59 … -64` e dei due mirror; pgTAP del §6.6: verdi (2026-11-13) | §6.6 | 9 |
+| 9c | **BE/FE** ⏭️ | le richieste del giro 2: il rifiuto dal vocabolario (BE), `stato_terminale` al posto di `STATI_OFFERTA_TERMINALI` (FE) | §6.7 | 9b |
+| 9d | DB | giri 3 … 6, uno per volta, nell'ordine del §6.1 | §6.1 | il via di Tid per ogni giro |
+| 10 | BE/FE | le ricadute del §4.10 degli altri giri (FE: costanti degli ordini, giro 4). Il giro 1 non ne ha; quelle del giro 2 sono la riga 9c | §4.10 | il giro che le porta |
+| 11 | ✅ BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` (`e174a302e2`, 2026-11-13) | §6.4 | — |
 
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
+**Decisioni aperte di Tid:** D-SCAD, la scadenza dell'offerta e la copia `STATI_OFFERTA_SEGNALA_SCADENZA` (§6.7, in fondo). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
 resta su EMESSA, eccezione voluta); R-2, `in_gioco` si ritira (giro 5, dopo la riga 11); R-3, il lotto non diventa
 REGISTRATO (`applica_lotto` = false, giro 4). Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non
-l'`attivo = false`). **Lavoro da committare:** la verifica del 2026-11-12 (§5) e il giro 1 (§6); il brief del
-2026-11-08 è nel commit `e2a4de9efc`.
+l'`attivo = false`). **Lavoro da committare:** il giro 2 (§6.5, §6.6, applicato) e questo brief; la verifica del 2026-11-12
+(§5) e il giro 1 (§6) sono nel commit `a9b7a0f32e` (PR #108).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid, poi il team DB.
 > **Origine:** il giro DOC.4 di `brief-db-sorgente-documento-e-riga` (§7.3 «Trovato da DOC.4»): riscrivendo le dieci
@@ -496,7 +501,7 @@ Un giro per vocabolario o per difetto, così ogni oggetto si apre una volta sola
 | Giro | Che cosa | Difetti e decisioni |
 | --- | --- | --- |
 | 1 ✅ applicato | il vocabolario fiscale: lotto e fattura | ②, ⑥, S-6, S-7; S-2 sul fiscale. L'emissione fiscale di S-3 è revocata (R-1) |
-| 2 | l'offerta | ③, S-3 (`rifiuto` su offerte e preventivi), S-10 per l'offerta, il builder `dbops.fn_pgtap_crea_offerta` |
+| 2 ✅ scritto | l'offerta | ③, S-3 (`rifiuto` su offerte e preventivi), S-10 per l'offerta, il builder `dbops.fn_pgtap_crea_offerta` |
 | 3 | `terminale`, bolla e reso | ④ (il BB e i COMMENT), ⑦, S-4, S-5, S-3 (`emissione` del reso, coi due lettori del §5) |
 | 4 | gli stati d'ordine senza passaggi | ⑤, S-8, il presidio della raggiungibilità; R-3 (`applica_lotto` = false su REGISTRATA) |
 | 5 | il vocabolario del listino e i COMMENT stantii | ⑧, S-9, §4.8; R-2 (il ritiro di `in_gioco`, se la riga 11 è fatta) |
@@ -604,3 +609,111 @@ Minori, da chiudere quando si riaprono gli oggetti: il BB della nascita, sul lot
 (`fatturazione_lotti`) nella frase del rifiuto, perché il lotto non è in `config.sorgenti` (come la versione di
 listino; lo raggiunge solo un `INSERT` diretto, la madre non passa lo stato); il commento nel corpo di
 `dbops.fn_pgtap_crea_lotto` dice ancora che lo stato DRAFT lo decide la madre.
+
+### 6.5 Giro 2 — l'offerta (2026-11-13)
+
+Il via di Tid è del 2026-11-13; il range `20261112-59 … -64` l'ha dato Tid, con una seconda sessione DB attiva.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `00_schema/config/20261112-59` | la colonna `rifiuto` su `config.stati_doc_offerte` e `config.stati_doc_preventivi` (S-3): `NOT NULL DEFAULT false`, `chk_<vocabolario>_rifiuto_attivo`, `uq_<vocabolario>_rifiuto`, come `accettazione` |
+| `80_data`, due CSV e due mirror | `stati_doc_offerte.csv` e `stati_doc_preventivi.csv`: colonna `rifiuto` in coda, vera su RIFIUTATA e RIFIUTATO; `- column: rifiuto` nei mirror `20260524-04` e `20250917-01` (`runOnChange` + `ANY`, §11.2) |
+| `20_code/script/20261112-60` | `script.fn_stato_rifiuto_id(regclass)`, gemello di `fn_stato_accettazione_id` sul lettore comune (S-3). Nel DB non ha consumatori: il guard ha già la riga del vocabolario. Lo legge il BE (§6.7) |
+| `20_code/vendite/20261112-61` | ③: `vendite.trgfn_offerte_commerciali_guard_transizione` legge le colonne. L'emissione è `iniziale` → `emissione`; i prezzi vanno verso `emissione` o `accettazione`; l'annullo verso `is_abortito`; le date dalla colonna della destinazione (`rifiuto` → `data_rifiuto`) |
+| `20_code/script/20261112-62` | S-2 e S-10 per la capability: `script.fn_available_actions_offerta` legge «in bozza» da `iniziale` (i motivi delle righe dell'emissione, `can_edit_eccezioni`) ed espone la chiave nuova `stato_terminale`. Firma ancorata con `%TYPE`; il COMMENT, che era una cronaca, è riscritto al presente |
+| `20_code/vendite/20261112-63` | S-2 per il cruscotto: `vendite.vw_dash_fatturazione_offerte` dà `DOC_BOZZA` da `iniziale` e `IN_ATTESA_ACCETTAZIONE` da `emissione`. Le colonne sono le stesse; `security_invoker` si ripete, perché un `CREATE OR REPLACE VIEW` senza opzioni le azzera |
+| `20_code/dbops/20261112-64` | il builder `dbops.fn_pgtap_crea_offerta` (§4.2). Compone `fn_pgtap_cliente_del_builder` e `fn_pgtap_crea_listino`, fa nascere la testata come il backend (con l'indirizzo di default da `vendite.fn_doc_indirizzo_default`) e porta allo stato con `fn_pgtap_porta_a_stato` |
+
+**Trovato riaprendo la famiglia dell'offerta** (non era nel censimento del §4.2): la vista
+`vendite.vw_dash_fatturazione_offerte` nominava `'BOZZA'` ed `'EMESSA'` per il motivo del fermo. È entrata in questo
+giro, perché S-2 prende la famiglia un documento per volta. Gli altri letterali che il censimento del 2026-11-13 ha
+trovato non sono stati dell'offerta: `'RIFIUTATA'` delle commesse è l'approvazione delle attività, e
+`'ANNULLATA'` di `vendite.fn_documento_lineage_legami` è lo stato di emissione di un'attività. I due `v_stato_cod`
+che restano nella capability vanno ai building block del lucchetto (`fn_doc_testata_in_stato`,
+`fn_doc_riga_modificabile`), che ragionano per codice nel loro montaggio: non sono una copia del significato.
+
+Corpi presi da `pg_get_functiondef` e `pg_get_viewdef` su dbdev il 2026-11-13. Ogni changeSet porta nel rollback la
+definizione e il COMMENT di prima, letti dal catalogo e non ricopiati a mano. Con il vocabolario del seed ogni
+passaggio ha l'esito di prima: cambia solo da dove si legge il significato. I codici d'errore, i loro parametri e il
+montaggio del trigger restano gli stessi.
+
+Pagine `manual/` scritte o riscritte: `config/stati_doc_offerte`, `config/stati_doc_preventivi`,
+`script/fn_stato_rifiuto_id` (nuova), `script/fn_stato_per_colonna_id`, `script/fn_available_actions_offerta`,
+`vendite/trgfn_offerte_commerciali_guard_transizione` (riscritta: descriveva ancora la versione di listino fissata
+dal backend), `vendite/vw_dash_fatturazione_offerte`, `dbops/fn_pgtap_crea_offerta` (nuova); guida
+`modello-documento-di-vendita` (il lettore del rifiuto). La doc auto-generata non è rigenerata.
+
+### 6.6 La prova e i pgTAP del giro 2
+
+* **Nuovo** `vendite/test-offerta-guard-dal-vocabolario-v1` (plan 12). Prova il builder, le date dal significato, il
+  lettore del rifiuto sui tre casi, l'indice unico, `stato_terminale`, e due **marche spostate** in transazione,
+  ognuna col suo contrasto. Con l'accettazione su RIFIUTATA, lo stesso passaggio scrive `data_accettazione`. Con
+  l'iniziale su EMESSA, l'offerta emessa ha `can_edit_eccezioni` e il motivo `DOC_BOZZA`. Il test 12 è il presidio
+  sulla forma: guard, capability e vista non nominano i codici dell'offerta. Il builder per ora non ha un test suo
+  come i fratelli: lo provano i test 1-3.
+* **Adeguato** `vendite/test-indirizzi-documento-seguono-cliente-v1`, test 3. È il censimento dei chiamanti di
+  `vendite.fn_doc_indirizzo_default`, e il builder nuovo è un chiamante voluto, perché fa nascere l'offerta come il
+  backend.
+
+**Prova (scratch `zeroerp_ruoli`, 2026-11-13).** Il guardrail delle forme, del COMMENT al presente, dei letterali,
+del `runOnChange` e del preambolo pgTAP è verde. L'estratto dei sei changeSet gira per intero in `ROLLBACK` e il
+catalogo resta identico.
+
+⚠️ **Il mirror è simulato.** `prova_changeset.py` non esegue i `loadUpdateData`, quindi i valori di `rifiuto` li ha
+scritti un changeSet di sola prova nello scratchpad (un `UPDATE` per vocabolario), che non entra nel repo. Il
+caricatore vero lo prova l'apply.
+
+**Regressione** con `--pgtap`, senza e con l'estratto, sui 104 file che nominano gli oggetti toccati (i due
+vocabolari, il guard, la capability, le due viste del cruscotto, i lettori degli stati):
+
+* 103 uguali;
+* uno peggiore, `test-indirizzi-documento-seguono-cliente-v1` (il chiamante nuovo), adeguato e poi verde con
+  l'estratto (18/18). Senza l'estratto ora è rosso: chiede un builder che prima dell'apply non c'è;
+* il test nuovo: 12/12 con l'estratto, interrotto senza (il builder non c'è).
+
+Rossi uguali senza e con l'estratto, quindi già presenti: `test-ordine-al-modello-v1` (1) e
+`test-refactor-qta-operativa-preventivi-v1` (5). I pgTAP li lancia Tid.
+
+**Esito (Tid, 2026-11-13):** giro 2 applicato su dbdev, mirror compresi; pgTAP verdi.
+
+### 6.7 Richieste al team BE/FE del giro 2 (elenco chiuso)
+
+**Chi cambia per primo: il DB.** Le colonne e la chiave nuova devono esserci prima che BE e FE le leggano. Finché il
+BE/FE non cambia, il comportamento resta quello di oggi: la chiave nuova la ignora chi non la legge.
+
+| Lato | File | Che cosa |
+| --- | --- | --- |
+| BE | `backend/apps/core/db/documento_modello_repository.py` | il lettore `_LETTORE_RIFIUTO = "script.fn_stato_rifiuto_id"` e il metodo `stato_di_rifiuto(testata)`, gemelli di `stato_di_accettazione` |
+| BE | `backend/apps/core/services/documento_modello.py` | `stato_di_rifiuto(testata, *, function_name)`, gemello di `stato_di_accettazione` |
+| BE | `backend/apps/vendite/services/offerte_service.py` | `registra_rifiuto` sceglie lo stato con `stato_di_rifiuto(TESTATA_OFFERTE, …)` invece di `StatoOfferta.RIFIUTATA`, come `registra_accettazione`. `RIFIUTATA` resta come **parola dell'API** in `_ESITI`, come oggi `ACCETTATA` |
+| FE | `frontend/src/vendite/offerte/components/OffertaDrawer.vue` | `isStatoTerminale` legge `capabilities.stato_terminale` invece di `STATI_OFFERTA_TERMINALI` |
+| FE | `frontend/src/vendite/offerte/constants.js` | ritira `STATI_OFFERTA_TERMINALI` e il suo commento |
+
+Non serve altro nel BE perché la capability viaggia intera sotto `capabilities` (`offerte_service.get_offerta`).
+
+⚠️ **Fuori da questo elenco: D-SCAD, la scadenza dell'offerta (da decidere, Tid).** Trovata scrivendo S-10, verificata
+sul catalogo il 2026-11-13. La regola «quest'offerta è scaduta» oggi sta in due metà:
+
+* il DB, in `vendite.vw_offerte_commerciali_lista.is_scaduta`, dice solo «`validita_al` è passata
+  (`script.fn_data_operativa`)», in **qualunque** stato;
+* il FE la completa con `STATI_OFFERTA_SEGNALA_SCADENZA` (`BOZZA`, `EMESSA`), in **due** punti:
+  `OfferteSearchTable.vue` (il badge della lista) e `OffertaDrawer.vue` (il badge del dettaglio). Un'offerta accettata,
+  rifiutata o annullata con la validità passata non è «scaduta» per l'operatore.
+
+È una regola di dominio scritta per metà nel frontend, ed è lavoro **DB**: la regola intera va nella vista, e il FE
+legge il flag e ritira la costante. Il seed della lista ha anche la colonna configurabile «Scaduta» su `is_scaduta`
+(`ui.lista_colonna` id 92), che oggi dice «sì» anche su un'offerta accettata: con la regola intera direbbe la stessa
+cosa del badge.
+
+**Che cosa vuol dire «gli stati in cui la scadenza conta».** Sul modello sono gli stati in cui il cliente non ha
+ancora risposto: la bozza e l'offerta emessa. Due modi di dirlo dal vocabolario, e decide Tid:
+
+* **(a) proposta DB: `esito IS NULL`**, cioè nessun verdetto ancora. È la domanda giusta («il cliente ha già
+  risposto?») e regge uno stato futuro di attesa senza toccare la regola. Contro: `esito` nasce come proiezione per il
+  motore pratiche, e qui gli si dà un secondo lettore;
+* **(b) `iniziale OR emissione`**: due colonne che ci sono già, ma descrive gli stati di oggi, non la domanda. Uno
+  stato nuovo di attesa andrebbe aggiunto alla regola.
+
+Il giro, se Tid lo apre: un changeSet sulla vista (la stessa colonna, con il suo significato intero, e il COMMENT),
+il pgTAP con la marca spostata, e una richiesta FE (due file). Il preventivo non ha questo problema: lì la scadenza
+è uno stato (`scadenza`, scritto dal job).

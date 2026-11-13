@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VOCABOLARIO DICE QUALE STATO E' IL RIFIUTO DEL CLIENTE
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 2 (S-3, Tid
+#   2026-11-08).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Il vocabolario di preventivo e offerta dice gia' l'inizio (iniziale),
+#   l'emissione (emissione), l'accettazione del cliente (accettazione) e
+#   l'annullo (is_abortito). Non diceva il RIFIUTO: lo stato in cui il cliente
+#   ha detto no (oggi RIFIUTATA dell'offerta, RIFIUTATO del preventivo). Il
+#   codice lo usa per il suo significato: il guard dell'offerta ci scrive
+#   data_rifiuto, il backend ci porta l'esito negativo del cliente. Senza una
+#   colonna, ognuno lo nominava col codice. La motivazione obbligatoria non
+#   c'entra: la chiede la riga della matrice (meta.requires_motivazione).
+#
+# ── LA COLONNA ──────────────────────────────────────────────────────
+#   rifiuto, su config.stati_doc_offerte e config.stati_doc_preventivi:
+#   boolean NOT NULL DEFAULT false, al piu' uno stato per vocabolario (indice
+#   unico parziale) e solo su uno stato attivo (CHECK), come accettazione
+#   (20261031-05). La legge script.fn_stato_rifiuto_id (20261112-60), o il
+#   chiamante che ha gia' la riga del vocabolario in mano. I valori stanno nei
+#   CSV dei due vocabolari (80_data), non qui (linee-guida-sql §11.2): da zero
+#   la colonna nasce col default e il mirror la riempie dopo.
+#
+# ── RIFIUTO E ACCETTAZIONE: DUE COLONNE ─────────────────────────────
+#   Non sono il negativo l'una dell'altra. Un vocabolario ha anche stati che
+#   non sono ne' l'una ne' l'altro (BOZZA, EMESSA, SUPERATA, ANNULLATA, SCADUTO),
+#   e «esito» (POSITIVO, NEGATIVO) li raggruppa in un altro modo: SUPERATA e
+#   ANNULLATA sono NEGATIVO senza essere un rifiuto del cliente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261112-59-alter-stati-doc-add-rifiuto-mctit.yaml
+
+  - changeSet:
+      id: 20261112-59-alter-stati-doc-add-rifiuto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna rifiuto su config.stati_doc_offerte e config.stati_doc_preventivi, NOT NULL DEFAULT
+        false, con un indice unico parziale (al massimo uno stato per vocabolario) e il CHECK «e''
+        attivo». Valori dai CSV di 80_data. Brief: brief-db-stati-documento-dal-vocabolario, giro 2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_doc_offerte }
+            - tableExists: { schemaName: config, tableName: stati_doc_preventivi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_offerte
+                  ADD COLUMN rifiuto BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_offerte_rifiuto_attivo CHECK (NOT rifiuto OR attivo);
+              ALTER TABLE config.stati_doc_preventivi
+                  ADD COLUMN rifiuto BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_preventivi_rifiuto_attivo CHECK (NOT rifiuto OR attivo);
+
+              CREATE UNIQUE INDEX uq_stati_doc_offerte_rifiuto ON config.stati_doc_offerte (rifiuto) WHERE rifiuto;
+              CREATE UNIQUE INDEX uq_stati_doc_preventivi_rifiuto ON config.stati_doc_preventivi (rifiuto) WHERE rifiuto;
+
+              COMMENT ON COLUMN config.stati_doc_offerte.rifiuto IS
+                  'true = lo stato in cui il cliente ha RIFIUTATO l''offerta: il passaggio vi scrive data_rifiuto (vendite.trgfn_offerte_commerciali_guard_transizione). La motivazione non la chiede questa colonna ma la riga della matrice (meta.requires_motivazione, letta da vendite.fn_cambia_stato_offerta). Non e'' il negativo di accettazione: SUPERATA e ANNULLATA hanno esito NEGATIVO senza essere un rifiuto. Al massimo uno per vocabolario (uq_stati_doc_offerte_rifiuto) ed e'' attivo (chk_stati_doc_offerte_rifiuto_attivo). Lo legge script.fn_stato_rifiuto_id, non un letterale ''RIFIUTATA''. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_preventivi.rifiuto IS
+                  'true = lo stato in cui il cliente ha RIFIUTATO il preventivo. Non e'' il negativo di accettazione: SCADUTO e ANNULLATO hanno esito NEGATIVO senza essere un rifiuto. Al massimo uno per vocabolario (uq_stati_doc_preventivi_rifiuto) ed e'' attivo (chk_stati_doc_preventivi_rifiuto_attivo). Lo legge script.fn_stato_rifiuto_id, non un letterale ''RIFIUTATO''. Il valore sta nel CSV del vocabolario in 80_data.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_offerte DROP COLUMN IF EXISTS rifiuto;
+              ALTER TABLE config.stati_doc_preventivi DROP COLUMN IF EXISTS rifiuto;
