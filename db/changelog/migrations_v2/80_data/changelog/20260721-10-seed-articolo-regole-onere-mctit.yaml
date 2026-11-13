@@ -44,7 +44,6 @@ databaseChangeLog:
             schemaName: vendite
             separator: ","
             encoding: UTF-8
-            nullValue: ""
             primaryKey: "articolo_id"
             columns:
               - column: { name: articolo_id, type: UUID }

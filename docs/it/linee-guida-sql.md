@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -2195,7 +2195,7 @@ dopo il loader.
 | **aggiungere una colonna** | colonna in coda al CSV **principale** + `- column:` nell'elenco del mirror, anche se mergiato (`runOnChange` + `ANY`). ⛔ Mai un secondo CSV |
 | cancellare una riga | `loadUpdateData` non cancella → `DELETE` SQL forward-only. **Unica eccezione** |
 | spegnere una riga (`attivo` a `f`) | è un `UPDATE` che passa dal guard sull'`attivo` del padre: se la riga ha figlie collegate il mirror si ferma, e a fermarsi è il changeSet del mirror, non quello di oggi. Se la figlia non ha una colonna di stato riconosciuta contano **tutte** le sue righe: una colonna di stato con un altro nome si dichiara in `dbops.automation_overrides_cols` (`ATTIVO_COL`). Le figlie si sistemano **prima** che il mirror ripassi: un changeSet nuovo di `80_data` gira dopo di lui e non serve |
-| scrivere un `NULL` | il token letterale `NULL`, maiuscolo. ⛔ **`nullValue:` sul caricatore non esiste**: Liquibase 5.0.4 lo ignora senza errore, e non entra nel checksum (misurato il 2026-11-12). Il caricatore riconosce come NULL la parola `null` in qualunque grafia; la cella **vuota** è `''` su una colonna dichiarata `type: STRING` (il default, se la colonna ne dichiara uno) e NULL su ogni altra colonna. Su una colonna testo, quindi, la cella vuota si scrive solo se il valore voluto è la stringa vuota. Altrimenti, dove la colonna è nullable, l'assenza ha due forme, e un tipo non testuale dichiarato `STRING` o un `CHECK` la rifiutano (§11.7). Presidio: `scripts/guardrail_forme_changeset.py`, regole `cella-vuota-string` (ogni caricatore, qualunque `nullValue`) e `null-grafia` (`null` scritto in un'altra grafia). Se il valore giusto è il default della tabella, la colonna si toglie dal CSV e dall'elenco `columns:` del mirror |
+| scrivere un `NULL` | il token letterale `NULL`, maiuscolo. ⛔ **`nullValue:` sul caricatore non esiste**: Liquibase 5.0.4 lo ignora senza errore, e non entra nel checksum (misurato il 2026-11-12). Non si scrive: dal 2026-11-13 nessun caricatore lo dichiara. Il caricatore riconosce come NULL la parola `null` in qualunque grafia; la cella **vuota** è `''` su una colonna dichiarata `type: STRING` (il default, se la colonna ne dichiara uno) e NULL su ogni altra colonna. Su una colonna testo, quindi, la cella vuota si scrive solo se il valore voluto è la stringa vuota. Altrimenti, dove la colonna è nullable, l'assenza ha due forme, e un tipo non testuale dichiarato `STRING` o un `CHECK` la rifiutano (§11.7). Presidio: `scripts/guardrail_forme_changeset.py`, regole `nullvalue-ignorato` (un caricatore che dichiara `nullValue:`), `cella-vuota-string` (ogni caricatore) e `null-grafia` (`null` scritto in un'altra grafia). Se il valore giusto è il default della tabella, la colonna si toglie dal CSV e dall'elenco `columns:` del mirror |
 
 ⛔ **Una tabella, UN CSV** (Tid, 2026-09-18). Un secondo CSV «per sottoinsieme»
 — chiavato sulla chiave naturale, con un `loadUpdateData` suo, «per non toccare

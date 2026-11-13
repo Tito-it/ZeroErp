@@ -33,7 +33,6 @@ databaseChangeLog:
             encoding: UTF-8
             # rev 2026-10-29 (20261029-31): il token NULL, non la cella vuota — su una colonna
             # STRING la cella vuota diventa '' (linee-guida-sql §11.7). Nessun'altra cella vuota nel CSV.
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }

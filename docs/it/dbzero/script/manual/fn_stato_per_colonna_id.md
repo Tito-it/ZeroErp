@@ -6,14 +6,16 @@
 > [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) ·
 > [script.fn_stato_cessazione_id](/dbzero/script/funzioni/fn_stato_cessazione_id) ·
 > [script.fn_stato_accettazione_id](/dbzero/script/funzioni/fn_stato_accettazione_id) ·
+> [script.fn_stato_rifiuto_id](/dbzero/script/funzioni/fn_stato_rifiuto_id) ·
+> [script.fn_stato_scadenza_id](/dbzero/script/funzioni/fn_stato_scadenza_id) ·
 > [script.fn_doc_stato_modello](/dbzero/script/funzioni/fn_doc_stato_modello)
 
 ### 🎯 Scopo
-(31-10-2026 — brief `brief-modello-documento-vendita` §17, regola del 2)
+(31-10-2026 — brief `brief-modello-documento-vendita` §17, regola del 2; aggiornata il 13-11-2026)
 
 **La logica comune dei lettori degli stati con un significato.** Il vocabolario degli
 stati marca con una colonna sì/no gli stati che il codice deve riconoscere: l'emissione,
-l'annullo, la cessazione, l'accettazione. I quattro lettori con il nome fanno tutti la
+l'annullo, la cessazione, l'accettazione, il rifiuto, la scadenza. I lettori con il nome fanno tutti la
 stessa cosa — trovano il vocabolario del documento, guardano se ha la colonna, prendono
 lo stato marcato — e quella cosa sta qui, una volta.
 

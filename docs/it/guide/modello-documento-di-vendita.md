@@ -1,6 +1,6 @@
 # Guida — Il modello del documento di vendita
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > **Destinatari**: chi lavora su un documento di vendita o d'acquisto — sviluppatori database,
 > backend, frontend e analisti funzionali. Prima di cambiare come un documento nasce, cambia stato,
@@ -24,6 +24,7 @@
 > * [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) — l'unico lettore dello stato d'annullo di un documento
 > * [script.fn_stato_cessazione_id](/dbzero/script/funzioni/fn_stato_cessazione_id) — l'unico lettore dello stato di cessazione (il contratto)
 > * [script.fn_stato_accettazione_id](/dbzero/script/funzioni/fn_stato_accettazione_id) — l'unico lettore dello stato di accettazione (preventivo e offerta)
+> * [script.fn_stato_rifiuto_id](/dbzero/script/funzioni/fn_stato_rifiuto_id) — l'unico lettore dello stato di rifiuto (preventivo e offerta)
 > * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — dal codice di uno stato al suo id, per ogni documento
 > * [script.fn_doc_stato_codice](/dbzero/script/funzioni/fn_doc_stato_codice) — il gemello inverso: dall'id di uno stato al suo codice
 > * [script.fn_doc_azione_passaggio](/dbzero/script/funzioni/fn_doc_azione_passaggio) — la domanda del backend: che cosa chiede questo passaggio?
@@ -106,7 +107,7 @@ Ogni documento ha due tabelle di configurazione:
 
 * il **vocabolario degli stati** (`config.stati_doc_*`): quali stati esistono, e per ognuno se è
   quello iniziale, se è quello di emissione, se è terminale, se è un annullo e, dove il documento li
-  ha, se è quello di cessazione (il contratto) o di accettazione (preventivo e offerta);
+  ha, se è quello di cessazione (il contratto), di accettazione o di rifiuto (preventivo e offerta);
 * la **matrice dei passaggi** (`config.transizioni_stati_*`): **una riga = un passaggio ammesso**,
   da uno stato a un altro.
 
@@ -123,7 +124,7 @@ matrice: prima o poi le due rispondono in modo diverso. I passaggi si aggiungono
 spengono **nella tabella**.
 
 Lo stesso vale per **gli stati che hanno un significato**: l'inizio, l'emissione, l'annullo, la
-cessazione, l'accettazione. Il codice non scrive `'CESSATO'` o `'ACCETTATO'` per dire «lo stato di
+cessazione, l'accettazione, il rifiuto. Il codice non scrive `'CESSATO'` o `'ACCETTATO'` per dire «lo stato di
 cessazione» o «lo stato di accettazione»: lo dice una colonna del vocabolario (al più uno stato per
 documento, ed è attivo), e lo legge il suo lettore —
 [`script.fn_stato_cessazione_id`](/dbzero/script/funzioni/fn_stato_cessazione_id),

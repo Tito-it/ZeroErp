@@ -31,7 +31,6 @@ databaseChangeLog:
             schemaName: documenti
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }
@@ -57,7 +56,6 @@ databaseChangeLog:
             schemaName: documenti
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }
@@ -83,7 +81,6 @@ databaseChangeLog:
             schemaName: documenti
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }
@@ -109,7 +106,6 @@ databaseChangeLog:
             schemaName: documenti
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }

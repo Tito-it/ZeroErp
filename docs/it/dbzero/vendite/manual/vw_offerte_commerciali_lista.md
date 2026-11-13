@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_offerte_commerciali_lista`
 
+> **Ultimo aggiornamento**: 13 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
@@ -63,18 +65,21 @@ In più è `WITH (security_invoker = on)` (RLS-ready).
 ### Colonna materializzata — `is_scaduta`
 
 ```sql
-(o.validita_al IS NOT NULL AND o.validita_al < CURRENT_DATE) AS is_scaduta
+sdo.esito IS NULL
+AND o.validita_al IS NOT NULL
+AND o.validita_al < (SELECT script.fn_data_operativa())   AS is_scaduta
 ```
 
-`TRUE` quando la finestra di validità dell'offerta è già scaduta. **Prima
-viveva solo lato frontend** (nessuna colonna backend); spostandola in vista
-diventa un dato di dominio unico e testabile.
+`TRUE` quando l'offerta è **scaduta per l'operatore**: la validità è passata (rispetto alla data
+operativa dell'azienda) **e** il cliente non ha ancora risposto, cioè lo stato non ha un esito nel
+vocabolario (`config.stati_doc_offerte.esito`, oggi vuoto su bozza ed emessa). Un'offerta accettata,
+rifiutata, superata o annullata con la validità passata non è scaduta: il cliente ha già risposto, o
+l'offerta non è più viva.
 
-> **Gating per stato lato FE**: il badge «scaduta» nell'interfaccia non si basa
-> sul solo `is_scaduta`, ma sull'AND con l'appartenenza dello stato all'insieme
-> `STATI_OFFERTA_SEGNALA_SCADENZA` (es. non si segnala una scadenza su un'offerta
-> già ACCETTATA o ANNULLATA). La vista espone il dato grezzo `is_scaduta`; il
-> filtro per stato resta una scelta di presentazione del frontend.
+⭐ **La regola è intera qui.** Chi mostra il badge «Scaduta» (la lista, il dettaglio) legge il flag e
+non filtra gli stati per conto suo; la colonna configurabile «Scaduta» della lista dice la stessa
+cosa del badge. Lo stato si legge per significato (l'esito), non per codice: uno stato nuovo di
+attesa, senza esito, entra da sé.
 
 ---
 
@@ -160,7 +165,7 @@ piu' nessuno stato** — il significato di `SUPERATA` sta ora dove stanno gia'
 * **Identificatori**: `id`, `uid`, `codice`, `revisione_numero`, `revisione_padre_id`
 * **Flag revisione**: **`is_attiva`**, **`is_superata`**, **`is_abortito`**, **`has_next_revisione`**
 * **Stato**: `stato_doc_offerta_id`, **`stato_codice_interno`** (severity Tag FE), `stato_descrizione`
-* **Scadenza**: **`is_scaduta`** (badge FE, gating per stato lato frontend)
+* **Scadenza**: **`is_scaduta`** (badge FE: validità passata e nessun esito, la regola intera)
 * **Cliente (via istanza)**: `billing_account_id`, **`ba_codice`**, `soggetto_id`, **`ragione_sociale_completa`**, **`id_fiscale_univoco_cf_piva`**
 * **Permessi / emittente**: `emittente_fiscale_id` (scope), **`emittente_fiscale_codice`**
 * **Utility e istanza**: `utility_id`, **`utility_codice`**, `utility_descrizione`, `istanza_utility_id`, `istanza_utility_codice`

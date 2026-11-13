@@ -71,7 +71,6 @@ databaseChangeLog:
             schemaName: dbops
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "vista,causa"
             columns:
               - column: { name: vista,      type: STRING }
@@ -88,7 +87,6 @@ databaseChangeLog:
             # Dal 2026-10-09 `variante` e' nullable (NULL = testo del
             # presidio): la cella vuota la renderebbe stringa vuota, e il
             # CHECK chk_presidi_testi_variante_non_vuota la rifiuterebbe.
-            nullValue: "NULL"
             # 2026-10-09, brief-db-presidio-processi-testo-per-causa §3 B.2: la
             # chiave prende `variante` (00_schema/20261009-33). La riga
             # generica ha variante NULL: Liquibase la cerca con `variante is

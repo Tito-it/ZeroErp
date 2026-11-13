@@ -24,7 +24,6 @@ databaseChangeLog:
             schemaName: pagamenti
             separator: ","
             encoding: UTF-8
-            nullValue: ""
             primaryKey: "codice"
             columns:
               - column: { name: codice, type: STRING }

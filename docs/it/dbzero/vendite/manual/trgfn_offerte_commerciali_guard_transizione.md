@@ -1,134 +1,110 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_offerte_commerciali_guard_transizione()`
 
+> **Ultimo aggiornamento**: 13 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali)
-> • [config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte)
-> • [config.stati_doc_offerte_transizioni](/dbzero/config/tabelle/stati_doc_offerte_transizioni)
-> • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [vendite.trgfn_preventivi_guard_transizione](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione)
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
-> • [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) — i prezzi non autorizzati (dal 2026-09-24)
-> • [script.fn_available_actions_offerta](/dbzero/script/funzioni/fn_available_actions_offerta) — spegne i pulsanti con gli stessi motivi
+> * [vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali)
+> * [config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte) — il vocabolario, da cui il guard legge il significato degli stati
+> * [config.stati_doc_offerte_transizioni](/dbzero/config/tabelle/stati_doc_offerte_transizioni) — la matrice dei passaggi
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_available_actions_offerta](/dbzero/script/funzioni/fn_available_actions_offerta) — spegne i pulsanti con gli stessi motivi, nello stesso ordine
+> * [script.fn_check_listino_congelabile](/dbzero/script/funzioni/fn_check_listino_congelabile) · [script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati) · [script.fn_check_indirizzi_documento_cliente](/dbzero/script/funzioni/fn_check_indirizzi_documento_cliente) · [script.fn_check_righe_documento](/dbzero/script/funzioni/fn_check_righe_documento) · [script.fn_check_offerta_annullabile](/dbzero/script/funzioni/fn_check_offerta_annullabile) — i predicati
+> * [vendite.fn_cambia_stato_offerta](/dbzero/vendite/funzioni/fn_cambia_stato_offerta) — il verbo del cambio di stato, che passa da qui
+>
+> Guide:
+>
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) §4 — il significato di uno stato lo dice il vocabolario
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-09-24 — il prezzo non autorizzato; rev 2026-08-21 — funzione rev 2026-05-25)
-
-Governa il workflow dell'offerta commerciale, e fa **tre cose in un trigger solo**:
-
-1. **valida la transizione** contro la matrice `config.stati_doc_offerte_transizioni`
-   (config-driven, nessun grafo hardcodato);
-2. **presidia l'emissione**: passando `BOZZA → EMESSA`, l'offerta deve avere una versione di
-   listino, e quella versione dev'essere `ATTIVA`;
-3. **valorizza il timestamp** del passaggio (`data_emissione`, `data_accettazione`,
-   `data_rifiuto`, `data_annullamento`).
-
-Le tre cose stanno insieme perché condividono la parte costosa: la risoluzione dei codici
-interni dei due stati. Separarle costerebbe tre volte la stessa lettura.
+Il guard del cambio di stato dell'offerta commerciale. Giudica ogni passaggio e scrive la data del
+passaggio. ⭐ **Non riconosce mai uno stato dal suo codice**: ogni regola chiede a una colonna del
+vocabolario che cosa significa lo stato di partenza o di arrivo (`iniziale`, `emissione`,
+`accettazione`, `rifiuto`, `is_abortito`, `is_superato`). I codici servono solo ai messaggi.
+Spostata una marca nel vocabolario, il guard la segue.
 
 ---
 
 ### Aggancio
 
 Trigger `trg_offerte_commerciali_a10_guard_transizione_upd` — fase `_a10_`,
-`BEFORE UPDATE OF stato_doc_offerta_id` su `vendite.offerte_commerciali`, `FOR EACH ROW`.
+`BEFORE UPDATE OF stato_doc_offerta_id` su `vendite.offerte_commerciali`, `FOR EACH ROW`. Nessun
+altro trigger `BEFORE` scrive lo stato, quindi `UPDATE OF` è la forma giusta.
 
 ---
 
-### Regole applicate
+### Regole, nell'ordine
 
-**No-op** se `OLD.stato_doc_offerta_id = NEW.stato_doc_offerta_id`.
+Se lo stato non cambia, non fa niente.
 
-**Regola 1 — transizione in matrice.** La coppia `(stato_da, stato_a)` deve esistere in
-`config.stati_doc_offerte_transizioni` con `attivo = true`. Altrimenti
-`E_OFFERTA_TRANSIZIONE_NON_AMMESSA`.
+1. **Il passaggio è nella matrice.** La coppia di stati deve essere una riga attiva di
+   `config.stati_doc_offerte_transizioni`, altrimenti `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`.
+2. **Il rientro dal superamento.** Da uno stato `is_superato` si esce solo se non resta una
+   revisione figlia viva (`E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA`). Il passaggio di rientro esiste
+   per l'automatismo «annullo la revisione, il padre torna vivo», ma un passaggio ammesso vale per
+   chiunque scriva: la condizione sta qui.
+3. **L'emissione** è il passaggio dallo stato `iniziale` allo stato di `emissione`. Solleva, nell'ordine:
+   * il primo motivo di `script.fn_check_listino_congelabile`, poi **congela** la versione di
+     listino (`vendite.fn_listino_versione_operativa`: la fissata, altrimenti quella in vigore oggi);
+   * il primo motivo di `script.fn_check_indirizzi_documento_cliente`;
+   * il primo motivo di `script.fn_check_righe_documento`.
 
-**Regola 2 — solo su `BOZZA → EMESSA`:**
+   ⚠️ Anche il rientro dal superamento arriva nello stato di emissione, ma non parte dallo stato
+   iniziale: non è un invio al cliente, e queste regole non lo toccano.
+4. **I prezzi.** Verso lo stato di `emissione` e verso quello di `accettazione`, fuori dal rientro,
+   il primo motivo di `script.fn_check_prezzi_autorizzati` (`E_DOC_PREZZO_PENDENTE`,
+   `E_DOC_PREZZO_RIFIUTATO`). Un prezzo rimasto non autorizzato sul padre bloccherebbe
+   l'annullamento della revisione, cioè una via d'uscita.
+5. **L'annullo.** Verso lo stato `is_abortito`, il primo motivo di
+   `script.fn_check_offerta_annullabile` (`E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`): un contratto o un
+   ordine ancora vivo nato dall'offerta si annulla prima.
+6. **La data del passaggio**, dalla colonna della destinazione:
 
-* `listino_versione_id` deve essere valorizzato →
-  `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`;
-* la versione dev'essere in stato `ATTIVA` →
-  `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`.
+   | La destinazione è | Si scrive |
+   | --- | --- |
+   | `emissione` | `data_emissione`, solo se è ancora vuota |
+   | `accettazione` | `data_accettazione` |
+   | `rifiuto` | `data_rifiuto` |
+   | `is_abortito` | `data_annullamento` |
 
-Il senso: un'offerta emessa è un impegno di prezzo verso il cliente, e un impegno di prezzo
-senza un listino fissato e vigente non è verificabile. Una versione `CHIUSA` o in
-preparazione non basta.
+   ⚠️ `data_emissione` non si riscrive: il rientro dal superamento è un secondo ingresso nello stato
+   di emissione, e riscriverla cancellerebbe il giorno in cui l'offerta è stata davvero mandata al
+   cliente. Le altre date registrano l'ultimo passaggio.
 
-**Regola 2-bis — prezzi autorizzati (rev 2026-09-24), verso `EMESSA` e `ACCETTATA`.**
-Un'eccezione o un suo componente **attivi** con il prezzo in attesa di approvazione o
-rifiutato bloccano la transizione: solleva il primo motivo di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati)
-(`E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`). ⛔ Non sul **rientro** automatico
-`SUPERATA → EMESSA` (il padre che torna vivo quando si annulla la revisione): non manda niente
-al cliente, e bloccarlo fermerebbe un annullamento. Vedi la sezione in fondo.
-
-**Regola 3 — timestamp.** In base al codice dello stato di destinazione valorizza `now()`
-sulla colonna corrispondente. `ELSE NULL` per gli stati che non hanno un timestamp dedicato:
-non è un errore, semplicemente non c'è niente da marcare.
-
----
-
-### ⚠️ I timestamp si riscrivono a ogni passaggio
-
-La regola 3 assegna `now()` **ogni volta** che si arriva a quello stato. Se un'offerta torna
-in `BOZZA` e viene riemessa, `data_emissione` viene sovrascritta con la data nuova e la prima
-emissione **sparisce**.
-
-Per un documento commerciale è di norma il comportamento voluto — vale la data
-dell'emissione corrente — ma va saputo: quelle colonne registrano **l'ultimo** passaggio, non
-il primo. La storia completa dei passaggi non è lì.
-
----
-
-### ⚠️ Un codice interno non risolto degrada il messaggio, non il controllo
-
-I codici interni sono letti con un `max(CASE ...)` su entrambi gli stati. Se uno dei due id
-non si risolve, la variabile resta `NULL` e il `coalesce` nel messaggio ripiega sull'**id
-numerico**.
-
-Il controllo della regola 1 non ne risente: confronta gli id, non i codici. Ma la regola 2
-sì — `v_codice_da = 'BOZZA' AND v_codice_a = 'EMESSA'` con un codice nullo è falso, quindi
-**il guard sul listino non scatta**. In pratica la FK verso `config.stati_doc_offerte`
-rende il caso irraggiungibile; resta il verso in cui il ramo cede, che è fail-open.
+I predicati delle regole 3-5 sono gli stessi che
+[`script.fn_available_actions_offerta`](/dbzero/script/funzioni/fn_available_actions_offerta) legge
+per spegnere i pulsanti, nello stesso ordine: pulsante e guard non possono dissentire.
 
 ---
 
 ### Codici errore
 
 | Codice | Quando |
-|--------|--------|
-| `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` | Coppia `(stato_da, stato_a)` assente o non attiva in matrice |
-| `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` | `BOZZA → EMESSA` con `listino_versione_id` nullo |
-| `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` | `BOZZA → EMESSA` con versione in stato diverso da `ATTIVA` |
-| `E_DOC_PREZZO_PENDENTE` | → `EMESSA` / `ACCETTATA` con un prezzo in attesa di approvazione (dal 2026-09-24) |
-| `E_DOC_PREZZO_RIFIUTATO` | → `EMESSA` / `ACCETTATA` con un prezzo rifiutato (dal 2026-09-24) |
-
-Tutti via `script.fn_log_and_raise_error` con `NEW.tx_id` propagato (i due `E_DOC_PREZZO_*`
-attraverso `script.fn_raise_primo_motivo_se_presente`).
+| --- | --- |
+| `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` | il passaggio non è una riga attiva della matrice |
+| `E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA` | uscita dal superamento con una revisione figlia viva |
+| quelli di `script.fn_check_listino_congelabile` | emissione senza una versione di listino in vigore, o con una fissata non attiva |
+| `E_INDIRIZZO_DOC_NON_DEL_CLIENTE` | emissione con un indirizzo che non è del cliente dell'offerta |
+| `E_DOC_RIGA_NON_AMMESSA` | emissione con una riga che la regola intera non ammette più |
+| `E_DOC_PREZZO_PENDENTE`, `E_DOC_PREZZO_RIFIUTATO` | verso emissione o accettazione con un prezzo non autorizzato |
+| `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI` | annullo con un contratto o un ordine vivo nato dall'offerta |
 
 ---
 
-### Rev 2026-09-24 — un prezzo non autorizzato non esce
+### Test
 
-Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza*. Fino a
-questa revisione l'offerta **non guardava il prezzo per niente**: un'offerta con un'eccezione
-in attesa di approvazione, o rifiutata, si emetteva e si accettava.
-
-* Il predicato non è scritto qui: lo fa [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), la sede unica per preventivi, contratti,
-  offerte, ordini e DDT. Per l'offerta guarda le eccezioni
-  (`offerte_commerciali_eccezioni`) e i loro componenti, solo se **attivi**, e sia il
-  prezzo **in attesa** (`PENDING`) sia quello **rifiutato** (`REJECTED`).
-* Vale verso `EMESSA` e verso `ACCETTATA`; non sul rientro da `SUPERATA` (letto dal flag
-  di superamento, non da un codice). L'annullamento resta sempre possibile.
-* Gli stessi motivi spengono «Emetti» e «Accetta» in
-  [`script.fn_available_actions_offerta`](/dbzero/script/funzioni/fn_available_actions_offerta):
-  pulsanti e database non possono dissentire.
-
-(changeSet `20260924-27`, brief `brief-db-preventivi-congelamento-pricing`.)
+* `db/pgtap/vendite/test-offerta-guard-dal-vocabolario-v1.sql` — le date dal significato, e la marca
+  spostata in transazione: con l'accettazione su `RIFIUTATA`, lo stesso passaggio scrive
+  `data_accettazione`; il presidio sulla forma (nessun codice di stato nel corpo).
+* `db/pgtap/vendite/offerte_commerciali/test_offerte_commerciali_state_machine.sql` — la matrice.
+* `db/pgtap/vendite/offerte_commerciali/test-offerte-rientro-padre-revisione-annullata.sql` — il rientro.
 
 ---
 

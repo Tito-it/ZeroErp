@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_available_actions_offerta`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -46,15 +46,15 @@ porta l'elenco dei motivi, e il primo è quello che si mostra.
 * **Verso l'emissione**: il listino che si congelerebbe (`script.fn_check_listino_congelabile`), i
   prezzi non autorizzati (`script.fn_check_prezzi_autorizzati`), gli indirizzi che non sono del
   cliente (`script.fn_check_indirizzi_documento_cliente`) e, per ultime, le righe che la regola
-  intera non ammette (`script.fn_check_righe_documento`, solo dalla bozza).
+  intera non ammette (`script.fn_check_righe_documento`, solo dallo stato iniziale).
 * **Verso l'accettazione**: i prezzi non autorizzati.
 * **Verso l'annullo**: un contratto o un ordine vivo nato dall'offerta
   (`script.fn_check_offerta_annullabile`).
 * **«Crea revisione»**: proposta sull'offerta emessa, spenta se c'è un prezzo in attesa
   (`script.fn_check_prezzi_in_attesa`, la stessa con cui il verbo rifiuta).
 
-Quali stati sono l'emissione, l'accettazione e l'annullo lo dice il vocabolario degli stati, non il
-codice dello stato.
+Quali stati sono la bozza, l'emissione, l'accettazione e l'annullo lo dice il vocabolario degli stati
+(le colonne `iniziale`, `emissione`, `accettazione`, `is_abortito`), non il codice dello stato.
 
 ---
 
@@ -111,7 +111,7 @@ vivi, e negli indici unici che ammettono al più un contratto vivo e un ordine v
   una colonna si cambia: fuori bozza restano aperte, per esempio, le note di un documento vivo e la
   motivazione del rifiuto.
 * **Fornitura e indirizzi**: dal lock montato sui satelliti, con `script.fn_doc_riga_modificabile`.
-* **Le eccezioni di prezzo**: solo in bozza.
+* **Le eccezioni di prezzo**: solo nello stato iniziale (la bozza), letto dal vocabolario.
 
 ---
 
@@ -122,6 +122,13 @@ stato è la frase che spiega lo stato in cui si trova il documento: viene dal da
 c'è **sempre** quando lo stato la dichiara, anche accanto a un'azione ancora accesa. Il campo è
 sempre presente, col valore vuoto quando non si applica: va guardato il valore, non la presenza.
 
+### Lo stato corrente: `stato_codice` e `stato_terminale`
+
+`stato_codice` è il codice interno dello stato corrente. `stato_terminale` è la colonna `terminale`
+del vocabolario per quello stato: vero quando il documento non ha più passaggi a mano in uscita.
+Chi mostra l'offerta (il banner del drawer, per esempio) legge questo campo invece di tenere un
+suo elenco degli stati terminali.
+
 ---
 
 ### Test
@@ -130,6 +137,8 @@ sempre presente, col valore vuoto quando non si applica: va guardato il valore, 
   fra contratto e ordine coi suoi motivi, le modifiche nello stato, l'indice unico dell'ordine nato
   dall'offerta, l'emissione col listino in vigore, gli spazi delle chiavi di traduzione.
 * `db/pgtap/script/test-fn-check-prezzi-autorizzati-v1.sql` — i motivi dei prezzi non autorizzati.
+* `db/pgtap/vendite/test-offerta-guard-dal-vocabolario-v1.sql` — `stato_terminale`, e «in bozza»
+  dallo stato iniziale: spostata la marca in transazione, `can_edit_eccezioni` la segue.
 * `db/pgtap/vendite/test-annullo-documento-con-legami-v1.sql` — un documento annullato non consuma
   l'offerta.
 
@@ -148,6 +157,8 @@ sempre presente, col valore vuoto quando non si applica: va guardato il valore, 
 * 2026-11-07 — l'ordine nato dall'offerta si riconosce dalla provenienza del modello
   (`sorgente_tipo_id` con la chiave del documento); le colonne `documento_origine_*` dell'ordine e il
   loro indice unico sono ritirati (`brief-db-sorgente-documento-e-riga`).
+* 2026-11-13 — «in bozza» dallo stato iniziale del vocabolario, non dal codice; nasce
+  `stato_terminale` (`brief-db-stati-documento-dal-vocabolario`, giro 2).
 
 ---
 

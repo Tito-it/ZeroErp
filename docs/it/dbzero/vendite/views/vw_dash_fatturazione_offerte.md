@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Dashboard della fatturazione, area OFFERTA_COMMERCIALE: una riga per offerta, a conteggi. L'offerta e' transitata se ha un figlio vivo: un contratto non annullato (is_abortito_snapshot) o un ordine con esito diverso da NEGATIVO, cioe' un documento che la dichiara come provenienza (sorgente_tipo_id OFFERTA_COMMERCIALE, chiave dell'offerta in sorgente_uid o sorgente_id). Un'offerta ha al piu' un figlio vivo ma puo' averne piu' annullati: i figli si riassumono in una riga per lato (esiste, vivo), cosi' l'offerta non si duplica e un figlio annullato non nasconde quello vivo. motivo_fermo: FIGLIO_ABORTITO se ha solo figli annullati (si sblocca rigenerando), DOC_BOZZA, IN_ATTESA_ACCETTAZIONE, SENZA_FIGLIO; NULL se transitata o rifiutata. cliente_display e' la ragione sociale dell'intestatario dell'istanza. La consuma vendite.vw_dash_fatturazione_documenti. security_invoker=on.
+> Dashboard della fatturazione, area OFFERTA_COMMERCIALE: una riga per offerta, a conteggi. L'offerta e' transitata se ha un figlio vivo: un contratto non annullato (is_abortito_snapshot) o un ordine con esito diverso da NEGATIVO, cioe' un documento che la dichiara come provenienza (sorgente_tipo_id OFFERTA_COMMERCIALE, chiave dell'offerta in sorgente_uid o sorgente_id). Un'offerta ha al piu' un figlio vivo ma puo' averne piu' annullati: i figli si riassumono in una riga per lato (esiste, vivo), cosi' l'offerta non si duplica e un figlio annullato non nasconde quello vivo. motivo_fermo: NULL se transitata o con esito NEGATIVO; FIGLIO_ABORTITO se ha solo figli annullati (si sblocca rigenerando); DOC_BOZZA nello stato iniziale del vocabolario (config.stati_doc_offerte.iniziale); IN_ATTESA_ACCETTAZIONE nello stato di emissione (emissione); altrimenti SENZA_FIGLIO. Lo stato si legge per significato, non per codice. cliente_display e' la ragione sociale dell'intestatario dell'istanza. La consuma vendite.vw_dash_fatturazione_documenti. security_invoker=on.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -35,8 +35,8 @@ SELECT 'OFFERTA_COMMERCIALE'::character varying AS area,
             WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
             WHEN (ct.vivo OR fo.vivo) THEN NULL::text
             WHEN (ct.esiste OR fo.esiste) THEN 'FIGLIO_ABORTITO'::text
-            WHEN ((sdo.codice_interno)::text = 'BOZZA'::text) THEN 'DOC_BOZZA'::text
-            WHEN ((sdo.codice_interno)::text = 'EMESSA'::text) THEN 'IN_ATTESA_ACCETTAZIONE'::text
+            WHEN sdo.iniziale THEN 'DOC_BOZZA'::text
+            WHEN sdo.emissione THEN 'IN_ATTESA_ACCETTAZIONE'::text
             ELSE 'SENZA_FIGLIO'::text
         END)::character varying AS motivo_fermo,
     sdo.codice_interno AS stato_codice_interno,

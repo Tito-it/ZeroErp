@@ -121,7 +121,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "classe"
             columns:
               - column: { name: classe,       type: STRING }
@@ -137,7 +136,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "codice"
             columns:
               - column: { name: codice,       type: STRING }
@@ -162,7 +160,6 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             # Token letterale, non la cella vuota: vedi la REV 2026-11-13 in testata.
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: codice,    type: STRING }
