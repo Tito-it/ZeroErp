@@ -3,28 +3,24 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: La LETTURA UNICA dei CSV di seed di `80_data/sql/` per i test senza DB:
-#        ogni cella che il loader Liquibase di quel file scrive come NULL
-#        arriva qui come `None`, non come la stringa del token.
-# Note: ⛔ Il token NON e' lo stesso per tutti i file (`nullValue: "NULL"` o
-#        `nullValue: ""`). Un `csv.DictReader` nudo da' `'NULL'`, che e' VERO in
-#        un test di verita' (`if r["campo_sorgente"]`): un presidio cosi' cerca
-#        il campo `NULL` nella riga, prende `'NULL'` per un formato o per una
-#        data. E' successo il 2026-11-12, quando `lista_colonna.csv` e' passato
-#        al token (brief-db-lista-colonna-campo-sorgente-null §5.1, K-1 … K-3).
-#        ⛔ E la cella vuota NON e' NULL dove il token e' `"NULL"`: il loader la
-#        scrive come stringa vuota, e un lettore che le confonde crede che a DB
-#        ci sia NULL dove c'e' `''` (il difetto che il guardrail `nullvalue-vuoto`
-#        caccia lato DB). Qui arriva `''`, come la vede il database.
-#        ⭐ Il token si legge dal `nullValue` del CARICATORE del file (gli YAML
-#        sotto `db/changelog`), che e' la fonte vera. Un file con piu'
-#        caricatori e token diversi (oggi `lista_colonna.csv`: il seed del
-#        2026-05 con `""`, il mirror con `"NULL"`) si decide col descrittore
-#        `CSV_SEED` di `scripts/gen_seed_lista.py`, la sede di chi SCRIVE i CSV
-#        delle liste; fuori da li' il BB solleva, invece di indovinare.
+#        ogni cella arriva come la scrive il caricatore Liquibase del file,
+#        `None` dove scrive NULL e `''` dove scrive la stringa vuota.
+# Note: ⭐ LA REGOLA del caricatore sta in `scripts/_seed_csv_caricatori.py`,
+#        condivisa col generatore dei seed delle liste (regola del 2, ok Tid
+#        2026-11-13): `null` in ogni grafia e' NULL; la cella vuota e' `''`
+#        sulla colonna `type: STRING`, il `defaultValue` dove c'e', NULL
+#        altrove (brief-db-token-null-dei-seed §1).
+#        ⛔ `nullValue:` NON ESISTE per Liquibase: la prima stesura di questo BB
+#        lo leggeva come token per file (`token_nullo`, il descrittore `nullo`
+#        di `CSV_SEED`), ed e' ritirata.
+#        ⛔ Un `csv.DictReader` nudo da' `'NULL'`, che e' VERO in un test di
+#        verita' (`if r["campo_sorgente"]`), e `''` dove il DB ha NULL
+#        (2026-11-12, brief-db-lista-colonna-campo-sorgente-null §5.1).
 #        ⭐ Estratto il 2026-11-12 (regola del 2, ok Tid): `_seed()` era scritta
 #        in due test, il CSV delle liste si leggeva anche in linea, e due helper
 #        fuori da `ui` (`_contratto_processi`, `test_event_codes_declared_guardrail`)
-#        riconoscevano il token a mano, ognuno a modo suo.
+#        riconoscevano il token a mano, ognuno a modo suo. Riscritto sulla
+#        regola vera il 2026-11-13 (brief-db-token-null-dei-seed §6).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -35,115 +31,60 @@ from functools import lru_cache
 from pathlib import Path
 from types import ModuleType
 
-import yaml
-
 from apps.core.tests._repo import repo_root
 
 SEED_DIR = repo_root() / "db/changelog/migrations_v2/80_data/sql"
 SEED_UI_DIR = SEED_DIR / "ui"
 
-# La riga di un CSV di seed: `None` dove il loader scrive NULL.
+# La riga di un CSV di seed: `None` dove il caricatore scrive NULL.
 RigaSeed = dict[str, "str | None"]
 
-# Un caricatore senza `nullValue`: non si assume il default di Liquibase.
-_TOKEN_ASSENTE = object()
-
-
-# Scopo: il generatore dei CSV di seed delle liste, importato per percorso.
+# Scopo: un modulo di `scripts/`, importato per percorso.
 # ⚠️ Per percorso e non `from scripts...`: `scripts/` non e' un package e non
-#    sta sul path del runner Django. Il modulo e' senza stato (costanti e
-#    funzioni pure), quindi una istanza sola per processo basta.
-@lru_cache(maxsize=1)
-def generatore_seed_lista() -> ModuleType:
-    sorgente = repo_root() / "scripts" / "gen_seed_lista.py"
-    spec = importlib.util.spec_from_file_location("_gen_seed_lista", sorgente)
+#    sta sul path del runner Django. I moduli sono senza stato (costanti e
+#    funzioni pure, le cache sono per processo), quindi una istanza sola basta.
+@lru_cache(maxsize=None)
+def _modulo_script(nome: str) -> ModuleType:
+    sorgente = repo_root() / "scripts" / f"{nome}.py"
+    spec = importlib.util.spec_from_file_location(f"_script_{nome}", sorgente)
     if spec is None or spec.loader is None:
-        raise AssertionError(f"{sorgente}: generatore dei seed non importabile")
+        raise AssertionError(f"{sorgente}: modulo non importabile")
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo
 
 
-# Scopo: i `nullValue` dei caricatori (`loadData` / `loadUpdateData`) che
-#        leggono `percorso`, come insieme (`_TOKEN_ASSENTE` per chi non lo
-#        dichiara). Si parsano solo gli YAML che nominano il file.
-@lru_cache(maxsize=None)
-def _token_dei_caricatori(percorso: Path) -> frozenset[object]:
-    trovati: set[object] = set()
-
-    def visita(nodo: object, changelog: Path) -> None:
-        if isinstance(nodo, dict):
-            for chiave, valore in nodo.items():
-                if chiave in ("loadData", "loadUpdateData") and isinstance(valore, dict):
-                    file = valore.get("file")
-                    if file and valore.get("relativeToChangelogFile"):
-                        letto = (changelog.parent / file).resolve()
-                    else:
-                        letto = (repo_root() / "db/changelog" / str(file)).resolve()
-                    if letto == percorso:
-                        trovati.add(valore.get("nullValue", _TOKEN_ASSENTE))
-                visita(valore, changelog)
-        elif isinstance(nodo, list):
-            for elemento in nodo:
-                visita(elemento, changelog)
-
-    for changelog in (repo_root() / "db/changelog").rglob("*.yaml"):
-        testo = changelog.read_text(encoding="utf-8")
-        if percorso.name in testo:
-            visita(yaml.safe_load(testo), changelog)
-    return frozenset(trovati)
+# Scopo: il generatore dei CSV di seed delle liste.
+def generatore_seed_lista() -> ModuleType:
+    return _modulo_script("gen_seed_lista")
 
 
-# Scopo: il token che il loader di `percorso` interpreta come NULL.
-# ⛔ SOLLEVA dove non c'e' una risposta sola: nessun caricatore, un caricatore
-#    senza `nullValue`, piu' caricatori in disaccordo senza un descrittore che
-#    decida. Indovinare il token e' esattamente il difetto che questo modulo
-#    chiude.
-def token_nullo(percorso: Path) -> str:
-    percorso = percorso.resolve()
-    dei_caricatori = _token_dei_caricatori(percorso)
-    if not dei_caricatori:
-        raise AssertionError(f"{percorso}: nessun caricatore Liquibase lo legge")
-    descrittori = generatore_seed_lista().CSV_SEED
-    if percorso.parent == SEED_UI_DIR.resolve() and percorso.name in descrittori:
-        dichiarato: str = descrittori[percorso.name]["nullo"]
-        # Il descrittore del generatore e i caricatori devono dire la stessa
-        # cosa: se divergono, il generatore scrive celle che il mirror legge
-        # in un altro modo.
-        if dichiarato not in dei_caricatori:
-            raise AssertionError(
-                f"{percorso.name}: `CSV_SEED` dichiara il token {dichiarato!r}, "
-                f"che nessun caricatore usa ({sorted(map(repr, dei_caricatori))})"
-            )
-        return dichiarato
-    if len(dei_caricatori) > 1 or _TOKEN_ASSENTE in dei_caricatori:
-        raise AssertionError(
-            f"{percorso}: il token NULL non ha una risposta sola nei caricatori "
-            f"({sorted(map(repr, dei_caricatori))}). Si dichiara `nullValue` nel "
-            "caricatore, o si aggiunge un descrittore che decida."
-        )
-    (token,) = dei_caricatori
-    # ⛔ Un `nullValue:` senza valore e' `None` per YAML, non un token: non si
-    #    confronta con le celle, si rifiuta.
-    if not isinstance(token, str):
-        raise AssertionError(
-            f"{percorso}: `nullValue` del caricatore non e' una stringa ({token!r})"
-        )
-    return token
+# Scopo: la regola del caricatore, nella sua sede unica
+#        (`scripts/_seed_csv_caricatori.py`, condivisa col generatore).
+def caricatori_seed() -> ModuleType:
+    return _modulo_script("_seed_csv_caricatori")
 
 
-# Scopo: le righe di un CSV di seed, con `None` al posto del token NULL del suo
-#        loader. `percorso` e' relativo a `80_data/sql/` (`"dbops/processi.csv"`)
-#        o assoluto.
+# Scopo: la cella vuota di ogni colonna dichiarata dai caricatori del file
+#        (vedi `celle_vuote` nella sede unica: solleva se non c'e' una
+#        risposta sola).
+def celle_vuote(percorso: Path) -> dict[str, str | None]:
+    return caricatori_seed().celle_vuote(percorso)
+
+
+# Scopo: le righe di un CSV di seed come le scrive il suo caricatore: `None`
+#        dove scrive NULL, `''` dove scrive la stringa vuota. `percorso` e'
+#        relativo a `80_data/sql/` (`"dbops/processi.csv"`) o assoluto.
 # ⚠️ Ogni chiamata rilegge il file e da' dict NUOVI: le righe non si mettono in
 #    cache, perche' un consumatore che ne modifica una cambierebbe il seed
 #    visto da tutti gli altri test del processo.
 def seed_csv(percorso: str | Path) -> list[RigaSeed]:
     file = SEED_DIR / percorso
-    nullo = token_nullo(file)
+    vuote = celle_vuote(file)
+    leggi = caricatori_seed().leggi_cella
     with file.open(newline="", encoding="utf-8") as fh:
         return [
-            {campo: (None if valore == nullo else valore) for campo, valore in riga.items()}
+            {campo: leggi(valore, vuote.get(campo)) for campo, valore in riga.items()}
             for riga in csv.DictReader(fh)
         ]
 

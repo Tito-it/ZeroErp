@@ -343,9 +343,10 @@ def main():
                 if riga.get("attivo") != "t":
                     continue
                 chiave = (riga.get("etichetta_i18n_key") or "").strip()
-                # Il mirror dichiara `nullValue: "NULL"`: il token e' l'assenza
-                # della chiave, non una chiave.
-                if chiave and chiave != "NULL":
+                # `null` in ogni grafia e' NULL per il caricatore Liquibase (il
+                # `nullValue:` dei caricatori non esiste, brief-db-token-null-dei-seed
+                # §1): e' l'assenza della chiave, non una chiave.
+                if chiave and chiave.lower() != "null":
                     colonne_keys.setdefault(chiave, set()).add(rel)
 
     rotte = sorted((k, v) for k, v in citate.items() if k not in presenti)
