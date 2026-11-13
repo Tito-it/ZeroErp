@@ -103,7 +103,7 @@ d'errore: il giro 1-bis non ne aggiunge; ne riscrive due righe.
 > * [brief-db-revisione-dbops](../work-done/brief-db-revisione-dbops.md): il suo **D28** (le `condition_expr` di
 >   `lock_columns_conditional` ricopiano gli `EXISTS` del guard flags) tocca gli stessi predicati di D9. D28 resta
 >   lì; il giro 1 di qui va fatto **dopo** o **con** D28, perché cambia la finestra del predicato che D28 estrae.
-> * [brief-db-addebito-trasporto-ordine](../work-in-progress/brief-db-addebito-trasporto-ordine.md): tocca `trgfn_articoli_guard_onere_natura`,
+> * [brief-db-addebito-trasporto-ordine](brief-db-addebito-trasporto-ordine.md): tocca `trgfn_articoli_guard_onere_natura`,
 >   `vw_articoli_dettaglio` (`causale_onere_id`, `e_onere`) e `fn_articolo_righe_vive_non_ammesse`. Qui non si
 >   rifà niente di quel cantiere: si toccano solo i metadati (M3) e l'etichetta dei flag (R5).
 > * `analisi-db-magazzino-carico-e-scarico` (analisi, non brief): tocca `requires_lotto`, quindi Q4.
