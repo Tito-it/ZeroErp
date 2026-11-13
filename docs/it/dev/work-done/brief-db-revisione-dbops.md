@@ -293,7 +293,7 @@ preso `20261109-40` … `-57`. L'altro cantiere aperto
 > populate, trigger manuali contro generati, validazione dell'ambito. Si sovrappone solo a D41 (la parte
 > fuori ambito) e a D17-bis (vocabolari chiusi, §2.4 di quel brief): lì vanno annotati, non rifatti. Se i
 > due vanno fusi lo decide Tid.
-> [brief-db-addebito-trasporto-ordine](../work-in-progress/brief-db-addebito-trasporto-ordine.md) §8.1 censisce le fixture
+> [brief-db-addebito-trasporto-ordine](brief-db-addebito-trasporto-ordine.md) §8.1 censisce le fixture
 > della bolla e il predicato «natura è merce»: D71 e D72 completano quel censimento.
 > [brief-db-sorgente-documento-e-riga](../work-done/brief-db-sorgente-documento-e-riga.md) (aggiunto il 2026-11-06): il suo
 > lotto M riscrive le tre viste di magazzino, e porta anche D58, D29 e Q14 ⑧ (decisione di Tid, §8.1). Nessun altro brief aperto tratta i

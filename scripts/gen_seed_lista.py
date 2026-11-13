@@ -69,6 +69,7 @@ from __future__ import annotations
 import argparse
 import ast
 import csv
+import importlib.util
 import io
 import json
 import os
@@ -459,36 +460,55 @@ CAMPI_PRESET = ["id", "lista_id", "codice", "descrizione", "ambito", "profilo_ac
                 "ordinamento_default", "attivo", "data_insert", "user_insert"]
 CAMPI_PC = ["preset_id", "colonna_id", "ordine", "visibile", "fissata"]
 
-# Descrittore dei quattro CSV di seed. `nullo` e' il token che il rispettivo
-# loader Liquibase interpreta come NULL, e NON e' lo stesso per tutti:
-# 20260507-06 (lista_definizione) e 20260806-15 (lista_colonna, dal 2026-11-12) dichiarano
-# `nullValue: "NULL"`, gli altri due `nullValue: ""`.
-# Sbagliarlo non e' un dettaglio di forma: una cella vuota su lista_definizione
-# diventa `vista_sql = ''` (non NULL), il guard
-# ui.trgfn_ui_lista_definizione_a10_valida_vista_sql non salta piu' e l'apply
-# fallisce con E_UI_VISTA_SQL_NON_TROVATA.
+# Descrittore dei quattro CSV di seed.
+# ⭐ IL TOKEN DELL'ASSENZA E' `NULL` PER TUTTI E QUATTRO (`NULLO`), e la cella
+#    vuota di una colonna dichiarata `type: STRING` dal caricatore e' la stringa
+#    vuota, non NULL (`scripts/_seed_csv_caricatori.py`, brief-db-token-null-dei-seed
+#    §1). ⛔ Il `nullValue:` dei caricatori non esiste per Liquibase: il campo
+#    `nullo` che questo descrittore portava, «non e' lo stesso per tutti», e'
+#    ritirato il 2026-11-13.
+#    Sbagliarlo non e' un dettaglio di forma: una cella vuota su `vista_sql`
+#    (STRING) diventa `''`, non NULL, il guard
+#    ui.trgfn_ui_lista_definizione_a10_valida_vista_sql non salta piu' e l'apply
+#    fallisce con E_UI_VISTA_SQL_NON_TROVATA.
 CSV_SEED = {
     "lista_definizione.csv": {
-        "campi": CAMPI_DEF, "nullo": "NULL", "pk": ("id",),
+        "campi": CAMPI_DEF, "pk": ("id",),
         "tabella": "ui.lista_definizione",
     },
     "lista_colonna.csv": {
-        "campi": CAMPI_COL, "nullo": "NULL", "pk": ("id",),
+        "campi": CAMPI_COL, "pk": ("id",),
         "tabella": "ui.lista_colonna",
     },
     "lista_preset.csv": {
-        "campi": CAMPI_PRESET, "nullo": "", "pk": ("id",),
+        "campi": CAMPI_PRESET, "pk": ("id",),
         "tabella": "ui.lista_preset",
     },
     "lista_preset_colonna.csv": {
-        "campi": CAMPI_PC, "nullo": "", "pk": ("preset_id", "colonna_id"),
+        "campi": CAMPI_PC, "pk": ("preset_id", "colonna_id"),
         "tabella": "ui.lista_preset_colonna",
     },
 }
-# La cella «nessun valore» delle colonne nullable di lista_colonna: il token del
-# suo loader. Una cella vuota arriverebbe come stringa vuota, che i CHECK
+
+
+# Scopo: la regola del caricatore, nella sua sede unica, importata per
+#        percorso: questo modulo lo carica per percorso anche il backend
+#        (`apps.core.tests._seed_csv`), e li' `scripts/` non e' sul path.
+def _carica_caricatori():
+    sorgente = Path(__file__).resolve().parent / "_seed_csv_caricatori.py"
+    spec = importlib.util.spec_from_file_location("_seed_csv_caricatori", sorgente)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"{sorgente}: modulo non importabile")
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+_CARICATORI = _carica_caricatori()
+# La cella «nessun valore»: il token `NULL`. Su una colonna STRING una cella
+# vuota arriverebbe come stringa vuota, che i CHECK
 # chk_lista_colonna_*_non_vuoto/a rifiutano (90_end/20261112-30).
-NULLO_COL = CSV_SEED["lista_colonna.csv"]["nullo"]
+NULLO = _CARICATORI.NULLO
 
 # Suffissi fisici che le liste configurate tolgono per ottenere il nome logico
 # della colonna (`stato_descrizione` -> `stato`, `valuta_codice` -> `valuta`).
@@ -712,11 +732,11 @@ def codice_da_etichetta(chiave: str | None, statica: str | None, pos: int) -> st
     return f"colonna_{pos}"
 
 
-# Scopo: converte un valore letto dal DB nella cella CSV equivalente, col token
-#        NULL richiesto dal loader di quel file.
-def cella(valore, nullo: str) -> str:
+# Scopo: converte un valore letto dal DB nella cella CSV equivalente (`NULLO`
+#        per NULL: e' il token per ogni file e ogni colonna).
+def cella(valore) -> str:
     if valore is None:
-        return nullo
+        return NULLO
     if isinstance(valore, bool):
         return "t" if valore else "f"
     if isinstance(valore, (dict, list)):
@@ -726,14 +746,31 @@ def cella(valore, nullo: str) -> str:
     return str(valore)
 
 
-# Scopo: righe gia' presenti in un CSV di seed, indicizzate per chiave primaria.
+# Scopo: righe gia' presenti in un CSV di seed, indicizzate per chiave primaria,
+#        con ogni cella COME LA SCRIVE IL CARICATORE (`None` per NULL, `''`
+#        per la stringa vuota): e' il significato, non il testo del file.
 def righe_csv(nome_csv: str) -> dict[tuple, dict]:
     percorso = SEED_DIR / nome_csv
     if not percorso.exists():
         return {}
     pk = CSV_SEED[nome_csv]["pk"]
+    vuote = _CARICATORI.celle_vuote(percorso)
     with percorso.open(newline="", encoding="utf-8") as fh:
-        return {tuple(r[c] for c in pk): r for r in csv.DictReader(fh)}
+        righe = [
+            {c: _CARICATORI.leggi_cella(v, vuote.get(c)) for c, v in r.items()}
+            for r in csv.DictReader(fh)
+        ]
+    return {tuple(r[c] for c in pk): r for r in righe}
+
+
+# Scopo: la cella `campo` di una riga del CSV (gia' letta da `righe_csv`)
+#        dice una cosa diversa dalla cella che il DB produrrebbe?
+# ⛔ Si confronta il SIGNIFICATO, non il testo: la cella vuota di una colonna
+#    numerica e il token `NULL` sono lo stesso NULL, e confrontarli come
+#    stringhe darebbe per divergenti righe identiche.
+def cella_diversa(nome_csv: str, nel_csv: dict, dal_db: dict, campo: str) -> bool:
+    vuote = _CARICATORI.celle_vuote(SEED_DIR / nome_csv)
+    return nel_csv.get(campo) != _CARICATORI.leggi_cella(dal_db[campo], vuote.get(campo))
 
 
 # Scopo: prossimo id libero considerando SIA il CSV SIA il DB. Il CSV da solo
@@ -767,11 +804,10 @@ def righe_db(conn, id_lista: int) -> dict[str, dict[tuple, dict]]:
             "WHERE p.lista_id = %s ORDER BY pc.preset_id, pc.ordine", CAMPI_PC),
     }
     for nome_csv, (sql, campi) in interrogazioni.items():
-        nullo = CSV_SEED[nome_csv]["nullo"]
         pk = CSV_SEED[nome_csv]["pk"]
         with conn.cursor() as cur:
             cur.execute(sql, (id_lista,))
-            righe = [dict(zip(campi, [cella(v, nullo) for v in r], strict=True)) for r in cur.fetchall()]
+            righe = [dict(zip(campi, [cella(v) for v in r], strict=True)) for r in cur.fetchall()]
         fuori[nome_csv] = {tuple(r[c] for c in pk): r for r in righe}
     return fuori
 
@@ -802,7 +838,7 @@ def confronta(conn, id_lista: int) -> dict[str, dict]:
         mancanti = [r for k, r in righe_del_db.items() if k not in nel_csv]
         divergenti = [
             (nel_csv[k], r) for k, r in righe_del_db.items()
-            if k in nel_csv and any(nel_csv[k].get(c, "") != r[c] for c in campi)
+            if k in nel_csv and any(cella_diversa(nome_csv, nel_csv[k], r, c) for c in campi)
         ]
         esito[nome_csv] = {"mancanti": mancanti, "divergenti": divergenti,
                            "totale_db": len(righe_del_db)}
@@ -946,18 +982,18 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
 
         righe_col.append({
             "id": id_col, "lista_id": id_lista, "codice": logico, "etichetta": etichetta,
-            "etichetta_estesa": "Colonna calcolata FE" if calcolata else NULLO_COL,
-            "campo_sorgente": campo or NULLO_COL,
+            "etichetta_estesa": "Colonna calcolata FE" if calcolata else NULLO,
+            "campo_sorgente": campo or NULLO,
             "tipo_colonna": tipo_colonna, "tipo_dato": tipo_dato,
-            "formato": voce["formato"] or NULLO_COL, "larghezza_default": NULLO_COL,
+            "formato": voce["formato"] or NULLO, "larghezza_default": NULLO,
             "ordine_default": pos * 10, "allineamento": allineamento,
-            "gruppo": NULLO_COL, "gruppo_ordine": NULLO_COL,
+            "gruppo": NULLO, "gruppo_ordine": NULLO,
             "filtrabile": "f" if calcolata else "t",
             "ordinabile": "f" if calcolata else "t",
             "esportabile": "f" if calcolata else "t",
             "ricercabile_full": "f", "sensibile": "f", "attivo": "t",
             "data_insert": data_insert, "user_insert": utente,
-            "etichetta_i18n_key": voce["chiave"] or NULLO_COL, "priorita": 50,
+            "etichetta_i18n_key": voce["chiave"] or NULLO, "priorita": 50,
         })
         righe_pc.append({
             "preset_id": id_preset, "colonna_id": id_col, "ordine": pos * 10,
@@ -970,10 +1006,10 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
         id_col += 1
         righe_col.append({
             "id": id_col, "lista_id": id_lista, "codice": "azioni", "etichetta": "Azioni",
-            "etichetta_estesa": NULLO_COL, "campo_sorgente": NULLO_COL,
-            "tipo_colonna": "azione", "tipo_dato": "string", "formato": NULLO_COL,
+            "etichetta_estesa": NULLO, "campo_sorgente": NULLO,
+            "tipo_colonna": "azione", "tipo_dato": "string", "formato": NULLO,
             "larghezza_default": 70, "ordine_default": 999, "allineamento": "center",
-            "gruppo": NULLO_COL, "gruppo_ordine": 99,
+            "gruppo": NULLO, "gruppo_ordine": 99,
             "filtrabile": "f", "ordinabile": "f", "esportabile": "f",
             "ricercabile_full": "f", "sensibile": "f", "attivo": "t",
             "data_insert": data_insert, "user_insert": utente,
@@ -1008,17 +1044,17 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
     riga_def = {
         "id": id_lista, "codice": codice, "descrizione": descrizione,
         "schema_dati": schema,
-        # Cella vuota = stringa vuota per questo loader (nullValue: "NULL"):
-        # deve uscire il token letterale, altrimenti il guard vista_sql blocca.
-        "vista_sql": vista or CSV_SEED["lista_definizione.csv"]["nullo"],
+        # Cella vuota = stringa vuota (`vista_sql` e' STRING nel caricatore):
+        # deve uscire il token, altrimenti il guard vista_sql blocca.
+        "vista_sql": vista or NULLO,
         "attivo": "t", "data_insert": data_insert, "user_insert": utente,
     }
     breve = codice.split(".")[-1]
     riga_preset = {
         "id": id_preset, "lista_id": id_lista, "codice": f"{breve}_default",
         "descrizione": f"Vista standard {breve}", "ambito": "sistema",
-        "profilo_accesso_id": "", "emittente_fiscale_id": "", "is_default": "t",
-        "pagina_dimensione": 25, "ordinamento_default": "", "attivo": "t",
+        "profilo_accesso_id": NULLO, "emittente_fiscale_id": NULLO, "is_default": "t",
+        "pagina_dimensione": 25, "ordinamento_default": NULLO, "attivo": "t",
         "data_insert": data_insert, "user_insert": utente,
     }
 
@@ -1184,8 +1220,11 @@ def verifica_ordinamento(solo: str | None = None) -> int:
     if solo and not liste:
         print(f"[X] lista `{solo}` non presente nel seed", file=sys.stderr)
         return 1
-    colonne = list(csv.DictReader((SEED_DIR / "lista_colonna.csv").open(encoding="utf-8")))
-    preset = list(csv.DictReader((SEED_DIR / "lista_preset.csv").open(encoding="utf-8")))
+    # ⛔ Lette come le scrive il caricatore, non col `csv.DictReader` nudo: il
+    #    token `NULL` di `campo_sorgente` e' una stringa VERA, e la colonna
+    #    senza sorgente passava per una colonna con sorgente `NULL`.
+    colonne = list(righe_csv("lista_colonna.csv").values())
+    preset = list(righe_csv("lista_preset.csv").values())
 
     problemi = saltate = 0
     for riga in sorted(liste, key=lambda r: r["codice"]):
@@ -1400,7 +1439,7 @@ def esporta(conn, codice: str) -> int:
         print(f"# ---- da SOSTITUIRE in {nome_csv} (stessa chiave, valori diversi) ----")
         for vecchia, nuova in d["divergenti"]:
             campi = CSV_SEED[nome_csv]["campi"]
-            cambiati = [c for c in campi if vecchia.get(c, "") != nuova[c]]
+            cambiati = [c for c in campi if cella_diversa(nome_csv, vecchia, nuova, c)]
             print(f"#  chiave {'/'.join(str(nuova[c]) for c in CSV_SEED[nome_csv]['pk'])}"
                   f" — cambia: {', '.join(cambiati)}")
             print(csv_righe([nuova], campi), end="")

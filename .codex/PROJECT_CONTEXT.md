@@ -247,9 +247,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   l'email, il reset accetta nome utente o email. Chiuso il 2026-10-03
   `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).
-- 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
-  (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 di
-  `work-done/brief-db-articoli-ammessi-per-documento.md`): in corso dal 2026-11-03; chi riparte è in testa al brief.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):

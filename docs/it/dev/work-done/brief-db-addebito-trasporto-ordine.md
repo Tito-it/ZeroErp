@@ -1,8 +1,10 @@
 # Brief DB — Dove si addebita il trasporto di un ordine fatturato alla conferma
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-12 (notte)
+## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: Tid**, col commit di BE e FE del giro 8-septies (§9.10, fatti e verdi il 2026-11-12, `dev/backend-tid`), una prova a video del drawer articolo, poi l'archiviazione.
+**Riparte: nessuno, archiviato il 2026-11-13.** Tutti i giri DB e BE/FE sono applicati e committati. La prova a
+video del drawer articolo è passata (Tid, 2026-11-13), con una causale creata dal pannello delle tabelle di
+configurazione (`config.tabelle_gestibili` id 95, `e1eb18a27`, PR #106).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -38,10 +40,10 @@
 | 15-quinquies | ✅ Tid | commit del giro DB su `dev/db-tid` (`f35f04e12`, PR #102, 2026-11-12) | — | — |
 | 15-sexies | ✅ Tid | D-1 e D-2 come da proposta (2026-11-12) | §9.10 | — |
 | 16 | ✅ BE / FE | le due colonne nominate; JOIN del picker oneri ritirato; `causale_onere_id` scrivibile (D-1); causale nel form articolo (libera in inserimento, spenta se bloccata), picker delle sole causali libere; in inserimento l'onere lo dice la causale scelta (D-2) (2026-11-12) | §9.10 | — |
-| 16-bis | Tid | commit di BE e FE; prova a video del drawer articolo (serve una causale libera: su dbdev oggi non ce n'è) | §9.10 | — |
-| 17 | Tid | archiviazione del brief | — | 16-bis |
+| 16-bis | ✅ Tid | commit di BE e FE; prova a video del drawer articolo, passata (2026-11-13). La causale libera è creata dal pannello config: riga `tabelle_gestibili` id 95 del team DB (`e1eb18a27`, PR #106) | §9.10 | — |
+| 17 | ✅ Tid | archiviazione del brief (2026-11-13) | — | 16-bis |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: BE e FE del §9.10 (`dev/backend-tid`, 2026-11-12).
+Decisioni aperte di Tid: nessuna. Lavoro da committare: nessuno.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** decisione A-9 di Tid (2026-10-12) in
