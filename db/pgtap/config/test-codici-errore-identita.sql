@@ -54,7 +54,9 @@ INSERT INTO config.codici_errore (codice, classe, obsoleto_dal)
 VALUES ('TEST_CE_RITIRATO', 'CONFLITTO_STATO', DATE '2026-01-01');
 
 INSERT INTO config.messaggi_errore (id, codice, lingua, messaggio, causa, soluzione)
-VALUES (9941, 'TEST_CE_RITIRATO', 'it', 'Messaggio di un codice ritirato.', '', '');
+VALUES (9941, 'TEST_CE_RITIRATO', 'it', 'Messaggio di un codice ritirato.', NULL, NULL);
+-- ⚠️ causa/soluzione assenti si scrivono NULL, mai '': lo vieta
+--    chk_messaggi_errore_{causa,soluzione}_non_vuota (20261112-55).
 
 -- ============================================================
 -- 1) Un codice senza classe non puo' nascere

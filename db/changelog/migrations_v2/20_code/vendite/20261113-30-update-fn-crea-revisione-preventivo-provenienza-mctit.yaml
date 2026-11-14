@@ -14,6 +14,8 @@
 #   riga principale di kit resta COMPONENTI: il prezzo lo riscrive la somma.
 #   Il resto del corpo e il COMMENT sono quelli della revisione di partenza,
 #   verificata identica al vivo il 2026-11-13. Rollback: quella revisione.
+#
+# comment-al-presente: ammesso — «rev N» nel COMMENT è il dominio, non una marca di storia: rev è la colonna del numero di revisione di vendite.preventivi
 # ------------------------------------------------------------
 
 databaseChangeLog:
