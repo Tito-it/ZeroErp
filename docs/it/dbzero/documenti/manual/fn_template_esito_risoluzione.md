@@ -1,34 +1,76 @@
-## 📘 Documentazione Concettuale – Funzione `documenti.fn_template_esito_risoluzione()`
+## 📘 Documentazione Concettuale – Funzione `documenti.fn_template_esito_risoluzione`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [documenti.fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile)
-> [documenti.vw_template_risoluzione_emittente](/dbzero/documenti/views/vw_template_risoluzione_emittente)
-> [documenti.vw_template_versioni_stampabili](/dbzero/documenti/views/vw_template_versioni_stampabili)
+> Approfondimento tabelle:
+>
+> * [documenti.template_documenti](/dbzero/documenti/tabelle/template_documenti) — i modelli fra cui si sceglie, e il predefinito
+>
+> Approfondimento viste:
+>
+> * [documenti.vw_template_versioni_stampabili](/dbzero/documenti/views/vw_template_versioni_stampabili) — i soli modelli che contano
+> * [documenti.vw_template_risoluzione_emittente](/dbzero/documenti/views/vw_template_risoluzione_emittente) — la applica a ogni azienda, per la lista Modelli documento
+>
+> Approfondimento funzioni:
+>
+> * [documenti.fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile) — la applica alla stampa, e ne fa errori
+>
+> Guide:
+>
+> * [Documenti e Stampe](/guide/documenti-e-stampe) — §3.2, i due livelli
 
-### 🎯 Scopo
+---
 
-(21-10-2026 — brief `brief-db-modelli-documento-standard`, §10.3 K-5; strada B di §4.1 Q-2)
+### 🎯 Scopo Principale
 
-La regola dei **due livelli**, scritta una volta: per un'azienda e un documento (tipo, sorgente),
-con che cosa si stampa. Conta solo un modello che può stampare
-(`vw_template_versioni_stampabili`).
+La regola dei due livelli, scritta una volta: per un'azienda e un documento (tipo e sorgente) dice con
+che cosa si stampa, considerando solo i modelli che possono stampare. Restituisce sempre una riga: un
+esito, il modello e la versione quando ci sono, e quanti modelli suoi l'azienda ha che possono
+stampare.
 
-### L'esito
+---
+
+### Gli esiti
 
 | Esito | Quando | Modello e versione |
-|---|---|---|
-| `EMITTENTE` | l'azienda ha modelli suoi che possono stampare, e uno è predefinito | il suo predefinito |
-| `SENZA_PREDEFINITO` | ha modelli suoi che possono stampare, nessuno predefinito: lo standard non entra | nessuno |
-| `STANDARD` | non ne ha nessuno, e lo standard predefinito può stampare | lo standard |
-| `NON_RISOLTO` | non ne ha nessuno, e nemmeno lo standard può stampare | nessuno |
+| --- | --- | --- |
+| `EMITTENTE` | l'azienda ha modelli suoi che possono stampare, e il suo predefinito è fra questi | il suo predefinito |
+| `SENZA_PREDEFINITO` | ha modelli suoi che possono stampare, ma il predefinito non c'è o non stampa | nessuno: lo standard non entra |
+| `STANDARD` | non ne ha nessuno che stampi, e il predefinito standard può stampare | lo standard |
+| `NON_RISOLTO` | non ne ha nessuno che stampi, e nemmeno il predefinito standard può stampare | nessuno |
 
-Restituisce anche quanti modelli suoi possono stampare. Una riga sempre.
+Il predefinito è al più uno per azienda, tipo e sorgente fra i modelli attivi, e uno solo fra gli
+standard: l'esito non dipende dall'ordine delle righe.
 
-### Chi la legge
+---
 
-* `fn_risolvi_template_applicabile`, che sugli esiti negativi solleva il codice del caso;
-* `vw_template_risoluzione_emittente`, la lettura della lista Modelli documento.
+### ⭐ Una regola, due lettori
 
-Non legge gli emittenti: chi la chiama ha già l'azienda, e la stampa non dipende da cosa la RLS
-lascia vedere delle aziende.
+* `fn_risolvi_template_applicabile` la usa alla stampa, e sugli esiti negativi solleva il codice del
+  caso;
+* `vw_template_risoluzione_emittente` la applica a ogni azienda, per la lista Modelli documento.
+
+Stampa e lista rispondono così allo stesso modo. La funzione non legge le aziende: chi la chiama ha
+già l'azienda, e quale modello stampa non dipende da che cosa la sicurezza di riga lascia vedere.
+
+---
+
+### Test
+
+* `db/pgtap/documenti/test-documenti-template-standard-v1.sql` — gli esiti, attraverso la porta della
+  stampa.
+* `db/pgtap/documenti/test-documenti-template-porta-unica-v1.sql` — la parità fra la vista e la stampa
+  per `EMITTENTE`, `STANDARD` e `SENZA_PREDEFINITO`.
+
+---
+
+### Note di migrazione
+
+* 2026-10-21 — nasce, per dare alla lista Modelli documento la stessa regola della stampa invece di
+  una sua copia.
+
+---
+
+{% include-markdown "signature-core.md" %}

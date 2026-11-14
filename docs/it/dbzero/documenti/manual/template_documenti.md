@@ -1,113 +1,138 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_documenti`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [documenti.tipi_documento_output](/dbzero/documenti/tabelle/tipi_documento_output)  
-> • [documenti.template_documenti_versioni](/dbzero/documenti/tabelle/template_documenti_versioni)  
-> • [config.sorgenti](/dbzero/config/manual/sorgenti)  
-> • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/manual/emittenti_fiscali)  
+> * [documenti.template_documenti_versioni](/dbzero/documenti/tabelle/template_documenti_versioni) — le versioni del modello, con il contenuto da stampare
+> * [documenti.tipi_documento_output](/dbzero/documenti/tabelle/tipi_documento_output) — che cosa il modello produce
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il documento da cui si stampa
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — l'azienda a cui il modello appartiene
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — le stampe fatte con il modello
+> * [vendite.fatture_stampa_coda](/dbzero/vendite/tabelle/fatture_stampa_coda) — la coda che può indicare un modello
 >
+> Approfondimento viste:
+>
+> * [documenti.vw_template_versioni_stampabili](/dbzero/documenti/views/vw_template_versioni_stampabili) — quali modelli stampano oggi
+> * [documenti.vw_template_personalizzati_scarto](/dbzero/documenti/views/vw_template_personalizzati_scarto) — quanto una copia è rimasta indietro rispetto allo standard
+>
+> Approfondimento funzioni:
+>
+> * [documenti.fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile) — con quale modello si stampa
+> * [documenti.fn_personalizza_template_standard](/dbzero/documenti/funzioni/fn_personalizza_template_standard) — la copia di uno standard per un'azienda
+> * [documenti.trgfn_template_standard_guard_sola_lettura](/dbzero/documenti/funzioni/trgfn_template_standard_guard_sola_lettura) — lo standard in sola lettura per l'applicazione
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — l'azienda presa dalla sessione
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — modelli, versioni, standard e personalizzazione
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 29-04-2026)
-`documenti.template_documenti` rappresenta il **contenitore logico** di un
-template documentale. Non contiene ancora il contenuto renderizzabile del
-template: definisce l'identità funzionale del template per tipo output,
-sorgente applicativa ed emittente fiscale.
+
+`documenti.template_documenti` è il **modello di stampa**: dice che cosa si produce (il tipo di
+documento), da quale documento (la sorgente) e per quale azienda. Il contenuto da stampare non sta
+qui, ma nelle sue versioni.
+
+Il modello porta anche il contratto con il backend: `context_builder_code` nomina chi prepara i dati
+per la stampa, `file_name_pattern` il nome del file prodotto.
 
 ---
 
-### Ruolo nel processo
+### Un modello è di un'azienda, oppure è standard
 
-* collega il tipo documento (`PREVENTIVO`, in Fase A) alla sorgente applicativa
-  che ne richiede la generazione;
-* isola il livello "anagrafico" del template dal suo versionamento;
-* identifica il template di default da usare quando non viene richiesta una
-  variante esplicita.
+* Il **modello di un'azienda** ha `emittente_fiscale_id` valorizzato e vale solo per i documenti di
+  quell'azienda. Se chi lo crea non indica l'azienda, la prende dalla sessione.
+* Il **modello standard** (`standard = true`) è del sistema: non ha azienda e vale per tutte.
+  Lo standard, e solo lo standard, non ha azienda (`chk_template_documenti_standard_senza_emittente`).
+* `standard` non cambia dopo la nascita (lock di colonna, `E_COLONNA_NON_MODIFICABILE`): un modello
+  d'azienda non diventa standard, e viceversa.
 
----
-
-### Campi chiave (semantica)
-
-* **Classificazione**: `tipo_documento_output_id`, `sorgente_tipo_id`,
-  `emittente_fiscale_id`.
-* **Identita` template**: `codice`, `codice_interno`, `descrizione`.
-* **Contratto backend**: `context_builder_code`, `file_name_pattern`.
-* **Selezione default**: `is_default`, `attivo`.
+Lo standard fa da ripiego: un'azienda che non ha nessun modello suo capace di stampare per quel
+documento stampa con lo standard. Se ne ha, vale il suo predefinito, e senza predefinito la stampa
+si ferma invece di ripiegare. La regola sta tutta in
+[fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile).
 
 ---
 
-### Regole operative
+### ⛔ Lo standard non si scrive dall'applicazione
 
-* `codice_interno` è l'identità tecnica stabile del template; `codice` è il
-  codice operativo leggibile;
-* l'unicità è per `emittente_fiscale + sorgente + codice` e
-  `emittente_fiscale + sorgente + codice_interno`, con i NULL **non distinti**:
-  fra i modelli standard (senza emittente) codice e codice interno sono unici
-  per sorgente;
-* può esistere un solo template `is_default = true` e `attivo = true` per
-  tripla `tipo_documento_output + sorgente + emittente`, e un solo standard
-  predefinito attivo per `tipo_documento_output + sorgente`;
-* `context_builder_code` identifica il builder backend che prepara il contesto
-  dati per il render.
+Uno standard e le sue versioni li scrivono solo il seed e i changeSet, cioè il proprietario della
+tabella. L'applicazione li legge: un INSERT, un UPDATE o un DELETE su uno standard, o su una sua
+versione, è rifiutato con `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA`. Chi vuole un modello diverso
+lo **personalizza**: crea il modello della sua azienda partendo dalla versione con cui lo standard
+stampa oggi ([fn_personalizza_template_standard](/dbzero/documenti/funzioni/fn_personalizza_template_standard)).
 
----
-
-### Il modello standard
-
-(20-10-2026 — brief `brief-db-modelli-documento-standard`)
-
-Un emittente nuovo non ha modelli suoi, e senza modelli non potrebbe emettere.
-Per questo il sistema fornisce un **modello standard** per ogni tipo di
-documento: una riga con `standard = true` e **senza emittente**
-(`chk_template_documenti_standard_senza_emittente`: lo standard, e solo lo
-standard, non ha emittente).
-
-* **Fa da ripiego.** Si stampa con lo standard quando l'emittente non ha nessun
-  modello suo che può stampare per quel documento (attivo, con una versione
-  pubblicata valida oggi: la sola bozza non basta). Se ne ha, vale il suo
-  predefinito, e senza predefinito la stampa si ferma (la regola è in
-  [fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile)).
-* **Lo scrivono solo il seed e i changeSet.** Dall'applicazione si legge e
-  basta (`E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA`, guard
-  `trg_template_documenti_a05_guard_standard_ins_upd_dlt`, che copre anche le
-  versioni). Chi vuole un modello diverso lo **personalizza**
-  ([fn_personalizza_template_standard](/dbzero/documenti/funzioni/fn_personalizza_template_standard)):
-  crea il modello del suo emittente partendo dalla versione con cui lo standard
-  stampa oggi, e la versione nuova dichiara da dove è partita
-  (`template_documenti_versioni.derivata_da_versione_id`).
-* **Un'evoluzione ha una sede sola.** I changeSet che cambiano un modello
-  scrivono sullo standard, trovato per `standard + tipo + sorgente +
-  codice_interno`, non sulle copie degli emittenti. Quanto una copia è rimasta
-  indietro lo dice
-  [vw_template_personalizzati_scarto](/dbzero/documenti/views/vw_template_personalizzati_scarto).
-* `standard` non cambia dopo la nascita (lock di colonna): un modello non
-  diventa standard, e uno standard non diventa il modello di un emittente.
-* Un documento generato con lo standard porta l'emittente del documento: la
-  coerenza (`trgfn_documenti_generati_check_coerenza`, regola 4) ammette
-  «stesso emittente, oppure modello standard».
+Per la stessa ragione un'evoluzione del modello ha una sede sola: i changeSet scrivono sullo
+standard, trovato per tipo, sorgente e codice interno, e non sulle copie delle aziende. Quanto una
+copia è rimasta indietro lo dice
+[vw_template_personalizzati_scarto](/dbzero/documenti/views/vw_template_personalizzati_scarto).
 
 ---
 
-### Confine del modello
+### Le chiavi: codice e codice interno, per azienda e sorgente
 
-* il contenuto del template non vive qui ma in
-  `documenti.template_documenti_versioni`;
-* la tabella non storicizza le rese effettuate: quello storico vive in
-  `documenti.documenti_generati`;
-* la tabella non descrive i file asset: quelli sono nel catalogo
-  `documenti.template_asset`.
+* `codice_interno` è l'identità tecnica stabile e non si modifica; `codice` è quello leggibile.
+  Tutti e due si scrivono in maiuscolo.
+* Codice e codice interno sono unici per azienda e sorgente. L'unicità tratta l'azienda vuota come
+  un valore: fra gli standard, codice e codice interno sono unici per sorgente. Uno standard e la
+  copia di un'azienda possono avere lo stesso codice interno.
+* Per ogni azienda, tipo di documento e sorgente c'è **al più un predefinito attivo**, e uno solo
+  anche fra gli standard.
+* `uq_template_documenti_id_tipo_sorgente` non restringe niente (contiene la chiave primaria): è il
+  bersaglio della FK con cui la coda di stampa delle fatture lega il modello indicato al tipo e alla
+  sorgente della sua riga.
 
 ---
 
-### Uso tipico nel processo
+### Attivo e spento
 
-1. il backend chiama `fn_risolvi_template_applicabile` con sorgente, emittente
-   del documento e tipo output;
-2. la funzione restituisce il template (dell'emittente o standard);
-3. seleziona la versione pubblicata valida alla data di riferimento;
-4. costruisce il contesto tramite `context_builder_code`.
+Un modello spento non stampa e non conta nella risoluzione. Un modello si spegne solo se non ha
+versioni attive e nessuna stampa lo cita (i trigger generati del framework ATTIVO). Per accendere
+un modello servono attivi il suo tipo di documento, la sua sorgente e la sua azienda.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Un modello che ha stampato non si spegne più.** `documenti.documenti_generati` non ha la
+  colonna `attivo`, quindi per il blocco della disattivazione ogni stampa è un figlio vivo, e una
+  stampa non si cancella. Lo stesso vale per le versioni usate: e un modello con una versione attiva
+  non si spegne. Il rifiuto (`E_ATTIVO_BLOCK_CHILDREN_EXIST`) suggerisce di togliere le stampe, cosa
+  impossibile: un modello d'azienda usato una volta resta acceso per sempre, e con lui la sua
+  candidatura nella risoluzione.
+
+---
+
+### Codici errore
+
+* `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` — scrittura dall'applicazione su uno standard.
+* `E_COLONNA_NON_MODIFICABILE` — cambio di `standard`; `E_CODICE_NON_MODIFICABILE` — cambio di
+  `codice_interno`.
+* Le unicità (codice, codice interno, predefinito) arrivano come violazione di vincolo, e il backend
+  le traduce per nome.
+
+---
+
+### Test
+
+* `db/pgtap/documenti/test-documenti-template-documenti.sql` — le unicità, il predefinito unico, il
+  lock.
+* `db/pgtap/documenti/test-documenti-template-standard-v1.sql` — forma dello standard, unicità fra
+  gli standard, lock di `standard`, risoluzione.
+* `db/pgtap/documenti/test-documenti-template-standard-app-v1.sql` — lo standard in sola lettura
+  per l'applicazione.
+
+---
+
+### Note di migrazione
+
+* 2026-04-29 — nasce la tabella.
+* 2026-10-20 — nasce il modello standard: la colonna `standard`, il CHECK con l'azienda, le unicità
+  che trattano l'azienda vuota come un valore, il guard di sola lettura.
 
 ---
 

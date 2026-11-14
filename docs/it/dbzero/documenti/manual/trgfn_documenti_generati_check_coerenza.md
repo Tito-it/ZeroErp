@@ -1,67 +1,96 @@
-# trgfn_documenti_generati_check_coerenza
+## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_documenti_generati_check_coerenza`
 
-### Scopo
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — la stampa che si controlla
+> * [documenti.template_documenti](/dbzero/documenti/tabelle/template_documenti) — il modello con cui si confronta
+> * [documenti.template_documenti_versioni](/dbzero/documenti/tabelle/template_documenti_versioni) — la versione, che deve essere di quel modello
+>
+> Approfondimento funzioni:
+>
+> * [documenti.fn_template_motivo_non_coerente](/dbzero/documenti/funzioni/fn_template_motivo_non_coerente) — la regola: il modello va bene per il documento?
+> * [documenti.fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile) — la stessa domanda, prima del render
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il rifiuto
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — con quale modello si stampa un documento
 
-Trigger function `BEFORE INSERT OR UPDATE` su `documenti.documenti_generati` che valida la **coerenza referenziale** tra i campi denormalizzati del documento e i corrispondenti valori sul template referenziato (guard **A6** del piano Fase A documenti).
+---
 
-`documenti_generati` denormalizza per audit alcune relazioni che potrebbero in teoria essere ricostruite via join: `tipo_documento_output_id`, `sorgente_tipo_id`, `emittente_fiscale_id`. Questa denormalizzazione è giustificata dall'audit (lo snapshot deve sopravvivere anche a rinominazioni o ristrutturazioni del template), ma introduce un rischio: se i valori dell'istanza sono incoerenti con quelli del template che ha generato il documento, lo `context_json` perde di valore probatorio.
+### 🎯 Scopo Principale
 
-Il guard chiude questo rischio: a ogni INSERT/UPDATE le 4 relazioni devono allinearsi.
+Trigger function `BEFORE INSERT OR UPDATE` su `documenti.documenti_generati` che rifiuta una stampa incoerente con
+il suo modello: la versione deve essere di quel modello, e il modello deve andare bene per il documento stampato.
 
-## Schema
+La stampa ricopia sorgente, tipo di output e azienda, perché lo snapshot deve reggere anche se il modello cambia
+dopo. Ricopiare apre la strada all'incoerenza: una stampa che dice di essere nata da un modello che non poteva
+stamparla perde il suo valore di prova. Il controllo è la rete del database dietro alla scelta del modello che fa
+il backend.
 
-`documenti`
+---
 
-## Trigger associato
+### Due domande, una sola sede per la seconda
 
-```sql
-CREATE TRIGGER trg_documenti_generati_a10_check_coerenza_ins_upd
-BEFORE INSERT OR UPDATE ON documenti.documenti_generati
-FOR EACH ROW
-EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza();
-```
+* **La versione è del modello?** Il trigger legge il modello della versione indicata e lo confronta con
+  `template_documento_id` della stampa.
+* **Il modello va bene per il documento?** La risposta è di `documenti.fn_template_motivo_non_coerente`: stessa
+  sorgente, stesso tipo di output, e la stessa azienda **oppure** un modello standard, che vale per tutte. È la
+  stessa domanda che la risoluzione fa sul modello indicato prima del render: la regola sta in un punto solo.
 
-* **Fase**: `a10` (guard fail-fast).
+Il trigger non corregge niente: rifiuta. Correggere in silenzio nasconderebbe il difetto di chi ha scritto la
+riga.
 
-## Logica
+---
 
-1. Recupera dal `template_versione_id` indicato la coppia `(template_documento_id, ...derivati...)`.
-2. Verifica che `NEW.template_documento_id` coincida con il `template_documento_id` della versione (la versione deve appartenere al template indicato).
-3. Chiede a `documenti.fn_template_motivo_non_coerente` se il modello va bene per il documento:
-   stessa sorgente, stesso tipo di output, e la stessa azienda **oppure** un modello standard
-   (lo standard vale per tutte). È la stessa domanda che `fn_risolvi_template_applicabile` fa sul
-   modello indicato prima del render: la regola sta in un punto solo (rev 21-10-2026, §10.3 K-4).
-4. Un'incoerenza solleva `E_DOCUMENTI_GENERATO_COERENZA`. Per la regola 1 il contesto porta il
-   modello atteso e quello fornito; per le altre il **motivo** per nome (`SORGENTE`, `TIPO`,
-   `EMITTENTE`) e i valori del documento. Se più regole falliscono, il motivo è il primo
-   nell'ordine del BB (sorgente, tipo, azienda).
+### Che cosa dice il rifiuto
 
-## Codice errore
+Per la prima domanda il contesto porta il modello atteso e quello fornito. Per la seconda porta il **motivo** per
+nome (`SORGENTE`, `TIPO`, `EMITTENTE`) e i valori della stampa; se più regole falliscono, il motivo è il primo
+nell'ordine della regola (sorgente, tipo, azienda).
 
-| Codice                              | HTTP | Messaggio                                                                                                              |
-| ----------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------- |
-| `E_DOCUMENTI_GENERATO_COERENZA`     | 409  | Documento generato incoerente: tipo, sorgente, emittente o template_versione non allineati con il template referenziato. |
+Fra i controlli sull'inserimento questo parla per primo: su una stampa incoerente e anche fuori forma, la frase
+giusta è quella della coerenza, non quella della forma dei dati.
 
-Messaggio in `config.messaggi_errore` (id 415).
+---
 
-## Caratteristiche
+### ⚠️ Che cosa oggi non copre
 
-* **Service vs DB-first**: la coerenza è già garantita dal `pipeline_runner` lato Django, che costruisce sempre un `documenti_generati` partendo dal template. Questa guard è la rete di sicurezza DB: protegge contro bug di service, query manuali, fixture mal scritte e migrazioni future che bypassino il livello applicativo.
-* **Equivalenze, non FK**: Postgres non offre constraint `CHECK` su sub-query referenziali, quindi il controllo è espresso come trigger. La conseguenza è che il check è valutato per ogni riga, ma l'overhead è trascurabile (1 SELECT con FK indicizzata).
-* **Niente "auto-fix"**: il trigger non corregge i valori incoerenti — solleva eccezione. Correggere automaticamente nasconderebbe bug di service.
+* **Gira anche sulla modifica, e legge il modello di oggi.** Su una stampa le colonne che il controllo confronta
+  sono ferme dopo l'inserimento, quindi sull'`UPDATE` non c'è niente di nuovo da verificare. Ma il controllo
+  rilegge sorgente, tipo e azienda del modello come sono adesso, e quelle colonne del modello non sono bloccate: se
+  cambiano dopo la stampa, ogni modifica della stampa vecchia (anche di `stato` o di `meta`) viene rifiutata.
 
-## Dipendenze
+---
 
-* `documenti.template_documenti_versioni` — sorgente del `template_documento_id` atteso.
-* `documenti.template_documenti` — sorgente di `tipo_documento_output_id`, `sorgente_tipo_id`, `emittente_fiscale_id` attesi.
-* `script.fn_log_and_raise_error`
-* `config.messaggi_errore`
+### Codici errore
 
-## Vedi anche
+* `E_DOCUMENTI_GENERATO_COERENZA` (`DATO_ERRATO`) — la versione non è del modello, oppure il modello non va bene
+  per il documento; il motivo è nel contesto.
 
-* [`documenti.documenti_generati`](/dbzero/documenti/tabelle/documenti_generati)
-* [`documenti.template_documenti`](/dbzero/documenti/tabelle/template_documenti)
-* [`documenti.template_documenti_versioni`](/dbzero/documenti/tabelle/template_documenti_versioni)
-* [`trgfn_documenti_generati_block_delete`](trgfn_documenti_generati_block_delete.md) — guard A5
-* [`trgfn_documenti_generati_protect_snapshot`](trgfn_documenti_generati_protect_snapshot.md) — guard A7
-* [Sviluppo Documenti — Piano DB §6.5, §13.3 A6](/dev/work-done/sviluppo-documenti-db)
+---
+
+### Test
+
+* `db/pgtap/documenti/test-documenti-generati.sql` — tipo di output e azienda incoerenti;
+* `db/pgtap/documenti/test-documenti-template-standard-v1.sql` — il modello standard va bene per ogni azienda,
+  quello di un'altra azienda no;
+* `db/pgtap/documenti/test-documenti-template-porta-unica-v1.sql` — la stessa regola vista dalla risoluzione;
+* `db/pgtap/documenti/test-documenti-versione-contesto-v1.sql` — l'ordine dei controlli.
+
+---
+
+### Note di migrazione
+
+* 2026-05-01 — nasce il controllo.
+* 2026-10-20 — un modello standard va bene per la stampa di qualunque azienda.
+* 2026-10-21 — la seconda domanda passa alla regola comune con la risoluzione del modello, e il rifiuto dice il
+  motivo per nome.
+
+---
+
+{% include-markdown "signature-core.md" %}

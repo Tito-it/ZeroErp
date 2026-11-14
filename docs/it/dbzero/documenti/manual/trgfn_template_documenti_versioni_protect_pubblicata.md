@@ -1,108 +1,106 @@
-# trgfn_template_documenti_versioni_protect_pubblicata
+## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_template_documenti_versioni_protect_pubblicata`
 
-### Scopo
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [documenti.template_documenti_versioni](/dbzero/documenti/tabelle/template_documenti_versioni) — la tabella protetta
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — le stampe che rileggono la versione
+>
+> Approfondimento viste:
+>
+> * [documenti.vw_template_versioni_stampabili](/dbzero/documenti/views/vw_template_versioni_stampabili) — anche un'obsoleta stampa, fino alla sua fine
+>
+> Approfondimento funzioni:
+>
+> * [documenti.fn_pubblica_template_documento_versione](/dbzero/documenti/funzioni/fn_pubblica_template_documento_versione) — l'unica che chiude una versione pubblicata
+> * [documenti.trgfn_template_documenti_versioni_block_delete](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_block_delete) — quali versioni si cancellano
+> * [documenti.trgfn_template_documenti_versioni_guard_derivata_da](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_guard_derivata_da) — l'origine di una copia, che ha il suo guard
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la registrazione dell'errore
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — versioni e stati
 
-(latest review 14-11-2026 — anche le `OBSOLETA`, e lo stato non torna indietro: `20261114-04`)
+---
 
-Trigger function `BEFORE UPDATE OF ...` su `documenti.template_documenti_versioni` che impone
-l'**immutabilità delle versioni fuori bozza**, `PUBBLICATA` e `OBSOLETA` (guard **A1** del piano
-Fase A documenti).
+### 🎯 Scopo Principale
 
-Una versione fuori bozza è il contenuto renderizzabile autoritativo del template: se cambiasse
-silenziosamente, tutti i `documenti_generati` che la referenziano (via `template_versione_id`)
-avrebbero un `template_hash` non più verificabile contro il template attuale, e l'audit della
-generazione perderebbe valore. Vale anche per una versione **superata**: una `OBSOLETA` stampa
-fino all'ultimo giorno della sua validità
-([vw_template_versioni_stampabili](/dbzero/documenti/views/vw_template_versioni_stampabili)), e la
-ristampa fedele dei documenti già generati la rilegge.
+Rende **immutabile una versione fuori bozza**, pubblicata o obsoleta: il contenuto, la pagina, le
+date, la forma dei dati, il modello, il numero e lo stato restano quelli della pubblicazione. È
+montata `BEFORE UPDATE OF` quelle colonne su `documenti.template_documenti_versioni`.
 
-Per modificare una versione si crea sempre una **nuova `BOZZA`** e la si pubblica a sua volta.
+---
 
-## Schema
+### ⛔ Fuori bozza non cambia niente, nemmeno lo stato
 
-`documenti`
+Una versione fuori bozza è il contenuto con cui si è stampato. Se cambiasse, le stampe che la citano
+avrebbero un'impronta del template non più verificabile, e la ristampa fedele produrrebbe un
+documento diverso. Vale anche per una versione superata: un'obsoleta stampa fino all'ultimo giorno
+della sua validità, e la ristampa la rilegge.
 
-## Trigger associato
+Lo stato fa parte dell'elenco: fuori bozza non torna indietro. Senza questa regola, riportare una
+versione pubblicata in bozza la renderebbe di nuovo modificabile in tutto. La forma dei dati ne fa
+parte perché la controlla la pubblicazione: cambiarla dopo aggirerebbe il controllo.
 
-```sql
-CREATE TRIGGER trg_template_documenti_versioni_a10_protect_pubblicata_upd
-BEFORE UPDATE OF
-    html_template, css_template, markdown_template, render_engine_id,
-    formato_template, page_format, page_orientation,
-    margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
-    valido_dal, valido_al, context_schema, versione_contesto,
-    template_documento_id, versione, stato
-ON documenti.template_documenti_versioni
-FOR EACH ROW
-EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata();
-```
+Fuori dall'elenco: `titolo`, `meta`, `attivo`, l'origine della copia (ha il suo guard) e le colonne
+d'audit. Per cambiare il layout si crea una bozza nuova e la si pubblica.
 
-* **`versione_contesto`** è nell'elenco dal 30-09-2026: la forma dei dati che la versione legge fa
-  parte del patto controllato alla pubblicazione, e dopo non si cambia.
-* **`stato`** è nell'elenco dal 14-11-2026: fuori bozza lo stato non torna indietro. Prima un
-  `UPDATE` del solo stato riportava una versione pubblicata in `BOZZA`, e da lì si modificava tutto.
-* **Fase**: `a10` (guard fail-fast, prima dei trigger di automazione `z90` storico/audit).
-* **Fuori dall'elenco**: `titolo`, `meta`, `attivo`, `derivata_da_versione_id` (ha il suo guard),
-  `data_update`, `user_update`, `tx_id`. Spegnere una versione (`attivo = false`) resta possibile.
+Il trigger scatta anche quando la colonna è riscritta con lo stesso valore: un salvataggio che
+riscrive tutta la riga di una versione fuori bozza è rifiutato. Nessun altro trigger `BEFORE` della
+tabella scrive queste colonne, quindi la forma `UPDATE OF` è sicura.
 
-## Logica
+---
 
-1. Se `OLD.stato` è `BOZZA`, l'`UPDATE` passa.
-2. Se `OLD.stato` è `PUBBLICATA` o `OBSOLETA`, l'`UPDATE` è bloccato con
-   `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` (dettaglio `template_documento_id`, `versione`,
-   `stato`, `stato_nuovo`), **salvo un caso solo**: la chiusura che fa
-   [`fn_pubblica_template_documento_versione`](/dbzero/documenti/funzioni/fn_pubblica_template_documento_versione)
-   quando pubblica la versione successiva. Passa se tutte queste condizioni valgono insieme:
-   * la porta `zeroerp.allow_template_versione_chiusura_override` è `'on'`;
-   * lo stato va da `PUBBLICATA` a `OBSOLETA`;
-   * `valido_al` diventa una data, uguale o precedente a quella di prima (la validità si accorcia);
-   * ogni altra colonna protetta resta com'era.
+### Un'eccezione sola: la chiusura fatta dalla pubblicazione
 
-## La porta della chiusura
+Quando [fn_pubblica_template_documento_versione](/dbzero/documenti/funzioni/fn_pubblica_template_documento_versione)
+pubblica una versione, chiude quelle che la nuova supera. È l'unica scrittura ammessa su una versione
+fuori bozza, e passa solo se valgono tutte insieme:
 
-La funzione di pubblicazione apre la porta (`set_config(…, 'on', true)`, cioè `SET LOCAL`) dopo
-aver scelto le versioni da chiudere, le chiude con **una scrittura sola** (stato e data insieme), e
-la richiude subito. Nessun'altra scrittura della transazione la trova aperta, e anche aperta la
-porta ammette solo la forma della chiusura: un `UPDATE` che a porta aperta cambia anche l'HTML è
-rifiutato. La porta protegge da un backend che sbaglia, non da uno manomesso: chi apre la porta a
-mano può chiudere una versione, ma non modificarla.
+* la porta `zeroerp.allow_template_versione_chiusura_override` è aperta;
+* lo stato va da `PUBBLICATA` a `OBSOLETA`;
+* la data di fine diventa una data, uguale o precedente a quella di prima: la validità si accorcia;
+* ogni altra colonna protetta resta com'era.
 
-## Codice errore
+La funzione apre la porta solo per la scrittura di chiusura, nella transazione, e la richiude subito.
+Anche aperta, la porta ammette solo quella forma: un UPDATE che a porta aperta cambia anche il
+corpo è rifiutato. Una versione già obsoleta non si chiude di nuovo.
 
-| Codice | HTTP | Messaggio |
-| --- | --- | --- |
-| `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | Una versione pubblicata di un template documentale non può essere modificata, nemmeno quando è superata da una versione successiva. |
+⚠️ La porta protegge da un backend che sbaglia, non da uno manomesso: chi apre la porta a mano può
+accorciare una versione pubblicata, ma non modificarla.
 
-Il messaggio è centralizzato in `config.messaggi_errore` (id 410, CSV `messaggi_errore.csv`).
+---
 
-## Caratteristiche
+### Codici errore
 
-* **Single-purpose**: si occupa solo dell'immutabilità della versione fuori bozza. Non gestisce
-  delete (vedi **A2**
-  [`trgfn_template_documenti_versioni_block_delete`](trgfn_template_documenti_versioni_block_delete.md))
-  né anti-overlap (vincolo `EXCLUDE USING gist` sulla tabella).
-* **`UPDATE OF` mirato**: scatta anche a valore uguale (`SET colonna = <stesso valore>`), quindi un
-  salvataggio che riscrive tutta la riga di una versione fuori bozza è rifiutato. Nessun altro
-  trigger `BEFORE` della tabella scrive le colonne dell'elenco: `OF` è la forma giusta (linee guida
-  trigger, «`UPDATE` o `UPDATE OF colonna`»).
-* **Coerenza con storico standard**: questa tabella ha storico standard attivo (`storicizza`),
-  quindi ogni transizione di `stato` è comunque tracciata.
+* `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` — ogni modifica di una colonna protetta su una
+  versione fuori bozza, fuori dalla forma della chiusura. Il contesto porta modello, numero, lo stato
+  di prima e quello chiesto.
 
-## Verifica
+---
 
-`db/pgtap/documenti/test-fn-pubblica-template-documento-versione-v1.sql`, test 18-23: una
-`OBSOLETA` non si modifica e non torna in bozza, una `PUBBLICATA` non torna in bozza, la porta è
-richiusa dopo la pubblicazione, senza porta una `PUBBLICATA` non si chiude a mano, a porta aperta
-passa solo la chiusura. I test 4-7 e 14 provano che la pubblicazione chiude come prima.
-`db/pgtap/documenti/test-documenti-template-versioni.sql` copre il caso `PUBBLICATA` di origine.
+### Test
 
-## Dipendenze
+* `db/pgtap/documenti/test-fn-pubblica-template-documento-versione-v1.sql` — un'obsoleta non si
+  modifica e non torna in bozza; una pubblicata non torna in bozza; la porta è richiusa dopo la
+  pubblicazione; senza porta una pubblicata non si chiude a mano; a porta aperta passa solo la
+  chiusura; la pubblicazione chiude come deve.
+* `db/pgtap/documenti/test-documenti-template-versioni.sql` — corpo, data di inizio e forma dei dati
+  di una pubblicata non cambiano; `meta` sì.
 
-* `script.fn_log_and_raise_error` — sollevamento errore localizzato con DETAIL/HINT.
-* `config.messaggi_errore` — messaggio i18n del codice errore.
+---
 
-## Vedi anche
+### Note di migrazione
 
-* [`documenti.template_documenti_versioni`](/dbzero/documenti/tabelle/template_documenti_versioni) — tabella protetta
-* [`trgfn_template_documenti_versioni_block_delete`](trgfn_template_documenti_versioni_block_delete.md) — guard A2 (delete block correlato)
-* [Sviluppo Documenti — Piano DB §6.3, §13.3 A1](/dev/work-done/sviluppo-documenti-db)
+* 2026-05-01 — nasce il guard, sulle sole versioni pubblicate.
+* 2026-09-30 — la forma dei dati entra fra le colonne protette.
+* 2026-11-14 — protegge anche le obsolete, e lo stato entra nell'elenco: fino ad allora un UPDATE
+  del solo stato riportava una pubblicata in bozza. La chiusura della pubblicazione diventa una
+  scrittura sola, a porta aperta.
+
+---
+
+{% include-markdown "signature-core.md" %}

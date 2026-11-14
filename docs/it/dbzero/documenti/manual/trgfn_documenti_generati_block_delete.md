@@ -1,56 +1,65 @@
-# trgfn_documenti_generati_block_delete
+## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_documenti_generati_block_delete`
 
-### Scopo
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — il registro delle stampe che il trigger protegge
+>
+> Approfondimento funzioni:
+>
+> * [documenti.trgfn_documenti_generati_protect_snapshot](/dbzero/documenti/funzioni/trgfn_documenti_generati_protect_snapshot) — la stampa non cambia
+> * [documenti.trgfn_documenti_generati_eventi_block_delete](/dbzero/documenti/funzioni/trgfn_documenti_generati_eventi_block_delete) — lo stesso blocco sugli eventi
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il rifiuto
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — le garanzie del modulo
 
-Trigger function `BEFORE DELETE` su `documenti.documenti_generati` che blocca **sempre** la cancellazione fisica di un documento generato (guard **A5** del piano Fase A documenti).
+---
 
-`documenti_generati` è la tabella append-only del registro di generazione persistita: ogni rigenerazione di un documento sorgente produce una nuova riga con `progressivo_sorgente` crescente (snapshot completo di template, contesto e hash). Cancellare un record significherebbe falsificare la sequenza storica delle generazioni e rendere irreproducibile l'audit del PDF prodotto.
+### 🎯 Scopo Principale
 
-Il ciclo di vita è gestito **esclusivamente via stato**: `GENERATO → ARCHIVIATO` (documento superato) oppure `GENERATO → ANNULLATO` (documento revocato per errore di emissione). Il record fisico resta indefinitamente e l'audit dei cambi di stato passa attraverso `data_update`/`user_update` (Fase A) e in futuro via `documenti_generati_eventi` (Fase B).
+Trigger function `BEFORE DELETE` su `documenti.documenti_generati` che rifiuta sempre la cancellazione di una
+stampa, senza condizioni.
 
-## Schema
+Ogni stampa è un fatto emesso: cancellarla toglierebbe un anello alla serie delle stampe di un documento e
+renderebbe impossibile verificare il PDF consegnato. La vita di una stampa si chiude con lo stato, non con un
+`DELETE`.
 
-`documenti`
+---
 
-## Trigger associato
+### Nessuna eccezione
 
-```sql
-CREATE TRIGGER trg_documenti_generati_a10_block_delete_dlt
-BEFORE DELETE ON documenti.documenti_generati
-FOR EACH ROW
-EXECUTE FUNCTION documenti.trgfn_documenti_generati_block_delete();
-```
+Il rifiuto non guarda la riga né chi cancella: non c'è un interruttore per aggirarlo. Lo storico standard su
+questa tabella è spento proprio perché la riga non si cancella e non cambia; senza questo blocco lo spegnimento
+dello storico lascerebbe un buco di audit.
 
-* **Fase**: `a10` (guard fail-fast).
-* **Comportamento**: incondizionato — la `DELETE` non è mai un'operazione legittima sul registro di generazione.
+Una stampa non ha una data di scadenza: si conserva quanto serve all'azienda. Una pulizia, se un giorno servirà,
+sarà un'operazione amministrativa esplicita, fuori dal ciclo dell'applicazione.
 
-## Logica
+---
 
-1. Solleva sempre `E_DOCUMENTI_GENERATO_DELETE_BLOCKED` con dettaglio `documento_generato_id`, `uid`, `stato`.
-2. Il `RETURN OLD` è formale: l'eccezione interrompe la transazione.
+### Codici errore
 
-## Codice errore
+* `E_DOCUMENTI_GENERATO_DELETE_BLOCKED` — sempre; il contesto porta l'id, l'`uid` e lo stato della stampa.
 
-| Codice                                     | HTTP | Messaggio                                                                                          |
-| ------------------------------------------ | ---- | -------------------------------------------------------------------------------------------------- |
-| `E_DOCUMENTI_GENERATO_DELETE_BLOCKED`      | 409  | Documento generato non cancellabile: usare lo stato (`ARCHIVIATO`/`ANNULLATO`) per chiuderne il ciclo di vita. |
+---
 
-Messaggio in `config.messaggi_errore` (id 414).
+### Test
 
-## Caratteristiche
+* `db/pgtap/documenti/test-documenti-generati.sql` — la cancellazione rifiutata.
 
-* **Append-only by design**: il delete block è la prima delle tre guard che rendono la tabella append-only e immutabile (insieme ad A6 coerenza e A7 immutabilità snapshot). Senza questa guard, la disabilitazione dello storico standard (Step B del piano Fase A) sarebbe un buco di audit.
-* **No cleanup automatico**: non esiste TTL su `documenti_generati`. La storia delle generazioni si conserva quanto serve all'azienda; eventuali purge sono operazioni amministrative esplicite, fuori dal ciclo applicativo.
-* **Coerenza con `documenti_generati_file`**: anche i file collegati sono protetti via A7-bis (immutabilità) e via FK `RESTRICT`: se non si può cancellare il padre, non si tenta nemmeno di cancellare i figli.
+---
 
-## Dipendenze
+### Note di migrazione
 
-* `script.fn_log_and_raise_error`
-* `config.messaggi_errore`
+* 2026-05-01 — nasce il blocco.
+* 2026-08-05 — il rifiuto arriva col suo codice: prima la chiamata al rifiuto era scritta male e moriva su un
+  errore generico, che bloccava lo stesso ma senza dire perché.
 
-## Vedi anche
+---
 
-* [`documenti.documenti_generati`](/dbzero/documenti/tabelle/documenti_generati)
-* [`trgfn_documenti_generati_check_coerenza`](trgfn_documenti_generati_check_coerenza.md) — guard A6 (coerenza referenziale)
-* [`trgfn_documenti_generati_protect_snapshot`](trgfn_documenti_generati_protect_snapshot.md) — guard A7 (immutabilità snapshot)
-* [Sviluppo Documenti — Piano DB §6.5, §13.3 A5, sezione B](/dev/work-done/sviluppo-documenti-db)
+{% include-markdown "signature-core.md" %}

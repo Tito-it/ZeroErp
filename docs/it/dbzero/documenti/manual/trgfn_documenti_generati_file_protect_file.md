@@ -1,58 +1,67 @@
-# trgfn_documenti_generati_file_protect_file
+## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_documenti_generati_file_protect_file`
 
-### Scopo
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [documenti.documenti_generati_file](/dbzero/documenti/tabelle/documenti_generati_file) — i file che il trigger protegge
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — la stampa a cui il file appartiene
+>
+> Approfondimento funzioni:
+>
+> * [documenti.trgfn_documenti_generati_protect_snapshot](/dbzero/documenti/funzioni/trgfn_documenti_generati_protect_snapshot) — la stessa protezione sulla stampa
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il rifiuto
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — le garanzie del modulo
 
-Trigger function `BEFORE UPDATE` su `documenti.documenti_generati_file` che blocca la modifica delle colonne **file-specifiche** e dell'attributo `is_principale` (guard **A7-bis** del piano Fase A documenti).
+---
 
-Una riga di `documenti_generati_file` registra il file fisico effettivamente persistito su storage (PDF finale, in Fase A; futuri PDF allegati, firmati, html in Fase B). Una volta scritto, il file binario non può essere sostituito senza falsificare l'identità della generazione: cambiare `storage_key` (cioè il puntamento a un binario diverso), `sha256` (l'identità del contenuto) o `file_size_bytes` significherebbe mentire sull'output del documento.
+### 🎯 Scopo Principale
 
-`is_principale` è bloccata anch'essa: il "file principale" è una scelta deliberata del momento di generazione (in Fase A: sempre il `PDF_FINALE`); cambiare la designazione successivamente confonderebbe il consumer applicativo che cerca "il" file principale di un documento.
+Trigger function `BEFORE UPDATE` su `documenti.documenti_generati_file` che rifiuta la modifica del file salvato e
+del suo ruolo: un file registrato non si sostituisce.
 
-## Schema
+Cambiare la posizione nello storage, l'impronta o la dimensione vorrebbe dire puntare a un altro file e dire il
+falso su ciò che è stato emesso. È la controparte, sul file, dell'immutabilità dello snapshot della stampa.
 
-`documenti`
+---
 
-## Trigger associato
+### Che cosa è fermo, che cosa no
 
-```sql
-CREATE TRIGGER trg_documenti_generati_file_a10_protect_file_upd
-BEFORE UPDATE ON documenti.documenti_generati_file
-FOR EACH ROW
-EXECUTE FUNCTION documenti.trgfn_documenti_generati_file_protect_file();
-```
+Sono fermi la stampa e il ruolo del file (`documento_generato_id`, `file_tipo_id`), il file (`storage_key`,
+`sha256`, `file_size_bytes`, `mime_type`, `file_name`) e `is_principale`: il file principale si sceglie quando la
+stampa nasce, e chi cerca «il» file di una stampa deve trovare sempre lo stesso. Insieme all'indice che ammette un
+solo principale per stampa, la scelta resta stabile e unica.
 
-* **Fase**: `a10` (guard fail-fast).
-* Stessa scelta di A7: trigger non `UPDATE OF` per coerenza con il check interno.
+Restano modificabili `ordinamento`, `meta` e i campi di audit.
 
-## Logica
+Un PDF sbagliato non si corregge sul posto: la stampa si rigenera, e la nuova ha il suo progressivo e i suoi file.
 
-1. Verifica una `OR` di confronti su: `documento_generato_id`, `file_tipo_id`, `storage_key`, `sha256`, `file_size_bytes`, `mime_type`, `file_name`, `is_principale`.
-2. Se almeno uno è cambiato, solleva `E_DOCUMENTI_GENERATO_FILE_IMMUTABILE` con dettaglio `documento_generato_id`, `file_tipo_id`.
-3. Altrimenti l'`UPDATE` passa: restano modificabili `meta`, `ordinamento` (in scenari Fase B), audit fields.
+---
 
-## Codice errore
+### Codici errore
 
-| Codice                                       | HTTP | Messaggio                                                                                              |
-| -------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------ |
-| `E_DOCUMENTI_GENERATO_FILE_IMMUTABILE`       | 409  | File persistito di un documento generato: identità file e flag principale immutabili (no replace).      |
+* `E_DOCUMENTI_GENERATO_FILE_IMMUTABILE` — si è cercato di cambiare il file o il suo ruolo; il contesto porta la
+  stampa e il ruolo.
 
-Messaggio in `config.messaggi_errore` (id 417).
+---
 
-## Caratteristiche
+### Test
 
-* **Controparte di A7**: A7 protegge lo snapshot funzionale del documento; A7-bis protegge il file binario che lo materializza. Insieme rendono la coppia `(documenti_generati, documenti_generati_file)` veramente append-only.
-* **Pattern "no replace, only append"**: per sostituire il PDF (caso eccezionale: bug di render scoperti dopo l'emissione), si annulla il `documenti_generati` (`stato = 'ANNULLATO'`) e si rigenera il documento, ottenendo un nuovo `progressivo_sorgente` con un nuovo `documenti_generati_file`. La storia delle versioni è esplicita e tracciabile.
-* **`is_principale` bloccato in UPDATE**: insieme all'indice unique parziale `uq_documenti_generati_file_principale` (un solo principale per documento) e al vincolo `uq_documenti_generati_file_doc_tipo_ord`, garantisce che la designazione del principale sia stabile e univoca.
+* `db/pgtap/documenti/test-documenti-generati-file.sql` — `storage_key` e `is_principale` rifiutati, `meta`
+  ammesso.
 
-## Dipendenze
+---
 
-* `script.fn_log_and_raise_error`
-* `config.messaggi_errore`
+### Note di migrazione
 
-## Vedi anche
+* 2026-05-01 — nasce il blocco, insieme a `is_principale`.
+* 2026-08-05 — il rifiuto arriva col suo codice, invece di un errore generico.
 
-* [`documenti.documenti_generati_file`](/dbzero/documenti/tabelle/documenti_generati_file)
-* [`documenti.documenti_generati`](/dbzero/documenti/tabelle/documenti_generati)
-* [`trgfn_documenti_generati_protect_snapshot`](trgfn_documenti_generati_protect_snapshot.md) — guard A7 (controparte sul documento)
-* [`trgfn_documenti_generati_block_delete`](trgfn_documenti_generati_block_delete.md) — guard A5
-* [Sviluppo Documenti — Piano DB §13.3 A7-bis, sezione C](/dev/work-done/sviluppo-documenti-db)
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,134 +1,101 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.documenti_generati_eventi`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [documenti.documenti_generati](/dbzero/documenti/manual/documenti_generati)
-> • [documenti.documenti_generati_file](/dbzero/documenti/tabelle/documenti_generati_file)
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — la stampa a cui l'evento appartiene
+> * [documenti.documenti_generati_file](/dbzero/documenti/tabelle/documenti_generati_file) — i file che un evento può citare
 >
-**Trigger guard:**
+> Approfondimento funzioni:
 >
-• [trgfn_documenti_generati_eventi_block_delete](trgfn_documenti_generati_eventi_block_delete.md)
-> • [trgfn_documenti_generati_eventi_block_update](trgfn_documenti_generati_eventi_block_update.md)
+> * [documenti.trgfn_documenti_generati_eventi_block_update](/dbzero/documenti/funzioni/trgfn_documenti_generati_eventi_block_update) — un evento non si modifica
+> * [documenti.trgfn_documenti_generati_eventi_block_delete](/dbzero/documenti/funzioni/trgfn_documenti_generati_eventi_block_delete) — un evento non si cancella
+> * [script.fn_resolve_emittente_fiscale_id](/dbzero/script/funzioni/fn_resolve_emittente_fiscale_id) — l'azienda dell'evento, presa dalla stampa
 >
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — che cosa succede quando si genera e si ristampa un documento
+
+---
 
 ### 🎯 Scopo Principale
-(introdotta 03-05-2026, anticipo Fase B → v1)
 
-`documenti.documenti_generati_eventi` è la **timeline append-only** del ciclo
-vita di un documento generato. Registra in ordine cronologico gli eventi
-applicativi che riguardano una generazione persistita: emissione, download e
-gestione tecnica del file.
+`documenti.documenti_generati_eventi` è la storia di una stampa dopo la sua nascita: una riga per ogni fatto che la
+riguarda (la generazione, ogni scaricamento, gli allegati aggiunti, le ristampe fedeli), con chi, quando, l'esito
+e un dettaglio tecnico.
 
----
-
-### Ruolo nel processo
-
-* fornisce audit chi/quando/cosa per ogni evento utente o tecnico associato a
-  un PDF persistito;
-* rispetta la **Decisione 31** (log evento `SCARICATO` ad ogni download) e la
-  **Decisione 30** (no log per anteprime);
-* copre il caso `STORAGE_ORPHAN` (Decisione 72) per i file orfani da cleanup
-  post-fail commit DB;
-* sostituisce, già in v1, il ricorso ad un audit colonnare ad-hoc (`*_at`,
-  `*_user_id`) sulla tabella `documenti_generati`.
+Gli eventi si aggiungono e basta: non si modificano e non si cancellano. Una correzione è un evento nuovo.
 
 ---
 
-### Campi chiave (semantica)
+### Gli eventi sono un elenco chiuso
 
-* **Riferimento documento**: `documento_generato_id` FK
-  `documenti.documenti_generati(id)` ON DELETE RESTRICT (anche se il delete è
-  bloccato dal trigger A5).
-* **Identità evento**: `evento_tipo`, `evento_at`.
-* **Operatore**: `user_id` FK condizionale `django.auth_user(id)` (nullable
-  per eventi tecnici come `STORAGE_ORPHAN`).
-* **Esito**: `esito` ∈ (`OK`, `KO`, `WARN`).
-* **Diagnostica**: `messaggio` (testo libero, non vuoto se valorizzato),
-  `detail` jsonb (sempre object).
-* **Audit standard**: `tx_id`, `data_insert`, `user_insert`,
-  `data_update`, `user_update` (questi ultimi due restano valorizzati al solo
-  INSERT — la tabella è append-only).
+`evento_tipo` ammette, con un `CHECK`:
 
----
+* `GENERATO` — la stampa è stata emessa e il suo PDF salvato;
+* `SCARICATO` — il PDF salvato è stato scaricato; si registra a ogni scaricamento, l'anteprima no;
+* `ALLEGATO_AGGIUNTO` — dopo l'emissione si sono aggiunti degli allegati alla stampa;
+* `RISTAMPA_FEDELE` — la stampa è stata riprodotta dal contesto congelato e dalla versione registrata. Non è
+  un'emissione: non nasce una riga nuova in `documenti_generati`;
+* `STORAGE_ORPHAN` — un file salvato nello storage è rimasto senza registrazione e va tolto a mano.
 
-### Eventi v1 (set chiuso via CHECK)
+Un evento nuovo vuole una migrazione che allarghi il `CHECK`: gli stati tecnici del motore li decide il codice, non
+un vocabolario configurabile.
 
-| Codice | Quando | `user_id` | `esito` tipico |
-|---|---|---|---|
-| `GENERATO` | Post commit storage + DB del documento generato | utente API | `OK` |
-| `SCARICATO` | Ad ogni download del PDF persistente | utente API | `OK` |
-| `STORAGE_ORPHAN` | File orfano dopo fail commit DB (cleanup automatico) | NULL | `KO` |
-
-`ANTEPRIMA`, `INVIATO`, `ARCHIVIATO`, `ANNULLATO`, `RENDER_KO` **non** sono
-ammessi in v1. Gli stati workflow tecnici sono governati dal codice
-applicativo, non da lookup configurabili (Decisione 18). Estensioni del set
-in Fase B richiederanno una migration che modifica il `CHECK`.
+`esito` è `OK`, `KO` o `WARN`. `user_id` è l'utente che ha originato l'evento, vuoto per un evento tecnico.
+`messaggio`, quando c'è, non è vuoto; `detail` e `meta` sono sempre oggetti JSON.
 
 ---
 
-### Regole principali
+### ⭐ La timeline non si riscrive
 
-* **Append-only**: nessun UPDATE e nessun DELETE sono ammessi (guard
-  `trgfn_documenti_generati_eventi_block_update` /
-  `trgfn_documenti_generati_eventi_block_delete`). Le correzioni si
-  registrano come nuovo evento (es. `esito='WARN'` con riferimento al
-  precedente in `detail`).
-* **Storico OFF**: la tabella è essa stessa il log; la colonna `storicizza`
-  è omessa per impedire il provisioning automatico di
-  `storico.documenti_generati_eventi` da parte del framework `dbops`. Stessa
-  strategia del changeset 20260501-08 ma applicata ab initio.
-* **Detail come object**: `CHECK jsonb_typeof(detail) = 'object'`,
-  coerente con Step E della Fase A. No array, no scalari.
-* **Messaggio non vuoto**: se valorizzato, `btrim(messaggio) <> ''`. NULL
-  resta ammesso (eventi senza messaggio testuale).
+Un `UPDATE` e un `DELETE` sono sempre rifiutati, su qualunque colonna, dai due trigger della tabella. Per questo lo
+storico standard non c'è: la tabella è essa stessa il log, e i campi di audit valgono come data e autore
+dell'inserimento.
 
 ---
 
-### Indici
+### Chi vede gli eventi
 
-| Indice | Colonne | Uso |
-|---|---|---|
-| `ix_documenti_generati_eventi_documento_evento_at` | `(documento_generato_id, evento_at DESC)` | Timeline cronologica per documento (uso primario FE). |
-| `ix_documenti_generati_eventi_evento_tipo` | `(evento_tipo)` | Analytics/dashboard per tipo evento. |
-
-L'indice composito copre anche la `FK` su `documento_generato_id` (lo prefix
-basta per la politica `dbops.fk_index_policy`). L'indice sulla FK `user_id` è
-delegato alla politica degli indici delle FK: nel suo CSV non ha una decisione, e
-finché resta scoperta la mostra il presidio `dbops.vw_fk_da_decidere`.
+Un evento segue il perimetro della sua stampa: l'azienda si risale dalla stampa, e un operatore vede e scrive solo
+gli eventi delle stampe delle aziende del suo perimetro. Un evento su una stampa fuori perimetro è rifiutato dalla
+policy prima ancora della foreign key.
 
 ---
 
-### Uso tipico nel processo
+### ⚠️ Che cosa oggi non copre
 
-1. **Genera documento**: il backend, dopo aver salvato `documenti_generati`
-   e il file fisico nello storage, registra `('GENERATO', 'OK')` con
-   `user_id` dell'API e `detail` minimale (es. `{"size_bytes": ...}`).
-2. **Download PDF**: l'endpoint download registra `('SCARICATO', 'OK')` ad
-   ogni richiesta — Decisione 31.
-3. **Cleanup file orfano**: se il commit DB fallisce dopo un upload riuscito
-   in storage, il backend prova un cleanup best-effort e in caso di errore
-   registra `('STORAGE_ORPHAN', 'KO')` con `detail` contenente
-   `storage_key` per intervento manuale.
+* **`STORAGE_ORPHAN` non ha chi lo scriva.** Un file orfano nasce quando il salvataggio nello storage riesce e la
+  registrazione nel database no: in quel caso la stampa non esiste, e l'evento, che vuole sempre una stampa, non
+  si può scrivere. Il backend oggi lo registra solo nel log applicativo.
 
 ---
 
-### Confine v1 / Fase B
+### Codici errore
 
-In v1 non sono coperti (volutamente):
+* `E_EVENTO_DOCUMENTO_UPDATE_VIETATA` — si è cercato di modificare un evento;
+* `E_EVENTO_DOCUMENTO_DELETE_VIETATA` — si è cercato di cancellare un evento.
 
-* eventi `INVIATO` (PEC/email) → richiede pipeline invio;
-* eventi `ARCHIVIATO`/`ANNULLATO` → vivono come stato su
-  `documenti_generati`, non come evento separato in v1;
-* `RENDER_KO` → se il render fallisce, **non si crea** record in
-  `documenti_generati` (Decisione 32), quindi nessun evento orfano da
-  loggare;
-* anteprime PDF → escluse dalla timeline per Decisione 30.
+---
 
-Tutti questi punti rientrano nel piano di estensione Fase B, non richiedono
-modifiche strutturali alla tabella ma solo l'aggiornamento del set chiuso
-del `CHECK evento_tipo`.
+### Test
+
+* `db/pgtap/documenti/test-documenti-generati-eventi.sql` — gli eventi ammessi e rifiutati, gli esiti, il
+  messaggio e il dettaglio, i due blocchi, lo storico spento, il perimetro;
+* `db/pgtap/rls/test-rls-documenti-satelliti.sql` — il perimetro degli eventi.
+
+---
+
+### Note di migrazione
+
+* 2026-05-03 — nasce la tabella, con `GENERATO`, `SCARICATO` e `STORAGE_ORPHAN`: prende il posto di colonne di
+  audit dedicate su `documenti_generati`.
+* 2026-06-03 — si aggiunge `ALLEGATO_AGGIUNTO`.
+* 2026-08-03 — si aggiunge `RISTAMPA_FEDELE`.
+* 2026-09-10 — la tabella entra nel perimetro delle aziende.
 
 ---
 

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/documenti/manual/trgfn_template_documenti_versioni_guard_derivata_da.md" %}
 # ⚙️ Funzione `trgfn_template_documenti_versioni_guard_derivata_da`
 
 ```sql

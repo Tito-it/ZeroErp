@@ -1,58 +1,67 @@
-# trgfn_template_documenti_versioni_block_delete
+## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_template_documenti_versioni_block_delete`
 
-### Scopo
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [documenti.template_documenti_versioni](/dbzero/documenti/tabelle/template_documenti_versioni) — la tabella protetta
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — le stampe che usano una versione
+>
+> Approfondimento funzioni:
+>
+> * [documenti.trgfn_template_documenti_versioni_protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata) — fuori bozza la versione non cambia
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la registrazione dell'errore
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — versioni e stati
 
-Trigger function `BEFORE DELETE` su `documenti.template_documenti_versioni` che blocca la **cancellazione fisica** delle versioni template in due casi (guard **A2** del piano Fase A documenti):
+---
 
-1. la versione è in stato `PUBBLICATA` o `OBSOLETA` (la storia delle pubblicazioni va preservata);
-2. la versione è già stata utilizzata da almeno un `documenti_generati` (integrità referenziale storica del documento prodotto).
+### 🎯 Scopo Principale
 
-Solo le versioni `BOZZA` non ancora referenziate possono essere cancellate fisicamente — caso tipico: bozza creata per errore, ancora non pubblicata né renderizzata.
+Permette di cancellare solo una **bozza che nessuna stampa ha usato**. È montata `BEFORE DELETE` su
+`documenti.template_documenti_versioni`.
 
-## Schema
+---
 
-`documenti`
+### Due rifiuti
 
-## Trigger associato
+* Una versione **pubblicata o obsoleta** non si cancella: la storia delle pubblicazioni resta, per la
+  ristampa e per l'audit.
+* Una versione che **una stampa ha usato** non si cancella, qualunque sia il suo stato.
 
-```sql
-CREATE TRIGGER trg_template_documenti_versioni_a10_block_delete_protected_dlt
-BEFORE DELETE ON documenti.template_documenti_versioni
-FOR EACH ROW
-EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_block_delete();
-```
+Il caso tipico che passa è la bozza creata per errore. Il secondo controllo ripete quello della FK di
+`documenti_generati` verso la versione, che già impedisce la cancellazione: qui il rifiuto arriva
+con un codice che dice il perché.
 
-* **Fase**: `a10` (guard fail-fast).
+Una versione di uno standard, anche in bozza, dall'applicazione non si cancella comunque: lo
+impedisce prima il guard di sola lettura.
 
-## Logica
+---
 
-1. Se `OLD.stato IN ('PUBBLICATA', 'OBSOLETA')`: solleva `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` con dettaglio `template_documento_id`, `versione`, `stato`.
-2. Conta le righe in `documenti.documenti_generati` con `template_versione_id = OLD.id`.
-3. Se il conteggio è > 0: solleva `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` con dettaglio `template_documento_id`, `versione`, `documento_generati_count`.
-4. Altrimenti la `DELETE` procede.
+### Codici errore
 
-## Codice errore
+* `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` — versione fuori bozza, oppure usata da una stampa. Il
+  contesto porta modello, numero e lo stato, oppure il numero di stampe che la usano.
 
-| Codice                                  | HTTP | Messaggio                                                                                          |
-| --------------------------------------- | ---- | -------------------------------------------------------------------------------------------------- |
-| `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED`   | 409  | Versione template non cancellabile: stato protetto (PUBBLICATA/OBSOLETA) o già usata da documenti. |
+---
 
-Messaggio in `config.messaggi_errore` (id 411).
+### Test
 
-## Caratteristiche
+* `db/pgtap/documenti/test-documenti-template-versioni.sql` — una pubblicata non si cancella, una
+  bozza non usata sì.
 
-* **Single-purpose**: si occupa solo del delete block. L'immutabilità del contenuto pubblicato è in **A1** [`trgfn_template_documenti_versioni_protect_pubblicata`](trgfn_template_documenti_versioni_protect_pubblicata.md).
-* **No `ON DELETE CASCADE`**: il delete block è semantico, non basato su FK. La FK `documenti_generati.template_versione_id → template_documenti_versioni.id` ha `ON DELETE RESTRICT`, ma il check qui è esplicito perché alcune migrazioni passate hanno mostrato che `RESTRICT` non basta a comunicare il messaggio funzionale corretto.
-* **Audit naturale**: lo storico standard della tabella mantiene comunque traccia delle versioni `OBSOLETA` se mai si volesse fare archeologia post-hoc.
+---
 
-## Dipendenze
+### Note di migrazione
 
-* `documenti.documenti_generati` — lookup `template_versione_id` per il check di utilizzo.
-* `script.fn_log_and_raise_error`
-* `config.messaggi_errore`
+* 2026-05-01 — nasce il guard.
+* 2026-08-05 — il guard solleva il suo codice: fino ad allora chiamava la registrazione dell'errore
+  con una firma che non esisteva, e moriva con un errore tecnico.
 
-## Vedi anche
+---
 
-* [`documenti.template_documenti_versioni`](/dbzero/documenti/tabelle/template_documenti_versioni)
-* [`trgfn_template_documenti_versioni_protect_pubblicata`](trgfn_template_documenti_versioni_protect_pubblicata.md) — guard A1 correlato
-* [Sviluppo Documenti — Piano DB §6.3, §13.3 A2](/dev/work-done/sviluppo-documenti-db)
+{% include-markdown "signature-core.md" %}

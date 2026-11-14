@@ -36,6 +36,8 @@
 #   search_path = pg_catalog. Il rollback ricrea le definizioni e i COMMENT
 #   di prima, letti dal catalogo.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — ricrea le viste coi COMMENT come stavano a catalogo ed e' gia' applicato e mergiato: la riscrittura al presente di quei cinque COMMENT e' in 20261114-72
+# ------------------------------------------------------------
 
 databaseChangeLog:
   - logicalFilePath: migrations_v2/20_code/vendite/20261114-07-update-vw-lotti-fase-senza-in-gioco-mctit.yaml

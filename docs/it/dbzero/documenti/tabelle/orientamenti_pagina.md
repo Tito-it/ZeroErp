@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/documenti/manual/orientamenti_pagina.md" %}
 # 📚 Tabella `orientamenti_pagina`
 
 > 📝 **Descrizione**
