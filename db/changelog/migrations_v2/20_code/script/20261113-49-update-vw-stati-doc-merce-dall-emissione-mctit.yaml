@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MERCE PARTITA E MERCE RIENTRATA: DALLO STATO DI EMISSIONE DEL VOCABOLARIO
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 3 (S-3: l'emissione
+#   del reso, e la gemella della bolla del §5).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   script.vw_stati_doc_reso_merce_rientrata trovava lo stato da cui si conta
+#   col letterale 'CONFERMATO', script.vw_stati_doc_ddt_merce_partita col
+#   letterale 'EMESSO'. Tutti e due i vocabolari dicono lo stato di
+#   emissione in colonna (config.stati_doc_ddt.emissione dal 20261025-37,
+#   config.stati_doc_reso.emissione dal 20261113-42).
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Lo stato di riferimento e' quello con emissione = true. Il resto della
+#   regola («da quello stato in poi», per ordine, e non abortito) e' la scelta
+#   (a) di Tid del 2026-10-12, e non cambia. Con il seed sono CONFERMATO ed
+#   EMESSO: stessi valori. I due COMMENT al presente.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: stesse colonne, stesso ordine, stesso tipo;
+#   security_invoker ripetuto. Le viste che le leggono non cambiano.
+#
+# ── DA DOVE VIENE LA DEFINIZIONE ────────────────────────────────────
+#   pg_get_viewdef su dbdev, 2026-11-14, con search_path = pg_catalog. Il
+#   rollback porta definizioni e COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261113-49-update-vw-stati-doc-merce-dall-emissione-mctit.yaml
+
+  - changeSet:
+      id: 20261113-49-update-vw-stati-doc-merce-dall-emissione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.vw_stati_doc_reso_merce_rientrata e script.vw_stati_doc_ddt_merce_partita: lo stato
+        da cui si conta e' quello di emissione del vocabolario, non un codice. Stessi valori col
+        seed. Brief: brief-db-stati-documento-dal-vocabolario, giro 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_stati_doc_reso_merce_rientrata WITH (security_invoker = true) AS
+               SELECT s.id,
+                  s.codice_interno,
+                  COALESCE(((NOT s.is_abortito) AND (s.ordine >= c.ordine)), false) AS merce_rientrata
+                 FROM (config.stati_doc_reso s
+                   LEFT JOIN config.stati_doc_reso c ON (c.emissione));
+
+              COMMENT ON VIEW script.vw_stati_doc_reso_merce_rientrata IS
+                  'In questo stato del reso la merce e'' rientrata? Una riga per ogni stato di config.stati_doc_reso; merce_rientrata = dallo stato di emissione in poi (ordine >= quello dello stato con emissione = true) e non abortito (is_abortito false). La regola si legge dal vocabolario, non da un codice: uno stato nuovo dopo l''emissione entra da solo. Mai NULL: uno stato con ordine NULL, o un vocabolario senza stato di emissione, risponde false. Gemella di script.vw_stati_doc_ddt_merce_partita. Sede unica della regola: la leggono dbops.vw_resi_confermati_senza_carico, vendite.vw_resi_righe_effettive e vendite.vw_resi_da_riconsegnare. Chi filtra mette merce_rientrata in WHERE, chi distingue la proietta. security_invoker.';
+
+              CREATE OR REPLACE VIEW script.vw_stati_doc_ddt_merce_partita WITH (security_invoker = true) AS
+               SELECT s.id,
+                  s.codice_interno,
+                  COALESCE(((NOT s.is_abortito) AND (s.ordine >= e.ordine)), false) AS merce_partita
+                 FROM (config.stati_doc_ddt s
+                   LEFT JOIN config.stati_doc_ddt e ON (e.emissione));
+
+              COMMENT ON VIEW script.vw_stati_doc_ddt_merce_partita IS
+                  'In questo stato del DDT la merce e'' partita? Una riga per ogni stato di config.stati_doc_ddt; merce_partita = dallo stato di emissione in poi (ordine >= quello dello stato con emissione = true) e non abortito (is_abortito false). La regola si legge dal vocabolario, non da un elenco di codici: uno stato nuovo fra l''emissione e la consegna entra da solo. Mai NULL: uno stato con ordine NULL, o un vocabolario senza stato di emissione, risponde false. Sede unica della regola: la leggono vendite.fn_partite_merce, vendite.fn_ordine_riga_spedita e dbops.vw_ddt_emessi_senza_scarico. Chi filtra mette merce_partita in WHERE, chi distingue la proietta. security_invoker.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_stati_doc_reso_merce_rientrata WITH (security_invoker = true) AS
+               SELECT s.id,
+                  s.codice_interno,
+                  COALESCE(((NOT s.is_abortito) AND (s.ordine >= c.ordine)), false) AS merce_rientrata
+                 FROM (config.stati_doc_reso s
+                   LEFT JOIN config.stati_doc_reso c ON (((c.codice_interno)::text = 'CONFERMATO'::text)));
+
+              COMMENT ON VIEW script.vw_stati_doc_reso_merce_rientrata IS
+                  'In questo stato del reso la merce e'' rientrata? Una riga per ogni stato di config.stati_doc_reso; merce_rientrata = uscito dalla bozza (ordine >= quello di CONFERMATO) e non abortito (is_abortito false). La regola si legge dal catalogo, non da un elenco di codici: uno stato nuovo dopo la conferma entra da solo. Mai NULL: uno stato con ordine NULL, o un catalogo senza CONFERMATO, risponde false. Gemella di script.vw_stati_doc_ddt_merce_partita. Sede unica della regola: la leggono dbops.vw_resi_confermati_senza_carico, vendite.vw_resi_righe_effettive e vendite.vw_resi_da_riconsegnare. Chi filtra mette merce_rientrata in WHERE, chi distingue la proietta. security_invoker.';
+
+              CREATE OR REPLACE VIEW script.vw_stati_doc_ddt_merce_partita WITH (security_invoker = true) AS
+               SELECT s.id,
+                  s.codice_interno,
+                  COALESCE(((NOT s.is_abortito) AND (s.ordine >= e.ordine)), false) AS merce_partita
+                 FROM (config.stati_doc_ddt s
+                   LEFT JOIN config.stati_doc_ddt e ON (((e.codice_interno)::text = 'EMESSO'::text)));
+
+              COMMENT ON VIEW script.vw_stati_doc_ddt_merce_partita IS
+                  'BB (2026-10-12, brief-db-date-consegna-righe-in-blocco §4.1, regola del 2, scelta (a) di Tid): in questo stato del DDT la merce e'' partita? Una riga per ogni stato di config.stati_doc_ddt; merce_partita = uscito dalla bozza (ordine >= quello di EMESSO) e non abortito (is_abortito false). Letta dal catalogo, non da un elenco di codici: uno stato nuovo fra EMESSO e CONSEGNATO entra da solo. ⛔ Mai NULL: uno stato con ordine NULL, o un catalogo senza EMESSO, risponde false. Sede unica della regola che viveva in quattro posti: vendite.fn_partite_merce (CTE riga e ponte_riga), vendite.fn_ordine_riga_spedita, dbops.vw_ddt_emessi_senza_scarico (che la scriveva come elenco EMESSO, SPEDITO, CONSEGNATO, RESO). Chi filtra mette merce_partita in WHERE, chi distingue la proietta. security_invoker.';
+

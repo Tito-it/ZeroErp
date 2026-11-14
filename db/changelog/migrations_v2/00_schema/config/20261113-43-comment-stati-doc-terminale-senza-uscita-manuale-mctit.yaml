@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «TERMINALE» DICE CIO' CHE IL MODELLO GARANTISCE: NESSUN PASSAGGIO A MANO
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 3 (④, S-1 = A,
+#   S-4; Tid 2026-11-08).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Il COMMENT di terminale diceva «il documento non evolvera' piu'» su
+#   offerte, ordini, preventivi e contratti, e «nessun passaggio esce da qui»
+#   sul listino. Tutti e due falsi sul modello: SUPERATA dell'offerta, EVASO
+#   di preventivi e ordini hanno passaggi di processo in uscita. Decisione
+#   S-1 (A): terminale = nessun passaggio A MANO in uscita; gli automatismi
+#   restano. Implicazione, non equivalenza (S-4): uno stato senza uscite a
+#   mano puo' non essere terminale (PARZIALMENTE_EVASO, ATTIVA del listino),
+#   perche' il lavoro dell'operatore puo' stare fuori dalla matrice.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Il COMMENT al presente, uguale nella sostanza sui cinque vocabolari; le
+#   frasi proprie di preventivi e contratti (is_abortito, CESSATO) restano.
+#   Bolla e reso lo prendono col 20261113-42. Lo fa rispettare
+#   script.trgfn_doc_terminale_senza_uscita_manuale (20261113-46).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261113-43-comment-stati-doc-terminale-senza-uscita-manuale-mctit.yaml
+
+  - changeSet:
+      id: 20261113-43-comment-stati-doc-terminale-senza-uscita-manuale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di terminale su offerte, ordini, preventivi, contratti e versioni di listino: nessun
+        passaggio a mano in uscita (S-1, A), non «non evolvera' piu'». Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.stati_doc_offerte.terminale IS
+                  'true = da questo stato non esce nessun passaggio a mano: nessuna riga attiva della matrice (config.stati_doc_offerte_transizioni) con meta.manuale = true. L''operatore non ha piu'' niente da fare sull''offerta. Il sistema puo'' ancora spostarla coi passaggi di processo (manuale = false: la revisione annullata riporta emessa la precedente, SUPERATA -> EMESSA); per questo chi lo legge lo rilegge, non lo copia. CHECK: implica fase = CHIUSO. Non sostituisce is_abortito. Lo fa rispettare script.trgfn_doc_terminale_senza_uscita_manuale. La capability lo espone come stato_terminale.';
+              COMMENT ON COLUMN config.stati_doc_ordini.terminale IS
+                  'true = da questo stato non esce nessun passaggio a mano: nessuna riga attiva della matrice (config.transizioni_stati_ordini) con meta.manuale = true. L''operatore non ha piu'' niente da fare sull''ordine. Il sistema puo'' ancora spostarlo coi passaggi di processo (manuale = false: l''evasione che si riapre); per questo chi lo legge lo rilegge, non lo copia. Implicazione, non equivalenza: uno stato senza uscite a mano puo'' non essere terminale (PARZIALMENTE_EVASO: restano le bolle). CHECK: implica fase = CHIUSO. Non sostituisce is_abortito. Lo fa rispettare script.trgfn_doc_terminale_senza_uscita_manuale.';
+              COMMENT ON COLUMN config.stati_doc_preventivi.terminale IS
+                  'true = da questo stato non esce nessun passaggio a mano: nessuna riga attiva della matrice (config.transizioni_stati_preventivi) con meta.manuale = true. L''operatore non ha piu'' niente da fare sul preventivo. Il sistema puo'' ancora spostarlo coi passaggi di processo (manuale = false: EVASO -> ACCETTATO quando l''ordine nato dal preventivo si annulla); per questo chi lo legge lo rilegge, non lo copia. CHECK: implica fase = CHIUSO. Non sostituisce is_abortito (semantica diversa: abbandono della revisione). Lo fa rispettare script.trgfn_doc_terminale_senza_uscita_manuale.';
+              COMMENT ON COLUMN config.stati_doc_contratti.terminale IS
+                  'true = da questo stato non esce nessun passaggio a mano: nessuna riga attiva della matrice (config.transizioni_stati_contratti) con meta.manuale = true. L''operatore non ha piu'' niente da fare sul contratto; per questo chi lo legge lo rilegge, non lo copia. CHECK: implica fase = CHIUSO. Non sostituisce is_abortito: CESSATO e'' terminale ma non abortito. Lo fa rispettare script.trgfn_doc_terminale_senza_uscita_manuale.';
+              COMMENT ON COLUMN config.stati_doc_listino_versioni.terminale IS
+                  'true = da questo stato non esce nessun passaggio a mano: nessuna riga attiva della matrice (config.transizioni_stati_listino_versioni) con meta.manuale = true. Implicazione, non equivalenza: ATTIVA non ha uscite a mano (la chiude il processo) e non e'' terminale. Lo fa rispettare script.trgfn_doc_terminale_senza_uscita_manuale.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN config.stati_doc_offerte.terminale IS 'true = il documento in questo stato non evolvera'' piu'' (CHECK: implica fase=CHIUSO). Asse uniforme cross-dominio.';
+              COMMENT ON COLUMN config.stati_doc_ordini.terminale IS 'true = il documento in questo stato non evolvera'' piu'' (CHECK: implica fase=CHIUSO). Asse uniforme cross-dominio.';
+              COMMENT ON COLUMN config.stati_doc_preventivi.terminale IS 'true = il documento in questo stato non evolvera'' piu'' (CHECK: implica fase=CHIUSO). Asse uniforme cross-dominio; NON sostituisce is_abortito (semantica diversa: abbandono della revisione).';
+              COMMENT ON COLUMN config.stati_doc_contratti.terminale IS 'true = il documento in questo stato non evolvera'' piu'' (CHECK: implica fase=CHIUSO). Asse uniforme cross-dominio; NON sostituisce is_abortito (semantica diversa: abbandono della revisione). CESSATO e'' terminale ma non is_abortito.';
+              COMMENT ON COLUMN config.stati_doc_listino_versioni.terminale IS 'Nessun passaggio esce da qui.';

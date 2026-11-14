@@ -1,9 +1,11 @@
 # Brief DB — Gli stati dei documenti: ogni significato dal vocabolario
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-13
+## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: il team BE/FE**, con le richieste del giro 2 (§6.7) e di D-SCAD (§6.8). Il giro 2, l'offerta, e D-SCAD,
-la scadenza dell'offerta, sono applicati e verdi (Tid, 2026-11-13); il **team DB** fa il giro 3 al via di Tid.
+**Riparte: il team DB**, col giro 6a (il preventivo, §6.15). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
+(Tid, 2026-11-14). In parallelo il team BE (BE-V1, BE-T1) e il team FE
+(FE-V2, FE-S8). Via di Tid del 2026-11-14 a tutti i giri («procedi anche con tutti gli altri giri»). Il giro 2-bis (V-1: `20261113-38`, `-39`) è applicato e verde (Tid, 2026-11-14). Il BE/FE ha fatto le richieste del giro 2 e di
+D-SCAD (`fec6a713fa`, PR #112, 2026-11-14) e ha trovato V-1 e V-2 (§6.9).
 Il giro 1 è applicato, verde e mergiato (2026-11-13); il BE ha fatto R-2 (`e174a302e2`), quindi nel giro 5 la
 colonna `in_gioco` esce dalla vista.
 Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col via di Tid, ha scritto il giro 1 (§6).
@@ -21,19 +23,37 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 8b | ✅ Tid | R-1 … R-3 come proposte dal DB; per R-2 il ritiro di `in_gioco` (2026-11-13) | §6.4 | — |
 | 9 | ✅ DB | giro 2, l'offerta (③, S-3, S-10, S-2 per l'offerta, il builder): sei changeSet, due CSV, prova in transazione, pgTAP nuovo e uno adeguato (2026-11-13) | §6.5, §6.6 | via di Tid (2026-11-13) |
 | 9b | ✅ Tid | apply di `20261112-59 … -64` e dei due mirror; pgTAP del §6.6: verdi (2026-11-13) | §6.6 | 9 |
-| 9c | **BE/FE** ⏭️ | le richieste del giro 2: il rifiuto dal vocabolario (BE), `stato_terminale` al posto di `STATI_OFFERTA_TERMINALI` (FE) | §6.7 | 9b |
+| 9c | ✅ BE/FE | le richieste del giro 2: il rifiuto dal vocabolario (BE), `stato_terminale` al posto di `STATI_OFFERTA_TERMINALI` (FE) (`fec6a713fa`, 2026-11-14) | §6.7 | 9b |
 | 9c-bis | ✅ Tid | D-SCAD: (a), `esito IS NULL` (2026-11-13) | §6.8 | — |
 | 9c-ter | ✅ DB | D-SCAD: `20261112-65`, pgTAP esteso (plan 15), prova in transazione (2026-11-13) | §6.8 | 9c-bis |
 | 9c-quater | ✅ Tid | apply di `20261112-65`, pgTAP `test-offerta-guard-dal-vocabolario-v1`: verde (2026-11-13) | §6.8 | 9c-ter |
-| 9c-quinquies | **BE/FE** ⏭️ | le richieste di D-SCAD: `is_scaduta` nel dettaglio (BE), il badge dal flag da solo e il ritiro di `STATI_OFFERTA_SEGNALA_SCADENZA` (FE) | §6.8 | 9c-quater |
-| 9d | DB | giri 3 … 6, uno per volta, nell'ordine del §6.1 | §6.1 | il via di Tid per ogni giro |
+| 9c-quinquies | ✅ BE/FE | le richieste di D-SCAD: `is_scaduta` nel dettaglio (BE), il badge dal flag da solo e il ritiro di `STATI_OFFERTA_SEGNALA_SCADENZA` (FE) (`fec6a713fa`, 2026-11-14) | §6.8 | 9c-quater |
+| 9c-sexies | ✅ BE/FE | la verifica dei giri 2 e D-SCAD: V-1 e V-2, richieste al team DB (2026-11-14) | §6.9 | — |
+| 9c-septies | ✅ DB | giro 2-bis, V-1: `20261113-38` (`vendite.fn_offerta_scaduta`), `-39` (la vista la compone), pgTAP esteso (plan 18), prova in transazione (2026-11-14) | §6.10 | via di Tid (2026-11-14) |
+| 9c-octies | ✅ Tid | apply di `20261113-38`, `-39`; pgTAP `test-offerta-guard-dal-vocabolario-v1` (plan 18): verde (2026-11-14) | §6.10 | 9c-septies |
+| 9c-nonies | **BE** ⏭️ | BE-V1: il dettaglio chiama `vendite.fn_offerta_scaduta` al posto della sottoquery sulla vista | §6.10 | 9c-octies |
+| 9c-decies | ✅ Tid | **D-LOCK**: (a), il lock riconosce la bozza da `iniziale` (2026-11-14) | §6.10 | — |
+| 9c-undecies | ✅ DB | D-LOCK (a) e V-2: `20261113-40` (`script.fn_doc_lock_regola`), `-41` (`can_edit_eccezioni` dal lock); 48 pgTAP con l'estratto, tre riportati al modello, cinque test nuovi (2026-11-14) | §6.11 | 9c-decies |
+| 9c-terdecies | ✅ Tid | apply di `20261113-40`, `-41`; i pgTAP del §6.11: verdi (2026-11-14) | §6.11 | 9c-undecies |
+| 9c-duodecies | **FE** ⏭️ | FE-V2: il lucchetto del drawer dalle chiavi `can_edit_*` della capability, non dal codice BOZZA | §6.10 | — |
+| 9d | ✅ DB | giro 3: `terminale`, bolla e reso (④, ⑦, S-4, S-5, S-3 del reso): `20261113-42 … -50`, 129 pgTAP con l'estratto, uno nuovo e tre adeguati (2026-11-14) | §6.12 | via di Tid (2026-11-14) |
+| 9e | ✅ DB | giro 4: gli stati che nessun passaggio raggiunge (⑤, S-8, R-3): `20261114-03`, due CSV, il presidio nuovo della raggiungibilità (2026-11-14) | §6.13 | via di Tid (2026-11-14) |
+| 9f | ✅ Tid | apply (verde, 2026-11-14) dei giri 3 e 4 (`20261113-42 … -50`, `20261114-03`); i pgTAP dei §6.12 e §6.13, e `vendite/test-documenti-numerazione-trasloco-v1` e `vendite/test-fn-list-ordini-da-pushare-v1`, che lo strumento non lancia | §6.12, §6.13 | 9d, 9e |
+| 9g | ✅ Tid | **D-ANN**: (a), ANNULLATA non vale per la fattura (`applica_fattura` = false, dal CSV, 2026-11-14) | §6.12, §6.13 | — |
+| 9h | ✅ Tid | i numeri dei giri 5 e 6: dal primo libero (Tid, 2026-11-14: «-04»; il `-04` l'aveva preso l'altra sessione, si parte dal `-05`) | §6.13 | — |
+| 9i | ✅ DB | giro 5: il listino, i COMMENT stantii, `in_gioco` (⑧, S-9, §4.8, R-2): `20261114-05 … -07`, 31 pgTAP con l'estratto, tre adeguati (2026-11-14) | §6.14 | 9h |
+| 9i-bis | ✅ Tid | apply di `20261114-05 … -07` (il `-05` al secondo tentativo, dopo la correzione della `preCondition`); i pgTAP del §6.14: verdi (2026-11-14) | §6.14 | 9i |
+| 9i-ter | ✅ DB | giro 6: il censimento, circa 55 oggetti in sei documenti, e l'ordine (2026-11-14) | §6.15 | — |
+| 9i-quater | **DB** ⏭️ | giri 6a … 6f, un documento per volta: preventivo, ordine, contratto, bolla, reso, listino | §6.15 | — |
+| 9j | **BE** ⏭️ | BE-T1: la frase di `doc_terminale` in `api_percorso.md` | §6.12 | — |
+| 9k | **FE** ⏭️ | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati | §6.13 | 9f |
 | 10 | BE/FE | le ricadute del §4.10 degli altri giri (FE: costanti degli ordini, giro 4). Il giro 1 non ne ha; quelle del giro 2 sono la riga 9c | §4.10 | il giro che le porta |
 | 11 | ✅ BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` (`e174a302e2`, 2026-11-13) | §6.4 | — |
 
-**Decisioni aperte di Tid:** nessuna; D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
+**Decisioni aperte di Tid:** nessuna; D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
 resta su EMESSA, eccezione voluta); R-2, `in_gioco` si ritira (giro 5, dopo la riga 11); R-3, il lotto non diventa
 REGISTRATO (`applica_lotto` = false, giro 4). Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non
-l'`attivo = false`). **Lavoro da committare:** nessuno; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
+l'`attivo = false`). **Lavoro da committare:** il giro 2-bis (§6.10: due changeSet, il pgTAP, tre pagine `manual/`) e D-LOCK (§6.11: due changeSet, quattro pgTAP, quattro pagine `manual/`), i giri 3 e 4 (§6.12, §6.13: undici changeSet, sei CSV e tre mirror, due pgTAP nuovi e cinque adeguati, dodici pagine), il giro 5 (§6.14: tre changeSet, tre pgTAP adeguati, due pagine), questo brief; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
 (§5) e il giro 1 (§6) sono nel commit `a9b7a0f32e` (PR #108).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid, poi il team DB.
@@ -505,10 +525,12 @@ Un giro per vocabolario o per difetto, così ogni oggetto si apre una volta sola
 | Giro | Che cosa | Difetti e decisioni |
 | --- | --- | --- |
 | 1 ✅ applicato | il vocabolario fiscale: lotto e fattura | ②, ⑥, S-6, S-7; S-2 sul fiscale. L'emissione fiscale di S-3 è revocata (R-1) |
-| 2 ✅ scritto | l'offerta | ③, S-3 (`rifiuto` su offerte e preventivi), S-10 per l'offerta, il builder `dbops.fn_pgtap_crea_offerta` |
-| 3 | `terminale`, bolla e reso | ④ (il BB e i COMMENT), ⑦, S-4, S-5, S-3 (`emissione` del reso, coi due lettori del §5) |
-| 4 | gli stati d'ordine senza passaggi | ⑤, S-8, il presidio della raggiungibilità; R-3 (`applica_lotto` = false su REGISTRATA) |
-| 5 | il vocabolario del listino e i COMMENT stantii | ⑧, S-9, §4.8; R-2 (il ritiro di `in_gioco`, se la riga 11 è fatta) |
+| 2 ✅ applicato | l'offerta | ③, S-3 (`rifiuto` su offerte e preventivi), S-10 per l'offerta, il builder `dbops.fn_pgtap_crea_offerta` |
+| 2-bis ✅ applicato (V-1) | i trovati della verifica BE/FE | V-1 (la sede della scadenza) |
+| 2-ter ✅ applicato | D-LOCK (a) e V-2 | ⑨: il lock riconosce la bozza dal vocabolario (§6.11) |
+| 3 ✅ applicato | `terminale`, bolla e reso | ④ (il BB e i COMMENT), ⑦, S-4, S-5, S-3 (`emissione` del reso, coi due lettori del §5) |
+| 4 ✅ applicato | gli stati d'ordine senza passaggi | ⑤, S-8, il presidio della raggiungibilità; R-3 (`applica_lotto` = false su REGISTRATA) |
+| 5 ✅ applicato | il vocabolario del listino e i COMMENT stantii | ⑧, S-9, §4.8; R-2 (il ritiro di `in_gioco`, se la riga 11 è fatta) |
 | 6 … | il resto della famiglia di S-2 | un documento per volta: preventivo, ordine, contratto, bolla, reso, listino |
 
 ### 6.2 Giro 1 — il vocabolario fiscale (2026-11-12)
@@ -635,6 +657,8 @@ trovato non sono stati dell'offerta: `'RIFIUTATA'` delle commesse è l'approvazi
 `'ANNULLATA'` di `vendite.fn_documento_lineage_legami` è lo stato di emissione di un'attività. I due `v_stato_cod`
 che restano nella capability vanno ai building block del lucchetto (`fn_doc_testata_in_stato`,
 `fn_doc_riga_modificabile`), che ragionano per codice nel loro montaggio: non sono una copia del significato.
+⚠️ **Smentito il 2026-11-14 (§6.10, V-2):** il montaggio scrive la bozza con un codice (`stato_bozza`), e con
+`iniziale` spostata il lock e la capability si separano. È il difetto ⑨, e la decisione è D-LOCK.
 
 Corpi presi da `pg_get_functiondef` e `pg_get_viewdef` su dbdev il 2026-11-13. Ogni changeSet porta nel rollback la
 definizione e il COMMENT di prima, letti dal catalogo e non ricopiati a mano. Con il vocabolario del seed ogni
@@ -792,3 +816,370 @@ della matrice con la **parola dell'API** (`ACCETTATA` / `RIFIUTATA`), mentre il 
 `stato_del_campo`, la mappa parola → ruolo (`offerte_service.RUOLO_DEGLI_ESITI`, la stessa del routing del service),
 e cerca la riga verso lo stato del ruolo letto dal vocabolario. L'API non cambia. Presidi:
 `core/tests/api/test_permesso_passaggio.py` (15-18) e `core/tests/test_passaggio_rotte.py` (8, sul DB vero).
+
+⚠️ **Risposta del team DB: §6.10** (2026-11-14). V-1 è scritto; per V-2 la chiave chiesta non serve, e la
+verifica ha trovato un difetto del lock (⑨, decisione D-LOCK).
+
+### 6.10 Giro 2-bis — V-1 e V-2 (team DB, 2026-11-14)
+
+Col via di Tid (2026-11-14, «procedi come da proposte»). **V-1 è applicato e verde (Tid, 2026-11-14); V-2 si ferma su
+una decisione (D-LOCK).**
+
+#### V-1 — la regola della scadenza ha una sede sua
+
+**Il percorso, censito (2026-11-14).** Lato DB l'unico lettore della regola è la vista della lista: le altre funzioni
+dell'offerta che nominano `validita_al` la ricopiano (revisione, contratto), ma non giudicano se è scaduta. Lato BE il
+dettaglio (`offerte_repository._SELECT_COLS_OFFERTA`) la legge con una sottoquery sulla vista. Lato FE il drawer e la
+lista leggono già il solo flag (§6.8). Il dettaglio è il secondo consumatore: la regola si estrae (regola del 2).
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261113-38` | **nuova** `vendite.fn_offerta_scaduta(p_esito, p_validita_al, p_data_riferimento)`: `esito IS NULL` e la validità passata. Riceve i valori e non l'id (linee-guida-sql §13.8): pura, `IMMUTABLE`, `LANGUAGE sql`, si incorpora. **Non** `STRICT`: l'esito vuoto è il caso normale. La data è un argomento, perché una sottoquery nel corpo impedirebbe l'incorporazione; chi chiama passa `script.fn_data_operativa()` |
+| `20_code/vendite/20261113-39` | `vendite.vw_offerte_commerciali_lista.is_scaduta` = `vendite.fn_offerta_scaduta(sdo.esito, o.validita_al, (SELECT script.fn_data_operativa()))`. Stesse colonne, `security_invoker` ripetuto, i due COMMENT rimandano alla funzione. Rollback: il `20261112-65`, verificato uguale al vivo |
+
+Non c'è una chiave nella capability. `is_scaduta` è un fatto del record, non un'azione. Se la capability si rompe, il
+dettaglio arriva con il blob vuoto (`capabilities_o_vuoto`): il badge sparirebbe insieme alle azioni.
+
+**La prova (2026-11-14).** `scripts/prova_changeset.py` sui due changeSet, con il pgTAP in coda: **18 ok / 0 not ok**;
+catalogo identico dopo il `ROLLBACK`. Piano su dbdev come app (funzione in `pg_temp`, transazione annullata): la
+funzione si incorpora, e la data operativa resta una `InitPlan`, calcolata una volta. Equivalenza con la vista viva su
+dbdev: nessuna differenza. È un fatto datato e non prova la regola: la regola la provano i test 13-16, che i casi li
+costruiscono.
+
+**pgTAP.** `vendite/test-offerta-guard-dal-vocabolario-v1` passa da plan 15 a plan 18:
+
+* 16: la funzione sui valori: scaduta senza esito e con la validità passata; non con un esito, senza validità, o con
+  la validità che scade oggi;
+* 17: `IMMUTABLE` e non `STRICT`;
+* 18: forma: la vista compone la funzione e non riscrive la regola (presidio sulla **forma**, dichiarato tale).
+
+**Pagine `manual/`.** `vendite/fn_offerta_scaduta` (nuova), `vendite/vw_offerte_commerciali_lista` (la sezione di
+`is_scaduta`, e la nota operativa «`is_scaduta` è grezzo», ferma a prima di D-SCAD), `config/stati_doc_offerte`. La doc
+auto-generata non è rigenerata.
+
+**Richiesta al team BE (elenco chiuso), dopo l'apply di `-38` e `-39`:**
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE-V1 | `backend/apps/vendite/db/offerte_repository.py` | in `_SELECT_COLS_OFFERTA` la sottoquery su `vendite.vw_offerte_commerciali_lista` diventa `vendite.fn_offerta_scaduta(sd.esito, o.validita_al, script.fn_data_operativa()) AS is_scaduta` (`sd` è già `config.stati_doc_offerte`); il commento in testa alla proiezione (righe 144-147) e quello sopra la colonna rimandano alla funzione, non alla vista |
+| BE-V1b | `docs/it/backend/vendite/manual/api_offerte.md` | se cita la vista come sede di `is_scaduta` del dettaglio, la sede è la funzione |
+
+Il contratto dell'API non cambia; il FE non ha niente da fare.
+
+#### V-2 — il lucchetto del corpo: la domanda c'è già, ma ha due risposte
+
+**La domanda del FE è «il corpo si modifica?», non «lo stato è l'iniziale?».** Per l'offerta la capability la risponde
+già, sezione per sezione: `can_edit_eccezioni` (le righe dell'offerta sono `vendite.offerte_commerciali_eccezioni`),
+`can_edit_utility`, `can_edit_indirizzi`, e `non_editable_fields` per la testata. Una chiave `stato_iniziale`, o una
+`can_edit_righe` come quella di ordine e DDT, darebbe un secondo nome alla risposta che `can_edit_eccezioni` dà già.
+⚠️ Questo **corregge la proposta del DB** fatta in chat il 2026-11-14 (`can_edit_righe`), e la richiesta V-2 del §6.9
+(`stato_iniziale`).
+
+**Il difetto trovato (⑨, nuovo: non è nel censimento del §4).** Le chiavi della capability e il trigger che ferma la
+riga rispondono da due sedi diverse:
+
+* `can_edit_eccezioni` = la colonna `iniziale` dello stato (giro 2, `20261112-62`);
+* `can_edit_utility` e `can_edit_indirizzi` = `script.fn_doc_riga_modificabile`, che legge il montaggio del lock;
+* il lock (`vendite.trgfn_doc_righe_lock_fuori_bozza`, `vendite.trgfn_doc_testata_lock_fuori_bozza`) riconosce la
+  bozza dal **codice** scritto negli argomenti del trigger: la regola di `script.fn_doc_lock_regola` porta
+  `stato_bozza = 'BOZZA'`, e `script.fn_doc_lock_colonna_bloccata` confronta `p_stato = stato_bozza`.
+
+Con il vocabolario del seed le tre risposte coincidono. Con la marca spostata (test 10: `iniziale` su EMESSA) si
+separano: la capability dice «modificabile» su un'offerta emessa, e il trigger rifiuta la riga. È la «terza via» di
+linee-guida-sql §12.1: un'azione proposta che il guard rifiuta. Sul modello il caso esiste: `iniziale` è una colonna
+del vocabolario, e il vocabolario si cambia.
+
+⚠️ **Revoca un giudizio del giro 2.** Il §6.5 (2026-11-13) diceva che i building block del lucchetto «ragionano per codice
+nel loro montaggio: non sono una copia del significato». Lo sono: `stato_bozza` dice lo stesso significato della colonna
+`iniziale`, con un codice. Era un giudizio del team DB, non una decisione di Tid.
+
+**Il perimetro (struttura, letta da `pg_trigger` su dbdev il 2026-11-14):** il lock è montato su **tutti e sette i
+documenti di vendita**: offerta (`BOZZA`); preventivo, ordine, contratto, DDT, reso (`DRAFT`). Sono 28 tabelle tra
+testate, righe, componenti, indirizzi e satelliti. È un tema di famiglia: tocca il fermo dei temi trasversali sui
+documenti di vendita (PROJECT_CONTEXT), ed è ammesso perché poggia sul vocabolario, come il resto del brief.
+
+**D-LOCK — da decidere (Tid).**
+
+* **(a) Proposta DB.** Il building block del lock riconosce la bozza dalla colonna `iniziale` del vocabolario del
+  documento, non dall'argomento `stato_bozza`. Il vocabolario si trova dal documento, come fa
+  `script.fn_doc_stato_iniziale_id`. Poi la capability legge il lock in ogni sezione: `can_edit_eccezioni` da
+  `script.fn_doc_riga_modificabile`, come utility e indirizzi, e la sede resta una. È un giro a sé, sui sette
+  documenti. Va dentro S-2, che ha già preso la famiglia (Tid, 2026-11-08). ⚠️ Gli argomenti dei trigger non si toccano
+  (linee-guida-sql §11.5, se il montaggio nasce da `ci_apply`): `stato_bozza` si ritira dalla **lettura**, e il suo
+  ritiro dal montaggio è un passo che va censito a parte.
+* **(b)** Solo la capability, subito: `can_edit_eccezioni` legge il lock (specchia il guard, §12.2 punto 1), e il lock
+  resta sul codice fino al giro di (a). Il test 10 cambia significato: con `iniziale` spostata, la riga resta chiusa
+  come il trigger. Chiude la divergenza capability/trigger sull'offerta, ma lascia il significato scritto per codice
+  in 28 montaggi.
+
+**La richiesta al FE non aspetta D-LOCK.** Le chiavi ci sono già, e la loro sede si corregge sotto, senza che il FE
+cambi di nuovo:
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| FE-V2 | `frontend/src/vendite/offerte/components/OffertaDrawer.vue` | `isWorkflowLocked` non confronta `stato` con `STATO_OFFERTA.BOZZA`: ogni sezione si chiude dalla sua chiave della capability (`can_edit_eccezioni` per le righe, `can_edit_utility`, `can_edit_indirizzi`; la testata ha già `non_editable_fields`). Con la capability vuota il corpo resta chiuso (fail-closed, come `useTestataDocumento`). Il banner `banner_locked_post_bozza` si accende quando una sezione è chiusa |
+| FE-V2b | i drawer gemelli che il commento del drawer nomina (righe, utility, indirizzi) | lo stesso, ciascuno con la chiave della sua sezione |
+
+⚠️ `STATO_OFFERTA.BOZZA` può avere altri lettori nel FE: il censimento lo fa il team FE.
+
+### 6.11 D-LOCK (a) — il lock riconosce la bozza dal vocabolario (team DB, 2026-11-14)
+
+**Decisione (Tid, 2026-11-14): (a).** Questa sezione chiude anche V-2 dal lato DB.
+
+**La correzione sta in un punto solo.** Tutti i lettori del lock passano da una sola grammatica,
+`script.fn_doc_lock_regola`: i due trigger, `script.fn_doc_lock_montaggi`, e da lì `fn_doc_riga_modificabile`,
+`fn_doc_colonna_modificabile`, `fn_doc_testata_in_stato` e le capability dei sette documenti. La regola calcola
+`stato_bozza` dal vocabolario del documento, e tutti la seguono senza cambiare. L'argomento dello stato bozza resta
+nella grammatica, nella sua posizione, e non si legge: i 28 montaggi restano com'erano. Con il seed lo stato iniziale di
+ogni vocabolario è il codice che il montaggio scrive (preventivi, contratti, ordini, DDT, reso `DRAFT`; offerte `BOZZA`;
+dbdev, 2026-11-14), quindi il comportamento di oggi non cambia.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261113-40` | `script.fn_doc_lock_regola`: `stato_bozza` = il codice dello stato iniziale (tipo documento → `config.sorgenti.target_table` → `script.fn_doc_stato_modello` → `script.fn_stato_iniziale_id`). Un tipo documento che non porta a uno stato iniziale è un montaggio sbagliato (`errore`, sollevato dal chiamante con `E_DOC_RIGHE_LOCK_MONTAGGIO`). COMMENT riscritto al presente |
+| `20_code/script/20261113-41` | `script.fn_available_actions_offerta`: `can_edit_eccezioni` = `script.fn_doc_riga_modificabile('vendite.offerte_commerciali_eccezioni', stato)`, come utility e indirizzi |
+
+Fuori dal difetto: `vendite.trgfn_doc_guard_delete_solo_bozza` legge già lo stato iniziale dal vocabolario. Solo la mail
+(`config.email_outbox`) dice `DRAFT`, perché non ha un vocabolario.
+
+**La prova (2026-11-14).** `scripts/prova_changeset.py` sui due changeSet, con ognuno dei **48** pgTAP che nominano il
+lock o la capability dell'offerta. Tre fissavano il contratto vecchio e sono stati riportati al modello:
+
+| pgTAP | Che cosa cambia |
+| --- | --- |
+| `vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1` (21) | provava «lo stato bozza è parametrico» (`TG_ARGV[2]` = EMESSO). Ora prova il contrario: l'argomento non si legge, e la riga passa sul DDT in bozza e non su quello emesso. Rosso senza l'estratto, verde con |
+| `vendite/test-doc-emittente-utility-fermi-v1` (1-3) | la grammatica con un tipo documento finto (`'X'`). Ora usa `PREVENTIVO`, e la decisione «in bozza» si chiede con lo `stato_bozza` della regola |
+| `vendite/test-testata-dopo-emissione-rdb-v1` (1) | il tipo documento finto `'DDT'` diventa `DDT_VENDITA` |
+
+Esito con l'estratto: tutti verdi, tranne `vendite/test-esecutivi-ba-coppia-v1`, con un rosso che c'era già senza
+l'estratto (fuori da questo cantiere). Catalogo identico dopo ogni `ROLLBACK`.
+
+**pgTAP nuovi.** `vendite/test-offerta-guard-dal-vocabolario-v1` passa da plan 18 a plan 23. Senza l'estratto 4 test
+sono rossi, con l'estratto 23 su 23:
+
+* 19: contrasto. Con lo stato iniziale su BOZZA, l'indirizzo dell'offerta emessa non si toglie
+  (`E_DOC_DATI_COLLEGATI_NON_BOZZA`), e la capability lo dice;
+* 20: ⭐ marca spostata. Con `iniziale` su EMESSA il lock legge EMESSA come bozza;
+* 21: … l'indirizzo dell'offerta in BOZZA non si toglie più;
+* 22: … quello dell'offerta emessa sì, e la capability lo proponeva;
+* 23: … ed è tolto davvero.
+
+**Pagine `manual/`.** `script/fn_doc_lock_regola`, `vendite/trgfn_doc_righe_lock_fuori_bozza`,
+`vendite/trgfn_doc_testata_lock_fuori_bozza`, `script/fn_available_actions_offerta`.
+
+**Debito residuo, dichiarato.** I 28 montaggi portano ancora l'argomento dello stato bozza, che non si legge. Toglierlo
+vuol dire cambiare la grammatica (per la testata è un argomento posizionale obbligatorio) e rimontare 28 trigger. Non è
+una seconda verità, perché nessuno lo legge, ma è rumore nel montaggio. Si toglie quando un giro rimonta quei trigger per
+un'altra ragione; nel frattempo la pagina di `fn_doc_lock_regola` dice che non si legge.
+
+**Ricadute BE/FE.** Nessuna nuova: il contratto della capability non cambia, e FE-V2 (§6.10) vale com'è.
+
+### 6.12 Giro 3 — `terminale`, bolla e reso (team DB, 2026-11-14)
+
+Col via di Tid (2026-11-14, «procedi anche con tutti gli altri giri»). Chiude ④, ⑦, S-4, S-5 e S-3 per il reso.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `00_schema/config/20261113-42` | ⑦ e S-3: `esito` (FK verso `config.esiti_flussi_pratiche`) e `terminale` (CHECK verso `fase` CHIUSO) su `config.stati_doc_ddt` e `config.stati_doc_reso`; `emissione` su `config.stati_doc_reso` (indice unico parziale, CHECK attivo). COMMENT al presente |
+| `00_schema/config/20261113-43` | ④ a: il COMMENT di `terminale` su offerte, ordini, preventivi, contratti, versioni di listino: nessun passaggio **a mano** in uscita (S-1, A), implicazione e non equivalenza (S-4) |
+| `20_code/config/20261113-44` | il guard del verdetto (`config.trgfn_stati_doc_guard_esito_verdetto`) montato su bolla e reso |
+| `20_code/script/20261113-45` | **nuova** `script.fn_doc_terminali_con_uscita_manuale(testata)`: le coppie (stato terminale, destinazione a mano) della configurazione |
+| `20_code/script/20261113-46` | ④ b: **nuovo** building block `script.trgfn_doc_terminale_senza_uscita_manuale`, `CONSTRAINT TRIGGER` differito su sette vocabolari e sette matrici (14 montaggi, la testata come argomento); codice nuovo `E_DOC_TERMINALE_CON_USCITA_MANUALE` |
+| `20_code/vendite/20261113-47` | ⑦: `vendite.vw_stato_sorgente_ddt` e `_reso` passano `esito` e `terminale` del vocabolario, non li calcolano da `fase` |
+| `20_code/vendite/20261113-48` | S-3: `vendite.trgfn_resi_gen_numero` numera nello stato di `emissione`, non nel codice CONFERMATO |
+| `20_code/script/20261113-49` | S-3, e la gemella della bolla trovata al §5: `script.vw_stati_doc_reso_merce_rientrata` e `script.vw_stati_doc_ddt_merce_partita` contano dallo stato di `emissione`, non da `'CONFERMATO'` ed `'EMESSO'` |
+| `80_data/changelog/20261113-50` | il mirror della bolla ri-applicato dopo il seed degli esiti (`20260701-04`): `esito` ha una FK, e il mirror del `20250915-01` lo salta (`type: SKIP`). linee-guida-sql §11.2 |
+
+**I dati (80_data).** CSV `stati_doc_ddt` (`esito`, `terminale`) e `stati_doc_reso` (`esito`, `terminale`, `emissione`), con
+le colonne dichiarate nei due mirror. Sono i valori che la vista calcolava, tranne **S-5**: il reso CONFERMATO ha
+`terminale` = false, `esito` POSITIVO, `fase` CHIUSO, ed è lo stato di `emissione`. Il codice nuovo è in coda a
+`codici_errore.csv` e `messaggi_errore.csv` (id 1483). I CSV sono riscritti con `csv.writer` e `\n`: nessun CR.
+
+**Il seed rispetta A** (dbdev, 2026-11-14, sulla configurazione): nessuno stato terminale ha un passaggio a mano in
+uscita, tranne il reso CONFERMATO, che S-5 rende non terminale nello stesso giro. Il trigger nuovo è differito: da zero
+i mirror lo attraversano a transazione finita. I changeSet storici di `80_data` che scrivono quelle tabelle toccano
+`esito` e `meta`, non `terminale` né le uscite a mano.
+
+**Il reso «non si emetteva».** Due pgTAP fissavano «reso, commessa e fattura non si emettono»: S-3 (Tid, 2026-11-08) dà al
+reso la sua emissione. Sono stati riportati al modello: `script/test-doc-lettori-stato-e-preventivo-al-modello-v1`
+(test 6-8) e `script/test-doc-stato-codice-v1` (test 2-3). Nessun lettore BE legge l'emissione del reso (i
+`stato_di_emissione` del backend sono di preventivo, offerta, contratto, ordine e bolla), e nel DB
+`script.fn_doc_azione_passaggio` non ha chiamanti: aggiungere `emissione` al reso non cambia nessun percorso.
+
+**La prova (2026-11-14).** `scripts/prova_changeset.py` sui changeSet di `00_schema` e `20_code`, più un changeSet di
+scratch che simula i due CSV e le righe del codice d'errore: il loader `loadUpdateData` non lo prova nessuno strumento,
+e il token `NULL` è già misurato (§11.2). Esito con l'estratto, sui **129** pgTAP che nominano gli oggetti del giro:
+
+* `config/test-terminale-senza-uscita-manuale-v1` (**nuovo**, plan 10): 10 su 10 (senza l'estratto, interrotto);
+* `vendite/test-vw-stato-sorgente-ddt-reso-v1` (adeguato, plan 14): 14 su 14. Il test 7 cambia con S-5 (reso confermato
+  non terminale); il nuovo test 14 sposta le marche (`esito` su EMESSO, `terminale` su CONSEGNATO) e la vista le segue;
+* i due test dell'emissione del reso, riportati al modello: verdi;
+* gli altri: invariati. I rossi che restano c'erano già senza l'estratto, e sono rossi da owner per costruzione
+  (`test-doc-lettori-…` 23, `test-esecutivi-ba-coppia-v1`, `test-doc-verbo-comune-e-porta-v1`,
+  `test-fn-available-actions-ddt-reason-catch-all-v1`);
+* `vendite/test-documenti-numerazione-trasloco-v1` **non** l'ho fatto girare: non è transazionale (comincia con un
+  `DO`), e lo strumento non lo lancia. Numera il reso alla conferma (test 8-9): con il seed lo stato di emissione è
+  CONFERMATO, quindi deve restare verde. **Lo lancia Tid.**
+
+**pgTAP nuovo** `config/test-terminale-senza-uscita-manuale-v1`, sulla matrice vera del reso, in transazione:
+
+1. una riga a mano attiva ANNULLATO → DRAFT: rifiutata;
+2. la stessa di processo: ammessa;
+3. diventare a mano (`UPDATE` del solo `meta`): rifiutata;
+4. spenta, e a mano: ammessa;
+5. riaccesa (`UPDATE` del solo `attivo`): rifiutata;
+6. `terminale` = true sul reso CONFERMATO, che ha l'annullo a mano: rifiutato;
+7. la configurazione dei sette documenti: nessuna coppia (il seed di catalogo, non una popolazione);
+8. forma: 14 montaggi differiti, per funzione e argomento;
+9. la fattura, che non ha `terminale`: `E_SCRIPT_CHIAMATA_NON_VALIDA`;
+10. il lettore rilegge: l'offerta SUPERATA è terminale, e annullata la revisione torna EMESSA e non lo è più.
+
+**Pagine `manual/`.** `config/stati_doc_ddt`, `config/stati_doc_reso`, `config/stati_doc_listino_versioni`,
+`vendite/vw_stato_sorgente_ddt`, `vendite/vw_stato_sorgente_reso`, `vendite/trgfn_resi_gen_numero`,
+`script/vw_stati_doc_ddt_merce_partita`, `script/fn_doc_terminali_con_uscita_manuale` (nuova, anche per il trigger).
+
+**Ricadute BE/FE (elenco chiuso).** Nessuna di comportamento: le viste espongono le stesse colonne, e il BE e il FE leggono
+`doc_esito` e `doc_terminale` come prima. Cambia un valore: il reso confermato non è più terminale nel percorso della
+pratica (`PraticaPercorso.vue` mostra il Tag dello stato finché il documento non è terminale: è il comportamento voluto
+da S-5). Il codice d'errore nuovo lo solleva solo chi scrive la configurazione: niente nella tassonomia di `api.md`.
+Una sola richiesta di documentazione:
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE-T1 | `docs/it/backend/pratiche/manual/api_percorso.md:121` | `doc_terminale` non vuol dire «il documento non evolverà più»: vuol dire «da questo stato non esce nessun passaggio a mano; il sistema può ancora spostarlo» (S-1, A) |
+
+#### ⑩ Trovato dal giro 4: ANNULLATA della fattura — ✅ deciso da Tid il 2026-11-14 (a), fatto nel §6.13
+
+Il presidio della raggiungibilità (giro 4, §6.13) trova, oltre agli stati attesi, un caso che il censimento del §4 non
+aveva visto. In `config.stati_doc_fiscale` lo stato ANNULLATA ha `applica_fattura` = true, ma nessuna riga della matrice
+porta una **fattura** in ANNULLATA: l'unica entrata è DRAFT → ANNULLATA, che vale solo per il lotto (`solo_lotto`). Con il
+modello di oggi una fattura pre-fiscale si cancella (`vendite.fn_elimina_fattura_da_lotto`, e l'annullo del lotto
+`vendite.fn_annulla_lotto_da_draft` le elimina), e una fattura numerata si corregge con una nota di credito. Il guard
+`vendite.trgfn_fatture_numerata_non_annulabile`, che rifiuta il passaggio in ANNULLATA di una fattura numerata (col
+letterale `'ANNULLATA'`), protegge quindi un passaggio che la matrice non ammette.
+
+È la stessa forma di R-3 (il vocabolario dice di più della matrice). **D-ANN, proposta DB:** `applica_fattura` = false su
+ANNULLATA, dal CSV. Il guard `trgfn_fatture_numerata_non_annulabile` resta a presidio di una strada che la matrice
+chiude: si ritira solo se nessuno scrive lo stato della fattura fuori dalla matrice, e il censimento di chi la scrive va
+fatto prima. In alternativa (b): una riga di matrice DRAFT → ANNULLATA per la fattura, se l'annullo di una fattura
+pre-fiscale deve esistere come stato e non come cancellazione.
+
+**Deciso (Tid, 2026-11-14): (a).** `applica_fattura` = false su ANNULLATA, dal CSV (§6.13). Il guard
+`trgfn_fatture_numerata_non_annulabile` resta: il censimento di chi scrive lo stato della fattura fuori dalla matrice non
+è fatto, e finché non lo è il guard è una rete.
+
+### 6.13 Giro 4 — gli stati che nessun passaggio raggiunge (team DB, 2026-11-14)
+
+Col via di Tid (2026-11-14). Chiude ⑤, S-8 e R-3.
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `80_data/changelog/20261114-03` | S-8: `DELETE` di ALLOCATO, SPEDITO, CONSEGNATO e FATTURATO da `config.stati_doc_ordini`, forward-only (linee-guida-sql §11.2: `loadUpdateData` non cancella). Nessuna riga della matrice li nomina e nessun documento, di vendita o d'acquisto, li porta (dbdev, 2026-11-14): se un database ne avesse, la FK ferma il `DELETE` e lo dice |
+| CSV `stati_doc_ordini` | le quattro righe escono |
+| CSV `stati_doc_fiscale` | R-3: `applica_lotto` = false su REGISTRATA; D-ANN (a): `applica_fattura` = false su ANNULLATA |
+
+⚠️ **Numero.** Lavora un'altra sessione DB sullo stesso albero (i template dei documenti, `20261114-01`, `-02`). Il
+`20261114-03` l'ha dato `scripts/prossimo_changeset.py` ed è stato occupato subito. Per i giri 5 e 6 il range lo dà
+Tid.
+
+**Fuori, di proposito.** La «cintura» FATTURATO di `vendite.fn_list_ordini_da_pushare` (`NOT IN ('DRAFT', 'ANNULLATO',
+'FATTURATO')`): un codice che non esiste più non nomina niente, e la funzione si riapre nel giro dell'ordine (giro 6),
+dove anche DRAFT e ANNULLATO escono dal letterale. Così si apre una volta sola. `vendite.ordini.fatturazione_trigger` è un
+altro asse, che riusa i nomi: non c'entra.
+
+**pgTAP nuovo** `config/test-stati-raggiungibili-v1` (plan 5). È un presidio sulla **forma** della configurazione (il seed
+di catalogo), dichiarato tale:
+
+1. per le dieci testate della mappa `script.fn_doc_stato_modello`, ogni stato attivo si raggiunge dallo stato iniziale
+   lungo righe attive della matrice, col filtro della mappa; per fattura e lotto contano gli stati che valgono per loro
+   (`applica_fattura`, `applica_lotto`). Nessuna eccezione: ANNULLATA della fattura (⑩) l'ha chiusa D-ANN;
+2. controesempio costruito: uno stato attivo nuovo del reso, senza entrate, è trovato;
+3. controesempio costruito: spenta l'unica riga che entra nel reso CONFERMATO, lo stato è trovato;
+4. S-8: i quattro stati non ci sono più;
+5. R-3 e D-ANN: REGISTRATA vale solo per la fattura, ANNULLATA solo per il lotto.
+
+Senza l'estratto 1, 4 e 5 sono rossi; con l'estratto 5 su 5.
+
+**La prova (2026-11-14).** Il `DELETE` estratto, più un changeSet di scratch che simula il CSV fiscale (R-3), con ognuno
+dei **127** pgTAP che nominano i quattro stati, REGISTRATA, `applica_lotto` o i due vocabolari: 122 verdi, e un rosso nuovo atteso, riportato al modello: `pratiche/test-proiezione-stato-sorgente` (test 19, la mappa D1 dei nove stati d'ordine), ora sui cinque stati e col codice nel confronto, non per posizione: 31 su 31. Gli altri sono interruzioni presenti anche senza l'estratto (`script/test-vw-giornale-entita`; i due test dell'emissione del reso del §6.12, che vogliono le colonne del giro 3). `vendite/test-fn-list-ordini-da-pushare-v1` non è transazionale (manca il `ROLLBACK`) e lo strumento non lo lancia: **lo lancia Tid**.
+
+pgTAP adeguato: `pratiche/test-proiezione-stato-sorgente` (19).
+
+**D-ANN (a), la prova (2026-11-14).** Con il CSV fiscale simulato (R-3 e D-ANN), sui **73** pgTAP che nominano il vocabolario fiscale, `applica_fattura` o il guard della fattura numerata: 72 verdi, e `script/test-vw-giornale-entita`, interrotto anche senza l'estratto. Il presidio della raggiungibilità passa senza eccezioni. L'unico lettore che cambia risposta è `config.fn_get_stati_doc_fiscale('FATTURA')`, che non elenca più ANNULLATA fra gli stati della fattura; il backend non lo chiama. Pagina `config/stati_doc_fiscale` aggiornata.
+
+**Pagine.** `config/stati_doc_ordini` (le righe dei quattro stati e la nota «restano attivi»), guida
+`gestione-ordini` (la riga «⏳ non ancora raggiunti»).
+
+**Richieste al team FE (elenco chiuso, dal §4.4 corretto al §5):**
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| FE-S8a | `frontend/src/vendite/ordini/constants.js` | via `STATO_ORDINE.ALLOCATO`, `SPEDITO`, `CONSEGNATO`, `FATTURATO` (nessun lettore) |
+| FE-S8b | `frontend/src/locales/it.json`, `en.json` | via `vendite.ordini.stato_info.fatturato` |
+| FE-S8c | `frontend/src/vendite/preventivi/components/PreventiviDrawer.vue`, `frontend/src/vendite/components/CommessaGestioneDrawer.vue`, `frontend/src/vendite/components/ContrattoDrawer.vue`, `frontend/src/vendite/ordini/components/OrdiniDrawer.vue`, `frontend/src/vendite/ddt/components/DdtDrawer.vue`, `frontend/src/vendite/resi/components/ResoDrawer.vue` | i commenti che citano `ALLOCATO` come esempio di descrizione: l'esempio è uno stato che non c'è più |
+
+BE: nessuna (nessun riferimento fuori dai test).
+
+### 6.14 Giro 5 — il listino, i COMMENT stantii, `in_gioco` (team DB, 2026-11-14)
+
+Col via di Tid (2026-11-14), numeri dal primo libero: il `-04` lo aveva preso l'altra sessione, si parte dal `-05`. Chiude
+⑧, S-9, i COMMENT del §2 (§4.8) e R-2. ✅ **Applicato da Tid il 2026-11-14**, pgTAP verdi.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `00_schema/config/20261114-05` | ⚠️ Il primo apply (2026-11-14) si è fermato sulla `preCondition`: `indexExists` con il solo schema non trova l'indice su PostgreSQL. Il changeSet non era applicato: la `preCondition` diventa un `sqlCheck` sul catalogo, come in `20260703-05`. ⑧: l'indice `ux_stati_doc_listino_versioni_iniziale` diventa `uq_stati_doc_listino_versioni_iniziale`, il nome degli altri vocabolari. Nessun corpo, vincolo o pgTAP lo nominava. S-9: la versione di listino non prende `fase` |
+| `00_schema/config/20261114-06` | §4.8: sedici COMMENT al presente, letti contro il catalogo di dbdev: `config.stati_doc_offerte` (mancavano accettazione e rifiuto), la sua matrice («5 transizioni»: sono sette, due di processo), `config.stati_doc_reso` e la sua `meta` (`fase` era «in meta.fase»), `ordine` e `is_superato` dell'offerta, `codice` di contratti, bolla e ordini (stati che non ci sono), `stati_doc_fiscale.fase`, `vendite.contratti.is_abortito_snapshot` (trigger, colonna e vincolo che non ci sono più), `emissione` dei cinque vocabolari («Emetti produce numero e PDF»: vero solo per la bolla; gli altri hanno il numero dalla nascita) |
+| `20_code/vendite/20261114-07` | R-2: i tre lettori di `in_gioco` passano a `pre_fiscale` (`script.fn_check_attivita_riportabile_da_emettere`, dove l'alias diventa `marchio_pre_fiscale`; `vendite.vw_documenti_trattenuti_da_lotto`; `vendite.vw_dash_competenza_attivita`), e `vendite.vw_lotti_fase` perde la colonna. `CREATE OR REPLACE VIEW` non toglie colonne: la vista e le sue **otto** dipendenti (catena da `pg_depend`) si tolgono dalla cima senza `CASCADE` e si ricreano dalla base, con `security_invoker` e i COMMENT, anche di colonna. I privilegi li danno i default dello schema per `zeroerp_owner`. I COMMENT che spiegavano `in_gioco` sono al presente |
+
+**La prova (2026-11-14).** I tre changeSet, con ognuno dei **31** pgTAP che nominano le nove viste, la funzione,
+l'indice o la postura `security_invoker`: tutti verdi. Una prova di scratch conferma che le nove viste ricreate hanno
+`SELECT` per `zeroerp_app`, `security_invoker` e il COMMENT. Catalogo identico dopo ogni `ROLLBACK`.
+
+**pgTAP adeguati.** `vendite/test-vw-lotti-fase-v1`: il test 1 (il contratto della vista) senza `in_gioco`; il test 5 ora
+presidia, sulla forma, che nessuna vista e nessuna funzione lo legga più. Rosso senza l'estratto, verde con.
+`vendite/test-motivo-non-fatturata-v1` (la fixture separa i due lotti su `pre_fiscale`) e
+`vendite/test-documento-trattenuto-da-lotto-v1` (un commento).
+
+**Pagine.** `vendite/vw_lotti_fase` (lo stato che non si risolve: non succede più, la vista lo difende lo stesso),
+`script/fn_check_attivita_riportabile_da_emettere`. La doc auto-generata non è rigenerata.
+
+**Ricadute BE/FE.** Nessuna: il BE legge `pre_fiscale` dal 2026-11-13 (`e174a302e2`); nel test Django restano solo i
+commenti che raccontano il ritiro.
+
+**Trovato per il giro 6.** Il contratto copia `is_draft_snapshot` da `config.stati_doc_contratti.is_bozza`
+(montaggio di `vendite.trgfn_doc_snapshot_da_stato`), una colonna che dice la stessa cosa di `iniziale`: è una copia del
+significato, della famiglia di S-2. Entra nel giro del contratto.
+
+### 6.15 Giro 6 — il censimento (team DB, 2026-11-14)
+
+**Il perimetro.** Il testo delle funzioni (commenti tolti) e delle viste degli schemi applicativi, contro i codici dei
+sei vocabolari del giro (preventivo, ordine, contratto, bolla, reso, versione di listino), sul catalogo di dbdev il
+2026-11-14: 104 oggetti nominano almeno un codice. Molti sono falsi positivi: lo stesso codice vive in vocabolari
+diversi (BOZZA e CHIUSA di commesse, pratiche, template dei documenti; DRAFT dei documenti interni di magazzino e della
+mail; ATTIVO delle automazioni, delle vesti, dei dispositivi). Tolti quelli, restano **circa 55 oggetti**.
+
+**La regola per classificarli** (S-2 e S-3, Tid 2026-11-08):
+
+* un codice usato **per il suo significato** (in bozza, emesso, accettato, annullato, terminale) si legge dalla colonna
+  del vocabolario: è S-2;
+* un codice che nomina **la destinazione di un processo** (EVASO, PARZIALMENTE_EVASO, SPEDITO, CONSEGNATO, RESO della
+  bolla, ATTIVA e CHIUSA del listino) resta, attraverso `script.fn_doc_stato_id`: il processo nomina la sua
+  destinazione come la nomina la riga della matrice;
+* un codice di **un altro asse** che riusa i nomi (`vendite.ordini.fatturazione_trigger`: CONFERMATO, SPEDITO,
+  CONSEGNATO) non è uno stato e non si tocca.
+
+**Gli oggetti, per documento** (da classificare uno per uno sul corpo vivo):
+
+| Documento | Oggetti |
+| --- | --- |
+| preventivo | `script.fn_available_actions_preventivo`, `vendite.fn_crea_revisione_preventivo`, `vendite.fn_preventivo_proietta_stato_smistamento`, `vendite.trgfn_preventivi_guard_annullamento`, `vendite.trgfn_preventivi_guard_transizione`, `vendite.vw_dash_fatturazione_preventivi` |
+| ordine | `script.fn_available_actions_ordine`, `vendite.fn_list_ordini_da_pushare` (con la «cintura» FATTURATO del §6.13), `vendite.fn_ordine_proietta_stato_evasione`, `vendite.fn_situazione_merce_ordine`, `vendite.fn_genera_ddt_da_ordine`, `vendite.trgfn_ordini_guard_transizione`, `vendite.trgfn_ordini_normalize`, `vendite.vw_dash_fatturazione_ordini` |
+| contratto | `script.fn_available_actions_contratto`, `vendite.fn_get_contratto_attivo`, `vendite.trgfn_contratti_freeze_listino_versione`, `vendite.trgfn_contratti_guard_transizione_stato`, `vendite.trgfn_contratti_set_categoria_cliente_snapshot`; lo snapshot `is_draft_snapshot` da `is_bozza` (§6.14) |
+| bolla | `script.fn_available_actions_ddt` (`can_edit_righe = DRAFT`), `script.fn_check_ddt_emittibile`, `script.fn_check_ddt_riga_correggi_qta_evasa`, `vendite.fn_annulla_ddt`, `vendite.fn_cambia_stato_ddt`, `vendite.fn_ddt_push_diagnosi`, `vendite.trgfn_ddt_gen_numero_emesso`, `vendite.trgfn_ddt_guard_causale_emissione`, `vendite.trgfn_ddt_guard_indirizzi_obbligatori`, `vendite.trgfn_ddt_guard_transizione`, `vendite.trgfn_ddt_guard_transizione_approvazione`, `vendite.trgfn_ddt_riga_legame_guard`, `vendite.vw_dash_fatturazione_ddt`, `dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo` |
+| reso | `script.fn_available_actions_reso`, `script.fn_check_reso_merce`, `vendite.fn_conferma_reso`, `vendite.fn_annulla_reso`, `vendite.fn_chiudi_riconsegna_reso`, `vendite.fn_riapri_riconsegna_reso`, `vendite.fn_genera_ddt_riconsegna`, `vendite.trgfn_resi_guard_ddt_consegnato`, `vendite.trgfn_resi_righe_guard_quantita` |
+| versione di listino | `vendite.fn_attiva_versione_listino`, `script.fn_check_listino_congelabile`, `script.fn_check_versione_listino_chiudibile`, `script.fn_check_versione_listino_eliminabile`, `vendite.fn_chiudi_versioni_listino_scadute`, `vendite.fn_versioni_listino_da_chiudere`, `vendite.fn_listino_versione_in_vigore`, `vendite.fn_listino_ha_storia`, `vendite.fn_listini_attivi_uom_non_convertibili`, `vendite.fn_prezzi_legame_oltre_la_fine`, `vendite.fn_resolve_prezzo_listino_v2_esito`, `vendite.fn_check_listino_provenienza_emittente`, `vendite.trgfn_listini_kit_guard`, `vendite.trgfn_listini_righe_comp_guard_immutabilita_v5`, `vendite.trgfn_listini_righe_guard_periodicita_quota_fissa`, `vendite.trgfn_listini_righe_guard_stato`, `vendite.trgfn_listini_versioni_guard_per_stato`, `vendite.trgfn_listini_versioni_guard_transizione_stato` |
+
+**L'ordine proposto.** Un documento per giro (6a … 6f), così ogni oggetto si apre una volta sola e ogni giro ha la sua
+prova e il suo apply: preventivo, ordine, contratto, bolla, reso, listino. Ogni giro porta il presidio sulla forma
+del documento (nessun codice dei suoi stati nei corpi dei suoi lettori di significato), come il test 12 di
+`vendite/test-offerta-guard-dal-vocabolario-v1` per l'offerta, e una marca spostata dove il significato lo permette.

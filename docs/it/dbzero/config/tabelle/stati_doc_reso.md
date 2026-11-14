@@ -22,13 +22,19 @@
 | fase | character varying(20) | NO |  |
 | is_abortito | boolean | NO | false |
 | iniziale | boolean | NO | false |
+| esito | character varying(50) | YES |  |
+| terminale | boolean | NO | false |
+| emissione | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_reso_abortito_attivo |  |
+| CHECK | chk_stati_doc_reso_emissione_attivo |  |
 | CHECK | chk_stati_doc_reso_fase |  |
 | CHECK | chk_stati_doc_reso_iniziale_attivo |  |
+| CHECK | chk_stati_doc_reso_terminale_chiuso |  |
+| FOREIGN KEY | fk_stati_doc_reso_esito | esito |
 | PRIMARY KEY | pk_stati_doc_reso | id |
 | UNIQUE | uq_stati_doc_reso_codice | codice |
 | UNIQUE | uq_stati_doc_reso_codice_interno | codice_interno |
@@ -42,19 +48,24 @@
 | uq_stati_doc_reso_abortito | `CREATE UNIQUE INDEX uq_stati_doc_reso_abortito ON config.stati_doc_reso USING btree (is_abortito) WHERE is_abortito` |
 | uq_stati_doc_reso_codice | `CREATE UNIQUE INDEX uq_stati_doc_reso_codice ON config.stati_doc_reso USING btree (codice)` |
 | uq_stati_doc_reso_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_reso_codice_interno ON config.stati_doc_reso USING btree (codice_interno)` |
+| uq_stati_doc_reso_emissione | `CREATE UNIQUE INDEX uq_stati_doc_reso_emissione ON config.stati_doc_reso USING btree (emissione) WHERE emissione` |
 | uq_stati_doc_reso_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_reso_iniziale ON config.stati_doc_reso USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_doc_reso_a10_guard_esito_verdetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
+| trg_stati_doc_reso_a10_guard_esito_verdetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_reso_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_reso_a10_resi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'resi', 'stato_doc_reso_id', 'id', 'attivo')` |
+| trg_stati_doc_reso_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.resi')` |
+| trg_stati_doc_reso_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.resi')` |
 | trg_stati_doc_reso_a10_transizioni_stati_reso_block_deac_d6dd87 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_reso', 'stato_a_id', 'id', 'attivo')` |
 | trg_stati_doc_reso_a10_transizioni_stati_reso_block_deac_f3932b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_reso', 'stato_da_id', 'id', 'attivo')` |
 | trg_stati_doc_reso_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_stati_doc_reso_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_stati_doc_reso_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_stati_doc_reso_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_stati_doc_reso_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

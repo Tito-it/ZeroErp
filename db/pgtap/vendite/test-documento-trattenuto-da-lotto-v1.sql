@@ -58,8 +58,8 @@
 --   lotto PRE-FISCALE.
 --   ⛔ E il test 6 e' il seguito: la correzione ovvia — `NOT chiude_lotto` —
 --   sbaglia anch'essa, perche' quel flag e' TRUE solo su DEFINITIVA e il
---   catalogo ammette DEFINITIVA -> INVIATA. Il flag giusto e' `in_gioco` di
---   vendite.vw_lotti_fase.
+--   catalogo ammette DEFINITIVA -> INVIATA. Il flag giusto e' `pre_fiscale` di
+--   vendite.vw_lotti_fase (fino al 2026-11-14 la sua copia `in_gioco`, R-2).
 --   ⚠️ Nessuno dei due casi esisteva nei dati di sviluppo, dove i lotti
 --   finiscono quasi tutti ANNULLATA: erano verdi per sottrazione, e vanno
 --   COSTRUITI.

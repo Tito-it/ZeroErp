@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «PUO' STAMPARE» SI DECIDE DALLA VALIDITA'
+#   documenti.vw_template_versioni_stampabili: stampa una versione PUBBLICATA
+#   o OBSOLETA, attiva, la cui validita' copre la data operativa.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   La vista chiedeva stato = 'PUBBLICATA'. fn_pubblica_template_documento_versione
+#   rende OBSOLETA la versione in corso nel momento in cui pubblica la nuova,
+#   anche quando la nuova parte da una data futura: da quel momento alla
+#   partenza nessuna delle due stampava, e lo standard non subentrava a una
+#   copia dell'emittente. Contro la decisione 51 del 2026-04-29
+#   (work-done/sviluppo-documenti.md: «se la nuova versione e' futura, la
+#   vecchia resta pubblicata fino alla scadenza») e contro §7c delle linee
+#   guida SQL: le date comandano, lo stato separa l'operativo (PUBBLICATA,
+#   OBSOLETA) dalla preparazione (BOZZA), con la whitelist degli stati
+#   operativi.
+#   Il controesempio (2026-11-14, CI): lo standard pubblicato «da oggi» col
+#   fuso di Roma, e «oggi» riportato al giorno prima dal fuso ostile del passo
+#   T-5. La versione precedente, OBSOLETA ma valida quel giorno, non stampava.
+#
+# -- FORMA ---------------------------------------------------------------
+#   La funzione di pubblicazione e il trigger A1 non cambiano: OBSOLETA resta
+#   «superata da una pubblicazione successiva», chiusa al giorno prima della
+#   nuova. Cambia solo che cosa la vista ne legge.
+#   Una riga per modello: la regge il vincolo esteso a OBSOLETA (20261114-01).
+#   CREATE OR REPLACE: colonne invariate, nome e ordine; security_invoker
+#   ripetuto (linee guida §13.7). I lettori (fn_risolvi_template_applicabile,
+#   fn_template_esito_risoluzione, fn_personalizza_template_standard,
+#   vw_template_personalizzati_scarto) la leggono per nome e non cambiano.
+#   Il BE riceve la versione da fn_risolvi_template_applicabile e non
+#   ricontrolla lo stato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261114-02-update-vw-template-versioni-stampabili-dalla-validita-mctit.yaml
+
+  - changeSet:
+      id: 20261114-02-update-vw-template-versioni-stampabili-dalla-validita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.vw_template_versioni_stampabili: stampa una versione PUBBLICATA o OBSOLETA,
+        attiva e valida alla data operativa. Una versione superata da una pubblicazione con
+        decorrenza futura stampa fino alla vigilia della nuova.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_catalog.pg_views
+               WHERE schemaname = 'documenti' AND viewname = 'vw_template_versioni_stampabili'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW documenti.vw_template_versioni_stampabili
+                  WITH (security_invoker = true) AS
+              SELECT t.id                         AS template_documento_id,
+                     v.id                         AS template_versione_id,
+                     t.tipo_documento_output_id,
+                     t.sorgente_tipo_id,
+                     t.emittente_fiscale_id,
+                     t.standard,
+                     t.is_default
+                FROM documenti.template_documenti t
+                JOIN documenti.template_documenti_versioni v
+                  ON v.template_documento_id = t.id
+                 AND v.stato IN ('PUBBLICATA', 'OBSOLETA')
+                 AND v.attivo
+                 AND v.validita @> (SELECT script.fn_data_operativa())
+               WHERE t.attivo;
+
+              COMMENT ON VIEW documenti.vw_template_versioni_stampabili IS
+                'I modelli che possono stampare oggi, una riga per modello con la versione con cui stampa: modello attivo, versione attiva fuori bozza (PUBBLICATA o OBSOLETA) e valida alla data operativa. La validita'' decide, lo stato separa le versioni operative dalla BOZZA: una versione OBSOLETA, superata da una pubblicazione successiva, stampa fino all''ultimo giorno della sua validita'', cioe'' fino alla vigilia della nuova. Sede unica del predicato «puo'' stampare»: la leggono documenti.fn_risolvi_template_applicabile (anche per il modello indicato), documenti.fn_template_esito_risoluzione, documenti.fn_personalizza_template_standard e documenti.vw_template_personalizzati_scarto. Una riga per modello per costruzione: ex_template_documenti_versioni_no_overlap_pubblicata, esteso alle OBSOLETE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW documenti.vw_template_versioni_stampabili
+                  WITH (security_invoker = true) AS
+              SELECT t.id                         AS template_documento_id,
+                     v.id                         AS template_versione_id,
+                     t.tipo_documento_output_id,
+                     t.sorgente_tipo_id,
+                     t.emittente_fiscale_id,
+                     t.standard,
+                     t.is_default
+                FROM documenti.template_documenti t
+                JOIN documenti.template_documenti_versioni v
+                  ON v.template_documento_id = t.id
+                 AND v.stato = 'PUBBLICATA'
+                 AND v.attivo
+                 AND v.validita @> (SELECT script.fn_data_operativa())
+               WHERE t.attivo;

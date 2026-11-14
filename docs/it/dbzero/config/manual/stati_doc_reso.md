@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_reso`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -61,14 +61,27 @@ La logica usa sempre `codice_interno`, che non si modifica (`E_CODICE_NON_MODIFI
   `IN_CORSO`, `CHIUSO`): la bozza è aperta, conferma e annullo sono chiusi. Il reso è un ramo
   inverso della genealogia dei documenti, fuori dalla frontiera in avanti.
 
-Il reso **non si emette**: il vocabolario non ha la colonna `emissione`, e chiesto al suo lettore lo
-stato di emissione è vuoto. Al suo posto c'è la conferma, il passaggio `DRAFT → CONFERMATO` che
-chiede l'azione `conferma_reso`.
+* **`emissione`** — lo stato in cui il reso è emesso: `CONFERMATO`, a cui si arriva dalla conferma
+  (`DRAFT → CONFERMATO`, azione `conferma_reso`). Lì nasce il numero
+  ([`vendite.trgfn_resi_gen_numero`](/dbzero/vendite/manual/trgfn_resi_gen_numero)) e da lì la merce è
+  rientrata (`script.vw_stati_doc_reso_merce_rientrata`). Al più uno, e attivo.
+* **`esito`** e **`terminale`** — come negli altri vocabolari, e la vista
+  [`vendite.vw_stato_sorgente_reso`](/dbzero/vendite/views/vw_stato_sorgente_reso) li passa così come
+  sono:
 
-Non dichiara nemmeno `esito` e `terminale`: li deriva la vista
-[`vendite.vw_stato_sorgente_reso`](/dbzero/vendite/views/vw_stato_sorgente_reso), dove l'annullo è
-un esito negativo, ogni altro stato chiuso un esito positivo, e ogni stato chiuso è terminale. Non ha
-le colonne della stampa (`pdf_mode`, `pdf_allow_allegati`): il reso è fuori dal motore di stampa.
+| Stato | `esito` | `terminale` |
+| --- | --- | --- |
+| `DRAFT` | *(nessuno)* | ❌ |
+| `CONFERMATO` | `POSITIVO` | ❌ |
+| `ANNULLATO` | `NEGATIVO` | ✅ |
+
+⭐ **Il reso confermato non è terminale.** Ha fatto il suo lavoro (esito positivo, fase chiusa), ma
+resta annullabile a mano: `CONFERMATO → ANNULLATO` è lo storno. È la stessa regola dell'offerta
+accettata. `terminale` vuol dire che dallo stato non esce nessun passaggio a mano, e lo fa rispettare
+[`script.trgfn_doc_terminale_senza_uscita_manuale`](/dbzero/script/manual/fn_doc_terminali_con_uscita_manuale).
+
+Il vocabolario non ha le colonne della stampa (`pdf_mode`, `pdf_allow_allegati`): il reso è fuori dal
+motore di stampa.
 
 ---
 

@@ -286,6 +286,7 @@ search:
 - [fn_offerta_proietta_stato_revisione](funzioni/fn_offerta_proietta_stato_revisione.md)
 - [fn_offerta_righe_espanse](funzioni/fn_offerta_righe_espanse.md)
 - [fn_offerta_righe_preview](funzioni/fn_offerta_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-72`)
+- [fn_offerta_scaduta](funzioni/fn_offerta_scaduta.md)
 - [fn_ordine_ha_residuo_evasione](funzioni/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-13 — **reso-aware**; rev 2026-11-03 — **solo merce**, `20261103-22`)
 - [fn_ordine_proietta_stato_evasione](funzioni/fn_ordine_proietta_stato_evasione.md)
 - [fn_ordine_riga_componenti_init](funzioni/fn_ordine_riga_componenti_init.md)

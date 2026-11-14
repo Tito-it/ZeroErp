@@ -60,6 +60,12 @@ databaseChangeLog:
               # 2026-10-25 (20261025-37, brief-modello-documento-vendita §8): lo stato di
               # emissione. Va dichiarata qui, o la cella del CSV non la governa.
               - column: { name: emissione, type: BOOLEAN }
+              # 2026-11-14 (20261113-42, brief-db-stati-documento-dal-vocabolario giro 3): terminale, e il
+              # verdetto (NULL = nessuno). esito ha una FK verso config.esiti_flussi_pratiche, seminato
+              # dopo questo mirror (20260701-04): qui si salta (SKIP), lo carica il mirror ri-ancorato
+              # 20261113-50 (linee-guida-sql §11.2).
+              - column: { name: esito, type: SKIP }
+              - column: { name: terminale, type: BOOLEAN }
 
 
   - changeSet:

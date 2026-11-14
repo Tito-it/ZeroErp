@@ -1,4 +1,4 @@
-id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,fase,is_abortito,iniziale
-1,DRAFT,DRAFT,Bozza,true,10,{},2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED,APERTO,false,t
-2,CONFERMATO,CONFERMATO,Confermato,true,20,"{""nessuna_azione_key"":""vendite.reso.stato_info.confermato""}",2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED,CHIUSO,false,f
-3,ANNULLATO,ANNULLATO,Annullato,true,30,"{""nessuna_azione_key"":""vendite.reso.stato_info.annullato""}",2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED,CHIUSO,true,f
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,fase,is_abortito,iniziale,esito,terminale,emissione
+1,DRAFT,DRAFT,Bozza,true,10,{},2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED,APERTO,false,t,NULL,f,f
+2,CONFERMATO,CONFERMATO,Confermato,true,20,"{""nessuna_azione_key"":""vendite.reso.stato_info.confermato""}",2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED,CHIUSO,false,f,POSITIVO,f,t
+3,ANNULLATO,ANNULLATO,Annullato,true,30,"{""nessuna_azione_key"":""vendite.reso.stato_info.annullato""}",2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED,CHIUSO,true,f,NEGATIVO,t,f

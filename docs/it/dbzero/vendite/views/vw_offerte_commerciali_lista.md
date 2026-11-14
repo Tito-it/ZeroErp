@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista flat canonica e self-contained delle offerte commerciali, per la lista configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice); listino_codice, listino_versione_codice e valuta_codice gia' risolti. Pura denormalizzazione: nessuno scope e nessun filtro, security_invoker=on (la RLS dell'offerta si applica attraverso la vista). Gli stati si leggono per significato dal vocabolario config.stati_doc_offerte: is_superata (is_superato, rimpiazzata da una revisione successiva), is_abortito (annullata), is_attiva = NOT is_superata AND NOT is_abortito; «solo l'ultima revisione» si chiede a is_superata IS FALSE. is_scaduta: la validita' (validita_al) e' passata rispetto alla data operativa dell'azienda (script.fn_data_operativa) e il cliente non ha ancora risposto, cioe' lo stato non ha un esito; un'offerta accettata, rifiutata, superata o annullata non e' scaduta. has_next_revisione: esiste una revisione figlia, in qualunque stato. La pratica viene da pratiche.fn_pratica_del_documento; le colonne del grafo del lineage le legge il backend da vendite.fn_documento_lineage_sintesi.
+> Vista flat canonica e self-contained delle offerte commerciali, per la lista configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice); listino_codice, listino_versione_codice e valuta_codice gia' risolti. Pura denormalizzazione: nessuno scope e nessun filtro, security_invoker=on (la RLS dell'offerta si applica attraverso la vista). Gli stati si leggono per significato dal vocabolario config.stati_doc_offerte: is_superata (is_superato, rimpiazzata da una revisione successiva), is_abortito (annullata), is_attiva = NOT is_superata AND NOT is_abortito; «solo l'ultima revisione» si chiede a is_superata IS FALSE. is_scaduta: la regola di vendite.fn_offerta_scaduta (la validita' e' passata rispetto alla data operativa dell'azienda e il cliente non ha ancora risposto, cioe' lo stato non ha un esito), sullo stato e sulla validita' della riga; un'offerta accettata, rifiutata, superata o annullata non e' scaduta. has_next_revisione: esiste una revisione figlia, in qualunque stato. La pratica viene da pratiche.fn_pratica_del_documento; le colonne del grafo del lineage le legge il backend da vendite.fn_documento_lineage_sintesi.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -48,7 +48,7 @@ SELECT o.id,
     v_val.codice AS valuta_codice,
     o.validita_dal,
     o.validita_al,
-    ((sdo.esito IS NULL) AND (o.validita_al IS NOT NULL) AND (o.validita_al < ( SELECT script.fn_data_operativa() AS fn_data_operativa))) AS is_scaduta,
+    vendite.fn_offerta_scaduta(sdo.esito, o.validita_al, ( SELECT script.fn_data_operativa() AS fn_data_operativa)) AS is_scaduta,
     o.data_emissione,
     o.data_accettazione,
     o.data_rifiuto,

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `vendite.trgfn_doc_testata_lock_fuori_bozza`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -35,7 +35,7 @@ delle colonne da bloccare.
 | Argomento | Cosa |
 | --- | --- |
 | `[0]` | il tipo di documento, col codice di `config.sorgenti` (`DDT_VENDITA`, `RESO_VENDITA`, `ORDINE_VENDITA`, `CONTRATTO`, `PREVENTIVO`, `OFFERTA_COMMERCIALE`): lo usa il lettore di stato |
-| `[1]` | `codice_interno` dello stato «bozza» (`DRAFT`; `BOZZA` sull'offerta) |
+| `[1]` | stato «bozza»: obbligatorio nella grammatica, **non si legge**. La bozza è lo stato iniziale del vocabolario del documento (vedi [script.fn_doc_lock_regola](/dbzero/script/manual/fn_doc_lock_regola)) |
 | `[2..]` | terne *(colonna, codice d'errore, stati in cui resta aperta fuori bozza)* |
 
 ---

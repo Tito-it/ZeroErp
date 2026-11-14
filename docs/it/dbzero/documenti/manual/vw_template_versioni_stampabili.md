@@ -9,7 +9,8 @@
 
 ### 🎯 Scopo
 
-(21-10-2026 — brief `brief-db-modelli-documento-standard`, §10.3 K-1)
+(latest review 14-11-2026 — la validità decide, `20261114-02`; nata il 21-10-2026, brief
+`brief-db-modelli-documento-standard`, §10.3 K-1)
 
 Dice **quali modelli possono stampare oggi**, e con quale versione. È la sede unica di «può
 stampare»: chi deve sapere se un modello stampa la legge, invece di ripetere le condizioni.
@@ -19,10 +20,17 @@ stampare»: chi deve sapere se un modello stampa la legge, invece di ripetere le
 Un modello può stampare se:
 
 * è attivo;
-* ha una versione **pubblicata**, attiva e valida alla data operativa dell'azienda.
+* ha una versione **fuori bozza** (`PUBBLICATA` o `OBSOLETA`), attiva e valida alla data
+  operativa dell'azienda.
 
-Per ogni modello c'è al più una riga: le versioni pubblicate attive di uno stesso modello non si
-sovrappongono nel tempo (vincolo di esclusione sulla tabella delle versioni).
+**Decide la validità, non lo stato.** Lo stato separa le versioni operative dalla `BOZZA`; il
+giorno in cui una versione stampa lo dicono le sue date. Una versione `OBSOLETA` è superata da una
+pubblicazione successiva, e stampa fino all'ultimo giorno della sua validità: se la nuova parte da
+una data futura, fino a quel giorno stampa ancora la vecchia, e dal giorno di partenza la nuova.
+
+Per ogni modello c'è al più una riga: le versioni attive fuori bozza di uno stesso modello non si
+sovrappongono nel tempo (vincolo di esclusione `ex_template_documenti_versioni_no_overlap_pubblicata`
+sulla tabella delle versioni, che copre anche le `OBSOLETA`).
 
 ### Chi la legge
 
@@ -42,3 +50,11 @@ sovrappongono nel tempo (vincolo di esclusione sulla tabella delle versioni).
 
 Prima il predicato era scritto due volte dentro `fn_risolvi_template_applicabile` e una nel
 backend (`get_versione_pubblicata_attiva`), che non guardava se il modello è attivo.
+
+Fino al 14-11-2026 la vista chiedeva `stato = 'PUBBLICATA'`. La pubblicazione rende `OBSOLETA` la
+versione in corso nel momento in cui pubblica la nuova, anche quando la nuova parte da una data
+futura: fra la pubblicazione e la partenza non stampava nessuna delle due, e il modello cadeva su
+`E_DOCUMENTI_TEMPLATE_NON_RISOLTO`. La decisione del 29-04-2026 (`work-done/sviluppo-documenti.md`,
+punto 51) voleva invece la vecchia in uso fino alla partenza della nuova. Il caso è emerso in CI: il
+fuso aziendale spostato al giorno prima della pubblicazione dello standard. Prova:
+`db/pgtap/documenti/test-fn-pubblica-template-documento-versione-v1.sql`, test 12-17.

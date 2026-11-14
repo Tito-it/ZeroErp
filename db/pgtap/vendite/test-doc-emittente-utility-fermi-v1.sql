@@ -165,9 +165,12 @@ $f$;
 -- ============================================================
 -- 1-3) LA GRAMMATICA E LA DECISIONE
 -- ============================================================
+-- Il tipo documento e' uno vero (PREVENTIVO): la regola ne legge la bozza dal
+-- vocabolario, e l'argomento dello stato bozza ('B') non si legge. La
+-- decisione «in bozza» si chiede quindi con lo stato_bozza della regola.
 CREATE TEMP TABLE _r AS
 SELECT script.fn_doc_lock_regola('TESTATA',
-         ARRAY['X', 'B', 'a', 'E_A', '', 'b', 'E_B', '-', 'c', 'E_C', 'S1']) AS regola;
+         ARRAY['PREVENTIVO', 'B', 'a', 'E_A', '', 'b', 'E_B', '-', 'c', 'E_C', 'S1']) AS regola;
 
 SELECT is(
     (SELECT regola -> 'colonne' FROM _r),
@@ -178,16 +181,16 @@ SELECT is(
     '1) la terna con ''-'' e'' ferma sempre, con gli stati vuoti; le altre no');
 
 SELECT is(
-    ARRAY[(script.fn_doc_lock_regola('TESTATA', ARRAY['X', 'B', 'a', 'E_A', '-,S1']) ->> 'errore') IS NOT NULL,
-          (script.fn_doc_lock_regola('TESTATA', ARRAY['X', 'B', 'a', 'E_A', 'S1, -']) ->> 'errore') IS NOT NULL,
-          (script.fn_doc_lock_regola('TESTATA', ARRAY['X', 'B', 'a', 'E_A', ' - ']) -> 'colonne' -> 0 ->> 'ferma_sempre')::boolean],
+    ARRAY[(script.fn_doc_lock_regola('TESTATA', ARRAY['PREVENTIVO', 'B', 'a', 'E_A', '-,S1']) ->> 'errore') IS NOT NULL,
+          (script.fn_doc_lock_regola('TESTATA', ARRAY['PREVENTIVO', 'B', 'a', 'E_A', 'S1, -']) ->> 'errore') IS NOT NULL,
+          (script.fn_doc_lock_regola('TESTATA', ARRAY['PREVENTIVO', 'B', 'a', 'E_A', ' - ']) -> 'colonne' -> 0 ->> 'ferma_sempre')::boolean],
     ARRAY[true, true, true],
     '2) ''-'' mescolato a degli stati e'' un montaggio sbagliato; '' - '' da solo e'' una colonna ferma sempre');
 
 SELECT is(
     (SELECT concat_ws(' ; ',
-              coalesce(script.fn_doc_lock_colonna_bloccata(regola, 'B',  ARRAY['a', 'b', 'c']), 'NULL'),
-              coalesce(script.fn_doc_lock_colonna_bloccata(regola, 'B',  ARRAY['a', 'c']),      'NULL'),
+              coalesce(script.fn_doc_lock_colonna_bloccata(regola, regola ->> 'stato_bozza', ARRAY['a', 'b', 'c']), 'NULL'),
+              coalesce(script.fn_doc_lock_colonna_bloccata(regola, regola ->> 'stato_bozza', ARRAY['a', 'c']),      'NULL'),
               coalesce(script.fn_doc_lock_colonna_bloccata(regola, 'S1', ARRAY['c']),           'NULL'),
               coalesce(script.fn_doc_lock_colonna_bloccata(regola, 'S1', ARRAY['b', 'c']),      'NULL'),
               coalesce(script.fn_doc_lock_colonna_bloccata(regola, 'S2', ARRAY['c', 'a']),      'NULL'),

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_ddt`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -89,10 +89,23 @@ Ogni stato dichiara la sua `fase` sulla scala comune a tutti i documenti (`APERT
 `ANNULLATO` sono chiusi. La legge anche la genealogia dei documenti: la frontiera esclude i DDT in
 fase chiusa o annullati.
 
-A differenza di preventivi, offerte, ordini e contratti, questo vocabolario **non dichiara** `esito`
-e `terminale`: li deriva la vista
-[`vendite.vw_stato_sorgente_ddt`](/dbzero/vendite/views/vw_stato_sorgente_ddt), dove l'annullo è un
-esito negativo, ogni altro stato chiuso un esito positivo, e ogni stato chiuso è terminale.
+Come preventivi, offerte, ordini e contratti, il vocabolario dichiara **`esito`** e **`terminale`**,
+e la vista [`vendite.vw_stato_sorgente_ddt`](/dbzero/vendite/views/vw_stato_sorgente_ddt) li passa
+così come sono:
+
+| Stato | `esito` | `terminale` |
+| --- | --- | --- |
+| `DRAFT`, `EMESSO`, `SPEDITO` | *(nessuno)* | ❌ |
+| `CONSEGNATO`, `RESO` | `POSITIVO` | ✅ |
+| `ANNULLATO` | `NEGATIVO` | ✅ |
+
+* **`esito`** è un verdetto di
+  [`config.esiti_flussi_pratiche`](/dbzero/config/tabelle/esiti_flussi_pratiche), o vuoto (lo controlla
+  [`config.trgfn_stati_doc_guard_esito_verdetto`](/dbzero/config/funzioni/trgfn_stati_doc_guard_esito_verdetto)).
+  La bolla resa è `POSITIVO`: la merce tornata non è un documento annullato.
+* **`terminale`** vuol dire che dallo stato non esce nessun passaggio a mano. Il sistema può ancora
+  spostare la bolla coi passaggi di processo (`CONSEGNATO → RESO`). Implica `fase = CHIUSO`; lo fa
+  rispettare [`script.trgfn_doc_terminale_senza_uscita_manuale`](/dbzero/script/manual/fn_doc_terminali_con_uscita_manuale).
 
 ---
 

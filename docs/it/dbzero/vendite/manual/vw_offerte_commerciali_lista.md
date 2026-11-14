@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_offerte_commerciali_lista`
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -65,9 +65,7 @@ In più è `WITH (security_invoker = on)` (RLS-ready).
 ### Colonna materializzata — `is_scaduta`
 
 ```sql
-sdo.esito IS NULL
-AND o.validita_al IS NOT NULL
-AND o.validita_al < (SELECT script.fn_data_operativa())   AS is_scaduta
+vendite.fn_offerta_scaduta(sdo.esito, o.validita_al, (SELECT script.fn_data_operativa())) AS is_scaduta
 ```
 
 `TRUE` quando l'offerta è **scaduta per l'operatore**: la validità è passata (rispetto alla data
@@ -76,8 +74,10 @@ vocabolario (`config.stati_doc_offerte.esito`, oggi vuoto su bozza ed emessa). U
 rifiutata, superata o annullata con la validità passata non è scaduta: il cliente ha già risposto, o
 l'offerta non è più viva.
 
-⭐ **La regola è intera qui.** Chi mostra il badge «Scaduta» (la lista, il dettaglio) legge il flag e
-non filtra gli stati per conto suo; la colonna configurabile «Scaduta» della lista dice la stessa
+⭐ **La regola sta in [`vendite.fn_offerta_scaduta`](/dbzero/vendite/manual/fn_offerta_scaduta)**, che
+la vista compone e che il dettaglio dell'offerta chiama sulla sua riga: lista e dettaglio dicono la stessa
+cosa senza che il dettaglio legga la vista. Chi mostra il badge «Scaduta» legge il flag e non filtra gli
+stati per conto suo; la colonna configurabile «Scaduta» della lista dice la stessa
 cosa del badge. Lo stato si legge per significato (l'esito), non per codice: uno stato nuovo di
 attesa, senza esito, entra da sé.
 
@@ -221,7 +221,7 @@ SELECT id, codice, revisione_numero, stato_codice_interno, ragione_sociale_compl
 ```
 
 ```sql
--- Offerte scadute ma ancora in uno stato che segnala scadenza (gating in app)
+-- Offerte scadute: validità passata e nessuna risposta del cliente
 SELECT id, codice, stato_codice_interno, validita_al
   FROM vendite.vw_offerte_commerciali_lista
  WHERE is_scaduta = TRUE
@@ -232,9 +232,9 @@ SELECT id, codice, stato_codice_interno, validita_al
 
 ### Note operative
 
-* **`is_scaduta` è grezzo**: rappresenta solo l'avvenuto superamento di
-  `validita_al`. La decisione se mostrarlo all'utente (badge) appartiene al
-  frontend, che lo combina con lo stato.
+* **`is_scaduta` è la regola intera**: la validità passata **e** nessun esito
+  dello stato. Il frontend mostra il badge dal flag, senza combinarlo con lo
+  stato.
 * **Listino opzionale**: `listino_codice`/`listino_versione_codice` sono NULL per
   offerte senza listino — la cella FE mostra il solo codice o nulla.
 * **`security_invoker=on`**: vista pronta per un'eventuale RLS sulla tabella base.

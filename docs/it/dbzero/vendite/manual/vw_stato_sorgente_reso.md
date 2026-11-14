@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_stato_sorgente_reso`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -53,22 +53,12 @@ non c'entrano.
 
 ---
 
-### `esito` e `terminale` sono DERIVATI
+### `esito` e `terminale` vengono dal vocabolario
 
-`config.stati_doc_reso` dichiara `fase` e `is_abortito`, non `esito` né `terminale`. La regola è
-meccanica, identica al ramo delle bolle:
-
-| Stato | `fase` | `esito` | `terminale` |
-| --- | --- | --- | --- |
-| `DRAFT` | APERTO | *(nessuno)* | ❌ |
-| `CONFERMATO` | CHIUSO | `POSITIVO` | ✅ |
-| `ANNULLATO` | CHIUSO, `is_abortito` | `NEGATIVO` | ✅ |
-
-Un reso confermato **è** concluso: la riconsegna della merce è un *altro* documento, non prosegue
-questo.
-
-⚠️ **`terminale` è la conclusione commerciale, non un lucchetto.** La matrice delle transizioni
-ammette ancora `CONFERMATO → ANNULLATO`, che resta la strada per lo storno.
+La vista passa `esito` e `terminale` di
+[`config.stati_doc_reso`](/dbzero/config/manual/stati_doc_reso), come le viste degli altri documenti:
+non li calcola. Il reso confermato ha esito `POSITIVO` e **non è terminale**: resta annullabile a mano
+(`CONFERMATO → ANNULLATO`, lo storno). I valori stanno nella pagina del vocabolario.
 
 ---
 

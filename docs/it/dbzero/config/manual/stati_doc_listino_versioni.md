@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_listino_versioni`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -52,7 +52,9 @@ codice. Uno stato già usato da una versione o dalla matrice non si disattiva.
   `vendite.listini_versioni` mette questo stato quando chi crea non ne dice uno, e rifiuta ogni
   altro con `E_DOC_STATO_INIZIALE_NON_VALIDO`. Lo legge anche il controllo dei listini in scadenza
   senza una versione successiva.
-* **`terminale`** — nessun passaggio esce da questo stato.
+* **`terminale`** — nessun passaggio **a mano** esce da questo stato (lo fa rispettare
+  [`script.trgfn_doc_terminale_senza_uscita_manuale`](/dbzero/script/manual/fn_doc_terminali_con_uscita_manuale)).
+  Non vale il contrario: `ATTIVA` non ha uscite a mano, la chiude il processo, e non è terminale.
 
 Rispetto ai vocabolari dei documenti di vendita, questo è ridotto: non ha `emissione` (una versione
 si **attiva**, col suo passaggio `BOZZA → ATTIVA`), non ha un annullo (`is_abortito`) e non ha la

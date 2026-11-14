@@ -1,0 +1,1301 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VENDITE.VW_LOTTI_FASE SENZA IN_GIOCO: UNA COPIA SI RITIRA
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 5 (R-2; Tid
+#   2026-11-13: il ritiro).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   vendite.vw_lotti_fase aveva due derivati, pre_fiscale =
+#   COALESCE(NOT congela_fiscale, false) e in_gioco = COALESCE(NOT
+#   congela_fiscale, true), che dissentivano in un caso solo: il lotto senza
+#   stato. Con S-6 (giro 1) lo stato del lotto e' NOT NULL e nasce dal
+#   vocabolario: quel caso non esiste piu', e in_gioco e' una copia di
+#   pre_fiscale. Il BE ha gia' fatto la sua parte (e174a302e2, 2026-11-13).
+#
+# ── COME ────────────────────────────────────────────────────────────
+#   I tre lettori passano a pre_fiscale: script.fn_check_attivita_
+#   riportabile_da_emettere (l'alias marchio_in_gioco diventa
+#   marchio_pre_fiscale), vendite.vw_documenti_trattenuti_da_lotto,
+#   vendite.vw_dash_competenza_attivita. CREATE OR REPLACE VIEW non toglie
+#   colonne: la vista e le sue otto dipendenti (catena letta da pg_depend su
+#   dbdev il 2026-11-14) si tolgono dalla cima, senza CASCADE, e si ricreano
+#   dalla base con le loro opzioni (security_invoker) e i loro COMMENT,
+#   anche di colonna. I privilegi li danno i default dello schema per
+#   zeroerp_owner (zeroerp_app arwd), gli stessi di prima; li presidia il
+#   pgTAP. I due COMMENT che spiegavano in_gioco sono riscritti al
+#   presente; gli altri restano com'erano.
+#
+# ── DA DOVE VENGONO LE DEFINIZIONI ──────────────────────────────────
+#   pg_get_viewdef e pg_get_functiondef su dbdev, 2026-11-14, con
+#   search_path = pg_catalog. Il rollback ricrea le definizioni e i COMMENT
+#   di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-07-update-vw-lotti-fase-senza-in-gioco-mctit.yaml
+
+  - changeSet:
+      id: 20261114-07-update-vw-lotti-fase-senza-in-gioco
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_fase perde in_gioco, copia di pre_fiscale dal giro 1: i tre lettori
+        leggono pre_fiscale, la vista e le sue otto dipendenti si ricreano. Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 5 (R-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La funzione: legge pre_fiscale.
+              CREATE OR REPLACE FUNCTION script.fn_check_attivita_riportabile_da_emettere(p_attivita_fatturabili_ids bigint[])
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_motivi jsonb := '[]'::jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Elencare i motivi che impediscono di riportare «da
+                  --   emettere» un insieme di attivita_fatturabili. Funzione
+                  --   PURA: nessuna scrittura, nessun raise di dominio.
+                  -- Ritorna:
+                  --   [] se si puo' fare su tutte; altrimenti un array
+                  --   ordinato di {codice, reason, reason_key, dettaglio,
+                  --   attivita_fatturabile_id, commessa_id, fattura_id}.
+                  -- Consumatori:
+                  --   vendite.fn_riporta_attivita_da_emettere (solleva il
+                  --   codice del PRIMO motivo) e il backend, per spiegare
+                  --   invece di far fallire.
+                  -- =========================================================
+
+                  -- ⛔ Guard di PARAMETRO, e solleva. Un elenco assente o
+                  --    vuoto e' un errore di chiamante, non una condizione di
+                  --    dominio: se uscisse come «nessun motivo» diventerebbe
+                  --    poi «zero righe riportate», cioe' indistinguibile da
+                  --    un'operazione riuscita che non ha trovato niente da
+                  --    fare. TECNICO: nessuna persona sceglie questo valore.
+                  IF p_attivita_fatturabili_ids IS NULL
+                     OR array_length(p_attivita_fatturabili_ids, 1) IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script',
+                          'fn_check_attivita_riportabile_da_emettere',
+                          'E_ATTIVITA_RIPORTO_SELEZIONE_VUOTA',
+                          jsonb_build_object(
+                              'parametro', 'p_attivita_fatturabili_ids',
+                              'valore',    to_jsonb(p_attivita_fatturabili_ids)),
+                          NULL::uuid,
+                          'fn_check_attivita_riportabile_da_emettere');
+                  END IF;
+
+                  WITH sel AS (
+                      SELECT DISTINCT u.id
+                        FROM unnest(p_attivita_fatturabili_ids) AS u(id)
+                  ),
+                  -- ⛔ IL PERIMETRO. Il JOIN su commesse_attivita non serve a
+                  --    leggere una colonna: e' il cancello di scope. La tabella
+                  --    attivita_fatturabili NON ha row level security, quella
+                  --    delle commesse si' — quindi e' quel JOIN a decidere cosa
+                  --    chi chiede ha diritto di vedere. Senza, la funzione
+                  --    direbbe «si puo' fare» su un emittente altrui.
+                  vis AS (
+                      SELECT s.id                                    AS attivita_fatturabile_id,
+                             af.commessa_id,
+                             af.fattura_riga_id,
+                             COALESCE(af.lock_in_fatturazione, false) AS lucchettata,
+                             af.stato_esecuzione,
+                             -- ⭐ rev 2026-09-12 — I DUE LIVELLI. La riga di commessa dice
+                             --    se il lavoro e' ancora «consegnato» (EMESSA); il marchio
+                             --    del giro dice A CHI, e vw_lotti_fase se quel giro e' vivo.
+                             --    Un'attivita' libera con la riga EMESSA e' DIVERGENTE:
+                             --    nessun giro la riprende (il pull la vede EMESSA, la
+                             --    select di un altro lotto non trova il suo marchio).
+                             --    Divergente e marchio di un lotto in gioco = in transito
+                             --    (fra pull e select); divergente e lotto morto o senza
+                             --    marchio = orfana, riportabile. Lotto fuori dal perimetro
+                             --    RLS di chi chiede → NULL → «morto»: chi vede la commessa
+                             --    vede il suo lotto, e' lo stesso emittente.
+                             ca.stato_emissione::text AS stato_emissione_riga,
+                             EXISTS (SELECT 1
+                                       FROM vendite.vw_lotti_fase f
+                                      WHERE f.lotto_id = vendite.fn_lotto_da_emit_batch(af.emit_batch_id)
+                                        AND f.pre_fiscale)               AS marchio_pre_fiscale,
+                             fr.fattura_id,
+                             -- L'etichetta che l'operatore riconosce sulla
+                             -- card: commessa e competenza, mai un id tecnico.
+                             format('commessa %s, competenza %s',
+                                    c.codice,
+                                    to_char(af.competenza_mese, 'MM/YYYY')) AS etichetta
+                        FROM sel s
+                        JOIN vendite.attivita_fatturabili af ON af.id = s.id
+                        JOIN vendite.commesse_attivita ca    ON ca.id = af.commessa_attivita_id
+                        JOIN vendite.commesse c              ON c.id  = af.commessa_id
+                        -- LEFT: se chi chiede non vede la riga di fattura, il
+                        -- motivo deve uscire lo stesso — senza bersaglio.
+                        LEFT JOIN vendite.fatture_righe fr   ON fr.id = af.fattura_riga_id
+                  ),
+                  -- ── MOTIVO 1 — non esiste, o e' fuori perimetro ──────────
+                  -- ⚠️ AGGREGATO, non per riga: di una riga che non si vede non
+                  --    si puo' dire niente che l'operatore riconosca — nemmeno
+                  --    la commessa. L'unica informazione onesta e' QUANTE sono,
+                  --    e il rimedio (aggiorna l'elenco) e' lo stesso per tutte.
+                  m1 AS (
+                      SELECT CASE WHEN count(*) > 0
+                                  THEN jsonb_build_array(jsonb_build_object(
+                                           'codice',                  'E_ATTIVITA_FATTURABILE_NON_TROVATA',
+                                           'reason',                  'ATTIVITA_NON_TROVATA',
+                                           'reason_key',              'vendite.attivita.azione_reason.non_trovata',
+                                           'dettaglio',               count(*)::text,
+                                           'attivita_fatturabile_id', NULL::bigint,
+                                           'commessa_id',             NULL::bigint,
+                                           'fattura_id',              NULL::bigint))
+                                  ELSE '[]'::jsonb END AS j
+                        FROM sel s
+                       WHERE NOT EXISTS (SELECT 1 FROM vis v
+                                          WHERE v.attivita_fatturabile_id = s.id)
+                  ),
+                  -- ── MOTIVO 2 — e' ancora dentro una fattura ──────────────
+                  -- ⛔ E' il guard che impedisce al verbo di diventare un modo
+                  --    per SCOLLEGARE UNA FATTURA VIVA. Il trigger di riga
+                  --    trgfn_attivita_fatturabili_guard_fatturato dice gia' la
+                  --    stessa cosa da un altro livello; qui si dice con una
+                  --    frase che nomina il documento, perche' un
+                  --    E_RIGA_GIA_FATTURATA generico non dice all'operatore
+                  --    COSA stava tentando.
+                  m2 AS (
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'codice',                  'E_ATTIVITA_ANCORA_IN_FATTURA',
+                                 'reason',                  'ATTIVITA_IN_FATTURA',
+                                 'reason_key',              'vendite.attivita.azione_reason.ancora_in_fattura',
+                                 'dettaglio',               v.etichetta,
+                                 'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                                 'commessa_id',             v.commessa_id,
+                                 'fattura_id',              v.fattura_id)
+                                 ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+                        FROM vis v
+                       WHERE v.fattura_riga_id IS NOT NULL
+                  ),
+                  -- ── MOTIVO 3 — non c'e' niente da riportare ──────────────
+                  -- Senza lucchetto E con la riga di commessa gia' NON_EMESSA
+                  -- l'attivita' e' davvero disponibile: il giro successivo la
+                  -- prende da se'. Dirlo e' diverso dal motivo 2, e il rimedio e'
+                  -- «non fare niente».
+                  -- ⛔ rev 2026-09-12: «senza lucchetto» da solo NON bastava. Con
+                  --    la riga ancora EMESSA il pull non la vede e nessun giro la
+                  --    riprende: quello stato era irraggiungibile da ogni verbo,
+                  --    e questo motivo lo chiamava «gia' disponibile». Verificato
+                  --    il 12-09 sul lotto 13338 (E_ATTIVITA_GIA_DA_EMETTERE su due
+                  --    attivita' che nessuno avrebbe mai ripreso).
+                  m3 AS (
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'codice',                  'E_ATTIVITA_GIA_DA_EMETTERE',
+                                 'reason',                  'ATTIVITA_GIA_DISPONIBILE',
+                                 'reason_key',              'vendite.attivita.azione_reason.gia_da_emettere',
+                                 'dettaglio',               v.etichetta,
+                                 'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                                 'commessa_id',             v.commessa_id,
+                                 'fattura_id',              NULL::bigint)
+                                 ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+                        FROM vis v
+                       WHERE v.fattura_riga_id IS NULL
+                         AND NOT v.lucchettata
+                         AND v.stato_emissione_riga <> 'EMESSA'
+                  ),
+                  -- ── MOTIVO 5 — EMESSA e non ancora lockata, dentro un giro VIVO ──
+                  -- ⭐ rev 2026-09-12. E' la finestra fra il pull e la select di un
+                  --    lotto che sta girando: la riga e' EMESSA, l'attivita' porta il
+                  --    marchio di un lotto in gioco, nessun lucchetto ancora. Non e'
+                  --    orfana: e' in transito. Liberarla da qui la farebbe prendere
+                  --    da due giri — stessa ragione del motivo 4, letta dal marchio
+                  --    invece che dal lucchetto. Stesso codice e stessa classe
+                  --    (CONFLITTO_STATO, rimedio «aspetta»); `reason` suo, perche'
+                  --    la diagnosi distingua i due transiti.
+                  -- ⭐ Quando il marchio e' di un lotto MORTO (o non c'e'), la stessa
+                  --    coppia «libera + EMESSA» non e' un motivo: e' la divergenza, e
+                  --    il verbo la riallinea con fn_libera_attivita_fatturabili.
+                  m5 AS (
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'codice',                  'E_ATTIVITA_IN_LAVORAZIONE',
+                                 'reason',                  'ATTIVITA_EMESSA_IN_GIRO_VIVO',
+                                 'reason_key',              'vendite.attivita.azione_reason.in_lavorazione',
+                                 'dettaglio',               v.etichetta,
+                                 'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                                 'commessa_id',             v.commessa_id,
+                                 'fattura_id',              NULL::bigint)
+                                 ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+                        FROM vis v
+                       WHERE v.fattura_riga_id IS NULL
+                         AND NOT v.lucchettata
+                         AND v.stato_emissione_riga = 'EMESSA'
+                         AND v.marchio_pre_fiscale
+                  ),
+                  -- ── MOTIVO 4 — e' dentro un giro VIVO ────────────────────
+                  -- ⛔ Lucchettata e non COMPLETED vuol dire che un lotto la sta
+                  --    lavorando ADESSO. Liberarla da qui la farebbe prendere da
+                  --    due giri insieme. E' la condizione che separa l'orfana
+                  --    dal transito legittimo, ed e' il motivo per cui la card
+                  --    «Emesse non fatturate» non e' un perimetro: contiene due
+                  --    popolazioni strutturalmente diverse.
+                  m4 AS (
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'codice',                  'E_ATTIVITA_IN_LAVORAZIONE',
+                                 'reason',                  'ATTIVITA_IN_GIRO_VIVO',
+                                 'reason_key',              'vendite.attivita.azione_reason.in_lavorazione',
+                                 'dettaglio',               v.etichetta,
+                                 'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                                 'commessa_id',             v.commessa_id,
+                                 'fattura_id',              NULL::bigint)
+                                 ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+                        FROM vis v
+                       WHERE v.fattura_riga_id IS NULL
+                         AND v.lucchettata
+                         AND v.stato_esecuzione IS DISTINCT FROM 'COMPLETED'
+                  )
+                  -- L'ordine di concatenazione E' la priorita': la mutazione
+                  -- solleva il primo motivo, e il primo dev'essere quello che
+                  -- spiega di piu'.
+                  SELECT m1.j || m2.j || m3.j || m5.j || m4.j
+                    INTO v_motivi
+                    FROM m1, m2, m3, m5, m4;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              -- Le viste si tolgono dalla cima della catena (nessun CASCADE: un dipendente
+              -- non censito ferma il changeSet invece di sparire), poi si ricreano dalla base.
+              DROP VIEW vendite.vw_dash_competenza_mensile;
+              DROP VIEW vendite.vw_dash_competenza_gruppi;
+              DROP VIEW vendite.vw_dash_competenza_attivita;
+              DROP VIEW vendite.vw_commesse_attivita_emittibilita;
+              DROP VIEW dbops.vw_lotti_congelati_con_errori_da_guardare;
+              DROP VIEW vendite.vw_lotti_congelati_con_gruppi_in_errore;
+              DROP VIEW vendite.vw_documenti_trattenuti_da_lotto;
+              DROP VIEW dbops.vw_lotti_fermi_da_guardare;
+              DROP VIEW vendite.vw_lotti_fase;
+
+              CREATE VIEW vendite.vw_lotti_fase WITH (security_invoker = true) AS
+               SELECT l.id AS lotto_id,
+                  l.codice AS lotto_codice,
+                  l.competenza_mese AS lotto_competenza_mese,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.is_abortito,
+                  sdf.congela_fiscale,
+                  sdf.chiude_lotto,
+                  COALESCE((NOT sdf.congela_fiscale), false) AS pre_fiscale
+                 FROM (vendite.fatturazione_lotti l
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = l.stato_doc_fiscale_id)));
+
+              COMMENT ON VIEW vendite.vw_lotti_fase IS
+                  'Sede unica della domanda «in che fase e'' questo lotto?». Una riga per lotto: i tre assi di config.stati_doc_fiscale (is_abortito, congela_fiscale, chiude_lotto) e il derivato pre_fiscale = COALESCE(NOT congela_fiscale, false): il lotto non ha ancora congelato i suoi documenti, quindi si puo'' ancora agire su di loro e li trattiene. Consumatori: script.fn_check_lotto_annullabile, script.fn_check_lotto_riportabile_a_draft, script.fn_check_fattura_eliminabile_da_lotto, script.fn_check_documento_escludibile_da_giro, script.fn_check_attivita_riportabile_da_emettere, vendite.vw_documenti_trattenuti_da_lotto e vendite.vw_dash_competenza_attivita. pre_fiscale e'' anche la porta d''uscita: un documento esce dal giro solo da un lotto pre-fiscale, quindi «trattenuto» e «si puo'' ancora uscire» coincidono. Non si deriva da chiude_lotto, che marca la transizione che chiude (DEFINITIVA) e non la proprieta'' di essere chiuso: DEFINITIVA -> INVIATA -> REGISTRATA non lo portano. Lo stato del lotto e'' NOT NULL: la riga del vocabolario c''e'' sempre. L''assenza di riga vuol dire lotto inesistente o fuori perimetro RLS, e i fn_check_* la trattano come errore (E_LOTTO_NON_TROVATO).';
+
+              CREATE VIEW dbops.vw_lotti_fermi_da_guardare WITH (security_invoker = true) AS
+               SELECT s.lotto_id,
+                  f.lotto_codice,
+                  f.lotto_competenza_mese,
+                  f.stato_codice_interno,
+                  l.emittente_soggetto_ruolo_id,
+                  ef.codice AS emittente_codice,
+                  s.fermo_motivo AS motivo,
+                  s.fermo_da,
+                  (now() - s.fermo_da) AS da_quanto,
+                  (s.fatture_critical_count + s.lotto_critical_count) AS critiche_vive,
+                  s.fatture_stato_esecuzione_errore_count,
+                  s.esiti_stato_esecuzione_errore_count,
+                  s.documenti_bloccanti_count,
+                  s.documenti_presi_in_carico_count
+                 FROM (((vendite.vw_lotti_segnalazioni_summary s
+                   JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = s.lotto_id)))
+                   JOIN vendite.fatturazione_lotti l ON ((l.id = s.lotto_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id)))
+                WHERE (s.fermo AND f.pre_fiscale AND (s.fermo_da < (now() - '01:00:00'::interval)));
+
+              COMMENT ON VIEW dbops.vw_lotti_fermi_da_guardare IS
+                  'PRESIDIO: i giri di fatturazione PRE-FISCALI (vendite.vw_lotti_fase.pre_fiscale) che la sede unica vendite.vw_lotti_segnalazioni_summary dichiara fermo (critiche vive, riga di ponte in ERRORE o esito ERRORE) da OLTRE UN''ORA, e che nessuno ha rilanciato ne'' sciolto, qualunque sia stato_lotto (un COMPLETATO in bozza con un esito in errore e'' qui). DEVE restare VUOTA. Il banner lo dice a chi apre il lotto; questa riga lo dice a chi non lo apre. E'' un LETTORE: nessun addendo e'' ricalcolato qui; motivo e fermo_da sono le colonne della sede, e un addendo nuovo del verdetto lo vedono insieme il banner, il digest e il pallino (una sede a DB, il backend trasporta). Un lotto congelato con un esito ERRORE, o con lo stato fiscale ignoto, e'' la contraddizione di vendite.vw_lotti_congelati_con_gruppi_in_errore e sta in dbops.vw_lotti_congelati_con_errori_da_guardare: i due presidi si spartiscono l''asse fiscale senza buchi ne'' doppioni. Un''ora non e'' una misura: il rilancio e'' il gesto di una persona, e le viste delle code usano la stessa soglia per la stessa ragione. L''orologio e'' fermo_da, il fatto PIU'' RECENTE che ferma il lotto: un rilancio che fallisce di nuovo lo riparte, e la domanda resta «da quanto nessuno ci mette le mani». La soglia sta qui, non nel catalogo. Perimetro DEFINER a catalogo: le tabelle sotto hanno la RLS e la vista e'' security_invoker; da una sessione senza contesto risponde zero PER CECITA'', il digest conta da proprietario con dbops.fn_conta_presidio, una persona legge col proprio perimetro.';
+
+              CREATE VIEW vendite.vw_documenti_trattenuti_da_lotto WITH (security_invoker = true) AS
+               SELECT le.gruppo_key,
+                  f.lotto_id,
+                  f.lotto_codice,
+                  f.lotto_competenza_mese,
+                  f.stato_codice_interno AS lotto_stato,
+                  le.stato_esecuzione AS esito
+                 FROM (vendite.fatturazione_lotti_esiti le
+                   JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = le.lotto_id)))
+                WHERE ((le.stato_esecuzione <> 'ESCLUSO'::text) AND f.pre_fiscale);
+
+              COMMENT ON VIEW vendite.vw_documenti_trattenuti_da_lotto IS
+                  'Sede unica della domanda «questo documento e'' trattenuto da un lotto ancora in gioco?». Una riga per (documento, lotto che lo trattiene): la gruppo_key e il lotto, col suo stato e la sua competenza. Consumatori: la riga di vendite.vw_dash_competenza_gruppi (il motivo a video), il conteggio della card, vendite.fn_list_emittibili_lane e il pull, perche'' un secondo giro non se lo prenda. «In gioco» si legge da vendite.vw_lotti_fase (pre_fiscale: il lotto non ha congelato i documenti), mai da un elenco di stati, da is_abortito o da chiude_lotto: un lotto DEFINITIVA non e'' annullato ma e'' chiuso, e non trattiene. Un documento uscito dal giro (esito ESCLUSO) non trattiene niente. Il legame di competenza non e'' qui: la vista espone lotto_competenza_mese, e chi aggancia lega lotto_competenza_mese >= la competenza della riga, perche'' la selezione e'' cumulativa (un lotto di settembre lavora anche agosto, non ottobre): non un''uguaglianza. Puo'' tornare piu'' di una riga per la stessa gruppo_key (lo stesso documento in due lotti in gioco): chi ne vuole una ordina. script.fn_get_stato_push_segment misura l''esito del lavoro (LIBERA, ALLOCATA, EMESSA), non il fatto che il lavoro sia in corso: e'' la domanda di questa vista.';
+
+              CREATE VIEW vendite.vw_lotti_congelati_con_gruppi_in_errore WITH (security_invoker = true) AS
+               SELECT l.id AS lotto_id,
+                  l.codice AS lotto_codice,
+                  l.stato_lotto,
+                  f.stato_codice_interno,
+                  l.competenza_mese,
+                  l.emittente_soggetto_ruolo_id,
+                  count(*) AS gruppi_in_errore,
+                  min(e.errore_quando) AS primo_errore,
+                  max(e.errore_quando) AS ultimo_errore,
+                  array_agg(DISTINCT e.errore_codice) FILTER (WHERE (e.errore_codice IS NOT NULL)) AS codici_errore
+                 FROM ((vendite.fatturazione_lotti l
+                   JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = l.id)))
+                   JOIN vendite.fatturazione_lotti_esiti e ON ((e.lotto_id = l.id)))
+                WHERE ((e.stato_esecuzione = 'ERRORE'::text) AND (NOT f.pre_fiscale))
+                GROUP BY l.id, l.codice, l.stato_lotto, f.stato_codice_interno, l.competenza_mese, l.emittente_soggetto_ruolo_id;
+
+              COMMENT ON VIEW vendite.vw_lotti_congelati_con_gruppi_in_errore IS
+                  'PRESIDIO. Elenca una contraddizione: un lotto CONGELATO (lo stato fiscale non e'' piu'' pre-fiscale: vendite.vw_lotti_fase.pre_fiscale falso, o ignoto) che contiene documenti dichiarati in ERRORE, qualunque sia stato_lotto. Il fiscale e'' fermo, i documenti non sono nati: non possono stare insieme. DEVE RESTARE VUOTA. ⭐ L''asse e'' lo stato FISCALE, lo stesso di dbops.vw_lotti_fermi_da_guardare: un lotto ancora pre-fiscale con un esito in errore e'' un lotto fermo e lo dice quel presidio; uno congelato lo dice questo. Nessun buco (congelato con stato_lotto IN_ESECUZIONE o ERRORE), nessun doppione (COMPLETATO in bozza). ⭐ Le porte: COMPLETATO su un lotto fermo lo rifiuta il database (trg_fatturazione_lotti_a10_guard_completato_upd); un esito scritto ERRORE dopo il congelamento, o un congelamento con esiti in errore, sono cio'' che questa vista sorveglia. ⭐ Un lotto annullato non compare perche'' l''annullo gli chiude gli esiti (fn_annulla_lotto_da_draft), non per un filtro: la vista non esclude gli annullati, e non deve. Legge vendite.fatturazione_lotti_esiti, quindi vede anche i lotti senza perimetro (i giri di massa). Lettore a catalogo: dbops.vw_lotti_congelati_con_errori_da_guardare. Fino al 2026-11-07 si chiamava vw_lotti_chiusi_con_gruppi_in_errore e guardava stato_lotto = COMPLETATO (storia: brief-db-esito-gruppo-lotto §15, §24, §25; brief-db-annullamento-chiude-la-vita §9). Brief: brief-db-revisione-dbops, giro 6 (Q14 ⑦).';
+              COMMENT ON COLUMN vendite.vw_lotti_congelati_con_gruppi_in_errore.stato_lotto IS
+                  'Lo stato del JOB del lotto: qui e'' un dato da leggere, non il criterio. Un lotto congelato compare con qualunque stato_lotto, IN_ESECUZIONE ed ERRORE compresi.';
+              COMMENT ON COLUMN vendite.vw_lotti_congelati_con_gruppi_in_errore.stato_codice_interno IS
+                  'Lo stato fiscale del lotto (config.stati_doc_fiscale.codice_interno), da vendite.vw_lotti_fase: e'' l''asse del presidio. NULL se lo stato fiscale e'' ignoto: il lotto compare lo stesso.';
+              COMMENT ON COLUMN vendite.vw_lotti_congelati_con_gruppi_in_errore.gruppi_in_errore IS
+                  'Quanti esiti del lotto (vendite.fatturazione_lotti_esiti) sono in ERRORE.';
+
+              CREATE VIEW dbops.vw_lotti_congelati_con_errori_da_guardare WITH (security_invoker = true) AS
+               SELECT c.lotto_id,
+                  c.lotto_codice,
+                  c.competenza_mese,
+                  c.stato_lotto,
+                  c.stato_codice_interno,
+                  c.emittente_soggetto_ruolo_id,
+                  ef.codice AS emittente_codice,
+                  c.gruppi_in_errore,
+                  c.primo_errore,
+                  c.ultimo_errore,
+                  c.codici_errore
+                 FROM (vendite.vw_lotti_congelati_con_gruppi_in_errore c
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id)));
+
+              COMMENT ON VIEW dbops.vw_lotti_congelati_con_errori_da_guardare IS
+                  'PRESIDIO: i lotti CONGELATI (stato fiscale non piu'' pre-fiscale, o ignoto) che contengono documenti in ERRORE, qualunque sia stato_lotto. DEVE restare VUOTA. E'' un LETTORE: la contraddizione la definisce vendite.vw_lotti_congelati_con_gruppi_in_errore, qui si aggiunge solo l''emittente, per chi arriva dal digest. Si spartisce l''asse fiscale con dbops.vw_lotti_fermi_da_guardare: pre-fiscale a quel presidio, congelato a questo, senza buchi ne'' doppioni. Un lotto ANNULLATO non compare perche'' l''annullo gli chiude gli esiti, non perche'' qualcuno lo filtri. In dbops e non in vendite: iscrivere a catalogo una vista di vendite porterebbe l''intero schema nel perimetro di db/pgtap/dbops/test-catalogo-presidi-v1.sql. Perimetro DEFINER a catalogo: le tabelle sotto hanno la RLS e le viste sono security_invoker; da una sessione senza contesto risponde zero PER CECITA'', il digest conta da proprietario con dbops.fn_conta_presidio, una persona legge col proprio perimetro.';
+
+              CREATE VIEW vendite.vw_commesse_attivita_emittibilita WITH (security_invoker = on) AS
+               SELECT ca.id AS commessa_attivita_id,
+                  co.id AS commessa_id,
+                  co.codice AS commessa_codice,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  sc.emittibile AS commessa_emittibile,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
+                  ca.competenza_mese,
+                  ca.tipo_doc_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  co.utility_id,
+                  co.billing_account_id,
+                  co.fatturazione_immediata,
+                  ca.stato_emissione,
+                  ca.stato_approvazione,
+                  (
+                      CASE
+                          WHEN ((ca.stato_emissione)::text = 'EMESSA'::text) THEN 'EMESSA'::text
+                          WHEN ((ca.stato_emissione)::text = 'ANNULLATA'::text) THEN 'ANNULLATA'::text
+                          WHEN ((ca.stato_approvazione)::text = 'RIFIUTATA'::text) THEN 'RIFIUTATA'::text
+                          WHEN ((ca.stato_approvazione)::text <> 'APPROVATA'::text) THEN 'NON_APPROVATA'::text
+                          WHEN (trat.lotti IS NOT NULL) THEN 'TRATTENUTA'::text
+                          ELSE 'PRONTA'::text
+                      END)::character varying AS classe_emittibilita,
+                  trat.lotti AS trattenuta_da_lotti
+                 FROM (((vendite.commesse_attivita ca
+                   JOIN vendite.commesse co ON ((co.id = ca.commessa_id)))
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   LEFT JOIN LATERAL ( SELECT array_agg(t.lotto_id ORDER BY t.lotto_id) AS lotti
+                         FROM vendite.vw_documenti_trattenuti_da_lotto t
+                        WHERE ((t.gruppo_key = vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)) AND (t.lotto_competenza_mese >= ca.competenza_mese))) trat ON (true));
+
+              COMMENT ON VIEW vendite.vw_commesse_attivita_emittibilita IS
+                  'SEDE UNICA del criterio «questa riga di commessa puo'' entrare in un giro di fatturazione, e se no perche''». Una riga per riga di commessa. Consumatori: vendite.fn_list_emittibili_lane (filtra classe = PRONTA), vendite.fn_list_commesse_emittibili (quali commesse visitare), vendite.fn_emit_attivita_fatturabili_da_commessa (quali righe emettere) e vendite.fn_diagnostica_gruppi_fatturabili (conta per classe).
+              ⭐ NASCE PERCHE'' IL CRITERIO ERA SCRITTO DUE VOLTE: la lane lo FILTRA, la diagnostica lo CONTA, ed e'' dichiarata «lo specchio della lane». Il 2026-09-09 lo specchio si e'' rotto in silenzio — un criterio aggiunto alla lane e non alla diagnostica, che rispondeva «era pronto» su un documento che la lane non aveva offerto. Ora il criterio non e'' scritto in nessuna delle due.
+              ⭐ I DUE FATTORI SONO ORTOGONALI: `classe_emittibilita` descrive la RIGA, `commessa_emittibile` la TESTATA, e chi decide dichiara quali dei due usa. ⛔ Fonderli toglierebbe alla diagnostica la sola cosa che sa dire meglio della lane («le righe sarebbero pronte, e'' la commessa a essere in BOZZA»).
+              ⭐ VOCABOLARIO CHIUSO di sei valori: EMESSA · ANNULLATA · RIFIUTATA · NON_APPROVATA · TRATTENUTA · PRONTA.
+              ⛔ NON contiene il PERIMETRO DELLA DOMANDA — tetto di competenza, billing account, utility, emittente, corsia, p_gruppi, e l''auto-esclusione del proprio lotto nel pull: quelli dipendono da chi chiede. E'' anche il motivo per cui «fuori competenza» non e'' una classe: quella riga e'' PRONTA, solo non per quel mese.
+              ⭐ MA IL LEGAME DI COMPETENZA DEL TRATTENUTO SI'': qui la competenza della riga c''e''. E'' `lotto_competenza_mese >= ca.competenza_mese`, perche'' la selezione e'' CUMULATIVA. ⛔ Non e'' un''uguaglianza: il LATERAL dell''esito su vw_dash_competenza_gruppi lega =, e copiarlo darebbe un blocco piu'' stretto della regola.
+              ⚠️ `tipo_doc_fiscale_id IS NOT NULL` non e'' fra i criteri: e'' un ramo irraggiungibile da quando chk_commesse_attivita_tipo_doc_emittibile e'' VALIDATO, e i presidi sono i test 9 e 10 di test-diagnostica-gruppi-fatturabili-v1.sql.
+              ⚠️ `trattenuta_da_lotti` e'' NULL quando la riga non e'' trattenuta (mai un array vuoto) ed e'' ORDINATO per lotto_id: chi ne vuole uno prende il primo e non scommette.
+              Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3).';
+
+              CREATE VIEW vendite.vw_dash_competenza_attivita WITH (security_invoker = on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, (script.fn_giorno_operativo(af.data_insert))::timestamp without time zone))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) AS sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN
+                          CASE
+                              WHEN (EXISTS ( SELECT 1
+                                 FROM vendite.vw_lotti_fase lfase
+                                WHERE ((lfase.lotto_id = fl.id) AND lfase.pre_fiscale))) THEN 'GIRO_IN_CORSO'::text
+                              ELSE 'RESIDUO'::text
+                          END
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione,
+                  COALESCE(((cae.classe_emittibilita)::text = 'TRATTENUTA'::text), false) AS emissione_trattenuta,
+                      CASE
+                          WHEN ((cae.classe_emittibilita)::text = 'TRATTENUTA'::text) THEN cae.trattenuta_da_lotti
+                          ELSE NULL::bigint[]
+                      END AS emissione_trattenuta_da_lotti
+                 FROM (((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = COALESCE(af.lock_batch_id, af.emit_batch_id))))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                   LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_attivita IS
+                  'Lente 1 Competenza, grana ATTIVITA'': una riga per attivita'' di commessa con lo stadio del ciclo (DA_APPROVARE / DA_EMETTERE / EMESSA_NON_FATTURATA / FATTURATA), il valore, il collegamento a fattura e lotto e lo stato della commessa. Alimenta il drill-down commesse, che il backend AGGREGA per commessa. SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on. ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. Il drill-down puo'' metterla nel GROUP BY in sicurezza: l''emittente e'' una colonna di vendite.commesse e commessa_id ne e'' la chiave primaria, quindi una commessa non puo'' avere attivita'' di emittenti diversi — l''emittente non sta sull''attivita''. La colonna nel GROUP BY serve comunque: su una colonna di VISTA PostgreSQL non deduce la dipendenza funzionale. ⚠️ Due catene distinte sulle stesse tabelle: sr/s sono il CLIENTE (via billing account), sr_ef/s_ef l''EMITTENTE. Scambiarle non darebbe nessun errore, solo un nome sbagliato a video. ⭐ Rev 2026-08-26 (L4, brief-db-registro-e-data-prevista-in-competenza): quattro colonne nuove in coda — registro_id, registro_codice, politica_data_documento, data_documento_prevista. Rispondono alle due domande che la schermata da cui si fattura non sapeva dire PRIMA di premere: su quale sezionale finira'' il documento, e che data portera''. ⭐ Il sezionale si risolve chiamando vendite.fn_resolve_registro_documento, cioe'' LA STESSA funzione che usa fn_build_fattura_key quando la fattura nasce davvero: la previsione e'' una lettura, non una profezia, e non puo'' divergere dal documento perche'' non e'' una seconda implementazione. ⚠️ Le si passa co.billing_account_id, il BA della RIGA: la funzione risale al padre da se'', e passarle il BA di fatturazione darebbe una previsione plausibile e sbagliata proprio sui BA con padre. ⛔ L''aggancio e'' CONDIZIONATO — ON (af.fattura_riga_id IS NULL), decisione D-9: dove il documento esiste gia'' la previsione non si fa, o la colonna mentirebbe al proprio nome. ⚠️ Il discriminante e'' la riga di fattura e non lo stadio: su EMESSA_NON_FATTURATA il documento non c''e'' ancora — e li'' finiscono le attivita'' rimaste orfane di una fattura eliminata, cioe'' lavoro da ri-emettere, per cui sapere dove finira'' e'' proprio l''informazione utile. ⛔ Il CASE sulla data e'' obbligatorio e non difensivo: fn_calcola_data_documento SOLLEVA su registro nullo, un CASE cortocircuita e un argomento no — senza, la prima riga con un sezionale non risolvibile farebbe morire l''intera lista. ⚠️ registro_codice viene da registri_fatturazione.codice, colonna MUTABILE: e'' display, l''alias e'' fedele alla sorgente (linee-guida-sql §6c) e quella tabella non espone codice_interno. Nessuna logica puo'' appoggiarcisi — chi filtra lo fa su registro_id. ℹ️ Costo dichiarato: due chiamate di funzione per riga su una vista che ne alimenta altre quattro. Tutta la catena e'' STABLE e le tabelle di configurazione lette non hanno RLS. ⭐ Rev 2026-08-26 (D-1, brief-db-residui-competenza-dimensione-e-chiave): otto colonne nuove in coda — attivita_fatturabile_id, lock_in_fatturazione, stato_esecuzione, motivo_non_fatturata, lotto_provenienza_id, lotto_provenienza_codice, articolo_codice, articolo_descrizione. ⛔ attivita_fatturabile_id e'' LA CHIAVE DEL VERBO: vendite.fn_riporta_attivita_da_emettere consuma vendite.attivita_fatturabili.id, e nessuna vista lo esponeva — il frontend non poteva chiamare la mutazione. Tradurre commessa_attivita_id -> af.id lato backend sarebbe stata una SECONDA IMPLEMENTAZIONE di un legame che il database conosce gia''. E'' un identificatore, non una colonna da mostrare. ⭐ motivo_non_fatturata e'' LA DIMENSIONE, a vocabolario chiuso di TRE valori e NULL fuori dallo stadio EMESSA_NON_FATTURATA: GIRO_IN_CORSO (lucchettata con stato_esecuzione diverso da COMPLETED — oppure, rev 2026-09-12, LIBERA col marchio di un lotto IN GIOCO: il transito fra pull e select), RESIDUO (lucchettata e COMPLETED senza riga di fattura — oppure libera col marchio di un lotto morto o senza marchio: la DIVERGENZA fra i due livelli, che nessun giro riprende. Sono le sole che il verbo tocca) e SENZA_ATTIVITA_FATTURABILE. ⛔ IN_ATTESA_LOTTO e'' RITIRATO (20260912-36): diceva «non lucchettata, il prossimo giro la prende da se''», ed e'' falso PER COSTRUZIONE dentro questo stadio — la riga di commessa e'' EMESSA, il pull non la vede e la select di un altro lotto non trova il suo marchio (brief-db-rilancio-step-non-rivede-le-proprie-commesse §10.4 e §11.3 C.2, 20260912-35). Un valore che la vista non puo'' produrre non sta nel vocabolario: teneva in vita un ramo morto, e la lista NASCONDEVA il verbo proprio sulle righe che nessun giro avrebbe ripreso. «In gioco» si legge da vendite.vw_lotti_fase, la sede unica, con un EXISTS valutato SOLO su quel ramo del CASE (una lettura per riga libera dello stadio, zero sulle altre). ⛔ Serve perche'' lo stadio guarda SOLO fattura_riga_id, e dentro EMESSA_NON_FATTURATA finiscono situazioni con RIMEDI OPPOSTI: due non chiedono nessuna azione, una si''. Un numero solo per rimedi opposti e'' la stessa ambiguita'' che il cantiere «il lavoro che non torna indietro» ha chiuso un livello piu'' in giu''. ⛔ E NON si spezza il valore EMESSA_NON_FATTURATA in due stadi: lo STADIO dice a che punto del ciclo e'' il lavoro, e le situazioni sono allo STESSO punto — cambia la loro salute, non il loro avanzamento. Si aggiunge la DIMENSIONE, come il 2026-08-20 si aggiunse tipo_movimento alla mensile invece di una colonna valore_rettifiche. ⛔ I rami sono, uno per uno, gli stessi di script.fn_check_attivita_riportabile_da_emettere (motivo 5, motivo 4 e «nessun motivo»; il motivo 3 — libera con la riga NON_EMESSA — sta fuori da questo stadio per costruzione): cambiarne uno qui senza cambiarlo li'' non produce nessun errore — la lista proporrebbe il verbo su una riga che la mutazione rifiuta, o lo nasconderebbe su una che accetta. Il presidio che lega le due superfici e'' db/pgtap/vendite/test-motivo-non-fatturata-v1.sql, con una fixture COSTRUITA per ciascun caso. ⛔ IS DISTINCT FROM ''COMPLETED'' e non <>: stato_esecuzione e'' NULLABLE e il CHECK ammette anche ERRORE, quindi con <> un lucchetto a NULL darebbe NULL e il CASE cadrebbe su RESIDUO dove la funzione dice E_ATTIVITA_IN_LAVORAZIONE. ERRORE finisce percio'' in GIRO_IN_CORSO, e il rimedio (aspettare che il lotto si chiuda) e'' lo stesso. ⭐ SENZA_ATTIVITA_FATTURABILE e'' il quarto valore: il modello AMMETTE una riga di commessa a EMESSA senza NESSUNA riga in attivita_fatturabili (il JOIN e'' LEFT, e il guard di DELETE ammette per progetto la cancellazione di una riga non fatturata). Senza un ramo suo il COALESCE la farebbe cadere su IN_ATTESA_LOTTO, cioe'' «il prossimo giro la prende» — falso, perche'' la pull filtra su stato_emissione e non la riprende mai piu''; e attivita_fatturabile_id sarebbe NULL, quindi il verbo non avrebbe nemmeno la chiave. Zero occorrenze non significa che il caso non esiste. ⛔ NON si usa `fatturato` come discriminante: dal 20260826-33 e'' una colonna GENERATA da fattura_riga_id, quindi dentro EMESSA_NON_FATTURATA e'' sempre falsa e non distingue niente. ⭐ lotto_provenienza_id/_codice rispondono a «da dove viene questo residuo», e NON sono lotto_id: quello nasce dalla catena della FATTURA e su un residuo la fattura non c''e''. Arrivano da vendite.fatturazione_lotti via COALESCE(lock_batch_id, emit_batch_id) — rev 2026-09-12: un residuo DIVERGENTE il lucchetto non ce l''ha, e la sua provenienza e'' il MARCHIO del giro (emit_batch_id), che e'' il lock_batch_id del lotto che l''ha presa in carico; per un''attivita'' lucchettata i due coincidono. La chiave sul lato lotti resta lock_batch_id, che li'' ha un UNIQUE — quindi il LEFT JOIN non puo'' moltiplicare righe. LEFT e non INNER perche'' fatturazione_lotti ha la RLS: un lotto fuori perimetro lascia le colonne a NULL e non fa sparire il residuo. lotto_provenienza_codice viene da codice, MUTABILE: e'' display (§6c) e nessuna logica puo'' appoggiarcisi. ⭐ articolo_codice/articolo_descrizione dicono CHE LAVORO E'': la vista esponeva il solo articolo_id, che e'' un UUID, e una lista di residui su cui si deve AGIRE senza il nome del lavoro non e'' azionabile. Il decode e'' lo stesso di vendite.fn_list_commessa_attivita (rev 2026-08-20), che lo fa un livello sopra sulla stessa colonna. LEFT anche se articolo_id e'' NOT NULL: un decode non deve poter far sparire la riga che sta decorando, e catalogo.articoli non ha RLS. ℹ️ I due JOIN nuovi NON li paga chi non li usa, e la ragione e'' STRUTTURALE: sono LEFT JOIN su chiavi con indice UNIQUE (uq_fatturazione_lotti_lock_batch_id, pk_articoli), quindi PostgreSQL puo'' PROVARE che non moltiplicano le righe e li elimina dal piano quando nessuna delle loro colonne e'' selezionata (left join removal). ⚠️ La condizione che regge tutto e'' il UNIQUE: togliendolo l''eliminazione smetterebbe di essere lecita e la vista comincerebbe a contare doppio — per questo e'' in preCondition e ha un test suo. ⭐ Lo STADIO si calcola UNA volta sola, nella CROSS JOIN LATERAL `st`, e serve sia la colonna stadio sia motivo_non_fatturata: quest''ultima e'' definita SOPRA lo stadio e in SQL un alias di SELECT non e'' riferibile da un''altra espressione della stessa SELECT. Ricopiare il CASE avrebbe messo la definizione dello stadio in DUE posti della stessa vista, dove divergere non produce nessun errore. Valore, nome e tipo della colonna stadio non cambiano. Rev 2026-10-20 (20261020-80, brief-db-grammatica-unica-documenti L2c-1): ricreata identica dopo l''allargamento di registri_fatturazione.codice a varchar(80) (20261020-74).';
+
+              CREATE VIEW vendite.vw_dash_competenza_gruppi WITH (security_invoker = true) AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min((a.registro_codice)::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica,
+                          bool_or(a.emissione_trattenuta) AS trattenuto,
+                          min(a.emissione_trattenuta_da_lotti[1]) AS lotto_blocco_id
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.apribile AS documento_apribile,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  (cardinality(g.registri_ids))::smallint AS registri_n,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione AS ultimo_esito,
+                  esito.errore_codice AS ultimo_errore_codice,
+                  esito.errore_messaggio AS ultimo_errore_messaggio,
+                  esito.errore_quando AS ultimo_errore_quando,
+                  esito.lotto_codice AS ultimo_lotto_codice,
+                      CASE
+                          WHEN g.trattenuto THEN 'TRATTENUTO_DA_LOTTO'::text
+                          ELSE NULL::text
+                      END AS emissione_blocco_reason,
+                      CASE
+                          WHEN g.trattenuto THEN 'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text
+                          ELSE NULL::text
+                      END AS emissione_blocco_reason_key,
+                  g.lotto_blocco_id AS emissione_blocco_lotto_id,
+                  fb.lotto_codice AS emissione_blocco_lotto_codice,
+                  esito.lotto_id AS ultimo_lotto_id,
+                  esito.lotto_stato AS ultimo_lotto_stato,
+                  esito.lotto_pre_fiscale AS ultimo_lotto_pre_fiscale
+                 FROM ((((((((((aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON (s.apribile))
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id)))
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id))))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = g.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+                          le.errore_codice,
+                          le.errore_messaggio,
+                          le.errore_quando,
+                          f.lotto_codice,
+                          f.lotto_id,
+                          f.stato_codice_interno AS lotto_stato,
+                          f.pre_fiscale AS lotto_pre_fiscale
+                         FROM (vendite.fatturazione_lotti_esiti le
+                           JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = le.lotto_id)))
+                        WHERE ((le.gruppo_key = g.gruppo_key) AND (f.lotto_competenza_mese = g.competenza_mese))
+                        ORDER BY COALESCE(le.errore_quando, le.data_update) DESC, le.id DESC
+                       LIMIT 1) esito ON (true))
+                   LEFT JOIN vendite.vw_lotti_fase fb ON ((fb.lotto_id = g.lotto_blocco_id)));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi IS
+                  'I documenti da emettere di una competenza, un gruppo per riga, con l''esito dell''ULTIMO tentativo di fatturazione (ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio, ultimo_errore_quando, ultimo_lotto_codice). Rev 2026-09-07: l''esito si legge da vendite.fatturazione_lotti_esiti e non piu'' dalle colonne del perimetro — quelle non esistevano sui giri che un perimetro non lo dichiarano, quindi un documento fallito in un giro di massa restava senza segno. Il segno NON spegne stadio ne'' commessa_emittibile (decisione di Tid): dice che un tentativo e'' fallito, non che il documento non si possa fatturare. Il legame e'' (documento, mese di competenza): senza il mese, il documento di settembre erediterebbe l''errore di agosto. Brief: brief-db-esito-gruppo-lotto. Rev 2026-10-20 (20261020-82, brief-db-grammatica-unica-documenti 2d e L2c-1): area_documento (il plurale) diventa documento_apribile, e il numero del documento si risolve quando la sorgente e'' apribile (config.sorgenti.area e'' ritirata); ricreata dopo l''allargamento di registri_fatturazione.codice.';
+
+              CREATE VIEW vendite.vw_dash_competenza_mensile WITH (security_invoker = on) AS
+               SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  (count(*) FILTER (WHERE (NOT emissione_trattenuta)))::integer AS n_attivita,
+                  COALESCE(sum(valore) FILTER (WHERE (NOT emissione_trattenuta)), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo,
+                  tipo_movimento,
+                  motivo_non_fatturata,
+                  (count(*) FILTER (WHERE emissione_trattenuta))::integer AS n_attivita_trattenute,
+                  COALESCE(sum(valore) FILTER (WHERE emissione_trattenuta), (0)::numeric) AS valore_trattenuto
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno, tipo_movimento, motivo_non_fatturata;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_mensile IS
+                  'Lente 1 Competenza, aggregata in FORMATO LUNGO: una riga per (competenza_mese, stadio, stato fattura, tipo_movimento, motivo_non_fatturata). Il pivot alla griglia 12 mesi x 4 stadi e'' del service, non della vista. security_invoker=on: lo scope emittente arriva da vw_dash_competenza_attivita (GUC fail-closed) e va RI-SPECIFICATO a ogni REPLACE, perche'' la reloption non e'' visibile in pg_get_viewdef e verrebbe azzerata in silenzio. ⭐ Rev 2026-08-20 (richiesta BE, punto 3): `tipo_movimento` entra nel raggruppamento. Prima si perdeva qui, e il residuo del mese — che e'' una somma CON SEGNO — compensava le rettifiche con le fatture da emettere: agosto 2026 segnava 101% di copertura perche'' il residuo era −29,50, cioe'' due note di credito da emettere. Con una sola fattura da 29,50 in sospeso il residuo sarebbe andato a zero e la dashboard avrebbe detto «100%, niente da fare» con tre documenti da produrre: la compensazione NASCONDE LAVORO. ⭐ E non riguarda le sole rettifiche — a luglio 2026 ci sono 5.000 EUR di ONERI nello stesso totale: la somma mescolava tre cose di natura diversa, ed e'' il motivo per cui si aggiunge la DIMENSIONE e non una colonna `valore_rettifiche`, che avrebbe messo i valori dell''enum dentro la vista. 🔴 Cambia la CARDINALITA'': 7 righe -> 8 sul dato del 2026-08-20, unico bucket spezzato 2026-07 FATTURATA/EMESSA (NORMALE + ONERE). I totali del consumatore reggono perche'' il pivot accumula, ma il breakdown per stato documento fiscale elenca una voce per riga: senza adeguamento BE mostra EMESSA due volte. brief-design-note-credito-resi §40.2. ⭐ Rev 2026-08-26 (D-2, brief-db-residui-competenza-dimensione-e-chiave): `motivo_non_fatturata` entra nel raggruppamento, per la STESSA ragione e nella STESSA forma. Lo stadio EMESSA_NON_FATTURATA guarda solo fattura_riga_id, e dentro quel valore convivono situazioni con RIMEDI OPPOSTI: in attesa del proprio lotto (nessun rimedio, il prossimo giro la prende), dentro un giro vivo (nessun rimedio, si aspetta) e RESIDUO — l''unica su cui «Riporta da emettere» ha effetto. Un numero solo per rimedi opposti dice all''operatore che c''e'' qualcosa da fare quando non c''e'', o nasconde il lavoro vero dentro un transito sano. ⛔ Dimensione e NON una colonna `n_residui`: quella avrebbe costretto l''aggregata a conoscere il valore RESIDUO, cioe'' a cablare un elemento del vocabolario dentro una somma. La dimensione non conosce nessun valore: li porta. 🔴 E cambia di nuovo la CARDINALITA'': un bucket EMESSA_NON_FATTURATA che contiene piu'' situazioni si spezza in una riga per situazione. I totali reggono, il breakdown no — l''adeguamento BE/FE va fatto nello stesso giro. ⚠️ Il presidio di grana e'' il test 22 di db/pgtap/vendite/test-fn-list-commessa-attivita-provenienza-v1.sql, che confronta le righe della mensile col GROUP BY del dettaglio: cambiando la grana va portato sulla regola nuova, mai spento. Rev 2026-10-20 (20261020-81, brief-db-grammatica-unica-documenti L2c-1): ricreata identica dopo l''allargamento di registri_fatturazione.codice a varchar(80) (20261020-74).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La funzione: legge pre_fiscale.
+              CREATE OR REPLACE FUNCTION script.fn_check_attivita_riportabile_da_emettere(p_attivita_fatturabili_ids bigint[])
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_motivi jsonb := '[]'::jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Elencare i motivi che impediscono di riportare «da
+                  --   emettere» un insieme di attivita_fatturabili. Funzione
+                  --   PURA: nessuna scrittura, nessun raise di dominio.
+                  -- Ritorna:
+                  --   [] se si puo' fare su tutte; altrimenti un array
+                  --   ordinato di {codice, reason, reason_key, dettaglio,
+                  --   attivita_fatturabile_id, commessa_id, fattura_id}.
+                  -- Consumatori:
+                  --   vendite.fn_riporta_attivita_da_emettere (solleva il
+                  --   codice del PRIMO motivo) e il backend, per spiegare
+                  --   invece di far fallire.
+                  -- =========================================================
+
+                  -- ⛔ Guard di PARAMETRO, e solleva. Un elenco assente o
+                  --    vuoto e' un errore di chiamante, non una condizione di
+                  --    dominio: se uscisse come «nessun motivo» diventerebbe
+                  --    poi «zero righe riportate», cioe' indistinguibile da
+                  --    un'operazione riuscita che non ha trovato niente da
+                  --    fare. TECNICO: nessuna persona sceglie questo valore.
+                  IF p_attivita_fatturabili_ids IS NULL
+                     OR array_length(p_attivita_fatturabili_ids, 1) IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script',
+                          'fn_check_attivita_riportabile_da_emettere',
+                          'E_ATTIVITA_RIPORTO_SELEZIONE_VUOTA',
+                          jsonb_build_object(
+                              'parametro', 'p_attivita_fatturabili_ids',
+                              'valore',    to_jsonb(p_attivita_fatturabili_ids)),
+                          NULL::uuid,
+                          'fn_check_attivita_riportabile_da_emettere');
+                  END IF;
+
+                  WITH sel AS (
+                      SELECT DISTINCT u.id
+                        FROM unnest(p_attivita_fatturabili_ids) AS u(id)
+                  ),
+                  -- ⛔ IL PERIMETRO. Il JOIN su commesse_attivita non serve a
+                  --    leggere una colonna: e' il cancello di scope. La tabella
+                  --    attivita_fatturabili NON ha row level security, quella
+                  --    delle commesse si' — quindi e' quel JOIN a decidere cosa
+                  --    chi chiede ha diritto di vedere. Senza, la funzione
+                  --    direbbe «si puo' fare» su un emittente altrui.
+                  vis AS (
+                      SELECT s.id                                    AS attivita_fatturabile_id,
+                             af.commessa_id,
+                             af.fattura_riga_id,
+                             COALESCE(af.lock_in_fatturazione, false) AS lucchettata,
+                             af.stato_esecuzione,
+                             -- ⭐ rev 2026-09-12 — I DUE LIVELLI. La riga di commessa dice
+                             --    se il lavoro e' ancora «consegnato» (EMESSA); il marchio
+                             --    del giro dice A CHI, e vw_lotti_fase se quel giro e' vivo.
+                             --    Un'attivita' libera con la riga EMESSA e' DIVERGENTE:
+                             --    nessun giro la riprende (il pull la vede EMESSA, la
+                             --    select di un altro lotto non trova il suo marchio).
+                             --    Divergente e marchio di un lotto in gioco = in transito
+                             --    (fra pull e select); divergente e lotto morto o senza
+                             --    marchio = orfana, riportabile. Lotto fuori dal perimetro
+                             --    RLS di chi chiede → NULL → «morto»: chi vede la commessa
+                             --    vede il suo lotto, e' lo stesso emittente.
+                             ca.stato_emissione::text AS stato_emissione_riga,
+                             EXISTS (SELECT 1
+                                       FROM vendite.vw_lotti_fase f
+                                      WHERE f.lotto_id = vendite.fn_lotto_da_emit_batch(af.emit_batch_id)
+                                        AND f.in_gioco)                  AS marchio_in_gioco,
+                             fr.fattura_id,
+                             -- L'etichetta che l'operatore riconosce sulla
+                             -- card: commessa e competenza, mai un id tecnico.
+                             format('commessa %s, competenza %s',
+                                    c.codice,
+                                    to_char(af.competenza_mese, 'MM/YYYY')) AS etichetta
+                        FROM sel s
+                        JOIN vendite.attivita_fatturabili af ON af.id = s.id
+                        JOIN vendite.commesse_attivita ca    ON ca.id = af.commessa_attivita_id
+                        JOIN vendite.commesse c              ON c.id  = af.commessa_id
+                        -- LEFT: se chi chiede non vede la riga di fattura, il
+                        -- motivo deve uscire lo stesso — senza bersaglio.
+                        LEFT JOIN vendite.fatture_righe fr   ON fr.id = af.fattura_riga_id
+                  ),
+                  -- ── MOTIVO 1 — non esiste, o e' fuori perimetro ──────────
+                  -- ⚠️ AGGREGATO, non per riga: di una riga che non si vede non
+                  --    si puo' dire niente che l'operatore riconosca — nemmeno
+                  --    la commessa. L'unica informazione onesta e' QUANTE sono,
+                  --    e il rimedio (aggiorna l'elenco) e' lo stesso per tutte.
+                  m1 AS (
+                      SELECT CASE WHEN count(*) > 0
+                                  THEN jsonb_build_array(jsonb_build_object(
+                                           'codice',                  'E_ATTIVITA_FATTURABILE_NON_TROVATA',
+                                           'reason',                  'ATTIVITA_NON_TROVATA',
+                                           'reason_key',              'vendite.attivita.azione_reason.non_trovata',
+                                           'dettaglio',               count(*)::text,
+                                           'attivita_fatturabile_id', NULL::bigint,
+                                           'commessa_id',             NULL::bigint,
+                                           'fattura_id',              NULL::bigint))
+                                  ELSE '[]'::jsonb END AS j
+                        FROM sel s
+                       WHERE NOT EXISTS (SELECT 1 FROM vis v
+                                          WHERE v.attivita_fatturabile_id = s.id)
+                  ),
+                  -- ── MOTIVO 2 — e' ancora dentro una fattura ──────────────
+                  -- ⛔ E' il guard che impedisce al verbo di diventare un modo
+                  --    per SCOLLEGARE UNA FATTURA VIVA. Il trigger di riga
+                  --    trgfn_attivita_fatturabili_guard_fatturato dice gia' la
+                  --    stessa cosa da un altro livello; qui si dice con una
+                  --    frase che nomina il documento, perche' un
+                  --    E_RIGA_GIA_FATTURATA generico non dice all'operatore
+                  --    COSA stava tentando.
+                  m2 AS (
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'codice',                  'E_ATTIVITA_ANCORA_IN_FATTURA',
+                                 'reason',                  'ATTIVITA_IN_FATTURA',
+                                 'reason_key',              'vendite.attivita.azione_reason.ancora_in_fattura',
+                                 'dettaglio',               v.etichetta,
+                                 'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                                 'commessa_id',             v.commessa_id,
+                                 'fattura_id',              v.fattura_id)
+                                 ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+                        FROM vis v
+                       WHERE v.fattura_riga_id IS NOT NULL
+                  ),
+                  -- ── MOTIVO 3 — non c'e' niente da riportare ──────────────
+                  -- Senza lucchetto E con la riga di commessa gia' NON_EMESSA
+                  -- l'attivita' e' davvero disponibile: il giro successivo la
+                  -- prende da se'. Dirlo e' diverso dal motivo 2, e il rimedio e'
+                  -- «non fare niente».
+                  -- ⛔ rev 2026-09-12: «senza lucchetto» da solo NON bastava. Con
+                  --    la riga ancora EMESSA il pull non la vede e nessun giro la
+                  --    riprende: quello stato era irraggiungibile da ogni verbo,
+                  --    e questo motivo lo chiamava «gia' disponibile». Verificato
+                  --    il 12-09 sul lotto 13338 (E_ATTIVITA_GIA_DA_EMETTERE su due
+                  --    attivita' che nessuno avrebbe mai ripreso).
+                  m3 AS (
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'codice',                  'E_ATTIVITA_GIA_DA_EMETTERE',
+                                 'reason',                  'ATTIVITA_GIA_DISPONIBILE',
+                                 'reason_key',              'vendite.attivita.azione_reason.gia_da_emettere',
+                                 'dettaglio',               v.etichetta,
+                                 'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                                 'commessa_id',             v.commessa_id,
+                                 'fattura_id',              NULL::bigint)
+                                 ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+                        FROM vis v
+                       WHERE v.fattura_riga_id IS NULL
+                         AND NOT v.lucchettata
+                         AND v.stato_emissione_riga <> 'EMESSA'
+                  ),
+                  -- ── MOTIVO 5 — EMESSA e non ancora lockata, dentro un giro VIVO ──
+                  -- ⭐ rev 2026-09-12. E' la finestra fra il pull e la select di un
+                  --    lotto che sta girando: la riga e' EMESSA, l'attivita' porta il
+                  --    marchio di un lotto in gioco, nessun lucchetto ancora. Non e'
+                  --    orfana: e' in transito. Liberarla da qui la farebbe prendere
+                  --    da due giri — stessa ragione del motivo 4, letta dal marchio
+                  --    invece che dal lucchetto. Stesso codice e stessa classe
+                  --    (CONFLITTO_STATO, rimedio «aspetta»); `reason` suo, perche'
+                  --    la diagnosi distingua i due transiti.
+                  -- ⭐ Quando il marchio e' di un lotto MORTO (o non c'e'), la stessa
+                  --    coppia «libera + EMESSA» non e' un motivo: e' la divergenza, e
+                  --    il verbo la riallinea con fn_libera_attivita_fatturabili.
+                  m5 AS (
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'codice',                  'E_ATTIVITA_IN_LAVORAZIONE',
+                                 'reason',                  'ATTIVITA_EMESSA_IN_GIRO_VIVO',
+                                 'reason_key',              'vendite.attivita.azione_reason.in_lavorazione',
+                                 'dettaglio',               v.etichetta,
+                                 'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                                 'commessa_id',             v.commessa_id,
+                                 'fattura_id',              NULL::bigint)
+                                 ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+                        FROM vis v
+                       WHERE v.fattura_riga_id IS NULL
+                         AND NOT v.lucchettata
+                         AND v.stato_emissione_riga = 'EMESSA'
+                         AND v.marchio_in_gioco
+                  ),
+                  -- ── MOTIVO 4 — e' dentro un giro VIVO ────────────────────
+                  -- ⛔ Lucchettata e non COMPLETED vuol dire che un lotto la sta
+                  --    lavorando ADESSO. Liberarla da qui la farebbe prendere da
+                  --    due giri insieme. E' la condizione che separa l'orfana
+                  --    dal transito legittimo, ed e' il motivo per cui la card
+                  --    «Emesse non fatturate» non e' un perimetro: contiene due
+                  --    popolazioni strutturalmente diverse.
+                  m4 AS (
+                      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                 'codice',                  'E_ATTIVITA_IN_LAVORAZIONE',
+                                 'reason',                  'ATTIVITA_IN_GIRO_VIVO',
+                                 'reason_key',              'vendite.attivita.azione_reason.in_lavorazione',
+                                 'dettaglio',               v.etichetta,
+                                 'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                                 'commessa_id',             v.commessa_id,
+                                 'fattura_id',              NULL::bigint)
+                                 ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+                        FROM vis v
+                       WHERE v.fattura_riga_id IS NULL
+                         AND v.lucchettata
+                         AND v.stato_esecuzione IS DISTINCT FROM 'COMPLETED'
+                  )
+                  -- L'ordine di concatenazione E' la priorita': la mutazione
+                  -- solleva il primo motivo, e il primo dev'essere quello che
+                  -- spiega di piu'.
+                  SELECT m1.j || m2.j || m3.j || m5.j || m4.j
+                    INTO v_motivi
+                    FROM m1, m2, m3, m5, m4;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              -- Le viste si tolgono dalla cima della catena (nessun CASCADE: un dipendente
+              -- non censito ferma il changeSet invece di sparire), poi si ricreano dalla base.
+              DROP VIEW vendite.vw_dash_competenza_mensile;
+              DROP VIEW vendite.vw_dash_competenza_gruppi;
+              DROP VIEW vendite.vw_dash_competenza_attivita;
+              DROP VIEW vendite.vw_commesse_attivita_emittibilita;
+              DROP VIEW dbops.vw_lotti_congelati_con_errori_da_guardare;
+              DROP VIEW vendite.vw_lotti_congelati_con_gruppi_in_errore;
+              DROP VIEW vendite.vw_documenti_trattenuti_da_lotto;
+              DROP VIEW dbops.vw_lotti_fermi_da_guardare;
+              DROP VIEW vendite.vw_lotti_fase;
+
+              CREATE VIEW vendite.vw_lotti_fase WITH (security_invoker = true) AS
+               SELECT l.id AS lotto_id,
+                  l.codice AS lotto_codice,
+                  l.competenza_mese AS lotto_competenza_mese,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.is_abortito,
+                  sdf.congela_fiscale,
+                  sdf.chiude_lotto,
+                  COALESCE((NOT sdf.congela_fiscale), false) AS pre_fiscale,
+                  COALESCE((NOT sdf.congela_fiscale), true) AS in_gioco
+                 FROM (vendite.fatturazione_lotti l
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = l.stato_doc_fiscale_id)));
+
+              COMMENT ON VIEW vendite.vw_lotti_fase IS
+                  'SEDE UNICA della domanda «in che fase e'' questo lotto?». Una riga per lotto: i tre assi grezzi di config.stati_doc_fiscale (is_abortito, congela_fiscale, chiude_lotto) piu'' i DUE derivati che li interpretano. Consumatori: script.fn_check_lotto_annullabile, script.fn_check_lotto_riportabile_a_draft, script.fn_check_fattura_eliminabile_da_lotto, script.fn_check_documento_escludibile_da_giro (pre_fiscale) e vendite.vw_documenti_trattenuti_da_lotto (in_gioco).
+              ⭐ I DUE DERIVATI SONO LO STESSO ASSE CON IL FAIL-CLOSED IN DIREZIONE OPPOSTA, e differiscono in UN SOLO caso — lo stato non risolvibile. `pre_fiscale` = COALESCE(NOT congela_fiscale, false) risponde a «si puo'' ancora agire sul documento?» e sull''ignoto dice NO (non si tocca). `in_gioco` = COALESCE(NOT congela_fiscale, true) risponde a «il lotto trattiene ancora i suoi documenti?» e sull''ignoto dice SI'' (non ci si mette le mani). ⛔ Non sono un doppione: le due domande vogliono la risposta prudente OPPOSTA, e con un flag solo un lotto senza stato risolvibile risulterebbe libero per il secondo giro E non estraibile dal primo — il peggio dei due, in silenzio.
+              ⚠️ SUI SEI STATI A CATALOGO COINCIDONO: DRAFT ed EMESSA veri, DEFINITIVA, INVIATA, REGISTRATA e ANNULLATA falsi. La differenza vive sul settimo caso, che il modello ammette perche'' la colonna e'' nullable.
+              ⭐ E `pre_fiscale` E'' ANCHE LA PORTA D''USCITA: fn_check_documento_escludibile_da_giro ammette di togliere un documento dal giro solo da un lotto pre-fiscale. Sui sei stati veri vale quindi «trattenuto ⇔ si puo'' ancora uscire»; sull''ignoto le due prudenze divergono, ed e'' voluto.
+              ⛔ NESSUNO DEI DUE si deriva da `chiude_lotto`: quel flag marca la TRANSIZIONE che chiude (solo DEFINITIVA), non la proprieta'' di essere chiuso — il catalogo ammette DEFINITIVA -> INVIATA -> REGISTRATA, e quei due stati non lo portano, quindi un lotto chiuso risulterebbe di nuovo aperto.
+              ⚠️ I TRE ASSI GREZZI SONO NULLABILI e i derivati no: il grezzo e'' il fatto (che puo'' essere ignoto), il derivato e'' la decisione (che non puo'' esserlo). COALESCE-are anche i grezzi metterebbe nella stessa colonna il fatto e la difesa.
+              ⚠️ L''ASSENZA DI RIGA e'' un''altra cosa ancora: significa lotto inesistente o fuori perimetro RLS. I quattro fn_check_* la trattano come errore (E_LOTTO_NON_TROVATO) e continuano a farlo.
+              Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L1, L2).';
+
+              CREATE VIEW dbops.vw_lotti_fermi_da_guardare WITH (security_invoker = true) AS
+               SELECT s.lotto_id,
+                  f.lotto_codice,
+                  f.lotto_competenza_mese,
+                  f.stato_codice_interno,
+                  l.emittente_soggetto_ruolo_id,
+                  ef.codice AS emittente_codice,
+                  s.fermo_motivo AS motivo,
+                  s.fermo_da,
+                  (now() - s.fermo_da) AS da_quanto,
+                  (s.fatture_critical_count + s.lotto_critical_count) AS critiche_vive,
+                  s.fatture_stato_esecuzione_errore_count,
+                  s.esiti_stato_esecuzione_errore_count,
+                  s.documenti_bloccanti_count,
+                  s.documenti_presi_in_carico_count
+                 FROM (((vendite.vw_lotti_segnalazioni_summary s
+                   JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = s.lotto_id)))
+                   JOIN vendite.fatturazione_lotti l ON ((l.id = s.lotto_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id)))
+                WHERE (s.fermo AND f.pre_fiscale AND (s.fermo_da < (now() - '01:00:00'::interval)));
+
+              COMMENT ON VIEW dbops.vw_lotti_fermi_da_guardare IS
+                  'PRESIDIO: i giri di fatturazione PRE-FISCALI (vendite.vw_lotti_fase.pre_fiscale) che la sede unica vendite.vw_lotti_segnalazioni_summary dichiara fermo (critiche vive, riga di ponte in ERRORE o esito ERRORE) da OLTRE UN''ORA, e che nessuno ha rilanciato ne'' sciolto, qualunque sia stato_lotto (un COMPLETATO in bozza con un esito in errore e'' qui). DEVE restare VUOTA. Il banner lo dice a chi apre il lotto; questa riga lo dice a chi non lo apre. E'' un LETTORE: nessun addendo e'' ricalcolato qui; motivo e fermo_da sono le colonne della sede, e un addendo nuovo del verdetto lo vedono insieme il banner, il digest e il pallino (una sede a DB, il backend trasporta). Un lotto congelato con un esito ERRORE, o con lo stato fiscale ignoto, e'' la contraddizione di vendite.vw_lotti_congelati_con_gruppi_in_errore e sta in dbops.vw_lotti_congelati_con_errori_da_guardare: i due presidi si spartiscono l''asse fiscale senza buchi ne'' doppioni. Un''ora non e'' una misura: il rilancio e'' il gesto di una persona, e le viste delle code usano la stessa soglia per la stessa ragione. L''orologio e'' fermo_da, il fatto PIU'' RECENTE che ferma il lotto: un rilancio che fallisce di nuovo lo riparte, e la domanda resta «da quanto nessuno ci mette le mani». La soglia sta qui, non nel catalogo. Perimetro DEFINER a catalogo: le tabelle sotto hanno la RLS e la vista e'' security_invoker; da una sessione senza contesto risponde zero PER CECITA'', il digest conta da proprietario con dbops.fn_conta_presidio, una persona legge col proprio perimetro.';
+
+              CREATE VIEW vendite.vw_documenti_trattenuti_da_lotto WITH (security_invoker = true) AS
+               SELECT le.gruppo_key,
+                  f.lotto_id,
+                  f.lotto_codice,
+                  f.lotto_competenza_mese,
+                  f.stato_codice_interno AS lotto_stato,
+                  le.stato_esecuzione AS esito
+                 FROM (vendite.fatturazione_lotti_esiti le
+                   JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = le.lotto_id)))
+                WHERE ((le.stato_esecuzione <> 'ESCLUSO'::text) AND f.in_gioco);
+
+              COMMENT ON VIEW vendite.vw_documenti_trattenuti_da_lotto IS
+                  'SEDE UNICA della domanda «questo documento e'' trattenuto da un lotto ancora in gioco?». Una riga per (documento, lotto che lo trattiene): la gruppo_key e il lotto, col suo stato e la sua competenza. Consumatori: la riga di vw_dash_competenza_gruppi (il motivo a video), il conteggio della card, vendite.fn_list_emittibili_lane e il pull (perche'' un secondo giro non se lo prenda).
+              ⭐ «IN GIOCO» SI LEGGE DALLA SEDE UNICA vendite.vw_lotti_fase (rev 2026-09-09), mai da un elenco di stati e mai piu'' da `is_abortito`. ⛔ Fino al 20260909-23 il predicato era `NOT is_abortito`, cioe'' «non annullato»: ma un lotto DEFINITIVA non e'' annullato, e'' CHIUSO — quindi un documento fatturato in un lotto regolarmente chiuso restava trattenuto PER SEMPRE, e il verbo «Riporta da emettere» smetteva di avere effetto senza che niente lo segnalasse.
+              ⛔ E NON si deriva da `chiude_lotto`: quel flag marca la TRANSIZIONE che chiude (solo DEFINITIVA), non la proprieta'' di essere chiuso — il catalogo ammette DEFINITIVA -> INVIATA, e INVIATA non lo porta.
+              ⭐ FAIL-CLOSED CONSERVATO: un lotto il cui stato non si risolve TRATTIENE. Sta dentro `in_gioco`, che ripiega su TRUE proprio per questa vista — il gemello `pre_fiscale` ripiega su FALSE e serve alla porta d''uscita. Stesso asse, prudenza girata: usare qui `pre_fiscale` capovolgerebbe il caso.
+              ⛔ UN DOCUMENTO USCITO DAL GIRO NON TRATTIENE NIENTE: l''esito ESCLUSO e'' escluso. E'' la regola «un documento fuori dal giro non si marca, non si conta, non blocca», vista dal terzo lato.
+              ⚠️ IL LEGAME DI COMPETENZA NON E'' QUI: la vista non conosce la competenza della riga che la interroga, espone `lotto_competenza_mese` e chi aggancia deve legarlo con `lotto_competenza_mese >= competenza della riga`, perche'' la selezione e'' CUMULATIVA (un lotto di settembre lavora anche agosto, non ottobre). ⛔ NON e'' un''uguaglianza: copiarla dal LATERAL dell''esito, che invece lega =, darebbe un blocco piu'' stretto della regola.
+              ⚠️ PUO'' TORNARE PIU'' DI UNA RIGA per la stessa gruppo_key: e'' esattamente il difetto che questa vista serve a chiudere (lo stesso documento in due lotti in gioco). Chi ne vuole UNO deve ordinare — un LIMIT 1 senza ORDER BY scommette.
+              ⚠️ PERCHE'' NON BASTAVA CIO'' CHE C''ERA: script.fn_get_stato_push_segment sa dire LIBERA / ALLOCATA / EMESSA, cioe'' misura l''ESITO del lavoro, non il fatto che il lavoro sia IN CORSO. Manca la terza domanda — «e'' dentro un giro che non ha ancora finito?» — ed e'' questa vista. Per la stessa ragione le cinque fn_list_*_da_pushare NON si toccano: la regola loro (LIBERA) c''e'' gia''.
+              Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L2).';
+
+              CREATE VIEW vendite.vw_lotti_congelati_con_gruppi_in_errore WITH (security_invoker = true) AS
+               SELECT l.id AS lotto_id,
+                  l.codice AS lotto_codice,
+                  l.stato_lotto,
+                  f.stato_codice_interno,
+                  l.competenza_mese,
+                  l.emittente_soggetto_ruolo_id,
+                  count(*) AS gruppi_in_errore,
+                  min(e.errore_quando) AS primo_errore,
+                  max(e.errore_quando) AS ultimo_errore,
+                  array_agg(DISTINCT e.errore_codice) FILTER (WHERE (e.errore_codice IS NOT NULL)) AS codici_errore
+                 FROM ((vendite.fatturazione_lotti l
+                   JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = l.id)))
+                   JOIN vendite.fatturazione_lotti_esiti e ON ((e.lotto_id = l.id)))
+                WHERE ((e.stato_esecuzione = 'ERRORE'::text) AND (NOT f.pre_fiscale))
+                GROUP BY l.id, l.codice, l.stato_lotto, f.stato_codice_interno, l.competenza_mese, l.emittente_soggetto_ruolo_id;
+
+              COMMENT ON VIEW vendite.vw_lotti_congelati_con_gruppi_in_errore IS
+                  'PRESIDIO. Elenca una contraddizione: un lotto CONGELATO (lo stato fiscale non e'' piu'' pre-fiscale: vendite.vw_lotti_fase.pre_fiscale falso, o ignoto) che contiene documenti dichiarati in ERRORE, qualunque sia stato_lotto. Il fiscale e'' fermo, i documenti non sono nati: non possono stare insieme. DEVE RESTARE VUOTA. ⭐ L''asse e'' lo stato FISCALE, lo stesso di dbops.vw_lotti_fermi_da_guardare: un lotto ancora pre-fiscale con un esito in errore e'' un lotto fermo e lo dice quel presidio; uno congelato lo dice questo. Nessun buco (congelato con stato_lotto IN_ESECUZIONE o ERRORE), nessun doppione (COMPLETATO in bozza). ⭐ Le porte: COMPLETATO su un lotto fermo lo rifiuta il database (trg_fatturazione_lotti_a10_guard_completato_upd); un esito scritto ERRORE dopo il congelamento, o un congelamento con esiti in errore, sono cio'' che questa vista sorveglia. ⭐ Un lotto annullato non compare perche'' l''annullo gli chiude gli esiti (fn_annulla_lotto_da_draft), non per un filtro: la vista non esclude gli annullati, e non deve. Legge vendite.fatturazione_lotti_esiti, quindi vede anche i lotti senza perimetro (i giri di massa). Lettore a catalogo: dbops.vw_lotti_congelati_con_errori_da_guardare. Fino al 2026-11-07 si chiamava vw_lotti_chiusi_con_gruppi_in_errore e guardava stato_lotto = COMPLETATO (storia: brief-db-esito-gruppo-lotto §15, §24, §25; brief-db-annullamento-chiude-la-vita §9). Brief: brief-db-revisione-dbops, giro 6 (Q14 ⑦).';
+              COMMENT ON COLUMN vendite.vw_lotti_congelati_con_gruppi_in_errore.stato_lotto IS
+                  'Lo stato del JOB del lotto: qui e'' un dato da leggere, non il criterio. Un lotto congelato compare con qualunque stato_lotto, IN_ESECUZIONE ed ERRORE compresi.';
+              COMMENT ON COLUMN vendite.vw_lotti_congelati_con_gruppi_in_errore.stato_codice_interno IS
+                  'Lo stato fiscale del lotto (config.stati_doc_fiscale.codice_interno), da vendite.vw_lotti_fase: e'' l''asse del presidio. NULL se lo stato fiscale e'' ignoto: il lotto compare lo stesso.';
+              COMMENT ON COLUMN vendite.vw_lotti_congelati_con_gruppi_in_errore.gruppi_in_errore IS
+                  'Quanti esiti del lotto (vendite.fatturazione_lotti_esiti) sono in ERRORE.';
+
+              CREATE VIEW dbops.vw_lotti_congelati_con_errori_da_guardare WITH (security_invoker = true) AS
+               SELECT c.lotto_id,
+                  c.lotto_codice,
+                  c.competenza_mese,
+                  c.stato_lotto,
+                  c.stato_codice_interno,
+                  c.emittente_soggetto_ruolo_id,
+                  ef.codice AS emittente_codice,
+                  c.gruppi_in_errore,
+                  c.primo_errore,
+                  c.ultimo_errore,
+                  c.codici_errore
+                 FROM (vendite.vw_lotti_congelati_con_gruppi_in_errore c
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id)));
+
+              COMMENT ON VIEW dbops.vw_lotti_congelati_con_errori_da_guardare IS
+                  'PRESIDIO: i lotti CONGELATI (stato fiscale non piu'' pre-fiscale, o ignoto) che contengono documenti in ERRORE, qualunque sia stato_lotto. DEVE restare VUOTA. E'' un LETTORE: la contraddizione la definisce vendite.vw_lotti_congelati_con_gruppi_in_errore, qui si aggiunge solo l''emittente, per chi arriva dal digest. Si spartisce l''asse fiscale con dbops.vw_lotti_fermi_da_guardare: pre-fiscale a quel presidio, congelato a questo, senza buchi ne'' doppioni. Un lotto ANNULLATO non compare perche'' l''annullo gli chiude gli esiti, non perche'' qualcuno lo filtri. In dbops e non in vendite: iscrivere a catalogo una vista di vendite porterebbe l''intero schema nel perimetro di db/pgtap/dbops/test-catalogo-presidi-v1.sql. Perimetro DEFINER a catalogo: le tabelle sotto hanno la RLS e le viste sono security_invoker; da una sessione senza contesto risponde zero PER CECITA'', il digest conta da proprietario con dbops.fn_conta_presidio, una persona legge col proprio perimetro.';
+
+              CREATE VIEW vendite.vw_commesse_attivita_emittibilita WITH (security_invoker = on) AS
+               SELECT ca.id AS commessa_attivita_id,
+                  co.id AS commessa_id,
+                  co.codice AS commessa_codice,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  sc.emittibile AS commessa_emittibile,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
+                  ca.competenza_mese,
+                  ca.tipo_doc_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  co.utility_id,
+                  co.billing_account_id,
+                  co.fatturazione_immediata,
+                  ca.stato_emissione,
+                  ca.stato_approvazione,
+                  (
+                      CASE
+                          WHEN ((ca.stato_emissione)::text = 'EMESSA'::text) THEN 'EMESSA'::text
+                          WHEN ((ca.stato_emissione)::text = 'ANNULLATA'::text) THEN 'ANNULLATA'::text
+                          WHEN ((ca.stato_approvazione)::text = 'RIFIUTATA'::text) THEN 'RIFIUTATA'::text
+                          WHEN ((ca.stato_approvazione)::text <> 'APPROVATA'::text) THEN 'NON_APPROVATA'::text
+                          WHEN (trat.lotti IS NOT NULL) THEN 'TRATTENUTA'::text
+                          ELSE 'PRONTA'::text
+                      END)::character varying AS classe_emittibilita,
+                  trat.lotti AS trattenuta_da_lotti
+                 FROM (((vendite.commesse_attivita ca
+                   JOIN vendite.commesse co ON ((co.id = ca.commessa_id)))
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   LEFT JOIN LATERAL ( SELECT array_agg(t.lotto_id ORDER BY t.lotto_id) AS lotti
+                         FROM vendite.vw_documenti_trattenuti_da_lotto t
+                        WHERE ((t.gruppo_key = vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)) AND (t.lotto_competenza_mese >= ca.competenza_mese))) trat ON (true));
+
+              COMMENT ON VIEW vendite.vw_commesse_attivita_emittibilita IS
+                  'SEDE UNICA del criterio «questa riga di commessa puo'' entrare in un giro di fatturazione, e se no perche''». Una riga per riga di commessa. Consumatori: vendite.fn_list_emittibili_lane (filtra classe = PRONTA), vendite.fn_list_commesse_emittibili (quali commesse visitare), vendite.fn_emit_attivita_fatturabili_da_commessa (quali righe emettere) e vendite.fn_diagnostica_gruppi_fatturabili (conta per classe).
+              ⭐ NASCE PERCHE'' IL CRITERIO ERA SCRITTO DUE VOLTE: la lane lo FILTRA, la diagnostica lo CONTA, ed e'' dichiarata «lo specchio della lane». Il 2026-09-09 lo specchio si e'' rotto in silenzio — un criterio aggiunto alla lane e non alla diagnostica, che rispondeva «era pronto» su un documento che la lane non aveva offerto. Ora il criterio non e'' scritto in nessuna delle due.
+              ⭐ I DUE FATTORI SONO ORTOGONALI: `classe_emittibilita` descrive la RIGA, `commessa_emittibile` la TESTATA, e chi decide dichiara quali dei due usa. ⛔ Fonderli toglierebbe alla diagnostica la sola cosa che sa dire meglio della lane («le righe sarebbero pronte, e'' la commessa a essere in BOZZA»).
+              ⭐ VOCABOLARIO CHIUSO di sei valori: EMESSA · ANNULLATA · RIFIUTATA · NON_APPROVATA · TRATTENUTA · PRONTA.
+              ⛔ NON contiene il PERIMETRO DELLA DOMANDA — tetto di competenza, billing account, utility, emittente, corsia, p_gruppi, e l''auto-esclusione del proprio lotto nel pull: quelli dipendono da chi chiede. E'' anche il motivo per cui «fuori competenza» non e'' una classe: quella riga e'' PRONTA, solo non per quel mese.
+              ⭐ MA IL LEGAME DI COMPETENZA DEL TRATTENUTO SI'': qui la competenza della riga c''e''. E'' `lotto_competenza_mese >= ca.competenza_mese`, perche'' la selezione e'' CUMULATIVA. ⛔ Non e'' un''uguaglianza: il LATERAL dell''esito su vw_dash_competenza_gruppi lega =, e copiarlo darebbe un blocco piu'' stretto della regola.
+              ⚠️ `tipo_doc_fiscale_id IS NOT NULL` non e'' fra i criteri: e'' un ramo irraggiungibile da quando chk_commesse_attivita_tipo_doc_emittibile e'' VALIDATO, e i presidi sono i test 9 e 10 di test-diagnostica-gruppi-fatturabili-v1.sql.
+              ⚠️ `trattenuta_da_lotti` e'' NULL quando la riga non e'' trattenuta (mai un array vuoto) ed e'' ORDINATO per lotto_id: chi ne vuole uno prende il primo e non scommette.
+              Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3).';
+
+              CREATE VIEW vendite.vw_dash_competenza_attivita WITH (security_invoker = on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, (script.fn_giorno_operativo(af.data_insert))::timestamp without time zone))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) AS sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN
+                          CASE
+                              WHEN (EXISTS ( SELECT 1
+                                 FROM vendite.vw_lotti_fase lfase
+                                WHERE ((lfase.lotto_id = fl.id) AND lfase.in_gioco))) THEN 'GIRO_IN_CORSO'::text
+                              ELSE 'RESIDUO'::text
+                          END
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione,
+                  COALESCE(((cae.classe_emittibilita)::text = 'TRATTENUTA'::text), false) AS emissione_trattenuta,
+                      CASE
+                          WHEN ((cae.classe_emittibilita)::text = 'TRATTENUTA'::text) THEN cae.trattenuta_da_lotti
+                          ELSE NULL::bigint[]
+                      END AS emissione_trattenuta_da_lotti
+                 FROM (((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = COALESCE(af.lock_batch_id, af.emit_batch_id))))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                   LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_attivita IS
+                  'Lente 1 Competenza, grana ATTIVITA'': una riga per attivita'' di commessa con lo stadio del ciclo (DA_APPROVARE / DA_EMETTERE / EMESSA_NON_FATTURATA / FATTURATA), il valore, il collegamento a fattura e lotto e lo stato della commessa. Alimenta il drill-down commesse, che il backend AGGREGA per commessa. SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on. ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. Il drill-down puo'' metterla nel GROUP BY in sicurezza: l''emittente e'' una colonna di vendite.commesse e commessa_id ne e'' la chiave primaria, quindi una commessa non puo'' avere attivita'' di emittenti diversi — l''emittente non sta sull''attivita''. La colonna nel GROUP BY serve comunque: su una colonna di VISTA PostgreSQL non deduce la dipendenza funzionale. ⚠️ Due catene distinte sulle stesse tabelle: sr/s sono il CLIENTE (via billing account), sr_ef/s_ef l''EMITTENTE. Scambiarle non darebbe nessun errore, solo un nome sbagliato a video. ⭐ Rev 2026-08-26 (L4, brief-db-registro-e-data-prevista-in-competenza): quattro colonne nuove in coda — registro_id, registro_codice, politica_data_documento, data_documento_prevista. Rispondono alle due domande che la schermata da cui si fattura non sapeva dire PRIMA di premere: su quale sezionale finira'' il documento, e che data portera''. ⭐ Il sezionale si risolve chiamando vendite.fn_resolve_registro_documento, cioe'' LA STESSA funzione che usa fn_build_fattura_key quando la fattura nasce davvero: la previsione e'' una lettura, non una profezia, e non puo'' divergere dal documento perche'' non e'' una seconda implementazione. ⚠️ Le si passa co.billing_account_id, il BA della RIGA: la funzione risale al padre da se'', e passarle il BA di fatturazione darebbe una previsione plausibile e sbagliata proprio sui BA con padre. ⛔ L''aggancio e'' CONDIZIONATO — ON (af.fattura_riga_id IS NULL), decisione D-9: dove il documento esiste gia'' la previsione non si fa, o la colonna mentirebbe al proprio nome. ⚠️ Il discriminante e'' la riga di fattura e non lo stadio: su EMESSA_NON_FATTURATA il documento non c''e'' ancora — e li'' finiscono le attivita'' rimaste orfane di una fattura eliminata, cioe'' lavoro da ri-emettere, per cui sapere dove finira'' e'' proprio l''informazione utile. ⛔ Il CASE sulla data e'' obbligatorio e non difensivo: fn_calcola_data_documento SOLLEVA su registro nullo, un CASE cortocircuita e un argomento no — senza, la prima riga con un sezionale non risolvibile farebbe morire l''intera lista. ⚠️ registro_codice viene da registri_fatturazione.codice, colonna MUTABILE: e'' display, l''alias e'' fedele alla sorgente (linee-guida-sql §6c) e quella tabella non espone codice_interno. Nessuna logica puo'' appoggiarcisi — chi filtra lo fa su registro_id. ℹ️ Costo dichiarato: due chiamate di funzione per riga su una vista che ne alimenta altre quattro. Tutta la catena e'' STABLE e le tabelle di configurazione lette non hanno RLS. ⭐ Rev 2026-08-26 (D-1, brief-db-residui-competenza-dimensione-e-chiave): otto colonne nuove in coda — attivita_fatturabile_id, lock_in_fatturazione, stato_esecuzione, motivo_non_fatturata, lotto_provenienza_id, lotto_provenienza_codice, articolo_codice, articolo_descrizione. ⛔ attivita_fatturabile_id e'' LA CHIAVE DEL VERBO: vendite.fn_riporta_attivita_da_emettere consuma vendite.attivita_fatturabili.id, e nessuna vista lo esponeva — il frontend non poteva chiamare la mutazione. Tradurre commessa_attivita_id -> af.id lato backend sarebbe stata una SECONDA IMPLEMENTAZIONE di un legame che il database conosce gia''. E'' un identificatore, non una colonna da mostrare. ⭐ motivo_non_fatturata e'' LA DIMENSIONE, a vocabolario chiuso di TRE valori e NULL fuori dallo stadio EMESSA_NON_FATTURATA: GIRO_IN_CORSO (lucchettata con stato_esecuzione diverso da COMPLETED — oppure, rev 2026-09-12, LIBERA col marchio di un lotto IN GIOCO: il transito fra pull e select), RESIDUO (lucchettata e COMPLETED senza riga di fattura — oppure libera col marchio di un lotto morto o senza marchio: la DIVERGENZA fra i due livelli, che nessun giro riprende. Sono le sole che il verbo tocca) e SENZA_ATTIVITA_FATTURABILE. ⛔ IN_ATTESA_LOTTO e'' RITIRATO (20260912-36): diceva «non lucchettata, il prossimo giro la prende da se''», ed e'' falso PER COSTRUZIONE dentro questo stadio — la riga di commessa e'' EMESSA, il pull non la vede e la select di un altro lotto non trova il suo marchio (brief-db-rilancio-step-non-rivede-le-proprie-commesse §10.4 e §11.3 C.2, 20260912-35). Un valore che la vista non puo'' produrre non sta nel vocabolario: teneva in vita un ramo morto, e la lista NASCONDEVA il verbo proprio sulle righe che nessun giro avrebbe ripreso. «In gioco» si legge da vendite.vw_lotti_fase, la sede unica, con un EXISTS valutato SOLO su quel ramo del CASE (una lettura per riga libera dello stadio, zero sulle altre). ⛔ Serve perche'' lo stadio guarda SOLO fattura_riga_id, e dentro EMESSA_NON_FATTURATA finiscono situazioni con RIMEDI OPPOSTI: due non chiedono nessuna azione, una si''. Un numero solo per rimedi opposti e'' la stessa ambiguita'' che il cantiere «il lavoro che non torna indietro» ha chiuso un livello piu'' in giu''. ⛔ E NON si spezza il valore EMESSA_NON_FATTURATA in due stadi: lo STADIO dice a che punto del ciclo e'' il lavoro, e le situazioni sono allo STESSO punto — cambia la loro salute, non il loro avanzamento. Si aggiunge la DIMENSIONE, come il 2026-08-20 si aggiunse tipo_movimento alla mensile invece di una colonna valore_rettifiche. ⛔ I rami sono, uno per uno, gli stessi di script.fn_check_attivita_riportabile_da_emettere (motivo 5, motivo 4 e «nessun motivo»; il motivo 3 — libera con la riga NON_EMESSA — sta fuori da questo stadio per costruzione): cambiarne uno qui senza cambiarlo li'' non produce nessun errore — la lista proporrebbe il verbo su una riga che la mutazione rifiuta, o lo nasconderebbe su una che accetta. Il presidio che lega le due superfici e'' db/pgtap/vendite/test-motivo-non-fatturata-v1.sql, con una fixture COSTRUITA per ciascun caso. ⛔ IS DISTINCT FROM ''COMPLETED'' e non <>: stato_esecuzione e'' NULLABLE e il CHECK ammette anche ERRORE, quindi con <> un lucchetto a NULL darebbe NULL e il CASE cadrebbe su RESIDUO dove la funzione dice E_ATTIVITA_IN_LAVORAZIONE. ERRORE finisce percio'' in GIRO_IN_CORSO, e il rimedio (aspettare che il lotto si chiuda) e'' lo stesso. ⭐ SENZA_ATTIVITA_FATTURABILE e'' il quarto valore: il modello AMMETTE una riga di commessa a EMESSA senza NESSUNA riga in attivita_fatturabili (il JOIN e'' LEFT, e il guard di DELETE ammette per progetto la cancellazione di una riga non fatturata). Senza un ramo suo il COALESCE la farebbe cadere su IN_ATTESA_LOTTO, cioe'' «il prossimo giro la prende» — falso, perche'' la pull filtra su stato_emissione e non la riprende mai piu''; e attivita_fatturabile_id sarebbe NULL, quindi il verbo non avrebbe nemmeno la chiave. Zero occorrenze non significa che il caso non esiste. ⛔ NON si usa `fatturato` come discriminante: dal 20260826-33 e'' una colonna GENERATA da fattura_riga_id, quindi dentro EMESSA_NON_FATTURATA e'' sempre falsa e non distingue niente. ⭐ lotto_provenienza_id/_codice rispondono a «da dove viene questo residuo», e NON sono lotto_id: quello nasce dalla catena della FATTURA e su un residuo la fattura non c''e''. Arrivano da vendite.fatturazione_lotti via COALESCE(lock_batch_id, emit_batch_id) — rev 2026-09-12: un residuo DIVERGENTE il lucchetto non ce l''ha, e la sua provenienza e'' il MARCHIO del giro (emit_batch_id), che e'' il lock_batch_id del lotto che l''ha presa in carico; per un''attivita'' lucchettata i due coincidono. La chiave sul lato lotti resta lock_batch_id, che li'' ha un UNIQUE — quindi il LEFT JOIN non puo'' moltiplicare righe. LEFT e non INNER perche'' fatturazione_lotti ha la RLS: un lotto fuori perimetro lascia le colonne a NULL e non fa sparire il residuo. lotto_provenienza_codice viene da codice, MUTABILE: e'' display (§6c) e nessuna logica puo'' appoggiarcisi. ⭐ articolo_codice/articolo_descrizione dicono CHE LAVORO E'': la vista esponeva il solo articolo_id, che e'' un UUID, e una lista di residui su cui si deve AGIRE senza il nome del lavoro non e'' azionabile. Il decode e'' lo stesso di vendite.fn_list_commessa_attivita (rev 2026-08-20), che lo fa un livello sopra sulla stessa colonna. LEFT anche se articolo_id e'' NOT NULL: un decode non deve poter far sparire la riga che sta decorando, e catalogo.articoli non ha RLS. ℹ️ I due JOIN nuovi NON li paga chi non li usa, e la ragione e'' STRUTTURALE: sono LEFT JOIN su chiavi con indice UNIQUE (uq_fatturazione_lotti_lock_batch_id, pk_articoli), quindi PostgreSQL puo'' PROVARE che non moltiplicano le righe e li elimina dal piano quando nessuna delle loro colonne e'' selezionata (left join removal). ⚠️ La condizione che regge tutto e'' il UNIQUE: togliendolo l''eliminazione smetterebbe di essere lecita e la vista comincerebbe a contare doppio — per questo e'' in preCondition e ha un test suo. ⭐ Lo STADIO si calcola UNA volta sola, nella CROSS JOIN LATERAL `st`, e serve sia la colonna stadio sia motivo_non_fatturata: quest''ultima e'' definita SOPRA lo stadio e in SQL un alias di SELECT non e'' riferibile da un''altra espressione della stessa SELECT. Ricopiare il CASE avrebbe messo la definizione dello stadio in DUE posti della stessa vista, dove divergere non produce nessun errore. Valore, nome e tipo della colonna stadio non cambiano. Rev 2026-10-20 (20261020-80, brief-db-grammatica-unica-documenti L2c-1): ricreata identica dopo l''allargamento di registri_fatturazione.codice a varchar(80) (20261020-74).';
+
+              CREATE VIEW vendite.vw_dash_competenza_gruppi WITH (security_invoker = true) AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min((a.registro_codice)::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica,
+                          bool_or(a.emissione_trattenuta) AS trattenuto,
+                          min(a.emissione_trattenuta_da_lotti[1]) AS lotto_blocco_id
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.apribile AS documento_apribile,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  (cardinality(g.registri_ids))::smallint AS registri_n,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione AS ultimo_esito,
+                  esito.errore_codice AS ultimo_errore_codice,
+                  esito.errore_messaggio AS ultimo_errore_messaggio,
+                  esito.errore_quando AS ultimo_errore_quando,
+                  esito.lotto_codice AS ultimo_lotto_codice,
+                      CASE
+                          WHEN g.trattenuto THEN 'TRATTENUTO_DA_LOTTO'::text
+                          ELSE NULL::text
+                      END AS emissione_blocco_reason,
+                      CASE
+                          WHEN g.trattenuto THEN 'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text
+                          ELSE NULL::text
+                      END AS emissione_blocco_reason_key,
+                  g.lotto_blocco_id AS emissione_blocco_lotto_id,
+                  fb.lotto_codice AS emissione_blocco_lotto_codice,
+                  esito.lotto_id AS ultimo_lotto_id,
+                  esito.lotto_stato AS ultimo_lotto_stato,
+                  esito.lotto_pre_fiscale AS ultimo_lotto_pre_fiscale
+                 FROM ((((((((((aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON (s.apribile))
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id)))
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id))))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = g.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+                          le.errore_codice,
+                          le.errore_messaggio,
+                          le.errore_quando,
+                          f.lotto_codice,
+                          f.lotto_id,
+                          f.stato_codice_interno AS lotto_stato,
+                          f.pre_fiscale AS lotto_pre_fiscale
+                         FROM (vendite.fatturazione_lotti_esiti le
+                           JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = le.lotto_id)))
+                        WHERE ((le.gruppo_key = g.gruppo_key) AND (f.lotto_competenza_mese = g.competenza_mese))
+                        ORDER BY COALESCE(le.errore_quando, le.data_update) DESC, le.id DESC
+                       LIMIT 1) esito ON (true))
+                   LEFT JOIN vendite.vw_lotti_fase fb ON ((fb.lotto_id = g.lotto_blocco_id)));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi IS
+                  'I documenti da emettere di una competenza, un gruppo per riga, con l''esito dell''ULTIMO tentativo di fatturazione (ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio, ultimo_errore_quando, ultimo_lotto_codice). Rev 2026-09-07: l''esito si legge da vendite.fatturazione_lotti_esiti e non piu'' dalle colonne del perimetro — quelle non esistevano sui giri che un perimetro non lo dichiarano, quindi un documento fallito in un giro di massa restava senza segno. Il segno NON spegne stadio ne'' commessa_emittibile (decisione di Tid): dice che un tentativo e'' fallito, non che il documento non si possa fatturare. Il legame e'' (documento, mese di competenza): senza il mese, il documento di settembre erediterebbe l''errore di agosto. Brief: brief-db-esito-gruppo-lotto. Rev 2026-10-20 (20261020-82, brief-db-grammatica-unica-documenti 2d e L2c-1): area_documento (il plurale) diventa documento_apribile, e il numero del documento si risolve quando la sorgente e'' apribile (config.sorgenti.area e'' ritirata); ricreata dopo l''allargamento di registri_fatturazione.codice.';
+
+              CREATE VIEW vendite.vw_dash_competenza_mensile WITH (security_invoker = on) AS
+               SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  (count(*) FILTER (WHERE (NOT emissione_trattenuta)))::integer AS n_attivita,
+                  COALESCE(sum(valore) FILTER (WHERE (NOT emissione_trattenuta)), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo,
+                  tipo_movimento,
+                  motivo_non_fatturata,
+                  (count(*) FILTER (WHERE emissione_trattenuta))::integer AS n_attivita_trattenute,
+                  COALESCE(sum(valore) FILTER (WHERE emissione_trattenuta), (0)::numeric) AS valore_trattenuto
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno, tipo_movimento, motivo_non_fatturata;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_mensile IS
+                  'Lente 1 Competenza, aggregata in FORMATO LUNGO: una riga per (competenza_mese, stadio, stato fattura, tipo_movimento, motivo_non_fatturata). Il pivot alla griglia 12 mesi x 4 stadi e'' del service, non della vista. security_invoker=on: lo scope emittente arriva da vw_dash_competenza_attivita (GUC fail-closed) e va RI-SPECIFICATO a ogni REPLACE, perche'' la reloption non e'' visibile in pg_get_viewdef e verrebbe azzerata in silenzio. ⭐ Rev 2026-08-20 (richiesta BE, punto 3): `tipo_movimento` entra nel raggruppamento. Prima si perdeva qui, e il residuo del mese — che e'' una somma CON SEGNO — compensava le rettifiche con le fatture da emettere: agosto 2026 segnava 101% di copertura perche'' il residuo era −29,50, cioe'' due note di credito da emettere. Con una sola fattura da 29,50 in sospeso il residuo sarebbe andato a zero e la dashboard avrebbe detto «100%, niente da fare» con tre documenti da produrre: la compensazione NASCONDE LAVORO. ⭐ E non riguarda le sole rettifiche — a luglio 2026 ci sono 5.000 EUR di ONERI nello stesso totale: la somma mescolava tre cose di natura diversa, ed e'' il motivo per cui si aggiunge la DIMENSIONE e non una colonna `valore_rettifiche`, che avrebbe messo i valori dell''enum dentro la vista. 🔴 Cambia la CARDINALITA'': 7 righe -> 8 sul dato del 2026-08-20, unico bucket spezzato 2026-07 FATTURATA/EMESSA (NORMALE + ONERE). I totali del consumatore reggono perche'' il pivot accumula, ma il breakdown per stato documento fiscale elenca una voce per riga: senza adeguamento BE mostra EMESSA due volte. brief-design-note-credito-resi §40.2. ⭐ Rev 2026-08-26 (D-2, brief-db-residui-competenza-dimensione-e-chiave): `motivo_non_fatturata` entra nel raggruppamento, per la STESSA ragione e nella STESSA forma. Lo stadio EMESSA_NON_FATTURATA guarda solo fattura_riga_id, e dentro quel valore convivono situazioni con RIMEDI OPPOSTI: in attesa del proprio lotto (nessun rimedio, il prossimo giro la prende), dentro un giro vivo (nessun rimedio, si aspetta) e RESIDUO — l''unica su cui «Riporta da emettere» ha effetto. Un numero solo per rimedi opposti dice all''operatore che c''e'' qualcosa da fare quando non c''e'', o nasconde il lavoro vero dentro un transito sano. ⛔ Dimensione e NON una colonna `n_residui`: quella avrebbe costretto l''aggregata a conoscere il valore RESIDUO, cioe'' a cablare un elemento del vocabolario dentro una somma. La dimensione non conosce nessun valore: li porta. 🔴 E cambia di nuovo la CARDINALITA'': un bucket EMESSA_NON_FATTURATA che contiene piu'' situazioni si spezza in una riga per situazione. I totali reggono, il breakdown no — l''adeguamento BE/FE va fatto nello stesso giro. ⚠️ Il presidio di grana e'' il test 22 di db/pgtap/vendite/test-fn-list-commessa-attivita-provenienza-v1.sql, che confronta le righe della mensile col GROUP BY del dettaglio: cambiando la grana va portato sulla regola nuova, mai spento. Rev 2026-10-20 (20261020-81, brief-db-grammatica-unica-documenti L2c-1): ricreata identica dopo l''allargamento di registri_fatturazione.codice a varchar(80) (20261020-74).';
+

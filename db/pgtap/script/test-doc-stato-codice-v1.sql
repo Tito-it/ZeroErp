@@ -21,8 +21,11 @@
 --
 -- Elenco test (plan 8):
 --   1) il lettore esiste: STABLE, SECURITY INVOKER
---   2) l'emissione composta, sulle cinque testate: il codice dichiarato dal vocabolario
---   3) l'emissione composta su reso, commessa e fattura: NULL
+--   2) l'emissione composta, sulle sei testate: il codice dichiarato dal vocabolario
+--   3) l'emissione composta su commessa e fattura: NULL
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 3, S-3, 20261113-42): il reso
+--   dichiara il suo stato di emissione (CONFERMATO). Prima si diceva che il reso «non si emette»:
+--   ora lo dice il vocabolario. Restano senza emissione commessa e fattura.
 --   4) andata e ritorno su ogni stato attivo delle otto testate (e ce ne sono)
 --   5) un id che il vocabolario non ha -> NULL
 --   6) un id NULL -> NULL
@@ -57,26 +60,26 @@ SELECT is(
                     ('ddt',        'vendite.ddt'::regclass),
                     ('offerte',    'vendite.offerte_commerciali'::regclass),
                     ('ordini',     'vendite.ordini'::regclass),
-                    ('preventivi', 'vendite.preventivi'::regclass)) t(nome, testata)),
+                    ('preventivi', 'vendite.preventivi'::regclass),
+                    ('reso',       'vendite.resi'::regclass)) t(nome, testata)),
     (SELECT string_agg(x, ' ' ORDER BY x) FROM (
         SELECT 'contratti:' || codice_interno AS x FROM config.stati_doc_contratti WHERE emissione
         UNION ALL SELECT 'ddt:' || codice_interno FROM config.stati_doc_ddt WHERE emissione
         UNION ALL SELECT 'offerte:' || codice_interno FROM config.stati_doc_offerte WHERE emissione
         UNION ALL SELECT 'ordini:' || codice_interno FROM config.stati_doc_ordini WHERE emissione
-        UNION ALL SELECT 'preventivi:' || codice_interno FROM config.stati_doc_preventivi WHERE emissione) z),
+        UNION ALL SELECT 'preventivi:' || codice_interno FROM config.stati_doc_preventivi WHERE emissione
+        UNION ALL SELECT 'reso:' || codice_interno FROM config.stati_doc_reso WHERE emissione) z),
     'fn_doc_stato_codice(t, fn_stato_emissione_id(t)): il codice di emissione che ogni vocabolario dichiara'
 );
 
 -- 3) Un documento che non si emette: niente codice
 SELECT is(
-    ARRAY[script.fn_doc_stato_codice('vendite.resi'::regclass,
-                                     script.fn_stato_emissione_id('vendite.resi'::regclass)),
-          script.fn_doc_stato_codice('vendite.commesse'::regclass,
+    ARRAY[script.fn_doc_stato_codice('vendite.commesse'::regclass,
                                      script.fn_stato_emissione_id('vendite.commesse'::regclass)),
           script.fn_doc_stato_codice('vendite.fatture'::regclass,
                                      script.fn_stato_emissione_id('vendite.fatture'::regclass))],
-    ARRAY[NULL, NULL, NULL]::text[],
-    'l''emissione composta su reso, commessa e fattura: NULL (non si emettono)'
+    ARRAY[NULL, NULL]::text[],
+    'l''emissione composta su commessa e fattura: NULL (non si emettono)'
 );
 
 -- 4) Andata e ritorno su ogni stato attivo delle otto testate di vendita. Il

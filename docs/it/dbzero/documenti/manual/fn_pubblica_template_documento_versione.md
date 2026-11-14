@@ -14,7 +14,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 30-09-2026 — il patto versione/forma dei dati: brief-db-documenti-versione-contesto-template)
+(latest review 14-11-2026 — che cosa stampa dopo la pubblicazione: lo decide la validità)
 
 `documenti.fn_pubblica_template_documento_versione(p_versione_id, p_valido_dal, p_versione_contesto, p_valido_al)`
 è un **endpoint atomico DB** per **pubblicare una versione BOZZA** di un template documento.
@@ -54,7 +54,7 @@ Restituisce una riga con `versione_id`, `template_documento_id` e `versioni_obso
 | Stato non BOZZA | `stato IN ('PUBBLICATA', 'OBSOLETA')` | **Raise** `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO` |
 | Forma dei dati diversa | `versione_contesto` della versione ≠ `p_versione_contesto` | **Raise** `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA` da `documenti.fn_guard_versione_contesto`, prima di chiudere qualunque altra versione |
 | Forma dei dati non passata | `p_versione_contesto IS NULL` | **Raise** `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE` (TECNICO) |
-| Overlap con versioni PUBBLICATE precedenti | esistono versioni `PUBBLICATA` + `attivo IS TRUE` con `valido_dal < p_valido_dal` e range sovrapposto | Chiusura atomica (doppio UPDATE: stato → OBSOLETA, poi `valido_al = p_valido_dal - 1`) |
+| Overlap con versioni PUBBLICATE precedenti | esistono versioni `PUBBLICATA` + `attivo IS TRUE` con `valido_dal < p_valido_dal` e range sovrapposto | Chiusura atomica (una scrittura sotto la porta: stato → OBSOLETA e `valido_al = p_valido_dal - 1`) |
 | Path felice | tutto OK | `stato = 'PUBBLICATA'`, `valido_dal / valido_al` aggiornati; ritorna riga risultato |
 | Race condition finale | la versione target non è più BOZZA alla fase finale (bypass lock improbabile) | **Raise** `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO` |
 
@@ -84,11 +84,14 @@ Restituisce una riga con `versione_id`, `template_documento_id` e `versioni_obso
    errore tecnico (`22000`) prima che l'UPDATE arrivi al guard comune.
 6. **Conteggio versioni da chiudere**: `v_closed_count = COALESCE(array_length(v_closed_ids, 1), 0)`,
    calcolato immediatamente sull'array (non via `GET DIAGNOSTICS`).
-7. **Chiusura versioni sovrapposte** (se `v_closed_count > 0`) — doppio UPDATE obbligato:
-   - **Step 1** `SET stato = 'OBSOLETA'` → la colonna `stato` **non** è nell'`UPDATE OF` del trigger
-     `trgfn_template_documenti_versioni_protect_pubblicata` (guard A1), quindi non viene bloccato.
-   - **Step 2** `SET valido_al = p_valido_dal - 1` → ora `OLD.stato = 'OBSOLETA'`, il trigger
-     guard A1 non scatta (controlla `OLD.stato = 'PUBBLICATA'`).
+7. **Chiusura versioni sovrapposte** (se `v_closed_count > 0`) — una scrittura sola, sotto la
+   porta (dal 14-11-2026):
+   - apre `zeroerp.allow_template_versione_chiusura_override` (`set_config(…, 'on', true)`);
+   - `SET stato = 'OBSOLETA', valido_al = p_valido_dal - 1` sulle versioni scelte: il guard A1
+     (`trgfn_template_documenti_versioni_protect_pubblicata`) protegge `PUBBLICATA` e `OBSOLETA`, e
+     a porta aperta ammette solo questa forma (da `PUBBLICATA` a `OBSOLETA`, validità accorciata,
+     nient'altro cambiato);
+   - richiude la porta (`'off'`).
    `validita` si ricalcola da sola ad ogni UPDATE: e' una colonna generata.
 8. **Pubblicazione versione target**: `SET stato = 'PUBBLICATA', valido_dal = p_valido_dal, valido_al = p_valido_al`.
    La condizione `AND stato = 'BOZZA'` nell'UPDATE è una difesa ulteriore contro race concorrenti.
@@ -128,7 +131,20 @@ con contesto JSONB diagnostico. SQLSTATE `P0001`.
   candidate alla chiusura per l'intera durata della TX.
 - **Vincolo `EXCLUDE USING gist`** (`ex_template_documenti_versioni_no_overlap_pubblicata`):
   guardrail finale contro overlap residui o race non coperti dal lock applicativo.
-  Si attiva solo per versioni `attivo IS TRUE AND stato = 'PUBBLICATA'`.
+  Si attiva per le versioni `attivo IS TRUE` fuori bozza, `PUBBLICATA` o `OBSOLETA` (dal
+  14-11-2026): una versione resa `OBSOLETA` qui continua a stampare fino al suo `valido_al`, quindi
+  conta anche lei per «una sola versione stampabile per data».
+
+### Che cosa stampa dopo la pubblicazione
+
+(dal 14-11-2026)
+
+La funzione rende `OBSOLETA` la versione precedente nel momento in cui pubblica, anche quando la
+nuova parte da una data futura. Che cosa stampa lo decide la validità, non lo stato
+([vw_template_versioni_stampabili](/dbzero/documenti/views/vw_template_versioni_stampabili)): la
+precedente, chiusa a `p_valido_dal - 1`, stampa fino alla vigilia, e la nuova dal giorno di
+partenza. È la decisione del 29-04-2026 (`work-done/sviluppo-documenti.md`, punto 51): la vecchia
+resta in uso fino alla partenza della nuova.
 
 ---
 
@@ -195,12 +211,14 @@ SELECT * FROM documenti.fn_pubblica_template_documento_versione(42, '2026-05-01'
 
 - **Atomicità garantita**: la chiusura delle versioni precedenti e la pubblicazione della nuova
   avvengono nella stessa transazione. In caso di errore su qualsiasi step la TX fa rollback completo.
-- **Doppio UPDATE necessario**: il trigger guard A1
-  (`trgfn_template_documenti_versioni_protect_pubblicata`) blocca `UPDATE OF valido_al`
-  quando `OLD.stato = 'PUBBLICATA'`. La sequenza *stato → OBSOLETA* poi *valido_al = p_valido_dal - 1*
-  è l'unico percorso per chiudere una versione pubblicata senza bypassare il guard.
+- **La chiusura passa dalla porta**: il guard A1 rifiuta ogni modifica di una versione
+  `PUBBLICATA` o `OBSOLETA`, stato compreso. L'unico percorso per chiudere una versione pubblicata
+  è questa funzione, che apre `zeroerp.allow_template_versione_chiusura_override` per la sola
+  scrittura di chiusura e la richiude subito. Fino al 14-11-2026 la chiusura erano due `UPDATE`
+  (lo stato, poi la data quando lo stato `OBSOLETA` non era più protetto): con le `OBSOLETA`
+  protette il secondo morirebbe.
 - **Filtro `attivo IS TRUE` sulle versioni da chiudere**: allineato al vincolo EXCLUDE GIST
-  che opera solo su `attivo IS TRUE AND stato = 'PUBBLICATA'`. Versioni disattivate
+  che opera solo su `attivo IS TRUE` (stato `PUBBLICATA` o `OBSOLETA`). Versioni disattivate
   non rientrano nel vincolo e non devono essere chiuse da questa funzione.
 - **`versioni_obsolete` nel risultato**: utile per il backend/log per tracciare quante versioni
   precedenti sono state chiuse implicitamente, senza richiedere una query separata.
@@ -217,7 +235,10 @@ SELECT * FROM documenti.fn_pubblica_template_documento_versione(42, '2026-05-01'
   - nessuna chiusura per una versione già finita prima dell'inizio della nuova (`versioni_obsolete = 0`);
   - forma dei dati diversa → `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, rifiuto atomico; forma NULL →
     `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE`; una bozza preparata per la forma 2 si pubblica
-    quando il builder la produce (test 8-11, rev 2026-09-30).
+    quando il builder la produce (test 8-11, rev 2026-09-30);
+  - il vincolo e il registro coprono `PUBBLICATA` e `OBSOLETA`; con la nuova che parte domani oggi
+    stampa la precedente, con la nuova che parte oggi stampa la nuova; una `OBSOLETA` allargata sopra
+    la versione che la segue viola il vincolo (test 12-17, 2026-11-14).
 - Casi ancora da coprire:
   - Errore `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` (versione_id <= 0, valido_dal NULL).
   - Errore `E_DOCUMENTI_VERSIONE_NOT_FOUND` (id inesistente).

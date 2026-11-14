@@ -49,3 +49,9 @@ databaseChangeLog:
               # 2026-10-24 (20261024-07, brief-modello-documento-vendita P-1): lo stato in cui
               # un documento nasce. Va dichiarata qui, o la cella del CSV non la governa.
               - column: { name: iniziale, type: BOOLEAN }
+              # 2026-11-14 (20261113-42, brief-db-stati-documento-dal-vocabolario giro 3): il verdetto
+              # (NULL = nessuno), terminale e lo stato di emissione. Vanno dichiarate qui, o la cella
+              # del CSV non le governa.
+              - column: { name: esito, type: STRING }
+              - column: { name: terminale, type: BOOLEAN }
+              - column: { name: emissione, type: BOOLEAN }

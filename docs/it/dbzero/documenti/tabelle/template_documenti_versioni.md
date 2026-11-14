@@ -66,7 +66,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ex_template_documenti_versioni_no_overlap_pubblicata | `CREATE INDEX ex_template_documenti_versioni_no_overlap_pubblicata ON documenti.template_documenti_versioni USING gist (template_documento_id, validita) WHERE ((attivo IS TRUE) AND ((stato)::text = 'PUBBLICATA'::text))` |
+| ex_template_documenti_versioni_no_overlap_pubblicata | `CREATE INDEX ex_template_documenti_versioni_no_overlap_pubblicata ON documenti.template_documenti_versioni USING gist (template_documento_id, validita) WHERE ((attivo IS TRUE) AND ((stato)::text = ANY (ARRAY['PUBBLICATA'::text, 'OBSOLETA'::text])))` |
 | ix_template_documenti_versioni_template_stato_attivo | `CREATE INDEX ix_template_documenti_versioni_template_stato_attivo ON documenti.template_documenti_versioni USING btree (template_documento_id, stato, attivo)` |
 | ix_template_documenti_versioni_template_valido_dal | `CREATE INDEX ix_template_documenti_versioni_template_valido_dal ON documenti.template_documenti_versioni USING btree (template_documento_id, valido_dal, valido_al)` |
 | template_documenti_versioni_pkey | `CREATE UNIQUE INDEX template_documenti_versioni_pkey ON documenti.template_documenti_versioni USING btree (id)` |

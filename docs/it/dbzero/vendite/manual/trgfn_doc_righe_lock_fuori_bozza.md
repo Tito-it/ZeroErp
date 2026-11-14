@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Trigger function `vendite.trgfn_doc_righe_lock_fuori_bozza`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [script.fn_get_stato_testata_documento](/dbzero/script/funzioni/fn_get_stato_testata_documento) — il lettore `SECURITY DEFINER` da cui prende lo stato
@@ -29,7 +31,7 @@ con due argomenti obbligatori e quattro facoltativi.
 | --- | --- | --- |
 | `[0]` | tipo di documento, per il lettore di stato (`DDT`, `ORDINE`, `CONTRATTO`, `OFFERTA`, `RESO`, `PREVENTIVO`) | `'DDT'` |
 | `[1]` | colonna della riga che porta l'id del padre | `'ddt_id'` |
-| `[2]` (opz.) | `codice_interno` dello stato «bozza», default `DRAFT` | `'BOZZA'` per l'offerta |
+| `[2]` (opz.) | stato «bozza»: **non si legge**. La bozza è lo stato iniziale del vocabolario del documento (vedi [script.fn_doc_lock_regola](/dbzero/script/manual/fn_doc_lock_regola)) | i montaggi di oggi scrivono `'BOZZA'` sull'offerta |
 | `[3]` (opz., dal 2026-10-05) | **livello** del padre: `TESTATA` (default) se la colonna punta alla testata, `RIGA` se punta a una riga del documento (tabelle *nipoti*) | `'RIGA'` per i componenti |
 | `[4]` (opz., dal 2026-10-08) | le **colonne che un UPDATE può cambiare fuori bozza**, separate da virgola | `'data_consegna_confermata'` per l'ordine |
 | `[5]` (opz., dal 2026-10-08; obbligatorio con `[4]`) | gli **stati** (`codice_interno`, separati da virgola) in cui le colonne `[4]` si cambiano | `'CONFERMATO,PARZIALMENTE_EVASO'` |
@@ -118,7 +120,7 @@ di colonne vietate: una colonna nuova nasce chiusa. `INSERT` e `DELETE` non hann
 eccezioni. Colonne senza stati, o una colonna che la riga non ha, sono un errore
 di montaggio (`E_DOC_RIGHE_LOCK_MONTAGGIO`).
 
-Gli stati si dicono per `codice_interno`, come lo stato bozza: un flag di
+Gli stati dell'eccezione si dicono per `codice_interno`: un flag di
 catalogo che dica «da evadere» non c'è (`fase = IN_CORSO` comprende anche
 `SPEDITO` e `CONSEGNATO`).
 
