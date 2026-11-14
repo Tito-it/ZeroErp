@@ -3952,6 +3952,9 @@
         "riga_spedita": "The goods on this line have already left with a delivery note: the confirmed delivery date stays the one they left with.",
         "riga_onere": "The line is a charge: a charge is not shipped and has no delivery dates."
       },
+      "genera_ddt_reason": {
+        "stato_non_evadibile": "A delivery note is generated from a confirmed or partially shipped order: in this status the order cannot be shipped."
+      },
       "azione_data_consegna_confermata": "Change the confirmed delivery date",
       "data_consegna_confermata_titolo": "Confirmed delivery date",
       "data_consegna_confermata_riga": "Line {riga_nr} — {descrizione}",

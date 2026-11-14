@@ -2,15 +2,15 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: BE/FE (`dev/backend-tid`) con P1, il cricchetto sulle classi interne `.p-*`.**
-Tid ha dato il via il 2026-11-14; la specifica è in §8-bis «Predisposizione». La licenza è
+**Riparte: nessuno in sviluppo. P1 è fatto (2026-11-14, da committare); resta l'osservazione
+di Tid (righe 3-4).** La specifica e l'esito di P1 sono in §8-bis «Predisposizione». La licenza è
 decisa: **si resta sulla 4.5.5** e non si sale alla 5. **OpenVue è la strada preferita e
 resta sotto osservazione**; Vuetify è la riserva (§8-bis «La decisione del 2026-11-14»).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | ✅ Decisione di licenza, 2026-11-14: opzione 1 (restare sulla 4.5.5), predisponendo l'uscita. OpenVue sotto osservazione, Vuetify come riserva | §8-bis «La decisione del 2026-11-14» | — |
-| 2 | BE/FE | **P1** — cricchetto sulle classi interne `.p-*` del nostro CSS. ⛔ Non dalla sessione DB: tocca `frontend/` | `frontend/scripts/`, `frontend/package.json` | — (via di Tid del 2026-11-14) |
+| 2 | BE/FE | ✅ **P1**, 2026-11-14 — `guard:classi-interne`: registro a **13** agganci in **9** file fuori dalle sedi, che può solo calare. Da committare | `frontend/scripts/check-classi-interne-baseline.mjs`, `classi-interne.baseline.json` | — |
 | 3 | BE/FE | P2 — prova di OpenVue su un branch usa-e-getta. **Non avviata**: per ora si osserva | §8-bis «Predisposizione» | via di Tid + ok alla dipendenza nuova |
 | 4 | Tid | Rilettura periodica dei segnali che fanno scattare l'uscita (S1-S4) e dello stato di OpenVue | §8-bis «I segnali che fanno scattare l'uscita» | — |
 | — | BE/FE | ✅ Binario delle liste (§8-bis): chiuso nei brief dedicati, non qui (registro 2026-11-14 in §9). Registro a **17** `DataTable` grezze, **0** senza motivo | `frontend/scripts/datatable.baseline.json` | — |
@@ -27,7 +27,8 @@ resta sotto osservazione**; Vuetify è la riserva (§8-bis «La decisione del 20
   commento sopra l'import) va in un brief suo all'archiviazione, come chiede
   `.codex/AGENTS.md`.
 
-**Committato:** no, l'aggiornamento del 2026-11-14 è ancora da committare.
+**Committato:** no. Il riallineamento del 2026-11-14 è committato; **P1** (script, registro,
+`package.json`, frontend-standards e questo piano) è ancora da committare.
 
 ---
 
@@ -357,6 +358,15 @@ grep -rhoE '\.p-[a-z0-9-]+' src --include=*.css --include=*.vue | sort | uniq -c
 sono scese (i file da 54 a 23), mentre le classi interne `.p-*` sono salite (i file da 11 a
 21, le classi distinte da 49 a 67). In una major le classi interne sono la parte più fragile
 (R5): il residuo vero di §4 cresce. Il perché non è stato indagato.
+
+⚠️ **2026-11-14, P1: il secondo comando qui sopra misura male, in due versi.** Conta i
+**commenti**: 8 dei 21 file nominano una classe solo per spiegare una regola, senza
+agganciarla. E non legge i `.js`: `core/utils/escapeSoloInCima.js` aggancia
+`.p-dialog-mask` e `.p-select` in due costanti, e non compariva. Per le classi interne la
+misura buona è quella di `npm run guard:classi-interne`, che toglie i commenti, legge
+anche gli script (esclusi i `.spec.js`) e conta pure gli attributi `data-pc-*` (§8-bis
+«Predisposizione», esito di P1). Le colonne della tabella restano com'erano, fotografie
+prese con l'altro comando.
 
 Le più agganciate **al 2026-09-02** sono `--p-primary-color` (63),
 `--p-text-muted-color` (61) e `--p-text-color` (24); sul fronte classi
@@ -2753,6 +2763,39 @@ lascerà intatte, e oggi non lo sappiamo.
 - **Fuori da P1:** riportare i 21 file sulle sedi. P1 ferma la crescita, non apre una
   campagna. Le classi escono dal registro quando si tocca quel file per altri motivi.
 
+**✅ Esito di P1 (BE/FE, 2026-11-14).** `frontend/scripts/check-classi-interne-baseline.mjs`,
+registro `classi-interne.baseline.json`, voce `guard:classi-interne`. Verde con tutti gli
+altri guard; provati i due versi (cresce → rosso con la coppia nuova; cala → rosso finché
+non si riscrive) e la sede sparita (rosso). Rispetto alla specifica qui sopra, quattro
+scelte fatte scrivendo:
+
+1. ⚠️ **Il «nessun falso positivo» era sbagliato.** Il comando di §2-bis conta i commenti
+   (8 file su 21 agganciati solo a parole) e non legge i `.js`. Lo script toglie i commenti
+   (`/* */` nei CSS; `/* */` e `//` negli script, riconosciuti solo a inizio riga o dopo
+   uno spazio, così `'image/*'` e `http://` non aprono un commento finto; `<!-- -->` nei
+   template) e legge i `.vue` interi e i `.js` di `src/`, esclusi i `.spec.js`, perché un
+   selettore di test rotto fa fallire il test e non cede in silenzio.
+2. **Anche gli attributi `data-pc-*`.** `[data-pc-section="rowtogglebutton"]` è lo stesso
+   aggancio al DOM interno, scritto in un'altra forma. Oggi c'è solo in `ListaConfigurabile`.
+3. **Le sedi**, dichiarate nel registro ciascuna col suo motivo e verificate (una sede
+   rinominata ferma il guard). Sono le cinque della proposta più tre: `auth-pages.css` (il
+   foglio globale delle pagine d'accesso, della stessa natura di `main.css`), `AppDrawer`
+   (gemella di `AppDialog`) e `SelectButtonGravita` (colorare il `SelectButton` è tutto il
+   suo mestiere). In più `core/utils/escapeSoloInCima.js`, il punto unico che sceglie chi
+   riceve ESC leggendo le maschere dei dialog. Una sede senza agganci è ammessa:
+   `AppDialog`, `AppDrawer` e `FiltriLista` oggi li hanno solo nei commenti.
+4. **`.p-dark`** sta in `selettori_nostri`: è il `darkModeSelector` scelto da `main.js`, non
+   una classe di PrimeVue. È esente ovunque, e la voce si verifica: se nessuno la usa più,
+   il guard si ferma.
+
+Al 2026-11-14, contati dallo script: **13 agganci in 9 file fuori dalle sedi**, 65 nelle
+sedi. I 9 file: `EmittenteFiscaleUtilitiesTab`, `CodeLavoroDrawer`, `ExportDialog`,
+`ListaCorrenteSelect`, `DocumentoCollegamentiBar`, `SituazioneMerceBar`,
+`ApplicaVariazioneDialog`, `FatturazioneEsitiPanel`, `DdtRigaForm`. Le quattro classi che
+R5 trovava morte già nella 4.5 (`.p-row-toggler`, `.p-datatable-row-odd`,
+`.p-paginator-element`, `.p-confirmdialog-mask`) stanno tutte nelle sedi: sono selettori
+morti, e ripulirli è fuori da P1.
+
 **P2 — prova di OpenVue, senza adottarla. Non avviata: per ora si osserva (Tid,
 2026-11-14).** Su un branch usa-e-getta: migrazione automatica, `vite build`, suite FE,
 collaudo a video delle pagine con `ListaConfigurabile`, `AppDrawer`, `AppDialog` e menu
@@ -2797,6 +2840,12 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-11-14 · P1 eseguito: il cricchetto sugli agganci al DOM di PrimeVue
+
+`guard:classi-interne` è in `npm run guards`. Registro a 13 agganci in 9 file fuori dalle
+sedi. Il comando di §2-bis contava male in due versi: contava i commenti e non leggeva i
+`.js`. Il dettaglio, con le sedi scelte e il perché, è in §8-bis, «Esito di P1».
 
 ### 2026-11-14 · Riallineamento: le patch della 5 sono uscite, le liste si sono chiuse altrove
 
