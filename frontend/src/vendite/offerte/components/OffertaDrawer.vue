@@ -72,8 +72,6 @@ import {
 import {
   CAMPI_FORM_TESTATA_OFFERTA,
   STATO_OFFERTA,
-  STATI_OFFERTA_SEGNALA_SCADENZA,
-  STATI_OFFERTA_TERMINALI,
 } from '../constants'
 import { useOfferteStore } from '../stores/offerte'
 import { useOffertaRevisioniStore } from '../stores/offertaRevisioni'
@@ -191,19 +189,12 @@ const testata = useTestataDocumento({
   corpoProtetto: () => isReadonly.value,
 })
 
-// Discriminante terminale vs intermedio per la severity del banner: il BE
-// espone `can_edit_testata=false` sia per EMESSA/ACCETTATA (intermedi, "passa
-// al cambio stato") sia per RIFIUTATA/ANNULLATA/SUPERATA ("non puoi piu' fare
-// nulla"). La lista locale distingue i due casi senza dover chiedere un flag in
-// piu' al BE.
-// ⚠️ Su SUPERATA «non puoi piu' fare nulla» resta vero per l'OPERATORE, ma dal
-//    2026-08-28 non e' piu' vero per il documento: il database la riporta a
-//    EMESSA da se' se l'ultima revisione viva viene annullata (transizione
-//    automatica, non manuale). Il banner non cambia; la frase si', perche'
-//    diceva una cosa che ha smesso di essere vera.
-const isStatoTerminale = computed(
-  () => STATI_OFFERTA_TERMINALI.includes(stato.value),
-)
+// Stato terminale: il banner `warn` «sola lettura» contro quello `info` degli
+// stati intermedi (EMESSA/ACCETTATA), dove `can_edit_testata` e' false lo
+// stesso. Lo dice la capability (`stato_terminale`, la colonna `terminale` del
+// vocabolario: brief-db-stati-documento-dal-vocabolario §6.7), non un elenco
+// di codici copiato qui. Assente (capability vuota) = non terminale.
+const isStatoTerminale = computed(() => caps.flag('stato_terminale'))
 
 // Defaults da profilo operatore (pattern identico a preventivi/contratti):
 // - Emittente fiscale: derivato dal profilo (1-a-1 operatore->emittente
@@ -930,7 +921,7 @@ const footerDrawer = useFooterDocumento({
           {{ displayDate(detail.data_emissione) }}
         </span>
         <Tag
-          v-if="detail.is_scaduta && STATI_OFFERTA_SEGNALA_SCADENZA.includes(stato)"
+          v-if="detail.is_scaduta"
           :value="t('vendite.offerte.badge_scaduta')"
           severity="warn"
         />

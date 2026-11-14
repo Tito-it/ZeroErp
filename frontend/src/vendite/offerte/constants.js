@@ -11,10 +11,12 @@
 // e il FE non ricalcola piu' nulla. Cosi' anche per la matrice delle
 // azioni per stato (era in `OffertaDrawer.drawerActions` hardcoded).
 //
-// Quello che resta qui e' solo **logica UI di presentation** che il BE
-// volutamente non conosce: discriminare "terminale" da "intermedio
-// editabile fuori BOZZA" per la severity del banner, e quali stati hanno
-// senso col badge "SCADUTA".
+// ⛔ Dal 2026-11-13 (brief-db-stati-documento-dal-vocabolario §6.7-§6.8) non
+// stanno qui nemmeno «quali stati sono terminali» (la capability
+// `stato_terminale`, dalla colonna `terminale` del vocabolario) ne' «in quali
+// stati la scadenza conta» (`is_scaduta` della vista dice gia' la regola
+// intera: validita' passata e nessun esito del cliente). Erano
+// `STATI_OFFERTA_TERMINALI` e `STATI_OFFERTA_SEGNALA_SCADENZA`, ritirate.
 
 export const STATO_OFFERTA = Object.freeze({
   BOZZA: 'BOZZA',
@@ -24,32 +26,6 @@ export const STATO_OFFERTA = Object.freeze({
   ANNULLATA: 'ANNULLATA',
   SUPERATA: 'SUPERATA',
 })
-
-// Stati in cui l'operatore non ha piu' nulla da fare. Usato dal banner del
-// drawer per scegliere severity `warn` vs `info` (post-BOZZA non terminale,
-// EMESSA/ACCETTATA). Il BE espone `can_edit_testata=false` per entrambi i casi:
-// la distinzione UI vive solo qui.
-//
-// ⚠️ `SUPERATA` resta in elenco, ma dal 2026-08-28 NON e' piu' «workflow morto»:
-//    il database la riporta a `EMESSA` da se' quando l'ultima revisione viva
-//    viene annullata e il padre torna a essere l'offerta del lineage. La
-//    transizione e' `manuale: false` — nessuna azione, nessun pulsante — quindi
-//    per chi guarda non cambia niente e la severity resta quella giusta.
-//    ⛔ Cambia il PERCHE', non il comportamento: chiamarlo «morto» avrebbe
-//    portato il prossimo lettore a costruirci sopra un'inferenza sbagliata.
-export const STATI_OFFERTA_TERMINALI = Object.freeze([
-  STATO_OFFERTA.RIFIUTATA,
-  STATO_OFFERTA.ANNULLATA,
-  STATO_OFFERTA.SUPERATA,
-])
-
-// Stati su cui ha senso il badge "SCADUTA" (validita_al < today). Negli
-// stati terminali la scadenza non e' un fatto operativo da segnalare
-// (l'offerta non e' piu' viva).
-export const STATI_OFFERTA_SEGNALA_SCADENZA = Object.freeze([
-  STATO_OFFERTA.BOZZA,
-  STATO_OFFERTA.EMESSA,
-])
 
 // Mappa stato→modalita'-PDF (anteprima bozza / archivio post-emissione /
 // append allegati) ora DATA-DRIVEN via capability `pdf` di

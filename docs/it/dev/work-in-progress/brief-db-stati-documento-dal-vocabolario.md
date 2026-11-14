@@ -764,3 +764,31 @@ come oggi, perché il filtro FE e la regola nuova dicono la stessa cosa sugli st
 | FE | `frontend/src/vendite/offerte/components/OffertaDrawer.vue` | il badge legge `detail.is_scaduta` da solo |
 | FE | `frontend/src/vendite/offerte/constants.js` | ritira `STATI_OFFERTA_SEGNALA_SCADENZA` e il commento in testa che la giustifica |
 
+
+### 6.9 Trovati dalla verifica BE/FE dei giri 2 e D-SCAD (2026-11-14) — richieste al team DB
+
+Le richieste del §6.7 e del §6.8 sono fatte sul branch `dev/backend-tid` (non committate al 2026-11-14), con i test
+sul DB vero verdi. La verifica ha trovato due punti che si chiudono **solo nel DB**. Il BE/FE non mette un ripiego
+nell'attesa.
+
+* **V-1. `is_scaduta` del dettaglio costa la vista intera.** Il dettaglio legge il flag con una sottoquery
+  correlata su `vendite.vw_offerte_commerciali_lista` (`_SELECT_COLS_OFFERTA`). Il piano su dbdev (2026-11-14,
+  `EXPLAIN`) mostra che, per un solo booleano, la vista esegue la `LATERAL pratiche.fn_pratica_del_documento`, la
+  sottoquery di `config.sorgenti` e rifà la RLS dell'offerta: il planner non scarta una funzione in `LATERAL`. Il
+  risultato è giusto, ma il costo del dettaglio dipende da colonne che non legge. **Richiesta:** la regola ha una
+  sede che si legge da sola, per esempio `vendite.fn_offerta_scaduta(offerta_id)` (o la chiave nella capability
+  `fn_available_actions_offerta`), e la vista la compone. Il BE allora la legge da lì, in un solo punto.
+* **V-2. «In bozza» nel drawer è ancora un codice.** `OffertaDrawer.vue` decide il lucchetto di corpo
+  (`isWorkflowLocked`) con `stato !== STATO_OFFERTA.BOZZA`. È la stessa domanda che la capability ora legge da
+  `iniziale` (S-2), e che il FE non può chiedere, perché la capability espone `stato_terminale` ma non «stato
+  iniziale». Il commento del drawer dice che il lucchetto «sullo stato» è lo stesso nei cinque drawer gemelli
+  (righe, utility, indirizzi). **Richiesta:** la chiave `stato_iniziale` (colonna `iniziale` del vocabolario)
+  accanto a `stato_terminale`, nella capability dell'offerta e, giro per giro, in quelle degli altri documenti. Poi
+  una richiesta FE: il lucchetto legge la chiave e non il codice.
+
+Fuori dal DB, lato BE: il permesso della rotta `registra-esito` (`PassaggioDocumento`, campo `esito`) cercava la riga
+della matrice con la **parola dell'API** (`ACCETTATA` / `RIFIUTATA`), mentre il verbo scrive lo stato del vocabolario
+(`accettazione` / `rifiuto`). ✅ **Deciso da Tid il 2026-11-14 (opzione A) e fatto**: `PassaggioDocumento` prende
+`stato_del_campo`, la mappa parola → ruolo (`offerte_service.RUOLO_DEGLI_ESITI`, la stessa del routing del service),
+e cerca la riga verso lo stato del ruolo letto dal vocabolario. L'API non cambia. Presidi:
+`core/tests/api/test_permesso_passaggio.py` (15-18) e `core/tests/test_passaggio_rotte.py` (8, sul DB vero).

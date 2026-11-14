@@ -32,6 +32,8 @@ Indice test eseguiti:
 19) registra_esito_routing_accettata                  [routing service]
     (+ registra_esito_accettata_con_motivazione_la_rifiuta_il_verbo)
 20) registra_esito_routing_rifiutata_motivazione_al_verbo
+    (+ registra_rifiuto_stato_dal_vocabolario,
+    registra_rifiuto_senza_lo_stato_nel_vocabolario)
 21) registra_esito_invalido
 22) aggiorna_offerta_payload_vuoto_fallisce           [fix #3]
 23) aggiorna_offerta_ok                               [happy path]
@@ -381,6 +383,8 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     def test_registra_rifiuto_senza_motivazione_la_rifiuta_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
+        self.rifiuto_del_documento("RIFIUTATA")
+
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
@@ -401,6 +405,8 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     def test_registra_rifiuto_motivazione_non_stringa_e_400(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
+        self.rifiuto_del_documento("RIFIUTATA")
+
         with self.assertRaises(ServiceError) as cm:
             OfferteService().registra_rifiuto(1, motivazione=42)
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
@@ -411,6 +417,8 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_rifiuto_da_bozza_lo_rifiuta_il_db_c3(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
+
+        self.rifiuto_del_documento("RIFIUTATA")
 
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
@@ -758,6 +766,8 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     def test_registra_esito_routing_rifiutata_motivazione_al_verbo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
+        self.rifiuto_del_documento("RIFIUTATA")
+
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
@@ -776,6 +786,42 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             OfferteService().registra_esito(1, esito="RIFIUTATA")
         self.assertEqual(cm.exception.code, "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA")
         repo.cambia_stato.assert_called_once_with(1, "RIFIUTATA", None)
+
+    # Scopo: lo stato che il rifiuto scrive lo dice il vocabolario (colonna
+    #        `rifiuto`, brief-db-stati-documento-dal-vocabolario §6.7), non un
+    #        letterale: con un codice che non e' RIFIUTATA il verbo riceve
+    #        quello, e la domanda va al BB con la testata dell'offerta.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
+    def test_registra_rifiuto_stato_dal_vocabolario(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        self.rifiuto_del_documento("RESPINTA")
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_offerta.return_value = _make_offerta_dict('RESPINTA')
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().registra_esito(1, esito="RIFIUTATA", motivazione="prezzo alto")
+
+        repo.cambia_stato.assert_called_once_with(1, "RESPINTA", "prezzo alto")
+        self.modello_documento.stato_di_rifiuto.assert_called_once_with(
+            "vendite.offerte_commerciali",
+        )
+
+    # Scopo: senza uno stato di rifiuto nel vocabolario il rifiuto non arriva
+    #        al verbo: e' configurazione rotta (E_CONFIG_MANCANTE). Gemello di
+    #        `registra_accettazione_senza_lo_stato_nel_vocabolario`.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
+    def test_registra_rifiuto_senza_lo_stato_nel_vocabolario(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_rifiuto(1, motivazione="prezzo alto")
+        self.assertEqual(cm.exception.code, "E_CONFIG_MANCANTE")
+        repo_cls.return_value.cambia_stato.assert_not_called()
 
     # Scopo: registra_esito esito non valido -> 422.
     def test_registra_esito_invalido(self):

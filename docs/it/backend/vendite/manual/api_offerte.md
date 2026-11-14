@@ -219,9 +219,12 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 > `vendite.vw_offerte_commerciali_lista` (`security_invoker=on`) — lista
 > configurabile `vendite.offerte`, ritiro dinamico colonne lato FE. La vista
 > **assorbe** i JOIN prima nel repository (`listino_codice`,
-> `listino_versione_codice`, `valuta_codice`) e **materializza `is_scaduta`**
-> (`validita_al < CURRENT_DATE`; il gating per stato
-> `STATI_OFFERTA_SEGNALA_SCADENZA` resta lato FE). Campi display con i **nomi
+> `listino_versione_codice`, `valuta_codice`) e **materializza `is_scaduta`**:
+> la regola intera, validita' passata (`script.fn_data_operativa`) **e** nessun
+> esito del cliente (`esito IS NULL` sullo stato). ⛔ Fino al 2026-11-13 la
+> vista diceva solo la validita' e il FE completava con
+> `STATI_OFFERTA_SEGNALA_SCADENZA` (D-SCAD,
+> brief-db-stati-documento-dal-vocabolario §6.8): ritirata. Campi display con i **nomi
 > canonici**: cliente = `ragione_sociale_completa`, id. fiscale =
 > `id_fiscale_univoco_cf_piva`, codice account = `ba_codice`, stato =
 > `stato_descrizione` + `stato_codice_interno`. Il **dettaglio** (`GET .../<id>/`)
@@ -344,7 +347,10 @@ Note:
 ### Detail `GET /api/v1/vendite/offerte/<id>/`
 
 Output: testata + display fields + `eccezioni[]` + `utility` (1:1, null se
-non ancora compilato) + `capabilities`. `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
+non ancora compilato) + `capabilities` (con `stato_terminale`, la colonna
+`terminale` del vocabolario: il banner del drawer la legge invece di un elenco
+di stati). `is_scaduta` (dal 2026-11-13) è letto dalla vista della lista, la
+sede della regola (D-SCAD): dettaglio e lista dicono la stessa cosa. `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
 
 ```json
 {
@@ -364,6 +370,7 @@ non ancora compilato) + `capabilities`. `contatori` (dal 2026-10-25): `{"note": 
     "tipo_variazione_globale": "PERCENTUALE",
     "valore_variazione_globale": "-5.00",
     "validita_dal": "2026-06-01", "validita_al": "2026-12-31",
+    "is_scaduta": false,
     "stato_doc_offerta_id": 1,
     "stato_codice_interno": "BOZZA", "stato_descrizione": "Bozza",
     "revisione_numero": 1, "revisione_padre_id": null,
@@ -618,6 +625,11 @@ oppure
   col campo `motivazione` (l'accettazione non ha una colonna che la tenga);
   assente, `null` o vuota passa. ⛔ Fino al 2026-10-26 era scartata in
   silenzio.
+- ⭐ `ACCETTATA` e `RIFIUTATA` sono **parole dell'API**: lo stato che l'esito
+  scrive lo dice il vocabolario, colonne `accettazione` e `rifiuto`
+  (`script.fn_stato_accettazione_id` / `script.fn_stato_rifiuto_id`, dal BB
+  `stato_di_accettazione` / `stato_di_rifiuto`); un vocabolario che non lo
+  marca è `E_CONFIG_MANCANTE`.
 - `esito = "RIFIUTATA"`: valorizza `data_rifiuto` +
   `motivazione_rifiuto`. **Motivazione obbligatoria**: lo dice la riga del
   passaggio (`requires_motivazione` nel `meta`), e la fa rispettare il verbo →
@@ -637,7 +649,12 @@ oppure
 Permesso: il livello sul documento (accetta e rifiuta non hanno un'azione
 sulla riga del passaggio); la view lo legge comunque dalla riga
 (`post_passaggio`, campo `esito`), cosi' un'azione aggiunta domani alla matrice
-vale senza toccare il codice. Routing per esito nel service (`registra_esito`),
+vale senza toccare il codice. ⭐ La riga che legge e' quella verso lo stato che
+il verbo scrive: la parola dell'esito nomina un ruolo (`RUOLO_DEGLI_ESITI`:
+`ACCETTATA` → `accettazione`, `RIFIUTATA` → `rifiuto`) e lo stato si chiede
+al vocabolario (`stato_del_campo`). ⛔ Fino al 2026-11-14 cercava la riga
+verso la parola, che coincide con lo stato solo finche' il vocabolario lo
+chiama cosi'. Routing per esito nel service (`registra_esito`),
 la view e' sottile.
 
 ### Cambio stato -> ANNULLATA `POST /api/v1/vendite/offerte/<id>/annulla/`

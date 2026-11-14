@@ -143,7 +143,8 @@ OFFERTA_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_emissione
 # catalogo liste 'vendite.offerte', e materializza listino_codice,
 # listino_versione_codice, valuta_codice, is_scaduta (prima JOIN/derivati nel
 # repository). Nessun JOIN ulteriore qui: la vista basta. Il detail
-# (`get_offerta`) usa la propria proiezione `_SELECT_COLS_OFFERTA` + JOIN.
+# (`get_offerta`) usa la propria proiezione `_SELECT_COLS_OFFERTA` + JOIN, e
+# prende dalla vista il solo `is_scaduta` (la regola sta li').
 _FROM_LISTA_OFFERTE = "FROM vendite.vw_offerte_commerciali_lista v"
 
 
@@ -185,6 +186,13 @@ _SELECT_COLS_OFFERTA = """
     o.valore_variazione_globale,
     o.validita_dal,
     o.validita_al,
+    -- «Quest'offerta e' scaduta» letto dalla sede della regola, la vista della
+    -- lista (validita' passata e nessun esito del cliente), non ricalcolato
+    -- qui: dettaglio e lista dicono la stessa cosa
+    -- (brief-db-stati-documento-dal-vocabolario §6.8, D-SCAD).
+    (SELECT vl.is_scaduta
+       FROM vendite.vw_offerte_commerciali_lista vl
+      WHERE vl.id = o.id)    AS is_scaduta,
     o.stato_doc_offerta_id,
     sd.codice_interno        AS stato_codice_interno,
     sd.descrizione           AS stato_descrizione,
