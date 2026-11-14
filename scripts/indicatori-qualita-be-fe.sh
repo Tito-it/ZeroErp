@@ -82,6 +82,10 @@ misura(FE, "guard in CI (script guard:*)", sum(1 for k in pkg.get("scripts", {})
 dt = json.load(open("frontend/scripts/datatable.baseline.json", encoding="utf-8"))
 misura(FE, "DataTable grezze / senza motivazione (registro)", f"{len(dt['grezze'])} / {len(dt['senza_motivazione'])}")
 
+ci = json.load(open("frontend/scripts/classi-interne.baseline.json", encoding="utf-8"))
+misura(FE, "agganci al DOM di PrimeVue fuori dalle sedi / file (registro)",
+       f"{sum(len(v) for v in ci['agganci'].values())} / {len(ci['agganci'])}")
+
 fl = json.load(open("frontend/scripts/filtri-lista.baseline.json", encoding="utf-8"))
 voci_fl = {k: v for k, v in fl.items() if not k.startswith("_")}
 misura(FE, "filtri di lista scritti a mano (registro)",

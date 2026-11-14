@@ -89,6 +89,7 @@ sta in git.
 | file `.spec.js` / col DOM | ↑ | `vitest` in `ci-frontend` | 140 / 53 |
 | guard in CI (`guard:*`) | ↑ quando nasce una regola | `npm run guards` | 13 |
 | `DataTable` grezze / senza motivazione | ↓ | `check-datatable-baseline.mjs`, a cricchetto | 28 / 9 |
+| agganci al DOM di PrimeVue (`.p-*`, `data-pc-*`) fuori dalle sedi / file | ↓ | `check-classi-interne-baseline.mjs`, a cricchetto (dal 2026-11-14) | — |
 | filtri di lista scritti a mano | = 0 | `check-filtri-lista.mjs` | 0 |
 | file con `<ListaConfigurabile>` / `<DrawerTabLista>` | colore: dice quanto è usato il BB | — | 75 / 24 |
 | `axios` fuori da `core/api.js` · `v-html` · `console.log` | = 0 | `check-api-componenti.mjs`, lint | 0 · 0 · 0 |

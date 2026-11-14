@@ -1,0 +1,51 @@
+{
+  "_scopo": "Registro degli agganci al DOM interno di PrimeVue (classi `.p-*` e attributi `data-pc-*`) FUORI dalle sedi. PUO SOLO CALARE: il guard e rosso sia se cresce (una dipendenza nuova dalla libreria in un componente qualunque) sia se cala senza che questo file sia stato riscritto. Si riscrive con `--baseline`, e la ragione va nel messaggio di commit. `sedi` e `selettori_nostri` sono decisioni scritte a mano.",
+  "_regola": "docs/it/dev/work-in-progress/piano-migrazione-primevue-5.md §8-bis «Predisposizione», P1; frontend-standards §«Regole CSS per i componenti»",
+  "sedi": {
+    "assets/theme.css": "Il tema: token `--app-*` e override di PrimeVue. Agganciare il tema e' il suo mestiere.",
+    "assets/main.css": "Le classi globali `app-*` che vestono i componenti di PrimeVue (`app-datatable`, paginator compatto, kebab, `.p-drawer` globale): la sede dove un aggancio al tema diventa una classe nostra.",
+    "assets/auth-pages.css": "Il foglio globale delle pagine di accesso, fuori da `AppLayout`: veste i campi e la password di PrimeVue per quelle pagine, come `main.css` per il resto.",
+    "core/components/AppDialog.vue": "LA sede del chrome dei dialog: cio' che il chrome deve agganciare dentro `Dialog` va qui, e vale per tutti.",
+    "core/components/AppDrawer.vue": "LA sede del chrome dei drawer laterali, gemella di `AppDialog`.",
+    "core/components/ListaConfigurabile.vue": "Il building block delle liste: monta la `DataTable` per tutte, e ne aggancia il DOM (il toggle di espansione) in un posto solo.",
+    "core/components/FiltriLista.vue": "Il building block dei filtri di lista: veste i componenti di PrimeVue della toolbar per tutte le liste.",
+    "core/components/SelectButtonGravita.vue": "Il building block del filtro per gravita': colorare il `SelectButton` per voce e' tutto il suo mestiere, e senza agganciarne il DOM non si fa.",
+    "core/utils/escapeSoloInCima.js": "Il punto unico che decide chi riceve ESC fra gli overlay aperti: per saperlo legge le maschere dei dialog e le tendine di PrimeVue, e vale per tutti i drawer e i dialog."
+  },
+  "selettori_nostri": {
+    ".p-dark": "Il selettore della modalita' scura: lo sceglie `main.js` (`darkModeSelector`) e lo mette `stores/ui.js`. Ha la forma di PrimeVue ma il nome e' nostro: nessuna versione della libreria lo rinomina."
+  },
+  "agganci": {
+    "amministrazione/components/EmittenteFiscaleUtilitiesTab.vue": [
+      ".p-inputnumber",
+      ".p-select"
+    ],
+    "core/components/CodeLavoroDrawer.vue": [
+      ".p-button"
+    ],
+    "core/components/ExportDialog.vue": [
+      ".p-button",
+      ".p-selectbutton"
+    ],
+    "ui/components/ListaCorrenteSelect.vue": [
+      ".p-select"
+    ],
+    "vendite/_shared/lineage/DocumentoCollegamentiBar.vue": [
+      ".p-tag"
+    ],
+    "vendite/_shared/situazioneMerce/SituazioneMerceBar.vue": [
+      ".p-tag",
+      ".p-tag-label"
+    ],
+    "vendite/components/ApplicaVariazioneDialog.vue": [
+      ".p-inputnumber",
+      ".p-inputnumber-input"
+    ],
+    "vendite/components/FatturazioneEsitiPanel.vue": [
+      ".p-tag"
+    ],
+    "vendite/ddt/components/DdtRigaForm.vue": [
+      ".p-button-label"
+    ]
+  }
+}

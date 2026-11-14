@@ -19,6 +19,7 @@
     "guard:icone": "node scripts/check-primeicons-codepoints.mjs",
     "guard:keepalive": "node scripts/check-keepalive-onactivated.mjs",
     "guard:datatable": "node scripts/check-datatable-baseline.mjs",
+    "guard:classi-interne": "node scripts/check-classi-interne-baseline.mjs",
     "guard:dialog": "node scripts/check-dialog-chrome.mjs",
     "guard:capability": "node scripts/check-capability-contratto.mjs",
     "guard:lista-stato": "node scripts/check-lista-stato-esposto.mjs",
