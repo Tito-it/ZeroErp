@@ -8,7 +8,7 @@
 // Pattern speculare a ContrattoDrawer (utility 1:1 inline in testata,
 // listino + variazione globale PERCENTUALE, validita range). Drawer 3 tab
 // (testata, eccezioni, revisioni) come da piano BE+FE rev. f §FE-3.
-import { computed, nextTick, provide, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import DatePicker from 'primevue/datepicker'
@@ -49,10 +49,7 @@ import { useNotify } from '../../../core/composables/useNotify'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useFooterDocumento } from '../../../core/composables/useFooterDocumento'
 import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
-import {
-  READONLY_KEY,
-  useInjectReadonly,
-} from '../../../core/composables/useReadonlyMode'
+import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, DATE_FORMAT } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
@@ -95,6 +92,10 @@ const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
 const parentReadonly = useInjectReadonly()
+
+// Due radici (l'AppDrawer e il sotto-drawer delle righe, fuori dal corpo): gli
+// attributi del chiamante vanno all'AppDrawer, come quando era la sola radice.
+defineOptions({ inheritAttrs: false })
 
 const props = defineProps({
   visible: Boolean,
@@ -165,18 +166,37 @@ const pushReasons = computed(() => {
 //    si cambia» (brief-db-testata-dopo-emissione, fase 2): vero anche su
 //    EMESSA/ACCETTATA per le note, che il form non porta. Leggerlo qui
 //    avrebbe sbloccato tutto il drawer — form, utility, indirizzi — su
-//    un'offerta emessa. Il lock di corpo resta quindi sullo stato, come nei
-//    cinque drawer gemelli (righe, utility, indirizzi); i campi della testata
+//    un'offerta emessa. Il lock di corpo non legge quindi `can_edit_testata`
+//    ma le chiavi delle sezioni (sotto, FE-V2); i campi della testata
 //    aperti fuori bozza (R-FE-3 del brief) si accendono uno per uno da
 //    `non_editable_fields` (`useTestataDocumento`, sotto), e il blocco della
 //    testata esce dal corpo protetto quando ne resta aperto qualcuno.
+// ⭐ Dal 2026-11-14 (brief-db-stati-documento-dal-vocabolario §6.10, FE-V2) il
+//    lock non confronta piu' il codice dello stato con BOZZA: ogni sezione si
+//    chiude dalla SUA chiave della capability, che il DB legge dal lock dei
+//    satelliti. Le righe (`can_edit_eccezioni`, al sotto-drawer, fuori
+//    dall'AppDrawer) e gli indirizzi (`can_edit_indirizzi`,
+//    `DocumentoIndirizziSection`) se la leggono da se' ed escono dal corpo; la
+//    testata ha `non_editable_fields`.
+//    Nel corpo resta la fornitura: il corpo si protegge da `can_edit_utility`.
+//    In EDIT, con la capability ancora vuota, il corpo resta chiuso
+//    (fail-closed, come `useTestataDocumento`).
+// ⭐ Il lock del corpo NON si propaga con un `provide` di questo componente:
+//    arriva al corpo come `readonly` dell'AppDrawer, che lo mette in OR con la
+//    catena e lo fornisce a cio' che sta DENTRO di lui. Il sotto-drawer delle
+//    righe sta FUORI dall'AppDrawer (in fondo al template): eredita i soli
+//    permessi e si chiude da `can_edit_eccezioni`. Fino al 2026-11-14 stava
+//    dentro, e `RigheEccezioniDrawer` (catena OR `bloccato`) chiudeva le righe
+//    anche col solo `can_edit_utility` falso: la divergenza V-2 rifatta nel FE.
+const SEZIONI_CORPO = ['can_edit_eccezioni', 'can_edit_utility', 'can_edit_indirizzi']
+const corpoChiuso = computed(() => isEdit.value && !caps.flag('can_edit_utility'))
+// Il banner «fuori bozza»: si accende quando almeno una sezione e' chiusa.
 const isWorkflowLocked = computed(
-  () => isEdit.value && detail.value !== null && stato.value !== STATO_OFFERTA.BOZZA,
+  () => isEdit.value && detail.value !== null && SEZIONI_CORPO.some((k) => !caps.flag(k)),
 )
 const isReadonly = computed(
-  () => parentReadonly.value || isWorkflowLocked.value,
+  () => parentReadonly.value || corpoChiuso.value,
 )
-provide(READONLY_KEY, isReadonly)
 // La testata dopo la bozza: quali campi del form si cambiano, dalla capability
 // (brief-db-testata-dopo-emissione, R-FE-3).
 const testata = useTestataDocumento({
@@ -906,6 +926,8 @@ const footerDrawer = useFooterDocumento({
     :footer="footerDrawer"
     :loading="loading"
     :save-disabled="!canSave"
+    :readonly="corpoChiuso"
+    v-bind="$attrs"
     @update:visible="(v) => emit('update:visible', v)"
     @cancel="emit('cancelled')"
     @save="handleSave"
@@ -1260,23 +1282,6 @@ const footerDrawer = useFooterDocumento({
       </TabPanels>
     </Tabs>
 
-    <!-- Sub-drawer righe (master-detail inline): la lista `vendite.offerta_righe`
-         coi verbi del DB, gemella di quella del contratto. -->
-    <OffertaRigheDrawer
-      v-if="isEdit && detail"
-      v-model:visible="eccezioniDrawerVisible"
-      :offerta-id="props.offertaId"
-      :emittente-fiscale-id="detail.emittente_fiscale_id ?? null"
-      :offerta-codice="detail.codice"
-      :offerta-stato-codice="stato"
-      :righe-modificabili="caps.flag('can_edit_eccezioni')"
-      :offerta-stato-descrizione="detail.stato_descrizione"
-      :offerta-cliente="detail.billing_account_display"
-      :offerta-validita-dal="detail.validita_dal"
-      :offerta-validita-al="detail.validita_al"
-      @changed="refreshDetail"
-    />
-
     <!-- Sub-drawer note partizionate. Le eccezioni vengono passate per
          popolare il select RIGA nel form note (anchor RIGA). -->
     <VenditeNoteDrawer
@@ -1385,4 +1390,24 @@ const footerDrawer = useFooterDocumento({
       </template>
     </AppDialog>
   </AppDrawer>
+
+  <!-- Sub-drawer righe (master-detail inline): la lista `vendite.offerta_righe`
+       coi verbi del DB, gemella di quella del contratto. ⭐ FUORI
+       dall'AppDrawer: non e' il corpo dell'offerta, e non ne eredita il lock
+       (`readonly` dell'AppDrawer = `corpoChiuso`); si chiude dai soli
+       permessi e da `can_edit_eccezioni` (FE-V2, 2026-11-14). -->
+  <OffertaRigheDrawer
+    v-if="isEdit && detail"
+    v-model:visible="eccezioniDrawerVisible"
+    :offerta-id="props.offertaId"
+    :emittente-fiscale-id="detail.emittente_fiscale_id ?? null"
+    :offerta-codice="detail.codice"
+    :offerta-stato-codice="stato"
+    :righe-modificabili="caps.flag('can_edit_eccezioni')"
+    :offerta-stato-descrizione="detail.stato_descrizione"
+    :offerta-cliente="detail.billing_account_display"
+    :offerta-validita-dal="detail.validita_dal"
+    :offerta-validita-al="detail.validita_al"
+    @changed="refreshDetail"
+  />
 </template>

@@ -535,9 +535,13 @@ standard.
   qualunque altra versione. La versione resta BOZZA.
 - `409` `E_DOCUMENTI_VERSIONE_OVERLAP`: violazione EXCLUDE gist parziale
   `ex_template_documenti_versioni_no_overlap_pubblicata` (ripristino enforcement
-  2026-06-02, migration `20260602-05`) — le date si sovrappongono con un'altra
-  versione PUBBLICATA attiva e l'auto-close non risolve (es. nuova decorrenza
-  uguale a una versione gia' PUBBLICATA). Codice dedicato 409, armonizzato con
+  2026-06-02, migration `20260602-05`; dal 2026-11-14, `20261114-01`, copre
+  PUBBLICATA **e** OBSOLETA) — le date si sovrappongono con un'altra versione
+  attiva, pubblicata o superata ma ancora in vigore, e l'auto-close non risolve
+  (es. nuova decorrenza uguale o precedente a quella della pubblicata piu'
+  recente). Il testo dice all'operatore di scegliere una data di inizio che
+  venga dopo l'inizio della pubblicata piu' recente: la precedente si chiude
+  da sola il giorno prima. Codice dedicato 409, armonizzato con
   gli altri overlap (`E_VENDITE_PROMO_OVERLAP` / `E_VENDITE_LISTINO_VERSIONE_OVERLAP`);
   prima ricadeva nel generico `E_DOCUMENTI_VALIDATION` (400).
 - `404` `E_DOCUMENTI_NOT_FOUND`: template/versione inesistente o fuori scope.
@@ -556,8 +560,16 @@ transazione la funzione:
 4. imposta `valido_al = nuovo.valido_dal - 1`;
 5. pubblica la nuova `BOZZA`.
 
-Il vincolo EXCLUDE resta il guardrail finale contro sovrapposizioni non
-gestibili automaticamente.
+I passi 3 e 4 sono una scrittura sola, sotto la porta interna della funzione
+(il BE non la apre). Il vincolo EXCLUDE resta il guardrail finale contro
+sovrapposizioni non gestibili automaticamente.
+
+⭐ **OBSOLETA stampa ancora fino a `valido_al`** (dal 2026-11-14, `20261114-02`):
+la stampabilita' la decide la validita', non lo stato
+(`documenti.vw_template_versioni_stampabili`). Una versione pubblicata da domani
+porta subito la precedente a OBSOLETA, e oggi la stampa usa ancora quella. La
+porta `fn_risolvi_template_applicabile` puo' quindi restituire una versione
+OBSOLETA: il BE la usa cosi' com'e', senza ricontrollarne lo stato.
 
 ### 12. Builder di contesto registrati (dal 2026-10-03)
 
@@ -611,11 +623,12 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
     referenziata da documenti generati;
   - `BOZZA -> PUBBLICATA` solo via endpoint `pubblica/`, mai via PATCH
     diretto. Richiede `valido_dal NOT NULL`.
-  - `PUBBLICATA` -> immutabile (trigger DB A1 + service guard). Per
-    modificare, `clona` la versione in nuova BOZZA.
+  - `PUBBLICATA` e `OBSOLETA` -> immutabili, stato compreso (trigger DB A1
+    + service guard). Per modificare, `clona` la versione in nuova BOZZA.
   - `OBSOLETA` -> stato terminale. La transizione `PUBBLICATA -> OBSOLETA`
-    e' eseguita dalla funzione DB di pubblicazione quando una nuova versione
-    successiva sostituisce la precedente.
+    e' eseguita solo dalla funzione DB di pubblicazione quando una nuova
+    versione successiva sostituisce la precedente; fino al suo `valido_al`
+    la versione OBSOLETA stampa ancora.
 - **Numero versione calcolato**: `MAX(versione)+1` su `template_documento_id`.
   Race condition rara: due chiamate concorrenti calcolano lo stesso numero
   -> il vincolo unique `uq_template_documenti_versioni_template_versione`
@@ -625,8 +638,9 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
   le versioni dello stesso template, chiude a `nuovo.valido_dal - 1` le
   `PUBBLICATA` con decorrenza strettamente precedente ancora aperte a quella data,
   le porta a `OBSOLETA` e pubblica la nuova `BOZZA`. Il vincolo GiST EXCLUDE
-  `ex_template_documenti_versioni_no_overlap_pubblicata` resta guardrail finale
-  contro sovrapposizioni residue o race concorrenti.
+  `ex_template_documenti_versioni_no_overlap_pubblicata` (PUBBLICATA e OBSOLETA,
+  dal `20261114-01`) resta guardrail finale contro sovrapposizioni residue o
+  race concorrenti.
 - **`is_default` partial-unique senza demote automatico**: setting
   `is_default=true` su create/update/personalizza mentre esiste gia' un altro
   template default attivo per `(tipo_documento_output_id, sorgente_tipo_id,
@@ -701,10 +715,10 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 |---|---|---|
 | `E_DOCUMENTI_VALIDATION` | 400 | `stato` versione fuori whitelist; `template_id`/`versione_id` non interi positivi; in write: chiave non whitelisted, campo richiesto mancante, campo immutabile, `emittente_fiscale_id` fuori scope, margini non numerici/negativi, violazioni unique/partial-unique/FK del DDL; pubblicazione: `valido_dal` mancante, stato non BOZZA |
 | `E_DATA_AL_MINORE_DAL` | 400 | `valido_al < valido_dal` in create/clone/update/pubblicazione di una versione e in upload/PATCH di un asset: guard comune `script.trgfn_guard_date_validita`, campo `valido_al`. Il service non lo anticipa (dal 2026-09-23) |
-| `E_DOCUMENTI_VERSIONE_OVERLAP` | 409 | pubblicazione con overlap residuo verso un'altra versione `PUBBLICATA` attiva che l'auto-close non risolve (EXCLUDE `ex_template_documenti_versioni_no_overlap_pubblicata`) |
+| `E_DOCUMENTI_VERSIONE_OVERLAP` | 409 | pubblicazione con overlap residuo verso un'altra versione attiva, `PUBBLICATA` o `OBSOLETA` ancora in vigore, che l'auto-close non risolve (EXCLUDE `ex_template_documenti_versioni_no_overlap_pubblicata`). Testo: «Le date di validita' si sovrappongono con un'altra versione attiva del template, pubblicata o superata ma ancora in vigore. Scegli una data di inizio che venga dopo l'inizio della versione pubblicata piu' recente: la precedente si chiude da sola il giorno prima.» |
 | `E_DOCUMENTI_NOT_FOUND` | 404 | template/versione inesistente o fuori scope emittente (no leak) |
 | `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` | 403 | scrittura su un modello standard o su una sua versione (trigger `trgfn_template_standard_guard_sola_lettura`) |
-| `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare versione `PUBBLICATA` (Tranche F). Trigger DB A1 + service guard |
+| `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare una versione `PUBBLICATA` o `OBSOLETA`, stato compreso (Tranche F; OBSOLETA dal `20261114-04`). Trigger DB A1 + service guard |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |
 
 Codici Fase A `E_DOCUMENTI_*` registrati in `apps.core.services.error_policies`

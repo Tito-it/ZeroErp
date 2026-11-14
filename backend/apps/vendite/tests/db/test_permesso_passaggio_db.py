@@ -22,12 +22,13 @@ Indice test eseguiti:
 3) test_casi_senza_riga — stato inesistente, documento inesistente: None, nessun errore
 4) test_testata_fuori_mappa — errore di cablaggio: E_SCRIPT_CHIAMATA_NON_VALIDA dal DB
 5) test_preventivo_in_bozza — emissione: `emetti_preventivo`; annullo di una bozza: nessuna (M-4)
-6) test_stato_di_emissione — il vocabolario dice l'emissione; reso e codici ignoti no
+6) test_stato_di_emissione — il vocabolario dice l'emissione (il reso: CONFERMATO, dal 2026-11-14); annullo e codici ignoti no
 7) (ritirato il 2026-10-26 con `DocumentoModelloRepository.stato_id`, §13.8)
 8) test_ordine_in_bozza — conferma: `emetti_ordine`; annullo di una bozza: nessuna (M-4)
-9) test_stato_di_emissione_composto — id e codice dell'emissione, dal vocabolario; reso: None
+9) test_stato_di_emissione_composto — id e codice dell'emissione, dal vocabolario (reso compreso); commessa: None
 10) test_stato_di_annullo — le otto testate: lo stato `is_abortito` del vocabolario, e solo quello
 11) test_stato_iniziale_del_lotto — lo stato iniziale dalla testata del lotto (§15.13): `iniziale` del vocabolario fiscale
+12) test_conferma_reso_dalla_rotta — la rotta della conferma: `conferma_reso` dallo stato di emissione del vocabolario
 """
 from __future__ import annotations
 
@@ -73,6 +74,17 @@ class PermessoPassaggioDbTests(unittest.TestCase):
             self.repo.azione_del_passaggio("vendite.resi", self.reso_id, "ANNULLATO"),
         )
 
+    # La rotta della conferma chiede l'azione dallo stato di emissione del
+    # vocabolario (S-3, §6.12), letto a ogni richiesta: lo stesso
+    # `conferma_reso` del letterale di prima, senza il letterale.
+    def test_conferma_reso_dalla_rotta(self) -> None:
+        from types import SimpleNamespace
+
+        from apps.vendite.api.views_resi import ApiResoConferma
+
+        vista = SimpleNamespace(kwargs={"reso_id": str(self.reso_id)})
+        self.assertEqual(ApiResoConferma.post_passaggio.azione(vista), "conferma_reso")
+
     def test_bolla_consegnata(self) -> None:
         # CONSEGNATO -> RESO e' di processo: la riga c'e', senza azione; il
         # rifiuto lo da' il verbo (E_DOC_PASSAGGIO_DI_PROCESSO).
@@ -107,11 +119,11 @@ class PermessoPassaggioDbTests(unittest.TestCase):
     def test_stato_di_emissione(self) -> None:
         for testata, codice in (("vendite.preventivi", "EMESSO"), ("vendite.ddt", "EMESSO"),
                                 ("vendite.contratti", "ATTIVO"), ("vendite.ordini", "CONFERMATO"),
-                                ("vendite.offerte_commerciali", "EMESSA")):
+                                ("vendite.offerte_commerciali", "EMESSA"), ("vendite.resi", "CONFERMATO")):
             with self.subTest(testata=testata):
                 self.assertTrue(self.repo.e_stato_di_emissione(testata, codice))
         for testata, codice in (("vendite.preventivi", "ANNULLATO"), ("vendite.ddt", "INESISTENTE"),
-                                ("vendite.resi", "CONFERMATO")):
+                                ("vendite.resi", "ANNULLATO")):
             with self.subTest(testata=testata, codice=codice):
                 self.assertFalse(self.repo.e_stato_di_emissione(testata, codice))
 
@@ -127,7 +139,9 @@ class PermessoPassaggioDbTests(unittest.TestCase):
 
     # B-1/B-5 (§8.11): lo stato di emissione che «Emetti» scrive e' quello che
     # il vocabolario dichiara (`emissione = true`), letto dalla colonna e non
-    # scritto qui; un documento che non si emette (il reso) -> None.
+    # scritto qui. Il reso ha il suo dal 2026-11-14 (S-3,
+    # brief-db-stati-documento-dal-vocabolario §6.12, `20261113-42`); un
+    # documento senza vocabolario d'emissione (la commessa) -> None.
     def test_stato_di_emissione_composto(self) -> None:
         vocabolari = {
             "vendite.ddt": "config.stati_doc_ddt",
@@ -135,6 +149,7 @@ class PermessoPassaggioDbTests(unittest.TestCase):
             "vendite.ordini": "config.stati_doc_ordini",
             "vendite.contratti": "config.stati_doc_contratti",
             "vendite.offerte_commerciali": "config.stati_doc_offerte",
+            "vendite.resi": "config.stati_doc_reso",
         }
         with connection.cursor() as cur:
             for testata, vocabolario in vocabolari.items():
@@ -145,7 +160,7 @@ class PermessoPassaggioDbTests(unittest.TestCase):
                     stato = self.repo.stato_di_emissione(testata)
                     assert stato is not None
                     self.assertEqual((stato.id, stato.codice), (int(atteso[0][0]), atteso[0][1]))
-        self.assertIsNone(self.repo.stato_di_emissione("vendite.resi"))
+        self.assertIsNone(self.repo.stato_di_emissione("vendite.commesse"))
 
 
     # §9.8: lo stato d'annullo che il backend riconosce e' quello che il

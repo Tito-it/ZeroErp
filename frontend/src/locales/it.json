@@ -3925,8 +3925,7 @@
       "stato_info": {
         "evaso": "L'ordine è evaso: lo stato si ricalcola dai DDT, non si imposta a mano.",
         "parzialmente_evaso": "Evasione in corso: lo stato si ricalcola a ogni DDT.",
-        "annullato": "L'ordine è annullato: lo stato è definitivo.",
-        "fatturato": "L'ordine è fatturato: il seguito si gestisce sulla fattura."
+        "annullato": "L'ordine è annullato: lo stato è definitivo."
       },
       "azione_push_commessa": "Invia a commessa",
       "conferma_cambio_stato": "Portare l'ordine nello stato {stato}?",

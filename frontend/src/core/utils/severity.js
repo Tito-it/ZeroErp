@@ -296,8 +296,9 @@ export function statoOffertaSeverity(codice) {
 }
 
 // --- Mappa stati ordine di vendita ---
-// DRAFT=grigio (bozza), CONFERMATO/EVASO/ALLOCATO/SPEDITO=azzurro (ciclo in corso),
-// CONSEGNATO/FATTURATO=verde (concluso), ANNULLATO=rosso.
+// DRAFT=grigio (bozza), CONFERMATO/PARZIALMENTE_EVASO/EVASO=azzurro (ciclo in
+// corso), ANNULLATO=rosso. ALLOCATO, SPEDITO, CONSEGNATO e FATTURATO ritirati il
+// 2026-11-14 col vocabolario (`20261114-03`).
 // EVASO = terminale post-push commessa (transizione automatica CONFERMATO→EVASO
 // BE-driven): info perche' la fattura e' ancora a valle (coerente con preventivo).
 // Allineato a config.stati_doc_ordini.codice_interno.
@@ -306,10 +307,6 @@ export const STATO_ORDINE_MAP = {
   CONFERMATO: 'info',
   PARZIALMENTE_EVASO: 'info',
   EVASO: 'info',
-  ALLOCATO: 'info',
-  SPEDITO: 'info',
-  CONSEGNATO: 'success',
-  FATTURATO: 'success',
   ANNULLATO: 'danger',
 }
 export function statoOrdineSeverity(codice) {

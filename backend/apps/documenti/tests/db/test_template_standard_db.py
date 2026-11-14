@@ -58,6 +58,10 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    ALLINEATA (dalla vista del DB); la risoluzione per azienda dice STANDARD
    per l'emittente nuovo, EMITTENTE dopo la copia, SENZA_PREDEFINITO con un
    modello suo non predefinito che stampa.
+9) TemplateStandardDbTests.test_versione_da_domani_oggi_stampa_la_precedente
+   una versione pubblicata da domani (data aziendale) chiude la precedente a
+   oggi e la porta a OBSOLETA; oggi la porta risolve ancora la precedente,
+   OBSOLETA, perche' la stampabilita' la decide la validita' (20261114-02).
 """
 from __future__ import annotations
 
@@ -500,6 +504,73 @@ class TemplateStandardDbTests(unittest.TestCase):
                 # La copia non piu' predefinita, ma stampa: strada B.
                 TemplateAdminService().update_template(user, copia["id"], {"is_default": False})
                 self.assertEqual(esito(), "SENZA_PREDEFINITO")
+                raise Annulla
+        except Annulla:
+            pass
+
+    # 9. Una versione pubblicata da domani: oggi stampa ancora la precedente,
+    #    che la pubblicazione ha gia' reso OBSOLETA. La stampabilita' la decide
+    #    la validita', non lo stato (20261114-02): fino al 2026-11-14 la
+    #    precedente smetteva di stampare subito, e fino a domani non stampava
+    #    niente. La versione arriva dalla porta e si usa cosi' com'e'.
+    def test_versione_da_domani_oggi_stampa_la_precedente(self):
+        from datetime import timedelta
+
+        from apps.documenti.services.document_generation_service import (
+            DocumentGenerationService,
+        )
+        from apps.documenti.services.template_admin_service import TemplateAdminService
+        from apps.documenti.services.template_versioni_admin_service import (
+            TemplateVersioniAdminService,
+        )
+
+        svc = DocumentGenerationService()
+        versioni = TemplateVersioniAdminService()
+        oggi = oggi_aziendale()
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                user, emittente, standard = self._mondo(cur)
+                risolvi = {
+                    "scope": [emittente], "emittente_fiscale_id": emittente,
+                    "sorgente_tipo_id": standard["sorgente"],
+                    "tipo_documento_output_id": standard["tipo_output"],
+                    "template_documento_id": None,
+                }
+                copia = TemplateAdminService().personalizza_template(
+                    user, standard["id"], {"emittente_fiscale_id": emittente},
+                )
+                cur.execute(
+                    "SELECT id FROM documenti.template_documenti_versioni"
+                    " WHERE template_documento_id = %s",
+                    [copia["id"]],
+                )
+                prima_id = cur.fetchone()[0]
+                versioni.pubblica_versione(
+                    user, copia["id"], prima_id, {"valido_dal": oggi.isoformat()},
+                )
+                seconda = versioni.clone_versione(
+                    user, copia["id"], prima_id, {"titolo": "Da domani"},
+                )
+                versioni.pubblica_versione(
+                    user, copia["id"], seconda["id"],
+                    {"valido_dal": (oggi + timedelta(days=1)).isoformat()},
+                )
+
+                cur.execute(
+                    "SELECT id, stato, valido_dal, valido_al"
+                    "  FROM documenti.template_documenti_versioni"
+                    " WHERE template_documento_id = %s ORDER BY versione",
+                    [copia["id"]],
+                )
+                self.assertEqual(cur.fetchall(), [
+                    (prima_id, "OBSOLETA", oggi, oggi),
+                    (seconda["id"], "PUBBLICATA", oggi + timedelta(days=1), None),
+                ])
+
+                template, versione = svc._resolve_template(user, **risolvi)
+                self.assertEqual(template["id"], copia["id"])
+                self.assertEqual(versione["id"], prima_id)
+                self.assertEqual(versione["stato"], "OBSOLETA")
                 raise Annulla
         except Annulla:
             pass

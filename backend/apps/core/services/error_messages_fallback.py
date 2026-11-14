@@ -418,6 +418,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # verbo che ne e' la causa. Due codici TECNICI: nessuna maschera li provoca.
     "E_DOC_STATO_SOLO_DAL_VERBO": "Lo stato del documento si cambia solo dalle sue operazioni (emetti, conferma, annulla...), non con una modifica diretta: segnalalo all'assistenza.",
     "E_DOC_PASSAGGIO_DI_PROCESSO": "Questo passaggio di stato lo fa il sistema, come conseguenza di un'altra operazione: non si chiede a mano.",
+    # brief-db-stati-documento-dal-vocabolario §6.12 (giro 3, 2026-11-14): da uno
+    # stato terminale non esce nessun passaggio a mano. Lo solleva il trigger sui
+    # vocabolari degli stati; il testo a catalogo nomina stato e passaggio.
+    "E_DOC_TERMINALE_CON_USCITA_MANUALE": "La configurazione degli stati non e' valida: da uno stato dichiarato terminale esce un passaggio a mano. Segnalalo all'assistenza.",
     # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-12): la scheda di
     # fornitura segue la coppia della testata. Due codici TECNICI.
     "E_DOC_FORNITURA_FUORI_TESTATA": "La scheda di fornitura indicata non e' della fornitura del documento: segnalalo all'assistenza.",
@@ -459,8 +463,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "Eliminazione versione non consentita: stato non BOZZA o gia' usata da documenti generati.",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "Versione template documento non trovata.",
     "E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO": "La data del documento e' anteriore a quella dell'ultimo numero gia' emesso su questo registro: la sequenza di un sezionale segue il tempo, e il numero successivo non puo' portare una data precedente.",
-    "E_DOCUMENTI_VERSIONE_OVERLAP": "Le date di validita' si sovrappongono con un'altra versione PUBBLICATA attiva del template. Chiudi quella esistente prima di pubblicare la nuova.",
-    "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "Versione PUBBLICATA non modificabile. Crea o clona una nuova versione BOZZA.",
+    "E_DOCUMENTI_VERSIONE_OVERLAP": "Le date di validita' si sovrappongono con un'altra versione attiva del template, pubblicata o superata ma ancora in vigore. Scegli una data di inizio che venga dopo l'inizio della versione pubblicata piu' recente: la precedente si chiude da sola il giorno prima.",
+    "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "Una versione pubblicata di un template documentale non puo' essere modificata, nemmeno quando e' superata da una versione successiva.",
     "E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO": "La versione template non e' in uno stato pubblicabile.",
     "E_DOC_COMPONENTE_BOM_NON_VALIDA": "Riga BoM non valida alla data del documento.",
     "E_DOC_COMPONENTE_ID_INCOERENTE": "Componente non coerente con la riga di distinta base indicata.",

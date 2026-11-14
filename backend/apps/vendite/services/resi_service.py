@@ -113,10 +113,12 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.resi_service"
-# La testata nel modello del documento e lo stato a cui porta la conferma: li
-# legge la catena dei permessi (`PassaggioDocumento` delle view).
+# La testata nel modello del documento: la legge la catena dei permessi
+# (`PassaggioDocumento` delle view). Lo stato a cui porta la conferma e' lo
+# stato di emissione del vocabolario (`config.stati_doc_reso.emissione`, S-3 di
+# brief-db-stati-documento-dal-vocabolario §6.12, `20261113-42`): la view lo
+# chiede al modello, non a un letterale (fino al 2026-11-14 `STATO_CONFERMATO`).
 TESTATA_RESO = "vendite.resi"
-STATO_CONFERMATO = "CONFERMATO"
 # Il reso si ELIMINA solo nello stato in cui nasce (la bozza: lo stato
 # iniziale del vocabolario; abbandono del drawer, `elimina_reso`: la regola
 # la giudica il DB, `trgfn_doc_guard_delete_solo_bozza`). I campi della

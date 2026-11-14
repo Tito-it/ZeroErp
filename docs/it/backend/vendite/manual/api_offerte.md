@@ -219,7 +219,8 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 > `vendite.vw_offerte_commerciali_lista` (`security_invoker=on`) — lista
 > configurabile `vendite.offerte`, ritiro dinamico colonne lato FE. La vista
 > **assorbe** i JOIN prima nel repository (`listino_codice`,
-> `listino_versione_codice`, `valuta_codice`) e **materializza `is_scaduta`**:
+> `listino_versione_codice`, `valuta_codice`) e **materializza `is_scaduta`**
+> chiamando `vendite.fn_offerta_scaduta` (sede della regola dal 2026-11-14):
 > la regola intera, validita' passata (`script.fn_data_operativa`) **e** nessun
 > esito del cliente (`esito IS NULL` sullo stato). ⛔ Fino al 2026-11-13 la
 > vista diceva solo la validita' e il FE completava con
@@ -349,8 +350,10 @@ Note:
 Output: testata + display fields + `eccezioni[]` + `utility` (1:1, null se
 non ancora compilato) + `capabilities` (con `stato_terminale`, la colonna
 `terminale` del vocabolario: il banner del drawer la legge invece di un elenco
-di stati). `is_scaduta` (dal 2026-11-13) è letto dalla vista della lista, la
-sede della regola (D-SCAD): dettaglio e lista dicono la stessa cosa. `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
+di stati). `is_scaduta` (dal 2026-11-13) è chiesto alla sede della regola,
+`vendite.fn_offerta_scaduta(esito, validita_al, data operativa)` (V-1, dal
+2026-11-14; prima una sottoquery sulla vista della lista), la stessa funzione
+che la vista chiama (D-SCAD): dettaglio e lista dicono la stessa cosa. `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
 
 ```json
 {

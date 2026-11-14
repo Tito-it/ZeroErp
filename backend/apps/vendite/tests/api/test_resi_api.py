@@ -401,8 +401,10 @@ class ResiPermessoAzioneTests(SimpleTestCase):
         from apps.core.api.permissions import PassaggioDocumento
         from apps.vendite.api.views_resi import ApiResoAnnulla, ApiResoConferma
 
+        # La conferma: lo stato di emissione dal vocabolario (S-3,
+        # brief-db-stati-documento-dal-vocabolario §6.12), non un letterale.
         self.assertEqual(ApiResoConferma.post_passaggio, PassaggioDocumento(
-            testata="vendite.resi", documento_kwarg="reso_id", stato_chiesto="CONFERMATO",
+            testata="vendite.resi", documento_kwarg="reso_id", stato_del_modello="emissione",
         ))
         # L'annullo: lo stato d'annullo dal vocabolario, non un letterale (§9.8).
         self.assertEqual(ApiResoAnnulla.post_passaggio, PassaggioDocumento(
